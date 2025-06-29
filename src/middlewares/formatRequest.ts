@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { MessageCreateParamsBase } from "@anthropic-ai/sdk/resources/messages";
 import OpenAI from "openai";
-import { streamOpenAIResponse } from "../utils/stream";
 import { log } from "../utils/log";
 
 export const formatRequest = async (
@@ -11,49 +10,36 @@ export const formatRequest = async (
 ) => {
   let {
     model,
-    max_tokens,
     messages,
     system = [],
     temperature,
-    metadata,
     tools,
     stream,
   }: MessageCreateParamsBase = req.body;
-  log("formatRequest: ", req.body);
+  log("formatRequest (original)", req.body);
+
   try {
-    // @ts-ignore
+    // 既存のメッセージ変換ロジックを維持
     const openAIMessages = Array.isArray(messages)
       ? messages.flatMap((anthropicMessage) => {
+          // ... (この部分は元のコードと同じなため、簡潔にするために省略) ...
           const openAiMessagesFromThisAnthropicMessage = [];
-
           if (!Array.isArray(anthropicMessage.content)) {
-            // Handle simple string content
             if (typeof anthropicMessage.content === "string") {
               openAiMessagesFromThisAnthropicMessage.push({
                 role: anthropicMessage.role,
                 content: anthropicMessage.content,
               });
             }
-            // If content is not string and not array (e.g. null/undefined), it will result in an empty array, effectively skipping this message.
             return openAiMessagesFromThisAnthropicMessage;
           }
-
-          // Handle array content
           if (anthropicMessage.role === "assistant") {
-            const assistantMessage = {
-              role: "assistant",
-              content: null, // Will be populated if text parts exist
-            };
+            const assistantMessage: any = { role: "assistant", content: null };
             let textContent = "";
-            // @ts-ignore
-            const toolCalls = []; // Corrected type here
-
+            const toolCalls: any[] = [];
             anthropicMessage.content.forEach((contentPart) => {
               if (contentPart.type === "text") {
-                textContent +=
-                  (typeof contentPart.text === "string"
-                    ? contentPart.text
-                    : JSON.stringify(contentPart.text)) + "\\n";
+                textContent += (typeof contentPart.text === "string" ? contentPart.text : JSON.stringify(contentPart.text)) + "\n";
               } else if (contentPart.type === "tool_use") {
                 toolCalls.push({
                   id: contentPart.id,
@@ -65,145 +51,74 @@ export const formatRequest = async (
                 });
               }
             });
-
             const trimmedTextContent = textContent.trim();
-            if (trimmedTextContent.length > 0) {
-              // @ts-ignore
-              assistantMessage.content = trimmedTextContent;
-            }
-            if (toolCalls.length > 0) {
-              // @ts-ignore
-              assistantMessage.tool_calls = toolCalls;
-            }
-            // @ts-ignore
-            if (
-              assistantMessage.content ||
-              // @ts-ignore
-              (assistantMessage.tool_calls &&
-                // @ts-ignore
-                assistantMessage.tool_calls.length > 0)
-            ) {
+            if (trimmedTextContent.length > 0) assistantMessage.content = trimmedTextContent;
+            if (toolCalls.length > 0) assistantMessage.tool_calls = toolCalls;
+            if (assistantMessage.content || (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0)) {
               openAiMessagesFromThisAnthropicMessage.push(assistantMessage);
             }
           } else if (anthropicMessage.role === "user") {
-            // For user messages, text parts are combined into one message.
-            // Tool results are transformed into subsequent, separate 'tool' role messages.
             let userTextMessageContent = "";
-            // @ts-ignore
-            const subsequentToolMessages = [];
-
+            const subsequentToolMessages: any[] = [];
             anthropicMessage.content.forEach((contentPart) => {
               if (contentPart.type === "text") {
-                userTextMessageContent +=
-                  (typeof contentPart.text === "string"
-                    ? contentPart.text
-                    : JSON.stringify(contentPart.text)) + "\\n";
+                userTextMessageContent += (typeof contentPart.text === "string" ? contentPart.text : JSON.stringify(contentPart.text)) + "\n";
               } else if (contentPart.type === "tool_result") {
-                // Each tool_result becomes a separate 'tool' message
                 subsequentToolMessages.push({
                   role: "tool",
                   tool_call_id: contentPart.tool_use_id,
-                  content:
-                    typeof contentPart.content === "string"
-                      ? contentPart.content
-                      : JSON.stringify(contentPart.content),
+                  content: typeof contentPart.content === "string" ? contentPart.content : JSON.stringify(contentPart.content),
                 });
               }
             });
-
             const trimmedUserText = userTextMessageContent.trim();
             if (trimmedUserText.length > 0) {
-              openAiMessagesFromThisAnthropicMessage.push({
-                role: "user",
-                content: trimmedUserText,
-              });
+              openAiMessagesFromThisAnthropicMessage.push({ role: "user", content: trimmedUserText });
             }
-            // @ts-ignore
-            openAiMessagesFromThisAnthropicMessage.push(
-              // @ts-ignore
-              ...subsequentToolMessages
-            );
+            openAiMessagesFromThisAnthropicMessage.push(...subsequentToolMessages);
           } else {
-            // Fallback for other roles (e.g. system, or custom roles if they were to appear here with array content)
-            // This will combine all text parts into a single message for that role.
-            let combinedContent = "";
+             let combinedContent = "";
             anthropicMessage.content.forEach((contentPart) => {
               if (contentPart.type === "text") {
-                combinedContent +=
-                  (typeof contentPart.text === "string"
-                    ? contentPart.text
-                    : JSON.stringify(contentPart.text)) + "\\n";
+                combinedContent += (typeof contentPart.text === "string" ? contentPart.text : JSON.stringify(contentPart.text)) + "\n";
               } else {
-                // For non-text parts in other roles, stringify them or handle as appropriate
-                combinedContent += JSON.stringify(contentPart) + "\\n";
+                combinedContent += JSON.stringify(contentPart) + "\n";
               }
             });
             const trimmedCombinedContent = combinedContent.trim();
             if (trimmedCombinedContent.length > 0) {
-              openAiMessagesFromThisAnthropicMessage.push({
-                role: anthropicMessage.role, // Cast needed as role could be other than 'user'/'assistant'
-                content: trimmedCombinedContent,
-              });
+              openAiMessagesFromThisAnthropicMessage.push({ role: anthropicMessage.role, content: trimmedCombinedContent });
             }
           }
           return openAiMessagesFromThisAnthropicMessage;
         })
       : [];
-    const systemMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
-      Array.isArray(system)
-        ? system.map((item) => ({
-            role: "system",
-            content: item.text,
-          }))
-        : [{ role: "system", content: system }];
-    const data: any = {
-      model,
-      messages: [...systemMessages, ...openAIMessages],
-      temperature,
-      stream,
+
+    const systemText = Array.isArray(system) ? system.map(s => s.text).join('\n') : String(system);
+
+    // Responses API 用にリクエストボディを再構築
+    const newRequestBody = {
+      model: model || process.env.OPENAI_MODEL,
+      instructions: systemText,
+      input: openAIMessages,
+      tools: [{ type: "web_search_preview" }],
+      stream: true,
+      temperature: temperature,
     };
-    if (tools) {
-      data.tools = tools
-        .filter((tool) => !["StickerRequest"].includes(tool.name))
-        .map((item: any) => ({
-          type: "function",
-          function: {
-            name: item.name,
-            description: item.description,
-            parameters: item.input_schema,
-          },
-        }));
-    }
+
+    req.body = newRequestBody;
+    log("Formatted request for Responses API:", JSON.stringify(newRequestBody, null, 2));
+
     if (stream) {
       res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
     }
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    req.body = data;
-    console.log(JSON.stringify(data.messages, null, 2));
+
+    next();
+
   } catch (error) {
-    console.error("Error in request processing:", error);
-    const errorCompletion: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk> =
-      {
-        async *[Symbol.asyncIterator]() {
-          yield {
-            id: `error_${Date.now()}`,
-            created: Math.floor(Date.now() / 1000),
-            model,
-            object: "chat.completion.chunk",
-            choices: [
-              {
-                index: 0,
-                delta: {
-                  content: `Error: ${(error as Error).message}`,
-                },
-                finish_reason: "stop",
-              },
-            ],
-          };
-        },
-      };
-    await streamOpenAIResponse(res, errorCompletion, model, req.body);
+    console.error("Error in formatRequest:", error);
+    res.status(500).json({ error: (error as Error).message });
   }
-  next();
 };
