@@ -153,6 +153,7 @@ async function run(options: RunOptions = {}) {
       await streamOpenAIResponse(res, completion, req.body.model, req.body);
     } catch (e) {
       log("Error in OpenAI API call:", e);
+      return res.status(500).json({ error: e });
     }
   });
   server.start();
