@@ -29,6 +29,7 @@ ccr code
 
 ```json
 {
+  "log": true,
   "OPENAI_API_KEY": "sk-xxx",
   "OPENAI_BASE_URL": "https://api.deepseek.com",
   "OPENAI_MODEL": "deepseek-chat",
@@ -38,10 +39,9 @@ ccr code
       "api_base_url": "https://openrouter.ai/api/v1",
       "api_key": "sk-xxx",
       "models": [
-        "google/gemini-2.5-pro-preview",
+        "google/gemini-2.5-flash",
         "anthropic/claude-sonnet-4",
-        "anthropic/claude-3.5-sonnet",
-        "anthropic/claude-3.7-sonnet:thinking"
+        "anthropic/claude-3.5-sonnet"
       ]
     },
     {
@@ -60,8 +60,9 @@ ccr code
   "Router": {
     "background": "ollama,qwen2.5-coder:latest",
     "think": "deepseek,deepseek-reasoner",
-    "longContext": "openrouter,google/gemini-2.5-pro-preview"
-  }
+    "longContext": "openrouter,google/gemini-2.5-flash"
+  },
+  "usePlugins": ["notebook-tools-filter", "toolcall-improvement"]
 }
 ```
 
@@ -75,7 +76,7 @@ ccr code
   Note: The reasoning process via the official DeepSeek API may be very slow, so you may need to wait for an extended period of time.
 
 - `longContext`  
-  This model will be used when the context length exceeds 32K (this value may be modified in the future). You can route the request to a model that performs well with long contexts (I’ve chosen google/gemini-2.5-pro-preview). This scenario has not been thoroughly tested yet, so if you encounter any issues, please submit an issue.
+  This model will be used when the context length exceeds 32K (this value may be modified in the future). You can route the request to a model that performs well with long contexts (I’ve chosen google/gemini-2.5-flash). This scenario has not been thoroughly tested yet, so if you encounter any issues, please submit an issue.
 
 - model command  
   You can also switch models within Claude Code by using the `/model` command. The format is: `provider,model`, like this:  
