@@ -18,13 +18,20 @@ npm install -g @anthropic-ai/claude-code
 npm install -g @musistudio/claude-code-router
 ```
 
-3. Start Claude Code by claude-code-router
+3. Set up plugins (required for usePlugins config)
+
+```shell
+mkdir -p ~/.claude-code-router/plugins
+cp plugins/* ~/.claude-code-router/plugins/
+```
+
+4. Start Claude Code by claude-code-router
 
 ```shell
 ccr code
 ```
 
-4. Configure routing[optional]  
+5. Configure routing[optional]  
    Set up your `~/.claude-code-router/config.json` file like this:
 
 ```json
@@ -83,10 +90,55 @@ ccr code
   `/model openrouter,anthropic/claude-3.5-sonnet`  
   This will use the anthropic/claude-3.5-sonnet model provided by OpenRouter to handle all subsequent tasks.
 
+## Available Models (July 2025)
+
+### Premium Models (Paid)
+- **DeepSeek**: `deepseek-chat`, `deepseek-reasoner` - Cost-effective reasoning
+- **Anthropic**: `claude-sonnet-4`, `claude-3.5-sonnet` - High quality
+- **Google**: `gemini-2.5-flash` - Fast, efficient for long context
+
+### Free Models (OpenRouter)
+- **Meta**: `meta/llama-4-maverick:free` - 256K context, multimodal
+- **Google**: `google/gemini-2.0-flash-exp:free` - Fast inference
+- **Mistral**: `mistral/mistral-small-3.1:free` - 96K context, balanced
+
+**Free Model Limits**: 50 requests/day (1,000 with $10+ credits), 20/minute
+
+### Recommended Free Configuration
+For budget-conscious users, replace paid providers with free alternatives:
+
+```json
+{
+  "log": true,
+  "OPENAI_API_KEY": "sk-xxx",
+  "OPENAI_BASE_URL": "https://openrouter.ai/api/v1", 
+  "OPENAI_MODEL": "meta/llama-4-maverick:free",
+  "Providers": [
+    {
+      "name": "openrouter",
+      "api_base_url": "https://openrouter.ai/api/v1",
+      "api_key": "sk-xxx", 
+      "models": [
+        "meta/llama-4-maverick:free",
+        "google/gemini-2.0-flash-exp:free",
+        "mistral/mistral-small-3.1:free"
+      ]
+    }
+  ],
+  "Router": {
+    "background": "openrouter,mistral/mistral-small-3.1:free",
+    "think": "openrouter,meta/llama-4-maverick:free", 
+    "longContext": "openrouter,google/gemini-2.0-flash-exp:free"
+  },
+  "usePlugins": ["notebook-tools-filter", "toolcall-improvement"]
+}
+```
+
 ## Features
 
 - [x] Support change models
 - [x] Github Actions
+- [x] Free model support via OpenRouter
 - [ ] More robust plugin support
 - [ ] More detailed logs
 - [ ] Support image
@@ -193,6 +245,25 @@ For example, between 00:30 and 08:30 Beijing Time, using the official DeepSeek A
 
 So maybe in the future, I’ll describe detailed tasks for Claude Code ahead of time and let it run during these discounted hours to reduce costs?
 
+
+## Troubleshooting
+
+### Plugin Loading Errors
+If you see errors like `ENOENT: no such file or directory, access '/Users/user/.claude-code-router/plugins/notebook-tools-filter.js'`:
+
+1. **Create plugins directory and copy files:**
+```shell
+mkdir -p ~/.claude-code-router/plugins
+cp plugins/* ~/.claude-code-router/plugins/
+```
+
+2. **Restart the service:**
+```shell
+ccr stop
+ccr start
+```
+
+3. **Alternative: Disable plugins** by removing `usePlugins` from config or setting to empty array: `"usePlugins": []`
 
 ## Some tips:
 
