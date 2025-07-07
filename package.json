@@ -19,6 +19,8 @@
   "license": "MIT",
   "dependencies": {
     "@musistudio/llms": "^1.0.3",
+    "@types/node": "^24.0.10",
+    "commander": "^14.0.0",
     "dotenv": "^16.4.7",
     "tiktoken": "^1.0.21",
     "uuid": "^11.1.0"
