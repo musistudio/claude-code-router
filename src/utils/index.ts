@@ -47,20 +47,21 @@ export const readConfigFile = async () => {
     const config = await fs.readFile(CONFIG_FILE, "utf-8");
     return JSON.parse(config);
   } catch {
-    const apiKey = await question("Enter OPENAI_API_KEY: ");
-    const baseUrl = await question("Enter OPENAI_BASE_URL: ");
-    const model = await question("Enter OPENAI_MODEL: ");
+    const name = await question("Enter Provider Name: ");
+    const apiKey = await question("Enter Provider API KEY: ");
+    const baseUrl = await question("Enter Provider URL: ");
+    const model = await question("Enter MODEL Name: ");
     const config = Object.assign({}, DEFAULT_CONFIG, {
       Providers: [
         {
-          name: "openai",
+          name,
           api_base_url: baseUrl,
           api_key: apiKey,
           models: [model],
         },
       ],
       Router: {
-        default: `openai,${model}`,
+        default: `${name},${model}`,
       },
     });
     await writeConfigFile(config);

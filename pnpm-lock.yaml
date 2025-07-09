@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@musistudio/llms':
-        specifier: ^1.0.3
-        version: 1.0.3(ws@8.18.3)(zod@3.25.67)
+        specifier: ^1.0.4
+        version: 1.0.4(ws@8.18.3)(zod@3.25.67)
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
@@ -214,8 +214,8 @@ packages:
       '@modelcontextprotocol/sdk':
         optional: true
 
-  '@musistudio/llms@1.0.3':
-    resolution: {integrity: sha512-3230waQJFoOWn1scRyR8SIL/lYX6+Vq1PIfom5Tdf6QO3BzLWkR8NPTXok+cdjXgVIBJN5WWhdBGfp2BCXVCTQ==}
+  '@musistudio/llms@1.0.4':
+    resolution: {integrity: sha512-z+Ge5NOaafIvgnGiZqySSz8b2sYIvRQRCVZHZH/IjotS2uQWXespcdIUu0h72toTRkLu7hVIxLuY5Poh+6PeTQ==}
 
   abstract-logging@2.0.1:
     resolution: {integrity: sha512-2BjRTZxTPvheOvGbBslFSYOUkr+SjPtOnrLP33f+VIWLzezQpZcqVg7ja3L4dBXmzzgwT+a029jRx5PCi3JuiA==}
@@ -634,7 +634,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@musistudio/llms@1.0.3(ws@8.18.3)(zod@3.25.67)':
+  '@musistudio/llms@1.0.4(ws@8.18.3)(zod@3.25.67)':
     dependencies:
       '@anthropic-ai/sdk': 0.54.0
       '@fastify/cors': 11.0.1
