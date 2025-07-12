@@ -7,24 +7,90 @@ import { version } from "../package.json";
 import { spawn } from "child_process";
 import { PID_FILE, REFERENCE_COUNT_FILE } from "./constants";
 import { existsSync, readFileSync } from "fs";
+import { Command } from "commander";
 
-const command = process.argv[2];
+const program = new Command();
+program
+  .name("ccr")
+  .description("Claude Code Router CLI")
+  .version(version, "-v, --version", "Show version information");
 
-const HELP_TEXT = `
-Usage: ccr [command]
+program
+  .command("start")
+  .description("Start service")
+  .action(() => {
+    run();
+  });
 
-Commands:
-  start         Start service 
-  stop          Stop service
-  status        Show service status
-  code          Execute code command
-  -v, version   Show version information
-  -h, help      Show help information
+program
+  .command("stop")
+  .description("Stop service")
+  .action(() => {
+    try {
+      const pid = parseInt(readFileSync(PID_FILE, "utf-8"));
+      process.kill(pid);
+      cleanupPidFile();
+      if (existsSync(REFERENCE_COUNT_FILE)) {
+        try {
+          require("fs").unlinkSync(REFERENCE_COUNT_FILE);
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }
+      console.log("claude code router service has been successfully stopped.");
+    } catch (e) {
+      console.log(
+        "Failed to stop the service. It may have already been stopped."
+      );
+      cleanupPidFile();
+    }
+  });
 
-Example:
-  ccr start
-  ccr code "Write a Hello World"
-`;
+program
+  .command("status")
+  .description("Show service status")
+  .action(() => {
+    showStatus();
+  });
+
+program
+  .command("code <prompt...>")
+  .description("Execute code command")
+  .action(async (prompt: string[]) => {
+    if (!isServiceRunning()) {
+      console.log("Service not running, starting service...");
+      const startProcess = spawn("ccr", ["start"], {
+        detached: true,
+        stdio: "ignore",
+      });
+
+      startProcess.on("error", (error) => {
+        console.error("Failed to start service:", error);
+        process.exit(1);
+      });
+
+      startProcess.unref();
+
+      if (await waitForService()) {
+        executeCodeCommand(prompt);
+      } else {
+        console.error(
+          "Service startup timeout, please manually run `ccr start` to start the service"
+        );
+        process.exit(1);
+      }
+    } else {
+      executeCodeCommand(prompt);
+    }
+  });
+
+// Show help if no command is provided
+if (!process.argv.slice(2).length) {
+  program.outputHelp();
+  process.exit(1);
+}
+
+program.parse(process.argv);
 
 async function waitForService(
   timeout = 10000,
@@ -44,76 +110,3 @@ async function waitForService(
   }
   return false;
 }
-
-async function main() {
-  switch (command) {
-    case "start":
-      run();
-      break;
-    case "stop":
-      try {
-        const pid = parseInt(readFileSync(PID_FILE, "utf-8"));
-        process.kill(pid);
-        cleanupPidFile();
-        if (existsSync(REFERENCE_COUNT_FILE)) {
-          try {
-            require("fs").unlinkSync(REFERENCE_COUNT_FILE);
-          } catch (e) {
-            // Ignore cleanup errors
-          }
-        }
-        console.log(
-          "claude code router service has been successfully stopped."
-        );
-      } catch (e) {
-        console.log(
-          "Failed to stop the service. It may have already been stopped."
-        );
-        cleanupPidFile();
-      }
-      break;
-    case "status":
-      showStatus();
-      break;
-    case "code":
-      if (!isServiceRunning()) {
-        console.log("Service not running, starting service...");
-        const startProcess = spawn("ccr", ["start"], {
-          detached: true,
-          stdio: "ignore",
-        });
-
-        startProcess.on("error", (error) => {
-          console.error("Failed to start service:", error);
-          process.exit(1);
-        });
-
-        startProcess.unref();
-
-        if (await waitForService()) {
-          executeCodeCommand(process.argv.slice(3));
-        } else {
-          console.error(
-            "Service startup timeout, please manually run `ccr start` to start the service"
-          );
-          process.exit(1);
-        }
-      } else {
-        executeCodeCommand(process.argv.slice(3));
-      }
-      break;
-    case "-v":
-    case "version":
-      console.log(`claude-code-router version: ${version}`);
-      break;
-    case "-h":
-    case "help":
-      console.log(HELP_TEXT);
-      break;
-    default:
-      console.log(HELP_TEXT);
-      process.exit(1);
-  }
-}
-
-main().catch(console.error);
