@@ -2,7 +2,7 @@ src
 node_modules
 .claude
 CLAUDE.md
-screenshoots
+screenshots
 .DS_Store
 .vscode
 .idea
