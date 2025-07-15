@@ -29,7 +29,7 @@ export async function executeCodeCommand(args: string[] = []) {
   const claudeProcess = spawn(claudePath, args, {
     env,
     stdio: "inherit",
-    shell: true
+    shell: false
   });
 
   claudeProcess.on("error", (error) => {
