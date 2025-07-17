@@ -161,9 +161,10 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
 
 -   `deepseek`: 适配 DeepSeek API 的请求/响应。
 -   `gemini`: 适配 Gemini API 的请求/响应。
--   `maxtoken`: 设置特定的 `max_tokens` 值。
 -   `openrouter`: 适配 OpenRouter API 的请求/响应。
--   `tooluse`: 优化某些模型的工具使用。
+-   `groq`: 适配 groq API 的请求/响应
+-   `maxtoken`: 设置特定的 `max_tokens` 值。
+-   `tooluse`: 优化某些模型的工具使用(通过`tool_choice`参数)。
 -   `gemini-cli` (实验性): 通过 Gemini CLI [gemini-cli.js](https://gist.github.com/musistudio/1c13a65f35916a7ab690649d3df8d1cd) 对 Gemini 的非官方支持。
 
 **自定义 Transformer:**

@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@musistudio/llms':
-        specifier: ^1.0.6
-        version: 1.0.6(ws@8.18.3)(zod@3.25.67)
+        specifier: ^1.0.7
+        version: 1.0.7(ws@8.18.3)(zod@3.25.67)
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
@@ -220,8 +220,8 @@ packages:
       '@modelcontextprotocol/sdk':
         optional: true
 
-  '@musistudio/llms@1.0.6':
-    resolution: {integrity: sha512-gBWd03s9BwcvGHRsg7gzyM+BmGNXAI8PsIDJmk45NI0xTEFac8TW1l11dBk0j9Ll49vf4DxabeVqAIRq1+gHJg==}
+  '@musistudio/llms@1.0.7':
+    resolution: {integrity: sha512-2hvn3yG3oVwCOMiSpeBnFeQd4x0XiItahILPaK0cszyU5gJmbgDP6JhJ0t3zKRoThQyaqwfUumR0SqUlx6XxBA==}
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -815,7 +815,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@musistudio/llms@1.0.6(ws@8.18.3)(zod@3.25.67)':
+  '@musistudio/llms@1.0.7(ws@8.18.3)(zod@3.25.67)':
     dependencies:
       '@anthropic-ai/sdk': 0.54.0
       '@fastify/cors': 11.0.1
@@ -824,6 +824,7 @@ snapshots:
       fastify: 5.4.0
       openai: 5.8.2(ws@8.18.3)(zod@3.25.67)
       undici: 7.11.0
+      uuid: 11.1.0
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
       - bufferutil

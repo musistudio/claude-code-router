@@ -164,9 +164,10 @@ Transformers allow you to modify the request and response payloads to ensure com
 
 -   `deepseek`: Adapts requests/responses for DeepSeek API.
 -   `gemini`: Adapts requests/responses for Gemini API.
--   `maxtoken`: Sets a specific `max_tokens` value.
 -   `openrouter`: Adapts requests/responses for OpenRouter API.
--   `tooluse`: Optimizes tool usage for certain models.
+-   `groq`: Adapts requests/responses for groq API.
+-   `maxtoken`: Sets a specific `max_tokens` value.
+-   `tooluse`: Optimizes tool usage for certain models via `tool_choice`.
 -   `gemini-cli` (experimental): Unofficial support for Gemini via Gemini CLI [gemini-cli.js](https://gist.github.com/musistudio/1c13a65f35916a7ab690649d3df8d1cd).
 
 **Custom Transformers:**
