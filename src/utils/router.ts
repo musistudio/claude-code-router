@@ -27,6 +27,16 @@ const getUseModel = (req: any, tokenCount: number, config: any) => {
 };
 
 export const router = async (req: any, res: any, config: any) => {
+  // --- 添加鉴权逻辑开始 ---
+  const expectedAuthKey = config.Router.auth_key; // 从 config.json 读取密钥
+  const receivedAuthKey = req.headers["x-api-key"]; // 从请求头部读取 x-api-key
+
+  if (expectedAuthKey && receivedAuthKey !== expectedAuthKey) {
+    res.code(401); // Unauthorized
+    res.send(`Unauthorized: Invalid API key. Received: ${receivedAuthKey}`);
+    return; // 阻止请求继续处理
+  }
+  // --- 添加鉴权逻辑结束 ---
   const { messages, system = [], tools }: MessageCreateParamsBase = req.body;
   try {
     let tokenCount = 0;
@@ -60,10 +70,6 @@ export const router = async (req: any, res: any, config: any) => {
         if (item.type !== "text") return;
         if (typeof item.text === "string") {
           tokenCount += enc.encode(item.text).length;
-        } else if (Array.isArray(item.text)) {
-          item.text.forEach((textPart) => {
-            tokenCount += enc.encode(textPart || "").length;
-          });
         }
       });
     }
