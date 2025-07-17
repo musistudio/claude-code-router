@@ -31,7 +31,23 @@ export const router = async (req: any, res: any, config: any) => {
   const expectedAuthKey = config.Router.auth_key; // 从 config.json 读取密钥
   const receivedAuthKey = req.headers["x-api-key"]; // 从请求头部读取 x-api-key
 
-  if (expectedAuthKey && receivedAuthKey !== expectedAuthKey) {
+  let isAuthorized = false;
+  if (Array.isArray(expectedAuthKey)) {
+    // 如果 expectedAuthKey 是一个数组，检查 receivedAuthKey 是否在数组中
+    if (receivedAuthKey && expectedAuthKey.includes(receivedAuthKey)) {
+      isAuthorized = true;
+    }
+  } else if (expectedAuthKey) {
+    // 如果 expectedAuthKey 是一个字符串，执行原有的字符串匹配
+    if (receivedAuthKey === expectedAuthKey) {
+      isAuthorized = true;
+    }
+  } else {
+    // 如果没有设置 expectedAuthKey，则认为授权通过
+    isAuthorized = true;
+  }
+
+  if (!isAuthorized) {
     res.code(401); // Unauthorized
     res.send(`Unauthorized: Invalid API key. Received: ${receivedAuthKey}`);
     return; // 阻止请求继续处理

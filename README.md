@@ -108,7 +108,8 @@ ccr code
     "default": "deepseek,deepseek-chat", // IMPORTANT OPENAI_MODEL has been deprecated
     "background": "ollama,qwen2.5-coder:latest",
     "think": "deepseek,deepseek-reasoner",
-    "longContext": "openrouter,google/gemini-2.5-pro-preview"
+    "longContext": "openrouter,google/gemini-2.5-pro-preview",
+    "auth_key": ["sk-xxx","test"] //optional
   }
 }
 ```
