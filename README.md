@@ -1,111 +1,87 @@
 # Claude Code Router
 
-> This is a tool for routing Claude Code requests to different models, and you can customize any request.
+[中文版](README_zh.md)
+
+> A powerful tool to route Claude Code requests to different models and customize any request.
 
 ![](screenshoots/claude-code.png)
 
-## Usage
+## ✨ Features
 
-1. Install Claude Code
+-   **Model Routing**: Route requests to different models based on your needs (e.g., background tasks, thinking, long context).
+-   **Multi-Provider Support**: Supports various model providers like OpenRouter, DeepSeek, Ollama, Gemini, Volcengine, and SiliconFlow.
+-   **Request/Response Transformation**: Customize requests and responses for different providers using transformers.
+-   **Dynamic Model Switching**: Switch models on-the-fly within Claude Code using the `/model` command.
+-   **GitHub Actions Integration**: Trigger Claude Code tasks in your GitHub workflows.
+-   **Plugin System**: Extend functionality with custom transformers.
+
+## 🚀 Getting Started
+
+### 1. Installation
+
+First, ensure you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code/quickstart) installed:
 
 ```shell
 npm install -g @anthropic-ai/claude-code
 ```
 
-2. Install Claude Code Router
+Then, install Claude Code Router:
 
 ```shell
 npm install -g @musistudio/claude-code-router
 ```
 
-3. Start Claude Code by claude-code-router
+### 2. Configuration
 
-```shell
-ccr code
-```
+Create and configure your `~/.claude-code-router/config.json` file. For more details, you can refer to `config.example.json`.
 
-4. Configure routing
-   Set up your `~/.claude-code-router/config.json` file like this:
+The `config.json` file has several key sections:
+- **`PROXY_URL`** (optional): You can set a proxy for API requests, for example: `"PROXY_URL": "http://127.0.0.1:7890"`.
+- **`LOG`** (optional): You can enable logging by setting it to `true`. The log file will be located at `$HOME/.claude-code-router.log`.
+- **`APIKEY`** (optional): You can set a secret key to authenticate requests. When set, clients must provide this key in the `Authorization` header (e.g., `Bearer your-secret-key`) or the `x-api-key` header. Example: `"APIKEY": "your-secret-key"`.
+- **`HOST`** (optional): You can set the host address for the server. If `APIKEY` is not set, the host will be forced to `127.0.0.1` for security reasons to prevent unauthorized access. Example: `"HOST": "0.0.0.0"`.
+
+- **`Providers`**: Used to configure different model providers.
+- **`Router`**: Used to set up routing rules. `default` specifies the default model, which will be used for all requests if no other route is configured.
+
+Here is a comprehensive example:
 
 ```json
 {
+  "APIKEY": "your-secret-key",
+  "PROXY_URL": "http://127.0.0.1:7890",
+  "LOG": true,
   "Providers": [
     {
       "name": "openrouter",
-      // IMPORTANT: api_base_url must be a complete (full) URL.
       "api_base_url": "https://openrouter.ai/api/v1/chat/completions",
       "api_key": "sk-xxx",
       "models": [
         "google/gemini-2.5-pro-preview",
         "anthropic/claude-sonnet-4",
-        "anthropic/claude-3.5-sonnet",
-        "anthropic/claude-3.7-sonnet:thinking"
+        "anthropic/claude-3.5-sonnet"
       ],
-      "transformer": {
-        "use": ["openrouter"]
-      }
+      "transformer": { "use": ["openrouter"] }
     },
     {
       "name": "deepseek",
-      // IMPORTANT: api_base_url must be a complete (full) URL.
       "api_base_url": "https://api.deepseek.com/chat/completions",
       "api_key": "sk-xxx",
       "models": ["deepseek-chat", "deepseek-reasoner"],
       "transformer": {
         "use": ["deepseek"],
-        "deepseek-chat": {
-          // Enhance tool usage for the deepseek-chat model using the ToolUse transformer.
-          "use": ["tooluse"]
-        }
+        "deepseek-chat": { "use": ["tooluse"] }
       }
     },
     {
       "name": "ollama",
-      // IMPORTANT: api_base_url must be a complete (full) URL.
       "api_base_url": "http://localhost:11434/v1/chat/completions",
       "api_key": "ollama",
       "models": ["qwen2.5-coder:latest"]
-    },
-    {
-      "name": "gemini",
-      // IMPORTANT: api_base_url must be a complete (full) URL.
-      "api_base_url": "https://generativelanguage.googleapis.com/v1beta/models/",
-      "api_key": "sk-xxx",
-      "models": ["gemini-2.5-flash", "gemini-2.5-pro"],
-      "transformer": {
-        "use": ["gemini"]
-      }
-    },
-    {
-      "name": "volcengine",
-      // IMPORTANT: api_base_url must be a complete (full) URL.
-      "api_base_url": "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
-      "api_key": "sk-xxx",
-      "models": ["deepseek-v3-250324", "deepseek-r1-250528"],
-      "transformer": {
-        "use": ["deepseek"]
-      }
-    },
-    {
-      "name": "siliconflow",
-      // IMPORTANT: api_base_url must be a complete (full) URL.
-      "api_base_url": "https://api.siliconflow.cn/v1/chat/completions",
-      "api_key": "sk-xxx",
-      "models": ["moonshotai/Kimi-K2-Instruct"],
-      "transformer": {
-        "use": [
-          [
-            "maxtoken",
-            {
-              "max_tokens": 16384 // for siliconflow max_tokens
-            }
-          ]
-        ]
-      }
     }
   ],
   "Router": {
-    "default": "deepseek,deepseek-chat", // IMPORTANT OPENAI_MODEL has been deprecated
+    "default": "deepseek,deepseek-chat",
     "background": "ollama,qwen2.5-coder:latest",
     "think": "deepseek,deepseek-reasoner",
     "longContext": "openrouter,google/gemini-2.5-pro-preview",
@@ -114,83 +90,90 @@ ccr code
 }
 ```
 
-- `background`  
-  This model will be used to handle some background tasks([background-token-usage](https://docs.anthropic.com/en/docs/claude-code/costs#background-token-usage)). Based on my tests, it doesn’t require high intelligence. I’m using the qwen-coder-2.5:7b model running locally on my MacBook Pro M1 (32GB) via Ollama.
-  If your computer can’t run Ollama, you can also use some free models, such as qwen-coder-2.5:3b.
 
-- `think`  
-  This model will be used when enabling Claude Code to perform reasoning. However, reasoning budget control has not yet been implemented (since the DeepSeek-R1 model does not support it), so there is currently no difference between using UltraThink and Think modes.
-  It is worth noting that Plan Mode also use this model to achieve better planning results.  
-  Note: The reasoning process via the official DeepSeek API may be very slow, so you may need to wait for an extended period of time.
+### 3. Running Claude Code with the Router
 
-- `longContext`  
-  This model will be used when the context length exceeds 32K (this value may be modified in the future). You can route the request to a model that performs well with long contexts (I’ve chosen google/gemini-2.5-pro-preview). This scenario has not been thoroughly tested yet, so if you encounter any issues, please submit an issue.
+Start Claude Code using the router:
 
-- model command  
-  You can also switch models within Claude Code by using the `/model` command. The format is: `provider,model`, like this:  
-  `/model openrouter,anthropic/claude-3.5-sonnet`  
-  This will use the anthropic/claude-3.5-sonnet model provided by OpenRouter to handle all subsequent tasks.
-
-5. About transformer
-`transformer` is used to convert requests and responses for different vendors. For different vendors, we can configure different transformers.
-
-For example, in the following case, we use the `openrouter` transformer for the OpenRouter vendor. This transformer removes the `cache_control` parameter (mainly used to adapt Claude's prompt cache) from the request for models other than Claude. In the response, it adapts the reasoning field.
-```json
-{
-  "name": "openrouter",
-  "api_base_url": "https://openrouter.ai/api/v1/chat/completions",
-  "api_key": "",
-  "models": [
-    "google/gemini-2.5-pro-preview",
-    "anthropic/claude-sonnet-4",
-    "anthropic/claude-3.5-sonnet",
-    "anthropic/claude-3.7-sonnet:thinking",
-    "deepseek/deepseek-chat-v3-0324"
-  ],
-  "transformer": {
-    "use": [
-      "openrouter"
-    ]
-  }
-}
+```shell
+ccr code
 ```
-You can also configure transformers for different models of the same vendor. For instance, in the following example, we use the `deepseek` transformer for the DeepSeek vendor. This transformer sets the maximum value of `max_tokens` to `8192` in the request, and in the response, it adapts the `reasoning_content` field. Additionally, for the `deepseek-chat` model, we use the `tooluse` transformer, which optimizes the tool call for the `deepseek-v3` model using the `tool_choice` parameter (mainly because deepseek-r1 does not support the tool_choice parameter).
-```json
-{
-  "name": "deepseek",
-  "api_base_url": "https://api.deepseek.com/chat/completions",
-  "api_key": "",
-  "models": [
-    "deepseek-chat",
-    "deepseek-reasoner"
-  ],
-  "transformer": {
-    "use": [
-      "deepseek"
-    ],
-    "deepseek-chat": {
-      "use": [
-        "tooluse"
-      ]
+
+#### Providers
+
+The `Providers` array is where you define the different model providers you want to use. Each provider object requires:
+
+-   `name`: A unique name for the provider.
+-   `api_base_url`: The full API endpoint for chat completions.
+-   `api_key`: Your API key for the provider.
+-   `models`: A list of model names available from this provider.
+-   `transformer` (optional): Specifies transformers to process requests and responses.
+
+#### Transformers
+
+Transformers allow you to modify the request and response payloads to ensure compatibility with different provider APIs.
+
+-   **Global Transformer**: Apply a transformer to all models from a provider. In this example, the `openrouter` transformer is applied to all models under the `openrouter` provider.
+    ```json
+     {
+       "name": "openrouter",
+       "api_base_url": "https://openrouter.ai/api/v1/chat/completions",
+       "api_key": "sk-xxx",
+       "models": [
+         "google/gemini-2.5-pro-preview",
+         "anthropic/claude-sonnet-4",
+         "anthropic/claude-3.5-sonnet"
+       ],
+       "transformer": { "use": ["openrouter"] }
+     }
+    ```
+-   **Model-Specific Transformer**: Apply a transformer to a specific model. In this example, the `deepseek` transformer is applied to all models, and an additional `tooluse` transformer is applied only to the `deepseek-chat` model.
+    ```json
+     {
+       "name": "deepseek",
+       "api_base_url": "https://api.deepseek.com/chat/completions",
+       "api_key": "sk-xxx",
+       "models": ["deepseek-chat", "deepseek-reasoner"],
+       "transformer": {
+         "use": ["deepseek"],
+         "deepseek-chat": { "use": ["tooluse"] }
+       }
+     }
+    ```
+
+-   **Passing Options to a Transformer**: Some transformers, like `maxtoken`, accept options. To pass options, use a nested array where the first element is the transformer name and the second is an options object.
+    ```json
+    {
+      "name": "siliconflow",
+      "api_base_url": "https://api.siliconflow.cn/v1/chat/completions",
+      "api_key": "sk-xxx",
+      "models": ["moonshotai/Kimi-K2-Instruct"],
+      "transformer": {
+        "use": [
+          [
+            "maxtoken",
+            {
+              "max_tokens": 16384
+            }
+          ]
+        ]
+      }
     }
-  }
-}
-```
-Currently, the following transformers are available:
+    ```
 
-- deepseek
+**Available Built-in Transformers:**
 
-- gemini
+-   `deepseek`: Adapts requests/responses for DeepSeek API.
+-   `gemini`: Adapts requests/responses for Gemini API.
+-   `maxtoken`: Sets a specific `max_tokens` value.
+-   `openrouter`: Adapts requests/responses for OpenRouter API.
+-   `tooluse`: Optimizes tool usage for certain models.
+-   `gemini-cli` (experimental): Unofficial support for Gemini via Gemini CLI [gemini-cli.js](https://gist.github.com/musistudio/1c13a65f35916a7ab690649d3df8d1cd).
 
-- maxtoken
+**Custom Transformers:**
 
-- openrouter
+You can also create your own transformers and load them via the `transformers` field in `config.json`.
 
-- tooluse
-
-- gemini-cli (experimental, unofficial support: https://gist.github.com/musistudio/1c13a65f35916a7ab690649d3df8d1cd)
-
-You can configure custom transformers in the `config.json` file using the `transformers` field, for example:
 ```json
 {
   "transformers": [
@@ -204,17 +187,23 @@ You can configure custom transformers in the `config.json` file using the `trans
 }
 ```
 
-## Features
+#### Router
 
-- [x] Support change models
-- [x] Github Actions
-- [ ] More detailed logs
-- [ ] Support image
-- [ ] Support web search
+The `Router` object defines which model to use for different scenarios:
 
-## Github Actions
+-   `default`: The default model for general tasks.
+-   `background`: A model for background tasks. This can be a smaller, local model to save costs.
+-   `think`: A model for reasoning-heavy tasks, like Plan Mode.
+-   `longContext`: A model for handling long contexts (e.g., > 60K tokens).
 
-You just need to install `Claude Code Actions` in your repository according to the [official documentation](https://docs.anthropic.com/en/docs/claude-code/github-actions). For `ANTHROPIC_API_KEY`, you can use any string. Then, modify your `.github/workflows/claude.yaml` file to include claude-code-router, like this:
+You can also switch models dynamically in Claude Code with the `/model` command:
+`/model provider_name,model_name`
+Example: `/model openrouter,anthropic/claude-3.5-sonnet`
+
+
+## 🤖 GitHub Actions
+
+Integrate Claude Code Router into your CI/CD pipeline. After setting up [Claude Code Actions](https://docs.anthropic.com/en/docs/claude-code/github-actions), modify your `.github/workflows/claude.yaml` to use the router:
 
 ```yaml
 name: Claude Code
@@ -222,20 +211,13 @@ name: Claude Code
 on:
   issue_comment:
     types: [created]
-  pull_request_review_comment:
-    types: [created]
-  issues:
-    types: [opened, assigned]
-  pull_request_review:
-    types: [submitted]
+  # ... other triggers
 
 jobs:
   claude:
     if: |
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      # ... other conditions
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -273,75 +255,58 @@ jobs:
         env:
           ANTHROPIC_BASE_URL: http://localhost:3456
         with:
-          anthropic_api_key: "test"
+          anthropic_api_key: "any-string-is-ok"
 ```
 
-You can modify the contents of `$HOME/.claude-code-router/config.json` as needed.
-GitHub Actions support allows you to trigger Claude Code at specific times, which opens up some interesting possibilities.
+This setup allows for interesting automations, like running tasks during off-peak hours to reduce API costs.
 
-For example, between 00:30 and 08:30 Beijing Time, using the official DeepSeek API:
+## 📝 Further Reading
 
-- The cost of the `deepseek-v3` model is only 50% of the normal time.
+-   [Project Motivation and How It Works](blog/en/project-motivation-and-how-it-works.md)
+-   [Maybe We Can Do More with the Router](blog/en/maybe-we-can-do-more-with-the-route.md)
 
-- The `deepseek-r1` model is just 25% of the normal time.
+## ❤️ Support & Sponsoring
 
-So maybe in the future, I’ll describe detailed tasks for Claude Code ahead of time and let it run during these discounted hours to reduce costs?
-
-## Some tips:
-
-Now you can use deepseek-v3 models directly without using any plugins.
-
-If you’re using the DeepSeek API provided by the official website, you might encounter an “exceeding context” error after several rounds of conversation (since the official API only supports a 64K context window). In this case, you’ll need to discard the previous context and start fresh. Alternatively, you can use ByteDance’s DeepSeek API, which offers a 128K context window and supports KV cache.
-
-![](screenshoots/contexterror.jpg)
-
-Note: claude code consumes a huge amount of tokens, but thanks to DeepSeek’s low cost, you can use claude code at a fraction of Claude’s price, and you don’t need to subscribe to the Claude Max plan.
-
-Some interesting points: Based on my testing, including a lot of context information can help narrow the performance gap between these LLM models. For instance, when I used Claude-4 in VSCode Copilot to handle a Flutter issue, it messed up the files in three rounds of conversation, and I had to roll everything back. However, when I used claude code with DeepSeek, after three or four rounds of conversation, I finally managed to complete my task—and the cost was less than 1 RMB!
-
-## Some articles:
-
-1. [Project Motivation and Principles](blog/en/project-motivation-and-how-it-works.md) ([项目初衷及原理](blog/zh/项目初衷及原理.md))
-2. [Maybe We Can Do More with the Router](blog/en/maybe-we-can-do-more-with-the-route.md) ([或许我们能在 Router 中做更多事情](blog/zh/或许我们能在Router中做更多事情.md))
-
-## Buy me a coffee
-
-If you find this project helpful, you can choose to sponsor the author with a cup of coffee. Please provide your GitHub information so I can add you to the sponsor list below.
+If you find this project helpful, please consider sponsoring its development. Your support is greatly appreciated!
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/F1F31GN2GM)
 
 <table>
   <tr>
-    <td><img src="/blog/images/alipay.jpg" width="200" /></td>
-    <td><img src="/blog/images/wechat.jpg" width="200" /></td>
+    <td><img src="/blog/images/alipay.jpg" width="200" alt="Alipay" /></td>
+    <td><img src="/blog/images/wechat.jpg" width="200" alt="WeChat Pay" /></td>
   </tr>
 </table>
 
-## Sponsors
+### Our Sponsors
 
-Thanks to the following sponsors for supporting the continued development of this project:
+A huge thank you to all our sponsors for their generous support!
 
-@Simon Leischnig (If you see this, feel free to contact me and I can update it with your GitHub information)  
-[@duanshuaimin](https://github.com/duanshuaimin)  
-[@vrgitadmin](https://github.com/vrgitadmin)  
-@\*o (可通过主页邮箱联系我修改 github 用户名)  
-[@ceilwoo](https://github.com/ceilwoo)      
-@\*说 (可通过主页邮箱联系我修改 github 用户名)  
-@\*更 (可通过主页邮箱联系我修改 github 用户名)  
-@K\*g (可通过主页邮箱联系我修改 github 用户名)  
-@R\*R (可通过主页邮箱联系我修改 github 用户名)  
-[@bobleer](https://github.com/bobleer)     
-@\*苗 (可通过主页邮箱联系我修改 github 用户名)  
-@\*划 (可通过主页邮箱联系我修改 github 用户名)     
-[@Clarence-pan](https://github.com/Clarence-pan)     
-[@carter003](https://github.com/carter003)      
-@S\*r (可通过主页邮箱联系我修改 github 用户名)     
-@\*晖 (可通过主页邮箱联系我修改 github 用户名)      
-@\*敏 (可通过主页邮箱联系我修改 github 用户名)      
-@Z\*z (可通过主页邮箱联系我修改 github 用户名)      
-@\*然 (可通过主页邮箱联系我修改 github 用户名)      
-[@cluic](https://github.com/cluic)        
-@\*苗 (可通过主页邮箱联系我修改 github 用户名)    
-[@PromptExpert](https://github.com/PromptExpert)        
-@\*应 (可通过主页邮箱联系我修改 github 用户名)    
-[@yusnake](https://github.com/yusnake)    
+- @Simon Leischnig
+- [@duanshuaimin](https://github.com/duanshuaimin)
+- [@vrgitadmin](https://github.com/vrgitadmin)
+- @*o
+- [@ceilwoo](https://github.com/ceilwoo)
+- @*说
+- @*更
+- @K*g
+- @R*R
+- [@bobleer](https://github.com/bobleer)
+- @*苗
+- @*划
+- [@Clarence-pan](https://github.com/Clarence-pan)
+- [@carter003](https://github.com/carter003)
+- @S*r
+- @*晖
+- @*敏
+- @Z*z
+- @*然
+- [@cluic](https://github.com/cluic)
+- @*苗
+- [@PromptExpert](https://github.com/PromptExpert)
+- @*应
+- [@yusnake](https://github.com/yusnake)
+- @*飞
+- @董*
+
+(If your name is masked, please contact me via my homepage email to update it with your GitHub username.)

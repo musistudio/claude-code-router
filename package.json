@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "esbuild": "^0.25.1",
+    "fastify": "^5.4.0",
     "shx": "^0.4.0",
     "typescript": "^5.8.2"
   },

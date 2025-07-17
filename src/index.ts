@@ -5,6 +5,7 @@ import { join } from "path";
 import { initConfig, initDir } from "./utils";
 import { createServer } from "./server";
 import { router } from "./utils/router";
+import { apiKeyAuth } from "./middleware/auth";
 import {
   cleanupPidFile,
   isServiceRunning,
@@ -46,6 +47,14 @@ async function run(options: RunOptions = {}) {
   await initializeClaudeConfig();
   await initDir();
   const config = await initConfig();
+  let HOST = config.HOST;
+
+  if (config.HOST && !config.APIKEY) {
+    HOST = "127.0.0.1";
+    console.warn(
+      "⚠️ API key is not set. HOST is forced to 127.0.0.1."
+    );
+  }
 
   const port = options.port || 3456;
 
@@ -64,6 +73,7 @@ async function run(options: RunOptions = {}) {
     cleanupPidFile();
     process.exit(0);
   });
+  console.log(HOST)
 
   // Use port from environment variable if set (for background process)
   const servicePort = process.env.SERVICE_PORT
@@ -74,6 +84,7 @@ async function run(options: RunOptions = {}) {
     initialConfig: {
       // ...config,
       providers: config.Providers || config.providers,
+      HOST: HOST,
       PORT: servicePort,
       LOG_FILE: join(
         homedir(),
@@ -82,6 +93,7 @@ async function run(options: RunOptions = {}) {
       ),
     },
   });
+  server.addHook("preHandler", apiKeyAuth(config));
   server.addHook("preHandler", async (req, reply) =>
     router(req, reply, config)
   );

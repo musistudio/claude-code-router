@@ -74,4 +74,6 @@
     "longContext": "openrouter,google/gemini-2.5-pro-preview",
     "auth_key": ["sk-xxx","test"]
   }
+  "APIKEY": "your-secret-key",
+  "HOST": "0.0.0.0"
 }

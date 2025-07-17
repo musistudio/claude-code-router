@@ -48,7 +48,7 @@ export const readConfigFile = async () => {
     return JSON.parse(config);
   } catch {
     const name = await question("Enter Provider Name: ");
-    const apiKey = await question("Enter Provider API KEY: ");
+    const APIKEY = await question("Enter Provider API KEY: ");
     const baseUrl = await question("Enter Provider URL: ");
     const model = await question("Enter MODEL Name: ");
     const config = Object.assign({}, DEFAULT_CONFIG, {
@@ -56,7 +56,7 @@ export const readConfigFile = async () => {
         {
           name,
           api_base_url: baseUrl,
-          api_key: apiKey,
+          api_key: APIKEY,
           models: [model],
         },
       ],
