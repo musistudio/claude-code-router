@@ -48,6 +48,9 @@ export const router = async (req: any, res: any, config: any) => {
                   ? contentPart.content
                   : JSON.stringify(contentPart.content)
               ).length;
+            } else if (contentPart.type === "image_url") {
+              // Estimate tokens for image - OpenAI uses 85 tokens per image
+              tokenCount += 85;
             }
           });
         }

@@ -20,6 +20,7 @@
   "dependencies": {
     "@musistudio/llms": "^1.0.6",
     "dotenv": "^16.4.7",
+    "openai": "^4.0.0",
     "tiktoken": "^1.0.21",
     "uuid": "^11.1.0"
   },
