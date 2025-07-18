@@ -6,7 +6,9 @@
     "ccr": "./dist/cli.js"
   },
   "scripts": {
-    "build": "esbuild src/cli.ts --bundle --platform=node --outfile=dist/cli.js && shx cp node_modules/tiktoken/tiktoken_bg.wasm dist/tiktoken_bg.wasm"
+    "build": "esbuild src/cli.ts --bundle --platform=node --outfile=dist/cli.js && shx cp node_modules/tiktoken/tiktoken_bg.wasm dist/tiktoken_bg.wasm",
+    "dev": "nodemon --watch 'src/**' --ext ts --exec 'npm run build && node dist/cli.js'",
+    "test": "jest"
   },
   "keywords": [
     "claude",
@@ -19,14 +21,20 @@
   "license": "MIT",
   "dependencies": {
     "@musistudio/llms": "^1.0.7",
+    "@types/node": "^24.0.14",
     "dotenv": "^16.4.7",
     "tiktoken": "^1.0.21",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "esbuild": "^0.25.1",
     "fastify": "^5.4.0",
+    "jest": "^30.0.4",
+    "memfs": "^4.17.2",
+    "nodemon": "^3.1.10",
     "shx": "^0.4.0",
+    "ts-jest": "^29.4.0",
     "typescript": "^5.8.2"
   },
   "publishConfig": {

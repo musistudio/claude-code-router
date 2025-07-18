@@ -98,6 +98,16 @@ Start Claude Code using the router:
 ccr code
 ```
 
+### Development Mode
+
+For local development, you can run the project in development mode with live reload:
+
+```shell
+npm run dev
+```
+
+This will watch the `src` directory for changes and automatically rebuild and restart the server.
+
 #### Providers
 
 The `Providers` array is where you define the different model providers you want to use. Each provider object requires:
@@ -277,6 +287,20 @@ If you find this project helpful, please consider sponsoring its development. Yo
     <td><img src="/blog/images/wechat.jpg" width="200" alt="WeChat Pay" /></td>
   </tr>
 </table>
+
+## 👥 Contributing
+
+We welcome contributions! Here's how to get started:
+
+1. Fork the repository
+2. Clone your fork: `git clone https://github.com/your-username/claude-code-router.git`
+3. Install dependencies: `npm install`
+4. Start development server: `npm run dev`
+5. Make your changes
+6. Run tests: `npm test` (optional but recommended)
+7. Commit your changes: `git commit -m "Your message"`
+8. Push to your fork: `git push origin main`
+9. Create a pull request
 
 ### Our Sponsors
 
