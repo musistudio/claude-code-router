@@ -3,11 +3,12 @@ import { run } from "./index";
 import { showStatus } from "./utils/status";
 import { executeCodeCommand } from "./utils/codeCommand";
 import { cleanupPidFile, isServiceRunning } from "./utils/processCheck";
+import { setupConfig, validateExistingConfig, showConfig, testHotReload } from "./utils/configCli";
 import { version } from "../package.json";
 import { spawn } from "child_process";
 import { PID_FILE, REFERENCE_COUNT_FILE } from "./constants";
 import { existsSync, readFileSync } from "fs";
-import {join} from "path";
+import { join } from "path";
 
 const command = process.argv[2];
 
@@ -15,16 +16,22 @@ const HELP_TEXT = `
 Usage: ccr [command]
 
 Commands:
-  start         Start service 
-  stop          Stop service
-  status        Show service status
-  code          Execute code command
-  -v, version   Show version information
-  -h, help      Show help information
+  start           Start service 
+  stop            Stop service
+  status          Show service status
+  code            Execute code command
+  setup           Interactive configuration setup
+  config          Show current configuration
+  validate        Validate configuration file
+  test-reload     Test configuration hot reload
+  -v, version     Show version information
+  -h, help        Show help information
 
-Example:
+Examples:
   ccr start
+  ccr setup
   ccr code "Write a Hello World"
+  ccr validate
 `;
 
 async function waitForService(
@@ -103,6 +110,18 @@ async function main() {
       } else {
         executeCodeCommand(process.argv.slice(3));
       }
+      break;
+    case "setup":
+      await setupConfig();
+      break;
+    case "config":
+      await showConfig();
+      break;
+    case "validate":
+      await validateExistingConfig();
+      break;
+    case "test-reload":
+      await testHotReload();
       break;
     case "-v":
     case "version":
