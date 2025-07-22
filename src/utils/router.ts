@@ -6,13 +6,30 @@ import {
 import { get_encoding } from "tiktoken";
 import { log } from "./log";
 
-const enc = get_encoding("cl100k_base");
+let enc = get_encoding("cl100k_base");
+let lastUsed = Date.now();
+
+// Timed cleaning: Reconstruct the encoder after 5 minutes of non - use.
+const cleanupInterval = setInterval(() => {
+  if (Date.now() - lastUsed > 300000) { // 5分钟
+    enc.free?.();
+    enc = get_encoding("cl100k_base");
+    log("tiktoken encoder cleaned up and recreated");
+  }
+}, 60000); // Check every minute
+
+// Ensure that resources are cleaned up when the program exits.
+process.on('beforeExit', () => {
+  clearInterval(cleanupInterval);
+  enc.free?.();
+});
 
 const calculateTokenCount = (
   messages: MessageParam[],
   system: any,
   tools: Tool[]
 ) => {
+  lastUsed = Date.now(); // 更新使用时间
   let tokenCount = 0;
   if (Array.isArray(messages)) {
     messages.forEach((message) => {
