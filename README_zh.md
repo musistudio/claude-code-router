@@ -34,7 +34,7 @@ npm install -g @musistudio/claude-code-router
 创建并配置您的 `~/.claude-code-router/config.json` 文件。有关更多详细信息，您可以参考 `config.example.json`。
 
 `config.json` 文件有几个关键部分：
-- **`PROXY_URL`** (可选): 您可以为 API 请求设置代理，例如：`"PROXY_URL": "http://127.0.0.1:7890"`。
+- **`PORT`** (可选): 您可以为 API 请求设置代理服务的端口，例如：`"PORT": "7890"`，如未指定，默认端口为`3456`。
 - **`LOG`** (可选): 您可以通过将其设置为 `true` 来启用日志记录。日志文件将位于 `$HOME/.claude-code-router.log`。
 - **`APIKEY`** (可选): 您可以设置一个密钥来进行身份验证。设置后，客户端请求必须在 `Authorization` 请求头 (例如, `Bearer your-secret-key`) 或 `x-api-key` 请求头中提供此密钥。例如：`"APIKEY": "your-secret-key"`。
 - **`HOST`** (可选): 您可以设置服务的主机地址。如果未设置 `APIKEY`，出于安全考虑，主机地址将强制设置为 `127.0.0.1`，以防止未经授权的访问。例如：`"HOST": "0.0.0.0"`。
@@ -46,7 +46,7 @@ npm install -g @musistudio/claude-code-router
 ```json
 {
   "APIKEY": "your-secret-key",
-  "PROXY_URL": "http://127.0.0.1:7890",
+  "PORT": "7890",
   "LOG": true,
   "Providers": [
     {
