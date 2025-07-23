@@ -32,18 +32,36 @@ export async function executeCodeCommand(args: string[] = []) {
     shell: true,
   });
 
+  // Ensure cleanup happens on all exit scenarios
+  const cleanup = () => {
+    decrementReferenceCount();
+    closeService();
+  };
+
   claudeProcess.on("error", (error) => {
     console.error("Failed to start claude command:", error.message);
     console.log(
       "Make sure Claude Code is installed: npm install -g @anthropic-ai/claude-code"
     );
-    decrementReferenceCount();
+    cleanup();
     process.exit(1);
   });
 
   claudeProcess.on("close", (code) => {
-    decrementReferenceCount();
-    closeService();
+    cleanup();
     process.exit(code || 0);
+  });
+
+  // Handle process termination signals
+  process.on("SIGINT", () => {
+    claudeProcess.kill("SIGINT");
+    cleanup();
+    process.exit(0);
+  });
+
+  process.on("SIGTERM", () => {
+    claudeProcess.kill("SIGTERM");
+    cleanup();
+    process.exit(0);
   });
 }

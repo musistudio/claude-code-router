@@ -39,12 +39,30 @@ async function waitForService(
   while (Date.now() - startTime < timeout) {
     if (isServiceRunning()) {
       // Wait for an additional short period to ensure service is fully ready
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       return true;
     }
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 200));
   }
   return false;
+}
+
+async function startServiceInBackground(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const cliPath = join(__dirname, "cli.js");
+    const startProcess = spawn("node", [cliPath, "start"], {
+      detached: true,
+      stdio: "ignore",
+    });
+    startProcess.on("error", (error) => {
+      reject(new Error(`Failed to start service: ${error.message}`));
+    });
+    // Give the process a moment to start
+    setTimeout(() => {
+      startProcess.unref();
+      resolve();
+    }, 100);
+  });
 }
 
 async function main() {
@@ -80,25 +98,18 @@ async function main() {
     case "code":
       if (!isServiceRunning()) {
         console.log("Service not running, starting service...");
-        const cliPath = join(__dirname, "cli.js");
-        const startProcess = spawn("node", [cliPath, "start"], {
-          detached: true,
-          stdio: "ignore",
-        });
-
-        startProcess.on("error", (error) => {
+        try {
+          await startServiceInBackground();
+          if (await waitForService()) {
+            executeCodeCommand(process.argv.slice(3));
+          } else {
+            console.error(
+              "Service startup timeout, please manually run `ccr start` to start the service"
+            );
+            process.exit(1);
+          }
+        } catch (error) {
           console.error("Failed to start service:", error);
-          process.exit(1);
-        });
-
-        startProcess.unref();
-
-        if (await waitForService()) {
-          executeCodeCommand(process.argv.slice(3));
-        } else {
-          console.error(
-            "Service startup timeout, please manually run `ccr start` to start the service"
-          );
           process.exit(1);
         }
       } else {
