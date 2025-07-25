@@ -69,31 +69,31 @@ const getUseModel = async (req: any, tokenCount: number, config: any) => {
     return req.body.model;
   }
   // if tokenCount is greater than 60K, use the long context model
-  if (tokenCount > 1000 * 60 && config.Router.longContext) {
+  if (tokenCount > 1000 * 60 && config.Router?.longContext) {
     log("Using long context model due to token count:", tokenCount);
     return config.Router.longContext;
   }
   // If the model is claude-3-5-haiku, use the background model
   if (
     req.body.model?.startsWith("claude-3-5-haiku") &&
-    config.Router.background
+    config.Router?.background
   ) {
     log("Using background model for ", req.body.model);
     return config.Router.background;
   }
   // if exits thinking, use the think model
-  if (req.body.thinking && config.Router.think) {
+  if (req.body.thinking && config.Router?.think) {
     log("Using think model for ", req.body.thinking);
     return config.Router.think;
   }
   if (
     Array.isArray(req.body.tools) &&
     req.body.tools.some((tool: any) => tool.type?.startsWith("web_search")) &&
-    config.Router.webSearch
+    config.Router?.webSearch
   ) {
     return config.Router.webSearch;
   }
-  return config.Router!.default;
+  return config.Router?.default || "default";
 };
 
 export const router = async (req: any, _res: any, config: any) => {
@@ -120,7 +120,7 @@ export const router = async (req: any, _res: any, config: any) => {
     req.body.model = model;
   } catch (error: any) {
     log("Error in router middleware:", error.message);
-    req.body.model = config.Router!.default;
+    req.body.model = config.Router?.default || "default";
   }
   return;
 };

@@ -17,4 +17,5 @@ export const DEFAULT_CONFIG = {
   OPENAI_API_KEY: "",
   OPENAI_BASE_URL: "",
   OPENAI_MODEL: "",
+  PORT: 3456,
 };
