@@ -7,7 +7,10 @@
   },
   "scripts": {
     "build": "esbuild src/cli.ts --bundle --platform=node --outfile=dist/cli.js && shx cp node_modules/tiktoken/tiktoken_bg.wasm dist/tiktoken_bg.wasm",
-    "release": "npm run build && npm publish"
+    "release": "npm run build && npm publish",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "keywords": [
     "claude",
@@ -19,11 +22,11 @@
   "author": "ccr-next-contributors",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yourusername/ccr-direct.git"
+    "url": "git+https://github.com/Darthwares/ccr-direct.git"
   },
-  "homepage": "https://github.com/yourusername/ccr-direct#readme",
+  "homepage": "https://github.com/Darthwares/ccr-direct#readme",
   "bugs": {
-    "url": "https://github.com/yourusername/ccr-direct/issues"
+    "url": "https://github.com/Darthwares/ccr-direct/issues"
   },
   "license": "MIT",
   "dependencies": {
@@ -38,10 +41,14 @@
     "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "@types/jest": "^29.5.0",
     "@types/node": "^24.0.15",
     "esbuild": "^0.25.8",
     "fastify": "^5.4.0",
+    "jest": "^29.7.0",
     "shx": "^0.4.0",
+    "ts-jest": "^29.1.0",
     "typescript": "^5.8.2"
   },
   "files": [

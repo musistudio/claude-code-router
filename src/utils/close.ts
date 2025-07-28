@@ -16,7 +16,7 @@ export async function closeService() {
     }
 
     try {
-        const pid = parseInt(readFileSync(PID_FILE, 'utf-8'));
+        const pid = parseInt(readFileSync(PID_FILE, 'utf-8'), 10);
         process.kill(pid);
         cleanupPidFile();
         console.log("claude code router service has been successfully stopped.");

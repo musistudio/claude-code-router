@@ -4,6 +4,7 @@ import { ConfigurationError } from './errorHandler';
 import fs from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
+import { resolveSecurePath, validateFilePath } from './pathSecurity';
 
 const ajv = new Ajv({ allErrors: true, useDefaults: true });
 
@@ -245,20 +246,30 @@ export function validateConfig(config: any): ValidationResult {
 
     // Validate custom router path
     if (config.CUSTOM_ROUTER_PATH) {
-      const resolvedPath = config.CUSTOM_ROUTER_PATH.replace('$HOME', process.env.HOME || '');
-      if (!fs.existsSync(resolvedPath)) {
+      try {
+        const resolvedPath = resolveSecurePath(config.CUSTOM_ROUTER_PATH);
+        if (!validateFilePath(resolvedPath)) {
+          result.valid = false;
+          result.errors!.push(`CUSTOM_ROUTER_PATH: File not found or not readable at ${resolvedPath}`);
+        }
+      } catch (error: any) {
         result.valid = false;
-        result.errors!.push(`CUSTOM_ROUTER_PATH: File not found at ${resolvedPath}`);
+        result.errors!.push(`CUSTOM_ROUTER_PATH: ${error.message}`);
       }
     }
 
     // Validate transformer paths
     if (config.transformers) {
       for (const transformer of config.transformers) {
-        const resolvedPath = transformer.path.replace('$HOME', process.env.HOME || '');
-        if (!fs.existsSync(resolvedPath)) {
+        try {
+          const resolvedPath = resolveSecurePath(transformer.path);
+          if (!validateFilePath(resolvedPath)) {
+            result.valid = false;
+            result.errors!.push(`Transformer path not found or not readable: ${resolvedPath}`);
+          }
+        } catch (error: any) {
           result.valid = false;
-          result.errors!.push(`Transformer path not found: ${resolvedPath}`);
+          result.errors!.push(`Transformer path error: ${error.message}`);
         }
       }
     }

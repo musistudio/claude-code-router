@@ -9,12 +9,14 @@ import {
 } from "../constants";
 import { logger } from "./logger";
 import { validateConfig } from "./configValidator";
+import { createSecureDirectory } from "./pathSecurity";
 
 const ensureDir = async (dir_path: string) => {
   try {
-    await fs.access(dir_path);
-  } catch {
-    await fs.mkdir(dir_path, { recursive: true });
+    await createSecureDirectory(dir_path);
+  } catch (error: any) {
+    logger.error('Failed to create directory', { path: dir_path, error: error.message });
+    throw error;
   }
 };
 

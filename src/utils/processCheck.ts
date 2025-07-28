@@ -1,11 +1,11 @@
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { PID_FILE, REFERENCE_COUNT_FILE } from '../constants';
 import { readConfigFile } from '.';
 
 export function incrementReferenceCount() {
     let count = 0;
     if (existsSync(REFERENCE_COUNT_FILE)) {
-        count = parseInt(readFileSync(REFERENCE_COUNT_FILE, 'utf-8')) || 0;
+        count = parseInt(readFileSync(REFERENCE_COUNT_FILE, 'utf-8'), 10) || 0;
     }
     count++;
     writeFileSync(REFERENCE_COUNT_FILE, count.toString());
@@ -14,7 +14,7 @@ export function incrementReferenceCount() {
 export function decrementReferenceCount() {
     let count = 0;
     if (existsSync(REFERENCE_COUNT_FILE)) {
-        count = parseInt(readFileSync(REFERENCE_COUNT_FILE, 'utf-8')) || 0;
+        count = parseInt(readFileSync(REFERENCE_COUNT_FILE, 'utf-8'), 10) || 0;
     }
     count = Math.max(0, count - 1);
     writeFileSync(REFERENCE_COUNT_FILE, count.toString());
@@ -24,7 +24,7 @@ export function getReferenceCount(): number {
     if (!existsSync(REFERENCE_COUNT_FILE)) {
         return 0;
     }
-    return parseInt(readFileSync(REFERENCE_COUNT_FILE, 'utf-8')) || 0;
+    return parseInt(readFileSync(REFERENCE_COUNT_FILE, 'utf-8'), 10) || 0;
 }
 
 export function isServiceRunning(): boolean {
@@ -33,7 +33,7 @@ export function isServiceRunning(): boolean {
     }
 
     try {
-        const pid = parseInt(readFileSync(PID_FILE, 'utf-8'));
+        const pid = parseInt(readFileSync(PID_FILE, 'utf-8'), 10);
         process.kill(pid, 0);
         return true;
     } catch (e) {
@@ -50,8 +50,7 @@ export function savePid(pid: number) {
 export function cleanupPidFile() {
     if (existsSync(PID_FILE)) {
         try {
-            const fs = require('fs');
-            fs.unlinkSync(PID_FILE);
+            unlinkSync(PID_FILE);
         } catch (e) {
             // Ignore cleanup errors
         }
@@ -64,7 +63,7 @@ export function getServicePid(): number | null {
     }
     
     try {
-        const pid = parseInt(readFileSync(PID_FILE, 'utf-8'));
+        const pid = parseInt(readFileSync(PID_FILE, 'utf-8'), 10);
         return isNaN(pid) ? null : pid;
     } catch (e) {
         return null;

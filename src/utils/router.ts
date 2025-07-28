@@ -6,6 +6,7 @@ import {
 import { get_encoding } from "tiktoken";
 import { loggers } from "./logger";
 import { ApiError, circuitBreaker, retryWithBackoff } from "./errorHandler";
+import { resolveSecurePath } from "./pathSecurity";
 
 const enc = get_encoding("cl100k_base");
 
@@ -122,7 +123,7 @@ export const router = async (req: any, _res: any, config: any) => {
     let model;
     if (config.CUSTOM_ROUTER_PATH) {
       try {
-        const customRouterPath = config.CUSTOM_ROUTER_PATH.replace('$HOME', process.env.HOME || '');
+        const customRouterPath = resolveSecurePath(config.CUSTOM_ROUTER_PATH);
         const customRouter = require(customRouterPath);
         model = await customRouter(req, config);
         if (model) {
