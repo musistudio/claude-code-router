@@ -7,6 +7,8 @@ import {
   HOME_DIR,
   PLUGINS_DIR,
 } from "../constants";
+import { logger } from "./logger";
+import { validateConfig } from "./configValidator";
 
 const ensureDir = async (dir_path: string) => {
   try {
@@ -94,6 +96,25 @@ export const writeConfigFile = async (config: any) => {
 
 export const initConfig = async () => {
   const config = await readConfigFile();
+  
+  // Validate the config
+  const validation = validateConfig(config);
+  if (!validation.valid) {
+    logger.error('Configuration validation failed', { errors: validation.errors });
+    console.error('\n❌ Configuration validation failed:');
+    validation.errors?.forEach(error => {
+      console.error(`  - ${error}`);
+    });
+    process.exit(1);
+  }
+  
+  if (validation.warnings && validation.warnings.length > 0) {
+    console.warn('\n⚠️  Configuration warnings:');
+    validation.warnings.forEach(warning => {
+      console.warn(`  - ${warning}`);
+    });
+  }
+  
   Object.assign(process.env, config);
   return config;
 };

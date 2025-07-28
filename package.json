@@ -1,6 +1,6 @@
 {
-  "name": "@musistudio/claude-code-router",
-  "version": "1.0.28",
+  "name": "ccr-next",
+  "version": "1.0.29",
   "description": "Use Claude Code without an Anthropics account and route it to another LLM provider",
   "bin": {
     "ccr": "./dist/cli.js"
@@ -16,27 +16,40 @@
     "llm",
     "anthropic"
   ],
-  "author": "musistudio",
+  "author": "ccr-next-contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/ccr-direct.git"
+  },
+  "homepage": "https://github.com/yourusername/ccr-direct#readme",
+  "bugs": {
+    "url": "https://github.com/yourusername/ccr-direct/issues"
+  },
   "license": "MIT",
   "dependencies": {
     "@musistudio/llms": "^1.0.15",
+    "ajv": "^8.17.1",
     "dotenv": "^16.4.7",
     "json5": "^2.2.3",
+    "p-retry": "^6.2.0",
     "tiktoken": "^1.0.21",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "winston": "^3.11.0",
+    "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.15",
-    "esbuild": "^0.25.1",
+    "esbuild": "^0.25.8",
     "fastify": "^5.4.0",
     "shx": "^0.4.0",
     "typescript": "^5.8.2"
   },
+  "files": [
+    "dist/",
+    "README-npm.md",
+    "LICENSE"
+  ],
   "publishConfig": {
-    "ignore": [
-      "!build/",
-      "src/",
-      "screenshots/"
-    ]
+    "access": "public"
   }
 }
