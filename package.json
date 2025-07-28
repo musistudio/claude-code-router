@@ -32,9 +32,9 @@
   "dependencies": {
     "@musistudio/llms": "^1.0.15",
     "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
     "dotenv": "^16.4.7",
     "json5": "^2.2.3",
-    "p-retry": "^6.2.0",
     "tiktoken": "^1.0.21",
     "uuid": "^11.1.0",
     "winston": "^3.11.0",

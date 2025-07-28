@@ -1,4 +1,3 @@
-import pRetry, { AbortError } from 'p-retry';
 import { logger } from './logger';
 
 export interface RetryOptions {
@@ -109,6 +108,13 @@ class CircuitBreaker {
 
 export const circuitBreaker = new CircuitBreaker();
 
+export class AbortError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AbortError';
+  }
+}
+
 export async function retryWithBackoff<T>(
   operation: () => Promise<T>,
   options: RetryOptions = {}
@@ -118,23 +124,59 @@ export async function retryWithBackoff<T>(
     factor: 2,
     minTimeout: 1000,
     maxTimeout: 30000,
-    onFailedAttempt: (error) => {
-      logger.warn(`Retry attempt failed: ${error.message}`, {
-        attemptNumber: error.attemptNumber,
-        retriesLeft: error.retriesLeft,
-      });
-    },
+    onFailedAttempt: () => {},
   };
 
   const mergedOptions = { ...defaultOptions, ...options };
-
-  return pRetry(operation, {
-    retries: mergedOptions.retries,
-    factor: mergedOptions.factor,
-    minTimeout: mergedOptions.minTimeout,
-    maxTimeout: mergedOptions.maxTimeout,
-    onFailedAttempt: mergedOptions.onFailedAttempt,
-  });
+  let lastError: any;
+  
+  for (let attempt = 0; attempt <= mergedOptions.retries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      
+      // Don't retry on abort errors
+      if (error instanceof AbortError) {
+        throw error;
+      }
+      
+      // Don't retry if we shouldn't
+      if (!shouldRetry(error)) {
+        throw error;
+      }
+      
+      // Don't retry if we've exhausted attempts
+      if (attempt === mergedOptions.retries) {
+        throw error;
+      }
+      
+      // Calculate delay
+      const delay = Math.min(
+        mergedOptions.minTimeout * Math.pow(mergedOptions.factor, attempt),
+        mergedOptions.maxTimeout
+      );
+      
+      // Call onFailedAttempt
+      const attemptError = Object.assign({}, error, {
+        attemptNumber: attempt + 1,
+        retriesLeft: mergedOptions.retries - attempt,
+      });
+      
+      mergedOptions.onFailedAttempt(attemptError);
+      
+      logger.warn(`Retry attempt failed: ${(error as any).message}`, {
+        attemptNumber: attempt + 1,
+        retriesLeft: mergedOptions.retries - attempt,
+        delay,
+      });
+      
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  throw lastError;
 }
 
 export function shouldRetry(error: any): boolean {

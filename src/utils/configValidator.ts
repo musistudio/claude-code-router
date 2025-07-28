@@ -1,4 +1,5 @@
 import Ajv from 'ajv';
+import addFormats from 'ajv-formats';
 import { logger } from './logger';
 import { ConfigurationError } from './errorHandler';
 import fs from 'fs';
@@ -7,6 +8,7 @@ import { createHash } from 'crypto';
 import { resolveSecurePath, validateFilePath } from './pathSecurity';
 
 const ajv = new Ajv({ allErrors: true, useDefaults: true });
+addFormats(ajv);
 
 // Configuration schema
 const configSchema = {
