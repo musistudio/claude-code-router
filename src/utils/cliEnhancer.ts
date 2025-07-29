@@ -62,7 +62,7 @@ export function formatProvider(provider: Provider): string {
   return `${theme.bold(provider.name)} ${theme.muted(`(${provider.api_base_url})`)}
   ${theme.info('Models:')} ${models}
   ${theme.info('API Key:')} ${provider.api_key ? theme.success('✓ Configured') : theme.error('✗ Not set')}
-  ${hasTransformer ? theme.info('Transformer:') + ' ' + theme.primary(JSON.stringify(provider.transformer.use)) : ''}`;
+  ${hasTransformer ? theme.info('Transformer:') + ' ' + theme.primary(JSON.stringify(provider.transformer!.use)) : ''}`;
 }
 
 export function showProvidersTable(providers: Provider[]) {
@@ -94,7 +94,7 @@ export function showProvidersTable(providers: Provider[]) {
       theme.muted(provider.api_base_url),
       provider.models.join('\n'),
       provider.api_key ? theme.success('✓') : theme.error('✗'),
-      hasTransformer ? theme.info(JSON.stringify(provider.transformer.use)) : theme.muted('none'),
+      hasTransformer ? theme.info(JSON.stringify(provider.transformer!.use)) : theme.muted('none'),
     ]);
   });
 

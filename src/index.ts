@@ -163,7 +163,7 @@ async function run(options: RunOptions = {}) {
   });
 
   // Add error handling middleware
-  server.addHook('onError', async (request, reply, error) => {
+  server.addHook('onError', async (request: any, reply: any, error: any) => {
     loggers.server.error('Request error', {
       method: request.method,
       url: request.url,
@@ -179,7 +179,7 @@ async function run(options: RunOptions = {}) {
   });
 
   // Add response logging
-  server.addHook('onSend', async (request, reply, payload) => {
+  server.addHook('onSend', async (request: any, reply: any, payload: any) => {
     const responseTime = Date.now() - (request as any).startTime;
     loggers.server.info('Request completed', {
       method: request.method,
@@ -198,12 +198,12 @@ async function run(options: RunOptions = {}) {
   });
 
   // Add request timing
-  server.addHook('onRequest', async request => {
+  server.addHook('onRequest', async (request: any) => {
     (request as any).startTime = Date.now();
   });
 
   server.addHook('preHandler', apiKeyAuth(config));
-  server.addHook('preHandler', async (req, reply) => router(req, reply, config));
+  server.addHook('preHandler', async (req: any, reply: any) => router(req, reply, config));
 
   server.start();
 
