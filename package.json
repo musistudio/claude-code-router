@@ -7,7 +7,9 @@
   },
   "scripts": {
     "build": "esbuild src/cli.ts --bundle --platform=node --outfile=dist/cli.js && shx cp node_modules/tiktoken/tiktoken_bg.wasm dist/tiktoken_bg.wasm",
-    "release": "npm run build && npm publish"
+    "release": "npm run build && npm publish",
+    "dev:server": "nodemon --watch 'src/**' --ext ts --exec 'npm run build && NODE_ENV=development node dist/cli.js start'",
+    "code": "NODE_ENV=development node dist/cli.js code"
   },
   "keywords": [
     "claude",
@@ -30,7 +32,8 @@
     "esbuild": "^0.25.1",
     "fastify": "^5.4.0",
     "shx": "^0.4.0",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "nodemon": "^3.1.7"
   },
   "publishConfig": {
     "ignore": [

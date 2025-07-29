@@ -2,20 +2,22 @@ import { existsSync } from "fs";
 import { writeFile } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
-import { initConfig, initDir } from "./utils";
-import { createServer } from "./server";
-import { router } from "./utils/router";
-import { apiKeyAuth } from "./middleware/auth";
+import { initConfig, initDir } from "@/utils";
+import { createServer } from "@/server";
+import { router } from "@/utils/router";
+import { apiKeyAuth } from "@/middleware/auth";
 import {
   cleanupPidFile,
   isServiceRunning,
   savePid,
-} from "./utils/processCheck";
-import { CONFIG_FILE } from "./constants";
+} from "@/utils/processCheck";
+import { getHomeDir, getConfigFile, getPidFile} from "@/constants";
+
+const isDev = process.env.NODE_ENV === "development";
+
 
 async function initializeClaudeConfig() {
-  const homeDir = homedir();
-  const configPath = join(homeDir, ".claude.json");
+  const configPath = join(getHomeDir(), ".claude.json");
   if (!existsSync(configPath)) {
     const userID = Array.from(
       { length: 64 },
@@ -39,15 +41,19 @@ interface RunOptions {
 
 async function run(options: RunOptions = {}) {
   // Check if service is already running
-  if (isServiceRunning()) {
-    console.log("✅ Service is already running in the background.");
+
+  const pidFile = getPidFile()
+    if (isServiceRunning(pidFile)) {
+    console.log (
+      `${isDev ? "development" : ""}. ✅ Service is already running in the background, PID file found at ${pidFile},  .`
+    );
     return;
   }
 
   await initializeClaudeConfig();
   await initDir();
   const config = await initConfig();
-  let HOST = config.HOST;
+  let HOST = config.HOST || "127.0.0.1";
 
   if (config.HOST && !config.APIKEY) {
     HOST = "127.0.0.1";
@@ -56,31 +62,32 @@ async function run(options: RunOptions = {}) {
     );
   }
 
-  const port = config.PORT || 3456;
+  const port = config.PORT || isDev ? 3457: 3456;
 
   // Save the PID of the background process
-  savePid(process.pid);
+  savePid(process.pid, pidFile);
 
   // Handle SIGINT (Ctrl+C) to clean up PID file
   process.on("SIGINT", () => {
-    console.log("Received SIGINT, cleaning up...");
-    cleanupPidFile();
+    const pidFile = getPidFile()
+    console.log(` Received SIGINT, cleaning up pidFile ${pidFile}..`);
+    cleanupPidFile(getPidFile());
     process.exit(0);
   });
 
   // Handle SIGTERM to clean up PID file
   process.on("SIGTERM", () => {
-    cleanupPidFile();
+    cleanupPidFile(getPidFile());
     process.exit(0);
   });
-  console.log(HOST)
+  console.log(`=========> Starting service on ${HOST}:${port}`);
 
   // Use port from environment variable if set (for background process)
   const servicePort = process.env.SERVICE_PORT
     ? parseInt(process.env.SERVICE_PORT)
     : port;
   const server = createServer({
-    jsonPath: CONFIG_FILE,
+    jsonPath: getConfigFile(),
     initialConfig: {
       // ...config,
       providers: config.Providers || config.providers,
@@ -94,7 +101,7 @@ async function run(options: RunOptions = {}) {
     },
   });
   server.addHook("preHandler", apiKeyAuth(config));
-  server.addHook("preHandler", async (req, reply) =>
+  server.addHook("preHandler", async (req: any, reply: any) =>
     router(req, reply, config)
   );
   server.start();

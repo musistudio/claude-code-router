@@ -8,17 +8,24 @@ import { log } from "./log";
 
 const enc = get_encoding("cl100k_base");
 
+/**
+ * Calculates token count for messages, system prompts, and tools using cl100k_base encoding
+ * Handles multiple content types (text, tool_use, tool_result) and complex structures
+ * Critical for routing decisions based on context length
+ */
 const calculateTokenCount = (
   messages: MessageParam[],
   system: any,
   tools: Tool[]
 ) => {
   let tokenCount = 0;
-  if (Array.isArray(messages)) {
+  // Process user messages which may contain mixed content types (text, tool_use, tool_result)
+if (Array.isArray(messages)) {
     messages.forEach((message) => {
       if (typeof message.content === "string") {
         tokenCount += enc.encode(message.content).length;
-      } else if (Array.isArray(message.content)) {
+      // Handle structured message content arrays (e.g., multimodal inputs)
+} else if (Array.isArray(message.content)) {
         message.content.forEach((contentPart: any) => {
           if (contentPart.type === "text") {
             tokenCount += enc.encode(contentPart.text).length;
@@ -39,7 +46,8 @@ const calculateTokenCount = (
   }
   if (typeof system === "string") {
     tokenCount += enc.encode(system).length;
-  } else if (Array.isArray(system)) {
+  // Handle structured system prompts with potential mixed content types
+} else if (Array.isArray(system)) {
     system.forEach((item: any) => {
       if (item.type !== "text") return;
       if (typeof item.text === "string") {
@@ -51,7 +59,8 @@ const calculateTokenCount = (
       }
     });
   }
-  if (tools) {
+  // Include tool definitions in token count (critical for tool-using models)
+if (tools) {
     tools.forEach((tool: Tool) => {
       if (tool.description) {
         tokenCount += enc.encode(tool.name + tool.description).length;
@@ -68,13 +77,13 @@ const getUseModel = async (req: any, tokenCount: number, config: any) => {
   if (req.body.model.includes(",")) {
     return req.body.model;
   }
-  // if tokenCount is greater than the configured threshold, use the long context model
+  // Use long context model when input exceeds token threshold (default: 60k) for handling large context requests
   const longContextThreshold = config.Router.longContextThreshold || 60000;
   if (tokenCount > longContextThreshold && config.Router.longContext) {
     log("Using long context model due to token count:", tokenCount, "threshold:", longContextThreshold);
     return config.Router.longContext;
   }
-  // If the model is claude-3-5-haiku, use the background model
+  // Prefer background model for haiku requests to optimize cost/performance tradeoff
   if (
     req.body.model?.startsWith("claude-3-5-haiku") &&
     config.Router.background
@@ -82,19 +91,21 @@ const getUseModel = async (req: any, tokenCount: number, config: any) => {
     log("Using background model for ", req.body.model);
     return config.Router.background;
   }
-  // if exits thinking, use the think model
+  // Use specialized think model for requests requiring extended reasoning (e.g. --think flag)
   if (req.body.thinking && config.Router.think) {
     log("Using think model for ", req.body.thinking);
     return config.Router.think;
   }
-  if (
+  // Route to webSearch model when any tool requires web search capabilities (e.g. /websearch command)
+if (
     Array.isArray(req.body.tools) &&
     req.body.tools.some((tool: any) => tool.type?.startsWith("web_search")) &&
     config.Router.webSearch
   ) {
     return config.Router.webSearch;
   }
-  return config.Router!.default;
+  // Fallback to default model when no specialized conditions are met
+return config.Router!.default;
 };
 
 export const router = async (req: any, _res: any, config: any) => {

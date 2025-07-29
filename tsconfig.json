@@ -13,8 +13,13 @@
     "noImplicitAny": true,
     "allowSyntheticDefaultImports": true,
     "sourceMap": true,
-    "declaration": true
+    "declaration": true,
+    "baseUrl": "./",
+    "paths": {
+      "@/*": [ "src/*" ]
+    }
   },
+
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

@@ -1,12 +1,12 @@
 import { isServiceRunning, cleanupPidFile, getReferenceCount } from './processCheck';
 import { readFileSync } from 'fs';
-import { HOME_DIR } from '../constants';
-import { join } from 'path';
+import { getPidFile} from '@/constants';
 
 export async function closeService() {
-    const PID_FILE = join(HOME_DIR, '.claude-code-router.pid');
+
+    const pidFile = getPidFile()
     
-    if (!isServiceRunning()) {
+    if (!isServiceRunning(pidFile)) {
         console.log("No service is currently running.");
         return;
     }
@@ -16,12 +16,12 @@ export async function closeService() {
     }
 
     try {
-        const pid = parseInt(readFileSync(PID_FILE, 'utf-8'));
+        const pid = parseInt(readFileSync(pidFile, 'utf-8'));
         process.kill(pid);
-        cleanupPidFile();
+        cleanupPidFile(pidFile);
         console.log("claude code router service has been successfully stopped.");
     } catch (e) {
         console.log("Failed to stop the service. It may have already been stopped.");
-        cleanupPidFile();
+        cleanupPidFile(pidFile);
     }
 }

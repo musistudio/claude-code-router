@@ -1,6 +1,7 @@
 # Claude Code Router
 
-[中文版](README_zh.md)
+English | [中文](README_zh.md)
+
 
 > A powerful tool to route Claude Code requests to different models and customize any request.
 
@@ -311,6 +312,9 @@ module.exports = async function router(req, config) {
   return null;
 };
 ```
+
+## 🛠️ Working with this repo
+👉 [Contributing Guide](CONTRIBUTING.md)
 
 ## 🤖 GitHub Actions
 
