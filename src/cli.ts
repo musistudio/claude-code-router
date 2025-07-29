@@ -153,7 +153,7 @@ async function main() {
     case 'version':
       showBanner(`Claude Code Router v${version}`, 'info');
       break;
-    case 'restart':
+    case 'restart': {
       // Stop the service if it's running
       showInfo('Restarting Claude Code Router service...');
       const stopSpinner = createSpinner('Stopping service...');
@@ -201,10 +201,11 @@ async function main() {
         process.exit(1);
       }
       break;
-    case 'provider':
+    }
+    case 'provider': {
       const subCommand = process.argv[3];
       switch (subCommand) {
-        case 'add':
+        case 'add': {
           if (process.argv.length < 8) {
             showError('Invalid usage. Expected: ccr provider add <name> <url> <key> <models>');
             console.log(
@@ -231,6 +232,7 @@ async function main() {
             process.exit(1);
           }
           break;
+        }
         case 'list':
           await listProviders();
           break;
@@ -240,6 +242,7 @@ async function main() {
           process.exit(1);
       }
       break;
+    }
     case '-h':
     case 'help':
       console.log(HELP_TEXT);
