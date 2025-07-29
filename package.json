@@ -6,7 +6,7 @@
     "ccr": "dist/cli.js"
   },
   "scripts": {
-    "build": "esbuild src/cli.ts --bundle --platform=node --outfile=dist/cli.js --banner:js='#!/usr/bin/env node' && shx cp node_modules/tiktoken/tiktoken_bg.wasm dist/tiktoken_bg.wasm && shx chmod +x dist/cli.js",
+    "build": "node scripts/build.js",
     "release": "npm run build && npm publish",
     "test": "jest",
     "test:watch": "jest --watch",
