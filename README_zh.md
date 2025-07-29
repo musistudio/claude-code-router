@@ -1,5 +1,8 @@
 # Claude Code Router
 
+
+[English](README.md) | 中文
+
 > 一款强大的工具，可将 Claude Code 请求路由到不同的模型，并自定义任何请求。
 
 ![](blog/images/claude-code.png)
@@ -306,6 +309,8 @@ module.exports = async function router(req, config) {
   return null;
 };
 ```
+## 🛠️ Working with this repo
+👉 [Contributing Guide](CONTRIBUTING.md)
 
 
 ## 🤖 GitHub Actions
