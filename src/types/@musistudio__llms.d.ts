@@ -1,3 +1,7 @@
 declare module '@musistudio/llms' {
-  export function createServer(options: any): any;
+  export default class Server {
+    constructor(options: any);
+    addHook(hook: string, handler: any): void;
+    start(): void;
+  }
 }
