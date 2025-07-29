@@ -1,6 +1,6 @@
-import Server from "@musistudio/llms";
+import Server from '@musistudio/llms';
 
-export const createServer = (config: any): Server => {
+export const createServer = (config: any): any => {
   const server = new Server(config);
   return server;
 };

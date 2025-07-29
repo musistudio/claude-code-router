@@ -1,9 +1,8 @@
-import { FastifyRequest, FastifyReply } from "fastify";
+import { FastifyRequest, FastifyReply } from 'fastify';
 
 export const apiKeyAuth =
-  (config: any) =>
-  (req: FastifyRequest, reply: FastifyReply, done: () => void) => {
-    if (["/", "/health"].includes(req.url)) {
+  (config: any) => (req: FastifyRequest, reply: FastifyReply, done: () => void) => {
+    if (['/', '/health'].includes(req.url)) {
       return done();
     }
     const apiKey = config.APIKEY;
@@ -12,20 +11,19 @@ export const apiKeyAuth =
       return done();
     }
 
-    const authKey: string =
-      req.headers.authorization || req.headers["x-api-key"];
-    if (!authKey) {
-      reply.status(401).send("APIKEY is missing");
+    const authKey = req.headers.authorization || req.headers['x-api-key'] || '';
+    if (!authKey || Array.isArray(authKey)) {
+      reply.status(401).send('APIKEY is missing');
       return;
     }
-    let token = "";
-    if (authKey.startsWith("Bearer")) {
-      token = authKey.split(" ")[1];
+    let token = '';
+    if (authKey.startsWith('Bearer')) {
+      token = authKey.split(' ')[1];
     } else {
       token = authKey;
     }
     if (token !== apiKey) {
-      reply.status(401).send("Invalid API key");
+      reply.status(401).send('Invalid API key');
       return;
     }
 

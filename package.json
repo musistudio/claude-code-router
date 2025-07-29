@@ -1,13 +1,21 @@
 {
-  "name": "@musistudio/claude-code-router",
-  "version": "1.0.28",
+  "name": "ccr-next",
+  "version": "1.1.0",
   "description": "Use Claude Code without an Anthropics account and route it to another LLM provider",
   "bin": {
-    "ccr": "./dist/cli.js"
+    "ccr": "dist/cli.js"
   },
   "scripts": {
-    "build": "esbuild src/cli.ts --bundle --platform=node --outfile=dist/cli.js && shx cp node_modules/tiktoken/tiktoken_bg.wasm dist/tiktoken_bg.wasm",
-    "release": "npm run build && npm publish"
+    "build": "node scripts/build.js",
+    "release": "npm run build && npm publish",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint src/**/*.ts --fix",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "prepare": "husky"
   },
   "keywords": [
     "claude",
@@ -16,27 +24,68 @@
     "llm",
     "anthropic"
   ],
-  "author": "musistudio",
+  "author": "ccr-next-contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Darthwares/ccr-direct.git"
+  },
+  "homepage": "https://github.com/Darthwares/ccr-direct#readme",
+  "bugs": {
+    "url": "https://github.com/Darthwares/ccr-direct/issues"
+  },
   "license": "MIT",
   "dependencies": {
     "@musistudio/llms": "^1.0.15",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "boxen": "^8.0.1",
+    "ccr-next": "^1.0.29",
+    "chalk": "^5.4.1",
+    "cli-table3": "^0.6.5",
     "dotenv": "^16.4.7",
     "json5": "^2.2.3",
+    "ora": "^8.2.0",
     "tiktoken": "^1.0.21",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "winston": "^3.11.0",
+    "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.32.0",
+    "@jest/globals": "^29.7.0",
+    "@types/jest": "^29.5.0",
     "@types/node": "^24.0.15",
-    "esbuild": "^0.25.1",
+    "@typescript-eslint/eslint-plugin": "^8.38.0",
+    "@typescript-eslint/parser": "^8.38.0",
+    "esbuild": "^0.25.8",
+    "eslint": "^9.32.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.3",
     "fastify": "^5.4.0",
+    "husky": "^9.1.7",
+    "jest": "^29.7.0",
+    "lint-staged": "^16.1.2",
+    "prettier": "^3.6.2",
     "shx": "^0.4.0",
+    "ts-jest": "^29.1.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5.8.2"
   },
+  "files": [
+    "dist/",
+    "README-npm.md",
+    "LICENSE"
+  ],
   "publishConfig": {
-    "ignore": [
-      "!build/",
-      "src/",
-      "screenshots/"
+    "access": "public"
+  },
+  "lint-staged": {
+    "src/**/*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "tests/**/*.ts": [
+      "prettier --write"
     ]
   }
 }

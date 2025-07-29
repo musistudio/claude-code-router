@@ -1,0 +1,7 @@
+dist/
+node_modules/
+coverage/
+*.wasm
+package-lock.json
+pnpm-lock.yaml
+.github/

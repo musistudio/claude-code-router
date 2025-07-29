@@ -1,33 +1,13 @@
-import fs from "node:fs";
-import path from "node:path";
-import { HOME_DIR } from "../constants";
+// Re-export from the new logger module for backward compatibility
+export { logger as log, loggers } from './logger';
 
-const LOG_FILE = path.join(HOME_DIR, "claude-code-router.log");
+// Legacy log function wrapper for backward compatibility
+export function legacyLog(...args: any[]) {
+  const { logger } = require('./logger');
 
-// Ensure log directory exists
-if (!fs.existsSync(HOME_DIR)) {
-  fs.mkdirSync(HOME_DIR, { recursive: true });
-}
+  const message = Array.isArray(args)
+    ? args.map(arg => (typeof arg === 'object' ? JSON.stringify(arg) : String(arg))).join(' ')
+    : '';
 
-export function log(...args: any[]) {
-  // Check if logging is enabled via environment variable
-  const isLogEnabled = process.env.LOG === "true";
-
-  if (!isLogEnabled) {
-    return;
-  }
-
-  const timestamp = new Date().toISOString();
-  const logMessage = `[${timestamp}] ${
-    Array.isArray(args)
-      ? args
-          .map((arg) =>
-            typeof arg === "object" ? JSON.stringify(arg) : String(arg)
-          )
-          .join(" ")
-      : ""
-  }\n`;
-
-  // Append to log file
-  fs.appendFileSync(LOG_FILE, logMessage, "utf8");
+  logger.info(message);
 }
