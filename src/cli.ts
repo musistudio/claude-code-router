@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import { run } from "./index";
-import { showStatus } from "./utils/status";
-import { executeCodeCommand } from "./utils/codeCommand";
-import { cleanupPidFile, isServiceRunning } from "./utils/processCheck";
+import { showStatus } from "@/utils/status";
+import { executeCodeCommand } from "@/utils/codeCommand";
+import { cleanupPidFile, isServiceRunning } from "@/utils/processCheck";
 import { version } from "../package.json";
 import { spawn } from "child_process";
-import { PID_FILE, REFERENCE_COUNT_FILE } from "./constants";
+import {getPidFile, getReferenceCountFile, isDevMode, PID_FILE, REFERENCE_COUNT_FILE} from "@/constants";
 import fs, { existsSync, readFileSync } from "fs";
 import {join} from "path";
 
@@ -28,16 +28,18 @@ Example:
   ccr code "Write a Hello World"
 `;
 
+// Ensure service is fully initialized before proceeding with commands
 async function waitForService(
   timeout = 10000,
   initialDelay = 1000
 ): Promise<boolean> {
+
   // Wait for an initial period to let the service initialize
   await new Promise((resolve) => setTimeout(resolve, initialDelay));
 
   const startTime = Date.now();
   while (Date.now() - startTime < timeout) {
-    if (isServiceRunning()) {
+    if (isServiceRunning(getPidFile())) {
       // Wait for an additional short period to ensure service is fully ready
       await new Promise((resolve) => setTimeout(resolve, 500));
       return true;
@@ -48,18 +50,23 @@ async function waitForService(
 }
 
 async function main() {
+// Handle CLI commands with appropriate service management actions
   switch (command) {
+    // Start the router service in background mode
     case "start":
-      run();
+      await run();
       break;
+    // Stop the service and clean up PID/reference files
     case "stop":
       try {
-        const pid = parseInt(readFileSync(PID_FILE, "utf-8"));
+        const pidFile = getPidFile()
+        const referenceCountFile = getReferenceCountFile()
+        const pid = parseInt(readFileSync(pidFile, "utf-8"));
         process.kill(pid);
-        cleanupPidFile();
-        if (existsSync(REFERENCE_COUNT_FILE)) {
+        cleanupPidFile(pidFile);
+        if (existsSync(referenceCountFile)) {
           try {
-            fs.unlinkSync(REFERENCE_COUNT_FILE);
+            fs.unlinkSync(referenceCountFile);
           } catch (e) {
             // Ignore cleanup errors
           }
@@ -71,62 +78,68 @@ async function main() {
         console.log(
           "Failed to stop the service. It may have already been stopped."
         );
-        cleanupPidFile();
+        const pidFile = getPidFile()
+        cleanupPidFile(pidFile);
       }
       break;
     case "status":
       await showStatus();
       break;
+    // Execute Claude Code command with auto-start capability if service isn't running
     case "code":
-      if (!isServiceRunning()) {
-        console.log("Service not running, starting service...");
-        const cliPath = join(__dirname, "cli.js");
-        const startProcess = spawn("node", [cliPath, "start"], {
-          detached: true,
-          stdio: "ignore",
-        });
+      {
+        const pidFile = getPidFile()
+        // Auto-start service if not running before executing code command
+        if (!isServiceRunning(pidFile)) {
+          console.log("Service not running, starting service...");
+          const cliPath = join(__dirname, "cli.js");
+          const startProcessArgs = isDevMode() ? [cliPath, "start"] : [cliPath, "start"];
+          const startProcess = spawn("node",startProcessArgs, {
+            detached: true,
+            stdio: "ignore",
+            env: {
+              ...process.env,
+              SERVICE_PORT: process.env.SERVICE_PORT || isDevMode() ? "3457" : "3456",
+              NODE_ENV: process.env.NODE_ENV || isDevMode() ? "Development" : "production",
+            }
+          });
 
-        // let errorMessage = "";
-        // startProcess.stderr?.on("data", (data) => {
-        //   errorMessage += data.toString();
-        // });
 
-        startProcess.on("error", (error) => {
-          console.error("Failed to start service:", error.message);
-          process.exit(1);
-        });
+          startProcess.on("error", (error) => {
+            console.error("Failed to start service:", error.message);
+            process.exit(1);
+          });
 
-        // startProcess.on("close", (code) => {
-        //   if (code !== 0 && errorMessage) {
-        //     console.error("Failed to start service:", errorMessage.trim());
-        //     process.exit(1);
-        //   }
-        // });
-
-        startProcess.unref();
-
-        if (await waitForService()) {
-          executeCodeCommand(process.argv.slice(3));
+          // 处理子进程输出
+          startProcess.stdout?.on('data', (data) => {
+            console.log(`输出: ${data}`);
+          });
+          startProcess.unref();
+          if (await waitForService()) {
+            await executeCodeCommand(process.argv.slice(3));
+          } else {
+            console.error(
+                "Service startup timeout, please manually run `ccr start` to start the service"
+            );
+            process.exit(1);
+          }
         } else {
-          console.error(
-            "Service startup timeout, please manually run `ccr start` to start the service"
-          );
-          process.exit(1);
+          await executeCodeCommand(process.argv.slice(3));
         }
-      } else {
-        executeCodeCommand(process.argv.slice(3));
       }
       break;
     case "-v":
     case "version":
       console.log(`claude-code-router version: ${version}`);
       break;
+    // Gracefully stop and restart the service with cleanup
     case "restart":
       // Stop the service if it's running
+      const pidFile = getPidFile();
       try {
-        const pid = parseInt(readFileSync(PID_FILE, "utf-8"));
+        const pid = parseInt(readFileSync(pidFile, "utf-8"));
         process.kill(pid);
-        cleanupPidFile();
+        cleanupPidFile(pidFile);
         if (existsSync(REFERENCE_COUNT_FILE)) {
           try {
             fs.unlinkSync(REFERENCE_COUNT_FILE);
@@ -136,16 +149,21 @@ async function main() {
         }
         console.log("claude code router service has been stopped.");
       } catch (e) {
-        console.log("Service was not running or failed to stop.");
-        cleanupPidFile();
+        // If the service was not running or failed to stop, log a message
+        console.log(`${isDevMode() ? "Development" : ""}Service was not running or failed to stop. cleaning up PID file ${pidFile}.`);
+
+        cleanupPidFile(pidFile);
       }
 
       // Start the service again in the background
-      console.log("Starting claude code router service...");
+      console.log(` ${isDevMode() ? "Development" : ""}. Starting claude code router service... please wait.`);
       const cliPath = join(__dirname, "cli.js");
       const startProcess = spawn("node", [cliPath, "start"], {
         detached: true,
         stdio: "ignore",
+        env: {
+            ...process.env,
+        }
       });
 
       startProcess.on("error", (error) => {
@@ -154,7 +172,8 @@ async function main() {
       });
 
       startProcess.unref();
-      console.log("✅ Service started successfully in the background.");
+      console.log(`${isDevMode() ? "Development" : ""}✅ Service started successfully in the background.`);
+
       break;
     case "-h":
     case "help":
