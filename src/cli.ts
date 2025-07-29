@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { run } from "./index";
 import { showStatus } from "./utils/status";
 import { executeCodeCommand } from "./utils/codeCommand";
@@ -11,30 +10,45 @@ import { join } from "path";
 import { logger } from "./utils/logger";
 import { formatErrorMessage } from "./utils/errorHandler";
 import { handleStopCommand, stopService } from "./utils/serviceControl";
+import { 
+  showBanner, 
+  createSpinner, 
+  addProvider, 
+  listProviders, 
+  showSuccess, 
+  showError, 
+  showInfo, 
+  showWarning,
+  theme 
+} from "./utils/cliEnhancer";
 
 const command = process.argv[2];
 
 const HELP_TEXT = `
-Usage: ccr [command] [options]
+${theme.bold('Usage:')} ccr [command] [options]
 
-Commands:
-  start         Start server 
+${theme.bold('Commands:')}
+  ${theme.primary('start')}         Start server 
                 Options:
                   --provider <name> <url> <key> <models>  Add/update provider
                   --transformer <provider> <transformer>   Set transformer for provider
-  stop          Stop server
-  restart       Restart server (supports same options as start)
-  status        Show server status
-  code          Execute claude command
-  -v, version   Show version information
-  -h, help      Show help information
+  ${theme.primary('stop')}          Stop server
+  ${theme.primary('restart')}       Restart server (supports same options as start)
+  ${theme.primary('status')}        Show server status
+  ${theme.primary('code')}          Execute claude command
+  ${theme.primary('provider')}      Manage providers
+                  add <name> <url> <key> <models>         Add/update provider
+                  list                                     List all providers
+  ${theme.primary('-v, version')}   Show version information
+  ${theme.primary('-h, help')}      Show help information
 
-Examples:
-  ccr start
-  ccr start --provider openrouter https://openrouter.ai/api/v1/chat/completions sk-xxx claude-3.5-sonnet,gemini-2.0-flash
-  ccr start --transformer openrouter openrouter
-  ccr start --provider deepseek https://api.deepseek.com/chat/completions sk-xxx deepseek-chat --transformer deepseek deepseek
-  ccr code "Write a Hello World"
+${theme.bold('Examples:')}
+  ${theme.muted('ccr start')}
+  ${theme.muted('ccr start --provider openrouter https://openrouter.ai/api/v1/chat/completions sk-xxx claude-3.5-sonnet,gemini-2.0-flash')}
+  ${theme.muted('ccr start --transformer openrouter openrouter')}
+  ${theme.muted('ccr provider add deepseek https://api.deepseek.com/chat/completions sk-xxx deepseek-chat')}
+  ${theme.muted('ccr provider list')}
+  ${theme.muted('ccr code "Write a Hello World"')}
 `;
 
 async function waitForService(
@@ -90,9 +104,10 @@ async function main() {
     case "start":
       try {
         const startOptions = parseStartOptions(process.argv.slice(3));
+        showBanner('Starting Claude Code Router...', 'info');
         await run(startOptions);
       } catch (error: any) {
-        console.error(`Failed to start service: ${formatErrorMessage(error)}`);
+        showError(`Failed to start service: ${formatErrorMessage(error)}`);
         process.exit(1);
       }
       break;
@@ -104,7 +119,7 @@ async function main() {
       break;
     case "code":
       if (!isServiceRunning()) {
-        console.log("⚡ Service not running, starting service...");
+        showInfo("Service not running, starting service...");
         const cliPath = join(__dirname, "cli.js");
         const startProcess = spawn("node", [cliPath, "start"], {
           detached: true,
@@ -113,20 +128,20 @@ async function main() {
         });
 
         startProcess.on("error", (error) => {
-          console.error("Failed to start service:", formatErrorMessage(error));
+          showError(`Failed to start service: ${formatErrorMessage(error)}`);
           process.exit(1);
         });
 
         startProcess.unref();
 
-        console.log("⏳ Waiting for service to be ready...");
+        const spinner = createSpinner('Waiting for service to be ready...');
+        spinner.start();
         if (await waitForService()) {
-          console.log("✅ Service is ready!");
+          spinner.succeed(theme.success('Service is ready!'));
           await executeCodeCommand(process.argv.slice(3));
         } else {
-          console.error(
-            "❌ Service startup timeout. Please try running 'ccr start' manually first."
-          );
+          spinner.fail(theme.error('Service startup timeout'));
+          showError("Please try running 'ccr start' manually first.");
           process.exit(1);
         }
       } else {
@@ -135,25 +150,33 @@ async function main() {
       break;
     case "-v":
     case "version":
-      console.log(`claude-code-router version: ${version}`);
+      showBanner(`Claude Code Router v${version}`, 'info');
       break;
     case "restart":
       // Stop the service if it's running
-      console.log("🔄 Restarting Claude Code Router service...");
+      showInfo("Restarting Claude Code Router service...");
+      const stopSpinner = createSpinner('Stopping service...');
+      stopSpinner.start();
+      
       if (existsSync(PID_FILE)) {
         const stopped = await stopService({ force: true, timeout: 5000 });
         if (stopped) {
-          console.log("✅ Service stopped.");
+          stopSpinner.succeed(theme.success('Service stopped'));
         } else {
+          stopSpinner.info(theme.info('Service may have already been stopped'));
           logger.debug('Service may have already been stopped');
         }
+      } else {
+        stopSpinner.info(theme.info('No running service found'));
       }
 
       // Wait a moment before restarting
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       // Start the service again in the background with options
-      console.log("🚀 Starting service...");
+      const startSpinner = createSpinner('Starting service...');
+      startSpinner.start();
+      
       const cliPath = join(__dirname, "cli.js");
       const restartArgs = ["start", ...process.argv.slice(3)];
       const startProcess = spawn("node", [cliPath, ...restartArgs], {
@@ -162,7 +185,7 @@ async function main() {
       });
 
       startProcess.on("error", (error) => {
-        console.error("Failed to start service:", formatErrorMessage(error));
+        startSpinner.fail(theme.error(`Failed to start service: ${formatErrorMessage(error)}`));
         process.exit(1);
       });
 
@@ -170,10 +193,46 @@ async function main() {
       
       // Wait for service to be ready
       if (await waitForService()) {
-        console.log("✅ Service restarted successfully!");
+        startSpinner.succeed(theme.success('Service restarted successfully!'));
+        showSuccess('Claude Code Router is ready!');
       } else {
-        console.error("❌ Service failed to start properly.");
+        startSpinner.fail(theme.error('Service failed to start properly'));
         process.exit(1);
+      }
+      break;
+    case "provider":
+      const subCommand = process.argv[3];
+      switch (subCommand) {
+        case "add":
+          if (process.argv.length < 8) {
+            showError('Invalid usage. Expected: ccr provider add <name> <url> <key> <models>');
+            console.log(theme.muted('Example: ccr provider add deepseek https://api.deepseek.com/chat/completions sk-xxx deepseek-chat,deepseek-reasoner'));
+            process.exit(1);
+          }
+          const [, , , , name, url, key, modelsStr, ...rest] = process.argv;
+          const models = modelsStr.split(',');
+          let transformer: string | undefined;
+          
+          // Check if transformer is specified
+          if (rest[0] === '--transformer' && rest[1]) {
+            transformer = rest[1];
+          }
+          
+          try {
+            await addProvider(name, url, key, models, transformer);
+            showInfo('Provider added successfully. Restart the service to apply changes.');
+          } catch (error: any) {
+            showError(`Failed to add provider: ${error.message}`);
+            process.exit(1);
+          }
+          break;
+        case "list":
+          await listProviders();
+          break;
+        default:
+          showError(`Unknown provider subcommand: ${subCommand}`);
+          console.log(theme.muted('\nAvailable subcommands: add, list'));
+          process.exit(1);
       }
       break;
     case "-h":
@@ -181,13 +240,14 @@ async function main() {
       console.log(HELP_TEXT);
       break;
     default:
+      showWarning(`Unknown command: ${command}`);
       console.log(HELP_TEXT);
       process.exit(1);
   }
 }
 
 main().catch((error) => {
-  console.error("Fatal error:", formatErrorMessage(error));
+  showError(`Fatal error: ${formatErrorMessage(error)}`);
   logger.error('CLI fatal error', { error });
   process.exit(1);
 });

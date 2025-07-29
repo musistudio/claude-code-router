@@ -142,17 +142,17 @@ const configSchema = {
         },
         background: {
           type: 'string',
-          pattern: '^[^,]+,[^,]+$',
+          pattern: '^([^,]+,[^,]+)?$',
           description: 'Background tasks provider,model',
         },
         think: {
           type: 'string',
-          pattern: '^[^,]+,[^,]+$',
+          pattern: '^([^,]+,[^,]+)?$',
           description: 'Thinking/reasoning provider,model',
         },
         longContext: {
           type: 'string',
-          pattern: '^[^,]+,[^,]+$',
+          pattern: '^([^,]+,[^,]+)?$',
           description: 'Long context provider,model',
         },
         longContextThreshold: {
@@ -163,7 +163,7 @@ const configSchema = {
         },
         webSearch: {
           type: 'string',
-          pattern: '^[^,]+,[^,]+$',
+          pattern: '^([^,]+,[^,]+)?$',
           description: 'Web search provider,model',
         },
       },
@@ -229,7 +229,7 @@ export function validateConfig(config: any): ValidationResult {
     const routerEntries = Object.entries(config.Router).filter(([key]) => key !== 'longContextThreshold');
     
     for (const [routeType, routeValue] of routerEntries) {
-      if (typeof routeValue === 'string') {
+      if (typeof routeValue === 'string' && routeValue.trim() !== '') {
         const [provider, model] = routeValue.split(',');
         if (!providerNames.has(provider)) {
           result.valid = false;
