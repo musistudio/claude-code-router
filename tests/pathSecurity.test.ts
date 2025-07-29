@@ -26,10 +26,10 @@ describe('Path Security', () => {
     it('should resolve $HOME correctly', () => {
       const originalHome = process.env.HOME;
       process.env.HOME = '/home/user';
-      
+
       const resolved = resolveSecurePath('$HOME/test');
       expect(resolved).toBe(path.resolve('/home/user/test'));
-      
+
       process.env.HOME = originalHome;
     });
 
@@ -38,22 +38,24 @@ describe('Path Security', () => {
       const originalUserProfile = process.env.USERPROFILE;
       delete process.env.HOME;
       delete process.env.USERPROFILE;
-      
+
       expect(() => resolveSecurePath('$HOME/test')).toThrow('HOME environment variable is not set');
-      
+
       process.env.HOME = originalHome;
       if (originalUserProfile) process.env.USERPROFILE = originalUserProfile;
     });
 
     it('should prevent directory traversal', () => {
       const basePath = '/safe/path';
-      expect(() => resolveSecurePath('../../../etc/passwd', basePath))
-        .toThrow('Path traversal attempt detected');
+      expect(() => resolveSecurePath('../../../etc/passwd', basePath)).toThrow(
+        'Path traversal attempt detected'
+      );
     });
 
     it('should reject null bytes in paths', () => {
-      expect(() => resolveSecurePath('/path/with\0null'))
-        .toThrow('Null bytes are not allowed in paths');
+      expect(() => resolveSecurePath('/path/with\0null')).toThrow(
+        'Null bytes are not allowed in paths'
+      );
     });
 
     it('should handle absolute paths correctly', () => {
@@ -69,13 +71,13 @@ describe('Path Security', () => {
     });
 
     it('should throw error for relative paths without base path', () => {
-      expect(() => resolveSecurePath('relative/path'))
-        .toThrow('Base path required for relative paths');
+      expect(() => resolveSecurePath('relative/path')).toThrow(
+        'Base path required for relative paths'
+      );
     });
 
     it('should throw error for empty path', () => {
-      expect(() => resolveSecurePath(''))
-        .toThrow('Path cannot be empty');
+      expect(() => resolveSecurePath('')).toThrow('Path cannot be empty');
     });
   });
 
@@ -126,14 +128,15 @@ describe('Path Security', () => {
     });
 
     it('should reject invalid paths', async () => {
-      await expect(createSecureDirectory('/path/with\0null'))
-        .rejects.toThrow('Null bytes are not allowed in paths');
+      await expect(createSecureDirectory('/path/with\0null')).rejects.toThrow(
+        'Null bytes are not allowed in paths'
+      );
     });
 
     it('should set correct permissions', async () => {
       const newDir = path.join(testDir, 'secure-dir');
       await createSecureDirectory(newDir, { mode: 0o700 });
-      
+
       const stats = fs.statSync(newDir);
       // Check if directory is created (permissions check may vary by OS)
       expect(stats.isDirectory()).toBe(true);

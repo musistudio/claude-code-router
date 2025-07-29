@@ -20,7 +20,7 @@ export function resolveSecurePath(inputPath: string, basePath?: string): string 
     throw new Error('HOME environment variable is not set');
   }
   let resolvedPath = inputPath.replace(/\$HOME/g, homeDir);
-  
+
   // If the path is not absolute, resolve it against the base path
   if (!path.isAbsolute(resolvedPath)) {
     if (!basePath) {
@@ -49,15 +49,18 @@ export function resolveSecurePath(inputPath: string, basePath?: string): string 
 
   // Check for suspicious patterns
   const suspiciousPatterns = [
-    /\.\.[\\/]/,  // Parent directory traversal
-    /^\/etc\//,   // System config files
-    /^\/proc\//,  // Process information
-    /^\/sys\//,   // System files
+    /\.\.[\\/]/, // Parent directory traversal
+    /^\/etc\//, // System config files
+    /^\/proc\//, // Process information
+    /^\/sys\//, // System files
   ];
 
   for (const pattern of suspiciousPatterns) {
     if (pattern.test(normalizedPath)) {
-      logger.warn('Suspicious path pattern detected', { path: normalizedPath, pattern: pattern.toString() });
+      logger.warn('Suspicious path pattern detected', {
+        path: normalizedPath,
+        pattern: pattern.toString(),
+      });
     }
   }
 
@@ -104,7 +107,7 @@ export async function createSecureDirectory(
   options: { recursive?: boolean; mode?: number } = {}
 ): Promise<void> {
   const { recursive = true, mode = 0o755 } = options;
-  
+
   try {
     const resolvedPath = resolveSecurePath(dirPath);
     await fs.promises.mkdir(resolvedPath, { recursive, mode });

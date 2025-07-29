@@ -9,7 +9,7 @@ describe('Provider Configuration', () => {
         name: 'test-provider',
         api_base_url: 'https://api.test.com/v1/chat/completions',
         api_key: 'sk-test123',
-        models: ['model1', 'model2']
+        models: ['model1', 'model2'],
       };
 
       const config: Config = {
@@ -20,11 +20,11 @@ describe('Provider Configuration', () => {
           think: '',
           longContext: '',
           longContextThreshold: 60000,
-          webSearch: ''
+          webSearch: '',
         },
         APIKEY: 'test-api-key-123456',
         HOST: '0.0.0.0',
-        API_TIMEOUT_MS: 600000
+        API_TIMEOUT_MS: 600000,
       };
 
       const result = validateConfig(config);
@@ -42,8 +42,8 @@ describe('Provider Configuration', () => {
         api_key: 'sk-test123',
         models: ['model1', 'model2'],
         transformer: {
-          use: ['openrouter']
-        }
+          use: ['openrouter'],
+        },
       };
 
       const config: Config = {
@@ -54,11 +54,11 @@ describe('Provider Configuration', () => {
           think: '',
           longContext: '',
           longContextThreshold: 60000,
-          webSearch: ''
+          webSearch: '',
         },
         APIKEY: 'test-api-key-123456',
         HOST: '0.0.0.0',
-        API_TIMEOUT_MS: 600000
+        API_TIMEOUT_MS: 600000,
       };
 
       const result = validateConfig(config);
@@ -73,14 +73,11 @@ describe('Provider Configuration', () => {
         api_key: 'sk-test123',
         models: ['model1', 'model2'],
         transformer: {
-          use: [
-            'tooluse',
-            ['maxtoken', { max_tokens: 16384 }]
-          ],
-          'model1': {
-            use: ['reasoning']
-          }
-        }
+          use: ['tooluse', ['maxtoken', { max_tokens: 16384 }]],
+          model1: {
+            use: ['reasoning'],
+          },
+        },
       };
 
       const config: Config = {
@@ -91,11 +88,11 @@ describe('Provider Configuration', () => {
           think: '',
           longContext: '',
           longContextThreshold: 60000,
-          webSearch: ''
+          webSearch: '',
         },
         APIKEY: 'test-api-key-123456',
         HOST: '0.0.0.0',
-        API_TIMEOUT_MS: 600000
+        API_TIMEOUT_MS: 600000,
       };
 
       const result = validateConfig(config);
@@ -117,11 +114,11 @@ describe('Provider Configuration', () => {
           think: '',
           longContext: '',
           longContextThreshold: 60000,
-          webSearch: ''
+          webSearch: '',
         },
         APIKEY: 'test-api-key-123456',
         HOST: '0.0.0.0',
-        API_TIMEOUT_MS: 600000
+        API_TIMEOUT_MS: 600000,
       };
 
       const result = validateConfig(config);
@@ -139,11 +136,11 @@ describe('Provider Configuration', () => {
         models: [
           'google/gemini-2.5-pro-preview',
           'anthropic/claude-sonnet-4',
-          'anthropic/claude-3.5-sonnet'
+          'anthropic/claude-3.5-sonnet',
         ],
         transformer: {
-          use: ['openrouter']
-        }
+          use: ['openrouter'],
+        },
       };
 
       expect(openRouterProvider.name).toBe('openrouter');
@@ -160,9 +157,9 @@ describe('Provider Configuration', () => {
         transformer: {
           use: ['deepseek'],
           'deepseek-chat': {
-            use: ['tooluse']
-          }
-        }
+            use: ['tooluse'],
+          },
+        },
       };
 
       expect(deepSeekProvider.name).toBe('deepseek');
@@ -175,7 +172,7 @@ describe('Provider Configuration', () => {
         name: 'ollama',
         api_base_url: 'http://localhost:11434/v1/chat/completions',
         api_key: 'ollama',
-        models: ['qwen2.5-coder:latest', 'llama3:latest']
+        models: ['qwen2.5-coder:latest', 'llama3:latest'],
       };
 
       expect(ollamaProvider.name).toBe('ollama');
@@ -190,8 +187,8 @@ describe('Provider Configuration', () => {
         api_key: 'AIza-test-key',
         models: ['gemini-2.5-flash', 'gemini-2.5-pro'],
         transformer: {
-          use: ['gemini']
-        }
+          use: ['gemini'],
+        },
       };
 
       expect(geminiProvider.name).toBe('gemini');
@@ -208,14 +205,14 @@ describe('Provider Configuration', () => {
             name: 'provider1',
             api_base_url: 'https://api1.test.com',
             api_key: 'key1',
-            models: ['model1', 'model2']
+            models: ['model1', 'model2'],
           },
           {
             name: 'provider2',
             api_base_url: 'https://api2.test.com',
             api_key: 'key2',
-            models: ['model3']
-          }
+            models: ['model3'],
+          },
         ],
         Router: {
           default: 'provider1,model1',
@@ -223,11 +220,11 @@ describe('Provider Configuration', () => {
           think: 'provider1,model2',
           longContext: 'provider1,model1',
           longContextThreshold: 100000,
-          webSearch: 'provider2,model3'
+          webSearch: 'provider2,model3',
         },
         APIKEY: 'test-api-key-123456',
         HOST: '0.0.0.0',
-        API_TIMEOUT_MS: 600000
+        API_TIMEOUT_MS: 600000,
       };
 
       const result = validateConfig(config);
@@ -236,23 +233,25 @@ describe('Provider Configuration', () => {
 
     it('should handle empty router routes', () => {
       const config: Config = {
-        Providers: [{
-          name: 'provider1',
-          api_base_url: 'https://api.test.com',
-          api_key: 'key1',
-          models: ['model1']
-        }],
+        Providers: [
+          {
+            name: 'provider1',
+            api_base_url: 'https://api.test.com',
+            api_key: 'key1',
+            models: ['model1'],
+          },
+        ],
         Router: {
           default: 'provider1,model1',
           background: '',
           think: '',
           longContext: '',
           longContextThreshold: 60000,
-          webSearch: ''
+          webSearch: '',
         },
         APIKEY: 'test-api-key-123456',
         HOST: '0.0.0.0',
-        API_TIMEOUT_MS: 600000
+        API_TIMEOUT_MS: 600000,
       };
 
       const result = validateConfig(config);

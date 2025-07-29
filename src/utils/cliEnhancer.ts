@@ -19,40 +19,46 @@ export const theme = {
   info: chalk.blue,
   muted: chalk.gray,
   bold: chalk.bold,
-  highlight: chalk.bgHex('#00E0FF').black
+  highlight: chalk.bgHex('#00E0FF').black,
 };
 
-export function showBanner(message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') {
+export function showBanner(
+  message: string,
+  type: 'success' | 'error' | 'info' | 'warning' = 'info'
+) {
   const colors = {
     success: { borderColor: 'green', titleColor: theme.success },
     error: { borderColor: 'red', titleColor: theme.error },
     info: { borderColor: 'cyan', titleColor: theme.primary },
-    warning: { borderColor: 'yellow', titleColor: theme.warning }
+    warning: { borderColor: 'yellow', titleColor: theme.warning },
   };
 
   const config = colors[type];
-  
-  console.log(boxen(config.titleColor(message), {
-    padding: 1,
-    margin: 1,
-    borderStyle: 'round',
-    borderColor: config.borderColor as any,
-    textAlignment: 'center'
-  }));
+
+  console.log(
+    boxen(config.titleColor(message), {
+      padding: 1,
+      margin: 1,
+      borderStyle: 'round',
+      borderColor: config.borderColor as any,
+      textAlignment: 'center',
+    })
+  );
 }
 
 export function createSpinner(text: string) {
   return ora({
     text,
     spinner: 'dots',
-    color: 'cyan'
+    color: 'cyan',
   });
 }
 
 export function formatProvider(provider: Provider): string {
   const models = provider.models.join(', ');
-  const hasTransformer = provider.transformer && provider.transformer.use && provider.transformer.use.length > 0;
-  
+  const hasTransformer =
+    provider.transformer && provider.transformer.use && provider.transformer.use.length > 0;
+
   return `${theme.bold(provider.name)} ${theme.muted(`(${provider.api_base_url})`)}
   ${theme.info('Models:')} ${models}
   ${theme.info('API Key:')} ${provider.api_key ? theme.success('✓ Configured') : theme.error('✗ Not set')}
@@ -71,23 +77,24 @@ export function showProvidersTable(providers: Provider[]) {
       theme.bold('API Base URL'),
       theme.bold('Models'),
       theme.bold('API Key'),
-      theme.bold('Transformer')
+      theme.bold('Transformer'),
     ],
     style: {
       head: [],
-      border: []
+      border: [],
     },
-    colWidths: [15, 40, 30, 12, 20]
+    colWidths: [15, 40, 30, 12, 20],
   });
 
   providers.forEach(provider => {
-    const hasTransformer = provider.transformer && provider.transformer.use && provider.transformer.use.length > 0;
+    const hasTransformer =
+      provider.transformer && provider.transformer.use && provider.transformer.use.length > 0;
     table.push([
       theme.primary(provider.name),
       theme.muted(provider.api_base_url),
       provider.models.join('\n'),
       provider.api_key ? theme.success('✓') : theme.error('✗'),
-      hasTransformer ? theme.info(JSON.stringify(provider.transformer.use)) : theme.muted('none')
+      hasTransformer ? theme.info(JSON.stringify(provider.transformer.use)) : theme.muted('none'),
     ]);
   });
 
@@ -102,36 +109,36 @@ export function showRouterConfig(router: any) {
     head: [theme.bold('Route'), theme.bold('Provider'), theme.bold('Model')],
     style: {
       head: [],
-      border: []
-    }
+      border: [],
+    },
   });
 
   Object.entries(router).forEach(([key, value]) => {
     if (typeof value === 'string' && value.includes(',')) {
       const [provider, model] = value.split(',');
-      table.push([
-        theme.primary(key),
-        theme.info(provider),
-        theme.muted(model)
-      ]);
+      table.push([theme.primary(key), theme.info(provider), theme.muted(model)]);
     } else if (key !== 'longContextThreshold') {
-      table.push([
-        theme.primary(key),
-        theme.muted(String(value)),
-        ''
-      ]);
+      table.push([theme.primary(key), theme.muted(String(value)), '']);
     }
   });
 
   console.log('\n' + theme.bold.underline('Router Configuration:'));
   console.log(table.toString());
-  
+
   if (router.longContextThreshold) {
-    console.log(`\n${theme.info('Long Context Threshold:')} ${theme.bold(router.longContextThreshold)} tokens`);
+    console.log(
+      `\n${theme.info('Long Context Threshold:')} ${theme.bold(router.longContextThreshold)} tokens`
+    );
   }
 }
 
-export async function addProvider(name: string, apiBaseUrl: string, apiKey: string, models: string[], transformer?: string) {
+export async function addProvider(
+  name: string,
+  apiBaseUrl: string,
+  apiKey: string,
+  models: string[],
+  transformer?: string
+) {
   const spinner = createSpinner('Adding provider...');
   spinner.start();
 
@@ -140,9 +147,9 @@ export async function addProvider(name: string, apiBaseUrl: string, apiKey: stri
     if (!existsSync(CONFIG_DIR)) {
       mkdirSync(CONFIG_DIR, { recursive: true });
     }
-    
+
     let config: Config;
-    
+
     if (existsSync(CONFIG_FILE)) {
       const configContent = readFileSync(CONFIG_FILE, 'utf-8');
       config = JSON5.parse(configContent);
@@ -155,11 +162,11 @@ export async function addProvider(name: string, apiBaseUrl: string, apiKey: stri
           think: '',
           longContext: '',
           longContextThreshold: 60000,
-          webSearch: ''
+          webSearch: '',
         },
         APIKEY: '',
         HOST: '0.0.0.0',
-        API_TIMEOUT_MS: 600000
+        API_TIMEOUT_MS: 600000,
       };
     }
 
@@ -168,12 +175,12 @@ export async function addProvider(name: string, apiBaseUrl: string, apiKey: stri
       name,
       api_base_url: apiBaseUrl,
       api_key: apiKey,
-      models
+      models,
     };
 
     if (transformer) {
       provider.transformer = {
-        use: [transformer]
+        use: [transformer],
       };
     }
 
@@ -186,10 +193,9 @@ export async function addProvider(name: string, apiBaseUrl: string, apiKey: stri
     }
 
     writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
-    
+
     console.log('\n' + theme.info('Provider configuration:'));
     console.log(formatProvider(provider));
-    
   } catch (error: any) {
     spinner.fail(theme.error(`Failed to add provider: ${error.message}`));
     throw error;
@@ -209,14 +215,15 @@ export async function listProviders() {
     showBanner('Claude Code Router Configuration', 'info');
     showProvidersTable(config.Providers);
     showRouterConfig(config.Router);
-    
+
     if (config.APIKEY) {
       console.log(`\n${theme.info('API Key:')} ${theme.success('✓ Configured')}`);
     }
-    
+
     console.log(`\n${theme.info('Host:')} ${theme.bold(config.HOST || '0.0.0.0')}`);
-    console.log(`${theme.info('API Timeout:')} ${theme.bold((config.API_TIMEOUT_MS || 600000) / 1000)}s\n`);
-    
+    console.log(
+      `${theme.info('API Timeout:')} ${theme.bold((config.API_TIMEOUT_MS || 600000) / 1000)}s\n`
+    );
   } catch (error: any) {
     showBanner(`Failed to read configuration: ${error.message}`, 'error');
     throw error;

@@ -14,12 +14,12 @@ if (!fs.existsSync(LOG_DIR)) {
 // Custom format for better readability
 const customFormat = winston.format.printf(({ level, message, timestamp, ...metadata }) => {
   let msg = `${timestamp} [${level.toUpperCase()}] ${message}`;
-  
+
   // Add metadata if present
   if (Object.keys(metadata).length > 0) {
     msg += ` ${JSON.stringify(metadata)}`;
   }
-  
+
   return msg;
 });
 
@@ -27,10 +27,7 @@ const customFormat = winston.format.printf(({ level, message, timestamp, ...meta
 const transports: winston.transport[] = [
   // Console transport for development
   new winston.transports.Console({
-    format: winston.format.combine(
-      winston.format.colorize(),
-      winston.format.simple()
-    ),
+    format: winston.format.combine(winston.format.colorize(), winston.format.simple()),
     level: process.env.LOG_LEVEL || 'info',
   }),
 ];
@@ -44,10 +41,7 @@ if (process.env.NODE_ENV !== 'test') {
       datePattern: 'YYYY-MM-DD',
       maxSize: '20m',
       maxFiles: '14d',
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        customFormat
-      ),
+      format: winston.format.combine(winston.format.timestamp(), customFormat),
     })
   );
 
@@ -59,10 +53,7 @@ if (process.env.NODE_ENV !== 'test') {
       maxSize: '20m',
       maxFiles: '30d',
       level: 'error',
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        customFormat
-      ),
+      format: winston.format.combine(winston.format.timestamp(), customFormat),
     })
   );
 }
@@ -107,7 +98,7 @@ export const stream = {
 export function logRequest(req: any, res: any, responseTime: number) {
   const { method, url, headers } = req;
   const { statusCode } = res;
-  
+
   const logData = {
     method,
     url,

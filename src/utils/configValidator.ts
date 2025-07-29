@@ -100,10 +100,7 @@ const configSchema = {
                       type: 'array',
                       minItems: 2,
                       maxItems: 2,
-                      items: [
-                        { type: 'string' },
-                        { type: 'object' },
-                      ],
+                      items: [{ type: 'string' }, { type: 'object' }],
                     },
                   ],
                 },
@@ -209,7 +206,7 @@ export function validateConfig(config: any): ValidationResult {
   const valid = validate(config);
   if (!valid && validate.errors) {
     result.valid = false;
-    result.errors = validate.errors.map((err) => {
+    result.errors = validate.errors.map(err => {
       const field = err.instancePath || 'root';
       return `${field}: ${err.message}`;
     });
@@ -218,7 +215,12 @@ export function validateConfig(config: any): ValidationResult {
   // Additional business logic validation
   if (result.valid) {
     // Check if APIKEY is set when HOST is not localhost
-    if (config.HOST && config.HOST !== '127.0.0.1' && config.HOST !== 'localhost' && !config.APIKEY) {
+    if (
+      config.HOST &&
+      config.HOST !== '127.0.0.1' &&
+      config.HOST !== 'localhost' &&
+      !config.APIKEY
+    ) {
       result.warnings!.push(
         'HOST is set to a non-localhost address but APIKEY is not set. This may be a security risk.'
       );
@@ -226,14 +228,18 @@ export function validateConfig(config: any): ValidationResult {
 
     // Validate provider references in Router
     const providerNames = new Set(config.Providers.map((p: any) => p.name));
-    const routerEntries = Object.entries(config.Router).filter(([key]) => key !== 'longContextThreshold');
-    
+    const routerEntries = Object.entries(config.Router).filter(
+      ([key]) => key !== 'longContextThreshold'
+    );
+
     for (const [routeType, routeValue] of routerEntries) {
       if (typeof routeValue === 'string' && routeValue.trim() !== '') {
         const [provider, model] = routeValue.split(',');
         if (!providerNames.has(provider)) {
           result.valid = false;
-          result.errors!.push(`Router.${routeType}: Provider '${provider}' not found in Providers list`);
+          result.errors!.push(
+            `Router.${routeType}: Provider '${provider}' not found in Providers list`
+          );
         } else {
           // Check if model exists in provider
           const providerConfig = config.Providers.find((p: any) => p.name === provider);
@@ -252,7 +258,9 @@ export function validateConfig(config: any): ValidationResult {
         const resolvedPath = resolveSecurePath(config.CUSTOM_ROUTER_PATH);
         if (!validateFilePath(resolvedPath)) {
           result.valid = false;
-          result.errors!.push(`CUSTOM_ROUTER_PATH: File not found or not readable at ${resolvedPath}`);
+          result.errors!.push(
+            `CUSTOM_ROUTER_PATH: File not found or not readable at ${resolvedPath}`
+          );
         }
       } catch (error: any) {
         result.valid = false;
@@ -301,7 +309,7 @@ export class ConfigWatcher {
     this.lastHash = this.getFileHash();
 
     // Watch for changes
-    this.watcher = fs.watch(this.configPath, (eventType) => {
+    this.watcher = fs.watch(this.configPath, eventType => {
       if (eventType === 'change') {
         this.checkForChanges();
       }
@@ -332,11 +340,11 @@ export class ConfigWatcher {
     const currentHash = this.getFileHash();
     if (currentHash && currentHash !== this.lastHash) {
       this.lastHash = currentHash;
-      
+
       try {
         const content = fs.readFileSync(this.configPath, 'utf8');
         const config = JSON.parse(content);
-        
+
         const validation = validateConfig(config);
         if (validation.valid) {
           logger.info('Configuration file changed and validated successfully');
@@ -377,7 +385,7 @@ export function migrateConfig(oldConfig: any): any {
 // Validate and throw on error
 export function validateConfigOrThrow(config: any): void {
   const validation = validateConfig(config);
-  
+
   if (!validation.valid) {
     throw new ConfigurationError(
       `Configuration validation failed:\n${validation.errors!.join('\n')}`
@@ -385,7 +393,7 @@ export function validateConfigOrThrow(config: any): void {
   }
 
   if (validation.warnings && validation.warnings.length > 0) {
-    validation.warnings.forEach((warning) => {
+    validation.warnings.forEach(warning => {
       logger.warn(`Configuration warning: ${warning}`);
     });
   }

@@ -1,27 +1,27 @@
-import { run } from "./index";
-import { showStatus } from "./utils/status";
-import { executeCodeCommand } from "./utils/codeCommand";
-import { cleanupPidFile, isServiceRunning } from "./utils/processCheck";
-import { version } from "../package.json";
-import { spawn } from "child_process";
-import { PID_FILE, REFERENCE_COUNT_FILE } from "./constants";
-import fs, { existsSync, readFileSync } from "fs";
-import { join } from "path";
-import { logger } from "./utils/logger";
-import { formatErrorMessage } from "./utils/errorHandler";
-import { handleStopCommand, stopService } from "./utils/serviceControl";
-import { 
-  showBanner, 
-  createSpinner, 
-  addProvider, 
-  listProviders, 
-  showSuccess, 
-  showError, 
-  showInfo, 
+import { run } from './index';
+import { showStatus } from './utils/status';
+import { executeCodeCommand } from './utils/codeCommand';
+import { cleanupPidFile, isServiceRunning } from './utils/processCheck';
+import { version } from '../package.json';
+import { spawn } from 'child_process';
+import { PID_FILE, REFERENCE_COUNT_FILE } from './constants';
+import fs, { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
+import { logger } from './utils/logger';
+import { formatErrorMessage } from './utils/errorHandler';
+import { handleStopCommand, stopService } from './utils/serviceControl';
+import {
+  showBanner,
+  createSpinner,
+  addProvider,
+  listProviders,
+  showSuccess,
+  showError,
+  showInfo,
   showWarning,
-  theme 
-} from "./utils/cliEnhancer";
-import { checkForUpdates } from "./utils/updateChecker";
+  theme,
+} from './utils/cliEnhancer';
+import { checkForUpdates } from './utils/updateChecker';
 
 const command = process.argv[2];
 
@@ -52,21 +52,18 @@ ${theme.bold('Examples:')}
   ${theme.muted('ccr code "Write a Hello World"')}
 `;
 
-async function waitForService(
-  timeout = 10000,
-  initialDelay = 1000
-): Promise<boolean> {
+async function waitForService(timeout = 10000, initialDelay = 1000): Promise<boolean> {
   // Wait for an initial period to let the service initialize
-  await new Promise((resolve) => setTimeout(resolve, initialDelay));
+  await new Promise(resolve => setTimeout(resolve, initialDelay));
 
   const startTime = Date.now();
   while (Date.now() - startTime < timeout) {
     if (isServiceRunning()) {
       // Wait for an additional short period to ensure service is fully ready
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 500));
       return true;
     }
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise(resolve => setTimeout(resolve, 100));
   }
   return false;
 }
@@ -74,24 +71,24 @@ async function waitForService(
 function parseStartOptions(args: string[]) {
   const options: any = {
     providers: [],
-    transformers: {}
+    transformers: {},
   };
 
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--provider" && i + 4 < args.length) {
+    if (args[i] === '--provider' && i + 4 < args.length) {
       const provider = {
         name: args[i + 1],
         api_base_url: args[i + 2],
         api_key: args[i + 3],
-        models: args[i + 4].split(",")
+        models: args[i + 4].split(','),
       };
       options.providers.push(provider);
       i += 4;
-    } else if (args[i] === "--transformer" && i + 2 < args.length) {
+    } else if (args[i] === '--transformer' && i + 2 < args.length) {
       const providerName = args[i + 1];
       const transformerName = args[i + 2];
       options.transformers[providerName] = {
-        use: [transformerName]
+        use: [transformerName],
       };
       i += 2;
     }
@@ -103,9 +100,9 @@ function parseStartOptions(args: string[]) {
 async function main() {
   // Check for updates (non-blocking)
   checkForUpdates().catch(() => {});
-  
+
   switch (command) {
-    case "start":
+    case 'start':
       try {
         const startOptions = parseStartOptions(process.argv.slice(3));
         showBanner('Starting Claude Code Router...', 'info');
@@ -115,23 +112,23 @@ async function main() {
         process.exit(1);
       }
       break;
-    case "stop":
+    case 'stop':
       await handleStopCommand();
       break;
-    case "status":
+    case 'status':
       await showStatus();
       break;
-    case "code":
+    case 'code':
       if (!isServiceRunning()) {
-        showInfo("Service not running, starting service...");
-        const cliPath = join(__dirname, "cli.js");
-        const startProcess = spawn("node", [cliPath, "start"], {
+        showInfo('Service not running, starting service...');
+        const cliPath = join(__dirname, 'cli.js');
+        const startProcess = spawn('node', [cliPath, 'start'], {
           detached: true,
-          stdio: "ignore",
-          env: { ...process.env, LOG_LEVEL: 'error' } // Reduce noise during auto-start
+          stdio: 'ignore',
+          env: { ...process.env, LOG_LEVEL: 'error' }, // Reduce noise during auto-start
         });
 
-        startProcess.on("error", (error) => {
+        startProcess.on('error', error => {
           showError(`Failed to start service: ${formatErrorMessage(error)}`);
           process.exit(1);
         });
@@ -152,16 +149,16 @@ async function main() {
         await executeCodeCommand(process.argv.slice(3));
       }
       break;
-    case "-v":
-    case "version":
+    case '-v':
+    case 'version':
       showBanner(`Claude Code Router v${version}`, 'info');
       break;
-    case "restart":
+    case 'restart':
       // Stop the service if it's running
-      showInfo("Restarting Claude Code Router service...");
+      showInfo('Restarting Claude Code Router service...');
       const stopSpinner = createSpinner('Stopping service...');
       stopSpinner.start();
-      
+
       if (existsSync(PID_FILE)) {
         const stopped = await stopService({ force: true, timeout: 5000 });
         if (stopped) {
@@ -180,21 +177,21 @@ async function main() {
       // Start the service again in the background with options
       const startSpinner = createSpinner('Starting service...');
       startSpinner.start();
-      
-      const cliPath = join(__dirname, "cli.js");
-      const restartArgs = ["start", ...process.argv.slice(3)];
-      const startProcess = spawn("node", [cliPath, ...restartArgs], {
+
+      const cliPath = join(__dirname, 'cli.js');
+      const restartArgs = ['start', ...process.argv.slice(3)];
+      const startProcess = spawn('node', [cliPath, ...restartArgs], {
         detached: true,
-        stdio: "ignore",
+        stdio: 'ignore',
       });
 
-      startProcess.on("error", (error) => {
+      startProcess.on('error', error => {
         startSpinner.fail(theme.error(`Failed to start service: ${formatErrorMessage(error)}`));
         process.exit(1);
       });
 
       startProcess.unref();
-      
+
       // Wait for service to be ready
       if (await waitForService()) {
         startSpinner.succeed(theme.success('Service restarted successfully!'));
@@ -204,24 +201,28 @@ async function main() {
         process.exit(1);
       }
       break;
-    case "provider":
+    case 'provider':
       const subCommand = process.argv[3];
       switch (subCommand) {
-        case "add":
+        case 'add':
           if (process.argv.length < 8) {
             showError('Invalid usage. Expected: ccr provider add <name> <url> <key> <models>');
-            console.log(theme.muted('Example: ccr provider add deepseek https://api.deepseek.com/chat/completions sk-xxx deepseek-chat,deepseek-reasoner'));
+            console.log(
+              theme.muted(
+                'Example: ccr provider add deepseek https://api.deepseek.com/chat/completions sk-xxx deepseek-chat,deepseek-reasoner'
+              )
+            );
             process.exit(1);
           }
           const [, , , , name, url, key, modelsStr, ...rest] = process.argv;
           const models = modelsStr.split(',');
           let transformer: string | undefined;
-          
+
           // Check if transformer is specified
           if (rest[0] === '--transformer' && rest[1]) {
             transformer = rest[1];
           }
-          
+
           try {
             await addProvider(name, url, key, models, transformer);
             showInfo('Provider added successfully. Restart the service to apply changes.');
@@ -230,7 +231,7 @@ async function main() {
             process.exit(1);
           }
           break;
-        case "list":
+        case 'list':
           await listProviders();
           break;
         default:
@@ -239,8 +240,8 @@ async function main() {
           process.exit(1);
       }
       break;
-    case "-h":
-    case "help":
+    case '-h':
+    case 'help':
       console.log(HELP_TEXT);
       break;
     default:
@@ -250,7 +251,7 @@ async function main() {
   }
 }
 
-main().catch((error) => {
+main().catch(error => {
   showError(`Fatal error: ${formatErrorMessage(error)}`);
   logger.error('CLI fatal error', { error });
   process.exit(1);

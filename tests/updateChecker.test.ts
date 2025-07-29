@@ -12,7 +12,7 @@ describe('Update Checker', () => {
           if (currentParts[i] < latestParts[i]) return -1;
           if (currentParts[i] > latestParts[i]) return 1;
         }
-        
+
         return 0;
       };
 
@@ -33,7 +33,7 @@ describe('Update Checker', () => {
       // Test command formatting
       const formatGlobalCommand = (pkg: string) => `npm install -g ${pkg}@latest`;
       const formatLocalCommand = (pkg: string) => `npm install ${pkg}@latest`;
-      
+
       expect(formatGlobalCommand('ccr-next')).toBe('npm install -g ccr-next@latest');
       expect(formatLocalCommand('ccr-next')).toBe('npm install ccr-next@latest');
     });

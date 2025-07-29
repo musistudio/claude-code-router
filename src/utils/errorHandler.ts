@@ -22,14 +22,20 @@ export class ApiError extends Error {
 }
 
 export class ConfigurationError extends Error {
-  constructor(message: string, public field?: string) {
+  constructor(
+    message: string,
+    public field?: string
+  ) {
     super(message);
     this.name = 'ConfigurationError';
   }
 }
 
 export class CircuitBreakerError extends Error {
-  constructor(message: string, public provider: string) {
+  constructor(
+    message: string,
+    public provider: string
+  ) {
     super(message);
     this.name = 'CircuitBreakerError';
   }
@@ -129,59 +135,59 @@ export async function retryWithBackoff<T>(
 
   const mergedOptions = { ...defaultOptions, ...options };
   let lastError: any;
-  
+
   for (let attempt = 0; attempt <= mergedOptions.retries; attempt++) {
     try {
       return await operation();
     } catch (error) {
       lastError = error;
-      
+
       // Don't retry on abort errors
       if (error instanceof AbortError) {
         throw error;
       }
-      
+
       // Don't retry if we shouldn't
       if (!shouldRetry(error)) {
         throw error;
       }
-      
+
       // Don't retry if we've exhausted attempts
       if (attempt === mergedOptions.retries) {
         throw error;
       }
-      
+
       // Calculate delay
       const delay = Math.min(
         mergedOptions.minTimeout * Math.pow(mergedOptions.factor, attempt),
         mergedOptions.maxTimeout
       );
-      
+
       // Call onFailedAttempt
       const attemptError = Object.assign({}, error, {
         attemptNumber: attempt + 1,
         retriesLeft: mergedOptions.retries - attempt,
       });
-      
+
       mergedOptions.onFailedAttempt(attemptError);
-      
+
       logger.warn(`Retry attempt failed: ${(error as any).message}`, {
         attemptNumber: attempt + 1,
         retriesLeft: mergedOptions.retries - attempt,
         delay,
       });
-      
+
       // Wait before retrying
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
-  
+
   throw lastError;
 }
 
 export function shouldRetry(error: any): boolean {
   if (error instanceof AbortError) return false;
-  
+
   if (error instanceof ApiError) {
     // Don't retry client errors (4xx) except for 429 (rate limit)
     if (error.statusCode >= 400 && error.statusCode < 500 && error.statusCode !== 429) {
@@ -210,9 +216,7 @@ export function formatErrorMessage(error: any): string {
   }
 
   if (error instanceof ConfigurationError) {
-    return `Configuration Error: ${error.message}${
-      error.field ? ` [Field: ${error.field}]` : ''
-    }`;
+    return `Configuration Error: ${error.message}${error.field ? ` [Field: ${error.field}]` : ''}`;
   }
 
   if (error instanceof CircuitBreakerError) {

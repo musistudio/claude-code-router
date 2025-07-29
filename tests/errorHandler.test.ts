@@ -70,12 +70,15 @@ describe('Error Handler', () => {
     });
 
     it('should format network errors correctly', () => {
-      expect(formatErrorMessage({ code: 'ECONNREFUSED' }))
-        .toBe('Connection refused. Please check if the API endpoint is accessible.');
-      expect(formatErrorMessage({ code: 'ETIMEDOUT' }))
-        .toBe('Request timed out. Please try again or increase the timeout setting.');
-      expect(formatErrorMessage({ code: 'ENOTFOUND' }))
-        .toBe('DNS lookup failed. Please check the API URL.');
+      expect(formatErrorMessage({ code: 'ECONNREFUSED' })).toBe(
+        'Connection refused. Please check if the API endpoint is accessible.'
+      );
+      expect(formatErrorMessage({ code: 'ETIMEDOUT' })).toBe(
+        'Request timed out. Please try again or increase the timeout setting.'
+      );
+      expect(formatErrorMessage({ code: 'ENOTFOUND' })).toBe(
+        'DNS lookup failed. Please check the API URL.'
+      );
     });
   });
 
@@ -87,34 +90,34 @@ describe('Error Handler', () => {
 
     it('should open circuit after threshold failures', () => {
       const provider = 'test-provider';
-      
+
       // Should be closed initially
       expect(circuitBreaker.isOpen(provider)).toBe(false);
-      
+
       // Record failures up to threshold
       for (let i = 0; i < 5; i++) {
         circuitBreaker.recordFailure(provider);
       }
-      
+
       // Should be open after threshold
       expect(circuitBreaker.isOpen(provider)).toBe(true);
     });
 
     it('should close circuit after successful requests in half-open state', () => {
       const provider = 'test-provider';
-      
+
       // Open the circuit
       for (let i = 0; i < 5; i++) {
         circuitBreaker.recordFailure(provider);
       }
-      
+
       expect(circuitBreaker.isOpen(provider)).toBe(true);
-      
+
       // Record successes
       for (let i = 0; i < 3; i++) {
         circuitBreaker.recordSuccess(provider);
       }
-      
+
       // Should eventually close
       expect(circuitBreaker.isOpen(provider)).toBe(false);
     });
@@ -141,8 +144,9 @@ describe('Error Handler', () => {
         throw new Error('Permanent failure');
       };
 
-      await expect(retryWithBackoff(operation, { retries: 2, minTimeout: 10 }))
-        .rejects.toThrow('Permanent failure');
+      await expect(retryWithBackoff(operation, { retries: 2, minTimeout: 10 })).rejects.toThrow(
+        'Permanent failure'
+      );
     });
   });
 });

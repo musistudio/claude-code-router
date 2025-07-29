@@ -12,20 +12,20 @@ interface NpmPackageInfo {
 }
 
 async function getLatestVersion(packageName: string): Promise<string | null> {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     const options = {
       hostname: 'registry.npmjs.org',
       path: `/${packageName}`,
       method: 'GET',
       headers: {
-        'Accept': 'application/json'
-      }
+        Accept: 'application/json',
+      },
     };
 
-    const req = https.request(options, (res) => {
+    const req = https.request(options, res => {
       let data = '';
 
-      res.on('data', (chunk) => {
+      res.on('data', chunk => {
         data += chunk;
       });
 
@@ -40,7 +40,7 @@ async function getLatestVersion(packageName: string): Promise<string | null> {
       });
     });
 
-    req.on('error', (error) => {
+    req.on('error', error => {
       logger.debug('Failed to check npm registry', { error });
       resolve(null);
     });
@@ -62,7 +62,7 @@ function compareVersions(current: string, latest: string): number {
     if (currentParts[i] < latestParts[i]) return -1;
     if (currentParts[i] > latestParts[i]) return 1;
   }
-  
+
   return 0;
 }
 
@@ -94,7 +94,7 @@ export async function checkForUpdates(skipCommands: string[] = ['version', '-v',
     }
 
     const comparison = compareVersions(currentVersion, latestVersion);
-    
+
     if (comparison < 0) {
       console.log(''); // Empty line for spacing
       showWarning(`A new version of ${packageName} is available!`);

@@ -8,12 +8,14 @@ describe('Configuration Validator', () => {
   describe('validateConfig', () => {
     it('should validate a minimal valid configuration', () => {
       const config = {
-        Providers: [{
-          name: 'test',
-          api_base_url: 'https://api.test.com',
-          api_key: 'test-key',
-          models: ['model1'],
-        }],
+        Providers: [
+          {
+            name: 'test',
+            api_base_url: 'https://api.test.com',
+            api_key: 'test-key',
+            models: ['model1'],
+          },
+        ],
         Router: {
           default: 'test,model1',
         },
@@ -33,32 +35,36 @@ describe('Configuration Validator', () => {
 
       const result = validateConfig(config);
       expect(result.valid).toBe(false);
-      expect(result.errors).toContain('root: must have required property \'Providers\'');
+      expect(result.errors).toContain("root: must have required property 'Providers'");
     });
 
     it('should reject configuration without router', () => {
       const config = {
-        Providers: [{
-          name: 'test',
-          api_base_url: 'https://api.test.com',
-          api_key: 'test-key',
-          models: ['model1'],
-        }],
+        Providers: [
+          {
+            name: 'test',
+            api_base_url: 'https://api.test.com',
+            api_key: 'test-key',
+            models: ['model1'],
+          },
+        ],
       };
 
       const result = validateConfig(config);
       expect(result.valid).toBe(false);
-      expect(result.errors).toContain('root: must have required property \'Router\'');
+      expect(result.errors).toContain("root: must have required property 'Router'");
     });
 
     it('should validate provider references in router', () => {
       const config = {
-        Providers: [{
-          name: 'provider1',
-          api_base_url: 'https://api.test.com',
-          api_key: 'test-key',
-          models: ['model1'],
-        }],
+        Providers: [
+          {
+            name: 'provider1',
+            api_base_url: 'https://api.test.com',
+            api_key: 'test-key',
+            models: ['model1'],
+          },
+        ],
         Router: {
           default: 'provider2,model1', // Invalid provider
         },
@@ -66,17 +72,21 @@ describe('Configuration Validator', () => {
 
       const result = validateConfig(config);
       expect(result.valid).toBe(false);
-      expect(result.errors).toContain('Router.default: Provider \'provider2\' not found in Providers list');
+      expect(result.errors).toContain(
+        "Router.default: Provider 'provider2' not found in Providers list"
+      );
     });
 
     it('should warn about models not in provider list', () => {
       const config = {
-        Providers: [{
-          name: 'provider1',
-          api_base_url: 'https://api.test.com',
-          api_key: 'test-key',
-          models: ['model1'],
-        }],
+        Providers: [
+          {
+            name: 'provider1',
+            api_base_url: 'https://api.test.com',
+            api_key: 'test-key',
+            models: ['model1'],
+          },
+        ],
         Router: {
           default: 'provider1,model2', // Model not in list
         },
@@ -84,17 +94,21 @@ describe('Configuration Validator', () => {
 
       const result = validateConfig(config);
       expect(result.valid).toBe(true);
-      expect(result.warnings).toContain('Router.default: Model \'model2\' not found in provider \'provider1\' models list');
+      expect(result.warnings).toContain(
+        "Router.default: Model 'model2' not found in provider 'provider1' models list"
+      );
     });
 
     it('should validate router entry format', () => {
       const config = {
-        Providers: [{
-          name: 'test',
-          api_base_url: 'https://api.test.com',
-          api_key: 'test-key',
-          models: ['model1'],
-        }],
+        Providers: [
+          {
+            name: 'test',
+            api_base_url: 'https://api.test.com',
+            api_key: 'test-key',
+            models: ['model1'],
+          },
+        ],
         Router: {
           default: 'invalid-format', // Should be provider,model
         },
@@ -108,12 +122,14 @@ describe('Configuration Validator', () => {
     it('should warn about non-localhost HOST without APIKEY', () => {
       const config = {
         HOST: '0.0.0.0',
-        Providers: [{
-          name: 'test',
-          api_base_url: 'https://api.test.com',
-          api_key: 'test-key',
-          models: ['model1'],
-        }],
+        Providers: [
+          {
+            name: 'test',
+            api_base_url: 'https://api.test.com',
+            api_key: 'test-key',
+            models: ['model1'],
+          },
+        ],
         Router: {
           default: 'test,model1',
         },
@@ -121,7 +137,9 @@ describe('Configuration Validator', () => {
 
       const result = validateConfig(config);
       expect(result.valid).toBe(true);
-      expect(result.warnings).toContain('HOST is set to a non-localhost address but APIKEY is not set. This may be a security risk.');
+      expect(result.warnings).toContain(
+        'HOST is set to a non-localhost address but APIKEY is not set. This may be a security risk.'
+      );
     });
   });
 
@@ -163,12 +181,14 @@ describe('Configuration Validator', () => {
     beforeEach(() => {
       // Create initial config file
       const config = {
-        Providers: [{
-          name: 'test',
-          api_base_url: 'https://api.test.com',
-          api_key: 'test-key',
-          models: ['model1'],
-        }],
+        Providers: [
+          {
+            name: 'test',
+            api_base_url: 'https://api.test.com',
+            api_key: 'test-key',
+            models: ['model1'],
+          },
+        ],
         Router: {
           default: 'test,model1',
         },
@@ -185,10 +205,10 @@ describe('Configuration Validator', () => {
       }
     });
 
-    it('should detect configuration changes', (done) => {
+    it('should detect configuration changes', done => {
       let changeDetected = false;
 
-      watcher = new ConfigWatcher(testConfigPath, (newConfig) => {
+      watcher = new ConfigWatcher(testConfigPath, newConfig => {
         changeDetected = true;
         expect(newConfig.Providers[0].api_key).toBe('new-key');
         done();
@@ -199,12 +219,14 @@ describe('Configuration Validator', () => {
       // Update config file after a delay
       setTimeout(() => {
         const updatedConfig = {
-          Providers: [{
-            name: 'test',
-            api_base_url: 'https://api.test.com',
-            api_key: 'new-key',
-            models: ['model1'],
-          }],
+          Providers: [
+            {
+              name: 'test',
+              api_base_url: 'https://api.test.com',
+              api_key: 'new-key',
+              models: ['model1'],
+            },
+          ],
           Router: {
             default: 'test,model1',
           },
@@ -213,7 +235,7 @@ describe('Configuration Validator', () => {
       }, 100);
     });
 
-    it('should not trigger onChange for invalid configuration', (done) => {
+    it('should not trigger onChange for invalid configuration', done => {
       let changeDetected = false;
 
       watcher = new ConfigWatcher(testConfigPath, () => {

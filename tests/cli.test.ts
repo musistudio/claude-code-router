@@ -68,7 +68,7 @@ describe('CLI Commands', () => {
           'test-provider',
           'https://api.test.com/v1/chat',
           'sk-test123',
-          'model1,model2'
+          'model1,model2',
         ]);
 
         expect(result.stdout).toContain('Provider added successfully');
@@ -81,7 +81,7 @@ describe('CLI Commands', () => {
           name: 'test-provider',
           api_base_url: 'https://api.test.com/v1/chat',
           api_key: 'sk-test123',
-          models: ['model1', 'model2']
+          models: ['model1', 'model2'],
         });
       });
 
@@ -94,7 +94,7 @@ describe('CLI Commands', () => {
           'sk-test123',
           'model1,model2',
           '--transformer',
-          'custom-transformer'
+          'custom-transformer',
         ]);
 
         expect(result.stdout).toContain('Provider added successfully');
@@ -102,23 +102,25 @@ describe('CLI Commands', () => {
 
         const config = JSON.parse(readFileSync(TEST_CONFIG_FILE, 'utf-8'));
         expect(config.Providers[0].transformer).toEqual({
-          use: ['custom-transformer']
+          use: ['custom-transformer'],
         });
       });
 
       it('should update existing provider', async () => {
         // First add a provider
         const initialConfig = {
-          Providers: [{
-            name: 'test-provider',
-            api_base_url: 'https://old-api.test.com',
-            api_key: 'old-key',
-            models: ['old-model']
-          }],
+          Providers: [
+            {
+              name: 'test-provider',
+              api_base_url: 'https://old-api.test.com',
+              api_key: 'old-key',
+              models: ['old-model'],
+            },
+          ],
           Router: {},
           APIKEY: '',
           HOST: '0.0.0.0',
-          API_TIMEOUT_MS: 600000
+          API_TIMEOUT_MS: 600000,
         };
         writeFileSync(TEST_CONFIG_FILE, JSON.stringify(initialConfig, null, 2));
 
@@ -129,7 +131,7 @@ describe('CLI Commands', () => {
           'test-provider',
           'https://new-api.test.com',
           'new-key',
-          'new-model1,new-model2'
+          'new-model1,new-model2',
         ]);
 
         expect(result.stdout).toContain('Provider added successfully');
@@ -140,7 +142,7 @@ describe('CLI Commands', () => {
           name: 'test-provider',
           api_base_url: 'https://new-api.test.com',
           api_key: 'new-key',
-          models: ['new-model1', 'new-model2']
+          models: ['new-model1', 'new-model2'],
         });
       });
 
@@ -165,15 +167,15 @@ describe('CLI Commands', () => {
               name: 'provider1',
               api_base_url: 'https://api1.test.com',
               api_key: 'key1',
-              models: ['model1', 'model2']
+              models: ['model1', 'model2'],
             },
             {
               name: 'provider2',
               api_base_url: 'https://api2.test.com',
               api_key: '',
               models: ['model3'],
-              transformer: { use: ['transformer1'] }
-            }
+              transformer: { use: ['transformer1'] },
+            },
           ],
           Router: {
             default: 'provider1,model1',
@@ -181,11 +183,11 @@ describe('CLI Commands', () => {
             think: '',
             longContext: '',
             longContextThreshold: 60000,
-            webSearch: ''
+            webSearch: '',
           },
           APIKEY: 'test-api-key',
           HOST: '0.0.0.0',
-          API_TIMEOUT_MS: 300000
+          API_TIMEOUT_MS: 300000,
         };
         writeFileSync(TEST_CONFIG_FILE, JSON.stringify(config, null, 2));
 
@@ -226,32 +228,32 @@ function runCommand(args: string[]): Promise<{
   stderr: string;
   exitCode: number | null;
 }> {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     // Use tsx or ts-node if available, otherwise assume compiled JS
-    const nodeArgs = existsSync(join(__dirname, '..', 'dist', 'cli.js')) 
+    const nodeArgs = existsSync(join(__dirname, '..', 'dist', 'cli.js'))
       ? [join(__dirname, '..', 'dist', 'cli.js'), ...args]
       : ['-r', 'ts-jest', CLI_PATH, ...args];
-    
+
     const child = spawn('node', nodeArgs, {
-      env: { ...process.env, NODE_ENV: 'test', CCR_CONFIG_DIR: TEST_CONFIG_DIR }
+      env: { ...process.env, NODE_ENV: 'test', CCR_CONFIG_DIR: TEST_CONFIG_DIR },
     });
 
     let stdout = '';
     let stderr = '';
 
-    child.stdout.on('data', (data) => {
+    child.stdout.on('data', data => {
       stdout += data.toString();
     });
 
-    child.stderr.on('data', (data) => {
+    child.stderr.on('data', data => {
       stderr += data.toString();
     });
 
-    child.on('close', (code) => {
+    child.on('close', code => {
       resolve({ stdout, stderr, exitCode: code });
     });
 
-    child.on('error', (error) => {
+    child.on('error', error => {
       stderr += error.message;
       resolve({ stdout, stderr, exitCode: 1 });
     });

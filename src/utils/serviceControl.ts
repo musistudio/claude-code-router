@@ -15,24 +15,24 @@ export interface StopServiceOptions {
  */
 export async function stopService(options: StopServiceOptions = {}): Promise<boolean> {
   const { force = false, timeout = 5000 } = options;
-  
+
   if (!existsSync(PID_FILE)) {
     logger.debug('No PID file found, service not running');
     return false;
   }
-  
+
   try {
     const pid = parseInt(readFileSync(PID_FILE, 'utf-8'), 10);
-    
+
     // Send SIGTERM for graceful shutdown
     process.kill(pid, 'SIGTERM');
     logger.info('Sent SIGTERM to service', { pid });
-    
+
     // Wait for graceful shutdown
     const checkInterval = 500;
     const maxChecks = Math.floor(timeout / checkInterval);
     let stopped = false;
-    
+
     for (let i = 0; i < maxChecks; i++) {
       try {
         process.kill(pid, 0); // Check if process is still running
@@ -42,17 +42,17 @@ export async function stopService(options: StopServiceOptions = {}): Promise<boo
         break;
       }
     }
-    
+
     // Force kill if not stopped and force option is true
     if (!stopped && force) {
       logger.warn('Service did not stop gracefully, forcing shutdown', { pid });
       process.kill(pid, 'SIGKILL');
       stopped = true;
     }
-    
+
     if (stopped) {
       cleanupPidFile();
-      
+
       // Clean up reference count file
       if (existsSync(REFERENCE_COUNT_FILE)) {
         try {
@@ -61,10 +61,10 @@ export async function stopService(options: StopServiceOptions = {}): Promise<boo
           logger.debug('Failed to remove reference count file', { error: e });
         }
       }
-      
+
       logger.info('Service stopped successfully', { pid });
     }
-    
+
     return stopped;
   } catch (error: any) {
     logger.error('Failed to stop service', { error: error.message });
@@ -78,15 +78,15 @@ export async function stopService(options: StopServiceOptions = {}): Promise<boo
  */
 export async function handleStopCommand(): Promise<void> {
   if (!existsSync(PID_FILE)) {
-    console.log("Service is not running.");
+    console.log('Service is not running.');
     return;
   }
-  
+
   const stopped = await stopService({ force: true, timeout: 5000 });
-  
+
   if (stopped) {
-    console.log("✅ Claude Code Router service has been successfully stopped.");
+    console.log('✅ Claude Code Router service has been successfully stopped.');
   } else {
-    console.log("Failed to stop the service. It may have already been stopped.");
+    console.log('Failed to stop the service. It may have already been stopped.');
   }
 }

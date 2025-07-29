@@ -10,8 +10,8 @@ describe('Transformers', () => {
         api_key: 'test-key',
         models: ['model1'],
         transformer: {
-          use: ['openrouter']
-        }
+          use: ['openrouter'],
+        },
       };
 
       expect(provider.transformer).toBeDefined();
@@ -25,10 +25,8 @@ describe('Transformers', () => {
         api_key: 'test-key',
         models: ['model1'],
         transformer: {
-          use: [
-            ['maxtoken', { max_tokens: 16384 }]
-          ]
-        }
+          use: [['maxtoken', { max_tokens: 16384 }]],
+        },
       };
 
       expect(provider.transformer?.use[0]).toBeInstanceOf(Array);
@@ -43,12 +41,8 @@ describe('Transformers', () => {
         api_key: 'test-key',
         models: ['model1'],
         transformer: {
-          use: [
-            'tooluse',
-            ['maxtoken', { max_tokens: 8192 }],
-            'enhancetool'
-          ]
-        }
+          use: ['tooluse', ['maxtoken', { max_tokens: 8192 }], 'enhancetool'],
+        },
       };
 
       expect(provider.transformer?.use).toHaveLength(3);
@@ -66,12 +60,12 @@ describe('Transformers', () => {
         transformer: {
           use: ['deepseek'],
           'deepseek-chat': {
-            use: ['tooluse']
+            use: ['tooluse'],
           },
           'deepseek-reasoner': {
-            use: ['reasoning']
-          }
-        }
+            use: ['reasoning'],
+          },
+        },
       };
 
       expect(provider.transformer?.use).toEqual(['deepseek']);
@@ -84,7 +78,7 @@ describe('Transformers', () => {
   describe('Common Transformer Types', () => {
     it('should test openrouter transformer', () => {
       const transformer = {
-        use: ['openrouter']
+        use: ['openrouter'],
       };
 
       expect(transformer.use).toContain('openrouter');
@@ -92,7 +86,7 @@ describe('Transformers', () => {
 
     it('should test deepseek transformer', () => {
       const transformer = {
-        use: ['deepseek']
+        use: ['deepseek'],
       };
 
       expect(transformer.use).toContain('deepseek');
@@ -100,7 +94,7 @@ describe('Transformers', () => {
 
     it('should test gemini transformer', () => {
       const transformer = {
-        use: ['gemini']
+        use: ['gemini'],
       };
 
       expect(transformer.use).toContain('gemini');
@@ -108,9 +102,7 @@ describe('Transformers', () => {
 
     it('should test maxtoken transformer with options', () => {
       const transformer = {
-        use: [
-          ['maxtoken', { max_tokens: 32768 }]
-        ]
+        use: [['maxtoken', { max_tokens: 32768 }]],
       };
 
       expect(transformer.use[0][0]).toBe('maxtoken');
@@ -120,7 +112,7 @@ describe('Transformers', () => {
 
     it('should test tooluse transformer', () => {
       const transformer = {
-        use: ['tooluse']
+        use: ['tooluse'],
       };
 
       expect(transformer.use).toContain('tooluse');
@@ -128,7 +120,7 @@ describe('Transformers', () => {
 
     it('should test enhancetool transformer', () => {
       const transformer = {
-        use: ['enhancetool']
+        use: ['enhancetool'],
       };
 
       expect(transformer.use).toContain('enhancetool');
@@ -136,7 +128,7 @@ describe('Transformers', () => {
 
     it('should test reasoning transformer', () => {
       const transformer = {
-        use: ['reasoning']
+        use: ['reasoning'],
       };
 
       expect(transformer.use).toContain('reasoning');
@@ -149,10 +141,10 @@ describe('Transformers', () => {
         { use: ['simple'] },
         { use: [['with-options', { option: 'value' }]] },
         { use: ['multiple', 'transformers'] },
-        { 
+        {
           use: ['global'],
-          'specific-model': { use: ['model-specific'] }
-        }
+          'specific-model': { use: ['model-specific'] },
+        },
       ];
 
       validTransformers.forEach(transformer => {
@@ -169,14 +161,16 @@ describe('Transformers', () => {
         {},
         { use: [] },
         { use: null },
-        { use: 'not-an-array' }
+        { use: 'not-an-array' },
       ];
 
       invalidTransformers.forEach(transformer => {
-        const isValid = !!(transformer && 
-                       transformer.use && 
-                       Array.isArray(transformer.use) && 
-                       transformer.use.length > 0);
+        const isValid = !!(
+          transformer &&
+          transformer.use &&
+          Array.isArray(transformer.use) &&
+          transformer.use.length > 0
+        );
         expect(isValid).toBe(false);
       });
     });
@@ -190,27 +184,24 @@ describe('Transformers', () => {
         api_key: 'complex-key',
         models: ['model-a', 'model-b', 'model-c'],
         transformer: {
-          use: [
-            'base-transformer',
-            ['configurable', { setting: 'value' }]
-          ],
+          use: ['base-transformer', ['configurable', { setting: 'value' }]],
           'model-a': {
-            use: ['specific-a']
+            use: ['specific-a'],
           },
           'model-b': {
-            use: ['specific-b', ['limited', { limit: 100 }]]
-          }
-        }
+            use: ['specific-b', ['limited', { limit: 100 }]],
+          },
+        },
       };
 
       // Verify global transformers
       expect(providerWithTransformer.transformer?.use).toHaveLength(2);
-      
+
       // Verify model-specific transformers
       expect(providerWithTransformer.transformer?.['model-a']).toBeDefined();
       expect(providerWithTransformer.transformer?.['model-b']).toBeDefined();
       expect(providerWithTransformer.transformer?.['model-c']).toBeUndefined();
-      
+
       // Verify model-b has complex configuration
       const modelBTransformers = providerWithTransformer.transformer?.['model-b'].use;
       expect(modelBTransformers).toHaveLength(2);
