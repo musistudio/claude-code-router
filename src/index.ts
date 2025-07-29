@@ -224,6 +224,66 @@ async function run(options: RunOptions = {}) {
   
   server.start();
   
+  // Display full configuration on start
+  console.log('\n🚀 Claude Code Router Configuration:');
+  console.log('=====================================');
+  console.log(`📡 Server: http://${HOST}:${servicePort}`);
+  console.log(`📝 Log Level: ${config.LOG_LEVEL || 'info'}`);
+  console.log(`⏱️  API Timeout: ${config.API_TIMEOUT_MS || 600000}ms`);
+  
+  if (config.Providers && config.Providers.length > 0) {
+    console.log('\n📦 Providers:');
+    config.Providers.forEach((provider: any, index: number) => {
+      console.log(`\n  ${index + 1}. ${provider.name}`);
+      console.log(`     URL: ${provider.api_base_url}`);
+      console.log(`     Models: ${provider.models.join(', ')}`);
+      
+      if (provider.transformer) {
+        console.log(`     Transformers:`);
+        if (provider.transformer.use) {
+          const transformerList = provider.transformer.use.map((t: any) => {
+            if (Array.isArray(t)) {
+              return `${t[0]} (with options)`;
+            }
+            return t;
+          }).join(', ');
+          console.log(`       - Global: ${transformerList}`);
+        }
+        
+        // Show model-specific transformers
+        Object.keys(provider.transformer).forEach(key => {
+          if (key !== 'use' && provider.models.includes(key)) {
+            const modelTransformers = provider.transformer[key].use.map((t: any) => {
+              if (Array.isArray(t)) {
+                return `${t[0]} (with options)`;
+              }
+              return t;
+            }).join(', ');
+            console.log(`       - ${key}: ${modelTransformers}`);
+          }
+        });
+      }
+    });
+  }
+  
+  if (config.Router) {
+    console.log('\n🔀 Routing Rules:');
+    Object.entries(config.Router).forEach(([key, value]) => {
+      if (key !== 'longContextThreshold') {
+        console.log(`   ${key}: ${value}`);
+      }
+    });
+    if (config.Router.longContextThreshold) {
+      console.log(`   Long Context Threshold: ${config.Router.longContextThreshold} tokens`);
+    }
+  }
+  
+  if (config.CUSTOM_ROUTER_PATH) {
+    console.log(`\n🔧 Custom Router: ${config.CUSTOM_ROUTER_PATH}`);
+  }
+  
+  console.log('\n=====================================\n');
+  
   logger.info('Claude Code Router started', {
     host: HOST,
     port: servicePort,

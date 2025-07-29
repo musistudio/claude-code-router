@@ -29,10 +29,11 @@ Commands:
   -v, version   Show version information
   -h, help      Show help information
 
-Example:
+Examples:
   ccr start
-  ccr start --provider openrouter https://openrouter.ai/api/v1/chat/completions sk-xxx claude-3.5-sonnet
+  ccr start --provider openrouter https://openrouter.ai/api/v1/chat/completions sk-xxx claude-3.5-sonnet,gemini-2.0-flash
   ccr start --transformer openrouter openrouter
+  ccr start --provider deepseek https://api.deepseek.com/chat/completions sk-xxx deepseek-chat --transformer deepseek deepseek
   ccr code "Write a Hello World"
 `;
 

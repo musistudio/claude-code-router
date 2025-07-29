@@ -3,10 +3,10 @@
   "version": "1.0.29",
   "description": "Use Claude Code without an Anthropics account and route it to another LLM provider",
   "bin": {
-    "ccr": "./dist/cli.js"
+    "ccr": "dist/cli.js"
   },
   "scripts": {
-    "build": "esbuild src/cli.ts --bundle --platform=node --outfile=dist/cli.js && shx cp node_modules/tiktoken/tiktoken_bg.wasm dist/tiktoken_bg.wasm",
+    "build": "esbuild src/cli.ts --bundle --platform=node --outfile=dist/cli.js --banner:js='#!/usr/bin/env node' && shx cp node_modules/tiktoken/tiktoken_bg.wasm dist/tiktoken_bg.wasm && shx chmod +x dist/cli.js",
     "release": "npm run build && npm publish",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -33,6 +33,7 @@
     "@musistudio/llms": "^1.0.15",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
+    "ccr-next": "^1.0.29",
     "dotenv": "^16.4.7",
     "json5": "^2.2.3",
     "tiktoken": "^1.0.21",
