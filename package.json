@@ -14,7 +14,8 @@
     "lint": "eslint src/**/*.ts --fix",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\""
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "prepare": "husky"
   },
   "keywords": [
     "claude",
@@ -61,7 +62,9 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.3",
     "fastify": "^5.4.0",
+    "husky": "^9.1.7",
     "jest": "^29.7.0",
+    "lint-staged": "^16.1.2",
     "prettier": "^3.6.2",
     "shx": "^0.4.0",
     "ts-jest": "^29.1.0",
@@ -75,5 +78,14 @@
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "lint-staged": {
+    "src/**/*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "tests/**/*.ts": [
+      "prettier --write"
+    ]
   }
 }
