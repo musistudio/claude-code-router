@@ -21,6 +21,7 @@ import {
   showWarning,
   theme 
 } from "./utils/cliEnhancer";
+import { checkForUpdates } from "./utils/updateChecker";
 
 const command = process.argv[2];
 
@@ -100,6 +101,9 @@ function parseStartOptions(args: string[]) {
 }
 
 async function main() {
+  // Check for updates (non-blocking)
+  checkForUpdates().catch(() => {});
+  
   switch (command) {
     case "start":
       try {

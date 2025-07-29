@@ -5,6 +5,7 @@ import boxen from 'boxen';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
+import JSON5 from 'json5';
 import { Config, Provider } from '../types';
 
 const CONFIG_DIR = process.env.CCR_CONFIG_DIR || join(homedir(), '.claude-code-router');
@@ -144,7 +145,7 @@ export async function addProvider(name: string, apiBaseUrl: string, apiKey: stri
     
     if (existsSync(CONFIG_FILE)) {
       const configContent = readFileSync(CONFIG_FILE, 'utf-8');
-      config = JSON.parse(configContent);
+      config = JSON5.parse(configContent);
     } else {
       config = {
         Providers: [],
@@ -203,7 +204,7 @@ export async function listProviders() {
     }
 
     const configContent = readFileSync(CONFIG_FILE, 'utf-8');
-    const config: Config = JSON.parse(configContent);
+    const config: Config = JSON5.parse(configContent);
 
     showBanner('Claude Code Router Configuration', 'info');
     showProvidersTable(config.Providers);
