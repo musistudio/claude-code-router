@@ -150,6 +150,7 @@ async function main() {
       }
       break;
     case '-v':
+    case '--version':
     case 'version':
       showBanner(`Claude Code Router v${version}`, 'info');
       break;
@@ -244,6 +245,7 @@ async function main() {
       break;
     }
     case '-h':
+    case '--help':
     case 'help':
       console.log(HELP_TEXT);
       break;

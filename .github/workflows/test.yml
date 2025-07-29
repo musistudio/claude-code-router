@@ -55,8 +55,8 @@ jobs:
       
     - name: Test CLI commands
       run: |
-        node dist/cli.js --version
-        node dist/cli.js --help
+        node dist/cli.js version
+        node dist/cli.js help
         
   lint-and-format:
     runs-on: ubuntu-latest
