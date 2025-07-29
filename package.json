@@ -65,6 +65,7 @@
     "prettier": "^3.6.2",
     "shx": "^0.4.0",
     "ts-jest": "^29.1.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5.8.2"
   },
   "files": [
