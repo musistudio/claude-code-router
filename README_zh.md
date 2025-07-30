@@ -12,6 +12,43 @@
 -   **动态模型切换**: 在 Claude Code 中使用 `/model` 命令动态切换模型。
 -   **GitHub Actions 集成**: 在您的 GitHub 工作流程中触发 Claude Code 任务。
 -   **插件系统**: 使用自定义转换器扩展功能。
+-   **Anthropic 直通**: 支持原始 Anthropic API 格式的直接透传，提供完整的流式体验。
+
+## ✨ Anthropic 直通支持
+
+路由器现在支持两种后端格式：
+- **OpenAI 格式**: 将 Anthropic 请求转换为 OpenAI 兼容格式（默认）
+- **Anthropic 格式**: 直接透传原始 Anthropic 请求到后端（新功能）
+
+
+### 配置方法
+
+在 Provider 配置中添加 `type` 字段：
+
+```json
+{
+  "Providers": [
+    {
+      "name": "openai",
+      "type": "openai",
+      "api_base_url": "https://api.openai.com/v1",
+      "api_key": "your-openai-api-key",
+      "models": ["gpt-4o", "gpt-4o-mini"]
+    },
+    {
+      "name": "anthropic-official",
+      "type": "anthropic",
+      "api_base_url": "https://api.anthropic.com",
+      "api_key": "your-anthropic-api-key",
+      "models": ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"]
+    }
+  ]
+}
+```
+
+**API URL 配置：**
+- **基础 URL（推荐）**: `"https://api.anthropic.com"` → 自动添加 `/v1/messages`
+- **完整 URL**: `"https://api.example.com/v1/messages"` → 直接使用
 
 ## 🚀 快速入门
 

@@ -15,6 +15,40 @@
 - **GitHub Actions Integration**: Trigger Claude Code tasks in your GitHub workflows.
 - **Plugin System**: Extend functionality with custom transformers.
 
+## ✨ Anthropic Passthrough Support
+
+The router now supports two backend formats:
+- **OpenAI Format**: Converts Anthropic requests to OpenAI-compatible format (default)
+- **Anthropic Format**: Directly passes through original Anthropic requests (new feature)
+
+### Configuration
+
+Add `type` field to Provider configurations:
+```json
+{
+  "Providers": [
+    {
+      "name": "openai",
+      "type": "openai",
+      "api_base_url": "https://api.openai.com/v1",
+      "api_key": "your-openai-api-key",
+      "models": ["gpt-4o", "gpt-4o-mini"]
+    },
+    {
+      "name": "anthropic-official",
+      "type": "anthropic",
+      "api_base_url": "https://api.anthropic.com",
+      "api_key": "your-anthropic-api-key",
+      "models": ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"]
+    }
+  ]
+}
+```
+
+**API URL Configuration:**
+- **Basic URL (recommended)**: `"https://api.anthropic.com"` → auto-adds `/v1/messages`
+- **Full URL**: `"https://api.example.com/v1/messages"` → uses as-is
+
 ## 🚀 Getting Started
 
 ### 1. Installation
