@@ -62,10 +62,14 @@ export const readConfigFile = async () => {
       const APIKEY = await question("Enter Provider API KEY: ");
       const baseUrl = await question("Enter Provider URL: ");
       const model = await question("Enter MODEL Name: ");
+      const providerType = await question("Enter Provider Type (openai/anthropic) [openai]: ");
+      const type = providerType.toLowerCase() === "anthropic" ? "anthropic" : "openai";
+
       const config = Object.assign({}, DEFAULT_CONFIG, {
         Providers: [
           {
             name,
+            type,
             api_base_url: baseUrl,
             api_key: APIKEY,
             models: [model],
