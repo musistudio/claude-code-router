@@ -183,6 +183,7 @@ The `Providers` array is where you define the different model providers you want
 Transformers allow you to modify the request and response payloads to ensure compatibility with different provider APIs.
 
 - **Global Transformer**: Apply a transformer to all models from a provider. In this example, the `openrouter` transformer is applied to all models under the `openrouter` provider.
+
   ```json
   {
     "name": "openrouter",
@@ -193,9 +194,23 @@ Transformers allow you to modify the request and response payloads to ensure com
       "anthropic/claude-sonnet-4",
       "anthropic/claude-3.5-sonnet"
     ],
-    "transformer": { "use": ["openrouter"] }
+    "transformer": {
+      "use": [
+        [
+          "openrouter",
+          {
+            "referer": "https://example.com",
+            "title": "claude-code-router",
+            "providerOrder": []
+          }
+        ]
+      ]
+    }
   }
   ```
+
+  Reference: [`referer` & `title`](https://openrouter.ai/docs/app-attribution#http-referer), and [providerOrder](https://openrouter.ai/docs/features/provider-routing)
+
 - **Model-Specific Transformer**: Apply a transformer to a specific model. In this example, the `deepseek` transformer is applied to all models, and an additional `tooluse` transformer is applied only to the `deepseek-chat` model.
 
   ```json
@@ -212,6 +227,7 @@ Transformers allow you to modify the request and response payloads to ensure com
   ```
 
 - **Passing Options to a Transformer**: Some transformers, like `maxtoken`, accept options. To pass options, use a nested array where the first element is the transformer name and the second is an options object.
+
   ```json
   {
     "name": "siliconflow",

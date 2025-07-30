@@ -19,7 +19,7 @@
   "author": "musistudio",
   "license": "MIT",
   "dependencies": {
-    "@musistudio/llms": "^1.0.15",
+    "@musistudio/llms": "^1.0.16",
     "dotenv": "^16.4.7",
     "json5": "^2.2.3",
     "tiktoken": "^1.0.21",
