@@ -23,23 +23,25 @@ The router now supports two backend formats:
 
 ### Configuration
 
-Add `type` field to Provider configurations:
+Use `anthropicpassthrough` transformer to enable Anthropic passthrough mode:
+
 ```json
 {
   "Providers": [
     {
       "name": "openai",
-      "type": "openai",
       "api_base_url": "https://api.openai.com/v1",
       "api_key": "your-openai-api-key",
       "models": ["gpt-4o", "gpt-4o-mini"]
     },
     {
       "name": "anthropic-official",
-      "type": "anthropic",
       "api_base_url": "https://api.anthropic.com",
       "api_key": "your-anthropic-api-key",
-      "models": ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"]
+      "models": ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
+      "transformer": {
+        "use": ["anthropicpassthrough"]
+      }
     }
   ]
 }
@@ -267,6 +269,7 @@ Transformers allow you to modify the request and response payloads to ensure com
 
 **Available Built-in Transformers:**
 
+- `anthropicpassthrough`: Enables direct passthrough to Anthropic API without format conversion.
 - `deepseek`: Adapts requests/responses for DeepSeek API.
 - `gemini`: Adapts requests/responses for Gemini API.
 - `openrouter`: Adapts requests/responses for OpenRouter API.

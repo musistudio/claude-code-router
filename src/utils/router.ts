@@ -97,18 +97,6 @@ const getUseModel = async (req: any, tokenCount: number, config: any) => {
   return config.Router!.default;
 };
 
-const findProviderByModel = (modelString: string, config: any) => {
-  if (!modelString || !modelString.includes(",")) {
-    return null;
-  }
-  const [providerName] = modelString.split(",");
-  const provider = config.Providers?.find((p: any) => p.name === providerName);
-  if (provider) {
-    // Default to 'openai' type if not specified for backward compatibility
-    provider.type = provider.type || 'openai';
-  }
-  return provider || null;
-};
 
 export const router = async (req: any, _res: any, config: any) => {
   const { messages, system = [], tools }: MessageCreateParamsBase = req.body;
@@ -130,16 +118,6 @@ export const router = async (req: any, _res: any, config: any) => {
     }
     if (!model) {
       model = await getUseModel(req, tokenCount, config);
-    }
-
-    // Check if the selected model belongs to an anthropic provider
-    const provider = findProviderByModel(model, config);
-    if (provider && provider.type === "anthropic") {
-      log("Using anthropic provider for direct passthrough:", provider.name);
-      req.rawProvider = provider;
-      req.selectedModel = model.split(",")[1]; // Extract model name
-      // Don't modify req.body.model for anthropic providers
-      return;
     }
 
     req.body.model = model;
