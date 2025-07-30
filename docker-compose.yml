@@ -1,13 +1,10 @@
 version: "3.8"
 
 services:
-  claude-code-reverse:
+  claude-code-router:
     build: .
     ports:
       - "3456:3456"
-    environment:
-      - ENABLE_ROUTER=${ENABLE_ROUTER}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
-      - OPENAI_MODEL=${OPENAI_MODEL}
+    volumes:
+      - ~/.claude-code-router:/root/.claude-code-router
     restart: unless-stopped

@@ -12,3 +12,5 @@ docs
 .log
 blog
 config.json
+ui
+scripts

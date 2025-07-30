@@ -165,6 +165,20 @@ ccr code
 > ccr restart
 > ```
 
+### 4. UI 模式 (Beta)
+
+为了获得更直观的体验，您可以使用 UI 模式来管理您的配置：
+
+```shell
+ccr ui
+```
+
+这将打开一个基于 Web 的界面，您可以在其中轻松查看和编辑您的 `config.json` 文件。
+
+![UI](/blog/images/ui.png)
+
+> **注意**: UI 模式目前处于测试阶段。这是一个 100% vibe coding的项目，包括项目的初始化，我只是新建了一个文件夹和一个project.md文档。所有代码均由 ccr + qwen3-coder + gemini(webSearch) 实现。如有问题请提交 issue。
+
 #### Providers
 
 `Providers` 数组是您定义要使用的不同模型提供商的地方。每个提供商对象都需要：
@@ -253,6 +267,11 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
 - `maxtoken`: 设置特定的 `max_tokens` 值。
 - `tooluse`: 优化某些模型的工具使用(通过`tool_choice`参数)。
 - `gemini-cli` (实验性): 通过 Gemini CLI [gemini-cli.js](https://gist.github.com/musistudio/1c13a65f35916a7ab690649d3df8d1cd) 对 Gemini 的非官方支持。
+- `reasoning`: 用于处理 `reasoning_content` 字段。
+- `sampling`: 用于处理采样信息字段，如 `temperature`、`top_p`、`top_k` 和 `repetition_penalty`。
+- `enhancetool`: 对 LLM 返回的工具调用参数增加一层容错处理（这会导致不再流式返回工具调用信息）。
+- `cleancache`: 清除请求中的 `cache_control` 字段。
+- `vertex-gemini`: 处理使用 vertex 鉴权的 gemini api。
 
 **自定义 Transformer:**
 
@@ -442,6 +461,9 @@ jobs:
 - [@congzhangzh](https://github.com/congzhangzh)
 - @*_
 - @Z\*m
+- @*鑫
+- @c\*y
+- @\*昕
 
 （如果您的名字被屏蔽，请通过我的主页电子邮件与我联系，以便使用您的 GitHub 用户名进行更新。）
 

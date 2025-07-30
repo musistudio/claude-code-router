@@ -75,12 +75,13 @@ export async function getServiceInfo() {
     const pid = getServicePid();
     const running = isServiceRunning();
     const config = await readConfigFile();
+    const port = config.PORT || 3456;
     
     return {
         running,
         pid,
-        port: config.PORT,
-        endpoint: `http://127.0.0.1:${config.PORT}`,
+        port,
+        endpoint: `http://127.0.0.1:${port}`,
         pidFile: PID_FILE,
         referenceCount: getReferenceCount()
     };

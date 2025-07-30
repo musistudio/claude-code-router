@@ -3,7 +3,7 @@ import { FastifyRequest, FastifyReply } from "fastify";
 export const apiKeyAuth =
   (config: any) =>
   (req: FastifyRequest, reply: FastifyReply, done: () => void) => {
-    if (["/", "/health"].includes(req.url)) {
+    if (["/", "/health"].includes(req.url) || req.url.startsWith("/ui")) {
       return done();
     }
     const apiKey = config.APIKEY;

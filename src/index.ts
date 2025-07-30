@@ -94,9 +94,11 @@ async function run(options: RunOptions = {}) {
     },
   });
   server.addHook("preHandler", apiKeyAuth(config));
-  server.addHook("preHandler", async (req, reply) =>
-    router(req, reply, config)
-  );
+  server.addHook("preHandler", async (req, reply) => {
+    if(req.url.startsWith("/v1/messages")) {
+      router(req, reply, config)
+    }
+  });
   server.start();
 }
 

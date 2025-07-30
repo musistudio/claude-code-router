@@ -2,11 +2,23 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm i
-
+# Copy all files
 COPY . .
 
+# Install pnpm globally
+RUN npm install -g pnpm
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Fix rollup optional dependencies issue
+RUN cd ui && npm install
+
+# Build the entire project including UI
+RUN pnpm run build
+
+# Expose port
 EXPOSE 3456
 
-CMD ["node", "index.mjs"]
+# Start the router service
+CMD ["node", "dist/cli.js", "start"]
