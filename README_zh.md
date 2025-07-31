@@ -22,7 +22,7 @@
 
 ### 配置方法
 
-使用 `anthropicpassthrough` transformer 来启用 Anthropic 直通模式：
+使用 `anthropicPassthrough` transformer 来启用 Anthropic 直通模式：
 
 ```json
 {
@@ -39,7 +39,7 @@
       "api_key": "your-anthropic-api-key",
       "models": ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
       "transformer": {
-        "use": ["anthropicpassthrough"]
+        "use": ["anthropicPassthrough"]
       }
     }
   ]
