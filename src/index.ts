@@ -79,27 +79,26 @@ async function run(options: RunOptions = {}) {
   const servicePort = process.env.SERVICE_PORT
     ? parseInt(process.env.SERVICE_PORT)
     : port;
-  const server = createServer({
-    jsonPath: CONFIG_FILE,
-    initialConfig: {
-      // ...config,
-      providers: config.Providers || config.providers,
-      HOST: HOST,
-      PORT: servicePort,
-      LOG_FILE: join(
-        homedir(),
-        ".claude-code-router",
-        "claude-code-router.log"
-      ),
-    },
-  });
+  const server = createServer(config);
+  
+  // Add authentication hook
   server.addHook("preHandler", apiKeyAuth(config));
+  
+  // Add router hook for Claude API endpoint
   server.addHook("preHandler", async (req, reply) => {
     if(req.url.startsWith("/v1/messages")) {
-      router(req, reply, config)
+      await router(req, reply, config);
     }
   });
-  server.start();
+  
+  // Start the server
+  server.listen({ port: servicePort, host: HOST }, (err, address) => {
+    if (err) {
+      server.log.error(err);
+      process.exit(1);
+    }
+    server.log.info(`Server listening on ${address}`);
+  });
 }
 
 export { run };

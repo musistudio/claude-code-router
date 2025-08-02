@@ -20,8 +20,8 @@
   "license": "MIT",
   "dependencies": {
     "@fastify/static": "^8.2.0",
-    "@musistudio/llms": "^1.0.17",
     "dotenv": "^16.4.7",
+    "fastify": "^5.4.0",
     "json5": "^2.2.3",
     "openurl": "^1.1.1",
     "tiktoken": "^1.0.21",
@@ -30,7 +30,6 @@
   "devDependencies": {
     "@types/node": "^24.0.15",
     "esbuild": "^0.25.1",
-    "fastify": "^5.4.0",
     "shx": "^0.4.0",
     "typescript": "^5.8.2"
   },
