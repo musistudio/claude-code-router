@@ -117,7 +117,7 @@ export const forwardToOpenAI = async (req: any, reply: any, config: any) => {
     const response = await fetch(config.AutoRouter.endpoint, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${config.AutoRouter.api_key}`,
+        'X-Stainless-API-Key': config.AutoRouter.api_key,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(openAIRequest)
@@ -147,8 +147,8 @@ export const forwardToOpenAI = async (req: any, reply: any, config: any) => {
 {
   "AutoRouter": {
     "enabled": true,
-    "endpoint": "https://your-api.com/v1/chat/completions",
-    "api_key": "your-api-key",
+    "endpoint": "https://llmadaptive.uk/api/v1/chat/completions",
+    "api_key": "sk-bTq5OSJJdxTINqeeNiUF1L2mIlG1jGmxtJYcnqZxz5GU7_QM",
     "timeout": 30000
   },
   "APIKEY": "your-secret-key",

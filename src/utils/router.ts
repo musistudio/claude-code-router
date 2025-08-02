@@ -64,64 +64,153 @@ const calculateTokenCount = (
   return tokenCount;
 };
 
-const getUseModel = async (req: any, tokenCount: number, config: any) => {
-  if (req.body.model.includes(",")) {
-    return req.body.model;
+const transformClaudeToOpenAI = (claudeRequest: any, config: any) => {
+  // Transform Claude's /v1/messages format to OpenAI's /v1/chat/completions format
+  const { messages, system, tools, model, max_tokens, temperature, ...rest } = claudeRequest;
+  
+  const openAIMessages = [];
+  
+  // Add system message if present
+  if (system) {
+    if (typeof system === "string") {
+      openAIMessages.push({ role: "system", content: system });
+    } else if (Array.isArray(system)) {
+      const systemContent = system.map(item => item.text || "").join(" ");
+      openAIMessages.push({ role: "system", content: systemContent });
+    }
   }
-  // if tokenCount is greater than the configured threshold, use the long context model
-  const longContextThreshold = config.Router.longContextThreshold || 60000;
-  if (tokenCount > longContextThreshold && config.Router.longContext) {
-    log("Using long context model due to token count:", tokenCount, "threshold:", longContextThreshold);
-    return config.Router.longContext;
+  
+  // Transform messages
+  if (Array.isArray(messages)) {
+    messages.forEach((message: any) => {
+      if (typeof message.content === "string") {
+        openAIMessages.push({
+          role: message.role,
+          content: message.content
+        });
+      } else if (Array.isArray(message.content)) {
+        // For complex content, convert to text for now
+        const textContent = message.content
+          .filter((part: any) => part.type === "text")
+          .map((part: any) => part.text)
+          .join(" ");
+        openAIMessages.push({
+          role: message.role,
+          content: textContent
+        });
+      }
+    });
   }
-  // If the model is claude-3-5-haiku, use the background model
-  if (
-    req.body.model?.startsWith("claude-3-5-haiku") &&
-    config.Router.background
-  ) {
-    log("Using background model for ", req.body.model);
-    return config.Router.background;
+  
+  // Base request structure
+  const openAIRequest = {
+    messages: openAIMessages,
+    stream: false,
+    ...rest
+  };
+  
+  // Add global custom parameters
+  if (config.protocol_manager_config) {
+    openAIRequest.protocol_manager_config = config.protocol_manager_config;
   }
-  // if exits thinking, use the think model
-  if (req.body.thinking && config.Router.think) {
-    log("Using think model for ", req.body.thinking);
-    return config.Router.think;
+  
+  if (config.semantic_cache) {
+    openAIRequest.semantic_cache = config.semantic_cache;
   }
-  if (
-    Array.isArray(req.body.tools) &&
-    req.body.tools.some((tool: any) => tool.type?.startsWith("web_search")) &&
-    config.Router.webSearch
-  ) {
-    return config.Router.webSearch;
+  
+  if (config.fallback_mode) {
+    openAIRequest.fallback_mode = config.fallback_mode;
   }
-  return config.Router!.default;
+  
+  return openAIRequest;
 };
 
-export const router = async (req: any, _res: any, config: any) => {
-  const { messages, system = [], tools }: MessageCreateParamsBase = req.body;
-  try {
-    const tokenCount = calculateTokenCount(
-      messages as MessageParam[],
-      system,
-      tools as Tool[]
-    );
-
-    let model;
-    if (config.CUSTOM_ROUTER_PATH) {
-      try {
-        const customRouter = require(config.CUSTOM_ROUTER_PATH);
-        model = await customRouter(req, config);
-      } catch (e: any) {
-        log("failed to load custom router", e.message);
-      }
-    }
-    if (!model) {
-      model = await getUseModel(req, tokenCount, config);
-    }
-    req.body.model = model;
-  } catch (error: any) {
-    log("Error in router middleware:", error.message);
-    req.body.model = config.Router!.default;
+const transformOpenAIToClaude = (openAIResponse: any) => {
+  // Transform OpenAI response back to Claude format
+  const { choices, usage } = openAIResponse;
+  
+  if (!choices || choices.length === 0) {
+    throw new Error("No choices in OpenAI response");
   }
-  return;
+  
+  const choice = choices[0];
+  const message = choice.message;
+  
+  return {
+    id: openAIResponse.id || `msg_${Date.now()}`,
+    type: "message",
+    role: "assistant",
+    content: [
+      {
+        type: "text",
+        text: message.content || ""
+      }
+    ],
+    model: openAIResponse.model,
+    stop_reason: choice.finish_reason === "stop" ? "end_turn" : choice.finish_reason,
+    stop_sequence: null,
+    usage: usage ? {
+      input_tokens: usage.prompt_tokens || 0,
+      output_tokens: usage.completion_tokens || 0
+    } : {
+      input_tokens: 0,
+      output_tokens: 0
+    }
+  };
+};
+
+
+const forwardToOpenAI = async (req: any, reply: any, config: any) => {
+  try {
+    const autoRouterConfig = config.AutoRouter;
+    if (!autoRouterConfig || !autoRouterConfig.enabled) {
+      throw new Error("AutoRouter not configured or disabled");
+    }
+
+    // Use global configuration
+    const globalConfig = autoRouterConfig.global || {};
+    
+    // Transform Claude request to OpenAI format with global config
+    const openAIRequest = transformClaudeToOpenAI(req.body, globalConfig);
+    
+    log("Forwarding request to OpenAI API:", autoRouterConfig.endpoint);
+    
+    // Call OpenAI-compatible API
+    const response = await fetch(autoRouterConfig.endpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${autoRouterConfig.api_key}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'claude-code-router/1.0'
+      },
+      body: JSON.stringify(openAIRequest),
+      signal: AbortSignal.timeout(autoRouterConfig.timeout || 30000)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    
+    // Transform OpenAI response to Claude format
+    const claudeResponse = transformOpenAIToClaude(result);
+    
+    reply.send(claudeResponse);
+    log("Successfully forwarded request to OpenAI API");
+  } catch (error: any) {
+    log("Error forwarding to OpenAI API:", error.message);
+    
+    reply.code(500).send({
+      type: "error",
+      error: {
+        type: "api_error",
+        message: `Router error: ${error.message}`
+      }
+    });
+  }
+};
+
+export const router = async (req: any, reply: any, config: any) => {
+  await forwardToOpenAI(req, reply, config);
 };

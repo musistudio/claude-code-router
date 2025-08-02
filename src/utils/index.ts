@@ -59,25 +59,57 @@ export const readConfigFile = async () => {
   } catch (readError: any) {
     if (readError.code === "ENOENT") {
       // Config file doesn't exist, prompt user for initial setup
-      const name = await question("Enter Provider Name: ");
-      const APIKEY = await question("Enter Provider API KEY: ");
-      const baseUrl = await question("Enter Provider URL: ");
-      const model = await question("Enter MODEL Name: ");
-      const config = Object.assign({}, DEFAULT_CONFIG, {
-        Providers: [
-          {
-            name,
-            api_base_url: baseUrl,
-            api_key: APIKEY,
-            models: [model],
+      console.log("\n🚀 Welcome to Claude Code Router! Let's set up your configuration.");
+      console.log("\nYou can choose between:");
+      console.log("1. AutoRouter - Simple OpenAI-compatible API forwarding (recommended)");
+      console.log("2. Legacy - Multiple provider support with complex routing");
+      
+      const useAutoRouter = await confirm("\nUse AutoRouter mode? (Y/n): ");
+      
+      if (useAutoRouter) {
+        const endpoint = await question("Enter OpenAI-compatible API endpoint: ");
+        const apiKey = await question("Enter API key: ");
+        const secretKey = await question("Enter secret key for Claude CLI authentication: ");
+        
+        const config = {
+          AutoRouter: {
+            enabled: true,
+            endpoint: endpoint,
+            api_key: apiKey,
+            timeout: 30000
           },
-        ],
-        Router: {
-          default: `${name},${model}`,
-        },
-      });
-      await writeConfigFile(config);
-      return config;
+          APIKEY: secretKey,
+          HOST: "0.0.0.0",
+          PORT: 3456,
+          API_TIMEOUT_MS: 600000
+        };
+        
+        await writeConfigFile(config);
+        console.log("\n✅ AutoRouter configuration saved!");
+        return config;
+      } else {
+        // Legacy setup
+        const name = await question("Enter Provider Name: ");
+        const APIKEY = await question("Enter Provider API KEY: ");
+        const baseUrl = await question("Enter Provider URL: ");
+        const model = await question("Enter MODEL Name: ");
+        const config = Object.assign({}, DEFAULT_CONFIG, {
+          Providers: [
+            {
+              name,
+              api_base_url: baseUrl,
+              api_key: APIKEY,
+              models: [model],
+            },
+          ],
+          Router: {
+            default: `${name},${model}`,
+          },
+        });
+        await writeConfigFile(config);
+        console.log("\n✅ Legacy configuration saved!");
+        return config;
+      }
     } else {
       console.error(`Failed to read config file at ${CONFIG_FILE}`);
       console.error("Error details:", readError.message);
@@ -130,8 +162,41 @@ export const writeConfigFile = async (config: any) => {
   await fs.writeFile(CONFIG_FILE, configWithComment);
 };
 
+const validateAutoRouterConfig = (config: any) => {
+  if (!config.AutoRouter) {
+    return { valid: false, error: "AutoRouter configuration missing" };
+  }
+  
+  const { enabled, endpoint, api_key } = config.AutoRouter;
+  
+  if (enabled && !endpoint) {
+    return { valid: false, error: "AutoRouter endpoint is required when enabled" };
+  }
+  
+  if (enabled && !api_key) {
+    return { valid: false, error: "AutoRouter API key is required when enabled" };
+  }
+  
+  if (enabled && endpoint && !endpoint.startsWith('http')) {
+    return { valid: false, error: "AutoRouter endpoint must be a valid HTTP(S) URL" };
+  }
+  
+  return { valid: true };
+};
+
 export const initConfig = async () => {
   const config = await readConfigFile();
+  
+  // Validate AutoRouter configuration if present
+  if (config.AutoRouter) {
+    const validation = validateAutoRouterConfig(config);
+    if (!validation.valid) {
+      console.error(`❌ Configuration error: ${validation.error}`);
+      console.error("Please check your configuration file at:", CONFIG_FILE);
+      process.exit(1);
+    }
+  }
+  
   Object.assign(process.env, config);
   return config;
 };
