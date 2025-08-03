@@ -1,0 +1,20 @@
+{
+  "Providers": [
+    {
+      "name": "lmstudio",
+      "api_base_url": "http://localhost:1234/v1/chat/completions",
+      "api_key": "lm-studio",
+      "models": ["google/gemma-3n-e4b"]
+    }
+  ],
+  "Router": {
+    "default": "lmstudio,google/gemma-3n-e4b",
+    "background": "lmstudio,google/gemma-3n-e4b",
+    "think": "lmstudio,google/gemma-3n-e4b",
+    "longContext": "lmstudio,google/gemma-3n-e4b",
+    "longContextThreshold": 60000,
+    "webSearch": "lmstudio,google/gemma-3n-e4b"
+  },
+  "API_TIMEOUT_MS": 600000,
+  "LOG": true
+}
