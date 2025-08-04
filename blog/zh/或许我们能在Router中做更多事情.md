@@ -9,7 +9,7 @@
 
 3. DeepSeek 官方 API 的 `max_output` 为 8192，而火山引擎的会更大。
 
-除了这些问题之外，还有一些其他的小的供应商，他们或多或少参数都有点问题。于是，我打算开发一个新的项目[musistudio/llms](https://github.com/musistudio/llms)来处理这种不同服务商的兼容问题。该项目使用 OpenAI 格式为基础的通用格式，提供了一个`Transformer`接口，该接口用于处理转换请求和响应。当我们给不同的服务商都实现了`Transformer`后，我们可以实现不同服务商的混合调用。比如我在`AnthropicTransformer`中实现了`Anthropic`<->`OpenAI`格式的互相转换，并监听了`/v1/messages`端点，在`GeminiTransformer`中实现了`Gemini`<->`OpenAI`格式的互相转换，并监听了`/v1beta/models/:modelAndAction`端点，当他们的请求和响应都被转换成一个通用格式的时候，就可以实现他们的互相调用。
+除了这些问题之外，还有一些其他的小的供应商，他们或多或少参数都有点问题。于是，我打算开发一个新的项目[datartech/llms](https://github.com/datartech/llms)来处理这种不同服务商的兼容问题。该项目使用 OpenAI 格式为基础的通用格式，提供了一个`Transformer`接口，该接口用于处理转换请求和响应。当我们给不同的服务商都实现了`Transformer`后，我们可以实现不同服务商的混合调用。比如我在`AnthropicTransformer`中实现了`Anthropic`<->`OpenAI`格式的互相转换，并监听了`/v1/messages`端点，在`GeminiTransformer`中实现了`Gemini`<->`OpenAI`格式的互相转换，并监听了`/v1beta/models/:modelAndAction`端点，当他们的请求和响应都被转换成一个通用格式的时候，就可以实现他们的互相调用。
 
 ```
 AnthropicRequest -> AnthropicTransformer -> OpenAIRequest -> GeminiTransformer -> GeminiRequest -> GeminiServer
@@ -22,7 +22,7 @@ GeminiReseponse -> GeminiTransformer -> OpenAIResponse -> AnthropicTransformer -
 虽然使用中间层抹平差异可能会带来一些性能问题，但是该项目最初的目的是为了让`claude-code-router`支持不同的供应商。
 
 至于`deepseek`模型调用工具不积极的问题，我发现这是由于`deepseek`在长上下文中的指令遵循不佳导致的。现象就是刚开始模型会主动调用工具，但是在经过几轮对话后模型只会返回文本。一开始的解决方案是通过注入一个系统提示词告知模型需要积极去使用工具以解决用户的问题，但是后面测试发现在长上下文中模型会遗忘该指令。
-查看`deepseek`文档后发现模型支持`tool_choice`参数，可以强制让模型最少调用 1 个工具，我尝试将该值设置为`required`，发现模型调用工具的积极性大大增加，现在我们只需要在合适的时候取消这个参数即可。借助[musistudio/llms](https://github.com/musistudio/llms)的`Transformer`可以让我们在发送请求前和收到响应后做点什么，所以我参考`claude code`的`Plan Mode`，实现了一个使用与`deepseek`的`Tool Mode`
+查看`deepseek`文档后发现模型支持`tool_choice`参数，可以强制让模型最少调用 1 个工具，我尝试将该值设置为`required`，发现模型调用工具的积极性大大增加，现在我们只需要在合适的时候取消这个参数即可。借助[datartech/llms](https://github.com/datartech/llms)的`Transformer`可以让我们在发送请求前和收到响应后做点什么，所以我参考`claude code`的`Plan Mode`，实现了一个使用与`deepseek`的`Tool Mode`
 
 ```typescript
 export class TooluseTransformer implements Transformer {

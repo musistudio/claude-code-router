@@ -11,7 +11,7 @@ importers:
       '@fastify/static':
         specifier: ^8.2.0
         version: 8.2.0
-      '@musistudio/llms':
+      '@datartech/llms':
         specifier: ^1.0.18
         version: 1.0.18(ws@8.18.3)(zod@3.25.67)
       '@radix-ui/react-tooltip':
@@ -275,7 +275,7 @@ packages:
     resolution: {integrity: sha512-9I2Zn6+NJLfaGoz9jN3lpwDgAYvfGeNYdbAIjJOqzs4Tpc+VU3Jqq4IofSUBKajiDS8k9fZIg18/z13mpk1bsA==}
     engines: {node: '>=8'}
 
-  '@musistudio/llms@1.0.18':
+  '@datartech/llms@1.0.18':
     resolution: {integrity: sha512-HiNWFfEHJC76TbS52A+uGRcEBGMzO7k62MhsDMAEO0LX0aLQjIjz1evNFeC25oD+iU4Ze1C+sxFRtOXywWMHcg==}
 
   '@nodelib/fs.scandir@2.1.5':
@@ -1358,7 +1358,7 @@ snapshots:
 
   '@lukeed/ms@2.0.2': {}
 
-  '@musistudio/llms@1.0.18(ws@8.18.3)(zod@3.25.67)':
+  '@datartech/llms@1.0.18(ws@8.18.3)(zod@3.25.67)':
     dependencies:
       '@anthropic-ai/sdk': 0.54.0
       '@fastify/cors': 11.0.1

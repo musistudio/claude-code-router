@@ -12,6 +12,7 @@ import {
   savePid,
 } from "./utils/processCheck";
 import { CONFIG_FILE } from "./constants";
+import { FastifyRequest, FastifyReply } from "fastify";
 
 async function initializeClaudeConfig() {
   const homeDir = homedir();
@@ -91,10 +92,11 @@ async function run(options: RunOptions = {}) {
         ".claude-code-router",
         "claude-code-router.log"
       ),
+      OCP_APIM_SUBSCRIPTION_KEY: config.OCP_APIM_SUBSCRIPTION_KEY,
     },
   });
   server.addHook("preHandler", apiKeyAuth(config));
-  server.addHook("preHandler", async (req, reply) => {
+  server.addHook("preHandler", async (req: FastifyRequest, reply: FastifyReply) => {
     if(req.url.startsWith("/v1/messages")) {
       router(req, reply, config)
     }

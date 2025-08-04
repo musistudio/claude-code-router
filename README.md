@@ -28,7 +28,7 @@ npm install -g @anthropic-ai/claude-code
 Then, install Claude Code Router:
 
 ```shell
-npm install -g @musistudio/claude-code-router
+npm install -g @datartech/claude-code-router
 ```
 
 ### 2. Configuration
@@ -282,7 +282,7 @@ Transformers allow you to modify the request and response payloads to ensure com
 - `groq`: Adapts requests/responses for groq API.
 - `maxtoken`: Sets a specific `max_tokens` value.
 - `tooluse`: Optimizes tool usage for certain models via `tool_choice`.
-- `gemini-cli` (experimental): Unofficial support for Gemini via Gemini CLI [gemini-cli.js](https://gist.github.com/musistudio/1c13a65f35916a7ab690649d3df8d1cd).
+- `gemini-cli` (experimental): Unofficial support for Gemini via Gemini CLI [gemini-cli.js](https://gist.github.com/datartech/1c13a65f35916a7ab690649d3df8d1cd).
 - `reasoning`: Used to process the `reasoning_content` field.
 - `sampling`: Used to process sampling information fields such as `temperature`, `top_p`, `top_k`, and `repetition_penalty`.
 - `enhancetool`: Adds a layer of error tolerance to the tool call parameters returned by the LLM (this will cause the tool call information to no longer be streamed).
@@ -416,7 +416,7 @@ jobs:
 
       - name: Start Claude Code Router
         run: |
-          nohup ~/.bun/bin/bunx @musistudio/claude-code-router@1.0.8 start &
+          nohup ~/.bun/bin/bunx @datartech/claude-code-router@1.0.8 start &
         shell: bash
 
       - name: Run Claude Code
@@ -441,7 +441,7 @@ If you find this project helpful, please consider sponsoring its development. Yo
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/F1F31GN2GM)
 
-[Paypal](https://paypal.me/musistudio1999)
+[Paypal](https://paypal.me/datartech1999)
 
 <table>
   <tr>

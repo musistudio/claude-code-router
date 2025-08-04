@@ -26,7 +26,7 @@ npm install -g @anthropic-ai/claude-code
 然后，安装 Claude Code Router：
 
 ```shell
-npm install -g @musistudio/claude-code-router
+npm install -g @datartech/claude-code-router
 ```
 
 ### 2. 配置
@@ -276,7 +276,7 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
 -   `groq`: 适配 groq API 的请求/响应
 -   `maxtoken`: 设置特定的 `max_tokens` 值。
 -   `tooluse`: 优化某些模型的工具使用(通过`tool_choice`参数)。
--   `gemini-cli` (实验性): 通过 Gemini CLI [gemini-cli.js](https://gist.github.com/musistudio/1c13a65f35916a7ab690649d3df8d1cd) 对 Gemini 的非官方支持。
+-   `gemini-cli` (实验性): 通过 Gemini CLI [gemini-cli.js](https://gist.github.com/datartech/1c13a65f35916a7ab690649d3df8d1cd) 对 Gemini 的非官方支持。
 -   `reasoning`: 用于处理 `reasoning_content` 字段。
 -   `sampling`: 用于处理采样信息字段，如 `temperature`、`top_p`、`top_k` 和 `repetition_penalty`。
 -   `enhancetool`: 对 LLM 返回的工具调用参数增加一层容错处理（这会导致不再流式返回工具调用信息）。
@@ -411,7 +411,7 @@ jobs:
 
       - name: Start Claude Code Router
         run: |
-          nohup ~/.bun/bin/bunx @musistudio/claude-code-router@1.0.8 start &
+          nohup ~/.bun/bin/bunx @datartech/claude-code-router@1.0.8 start &
         shell: bash
 
       - name: Run Claude Code
@@ -436,7 +436,7 @@ jobs:
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/F1F31GN2GM)
 
-[Paypal](https://paypal.me/musistudio1999)
+[Paypal](https://paypal.me/datartech1999)
 
 <table>
   <tr>

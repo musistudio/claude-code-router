@@ -75,6 +75,7 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
           APIKEY: typeof data.APIKEY === 'string' ? data.APIKEY : '',
           API_TIMEOUT_MS: typeof data.API_TIMEOUT_MS === 'string' ? data.API_TIMEOUT_MS : '600000',
           PROXY_URL: typeof data.PROXY_URL === 'string' ? data.PROXY_URL : '',
+          OCP_APIM_SUBSCRIPTION_KEY: typeof data.OCP_APIM_SUBSCRIPTION_KEY === 'string' ? data.OCP_APIM_SUBSCRIPTION_KEY : '',
           transformers: Array.isArray(data.transformers) ? data.transformers : [],
           Providers: Array.isArray(data.Providers) ? data.Providers : [],
           Router: data.Router && typeof data.Router === 'object' ? {
@@ -109,6 +110,7 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
             APIKEY: '',
             API_TIMEOUT_MS: '600000',
             PROXY_URL: '',
+            OCP_APIM_SUBSCRIPTION_KEY: '',
             transformers: [],
             Providers: [],
             Router: {
@@ -127,6 +129,12 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
 
     fetchConfig();
   }, [hasFetched, apiKey]);
+
+  useEffect(() => {
+    if (config) {
+      api.setOcpApimSubscriptionKey(config.OCP_APIM_SUBSCRIPTION_KEY || '');
+    }
+  }, [config?.OCP_APIM_SUBSCRIPTION_KEY]);
 
   return (
     <ConfigContext.Provider value={{ config, setConfig, error }}>

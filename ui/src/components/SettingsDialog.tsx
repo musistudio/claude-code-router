@@ -69,6 +69,10 @@ export function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogProps) {
             <Label htmlFor="apikey" className="transition-all-ease hover:scale-[1.01] cursor-pointer">{t("toplevel.apikey")}</Label>
             <Input id="apikey" type="password" value={config.APIKEY} onChange={(e) => setConfig({ ...config, APIKEY: e.target.value })} className="transition-all-ease focus:scale-[1.01]" />
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="ocp-apim-subscription-key" className="transition-all-ease hover:scale-[1.01] cursor-pointer">{t("toplevel.ocp_apim_subscription_key")}</Label>
+            <Input id="ocp-apim-subscription-key" type="password" value={config.OCP_APIM_SUBSCRIPTION_KEY} onChange={(e) => setConfig({ ...config, OCP_APIM_SUBSCRIPTION_KEY: e.target.value })} className="transition-all-ease focus:scale-[1.01]" />
+          </div>
         </div>
         <DialogFooter>
           <Button onClick={() => onOpenChange(false)} className="transition-all-ease hover:scale-[1.02] active:scale-[0.98]">{t("app.save")}</Button>

@@ -32,7 +32,8 @@
     "port": "端口",
     "apikey": "API 密钥",
     "timeout": "API 超时时间 (毫秒)",
-    "proxy_url": "代理地址"
+    "proxy_url": "代理地址",
+    "ocp_apim_subscription_key": "Ocp-Apim-Subscription-Key"
   },
   "transformers": {
     "title": "自定义转换器",

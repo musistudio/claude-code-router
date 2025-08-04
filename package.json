@@ -1,5 +1,5 @@
 {
-  "name": "@musistudio/claude-code-router",
+  "name": "@datartech/claude-code-router",
   "version": "1.0.32",
   "description": "Use Claude Code without an Anthropics account and route it to another LLM provider",
   "bin": {
@@ -16,11 +16,11 @@
     "llm",
     "anthropic"
   ],
-  "author": "musistudio",
+  "author": "datartech",
   "license": "MIT",
   "dependencies": {
     "@fastify/static": "^8.2.0",
-    "@musistudio/llms": "^1.0.18",
+    "@datartech/llms": "^1.0.19",
     "@radix-ui/react-tooltip": "^1.2.7",
     "dotenv": "^16.4.7",
     "json5": "^2.2.3",

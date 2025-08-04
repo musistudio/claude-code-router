@@ -10,7 +10,7 @@ Originally, I created this project for personal use, mainly to access claude cod
 
 3. The official DeepSeek API has a `max_output` of 8192, but Volcano Engine’s limit is even higher.
 
-Aside from these, smaller providers often have quirks in their parameter handling. So I decided to create a new project, [musistudio/llms](https://github.com/musistudio/llms), to deal with these compatibility issues. It uses the OpenAI format as a base and introduces a generic Transformer interface for transforming both requests and responses.
+Aside from these, smaller providers often have quirks in their parameter handling. So I decided to create a new project, [datartech/llms](https://github.com/datartech/llms), to deal with these compatibility issues. It uses the OpenAI format as a base and introduces a generic Transformer interface for transforming both requests and responses.
 
 Once a `Transformer` is implemented for each provider, it becomes possible to mix-and-match requests between them. For example, I implemented bidirectional conversion between Anthropic and OpenAI formats in `AnthropicTransformer`, which listens to the `/v1/messages` endpoint. Similarly, `GeminiTransformer` handles Gemini <-> OpenAI format conversions and listens to `/v1beta/models/:modelAndAction`.
 
@@ -28,7 +28,7 @@ Using a middleware layer to smooth out differences may introduce some performanc
 
 As for the issue of DeepSeek’s lackluster tool usage — I found that it stems from poor instruction adherence in long conversations. Initially, the model actively calls tools, but after several rounds, it starts responding with plain text instead. My first workaround was injecting a system prompt to remind the model to use tools proactively. But in long contexts, the model tends to forget this instruction.
 
-After reading the DeepSeek documentation, I noticed it supports the `tool_choice` parameter, which can be set to `"required"` to force the model to use at least one tool. I tested this by enabling the parameter, and it significantly improved the model’s tool usage. We can remove the setting when it's no longer necessary. With the help of the `Transformer` interface in [musistudio/llms](https://github.com/musistudio/llms), we can modify the request before it’s sent and adjust the response after it’s received.
+After reading the DeepSeek documentation, I noticed it supports the `tool_choice` parameter, which can be set to `"required"` to force the model to use at least one tool. I tested this by enabling the parameter, and it significantly improved the model’s tool usage. We can remove the setting when it's no longer necessary. With the help of the `Transformer` interface in [datartech/llms](https://github.com/datartech/llms), we can modify the request before it’s sent and adjust the response after it’s received.
 
 Inspired by the Plan Mode in `claude code`, I implemented a similar Tool Mode for DeepSeek:
 

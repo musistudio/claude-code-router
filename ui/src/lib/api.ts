@@ -4,11 +4,13 @@ import type { Config, Provider, Transformer } from '@/types';
 class ApiClient {
   private baseUrl: string;
   private apiKey: string;
+  private ocpApimSubscriptionKey: string;
 
-  constructor(baseUrl: string = '/api', apiKey: string = '') {
+  constructor(baseUrl: string = '/api', apiKey: string = '', ocpApimSubscriptionKey: string = '') {
     this.baseUrl = baseUrl;
     // Load API key from localStorage if available
     this.apiKey = apiKey || localStorage.getItem('apiKey') || '';
+    this.ocpApimSubscriptionKey = ocpApimSubscriptionKey;
   }
 
   // Update base URL
@@ -27,6 +29,11 @@ class ApiClient {
     }
   }
 
+  // Update Ocp-Apim-Subscription-Key
+  setOcpApimSubscriptionKey(key: string) {
+    this.ocpApimSubscriptionKey = key;
+  }
+
   // Create headers with API key authentication
   private createHeaders(contentType: string = 'application/json'): HeadersInit {
     const headers: Record<string, string> = {
@@ -36,6 +43,10 @@ class ApiClient {
     
     if (contentType) {
       headers['Content-Type'] = contentType;
+    }
+
+    if (this.ocpApimSubscriptionKey) {
+      headers['Ocp-Apim-Subscription-Key'] = this.ocpApimSubscriptionKey;
     }
     
     return headers;

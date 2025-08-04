@@ -32,7 +32,8 @@
     "port": "Port",
     "apikey": "API Key",
     "timeout": "API Timeout (ms)",
-    "proxy_url": "Proxy URL"
+    "proxy_url": "Proxy URL",
+    "ocp_apim_subscription_key": "Ocp-Apim-Subscription-Key"
   },
   "transformers": {
     "title": "Custom Transformers",

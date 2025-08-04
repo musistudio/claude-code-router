@@ -39,4 +39,5 @@ export interface Config {
   APIKEY: string;
   API_TIMEOUT_MS: string;
   PROXY_URL: string;
+  OCP_APIM_SUBSCRIPTION_KEY?: string;
 }
