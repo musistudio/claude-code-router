@@ -28,9 +28,14 @@ Commands:
   -v, version   Show version information
   -h, help      Show help information
 
-Example:
+Options:
+  --model       Override the default model (for 'code' command)
+                Format: provider,model (e.g., openrouter,anthropic/claude-opus-4)
+
+Examples:
   ccr start
   ccr code "Write a Hello World"
+  ccr code --model openrouter,anthropic/claude-sonnet-4 "Explain this code"
   ccr ui
 `;
 
@@ -84,6 +89,19 @@ async function main() {
       await showStatus();
       break;
     case "code":
+      // Parse --model option from command line arguments
+      let modelOverride: string | undefined;
+      const codeArgs: string[] = [];
+      
+      for (let i = 3; i < process.argv.length; i++) {
+        if (process.argv[i] === "--model" && process.argv[i + 1]) {
+          modelOverride = process.argv[i + 1];
+          i++; // Skip the next argument as it's the model value
+        } else {
+          codeArgs.push(process.argv[i]);
+        }
+      }
+      
       if (!isServiceRunning()) {
         console.log("Service not running, starting service...");
         const cliPath = join(__dirname, "cli.js");
@@ -112,9 +130,7 @@ async function main() {
         startProcess.unref();
 
         if (await waitForService()) {
-          // Join all code arguments into a single string to preserve spaces within quotes
-          const codeArgs = process.argv.slice(3);
-          executeCodeCommand(codeArgs);
+          executeCodeCommand(codeArgs, modelOverride);
         } else {
           console.error(
             "Service startup timeout, please manually run `ccr start` to start the service"
@@ -122,9 +138,7 @@ async function main() {
           process.exit(1);
         }
       } else {
-        // Join all code arguments into a single string to preserve spaces within quotes
-        const codeArgs = process.argv.slice(3);
-        executeCodeCommand(codeArgs);
+        executeCodeCommand(codeArgs, modelOverride);
       }
       break;
     case "ui":

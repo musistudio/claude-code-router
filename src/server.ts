@@ -51,6 +51,7 @@ export const createServer = (config: any): Server => {
     }, 1000);
   });
 
+
   // Register static file serving with caching
   server.app.register(fastifyStatic, {
     root: join(__dirname, "..", "dist"),

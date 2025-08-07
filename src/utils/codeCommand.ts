@@ -6,15 +6,27 @@ import {
   incrementReferenceCount,
 } from "./processCheck";
 
-export async function executeCodeCommand(args: string[] = []) {
+export async function executeCodeCommand(args: string[] = [], modelOverride?: string) {
   // Set environment variables
   const config = await readConfigFile();
+  
   const env: Record<string, string> = {
     ...process.env,
     ANTHROPIC_AUTH_TOKEN: "test",
     ANTHROPIC_BASE_URL: `http://127.0.0.1:${config.PORT || 3456}`,
     API_TIMEOUT_MS: String(config.API_TIMEOUT_MS ?? 600000), // Default to 10 minutes if not set
   };
+  
+  // Model override implementation:
+  // The CLI client and server run in separate processes, requiring inter-process communication.
+  // Claude CLI forwards only ANTHROPIC_AUTH_TOKEN and ANTHROPIC_BASE_URL as environment variables.
+  // We embed the model override in the auth token to pass it reliably to the server.
+  if (modelOverride) {
+    // Token format: "test:MODEL:{encoded_model}"
+    // Commas are encoded as "___" to avoid conflicts (e.g., "provider,model" becomes "provider___model")
+    const encodedModel = modelOverride.replace(/,/g, '___');
+    env.ANTHROPIC_AUTH_TOKEN = `test:MODEL:${encodedModel}`;
+  }
 
   // Non-interactive mode for automation environments
   if (config.NON_INTERACTIVE_MODE) {
