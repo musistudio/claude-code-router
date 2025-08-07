@@ -73,7 +73,6 @@ async function run(options: RunOptions = {}) {
     cleanupPidFile();
     process.exit(0);
   });
-  console.log(HOST)
 
   // Use port from environment variable if set (for background process)
   const servicePort = process.env.SERVICE_PORT
@@ -94,11 +93,35 @@ async function run(options: RunOptions = {}) {
     },
   });
   server.addHook("preHandler", apiKeyAuth(config));
+  
+  // Model override handler
+  // Intercepts requests to check for model overrides passed via CLI's --model option
   server.addHook("preHandler", async (req, reply) => {
     if(req.url.startsWith("/v1/messages")) {
-      router(req, reply, config)
+      const configWithOverride = { ...config };
+      
+      // Extract model override from auth token if present
+      // Format: "test:MODEL:{encoded_model}" where commas are encoded as "___"
+      const authHeader = req.headers.authorization || '';
+      
+      if (authHeader.includes(':MODEL:')) {
+        const parts = authHeader.split(':MODEL:');
+        if (parts.length === 2) {
+          // Decode the model string (e.g., "provider___model" → "provider,model")
+          const modelOverride = parts[1].replace(/___/g, ',');
+          
+          // Override the default router configuration with the specified model
+          configWithOverride.Router = {
+            ...config.Router,
+            default: modelOverride
+          };
+        }
+      }
+      
+      router(req, reply, configWithOverride)
     }
   });
+  
   server.start();
 }
 
