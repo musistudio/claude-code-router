@@ -40,8 +40,8 @@ jobs:
           additional_permissions: |
             actions: read
           
-          # Optional: Specify model (defaults to Claude Sonnet 4, uncomment for Claude Opus 4)
-          # model: "claude-opus-4-20250514"
+          # Use the latest Claude Opus model
+          model: "claude-opus-4-1-20250805"
           
           # Optional: Customize the trigger phrase (default: @claude)
           # trigger_phrase: "/claude"
