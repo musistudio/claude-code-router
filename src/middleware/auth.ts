@@ -54,8 +54,8 @@ export const apiKeyAuth =
       }
       
       // If API key is set, check authentication
-      const authKey: string =
-        req.headers.authorization || req.headers["x-api-key"];
+      const authKey: string | undefined =
+        (req.headers.authorization || req.headers["x-api-key"]) as string | undefined;
       
       if (!authKey) {
         (req as any).accessLevel = "restricted";
@@ -89,8 +89,8 @@ export const apiKeyAuth =
       return done();
     }
 
-    const authKey: string =
-      req.headers.authorization || req.headers["x-api-key"];
+    const authKey: string | undefined =
+      (req.headers.authorization || req.headers["x-api-key"]) as string | undefined;
     if (!authKey) {
       reply.status(401).send("APIKEY is missing");
       return;
