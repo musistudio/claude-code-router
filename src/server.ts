@@ -9,7 +9,7 @@ export const createServer = (config: any): Server => {
   const server = new Server(config);
 
   // Add endpoint to read config.json with access control
-  server.app.get("/api/config", async (req, reply) => {
+  server.app.get("/api/config", async (req: any, reply: any) => {
     // Get access level from request (set by auth middleware)
     const accessLevel = (req as any).accessLevel || "restricted";
     
@@ -36,7 +36,7 @@ export const createServer = (config: any): Server => {
   });
 
   // Add endpoint to save config.json with access control
-  server.app.post("/api/config", async (req, reply) => {
+  server.app.post("/api/config", async (req: any, reply: any) => {
     // Only allow full access users to save config
     const accessLevel = (req as any).accessLevel || "restricted";
     if (accessLevel !== "full") {
@@ -58,7 +58,7 @@ export const createServer = (config: any): Server => {
   });
   
   // Add endpoint for testing full access without modifying config
-  server.app.post("/api/config/test", async (req, reply) => {
+  server.app.post("/api/config/test", async (req: any, reply: any) => {
     // Only allow full access users to test config access
     const accessLevel = (req as any).accessLevel || "restricted";
     if (accessLevel !== "full") {
@@ -71,7 +71,7 @@ export const createServer = (config: any): Server => {
   });
 
   // Add endpoint to restart the service with access control
-  server.app.post("/api/restart", async (req, reply) => {
+  server.app.post("/api/restart", async (req: any, reply: any) => {
     // Only allow full access users to restart service
     const accessLevel = (req as any).accessLevel || "restricted";
     if (accessLevel !== "full") {
@@ -96,7 +96,7 @@ export const createServer = (config: any): Server => {
   });
 
   // Redirect /ui to /ui/ for proper static file serving
-  server.app.get("/ui", async (_, reply) => {
+  server.app.get("/ui", async (_: any, reply: any) => {
     return reply.redirect("/ui/");
   });
 
