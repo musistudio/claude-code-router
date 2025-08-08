@@ -11,8 +11,17 @@
         "anthropic/claude-3.7-sonnet:thinking"
       ],
       "transformer": {
-        "use": ["openrouter"]
-      }
+        "use": [
+          [
+            "openrouter",
+            {
+              "referer": "https://example.com",
+              "title": "claude-code-router",
+              "providerOrder": []
+            }
+          ]
+        ]
+      },
     },
     {
       "name": "deepseek",
