@@ -93,7 +93,17 @@ async function run(options: RunOptions = {}) {
       ),
     },
   });
-  server.addHook("preHandler", apiKeyAuth(config));
+  // Add async preHandler hook for authentication
+  server.addHook("preHandler", async (req, reply) => {
+    return new Promise((resolve, reject) => {
+      const done = (err?: Error) => {
+        if (err) reject(err);
+        else resolve();
+      };
+      // Call the async auth function
+      apiKeyAuth(config)(req, reply, done).catch(reject);
+    });
+  });
   server.addHook("preHandler", async (req, reply) => {
     if(req.url.startsWith("/v1/messages")) {
       router(req, reply, config)

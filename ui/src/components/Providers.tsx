@@ -14,12 +14,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { X, Trash2, Plus } from "lucide-react";
+import { X, Trash2, Plus, Eye, EyeOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Combobox } from "@/components/ui/combobox";
 import { ComboInput } from "@/components/ui/combo-input";
 import { api } from "@/lib/api";
+import type { Provider } from "@/types";
 
+interface ProviderType extends Provider {}
 
 export function Providers() {
   const { t } = useTranslation();
@@ -30,7 +32,31 @@ export function Providers() {
   const [providerParamInputs, setProviderParamInputs] = useState<Record<string, {name: string, value: string}>>({});
   const [modelParamInputs, setModelParamInputs] = useState<Record<string, {name: string, value: string}>>({});
   const [availableTransformers, setAvailableTransformers] = useState<{name: string; endpoint: string | null;}[]>([]);
+  const [editingProviderData, setEditingProviderData] = useState<ProviderType | null>(null);
+  const [isNewProvider, setIsNewProvider] = useState<boolean>(false);
+  const [providerTemplates, setProviderTemplates] = useState<ProviderType[]>([]);
+  const [showApiKey, setShowApiKey] = useState<Record<number, boolean>>({});
+  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
   const comboInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const fetchProviderTemplates = async () => {
+      try {
+        const response = await fetch('https://pub-0dc3e1677e894f07bbea11b17a29e032.r2.dev/providers.json');
+        if (response.ok) {
+          const data = await response.json();
+          setProviderTemplates(data || []);
+        } else {
+          console.error('Failed to fetch provider templates');
+        }
+      } catch (error) {
+        console.error('Failed to fetch provider templates:', error);
+      }
+    };
+
+    fetchProviderTemplates();
+  }, []);
 
   // Fetch available transformers when component mounts
   useEffect(() => {
@@ -65,22 +91,90 @@ export function Providers() {
 
 
   const handleAddProvider = () => {
-    const newProviders = [...config.Providers, { name: "", api_base_url: "", api_key: "", models: [] }];
-    setConfig({ ...config, Providers: newProviders });
-    setEditingProviderIndex(newProviders.length - 1);
+    const newProvider: ProviderType = { name: "", api_base_url: "", api_key: "", models: [] };
+    setEditingProviderIndex(config.Providers.length);
+    setEditingProviderData(newProvider);
+    setIsNewProvider(true);
+    // Reset API key visibility and error when adding new provider
+    setShowApiKey(prev => ({
+      ...prev,
+      [config.Providers.length]: false
+    }));
+    setApiKeyError(null);
+    setNameError(null);
+  };
+
+  const handleEditProvider = (index: number) => {
+    const provider = config.Providers[index];
+    setEditingProviderIndex(index);
+    setEditingProviderData(JSON.parse(JSON.stringify(provider))); // 深拷贝
+    setIsNewProvider(false);
+    // Reset API key visibility and error when opening edit dialog
+    setShowApiKey(prev => ({
+      ...prev,
+      [index]: false
+    }));
+    setApiKeyError(null);
+    setNameError(null);
   };
 
   const handleSaveProvider = () => {
+    if (!editingProviderData) return;
+    
+    // Validate name
+    if (!editingProviderData.name || editingProviderData.name.trim() === '') {
+      setNameError(t("providers.name_required"));
+      return;
+    }
+    
+    // Check for duplicate names (case-insensitive)
+    const trimmedName = editingProviderData.name.trim();
+    const isDuplicate = config.Providers.some((provider, index) => {
+      // For edit mode, skip checking the current provider being edited
+      if (!isNewProvider && index === editingProviderIndex) {
+        return false;
+      }
+      return provider.name.toLowerCase() === trimmedName.toLowerCase();
+    });
+    
+    if (isDuplicate) {
+      setNameError(t("providers.name_duplicate"));
+      return;
+    }
+    
+    // Validate API key
+    if (!editingProviderData.api_key || editingProviderData.api_key.trim() === '') {
+      setApiKeyError(t("providers.api_key_required"));
+      return;
+    }
+    
+    // Clear errors if validation passes
+    setApiKeyError(null);
+    setNameError(null);
+    
+    if (editingProviderIndex !== null && editingProviderData) {
+      const newProviders = [...config.Providers];
+      if (isNewProvider) {
+        newProviders.push(editingProviderData);
+      } else {
+        newProviders[editingProviderIndex] = editingProviderData;
+      }
+      setConfig({ ...config, Providers: newProviders });
+    }
+    // Reset API key visibility for this provider
+    if (editingProviderIndex !== null) {
+      setShowApiKey(prev => {
+        const newState = { ...prev };
+        delete newState[editingProviderIndex];
+        return newState;
+      });
+    }
     setEditingProviderIndex(null);
+    setEditingProviderData(null);
+    setIsNewProvider(false);
   };
 
   const handleCancelAddProvider = () => {
-    // If we're adding a new provider, remove it regardless of content
-    if (editingProviderIndex !== null && editingProviderIndex === config.Providers.length - 1) {
-      const newProviders = [...config.Providers];
-      newProviders.pop();
-      setConfig({ ...config, Providers: newProviders });
-    }
     // Reset fetched models state for this provider
     if (editingProviderIndex !== null) {
       setHasFetchedModels(prev => {
@@ -88,8 +182,18 @@ export function Providers() {
         delete newState[editingProviderIndex];
         return newState;
       });
+      // Reset API key visibility for this provider
+      setShowApiKey(prev => {
+        const newState = { ...prev };
+        delete newState[editingProviderIndex];
+        return newState;
+      });
     }
     setEditingProviderIndex(null);
+    setEditingProviderData(null);
+    setIsNewProvider(false);
+    setApiKeyError(null);
+    setNameError(null);
   };
 
   const handleRemoveProvider = (index: number) => {
@@ -99,90 +203,97 @@ export function Providers() {
     setDeletingProviderIndex(null);
   };
 
-  const handleProviderChange = (index: number, field: string, value: string) => {
-    const newProviders = [...config.Providers];
-    newProviders[index][field] = value;
-    setConfig({ ...config, Providers: newProviders });
+  const handleProviderChange = (_index: number, field: string, value: string) => {
+    if (editingProviderData) {
+      const updatedProvider = { ...editingProviderData, [field]: value };
+      setEditingProviderData(updatedProvider);
+    }
   };
 
-  const handleProviderTransformerChange = (index: number, transformerPath: string) => {
-    if (!transformerPath) return; // Don't add empty transformers
+  const handleProviderTransformerChange = (_index: number, transformerPath: string) => {
+    if (!transformerPath || !editingProviderData) return; // Don't add empty transformers
     
-    const newProviders = [...config.Providers];
+    const updatedProvider = { ...editingProviderData };
     
-    if (!newProviders[index].transformer) {
-      newProviders[index].transformer = { use: [] };
+    if (!updatedProvider.transformer) {
+      updatedProvider.transformer = { use: [] };
     }
     
     // Add transformer to the use array
-    newProviders[index].transformer!.use = [...newProviders[index].transformer!.use, transformerPath];
-    setConfig({ ...config, Providers: newProviders });
+    updatedProvider.transformer.use = [...updatedProvider.transformer.use, transformerPath];
+    setEditingProviderData(updatedProvider);
   };
 
-  const removeProviderTransformerAtIndex = (index: number, transformerIndex: number) => {
-    const newProviders = [...config.Providers];
+  const removeProviderTransformerAtIndex = (_index: number, transformerIndex: number) => {
+    if (!editingProviderData) return;
     
-    if (newProviders[index].transformer) {
-      const newUseArray = [...newProviders[index].transformer!.use];
+    const updatedProvider = { ...editingProviderData };
+    
+    if (updatedProvider.transformer) {
+      const newUseArray = [...updatedProvider.transformer.use];
       newUseArray.splice(transformerIndex, 1);
-      newProviders[index].transformer!.use = newUseArray;
+      updatedProvider.transformer.use = newUseArray;
       
       // If use array is now empty and no other properties, remove transformer entirely
-      if (newUseArray.length === 0 && Object.keys(newProviders[index].transformer!).length === 1) {
-        delete newProviders[index].transformer;
+      if (newUseArray.length === 0 && Object.keys(updatedProvider.transformer).length === 1) {
+        delete updatedProvider.transformer;
       }
     }
     
-    setConfig({ ...config, Providers: newProviders });
+    setEditingProviderData(updatedProvider);
   };
 
-  const handleModelTransformerChange = (providerIndex: number, model: string, transformerPath: string) => {
-    if (!transformerPath) return; // Don't add empty transformers
+  const handleModelTransformerChange = (_providerIndex: number, model: string, transformerPath: string) => {
+    if (!transformerPath || !editingProviderData) return; // Don't add empty transformers
     
-    const newProviders = [...config.Providers];
+    const updatedProvider = { ...editingProviderData };
     
-    if (!newProviders[providerIndex].transformer) {
-      newProviders[providerIndex].transformer = { use: [] };
+    if (!updatedProvider.transformer) {
+      updatedProvider.transformer = { use: [] };
     }
     
     // Initialize model transformer if it doesn't exist
-    if (!newProviders[providerIndex].transformer![model]) {
-      newProviders[providerIndex].transformer![model] = { use: [] };
+    if (!updatedProvider.transformer[model]) {
+      updatedProvider.transformer[model] = { use: [] };
     }
     
     // Add transformer to the use array
-    newProviders[providerIndex].transformer![model].use = [...newProviders[providerIndex].transformer![model].use, transformerPath];
-    setConfig({ ...config, Providers: newProviders });
+    updatedProvider.transformer[model].use = [...updatedProvider.transformer[model].use, transformerPath];
+    setEditingProviderData(updatedProvider);
   };
 
-  const removeModelTransformerAtIndex = (providerIndex: number, model: string, transformerIndex: number) => {
-    const newProviders = [...config.Providers];
+  const removeModelTransformerAtIndex = (_providerIndex: number, model: string, transformerIndex: number) => {
+    if (!editingProviderData) return;
     
-    if (newProviders[providerIndex].transformer && newProviders[providerIndex].transformer![model]) {
-      const newUseArray = [...newProviders[providerIndex].transformer![model].use];
+    const updatedProvider = { ...editingProviderData };
+    
+    if (updatedProvider.transformer && updatedProvider.transformer[model]) {
+      const newUseArray = [...updatedProvider.transformer[model].use];
       newUseArray.splice(transformerIndex, 1);
-      newProviders[providerIndex].transformer![model].use = newUseArray;
+      updatedProvider.transformer[model].use = newUseArray;
       
       // If use array is now empty and no other properties, remove model transformer entirely
-      if (newUseArray.length === 0 && Object.keys(newProviders[providerIndex].transformer![model]).length === 1) {
-        delete newProviders[providerIndex].transformer![model];
+      if (newUseArray.length === 0 && Object.keys(updatedProvider.transformer[model]).length === 1) {
+        delete updatedProvider.transformer[model];
       }
     }
     
-    setConfig({ ...config, Providers: newProviders });
+    setEditingProviderData(updatedProvider);
   };
 
 
-  const addProviderTransformerParameter = (providerIndex: number, transformerIndex: number, paramName: string, paramValue: string) => {
-    const newProviders = [...config.Providers];
+  const addProviderTransformerParameter = (_providerIndex: number, transformerIndex: number, paramName: string, paramValue: string) => {
+    if (!editingProviderData) return;
     
-    if (!newProviders[providerIndex].transformer) {
-      newProviders[providerIndex].transformer = { use: [] };
+    const updatedProvider = { ...editingProviderData };
+    
+    if (!updatedProvider.transformer) {
+      updatedProvider.transformer = { use: [] };
     }
     
     // Add parameter to the specified transformer in use array
-    if (newProviders[providerIndex].transformer!.use && newProviders[providerIndex].transformer!.use.length > transformerIndex) {
-      const targetTransformer = newProviders[providerIndex].transformer!.use[transformerIndex];
+    if (updatedProvider.transformer.use && updatedProvider.transformer.use.length > transformerIndex) {
+      const targetTransformer = updatedProvider.transformer.use[transformerIndex];
       
       // If it's already an array with parameters, update it
       if (Array.isArray(targetTransformer)) {
@@ -203,26 +314,28 @@ export function Providers() {
           transformerArray.push(paramsObj);
         }
         
-        newProviders[providerIndex].transformer!.use[transformerIndex] = transformerArray as string | (string | Record<string, unknown> | { max_tokens: number })[];
+        updatedProvider.transformer.use[transformerIndex] = transformerArray as string | (string | Record<string, unknown> | { max_tokens: number })[];
       } else {
         // Convert to array format with parameters
         const paramsObj = { [paramName]: paramValue };
-        newProviders[providerIndex].transformer!.use[transformerIndex] = [targetTransformer as string, paramsObj];
+        updatedProvider.transformer.use[transformerIndex] = [targetTransformer as string, paramsObj];
       }
     }
     
-    setConfig({ ...config, Providers: newProviders });
+    setEditingProviderData(updatedProvider);
   };
 
 
-  const removeProviderTransformerParameterAtIndex = (providerIndex: number, transformerIndex: number, paramName: string) => {
-    const newProviders = [...config.Providers];
+  const removeProviderTransformerParameterAtIndex = (_providerIndex: number, transformerIndex: number, paramName: string) => {
+    if (!editingProviderData) return;
     
-    if (!newProviders[providerIndex].transformer?.use || newProviders[providerIndex].transformer.use.length <= transformerIndex) {
+    const updatedProvider = { ...editingProviderData };
+    
+    if (!updatedProvider.transformer?.use || updatedProvider.transformer.use.length <= transformerIndex) {
       return;
     }
     
-    const targetTransformer = newProviders[providerIndex].transformer.use[transformerIndex];
+    const targetTransformer = updatedProvider.transformer.use[transformerIndex];
     if (Array.isArray(targetTransformer) && targetTransformer.length > 1) {
       const transformerArray = [...targetTransformer];
       // Check if the second element is an object (parameters object)
@@ -237,26 +350,28 @@ export function Providers() {
           transformerArray[1] = paramsObj;
         }
         
-        newProviders[providerIndex].transformer!.use[transformerIndex] = transformerArray;
-        setConfig({ ...config, Providers: newProviders });
+        updatedProvider.transformer.use[transformerIndex] = transformerArray;
+        setEditingProviderData(updatedProvider);
       }
     }
   };
 
-  const addModelTransformerParameter = (providerIndex: number, model: string, transformerIndex: number, paramName: string, paramValue: string) => {
-    const newProviders = [...config.Providers];
+  const addModelTransformerParameter = (_providerIndex: number, model: string, transformerIndex: number, paramName: string, paramValue: string) => {
+    if (!editingProviderData) return;
     
-    if (!newProviders[providerIndex].transformer) {
-      newProviders[providerIndex].transformer = { use: [] };
+    const updatedProvider = { ...editingProviderData };
+    
+    if (!updatedProvider.transformer) {
+      updatedProvider.transformer = { use: [] };
     }
     
-    if (!newProviders[providerIndex].transformer![model]) {
-      newProviders[providerIndex].transformer![model] = { use: [] };
+    if (!updatedProvider.transformer[model]) {
+      updatedProvider.transformer[model] = { use: [] };
     }
     
     // Add parameter to the specified transformer in use array
-    if (newProviders[providerIndex].transformer![model].use && newProviders[providerIndex].transformer![model].use.length > transformerIndex) {
-      const targetTransformer = newProviders[providerIndex].transformer![model].use[transformerIndex];
+    if (updatedProvider.transformer[model].use && updatedProvider.transformer[model].use.length > transformerIndex) {
+      const targetTransformer = updatedProvider.transformer[model].use[transformerIndex];
       
       // If it's already an array with parameters, update it
       if (Array.isArray(targetTransformer)) {
@@ -277,26 +392,28 @@ export function Providers() {
           transformerArray.push(paramsObj);
         }
         
-        newProviders[providerIndex].transformer![model].use[transformerIndex] = transformerArray as string | (string | Record<string, unknown> | { max_tokens: number })[];
+        updatedProvider.transformer[model].use[transformerIndex] = transformerArray as string | (string | Record<string, unknown> | { max_tokens: number })[];
       } else {
         // Convert to array format with parameters
         const paramsObj = { [paramName]: paramValue };
-        newProviders[providerIndex].transformer![model].use[transformerIndex] = [targetTransformer as string, paramsObj];
+        updatedProvider.transformer[model].use[transformerIndex] = [targetTransformer as string, paramsObj];
       }
     }
     
-    setConfig({ ...config, Providers: newProviders });
+    setEditingProviderData(updatedProvider);
   };
 
 
-  const removeModelTransformerParameterAtIndex = (providerIndex: number, model: string, transformerIndex: number, paramName: string) => {
-    const newProviders = [...config.Providers];
+  const removeModelTransformerParameterAtIndex = (_providerIndex: number, model: string, transformerIndex: number, paramName: string) => {
+    if (!editingProviderData) return;
     
-    if (!newProviders[providerIndex].transformer?.[model]?.use || newProviders[providerIndex].transformer[model].use.length <= transformerIndex) {
+    const updatedProvider = { ...editingProviderData };
+    
+    if (!updatedProvider.transformer?.[model]?.use || updatedProvider.transformer[model].use.length <= transformerIndex) {
       return;
     }
     
-    const targetTransformer = newProviders[providerIndex].transformer[model].use[transformerIndex];
+    const targetTransformer = updatedProvider.transformer[model].use[transformerIndex];
     if (Array.isArray(targetTransformer) && targetTransformer.length > 1) {
       const transformerArray = [...targetTransformer];
       // Check if the second element is an object (parameters object)
@@ -311,55 +428,64 @@ export function Providers() {
           transformerArray[1] = paramsObj;
         }
         
-        newProviders[providerIndex].transformer![model].use[transformerIndex] = transformerArray;
-        setConfig({ ...config, Providers: newProviders });
+        updatedProvider.transformer[model].use[transformerIndex] = transformerArray;
+        setEditingProviderData(updatedProvider);
       }
     }
   };
 
-  const handleAddModel = (index: number, model: string) => {
-    if (!model.trim()) return;
+  const handleAddModel = (_index: number, model: string) => {
+    if (!model.trim() || !editingProviderData) return;
     
-    // Handle case where config.Providers might be null or undefined
-    if (!config || !Array.isArray(config.Providers)) return;
-    
-    // Handle case where the provider at the given index might be null or undefined
-    if (!config.Providers[index]) return;
-    
-    const newProviders = [...config.Providers];
+    const updatedProvider = { ...editingProviderData };
     
     // Handle case where provider.models might be null or undefined
-    const models = Array.isArray(newProviders[index].models) ? [...newProviders[index].models] : [];
+    const models = Array.isArray(updatedProvider.models) ? [...updatedProvider.models] : [];
     
     // Check if model already exists
     if (!models.includes(model.trim())) {
       models.push(model.trim());
-      newProviders[index].models = models;
-      setConfig({ ...config, Providers: newProviders });
+      updatedProvider.models = models;
+      setEditingProviderData(updatedProvider);
     }
   };
 
-  const handleRemoveModel = (providerIndex: number, modelIndex: number) => {
-    // Handle case where config.Providers might be null or undefined
-    if (!config || !Array.isArray(config.Providers)) return;
+    const handleTemplateImport = (value: string) => {
+    if (!value) return;
+    try {
+      const selectedTemplate = JSON.parse(value);
+      if (selectedTemplate) {
+        const currentName = editingProviderData?.name;
+        const newProviderData = JSON.parse(JSON.stringify(selectedTemplate));
+
+        if (!isNewProvider && currentName) {
+          newProviderData.name = currentName;
+        }
+        
+        setEditingProviderData(newProviderData as ProviderType);
+      }
+    } catch (e) {
+      console.error("Failed to parse template", e);
+    }
+  };
+
+  const handleRemoveModel = (_providerIndex: number, modelIndex: number) => {
+    if (!editingProviderData) return;
     
-    // Handle case where the provider at the given index might be null or undefined
-    if (!config.Providers[providerIndex]) return;
-    
-    const newProviders = [...config.Providers];
+    const updatedProvider = { ...editingProviderData };
     
     // Handle case where provider.models might be null or undefined
-    const models = Array.isArray(newProviders[providerIndex].models) ? [...newProviders[providerIndex].models] : [];
+    const models = Array.isArray(updatedProvider.models) ? [...updatedProvider.models] : [];
     
     // Handle case where modelIndex might be out of bounds
     if (modelIndex >= 0 && modelIndex < models.length) {
       models.splice(modelIndex, 1);
-      newProviders[providerIndex].models = models;
-      setConfig({ ...config, Providers: newProviders });
+      updatedProvider.models = models;
+      setEditingProviderData(updatedProvider);
     }
   };
 
-  const editingProvider = editingProviderIndex !== null ? validProviders[editingProviderIndex] : null;
+  const editingProvider = editingProviderData || (editingProviderIndex !== null ? validProviders[editingProviderIndex] : null);
 
   return (
     <Card className="flex h-full flex-col rounded-lg border shadow-sm">
@@ -370,7 +496,7 @@ export function Providers() {
       <CardContent className="flex-grow overflow-y-auto p-4">
         <ProviderList
           providers={validProviders}
-          onEdit={setEditingProviderIndex}
+          onEdit={handleEditProvider}
           onRemove={setDeletingProviderIndex}
         />
       </CardContent>
@@ -387,9 +513,35 @@ export function Providers() {
           </DialogHeader>
           {editingProvider && editingProviderIndex !== null && (
             <div className="space-y-4 p-4 overflow-y-auto flex-grow">
+              {providerTemplates.length > 0 && (
+                <div className="space-y-2">
+                  <Label>{t("providers.import_from_template")}</Label>
+                  <Combobox
+                    options={providerTemplates.map(p => ({ label: p.name, value: JSON.stringify(p) }))}
+                    value=""
+                    onChange={handleTemplateImport}
+                    placeholder={t("providers.select_template")}
+                    emptyPlaceholder={t("providers.no_templates_found")}
+                  />
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="name">{t("providers.name")}</Label>
-                <Input id="name" value={editingProvider.name || ''} onChange={(e) => handleProviderChange(editingProviderIndex, 'name', e.target.value)} />
+                <Input 
+                  id="name" 
+                  value={editingProvider.name || ''} 
+                  onChange={(e) => {
+                    handleProviderChange(editingProviderIndex, 'name', e.target.value);
+                    // Clear name error when user starts typing
+                    if (nameError) {
+                      setNameError(null);
+                    }
+                  }}
+                  className={nameError ? "border-red-500" : ""}
+                />
+                {nameError && (
+                  <p className="text-sm text-red-500">{nameError}</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="api_base_url">{t("providers.api_base_url")}</Label>
@@ -397,7 +549,37 @@ export function Providers() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="api_key">{t("providers.api_key")}</Label>
-                <Input id="api_key" type="password" value={editingProvider.api_key || ''} onChange={(e) => handleProviderChange(editingProviderIndex, 'api_key', e.target.value)} />
+                <div className="relative">
+                  <Input 
+                    id="api_key" 
+                    type={showApiKey[editingProviderIndex || 0] ? "text" : "password"} 
+                    value={editingProvider.api_key || ''} 
+                    onChange={(e) => handleProviderChange(editingProviderIndex, 'api_key', e.target.value)} 
+                    className={apiKeyError ? "border-red-500" : ""}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-2 top-1/2 transform -translate-y-1/2 h-8 w-8"
+                    onClick={() => {
+                      const index = editingProviderIndex || 0;
+                      setShowApiKey(prev => ({
+                        ...prev,
+                        [index]: !prev[index]
+                      }));
+                    }}
+                  >
+                    {showApiKey[editingProviderIndex || 0] ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+                {apiKeyError && (
+                  <p className="text-sm text-red-500">{apiKeyError}</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="models">{t("providers.models")}</Label>
@@ -407,7 +589,7 @@ export function Providers() {
                       {hasFetchedModels[editingProviderIndex] ? (
                         <ComboInput
                           ref={comboInputRef}
-                          options={(editingProvider.models || []).map(model => ({ label: model, value: model }))}
+                          options={(editingProvider.models || []).map((model: string) => ({ label: model, value: model }))}
                           value=""
                           onChange={() => {
                             // 只更新输入值，不添加模型
@@ -464,7 +646,7 @@ export function Providers() {
                     </Button> */}
                   </div>
                   <div className="flex flex-wrap gap-2 pt-2">
-                    {(editingProvider.models || []).map((model, modelIndex) => (
+                    {(editingProvider.models || []).map((model: string, modelIndex: number) => (
                       <Badge key={modelIndex} variant="outline" className="font-normal flex items-center gap-1">
                         {model}
                         <button 
@@ -633,7 +815,7 @@ export function Providers() {
                 <div className="space-y-2">
                   <Label>{t("providers.model_transformers")}</Label>
                   <div className="space-y-3">
-                    {(editingProvider.models || []).map((model, modelIndex) => (
+                    {(editingProvider.models || []).map((model: string, modelIndex: number) => (
                       <div key={modelIndex} className="border rounded-md p-3">
                         <div className="font-medium text-sm mb-2">{model}</div>
                         {/* Add new transformer */}

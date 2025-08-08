@@ -30,7 +30,9 @@
     "claude_path": "Claude Path",
     "host": "Host",
     "port": "Port",
-    "apikey": "API Key"
+    "apikey": "API Key",
+    "timeout": "API Timeout (ms)",
+    "proxy_url": "Proxy URL"
   },
   "transformers": {
     "title": "Custom Transformers",
@@ -46,7 +48,7 @@
   "providers": {
     "title": "Providers",
     "name": "Name",
-    "api_base_url": "API Base URL",
+    "api_base_url": "API Full URL",
     "api_key": "API Key",
     "models": "Models",
     "models_placeholder": "Enter model name and press Enter to add",
@@ -75,7 +77,14 @@
     "add_parameter": "Add Parameter",
     "parameter_name": "Parameter Name",
     "parameter_value": "Parameter Value",
-    "selected_transformers": "Selected Transformers"
+    "selected_transformers": "Selected Transformers",
+    "import_from_template": "Import from template",
+    "no_templates_found": "No templates found",
+    "select_template": "Select a template...",
+    "api_key_required": "API Key is required",
+    "name_required": "Name is required",
+    "name_duplicate": "A provider with this name already exists"
+
   },
   "router": {
     "title": "Router",

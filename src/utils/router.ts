@@ -23,9 +23,7 @@ const calculateTokenCount = (
           if (contentPart.type === "text") {
             tokenCount += enc.encode(contentPart.text).length;
           } else if (contentPart.type === "tool_use") {
-            tokenCount += enc.encode(
-              JSON.stringify(contentPart.input)
-            ).length;
+            tokenCount += enc.encode(JSON.stringify(contentPart.input)).length;
           } else if (contentPart.type === "tool_result") {
             tokenCount += enc.encode(
               typeof contentPart.content === "string"
@@ -66,13 +64,43 @@ const calculateTokenCount = (
 
 const getUseModel = async (req: any, tokenCount: number, config: any) => {
   if (req.body.model.includes(",")) {
+    const [provider, model] = req.body.model.split(",");
+    const finalProvider = config.Providers.find(
+      (p: any) => p.name.toLowerCase() === provider
+    );
+    const finalModel = finalProvider?.models?.find(
+      (m: any) => m.toLowerCase() === model
+    );
+    if (finalProvider && finalModel) {
+      return `${finalProvider.name},${finalModel}`;
+    }
     return req.body.model;
   }
   // if tokenCount is greater than the configured threshold, use the long context model
   const longContextThreshold = config.Router.longContextThreshold || 60000;
   if (tokenCount > longContextThreshold && config.Router.longContext) {
-    log("Using long context model due to token count:", tokenCount, "threshold:", longContextThreshold);
+    log(
+      "Using long context model due to token count:",
+      tokenCount,
+      "threshold:",
+      longContextThreshold
+    );
     return config.Router.longContext;
+  }
+  if (
+    req.body?.system?.length > 1 &&
+    req.body?.system[1]?.text?.startsWith("<CCR-SUBAGENT-MODEL>")
+  ) {
+    const model = req.body?.system[1].text.match(
+      /<CCR-SUBAGENT-MODEL>(.*?)<\/CCR-SUBAGENT-MODEL>/s
+    );
+    if (model) {
+      req.body.system[1].text = req.body.system[1].text.replace(
+        `<CCR-SUBAGENT-MODEL>${model[1]}</CCR-SUBAGENT-MODEL>`,
+        ""
+      );
+      return model[1];
+    }
   }
   // If the model is claude-3-5-haiku, use the background model
   if (
@@ -110,6 +138,7 @@ export const router = async (req: any, _res: any, config: any) => {
     if (config.CUSTOM_ROUTER_PATH) {
       try {
         const customRouter = require(config.CUSTOM_ROUTER_PATH);
+        req.tokenCount = tokenCount; // Pass token count to custom router
         model = await customRouter(req, config);
       } catch (e: any) {
         log("failed to load custom router", e.message);

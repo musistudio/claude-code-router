@@ -58,6 +58,14 @@ export function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogProps) {
             <Input id="port" type="number" value={config.PORT} onChange={(e) => setConfig({ ...config, PORT: parseInt(e.target.value, 10) })} className="transition-all-ease focus:scale-[1.01]" />
           </div>
           <div className="space-y-2">
+            <Label htmlFor="timeout" className="transition-all-ease hover:scale-[1.01] cursor-pointer">{t("toplevel.timeout")}</Label>
+            <Input id="timeout" value={config.API_TIMEOUT_MS} onChange={(e) => setConfig({ ...config, API_TIMEOUT_MS: e.target.value })} className="transition-all-ease focus:scale-[1.01]" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="proxy-url" className="transition-all-ease hover:scale-[1.01] cursor-pointer">{t("toplevel.proxy_url")}</Label>
+            <Input id="proxy-url" value={config.PROXY_URL} onChange={(e) => setConfig({ ...config, PROXY_URL: e.target.value })} placeholder="http://127.0.0.1:7890" className="transition-all-ease focus:scale-[1.01]" />
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="apikey" className="transition-all-ease hover:scale-[1.01] cursor-pointer">{t("toplevel.apikey")}</Label>
             <Input id="apikey" type="password" value={config.APIKEY} onChange={(e) => setConfig({ ...config, APIKEY: e.target.value })} className="transition-all-ease focus:scale-[1.01]" />
           </div>

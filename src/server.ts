@@ -8,8 +8,18 @@ import fastifyStatic from "@fastify/static";
 export const createServer = (config: any): Server => {
   const server = new Server(config);
 
-  // Add endpoint to read config.json
-  server.app.get("/api/config", async () => {
+  // Add endpoint to read config.json with access control
+  server.app.get("/api/config", async (req, reply) => {
+    // Get access level from request (set by auth middleware)
+    const accessLevel = (req as any).accessLevel || "restricted";
+    
+    // If restricted access, return 401
+    if (accessLevel === "restricted") {
+      reply.status(401).send("API key required to access configuration");
+      return;
+    }
+    
+    // For full access (including temp API key), return complete config
     return await readConfigFile();
   });
 
@@ -25,8 +35,15 @@ export const createServer = (config: any): Server => {
     return { transformers: transformerList };
   });
 
-  // Add endpoint to save config.json
-  server.app.post("/api/config", async (req) => {
+  // Add endpoint to save config.json with access control
+  server.app.post("/api/config", async (req, reply) => {
+    // Only allow full access users to save config
+    const accessLevel = (req as any).accessLevel || "restricted";
+    if (accessLevel !== "full") {
+      reply.status(403).send("Full access required to modify configuration");
+      return;
+    }
+    
     const newConfig = req.body;
     
     // Backup existing config file if it exists
@@ -39,15 +56,35 @@ export const createServer = (config: any): Server => {
     await writeConfigFile(newConfig);
     return { success: true, message: "Config saved successfully" };
   });
+  
+  // Add endpoint for testing full access without modifying config
+  server.app.post("/api/config/test", async (req, reply) => {
+    // Only allow full access users to test config access
+    const accessLevel = (req as any).accessLevel || "restricted";
+    if (accessLevel !== "full") {
+      reply.status(403).send("Full access required to test configuration access");
+      return;
+    }
+    
+    // Return success without modifying anything
+    return { success: true, message: "Access granted" };
+  });
 
-  // Add endpoint to restart the service
-  server.app.post("/api/restart", async (_, reply) => {
+  // Add endpoint to restart the service with access control
+  server.app.post("/api/restart", async (req, reply) => {
+    // Only allow full access users to restart service
+    const accessLevel = (req as any).accessLevel || "restricted";
+    if (accessLevel !== "full") {
+      reply.status(403).send("Full access required to restart service");
+      return;
+    }
+    
     reply.send({ success: true, message: "Service restart initiated" });
 
     // Restart the service after a short delay to allow response to be sent
     setTimeout(() => {
       const { spawn } = require("child_process");
-      spawn("ccr", ["restart"], { detached: true, stdio: "ignore" });
+      spawn(process.execPath, [process.argv[1], "restart"], { detached: true, stdio: "ignore" });
     }, 1000);
   });
 

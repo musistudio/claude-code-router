@@ -1,14 +1,17 @@
-import type { Config, Provider, Transformer } from '@/components/ConfigProvider';
+import type { Config, Provider, Transformer } from '@/types';
 
 // API Client Class for handling requests with baseUrl and apikey authentication
 class ApiClient {
   private baseUrl: string;
   private apiKey: string;
+  private tempApiKey: string | null;
 
   constructor(baseUrl: string = '/api', apiKey: string = '') {
     this.baseUrl = baseUrl;
     // Load API key from localStorage if available
     this.apiKey = apiKey || localStorage.getItem('apiKey') || '';
+    // Load temp API key from URL if available
+    this.tempApiKey = new URLSearchParams(window.location.search).get('tempApiKey');
   }
 
   // Update base URL
@@ -26,13 +29,24 @@ class ApiClient {
       localStorage.removeItem('apiKey');
     }
   }
+  
+  // Update temp API key
+  setTempApiKey(tempApiKey: string | null) {
+    this.tempApiKey = tempApiKey;
+  }
 
   // Create headers with API key authentication
   private createHeaders(contentType: string = 'application/json'): HeadersInit {
     const headers: Record<string, string> = {
-      'X-API-Key': this.apiKey,
       'Accept': 'application/json',
     };
+    
+    // Use temp API key if available, otherwise use regular API key
+    if (this.tempApiKey) {
+      headers['X-Temp-API-Key'] = this.tempApiKey;
+    } else if (this.apiKey) {
+      headers['X-API-Key'] = this.apiKey;
+    }
     
     if (contentType) {
       headers['Content-Type'] = contentType;
@@ -124,6 +138,22 @@ class ApiClient {
   // Update entire configuration
   async updateConfig(config: Config): Promise<Config> {
     return this.post<Config>('/config', config);
+  }
+  
+  // Check if user has full access
+  async checkFullAccess(): Promise<boolean> {
+    try {
+      // Try to access test endpoint (won't actually modify anything)
+      // This will return 403 if user doesn't have full access
+      await this.post<Config>('/config/test', { test: true });
+      return true;
+    } catch (error: any) {
+      if (error.message && error.message.includes('403')) {
+        return false;
+      }
+      // For other errors, assume user has access (to avoid blocking legitimate users)
+      return true;
+    }
   }
   
   // Get providers

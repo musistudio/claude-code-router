@@ -39,6 +39,7 @@ npm install -g @musistudio/claude-code-router
 - **`LOG`** (可选): 您可以通过将其设置为 `true` 来启用日志记录。日志文件将位于 `$HOME/.claude-code-router.log`。
 - **`APIKEY`** (可选): 您可以设置一个密钥来进行身份验证。设置后，客户端请求必须在 `Authorization` 请求头 (例如, `Bearer your-secret-key`) 或 `x-api-key` 请求头中提供此密钥。例如：`"APIKEY": "your-secret-key"`。
 - **`HOST`** (可选): 您可以设置服务的主机地址。如果未设置 `APIKEY`，出于安全考虑，主机地址将强制设置为 `127.0.0.1`，以防止未经授权的访问。例如：`"HOST": "0.0.0.0"`。
+- **`NON_INTERACTIVE_MODE`** (可选): 当设置为 `true` 时，启用与非交互式环境（如 GitHub Actions、Docker 容器或其他 CI/CD 系统）的兼容性。这会设置适当的环境变量（`CI=true`、`FORCE_COLOR=0` 等）并配置 stdin 处理，以防止进程在自动化环境中挂起。例如：`"NON_INTERACTIVE_MODE": true`。
 - **`Providers`**: 用于配置不同的模型提供商。
 - **`Router`**: 用于设置路由规则。`default` 指定默认模型，如果未配置其他路由，则该模型将用于所有请求。
 - **`API_TIMEOUT_MS`**: API 请求超时时间，单位为毫秒。
@@ -51,6 +52,7 @@ npm install -g @musistudio/claude-code-router
   "PROXY_URL": "http://127.0.0.1:7890",
   "LOG": true,
   "API_TIMEOUT_MS": 600000,
+  "NON_INTERACTIVE_MODE": false,
   "Providers": [
     {
       "name": "openrouter",
@@ -138,6 +140,16 @@ npm install -g @musistudio/claude-code-router
           "enhancetool"
         ]
       }
+    },
+    {
+      "name": "aihubmix",
+      "api_base_url": "https://aihubmix.com/v1/chat/completions",
+      "api_key": "sk-",
+      "models": [
+        "Z/glm-4.5",
+        "claude-opus-4-20250514",
+        "gemini-2.5-pro"
+      ]
     }
   ],
   "Router": {
@@ -260,18 +272,36 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
 
 **可用的内置 Transformer：**
 
-- `deepseek`: 适配 DeepSeek API 的请求/响应。
-- `gemini`: 适配 Gemini API 的请求/响应。
-- `openrouter`: 适配 OpenRouter API 的请求/响应。
-- `groq`: 适配 groq API 的请求/响应
-- `maxtoken`: 设置特定的 `max_tokens` 值。
-- `tooluse`: 优化某些模型的工具使用(通过`tool_choice`参数)。
-- `gemini-cli` (实验性): 通过 Gemini CLI [gemini-cli.js](https://gist.github.com/musistudio/1c13a65f35916a7ab690649d3df8d1cd) 对 Gemini 的非官方支持。
-- `reasoning`: 用于处理 `reasoning_content` 字段。
-- `sampling`: 用于处理采样信息字段，如 `temperature`、`top_p`、`top_k` 和 `repetition_penalty`。
-- `enhancetool`: 对 LLM 返回的工具调用参数增加一层容错处理（这会导致不再流式返回工具调用信息）。
-- `cleancache`: 清除请求中的 `cache_control` 字段。
-- `vertex-gemini`: 处理使用 vertex 鉴权的 gemini api。
+-   `Anthropic`: 如果你只使用这一个转换器，则会直接透传请求和响应(你可以用它来接入其他支持Anthropic端点的服务商)。
+-   `deepseek`: 适配 DeepSeek API 的请求/响应。
+-   `gemini`: 适配 Gemini API 的请求/响应。
+-   `openrouter`: 适配 OpenRouter API 的请求/响应。它还可以接受一个 `provider` 路由参数，以指定 OpenRouter 应使用哪些底层提供商。有关更多详细信息，请参阅 [OpenRouter 文档](https://openrouter.ai/docs/features/provider-routing)。请参阅下面的示例：
+    ```json
+      "transformer": {
+        "use": ["openrouter"],
+        "moonshotai/kimi-k2": {
+          "use": [
+            [
+              "openrouter",
+              {
+                "provider": {
+                  "only": ["moonshotai/fp8"]
+                }
+              }
+            ]
+          ]
+        }
+      }
+    ```
+-   `groq`: 适配 groq API 的请求/响应
+-   `maxtoken`: 设置特定的 `max_tokens` 值。
+-   `tooluse`: 优化某些模型的工具使用(通过`tool_choice`参数)。
+-   `gemini-cli` (实验性): 通过 Gemini CLI [gemini-cli.js](https://gist.github.com/musistudio/1c13a65f35916a7ab690649d3df8d1cd) 对 Gemini 的非官方支持。
+-   `reasoning`: 用于处理 `reasoning_content` 字段。
+-   `sampling`: 用于处理采样信息字段，如 `temperature`、`top_p`、`top_k` 和 `repetition_penalty`。
+-   `enhancetool`: 对 LLM 返回的工具调用参数增加一层容错处理（这会导致不再流式返回工具调用信息）。
+-   `cleancache`: 清除请求中的 `cache_control` 字段。
+-   `vertex-gemini`: 处理使用 vertex 鉴权的 gemini api。
 
 **自定义 Transformer:**
 
@@ -344,6 +374,18 @@ module.exports = async function router(req, config) {
 };
 ```
 
+##### 子代理路由
+
+对于子代理内的路由，您必须在子代理提示词的**开头**包含 `<CCR-SUBAGENT-MODEL>provider,model</CCR-SUBAGENT-MODEL>` 来指定特定的提供商和模型。这样可以将特定的子代理任务定向到指定的模型。
+
+**示例：**
+
+```
+<CCR-SUBAGENT-MODEL>openrouter,anthropic/claude-3.5-sonnet</CCR-SUBAGENT-MODEL>
+请帮我分析这段代码是否存在潜在的优化空间...
+```
+
+
 ## 🤖 GitHub Actions
 
 将 Claude Code Router 集成到您的 CI/CD 管道中。在设置 [Claude Code Actions](https://docs.anthropic.com/en/docs/claude-code/github-actions) 后，修改您的 `.github/workflows/claude.yaml` 以使用路由器：
@@ -380,6 +422,7 @@ jobs:
           cat << 'EOF' > $HOME/.claude-code-router/config.json
           {
             "log": true,
+            "NON_INTERACTIVE_MODE": true,
             "OPENAI_API_KEY": "${{ secrets.OPENAI_API_KEY }}",
             "OPENAI_BASE_URL": "https://api.deepseek.com",
             "OPENAI_MODEL": "deepseek-chat"
@@ -414,6 +457,8 @@ jobs:
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/F1F31GN2GM)
 
+[Paypal](https://paypal.me/musistudio1999)
+
 <table>
   <tr>
     <td><img src="/blog/images/alipay.jpg" width="200" alt="Alipay" /></td>
@@ -425,6 +470,7 @@ jobs:
 
 非常感谢所有赞助商的慷慨支持！
 
+- [AIHubmix](https://aihubmix.com/)
 - @Simon Leischnig
 - [@duanshuaimin](https://github.com/duanshuaimin)
 - [@vrgitadmin](https://github.com/vrgitadmin)
@@ -464,6 +510,11 @@ jobs:
 - @*鑫
 - @c\*y
 - @\*昕
+- [@witsice](https://github.com/witsice)
+- @b\*g
+- @\*亿
+- @\*辉
+- @JACK 
 
 （如果您的名字被屏蔽，请通过我的主页电子邮件与我联系，以便使用您的 GitHub 用户名进行更新。）
 

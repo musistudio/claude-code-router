@@ -123,5 +123,6 @@
   },
   "APIKEY": "your-secret-key",
   "HOST": "0.0.0.0",
-  "API_TIMEOUT_MS": 600000
+  "API_TIMEOUT_MS": 600000,
+  "NON_INTERACTIVE_MODE": false
 }

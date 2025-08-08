@@ -4,6 +4,7 @@
   "HOST": "127.0.0.1",
   "PORT": 8080,
   "APIKEY": "1",
+  "API_TIMEOUT_MS": 600000,
   "transformers": [
     {
       "path": "/Users/abc/.claude-code-router/plugins/gemini-cli.js",
@@ -173,5 +174,6 @@
     "think": "gemini-cli,gemini-2.5-pro",
     "longContext": "gemini-cli,gemini-2.5-pro",
     "webSearch": "gemini-cli,gemini-2.5-flash"
-  }
+  },
+  "NON_INTERACTIVE_MODE": false
 }

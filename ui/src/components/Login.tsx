@@ -61,18 +61,23 @@ export function Login() {
         url: window.location.href
       }));
       
-      // Test the API key by fetching config (skip if apiKey is empty)
-      if (apiKey) {
-        await api.getConfig();
-      }
+      // Test the API key by fetching config
+      await api.getConfig();
       
       // Navigate to dashboard
       // The ConfigProvider will handle fetching the config
       navigate('/dashboard');
-    } catch {
+    } catch (error: any) {
       // Clear the API key on failure
       api.setApiKey('');
-      setError(t('login.invalidApiKey'));
+      
+      // Check if it's an unauthorized error
+      if (error.message && error.message.includes('401')) {
+        setError(t('login.invalidApiKey'));
+      } else {
+        // For other errors, still allow access (restricted mode)
+        navigate('/dashboard');
+      }
     }
   };
 

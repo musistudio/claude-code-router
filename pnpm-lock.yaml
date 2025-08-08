@@ -12,8 +12,8 @@ importers:
         specifier: ^8.2.0
         version: 8.2.0
       '@musistudio/llms':
-        specifier: ^1.0.16
-        version: 1.0.16(ws@8.18.3)(zod@3.25.67)
+        specifier: v1.0.19
+        version: 1.0.19(ws@8.18.3)(zod@3.25.67)
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
@@ -257,8 +257,8 @@ packages:
     resolution: {integrity: sha512-9I2Zn6+NJLfaGoz9jN3lpwDgAYvfGeNYdbAIjJOqzs4Tpc+VU3Jqq4IofSUBKajiDS8k9fZIg18/z13mpk1bsA==}
     engines: {node: '>=8'}
 
-  '@musistudio/llms@1.0.16':
-    resolution: {integrity: sha512-7OUGvvi4etpiptUoxtlu41t9vlP7q/F73iBKVRTE7Of3LpDKOKumAK0dCKZ12u35i2RVeSzmUEJHrMyhhY+z1Q==}
+  '@musistudio/llms@1.0.19':
+    resolution: {integrity: sha512-+U29ZxqXUQJBur5kE9d3e0mC19H0uetwxYvMpWCF4lBtXb2syBPIop2KeolBP+5/vSUz8M45HFd8yKFfVDEO3A==}
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -1102,7 +1102,7 @@ snapshots:
 
   '@lukeed/ms@2.0.2': {}
 
-  '@musistudio/llms@1.0.16(ws@8.18.3)(zod@3.25.67)':
+  '@musistudio/llms@1.0.19(ws@8.18.3)(zod@3.25.67)':
     dependencies:
       '@anthropic-ai/sdk': 0.54.0
       '@fastify/cors': 11.0.1
