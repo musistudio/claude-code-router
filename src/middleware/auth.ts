@@ -36,9 +36,10 @@ export const apiKeyAuth =
 
     const apiKey = config.APIKEY;
     const isConfigEndpoint = req.url.startsWith("/api/config");
+    const isRestartEndpoint = req.url === "/api/restart";
 
-    // For config endpoints, we implement granular access control
-    if (isConfigEndpoint) {
+    // For config endpoints and restart endpoint, we implement granular access control
+    if (isConfigEndpoint || isRestartEndpoint) {
       // Attach access level to request for later use
       (req as any).accessLevel = "restricted";
       
@@ -54,8 +55,8 @@ export const apiKeyAuth =
       }
       
       // If API key is set, check authentication
-      const authKey: string =
-        req.headers.authorization || req.headers["x-api-key"];
+      const authHeaderValue = req.headers.authorization || req.headers["x-api-key"];
+      const authKey: string = Array.isArray(authHeaderValue) ? authHeaderValue[0] : authHeaderValue || "";
       
       if (!authKey) {
         (req as any).accessLevel = "restricted";
@@ -79,7 +80,7 @@ export const apiKeyAuth =
       return done();
     }
 
-    // For non-config endpoints, use existing logic
+    // For other non-config endpoints, use existing logic
     if (!apiKey) {
       return done();
     }
@@ -89,8 +90,8 @@ export const apiKeyAuth =
       return done();
     }
 
-    const authKey: string =
-      req.headers.authorization || req.headers["x-api-key"];
+    const authHeaderValue = req.headers.authorization || req.headers["x-api-key"];
+    const authKey: string = Array.isArray(authHeaderValue) ? authHeaderValue[0] : authHeaderValue || "";
     if (!authKey) {
       reply.status(401).send("APIKEY is missing");
       return;
@@ -101,6 +102,7 @@ export const apiKeyAuth =
     } else {
       token = authKey;
     }
+    
     if (token !== apiKey) {
       reply.status(401).send("Invalid API key");
       return;
