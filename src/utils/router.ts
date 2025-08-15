@@ -87,6 +87,7 @@ const getUseModel = async (req: any, tokenCount: number, config: any) => {
     );
     return config.Router.longContext;
   }
+  // Check for CCR-SUBAGENT-MODEL routing
   if (
     req.body?.system?.length > 1 &&
     req.body?.system[1]?.text?.startsWith("<CCR-SUBAGENT-MODEL>")
@@ -102,6 +103,51 @@ const getUseModel = async (req: any, tokenCount: number, config: any) => {
       return model[1];
     }
   }
+  
+  // Check for CCR-TOOLUSE-ROUTER routing (new tool use routing mechanism)
+  const systemContent = req.body?.system || req.body?.messages?.find((m: any) => m.role === "system")?.content;
+  let toolUseRouterModel = null;
+  
+  if (typeof systemContent === "string" && systemContent.includes("<CCR-TOOLUSE-ROUTER>")) {
+    const match = systemContent.match(/<CCR-TOOLUSE-ROUTER>(.*?)<\/CCR-TOOLUSE-ROUTER>/s);
+    if (match) {
+      toolUseRouterModel = match[1];
+      // Clean up the routing instruction from system content
+      if (req.body?.system) {
+        req.body.system = req.body.system.replace(
+          `<CCR-TOOLUSE-ROUTER>${match[1]}</CCR-TOOLUSE-ROUTER>`,
+          ""
+        ).trim();
+      }
+      const systemMessage = req.body?.messages?.find((m: any) => m.role === "system");
+      if (systemMessage) {
+        systemMessage.content = systemMessage.content.replace(
+          `<CCR-TOOLUSE-ROUTER>${match[1]}</CCR-TOOLUSE-ROUTER>`,
+          ""
+        ).trim();
+      }
+    }
+  } else if (Array.isArray(systemContent)) {
+    // Handle array-based system content
+    for (let i = 0; i < systemContent.length; i++) {
+      if (systemContent[i]?.text && systemContent[i].text.includes("<CCR-TOOLUSE-ROUTER>")) {
+        const match = systemContent[i].text.match(/<CCR-TOOLUSE-ROUTER>(.*?)<\/CCR-TOOLUSE-ROUTER>/s);
+        if (match) {
+          toolUseRouterModel = match[1];
+          systemContent[i].text = systemContent[i].text.replace(
+            `<CCR-TOOLUSE-ROUTER>${match[1]}</CCR-TOOLUSE-ROUTER>`,
+            ""
+          ).trim();
+          break;
+        }
+      }
+    }
+  }
+  
+  if (toolUseRouterModel) {
+    log("Using tool use router model:", toolUseRouterModel);
+    return toolUseRouterModel;
+  }
   // If the model is claude-3-5-haiku, use the background model
   if (
     req.body.model?.startsWith("claude-3-5-haiku") &&
@@ -115,12 +161,39 @@ const getUseModel = async (req: any, tokenCount: number, config: any) => {
     log("Using think model for ", req.body.thinking);
     return config.Router.think;
   }
+  // Check for web search tools
   if (
     Array.isArray(req.body.tools) &&
     req.body.tools.some((tool: any) => tool.type?.startsWith("web_search")) &&
     config.Router.webSearch
   ) {
     return config.Router.webSearch;
+  }
+  
+  // Check for general tool use (excluding web_search which is handled above)
+  if (
+    Array.isArray(req.body.tools) &&
+    req.body.tools.length > 0 &&
+    !req.body.tools.some((tool: any) => tool.type?.startsWith("web_search")) &&
+    config.Router.toolUse
+  ) {
+    log("Using tool use model for general tools");
+    return config.Router.toolUse;
+  }
+  
+  // Check for tool calls or tool results in messages (ongoing tool conversation)
+  const hasToolUsage = req.body.messages && Array.isArray(req.body.messages) && 
+    req.body.messages.some((message: any) => 
+      message.tool_calls?.length > 0 || 
+      message.role === "tool" ||
+      (Array.isArray(message.content) && message.content.some((content: any) => 
+        content.type === "tool_use" || content.type === "tool_result"
+      ))
+    );
+    
+  if (hasToolUsage && config.Router.toolUse) {
+    log("Using tool use model for ongoing tool conversation");
+    return config.Router.toolUse;
   }
   return config.Router!.default;
 };

@@ -104,6 +104,7 @@
     "longContext": "长上下文",
     "longContextThreshold": "上下文阈值",
     "webSearch": "网络搜索",
+    "toolUse": "工具调用",
     "selectModel": "选择一个模型...",
     "searchModel": "搜索模型...",
     "noModelFound": "未找到模型."
