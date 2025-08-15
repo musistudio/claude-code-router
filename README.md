@@ -12,7 +12,7 @@ I am seeking funding support for this project to better sustain its development.
 ## ✨ Features
 
 - **Model Routing**: Route requests to different models based on your needs (e.g., background tasks, thinking, long context).
-- **Multi-Provider Support**: Supports various model providers like OpenRouter, DeepSeek, Ollama, Gemini, Volcengine, and SiliconFlow.
+- **Multi-Provider Support**: Supports various model providers like OpenRouter, DeepSeek, Ollama, Gemini, Volcengine, SiliconFlow, and LM Studio.
 - **Request/Response Transformation**: Customize requests and responses for different providers using transformers.
 - **Dynamic Model Switching**: Switch models on-the-fly within Claude Code using the `/model` command.
 - **GitHub Actions Integration**: Trigger Claude Code tasks in your GitHub workflows.
@@ -181,6 +181,12 @@ Here is a comprehensive example:
         "claude-opus-4-20250514",
         "gemini-2.5-pro"
       ]
+    },
+    {
+      "name": "lmstudio",
+      "api_base_url": "http://localhost:1234/v1/chat/completions",
+      "api_key": "lm-studio",
+      "models": ["google/gemma-3n-e4b"]
     }
   ],
   "Router": {
