@@ -104,6 +104,77 @@ const getUseModel = async (req: any, tokenCount: number, config: any) => {
     }
   }
   
+  // Helper: resolve tool use model from provider transformer config when Router.toolUse is not set
+  const resolveToolUseModelFromProviders = (): string | null => {
+    try {
+      const providers = config.Providers || config.providers || [];
+      if (!Array.isArray(providers)) return null;
+
+      // Prefer provider inferred from current model or Router.default
+      const currentModel: string = req.body?.model || "";
+      const currentProviderName = ((): string | null => {
+        if (currentModel.includes(",")) {
+          return currentModel.split(",")[0]?.toLowerCase() || null;
+        }
+        const def = config.Router?.default;
+        if (typeof def === "string" && def.includes(",")) {
+          return def.split(",")[0]?.toLowerCase() || null;
+        }
+        return null;
+      })();
+
+      const scanProvider = (prov: any): string | null => {
+        const t = prov?.transformer;
+        if (!t) return null;
+
+        const scanUseArray = (arr: any[]): string | null => {
+          for (const item of arr) {
+            if (Array.isArray(item)) {
+              const [name, options] = item;
+              if (name === "tooluse-router" && options?.toolUseModel) {
+                return options.toolUseModel as string;
+              }
+            } else if (item === "tooluse-router") {
+              // No options provided; skip
+              continue;
+            }
+          }
+          return null;
+        };
+
+        // Top-level use
+        if (Array.isArray(t.use)) {
+          const found = scanUseArray(t.use);
+          if (found) return found;
+        }
+        // Model-specific use (best-effort scan)
+        for (const key of Object.keys(t)) {
+          if (key === "use") continue;
+          const sub = t[key];
+          if (Array.isArray(sub?.use)) {
+            const found = scanUseArray(sub.use);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+
+      // 1) Try the current provider (if inferred)
+      if (currentProviderName) {
+        const prov = providers.find((p: any) => p?.name?.toLowerCase() === currentProviderName);
+        const found = scanProvider(prov);
+        if (found) return found;
+      }
+
+      // 2) Fallback: scan all providers
+      for (const prov of providers) {
+        const found = scanProvider(prov);
+        if (found) return found;
+      }
+    } catch {}
+    return null;
+  };
+
   // Check for CCR-TOOLUSE-ROUTER routing (new tool use routing mechanism)
   const systemContent = req.body?.system || req.body?.messages?.find((m: any) => m.role === "system")?.content;
   let toolUseRouterModel = null;
@@ -175,10 +246,13 @@ const getUseModel = async (req: any, tokenCount: number, config: any) => {
     Array.isArray(req.body.tools) &&
     req.body.tools.length > 0 &&
     !req.body.tools.some((tool: any) => tool.type?.startsWith("web_search")) &&
-    config.Router.toolUse
+    (resolveToolUseModelFromProviders() || config.Router.toolUse)
   ) {
-    log("Using tool use model for general tools");
-    return config.Router.toolUse;
+    const provToolUse = resolveToolUseModelFromProviders() || config.Router.toolUse;
+    if (provToolUse) {
+      log("Using tool use model for general tools", provToolUse);
+      return provToolUse;
+    }
   }
   
   // Check for tool calls or tool results in messages (ongoing tool conversation)
@@ -191,9 +265,12 @@ const getUseModel = async (req: any, tokenCount: number, config: any) => {
       ))
     );
     
-  if (hasToolUsage && config.Router.toolUse) {
-    log("Using tool use model for ongoing tool conversation");
-    return config.Router.toolUse;
+  if (hasToolUsage && (resolveToolUseModelFromProviders() || config.Router.toolUse)) {
+    const provToolUse = resolveToolUseModelFromProviders() || config.Router.toolUse;
+    if (provToolUse) {
+      log("Using tool use model for ongoing tool conversation", provToolUse);
+      return provToolUse;
+    }
   }
   return config.Router!.default;
 };
