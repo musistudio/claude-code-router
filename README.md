@@ -348,6 +348,7 @@ The `Router` object defines which model to use for different scenarios:
 - `longContext`: A model for handling long contexts (e.g., > 60K tokens).
 - `longContextThreshold` (optional): The token count threshold for triggering the long context model. Defaults to 60000 if not specified.
 - `webSearch`: Used for handling web search tasks and this requires the model itself to support the feature. If you're using openrouter, you need to add the `:online` suffix after the model name.
+- `toolUse`: Used for handling tool/function calls when the default model doesn't support tools. Automatically routes requests with tools to a capable model. You can also use the `tooluse-router` transformer for provider-specific tool routing.
 
 You can also switch models dynamically in Claude Code with the `/model` command:
 `/model provider_name,model_name`

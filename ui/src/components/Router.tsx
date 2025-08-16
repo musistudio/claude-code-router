@@ -30,7 +30,8 @@ export function Router() {
     think: "",
     longContext: "",
     longContextThreshold: 60000,
-    webSearch: ""
+    webSearch: "",
+    toolUse: ""
   };
 
   const handleRouterChange = (field: string, value: string | number) => {
@@ -128,6 +129,17 @@ export function Router() {
             options={modelOptions}
             value={routerConfig.webSearch || ""}
             onChange={(value) => handleRouterChange("webSearch", value)}
+            placeholder={t("router.selectModel")}
+            searchPlaceholder={t("router.searchModel")}
+            emptyPlaceholder={t("router.noModelFound")}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>{t("router.toolUse")}</Label>
+          <Combobox
+            options={modelOptions}
+            value={routerConfig.toolUse || ""}
+            onChange={(value) => handleRouterChange("toolUse", value)}
             placeholder={t("router.selectModel")}
             searchPlaceholder={t("router.searchModel")}
             emptyPlaceholder={t("router.noModelFound")}
