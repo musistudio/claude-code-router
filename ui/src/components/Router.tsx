@@ -40,6 +40,20 @@ export function Router() {
     setConfig({ ...config, Router: newRouter });
   };
 
+  const handleGlobalModelChange = (value: string) => {
+    if (!value) return;
+    const currentRouter = config.Router || {};
+    const newRouter = {
+      ...currentRouter,
+      default: value,
+      background: value,
+      think: value,
+      longContext: value,
+      webSearch: value,
+    };
+    setConfig({ ...config, Router: newRouter });
+  };
+
   // Handle case where config.Providers might be null or undefined
   const providers = Array.isArray(config.Providers) ? config.Providers : [];
   
@@ -65,6 +79,17 @@ export function Router() {
         <CardTitle className="text-lg">{t("router.title")}</CardTitle>
       </CardHeader>
       <CardContent className="flex-grow space-y-5 overflow-y-auto p-4">
+        <div className="space-y-2">
+          <Label>{t("router.global")}</Label>
+          <Combobox 
+            options={modelOptions}
+            onChange={handleGlobalModelChange}
+            placeholder={t("router.setAllModelsPlaceholder")}
+            searchPlaceholder={t("router.searchModel")}
+            emptyPlaceholder={t("router.noModelFound")}
+          />
+        </div>
+        <div className="border-t my-4" />
         <div className="space-y-2">
           <Label>{t("router.default")}</Label>
           <Combobox

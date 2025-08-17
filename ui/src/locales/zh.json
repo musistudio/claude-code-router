@@ -98,6 +98,8 @@
   },
   "router": {
     "title": "路由",
+    "global": "全局",
+    "setAllModelsPlaceholder": "设置全局模型",
     "default": "默认",
     "background": "后台",
     "think": "思考",

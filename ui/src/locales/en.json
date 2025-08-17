@@ -98,6 +98,8 @@
   },
   "router": {
     "title": "Router",
+    "global": "Global Model",
+    "setAllModelsPlaceholder": "Set All Models",
     "default": "Default",
     "background": "Background",
     "think": "Think",
