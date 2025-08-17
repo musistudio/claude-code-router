@@ -106,7 +106,7 @@ async function run(options: RunOptions = {}) {
     jsonPath: CONFIG_FILE,
     initialConfig: {
       // ...config,
-      providers: config.Providers || config.providers,
+      providers: config.Providers || config.providers || [],
       HOST: HOST,
       PORT: servicePort,
       LOG_FILE: join(
