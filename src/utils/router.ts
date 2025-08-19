@@ -8,6 +8,15 @@ import { log } from "./log";
 
 const enc = get_encoding("cl100k_base");
 
+// GPT-5 models that require max_completion_tokens parameter
+const isGPT5Model = (model: string): boolean => {
+  const modelName = model.includes(",") ? model.split(",")[1] : model;
+  return [
+    'gpt-5', 'gpt-5-mini', 'gpt-5-nano',
+    'o3', 'o3-mini', 'o3-pro', 'o4-mini'
+  ].includes(modelName);
+};
+
 const calculateTokenCount = (
   messages: MessageParam[],
   system: any,
@@ -148,6 +157,12 @@ export const router = async (req: any, _res: any, config: any) => {
       model = await getUseModel(req, tokenCount, config);
     }
     req.body.model = model;
+    
+    // Handle GPT-5 parameter mapping: max_tokens → max_completion_tokens
+    if (model && isGPT5Model(model) && req.body.max_tokens) {
+      req.body.max_completion_tokens = req.body.max_tokens;
+      delete req.body.max_tokens;
+    }
   } catch (error: any) {
     log("Error in router middleware:", error.message);
     req.body.model = config.Router!.default;

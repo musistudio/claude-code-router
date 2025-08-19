@@ -51,7 +51,9 @@ async function run(options: RunOptions = {}) {
   // Clean up old log files, keeping only the 10 most recent ones
   await cleanupLogFiles();
   const config = await initConfig();
-  let HOST = config.HOST;
+  console.log("🔧 Config loaded:", JSON.stringify(config, null, 2));
+  
+  let HOST = config.HOST || "127.0.0.1"; // Default to localhost if not set
 
   if (config.HOST && !config.APIKEY) {
     HOST = "127.0.0.1";
@@ -59,6 +61,7 @@ async function run(options: RunOptions = {}) {
   }
 
   const port = config.PORT || 3456;
+  console.log(`🌐 HOST: ${HOST}, PORT: ${port}`);
 
   // Save the PID of the background process
   savePid(process.pid);
@@ -75,14 +78,14 @@ async function run(options: RunOptions = {}) {
     cleanupPidFile();
     process.exit(0);
   });
-  console.log(HOST);
 
   // Use port from environment variable if set (for background process)
   const servicePort = process.env.SERVICE_PORT
     ? parseInt(process.env.SERVICE_PORT)
     : port;
 
-  const server = createServer({
+  console.log("🚀 Creating server with config...");
+  const serverConfig = {
     jsonPath: CONFIG_FILE,
     initialConfig: {
       // ...config,
@@ -104,7 +107,12 @@ async function run(options: RunOptions = {}) {
         interval: "1d",
       }),
     },
-  });
+  };
+  console.log("📋 Server config:", JSON.stringify(serverConfig, null, 2));
+  
+  const server = createServer(serverConfig);
+  console.log("✅ Server created successfully");
+  
   // Add async preHandler hook for authentication
   server.addHook("preHandler", async (req, reply) => {
     return new Promise((resolve, reject) => {
@@ -116,11 +124,14 @@ async function run(options: RunOptions = {}) {
       apiKeyAuth(config)(req, reply, done).catch(reject);
     });
   });
+  
   server.addHook("preHandler", async (req, reply) => {
     if (req.url.startsWith("/v1/messages")) {
       router(req, reply, config);
     }
   });
+  
+  console.log("🏁 Starting server...");
   server.start();
 }
 

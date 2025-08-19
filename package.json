@@ -19,8 +19,9 @@
   "author": "musistudio",
   "license": "MIT",
   "dependencies": {
+    "@fastify/cors": "^11.1.0",
     "@fastify/static": "^8.2.0",
-    "@musistudio/llms": "^1.0.22",
+    "@musistudio/llms": "file:musistudio-llms-1.0.26.tgz",
     "dotenv": "^16.4.7",
     "json5": "^2.2.3",
     "openurl": "^1.1.1",
