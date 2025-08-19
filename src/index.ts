@@ -14,6 +14,8 @@ import {
 import { CONFIG_FILE } from "./constants";
 import createWriteStream from "pino-rotating-file-stream";
 import { HOME_DIR } from "./constants";
+import { configureLogging } from "./utils/log";
+import { sessionUsageCache } from "./utils/cache";
 
 async function initializeClaudeConfig() {
   const homeDir = homedir();
@@ -51,8 +53,10 @@ async function run(options: RunOptions = {}) {
   // Clean up old log files, keeping only the 10 most recent ones
   await cleanupLogFiles();
   const config = await initConfig();
-  console.log("🔧 Config loaded:", JSON.stringify(config, null, 2));
-  
+
+  // Configure logging based on config
+  configureLogging(config);
+
   let HOST = config.HOST || "127.0.0.1"; // Default to localhost if not set
 
   if (config.HOST && !config.APIKEY) {
@@ -84,8 +88,21 @@ async function run(options: RunOptions = {}) {
     ? parseInt(process.env.SERVICE_PORT)
     : port;
 
-  console.log("🚀 Creating server with config...");
-  const serverConfig = {
+  // Configure logger based on config settings
+  const loggerConfig =
+    config.LOG !== false
+      ? {
+          level: config.LOG_LEVEL || "debug",
+          stream: createWriteStream({
+            path: HOME_DIR,
+            filename: config.LOGNAME || `./logs/ccr-${+new Date()}.log`,
+            maxFiles: 3,
+            interval: "1d",
+          }),
+        }
+      : false;
+
+  const server = createServer({
     jsonPath: CONFIG_FILE,
     initialConfig: {
       // ...config,
@@ -98,21 +115,8 @@ async function run(options: RunOptions = {}) {
         "claude-code-router.log"
       ),
     },
-    logger: {
-      level: "debug",
-      stream: createWriteStream({
-        path: HOME_DIR,
-        filename: config.LOGNAME || `./logs/ccr-${+new Date()}.log`,
-        maxFiles: 3,
-        interval: "1d",
-      }),
-    },
-  };
-  console.log("📋 Server config:", JSON.stringify(serverConfig, null, 2));
-  
-  const server = createServer(serverConfig);
-  console.log("✅ Server created successfully");
-  
+    logger: loggerConfig,
+  });
   // Add async preHandler hook for authentication
   server.addHook("preHandler", async (req, reply) => {
     return new Promise((resolve, reject) => {
@@ -130,8 +134,33 @@ async function run(options: RunOptions = {}) {
       router(req, reply, config);
     }
   });
-  
-  console.log("🏁 Starting server...");
+  server.addHook("onSend", async (req, reply, payload) => {
+    if (req.sessionId && req.url.startsWith("/v1/messages")) {
+      if (payload instanceof ReadableStream) {
+        const [originalStream, clonedStream] = payload.tee();
+        const reader1 = clonedStream.getReader();
+        while (true) {
+          const { done, value } = await reader1.read();
+          if (done) break;
+          // Process the value if needed
+          const dataStr = new TextDecoder().decode(value);
+          if (!dataStr.startsWith("event: message_delta")) {
+            continue;
+          }
+          const str = dataStr.slice(27);
+          try {
+            const message = JSON.parse(str);
+            sessionUsageCache.put(req.sessionId, message.usage);
+          } catch {}
+        }
+
+        return originalStream;
+      } else {
+        sessionUsageCache.put(req.sessionId, payload.usage);
+      }
+    }
+    return payload;
+  });
   server.start();
 }
 

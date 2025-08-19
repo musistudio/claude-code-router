@@ -27,12 +27,35 @@ export interface Transformer {
     options?: Record<string, any>;
 }
 
+export interface StatusLineModuleConfig {
+  type: string;
+  icon?: string;
+  text: string;
+  color?: string;
+  background?: string;
+  scriptPath?: string; // 用于script类型的模块，指定要执行的Node.js脚本文件路径
+}
+
+export interface StatusLineThemeConfig {
+  modules: StatusLineModuleConfig[];
+}
+
+export interface StatusLineConfig {
+  enabled: boolean;
+  currentStyle: string;
+  default: StatusLineThemeConfig;
+  powerline: StatusLineThemeConfig;
+  fontFamily?: string;
+}
+
 export interface Config {
   Providers: Provider[];
   Router: RouterConfig;
   transformers: Transformer[];
+  StatusLine?: StatusLineConfig;
   // Top-level settings
   LOG: boolean;
+  LOG_LEVEL: string;
   CLAUDE_PATH: string;
   HOST: string;
   PORT: number;

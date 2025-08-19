@@ -162,3 +162,6 @@ export const initConfig = async () => {
 
 // 导出日志清理函数
 export { cleanupLogFiles };
+
+// 导出更新功能
+export { checkForUpdates, performUpdate } from "./update";

@@ -5,6 +5,7 @@ import {
 } from "@anthropic-ai/sdk/resources/messages";
 import { get_encoding } from "tiktoken";
 import { log } from "./log";
+import { sessionUsageCache, Usage } from "./cache";
 
 const enc = get_encoding("cl100k_base");
 
@@ -71,7 +72,12 @@ const calculateTokenCount = (
   return tokenCount;
 };
 
-const getUseModel = async (req: any, tokenCount: number, config: any) => {
+const getUseModel = async (
+  req: any,
+  tokenCount: number,
+  config: any,
+  lastUsage?: Usage | undefined
+) => {
   if (req.body.model.includes(",")) {
     const [provider, model] = req.body.model.split(",");
     const finalProvider = config.Providers.find(
@@ -87,7 +93,15 @@ const getUseModel = async (req: any, tokenCount: number, config: any) => {
   }
   // if tokenCount is greater than the configured threshold, use the long context model
   const longContextThreshold = config.Router.longContextThreshold || 60000;
-  if (tokenCount > longContextThreshold && config.Router.longContext) {
+  const lastUsageThreshold =
+    lastUsage &&
+    lastUsage.input_tokens > longContextThreshold &&
+    tokenCount > 20000;
+  const tokenCountThreshold = tokenCount > longContextThreshold;
+  if (
+    (lastUsageThreshold || tokenCountThreshold) &&
+    config.Router.longContext
+  ) {
     log(
       "Using long context model due to token count:",
       tokenCount,
@@ -135,6 +149,14 @@ const getUseModel = async (req: any, tokenCount: number, config: any) => {
 };
 
 export const router = async (req: any, _res: any, config: any) => {
+  // Parse sessionId from metadata.user_id
+  if (req.body.metadata?.user_id) {
+    const parts = req.body.metadata.user_id.split("_session_");
+    if (parts.length > 1) {
+      req.sessionId = parts[1];
+    }
+  }
+  const lastMessageUsage = sessionUsageCache.get(req.sessionId);
   const { messages, system = [], tools }: MessageCreateParamsBase = req.body;
   try {
     const tokenCount = calculateTokenCount(
@@ -154,7 +176,7 @@ export const router = async (req: any, _res: any, config: any) => {
       }
     }
     if (!model) {
-      model = await getUseModel(req, tokenCount, config);
+      model = await getUseModel(req, tokenCount, config, lastMessageUsage);
     }
     req.body.model = model;
     

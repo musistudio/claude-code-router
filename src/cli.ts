@@ -2,6 +2,7 @@
 import { run } from "./index";
 import { showStatus } from "./utils/status";
 import { executeCodeCommand } from "./utils/codeCommand";
+import { parseStatusLineData, type StatusLineInput } from "./utils/statusline";
 import {
   cleanupPidFile,
   isServiceRunning,
@@ -23,6 +24,7 @@ Commands:
   stop          Stop server
   restart       Restart server
   status        Show server status
+  statusline    Integrated statusline
   code          Execute claude command
   ui            Open the web UI in browser
   -v, version   Show version information
@@ -82,6 +84,28 @@ async function main() {
       break;
     case "status":
       await showStatus();
+      break;
+    case "statusline":
+      // 从stdin读取JSON输入
+      let inputData = "";
+      process.stdin.setEncoding("utf-8");
+      process.stdin.on("readable", () => {
+        let chunk;
+        while ((chunk = process.stdin.read()) !== null) {
+          inputData += chunk;
+        }
+      });
+      
+      process.stdin.on("end", async () => {
+        try {
+          const input: StatusLineInput = JSON.parse(inputData);
+          const statusLine = await parseStatusLineData(input);
+          console.log(statusLine);
+        } catch (error) {
+          console.error("Error parsing status line data:", error);
+          process.exit(1);
+        }
+      });
       break;
     case "code":
       if (!isServiceRunning()) {

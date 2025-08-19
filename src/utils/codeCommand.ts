@@ -11,10 +11,25 @@ export async function executeCodeCommand(args: string[] = []) {
   const config = await readConfigFile();
   const env: Record<string, string> = {
     ...process.env,
-    ANTHROPIC_AUTH_TOKEN: "test",
+    ANTHROPIC_AUTH_TOKEN: config?.APIKEY || "test",
+    ANTHROPIC_API_KEY: '',
     ANTHROPIC_BASE_URL: `http://127.0.0.1:${config.PORT || 3456}`,
     API_TIMEOUT_MS: String(config.API_TIMEOUT_MS ?? 600000), // Default to 10 minutes if not set
   };
+
+  const settingsFlag: Record<string, any> = {
+    env,
+  };
+  if (config?.StatusLine?.enabled) {
+    settingsFlag.statusLine = {
+      type: "command",
+      command: "ccr statusline",
+      padding: 0,
+    };
+  }
+  if (Object.keys(settingsFlag).length > 0 && process.platform !== 'win32') {
+    args.push(`--settings=${JSON.stringify(settingsFlag)}`);
+  }
 
   // Non-interactive mode for automation environments
   if (config.NON_INTERACTIVE_MODE) {
@@ -29,31 +44,38 @@ export async function executeCodeCommand(args: string[] = []) {
     env.ANTHROPIC_SMALL_FAST_MODEL = config.ANTHROPIC_SMALL_FAST_MODEL;
   }
 
-  if (config?.APIKEY) {
-    env.ANTHROPIC_API_KEY = config.APIKEY;
-    delete env.ANTHROPIC_AUTH_TOKEN;
-  }
+  // if (config?.APIKEY) {
+  //   env.ANTHROPIC_API_KEY = config.APIKEY;
+  //   delete env.ANTHROPIC_AUTH_TOKEN;
+  // }
 
   // Increment reference count when command starts
   incrementReferenceCount();
 
   // Execute claude command
-  const claudePath = process.env.CLAUDE_PATH || "claude";
-  
+  const claudePath = config?.CLAUDE_PATH || process.env.CLAUDE_PATH || "claude";
+
   // Properly join arguments to preserve spaces in quotes
   // Wrap each argument in double quotes to preserve single and double quotes inside arguments
-  const joinedArgs = args.length > 0 ? args.map(arg => `"${arg.replace(/\"/g, '\\"')}"`).join(" ") : "";
+  const joinedArgs =
+    args.length > 0
+      ? args.map((arg) => `"${arg.replace(/\"/g, '\\"')}"`).join(" ")
+      : "";
 
   // 🔥 CONFIG-DRIVEN: stdio configuration based on environment
   const stdioConfig: StdioOptions = config.NON_INTERACTIVE_MODE
     ? ["pipe", "inherit", "inherit"] // Pipe stdin for non-interactive
     : "inherit"; // Default inherited behavior
 
-  const claudeProcess = spawn(claudePath + (joinedArgs ? ` ${joinedArgs}` : ""), [], {
-    env,
-    stdio: stdioConfig,
-    shell: true,
-  });
+  const claudeProcess = spawn(
+    claudePath + (joinedArgs ? ` ${joinedArgs}` : ""),
+    [],
+    {
+      env,
+      stdio: stdioConfig,
+      shell: true,
+    }
+  );
 
   // Close stdin for non-interactive mode
   if (config.NON_INTERACTIVE_MODE) {

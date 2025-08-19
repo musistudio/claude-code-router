@@ -119,4 +119,38 @@
   body {
     @apply bg-background text-foreground;
   }
+  
+  /* 美化滚动条 - WebKit浏览器 (Chrome, Safari, Edge) */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/30;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+
+  ::-webkit-scrollbar-corner {
+    @apply bg-transparent;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(0.556 0 0) oklch(0.97 0 0);
+  }
+
+  .dark * {
+    scrollbar-color: oklch(0.708 0 0) oklch(0.269 0 0);
+  }
 }

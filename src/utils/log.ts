@@ -9,9 +9,21 @@ if (!fs.existsSync(HOME_DIR)) {
   fs.mkdirSync(HOME_DIR, { recursive: true });
 }
 
+// Global variable to store the logging configuration
+let isLogEnabled: boolean | null = null;
+let logLevel: string = "info";
+
+// Function to configure logging
+export function configureLogging(config: { LOG?: boolean; LOG_LEVEL?: string }) {
+  isLogEnabled = config.LOG !== false; // Default to true if not explicitly set to false
+  logLevel = config.LOG_LEVEL || "debug";
+}
+
 export function log(...args: any[]) {
-  // Check if logging is enabled via environment variable
-  const isLogEnabled = process.env.LOG === "true";
+  // If logging configuration hasn't been set, default to enabled
+  if (isLogEnabled === null) {
+    isLogEnabled = true;
+  }
 
   if (!isLogEnabled) {
     return;

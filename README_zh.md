@@ -1,5 +1,7 @@
 # Claude Code Router
 
+我正在为该项目寻求资金支持，以更好地维持其发展。如果您有任何想法，请随时与我联系: [m@musiiot.top](mailto:m@musiiot.top)
+
 > 一款强大的工具，可将 Claude Code 请求路由到不同的模型，并自定义任何请求。
 
 ![](blog/images/claude-code.png)
@@ -35,7 +37,11 @@ npm install -g @musistudio/claude-code-router
 
 `config.json` 文件有几个关键部分：
 - **`PROXY_URL`** (可选): 您可以为 API 请求设置代理，例如：`"PROXY_URL": "http://127.0.0.1:7890"`。
-- **`LOG`** (可选): 您可以通过将其设置为 `true` 来启用日志记录。日志文件将位于 `$HOME/.claude-code-router.log`。
+- **`LOG`** (可选): 您可以通过将其设置为 `true` 来启用日志记录。当设置为 `false` 时，将不会创建日志文件。默认值为 `true`。
+- **`LOG_LEVEL`** (可选): 设置日志级别。可用选项包括：`"fatal"`、`"error"`、`"warn"`、`"info"`、`"debug"`、`"trace"`。默认值为 `"debug"`。
+- **日志系统**: Claude Code Router 使用两个独立的日志系统：
+  - **服务器级别日志**: HTTP 请求、API 调用和服务器事件使用 pino 记录在 `~/.claude-code-router/logs/` 目录中，文件名类似于 `ccr-*.log`
+  - **应用程序级别日志**: 路由决策和业务逻辑事件记录在 `~/.claude-code-router/claude-code-router.log` 文件中
 - **`APIKEY`** (可选): 您可以设置一个密钥来进行身份验证。设置后，客户端请求必须在 `Authorization` 请求头 (例如, `Bearer your-secret-key`) 或 `x-api-key` 请求头中提供此密钥。例如：`"APIKEY": "your-secret-key"`。
 - **`HOST`** (可选): 您可以设置服务的主机地址。如果未设置 `APIKEY`，出于安全考虑，主机地址将强制设置为 `127.0.0.1`，以防止未经授权的访问。例如：`"HOST": "0.0.0.0"`。
 - **`NON_INTERACTIVE_MODE`** (可选): 当设置为 `true` 时，启用与非交互式环境（如 GitHub Actions、Docker 容器或其他 CI/CD 系统）的兼容性。这会设置适当的环境变量（`CI=true`、`FORCE_COLOR=0` 等）并配置 stdin 处理，以防止进程在自动化环境中挂起。例如：`"NON_INTERACTIVE_MODE": true`。
@@ -176,7 +182,7 @@ ccr code
 > ccr restart
 > ```
 
-### 4. UI 模式 (Beta)
+### 4. UI 模式
 
 为了获得更直观的体验，您可以使用 UI 模式来管理您的配置：
 
@@ -187,8 +193,6 @@ ccr ui
 这将打开一个基于 Web 的界面，您可以在其中轻松查看和编辑您的 `config.json` 文件。
 
 ![UI](/blog/images/ui.png)
-
-> **注意**: UI 模式目前处于测试阶段。这是一个 100% vibe coding的项目，包括项目的初始化，我只是新建了一个文件夹和一个project.md文档。所有代码均由 ccr + qwen3-coder + gemini(webSearch) 实现。如有问题请提交 issue。
 
 #### Providers
 
@@ -285,6 +289,7 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
 -   `cleancache`: 清除请求中的 `cache_control` 字段。
 -   `vertex-gemini`: 处理使用 vertex 鉴权的 gemini api。
 -   `qwen-cli` (实验性): 通过 Qwen CLI [qwen-cli.js](https://gist.github.com/musistudio/f5a67841ced39912fd99e42200d5ca8b) 对 qwen3-coder-plus 的非官方支持。
+-   `rovo-cli` (experimental): 通过 Atlassian Rovo Dev CLI [rovo-cli.js](https://gist.github.com/SaseQ/c2a20a38b11276537ec5332d1f7a5e53) 对 GPT-5 的非官方支持。
 
 **自定义 Transformer:**
 
@@ -294,7 +299,7 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
 {
   "transformers": [
       {
-        "path": "$HOME/.claude-code-router/plugins/gemini-cli.js",
+        "path": "/User/xxx/.claude-code-router/plugins/gemini-cli.js",
         "options": {
           "project": "xxx"
         }
@@ -326,7 +331,7 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
 
 ```json
 {
-  "CUSTOM_ROUTER_PATH": "$HOME/.claude-code-router/custom-router.js"
+  "CUSTOM_ROUTER_PATH": "/User/xxx/.claude-code-router/custom-router.js"
 }
 ```
 
@@ -335,7 +340,7 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
 这是一个基于 `custom-router.example.js` 的 `custom-router.js` 示例：
 
 ```javascript
-// $HOME/.claude-code-router/custom-router.js
+// /User/xxx/.claude-code-router/custom-router.js
 
 /**
  * 一个自定义路由函数，用于根据请求确定使用哪个模型。
@@ -368,6 +373,12 @@ module.exports = async function router(req, config) {
 请帮我分析这段代码是否存在潜在的优化空间...
 ```
 
+## Status Line (Beta)
+为了在运行时更好的查看claude-code-router的状态，claude-code-router在v1.0.40内置了一个statusline工具，你可以在UI中启用它，
+![statusline-config.png](/blog/images/statusline-config.png)
+
+效果如下：
+![statusline](/blog/images/statusline.png)
 
 ## 🤖 GitHub Actions
 
@@ -504,7 +515,8 @@ jobs:
 - @水\*丫
 - @二吉吉
 - @a\*g
-- @*林
+- @\*林
+- @\*咸
 
 （如果您的名字被屏蔽，请通过我的主页电子邮件与我联系，以便使用您的 GitHub 用户名进行更新。）
 

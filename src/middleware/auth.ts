@@ -15,7 +15,7 @@ export const apiKeyAuth =
         `http://127.0.0.1:${config.PORT || 3456}`,
         `http://localhost:${config.PORT || 3456}`,
       ];
-      if (req.headers.origin && allowedOrigins.includes(req.headers.origin)) {
+      if (req.headers.origin && !allowedOrigins.includes(req.headers.origin)) {
         reply.status(403).send("CORS not allowed for this origin");
         return;
       } else {

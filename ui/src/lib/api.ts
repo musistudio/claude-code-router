@@ -194,6 +194,16 @@ class ApiClient {
   async restartService(): Promise<unknown> {
     return this.post<void>('/restart', {});
   }
+  
+  // Check for updates
+  async checkForUpdates(): Promise<{ hasUpdate: boolean; latestVersion?: string; changelog?: string }> {
+    return this.get<{ hasUpdate: boolean; latestVersion?: string; changelog?: string }>('/update/check');
+  }
+  
+  // Perform update
+  async performUpdate(): Promise<{ success: boolean; message: string }> {
+    return this.post<{ success: boolean; message: string }>('/api/update/perform', {});
+  }
 }
 
 // Create a default instance of the API client

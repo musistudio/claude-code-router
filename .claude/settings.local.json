@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__serena__search_for_pattern",
+      "mcp__serena__get_symbols_overview",
+      "mcp__serena__find_symbol",
+      "mcp__serena__think_about_collected_information",
+      "WebSearch",
+      "mcp__zen__chat",
+      "mcp__serena__list_dir",
+      "mcp__zen__planner"
+    ],
+    "deny": [],
+    "ask": [],
+    "additionalDirectories": [
+      "/Users/fredrikbranstrom/claude-code"
+    ]
+  }
+}

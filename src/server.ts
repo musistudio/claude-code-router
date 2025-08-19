@@ -1,5 +1,6 @@
 import Server from "@musistudio/llms";
 import { readConfigFile, writeConfigFile, backupConfigFile } from "./utils";
+import { checkForUpdates, performUpdate } from "./utils";
 import { join } from "path";
 import fastifyStatic from "@fastify/static";
 
@@ -39,13 +40,6 @@ export const createServer = (config: any): Server => {
 
   // Add endpoint to restart the service with access control
   server.app.post("/api/restart", async (req, reply) => {
-    // Only allow full access users to restart service
-    const accessLevel = (req as any).accessLevel || "restricted";
-    if (accessLevel !== "full") {
-      reply.status(403).send("Full access required to restart service");
-      return;
-    }
-
     reply.send({ success: true, message: "Service restart initiated" });
 
     // Restart the service after a short delay to allow response to be sent
@@ -68,6 +62,44 @@ export const createServer = (config: any): Server => {
   // Redirect /ui to /ui/ for proper static file serving
   server.app.get("/ui", async (_, reply) => {
     return reply.redirect("/ui/");
+  });
+  
+  // 版本检查端点
+  server.app.get("/api/update/check", async (req, reply) => {
+    try {
+      // 获取当前版本
+      const currentVersion = require("../package.json").version;
+      const { hasUpdate, latestVersion, changelog } = await checkForUpdates(currentVersion);
+      
+      return { 
+        hasUpdate, 
+        latestVersion: hasUpdate ? latestVersion : undefined,
+        changelog: hasUpdate ? changelog : undefined
+      };
+    } catch (error) {
+      console.error("Failed to check for updates:", error);
+      reply.status(500).send({ error: "Failed to check for updates" });
+    }
+  });
+  
+  // 执行更新端点
+  server.app.post("/api/update/perform", async (req, reply) => {
+    try {
+      // 只允许完全访问权限的用户执行更新
+      const accessLevel = (req as any).accessLevel || "restricted";
+      if (accessLevel !== "full") {
+        reply.status(403).send("Full access required to perform updates");
+        return;
+      }
+      
+      // 执行更新逻辑
+      const result = await performUpdate();
+      
+      return result;
+    } catch (error) {
+      console.error("Failed to perform update:", error);
+      reply.status(500).send({ error: "Failed to perform update" });
+    }
   });
 
   return server;

@@ -14,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { X, Trash2, Plus, Eye, EyeOff } from "lucide-react";
+import { X, Trash2, Plus, Eye, EyeOff, Search, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Combobox } from "@/components/ui/combobox";
 import { ComboInput } from "@/components/ui/combo-input";
@@ -38,6 +38,7 @@ export function Providers() {
   const [showApiKey, setShowApiKey] = useState<Record<number, boolean>>({});
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState<string>("");
   const comboInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -487,15 +488,57 @@ export function Providers() {
 
   const editingProvider = editingProviderData || (editingProviderIndex !== null ? validProviders[editingProviderIndex] : null);
 
+  // Filter providers based on search term
+  const filteredProviders = validProviders.filter(provider => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    // Check provider name and URL
+    if (
+      (provider.name && provider.name.toLowerCase().includes(term)) ||
+      (provider.api_base_url && provider.api_base_url.toLowerCase().includes(term))
+    ) {
+      return true;
+    }
+    // Check models
+    if (provider.models && Array.isArray(provider.models)) {
+      return provider.models.some(model => 
+        model && model.toLowerCase().includes(term)
+      );
+    }
+    return false;
+  });
+
   return (
     <Card className="flex h-full flex-col rounded-lg border shadow-sm">
-      <CardHeader className="flex flex-row items-center justify-between border-b p-4">
-        <CardTitle className="text-lg">{t("providers.title")} <span className="text-sm font-normal text-gray-500">({validProviders.length})</span></CardTitle>
-        <Button onClick={handleAddProvider}>{t("providers.add")}</Button>
+      <CardHeader className="flex flex-col border-b p-4 gap-3">
+        <div className="flex flex-row items-center justify-between">
+          <CardTitle className="text-lg">{t("providers.title")} <span className="text-sm font-normal text-gray-500">({filteredProviders.length}/{validProviders.length})</span></CardTitle>
+          <Button onClick={handleAddProvider}>{t("providers.add")}</Button>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+            <Input
+              placeholder={t("providers.search")}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-8"
+            />
+          </div>
+          {searchTerm && (
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onClick={() => setSearchTerm("")}
+            >
+              <XCircle className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="flex-grow overflow-y-auto p-4">
         <ProviderList
-          providers={validProviders}
+          providers={filteredProviders}
           onEdit={handleEditProvider}
           onRemove={setDeletingProviderIndex}
         />
