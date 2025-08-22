@@ -105,6 +105,7 @@
     "longContext": "Long Context",
     "longContextThreshold": "Context Threshold",
     "webSearch": "Web Search",
+    "seniorModel": "Senior model",
     "selectModel": "Select a model...",
     "searchModel": "Search model...",
     "noModelFound": "No model found."
