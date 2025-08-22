@@ -67,7 +67,10 @@ Claude Code Router supports environment variable interpolation for secure API ke
       "name": "openai",
       "api_base_url": "https://api.openai.com/v1/chat/completions",
       "api_key": "$OPENAI_API_KEY",
-      "models": ["gpt-5", "gpt-5-mini"]
+      "models": ["gpt-5", "gpt-5-mini", "o3", "o3-mini"],
+      "transformer": {
+        "use": ["reasoning", "openai"]
+      }
     }
   ]
 }
@@ -208,6 +211,20 @@ ccr code
 > ccr restart
 > ```
 
+#### Automatic Service Management
+
+Claude Code Router intelligently manages the background service:
+
+- **Auto-start**: `ccr code` automatically starts the service if not running
+- **Multi-session support**: Multiple concurrent `ccr code` sessions share the same service  
+- **Auto-stop**: Service automatically shuts down when the last Claude Code session ends
+- **Manual control**: Use `ccr start`/`ccr stop` for manual service management
+
+Each active session increments a reference counter. When all sessions end (counter reaches 0), you'll see:
+```
+claude code router service has been successfully stopped.
+```
+
 ### 4. UI Mode
 
 For a more intuitive experience, you can use the UI mode to manage your configuration:
@@ -310,10 +327,11 @@ Transformers allow you to modify the request and response payloads to ensure com
 - `maxtoken`: Sets a specific `max_tokens` value.
 - `tooluse`: Optimizes tool usage for certain models via `tool_choice`.
 - `gemini-cli` (experimental): Unofficial support for Gemini via Gemini CLI [gemini-cli.js](https://gist.github.com/musistudio/1c13a65f35916a7ab690649d3df8d1cd).
-- `reasoning`: Used to process the `reasoning_content` field.
+- `reasoning`: Used to process reasoning parameters for GPT-5/o3 models. Converts Anthropic `thinking` parameters to OpenAI `reasoning_effort` format.
 - `sampling`: Used to process sampling information fields such as `temperature`, `top_p`, `top_k`, and `repetition_penalty`.
 - `enhancetool`: Adds a layer of error tolerance to the tool call parameters returned by the LLM (this will cause the tool call information to no longer be streamed).
 - `cleancache`: Clears the `cache_control` field from requests.
+- `openai`: Handles OpenAI API transformations including GPT-5 parameter conversion (`max_tokens` → `max_completion_tokens`, reasoning object → `reasoning_effort`).
 - `vertex-gemini`: Handles the Gemini API using Vertex authentication.
 - `qwen-cli` (experimental): Unofficial support for qwen3-coder-plus model via Qwen CLI [qwen-cli.js](https://gist.github.com/musistudio/f5a67841ced39912fd99e42200d5ca8b).
 - `rovo-cli` (experimental): Unofficial support for gpt-5 via Atlassian Rovo Dev CLI [rovo-cli.js](https://gist.github.com/SaseQ/c2a20a38b11276537ec5332d1f7a5e53).

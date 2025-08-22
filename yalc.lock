@@ -1,0 +1,10 @@
+{
+  "version": "v1",
+  "packages": {
+    "@musistudio/llms": {
+      "signature": "a6479f3ed7aa2f97313ca870bc2e4ad5",
+      "file": true,
+      "replaced": "file:../llms-dev/musistudio-llms-1.0.26.tgz"
+    }
+  }
+}

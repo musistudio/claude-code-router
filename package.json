@@ -21,12 +21,13 @@
   "dependencies": {
     "@fastify/cors": "^11.1.0",
     "@fastify/static": "^8.2.0",
-    "@musistudio/llms": "file:musistudio-llms-1.0.26.tgz",
+    "@musistudio/llms": "file:.yalc/@musistudio/llms",
     "dotenv": "^16.4.7",
     "json5": "^2.2.3",
     "openurl": "^1.1.1",
     "pino-rotating-file-stream": "^0.0.2",
     "tiktoken": "^1.0.21",
+    "undici": "^7.14.0",
     "uuid": "^11.1.0"
   },
   "devDependencies": {

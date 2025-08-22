@@ -1,0 +1,40 @@
+{
+  "name": "@musistudio/llms",
+  "version": "1.0.26",
+  "description": "A universal LLM API transformation server",
+  "main": "dist/cjs/server.cjs",
+  "module": "dist/esm/server.mjs",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/esm/server.mjs",
+      "require": "./dist/cjs/server.cjs"
+    }
+  },
+  "scripts": {
+    "tsx": "tsx",
+    "build": "tsx scripts/build.ts",
+    "build:watch": "tsx scripts/build.ts --watch",
+    "dev": "nodemon",
+    "start": "node dist/cjs/server.cjs",
+    "start:esm": "node dist/esm/server.mjs",
+    "lint": "eslint src --ext .ts,.tsx"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.54.0",
+    "@fastify/cors": "^11.0.1",
+    "@google/genai": "^1.7.0",
+    "dotenv": "^16.5.0",
+    "fastify": "^5.4.0",
+    "google-auth-library": "^10.1.0",
+    "json5": "^2.2.3",
+    "jsonrepair": "^3.13.0",
+    "openai": "^5.6.0",
+    "undici": "^7.10.0",
+    "uuid": "^11.1.0"
+  },
+  "yalcSig": "a6479f3ed7aa2f97313ca870bc2e4ad5"
+}

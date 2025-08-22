@@ -58,6 +58,34 @@ async function waitForService(
 async function main() {
   switch (command) {
     case "start":
+      if (isServiceRunning()) {
+        console.log("✅ Service is already running in the background.");
+        break;
+      }
+      
+      console.log("Starting claude code router service...");
+      const cliPath = join(__dirname, "cli.js");
+      const startProcess = spawn("node", [cliPath, "start-direct"], {
+        detached: true,
+        stdio: "ignore",
+      });
+
+      startProcess.on("error", (error) => {
+        console.error("Failed to start service:", error.message);
+        process.exit(1);
+      });
+
+      startProcess.unref();
+      
+      if (await waitForService()) {
+        console.log("✅ Service started successfully in the background.");
+      } else {
+        console.error("Service startup timeout. Please check the logs.");
+        process.exit(1);
+      }
+      break;
+    case "start-direct":
+      // This is called by the detached process to actually start the server
       run();
       break;
     case "stop":
@@ -86,7 +114,7 @@ async function main() {
       await showStatus();
       break;
     case "statusline":
-      // 从stdin读取JSON输入
+      // Read JSON input from stdin
       let inputData = "";
       process.stdin.setEncoding("utf-8");
       process.stdin.on("readable", () => {
@@ -295,18 +323,18 @@ async function main() {
 
       // Start the service again in the background
       console.log("Starting claude code router service...");
-      const cliPath = join(__dirname, "cli.js");
-      const startProcess = spawn("node", [cliPath, "start"], {
+      const restartCliPath = join(__dirname, "cli.js");
+      const restartProcess = spawn("node", [restartCliPath, "start"], {
         detached: true,
         stdio: "ignore",
       });
 
-      startProcess.on("error", (error) => {
+      restartProcess.on("error", (error) => {
         console.error("Failed to start service:", error);
         process.exit(1);
       });
 
-      startProcess.unref();
+      restartProcess.unref();
       console.log("✅ Service started successfully in the background.");
       break;
     case "-h":
