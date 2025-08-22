@@ -35,7 +35,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
     yalc update @musistudio/llms    # Force CCR to use latest version
     ccr restart     # Restart to load updated package
     ```
--   **GPT-5/o3 Support Status**: ✅ PRODUCTION READY via OpenAI Chat Completions API with transformer chain `["reasoning", "openai"]` in config.json
+-   **2025 Models Support**: ✅ PRODUCTION READY for GPT-5, o3, o4-mini via OpenAI Chat Completions API with transformer chain `["reasoning", "openai"]` in config.json
 -   **Release a new version**:
     ```bash
     npm run release
