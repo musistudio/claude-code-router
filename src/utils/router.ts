@@ -9,15 +9,6 @@ import { sessionUsageCache, Usage } from "./cache";
 
 const enc = get_encoding("cl100k_base");
 
-// GPT-5 models that require max_completion_tokens parameter
-const isGPT5Model = (model: string): boolean => {
-  const modelName = model.includes(",") ? model.split(",")[1] : model;
-  return [
-    'gpt-5', 'gpt-5-mini', 'gpt-5-nano',
-    'o3', 'o3-mini', 'o3-pro', 'o4-mini'
-  ].includes(modelName);
-};
-
 const calculateTokenCount = (
   messages: MessageParam[],
   system: any,
@@ -158,6 +149,65 @@ export const router = async (req: any, _res: any, config: any) => {
   }
   const lastMessageUsage = sessionUsageCache.get(req.sessionId);
   const { messages, system = [], tools }: MessageCreateParamsBase = req.body;
+  
+  // Process inline reasoning tokens in messages
+  if (messages && messages.length > 0) {
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage?.role === 'user' && typeof lastMessage.content === 'string') {
+      const content = lastMessage.content;
+      
+      // Define token mappings
+      const tokenMap = {
+        'Quick:': { effort: 'low', verbosity: 'low', thinking: { budget_tokens: 500, type: 'enabled' } },
+        'Deep:': { effort: 'high', verbosity: 'medium', thinking: { budget_tokens: 2000, type: 'enabled' } },
+        'Explain:': { effort: 'medium', verbosity: 'high', thinking: { budget_tokens: 1000, type: 'enabled' } },
+        'Brief:': { effort: 'medium', verbosity: 'low', thinking: { budget_tokens: 1000, type: 'enabled' } }
+      };
+      
+      const colonMap = {
+        ':quick': { effort: 'low', verbosity: 'low', thinking: { budget_tokens: 500, type: 'enabled' } },
+        ':deep': { effort: 'high', verbosity: 'medium', thinking: { budget_tokens: 2000, type: 'enabled' } },
+        ':explain': { effort: 'medium', verbosity: 'high', thinking: { budget_tokens: 1000, type: 'enabled' } },
+        ':brief': { effort: 'medium', verbosity: 'low', thinking: { budget_tokens: 1000, type: 'enabled' } }
+      };
+      
+      let updatedContent = content;
+      let foundToken = false;
+      
+      // Process prefix tokens (strip from beginning)
+      for (const [token, params] of Object.entries(tokenMap)) {
+        if (content.startsWith(token)) {
+          if (!req.body.reasoning_effort) req.body.reasoning_effort = params.effort;
+          if (!req.body.verbosity) req.body.verbosity = params.verbosity;
+          if (!req.body.thinking) req.body.thinking = params.thinking;
+          updatedContent = content.substring(token.length).trim();
+          foundToken = true;
+          log(`Applied reasoning token "${token}" -> effort: ${params.effort}, verbosity: ${params.verbosity}`);
+          break;
+        }
+      }
+      
+      // Process colon tokens (strip from anywhere)
+      if (!foundToken) {
+        for (const [colon, params] of Object.entries(colonMap)) {
+          if (content.includes(colon)) {
+            if (!req.body.reasoning_effort) req.body.reasoning_effort = params.effort;
+            if (!req.body.verbosity) req.body.verbosity = params.verbosity;
+            if (!req.body.thinking) req.body.thinking = params.thinking;
+            updatedContent = updatedContent.replace(colon, '').trim();
+            foundToken = true;
+            log(`Applied reasoning colon token "${colon}" -> effort: ${params.effort}, verbosity: ${params.verbosity}`);
+            break;
+          }
+        }
+      }
+      
+      // Update message content if we found and stripped tokens
+      if (foundToken) {
+        lastMessage.content = updatedContent;
+      }
+    }
+  }
   try {
     const tokenCount = calculateTokenCount(
       messages as MessageParam[],
@@ -180,11 +230,8 @@ export const router = async (req: any, _res: any, config: any) => {
     }
     req.body.model = model;
     
-    // Handle GPT-5 parameter mapping: max_tokens → max_completion_tokens
-    if (model && isGPT5Model(model) && req.body.max_tokens) {
-      req.body.max_completion_tokens = req.body.max_tokens;
-      delete req.body.max_tokens;
-    }
+    // Note: GPT-5 specific parameter transformations have been moved to LLMS OpenAI transformer
+    // CCR should only handle routing, not provider-specific transformations
   } catch (error: any) {
     log("Error in router middleware:", error.message);
     req.body.model = config.Router!.default;
