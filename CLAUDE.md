@@ -31,9 +31,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
     Note: The CCR proxy service auto-launches when you run `ccr code`
 -   **Local development with yalc**:
     ```bash
+    # Manual workflow:
     yalc publish    # After building changes
     yalc update @musistudio/llms    # Force CCR to use latest version
     ccr restart     # Restart to load updated package
+    
+    # Automated workflow:
+    ./build-and-test.sh    # Build CCR with updated LLMS package and show status
     ```
 -   **2025 Models Support**: ✅ PRODUCTION READY for GPT-5, o3, o4-mini via OpenAI Chat Completions API with transformer chain `["reasoning", "openai"]` in config.json
 -   **Release a new version**:
