@@ -2,6 +2,13 @@ import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Info } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/Tooltip";
 import { useConfig } from "./ConfigProvider";
 import { Combobox } from "./ui/combobox";
 
@@ -62,7 +69,19 @@ export function Router() {
   return (
     <Card className="flex h-full flex-col rounded-lg border shadow-sm">
       <CardHeader className="border-b p-4">
-        <CardTitle className="text-lg">{t("router.title")}</CardTitle>
+        <div className="flex items-center">
+          <CardTitle className="text-lg">{t("router.title")}</CardTitle>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Info className="h-4 w-4 text-gray-400 ml-2 cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{t("router.title_tooltip")}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
       </CardHeader>
       <CardContent className="flex-grow space-y-5 overflow-y-auto p-4">
         <div className="space-y-2">

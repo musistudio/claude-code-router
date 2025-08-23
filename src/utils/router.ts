@@ -117,13 +117,13 @@ const getUseModel = async (
     }
   }
   // If the model is claude-3-5-haiku, use the background model
-  if (
+  /* if (
     req.body.model?.startsWith("claude-3-5-haiku") &&
     config.Router.background
   ) {
     log("Using background model for ", req.body.model);
     return config.Router.background;
-  }
+  } */
   // if exits thinking, use the think model
   if (req.body.thinking && config.Router.think) {
     log("Using think model for ", req.body.thinking);
