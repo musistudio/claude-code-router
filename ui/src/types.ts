@@ -18,6 +18,7 @@ export interface RouterConfig {
     longContext: string;
     longContextThreshold: number;
     webSearch: string;
+    toolUse: string;
     custom?: any;
 }
 
