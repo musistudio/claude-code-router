@@ -103,7 +103,8 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
             longContext: '',
             longContextThreshold: 60000,
             webSearch: ''
-          }
+          },
+          CUSTOM_ROUTER_PATH: typeof data.CUSTOM_ROUTER_PATH === 'string' ? data.CUSTOM_ROUTER_PATH : ''
         };
         
         setConfig(validConfig);
@@ -132,7 +133,8 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
               longContext: '',
               longContextThreshold: 60000,
               webSearch: ''
-            }
+            },
+            CUSTOM_ROUTER_PATH: ''
           });
           setError(err as Error);
         }
