@@ -57,7 +57,7 @@ function App() {
       
       // 根据响应信息进行提示
       if (response && typeof response === 'object' && 'success' in response) {
-        const apiResponse = response as { success: boolean; message?: string };
+        const apiResponse = response as unknown as { success: boolean; message?: string };
         if (apiResponse.success) {
           setToast({ message: apiResponse.message || t('app.config_saved_success'), type: 'success' });
         } else {
@@ -88,7 +88,7 @@ function App() {
       // Check if save was successful before restarting
       let saveSuccessful = true;
       if (response && typeof response === 'object' && 'success' in response) {
-        const apiResponse = response as { success: boolean; message?: string };
+        const apiResponse = response as unknown as { success: boolean; message?: string };
         if (!apiResponse.success) {
           saveSuccessful = false;
           setToast({ message: apiResponse.message || t('app.config_saved_failed'), type: 'error' });

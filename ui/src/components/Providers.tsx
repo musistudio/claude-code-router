@@ -21,7 +21,7 @@ import { ComboInput } from "@/components/ui/combo-input";
 import { api } from "@/lib/api";
 import type { Provider } from "@/types";
 
-interface ProviderType extends Provider {}
+type ProviderType = Provider;
 
 export function Providers() {
   const { t } = useTranslation();

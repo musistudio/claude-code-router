@@ -252,7 +252,7 @@ export function StatusLineImportExport({ config, onImport, onShowToast }: Status
                 const restoreInput = document.createElement('input');
                 restoreInput.type = 'file';
                 restoreInput.accept = '.json';
-                restoreInput.onchange = (e) => handleRestore(e as any);
+                restoreInput.onchange = (e) => handleRestore(e as Event);
                 restoreInput.click();
               }} 
               variant="outline" 

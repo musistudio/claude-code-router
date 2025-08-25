@@ -67,12 +67,13 @@ export function Login() {
       // Navigate to dashboard
       // The ConfigProvider will handle fetching the config
       navigate('/dashboard');
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Clear the API key on failure
       api.setApiKey('');
       
       // Check if it's an unauthorized error
-      if (error.message && error.message.includes('401')) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('401')) {
         setError(t('login.invalidApiKey'));
       } else {
         // For other errors, still allow access (restricted mode)
