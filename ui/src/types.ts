@@ -1,6 +1,6 @@
 export interface ProviderTransformer {
   use: (string | (string | Record<string, unknown> | { max_tokens: number })[])[];
-  [key: string]: any; // Allow for model-specific transformers
+  [key: string]: unknown; // Allow for model-specific transformers
 }
 
 export interface Provider {
@@ -18,13 +18,13 @@ export interface RouterConfig {
     longContext: string;
     longContextThreshold: number;
     webSearch: string;
-    custom?: any;
+    custom?: unknown;
 }
 
 export interface Transformer {
     name?: string;
     path: string;
-    options?: Record<string, any>;
+    options?: Record<string, unknown>;
 }
 
 export interface StatusLineModuleConfig {
@@ -62,6 +62,10 @@ export interface Config {
   APIKEY: string;
   API_TIMEOUT_MS: string;
   PROXY_URL: string;
+  CUSTOM_ROUTER_PATH?: string;
+  NON_INTERACTIVE_MODE?: boolean;
+  // Allow additional custom fields
+  [key: string]: unknown;
 }
 
 export type AccessLevel = 'restricted' | 'full';

@@ -1,6 +1,5 @@
 import { useTranslation } from "react-i18next";
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { createPortal } from "react-dom";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -429,7 +428,7 @@ export function StatusLineConfigDialog({
   const [selectedModuleIndex, setSelectedModuleIndex] = useState<number | null>(
     null
   );
-  const [hexBackgroundColors, setHexBackgroundColors] = useState<Set<string>>(
+  const [, setHexBackgroundColors] = useState<Set<string>>(
     new Set()
   );
 
