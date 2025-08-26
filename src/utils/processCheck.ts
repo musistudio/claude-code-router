@@ -47,6 +47,10 @@ export function savePid(pid: number) {
     writeFileSync(PID_FILE, pid.toString());
 }
 
+export function resetReferenceCount() {
+    writeFileSync(REFERENCE_COUNT_FILE, '0');
+}
+
 export function cleanupPidFile() {
     if (existsSync(PID_FILE)) {
         try {

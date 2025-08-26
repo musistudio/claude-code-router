@@ -3,3 +3,6 @@ node_modules
 log.txt
 .idea
 dist
+
+# Keep local config safe
+~/.claude-code-router/analytics/

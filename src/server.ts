@@ -3,12 +3,39 @@ import { readConfigFile, writeConfigFile, backupConfigFile } from "./utils";
 import { checkForUpdates, performUpdate } from "./utils";
 import { join } from "path";
 import fastifyStatic from "@fastify/static";
+import { analyticsRoutes } from "./routes/analytics";
+import { strategyRoutes } from './routes/strategy';
+import executionGuardRoutes from './routes/execution-guard';
+import { FastifyRequest, FastifyReply } from 'fastify';
+
+// Global Throttling configuration
+const GLOBAL_REQUEST_DELAY_MS = 200; // 200ms delay between requests (max 5 requests/sec)
+let lastRequestTimestamp = 0;
 
 export const createServer = (config: any): Server => {
   const server = new Server(config);
 
+  // Add a global pre-handler hook for throttling
+  server.app.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
+    const now = Date.now();
+    const timeSinceLastRequest = now - lastRequestTimestamp;
+
+    if (timeSinceLastRequest < GLOBAL_REQUEST_DELAY_MS) {
+      const waitTime = GLOBAL_REQUEST_DELAY_MS - timeSinceLastRequest;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    lastRequestTimestamp = Date.now();
+  });
+
+  // Register valuable analytics routes for dashboard  
+  analyticsRoutes(server.app);
+  strategyRoutes(server.app);
+  
+  // Register ExecutionGuard monitoring and control routes
+  server.app.register(executionGuardRoutes, { prefix: '/api/execution-guard' });
+
   // Add endpoint to read config.json with access control
-  server.app.get("/api/config", async (req, reply) => {
+  server.app.get("/api/config", async (req: any, reply: any) => {
     return await readConfigFile();
   });
 
@@ -25,7 +52,7 @@ export const createServer = (config: any): Server => {
   });
 
   // Add endpoint to save config.json with access control
-  server.app.post("/api/config", async (req, reply) => {
+  server.app.post("/api/config", async (req: any, reply: any) => {
     const newConfig = req.body;
 
     // Backup existing config file if it exists
@@ -39,7 +66,7 @@ export const createServer = (config: any): Server => {
   });
 
   // Add endpoint to restart the service with access control
-  server.app.post("/api/restart", async (req, reply) => {
+  server.app.post("/api/restart", async (req: any, reply: any) => {
     reply.send({ success: true, message: "Service restart initiated" });
 
     // Restart the service after a short delay to allow response to be sent
@@ -60,12 +87,12 @@ export const createServer = (config: any): Server => {
   });
 
   // Redirect /ui to /ui/ for proper static file serving
-  server.app.get("/ui", async (_, reply) => {
+  server.app.get("/ui", async (_: any, reply: any) => {
     return reply.redirect("/ui/");
   });
   
   // 版本检查端点
-  server.app.get("/api/update/check", async (req, reply) => {
+  server.app.get("/api/update/check", async (req: any, reply: any) => {
     try {
       // 获取当前版本
       const currentVersion = require("../package.json").version;
@@ -83,7 +110,7 @@ export const createServer = (config: any): Server => {
   });
   
   // 执行更新端点
-  server.app.post("/api/update/perform", async (req, reply) => {
+  server.app.post("/api/update/perform", async (req: any, reply: any) => {
     try {
       // 只允许完全访问权限的用户执行更新
       const accessLevel = (req as any).accessLevel || "restricted";

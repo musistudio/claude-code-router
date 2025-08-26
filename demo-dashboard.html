@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code Router - Advanced System Dashboard</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .health-score {
+            font-size: 2em;
+            font-weight: bold;
+            text-align: center;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .healthy { background: #4caf50; color: white; }
+        .degraded { background: #ff9800; color: white; }
+        .critical { background: #f44336; color: white; }
+        .endpoint-list {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 4px solid #667eea;
+        }
+        .endpoint-item {
+            margin: 5px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .status-online { background: #4caf50; color: white; }
+        .status-offline { background: #f44336; color: white; }
+        .refresh-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            float: right;
+        }
+        .refresh-btn:hover {
+            background: #5a6fd8;
+        }
+        pre {
+            background: #f8f8f8;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Claude Code Router - Advanced Resilience System</h1>
+            <p>Real-time monitoring dashboard pentru sistemul sofisticat de resilience</p>
+            <button class="refresh-btn" onclick="loadAllData()">🔄 Refresh All</button>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <h3>🏥 System Health</h3>
+                <div id="health-display">Loading...</div>
+                <div id="health-details"></div>
+            </div>
+
+            <div class="card">
+                <h3>📊 System Overview</h3>
+                <div id="overview-display">Loading...</div>
+            </div>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <h3>🔑 API Keys Status</h3>
+                <div id="api-keys-display">Loading...</div>
+            </div>
+
+            <div class="card">
+                <h3>⏱️ Exponential Backoff</h3>
+                <div id="backoff-display">Loading...</div>
+            </div>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <h3>📮 Request Queue</h3>
+                <div id="queue-display">Loading...</div>
+            </div>
+
+            <div class="card">
+                <h3>🔄 Provider Fallback</h3>
+                <div id="fallback-display">Loading...</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>🌐 Available API Endpoints</h3>
+            <div class="endpoint-list">
+                <div class="endpoint-item">GET /api/advanced-system/overview - System overview and detected providers</div>
+                <div class="endpoint-item">GET /api/advanced-system/health - Comprehensive health check</div>
+                <div class="endpoint-item">GET /api/advanced-system/api-keys/status - API key pool status</div>
+                <div class="endpoint-item">GET /api/advanced-system/backoff/stats - Exponential backoff statistics</div>
+                <div class="endpoint-item">GET /api/advanced-system/queue/status - Request queue status</div>
+                <div class="endpoint-item">GET /api/advanced-system/fallback/status - Provider fallback status</div>
+                <div class="endpoint-item">GET /api/advanced-system/providers/detected - Dynamic provider detection</div>
+                <div class="endpoint-item">POST /api/advanced-system/optimize-config - Configuration optimizer</div>
+                <div class="endpoint-item">POST /api/advanced-system/reset/{component} - Reset system components</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://127.0.0.1:3456/api/advanced-system';
+
+        async function fetchData(endpoint) {
+            try {
+                const response = await fetch(`${API_BASE}${endpoint}`);
+                return await response.json();
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        }
+
+        async function loadHealth() {
+            const health = await fetchData('/health');
+            const healthDiv = document.getElementById('health-display');
+            const detailsDiv = document.getElementById('health-details');
+            
+            if (health.success) {
+                const score = health.health.score;
+                const status = health.health.status;
+                const statusClass = status === 'healthy' ? 'healthy' : status === 'degraded' ? 'degraded' : 'critical';
+                
+                healthDiv.innerHTML = `<div class="health-score ${statusClass}">${score}/100 - ${status.toUpperCase()}</div>`;
+                
+                if (health.health.issues && health.health.issues.length > 0) {
+                    detailsDiv.innerHTML = '<h4>Issues:</h4><ul>' + 
+                        health.health.issues.map(issue => `<li>${issue}</li>`).join('') + '</ul>';
+                } else {
+                    detailsDiv.innerHTML = '<p style="color: green;">✅ No issues detected!</p>';
+                }
+            } else {
+                healthDiv.innerHTML = '<div class="health-score critical">ERROR</div>';
+                detailsDiv.innerHTML = `<p>Error: ${health.error}</p>`;
+            }
+        }
+
+        async function loadOverview() {
+            const overview = await fetchData('/overview');
+            const div = document.getElementById('overview-display');
+            
+            if (overview.success) {
+                const providers = overview.providers;
+                div.innerHTML = `
+                    <p><strong>System:</strong> ${overview.system.name}</p>
+                    <p><strong>Version:</strong> ${overview.system.version}</p>
+                    <p><strong>Features:</strong> ${overview.system.features.join(', ')}</p>
+                    <p><strong>Providers:</strong> ${providers.total} total, ${providers.online} online</p>
+                    <h4>Detected Providers:</h4>
+                    <ul>
+                        ${providers.detected.map(p => 
+                            `<li>${p.name} (${p.models.length} models)
+                             <span class="status-badge ${p.isOnline ? 'status-online' : 'status-offline'}">
+                                ${p.isOnline ? 'ONLINE' : 'OFFLINE'}
+                             </span>
+                            </li>`
+                        ).join('')}
+                    </ul>
+                `;
+            } else {
+                div.innerHTML = `<p>Error: ${overview.error}</p>`;
+            }
+        }
+
+        async function loadApiKeys() {
+            const apiKeys = await fetchData('/api-keys/status');
+            const div = document.getElementById('api-keys-display');
+            
+            if (apiKeys.success) {
+                const pool = apiKeys.data.pool;
+                div.innerHTML = `
+                    <p><strong>Total Keys:</strong> ${pool.totalKeys}</p>
+                    <p><strong>Active Keys:</strong> ${pool.activeKeys}</p>
+                    <p><strong>Blocked Keys:</strong> ${pool.blockedKeys}</p>
+                    <pre>${JSON.stringify(apiKeys.data.recommendations, null, 2)}</pre>
+                `;
+            } else {
+                div.innerHTML = `<p>Error: ${apiKeys.error}</p>`;
+            }
+        }
+
+        async function loadBackoff() {
+            const backoff = await fetchData('/backoff/stats');
+            const div = document.getElementById('backoff-display');
+            
+            if (backoff.success) {
+                const stats = backoff.data;
+                div.innerHTML = `
+                    <p><strong>Successful Executions:</strong> ${stats.successfulExecutions}</p>
+                    <p><strong>Retries Executed:</strong> ${stats.retriesExecuted}</p>
+                    <p><strong>Max Retry Reached:</strong> ${stats.maxRetryReached}</p>
+                    <pre>${JSON.stringify(stats.recommendations, null, 2)}</pre>
+                `;
+            } else {
+                div.innerHTML = `<p>Error: ${backoff.error}</p>`;
+            }
+        }
+
+        async function loadQueue() {
+            const queue = await fetchData('/queue/status');
+            const div = document.getElementById('queue-display');
+            
+            if (queue.success) {
+                const stats = queue.data;
+                div.innerHTML = `
+                    <p><strong>Total Requests:</strong> ${stats.totalRequests}</p>
+                    <p><strong>Completed:</strong> ${stats.completedRequests}</p>
+                    <p><strong>Failed:</strong> ${stats.failedRequests}</p>
+                    <p><strong>Average Wait Time:</strong> ${Math.round(stats.averageWaitTime)}ms</p>
+                    <pre>${JSON.stringify(stats.recommendations, null, 2)}</pre>
+                `;
+            } else {
+                div.innerHTML = `<p>Error: ${queue.error}</p>`;
+            }
+        }
+
+        async function loadFallback() {
+            const fallback = await fetchData('/fallback/status');
+            const div = document.getElementById('fallback-display');
+            
+            if (fallback.success) {
+                div.innerHTML = `
+                    <h4>Provider Status:</h4>
+                    <pre>${JSON.stringify(fallback.data.providers, null, 2)}</pre>
+                    <h4>Recommendations:</h4>
+                    <pre>${JSON.stringify(fallback.data.recommendations, null, 2)}</pre>
+                `;
+            } else {
+                div.innerHTML = `<p>Error: ${fallback.error}</p>`;
+            }
+        }
+
+        async function loadAllData() {
+            await Promise.all([
+                loadHealth(),
+                loadOverview(),
+                loadApiKeys(),
+                loadBackoff(),
+                loadQueue(),
+                loadFallback()
+            ]);
+        }
+
+        // Load data on page load
+        loadAllData();
+
+        // Auto-refresh every 30 seconds
+        setInterval(loadAllData, 30000);
+    </script>
+</body>
+</html>

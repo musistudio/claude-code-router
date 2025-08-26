@@ -134,72 +134,72 @@ class ApiClient {
   async getConfig(): Promise<Config> {
     return this.get<Config>('/config');
   }
-  
+
   // Update entire configuration
   async updateConfig(config: Config): Promise<Config> {
     return this.post<Config>('/config', config);
   }
-  
+
   // Get providers
   async getProviders(): Promise<Provider[]> {
     return this.get<Provider[]>('/api/providers');
   }
-  
+
   // Add a new provider
   async addProvider(provider: Provider): Promise<Provider> {
     return this.post<Provider>('/api/providers', provider);
   }
-  
+
   // Update a provider
   async updateProvider(index: number, provider: Provider): Promise<Provider> {
     return this.post<Provider>(`/api/providers/${index}`, provider);
   }
-  
+
   // Delete a provider
   async deleteProvider(index: number): Promise<void> {
     return this.delete<void>(`/api/providers/${index}`);
   }
-  
+
   // Get transformers
   async getTransformers(): Promise<Transformer[]> {
     return this.get<Transformer[]>('/api/transformers');
   }
-  
+
   // Add a new transformer
   async addTransformer(transformer: Transformer): Promise<Transformer> {
     return this.post<Transformer>('/api/transformers', transformer);
   }
-  
+
   // Update a transformer
   async updateTransformer(index: number, transformer: Transformer): Promise<Transformer> {
     return this.post<Transformer>(`/api/transformers/${index}`, transformer);
   }
-  
+
   // Delete a transformer
   async deleteTransformer(index: number): Promise<void> {
     return this.delete<void>(`/api/transformers/${index}`);
   }
-  
-  // Get configuration (new endpoint)
-  async getConfigNew(): Promise<Config> {
-    return this.get<Config>('/config');
+
+  // Get cache statistics
+  async getCacheStats(): Promise<any> {
+    return this.get<any>('/api/strategy/cache-stats');
   }
-  
-  // Save configuration (new endpoint)
-  async saveConfig(config: Config): Promise<unknown> {
-    return this.post<Config>('/config', config);
+
+  // Get fallback status
+  async getFallbackStatus(): Promise<any> {
+    return this.get<any>('/api/strategy/fallback-status');
   }
-  
+
   // Restart service
   async restartService(): Promise<unknown> {
     return this.post<void>('/restart', {});
   }
-  
+
   // Check for updates
   async checkForUpdates(): Promise<{ hasUpdate: boolean; latestVersion?: string; changelog?: string }> {
     return this.get<{ hasUpdate: boolean; latestVersion?: string; changelog?: string }>('/update/check');
   }
-  
+
   // Perform update
   async performUpdate(): Promise<{ success: boolean; message: string }> {
     return this.post<{ success: boolean; message: string }>('/api/update/perform', {});

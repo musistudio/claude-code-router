@@ -3,7 +3,7 @@ import os from "node:os";
 
 export const HOME_DIR = path.join(os.homedir(), ".claude-code-router");
 
-export const CONFIG_FILE = path.join(HOME_DIR, "config.json");
+export const CONFIG_FILE = process.env.CCR_CONFIG_PATH || path.join(HOME_DIR, "config.json");
 
 export const PLUGINS_DIR = path.join(HOME_DIR, "plugins");
 

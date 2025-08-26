@@ -1,13 +1,17 @@
 {
   "name": "@musistudio/claude-code-router",
-  "version": "1.0.43",
+  "version": "1.0.43-local.20250821095332",
   "description": "Use Claude Code without an Anthropics account and route it to another LLM provider",
   "bin": {
-    "ccr": "./dist/cli.js"
+    "ccr": "./dist/cli.js",
+    "ccr-dev": "./dist/cli.js"
   },
   "scripts": {
     "build": "node scripts/build.js",
-    "release": "npm run build && npm publish"
+    "release": "npm run build && npm publish",
+    "start": "node dist/cli.js start",
+    "ccr:local": "node dist/cli.js",
+    "code:local": "node dist/cli.js code"
   },
   "keywords": [
     "claude",
@@ -26,6 +30,7 @@
     "openurl": "^1.1.1",
     "pino-rotating-file-stream": "^0.0.2",
     "tiktoken": "^1.0.21",
+    "ts-node": "^10.9.2",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
@@ -33,7 +38,7 @@
     "esbuild": "^0.25.1",
     "fastify": "^5.4.0",
     "shx": "^0.4.0",
-    "typescript": "^5.8.2"
+    "typescript": "^5.9.2"
   },
   "publishConfig": {
     "ignore": [

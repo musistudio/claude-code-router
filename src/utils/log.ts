@@ -43,3 +43,8 @@ export function log(...args: any[]) {
   // Append to log file
   fs.appendFileSync(LOG_FILE, logMessage, "utf8");
 }
+
+// Add methods for different log levels
+export const info = (...args: any[]) => log("INFO:", ...args);
+export const warn = (...args: any[]) => log("WARN:", ...args);
+export const error = (...args: any[]) => log("ERROR:", ...args);

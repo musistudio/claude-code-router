@@ -2,19 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { SettingsDialog } from "@/components/SettingsDialog";
-import { Transformers } from "@/components/Transformers";
-import { Providers } from "@/components/Providers";
-import { Router } from "@/components/Router";
-import { JsonEditor } from "@/components/JsonEditor";
-import { Button } from "@/components/ui/button";
 import { useConfig } from "@/components/ConfigProvider";
 import { api } from "@/lib/api";
-import { Settings, Languages, Save, RefreshCw, FileJson, CircleArrowUp } from "lucide-react";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { Toast } from "@/components/ui/toast";
 import {
   Dialog,
@@ -24,7 +13,12 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { Dashboard } from "@/components/dashboard/Dashboard";
+import { DashboardWrapper } from "@/components/dashboard/DashboardWrapper";
 import "@/styles/animations.css";
+import "@/styles/dashboard.css";
+import "@/styles/dashboard-theme.css";
+import "@/styles/charts-enhancement.css";
 
 function App() {
   const { t, i18n } = useTranslation();
@@ -266,91 +260,23 @@ function App() {
   }
 
   return (
-    <div className="h-screen bg-gray-50 font-sans">
-      <header className="flex h-16 items-center justify-between border-b bg-white px-6">
-        <h1 className="text-xl font-semibold text-gray-800">{t('app.title')}</h1>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={() => setIsSettingsOpen(true)} className="transition-all-ease hover:scale-110">
-            <Settings className="h-5 w-5" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => setIsJsonEditorOpen(true)} className="transition-all-ease hover:scale-110">
-            <FileJson className="h-5 w-5" />
-          </Button>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" className="transition-all-ease hover:scale-110">
-                <Languages className="h-5 w-5" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-32 p-2">
-              <div className="space-y-1">
-                <Button
-                  variant={i18n.language.startsWith('en') ? 'default' : 'ghost'}
-                  className="w-full justify-start transition-all-ease hover:scale-[1.02]"
-                  onClick={() => i18n.changeLanguage('en')}
-                >
-                  English
-                </Button>
-                <Button
-                  variant={i18n.language.startsWith('zh') ? 'default' : 'ghost'}
-                  className="w-full justify-start transition-all-ease hover:scale-[1.02]"
-                  onClick={() => i18n.changeLanguage('zh')}
-                >
-                  中文
-                </Button>
-              </div>
-            </PopoverContent>
-          </Popover>
-          {/* 更新版本按钮 */}
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={() => checkForUpdates(true)}
-            disabled={isCheckingUpdate}
-            className="transition-all-ease hover:scale-110 relative"
-          >
-            <div className="relative">
-              <CircleArrowUp className="h-5 w-5" />
-              {isNewVersionAvailable && !isCheckingUpdate && (
-                <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white"></div>
-              )}
-            </div>
-            {isCheckingUpdate && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
-              </div>
-            )}
-          </Button>
-          <Button onClick={saveConfig} variant="outline" className="transition-all-ease hover:scale-[1.02] active:scale-[0.98]">
-            <Save className="mr-2 h-4 w-4" />
-            {t('app.save')}
-          </Button>
-          <Button onClick={saveConfigAndRestart} className="transition-all-ease hover:scale-[1.02] active:scale-[0.98]">
-            <RefreshCw className="mr-2 h-4 w-4" />
-            {t('app.save_and_restart')}
-          </Button>
-        </div>
-      </header>
-      <main className="flex h-[calc(100vh-4rem)] gap-4 p-4 overflow-hidden">
-        <div className="w-3/5">
-          <Providers />
-        </div>
-        <div className="flex w-2/5 flex-col gap-4">
-          <div className="h-3/5">
-            <Router />
-          </div>
-          <div className="flex-1 overflow-hidden">
-            <Transformers />
-          </div>
-        </div>
-      </main>
+    <div className="h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
+      <DashboardWrapper
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onSaveConfig={saveConfig}
+        onSaveAndRestart={saveConfigAndRestart}
+      >
+        <Dashboard 
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onSaveConfig={saveConfig}
+          onSaveAndRestart={saveConfigAndRestart}
+        />
+      </DashboardWrapper>
+      
+      {/* Settings Dialog */}
       <SettingsDialog isOpen={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
-      <JsonEditor 
-        open={isJsonEditorOpen} 
-        onOpenChange={setIsJsonEditorOpen} 
-        showToast={(message, type) => setToast({ message, type })} 
-      />
-      {/* 版本更新对话框 */}
+      
+      {/* Version Update Dialog */}
       <Dialog open={isUpdateDialogOpen} onOpenChange={setIsUpdateDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -378,18 +304,23 @@ function App() {
             )}
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
+            <button
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
               onClick={() => setIsUpdateDialogOpen(false)}
             >
               {t('app.later')}
-            </Button>
-            <Button onClick={performUpdate}>
+            </button>
+            <button 
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
+              onClick={performUpdate}
+            >
               {t('app.update_now')}
-            </Button>
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      
+      {/* Toast Notifications */}
       {toast && (
         <Toast 
           message={toast.message} 

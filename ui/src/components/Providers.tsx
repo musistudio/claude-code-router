@@ -47,7 +47,29 @@ export function Providers() {
         const response = await fetch('https://pub-0dc3e1677e894f07bbea11b17a29e032.r2.dev/providers.json');
         if (response.ok) {
           const data = await response.json();
-          setProviderTemplates(data || []);
+          // Add custom Google provider template
+          const customTemplates = [
+            {
+              name: "google-custom",
+              api_base_url: "https://generativelanguage.googleapis.com/v1beta/models/",
+              api_key: "placeholder-key-managed-by-pool",
+              models: [
+                "gemini-2.5-pro",
+                "gemini-2.5-flash",
+                "gemini-2.5-flash-lite",
+                "gemini-2.0-flash",
+                "gemini-2.0-flash-lite"
+              ],
+              transformer: {
+                use: ["gemini"]
+              },
+              priority: 1,
+              useCustomProvider: true,
+              description: "🚀 Custom Google provider with API key pool management - bypasses @musistudio/llms limitations"
+            },
+            ...(data || [])
+          ];
+          setProviderTemplates(customTemplates);
         } else {
           console.error('Failed to fetch provider templates');
         }

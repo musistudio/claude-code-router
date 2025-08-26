@@ -1,0 +1,57 @@
+/* Enhanced Recharts integration with dashboard glassmorphism theme */
+
+.dashboard-context .recharts-cartesian-grid-horizontal line,
+.dashboard-context .recharts-cartesian-grid-vertical line {
+  stroke: rgba(255, 255, 255, 0.1) !important;
+  stroke-dasharray: 3 3;
+}
+
+.dashboard-context .recharts-text {
+  fill: #94a3b8 !important;
+  font-size: 12px;
+}
+
+.dashboard-context .recharts-tooltip-wrapper {
+  filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.5));
+}
+
+.dashboard-context .recharts-default-tooltip {
+  background: rgba(42, 42, 62, 0.95) !important;
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  color: #ffffff !important;
+}
+
+.dashboard-context .recharts-default-tooltip .recharts-tooltip-label {
+  color: #ffffff !important;
+  font-weight: 600;
+}
+
+.dashboard-context .recharts-default-tooltip .recharts-tooltip-item {
+  color: #ffffff !important;
+}
+
+/* Line chart enhancements */
+.dashboard-context .recharts-line {
+  filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.4));
+}
+
+.dashboard-context .recharts-dot {
+  filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.6));
+}
+
+/* Bar chart enhancements */
+.dashboard-context .recharts-bar {
+  filter: drop-shadow(0 2px 8px rgba(245, 158, 11, 0.3));
+}
+
+/* Legend enhancements */
+.dashboard-context .recharts-legend-wrapper {
+  color: #ffffff !important;
+}
+
+.dashboard-context .recharts-legend-item-text {
+  color: #ffffff !important;
+}

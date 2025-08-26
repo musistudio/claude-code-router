@@ -1,0 +1,4 @@
+{
+  "model": "google,gemini-2.5-flash-lite",
+  "message": "Hello, this is a test message for the custom Google provider!"
+}

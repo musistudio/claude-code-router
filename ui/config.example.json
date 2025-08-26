@@ -5,6 +5,49 @@
   "PORT": 8080,
   "APIKEY": "1",
   "API_TIMEOUT_MS": 600000,
+  "executionGuard": {
+    "enabled": true,
+    "deduplication": {
+      "enabled": true,
+      "ttlSeconds": 30,
+      "maxCacheSize": 1000,
+      "excludeEndpoints": ["/api/analytics", "/ui/", "/api/test"]
+    },
+    "rateLimiting": {
+      "enabled": true,
+      "rules": {
+        "perMinute": { "requests": 60, "windowMs": 60000 },
+        "perHour": { "requests": 500, "windowMs": 3600000 },
+        "perDay": { "requests": 5000, "windowMs": 86400000 },
+        "burst": { "requests": 10, "windowMs": 10000 }
+      }
+    },
+    "circuitBreaker": {
+      "enabled": true,
+      "failureThreshold": 20,
+      "recoveryTimeMs": 60000
+    },
+    "queue": {
+      "enabled": true,
+      "minDelayMs": 1000,
+      "maxQueueSize": 100
+    },
+    "retry": {
+      "enabled": true,
+      "maxRetries": 5,
+      "initialBackoffMs": 1000,
+      "maxBackoffMs": 30000,
+      "jitterMs": 500,
+      "retryableStatusCodes": [429, 500, 502, 503, 504]
+    },
+    "fallback": {
+      "enabled": true,
+      "recoveryWindowMs": 60000
+    },
+    "persistence": {
+      "enabled": true
+    }
+  },
   "transformers": [
     {
       "path": "/Users/abc/.claude-code-router/plugins/gemini-cli.js",
@@ -166,14 +209,38 @@
       "models": [
         "gpt-4"
       ]
+    },
+    {
+      "name": "gemini-rotation",
+      "api_base_url": "https://generativelanguage.googleapis.com/v1beta/models/",
+      "api_keys": [
+        "${API_KEY_1}",
+        "${API_KEY_2}",
+        "${API_KEY_3}",
+        "${API_KEY_4}"
+      ],
+      "models": [
+        "gemini-2.5-pro",
+        "gemini-2.5-flash"
+      ],
+      "transformer": {
+        "use": [
+          [
+            "gemini-key-rotation",
+            {
+              "path": "/opt/lampp/htdocs/claude-code-router/src/transformers/gemini-key-rotation.js"
+            }
+          ]
+        ]
+      }
     }
   ],
   "Router": {
-    "default": "gemini-cli,gemini-2.5-pro",
-    "background": "gemini-cli,gemini-2.5-flash",
-    "think": "gemini-cli,gemini-2.5-pro",
-    "longContext": "gemini-cli,gemini-2.5-pro",
-    "webSearch": "gemini-cli,gemini-2.5-flash"
+    "default": "gemini-rotation,gemini-2.5-pro",
+    "background": "gemini-rotation,gemini-2.5-flash",
+    "think": "gemini-rotation,gemini-2.5-pro",
+    "longContext": "gemini-rotation,gemini-2.5-pro",
+    "webSearch": "gemini-rotation,gemini-2.5-flash"
   },
   "NON_INTERACTIVE_MODE": false
 }

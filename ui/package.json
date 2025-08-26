@@ -21,6 +21,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "framer-motion": "^12.23.12",
     "i18next": "^25.3.2",
     "i18next-browser-languagedetector": "^8.2.0",
     "lucide-react": "^0.525.0",
@@ -31,6 +32,8 @@
     "react-dom": "^19.1.0",
     "react-i18next": "^15.6.1",
     "react-router-dom": "^7.7.0",
+    "recharts": "^3.1.2",
+    "socket.io-client": "^4.8.1",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7"
   },
