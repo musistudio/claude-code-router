@@ -167,7 +167,8 @@ npm install -g @musistudio/claude-code-router
     "think": "deepseek,deepseek-reasoner",
     "longContext": "openrouter,google/gemini-2.5-pro-preview",
     "longContextThreshold": 60000,
-    "webSearch": "gemini,gemini-2.5-flash"
+    "webSearch": "gemini,gemini-2.5-flash",
+    "seniorModel": "anthropic,claude-opus-4-1-20250805"
   }
 }
 ```
@@ -322,6 +323,7 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
 -   `longContext`: 用于处理长上下文（例如，> 60K 令牌）的模型。
 -   `longContextThreshold` (可选): 触发长上下文模型的令牌数阈值。如果未指定，默认为 60000。
 -   `webSearch`: 用于处理网络搜索任务，需要模型本身支持。如果使用`openrouter`需要在模型后面加上`:online`后缀。
+-   `seniorModel`: 用于处理以 "claude-opus" 开头的模型请求。当请求指定的模型以 "claude-opus" 开头时，路由器会重定向到这个配置的模型。
 
 您还可以使用 `/model` 命令在 Claude Code 中动态切换模型：
 `/model provider_name,model_name`

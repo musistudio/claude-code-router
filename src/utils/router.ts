@@ -124,6 +124,14 @@ const getUseModel = async (
     log("Using background model for ", req.body.model);
     return config.Router.background;
   }
+  // If the model is claude-opus, use the senior model
+  if (
+    req.body.model?.startsWith("claude-opus") &&
+    config.Router.seniorModel
+  ) {
+    log("Using senior model for ", req.body.model);
+    return config.Router.seniorModel;
+  }
   // if exits thinking, use the think model
   if (req.body.thinking && config.Router.think) {
     log("Using think model for ", req.body.thinking);

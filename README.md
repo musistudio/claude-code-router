@@ -193,7 +193,8 @@ Here is a comprehensive example:
     "think": "deepseek,deepseek-reasoner",
     "longContext": "openrouter,google/gemini-2.5-pro-preview",
     "longContextThreshold": 60000,
-    "webSearch": "gemini,gemini-2.5-flash"
+    "webSearch": "gemini,gemini-2.5-flash",
+    "seniorModel": "anthropic,claude-opus-4-1-20250805"
   }
 }
 ```
@@ -349,6 +350,7 @@ The `Router` object defines which model to use for different scenarios:
 - `longContext`: A model for handling long contexts (e.g., > 60K tokens).
 - `longContextThreshold` (optional): The token count threshold for triggering the long context model. Defaults to 60000 if not specified.
 - `webSearch`: Used for handling web search tasks and this requires the model itself to support the feature. If you're using openrouter, you need to add the `:online` suffix after the model name.
+- `seniorModel`: A model for handling requests with models starting with "claude-opus". When a request specifies a model that starts with "claude-opus", the router will redirect to this configured model.
 
 You can also switch models dynamically in Claude Code with the `/model` command:
 `/model provider_name,model_name`
