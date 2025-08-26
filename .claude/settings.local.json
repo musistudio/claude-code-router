@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh issue:*)",
+      "Bash(npm run build)",
+      "Bash(npm install)",
+      "Bash(npm link)",
+      "Bash(npm run dev)",
+      "WebSearch",
+      "Bash(move:*)",
+      "Bash(mv:*)",
+      "Bash(git checkout:*)",
+      "Bash(git restore:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "additionalDirectories": [
+      "C:\\Users\\Proline\\02_Development\\Repos"
+    ]
+  }
+}

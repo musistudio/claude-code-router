@@ -14,10 +14,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { X, Trash2, Plus, Eye, EyeOff, Search, XCircle } from "lucide-react";
+import { X, Trash2, Plus, Eye, EyeOff, Search, XCircle, Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Combobox } from "@/components/ui/combobox";
 import { ComboInput } from "@/components/ui/combo-input";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/Tooltip";
 import { api } from "@/lib/api";
 import type { Provider } from "@/types";
 
@@ -512,7 +518,20 @@ export function Providers() {
     <Card className="flex h-full flex-col rounded-lg border shadow-sm">
       <CardHeader className="flex flex-col border-b p-4 gap-3">
         <div className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">{t("providers.title")} <span className="text-sm font-normal text-gray-500">({filteredProviders.length}/{validProviders.length})</span></CardTitle>
+          <div className="flex items-center">
+            <CardTitle className="text-lg">{t("providers.title")}</CardTitle>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-4 w-4 text-gray-400 ml-2 cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{t("providers.title_tooltip")}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <span className="text-sm font-normal text-gray-500 ml-1">({filteredProviders.length}/{validProviders.length})</span>
+          </div>
           <Button onClick={handleAddProvider}>{t("providers.add")}</Button>
         </div>
         <div className="flex items-center gap-2">
