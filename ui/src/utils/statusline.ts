@@ -1,9 +1,9 @@
-import type { StatusLineConfig, StatusLineModuleConfig } from "@/types";
+import type { StatusLineConfig } from "@/types";
 
 // 验证结果（保留接口但不使用）
 export interface ValidationResult {
   isValid: boolean;
-  errors: any[];
+  errors: unknown[];
 }
 
 /**
@@ -11,7 +11,7 @@ export interface ValidationResult {
  * @param config 要验证的配置对象
  * @returns 始终返回验证通过
  */
-export function validateStatusLineConfig(config: unknown): ValidationResult {
+export function validateStatusLineConfig(): ValidationResult {
   // 不再执行任何验证
   return { isValid: true, errors: [] };
 }
