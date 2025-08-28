@@ -1,0 +1,10 @@
+
+> @musistudio/claude-code-router@1.0.43-local.20250821095332 start
+> node dist/cli.js start
+
+Loaded 1000 analytics metrics
+Loaded stats for 39 models
+Loaded daily stats for 3 days
+⚠️ API key is not set. HOST is forced to 127.0.0.1.
+127.0.0.1
+Loaded JSON config from: /home/mircea/.claude-code-router/config.json

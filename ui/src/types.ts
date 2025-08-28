@@ -9,6 +9,9 @@ export interface Provider {
   api_key: string;
   models: string[];
   transformer?: ProviderTransformer;
+  useCustomProvider?: boolean;
+  priority?: number;
+  description?: string;
 }
 
 export interface RouterConfig {

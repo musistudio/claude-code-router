@@ -47,8 +47,15 @@ export function registerAdvancedSystemRoutes(app: FastifyInstance) {
   // === API KEY POOL STATUS ===
   app.get('/api/advanced-system/api-keys/status', async (request, reply) => {
     try {
-      const poolStats = googleAPIKeyPool.getPoolStats();
-      const keyStatuses = googleAPIKeyPool.getAllKeyStatuses();
+      // TODO: Implement Google API key pool functionality
+      // For now, return mock data
+      const poolStats = {
+        totalKeys: 0,
+        activeKeys: 0,
+        exhaustedKeys: 0,
+        rotationCount: 0
+      };
+      const keyStatuses: any[] = [];
       
       return {
         success: true,
@@ -150,7 +157,13 @@ export function registerAdvancedSystemRoutes(app: FastifyInstance) {
         executionGuardStats, 
         detectedProviders
       ] = await Promise.all([
-        googleAPIKeyPool.getPoolStats(),
+        // TODO: Implement Google API key pool functionality
+        {
+          totalKeys: 0,
+          activeKeys: 0,
+          exhaustedKeys: 0,
+          rotationCount: 0
+        },
         executionGuard.getStats(), 
         dynamicProviderDetector.scanProvidersFromConfig(config)
       ]);
@@ -223,7 +236,8 @@ export function registerAdvancedSystemRoutes(app: FastifyInstance) {
           executionGuard.clearCache();
           break;
         case 'api-keys':
-          googleAPIKeyPool.resetAllKeys();
+          // TODO: Implement Google API key pool functionality
+          // googleAPIKeyPool.resetAllKeys();
           break;
         default:
           return { success: false, error: `Unknown component: ${component}` };

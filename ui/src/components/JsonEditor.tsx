@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import Editor from '@monaco-editor/react';
 import { Button } from '@/components/ui/button';
 import { useConfig } from '@/components/ConfigProvider';
-import { api } from '@/lib/api';
+import api from '@/lib/api';
 import { useTranslation } from 'react-i18next';
 import { Save, X, RefreshCw } from 'lucide-react';
 

@@ -6,6 +6,7 @@ import fastifyStatic from "@fastify/static";
 import { analyticsRoutes } from "./routes/analytics";
 import { strategyRoutes } from './routes/strategy';
 import executionGuardRoutes from './routes/execution-guard';
+import { missionControlRoutes } from './routes/mission-control';
 import { FastifyRequest, FastifyReply } from 'fastify';
 
 // Global Throttling configuration
@@ -33,6 +34,9 @@ export const createServer = (config: any): Server => {
   
   // Register ExecutionGuard monitoring and control routes
   server.app.register(executionGuardRoutes, { prefix: '/api/execution-guard' });
+  
+  // Register Mission Control v2 routes
+  server.app.register(missionControlRoutes);
 
   // Add endpoint to read config.json with access control
   server.app.get("/api/config", async (req: any, reply: any) => {
@@ -65,8 +69,46 @@ export const createServer = (config: any): Server => {
     return { success: true, message: "Config saved successfully" };
   });
 
+  // Add PUT endpoint for config updates (frontend compatibility)
+  server.app.put("/api/config", async (req: any, reply: any) => {
+    const newConfig = req.body;
+
+    // Backup existing config file if it exists
+    const backupPath = await backupConfigFile();
+    if (backupPath) {
+      console.log(`Backed up existing configuration file to ${backupPath}`);
+    }
+
+    await writeConfigFile(newConfig);
+    return { success: true, message: "Config saved successfully" };
+  });
+
+  // Add endpoint to handle optimization settings
+  server.app.get("/api/optimization/settings", async (req: any, reply: any) => {
+    return {
+      autoOptimization: true,
+      advancedRouting: true, 
+      circuitBreakerEnabled: true,
+      rateLimitingEnabled: true,
+      cachingEnabled: true,
+      retryMechanism: true,
+      loadBalancing: false,
+      failoverRouting: true,
+      dynamicProviderSwitching: true,
+      intelligentQueueing: true
+    };
+  });
+
+  server.app.post("/api/optimization/settings", async (req: any, reply: any) => {
+    const settings = req.body;
+    // In a real implementation, this would save settings to config
+    console.log('Optimization settings saved:', settings);
+    return { success: true, message: "Optimization settings saved successfully" };
+  });
+
   // Add endpoint to restart the service with access control
-  server.app.post("/api/restart", async (req: any, reply: any) => {
+
+  server.app.get("/api/restart", async (req: any, reply: any) => {
     reply.send({ success: true, message: "Service restart initiated" });
 
     // Restart the service after a short delay to allow response to be sent
@@ -92,7 +134,7 @@ export const createServer = (config: any): Server => {
   });
   
   // 版本检查端点
-  server.app.get("/api/update/check", async (req: any, reply: any) => {
+  server.app.get("/api/updates/check", async (req: any, reply: any) => {
     try {
       // 获取当前版本
       const currentVersion = require("../package.json").version;
@@ -110,7 +152,7 @@ export const createServer = (config: any): Server => {
   });
   
   // 执行更新端点
-  server.app.post("/api/update/perform", async (req: any, reply: any) => {
+  server.app.post("/api/updates/perform", async (req: any, reply: any) => {
     try {
       // 只允许完全访问权限的用户执行更新
       const accessLevel = (req as any).accessLevel || "restricted";

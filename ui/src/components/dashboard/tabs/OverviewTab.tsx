@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useConfig } from '@/components/ConfigProvider';
-import { api } from '@/lib/api';
+import api from '@/lib/api';
 import { analyticsAPI } from '@/lib/analytics';
 import type { RealtimeStats, ModelStats } from '@/lib/analytics';
+import { formatResponseTime, formatPercentage, formatSuccessRate, getResponseTimeColor, getErrorRateColor } from '@/lib/formatters';
 
 interface ServiceStatus {
   name: string;
@@ -163,7 +164,7 @@ export function OverviewTab() {
             whileHover={{ scale: 1.05 }}
             transition={{ duration: 0.2 }}
           >
-            <div className="stat-number">{realtimeStats?.last24h.avgResponseTime || 0}ms</div>
+            <div className="stat-number">{formatResponseTime(realtimeStats?.last24h.avgResponseTime || 0)}</div>
             <div className="stat-label">Avg Response Time</div>
           </motion.div>
           
@@ -172,7 +173,7 @@ export function OverviewTab() {
             whileHover={{ scale: 1.05 }}
             transition={{ duration: 0.2 }}
           >
-            <div className="stat-number">{100 - (realtimeStats?.last24h.errorRate || 0)}%</div>
+            <div className="stat-number">{formatSuccessRate(realtimeStats?.last24h.errorRate || 0)}</div>
             <div className="stat-label">Success Rate</div>
           </motion.div>
         </div>
@@ -196,12 +197,14 @@ export function OverviewTab() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-400">Avg Response:</span>
-                    <span className="text-blue-400 font-mono">{realtimeStats.current.avgResponseTime}ms</span>
+                    <span className={`font-mono ${getResponseTimeColor(realtimeStats.current.avgResponseTime)}`}>
+                      {formatResponseTime(realtimeStats.current.avgResponseTime)}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-400">Error Rate:</span>
-                    <span className={`font-mono ${realtimeStats.current.errorRate > 5 ? 'text-red-400' : 'text-green-400'}`}>
-                      {realtimeStats.current.errorRate.toFixed(1)}%
+                    <span className={`font-mono ${getErrorRateColor(realtimeStats?.current?.errorRate || 0)}`}>
+                      {formatPercentage(realtimeStats?.current?.errorRate || 0)}
                     </span>
                   </div>
                 </div>
@@ -216,7 +219,9 @@ export function OverviewTab() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-400">Avg Response:</span>
-                    <span className="text-blue-400 font-mono">{realtimeStats.last1h.avgResponseTime}ms</span>
+                    <span className={`font-mono ${getResponseTimeColor(realtimeStats.last1h.avgResponseTime)}`}>
+                      {formatResponseTime(realtimeStats.last1h.avgResponseTime)}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-400">Top Model:</span>
@@ -429,11 +434,8 @@ function RecentRequestsDisplay() {
                request.statusCode >= 400 ? 'error' : 'pending'}
             </span>
           </div>
-          <span className={`font-mono text-sm ${
-            request.responseTime > 2000 ? 'text-red-400' : 
-            request.responseTime > 1000 ? 'text-yellow-400' : 'text-green-400'
-          }`}>
-            {request.responseTime > 1000 ? `${(request.responseTime / 1000).toFixed(1)}s` : `${request.responseTime}ms`}
+          <span className={`font-mono text-sm ${getResponseTimeColor(request.responseTime)}`}>
+            {formatResponseTime(request.responseTime)}
           </span>
         </motion.div>
       ))}

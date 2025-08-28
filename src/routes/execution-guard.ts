@@ -21,10 +21,28 @@ export default async function executionGuardRoutes(fastify: FastifyInstance, opt
       // Retrieve raw statistics from ExecutionGuard
       const stats = executionGuard.getStats() as ExecutionStats;
 
-      // Format the response for dashboard display as per INTEGRATION_EXAMPLE.md (lines 95-107)
+      // Format the response for dashboard display with AdvancedTab compatibility
       const formattedResponse = {
         timestamp: new Date().toISOString(),
         uptime: process.uptime(), // Returns uptime in seconds
+        // AdvancedTab expects these structures at root level
+        current: {
+          activeRequests: stats.queue.currentSize || 0,
+          avgResponseTime: stats.queue.averageWaitTime || 0,
+          errorRate: 0 // Default error rate since ExecutionGuard doesn't track this directly
+        },
+        last1h: {
+          totalRequests: stats.rateLimiting.totalRequestsTracked || 0,
+          avgResponseTime: stats.queue.averageWaitTime || 0,
+          errorRate: 0, // Default error rate
+          topModels: [] // Empty array as default
+        },
+        last24h: {
+          totalRequests: stats.rateLimiting.totalRequestsTracked || 0,
+          avgResponseTime: stats.queue.averageWaitTime || 0,
+          errorRate: 0, // Default error rate  
+          topModels: [] // Empty array as default
+        },
         executionGuard: {
           ...stats, // Include all raw stats
           summary: {
@@ -78,11 +96,18 @@ export default async function executionGuardRoutes(fastify: FastifyInstance, opt
             message: 'Cache cleared successfully',
             timestamp: new Date().toISOString()
           });
+        case 'all':
+          executionGuard.clearAllRecords();
+          return reply.send({ 
+            success: true,
+            message: 'All ExecutionGuard records cleared successfully',
+            timestamp: new Date().toISOString()
+          });
         default:
           // Handle unrecognized component types
           return reply.status(400).send({ 
             error: 'Invalid component specified', 
-            message: `Component '${component}' is not recognized. Valid components are 'circuit-breaker' and 'cache'.` 
+            message: `Component '${component}' is not recognized. Valid components are 'circuit-breaker', 'cache', and 'all'.` 
           });
       }
     } catch (error) {

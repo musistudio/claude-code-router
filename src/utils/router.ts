@@ -69,6 +69,9 @@ const getUseModel = async (
   config: any,
   lastUsage?: Usage | undefined
 ) => {
+  // Track the route used for analytics
+  let routeUsed = 'default';
+  
   if (req.body.model.includes(",")) {
     const [provider, model] = req.body.model.split(",");
     const finalProvider = config.Providers.find(
@@ -78,10 +81,14 @@ const getUseModel = async (
       (m: any) => m.toLowerCase() === model
     );
     if (finalProvider && finalModel) {
+      routeUsed = 'explicit'; // Explicit provider,model specification
+      req.routeUsed = routeUsed;
       return `${finalProvider.name},${finalModel}`;
     }
+    req.routeUsed = routeUsed;
     return req.body.model;
   }
+  
   // if tokenCount is greater than the configured threshold, use the long context model
   const longContextThreshold = config.Router.longContextThreshold || 60000;
   const lastUsageThreshold =
@@ -99,8 +106,11 @@ const getUseModel = async (
       "threshold:",
       longContextThreshold
     );
+    routeUsed = 'longContext';
+    req.routeUsed = routeUsed;
     return config.Router.longContext;
   }
+  
   if (
     req.body?.system?.length > 1 &&
     req.body?.system[1]?.text?.startsWith("<CCR-SUBAGENT-MODEL>")
@@ -113,30 +123,70 @@ const getUseModel = async (
         `<CCR-SUBAGENT-MODEL>${model[1]}</CCR-SUBAGENT-MODEL>`,
         ""
       );
+      routeUsed = 'subagent';
+      req.routeUsed = routeUsed;
       return model[1];
     }
   }
+  
   // If the model is claude-3-5-haiku, use the background model
   if (
     req.body.model?.startsWith("claude-3-5-haiku") &&
     config.Router.background
   ) {
     log("Using background model for ", req.body.model);
+    routeUsed = 'background';
+    req.routeUsed = routeUsed;
     return config.Router.background;
   }
+  
   // if exits thinking, use the think model
   if (req.body.thinking && config.Router.think) {
     log("Using think model for ", req.body.thinking);
+    routeUsed = 'think';
+    req.routeUsed = routeUsed;
     return config.Router.think;
   }
+  
   if (
     Array.isArray(req.body.tools) &&
     req.body.tools.some((tool: any) => tool.type?.startsWith("web_search")) &&
     config.Router.webSearch
   ) {
+    routeUsed = 'webSearch';
+    req.routeUsed = routeUsed;
     return config.Router.webSearch;
   }
+  
+  req.routeUsed = routeUsed;
   return config.Router!.default;
+};
+
+// Helper function to extract provider and model from a model string
+const extractProviderAndModel = (modelString: string, config: any) => {
+  if (modelString.includes(",")) {
+    const [providerName, modelName] = modelString.split(",");
+    return {
+      provider: providerName,
+      model: modelName
+    };
+  }
+  
+  // If no comma, try to find which provider contains this model
+  for (const provider of config.Providers || []) {
+    if (provider.models?.includes(modelString)) {
+      return {
+        provider: provider.name,
+        model: modelString
+      };
+    }
+  }
+  
+  // Fallback - treat as provider name if no model found
+  return {
+    provider: modelString,
+    model: modelString
+  };
 };
 
 export const router = async (req: any, _res: any, config: any) => {
@@ -147,6 +197,10 @@ export const router = async (req: any, _res: any, config: any) => {
       req.sessionId = parts[1];
     }
   }
+  
+  // Capture original model for analytics tracking
+  req.originalModel = req.body.model;
+  
   const lastMessageUsage = sessionUsageCache.get(req.sessionId);
   const { messages, system = [], tools }: MessageCreateParamsBase = req.body;
   try {
@@ -162,6 +216,8 @@ export const router = async (req: any, _res: any, config: any) => {
         const customRouter = require(config.CUSTOM_ROUTER_PATH);
         req.tokenCount = tokenCount; // Pass token count to custom router
         model = await customRouter(req, config);
+        // For custom router, we can't determine the exact route, so use 'custom'
+        req.routeUsed = 'custom';
       } catch (e: any) {
         log("failed to load custom router", e.message);
       }
@@ -169,10 +225,28 @@ export const router = async (req: any, _res: any, config: any) => {
     if (!model) {
       model = await getUseModel(req, tokenCount, config, lastMessageUsage);
     }
+    
+    // Extract provider and model information for analytics
+    const { provider, model: modelName } = extractProviderAndModel(model, config);
+    
+    // Set the full model string for the router
     req.body.model = model;
+    
+    // Set separate provider and model for analytics tracking
+    req.selectedProvider = provider;
+    req.selectedModel = modelName;
+    req.actualModel = modelName; // Store the actual model used after routing
+    
   } catch (error: any) {
     log("Error in router middleware:", error.message);
-    req.body.model = config.Router!.default;
+    const defaultModel = config.Router!.default;
+    const { provider, model: modelName } = extractProviderAndModel(defaultModel, config);
+    
+    req.body.model = defaultModel;
+    req.selectedProvider = provider;
+    req.selectedModel = modelName;
+    req.actualModel = modelName;
+    req.routeUsed = 'error'; // Track that this was due to an error
   }
   return;
 };

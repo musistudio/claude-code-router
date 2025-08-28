@@ -27,6 +27,7 @@
     "@musistudio/llms": "^1.0.28",
     "dotenv": "^16.4.7",
     "json5": "^2.2.3",
+    "node-fetch": "^2.7.0",
     "openurl": "^1.1.1",
     "pino-rotating-file-stream": "^0.0.2",
     "tiktoken": "^1.0.21",

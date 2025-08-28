@@ -8,7 +8,7 @@ This is a frontend project for a configuration settings UI. The goal is to produ
 
 ## Tech Stack
 
-- **Package Manager:** pnpm
+- **Package Manager:** npm
 - **Build Tool:** Vite.js
 - **Framework:** React.js
 - **Styling:** Tailwind CSS with shadcn-ui
@@ -16,10 +16,10 @@ This is a frontend project for a configuration settings UI. The goal is to produ
 
 ## Key Commands
 
-- **Run development server:** `pnpm dev`
-- **Build for production:** `pnpm build` (This produces a single HTML file)
-- **Lint files:** `pnpm lint`
-- **Preview production build:** `pnpm preview`
+- **Run development server:** `npm dev`
+- **Build for production:** `npm build` (This produces a single HTML file)
+- **Lint files:** `npm lint`
+- **Preview production build:** `npm preview`
 
 ## Architecture & Development Notes
 

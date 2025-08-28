@@ -76,8 +76,8 @@ export function registerOptimizationRoutes(server: FastifyInstance) {
   // Get AI Request Controller statistics
   server.get('/api/optimization/ai-control/stats', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { aiRequestController } = await import('../utils/ai-request-controller');
-      const stats = aiRequestController.getStatistics();
+      const executionGuard = require('../utils/ExecutionGuard').ExecutionGuard.getInstance();
+      const stats = executionGuard.getStats();
       return { success: true, data: stats };
     } catch (error: any) {
       reply.code(500);
@@ -96,8 +96,8 @@ export function registerOptimizationRoutes(server: FastifyInstance) {
         burstWindow: number;
       };
       
-      const { aiRequestController } = await import('../utils/ai-request-controller');
-      aiRequestController.updateRateLimits(limits);
+      const executionGuard = require('../utils/ExecutionGuard').ExecutionGuard.getInstance();
+      executionGuard.updateConfig({ rateLimiting: limits });
       
       return { success: true, message: 'Rate limits updated successfully' };
     } catch (error: any) {
@@ -109,8 +109,8 @@ export function registerOptimizationRoutes(server: FastifyInstance) {
   // Reset circuit breaker
   server.post('/api/optimization/ai-control/reset-breaker', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { aiRequestController } = await import('../utils/ai-request-controller');
-      aiRequestController.resetCircuitBreaker();
+      const executionGuard = require('../utils/ExecutionGuard').ExecutionGuard.getInstance();
+      executionGuard.resetCircuitBreaker();
       return { success: true, message: 'Circuit breaker reset successfully' };
     } catch (error: any) {
       reply.code(500);
@@ -121,8 +121,8 @@ export function registerOptimizationRoutes(server: FastifyInstance) {
   // Clear all AI control data
   server.post('/api/optimization/ai-control/clear', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { aiRequestController } = await import('../utils/ai-request-controller');
-      aiRequestController.clearAllData();
+      const executionGuard = require('../utils/ExecutionGuard').ExecutionGuard.getInstance();
+      executionGuard.clearAllData();
       return { success: true, message: 'AI control data cleared successfully' };
     } catch (error: any) {
       reply.code(500);

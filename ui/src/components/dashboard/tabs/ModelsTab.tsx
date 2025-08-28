@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useConfig } from '@/components/ConfigProvider';
-import { api } from '@/lib/api';
+import api from '@/lib/api';
 import type { Provider, RouterConfig, Transformer } from '@/types';
 
 interface ProviderFormData extends Provider {

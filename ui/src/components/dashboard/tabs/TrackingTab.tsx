@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { useConfig } from '@/components/ConfigProvider';
+import { formatResponseTime, formatPercentage, formatTokens, getResponseTimeColor } from '@/lib/formatters';
 
 interface RequestData {
   time: string;
@@ -138,7 +139,7 @@ export function TrackingTab() {
   const totalRequests = chartData.reduce((sum, data) => sum + data.requests, 0);
   const totalErrors = chartData.reduce((sum, data) => sum + data.errors, 0);
   const avgLatency = Math.round(chartData.reduce((sum, data) => sum + data.latency, 0) / chartData.length) || 0;
-  const errorRate = totalRequests > 0 ? ((totalErrors / totalRequests) * 100).toFixed(1) : '0.0';
+  const errorRate = totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0;
 
   return (
     <div className="space-y-8">
@@ -180,7 +181,7 @@ export function TrackingTab() {
         {/* Tracking Stats */}
         <div className="stats-grid grid-cols-4">
           <div className="stat-card">
-            <div className="stat-number">{totalRequests.toLocaleString()}</div>
+            <div className="stat-number">{totalRequests > 999 ? formatTokens(totalRequests) : totalRequests}</div>
             <div className="stat-label">Total Requests</div>
           </div>
           <div className="stat-card">
@@ -188,11 +189,11 @@ export function TrackingTab() {
             <div className="stat-label">Errors</div>
           </div>
           <div className="stat-card">
-            <div className="stat-number">{avgLatency}ms</div>
+            <div className="stat-number">{formatResponseTime(avgLatency)}</div>
             <div className="stat-label">Avg Latency</div>
           </div>
           <div className="stat-card">
-            <div className="stat-number">{errorRate}%</div>
+            <div className="stat-number">{formatPercentage(errorRate)}</div>
             <div className="stat-label">Error Rate</div>
           </div>
         </div>
@@ -311,8 +312,8 @@ export function TrackingTab() {
                       {log.status}
                     </span>
                   </td>
-                  <td className="p-3 text-gray-300">{log.responseTime}ms</td>
-                  <td className="p-3 text-gray-300">{log.tokens.toLocaleString()}</td>
+                  <td className={`p-3 ${getResponseTimeColor(log.responseTime)}`}>{formatResponseTime(log.responseTime)}</td>
+                  <td className="p-3 text-gray-300">{formatTokens(log.tokens)}</td>
                 </motion.tr>
               ))}
             </tbody>

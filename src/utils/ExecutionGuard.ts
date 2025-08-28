@@ -5,15 +5,6 @@
  * provider-fallback, fetch-interceptor, rate-limiter
  * 
  * EXCLUDES: dynamic-provider-detector (manual provider control required)
- * 
- * FEATURES:
- * 1. Advanced Request Deduplication with SHA256 fingerprinting
- * 2. Multi-tier Rate Limiting (per minute/hour/day + burst protection)
- * 3. Circuit Breaker for flood prevention
- * 4. Queue Management with controlled traffic flow
- * 5. Retry Logic with Exponential Backoff
- * 6. Provider Fallback (manual control)
- * 7. Comprehensive Analytics & Monitoring
  */
 
 import { createHash } from 'crypto';
@@ -27,40 +18,31 @@ import { info, warn, error } from './log';
 // ========================================================================================
 
 export interface ExecutionGuardConfig {
-  // Deduplication
   deduplication: {
     enabled: boolean;
     ttlSeconds: number;
     maxCacheSize: number;
     excludeEndpoints: string[];
   };
-  
-  // Rate Limiting
   rateLimiting: {
     enabled: boolean;
     rules: {
       perMinute: RateLimitRule;
-      perHour: RateLimitRule; 
+      perHour: RateLimitRule;
       perDay: RateLimitRule;
       burst: RateLimitRule;
     };
   };
-  
-  // Circuit Breaker
   circuitBreaker: {
     enabled: boolean;
     failureThreshold: number;
     recoveryTimeMs: number;
   };
-  
-  // Queue Management
   queue: {
     enabled: boolean;
     minDelayMs: number;
     maxQueueSize: number;
   };
-  
-  // Retry Logic
   retry: {
     enabled: boolean;
     maxRetries: number;
@@ -69,14 +51,10 @@ export interface ExecutionGuardConfig {
     jitterMs: number;
     retryableStatusCodes: number[];
   };
-  
-  // Provider Fallback
   fallback: {
     enabled: boolean;
     recoveryWindowMs: number;
   };
-  
-  // Persistence
   persistence: {
     enabled: boolean;
     dataFile?: string;
@@ -99,11 +77,11 @@ export interface RequestCache {
 export interface QueuedRequest {
   id: string;
   timestamp: number;
-  keyId: string;
   resolve: (value: any) => void;
   reject: (error: any) => void;
   fn: () => Promise<any>;
-  context?: string;
+  req?: any;
+  providerName?: string | (() => string);
 }
 
 export interface RequestRecord {
@@ -117,40 +95,35 @@ export interface ProviderStatus {
   lastFailure?: number;
   failureCount: number;
   inRecovery: boolean;
+  isOnline: boolean;
+  responseTime?: number;
+  errorRate?: number;
+  totalRequests?: number;
 }
 
 export interface ExecutionStats {
-  // Deduplication
   deduplication: {
     totalCachedRequests: number;
     totalDuplicateRequestsBlocked: number;
     cacheHitRate: number;
     memoryUsage: number;
   };
-  
-  // Rate Limiting
   rateLimiting: {
     circuitBreakerState: 'CLOSED' | 'OPEN' | 'HALF_OPEN';
     totalRequestsTracked: number;
     rulesUsage: { [ruleName: string]: any };
   };
-  
-  // Queue
   queue: {
     currentSize: number;
     totalProcessed: number;
     averageWaitTime: number;
     processing: boolean;
   };
-  
-  // Retry
   retry: {
     totalRetries: number;
     successAfterRetry: number;
     finalFailures: number;
   };
-  
-  // Provider Status
   providers: { [providerName: string]: ProviderStatus };
 }
 
@@ -159,24 +132,17 @@ export interface ExecutionStats {
 // ========================================================================================
 
 export class ExecutionGuard {
-  // Core components
   private cache = new Map<string, RequestCache>();
   private requestRecords: RequestRecord[] = [];
   private queue: QueuedRequest[] = [];
   private providerStatus = new Map<string, ProviderStatus>();
-  
-  // State management
   private processing = false;
   private lastRequestTime = 0;
   private circuitBreakerState: 'CLOSED' | 'OPEN' | 'HALF_OPEN' = 'CLOSED';
   private circuitBreakerTimer: NodeJS.Timeout | null = null;
   private failureCount = 0;
-  
-  // Configuration
   private config: ExecutionGuardConfig;
   private dataFile: string;
-  
-  // Statistics
   private stats = {
     totalRequests: 0,
     completedRequests: 0,
@@ -197,7 +163,6 @@ export class ExecutionGuard {
       this.loadPersistedData();
     }
     
-    // Cleanup expired entries every minute
     setInterval(() => this.cleanup(), 60000);
   }
 
@@ -205,22 +170,23 @@ export class ExecutionGuard {
   // MAIN EXECUTION METHOD
   // ========================================================================================
 
-  /**
-   * Main execution method - handles the complete request lifecycle
-   */
   async execute<T>(
     requestFn: () => Promise<T>,
     context: {
       req?: any;
       keyId?: string;
-      providerName?: string;
+      providerName?: string | (() => string);
       skipDeduplication?: boolean;
       skipQueue?: boolean;
     } = {}
   ): Promise<T> {
-    const { req, keyId = 'default', providerName, skipDeduplication, skipQueue } = context;
+    const { req, skipDeduplication, skipQueue } = context;
+    const providerName = context.providerName; // Keep function reference without calling
     
-    // Step 1: Rate limiting check
+    if (this.circuitBreakerState === 'OPEN') {
+      throw new Error('Circuit breaker is OPEN - service temporarily unavailable');
+    }
+    
     if (this.config.rateLimiting.enabled) {
       const rateLimitResult = this.checkRateLimit(req);
       if (rateLimitResult.limited) {
@@ -228,12 +194,6 @@ export class ExecutionGuard {
       }
     }
     
-    // Step 2: Circuit breaker check
-    if (this.circuitBreakerState === 'OPEN') {
-      throw new Error('Circuit breaker is OPEN - service temporarily unavailable');
-    }
-    
-    // Step 3: Deduplication check
     if (this.config.deduplication.enabled && !skipDeduplication && req) {
       const dedupResult = this.checkDeduplication(req);
       if (dedupResult.isDuplicate) {
@@ -242,11 +202,11 @@ export class ExecutionGuard {
       }
     }
     
-    // Step 4: Queue or execute directly
     if (this.config.queue.enabled && !skipQueue) {
-      return this.enqueue(requestFn, keyId, 'execution');
+      return this.enqueue(requestFn, { req, providerName });
     } else {
-      return this.executeWithRetry(requestFn, req, providerName);
+      const actualProviderName = typeof providerName === 'function' ? providerName() : providerName;
+      return this.executeWithRetry(requestFn, req, actualProviderName);
     }
   }
 
@@ -263,7 +223,6 @@ export class ExecutionGuard {
       body: typeof body === 'object' ? JSON.stringify(body) : body || '',
       userAgent: headers?.['user-agent'] || '',
       sessionId: req.sessionId || 'anonymous',
-      // Round timestamp to 5-second windows to group rapid requests
       timeWindow: Math.floor(Date.now() / 5000) * 5000
     };
 
@@ -285,7 +244,7 @@ export class ExecutionGuard {
       cached.hitCount++;
       return { 
         isDuplicate: true, 
-        cachedResponse: JSON.parse(JSON.stringify(cached.response))
+        cachedResponse: cached.response === undefined ? undefined : JSON.parse(JSON.stringify(cached.response))
       };
     }
 
@@ -293,11 +252,15 @@ export class ExecutionGuard {
   }
 
   private cacheResponse(req: any, response: any): void {
+    // Skip caching if response is undefined (e.g., from router function)
+    if (response === undefined) {
+      return;
+    }
+    
     const hash = this.generateRequestHash(req);
     
-    // Respect cache size limits
     if (this.cache.size >= this.config.deduplication.maxCacheSize) {
-      const oldestKey = this.cache.keys().next().value;
+      const [oldestKey] = this.cache.keys();
       if (oldestKey) {
         this.cache.delete(oldestKey);
       }
@@ -322,18 +285,23 @@ export class ExecutionGuard {
 
     this.cleanupRequestRecords(now);
 
-    // Check each rate limit rule
-    for (const [ruleName, rule] of Object.entries(this.config.rateLimiting.rules)) {
+    const sortedRules = Object.entries(this.config.rateLimiting.rules)
+      .sort(([, ruleA], [, ruleB]) => ruleA.windowMs - ruleB.windowMs);
+
+    for (const [ruleName, rule] of sortedRules) {
       const windowStart = now - rule.windowMs;
       const requestsInWindow = this.requestRecords.filter(r => 
         r.timestamp >= windowStart && 
-        (sessionId === 'global' || r.sessionId === sessionId)
-      ).length;
+        (r.sessionId === 'global' || r.sessionId === sessionId)
+      );
 
-      if (requestsInWindow >= rule.requests) {
-        const retryAfter = Math.ceil(rule.windowMs / 1000);
+      if (requestsInWindow.length >= rule.requests) {
+        const oldestRequestInWindow = requestsInWindow.length > 0 ? requestsInWindow[0] : null;
+        const retryAfter = oldestRequestInWindow 
+          ? Math.ceil((oldestRequestInWindow.timestamp + rule.windowMs - now) / 1000)
+          : Math.ceil(rule.windowMs / 1000);
         
-        // Trigger circuit breaker if burst limit exceeded
+        // NOTE: This now only acts as a potential trigger, the main logic is in executeWithRetry
         if (ruleName === 'burst' && this.config.circuitBreaker.enabled) {
           this.failureCount++;
           if (this.failureCount >= this.config.circuitBreaker.failureThreshold) {
@@ -344,12 +312,11 @@ export class ExecutionGuard {
         return {
           limited: true,
           reason: `${rule.requests} requests per ${this.formatWindowMs(rule.windowMs)}`,
-          retryAfter
+          retryAfter: Math.max(0, retryAfter)
         };
       }
     }
 
-    // Record this request
     this.requestRecords.push({
       timestamp: now,
       sessionId,
@@ -360,21 +327,20 @@ export class ExecutionGuard {
   }
 
   private openCircuitBreaker(): void {
+    if (this.circuitBreakerState === 'OPEN') return;
     this.circuitBreakerState = 'OPEN';
     warn(`[ExecutionGuard] ⚡ Circuit breaker OPENED - blocking requests`);
     
-    if (this.circuitBreakerTimer) {
-      clearTimeout(this.circuitBreakerTimer);
-    }
+    if (this.circuitBreakerTimer) clearTimeout(this.circuitBreakerTimer);
     
     this.circuitBreakerTimer = setTimeout(() => {
       this.circuitBreakerState = 'HALF_OPEN';
-      this.failureCount = 0;
       info(`[ExecutionGuard] 🔄 Circuit breaker HALF-OPEN - testing recovery`);
     }, this.config.circuitBreaker.recoveryTimeMs);
   }
 
   private closeCircuitBreaker(): void {
+    if (this.circuitBreakerState === 'CLOSED') return;
     this.circuitBreakerState = 'CLOSED';
     this.failureCount = 0;
     info(`[ExecutionGuard] ✅ Circuit breaker CLOSED - normal operation`);
@@ -391,8 +357,7 @@ export class ExecutionGuard {
 
   private async enqueue<T>(
     fn: () => Promise<T>,
-    keyId: string,
-    context: string = 'request'
+    context: { req?: any, providerName?: string | (() => string) }
   ): Promise<T> {
     if (this.queue.length >= this.config.queue.maxQueueSize) {
       throw new Error(`Queue full (${this.config.queue.maxQueueSize} items). Request rejected.`);
@@ -402,16 +367,16 @@ export class ExecutionGuard {
       const request: QueuedRequest = {
         id: `req_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
         timestamp: Date.now(),
-        keyId,
         resolve,
         reject,
         fn,
-        context
+        req: context.req,
+        providerName: context.providerName
       };
 
       this.queue.push(request);
       this.stats.totalRequests++;
-      info(`[ExecutionGuard] Queued ${context} (${request.id}). Queue size: ${this.queue.length}`);
+      info(`[ExecutionGuard] Queued request (${request.id}). Queue size: ${this.queue.length}`);
       
       if (!this.processing) {
         this.processQueue();
@@ -430,17 +395,17 @@ export class ExecutionGuard {
       const request = this.queue.shift()!;
       
       try {
-        // Ensure minimum delay between requests
         const timeSinceLastRequest = Date.now() - this.lastRequestTime;
         if (timeSinceLastRequest < this.config.queue.minDelayMs) {
-          const delayNeeded = this.config.queue.minDelayMs - timeSinceLastRequest;
-          await this.sleep(delayNeeded);
+          await this.sleep(this.config.queue.minDelayMs - timeSinceLastRequest);
         }
 
         this.lastRequestTime = Date.now();
         const startTime = Date.now();
         
-        const result = await request.fn();
+        const actualProviderName = typeof request.providerName === 'function' ? request.providerName() : request.providerName;
+        const result = await this.executeWithRetry(request.fn, request.req, actualProviderName);
+
         const waitTime = startTime - request.timestamp;
         
         this.stats.completedRequests++;
@@ -448,9 +413,9 @@ export class ExecutionGuard {
         
         request.resolve(result);
         
-      } catch (error) {
+      } catch (err) {
         this.stats.failedRequests++;
-        request.reject(error);
+        request.reject(err);
       }
     }
 
@@ -464,27 +429,35 @@ export class ExecutionGuard {
   private async executeWithRetry<T>(
     requestFn: () => Promise<T>,
     req?: any,
-    providerName?: string
+    providerName?: string | (() => string)
   ): Promise<T> {
     let lastError: Error | undefined;
+
+    if (this.circuitBreakerState === 'OPEN') {
+      throw new Error('Circuit breaker is OPEN - service temporarily unavailable');
+    }
     
     for (let attempt = 1; attempt <= this.config.retry.maxRetries + 1; attempt++) {
       try {
         const result = await requestFn();
         
-        // Cache successful response if deduplication enabled
+        // On success, reset the failure count.
+        this.failureCount = 0;
+        
         if (this.config.deduplication.enabled && req) {
-          this.cacheResponse(req, result);
+            const isExcluded = this.config.deduplication.excludeEndpoints.some(endpoint => req.url?.startsWith(endpoint));
+            if (!isExcluded) {
+                this.cacheResponse(req, result);
+            }
         }
         
-        // Record success for circuit breaker
         if (this.circuitBreakerState === 'HALF_OPEN') {
           this.closeCircuitBreaker();
         }
         
-        // Record provider success
         if (providerName) {
-          this.recordProviderSuccess(providerName);
+          const actualProviderName = typeof providerName === 'function' ? providerName() : providerName;
+          this.recordProviderSuccess(actualProviderName);
         }
         
         if (attempt > 1) {
@@ -493,24 +466,30 @@ export class ExecutionGuard {
         
         return result;
         
-      } catch (error: any) {
-        lastError = error;
-        const status = error.status || error.response?.status;
+      } catch (err: any) {
+        lastError = err;
+        const status = err.status || err.response?.status;
         
-        // Record provider failure
-        if (providerName) {
-          this.recordProviderFailure(providerName);
+        // FIX: Connect actual execution failures to the Circuit Breaker.
+        if (this.config.circuitBreaker.enabled) {
+          this.failureCount++;
+          if (this.failureCount >= this.config.circuitBreaker.failureThreshold) {
+            this.openCircuitBreaker();
+          }
         }
         
-        // Check if error is retryable
-        if (!this.isRetryableError(error) || attempt > this.config.retry.maxRetries) {
+        if (providerName) {
+          const actualProviderName = typeof providerName === 'function' ? providerName() : providerName;
+          this.recordProviderFailure(actualProviderName);
+        }
+        
+        if (!this.isRetryableError(err) || attempt > this.config.retry.maxRetries) {
           this.stats.finalFailures++;
-          throw error;
+          throw err;
         }
         
         this.stats.retryAttempts++;
         
-        // Calculate backoff time
         const backoffTime = Math.min(
           this.config.retry.initialBackoffMs * Math.pow(2, attempt - 1),
           this.config.retry.maxBackoffMs
@@ -518,7 +497,7 @@ export class ExecutionGuard {
         const jitter = Math.random() * this.config.retry.jitterMs;
         const waitTime = Math.round(backoffTime + jitter);
         
-        warn(`[ExecutionGuard] Attempt ${attempt}/${this.config.retry.maxRetries} failed (${status}). Retrying in ${waitTime}ms`);
+        warn(`[ExecutionGuard] Attempt ${attempt}/${this.config.retry.maxRetries+1} failed (${status}). Retrying in ${waitTime}ms`);
         await this.sleep(waitTime);
       }
     }
@@ -527,6 +506,10 @@ export class ExecutionGuard {
   }
 
   private isRetryableError(error: any): boolean {
+    // If error has no status, it's a code error, not a network one. Don't retry.
+    if (error.status === undefined && error.response?.status === undefined) {
+      return false;
+    }
     const status = error.status || error.response?.status;
     return this.config.retry.retryableStatusCodes.includes(status);
   }
@@ -536,27 +519,39 @@ export class ExecutionGuard {
   // ========================================================================================
 
   private recordProviderSuccess(providerName: string): void {
-    this.providerStatus.delete(providerName);
+    const status = this.providerStatus.get(providerName) || {
+        name: providerName,
+        failureCount: 0,
+        inRecovery: false,
+        isOnline: true
+    };
+    status.failureCount = 0;
+    status.inRecovery = false;
+    status.isOnline = true;
+    status.lastFailure = undefined;
+    this.providerStatus.set(providerName, status);
   }
 
   private recordProviderFailure(providerName: string): void {
     const status = this.providerStatus.get(providerName) || {
       name: providerName,
       failureCount: 0,
-      inRecovery: false
+      inRecovery: false,
+      isOnline: true
     };
     
     status.lastFailure = Date.now();
     status.failureCount++;
     status.inRecovery = true;
+    status.isOnline = false;
     
     this.providerStatus.set(providerName, status);
     
-    // Clear recovery flag after window
     setTimeout(() => {
       const currentStatus = this.providerStatus.get(providerName);
-      if (currentStatus) {
+      if (currentStatus?.inRecovery) {
         currentStatus.inRecovery = false;
+        this.providerStatus.set(providerName, currentStatus);
       }
     }, this.config.fallback.recoveryWindowMs);
   }
@@ -565,275 +560,232 @@ export class ExecutionGuard {
     const status = this.providerStatus.get(providerName);
     return status ? status.inRecovery : false;
   }
-
+  
   // ========================================================================================
-  // STATISTICS & MONITORING
-  // ========================================================================================
+    // STATISTICS & MONITORING
+    // ========================================================================================
 
-  public getStats(): ExecutionStats {
-    const totalCached = this.cache.size;
-    const totalDuplicates = Array.from(this.cache.values())
-      .reduce((sum, cache) => sum + (cache.hitCount - 1), 0);
-    
-    return {
-      deduplication: {
-        totalCachedRequests: totalCached,
-        totalDuplicateRequestsBlocked: totalDuplicates,
-        cacheHitRate: totalCached > 0 ? (totalDuplicates / (totalCached + totalDuplicates)) : 0,
-        memoryUsage: this.cache.size * 1024
-      },
-      rateLimiting: {
-        circuitBreakerState: this.circuitBreakerState,
-        totalRequestsTracked: this.requestRecords.length,
-        rulesUsage: this.getRulesUsage()
-      },
-      queue: {
-        currentSize: this.queue.length,
-        totalProcessed: this.stats.completedRequests,
-        averageWaitTime: this.stats.completedRequests > 0 ? 
-          (this.stats.totalWaitTime / this.stats.completedRequests) : 0,
-        processing: this.processing
-      },
-      retry: {
-        totalRetries: this.stats.retryAttempts,
-        successAfterRetry: this.stats.successAfterRetry,
-        finalFailures: this.stats.finalFailures
-      },
-      providers: Object.fromEntries(this.providerStatus)
-    };
-  }
+    public getStats(): ExecutionStats {
+        const totalCached = this.cache.size;
+        const totalDuplicates = Array.from(this.cache.values())
+            .reduce((sum, cache) => sum + (cache.hitCount - 1), 0);
 
-  private getRulesUsage(): { [ruleName: string]: any } {
-    const now = Date.now();
-    const usage: any = {};
-
-    for (const [ruleName, rule] of Object.entries(this.config.rateLimiting.rules)) {
-      const windowStart = now - rule.windowMs;
-      const requestsInWindow = this.requestRecords.filter(r => r.timestamp >= windowStart).length;
-      
-      usage[`${ruleName}Usage`] = {
-        current: requestsInWindow,
-        limit: rule.requests,
-        percentage: Math.round((requestsInWindow / rule.requests) * 100),
-        windowMs: rule.windowMs
-      };
+        return {
+            deduplication: {
+                totalCachedRequests: totalCached,
+                totalDuplicateRequestsBlocked: totalDuplicates,
+                cacheHitRate: (totalCached + totalDuplicates) > 0 ? (totalDuplicates / (totalCached + totalDuplicates)) : 0,
+                memoryUsage: this.cache.size * 2048 
+            },
+            rateLimiting: {
+                circuitBreakerState: this.circuitBreakerState,
+                totalRequestsTracked: this.requestRecords.length,
+                rulesUsage: this.getRulesUsage()
+            },
+            queue: {
+                currentSize: this.queue.length,
+                totalProcessed: this.stats.completedRequests,
+                averageWaitTime: this.stats.completedRequests > 0 ?
+                    (this.stats.totalWaitTime / this.stats.completedRequests) : 0,
+                processing: this.processing
+            },
+            retry: {
+                totalRetries: this.stats.retryAttempts,
+                successAfterRetry: this.stats.successAfterRetry,
+                finalFailures: this.stats.finalFailures
+            },
+            providers: Object.fromEntries(this.providerStatus)
+        };
     }
 
-    return usage;
-  }
-
-  // ========================================================================================
-  // CONFIGURATION & UTILITIES
-  // ========================================================================================
-
-  public updateConfig(newConfig: Partial<ExecutionGuardConfig>): void {
-    this.config = { ...this.config, ...newConfig };
-  }
-
-  public clearCache(): void {
-    this.cache.clear();
-    this.requestRecords = [];
-    this.queue = [];
-    this.providerStatus.clear();
-  }
-
-  public resetCircuitBreaker(): void {
-    this.closeCircuitBreaker();
-    this.failureCount = 0;
-  }
-
-  private cleanup(): void {
-    const now = Date.now();
-    
-    // Cleanup expired cache entries
-    const expiredHashes: string[] = [];
-    this.cache.forEach((cached, hash) => {
-      if (now - cached.timestamp > cached.ttl * 1000) {
-        expiredHashes.push(hash);
-      }
-    });
-    expiredHashes.forEach(hash => this.cache.delete(hash));
-    
-    // Cleanup old request records
-    this.cleanupRequestRecords(now);
-    
-    // Save data if persistence enabled
-    if (this.config.persistence.enabled) {
-      this.savePersistedData();
-    }
-  }
-
-  private cleanupRequestRecords(now: number): void {
-    const maxWindow = Math.max(
-      this.config.rateLimiting.rules.perMinute.windowMs,
-      this.config.rateLimiting.rules.perHour.windowMs,
-      this.config.rateLimiting.rules.perDay.windowMs,
-      this.config.rateLimiting.rules.burst.windowMs
-    );
-    
-    this.requestRecords = this.requestRecords.filter(r => now - r.timestamp < maxWindow);
-  }
-
-  private formatWindowMs(windowMs: number): string {
-    if (windowMs < 60000) return `${windowMs/1000}s`;
-    if (windowMs < 3600000) return `${windowMs/60000}m`;
-    if (windowMs < 86400000) return `${windowMs/3600000}h`;
-    return `${windowMs/86400000}d`;
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  // ========================================================================================
-  // PERSISTENCE
-  // ========================================================================================
-
-  private loadPersistedData(): void {
-    try {
-      if (existsSync(this.dataFile)) {
-        const data = JSON.parse(readFileSync(this.dataFile, 'utf8'));
-        
-        // Restore cache (validate TTL)
+    private getRulesUsage(): { [ruleName: string]: any } {
         const now = Date.now();
-        for (const [hash, cached] of Object.entries(data.cache || {})) {
-          const cacheEntry = cached as RequestCache;
-          if (now - cacheEntry.timestamp < cacheEntry.ttl * 1000) {
-            this.cache.set(hash, cacheEntry);
-          }
-        }
-        
-        // Restore provider status
-        if (data.providers) {
-          for (const [name, status] of Object.entries(data.providers)) {
-            this.providerStatus.set(name, status as ProviderStatus);
-          }
-        }
-        
-        info(`[ExecutionGuard] Loaded persisted data: ${this.cache.size} cache entries, ${this.providerStatus.size} provider statuses`);
-      }
-    } catch (error: any) {
-      error(`[ExecutionGuard] Error loading persisted data: ${error.message}`);
-    }
-  }
+        const usage: any = {};
 
-  private savePersistedData(): void {
-    try {
-      const cacheEntries: Array<[string, RequestCache]> = [];
-      this.cache.forEach((value, key) => {
-        cacheEntries.push([key, value]);
-      });
-      
-      const providerEntries: Array<[string, ProviderStatus]> = [];
-      this.providerStatus.forEach((value, key) => {
-        providerEntries.push([key, value]);
-      });
-      
-      const data = {
-        cache: Object.fromEntries(cacheEntries),
-        providers: Object.fromEntries(providerEntries),
-        stats: this.stats,
-        timestamp: Date.now()
+        for (const [ruleName, rule] of Object.entries(this.config.rateLimiting.rules)) {
+            const windowStart = now - rule.windowMs;
+            const requestsInWindow = this.requestRecords.filter(r => r.timestamp >= windowStart).length;
+
+            usage[`${ruleName}Usage`] = {
+                current: requestsInWindow,
+                limit: rule.requests,
+                percentage: rule.requests > 0 ? Math.round((requestsInWindow / rule.requests) * 100) : 0,
+                windowMs: rule.windowMs
+            };
+        }
+
+        return usage;
+    }
+
+    // ========================================================================================
+    // CONFIGURATION & UTILITIES
+    // ========================================================================================
+
+    public updateConfig(newConfig: Partial<ExecutionGuardConfig>): void {
+        this.config = this.mergeWithDefaults(newConfig);
+    }
+
+    public getConfig(): ExecutionGuardConfig {
+        return { ...this.config };
+    }
+
+    public clearCache(): void {
+        this.cache.clear();
+    }
+
+    public clearAllRecords(): void {
+        this.cache.clear();
+        this.requestRecords = [];
+        this.queue = [];
+        this.providerStatus.clear();
+    }
+
+    public resetCircuitBreaker(): void {
+        this.closeCircuitBreaker();
+    }
+
+    private cleanup(): void {
+        const now = Date.now();
+
+        const expiredHashes: string[] = [];
+        this.cache.forEach((cached, hash) => {
+            if (now - cached.timestamp > cached.ttl * 1000) {
+                expiredHashes.push(hash);
+            }
+        });
+        expiredHashes.forEach(hash => this.cache.delete(hash));
+
+        this.cleanupRequestRecords(now);
+
+        if (this.config.persistence.enabled) {
+            this.savePersistedData();
+        }
+    }
+
+    private cleanupRequestRecords(now: number): void {
+        const maxWindow = Math.max(
+            ...Object.values(this.config.rateLimiting.rules).map(r => r.windowMs)
+        );
+
+        const cutoff = now - maxWindow;
+        if (this.requestRecords.length > 0 && this.requestRecords[0].timestamp < cutoff) {
+          this.requestRecords = this.requestRecords.filter(r => r.timestamp >= cutoff);
+        }
+    }
+
+    private formatWindowMs(windowMs: number): string {
+        if (windowMs < 1000) return `${windowMs}ms`;
+        if (windowMs < 60000) return `${windowMs / 1000}s`;
+        if (windowMs < 3600000) return `${windowMs / 60000}m`;
+        if (windowMs < 86400000) return `${windowMs / 3600000}h`;
+        return `${windowMs / 86400000}d`;
+    }
+
+    private sleep(ms: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    // ========================================================================================
+    // PERSISTENCE
+    // ========================================================================================
+
+    private loadPersistedData(): void {
+        try {
+            if (existsSync(this.dataFile)) {
+                const data = JSON.parse(readFileSync(this.dataFile, 'utf8'));
+                const now = Date.now();
+
+                if (data.cache) {
+                    for (const [hash, cached] of Object.entries(data.cache)) {
+                        const cacheEntry = cached as RequestCache;
+                        if (now - cacheEntry.timestamp < cacheEntry.ttl * 1000) {
+                            this.cache.set(hash, cacheEntry);
+                        }
+                    }
+                }
+
+                if (data.providers) {
+                    for (const [name, status] of Object.entries(data.providers)) {
+                        this.providerStatus.set(name, status as ProviderStatus);
+                    }
+                }
+
+                info(`[ExecutionGuard] Loaded persisted data: ${this.cache.size} cache entries, ${this.providerStatus.size} provider statuses`);
+            }
+        } catch (err: any) {
+            error(`[ExecutionGuard] Error loading persisted data: ${err.message}`);
+        }
+    }
+
+    private savePersistedData(): void {
+        try {
+            const data = {
+                cache: Object.fromEntries(this.cache),
+                providers: Object.fromEntries(this.providerStatus),
+                stats: this.stats,
+                timestamp: Date.now()
+            };
+
+            writeFileSync(this.dataFile, JSON.stringify(data, null, 2), 'utf8');
+        } catch (err: any) {
+            error(`[ExecutionGuard] Error saving persisted data: ${err.message}`);
+        }
+    }
+
+    private mergeWithDefaults(config?: Partial<ExecutionGuardConfig>): ExecutionGuardConfig {
+      const defaultConfig: ExecutionGuardConfig = {
+        deduplication: { enabled: true, ttlSeconds: 30, maxCacheSize: 1000, excludeEndpoints: ['/api/analytics'] },
+        rateLimiting: { enabled: true, rules: { perMinute: { requests: 60, windowMs: 60000 }, perHour: { requests: 500, windowMs: 3600000 }, perDay: { requests: 5000, windowMs: 86400000 }, burst: { requests: 10, windowMs: 10000 }}},
+        circuitBreaker: { enabled: true, failureThreshold: 20, recoveryTimeMs: 60000 },
+        queue: { enabled: true, minDelayMs: 1000, maxQueueSize: 100 },
+        retry: { enabled: true, maxRetries: 5, initialBackoffMs: 1000, maxBackoffMs: 30000, jitterMs: 500, retryableStatusCodes: [429, 500, 502, 503, 504] },
+        fallback: { enabled: true, recoveryWindowMs: 60000 },
+        persistence: { enabled: true, dataFile: join(homedir(), '.claude-code-router', 'execution-guard.json') }
       };
-      
-      writeFileSync(this.dataFile, JSON.stringify(data, null, 2));
-    } catch (error: any) {
-      error(`[ExecutionGuard] Error saving persisted data: ${error.message}`);
-    }
-  }
-
-  private mergeWithDefaults(config?: Partial<ExecutionGuardConfig>): ExecutionGuardConfig {
-    return {
-      deduplication: {
-        enabled: true,
-        ttlSeconds: 30,
-        maxCacheSize: 1000,
-        excludeEndpoints: ['/api/analytics', '/ui/', '/api/test'],
-        ...(config?.deduplication || {})
-      },
-      rateLimiting: {
-        enabled: true,
-        rules: {
-          perMinute: { requests: 60, windowMs: 60000 },
-          perHour: { requests: 500, windowMs: 3600000 },
-          perDay: { requests: 5000, windowMs: 86400000 },
-          burst: { requests: 10, windowMs: 10000 }
-        },
-        ...(config?.rateLimiting || {})
-      },
-      circuitBreaker: {
-        enabled: true,
-        failureThreshold: 20,
-        recoveryTimeMs: 60000,
-        ...(config?.circuitBreaker || {})
-      },
-      queue: {
-        enabled: true,
-        minDelayMs: 1000,
-        maxQueueSize: 100,
-        ...(config?.queue || {})
-      },
-      retry: {
-        enabled: true,
-        maxRetries: 5,
-        initialBackoffMs: 1000,
-        maxBackoffMs: 30000,
-        jitterMs: 500,
-        retryableStatusCodes: [429, 500, 502, 503, 504],
-        ...(config?.retry || {})
-      },
-      fallback: {
-        enabled: true,
-        recoveryWindowMs: 60000,
-        ...(config?.fallback || {})
-      },
-      persistence: {
-        enabled: true,
-        dataFile: join(homedir(), '.claude-code-router', 'execution-guard.json'),
-        ...(config?.persistence || {})
+  
+      const mergedConfig = JSON.parse(JSON.stringify(defaultConfig));
+      if (config) {
+        for (const key in config) {
+          const k = key as keyof ExecutionGuardConfig;
+          if (config[k] && typeof config[k] === 'object' && !Array.isArray(config[k])) {
+            mergedConfig[k] = { ...mergedConfig[k], ...config[k] };
+          } else if(config[k] !== undefined) {
+            mergedConfig[k] = config[k];
+          }
+        }
       }
-    };
-  }
+      return mergedConfig;
+    }
 }
 
 // ========================================================================================
-// SINGLETON EXPORT
+// SINGLETON EXPORT & CONVENIENCE FUNCTIONS
 // ========================================================================================
 
 export const executionGuard = new ExecutionGuard();
 
-// ========================================================================================
-// CONVENIENCE FUNCTIONS
-// ========================================================================================
-
-/**
- * Execute a request with full ExecutionGuard protection
- */
 export async function guardedExecute<T>(
   requestFn: () => Promise<T>,
   context?: {
     req?: any;
     keyId?: string;
-    providerName?: string;
+    providerName?: string | (() => string);
     skipDeduplication?: boolean;
     skipQueue?: boolean;
   }
 ): Promise<T> {
+  // Adaugă log pentru detectarea scurgerilor
+  const providerName = typeof context?.providerName === 'function' ? context.providerName() : context?.providerName;
+  info(`🔒 GUARDED EXECUTE CALLED at ${new Date().toISOString()} for provider: ${providerName || 'unknown'}`);
   return executionGuard.execute(requestFn, context);
 }
 
-/**
- * Quick rate limit check
- */
 export function canMakeRequest(req?: any): boolean {
-  const guard = executionGuard as any;
+  const guard = executionGuard as any; 
   const result = guard.checkRateLimit(req);
   return !result.limited;
 }
 
-/**
- * Check if provider is in recovery
- */
 export function isProviderHealthy(providerName: string): boolean {
   return !executionGuard.isProviderInRecovery(providerName);
 }

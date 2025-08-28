@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { useConfig } from "@/components/ConfigProvider";
-import { api } from "@/lib/api";
+import api from "@/lib/api";
 import { Toast } from "@/components/ui/toast";
 import {
   Dialog,

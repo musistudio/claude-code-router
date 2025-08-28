@@ -3,12 +3,12 @@ import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { DASHBOARD_CONFIG, DASHBOARD_FEATURES } from '@/config/dashboard';
 import { OverviewTab } from './tabs/OverviewTab';
+import { MissionControlTab } from './tabs/MissionControlTab';
 import { ModelsTab } from './tabs/ModelsTab';
 import { TrackingTab } from './tabs/TrackingTab';
-import { AdvancedTab } from './tabs/AdvancedTab';
+
 import { ToolsTab } from './tabs/ToolsTab';
 import { SystemTab } from './tabs/SystemTab';
-import StrategyTab from './tabs/StrategyTab'; // New tab import
 import '@/styles/dashboard.css';
 
 interface DashboardProps {
@@ -36,18 +36,16 @@ export function Dashboard({
     switch (activeTab) {
       case 'overview':
         return <OverviewTab />;
+      case 'mission-control':
+        return DASHBOARD_FEATURES.missionControl ? <MissionControlTab /> : <OverviewTab />;
       case 'models':
         return <ModelsTab />;
       case 'tracking':
         return <TrackingTab />;
-      case 'advanced':
-        return <AdvancedTab />;
       case 'tools':
         return <ToolsTab />;
       case 'system':
         return <SystemTab />;
-      case 'strategy': // New tab case
-        return <StrategyTab />;
       default:
         return <OverviewTab />;
     }

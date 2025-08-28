@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode, Dispatch, SetStateAction } from 'react';
-import { api } from '@/lib/api';
+import api from '@/lib/api';
 import type { Config, StatusLineConfig } from '@/types';
 
 interface ConfigContextType {

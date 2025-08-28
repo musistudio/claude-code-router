@@ -18,7 +18,7 @@ import { X, Trash2, Plus, Eye, EyeOff, Search, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Combobox } from "@/components/ui/combobox";
 import { ComboInput } from "@/components/ui/combo-input";
-import { api } from "@/lib/api";
+import api from "@/lib/api";
 import type { Provider } from "@/types";
 
 interface ProviderType extends Provider {}
