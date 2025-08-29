@@ -224,7 +224,12 @@ export async function missionControlRoutes(fastify: FastifyInstance) {
           model: 'System',
           provider: 'ExecutionGuard',
           responseTime: 0,
-          tokens: 0
+          tokens: 0,
+          route: 'system',
+          originalModel: 'System',
+          actualModel: 'System', 
+          endpoint: '/system/circuit-breaker',
+          statusCode: 503
         });
       }
 

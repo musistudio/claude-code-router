@@ -11,7 +11,8 @@
     "release": "npm run build && npm publish",
     "start": "node dist/cli.js start",
     "ccr:local": "node dist/cli.js",
-    "code:local": "node dist/cli.js code"
+    "code:local": "node dist/cli.js code",
+    "postinstall": "patch-package"
   },
   "keywords": [
     "claude",
@@ -38,6 +39,7 @@
     "@types/node": "^24.0.15",
     "esbuild": "^0.25.1",
     "fastify": "^5.4.0",
+    "patch-package": "^8.0.0",
     "shx": "^0.4.0",
     "typescript": "^5.9.2"
   },

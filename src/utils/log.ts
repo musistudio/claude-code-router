@@ -1,12 +1,12 @@
-import fs from "node:fs";
-import path from "node:path";
+import { existsSync, mkdirSync, appendFileSync } from "fs";
+import { join } from "path";
 import { HOME_DIR } from "../constants";
 
-const LOG_FILE = path.join(HOME_DIR, "claude-code-router.log");
+const LOG_FILE = join(HOME_DIR, "claude-code-router.log");
 
 // Ensure log directory exists
-if (!fs.existsSync(HOME_DIR)) {
-  fs.mkdirSync(HOME_DIR, { recursive: true });
+if (!existsSync(HOME_DIR)) {
+  mkdirSync(HOME_DIR, { recursive: true });
 }
 
 // Global variable to store the logging configuration
@@ -41,7 +41,7 @@ export function log(...args: any[]) {
   }\n`;
 
   // Append to log file
-  fs.appendFileSync(LOG_FILE, logMessage, "utf8");
+  appendFileSync(LOG_FILE, logMessage, "utf8");
 }
 
 // Add methods for different log levels

@@ -276,3 +276,60 @@
     background: var(--warning-color);
     color: white;
 }
+
+/* API Keys Table */
+.api-keys-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.api-keys-table th {
+    background: rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(10px);
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 500;
+    color: #94a3b8;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+}
+
+.api-keys-table td {
+    padding: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.api-keys-table tr:last-child td {
+    border-bottom: none;
+}
+
+.api-keys-table tr:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* Stats cards enhancement */
+.stats-card {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 20px;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.stats-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* Masked key display */
+.masked-key {
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', monospace;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+}

@@ -17,6 +17,17 @@ import { info, warn, error } from './log';
 // INTERFACES & TYPES
 // ========================================================================================
 
+export interface KeyProviderConfig {
+  keys: (string | undefined)[];
+  strategy: 'round-robin' | 'random' | 'weighted';
+  healthCheck?: {
+    enabled: boolean;
+    intervalMs: number;
+    timeoutMs: number;
+  };
+  fallbackBehavior: 'fail' | 'useFirst' | 'useEnvironment';
+}
+
 export interface ExecutionGuardConfig {
   deduplication: {
     enabled: boolean;
@@ -59,6 +70,12 @@ export interface ExecutionGuardConfig {
     enabled: boolean;
     dataFile?: string;
   };
+  keyManagement: {
+    enabled: boolean;
+    providers: {
+      [providerPattern: string]: KeyProviderConfig;
+    };
+  };
 }
 
 export interface RateLimitRule {
@@ -79,9 +96,10 @@ export interface QueuedRequest {
   timestamp: number;
   resolve: (value: any) => void;
   reject: (error: any) => void;
-  fn: () => Promise<any>;
+  fn: (context: { apiKey?: string }) => Promise<any>;
   req?: any;
   providerName?: string | (() => string);
+  apiKey?: string;
 }
 
 export interface RequestRecord {
@@ -143,6 +161,7 @@ export class ExecutionGuard {
   private failureCount = 0;
   private config: ExecutionGuardConfig;
   private dataFile: string;
+  private apiKeyIndices: Map<string, number> = new Map();
   private stats = {
     totalRequests: 0,
     completedRequests: 0,
@@ -167,33 +186,76 @@ export class ExecutionGuard {
   }
 
   // ========================================================================================
+  // KEY MANAGEMENT
+  // ========================================================================================
+
+  private findProviderConfig(providerName: string): KeyProviderConfig | undefined {
+    const providers = this.config.keyManagement?.providers || {};
+    if (providers[providerName]) return providers[providerName];
+    for (const [pattern, config] of Object.entries(providers)) {
+      if (providerName.toLowerCase().includes(pattern.toLowerCase())) {
+        return config;
+      }
+    }
+    return undefined;
+  }
+
+  private shouldUseKeyRotation(providerName: string): boolean {
+    if (!this.config.keyManagement?.enabled) return false;
+    return !!this.findProviderConfig(providerName);
+  }
+
+  private selectApiKey(providerName: string): string | undefined {
+    const config = this.findProviderConfig(providerName);
+    if (!config) return undefined;
+    
+    const validKeys = config.keys.filter((key): key is string => !!key && typeof key === 'string' && key.trim() !== '');
+    if (validKeys.length === 0) {
+        if (config.fallbackBehavior === 'useEnvironment') {
+            // This part is a placeholder. Actual env key retrieval would be handled
+            // by the caller or a dedicated config manager.
+            return process.env.GOOGLE_API_KEY;
+        }
+        return undefined;
+    }
+  
+    switch (config.strategy) {
+      case 'round-robin':
+        const currentIndex = this.apiKeyIndices.get(providerName) ?? -1;
+        const nextIndex = (currentIndex + 1) % validKeys.length;
+        this.apiKeyIndices.set(providerName, nextIndex);
+        return validKeys[nextIndex];
+      case 'random':
+        return validKeys[Math.floor(Math.random() * validKeys.length)];
+      default:
+        return validKeys[0];
+    }
+  }
+
+  // ========================================================================================
   // MAIN EXECUTION METHOD
   // ========================================================================================
 
-  async execute<T>(
-    requestFn: () => Promise<T>,
+async execute<T>(
+    requestFn: (context: { apiKey?: string }) => Promise<T>,
     context: {
       req?: any;
       keyId?: string;
       providerName?: string | (() => string);
       skipDeduplication?: boolean;
-      skipQueue?: boolean;
+      skipQueue?: boolean; // Vom ignora acest flag, dar îl păstrăm pentru compatibilitate
     } = {}
-  ): Promise<T> {
-    const { req, skipDeduplication, skipQueue } = context;
-    const providerName = context.providerName; // Keep function reference without calling
-    
+): Promise<T> {
+    const { req, skipDeduplication } = context;
+
+    // --- Verificări care se pot face IMEDIAT, înainte de a intra în coadă ---
+
+    // 1. Circuit Breaker: Dacă circuitul este deschis, respingem imediat.
     if (this.circuitBreakerState === 'OPEN') {
       throw new Error('Circuit breaker is OPEN - service temporarily unavailable');
     }
-    
-    if (this.config.rateLimiting.enabled) {
-      const rateLimitResult = this.checkRateLimit(req);
-      if (rateLimitResult.limited) {
-        throw new Error(`Rate limit exceeded: ${rateLimitResult.reason}. Retry after ${rateLimitResult.retryAfter}s`);
-      }
-    }
-    
+
+    // 2. Deduplicare: Verificăm dacă avem deja un răspuns în cache.
     if (this.config.deduplication.enabled && !skipDeduplication && req) {
       const dedupResult = this.checkDeduplication(req);
       if (dedupResult.isDuplicate) {
@@ -202,13 +264,27 @@ export class ExecutionGuard {
       }
     }
     
-    if (this.config.queue.enabled && !skipQueue) {
-      return this.enqueue(requestFn, { req, providerName });
-    } else {
-      const actualProviderName = typeof providerName === 'function' ? providerName() : providerName;
-      return this.executeWithRetry(requestFn, req, actualProviderName);
+    // 3. Rate Limiter (doar pentru a respinge, nu pentru a face retry)
+    // Aceasta este o verificare suplimentară de siguranță.
+    if (this.config.rateLimiting.enabled) {
+      const rateLimitResult = this.checkRateLimit(req);
+      if (rateLimitResult.limited) {
+         throw new Error(`Rate limit exceeded: ${rateLimitResult.reason}. Request rejected, not queued.`);
+      }
     }
-  }
+
+    // --- AICI ESTE SCHIMBAREA FUNDAMENTALĂ ---
+    // Orice cerere care a trecut de verificările preliminare este OBLIGATORIU pusă în coadă.
+    if (this.config.queue.enabled) {
+      return this.enqueue(requestFn, context);
+    } else {
+      // Doar dacă coada este explicit dezactivată în config, executăm direct.
+      // Aceasta este ramura 'else' de siguranță.
+      const actualProviderName = typeof context.providerName === 'function' ? context.providerName() : context.providerName;
+      const apiKey = actualProviderName ? this.selectApiKey(actualProviderName) : undefined;
+      return this.executeWithRetry(requestFn, req, actualProviderName, apiKey);
+    }
+}
 
   // ========================================================================================
   // DEDUPLICATION SYSTEM
@@ -252,7 +328,6 @@ export class ExecutionGuard {
   }
 
   private cacheResponse(req: any, response: any): void {
-    // Skip caching if response is undefined (e.g., from router function)
     if (response === undefined) {
       return;
     }
@@ -260,7 +335,7 @@ export class ExecutionGuard {
     const hash = this.generateRequestHash(req);
     
     if (this.cache.size >= this.config.deduplication.maxCacheSize) {
-      const [oldestKey] = this.cache.keys();
+      const oldestKey = this.cache.keys().next().value;
       if (oldestKey) {
         this.cache.delete(oldestKey);
       }
@@ -301,7 +376,6 @@ export class ExecutionGuard {
           ? Math.ceil((oldestRequestInWindow.timestamp + rule.windowMs - now) / 1000)
           : Math.ceil(rule.windowMs / 1000);
         
-        // NOTE: This now only acts as a potential trigger, the main logic is in executeWithRetry
         if (ruleName === 'burst' && this.config.circuitBreaker.enabled) {
           this.failureCount++;
           if (this.failureCount >= this.config.circuitBreaker.failureThreshold) {
@@ -355,15 +429,16 @@ export class ExecutionGuard {
   // QUEUE MANAGEMENT
   // ========================================================================================
 
-  private async enqueue<T>(
-    fn: () => Promise<T>,
+private async enqueue<T>(
+    fn: (context: { apiKey?: string }) => Promise<T>,
     context: { req?: any, providerName?: string | (() => string) }
-  ): Promise<T> {
+): Promise<T> {
     if (this.queue.length >= this.config.queue.maxQueueSize) {
       throw new Error(`Queue full (${this.config.queue.maxQueueSize} items). Request rejected.`);
     }
 
     return new Promise((resolve, reject) => {
+      // Nu mai selectăm cheia aici. O vom selecta chiar înainte de execuție.
       const request: QueuedRequest = {
         id: `req_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
         timestamp: Date.now(),
@@ -371,20 +446,22 @@ export class ExecutionGuard {
         reject,
         fn,
         req: context.req,
-        providerName: context.providerName
+        providerName: context.providerName,
+        //apiKey: undefined // Nu mai este necesar aici
       };
 
       this.queue.push(request);
-      this.stats.totalRequests++;
       info(`[ExecutionGuard] Queued request (${request.id}). Queue size: ${this.queue.length}`);
-      
+
       if (!this.processing) {
         this.processQueue();
       }
     });
-  }
+}
 
-  private async processQueue(): Promise<void> {
+
+// Înlocuiți metoda processQueue existentă
+private async processQueue(): Promise<void> {
     if (this.processing || this.queue.length === 0) {
       return;
     }
@@ -395,41 +472,40 @@ export class ExecutionGuard {
       const request = this.queue.shift()!;
       
       try {
+        // --- LOGICA ESTE ACUM AICI ---
+        // 1. Așteptăm pauza obligatorie
         const timeSinceLastRequest = Date.now() - this.lastRequestTime;
         if (timeSinceLastRequest < this.config.queue.minDelayMs) {
           await this.sleep(this.config.queue.minDelayMs - timeSinceLastRequest);
         }
 
         this.lastRequestTime = Date.now();
-        const startTime = Date.now();
         
+        // 2. Selectăm cheia API chiar înainte de execuție
         const actualProviderName = typeof request.providerName === 'function' ? request.providerName() : request.providerName;
-        const result = await this.executeWithRetry(request.fn, request.req, actualProviderName);
+        const apiKey = actualProviderName ? this.selectApiKey(actualProviderName) : undefined;
+        
+        // 3. Executăm cererea cu mecanismul de reîncercare
+        const result = await this.executeWithRetry(request.fn, request.req, actualProviderName, apiKey);
 
-        const waitTime = startTime - request.timestamp;
-        
-        this.stats.completedRequests++;
-        this.stats.totalWaitTime += waitTime;
-        
         request.resolve(result);
         
       } catch (err) {
-        this.stats.failedRequests++;
         request.reject(err);
       }
     }
 
     this.processing = false;
-  }
-
+}
   // ========================================================================================
   // RETRY LOGIC WITH EXPONENTIAL BACKOFF
   // ========================================================================================
 
   private async executeWithRetry<T>(
-    requestFn: () => Promise<T>,
+    requestFn: (context: { apiKey?: string }) => Promise<T>,
     req?: any,
-    providerName?: string | (() => string)
+    providerName?: string,
+    apiKey?: string
   ): Promise<T> {
     let lastError: Error | undefined;
 
@@ -439,9 +515,8 @@ export class ExecutionGuard {
     
     for (let attempt = 1; attempt <= this.config.retry.maxRetries + 1; attempt++) {
       try {
-        const result = await requestFn();
+        const result = await requestFn({ apiKey });
         
-        // On success, reset the failure count.
         this.failureCount = 0;
         
         if (this.config.deduplication.enabled && req) {
@@ -456,8 +531,7 @@ export class ExecutionGuard {
         }
         
         if (providerName) {
-          const actualProviderName = typeof providerName === 'function' ? providerName() : providerName;
-          this.recordProviderSuccess(actualProviderName);
+          this.recordProviderSuccess(providerName);
         }
         
         if (attempt > 1) {
@@ -470,7 +544,6 @@ export class ExecutionGuard {
         lastError = err;
         const status = err.status || err.response?.status;
         
-        // FIX: Connect actual execution failures to the Circuit Breaker.
         if (this.config.circuitBreaker.enabled) {
           this.failureCount++;
           if (this.failureCount >= this.config.circuitBreaker.failureThreshold) {
@@ -479,8 +552,7 @@ export class ExecutionGuard {
         }
         
         if (providerName) {
-          const actualProviderName = typeof providerName === 'function' ? providerName() : providerName;
-          this.recordProviderFailure(actualProviderName);
+          this.recordProviderFailure(providerName);
         }
         
         if (!this.isRetryableError(err) || attempt > this.config.retry.maxRetries) {
@@ -506,7 +578,6 @@ export class ExecutionGuard {
   }
 
   private isRetryableError(error: any): boolean {
-    // If error has no status, it's a code error, not a network one. Don't retry.
     if (error.status === undefined && error.response?.status === undefined) {
       return false;
     }
@@ -733,28 +804,40 @@ export class ExecutionGuard {
     }
 
     private mergeWithDefaults(config?: Partial<ExecutionGuardConfig>): ExecutionGuardConfig {
-      const defaultConfig: ExecutionGuardConfig = {
-        deduplication: { enabled: true, ttlSeconds: 30, maxCacheSize: 1000, excludeEndpoints: ['/api/analytics'] },
-        rateLimiting: { enabled: true, rules: { perMinute: { requests: 60, windowMs: 60000 }, perHour: { requests: 500, windowMs: 3600000 }, perDay: { requests: 5000, windowMs: 86400000 }, burst: { requests: 10, windowMs: 10000 }}},
-        circuitBreaker: { enabled: true, failureThreshold: 20, recoveryTimeMs: 60000 },
-        queue: { enabled: true, minDelayMs: 1000, maxQueueSize: 100 },
-        retry: { enabled: true, maxRetries: 5, initialBackoffMs: 1000, maxBackoffMs: 30000, jitterMs: 500, retryableStatusCodes: [429, 500, 502, 503, 504] },
-        fallback: { enabled: true, recoveryWindowMs: 60000 },
-        persistence: { enabled: true, dataFile: join(homedir(), '.claude-code-router', 'execution-guard.json') }
-      };
-  
-      const mergedConfig = JSON.parse(JSON.stringify(defaultConfig));
-      if (config) {
-        for (const key in config) {
-          const k = key as keyof ExecutionGuardConfig;
-          if (config[k] && typeof config[k] === 'object' && !Array.isArray(config[k])) {
-            mergedConfig[k] = { ...mergedConfig[k], ...config[k] };
-          } else if(config[k] !== undefined) {
-            mergedConfig[k] = config[k];
-          }
+        const defaultConfig: ExecutionGuardConfig = {
+            deduplication: { enabled: true, ttlSeconds: 30, maxCacheSize: 1000, excludeEndpoints: ['/api/analytics'] },
+            rateLimiting: { enabled: true, rules: { perMinute: { requests: 60, windowMs: 60000 }, perHour: { requests: 500, windowMs: 3600000 }, perDay: { requests: 5000, windowMs: 86400000 }, burst: { requests: 10, windowMs: 10000 }}},
+            circuitBreaker: { enabled: true, failureThreshold: 20, recoveryTimeMs: 60000 },
+            queue: { enabled: true, minDelayMs: 5000, maxQueueSize: 100 },
+            retry: { enabled: true, maxRetries: 5, initialBackoffMs: 1000, maxBackoffMs: 30000, jitterMs: 500, retryableStatusCodes: [429, 500, 502, 503, 504] },
+            fallback: { enabled: true, recoveryWindowMs: 60000 },
+            persistence: { enabled: true, dataFile: join(homedir(), '.claude-code-router', 'execution-guard.json') },
+            keyManagement: {
+                enabled: false,
+                providers: {}
+            }
+        };
+    
+        const mergedConfig = JSON.parse(JSON.stringify(defaultConfig));
+        if (config) {
+            for (const key in config) {
+                const k = key as keyof ExecutionGuardConfig;
+                if (config[k] && typeof config[k] === 'object' && !Array.isArray(config[k])) {
+                    if (k === 'keyManagement') {
+                        // Special handling for providers to avoid deep merge issues
+                        mergedConfig[k] = { ...mergedConfig[k], ...config[k] };
+                        if (config[k]?.providers) {
+                            mergedConfig[k].providers = { ...config[k]?.providers };
+                        }
+                    } else {
+                        mergedConfig[k] = { ...mergedConfig[k], ...config[k] };
+                    }
+                } else if(config[k] !== undefined) {
+                    mergedConfig[k] = config[k];
+                }
+            }
         }
-      }
-      return mergedConfig;
+        return mergedConfig;
     }
 }
 
@@ -765,7 +848,7 @@ export class ExecutionGuard {
 export const executionGuard = new ExecutionGuard();
 
 export async function guardedExecute<T>(
-  requestFn: () => Promise<T>,
+  requestFn: (context: { apiKey?: string }) => Promise<T>,
   context?: {
     req?: any;
     keyId?: string;
@@ -774,7 +857,6 @@ export async function guardedExecute<T>(
     skipQueue?: boolean;
   }
 ): Promise<T> {
-  // Adaugă log pentru detectarea scurgerilor
   const providerName = typeof context?.providerName === 'function' ? context.providerName() : context?.providerName;
   info(`🔒 GUARDED EXECUTE CALLED at ${new Date().toISOString()} for provider: ${providerName || 'unknown'}`);
   return executionGuard.execute(requestFn, context);

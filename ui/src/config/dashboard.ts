@@ -6,6 +6,7 @@ export const DASHBOARD_CONFIG = {
     { id: 'overview', label: 'Overview', icon: 'tachometer-alt' },
     { id: 'mission-control', label: 'Mission Control v2', icon: 'satellite-dish' },
     { id: 'models', label: 'Model Manager', icon: 'robot' },
+    { id: 'api-keys', label: 'API Keys', icon: 'key' },
     { id: 'tracking', label: 'Request Tracking', icon: 'chart-line' },
     { id: 'tools', label: 'Tool Integration', icon: 'tools' },
     { id: 'system', label: 'System Health', icon: 'server' }
@@ -17,6 +18,7 @@ export const DASHBOARD_ROUTES = {
   overview: '/dashboard/overview',
   missionControl: '/dashboard/mission-control',
   models: '/dashboard/models',
+  apiKeys: '/dashboard/api-keys',
   tracking: '/dashboard/tracking',
   tools: '/dashboard/tools',
   system: '/dashboard/system'

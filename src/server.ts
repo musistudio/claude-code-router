@@ -7,14 +7,39 @@ import { analyticsRoutes } from "./routes/analytics";
 import { strategyRoutes } from './routes/strategy';
 import executionGuardRoutes from './routes/execution-guard';
 import { missionControlRoutes } from './routes/mission-control';
+import apiKeysRoutes from './routes/api-keys';
 import { FastifyRequest, FastifyReply } from 'fastify';
+import { initializeGeminiRateLimit, configureGeminiRateLimit } from './middleware/gemini-rate-limit';
 
 // Global Throttling configuration
 const GLOBAL_REQUEST_DELAY_MS = 200; // 200ms delay between requests (max 5 requests/sec)
 let lastRequestTimestamp = 0;
 
-export const createServer = (config: any): Server => {
-  const server = new Server(config);
+export const createServer = (config: any): any => {
+  const server = new (Server as any)(config);
+
+  // Initialize Gemini rate limiting middleware FIRST
+  initializeGeminiRateLimit();
+  
+  // Configure specific rate limiting for Gemini based on config
+  if (config.geminiRateLimit) {
+    configureGeminiRateLimit({
+      minDelayMs: config.geminiRateLimit.minDelayMs || 1500,
+      maxRetries: config.geminiRateLimit.maxRetries || 3,
+      maxQueueSize: config.geminiRateLimit.maxQueueSize || 50,
+      apiKeyRotation: config.geminiRateLimit.apiKeyRotation || false,
+      apiKeys: config.geminiRateLimit.apiKeys || []
+    });
+  } else {
+    // Default Gemini rate limiting configuration with API key rotation
+    configureGeminiRateLimit({
+      minDelayMs: 1500, // 1.5 seconds between Gemini requests
+      maxRetries: 3,
+      maxQueueSize: 50,
+      apiKeyRotation: false,  // Initially false, will be enabled by ApiKeyManager if keys are loaded
+      apiKeys: []             // Empty, will be populated by ApiKeyManager
+    });
+  }
 
   // Add a global pre-handler hook for throttling
   server.app.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -37,6 +62,9 @@ export const createServer = (config: any): Server => {
   
   // Register Mission Control v2 routes
   server.app.register(missionControlRoutes);
+  
+  // Register API Keys management routes
+  server.app.register(apiKeysRoutes);
 
   // Add endpoint to read config.json with access control
   server.app.get("/api/config", async (req: any, reply: any) => {
