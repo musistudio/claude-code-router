@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install)",
+      "Bash(npm install axios)",
+      "Bash(npm run build)",
+      "Bash(ccr start)",
+      "Bash(curl -X POST http://localhost:3456/api/test-providers)",
+      "Bash(curl -X POST http://localhost:3456/api/test-provider -H \"Content-Type: application/json\" -d \"{\"\"providerName\"\": \"\"gemini\"\"}\")",
+      "Bash(ccr restart)",
+      "Read(C:\\Users\\zbj\\.claude-code-router\\plugins/**)",
+      "Read(C:\\Users\\zbj\\.claude-code-router\\plugins/**)",
+      "Bash(curl -X POST http://localhost:3456/api/test-provider -H \"Content-Type: application/json\" -d \"{\"\"providerName\"\": \"\"qwen_cli\"\"}\")",
+      "Bash(node -e \"console.log(''Current time:'', Date.now()); console.log(''Expiry time:'', 1756570108641); console.log(''Token is expired:'', Date.now() > 1756570108641);\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

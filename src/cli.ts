@@ -13,6 +13,8 @@ import { spawn, exec } from "child_process";
 import { PID_FILE, REFERENCE_COUNT_FILE } from "./constants";
 import fs, { existsSync, readFileSync } from "fs";
 import { join } from "path";
+import { readConfigFile } from "./utils";
+import { testAllProviders } from "./utils/providerTest";
 
 const command = process.argv[2];
 
@@ -26,6 +28,7 @@ Commands:
   status        Show server status
   statusline    Integrated statusline
   code          Execute claude command
+  test          Test provider connectivity (use "ccr test <provider>" for specific provider)
   ui            Open the web UI in browser
   -v, version   Show version information
   -h, help      Show help information
@@ -33,6 +36,8 @@ Commands:
 Example:
   ccr start
   ccr code "Write a Hello World"
+  ccr test
+  ccr test openai
   ccr ui
 `;
 
@@ -308,6 +313,57 @@ async function main() {
 
       startProcess.unref();
       console.log("✅ Service started successfully in the background.");
+      break;
+    case "test":
+      try {
+        const providerName = process.argv[3]; // Get provider name from command line args
+        
+        const config = await readConfigFile();
+        
+        if (providerName) {
+          // Test specific provider
+          console.log(`Testing provider: ${providerName}`);
+          const { testSpecificProvider } = await import("./utils/providerTest");
+          const testResult = await testSpecificProvider(config, providerName);
+          
+          console.log("\n=== Provider Connectivity Test Result ===");
+          if (testResult.success) {
+            console.log(`✅ ${testResult.providerName}: Connected successfully (${testResult.responseTime}ms)`);
+          } else {
+            console.log(`❌ ${testResult.providerName}: Connection failed`);
+            console.log(`   Error: ${testResult.error}`);
+            if (testResult.responseTime) {
+              console.log(`   Response time: ${testResult.responseTime}ms`);
+            }
+          }
+        } else {
+          // Test all providers
+          console.log("Testing all provider connectivity...");
+          const testResults = await testAllProviders(config);
+          
+          console.log("\n=== Provider Connectivity Test Results ===");
+          const successful = testResults.filter((result: any) => result.success).length;
+          console.log(`Total providers: ${testResults.length}`);
+          console.log(`Successful tests: ${successful}`);
+          console.log(`Failed tests: ${testResults.length - successful}\n`);
+          
+          testResults.forEach((result: any) => {
+            if (result.success) {
+              console.log(`✅ ${result.providerName}: Connected successfully (${result.responseTime}ms)`);
+            } else {
+              console.log(`❌ ${result.providerName}: Connection failed`);
+              console.log(`   Error: ${result.error}`);
+              if (result.responseTime) {
+                console.log(`   Response time: ${result.responseTime}ms`);
+              }
+            }
+            console.log('');
+          });
+        }
+      } catch (error: any) {
+        console.error("Failed to test providers:", error.message);
+        process.exit(1);
+      }
       break;
     case "-h":
     case "help":

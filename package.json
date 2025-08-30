@@ -21,6 +21,7 @@
   "dependencies": {
     "@fastify/static": "^8.2.0",
     "@musistudio/llms": "^1.0.28",
+    "axios": "^1.11.0",
     "dotenv": "^16.4.7",
     "json5": "^2.2.3",
     "openurl": "^1.1.1",
