@@ -102,5 +102,53 @@ export const createServer = (config: any): Server => {
     }
   });
 
+  // Provider testing endpoints
+  server.app.post("/api/test-providers", async (req, reply) => {
+    try {
+      // Get current config
+      const config = await readConfigFile();
+      
+      // Import the provider testing utilities
+      const { testAllProviders } = await import("./utils/providerTest");
+      
+      // Test all providers
+      const results = await testAllProviders(config);
+      
+      return { results };
+    } catch (error) {
+      console.error("Failed to test providers:", error);
+      reply.status(500).send({ error: "Failed to test providers: " + (error as Error).message });
+    }
+  });
+
+  server.app.post("/api/test-provider", async (req, reply) => {
+    try {
+      const { providerName } = req.body as { providerName: string };
+      
+      if (!providerName) {
+        reply.status(400).send({ error: "Provider name is required" });
+        return;
+      }
+      
+      // Get current config
+      const config = await readConfigFile();
+      
+      // Import the provider testing utilities
+      const { testSpecificProvider } = await import("./utils/providerTest");
+      
+      // Test specific provider
+      const result = await testSpecificProvider(config, providerName);
+      
+      return result;
+    } catch (error: any) {
+      console.error("Failed to test provider:", error);
+      if (error.message.includes("not found")) {
+        reply.status(404).send({ error: error.message });
+      } else {
+        reply.status(500).send({ error: "Failed to test provider: " + error.message });
+      }
+    }
+  });
+
   return server;
 };

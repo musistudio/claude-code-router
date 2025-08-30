@@ -78,6 +78,7 @@
     "fetch_available_models": "获取可用模型",
     "fetching_models": "获取模型中...",
     "fetch_models_failed": "获取模型失败",
+    "test_all": "测试所有供应商",
     "transformers": "转换器",
     "select_transformer": "选择转换器",
     "no_transformers": "无可用转换器",
