@@ -27,7 +27,7 @@ ui
 
 1.  **克隆仓库**：
     ```bash
-    git clone https://github.com/haikow/claude-code-router.git
+    git clone https://github.com/musistudio/claude-code-router.git
     cd claude-code-router
     ```
 2.  **安装依赖**：
