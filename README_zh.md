@@ -21,6 +21,38 @@ ui
 
 ## 🚀 快速入门
 
+### 从源代码本地构建和运行
+
+如果您想从源代码进行开发或测试，可以按照以下步骤操作：
+
+1.  **克隆仓库**：
+    ```bash
+    git clone https://github.com/haikow/claude-code-router.git
+    cd claude-code-router
+    ```
+2.  **安装依赖**：
+    ```bash
+    npm install
+    ```
+3.  **构建项目**：
+    ```bash
+    npm run build
+    ```
+4.  **运行开发版本**：
+    ```bash
+    # 启动服务
+    node dist/cli.js start
+    # 运行 Claude Code 命令
+    node dist/cli.js code "你的提示"
+    # 运行 UI
+    node dist/cli.js ui
+    # 测试提供商连接
+    node dist/cli.js test # 测试所有提供商
+    node dist/cli.js test <provider_name> # 测试特定提供商
+    ```
+
+**注意**：在开发过程中，修改代码后需要重新 `npm run build`，然后使用 `ccr restart` 重启服务以应用更改。
+
 ### 1. 安装
 
 首先，请确保您已安装 [Claude Code](https://docs.anthropic.com/en/docs/claude-code/quickstart)：
