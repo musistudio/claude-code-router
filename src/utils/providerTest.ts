@@ -155,7 +155,7 @@ async function testOAuthProvider(provider: any, config: any) {
  * @param provider The provider configuration to test
  * @returns Test result with success status and response time
  */
-async function testApiKeyProvider(provider: any) {
+async function testApiKeyProvider(provider: any, config: any) {
   const startTime = Date.now();
   let success = false;
   let error: string | null = null;
@@ -173,9 +173,33 @@ async function testApiKeyProvider(provider: any) {
 
     // Determine the appropriate test endpoint based on common provider patterns
     let testUrl = provider.api_base_url;
-    
-    // Handle different provider types
-    if (testUrl.includes("openai.com") || testUrl.includes("openai.azure.com")) {
+    if (provider.name === 'rovo-cli') {
+        const rovoTransformer = config?.transformers?.find((t: any) => t.path?.includes('rovo-cli'));
+        if (!rovoTransformer?.path) throw new Error("Missing rovo-cli transformer");
+        const Transformer = require(rovoTransformer.path);
+        const instance = new Transformer(rovoTransformer.options || {});
+        const reqBody = { model: (provider.models && provider.models[0]) || 'gpt-5-2025-08-07', messages: [{ role: 'user', content: 'Hello' }], max_tokens: 16 };
+        const transformed = await instance.transformRequestIn(reqBody, provider);
+        const axiosCfg = transformed?.config || {};
+        const headers = { 'Content-Type': 'application/json', ...(axiosCfg.headers || {}) };
+        const body = transformed?.body || reqBody;
+        const maxAttempts = 3;
+        let attempt = 0;
+        while (true) {
+          try {
+            testResponse = await axios.post(provider.api_base_url, body, { ...axiosCfg, headers, timeout });
+            break;
+          } catch (e: any) {
+            if (e?.response?.status === 429 && attempt < maxAttempts - 1) {
+              const delay = 500 * Math.pow(2, attempt);
+              await setTimeout(delay);
+              attempt++;
+              continue;
+            }
+            throw e;
+          }
+        }
+    } else if (testUrl.includes("openai.com") || testUrl.includes("openai.azure.com")) {
       // OpenAI-style endpoint
       if (!testUrl.endsWith("/chat/completions") && !testUrl.endsWith("/completions")) {
         testUrl = testUrl.endsWith("/") ? testUrl + "chat/completions" : testUrl + "/chat/completions";
@@ -262,7 +286,17 @@ async function testApiKeyProvider(provider: any) {
     success = true;
     responseTime = Date.now() - startTime;
   } catch (err: any) {
-    error = err.message || "Unknown error";
+    if (err?.response) {
+      try {
+        const s = err.response.status;
+        const d = typeof err.response.data === 'string' ? err.response.data : JSON.stringify(err.response.data);
+        error = `${s}: ${d}`;
+      } catch {
+        error = err.message || "Unknown error";
+      }
+    } else {
+      error = err.message || "Unknown error";
+    }
     responseTime = Date.now() - startTime;
   }
 
@@ -287,7 +321,7 @@ export async function testProviderConnectivity(provider: any, config: any = null
       return await testOAuthProvider(provider, config);
     } else {
       // Handle regular API key providers
-      return await testApiKeyProvider(provider);
+      return await testApiKeyProvider(provider, config);
     }
   } catch (err: any) {
     return {
@@ -336,4 +370,3 @@ export async function testSpecificProvider(config: any, providerName: string) {
 
   return await testProviderConnectivity(provider, config);
 }
-

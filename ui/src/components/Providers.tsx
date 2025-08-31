@@ -54,6 +54,20 @@ export function Providers() {
           const data = await response.json();
           setProviderTemplates([
             {
+              "name": "rovo-cli",
+              "api_base_url": "https://api.atlassian.com/rovodev/v2/proxy/ai/v1/openai/v1/chat/completions",
+              "api_key": "email:api_token",
+              "models": [
+                "claude-sonnet-4@20250514",
+                "gpt-5-2025-08-07"
+              ],
+              "transformer": {
+                "use": [
+                  ["rovo-cli", { "email": "", "api_token": "" }]
+                ]
+              }
+            },
+            {
               "name": "qwen_cli",
               "api_base_url": "https://portal.qwen.ai/v1/chat/completions",
               "api_key": "oauth-managed",
