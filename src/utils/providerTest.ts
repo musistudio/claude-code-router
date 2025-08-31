@@ -173,7 +173,9 @@ async function testApiKeyProvider(provider: any, config: any) {
 
     // Determine the appropriate test endpoint based on common provider patterns
     let testUrl = provider.api_base_url;
-    if (provider.name === 'rovo-cli') {
+    const _n = String(provider?.name || '');
+    const _isRovo = /rovo[-_ ]?cli/i.test(_n) || (provider?.api_base_url && /rovodev|atlassian\.com\/rovodev/i.test(provider.api_base_url)) || (provider?.transformer?.use && ([] as any[]).concat(provider.transformer.use).some((u: any) => (Array.isArray(u) ? String(u[0]) : String(u)).toLowerCase().includes('rovo-cli')));
+    if (_isRovo) {
         const rovoTransformer = config?.transformers?.find((t: any) => t.path?.includes('rovo-cli'));
         if (!rovoTransformer?.path) throw new Error("Missing rovo-cli transformer");
         const Transformer = require(rovoTransformer.path);
