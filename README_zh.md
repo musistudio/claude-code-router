@@ -53,6 +53,35 @@ ui
 
 **注意**：在开发过程中，修改代码后需要重新 `npm run build`，然后使用 `ccr restart` 重启服务以应用更改。
 
+### 使用 npm link 进行本地调试
+
+当你从源码开发并希望在全局以 `ccr` 命令直接调用当前工作副本时，可使用 `npm link`：
+
+```bash
+# 在项目根目录执行，创建全局链接
+npm link
+
+# 验证已链接的全局命令
+ccr --version
+
+# 启动/重启/UI（使用当前源码构建的版本）
+ccr start
+ccr restart
+ccr ui
+```
+
+取消链接并恢复到发布版：
+
+```bash
+# 取消全局链接
+npm unlink -g @musistudio/claude-code-router
+
+# 安装 NPM 发布版本
+npm i -g @musistudio/claude-code-router
+```
+
+提示：若遇到权限问题，请在有管理员/sudo 权限的终端执行；源码更新后需 `npm run build` 再使用。
+
 ### 1. 安装
 
 首先，请确保您已安装 [Claude Code](https://docs.anthropic.com/en/docs/claude-code/quickstart)：
