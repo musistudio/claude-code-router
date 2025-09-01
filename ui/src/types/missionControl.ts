@@ -1,4 +1,10 @@
 // Types for Mission Control v2
+export interface ProviderStats {
+  failureCount: number;
+  inRecovery: boolean;
+  [key: string]: any; // Permite alte proprietăți care ar putea exista
+}
+
 export interface ExecutionStats {
   deduplication: {
     totalCachedRequests: number;
@@ -22,7 +28,7 @@ export interface ExecutionStats {
     successAfterRetry: number;
     finalFailures: number;
   };
-  providers: Record<string, any>;
+  providers: Record<string, ProviderStats>;
 }
 
 export interface ModelStat {
@@ -67,7 +73,7 @@ export interface HealthHistoryData {
 }
 
 export interface MissionControlConfig {
-  routes: string[];
+  routes: Record<string, string> | string[];
   executionGuard: {
     enabled: boolean;
     presets: {
@@ -98,6 +104,15 @@ export interface MissionControlConfig {
       active: boolean;
     };
   };
+}
+
+export interface RawMissionControlData {
+  live?: Partial<ExecutionStats>;
+  aggregated?: Partial<AggregatedData>;
+  historical?: HistoricalDataPoint[];
+  config?: Partial<MissionControlConfig>;
+  timestamp?: string;
+  historicalProviders?: HealthHistoryData[];
 }
 
 export interface MissionControlData {

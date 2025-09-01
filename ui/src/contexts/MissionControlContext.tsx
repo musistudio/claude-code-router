@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer } from 'react';
+import React, { createContext, useContext } from 'react';
 import type { ReactNode } from 'react';
 import type { 
   MissionControlData, 
@@ -8,6 +8,7 @@ import type {
   SystemPreset,
   HealthHistoryData
 } from '@/types/missionControl';
+import { useMissionControlData, type UseMissionControlDataReturn } from '@/hooks/useMissionControlData';
 
 // Types for state
 interface MissionControlState {
@@ -64,10 +65,7 @@ function missionControlReducer(
 }
 
 // Context
-const MissionControlContext = createContext<{
-  state: MissionControlState;
-  dispatch: React.Dispatch<MissionControlAction>;
-} | null>(null);
+const MissionControlContext = createContext<UseMissionControlDataReturn | null>(null);
 
 // Provider
 interface MissionControlProviderProps {
@@ -75,10 +73,10 @@ interface MissionControlProviderProps {
 }
 
 export function MissionControlProvider({ children }: MissionControlProviderProps) {
-  const [state, dispatch] = useReducer(missionControlReducer, initialState);
+  const missionControlData = useMissionControlData();
 
   return (
-    <MissionControlContext.Provider value={{ state, dispatch }}>
+    <MissionControlContext.Provider value={missionControlData}>
       {children}
     </MissionControlContext.Provider>
   );
@@ -92,48 +90,39 @@ export function useMissionControl() {
     throw new Error('useMissionControl must be used within MissionControlProvider');
   }
 
-  const { state, dispatch } = context;
-
-  return {
-    ...state,
-    setData: (data: MissionControlData) => dispatch({ type: 'SET_DATA', payload: data }),
-    setLoading: (loading: boolean) => dispatch({ type: 'SET_LOADING', payload: loading }),
-    setError: (error: string | null) => dispatch({ type: 'SET_ERROR', payload: error }),
-    updateTimestamp: () => dispatch({ type: 'UPDATE_TIMESTAMP' }),
-    reset: () => dispatch({ type: 'RESET' }),
-  };
+  return context;
 }
 
 // Selector hooks for performance optimization
 export function useExecutionStats(): ExecutionStats | null {
-  const { data } = useMissionControl();
-  return data?.live || null;
+  const context = useMissionControl();
+  return context.data?.live || null;
 }
 
 export function useAggregatedData(): AggregatedData | null {
-  const { data } = useMissionControl();
-  return data?.aggregated || null;
+  const context = useMissionControl();
+  return context.data?.aggregated || null;
 }
 
 export function useHistoricalData(): HistoricalDataPoint[] {
-  const { data } = useMissionControl();
-  return data?.historical || [];
+  const context = useMissionControl();
+  return context.data?.historical || [];
 }
 
-export function useMissionControlData() {
-  const { data, loading, error } = useMissionControl();
+export function useMissionControlState() {
+  const context = useMissionControl();
   return {
-    data,
-    isLoading: loading,
-    error,
-    live: data?.live,
-    historical: data?.historical || [],
-    historicalProviders: data?.historicalProviders || [],
-    aggregated: data?.aggregated
+    data: context.data,
+    isLoading: context.loading,
+    error: context.error,
+    live: context.data?.live,
+    historical: context.data?.historical || [],
+    historicalProviders: context.data?.historicalProviders || [],
+    aggregated: context.data?.aggregated
   };
 }
 
 export function useConfig() {
-  const { data } = useMissionControl();
-  return data?.config || null;
+  const context = useMissionControl();
+  return context.data?.config || null;
 }

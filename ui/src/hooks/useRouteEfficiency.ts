@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 interface RouteEfficiencyData {
   route: string;
   model: string;
+  provider: string;
   requests: number;
   successRate: number;
   avgResponseTime: number;

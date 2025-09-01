@@ -1,13 +1,11 @@
 
 import { FastifyInstance } from 'fastify';
-import { executionGuard } from '../utils/ExecutionGuard';
 
 export const strategyRoutes = (app: FastifyInstance) => {
   app.get('/api/strategy/fallback-status', async (request, reply) => {
     try {
-      // Replaced providerFallbackManager.getProviderStatus() with executionGuard.getStats().providers
-      const { providers } = executionGuard.getStats();
-      reply.send(providers);
+      // Provider status now handled by OAuth CLI-based providers - simplified response
+      reply.send({ message: 'Provider status now managed by OAuth CLI authentication' });
     } catch (error: any) {
       reply.status(500).send({ error: 'Failed to get fallback status', details: error.message });
     }
@@ -15,9 +13,8 @@ export const strategyRoutes = (app: FastifyInstance) => {
 
   app.get('/api/strategy/cache-stats', async (request, reply) => {
     try {
-      // Replaced aiRequestController.getStatistics() with executionGuard.getStats().deduplication
-      const { deduplication } = executionGuard.getStats();
-      reply.send(deduplication);
+      // Cache deduplication now handled by OAuth CLI-based providers - simplified response
+      reply.send({ message: 'Cache statistics now managed by OAuth CLI authentication' });
     } catch (error: any) {
       reply.status(500).send({ error: 'Failed to get cache stats', details: error.message });
     }

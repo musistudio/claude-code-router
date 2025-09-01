@@ -235,12 +235,16 @@ export function OverviewTab() {
               <div className="bg-black/20 p-4 rounded-lg border border-white/10">
                 <h4 className="text-lg font-semibold text-white mb-2">Top Models (24h)</h4>
                 <div className="space-y-2">
-                  {realtimeStats.last24h.topModels.slice(0, 3).map((model, index) => (
-                    <div key={index} className="flex justify-between items-center">
-                      <span className="text-gray-400 text-sm">{model.model.substring(0, 12)}:</span>
-                      <span className="text-blue-400 font-mono text-sm">{model.count}</span>
-                    </div>
-                  ))}
+                  {realtimeStats?.last24h?.topModels && Array.isArray(realtimeStats.last24h.topModels) ? 
+                    realtimeStats.last24h.topModels.slice(0, 3).map((model, index) => (
+                      <div key={index} className="flex justify-between items-center">
+                        <span className="text-gray-400 text-sm">{model.model.substring(0, 12)}:</span>
+                        <span className="text-blue-400 font-mono text-sm">{model.count}</span>
+                      </div>
+                    )) : (
+                      <div className="text-gray-500 text-sm">No data available</div>
+                    )
+                  }
                 </div>
               </div>
             </div>

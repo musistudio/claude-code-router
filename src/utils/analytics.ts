@@ -470,24 +470,85 @@ class AnalyticsManager {
   }
 
   // Get route efficiency analysis
-  getRouteEfficiency() {
+  getRouteEfficiency(config?: any) {
     const routeStats = this.getRouteStats();
     
     return {
-      routes: routeStats.map(stats => ({
-        route: stats.route,
-        model: Object.keys(stats.models)[0]?.split('_')[1] || 'unknown', // Most used model
-        requests: stats.totalRequests,
-        successRate: Math.round(stats.successRate * 10) / 10,
-        avgResponseTime: Math.round(stats.avgResponseTime),
-        efficiency: Math.round(Math.max(0, stats.successRate - (stats.avgResponseTime / 50)) * 10) / 10,
-        cost: Math.round(stats.totalCost * 100) / 100,
-        lastUsed: stats.lastUsed
-      })),
+      routes: routeStats.map(stats => {
+        // Get current configured model for this route
+        let currentModel = 'unknown';
+        let currentProvider = 'unknown';
+        
+        if (config?.Router?.[stats.route]) {
+          const routeConfig = config.Router[stats.route];
+          const [provider, model] = routeConfig.split(',');
+          currentModel = (model || '').trim();
+          currentProvider = (provider || '').trim();
+        } else {
+          // Fallback to most used model if no config
+          const modelEntries = Object.entries(stats.models);
+          if (modelEntries.length > 0) {
+            const [mostUsedKey] = modelEntries.reduce((max, current) => 
+              current[1] > max[1] ? current : max
+            );
+            const parts = mostUsedKey.split('_');
+            currentProvider = parts[0] || 'unknown';
+            currentModel = parts.slice(1).join('_') || mostUsedKey;
+          }
+        }
+
+        return {
+          route: stats.route,
+          model: currentModel,
+          provider: currentProvider,
+          requests: stats.totalRequests,
+          successRate: Math.round(stats.successRate * 10) / 10,
+          avgResponseTime: Math.round(stats.avgResponseTime),
+          efficiency: (() => {
+          // Improved efficiency calculation using weighted formula
+          const successWeight = 0.4;
+          const speedWeight = 0.3;
+          const costWeight = 0.2;
+          const reliabilityWeight = 0.1;
+          
+          const successScore = stats.successRate;
+          const speedScore = Math.max(0, 100 - (stats.avgResponseTime / 100)); // 0-100 based on response time
+          const costScore = Math.max(0, 100 - (stats.totalCost * 10000)); // Cost efficiency
+          const reliabilityScore = Math.max(0, 100 - ((100 - stats.successRate) * 2)); // Reliability bonus
+          
+          const efficiency = (successScore * successWeight) + (speedScore * speedWeight) + (costScore * costWeight) + (reliabilityScore * reliabilityWeight);
+          return Math.round(Math.min(100, Math.max(0, efficiency)) * 10) / 10;
+        })(),
+          cost: Math.round(stats.totalCost * 100) / 100,
+          lastUsed: stats.lastUsed
+        };
+      }),
       summary: {
         totalRoutes: routeStats.length,
-        avgEfficiency: Math.round(routeStats.reduce((sum, s) => sum + Math.max(0, s.successRate - (s.avgResponseTime / 50)), 0) / Math.max(1, routeStats.length) * 10) / 10,
-        bestPerforming: routeStats.sort((a, b) => (b.successRate - (b.avgResponseTime / 50)) - (a.successRate - (a.avgResponseTime / 50)))[0]?.route || 'none',
+        avgEfficiency: Math.round(routeStats.reduce((sum, stats) => {
+          const successWeight = 0.4;
+          const speedWeight = 0.3;
+          const costWeight = 0.2;
+          const reliabilityWeight = 0.1;
+          
+          const successScore = stats.successRate;
+          const speedScore = Math.max(0, 100 - (stats.avgResponseTime / 100));
+          const costScore = Math.max(0, 100 - (stats.totalCost * 10000));
+          const reliabilityScore = Math.max(0, 100 - ((100 - stats.successRate) * 2));
+          
+          const efficiency = (successScore * successWeight) + (speedScore * speedWeight) + (costScore * costWeight) + (reliabilityScore * reliabilityWeight);
+          return sum + Math.min(100, Math.max(0, efficiency));
+        }, 0) / Math.max(1, routeStats.length) * 10) / 10,
+        bestPerforming: routeStats.sort((a, b) => {
+          const calcEfficiency = (stats: any) => {
+            const successScore = stats.successRate;
+            const speedScore = Math.max(0, 100 - (stats.avgResponseTime / 100));
+            const costScore = Math.max(0, 100 - (stats.totalCost * 10000));
+            const reliabilityScore = Math.max(0, 100 - ((100 - stats.successRate) * 2));
+            return (successScore * 0.4) + (speedScore * 0.3) + (costScore * 0.2) + (reliabilityScore * 0.1);
+          };
+          return calcEfficiency(b) - calcEfficiency(a);
+        })[0]?.route || 'none',
         needsOptimization: routeStats.filter(s => s.successRate < 90 || s.avgResponseTime > 2000).length
       }
     };

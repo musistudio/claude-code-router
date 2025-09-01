@@ -1,0 +1,616 @@
+/* Widget Enhancements - Improved Colors and Utility Components */
+
+/* ====================== */
+/* STATUS COLORS WITH GOOD CONTRAST */
+/* ====================== */
+
+/* Success Status - Green on light background */
+.bg-status-success { 
+  background: #dcfce7; 
+  color: #166534; 
+  border-color: #bbf7d0;
+}
+
+.text-status-success { 
+  color: #166534;
+}
+
+/* Warning Status - Yellow/amber on light background */
+.bg-status-warning { 
+  background: #fef3c7; 
+  color: #92400e; 
+  border-color: #fde68a;
+}
+
+.text-status-warning { 
+  color: #92400e;
+}
+
+/* Error Status - Red on light background */
+.bg-status-error { 
+  background: #fee2e2; 
+  color: #991b1b; 
+  border-color: #fecaca;
+}
+
+.text-status-error { 
+  color: #991b1b;
+}
+
+/* Info Status - Blue on light background */
+.bg-status-info { 
+  background: #dbeafe; 
+  color: #1e40af; 
+  border-color: #bfdbfe;
+}
+
+.text-status-info { 
+  color: #1e40af;
+}
+
+/* ====================== */
+/* TEXT ON DARK BACKGROUNDS */
+/* ====================== */
+
+/* White text with shadow for dark backgrounds */
+.text-on-dark { 
+  color: #ffffff; 
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* High contrast text for accent backgrounds */
+.text-on-accent { 
+  color: #1f2937; 
+  font-weight: 500;
+}
+
+/* ====================== */
+/* ACTION BUTTONS */
+/* ====================== */
+
+/* Base button styles */
+.action-button {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  font-weight: 500;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Primary Action - Blue */
+.action-button.primary {
+  background: #3b82f6;
+  color: #ffffff;
+}
+
+.action-button.primary:hover {
+  background: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.action-button.primary:active {
+  transform: translateY(0);
+}
+
+/* Secondary Action - Gray outline */
+.action-button.secondary {
+  background: #ffffff;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+
+.action-button.secondary:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+/* Warning Action - Yellow */
+.action-button.warning {
+  background: #fbbf24;
+  color: #ffffff;
+}
+
+.action-button.warning:hover {
+  background: #f59e0b;
+}
+
+/* Danger Action - Red */
+.action-button.danger {
+  background: #ef4444;
+  color: #ffffff;
+}
+
+.action-button.danger:hover {
+  background: #dc2626;
+}
+
+/* Success Action - Green */
+.action-button.success {
+  background: #22c55e;
+  color: #ffffff;
+}
+
+.action-button.success:hover {
+  background: #16a34a;
+}
+
+/* Disabled state */
+.action-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* Loading state */
+.action-button.loading {
+  position: relative;
+  color: transparent;
+}
+
+.action-button.loading::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  top: 50%;
+  left: 50%;
+  margin-left: -8px;
+  margin-top: -8px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  border-top-color: transparent;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Small button */
+.action-button.small {
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+/* Large button */
+.action-button.large {
+  padding: 12px 24px;
+  font-size: 16px;
+}
+
+/* ====================== */
+/* MODAL WINDOWS */
+/* ====================== */
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.modal-window {
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  padding: 24px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f9fafb;
+}
+
+.modal-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.modal-body {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* Modal close button */
+.modal-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: none;
+  background: #f3f4f6;
+  color: #6b7280;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.modal-close:hover {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+/* ====================== */
+/* STATUS INDICATORS */
+/* ====================== */
+
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-indicator.success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-indicator.warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-indicator.error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.status-indicator.info {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+/* Status dots */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot.success {
+  background: #22c55e;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.3);
+}
+
+.status-dot.warning {
+  background: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3);
+}
+
+.status-dot.error {
+  background: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.3);
+}
+
+.status-dot.info {
+  background: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
+/* ====================== */
+/* MINI LOGS COMPONENT */
+/* ====================== */
+
+.mini-logs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.mini-log-entry {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border-left: 3px solid;
+  background: #f9fafb;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mini-log-entry.success {
+  border-left-color: #22c55e;
+}
+
+.mini-log-entry.error {
+  border-left-color: #ef4444;
+}
+
+.mini-log-entry.warning {
+  border-left-color: #f59e0b;
+}
+
+.mini-log-entry.info {
+  border-left-color: #3b82f6;
+}
+
+.mini-log-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.mini-log-timestamp {
+  color: #6b7280;
+  font-size: 11px;
+}
+
+.mini-log-status {
+  font-weight: 500;
+}
+
+.mini-log-status.success {
+  color: #16a34a;
+}
+
+.mini-log-status.error {
+  color: #dc2626;
+}
+
+.mini-log-status.warning {
+  color: #d97706;
+}
+
+.mini-log-status.info {
+  color: #2563eb;
+}
+
+/* ====================== */
+/* STATS CARDS */
+/* ====================== */
+
+.stats-card {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.3s ease;
+}
+
+.stats-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+  border-color: #d1d5db;
+}
+
+.stats-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.stats-card-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stats-card-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1;
+}
+
+.stats-card-change {
+  font-size: 12px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stats-card-change.positive {
+  color: #16a34a;
+}
+
+.stats-card-change.negative {
+  color: #dc2626;
+}
+
+.stats-card-change.neutral {
+  color: #6b7280;
+}
+
+/* ====================== */
+/* UTILITY CLASSES */
+/* ====================== */
+
+/* Text truncation */
+.text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Loading skeleton */
+.loading-skeleton {
+  background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+}
+
+@keyframes skeleton-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Progress bars with good contrast */
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progress-fill.success {
+  background: #22c55e;
+}
+
+.progress-fill.warning {
+  background: #f59e0b;
+}
+
+.progress-fill.error {
+  background: #ef4444;
+}
+
+.progress-fill.info {
+  background: #3b82f6;
+}
+
+/* Badges with good contrast */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.badge-success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.badge-warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.badge-error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.badge-info {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+/* ====================== */
+/* RESPONSIVE ENHANCEMENTS */
+/* ====================== */
+
+@media (max-width: 768px) {
+  .action-button {
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+  
+  .stats-card {
+    padding: 16px;
+  }
+  
+  .stats-card-value {
+    font-size: 24px;
+  }
+  
+  .modal-window {
+    margin: 16px;
+    max-width: calc(100vw - 32px);
+  }
+}
+
+/* ====================== */
+/* ANIMATIONS */
+/* ====================== */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+.animate-pulse {
+  animation: pulse 2s infinite;
+}

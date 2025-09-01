@@ -1,3 +1,6 @@
+/* Import dark theme widgets styles */
+@import './dark-theme-widgets.css';
+
 /* Dashboard Custom Styles - Glassmorphism Effects */
 
 :root {
@@ -277,37 +280,6 @@
     color: white;
 }
 
-/* API Keys Table */
-.api-keys-table {
-    width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
-}
-
-.api-keys-table th {
-    background: rgba(0, 0, 0, 0.2);
-    backdrop-filter: blur(10px);
-    padding: 12px 16px;
-    text-align: left;
-    font-weight: 500;
-    color: #94a3b8;
-    text-transform: uppercase;
-    font-size: 0.75rem;
-    letter-spacing: 0.05em;
-}
-
-.api-keys-table td {
-    padding: 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.api-keys-table tr:last-child td {
-    border-bottom: none;
-}
-
-.api-keys-table tr:hover {
-    background: rgba(255, 255, 255, 0.05);
-}
 
 /* Stats cards enhancement */
 .stats-card {

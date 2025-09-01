@@ -9,8 +9,8 @@ import { TrackingTab } from './tabs/TrackingTab';
 
 import { ToolsTab } from './tabs/ToolsTab';
 import { SystemTab } from './tabs/SystemTab';
-import ApiKeysTab from './tabs/ApiKeysTab';
 import '@/styles/dashboard.css';
+import '@/styles/widget-enhancements.css';
 
 interface DashboardProps {
   className?: string;
@@ -41,8 +41,6 @@ export function Dashboard({
         return DASHBOARD_FEATURES.missionControl ? <MissionControlTab /> : <OverviewTab />;
       case 'models':
         return <ModelsTab />;
-      case 'api-keys':
-        return <ApiKeysTab />;
       case 'tracking':
         return <TrackingTab />;
       case 'tools':

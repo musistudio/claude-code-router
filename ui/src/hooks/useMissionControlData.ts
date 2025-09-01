@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { MissionControlData } from '@/types/missionControl';
+import type { MissionControlData, RawMissionControlData } from '@/types/missionControl';
 import { missionControlAPI } from '@/lib/missionControlAPI';
 
 interface UseMissionControlDataOptions {
@@ -8,8 +8,26 @@ interface UseMissionControlDataOptions {
   retryCount?: number;
 }
 
-interface UseMissionControlDataReturn {
+export interface UseMissionControlDataReturn {
   data: MissionControlData | null;
+  loading: boolean;
+  error: string | null;
+  refetch: () => Promise<void>;
+  lastUpdated: number | null;
+}
+
+// Hook pentru istoricul providerilor
+export interface ProviderHistoryData {
+  provider: string;
+  timestamp: string;
+  successRate: number;
+  avgResponseTime: number;
+  errorRate: number;
+  totalRequests: number;
+}
+
+export interface UseProviderHistoryReturn {
+  data: ProviderHistoryData[] | null;
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
@@ -30,6 +48,7 @@ export function useMissionControlData(
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const retryCountRef = useRef(0);
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Adăugați un ref pentru timer
   const isMountedRef = useRef(true);
 
   const { interval, initialLoad, retryCount } = { ...DEFAULT_OPTIONS, ...options };
@@ -63,7 +82,8 @@ export function useMissionControlData(
       if (retryCountRef.current < retryCount) {
         retryCountRef.current++;
         console.log(`Retrying... (${retryCountRef.current}/${retryCount})`);
-        setTimeout(() => fetchData(true, false), 1000 * retryCountRef.current);
+        // Stocați ID-ul timer-ului
+        retryTimeoutRef.current = setTimeout(() => fetchData(true, false), 1000 * retryCountRef.current);
       } else {
         setError(err.message || 'Failed to fetch mission control data');
         setData(null);
@@ -93,6 +113,10 @@ export function useMissionControlData(
     return () => {
       isMountedRef.current = false;
       clearInterval(intervalId);
+      // Anulați timer-ul la unmount
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+      }
     };
   }, [initialLoad, interval, fetchData]);
 
@@ -106,7 +130,7 @@ export function useMissionControlData(
 }
 
 // Normalize mission control data to ensure all properties exist
-function normalizeMissionControlData(data: any): MissionControlData {
+function normalizeMissionControlData(data: RawMissionControlData): MissionControlData {
   return {
     live: {
       deduplication: {
@@ -194,4 +218,99 @@ export function useAggregatedMissionControl() {
     initialLoad: true,
     retryCount: 1,
   });
+}
+
+// Hook pentru istoricul providerilor
+export function useProviderHistory(
+  options: UseMissionControlDataOptions = DEFAULT_OPTIONS
+): UseProviderHistoryReturn {
+  const [data, setData] = useState<ProviderHistoryData[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  const retryCountRef = useRef(0);
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isMountedRef = useRef(true);
+
+  const { interval, initialLoad, retryCount } = { ...DEFAULT_OPTIONS, ...options };
+
+  const fetchData = useCallback(async (isRetry = false, isInitial = false) => {
+    if (!isMountedRef.current) return;
+
+    // Only show loading for initial load or retries, not for periodic updates
+    if (isInitial || isRetry) {
+      setLoading(true);
+    }
+    if (!isRetry) {
+      setError(null);
+    }
+
+    try {
+      // Fetch real data from the API
+      const response = await fetch('/api/v1/mission-control/provider-health-history');
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to fetch provider history data');
+      }
+      
+      if (!isMountedRef.current) return;
+
+      // Ensure data is always an array to prevent .map errors
+      const providerHistory = Array.isArray(result.data) ? result.data : [];
+      setData(providerHistory);
+      setLastUpdated(Date.now());
+      retryCountRef.current = 0; // Reset retry count on success
+
+    } catch (err: any) {
+      if (!isMountedRef.current) return;
+
+      console.error('Error fetching provider history data:', err);
+      
+      if (retryCountRef.current < retryCount) {
+        retryCountRef.current++;
+        console.log(`Retrying... (${retryCountRef.current}/${retryCount})`);
+        retryTimeoutRef.current = setTimeout(() => fetchData(true, false), 1000 * retryCountRef.current);
+      } else {
+        setError(err.message || 'Failed to fetch provider history data');
+        setData(null);
+      }
+    } finally {
+      if (isMountedRef.current && (isInitial || isRetry)) {
+        setLoading(false);
+      }
+    }
+  }, [retryCount]);
+
+  const refetch = useCallback(() => {
+    retryCountRef.current = 0;
+    return fetchData(false, true); // Manual refetch should show loading
+  }, [fetchData]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    if (initialLoad) {
+      fetchData(false, true); // Initial load should show loading
+    }
+
+    const intervalId = setInterval(() => {
+      fetchData(false, false); // Periodic updates should NOT show loading
+    }, interval);
+
+    return () => {
+      isMountedRef.current = false;
+      clearInterval(intervalId);
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+      }
+    };
+  }, [initialLoad, interval, fetchData]);
+
+  return {
+    data,
+    loading,
+    error,
+    refetch,
+    lastUpdated,
+  };
 }

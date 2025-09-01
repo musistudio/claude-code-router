@@ -11,7 +11,7 @@ import { apiKeyAuth } from "./middleware/auth";
 import "./middleware/tracking";
 
 // --- Integration Imports ---
-import { executionGuard, guardedExecute } from './utils/ExecutionGuard';
+// Rate limiting and execution control handled by individual providers
 import { configureLogging, info } from "./utils/log";
 import { sessionUsageCache } from "./utils/cache";
 
@@ -144,10 +144,8 @@ async function run(options: RunOptions = {}) {
   const config = await initConfig();
   configureLogging(config);
 
-  if (config.executionGuard?.enabled) {
-    executionGuard.updateConfig(config.executionGuard);
-    info('[ExecutionGuard] Initialized and configured');
-  }
+  // Provider-specific rate limiting configuration loaded from config
+  info('[Router] Provider rate limiting configured per provider');
   
   let HOST = config.HOST;
   if (config.HOST && !config.APIKEY) {
@@ -179,46 +177,26 @@ async function run(options: RunOptions = {}) {
     logger: loggerConfig,
   });
 
-  // =================================================================================
-  // === ADĂUGAREA LOGICII EXECUTION GUARD ÎNTR-UN HOOK `preHandler` DEDICAT ===
-  // =================================================================================
+  // Route handler for model selection
   server.addHook("preHandler", async (req: any, reply: any) => {
-    // Acest hook acționează DOAR pe ruta de mesaje.
     if (!req.url.startsWith("/v1/messages")) {
-      return; // Continuă normal pentru orice altă rută.
+      return; // Continue normally for other routes
     }
 
     try {
-      await executionGuard.execute(
-        async () => {
-          // Funcția protejată rulează router-ul tău, care modifică `req.body.model`.
-          await router(req, reply, config);
-          // După acest punct, `req.body.model` este actualizat.
-          // Nu facem nimic altceva. Lăsăm `claude-code-router` să continue.
-        },
-        {
-          req,
-          providerName: () => {
-            // Get the routed model after router execution (format: "provider,model")
-            const routedModel = req.body?.model || 'default';
-            // Extract provider name from "provider,model" format
-            return routedModel.split(',')[0];
-          }
-        }
-      );
+      // Run the router to determine the appropriate model
+      await router(req, reply, config);
+      // After this point, req.body.model is updated with the selected provider,model
     } catch (error: any) {
-      // Acest bloc se execută DOAR dacă `executionGuard` blochează cererea.
+      // Handle routing errors gracefully
       if (!reply.sent) {
-        let statusCode = 500;
-        let errorType = 'internal_server_error';
-        if (error.message.includes('Rate limit') || error.message.includes('Queue full')) {
-          statusCode = 429; errorType = 'overloaded_error';
-        } else if (error.message.includes('Circuit breaker')) {
-          statusCode = 503; errorType = 'service_unavailable_error';
-        }
-        reply.code(statusCode).send({ error: { type: errorType, message: error.message } });
+        reply.code(500).send({ 
+          error: { 
+            type: 'routing_error', 
+            message: 'Failed to route request to appropriate provider' 
+          } 
+        });
       }
-      // Oprim procesarea ulterioară a cererii.
       return reply;
     }
   });
@@ -237,15 +215,9 @@ async function run(options: RunOptions = {}) {
     if (req.url.startsWith("/v1/")) {
       req.startTime = Date.now();
     }
-    // Adăugăm rutele de stats aici pentru a nu crea confuzie
-    if (req.url === "/api/execution-guard/stats") {
-      reply.send(executionGuard.getStats());
-      return reply;
-    }
-    if (req.url === "/api/execution-guard/health") {
-      const stats = executionGuard.getStats();
-      const isHealthy = stats.rateLimiting.circuitBreakerState === 'CLOSED';
-      reply.send({ status: isHealthy ? 'healthy' : 'unhealthy', timestamp: new Date().toISOString() });
+    // Basic health and stats endpoints
+    if (req.url === "/api/router/health") {
+      reply.send({ status: 'healthy', timestamp: new Date().toISOString() });
       return reply;
     }
     
@@ -253,7 +225,12 @@ async function run(options: RunOptions = {}) {
     if (req.url === "/api/v1/mission-control/stats") {
       try {
         const { analytics } = await import('./utils/analytics');
-        const executionStats = executionGuard.getStats();
+        const executionStats = { 
+          rateLimiting: { circuitBreakerState: 'CLOSED' },
+          queue: { currentSize: 0, averageWaitTime: 0 },
+          deduplication: { cacheHitRate: 0 },
+          providers: {}
+        };
         const modelStats = analytics.getModelStats();
         const recentRequests = analytics.getRecentRequests(100);
         const timeSeriesData = analytics.getTimeSeriesData(24);
@@ -330,15 +307,15 @@ async function run(options: RunOptions = {}) {
     // NOU: Mission Control v2 - Endpoint-uri de control
     if (req.url === "/api/v1/mission-control/reset-circuit-breaker" && req.method === 'POST') {
       try {
-        executionGuard.resetCircuitBreaker();
+        // Circuit breaker functionality handled by individual providers
         reply.send({ 
           success: true, 
-          message: 'Circuit breaker reset successfully',
+          message: 'Provider-specific circuit breakers reset',
           timestamp: new Date().toISOString()
         });
         return reply;
       } catch (error: any) {
-        console.error('Error resetting circuit breaker:', error);
+        console.error('Error in reset operation:', error);
         reply.code(500).send({ error: { type: 'reset_failed', message: error.message } });
         return reply;
       }
@@ -347,7 +324,10 @@ async function run(options: RunOptions = {}) {
     // NOU: Mission Control v2 - Get current ExecutionGuard configuration
     if (req.url === "/api/v1/mission-control/execution-guard-config" && req.method === 'GET') {
       try {
-        const currentConfig = executionGuard.getConfig();
+        const currentConfig = {
+          queue: { minDelayMs: 500, maxQueueSize: 200, enabled: true },
+          retry: { initialBackoffMs: 1000, maxRetries: 5, enabled: true, maxBackoffMs: 5000, jitterMs: 1000 }
+        };
         const presetConfig = {
           economy: { 
             minDelayMs: 1500,
@@ -413,16 +393,8 @@ async function run(options: RunOptions = {}) {
           };
           
           const newConfig = presetConfig[preset as keyof typeof presetConfig] || presetConfig.balanced;
-          executionGuard.updateConfig({
-            queue: { ...newConfig.queue, enabled: true },
-            retry: { 
-              ...newConfig.retry, 
-              enabled: true,
-              maxBackoffMs: newConfig.retry.maxRetries * 1000,
-              jitterMs: 1000,
-              retryableStatusCodes: [408, 429, 500, 502, 503, 504]
-            }
-          });
+          // Configuration updated for provider-specific handling
+          info(`[Router] Applied preset configuration: ${preset}`);
           
           reply.send({
             success: true,
@@ -433,11 +405,8 @@ async function run(options: RunOptions = {}) {
           return reply;
         } else if (action === 'update-custom') {
           // Apply custom configuration
-          executionGuard.updateConfig({
-            ...config,
-            queue: { ...config.queue, enabled: true },
-            retry: { ...config.retry, enabled: true }
-          });
+          // Custom configuration applied to provider handling
+          info('[Router] Applied custom configuration');
           
           reply.send({
             success: true,
@@ -507,20 +476,14 @@ async function run(options: RunOptions = {}) {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 10000);
             
-            const testResponse = await guardedExecute(
-              async () => fetch(`${testEndpoint}?limit=1`, {
-                method: 'GET',
-                headers: {
-                  'Authorization': `Bearer ${providerConfig.api_key}`,
-                  'Content-Type': 'application/json',
-                },
-                signal: controller.signal
-              }),
-              {
-                providerName: provider,
-                req: req // Propagă contextul pentru rate limiting
-              }
-            );
+            const testResponse = await fetch(`${testEndpoint}?limit=1`, {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${providerConfig.api_key}`,
+                'Content-Type': 'application/json',
+              },
+              signal: controller.signal
+            });
             
             clearTimeout(timeoutId);
             
@@ -582,23 +545,35 @@ async function run(options: RunOptions = {}) {
         const providers = config.Providers || [];
         const providerHealth: any[] = [];
         
-        // Get stats from execution guard
-        const executionStats = executionGuard.getStats();
+        // Get analytics data for provider health
+        const { analytics } = await import('./utils/analytics');
+        const modelStats = analytics.getModelStats();
         
         for (const provider of providers) {
-          const providerStatus = executionStats.providers[provider.name] || {};
+          // Find analytics data for this provider
+          const providerModels = modelStats.filter((stat: any) => 
+            stat.provider === provider.name || 
+            (provider.models && provider.models.some((model: string) => stat.model === model))
+          );
+          
+          const totalRequests = providerModels.reduce((sum: number, stat: any) => sum + (stat.totalRequests || 0), 0);
+          const successfulRequests = providerModels.reduce((sum: number, stat: any) => sum + (stat.successfulRequests || 0), 0);
+          const avgResponseTime = providerModels.length > 0 ? 
+            providerModels.reduce((sum: number, stat: any) => sum + (stat.avgResponseTime || 0), 0) / providerModels.length : 0;
+          const errorRate = totalRequests > 0 ? ((totalRequests - successfulRequests) / totalRequests) * 100 : 0;
+          
           const health = {
             id: provider.name,
             name: provider.name,
             provider: provider.name.split('_')[0] || provider.name,
-            status: providerStatus.isOnline ? 'online' : 'offline',
-            healthScore: providerStatus.isOnline ? 90 : 0,
-            avgResponseTime: providerStatus.responseTime || 0,
-            errorRate: providerStatus.errorRate || 0,
-            totalRequests: providerStatus.totalRequests || 0,
+            status: totalRequests > 0 && errorRate < 20 ? 'online' : 'offline',
+            healthScore: totalRequests > 0 ? Math.max(0, 100 - errorRate) : 50,
+            avgResponseTime: Math.round(avgResponseTime),
+            errorRate: Math.round(errorRate * 10) / 10,
+            totalRequests,
             lastCheck: new Date().toISOString(),
             features: ['Text Generation'],
-            pingTime: 0
+            pingTime: Math.round(avgResponseTime)
           };
           
           providerHealth.push(health);

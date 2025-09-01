@@ -67,7 +67,7 @@ export function TrackingTab() {
             const timeSeriesResponse = await fetch(`/api/analytics/timeseries?hours=${hours}`);
             const timeSeriesData = await timeSeriesResponse.json();
             
-            if (timeSeriesData.success && timeSeriesData.data) {
+            if (timeSeriesData.success && timeSeriesData.data && Array.isArray(timeSeriesData.data)) {
               // Convert backend time-series data to chart format
               const chartData: RequestData[] = timeSeriesData.data.map((point: any) => ({
                 time: point.time,
@@ -99,7 +99,7 @@ export function TrackingTab() {
         };
 
         // Convert real requests to request logs
-        if (requestsData.success && requestsData.data) {
+        if (requestsData.success && requestsData.data && Array.isArray(requestsData.data)) {
           const realLogs: RequestLog[] = requestsData.data.map((req: any, i: number) => ({
             id: req.id || `req-${i}`,
             timestamp: new Date(req.timestamp).toLocaleTimeString(),
