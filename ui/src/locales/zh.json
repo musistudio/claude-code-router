@@ -42,7 +42,9 @@
     "port": "端口",
     "apikey": "API 密钥",
     "timeout": "API 超时时间 (毫秒)",
-    "proxy_url": "代理地址"
+    "proxy_url": "代理地址",
+    "custom_router_path": "自定义路由脚本路径",
+    "custom_router_path_placeholder": "输入自定义路由脚本文件的绝对路径"
   },
   "transformers": {
     "title": "自定义转换器",

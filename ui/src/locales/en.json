@@ -42,7 +42,9 @@
     "port": "Port",
     "apikey": "API Key",
     "timeout": "API Timeout (ms)",
-    "proxy_url": "Proxy URL"
+    "proxy_url": "Proxy URL",
+    "custom_router_path": "Custom Router Script Path",
+    "custom_router_path_placeholder": "Enter absolute path to custom router script file"
   },
   "transformers": {
     "title": "Custom Transformers",

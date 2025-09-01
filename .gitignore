@@ -3,4 +3,5 @@ node_modules
 log.txt
 .idea
 dist
-.claude/settings.local.json
+.DS_Store
+.vscode

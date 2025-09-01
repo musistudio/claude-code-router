@@ -5,6 +5,8 @@ import {
   decrementReferenceCount,
   incrementReferenceCount,
 } from "./processCheck";
+import {HOME_DIR} from "../constants";
+import {join} from "path";
 
 export async function executeCodeCommand(args: string[] = []) {
   // Set environment variables
@@ -63,7 +65,7 @@ export async function executeCodeCommand(args: string[] = []) {
   const stdioConfig: StdioOptions = config.NON_INTERACTIVE_MODE
     ? ["pipe", "inherit", "inherit"] // Pipe stdin for non-interactive
     : "inherit"; // Default inherited behavior
-
+  console.log(joinedArgs)
   const claudeProcess = spawn(
     claudePath + (joinedArgs ? ` ${joinedArgs}` : ""),
     [],
