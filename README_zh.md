@@ -11,7 +11,7 @@
 ![](blog/images/claude-code.png)
 
 ## ✨ 功能
-
+ui
 -   **模型路由**: 根据您的需求将请求路由到不同的模型（例如，后台任务、思考、长上下文）。
 -   **多提供商支持**: 支持 OpenRouter、DeepSeek、Ollama、Gemini、Volcengine 和 SiliconFlow 等各种模型提供商。
 -   **请求/响应转换**: 使用转换器为不同的提供商自定义请求和响应。
@@ -20,6 +20,67 @@
 -   **插件系统**: 使用自定义转换器扩展功能。
 
 ## 🚀 快速入门
+
+### 从源代码本地构建和运行
+
+如果您想从源代码进行开发或测试，可以按照以下步骤操作：
+
+1.  **克隆仓库**：
+    ```bash
+    git clone https://github.com/musistudio/claude-code-router.git
+    cd claude-code-router
+    ```
+2.  **安装依赖**：
+    ```bash
+    npm install
+    ```
+3.  **构建项目**：
+    ```bash
+    npm run build
+    ```
+4.  **运行开发版本**：
+    ```bash
+    # 启动服务
+    node dist/cli.js start
+    # 运行 Claude Code 命令
+    node dist/cli.js code "你的提示"
+    # 运行 UI
+    node dist/cli.js ui
+    # 测试提供商连接
+    node dist/cli.js test # 测试所有提供商
+    node dist/cli.js test <provider_name> # 测试特定提供商
+    ```
+
+**注意**：在开发过程中，修改代码后需要重新 `npm run build`，然后使用 `ccr restart` 重启服务以应用更改。
+
+### 使用 npm link 进行本地调试
+
+当你从源码开发并希望在全局以 `ccr` 命令直接调用当前工作副本时，可使用 `npm link`：
+
+```bash
+# 在项目根目录执行，创建全局链接
+npm link
+
+# 验证已链接的全局命令
+ccr --version
+
+# 启动/重启/UI（使用当前源码构建的版本）
+ccr start
+ccr restart
+ccr ui
+```
+
+取消链接并恢复到发布版：
+
+```bash
+# 取消全局链接
+npm unlink -g @musistudio/claude-code-router
+
+# 安装 NPM 发布版本
+npm i -g @musistudio/claude-code-router
+```
+
+提示：若遇到权限问题，请在有管理员/sudo 权限的终端执行；源码更新后需 `npm run build` 再使用。
 
 ### 1. 安装
 
