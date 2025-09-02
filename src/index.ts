@@ -8,7 +8,7 @@ import { initConfig, initDir, cleanupLogFiles } from "./utils";
 import { createServer } from "./server";
 import { router } from "./utils/router";
 import { apiKeyAuth } from "./middleware/auth";
-import "./middleware/tracking";
+import { trackingStartMiddleware, trackingEndMiddleware } from "./middleware/tracking";
 
 // --- Integration Imports ---
 // Rate limiting and execution control handled by individual providers
@@ -177,6 +177,10 @@ async function run(options: RunOptions = {}) {
     logger: loggerConfig,
   });
 
+  // Add tracking middleware
+  server.addHook("preHandler", trackingStartMiddleware);
+  server.addHook("onSend", trackingEndMiddleware);
+
   // Route handler for model selection
   server.addHook("preHandler", async (req: any, reply: any) => {
     if (!req.url.startsWith("/v1/messages")) {
@@ -299,6 +303,37 @@ async function run(options: RunOptions = {}) {
         return reply;
       } catch (error: any) {
         console.error('Error in mission control endpoint:', error);
+        reply.code(500).send({ error: { type: 'internal_server_error', message: error.message } });
+        return reply;
+      }
+    }
+    
+    // NOU: Mission Control v2 - Endpoint pentru activitatea în timp real
+    if (req.url === "/api/v1/mission-control/live-activity") {
+      try {
+        const { analytics } = await import('./utils/analytics');
+        const recentRequests = analytics.getRecentRequests(50);
+        
+        // Transformă datele pentru a se potrivi cu interfața Activity din frontend
+        const activityData = recentRequests.map((req: any) => ({
+          id: req.id,
+          type: req.statusCode >= 200 && req.statusCode < 300 ? 'success' : 
+               req.statusCode >= 400 ? 'error' : 'warning',
+          message: req.error || (req.statusCode >= 200 && req.statusCode < 300 ? 'Request successful' : 'Request failed'),
+          timestamp: req.timestamp,
+          model: req.model, // Modelul real este în req.model după rutare
+          provider: req.provider,
+          responseTime: req.responseTime,
+          tokens: req.tokenCount || 0, // Asigură-te că tokenii sunt trimiși
+          route: req.route || 'default',
+          originalModel: req.originalModel || req.model, // Modelul original
+          actualModel: req.model // Modelul real este în req.model după rutare
+        }));
+        
+        reply.send(activityData);
+        return reply;
+      } catch (error: any) {
+        console.error('Error in live activity endpoint:', error);
         reply.code(500).send({ error: { type: 'internal_server_error', message: error.message } });
         return reply;
       }
@@ -716,28 +751,13 @@ async function run(options: RunOptions = {}) {
     }
   });
   
-  server.addHook("onResponse", async (req: any, reply: any) => {
+  server.addHook("onResponse", async (req: any, _reply: any) => {
     if (req.url.startsWith("/v1/") && req.startTime) {
       const responseTime = Date.now() - req.startTime;
       console.log(`[DEBUG] onResponse hook called for: ${req.url}, response time: ${responseTime}ms`);
       
-      try {
-        const { analytics } = await import('./utils/analytics');
-        analytics.trackRequest({
-          model: req.selectedModel || req.body?.model || 'unknown',
-          provider: req.selectedProvider || 'unknown',
-          endpoint: req.url, method: req.method, statusCode: reply.statusCode,
-          responseTime, tokenCount: req.tokenCount || 0,
-          inputTokens: req.inputTokens || 0, outputTokens: req.outputTokens || 0,
-          cost: 0, userAgent: req.headers['user-agent'], ipAddress: req.ip,
-          // Route tracking information
-          route: req.routeUsed || 'unknown',
-          originalModel: req.originalModel || 'unknown',
-          actualModel: req.actualModel || req.selectedModel || req.body?.model || 'unknown'
-        });
-      } catch (error: any) {
-        console.error('Analytics tracking error:', error.message);
-      }
+      // Tracking is now handled by the tracking middleware to avoid duplicates
+      // The trackingEndMiddleware in middleware/tracking.ts handles all analytics
     }
   });
   

@@ -217,9 +217,9 @@ export async function missionControlRoutes(fastify: FastifyInstance) {
       const activities = recentRequests.map((req: any) => ({
         id: `req-${req.id || Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         type: (req.statusCode >= 200 && req.statusCode < 300) ? 'success' : 'error',
-        message: `${req.model} request ${(req.statusCode >= 200 && req.statusCode < 300) ? 'completed' : 'failed'} (${req.responseTime}ms)`,
+        message: `${req.actualModel || req.model} request ${(req.statusCode >= 200 && req.statusCode < 300) ? 'completed' : 'failed'} (${req.responseTime}ms)`,
         timestamp: req.timestamp || new Date().toISOString(),
-        model: req.model,
+        model: req.actualModel || req.model,
         provider: req.provider,
         responseTime: req.responseTime,
         tokens: req.tokenCount || 0,

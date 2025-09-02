@@ -5,10 +5,7 @@ import { DASHBOARD_CONFIG, DASHBOARD_FEATURES } from '@/config/dashboard';
 import { OverviewTab } from './tabs/OverviewTab';
 import { MissionControlTab } from './tabs/MissionControlTab';
 import { ModelsTab } from './tabs/ModelsTab';
-import { TrackingTab } from './tabs/TrackingTab';
-
 import { ToolsTab } from './tabs/ToolsTab';
-import { SystemTab } from './tabs/SystemTab';
 import '@/styles/dashboard.css';
 import '@/styles/widget-enhancements.css';
 
@@ -41,12 +38,10 @@ export function Dashboard({
         return DASHBOARD_FEATURES.missionControl ? <MissionControlTab /> : <OverviewTab />;
       case 'models':
         return <ModelsTab />;
-      case 'tracking':
-        return <TrackingTab />;
+     
       case 'tools':
         return <ToolsTab />;
-      case 'system':
-        return <SystemTab />;
+      
       default:
         return <OverviewTab />;
     }

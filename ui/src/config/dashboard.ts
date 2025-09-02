@@ -6,9 +6,7 @@ export const DASHBOARD_CONFIG = {
     { id: 'overview', label: 'Overview', icon: 'tachometer-alt' },
     { id: 'mission-control', label: 'Mission Control v2', icon: 'satellite-dish' },
     { id: 'models', label: 'Model Manager', icon: 'robot' },
-    { id: 'tracking', label: 'Request Tracking', icon: 'chart-line' },
-    { id: 'tools', label: 'Tool Integration', icon: 'tools' },
-    { id: 'system', label: 'System Health', icon: 'server' }
+    { id: 'tools', label: 'Tool Integration', icon: 'tools' }
   ]
 };
 

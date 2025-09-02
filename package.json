@@ -31,6 +31,7 @@
     "node-fetch": "^2.7.0",
     "openurl": "^1.1.1",
     "pino-rotating-file-stream": "^0.0.2",
+    "recharts": "^3.1.2",
     "tiktoken": "^1.0.21",
     "ts-node": "^10.9.2",
     "uuid": "^11.1.0"
