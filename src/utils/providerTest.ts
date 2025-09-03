@@ -269,8 +269,15 @@ async function testApiKeyProvider(provider: any, config: any) {
         ]);
       } catch (getErr) {
         // If GET fails, try a simple POST with minimal data
+        // For OpenAI-compatible APIs, send a proper chat completion request
+        const testPayload = testUrl.includes("/chat/completions") ? {
+          "model": provider.models && provider.models.length > 0 ? provider.models[0] : "test",
+          "messages": [{"role": "user", "content": "test"}],
+          "max_tokens": 1
+        } : {};
+        
         testResponse = await Promise.race([
-          axios.post(testUrl, {}, {
+          axios.post(testUrl, testPayload, {
             headers: {
               "Authorization": `Bearer ${provider.api_key}`,
               "Content-Type": "application/json"

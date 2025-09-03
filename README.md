@@ -319,6 +319,7 @@ Transformers allow you to modify the request and response payloads to ensure com
 - `enhancetool`: Adds a layer of error tolerance to the tool call parameters returned by the LLM (this will cause the tool call information to no longer be streamed).
 - `cleancache`: Clears the `cache_control` field from requests.
 - `vertex-gemini`: Handles the Gemini API using Vertex authentication.
+- `chutes-glm` Unofficial support for GLM 4.5 model via Chutes [chutes-glm-transformer.js](https://gist.github.com/vitobotta/2be3f33722e05e8d4f9d2b0138b8c863).
 - `qwen-cli` (experimental): Unofficial support for qwen3-coder-plus model via Qwen CLI [qwen-cli.js](https://gist.github.com/musistudio/f5a67841ced39912fd99e42200d5ca8b).
 - `rovo-cli` (experimental): Unofficial support for gpt-5 via Atlassian Rovo Dev CLI [rovo-cli.js](https://gist.github.com/SaseQ/c2a20a38b11276537ec5332d1f7a5e53).
 
@@ -544,7 +545,7 @@ A huge thank you to all our sponsors for their generous support!
 - @b\*g
 - @\*亿
 - @\*辉
-- @JACK 
+- @JACK
 - @\*光
 - @W\*l
 - [@kesku](https://github.com/kesku)
@@ -562,5 +563,9 @@ A huge thank you to all our sponsors for their generous support!
 - [@qierkang](http://github.com/qierkang)
 - @\*军
 - [@snrise-z](http://github.com/snrise-z)
+- @\*王
+- [@greatheart1000](http://github.com/greatheart1000)
+- @\*王
+- @zcutlip
 
 (If your name is masked, please contact me via my homepage email to update it with your GitHub username.)

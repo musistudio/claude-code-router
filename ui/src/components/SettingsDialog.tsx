@@ -212,6 +212,21 @@ export function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogProps) {
               className="transition-all-ease focus:scale-[1.01]"
             />
           </div>
+          <div className="space-y-2">
+            <Label
+              htmlFor="custom-router-path"
+              className="transition-all-ease hover:scale-[1.01] cursor-pointer"
+            >
+              {t("toplevel.custom_router_path")}
+            </Label>
+            <Input
+              id="custom-router-path"
+              value={config.CUSTOM_ROUTER_PATH || ""}
+              onChange={(e) => setConfig({ ...config, CUSTOM_ROUTER_PATH: e.target.value })}
+              placeholder={t("toplevel.custom_router_path_placeholder")}
+              className="transition-all-ease focus:scale-[1.01]"
+            />
+          </div>
         </div>
         <DialogFooter className="p-4 pt-0">
           <Button

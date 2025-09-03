@@ -62,6 +62,7 @@ export interface Config {
   APIKEY: string;
   API_TIMEOUT_MS: string;
   PROXY_URL: string;
+  CUSTOM_ROUTER_PATH?: string;
 }
 
 export type AccessLevel = 'restricted' | 'full';
