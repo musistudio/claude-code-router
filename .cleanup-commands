@@ -1,0 +1,21 @@
+# 🧹 CLEANUP QUICK REFERENCE
+# ExecutionGuard Integration - Final Cleanup Commands
+
+# ⚠️  ONLY RUN AFTER ExecutionGuard integration is 100% complete!
+
+# 1. Test readiness (22 validations)
+./scripts/test-cleanup-readiness.sh
+
+# 2. Update imports to ExecutionGuard
+./scripts/prepare-cleanup-imports.sh
+
+# 3. Clean deletion (MAIN CLEANUP)
+./scripts/cleanup-consolidated-files.sh
+
+# 🚨 Emergency rollback (if needed)
+# ./scripts/rollback-from-cleanup.sh /path/to/backup-YYYYMMDD-HHMMSS
+
+# 📚 Full documentation:
+# - FINAL_CLEANUP_PROCEDURE.md
+# - scripts/README-CLEANUP.md
+# - CLEANUP_STATUS.md
