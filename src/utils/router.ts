@@ -162,7 +162,18 @@ export const router = async (req: any, _res: any, config: any) => {
       try {
         const customRouter = require(config.CUSTOM_ROUTER_PATH);
         req.tokenCount = tokenCount; // Pass token count to custom router
-        model = await customRouter(req, config);
+        
+        // Check if custom router supports result callback
+        if (typeof customRouter === 'function') {
+          model = await customRouter(req, config);
+        } else if (customRouter && typeof customRouter.selectModel === 'function') {
+          // New API: Custom router with result callback support
+          model = await customRouter.selectModel(req, config);
+          // Save callback function for later invocation
+          if (typeof customRouter.handleResult === 'function') {
+            req.customRouterHandleResult = customRouter.handleResult;
+          }
+        }
       } catch (e: any) {
         log("failed to load custom router", e.message);
       }
@@ -176,4 +187,35 @@ export const router = async (req: any, _res: any, config: any) => {
     req.body.model = config.Router!.default;
   }
   return;
+};
+
+/**
+ * Callback function to handle request results
+ * @param req Request object
+ * @param config Configuration object
+ * @param result Request result (including error information)
+ */
+export const handleRequestResult = async (req: any, config: any, result: any) => {
+  try {
+    // If custom router provides a result handling function, call it
+    if (req.customRouterHandleResult) {
+      await req.customRouterHandleResult(req, config, result);
+      return;
+    }
+    
+    // If using old API custom router, try to call it
+    if (config.CUSTOM_ROUTER_PATH) {
+      try {
+        const customRouter = require(config.CUSTOM_ROUTER_PATH);
+        if (typeof customRouter === 'function' && customRouter.length > 2) {
+          // Assume the third parameter is the result handling function
+          await customRouter(req, config, result);
+        }
+      } catch (e: any) {
+        log("failed to call custom router result handler", e.message);
+      }
+    }
+  } catch (error: any) {
+    log("Error in handleRequestResult:", error.message);
+  }
 };
