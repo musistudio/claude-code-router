@@ -574,3 +574,33 @@ A huge thank you to all our sponsors for their generous support!
 
 
 (If your name is masked, please contact me via my homepage email to update it with your GitHub username.)
+
+## 🔧 Development Tools
+
+### Dead Code Detection & Cleanup
+
+For maintaining a clean codebase, this repository includes automated dead code detection:
+
+```bash
+# Run dead code analysis
+./dead-code-detector.sh
+
+# View detailed analysis report
+cat DEAD-CODE-ANALYSIS.md
+
+# Migration guide for updates
+cat MIGRATION-GUIDE.md
+```
+
+**Features:**
+- 🔍 **Automated detection** of unused files and functions
+- 📊 **Size analysis** and cleanup recommendations  
+- 🛡️ **Safe cleanup** with automatic backup creation
+- 📋 **Detailed reports** with actionable recommendations
+- 🧪 **Build testing** after cleanup operations
+
+**Typical cleanup results:**
+- Removes experimental scripts and backup files
+- Identifies unused imports and dead functions
+- Cleans up temporary and accidental files
+- Provides migration guides for future updates
