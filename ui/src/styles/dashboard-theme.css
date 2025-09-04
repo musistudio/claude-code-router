@@ -1,0 +1,231 @@
+/* Dashboard Theme Adapter - Bridge between dashboard glassmorphism and standard UI components */
+
+/* Dashboard Context Class - Applied to dashboard wrapper */
+.dashboard-context {
+  /* Override Tailwind theme variables for dashboard context */
+  --background: linear-gradient(135deg, #2a2a3e 0%, #26314e 50%, #1f4470 100%);
+  --foreground: #ffffff;
+  --card: rgba(255, 255, 255, 0.1);
+  --card-foreground: #ffffff;
+  --popover: rgba(255, 255, 255, 0.1);
+  --popover-foreground: #ffffff;
+  --primary: #e94560;
+  --primary-foreground: #ffffff;
+  --secondary: rgba(255, 255, 255, 0.2);
+  --secondary-foreground: #ffffff;
+  --muted: rgba(255, 255, 255, 0.1);
+  --muted-foreground: #94a3b8;
+  --accent: rgba(255, 255, 255, 0.15);
+  --accent-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.2);
+  --input: rgba(255, 255, 255, 0.15);
+  --ring: #e94560;
+}
+
+/* Dashboard Background Override */
+.dashboard-context body,
+.dashboard-context .dashboard-bg {
+  background: linear-gradient(135deg, #2a2a3e 0%, #26314e 50%, #1f4470 100%) !important;
+  min-height: 100vh;
+}
+
+/* Adapt standard UI components to glassmorphism when in dashboard context */
+.dashboard-context .glass-card,
+.dashboard-context [class*="bg-card"],
+.dashboard-context [class*="bg-popover"] {
+  background: rgba(255, 255, 255, 0.1) !important;
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+/* Button adaptations for dashboard */
+.dashboard-context button,
+.dashboard-context [role="button"] {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  transition: all 0.3s ease;
+}
+
+.dashboard-context button:hover,
+.dashboard-context [role="button"]:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(233, 69, 96, 0.3);
+}
+
+/* Primary buttons */
+.dashboard-context button[class*="primary"],
+.dashboard-context .bg-primary {
+  background: linear-gradient(45deg, #e94560, #ff6b9d) !important;
+  border: none;
+}
+
+.dashboard-context button[class*="primary"]:hover,
+.dashboard-context .bg-primary:hover {
+  background: linear-gradient(45deg, #ff6b9d, #e94560) !important;
+  box-shadow: 0 6px 20px rgba(233, 69, 96, 0.4);
+}
+
+/* Destructive buttons */
+.dashboard-context button[class*="destructive"],
+.dashboard-context .bg-destructive {
+  background: linear-gradient(45deg, #ef4444, #dc2626) !important;
+}
+
+.dashboard-context button[class*="destructive"]:hover {
+  background: linear-gradient(45deg, #dc2626, #b91c1c) !important;
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+}
+
+/* Input fields adaptation */
+.dashboard-context input,
+.dashboard-context select,
+.dashboard-context textarea {
+  background: rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  border-radius: 10px;
+  backdrop-filter: blur(10px);
+}
+
+.dashboard-context input:focus,
+.dashboard-context select:focus,
+.dashboard-context textarea:focus {
+  border-color: #e94560;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(233, 69, 96, 0.3);
+}
+
+.dashboard-context input::placeholder {
+  color: #94a3b8;
+}
+
+/* Badge adaptations */
+.dashboard-context .badge,
+.dashboard-context [class*="bg-green"],
+.dashboard-context [class*="bg-red"],
+.dashboard-context [class*="bg-yellow"],
+.dashboard-context [class*="bg-blue"] {
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Success elements */
+.dashboard-context [class*="bg-green"],
+.dashboard-context [class*="text-green"] {
+  background: rgba(74, 222, 128, 0.2) !important;
+  color: #4ade80 !important;
+  border-color: rgba(74, 222, 128, 0.3);
+}
+
+/* Error elements */
+.dashboard-context [class*="bg-red"],
+.dashboard-context [class*="text-red"] {
+  background: rgba(239, 68, 68, 0.2) !important;
+  color: #ef4444 !important;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* Warning elements */
+.dashboard-context [class*="bg-yellow"],
+.dashboard-context [class*="text-yellow"] {
+  background: rgba(251, 191, 36, 0.2) !important;
+  color: #fbbf24 !important;
+  border-color: rgba(251, 191, 36, 0.3);
+}
+
+/* Info elements */
+.dashboard-context [class*="bg-blue"],
+.dashboard-context [class*="text-blue"] {
+  background: rgba(59, 130, 246, 0.2) !important;
+  color: #3b82f6 !important;
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+/* Table adaptations */
+.dashboard-context table {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border-radius: 15px;
+  overflow: hidden;
+}
+
+.dashboard-context thead {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.dashboard-context tbody tr {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.dashboard-context tbody tr:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Dialog/Modal adaptations */
+.dashboard-context [role="dialog"],
+.dashboard-context .dialog-content {
+  background: rgba(42, 42, 62, 0.95) !important;
+  backdrop-filter: blur(30px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+/* Dropdown/Select adaptations */
+.dashboard-context [role="listbox"],
+.dashboard-context [role="menu"],
+.dashboard-context .dropdown-content {
+  background: rgba(42, 42, 62, 0.95) !important;
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 15px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+.dashboard-context [role="option"]:hover,
+.dashboard-context [role="menuitem"]:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Text color overrides for visibility */
+.dashboard-context h1,
+.dashboard-context h2,
+.dashboard-context h3,
+.dashboard-context h4,
+.dashboard-context h5,
+.dashboard-context h6 {
+  color: #ffffff !important;
+}
+
+.dashboard-context p,
+.dashboard-context span:not([class*="text-"]) {
+  color: #ffffff;
+}
+
+.dashboard-context [class*="text-gray"] {
+  color: #94a3b8 !important;
+}
+
+/* Animation enhancements */
+.dashboard-context * {
+  transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .dashboard-context .glass-card {
+    padding: 20px;
+    border-radius: 15px;
+  }
+  
+  .dashboard-context button {
+    padding: 12px 20px;
+  }
+}

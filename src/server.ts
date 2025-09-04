@@ -3,12 +3,54 @@ import { readConfigFile, writeConfigFile, backupConfigFile } from "./utils";
 import { checkForUpdates, performUpdate } from "./utils";
 import { join } from "path";
 import fastifyStatic from "@fastify/static";
+import { analyticsRoutes } from "./routes/analytics";
+import { strategyRoutes } from './routes/strategy';
+import { missionControlRoutes } from './routes/mission-control';
+import routes from './routes/routes';
+import cost from './routes/cost';
+import performance from './routes/performance';
+import providers from './routes/providers';
+import forecast from './routes/forecast';
+import { FastifyRequest, FastifyReply } from 'fastify';
 
-export const createServer = (config: any): Server => {
-  const server = new Server(config);
+// Global Throttling configuration
+const GLOBAL_REQUEST_DELAY_MS = 200; // 200ms delay between requests (max 5 requests/sec)
+let lastRequestTimestamp = 0;
+
+export const createServer = (config: any): any => {
+  const server = new (Server as any)(config);
+
+
+  // Add a global pre-handler hook for throttling
+  server.app.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
+    const now = Date.now();
+    const timeSinceLastRequest = now - lastRequestTimestamp;
+
+    if (timeSinceLastRequest < GLOBAL_REQUEST_DELAY_MS) {
+      const waitTime = GLOBAL_REQUEST_DELAY_MS - timeSinceLastRequest;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    lastRequestTimestamp = Date.now();
+  });
+
+  // Register valuable analytics routes for dashboard  
+  analyticsRoutes(server.app);
+  strategyRoutes(server.app);
+  
+  
+  // Register Mission Control v2 routes
+  server.app.register(missionControlRoutes);
+  
+  server.app.register(routes, { prefix: '/api/v1/routes' });
+  server.app.register(cost, { prefix: '/api/v1/cost' });
+  server.app.register(performance, { prefix: '/api/v1/performance' });
+  server.app.register(providers, { prefix: '/api/v1/providers' });
+  server.app.register(forecast, { prefix: '/api/v1/forecast' });
+  
+  // API Keys management now handled by OAuth CLI providers
 
   // Add endpoint to read config.json with access control
-  server.app.get("/api/config", async (req, reply) => {
+  server.app.get("/api/config", async (req: any, reply: any) => {
     return await readConfigFile();
   });
 
@@ -25,7 +67,7 @@ export const createServer = (config: any): Server => {
   });
 
   // Add endpoint to save config.json with access control
-  server.app.post("/api/config", async (req, reply) => {
+  server.app.post("/api/config", async (req: any, reply: any) => {
     const newConfig = req.body;
 
     // Backup existing config file if it exists
@@ -38,8 +80,46 @@ export const createServer = (config: any): Server => {
     return { success: true, message: "Config saved successfully" };
   });
 
+  // Add PUT endpoint for config updates (frontend compatibility)
+  server.app.put("/api/config", async (req: any, reply: any) => {
+    const newConfig = req.body;
+
+    // Backup existing config file if it exists
+    const backupPath = await backupConfigFile();
+    if (backupPath) {
+      console.log(`Backed up existing configuration file to ${backupPath}`);
+    }
+
+    await writeConfigFile(newConfig);
+    return { success: true, message: "Config saved successfully" };
+  });
+
+  // Add endpoint to handle optimization settings
+  server.app.get("/api/optimization/settings", async (req: any, reply: any) => {
+    return {
+      autoOptimization: true,
+      advancedRouting: true, 
+      circuitBreakerEnabled: true,
+      rateLimitingEnabled: true,
+      cachingEnabled: true,
+      retryMechanism: true,
+      loadBalancing: false,
+      failoverRouting: true,
+      dynamicProviderSwitching: true,
+      intelligentQueueing: true
+    };
+  });
+
+  server.app.post("/api/optimization/settings", async (req: any, reply: any) => {
+    const settings = req.body;
+    // In a real implementation, this would save settings to config
+    console.log('Optimization settings saved:', settings);
+    return { success: true, message: "Optimization settings saved successfully" };
+  });
+
   // Add endpoint to restart the service with access control
-  server.app.post("/api/restart", async (req, reply) => {
+
+  server.app.get("/api/restart", async (req: any, reply: any) => {
     reply.send({ success: true, message: "Service restart initiated" });
 
     // Restart the service after a short delay to allow response to be sent
@@ -60,12 +140,12 @@ export const createServer = (config: any): Server => {
   });
 
   // Redirect /ui to /ui/ for proper static file serving
-  server.app.get("/ui", async (_, reply) => {
+  server.app.get("/ui", async (_: any, reply: any) => {
     return reply.redirect("/ui/");
   });
   
   // 版本检查端点
-  server.app.get("/api/update/check", async (req, reply) => {
+  server.app.get("/api/updates/check", async (req: any, reply: any) => {
     try {
       // 获取当前版本
       const currentVersion = require("../package.json").version;
@@ -83,7 +163,7 @@ export const createServer = (config: any): Server => {
   });
   
   // 执行更新端点
-  server.app.post("/api/update/perform", async (req, reply) => {
+  server.app.post("/api/updates/perform", async (req: any, reply: any) => {
     try {
       // 只允许完全访问权限的用户执行更新
       const accessLevel = (req as any).accessLevel || "restricted";

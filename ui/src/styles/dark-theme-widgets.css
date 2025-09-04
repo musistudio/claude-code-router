@@ -1,0 +1,831 @@
+/* Dark Theme Widgets - Enhanced styling for all 7 new widgets to align with the dark dashboard theme */
+
+/* ====================== */
+/* BASE WIDGET STYLING */
+/* ====================== */
+
+.widget-container {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  transition: all 0.3s ease;
+  color: #ffffff;
+}
+
+.widget-container:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.widget-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.widget-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+}
+
+.widget-content {
+  padding: 24px;
+}
+
+.widget-footer {
+  padding: 16px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* ====================== */
+/* STATUS COLORS - DARK THEME */
+/* ====================== */
+
+/* Success Status - Green on dark background */
+.bg-status-success-dark { 
+  background: rgba(74, 222, 128, 0.2); 
+  color: #4ade80; 
+  border-color: rgba(74, 222, 128, 0.3);
+}
+
+.text-status-success-dark { 
+  color: #4ade80;
+}
+
+/* Warning Status - Yellow/amber on dark background */
+.bg-status-warning-dark { 
+  background: rgba(251, 191, 36, 0.2); 
+  color: #fbbf24; 
+  border-color: rgba(251, 191, 36, 0.3);
+}
+
+.text-status-warning-dark { 
+  color: #fbbf24;
+}
+
+/* Error Status - Red on dark background */
+.bg-status-error-dark { 
+  background: rgba(239, 68, 68, 0.2); 
+  color: #ef4444; 
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.text-status-error-dark { 
+  color: #ef4444;
+}
+
+/* Info Status - Blue on dark background */
+.bg-status-info-dark { 
+  background: rgba(59, 130, 246, 0.2); 
+  color: #3b82f6; 
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.text-status-info-dark { 
+  color: #3b82f6;
+}
+
+/* Critical Status - Deep Red on dark background */
+.bg-status-critical-dark { 
+  background: rgba(185, 28, 28, 0.3); 
+  color: #b91c1c; 
+  border-color: rgba(185, 28, 28, 0.4);
+}
+
+.text-status-critical-dark { 
+  color: #b91c1c;
+}
+
+/* ====================== */
+/* TEXT ON DARK BACKGROUNDS */
+/* ====================== */
+
+.text-on-dark-bg { 
+  color: #ffffff; 
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.text-on-dark-secondary {
+  color: #94a3b8;
+}
+
+.text-on-dark-muted {
+  color: #64748b;
+}
+
+/* ====================== */
+/* ACTION BUTTONS - DARK THEME */
+/* ====================== */
+
+.action-button-dark {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-weight: 500;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  backdrop-filter: blur(10px);
+}
+
+.action-button-dark:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.action-button-dark:focus {
+  outline: 2px solid #e94560;
+  outline-offset: 2px;
+}
+
+/* Primary Action - Pink/Red */
+.action-button-dark.primary {
+  background: linear-gradient(45deg, #e94560, #ff6b9d);
+  border: none;
+  color: #ffffff;
+}
+
+.action-button-dark.primary:hover {
+  background: linear-gradient(45deg, #ff6b9d, #e94560);
+  box-shadow: 0 6px 20px rgba(233, 69, 96, 0.4);
+}
+
+/* Secondary Action - Transparent with border */
+.action-button-dark.secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.action-button-dark.secondary:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Warning Action - Yellow */
+.action-button-dark.warning {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.action-button-dark.warning:hover {
+  background: rgba(251, 191, 36, 0.3);
+  border-color: rgba(251, 191, 36, 0.4);
+}
+
+/* Danger Action - Red */
+.action-button-dark.danger {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.action-button-dark.danger:hover {
+  background: rgba(239, 68, 68, 0.3);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+/* Success Action - Green */
+.action-button-dark.success {
+  background: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+  border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
+.action-button-dark.success:hover {
+  background: rgba(74, 222, 128, 0.3);
+  border-color: rgba(74, 222, 128, 0.4);
+}
+
+/* Disabled state */
+.action-button-dark:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+  background: rgba(255, 255, 255, 0.05);
+  color: #94a3b8;
+}
+
+/* Loading state */
+.action-button-dark.loading {
+  position: relative;
+  color: transparent;
+}
+
+.action-button-dark.loading::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  top: 50%;
+  left: 50%;
+  margin-left: -8px;
+  margin-top: -8px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  border-top-color: transparent;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Small button */
+.action-button-dark.small {
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+/* Large button */
+.action-button-dark.large {
+  padding: 12px 24px;
+  font-size: 16px;
+}
+
+/* ====================== */
+/* MODAL WINDOWS - DARK THEME */
+/* ====================== */
+
+.modal-overlay-dark {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.modal-window-dark {
+  background: rgba(42, 42, 62, 0.95);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(30px);
+}
+
+.modal-header-dark {
+  padding: 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.modal-title-dark {
+  font-size: 20px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.modal-body-dark {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+  color: #ffffff;
+}
+
+.modal-footer-dark {
+  padding: 16px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.2);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* Modal close button */
+.modal-close-dark {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.modal-close-dark:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+/* ====================== */
+/* STATUS INDICATORS - DARK THEME */
+/* ====================== */
+
+.status-indicator-dark {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.status-indicator-dark.success {
+  background: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+  border-color: rgba(74, 222, 128, 0.3);
+}
+
+.status-indicator-dark.warning {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.3);
+}
+
+.status-indicator-dark.error {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.status-indicator-dark.info {
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.status-indicator-dark.critical {
+  background: rgba(185, 28, 28, 0.3);
+  color: #b91c1c;
+  border-color: rgba(185, 28, 28, 0.4);
+}
+
+/* Status dots */
+.status-dot-dark {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot-dark.success {
+  background: #4ade80;
+  box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.3);
+}
+
+.status-dot-dark.warning {
+  background: #fbbf24;
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.3);
+}
+
+.status-dot-dark.error {
+  background: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.3);
+}
+
+.status-dot-dark.info {
+  background: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
+.status-dot-dark.critical {
+  background: #b91c1c;
+  box-shadow: 0 0 0 2px rgba(185, 28, 28, 0.4);
+}
+
+/* ====================== */
+/* MINI LOGS - DARK THEME */
+/* ====================== */
+
+.mini-logs-dark {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.mini-log-entry-dark {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border-left: 3px solid;
+  background: rgba(0, 0, 0, 0.2);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mini-log-entry-dark.success {
+  border-left-color: #4ade80;
+}
+
+.mini-log-entry-dark.error {
+  border-left-color: #ef4444;
+}
+
+.mini-log-entry-dark.warning {
+  border-left-color: #fbbf24;
+}
+
+.mini-log-entry-dark.info {
+  border-left-color: #3b82f6;
+}
+
+.mini-log-content-dark {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.mini-log-timestamp-dark {
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.mini-log-status-dark {
+  font-weight: 500;
+}
+
+.mini-log-status-dark.success {
+  color: #4ade80;
+}
+
+.mini-log-status-dark.error {
+  color: #ef4444;
+}
+
+.mini-log-status-dark.warning {
+  color: #fbbf24;
+}
+
+.mini-log-status-dark.info {
+  color: #3b82f6;
+}
+
+/* ====================== */
+/* STATS CARDS - DARK THEME */
+/* ====================== */
+
+.stats-card-dark {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+.stats-card-dark:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.stats-card-header-dark {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.stats-card-title-dark {
+  font-size: 12px;
+  font-weight: 500;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stats-card-value-dark {
+  font-size: 28px;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1;
+}
+
+.stats-card-change-dark {
+  font-size: 12px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stats-card-change-dark.positive {
+  color: #4ade80;
+}
+
+.stats-card-change-dark.negative {
+  color: #ef4444;
+}
+
+.stats-card-change-dark.neutral {
+  color: #94a3b8;
+}
+
+/* ====================== */
+/* PROGRESS BARS - DARK THEME */
+/* ====================== */
+
+.progress-bar-dark {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill-dark {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progress-fill-dark.success {
+  background: #4ade80;
+}
+
+.progress-fill-dark.warning {
+  background: #fbbf24;
+}
+
+.progress-fill-dark.error {
+  background: #ef4444;
+}
+
+.progress-fill-dark.info {
+  background: #3b82f6;
+}
+
+/* ====================== */
+/* BADGES - DARK THEME */
+/* ====================== */
+
+.badge-dark {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.badge-dark-success {
+  background: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+  border-color: rgba(74, 222, 128, 0.3);
+}
+
+.badge-dark-warning {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.3);
+}
+
+.badge-dark-error {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.badge-dark-info {
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.badge-dark-critical {
+  background: rgba(185, 28, 28, 0.3);
+  color: #b91c1c;
+  border-color: rgba(185, 28, 28, 0.4);
+}
+
+/* ====================== */
+/* TABLES - DARK THEME */
+/* ====================== */
+
+.table-dark {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.table-dark th {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  color: #94a3b8;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.table-dark td {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+  font-size: 14px;
+}
+
+.table-dark tr:last-child td {
+  border-bottom: none;
+}
+
+.table-dark tr:hover td {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ====================== */
+/* INPUTS - DARK THEME */
+/* ====================== */
+
+.input-dark {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(10px);
+}
+
+.input-dark:focus {
+  border-color: #e94560;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(233, 69, 96, 0.3);
+}
+
+.input-dark::placeholder {
+  color: #94a3b8;
+}
+
+.select-dark {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(10px);
+}
+
+.select-dark:focus {
+  border-color: #e94560;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(233, 69, 96, 0.3);
+}
+
+/* ====================== */
+/* TOGGLES - DARK THEME */
+/* ====================== */
+
+.toggle-switch-dark {
+  position: relative;
+  width: 50px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.toggle-switch-dark.active {
+  background: linear-gradient(45deg, #4ade80, #22c55e);
+  border-color: rgba(74, 222, 128, 0.4);
+}
+
+.toggle-switch-dark::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  background: #ffffff;
+  border-radius: 50%;
+  transition: transform 0.3s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.toggle-switch-dark.active::before {
+  transform: translateX(26px);
+}
+
+/* ====================== */
+/* ANIMATIONS */
+/* ====================== */
+
+@keyframes fadeInDark {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInDark {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulseDark {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.animate-fade-in-dark {
+  animation: fadeInDark 0.3s ease-out;
+}
+
+.animate-slide-in-dark {
+  animation: slideInDark 0.3s ease-out;
+}
+
+.animate-pulse-dark {
+  animation: pulseDark 2s infinite;
+}
+
+/* ====================== */
+/* RESPONSIVE ENHANCEMENTS */
+/* ====================== */
+
+@media (max-width: 768px) {
+  .action-button-dark {
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+  
+  .stats-card-dark {
+    padding: 16px;
+  }
+  
+  .stats-card-value-dark {
+    font-size: 24px;
+  }
+  
+  .modal-window-dark {
+    margin: 16px;
+    max-width: calc(100vw - 32px);
+  }
+  
+  .widget-header,
+  .widget-content,
+  .widget-footer {
+    padding: 16px;
+  }
+  
+  .widget-title {
+    font-size: 1.1rem;
+  }
+}

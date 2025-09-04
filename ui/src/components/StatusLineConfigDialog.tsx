@@ -597,9 +597,11 @@ export function StatusLineConfigDialog({
 
     if (!validationResult.isValid) {
       // 格式化错误信息
-      const errorMessages = validationResult.errors.map((error) =>
-        formatValidationError(error, t)
-      );
+      const errorMessages = (validationResult.errors && Array.isArray(validationResult.errors))
+        ? validationResult.errors.map((error) =>
+            formatValidationError(error, t)
+          )
+        : ['Unknown validation error'];
       setValidationErrors(errorMessages);
       return;
     }

@@ -1,8 +1,4 @@
 {
-  "common": {
-    "yes": "是",
-    "no": "否"
-  },
   "app": {
     "title": "Claude Code Router",
     "save": "保存",
@@ -46,9 +42,7 @@
     "port": "端口",
     "apikey": "API 密钥",
     "timeout": "API 超时时间 (毫秒)",
-    "proxy_url": "代理地址",
-    "custom_router_path": "自定义路由脚本路径",
-    "custom_router_path_placeholder": "输入自定义路由脚本文件的绝对路径"
+    "proxy_url": "代理地址"
   },
   "transformers": {
     "title": "自定义转换器",
@@ -111,8 +105,6 @@
     "longContext": "长上下文",
     "longContextThreshold": "上下文阈值",
     "webSearch": "网络搜索",
-    "image": "图像",
-    "forceUseImageAgent": "强制使用图像代理",
     "selectModel": "选择一个模型...",
     "searchModel": "搜索模型...",
     "noModelFound": "未找到模型."

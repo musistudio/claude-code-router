@@ -9,6 +9,9 @@ export interface Provider {
   api_key: string;
   models: string[];
   transformer?: ProviderTransformer;
+  useCustomProvider?: boolean;
+  priority?: number;
+  description?: string;
 }
 
 export interface RouterConfig {
@@ -18,7 +21,6 @@ export interface RouterConfig {
     longContext: string;
     longContextThreshold: number;
     webSearch: string;
-    image: string;
     custom?: any;
 }
 
@@ -54,7 +56,6 @@ export interface Config {
   Router: RouterConfig;
   transformers: Transformer[];
   StatusLine?: StatusLineConfig;
-  forceUseImageAgent?: boolean;
   // Top-level settings
   LOG: boolean;
   LOG_LEVEL: string;
@@ -64,7 +65,6 @@ export interface Config {
   APIKEY: string;
   API_TIMEOUT_MS: string;
   PROXY_URL: string;
-  CUSTOM_ROUTER_PATH?: string;
 }
 
 export type AccessLevel = 'restricted' | 'full';

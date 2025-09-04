@@ -1,8 +1,4 @@
 {
-  "common": {
-    "yes": "Yes",
-    "no": "No"
-  },
   "app": {
     "title": "Claude Code Router",
     "save": "Save",
@@ -46,9 +42,7 @@
     "port": "Port",
     "apikey": "API Key",
     "timeout": "API Timeout (ms)",
-    "proxy_url": "Proxy URL",
-    "custom_router_path": "Custom Router Script Path",
-    "custom_router_path_placeholder": "Enter absolute path to custom router script file"
+    "proxy_url": "Proxy URL"
   },
   "transformers": {
     "title": "Custom Transformers",
@@ -111,8 +105,6 @@
     "longContext": "Long Context",
     "longContextThreshold": "Context Threshold",
     "webSearch": "Web Search",
-    "image": "Image",
-    "forceUseImageAgent": "Force Use Image Agent",
     "selectModel": "Select a model...",
     "searchModel": "Search model...",
     "noModelFound": "No model found."

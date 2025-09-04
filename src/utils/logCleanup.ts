@@ -1,5 +1,5 @@
-import fs from "node:fs/promises";
-import path from "node:path";
+import { readdir, stat, unlink } from "fs/promises";
+import { join, extname } from "path";
 import { HOME_DIR } from "../constants";
 
 /**
@@ -8,18 +8,18 @@ import { HOME_DIR } from "../constants";
  */
 export async function cleanupLogFiles(maxFiles: number = 9): Promise<void> {
   try {
-    const logsDir = path.join(HOME_DIR, "logs");
+    const logsDir = join(HOME_DIR, "logs");
     
     // Check if logs directory exists
     try {
-      await fs.access(logsDir);
+      await require('fs/promises').access(logsDir);
     } catch {
       // Logs directory doesn't exist, nothing to clean up
       return;
     }
     
     // Read all files in the logs directory
-    const files = await fs.readdir(logsDir);
+    const files = await readdir(logsDir);
     
     // Filter for log files (files starting with 'ccr-' and ending with '.log')
     const logFiles = files
@@ -30,9 +30,9 @@ export async function cleanupLogFiles(maxFiles: number = 9): Promise<void> {
     // Delete files exceeding the maxFiles limit
     if (logFiles.length > maxFiles) {
       for (let i = maxFiles; i < logFiles.length; i++) {
-        const filePath = path.join(logsDir, logFiles[i]);
+        const filePath = join(logsDir, logFiles[i]);
         try {
-          await fs.unlink(filePath);
+          await unlink(filePath);
         } catch (error) {
           console.warn(`Failed to delete log file ${filePath}:`, error);
         }
