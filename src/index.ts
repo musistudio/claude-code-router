@@ -4,7 +4,7 @@ import { homedir } from "os";
 import path, { join } from "path";
 import { initConfig, initDir, cleanupLogFiles } from "./utils";
 import { createServer } from "./server";
-import { router } from "./utils/router";
+import { router, handleRequestResult } from "./utils/router";
 import { apiKeyAuth } from "./middleware/auth";
 import {
   cleanupPidFile,
@@ -41,6 +41,43 @@ async function initializeClaudeConfig() {
       projects: {},
     };
     await writeFile(configPath, JSON.stringify(configContent, null, 2));
+  }
+}
+
+/**
+ * Function to handle request result feedback
+ * @param req Request object
+ * @param config Configuration object
+ * @param result Request result
+ */
+async function handleRequestResultFeedback(req: any, config: any, result: any) {
+  try {
+    // Extract provider and model information
+    let providerName = '';
+    let modelName = '';
+    
+    if (req.body?.model) {
+      const parts = req.body.model.split(',');
+      if (parts.length === 2) {
+        providerName = parts[0];
+        modelName = parts[1];
+      }
+    }
+    
+    // Construct result object
+    const resultData = {
+      provider: providerName,
+      model: modelName,
+      success: !result?.error,
+      error: result?.error || null,
+      status: result?.status || (result?.error ? 'error' : 'success'),
+      timestamp: Date.now()
+    };
+    
+    // Call the router's result handling function
+    await handleRequestResult(req, config, resultData);
+  } catch (error: any) {
+    console.error("Error in handleRequestResultFeedback:", error.message);
   }
 }
 
@@ -251,6 +288,8 @@ async function run(options: RunOptions = {}) {
                   body: JSON.stringify(req.body),
                 })
                 if (!response.ok) {
+                  // Handle error response
+                  handleRequestResultFeedback(req, config, { error: await response.json(), status: response.status });
                   return undefined;
                 }
                 const stream = response.body!.pipeThrough(new SSEParserTransform())
