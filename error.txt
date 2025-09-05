@@ -1,0 +1,48 @@
+   Proline@Siya   ~\02_Development\Repos\claude-code-router     main    ?4 ~10    13ms 
+└ $  powershell -ExecutionPolicy Bypass -File .\paste-image.ps1
+Get-PSReadLineKeyHandler : A positional parameter cannot be found that accepts argument 'Spacebar'.
+At line:520 char:18
++             if ((Get-PSReadLineKeyHandler Spacebar).Function -eq 'OhM ...
++                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidArgument: (:) [Get-PSReadLineKeyHandler], ParameterBindingException
+    + FullyQualifiedErrorId : PositionalParameterNotFound,Microsoft.PowerShell.GetKeyHandlerCommand
+
+Get-PSReadLineKeyHandler : A positional parameter cannot be found that accepts argument 'Enter'.
+At line:524 char:18
++             if ((Get-PSReadLineKeyHandler Enter).Function -eq 'OhMyPo ...
++                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidArgument: (:) [Get-PSReadLineKeyHandler], ParameterBindingException
+    + FullyQualifiedErrorId : PositionalParameterNotFound,Microsoft.PowerShell.GetKeyHandlerCommand
+
+Get-PSReadLineKeyHandler : A positional parameter cannot be found that accepts argument 'Ctrl+c'.
+At line:528 char:18
++             if ((Get-PSReadLineKeyHandler Ctrl+c).Function -eq 'OhMyP ...
++                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidArgument: (:) [Get-PSReadLineKeyHandler], ParameterBindingException
+    + FullyQualifiedErrorId : PositionalParameterNotFound,Microsoft.PowerShell.GetKeyHandlerCommand
+
+WARNING: No image found on the clipboard.
+┌    Proline@Siya   ~\02_Development\Repos\claude-code-router     main    ?4 ~10    6.782s   >>ERROR 
+└ $  powershell -ExecutionPolicy Bypass -File .\paste-image.ps1
+Get-PSReadLineKeyHandler : A positional parameter cannot be found that accepts argument 'Spacebar'.
+At line:520 char:18
++             if ((Get-PSReadLineKeyHandler Spacebar).Function -eq 'OhM ...
++                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidArgument: (:) [Get-PSReadLineKeyHandler], ParameterBindingException
+    + FullyQualifiedErrorId : PositionalParameterNotFound,Microsoft.PowerShell.GetKeyHandlerCommand
+
+Get-PSReadLineKeyHandler : A positional parameter cannot be found that accepts argument 'Enter'.
+At line:524 char:18
++             if ((Get-PSReadLineKeyHandler Enter).Function -eq 'OhMyPo ...
++                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidArgument: (:) [Get-PSReadLineKeyHandler], ParameterBindingException
+    + FullyQualifiedErrorId : PositionalParameterNotFound,Microsoft.PowerShell.GetKeyHandlerCommand
+
+Get-PSReadLineKeyHandler : A positional parameter cannot be found that accepts argument 'Ctrl+c'.
+At line:528 char:18
++             if ((Get-PSReadLineKeyHandler Ctrl+c).Function -eq 'OhMyP ...
++                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidArgument: (:) [Get-PSReadLineKeyHandler], ParameterBindingException
+    + FullyQualifiedErrorId : PositionalParameterNotFound,Microsoft.PowerShell.GetKeyHandlerCommand
+
+C:\Users\Proline\AppData\Local\Temp\screenshot-20250817-205318.png

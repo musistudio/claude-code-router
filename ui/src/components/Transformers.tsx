@@ -4,7 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Info } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/Tooltip";
 import { useConfig } from "./ConfigProvider";
 import { TransformerList } from "./TransformerList";
 import {
@@ -103,7 +109,20 @@ export function Transformers() {
   return (
     <Card className="flex h-full flex-col rounded-lg border shadow-sm">
       <CardHeader className="flex flex-row items-center justify-between border-b p-4">
-        <CardTitle className="text-lg">{t("transformers.title")} <span className="text-sm font-normal text-gray-500">({validTransformers.length})</span></CardTitle>
+        <div className="flex items-center">
+          <CardTitle className="text-lg">{t("transformers.title")}</CardTitle>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Info className="h-4 w-4 text-gray-400 ml-2 cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{t("transformers.title_tooltip")}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <span className="text-sm font-normal text-gray-500 ml-1">({validTransformers.length})</span>
+        </div>
         <Button onClick={handleAddTransformer}>{t("transformers.add")}</Button>
       </CardHeader>
       <CardContent className="flex-grow overflow-y-auto p-4">

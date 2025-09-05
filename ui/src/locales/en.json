@@ -59,7 +59,8 @@
     "edit": "Edit Custom Transformer",
     "delete": "Delete Custom Transformer",
     "delete_transformer_confirm": "Are you sure you want to delete this custom transformer?",
-    "parameters": "Parameters"
+    "parameters": "Parameters",
+    "title_tooltip": "Transformers modify requests and responses to and from providers. They can be used to add custom headers, change the model, or alter the response format."
   },
   "providers": {
     "title": "Providers",
@@ -100,7 +101,8 @@
     "api_key_required": "API Key is required",
     "name_required": "Name is required",
     "name_duplicate": "A provider with this name already exists",
-    "search": "Search providers..."
+    "search": "Search providers...",
+    "title_tooltip": "Providers are the AI model services you want to route requests to. You can add, edit, and remove providers here."
 
   },
   "router": {
@@ -115,7 +117,8 @@
     "forceUseImageAgent": "Force Use Image Agent",
     "selectModel": "Select a model...",
     "searchModel": "Search model...",
-    "noModelFound": "No model found."
+    "noModelFound": "No model found.",
+    "title_tooltip": "The Router determines which provider and model to use for a given request based on a set of rules."
   },
   "json_editor": {
     "title": "JSON Editor",

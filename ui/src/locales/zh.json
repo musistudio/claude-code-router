@@ -59,7 +59,8 @@
     "edit": "编辑自定义转换器",
     "delete": "删除自定义转换器",
     "delete_transformer_confirm": "您确定要删除此自定义转换器吗？",
-    "parameters": "参数"
+    "parameters": "参数",
+    "title_tooltip": "“转换器”可以修改传入和传出提供商的请求和响应。它们可用于添加自定义标头、更改模型或更改响应格式。"
   },
   "providers": {
     "title": "供应商",
@@ -100,7 +101,8 @@
     "api_key_required": "API 密钥为必填项",
     "name_required": "名称为必填项",
     "name_duplicate": "已存在同名供应商",
-    "search": "搜索供应商..."
+    "search": "搜索供应商...",
+    "title_tooltip": "“供应商”是您希望将请求路由到的人工智能模型服务。您可以在此处添加、编辑和删除供应商。"
 
   },
   "router": {
@@ -115,7 +117,8 @@
     "forceUseImageAgent": "强制使用图像代理",
     "selectModel": "选择一个模型...",
     "searchModel": "搜索模型...",
-    "noModelFound": "未找到模型."
+    "noModelFound": "未找到模型.",
+    "title_tooltip": "“路由器”根据一组规则确定为给定请求使用哪个提供商和模型。"
   },
   "json_editor": {
     "title": "JSON 编辑器",
