@@ -1,0 +1,50 @@
+{
+  "PORT": 3456,
+  "LOG": true,
+  "LOG_LEVEL": "debug",
+  "API_TIMEOUT_MS": 600000,
+  
+  "VERTEX_AI_PROJECT_ID": "your-gcp-project-id",
+  "VERTEX_AI_LOCATION": "us-central1",
+  "VERTEX_AI_SERVICE_ACCOUNT_PATH": "/path/to/service-account-key.json",
+  
+  "Providers": [
+    {
+      "name": "vertex-ai",
+      "api_base_url": "https://us-central1-aiplatform.googleapis.com/v1",
+      "api_key": "vertex-ai-dynamic",
+      "models": ["*"],
+      "transformer": {
+        "use": [
+          [
+            "vertex-ai",
+            {
+              "projectId": "$VERTEX_AI_PROJECT_ID",
+              "location": "$VERTEX_AI_LOCATION"
+            }
+          ]
+        ]
+      }
+    }
+  ],
+  
+  "transformers": [
+    {
+      "path": "./transformers/vertex-ai.js",
+      "options": {
+        "projectId": "$VERTEX_AI_PROJECT_ID",
+        "location": "$VERTEX_AI_LOCATION",
+        "useStreaming": true
+      }
+    }
+  ],
+  
+  "Router": {
+    "default": "vertex-ai,gemini-1.5-flash",
+    "background": "vertex-ai,gemini-1.5-flash",
+    "think": "vertex-ai,claude-3-5-sonnet",
+    "longContext": "vertex-ai,gemini-1.5-pro",
+    "longContextThreshold": 100000,
+    "webSearch": "vertex-ai,gemini-1.5-pro"
+  }
+}

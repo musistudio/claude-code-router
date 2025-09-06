@@ -28,6 +28,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
     ```bash
     npm run release
     ```
+-   **Test Vertex AI integration**:
+    ```bash
+    # Using service account key file
+    VERTEX_AI_PROJECT_ID=your-project-id VERTEX_AI_SERVICE_ACCOUNT_PATH=/path/to/key.json ccr start
+    
+    # Using Application Default Credentials
+    gcloud auth application-default login
+    VERTEX_AI_PROJECT_ID=your-project-id VERTEX_AI_USE_ADC=true ccr start
+    ```
 
 ## Architecture
 

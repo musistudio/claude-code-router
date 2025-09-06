@@ -22,6 +22,7 @@
     "@fastify/static": "^8.2.0",
     "@musistudio/llms": "^1.0.31",
     "dotenv": "^16.4.7",
+    "google-auth-library": "^9.7.0",
     "json5": "^2.2.3",
     "openurl": "^1.1.1",
     "rotating-file-stream": "^3.2.7",

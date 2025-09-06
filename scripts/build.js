@@ -11,6 +11,10 @@ try {
   console.log('Building CLI application...');
   execSync('esbuild src/cli.ts --bundle --platform=node --outfile=dist/cli.js', { stdio: 'inherit' });
   
+  // Build Vertex AI utilities
+  console.log('Building Vertex AI utilities...');
+  execSync('esbuild src/utils/vertexAuth.ts --bundle --platform=node --outfile=dist/utils/vertexAuth.js --format=cjs', { stdio: 'inherit' });
+  
   // Copy the tiktoken WASM file
   console.log('Copying tiktoken WASM file...');
   execSync('shx cp node_modules/tiktoken/tiktoken_bg.wasm dist/tiktoken_bg.wasm', { stdio: 'inherit' });
