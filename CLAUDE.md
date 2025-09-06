@@ -48,6 +48,78 @@ This project is a TypeScript-based router for Claude Code requests. It allows ro
 -   **Routing**: The core routing logic determines which LLM provider and model to use for a given request. It supports default routes for different scenarios (`default`, `background`, `think`, `longContext`, `webSearch`) and can be extended with a custom JavaScript router file. The router logic is likely in `src/utils/router.ts`.
 -   **Providers and Transformers**: The application supports multiple LLM providers. Transformers adapt the request and response formats for different provider APIs.
 -   **Claude Code Integration**: When a user runs `ccr code`, the command is forwarded to the running router service. The service then processes the request, applies routing rules, and sends it to the configured LLM. If the service isn't running, `ccr code` will attempt to start it automatically.
--   **Dependencies**: The project is built with `esbuild`. It has a key local dependency `@musistudio/llms`, which probably contains the core logic for interacting with different LLM APIs.
--   `@musistudio/llms` is implemented based on `fastify` and exposes `fastify`'s hook and middleware interfaces, allowing direct use of `server.addHook`.
-- 无论如何你都不能自动提交git
+-   **Dependencies**: The project is built with `esbuild`. Key dependencies include:
+    -   `@musistudio/llms`: Core logic for interacting with different LLM APIs
+    -   `fastify`: Web server framework that `@musistudio/llms` is built on
+    -   `google-auth-library`: Google Cloud authentication for Vertex AI integration
+    -   `tiktoken`: Token counting for routing decisions
+    -   `rotating-file-stream`: Log file management
+    -   `uuid`, `dotenv`, `json5`: Utility libraries
+-   **Build System**: Uses a custom build script at `scripts/build.js` with `esbuild` for TypeScript compilation
+-   **Logging**: Dual logging system with rotating file streams in `~/.claude-code-router/logs/` for server logs and `claude-code-router.log` for application logs
+-   **Agents**: Built-in agent system in `src/agents/` for handling specific tasks (e.g., image processing)
+-   **Transformers**: Request/response transformation system for different LLM provider APIs
+-   **Authentication**: Optional API key authentication via `x-api-key` header or `Authorization` bearer token
+-   **Session Management**: Usage tracking and caching system for token counting and routing decisions
+-   **Vertex AI Integration**: Support for Google Cloud Vertex AI with authentication and model access
+
+## Vertex AI Configuration
+
+The Vertex AI integration supports multiple authentication methods for accessing Vertex AI models.
+
+### Authentication Methods
+
+**Service Account Key File:**
+```json
+{
+  "VERTEX_AI_PROJECT_ID": "your-gcp-project-id",
+  "VERTEX_AI_LOCATION": "us-central1",
+  "VERTEX_AI_SERVICE_ACCOUNT_PATH": "/path/to/service-account-key.json"
+}
+```
+
+**Service Account Key JSON:**
+```json
+{
+  "VERTEX_AI_PROJECT_ID": "your-gcp-project-id",
+  "VERTEX_AI_LOCATION": "us-central1",
+  "VERTEX_AI_SERVICE_ACCOUNT_KEY": "{\"type\":\"service_account\",...}"
+}
+```
+
+**Application Default Credentials:**
+```json
+{
+  "VERTEX_AI_PROJECT_ID": "your-gcp-project-id",
+  "VERTEX_AI_LOCATION": "us-central1",
+  "VERTEX_AI_USE_ADC": true
+}
+```
+
+### Provider Configuration
+
+```json
+{
+  "name": "vertex-ai",
+  "api_base_url": "https://us-central1-aiplatform.googleapis.com/v1",
+  "api_key": "vertex-ai-dynamic",
+  "models": ["gemini-1.5-pro", "claude-3-5-sonnet"],
+  "transformer": {
+    "use": [["vertex-ai", {"projectId": "$VERTEX_AI_PROJECT_ID", "location": "$VERTEX_AI_LOCATION"}]]
+  }
+}
+```
+
+### Key Files for Vertex AI Integration
+
+-   `src/utils/vertexAuth.ts`: Authentication management for Google Cloud
+-   `transformers/vertex-ai.js`: Request/response transformation for Vertex AI models
+-   `config.vertex-ai.example.json`: Configuration example
+
+### Supported Models
+
+The Vertex AI integration supports common models including:
+-   **Gemini Models**: gemini-1.5-pro, gemini-1.5-flash, gemini-1.0-pro, gemini-1.0-pro-vision
+-   **Claude Models**: claude-3-5-sonnet, claude-3-haiku, claude-3-sonnet
+
+Model availability varies by region. The transformer automatically handles different API formats for each model type.
