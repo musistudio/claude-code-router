@@ -1,4 +1,7 @@
 import { useTranslation } from "react-i18next";
+import React, { useState } from "react";
+// Plugin Manager - imported directly from plugins folder  
+const PluginManager = React.lazy(() => import('../../../plugins/core/PluginManager'));
 import {
   Dialog,
   DialogContent,
@@ -13,13 +16,13 @@ import { Switch } from "@/components/ui/switch";
 import { Combobox } from "@/components/ui/combobox";
 import { useConfig } from "./ConfigProvider";
 import { StatusLineConfigDialog } from "./StatusLineConfigDialog";
-import { useState } from "react";
 import type { StatusLineConfig } from "@/types";
 
 interface SettingsDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
 }
+
 
 export function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogProps) {
   const { t } = useTranslation();
@@ -59,7 +62,10 @@ export function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange} >
-      <DialogContent data-testid="settings-dialog" className="max-h-[80vh] flex flex-col p-0">
+      <DialogContent 
+        data-testid="settings-dialog" 
+        className="max-h-[80vh] flex flex-col p-0"
+      >
         <DialogHeader className="p-4 pb-0">
           <DialogTitle>{t("toplevel.title")}</DialogTitle>
         </DialogHeader>
@@ -104,6 +110,14 @@ export function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogProps) {
               </Button>
             </div>
           </div>
+          
+          {/* Plugin Manager - Single component from plugins folder */}
+          <div className="border-t pt-4">
+            <React.Suspense fallback={<div className="text-sm text-muted-foreground">Loading plugins...</div>}>
+              <PluginManager />
+            </React.Suspense>
+          </div>
+          
           <div className="space-y-2">
             <Label htmlFor="log-level" className="transition-all-ease hover:scale-[1.01] cursor-pointer">{t("toplevel.log_level")}</Label>
             <Combobox

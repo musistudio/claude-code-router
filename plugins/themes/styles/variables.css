@@ -1,0 +1,303 @@
+/**
+ * Unified Theme Variables System v2.0
+ * Complete restructure for consistent modern experience across all 3 themes
+ * - Light: Professional & clean with subtle shadows and gradients
+ * - Dark: Elegant & sophisticated with enhanced blur effects
+ * - Advanced: Spectacular glassmorphism space theme with cosmic elements
+ */
+
+/* ===========================================
+   BASE SYSTEM VARIABLES (All Themes)
+   =========================================== */
+
+:root {
+  /* Modern Border Radius System */
+  --radius-xs: 0.25rem;    /* 4px - small badges */
+  --radius-sm: 0.375rem;   /* 6px - small buttons */
+  --radius-md: 0.5rem;     /* 8px - inputs, regular buttons */
+  --radius-lg: 0.75rem;    /* 12px - cards, containers */
+  --radius-xl: 1rem;       /* 16px - modals, large cards */
+  --radius-2xl: 1.5rem;    /* 24px - special components */
+  --radius-full: 9999px;   /* full circles */
+  
+  /* Consistent Spacing System */
+  --space-xs: 0.25rem;     /* 4px */
+  --space-sm: 0.5rem;      /* 8px */
+  --space-md: 1rem;        /* 16px */
+  --space-lg: 1.5rem;      /* 24px */
+  --space-xl: 2rem;        /* 32px */
+  --space-2xl: 3rem;       /* 48px */
+  --space-3xl: 4rem;       /* 64px */
+  
+  /* Typography Scale */
+  --font-xs: 0.75rem;      /* 12px */
+  --font-sm: 0.875rem;     /* 14px */
+  --font-md: 1rem;         /* 16px */
+  --font-lg: 1.125rem;     /* 18px */
+  --font-xl: 1.25rem;      /* 20px */
+  --font-2xl: 1.5rem;      /* 24px */
+  --font-3xl: 1.875rem;    /* 30px */
+  --font-4xl: 2.25rem;     /* 36px */
+  
+  /* Font Weights */
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+  --font-black: 900;
+  
+  /* Universal Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 500ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-bounce: 400ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  
+  /* Universal Easing Functions */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  
+  /* Z-index Scale */
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-tooltip: 1070;
+  --z-toast: 1080;
+}
+
+/* ===========================================
+   LIGHT THEME - Professional & Modern
+   =========================================== */
+
+html.theme-light {
+  /* Core Semantic Colors */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  
+  /* Professional Shadow System */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.1), 0 8px 10px rgba(0, 0, 0, 0.04);
+  --shadow-2xl: 0 25px 50px rgba(0, 0, 0, 0.15);
+  --shadow-glow: 0 0 20px rgba(0, 0, 0, 0.1);
+  
+  /* Sophisticated Gradients */
+  --gradient-primary: linear-gradient(135deg, oklch(0.205 0 0), oklch(0.305 0 0));
+  --gradient-card: linear-gradient(135deg, oklch(1 0 0), oklch(0.98 0 0));
+  --gradient-subtle: linear-gradient(135deg, oklch(0.97 0 0), oklch(0.95 0 0));
+  --gradient-accent: linear-gradient(135deg, oklch(0.97 0 0) 0%, oklch(0.94 0 0) 100%);
+  --gradient-hero: linear-gradient(135deg, oklch(0.98 0 0) 0%, oklch(0.96 0 0) 100%);
+  
+  /* Modern Blur & Glass Effects */
+  --glass-blur: blur(8px);
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --glass-bg-strong: rgba(255, 255, 255, 0.9);
+  --glass-border: rgba(0, 0, 0, 0.1);
+  --glass-border-strong: rgba(0, 0, 0, 0.15);
+  
+  /* Interactive States */
+  --hover-overlay: rgba(0, 0, 0, 0.02);
+  --focus-ring: oklch(0.708 0 0);
+  --active-scale: 0.98;
+  
+  /* Status Colors - Professional */
+  --status-success: oklch(0.65 0.2 145);
+  --status-success-bg: oklch(0.65 0.2 145 / 0.1);
+  --status-success-border: oklch(0.65 0.2 145 / 0.3);
+  --status-warning: oklch(0.75 0.15 85);
+  --status-warning-bg: oklch(0.75 0.15 85 / 0.1);
+  --status-warning-border: oklch(0.75 0.15 85 / 0.3);
+  --status-error: oklch(0.65 0.2 25);
+  --status-error-bg: oklch(0.65 0.2 25 / 0.1);
+  --status-error-border: oklch(0.65 0.2 25 / 0.3);
+  --status-info: oklch(0.6 0.2 220);
+  --status-info-bg: oklch(0.6 0.2 220 / 0.1);
+  --status-info-border: oklch(0.6 0.2 220 / 0.3);
+}
+
+/* ===========================================
+   DARK THEME - Elegant & Sophisticated
+   =========================================== */
+
+html.theme-dark {
+  /* Core Semantic Colors */
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  
+  /* Enhanced Shadow System */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5), 0 4px 6px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.6), 0 8px 10px rgba(0, 0, 0, 0.4);
+  --shadow-2xl: 0 25px 50px rgba(0, 0, 0, 0.7);
+  --shadow-glow: 0 0 20px rgba(255, 255, 255, 0.1);
+  
+  /* Elegant Gradients */
+  --gradient-primary: linear-gradient(135deg, oklch(0.922 0 0), oklch(0.822 0 0));
+  --gradient-card: linear-gradient(135deg, oklch(0.205 0 0), oklch(0.225 0 0));
+  --gradient-subtle: linear-gradient(135deg, oklch(0.269 0 0), oklch(0.289 0 0));
+  --gradient-accent: linear-gradient(135deg, oklch(0.269 0 0) 0%, oklch(0.32 0 0) 100%);
+  --gradient-hero: linear-gradient(135deg, oklch(0.16 0 0) 0%, oklch(0.2 0 0) 100%);
+  
+  /* Modern Blur & Glass Effects */
+  --glass-blur: blur(12px);
+  --glass-bg: rgba(255, 255, 255, 0.1);
+  --glass-bg-strong: rgba(255, 255, 255, 0.15);
+  --glass-border: rgba(255, 255, 255, 0.2);
+  --glass-border-strong: rgba(255, 255, 255, 0.25);
+  
+  /* Interactive States */
+  --hover-overlay: rgba(255, 255, 255, 0.05);
+  --focus-ring: oklch(0.556 0 0);
+  --active-scale: 0.98;
+  
+  /* Status Colors - Elegant */
+  --status-success: oklch(0.7 0.25 150);
+  --status-success-bg: oklch(0.7 0.25 150 / 0.15);
+  --status-success-border: oklch(0.7 0.25 150 / 0.4);
+  --status-warning: oklch(0.8 0.2 90);
+  --status-warning-bg: oklch(0.8 0.2 90 / 0.15);
+  --status-warning-border: oklch(0.8 0.2 90 / 0.4);
+  --status-error: oklch(0.75 0.25 30);
+  --status-error-bg: oklch(0.75 0.25 30 / 0.15);
+  --status-error-border: oklch(0.75 0.25 30 / 0.4);
+  --status-info: oklch(0.65 0.25 230);
+  --status-info-bg: oklch(0.65 0.25 230 / 0.15);
+  --status-info-border: oklch(0.65 0.25 230 / 0.4);
+}
+
+/* ===========================================
+   ADVANCED THEME - Spectacular Glassmorphism Space
+   =========================================== */
+
+html.theme-advanced {
+  /* Core Semantic Colors - Cosmic Space - Further Enhanced Readability */
+  --background: oklch(0.08 0.05 280);
+  --foreground: oklch(0.95 0.02 270);
+  --card: rgba(255, 255, 255, 0.25);
+  --card-foreground: oklch(0.92 0.02 270);
+  --popover: rgba(255, 255, 255, 0.35);
+  --popover-foreground: oklch(0.95 0.02 270);
+  --primary: oklch(0.7 0.25 280);
+  --primary-foreground: oklch(0.08 0.05 280);
+  --secondary: rgba(255, 255, 255, 0.35);
+  --secondary-foreground: oklch(0.85 0.03 270);
+  --muted: rgba(255, 255, 255, 0.23);
+  --muted-foreground: oklch(0.65 0.05 280);
+  --accent: oklch(0.75 0.2 320);
+  --accent-foreground: oklch(0.08 0.05 280);
+  --destructive: oklch(0.7 0.3 20);
+  --destructive-foreground: oklch(0.95 0.02 270);
+  --border: rgba(255, 255, 255, 0.47);
+  --input: rgba(255, 255, 255, 0.3);
+  --ring: oklch(0.7 0.25 280);
+  
+  /* Special Modal Variables - Cosmic but Readable */
+  --modal-bg: linear-gradient(135deg, rgba(20, 15, 45, 0.92) 0%, rgba(25, 20, 55, 0.88) 50%, rgba(20, 15, 45, 0.92) 100%);
+  --modal-overlay: linear-gradient(135deg, rgba(0, 0, 0, 0.85) 0%, rgba(20, 20, 40, 0.9) 50%, rgba(0, 0, 0, 0.85) 100%);
+  --modal-border: rgba(123, 97, 255, 0.4);
+  --modal-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6), 0 0 64px rgba(123, 97, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  
+  /* Spectacular Space Background */
+  --space-bg: linear-gradient(135deg, oklch(0.08 0.05 280) 0%, oklch(0.12 0.08 260) 35%, oklch(0.1 0.06 300) 70%, oklch(0.09 0.07 320) 100%);
+  --nebula-glow: radial-gradient(circle at 25% 25%, rgba(123, 97, 255, 0.3) 0%, transparent 50%), radial-gradient(circle at 75% 75%, rgba(255, 64, 129, 0.2) 0%, transparent 50%);
+  
+  /* Cosmic Shadow System with Glow */
+  --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.4), 0 0 8px rgba(123, 97, 255, 0.1);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.5), 0 0 16px rgba(123, 97, 255, 0.15);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.6), 0 0 24px rgba(123, 97, 255, 0.2);
+  --shadow-lg: 0 8px 20px rgba(0, 0, 0, 0.7), 0 0 32px rgba(123, 97, 255, 0.25);
+  --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.8), 0 0 48px rgba(123, 97, 255, 0.3);
+  --shadow-2xl: 0 32px 64px rgba(0, 0, 0, 0.9), 0 0 64px rgba(123, 97, 255, 0.4);
+  --shadow-glow: 0 0 40px rgba(123, 97, 255, 0.5), 0 0 80px rgba(123, 97, 255, 0.3);
+  
+  /* Spectacular Cosmic Gradients - Enhanced for Better Readability */
+  --gradient-primary: linear-gradient(135deg, oklch(0.7 0.25 280), oklch(0.8 0.3 260), oklch(0.75 0.28 300));
+  --gradient-card: linear-gradient(135deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0.38));
+  --gradient-subtle: linear-gradient(135deg, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.28));
+  --gradient-accent: linear-gradient(135deg, oklch(0.75 0.2 320) 0%, oklch(0.85 0.25 300) 50%, oklch(0.8 0.23 280) 100%);
+  --gradient-hero: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.3) 50%, rgba(255, 255, 255, 0.25) 100%);
+  --gradient-cosmic: linear-gradient(45deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #f5576c 75%, #4facfe 100%);
+  
+  /* Advanced Glassmorphism Effects - Further Enhanced for Better Modal Readability */
+  --glass-blur: blur(14px);
+  --glass-bg: rgba(255, 255, 255, 0.28);
+  --glass-bg-strong: rgba(255, 255, 255, 0.38);
+  --glass-bg-ultra: rgba(255, 255, 255, 0.48);
+  --glass-border: rgba(255, 255, 255, 0.4);
+  --glass-border-strong: rgba(255, 255, 255, 0.5);
+  --glass-border-ultra: rgba(255, 255, 255, 0.7);
+  
+  /* Interactive States - Space Magic */
+  --hover-overlay: rgba(255, 255, 255, 0.08);
+  --focus-ring: oklch(0.7 0.25 280);
+  --active-scale: 0.95;
+  --hover-glow: 0 0 20px rgba(123, 97, 255, 0.4);
+  
+  /* Status Colors - Neon Space */
+  --status-success: oklch(0.75 0.3 155);
+  --status-success-bg: oklch(0.75 0.3 155 / 0.25);
+  --status-success-border: oklch(0.75 0.3 155 / 0.5);
+  --status-warning: oklch(0.85 0.25 95);
+  --status-warning-bg: oklch(0.85 0.25 95 / 0.25);
+  --status-warning-border: oklch(0.85 0.25 95 / 0.5);
+  --status-error: oklch(0.8 0.3 35);
+  --status-error-bg: oklch(0.8 0.3 35 / 0.25);
+  --status-error-border: oklch(0.8 0.3 35 / 0.5);
+  --status-info: oklch(0.7 0.3 240);
+  --status-info-bg: oklch(0.7 0.3 240 / 0.25);
+  --status-info-border: oklch(0.7 0.3 240 / 0.5);
+}
+
+/* ===========================================
+   RESPONSIVE BREAKPOINTS
+   =========================================== */
+
+:root {
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+}

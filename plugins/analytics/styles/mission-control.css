@@ -1,0 +1,688 @@
+/* ============================================================ */
+/* MISSION CONTROL TAB - STANDALONE STYLING                   */
+/* Independent styling that works with or without theme plugin */
+/* ============================================================ */
+
+/* Base Mission Control Container */
+.mission-control-container {
+  color: var(--foreground, #ffffff);
+  background: var(--background, #0f172a);
+  min-height: 100vh;
+  padding: 0;
+  margin: 0;
+}
+
+/* Mission Control Header */
+.mission-control-header {
+  background: var(--card, rgba(15, 23, 42, 0.95));
+  border: 1px solid var(--border, rgba(148, 163, 184, 0.2));
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  backdrop-filter: blur(10px);
+}
+
+/* Enhanced Modal Background for Advanced Theme */
+html.theme-advanced .mission-control-header,
+html.theme-advanced .mission-control-route-card,
+html.theme-advanced .mission-control-stat-card {
+  background: rgba(255, 255, 255, 0.25) !important;
+  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+  backdrop-filter: blur(12px) !important;
+}
+
+/* Enhanced Modal Container for Advanced Theme */
+html.theme-advanced .mission-control-container {
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.8)) !important;
+  backdrop-filter: blur(20px) !important;
+}
+
+.mission-control-header h1 {
+  color: var(--foreground, #ffffff);
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+}
+
+.mission-control-header p {
+  color: var(--muted-foreground, rgba(148, 163, 184, 0.8));
+  margin: 0;
+  font-size: 1rem;
+}
+
+/* Navigation Tabs - Universal Design */
+.mission-control-nav {
+  display: flex;
+  background: var(--card, rgba(15, 23, 42, 0.95));
+  border: 1px solid var(--border, rgba(148, 163, 184, 0.2));
+  border-radius: 12px;
+  padding: 8px;
+  margin-bottom: 24px;
+  backdrop-filter: blur(10px);
+  overflow-x: auto;
+  gap: 4px;
+}
+
+.mission-control-tab {
+  flex: 1;
+  min-width: 150px;
+  padding: 12px 20px;
+  text-align: center;
+  background: transparent;
+  border: none;
+  color: var(--muted-foreground, rgba(148, 163, 184, 0.8));
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 0.9rem;
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.mission-control-tab:hover {
+  background: var(--accent, rgba(59, 130, 246, 0.1));
+  color: var(--foreground, #ffffff);
+  transform: translateY(-1px);
+}
+
+.mission-control-tab.active {
+  background: var(--primary, #3b82f6);
+  color: var(--primary-foreground, #ffffff);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  font-weight: 600;
+}
+
+.mission-control-tab i {
+  font-size: 1rem;
+}
+
+/* Content Cards */
+.mission-control-card {
+  background: var(--card, rgba(15, 23, 42, 0.95));
+  border: 1px solid var(--border, rgba(148, 163, 184, 0.2));
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+/* Statistics Grid */
+.mission-control-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.mission-control-stat-card {
+  background: var(--card, rgba(15, 23, 42, 0.95));
+  border: 1px solid var(--border, rgba(148, 163, 184, 0.2));
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.mission-control-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  border-color: var(--primary, #3b82f6);
+}
+
+.mission-control-stat-number {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--primary, #3b82f6);
+  margin-bottom: 8px;
+  line-height: 1;
+}
+
+.mission-control-stat-label {
+  color: var(--muted-foreground, rgba(148, 163, 184, 0.8));
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+/* Service Status Cards */
+.mission-control-service-card {
+  background: var(--card, rgba(15, 23, 42, 0.95));
+  border: 1px solid var(--border, rgba(148, 163, 184, 0.2));
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  transition: all 0.3s ease;
+}
+
+.mission-control-service-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  border-color: var(--primary, #3b82f6);
+}
+
+.mission-control-service-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--accent, rgba(59, 130, 246, 0.1));
+  color: var(--primary, #3b82f6);
+  font-size: 20px;
+}
+
+.mission-control-service-content {
+  flex: 1;
+}
+
+.mission-control-service-content h4 {
+  color: var(--foreground, #ffffff);
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 4px 0;
+}
+
+.mission-control-service-content p {
+  color: var(--muted-foreground, rgba(148, 163, 184, 0.8));
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.mission-control-service-badge {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.mission-control-service-badge.online {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.mission-control-service-badge.offline {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.mission-control-service-badge.loading {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+/* Route Monitoring Cards */
+.mission-control-route-card {
+  background: var(--card, rgba(15, 23, 42, 0.95));
+  border: 1px solid var(--border, rgba(148, 163, 184, 0.2));
+  border-radius: 16px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  position: relative;
+  backdrop-filter: blur(10px);
+}
+
+/* Route Cards Grid Container - Force correct grid layout */
+.route-cards-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, 1fr) !important;
+  gap: 16px !important;
+}
+
+@media (min-width: 1024px) {
+  .route-cards-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+}
+
+@media (min-width: 1280px) {
+  .route-cards-grid {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+}
+
+/* Custom Scrollbar for Activity Sections */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.5) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.5);
+  border-radius: 2px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(148, 163, 184, 0.7);
+}
+
+.mission-control-route-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
+  border-color: var(--primary, #3b82f6);
+}
+
+.mission-control-route-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, transparent, rgba(59, 130, 246, 0.05), transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.mission-control-route-card:hover::before {
+  opacity: 1;
+}
+
+.mission-control-route-header {
+  padding: 20px;
+  border-bottom: 1px solid var(--border, rgba(148, 163, 184, 0.2));
+}
+
+.mission-control-route-content {
+  padding: 20px;
+}
+
+.mission-control-route-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.mission-control-route-stat {
+  background: var(--muted, rgba(148, 163, 184, 0.1));
+  border: 1px solid var(--border, rgba(148, 163, 184, 0.2));
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.mission-control-route-stat:hover {
+  transform: scale(1.02);
+  background: var(--accent, rgba(59, 130, 246, 0.1));
+}
+
+.mission-control-route-stat-value {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--foreground, #ffffff);
+  margin-bottom: 4px;
+}
+
+.mission-control-route-stat-label {
+  font-size: 0.75rem;
+  color: var(--muted-foreground, rgba(148, 163, 184, 0.8));
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Activity Items */
+.mission-control-activity-item {
+  background: var(--muted, rgba(148, 163, 184, 0.05));
+  border: 1px solid var(--border, rgba(148, 163, 184, 0.2));
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  transition: all 0.2s ease;
+}
+
+.mission-control-activity-item:hover {
+  background: var(--accent, rgba(59, 130, 246, 0.1));
+  transform: translateX(4px);
+  border-color: var(--primary, #3b82f6);
+}
+
+/* Status Indicators */
+.mission-control-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.mission-control-status.healthy {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.mission-control-status.warning {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.mission-control-status.error {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.mission-control-status.inactive {
+  background: rgba(107, 114, 128, 0.2);
+  color: #6b7280;
+  border: 1px solid rgba(107, 114, 128, 0.3);
+}
+
+/* Activity Status Dots */
+.mission-control-activity-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 8px;
+}
+
+.mission-control-activity-dot.success {
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
+  animation: pulse 2s infinite;
+}
+
+.mission-control-activity-dot.error {
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
+}
+
+.mission-control-activity-dot.warning {
+  background: #fbbf24;
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.4);
+}
+
+/* Buttons */
+.mission-control-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(148, 163, 184, 0.2));
+  background: var(--card, rgba(15, 23, 42, 0.95));
+  color: var(--foreground, #ffffff);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mission-control-btn:hover {
+  background: var(--accent, rgba(59, 130, 246, 0.1));
+  border-color: var(--primary, #3b82f6);
+  transform: translateY(-1px);
+}
+
+.mission-control-btn.primary {
+  background: var(--primary, #3b82f6);
+  color: var(--primary-foreground, #ffffff);
+  border-color: var(--primary, #3b82f6);
+}
+
+.mission-control-btn.primary:hover {
+  background: var(--primary, #2563eb);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+/* Charts Container */
+.mission-control-chart-container {
+  background: var(--card, rgba(15, 23, 42, 0.95));
+  border: 1px solid var(--border, rgba(148, 163, 184, 0.2));
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  backdrop-filter: blur(10px);
+}
+
+.mission-control-chart-title {
+  color: var(--foreground, #ffffff);
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .mission-control-nav {
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
+  }
+  
+  .mission-control-tab {
+    min-width: auto;
+    padding: 12px 16px;
+  }
+  
+  .mission-control-stats-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .mission-control-route-stats {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 1024px) {
+  .mission-control-layout {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 24px;
+  }
+}
+
+/* Animations */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.mission-control-fade-in {
+  animation: fadeInMissionControl 0.6s ease-in-out;
+}
+
+@keyframes fadeInMissionControl {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Loading States */
+.mission-control-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: var(--muted-foreground, rgba(148, 163, 184, 0.8));
+}
+
+.mission-control-loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--border, rgba(148, 163, 184, 0.2));
+  border-top: 2px solid var(--primary, #3b82f6);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-right: 12px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Error States */
+.mission-control-error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  padding: 16px;
+  color: #ef4444;
+  margin: 16px 0;
+}
+
+/* Empty States */
+.mission-control-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--muted-foreground, rgba(148, 163, 184, 0.8));
+}
+
+.mission-control-empty i {
+  font-size: 3rem;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.mission-control-empty h3 {
+  color: var(--foreground, #ffffff);
+  margin-bottom: 8px;
+}
+
+/* Table Styling */
+.mission-control-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--card, rgba(15, 23, 42, 0.95));
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.mission-control-table th,
+.mission-control-table td {
+  padding: 12px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border, rgba(148, 163, 184, 0.2));
+}
+
+.mission-control-table th {
+  background: var(--muted, rgba(148, 163, 184, 0.1));
+  color: var(--muted-foreground, rgba(148, 163, 184, 0.8));
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.5px;
+}
+
+.mission-control-table td {
+  color: var(--foreground, #ffffff);
+}
+
+.mission-control-table tr:hover {
+  background: var(--accent, rgba(59, 130, 246, 0.05));
+}
+
+/* Scrollable containers */
+.mission-control-scroll {
+  max-height: 400px;
+  overflow-y: auto;
+  border-radius: 8px;
+}
+
+.mission-control-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.mission-control-scroll::-webkit-scrollbar-track {
+  background: var(--muted, rgba(148, 163, 184, 0.1));
+  border-radius: 3px;
+}
+
+.mission-control-scroll::-webkit-scrollbar-thumb {
+  background: var(--border, rgba(148, 163, 184, 0.3));
+  border-radius: 3px;
+}
+
+.mission-control-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--primary, #3b82f6);
+}
+
+/* Route Cards Activity Scroll - Force Vertical Scroll */
+.route-cards-grid .space-y-1 {
+  /* Force scroll container properties */
+  max-height: 128px !important; /* max-h-32 equivalent */
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  /* Custom scrollbar for route card activities */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(156, 163, 175, 0.6) rgba(229, 231, 235, 0.2);
+}
+
+.route-cards-grid .space-y-1::-webkit-scrollbar {
+  width: 6px;
+}
+
+.route-cards-grid .space-y-1::-webkit-scrollbar-track {
+  background: rgba(229, 231, 235, 0.2);
+  border-radius: 3px;
+}
+
+.route-cards-grid .space-y-1::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.6);
+  border-radius: 3px;
+  transition: background 0.2s ease;
+}
+
+.route-cards-grid .space-y-1::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 114, 128, 0.8);
+}
+
+/* Ensure scroll container has proper dimensions */
+.route-cards-grid .motion-div {
+  height: 192px !important; /* h-48 equivalent */
+  display: flex;
+  flex-direction: column;
+}
+
+.route-cards-grid .motion-div > div:last-child {
+  flex: 1;
+  overflow: hidden;
+}

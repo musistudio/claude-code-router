@@ -1,0 +1,188 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - heading "Claude Code Router" [level=1] [ref=e6]
+    - generic [ref=e7]:
+      - button "Analytics Dashboard" [ref=e8]:
+        - img [ref=e9]
+      - button [ref=e12]:
+        - img
+      - button [ref=e13]:
+        - img
+      - button [ref=e14]:
+        - img
+      - button [ref=e15]:
+        - generic [ref=e16]:
+          - img
+      - button "Save" [ref=e17]:
+        - img
+        - text: Save
+      - button "Save and Restart" [ref=e18]:
+        - img
+        - text: Save and Restart
+  - main [ref=e19]:
+    - generic [ref=e21]:
+      - generic [ref=e22]:
+        - generic [ref=e23]:
+          - generic [ref=e24]:
+            - text: Providers
+            - generic [ref=e25]: (6/6)
+          - button "Add Provider" [ref=e26]
+        - generic [ref=e28]:
+          - img [ref=e29]
+          - textbox "Search providers..." [ref=e32]
+      - generic [ref=e34]:
+        - generic [ref=e35]:
+          - generic [ref=e36]:
+            - paragraph [ref=e37]: openrouter
+            - paragraph [ref=e38]: https://openrouter.ai/api/v1/chat/completions
+            - generic [ref=e39]:
+              - generic [ref=e40]: z-ai/glm-4.5-air:free
+              - generic [ref=e41]: z-ai/glm-4.5-air
+              - generic [ref=e42]: google/gemini-2.0-flash-exp:free
+          - generic [ref=e43]:
+            - button [ref=e44]:
+              - img
+            - button [ref=e45]:
+              - img
+        - generic [ref=e46]:
+          - generic [ref=e47]:
+            - paragraph [ref=e48]: GLM Provider
+            - paragraph [ref=e49]: https://api.z.ai/api/paas/v4/chat/completions
+            - generic [ref=e50]:
+              - generic [ref=e51]: glm-4.5
+              - generic [ref=e52]: glm-4.5-flash
+              - generic [ref=e53]: glm-4.5-air
+              - generic [ref=e54]: glm-4.5-airx
+              - generic [ref=e55]: glm-4.5-x
+          - generic [ref=e56]:
+            - button [ref=e57]:
+              - img
+            - button [ref=e58]:
+              - img
+        - generic [ref=e59]:
+          - generic [ref=e60]:
+            - paragraph [ref=e61]: Big Models
+            - paragraph [ref=e62]: https://open.bigmodel.cn/api/paas/v4/chat/completions
+            - generic [ref=e63]:
+              - generic [ref=e64]: glm-4.5
+              - generic [ref=e65]: glm-4.5V
+              - generic [ref=e66]: glm-4.5-flash
+              - generic [ref=e67]: glm-4.5-air
+          - generic [ref=e68]:
+            - button [ref=e69]:
+              - img
+            - button [ref=e70]:
+              - img
+        - generic [ref=e71]:
+          - generic [ref=e72]:
+            - paragraph [ref=e73]: qwen
+            - paragraph [ref=e74]: https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions
+            - generic [ref=e75]:
+              - generic [ref=e76]: qwen-turbo-latest
+              - generic [ref=e77]: qwen-plus-latest
+              - generic [ref=e78]: qwen-flash
+              - generic [ref=e79]: qwen-max
+              - generic [ref=e80]: qwen3-coder-plus
+              - generic [ref=e81]: qwen3-coder-flash
+          - generic [ref=e82]:
+            - button [ref=e83]:
+              - img
+            - button [ref=e84]:
+              - img
+        - generic [ref=e85]:
+          - generic [ref=e86]:
+            - paragraph [ref=e87]: gemini-via-cli
+            - paragraph [ref=e88]: https://cloudcode-pa.googleapis.com/v1internal
+            - generic [ref=e89]:
+              - generic [ref=e90]: gemini-2.5-flash
+              - generic [ref=e91]: gemini-2.5-pro
+          - generic [ref=e92]:
+            - button [ref=e93]:
+              - img
+            - button [ref=e94]:
+              - img
+        - generic [ref=e95]:
+          - generic [ref=e96]:
+            - paragraph [ref=e97]: qwen-via-cli
+            - paragraph [ref=e98]: https://portal.qwen.ai/v1/chat/completions
+            - generic [ref=e100]: qwen3-coder-plus
+          - generic [ref=e101]:
+            - button [ref=e102]:
+              - img
+            - button [ref=e103]:
+              - img
+    - generic [ref=e104]:
+      - generic [ref=e106]:
+        - generic [ref=e108]: Router
+        - generic [ref=e109]:
+          - generic [ref=e110]:
+            - generic [ref=e111]: Default
+            - combobox [ref=e112]:
+              - text: gemini-via-cli, gemini-2.5-flash
+              - img
+          - generic [ref=e113]:
+            - generic [ref=e114]: Background
+            - combobox [ref=e115]:
+              - text: gemini-via-cli, gemini-2.5-flash
+              - img
+          - generic [ref=e116]:
+            - generic [ref=e117]: Think
+            - combobox [ref=e118]:
+              - text: qwen-via-cli, qwen3-coder-plus
+              - img
+          - generic [ref=e120]:
+            - generic [ref=e121]:
+              - generic [ref=e122]: Long Context
+              - combobox [ref=e123]:
+                - text: gemini-via-cli, gemini-2.5-pro
+                - img
+            - generic [ref=e124]:
+              - generic [ref=e125]: Context Threshold
+              - textbox "60000" [ref=e126]
+          - generic [ref=e127]:
+            - generic [ref=e128]: Web Search
+            - combobox [ref=e129]:
+              - text: gemini-via-cli, gemini-2.5-flash
+              - img
+          - generic [ref=e131]:
+            - generic [ref=e132]:
+              - generic [ref=e133]: Image (beta)
+              - combobox [ref=e134]:
+                - text: gemini-via-cli, gemini-2.5-flash
+                - img
+            - generic [ref=e135]:
+              - generic [ref=e136]: Force Use Image Agent
+              - combobox "Force Use Image Agent" [ref=e137]:
+                - option "No" [selected]
+                - option "Yes"
+      - generic [ref=e139]:
+        - generic [ref=e140]:
+          - generic [ref=e141]:
+            - text: Custom Transformers
+            - generic [ref=e142]: (2)
+          - button "Add Custom Transformer" [ref=e143]
+        - generic [ref=e145]:
+          - generic [ref=e146]:
+            - generic [ref=e147]:
+              - paragraph [ref=e148]: /home/mircea/.claude-code-router/plugins/gemini-cli.js
+              - generic [ref=e150]:
+                - generic [ref=e151]: "project:"
+                - generic [ref=e152]: mircea-gabriel
+            - generic [ref=e153]:
+              - button [ref=e154]:
+                - img
+              - button [ref=e155]:
+                - img
+          - generic [ref=e156]:
+            - generic [ref=e157]:
+              - paragraph [ref=e158]: /home/mircea/.claude-code-router/plugins/qwen-cli.js
+              - paragraph [ref=e159]: No parameters configured
+            - generic [ref=e160]:
+              - button [ref=e161]:
+                - img
+              - button [ref=e162]:
+                - img
+```

@@ -1,0 +1,801 @@
+/**
+ * Unified Components System v2.0
+ * Consistent component styling across all 3 themes
+ * - Same modern design patterns for Light, Dark, and Advanced
+ * - No theme-specific logic, only unified classes using CSS variables
+ * - Professional, elegant, and spectacular - all at the same time
+ */
+
+/* ===========================================
+   BASE COMPONENT RESET & SETUP
+   =========================================== */
+
+/* Apply modern styling to all basic elements */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ===========================================
+   UNIFIED LAYOUT COMPONENTS
+   =========================================== */
+
+/* Modern Container */
+.modern-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--space-md);
+}
+
+/* Modern Grid System */
+.modern-grid {
+  display: grid;
+  gap: var(--space-lg);
+}
+
+.modern-grid-2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.modern-grid-3 { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+.modern-grid-4 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+
+/* Modern Flex Layouts */
+.modern-flex {
+  display: flex;
+  gap: var(--space-md);
+}
+
+.modern-flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+}
+
+.modern-flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+/* ===========================================
+   UNIFIED CARD COMPONENTS
+   =========================================== */
+
+/* Base Card - Includes modern-card styles */
+.card {
+  background: var(--gradient-card);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: var(--glass-blur);
+  transition: all var(--transition-smooth);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Card variants */
+.card-elevated {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+
+.card-interactive {
+  cursor: pointer;
+  transition: all var(--transition-smooth);
+}
+
+.card-interactive:hover {
+  transform: translateY(-6px);
+  box-shadow: var(--shadow-2xl);
+}
+
+/* Card content */
+.card-header {
+  padding: var(--space-lg);
+  border-bottom: 1px solid var(--glass-border);
+  background: var(--gradient-subtle);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.card-title {
+  margin: 0;
+  font-size: var(--font-xl);
+  font-weight: var(--font-bold);
+  color: var(--foreground);
+  line-height: 1.2;
+}
+
+.card-description {
+  margin: var(--space-xs) 0 0;
+  color: var(--muted-foreground);
+  font-size: var(--font-sm);
+}
+
+.card-content {
+  padding: var(--space-lg);
+  color: var(--card-foreground);
+}
+
+.card-footer {
+  padding: var(--space-lg);
+  border-top: 1px solid var(--glass-border);
+  background: var(--gradient-subtle);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+/* ===========================================
+   UNIFIED BUTTON COMPONENTS
+   =========================================== */
+
+/* Base Button - Includes modern-button styles */
+.btn {
+  background: var(--gradient-primary);
+  color: var(--primary-foreground);
+  border: none;
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-lg);
+  font-weight: var(--font-semibold);
+  font-size: var(--font-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+/* Button sizes */
+.btn-sm {
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--font-xs);
+}
+
+.btn-lg {
+  padding: var(--space-md) var(--space-xl);
+  font-size: var(--font-lg);
+}
+
+/* Button variants */
+.btn-primary {
+  background: var(--gradient-primary);
+  color: var(--primary-foreground);
+}
+
+.btn-secondary {
+  background: var(--gradient-subtle);
+  color: var(--foreground);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: var(--glass-blur);
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--foreground);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: var(--glass-blur);
+}
+
+.btn-outline:hover {
+  background: var(--gradient-subtle);
+  border-color: var(--glass-border-strong);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--foreground);
+  border: none;
+  box-shadow: none;
+}
+
+.btn-ghost:hover {
+  background: var(--hover-overlay);
+}
+
+/* Button states */
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn:disabled:hover {
+  transform: none;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ===========================================
+   UNIFIED INPUT COMPONENTS
+   =========================================== */
+
+/* Form Groups */
+.form-group {
+  margin-bottom: var(--space-lg);
+}
+
+.form-label {
+  display: block;
+  margin-bottom: var(--space-xs);
+  font-weight: var(--font-medium);
+  color: var(--foreground);
+  font-size: var(--font-sm);
+}
+
+.form-help {
+  margin-top: var(--space-xs);
+  font-size: var(--font-xs);
+  color: var(--muted-foreground);
+}
+
+/* Base Input - Includes modern-input styles */
+.input {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--font-md);
+  color: var(--foreground);
+  transition: all var(--transition-fast);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-xs);
+  width: 100%;
+}
+
+/* Input variants */
+.input-sm {
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--font-sm);
+}
+
+.input-lg {
+  padding: var(--space-md) var(--space-lg);
+  font-size: var(--font-lg);
+}
+
+/* Textarea */
+.textarea {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--font-md);
+  color: var(--foreground);
+  transition: all var(--transition-fast);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-xs);
+  width: 100%;
+  resize: vertical;
+  min-height: 100px;
+}
+
+/* Select */
+.select {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--font-md);
+  color: var(--foreground);
+  transition: all var(--transition-fast);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-xs);
+  width: 100%;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right var(--space-sm) center;
+  background-repeat: no-repeat;
+  background-size: 16px 12px;
+  padding-right: var(--space-xl);
+}
+
+/* Input States */
+.input-error,
+.textarea-error,
+.select-error {
+  border-color: var(--status-error-border);
+  box-shadow: var(--shadow-sm), 0 0 0 3px var(--status-error-bg);
+}
+
+.input-success,
+.textarea-success,
+.select-success {
+  border-color: var(--status-success-border);
+  box-shadow: var(--shadow-sm), 0 0 0 3px var(--status-success-bg);
+}
+
+/* ===========================================
+   UNIFIED NAVIGATION COMPONENTS
+   =========================================== */
+
+/* Tab Navigation - Includes modern-tabs styles */
+.tabs {
+  display: flex;
+  background: var(--gradient-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xs);
+  gap: var(--space-xs);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: var(--glass-blur);
+}
+
+.tab {
+  flex: 1;
+  padding: var(--space-sm) var(--space-lg);
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: all var(--transition-smooth);
+  border-radius: var(--radius-md);
+  font-weight: var(--font-medium);
+  font-size: var(--font-sm);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Navigation Menu */
+.nav-menu {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  background: var(--gradient-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: var(--glass-blur);
+}
+
+.nav-item {
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  color: var(--muted-foreground);
+  text-decoration: none;
+  font-weight: var(--font-medium);
+  transition: all var(--transition-fast);
+  position: relative;
+}
+
+.nav-item:hover,
+.nav-item.active {
+  color: var(--foreground);
+  background: var(--hover-overlay);
+}
+
+.nav-item.active::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  width: 20px;
+  height: 2px;
+  background: var(--primary);
+  transform: translateX(-50%);
+  border-radius: var(--radius-full);
+}
+
+/* ===========================================
+   UNIFIED FEEDBACK COMPONENTS
+   =========================================== */
+
+/* Notifications - Includes modern-notification styles */
+.notification {
+  background: var(--gradient-card);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-md);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: var(--glass-blur);
+  animation: slideInUp 0.4s var(--ease-out);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Status Indicators - Includes status-indicator styles */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-full);
+  font-size: var(--font-xs);
+  font-weight: var(--font-medium);
+  backdrop-filter: var(--glass-blur);
+  transition: all var(--transition-fast);
+}
+
+/* Progress Bar */
+.progress {
+  width: 100%;
+  height: 8px;
+  background: var(--muted);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.progress-bar {
+  height: 100%;
+  background: var(--gradient-primary);
+  border-radius: var(--radius-full);
+  transition: width var(--transition-smooth);
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  background: linear-gradient(45deg, transparent 35%, rgba(255, 255, 255, 0.2) 35%, rgba(255, 255, 255, 0.2) 65%, transparent 65%);
+  background-size: 20px 20px;
+  animation: shimmer 2s linear infinite;
+}
+
+/* Loading Spinner */
+.loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--muted);
+  border-top: 3px solid var(--primary);
+  border-radius: 50%;
+  animation: rotate 1s linear infinite;
+  margin: 0 auto;
+}
+
+/* ===========================================
+   UNIFIED MODAL & OVERLAY COMPONENTS
+   =========================================== */
+
+/* Modal Overlay */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal-backdrop);
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Enhanced Modal Overlay for Advanced Theme */
+html.theme-advanced .modal-overlay {
+  background: rgba(0, 0, 0, 0.85) !important;
+  backdrop-filter: blur(20px) !important;
+}
+
+/* Modal Content */
+.modal {
+  background: var(--gradient-card);
+  border: 1px solid var(--glass-border-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-2xl);
+  backdrop-filter: var(--glass-blur);
+  max-width: 500px;
+  width: 90vw;
+  max-height: 90vh;
+  overflow: hidden;
+  animation: slideInUp 0.3s ease-out;
+}
+
+/* Enhanced Modal Content for Advanced Theme */
+html.theme-advanced .modal {
+  background: var(--modal-bg) !important;
+  border: 1px solid var(--modal-border) !important;
+  backdrop-filter: blur(18px) !important;
+  box-shadow: var(--modal-shadow) !important;
+}
+
+/* Enhanced Glassmorphism Components for Advanced Theme */
+html.theme-advanced .input,
+html.theme-advanced .textarea,
+html.theme-advanced .select {
+  background: rgba(255, 255, 255, 0.35) !important;
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+  backdrop-filter: blur(14px) !important;
+}
+
+/* Enhanced Cards and Containers for Advanced Theme - exclude modals */
+html.theme-advanced .card:not(.fixed),
+html.theme-advanced .container:not(.fixed),
+html.theme-advanced .panel:not(.fixed) {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.28)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+  backdrop-filter: blur(14px) !important;
+}
+
+.modal-header {
+  padding: var(--space-lg);
+  border-bottom: 1px solid var(--glass-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-title {
+  margin: 0;
+  font-size: var(--font-xl);
+  font-weight: var(--font-bold);
+  color: var(--foreground);
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  padding: var(--space-xs);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.modal-close:hover {
+  color: var(--foreground);
+  background: var(--hover-overlay);
+}
+
+.modal-body {
+  padding: var(--space-lg);
+  color: var(--foreground);
+}
+
+.modal-footer {
+  padding: var(--space-lg);
+  border-top: 1px solid var(--glass-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+/* ===========================================
+   UNIFIED TABLE COMPONENTS
+   =========================================== */
+
+.table-container {
+  background: var(--gradient-card);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: var(--glass-blur);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: var(--space-md);
+  text-align: left;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.table th {
+  background: var(--gradient-subtle);
+  font-weight: var(--font-semibold);
+  color: var(--foreground);
+  font-size: var(--font-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.table td {
+  color: var(--card-foreground);
+}
+
+.table tbody tr {
+  transition: all var(--transition-fast);
+}
+
+.table tbody tr:hover {
+  background: var(--hover-overlay);
+  transform: scale(1.01);
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ===========================================
+   UNIFIED UTILITY CLASSES
+   =========================================== */
+
+/* Spacing utilities */
+.p-0 { padding: 0; }
+.p-1 { padding: var(--space-xs); }
+.p-2 { padding: var(--space-sm); }
+.p-3 { padding: var(--space-md); }
+.p-4 { padding: var(--space-lg); }
+.p-5 { padding: var(--space-xl); }
+
+.m-0 { margin: 0; }
+.m-1 { margin: var(--space-xs); }
+.m-2 { margin: var(--space-sm); }
+.m-3 { margin: var(--space-md); }
+.m-4 { margin: var(--space-lg); }
+.m-5 { margin: var(--space-xl); }
+
+/* Text utilities */
+.text-xs { font-size: var(--font-xs); }
+.text-sm { font-size: var(--font-sm); }
+.text-md { font-size: var(--font-md); }
+.text-lg { font-size: var(--font-lg); }
+.text-xl { font-size: var(--font-xl); }
+.text-2xl { font-size: var(--font-2xl); }
+
+.font-normal { font-weight: var(--font-normal); }
+.font-medium { font-weight: var(--font-medium); }
+.font-semibold { font-weight: var(--font-semibold); }
+.font-bold { font-weight: var(--font-bold); }
+
+.text-center { text-align: center; }
+.text-left { text-align: left; }
+.text-right { text-align: right; }
+
+/* Color utilities using semantic colors */
+.text-primary { color: var(--primary); }
+.text-secondary { color: var(--secondary); }
+.text-muted { color: var(--muted-foreground); }
+.text-success { color: var(--status-success); }
+.text-warning { color: var(--status-warning); }
+.text-error { color: var(--status-error); }
+.text-info { color: var(--status-info); }
+
+/* Background utilities */
+.bg-card { background: var(--gradient-card); }
+.bg-primary { background: var(--gradient-primary); }
+.bg-success { background: var(--status-success-bg); }
+.bg-warning { background: var(--status-warning-bg); }
+.bg-error { background: var(--status-error-bg); }
+.bg-info { background: var(--status-info-bg); }
+
+/* Border utilities */
+.rounded-sm { border-radius: var(--radius-sm); }
+.rounded-md { border-radius: var(--radius-md); }
+.rounded-lg { border-radius: var(--radius-lg); }
+.rounded-xl { border-radius: var(--radius-xl); }
+.rounded-full { border-radius: var(--radius-full); }
+
+/* Shadow utilities */
+.shadow-sm { box-shadow: var(--shadow-sm); }
+.shadow-md { box-shadow: var(--shadow-md); }
+.shadow-lg { box-shadow: var(--shadow-lg); }
+.shadow-xl { box-shadow: var(--shadow-xl); }
+.shadow-2xl { box-shadow: var(--shadow-2xl); }
+
+/* ===========================================
+   RESPONSIVE DESIGN
+   =========================================== */
+
+@media (max-width: 768px) {
+  .modern-grid-2,
+  .modern-grid-3,
+  .modern-grid-4 {
+    grid-template-columns: 1fr;
+  }
+  
+  .modern-flex {
+    flex-direction: column;
+  }
+  
+  .modern-flex-between {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .card-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .modal {
+    margin: var(--space-md);
+  }
+  
+  .table-container {
+    overflow-x: auto;
+  }
+}
+
+/* ===========================================
+   ADVANCED THEME MODAL FIXES - Cosmic but Readable
+   =========================================== */
+
+/* Target ALL fullscreen modals - LogViewer, JsonEditor, MissionControl */
+html.theme-advanced .fixed.bottom-0.bg-white,
+html.theme-advanced .fixed.z-50.bg-white,
+html.theme-advanced [class*="fixed"][class*="bottom-0"].bg-white,
+html.theme-advanced [class*="fixed"][class*="z-50"].bg-white,
+html.theme-advanced .bg-white.fixed.bottom-0,
+html.theme-advanced .bg-white.fixed.z-50 {
+  background: var(--modal-bg) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  border-top: 1px solid var(--modal-border) !important;
+  box-shadow: var(--modal-shadow) !important;
+}
+
+/* Enhanced targeting for specific modal patterns */
+html.theme-advanced .fixed.bottom-0.left-0.right-0.bg-white,
+html.theme-advanced .fixed.inset-0.bg-white {
+  background: var(--modal-bg) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+}
+
+/* Target overlay backgrounds with multiple patterns */
+html.theme-advanced [class*="fixed"][class*="inset-0"][class*="bg-black"],
+html.theme-advanced .fixed.inset-0[class*="bg-black"] {
+  background: var(--modal-overlay) !important;
+  backdrop-filter: blur(12px) !important;
+}
+
+/* Ensure modal headers have cosmic glow */
+html.theme-advanced [class*="fixed"][class*="bg-white"] .border-b,
+html.theme-advanced .fixed.bg-white .border-b {
+  border-color: rgba(123, 97, 255, 0.3) !important;
+  box-shadow: 0 1px 20px rgba(123, 97, 255, 0.2) !important;
+}
+
+/* Keep text readable in modal contexts */
+html.theme-advanced [class*="fixed"][class*="bg-white"] *,
+html.theme-advanced .fixed.bg-white * {
+  color: inherit !important;
+}
+
+/* Additional fix for any remaining bg-white modals */
+html.theme-advanced .bg-white[class*="fixed"] {
+  background: var(--modal-bg) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+}
+
+/* Force all modal overlays to be less transparent */
+html.theme-advanced div[class*="fixed"][class*="inset-0"] {
+  background: var(--modal-overlay) !important;
+  backdrop-filter: blur(12px) !important;
+}
+
+/* Comprehensive modal background fix - catches all patterns */
+html.theme-advanced [class~="fixed"][class~="bg-white"],
+html.theme-advanced [class*="fixed bg-white"],
+html.theme-advanced .fixed[class*="bg-white"] {
+  background: var(--modal-bg) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  border: 1px solid var(--modal-border) !important;
+}
+
+/* Nuclear option - force all bg-white with fixed positioning in Advanced theme */
+html.theme-advanced .bg-white.fixed,
+html.theme-advanced .fixed.bg-white,
+html.theme-advanced div[class*="bg-white"][class*="fixed"] {
+  background: var(--modal-bg) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+}
+
+/* Fix for regular modals that are too transparent */
+html.theme-advanced .modal-window,
+html.theme-advanced .dialog,
+html.theme-advanced [role="dialog"],
+html.theme-advanced [class*="modal"] {
+  background: var(--modal-bg) !important;
+  backdrop-filter: blur(18px) saturate(160%) !important;
+  border: 1px solid var(--modal-border) !important;
+  box-shadow: var(--modal-shadow) !important;
+}

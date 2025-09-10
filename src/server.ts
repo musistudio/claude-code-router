@@ -61,6 +61,14 @@ export const createServer = (config: any): Server => {
     maxAge: "1h",
   });
 
+  // Register plugin static file serving
+  server.app.register(fastifyStatic, {
+    root: join(__dirname, "..", "plugins"),
+    prefix: "/plugins/",
+    maxAge: "1h",
+    decorateReply: false
+  });
+
   // Redirect /ui to /ui/ for proper static file serving
   server.app.get("/ui", async (_, reply) => {
     return reply.redirect("/ui/");

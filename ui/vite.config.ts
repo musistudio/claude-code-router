@@ -11,6 +11,13 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@plugins": path.resolve(__dirname, "../plugins"),
     },
   },
+  build: {
+    rollupOptions: {
+      // Asigură-te că dependencies din UI sunt accesibile pentru plugins
+      external: [],
+    }
+  }
 })

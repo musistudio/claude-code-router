@@ -19,6 +19,7 @@ import {SSEParserTransform} from "./utils/SSEParser.transform";
 import {SSESerializerTransform} from "./utils/SSESerializer.transform";
 import {rewriteStream} from "./utils/rewriteStream";
 import JSON5 from "json5";
+import { initStateManager } from '../plugins/core/stateManager';
 import { IAgent } from "./agents/type";
 import agentsManager from "./agents";
 import { EventEmitter } from "node:events";
@@ -137,6 +138,22 @@ async function run(options: RunOptions = {}) {
     },
     logger: loggerConfig,
   });
+  
+  // Initialize state manager FIRST
+  await initStateManager(server.app, config.plugins);
+  
+  // Plugin loading system - Now uses runtime state instead of config.json
+  const pluginsConfig = (server.app as any).pluginState || {};
+  if (pluginsConfig.analytics?.enabled) {
+    const AnalyticsPlugin = require('../plugins/analytics').default;
+    new AnalyticsPlugin().install(server.app, config);
+  }
+  
+  if (pluginsConfig.themes?.enabled) {
+    const ThemesPlugin = require('../plugins/themes').default;
+    ThemesPlugin.register();
+    console.log('🎨 Themes Plugin loaded successfully');
+  }
 
   // Add global error handlers to prevent the service from crashing
   process.on("uncaughtException", (err) => {
@@ -146,6 +163,7 @@ async function run(options: RunOptions = {}) {
   process.on("unhandledRejection", (reason, promise) => {
     server.log.error("Unhandled rejection at:", promise, "reason:", reason);
   });
+  
   // Add async preHandler hook for authentication
   server.addHook("preHandler", async (req, reply) => {
     return new Promise((resolve, reject) => {
@@ -375,7 +393,6 @@ async function run(options: RunOptions = {}) {
     event.emit('onSend', req, reply, payload);
     return payload;
   })
-
 
   server.start();
 }

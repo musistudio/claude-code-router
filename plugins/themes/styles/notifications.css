@@ -1,0 +1,670 @@
+/**
+ * 🔔 SISTEM COMPLET NOTIFICĂRI PENTRU TOATE TEMELE
+ * ================================================
+ * 
+ * Implementare de 3 variante (Subtle, Standard, Bold) pentru fiecare temă:
+ * - 🌞 LIGHT THEME: Professional cu depth progresiv
+ * - 🌙 DARK THEME: Elegant cu glow effects
+ * - 🌌 ADVANCED THEME: Glassmorphism cosmic spectacular
+ * 
+ * Fiecare temă are:
+ * - Variant 1: Subtle (minimalist, discret)
+ * - Variant 2: Standard (echilibrat, profesional)  
+ * - Variant 3: Bold (dramatic, high-impact)
+ */
+
+/* ===========================================
+   🔔 BASE NOTIFICATION SYSTEM - OVERRIDE TOAST
+   =========================================== */
+
+/* Override original Toast component with our themed notifications */
+.notification,
+div[class*="fixed top-4 right-4"] {
+  position: fixed !important;
+  top: 20px !important;
+  right: 20px !important;
+  min-width: 320px !important;
+  max-width: 450px !important;
+  padding: 16px 20px !important;
+  border-radius: var(--radius-lg) !important;
+  font-family: var(--font-sans) !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  line-height: 1.5 !important;
+  z-index: 9999 !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  
+  /* Reset Tailwind styles */
+  background: none !important;
+  border: none !important;
+  color: inherit !important;
+  box-shadow: none !important;
+  
+  /* Base animation */
+  animation: notificationSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.notification:hover {
+  transform: translateX(-4px) scale(1.02);
+}
+
+/* Stacking multiple notifications */
+.notification:nth-child(2) { top: 90px; }
+.notification:nth-child(3) { top: 160px; }
+.notification:nth-child(4) { top: 230px; }
+
+/* Base animation keyframes */
+@keyframes notificationSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(100%) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+/* Dismiss animation */
+.notification.dismissing {
+  animation: notificationSlideOut 0.3s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+@keyframes notificationSlideOut {
+  to {
+    opacity: 0;
+    transform: translateX(100%) scale(0.8);
+  }
+}
+
+/* ===========================================
+   🌞 LIGHT THEME NOTIFICATIONS
+   =========================================== */
+
+/* LIGHT THEME - VARIANT 1: SUBTLE */
+html.theme-light .notification.subtle.success {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 1px solid #0ea5e9;
+  color: #0c4a6e;
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.1);
+}
+
+html.theme-light .notification.subtle.error {
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  border: 1px solid #f87171;
+  color: #991b1b;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.1);
+}
+
+html.theme-light .notification.subtle.warning {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border: 1px solid #f59e0b;
+  color: #92400e;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.1);
+}
+
+html.theme-light .notification.subtle.info {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #64748b;
+  color: #334155;
+  box-shadow: 0 4px 12px rgba(100, 116, 139, 0.1);
+}
+
+/* LIGHT THEME - VARIANT 2: STANDARD */
+html.theme-light .notification.success,
+html.theme-light div[class*="fixed top-4 right-4"]:has(.text-green-500) {
+  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%) !important;
+  border: 1px solid #16a34a !important;
+  color: #14532d !important;
+  box-shadow: 0 8px 25px rgba(22, 163, 74, 0.2) !important;
+}
+
+html.theme-light .notification.error,
+html.theme-light div[class*="fixed top-4 right-4"]:has(.text-red-500) {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%) !important;
+  border: 1px solid #dc2626 !important;
+  color: #7f1d1d !important;
+  box-shadow: 0 8px 25px rgba(220, 38, 38, 0.2) !important;
+}
+
+html.theme-light .notification.warning,
+html.theme-light div[class*="fixed top-4 right-4"]:has(.text-yellow-500) {
+  background: linear-gradient(135deg, #fef3c7 0%, #fed7aa 100%) !important;
+  border: 1px solid #d97706 !important;
+  color: #78350f !important;
+  box-shadow: 0 8px 25px rgba(217, 119, 6, 0.2) !important;
+}
+
+html.theme-light .notification.info,
+html.theme-light div[class*="fixed top-4 right-4"]:not(:has(.text-green-500)):not(:has(.text-red-500)):not(:has(.text-yellow-500)) {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%) !important;
+  border: 1px solid #2563eb !important;
+  color: #1e3a8a !important;
+  box-shadow: 0 8px 25px rgba(37, 99, 235, 0.2) !important;
+}
+
+/* LIGHT THEME - VARIANT 3: BOLD */
+html.theme-light .notification.bold.success {
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+  border: 2px solid #22c55e;
+  color: white;
+  box-shadow: 0 12px 35px rgba(22, 163, 74, 0.4);
+}
+
+html.theme-light .notification.bold.error {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  border: 2px solid #ef4444;
+  color: white;
+  box-shadow: 0 12px 35px rgba(220, 38, 38, 0.4);
+}
+
+html.theme-light .notification.bold.warning {
+  background: linear-gradient(135deg, #d97706 0%, #c2410c 100%);
+  border: 2px solid #f59e0b;
+  color: white;
+  box-shadow: 0 12px 35px rgba(217, 119, 6, 0.4);
+}
+
+html.theme-light .notification.bold.info {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  border: 2px solid #3b82f6;
+  color: white;
+  box-shadow: 0 12px 35px rgba(37, 99, 235, 0.4);
+}
+
+/* ===========================================
+   🌙 DARK THEME NOTIFICATIONS  
+   =========================================== */
+
+/* DARK THEME - VARIANT 1: SUBTLE */
+html.theme-dark .notification.subtle.success {
+  background: linear-gradient(135deg, rgba(6, 78, 59, 0.4) 0%, rgba(5, 46, 22, 0.6) 100%);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #86efac;
+  box-shadow: 0 8px 32px rgba(34, 197, 94, 0.1);
+  backdrop-filter: blur(16px);
+}
+
+html.theme-dark .notification.subtle.error {
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.4) 0%, rgba(69, 10, 10, 0.6) 100%);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  box-shadow: 0 8px 32px rgba(239, 68, 68, 0.1);
+  backdrop-filter: blur(16px);
+}
+
+html.theme-dark .notification.subtle.warning {
+  background: linear-gradient(135deg, rgba(120, 53, 15, 0.4) 0%, rgba(69, 26, 3, 0.6) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #fbbf24;
+  box-shadow: 0 8px 32px rgba(245, 158, 11, 0.1);
+  backdrop-filter: blur(16px);
+}
+
+html.theme-dark .notification.subtle.info {
+  background: linear-gradient(135deg, rgba(30, 58, 138, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #93c5fd;
+  box-shadow: 0 8px 32px rgba(59, 130, 246, 0.1);
+  backdrop-filter: blur(16px);
+}
+
+/* DARK THEME - VARIANT 2: STANDARD */
+html.theme-dark .notification.success,
+html.theme-dark div[class*="fixed top-4 right-4"]:has(.text-green-500) {
+  background: linear-gradient(135deg, rgba(6, 78, 59, 0.8) 0%, rgba(5, 46, 22, 0.9) 100%) !important;
+  border: 1px solid #22c55e !important;
+  color: #bbf7d0 !important;
+  box-shadow: 0 8px 32px rgba(34, 197, 94, 0.25), 0 0 20px rgba(34, 197, 94, 0.1) !important;
+  backdrop-filter: blur(20px) !important;
+}
+
+html.theme-dark .notification.error,
+html.theme-dark div[class*="fixed top-4 right-4"]:has(.text-red-500) {
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.8) 0%, rgba(69, 10, 10, 0.9) 100%) !important;
+  border: 1px solid #ef4444 !important;
+  color: #fecaca !important;
+  box-shadow: 0 8px 32px rgba(239, 68, 68, 0.25), 0 0 20px rgba(239, 68, 68, 0.1) !important;
+  backdrop-filter: blur(20px) !important;
+}
+
+html.theme-dark .notification.warning,
+html.theme-dark div[class*="fixed top-4 right-4"]:has(.text-yellow-500) {
+  background: linear-gradient(135deg, rgba(120, 53, 15, 0.8) 0%, rgba(69, 26, 3, 0.9) 100%) !important;
+  border: 1px solid #f59e0b !important;
+  color: #fde68a !important;
+  box-shadow: 0 8px 32px rgba(245, 158, 11, 0.25), 0 0 20px rgba(245, 158, 11, 0.1) !important;
+  backdrop-filter: blur(20px) !important;
+}
+
+html.theme-dark .notification.info,
+html.theme-dark div[class*="fixed top-4 right-4"]:not(:has(.text-green-500)):not(:has(.text-red-500)):not(:has(.text-yellow-500)) {
+  background: linear-gradient(135deg, rgba(30, 58, 138, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%) !important;
+  border: 1px solid #3b82f6 !important;
+  color: #dbeafe !important;
+  box-shadow: 0 8px 32px rgba(59, 130, 246, 0.25), 0 0 20px rgba(59, 130, 246, 0.1) !important;
+  backdrop-filter: blur(20px) !important;
+}
+
+/* DARK THEME - VARIANT 3: BOLD */
+html.theme-dark .notification.bold.success {
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+  border: 2px solid #22c55e;
+  color: white;
+  box-shadow: 
+    0 8px 32px rgba(34, 197, 94, 0.4),
+    0 0 40px rgba(34, 197, 94, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(24px);
+}
+
+html.theme-dark .notification.bold.error {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  border: 2px solid #ef4444;
+  color: white;
+  box-shadow: 
+    0 8px 32px rgba(239, 68, 68, 0.4),
+    0 0 40px rgba(239, 68, 68, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(24px);
+}
+
+html.theme-dark .notification.bold.warning {
+  background: linear-gradient(135deg, #d97706 0%, #c2410c 100%);
+  border: 2px solid #f59e0b;
+  color: white;
+  box-shadow: 
+    0 8px 32px rgba(245, 158, 11, 0.4),
+    0 0 40px rgba(245, 158, 11, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(24px);
+}
+
+html.theme-dark .notification.bold.info {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  border: 2px solid #3b82f6;
+  color: white;
+  box-shadow: 
+    0 8px 32px rgba(59, 130, 246, 0.4),
+    0 0 40px rgba(59, 130, 246, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(24px);
+}
+
+/* ===========================================
+   🌌 ADVANCED THEME NOTIFICATIONS (GLASSMORPHISM COSMIC)
+   =========================================== */
+
+/* ADVANCED THEME - VARIANT 1: SUBTLE */
+html.theme-advanced .notification.subtle.success {
+  background: linear-gradient(135deg, 
+    rgba(6, 78, 59, 0.15) 0%,
+    rgba(5, 46, 22, 0.25) 50%,
+    rgba(21, 128, 61, 0.2) 100%
+  );
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  color: #86efac;
+  box-shadow: 
+    0 8px 32px rgba(34, 197, 94, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px) saturate(180%);
+}
+
+html.theme-advanced .notification.subtle.error {
+  background: linear-gradient(135deg, 
+    rgba(127, 29, 29, 0.15) 0%,
+    rgba(69, 10, 10, 0.25) 50%,
+    rgba(185, 28, 28, 0.2) 100%
+  );
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  box-shadow: 
+    0 8px 32px rgba(239, 68, 68, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px) saturate(180%);
+}
+
+html.theme-advanced .notification.subtle.warning {
+  background: linear-gradient(135deg, 
+    rgba(120, 53, 15, 0.15) 0%,
+    rgba(69, 26, 3, 0.25) 50%,
+    rgba(194, 65, 12, 0.2) 100%
+  );
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  box-shadow: 
+    0 8px 32px rgba(245, 158, 11, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px) saturate(180%);
+}
+
+html.theme-advanced .notification.subtle.info {
+  background: linear-gradient(135deg, 
+    rgba(30, 58, 138, 0.15) 0%,
+    rgba(15, 23, 42, 0.25) 50%,
+    rgba(29, 78, 216, 0.2) 100%
+  );
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+  box-shadow: 
+    0 8px 32px rgba(59, 130, 246, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px) saturate(180%);
+}
+
+/* ADVANCED THEME - VARIANT 2: STANDARD */
+html.theme-advanced .notification.success,
+html.theme-advanced div[class*="fixed top-4 right-4"]:has(.text-green-500) {
+  background: linear-gradient(135deg, 
+    rgba(6, 78, 59, 0.3) 0%,
+    rgba(5, 46, 22, 0.5) 50%,
+    rgba(21, 128, 61, 0.4) 100%
+  ) !important;
+  border: 1px solid rgba(34, 197, 94, 0.4) !important;
+  color: #bbf7d0 !important;
+  box-shadow: 
+    0 8px 32px rgba(34, 197, 94, 0.2),
+    0 0 60px rgba(34, 197, 94, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+  backdrop-filter: blur(24px) saturate(200%) !important;
+}
+
+html.theme-advanced .notification.success::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, 
+    rgba(34, 197, 94, 0.1) 0%,
+    transparent 50%,
+    rgba(34, 197, 94, 0.05) 100%
+  );
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+html.theme-advanced .notification.error,
+html.theme-advanced div[class*="fixed top-4 right-4"]:has(.text-red-500) {
+  background: linear-gradient(135deg, 
+    rgba(127, 29, 29, 0.3) 0%,
+    rgba(69, 10, 10, 0.5) 50%,
+    rgba(185, 28, 28, 0.4) 100%
+  ) !important;
+  border: 1px solid rgba(239, 68, 68, 0.4) !important;
+  color: #fecaca !important;
+  box-shadow: 
+    0 8px 32px rgba(239, 68, 68, 0.2),
+    0 0 60px rgba(239, 68, 68, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+  backdrop-filter: blur(24px) saturate(200%) !important;
+}
+
+html.theme-advanced .notification.error::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, 
+    rgba(239, 68, 68, 0.1) 0%,
+    transparent 50%,
+    rgba(239, 68, 68, 0.05) 100%
+  );
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+html.theme-advanced .notification.warning,
+html.theme-advanced div[class*="fixed top-4 right-4"]:has(.text-yellow-500) {
+  background: linear-gradient(135deg, 
+    rgba(120, 53, 15, 0.3) 0%,
+    rgba(69, 26, 3, 0.5) 50%,
+    rgba(194, 65, 12, 0.4) 100%
+  ) !important;
+  border: 1px solid rgba(245, 158, 11, 0.4) !important;
+  color: #fde68a !important;
+  box-shadow: 
+    0 8px 32px rgba(245, 158, 11, 0.2),
+    0 0 60px rgba(245, 158, 11, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+  backdrop-filter: blur(24px) saturate(200%) !important;
+}
+
+html.theme-advanced .notification.warning::before,
+html.theme-advanced div[class*="fixed top-4 right-4"]:has(.text-yellow-500)::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, 
+    rgba(245, 158, 11, 0.1) 0%,
+    transparent 50%,
+    rgba(245, 158, 11, 0.05) 100%
+  );
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+html.theme-advanced .notification.info,
+html.theme-advanced div[class*="fixed top-4 right-4"]:not(:has(.text-green-500)):not(:has(.text-red-500)):not(:has(.text-yellow-500)) {
+  background: linear-gradient(135deg, 
+    rgba(30, 58, 138, 0.3) 0%,
+    rgba(15, 23, 42, 0.5) 50%,
+    rgba(29, 78, 216, 0.4) 100%
+  ) !important;
+  border: 1px solid rgba(59, 130, 246, 0.4) !important;
+  color: #dbeafe !important;
+  box-shadow: 
+    0 8px 32px rgba(59, 130, 246, 0.2),
+    0 0 60px rgba(59, 130, 246, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+  backdrop-filter: blur(24px) saturate(200%) !important;
+}
+
+html.theme-advanced .notification.info::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, 
+    rgba(59, 130, 246, 0.1) 0%,
+    transparent 50%,
+    rgba(59, 130, 246, 0.05) 100%
+  );
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* ADVANCED THEME - VARIANT 3: BOLD (SPECTACULAR COSMIC) */
+html.theme-advanced .notification.bold.success {
+  background: linear-gradient(135deg, 
+    rgba(34, 197, 94, 0.8) 0%,
+    rgba(21, 128, 61, 0.9) 50%,
+    rgba(5, 46, 22, 0.95) 100%
+  );
+  border: 2px solid rgba(34, 197, 94, 0.8);
+  color: white;
+  box-shadow: 
+    0 8px 32px rgba(34, 197, 94, 0.4),
+    0 0 80px rgba(34, 197, 94, 0.3),
+    0 0 120px rgba(34, 197, 94, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(32px) saturate(250%);
+}
+
+html.theme-advanced .notification.bold.success::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  background: conic-gradient(
+    from 0deg,
+    rgba(34, 197, 94, 0.5) 0%,
+    rgba(22, 163, 74, 0.3) 25%,
+    rgba(34, 197, 94, 0.5) 50%,
+    rgba(22, 163, 74, 0.3) 75%,
+    rgba(34, 197, 94, 0.5) 100%
+  );
+  border-radius: calc(var(--radius-lg) + 2px);
+  z-index: -1;
+  animation: cosmicRotate 8s linear infinite;
+}
+
+html.theme-advanced .notification.bold.error {
+  background: linear-gradient(135deg, 
+    rgba(239, 68, 68, 0.8) 0%,
+    rgba(185, 28, 28, 0.9) 50%,
+    rgba(69, 10, 10, 0.95) 100%
+  );
+  border: 2px solid rgba(239, 68, 68, 0.8);
+  color: white;
+  box-shadow: 
+    0 8px 32px rgba(239, 68, 68, 0.4),
+    0 0 80px rgba(239, 68, 68, 0.3),
+    0 0 120px rgba(239, 68, 68, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(32px) saturate(250%);
+}
+
+html.theme-advanced .notification.bold.error::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  background: conic-gradient(
+    from 0deg,
+    rgba(239, 68, 68, 0.5) 0%,
+    rgba(220, 38, 38, 0.3) 25%,
+    rgba(239, 68, 68, 0.5) 50%,
+    rgba(220, 38, 38, 0.3) 75%,
+    rgba(239, 68, 68, 0.5) 100%
+  );
+  border-radius: calc(var(--radius-lg) + 2px);
+  z-index: -1;
+  animation: cosmicRotate 8s linear infinite;
+}
+
+html.theme-advanced .notification.bold.warning {
+  background: linear-gradient(135deg, 
+    rgba(245, 158, 11, 0.8) 0%,
+    rgba(194, 65, 12, 0.9) 50%,
+    rgba(69, 26, 3, 0.95) 100%
+  );
+  border: 2px solid rgba(245, 158, 11, 0.8);
+  color: white;
+  box-shadow: 
+    0 8px 32px rgba(245, 158, 11, 0.4),
+    0 0 80px rgba(245, 158, 11, 0.3),
+    0 0 120px rgba(245, 158, 11, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(32px) saturate(250%);
+}
+
+html.theme-advanced .notification.bold.warning::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  background: conic-gradient(
+    from 0deg,
+    rgba(245, 158, 11, 0.5) 0%,
+    rgba(217, 119, 6, 0.3) 25%,
+    rgba(245, 158, 11, 0.5) 50%,
+    rgba(217, 119, 6, 0.3) 75%,
+    rgba(245, 158, 11, 0.5) 100%
+  );
+  border-radius: calc(var(--radius-lg) + 2px);
+  z-index: -1;
+  animation: cosmicRotate 8s linear infinite;
+}
+
+html.theme-advanced .notification.bold.info {
+  background: linear-gradient(135deg, 
+    rgba(59, 130, 246, 0.8) 0%,
+    rgba(29, 78, 216, 0.9) 50%,
+    rgba(15, 23, 42, 0.95) 100%
+  );
+  border: 2px solid rgba(59, 130, 246, 0.8);
+  color: white;
+  box-shadow: 
+    0 8px 32px rgba(59, 130, 246, 0.4),
+    0 0 80px rgba(59, 130, 246, 0.3),
+    0 0 120px rgba(59, 130, 246, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(32px) saturate(250%);
+}
+
+html.theme-advanced .notification.bold.info::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  background: conic-gradient(
+    from 0deg,
+    rgba(59, 130, 246, 0.5) 0%,
+    rgba(37, 99, 235, 0.3) 25%,
+    rgba(59, 130, 246, 0.5) 50%,
+    rgba(37, 99, 235, 0.3) 75%,
+    rgba(59, 130, 246, 0.5) 100%
+  );
+  border-radius: calc(var(--radius-lg) + 2px);
+  z-index: -1;
+  animation: cosmicRotate 8s linear infinite;
+}
+
+/* Cosmic rotation animation for bold advanced notifications */
+@keyframes cosmicRotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ===========================================
+   📱 RESPONSIVE DESIGN
+   =========================================== */
+
+@media (max-width: 768px) {
+  .notification {
+    left: 10px;
+    right: 10px;
+    top: 10px;
+    min-width: auto;
+    max-width: none;
+    font-size: 13px;
+  }
+  
+  .notification:nth-child(2) { top: 70px; }
+  .notification:nth-child(3) { top: 130px; }
+  .notification:nth-child(4) { top: 190px; }
+}
+
+/* ===========================================
+   ♿ ACCESSIBILITY ENHANCEMENTS
+   =========================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .notification {
+    animation: none;
+    transition: opacity 0.2s ease;
+  }
+  
+  html.theme-advanced .notification.bold::before {
+    animation: none;
+  }
+}
+
+@media (prefers-contrast: high) {
+  .notification {
+    border-width: 2px !important;
+  }
+  
+  html.theme-light .notification.subtle,
+  html.theme-dark .notification.subtle,
+  html.theme-advanced .notification.subtle {
+    backdrop-filter: none;
+    background: var(--background) !important;
+    border-color: currentColor !important;
+  }
+}
+
+/* Focus states for keyboard navigation */
+.notification:focus {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}

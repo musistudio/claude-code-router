@@ -5,11 +5,14 @@ import './index.css'
 import { RouterProvider } from 'react-router-dom';
 import { router } from './routes';
 import { ConfigProvider } from '@/components/ConfigProvider';
+import { PluginThemeWrapper } from '../../plugins/themes/components/PluginThemeWrapper';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ConfigProvider>
-      <RouterProvider router={router} />
+      <PluginThemeWrapper>
+        <RouterProvider router={router} />
+      </PluginThemeWrapper>
     </ConfigProvider>
   </StrictMode>,
 )

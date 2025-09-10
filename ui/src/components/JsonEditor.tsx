@@ -141,7 +141,7 @@ export function JsonEditor({ open, onOpenChange, showToast }: JsonEditorProps) {
   return (
     <>
       {(isVisible || open) && (
-        <div 
+        <div
           className={`fixed inset-0 z-50 transition-all duration-300 ease-out ${
             isAnimating && open ? 'bg-black/50 opacity-100' : 'bg-black/0 opacity-0 pointer-events-none'
           }`}

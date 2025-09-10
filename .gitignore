@@ -5,3 +5,20 @@ log.txt
 dist
 .DS_Store
 .vscode
+
+# Build artifacts
+*.tsbuildinfo
+/ui/tsconfig.tsbuildinfo
+
+# Security - API Keys and Secrets
+*.key
+*.pem
+config.json
+.env.*
+**/secrets/**
+**/credentials/**
+**/*-key*.js
+**/*-secret*.js
+**/*-token*.js
+**/test-*-rotation.js
+**/api-keys.js

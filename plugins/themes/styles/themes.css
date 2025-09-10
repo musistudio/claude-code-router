@@ -1,0 +1,270 @@
+/**
+ * Unified Theme System v2.0 - Main Entry Point
+ * Revolutionary redesign for consistent modern experience across all 3 themes:
+ * 
+ * 🎨 LIGHT THEME: Professional & clean with sophisticated gradients and shadows
+ * 🌙 DARK THEME: Elegant & sophisticated with enhanced blur effects and depth
+ * 🌌 ADVANCED THEME: Spectacular glassmorphism space with cosmic visual effects
+ * 
+ * ✨ KEY IMPROVEMENTS:
+ * - Same level of visual sophistication for all themes
+ * - Unified component styling using CSS variables
+ * - Consistent hover effects, animations, and interactions
+ * - No theme-specific logic in components
+ * - Modern design patterns that work beautifully in all themes
+ */
+
+/* Import unified system files */
+@import './variables.css';     /* Theme-specific color variables and design tokens */
+@import './modern-effects.css'; /* Unified visual effects and animations */
+@import './components.css';     /* Consistent component styling */
+@import './notifications.css';  /* Advanced notification system for all themes */
+@import './centered-layout.css'; /* Centered layout system for modern design */
+
+/* ===========================================
+   THEME SYSTEM ACTIVATION
+   =========================================== */
+
+/* Plugin activation marker */
+.themes-plugin-active {
+  --themes-plugin-enabled: 1;
+}
+
+/* Universal base styling that works across all themes */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  transition: background-color var(--transition-smooth), color var(--transition-smooth);
+  font-family: system-ui, -apple-system, 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ===========================================
+   THEME-SPECIFIC BODY BACKGROUNDS
+   =========================================== */
+
+/* Light Theme Body */
+html.theme-light body {
+  background: var(--background);
+  min-height: 100vh;
+}
+
+/* Dark Theme Body */
+html.theme-dark body {
+  background: var(--background);
+  min-height: 100vh;
+}
+
+/* Advanced Theme Body - Spectacular Space Background */
+html.theme-advanced body {
+  background: var(--space-bg);
+  background-attachment: fixed;
+  min-height: 100vh;
+  position: relative;
+}
+
+/* Advanced theme cosmic overlay effects */
+html.theme-advanced body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: var(--nebula-glow);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* ===========================================
+   THEME-AWARE COMPONENT OVERRIDES
+   =========================================== */
+
+/* Ensure all major layout components use theme variables */
+main,
+.main-content,
+.app-container {
+  background: var(--background);
+  color: var(--foreground);
+  transition: all var(--transition-smooth);
+}
+
+/* Headers and navigation */
+header,
+nav,
+.header,
+.navigation {
+  background: var(--gradient-card);
+  border-bottom: 1px solid var(--glass-border);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Cards and containers */
+.card,
+.container,
+.panel {
+  background: var(--gradient-card);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: var(--glass-blur);
+}
+
+/* Buttons inherit theme variables */
+button:not(.custom-button) {
+  background: var(--gradient-primary);
+  color: var(--primary-foreground);
+  border: none;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-fast);
+}
+
+button:not(.custom-button):hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-1px);
+}
+
+/* Input elements */
+input,
+textarea,
+select {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  color: var(--foreground);
+  border-radius: var(--radius-md);
+  backdrop-filter: var(--glass-blur);
+  transition: all var(--transition-fast);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--focus-ring);
+  box-shadow: var(--shadow-md), 0 0 0 3px color-mix(in srgb, var(--focus-ring) 12%, transparent);
+  outline: none;
+}
+
+/* ===========================================
+   LEGACY COMPATIBILITY OVERRIDES
+   =========================================== */
+
+/* Override common Tailwind/Bootstrap classes to use theme variables */
+.bg-white,
+.bg-gray-50,
+.bg-gray-100 {
+  background: var(--gradient-card) !important;
+  color: var(--card-foreground) !important;
+}
+
+.text-gray-900,
+.text-gray-800,
+.text-gray-700 {
+  color: var(--foreground) !important;
+}
+
+.text-gray-600,
+.text-gray-500,
+.text-gray-400 {
+  color: var(--muted-foreground) !important;
+}
+
+.border-gray-300,
+.border-gray-200 {
+  border-color: var(--glass-border) !important;
+}
+
+/* Rounded corners */
+.rounded,
+.rounded-md,
+.rounded-lg {
+  border-radius: var(--radius-lg) !important;
+}
+
+.rounded-xl {
+  border-radius: var(--radius-xl) !important;
+}
+
+/* ===========================================
+   RESPONSIVE DESIGN ENHANCEMENTS
+   =========================================== */
+
+@media (max-width: 768px) {
+  /* Reduce blur effects on mobile for better performance */
+  html.theme-light {
+    --glass-blur: blur(4px);
+  }
+  
+  html.theme-dark {
+    --glass-blur: blur(8px);
+  }
+  
+  html.theme-advanced {
+    --glass-blur: blur(12px);
+  }
+  
+  /* Simplify advanced theme background on mobile */
+  html.theme-advanced body::before {
+    opacity: 0.5;
+  }
+}
+
+/* ===========================================
+   ACCESSIBILITY ENHANCEMENTS
+   =========================================== */
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  :root {
+    --glass-blur: none;
+  }
+  
+  .card,
+  button,
+  input,
+  textarea,
+  select {
+    border-width: 2px !important;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* ===========================================
+   PRINT STYLES
+   =========================================== */
+
+@media print {
+  html.theme-light,
+  html.theme-dark,
+  html.theme-advanced {
+    --background: white;
+    --foreground: black;
+    --card: white;
+    --glass-border: #ccc;
+    --glass-blur: none;
+  }
+  
+  .card,
+  button,
+  input {
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+}

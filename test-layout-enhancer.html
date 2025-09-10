@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Layout Enhancer Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        .status.success { background: #d4edda; border-color: #c3e6cb; color: #155724; }
+        .status.error { background: #f8d7da; border-color: #f5c6cb; color: #721c24; }
+        .status.info { background: #d1ecf1; border-color: #bee5eb; color: #0c5460; }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+        }
+        button:hover { background: #0056b3; }
+        button.theme-light { background: #f8f9fa; color: #333; border: 1px solid #ddd; }
+        button.theme-dark { background: #343a40; color: white; }
+        button.theme-advanced { background: linear-gradient(45deg, #e94560, #ff6b9d); color: white; }
+        .mock-app {
+            margin-top: 20px;
+            padding: 20px;
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+        }
+        .mock-header {
+            background: #ffffff;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+        .mock-main {
+            display: flex;
+            gap: 20px;
+        }
+        .mock-providers {
+            flex: 3;
+            background: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+        .mock-router {
+            flex: 2;
+            background: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🎨 Layout Enhancer Test</h1>
+        
+        <div class="status info" id="status">
+            Checking layout enhancer status...
+        </div>
+        
+        <div>
+            <h3>Theme Controls</h3>
+            <button onclick="setTheme('light')" class="theme-light">Light Theme</button>
+            <button onclick="setTheme('dark')" class="theme-dark">Dark Theme</button>
+            <button onclick="setTheme('advanced')" class="theme-advanced">Advanced Theme</button>
+        </div>
+        
+        <div>
+            <h3>Layout Enhancer Controls</h3>
+            <button onclick="testEnhancer()">Test Layout Enhancer</button>
+            <button onclick="checkEnhancerStatus()">Check Status</button>
+            <button onclick="clearStatus()">Clear Console</button>
+        </div>
+        
+        <div class="mock-app">
+            <h3>Mock App Structure</h3>
+            <div class="mock-header h-screen bg-gray-50">
+                Header (should be enhanced)
+            </div>
+            <div class="mock-main">
+                <div class="mock-providers bg-white">
+                    Providers Section
+                    <br>(should get glass effect in advanced theme)
+                </div>
+                <div class="mock-router bg-white">
+                    Router Section
+                    <br>(should get glass effect in advanced theme)
+                </div>
+            </div>
+        </div>
+        
+        <div>
+            <h3>Console Output</h3>
+            <div id="console" style="background: #000; color: #0f0; padding: 10px; border-radius: 5px; min-height: 100px; font-family: monospace; white-space: pre-wrap;"></div>
+        </div>
+    </div>
+
+    <script>
+        const statusDiv = document.getElementById('status');
+        const consoleDiv = document.getElementById('console');
+        let originalConsoleLog = console.log;
+        let originalConsoleError = console.error;
+        let originalConsoleWarn = console.warn;
+        
+        // Intercept console output
+        function interceptConsole(method, color = '#0f0') {
+            return function(...args) {
+                originalConsoleLog.apply(console, args);
+                consoleDiv.innerHTML += `<span style="color: ${color}">[${method.toUpperCase()}] ${args.join(' ')}</span>\n`;
+                consoleDiv.scrollTop = consoleDiv.scrollHeight;
+            };
+        }
+        
+        console.log = interceptConsole('log', '#0f0');
+        console.error = interceptConsole('error', '#f00');
+        console.warn = interceptConsole('warn', '#fa0');
+        
+        function setTheme(theme) {
+            document.documentElement.classList.remove('theme-light', 'theme-dark', 'theme-advanced');
+            document.documentElement.classList.add(`theme-${theme}`);
+            console.log(`🎨 Theme set to: ${theme}`);
+            
+            // Apply theme to mock elements
+            const mockApp = document.querySelector('.mock-app');
+            mockApp.className = `mock-app theme-${theme}`;
+        }
+        
+        async function testEnhancer() {
+            console.log('🧪 Testing Layout Enhancer...');
+            
+            try {
+                // Try to import and test the layout enhancer
+                const module = await import('./plugins/themes/scripts/layout-enhancer.js');
+                console.log('✅ Layout enhancer module loaded successfully');
+                
+                if (module.layoutEnhancer) {
+                    const config = module.layoutEnhancer.getConfig();
+                    console.log('📋 Layout enhancer config:', JSON.stringify(config, null, 2));
+                    
+                    // Test apply enhancements
+                    module.layoutEnhancer.applyProgressiveEnhancements();
+                    console.log('🎨 Progressive enhancements applied');
+                    
+                    statusDiv.innerHTML = '✅ Layout Enhancer is working correctly!';
+                    statusDiv.className = 'status success';
+                } else {
+                    console.error('❌ Layout enhancer instance not found in module');
+                    statusDiv.innerHTML = '❌ Layout Enhancer instance not found';
+                    statusDiv.className = 'status error';
+                }
+            } catch (error) {
+                console.error('❌ Failed to load layout enhancer:', error);
+                statusDiv.innerHTML = `❌ Layout Enhancer failed: ${error.message}`;
+                statusDiv.className = 'status error';
+                
+                // Try alternative check
+                if (window.LayoutTransformer) {
+                    console.log('🔍 Found old LayoutTransformer, but it should be replaced');
+                }
+            }
+        }
+        
+        function checkEnhancerStatus() {
+            console.log('🔍 Checking enhancer status...');
+            
+            // Check DOM classes
+            const themeClasses = Array.from(document.documentElement.classList).filter(c => c.startsWith('theme-'));
+            console.log('🎨 Theme classes:', themeClasses.join(', '));
+            
+            // Check enhanced elements
+            const enhancedElements = document.querySelectorAll('.theme-enhanced');
+            console.log(`🔍 Found ${enhancedElements.length} enhanced elements`);
+            
+            const enhancedHeaders = document.querySelectorAll('.theme-navigation-enhanced');
+            console.log(`🔍 Found ${enhancedHeaders.length} enhanced headers`);
+        }
+        
+        function clearStatus() {
+            consoleDiv.innerHTML = '';
+        }
+        
+        // Initial check
+        checkEnhancerStatus();
+        
+        // Add some test classes to mock elements
+        setTimeout(() => {
+            document.querySelector('.mock-header').classList.add('h-screen', 'bg-gray-50');
+            document.querySelectorAll('.mock-providers, .mock-router').forEach(el => {
+                el.classList.add('bg-white');
+            });
+        }, 100);
+    </script>
+</body>
+</html>

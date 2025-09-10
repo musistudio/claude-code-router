@@ -1,0 +1,469 @@
+/**
+ * 🎯 SISTEM LAYOUT CENTRAT PENTRU TOATE TEMELE
+ * ===========================================
+ * 
+ * Transformă layout-ul din full-width în centrat, modern și aerisit
+ * pentru toate cele 3 teme (Light, Dark, Advanced)
+ * 
+ * ✨ FEATURES:
+ * - Container centrat cu max-width responsiv
+ * - Topbar centrat în loc de full-width  
+ * - Spacing modern și aerisit
+ * - Respectă identitatea vizuală a fiecărei teme
+ * - Responsive design pentru toate ecranele
+ */
+
+/* ===========================================
+   🎯 MASTER CONTAINER CENTRAT
+   =========================================== */
+
+/* Containerul principal centrat */
+.themes-plugin-active .app-container,
+.themes-plugin-active body > div:first-child,
+.themes-plugin-active #root,
+.themes-plugin-active [data-testid="app-container"],
+.themes-plugin-active div[class*="h-screen bg-gray-50"] {
+  max-width: 1200px !important;
+  margin: 0 auto !important;
+  padding: 0 24px !important;
+  min-height: 100vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  
+  /* Reset background pentru theme control */
+  background: none !important;
+}
+
+/* Layout wrapper centrat */
+.themes-plugin-active .layout-wrapper {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+  width: 100%;
+}
+
+/* ===========================================
+   🏗️ TOPBAR CENTRAT (nu mai e full-width)
+   =========================================== */
+
+/* Topbar centrat pentru toate temele */
+.themes-plugin-active header,
+.themes-plugin-active .header,
+.themes-plugin-active nav,
+.themes-plugin-active .topbar,
+.themes-plugin-active .navigation,
+.themes-plugin-active banner {
+  width: 100% !important;
+  max-width: none !important; /* Remove max-width restriction */
+  margin: 24px 0 !important; /* Remove auto centering, use container centering */
+  border-radius: var(--radius-xl) !important;
+  padding: 16px 24px !important;
+  box-shadow: var(--shadow-md) !important;
+  backdrop-filter: var(--glass-blur) !important;
+  position: relative !important;
+  
+  /* Transforma din fixed full-width în centrat */
+  position: static !important;
+  left: auto !important;
+  right: auto !important;
+  top: auto !important;
+  
+  /* Remove original styling */
+  background: none !important;
+  border: none !important;
+}
+
+/* Spacing pentru topbar centrat */
+.themes-plugin-active .topbar-content,
+.themes-plugin-active .header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  max-width: none;
+}
+
+/* Logo și titlu în topbar centrat */
+.themes-plugin-active .topbar h1,
+.themes-plugin-active .header h1,
+.themes-plugin-active banner h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+/* Butoanele din topbar */
+.themes-plugin-active .topbar-actions,
+.themes-plugin-active .header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ===========================================
+   📄 MAIN CONTENT CENTRAT ȘI AERISIT
+   =========================================== */
+
+/* Main content cu spacing modern */
+.themes-plugin-active main,
+.themes-plugin-active .main-content,
+.themes-plugin-active .content-wrapper,
+.themes-plugin-active main[class*="flex flex-1 gap-6 p-6"] {
+  max-width: 1200px !important;
+  margin: 0 auto !important;
+  padding: 32px 24px !important;
+  flex: 1 !important;
+  
+  /* Remove original background */
+  background: none !important;
+}
+
+/* Grid layout pentru secțiuni */
+.themes-plugin-active .content-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  margin-bottom: 32px;
+}
+
+/* Secțiuni individuale cu spacing */
+.themes-plugin-active .section,
+.themes-plugin-active .panel,
+.themes-plugin-active .content-section {
+  background: var(--gradient-card);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: var(--glass-blur);
+  margin-bottom: 24px;
+}
+
+/* Headers secțiuni */
+.themes-plugin-active .section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.themes-plugin-active .section-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--foreground);
+  margin: 0;
+}
+
+/* ===========================================
+   🎨 STILIZĂRI SPECIFICE PENTRU FIECARE TEMĂ
+   =========================================== */
+
+/* LIGHT THEME - Layout centrat profesional */
+html.theme-light.themes-plugin-active {
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+html.theme-light.themes-plugin-active .topbar,
+html.theme-light.themes-plugin-active header,
+html.theme-light.themes-plugin-active banner {
+  background: linear-gradient(135deg, 
+    rgba(255, 255, 255, 0.9) 0%, 
+    rgba(248, 250, 252, 0.95) 100%
+  );
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 
+    0 4px 20px rgba(0, 0, 0, 0.08),
+    0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* DARK THEME - Layout centrat elegant */
+html.theme-dark.themes-plugin-active {
+  background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+}
+
+html.theme-dark.themes-plugin-active .topbar,
+html.theme-dark.themes-plugin-active header,
+html.theme-dark.themes-plugin-active banner {
+  background: linear-gradient(135deg, 
+    rgba(30, 41, 59, 0.9) 0%, 
+    rgba(15, 23, 42, 0.95) 100%
+  );
+  border: 1px solid rgba(51, 65, 85, 0.6);
+  box-shadow: 
+    0 4px 20px rgba(0, 0, 0, 0.4),
+    0 1px 3px rgba(0, 0, 0, 0.3),
+    0 0 20px rgba(59, 130, 246, 0.1);
+}
+
+/* ADVANCED THEME - Layout centrat cosmic spectacular */
+html.theme-advanced.themes-plugin-active {
+  background: var(--space-bg);
+  background-attachment: fixed;
+}
+
+html.theme-advanced.themes-plugin-active::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: var(--nebula-glow);
+  pointer-events: none;
+  z-index: -1;
+}
+
+html.theme-advanced.themes-plugin-active .topbar,
+html.theme-advanced.themes-plugin-active header,
+html.theme-advanced.themes-plugin-active banner {
+  background: linear-gradient(135deg, 
+    rgba(30, 41, 59, 0.4) 0%,
+    rgba(15, 23, 42, 0.6) 50%,
+    rgba(7, 12, 22, 0.8) 100%
+  );
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.6),
+    0 0 60px rgba(139, 92, 246, 0.2),
+    0 0 100px rgba(59, 130, 246, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(24px) saturate(200%);
+}
+
+/* Efect cosmic pentru topbar advanced */
+html.theme-advanced.themes-plugin-active .topbar::before,
+html.theme-advanced.themes-plugin-active header::before,
+html.theme-advanced.themes-plugin-active banner::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  background: linear-gradient(
+    45deg,
+    rgba(139, 92, 246, 0.5) 0%,
+    rgba(59, 130, 246, 0.3) 25%,
+    rgba(139, 92, 246, 0.5) 50%,
+    rgba(59, 130, 246, 0.3) 75%,
+    rgba(139, 92, 246, 0.5) 100%
+  );
+  border-radius: calc(var(--radius-xl) + 1px);
+  z-index: -1;
+  opacity: 0.6;
+  animation: cosmicGlow 8s ease-in-out infinite;
+}
+
+@keyframes cosmicGlow {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 0.8; }
+}
+
+/* ===========================================
+   📦 CARDURI ȘI COMPONENTE
+   =========================================== */
+
+/* Carduri cu spacing îmbunătățit */
+.themes-plugin-active .card,
+.themes-plugin-active .provider-card,
+.themes-plugin-active .config-card {
+  background: var(--gradient-card);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: var(--glass-blur);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.themes-plugin-active .card:hover,
+.themes-plugin-active .provider-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Input și form elements cu spacing */
+.themes-plugin-active .form-group {
+  margin-bottom: 20px;
+}
+
+.themes-plugin-active .form-label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+.themes-plugin-active input,
+.themes-plugin-active select,
+.themes-plugin-active textarea {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  color: var(--foreground);
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+
+.themes-plugin-active input:focus,
+.themes-plugin-active select:focus,
+.themes-plugin-active textarea:focus {
+  outline: none;
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-ring) 12%, transparent);
+  background: var(--card);
+}
+
+/* ===========================================
+   📱 RESPONSIVE DESIGN
+   =========================================== */
+
+/* Tablet și ecrane mici */
+@media (max-width: 1024px) {
+  .themes-plugin-active .app-container,
+  .themes-plugin-active body > div:first-child,
+  .themes-plugin-active #root {
+    max-width: 900px;
+    padding: 0 20px;
+  }
+  
+  .themes-plugin-active header,
+  .themes-plugin-active .topbar,
+  .themes-plugin-active banner {
+    margin: 20px 0; /* Remove auto centering */
+    padding: 14px 20px;
+  }
+  
+  .themes-plugin-active main,
+  .themes-plugin-active .main-content {
+    padding: 24px 20px;
+  }
+  
+  .themes-plugin-active .content-grid {
+    gap: 24px;
+  }
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .themes-plugin-active .app-container,
+  .themes-plugin-active body > div:first-child,
+  .themes-plugin-active #root {
+    max-width: none;
+    padding: 0 16px;
+  }
+  
+  .themes-plugin-active header,
+  .themes-plugin-active .topbar,
+  .themes-plugin-active banner {
+    margin: 16px 0; /* Remove auto centering */
+    padding: 12px 16px;
+    border-radius: var(--radius-lg);
+  }
+  
+  .themes-plugin-active main,
+  .themes-plugin-active .main-content {
+    padding: 20px 16px;
+  }
+  
+  .themes-plugin-active .content-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  
+  .themes-plugin-active .section,
+  .themes-plugin-active .panel {
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  
+  .themes-plugin-active .topbar-content,
+  .themes-plugin-active .header-content {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  
+  .themes-plugin-active .topbar h1,
+  .themes-plugin-active banner h1 {
+    font-size: 1.25rem;
+  }
+}
+
+/* Small mobile */
+@media (max-width: 480px) {
+  .themes-plugin-active .app-container,
+  .themes-plugin-active body > div:first-child,
+  .themes-plugin-active #root {
+    padding: 0 12px;
+  }
+  
+  .themes-plugin-active header,
+  .themes-plugin-active .topbar,
+  .themes-plugin-active banner {
+    margin: 12px 0; /* Remove auto centering */
+    padding: 10px 12px;
+  }
+  
+  .themes-plugin-active main,
+  .themes-plugin-active .main-content {
+    padding: 16px 12px;
+  }
+  
+  .themes-plugin-active .section,
+  .themes-plugin-active .panel {
+    padding: 12px;
+  }
+}
+
+/* ===========================================
+   ⚡ PERFORMANCE OPTIMIZATIONS
+   =========================================== */
+
+/* Reduce motion pentru users cu preferințe de accesibilitate */
+@media (prefers-reduced-motion: reduce) {
+  .themes-plugin-active * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  
+  html.theme-advanced.themes-plugin-active .topbar::before,
+  html.theme-advanced.themes-plugin-active header::before,
+  html.theme-advanced.themes-plugin-active banner::before {
+    animation: none;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .themes-plugin-active .topbar,
+  .themes-plugin-active header,
+  .themes-plugin-active banner {
+    border-width: 2px !important;
+    backdrop-filter: none !important;
+  }
+  
+  .themes-plugin-active .section,
+  .themes-plugin-active .panel,
+  .themes-plugin-active .card {
+    border-width: 2px !important;
+  }
+}
+
+/* ===========================================
+   🎯 LAYOUT DEBUGGING (Development only)
+   =========================================== */
+
+/* Uncomment pentru debugging layout-ul */
+/*
+.themes-plugin-active .app-container,
+.themes-plugin-active .topbar,
+.themes-plugin-active main {
+  outline: 1px dashed rgba(255, 0, 0, 0.3);
+}
+
+.themes-plugin-active .section,
+.themes-plugin-active .card {
+  outline: 1px dashed rgba(0, 255, 0, 0.3);
+}
+*/

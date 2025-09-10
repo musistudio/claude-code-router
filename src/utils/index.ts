@@ -1,5 +1,5 @@
-import fs from "node:fs/promises";
-import readline from "node:readline";
+import fs, { access, mkdir } from "node:fs/promises";
+import readline, { createInterface } from "node:readline";
 import JSON5 from "json5";
 import path from "node:path";
 import {
@@ -32,9 +32,9 @@ const interpolateEnvVars = (obj: any): any => {
 
 const ensureDir = async (dir_path: string) => {
   try {
-    await fs.access(dir_path);
+    await access(dir_path);
   } catch {
-    await fs.mkdir(dir_path, { recursive: true });
+    await mkdir(dir_path, { recursive: true });
   }
 };
 
@@ -45,7 +45,7 @@ export const initDir = async () => {
 };
 
 const createReadline = () => {
-  return readline.createInterface({
+  return createInterface({
     input: process.stdin,
     output: process.stdout,
   });

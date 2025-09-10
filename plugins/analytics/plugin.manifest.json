@@ -1,0 +1,80 @@
+{
+  "id": "analytics",
+  "name": "Advanced Analytics",
+  "description": "Real-time analytics dashboard with Mission Control interface, comprehensive metrics tracking, and performance monitoring",
+  "version": "1.3.0",
+  "author": "Analytics Team",
+  "category": "analytics",
+  "type": "service",
+  "requirements": {
+    "minAppVersion": "1.0.0",
+    "permissions": [
+      "analytics",
+      "storage",
+      "network"
+    ]
+  },
+  "settings": {
+    "defaults": {
+      "refreshInterval": 5000,
+      "showMissionControl": true,
+      "enableRealTimeUpdates": true,
+      "chartAnimations": true,
+      "autoRefresh": true,
+      "dataRetentionDays": 30,
+      "showPerformanceMetrics": true,
+      "enableNotifications": false
+    },
+    "schema": {
+      "refreshInterval": {
+        "type": "number",
+        "min": 1000,
+        "max": 60000,
+        "description": "Chart refresh interval in milliseconds"
+      },
+      "showMissionControl": {
+        "type": "boolean",
+        "description": "Display Mission Control dashboard"
+      },
+      "enableRealTimeUpdates": {
+        "type": "boolean",
+        "description": "Enable real-time data updates"
+      },
+      "chartAnimations": {
+        "type": "boolean",
+        "description": "Enable chart animations and transitions"
+      },
+      "dataRetentionDays": {
+        "type": "number",
+        "min": 1,
+        "max": 365,
+        "description": "Number of days to retain analytics data"
+      }
+    },
+    "userConfigurable": true
+  },
+  "lifecycle": {
+    "onActivate": "initializeAnalytics",
+    "onDeactivate": "cleanupAnalytics",
+    "onStart": "startAnalyticsCollection",
+    "onStop": "stopAnalyticsCollection"
+  },
+  "metadata": {
+    "homepage": "/plugins/analytics",
+    "repository": "https://github.com/claude-code-router/plugins/analytics",
+    "license": "MIT",
+    "keywords": [
+      "analytics",
+      "dashboard",
+      "metrics",
+      "mission-control",
+      "real-time",
+      "performance",
+      "monitoring"
+    ],
+    "screenshots": [
+      "/plugins/analytics/screenshots/dashboard.png",
+      "/plugins/analytics/screenshots/mission-control.png"
+    ]
+  }
+}

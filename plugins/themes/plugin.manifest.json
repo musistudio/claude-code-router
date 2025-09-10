@@ -1,0 +1,92 @@
+{
+  "id": "themes",
+  "name": "Advanced Themes",
+  "description": "Premium theming system with glassmorphism effects, advanced animations, customizable color schemes, and modern UI transformations",
+  "version": "2.2.0",
+  "author": "UI/UX Team",
+  "category": "ui",
+  "type": "component",
+  "requirements": {
+    "minAppVersion": "1.0.0",
+    "permissions": [
+      "storage",
+      "settings"
+    ]
+  },
+  "settings": {
+    "defaults": {
+      "theme": "light",
+      "enableAnimations": true,
+      "enableGlassmorphism": false,
+      "animationSpeed": "normal",
+      "customColors": {},
+      "borderRadius": "medium",
+      "shadowIntensity": "medium",
+      "blurIntensity": "medium",
+      "enableHoverEffects": true,
+      "enableTransitions": true
+    },
+    "schema": {
+      "theme": {
+        "type": "string",
+        "enum": ["light", "dark", "system"],
+        "description": "Base theme mode"
+      },
+      "enableAnimations": {
+        "type": "boolean",
+        "description": "Enable UI animations and transitions"
+      },
+      "enableGlassmorphism": {
+        "type": "boolean",
+        "description": "Enable glassmorphism visual effects"
+      },
+      "animationSpeed": {
+        "type": "string",
+        "enum": ["slow", "normal", "fast"],
+        "description": "Animation speed setting"
+      },
+      "borderRadius": {
+        "type": "string",
+        "enum": ["none", "small", "medium", "large", "full"],
+        "description": "UI border radius setting"
+      },
+      "shadowIntensity": {
+        "type": "string",
+        "enum": ["none", "low", "medium", "high"],
+        "description": "Shadow intensity level"
+      },
+      "blurIntensity": {
+        "type": "string",
+        "enum": ["none", "low", "medium", "high"],
+        "description": "Blur effect intensity for glassmorphism"
+      }
+    },
+    "userConfigurable": true
+  },
+  "lifecycle": {
+    "onActivate": "applyTheme",
+    "onDeactivate": "resetTheme",
+    "onStart": "initializeThemeSystem",
+    "onStop": "cleanupThemeSystem"
+  },
+  "metadata": {
+    "homepage": "/plugins/themes",
+    "repository": "https://github.com/claude-code-router/plugins/themes",
+    "license": "MIT",
+    "keywords": [
+      "themes",
+      "ui",
+      "glassmorphism",
+      "design",
+      "animations",
+      "customization",
+      "modern",
+      "effects"
+    ],
+    "screenshots": [
+      "/plugins/themes/screenshots/light-theme.png",
+      "/plugins/themes/screenshots/dark-theme.png",
+      "/plugins/themes/screenshots/glassmorphism.png"
+    ]
+  }
+}

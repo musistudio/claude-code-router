@@ -1,0 +1,533 @@
+/**
+ * Modern Effects System v2.0
+ * Unified visual effects for all 3 themes with consistent styling
+ * - Same level of sophistication and visual appeal across Light, Dark, and Advanced
+ * - Hover effects, animations, and transitions that work beautifully in all themes
+ */
+
+/* ===========================================
+   UNIVERSAL KEYFRAME ANIMATIONS
+   =========================================== */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 5px currentColor;
+  }
+  50% {
+    box-shadow: 0 0 20px currentColor, 0 0 30px currentColor;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: 200px 0;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes scale {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ===========================================
+   UNIFIED CARD EFFECTS (All Themes)
+   =========================================== */
+
+.modern-card {
+  background: var(--gradient-card);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: var(--glass-blur);
+  transition: all var(--transition-smooth);
+  position: relative;
+  overflow: hidden;
+}
+
+.modern-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, var(--hover-overlay), transparent);
+  transition: left var(--transition-slow);
+  z-index: 1;
+}
+
+.modern-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-xl);
+  border-color: var(--glass-border-strong);
+}
+
+.modern-card:hover::before {
+  left: 100%;
+}
+
+/* Theme-specific card enhancements */
+.theme-light .modern-card:hover {
+  box-shadow: var(--shadow-lg), 0 0 0 1px var(--primary);
+}
+
+.theme-dark .modern-card:hover {
+  box-shadow: var(--shadow-xl), 0 0 20px rgba(255, 255, 255, 0.1);
+}
+
+.theme-advanced .modern-card:hover {
+  box-shadow: var(--shadow-2xl), var(--hover-glow);
+  background: var(--gradient-card);
+}
+
+/* ===========================================
+   UNIFIED BUTTON EFFECTS (All Themes)
+   =========================================== */
+
+.modern-button {
+  background: var(--gradient-primary);
+  color: var(--primary-foreground);
+  border: none;
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-lg);
+  font-weight: var(--font-semibold);
+  font-size: var(--font-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.modern-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left var(--transition-smooth);
+}
+
+.modern-button:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: var(--shadow-lg);
+}
+
+.modern-button:hover::before {
+  left: 100%;
+}
+
+.modern-button:active {
+  transform: translateY(0) scale(var(--active-scale));
+  transition: all 0.1s ease;
+}
+
+/* Secondary button variant */
+.modern-button-secondary {
+  background: var(--gradient-subtle);
+  color: var(--foreground);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: var(--glass-blur);
+}
+
+.modern-button-secondary:hover {
+  background: var(--gradient-accent);
+  border-color: var(--glass-border-strong);
+}
+
+/* ===========================================
+   UNIFIED INPUT EFFECTS (All Themes)
+   =========================================== */
+
+.modern-input {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--font-md);
+  color: var(--foreground);
+  transition: all var(--transition-fast);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-xs);
+  width: 100%;
+}
+
+.modern-input:focus {
+  outline: none;
+  border-color: var(--focus-ring);
+  box-shadow: var(--shadow-md), 0 0 0 3px color-mix(in srgb, var(--focus-ring) 12%, transparent);
+  transform: scale(1.01);
+}
+
+.modern-input::placeholder {
+  color: var(--muted-foreground);
+  opacity: 0.8;
+}
+
+/* ===========================================
+   UNIFIED TAB NAVIGATION (All Themes)
+   =========================================== */
+
+.modern-tabs {
+  display: flex;
+  background: var(--gradient-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xs);
+  gap: var(--space-xs);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: var(--glass-blur);
+}
+
+.modern-tab {
+  flex: 1;
+  padding: var(--space-sm) var(--space-lg);
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: all var(--transition-smooth);
+  border-radius: var(--radius-md);
+  font-weight: var(--font-medium);
+  font-size: var(--font-sm);
+  position: relative;
+  overflow: hidden;
+}
+
+.modern-tab::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  height: 2px;
+  background: var(--primary);
+  transition: all var(--transition-smooth);
+  transform: translateX(-50%);
+}
+
+.modern-tab:hover {
+  color: var(--foreground);
+  background: var(--hover-overlay);
+  transform: translateY(-1px);
+}
+
+.modern-tab.active {
+  color: var(--primary-foreground);
+  background: var(--gradient-primary);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.modern-tab.active::before {
+  width: 80%;
+}
+
+/* ===========================================
+   UNIFIED NOTIFICATION EFFECTS
+   =========================================== */
+
+.modern-notification {
+  background: var(--gradient-card);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-md);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: var(--glass-blur);
+  animation: slideInUp 0.4s var(--ease-out);
+  position: relative;
+  overflow: hidden;
+}
+
+.modern-notification::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--primary);
+}
+
+.modern-notification.success::before {
+  background: var(--status-success);
+}
+
+.modern-notification.warning::before {
+  background: var(--status-warning);
+}
+
+.modern-notification.error::before {
+  background: var(--status-error);
+}
+
+/* ===========================================
+   UNIFIED STATUS INDICATORS
+   =========================================== */
+
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-full);
+  font-size: var(--font-xs);
+  font-weight: var(--font-medium);
+  backdrop-filter: var(--glass-blur);
+  transition: all var(--transition-fast);
+}
+
+.status-indicator::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: pulseGlow 2s infinite;
+}
+
+.status-indicator.success {
+  background: var(--status-success-bg);
+  color: var(--status-success);
+  border: 1px solid var(--status-success-border);
+}
+
+.status-indicator.success::before {
+  background: var(--status-success);
+}
+
+.status-indicator.warning {
+  background: var(--status-warning-bg);
+  color: var(--status-warning);
+  border: 1px solid var(--status-warning-border);
+}
+
+.status-indicator.warning::before {
+  background: var(--status-warning);
+}
+
+.status-indicator.error {
+  background: var(--status-error-bg);
+  color: var(--status-error);
+  border: 1px solid var(--status-error-border);
+}
+
+.status-indicator.error::before {
+  background: var(--status-error);
+}
+
+.status-indicator.info {
+  background: var(--status-info-bg);
+  color: var(--status-info);
+  border: 1px solid var(--status-info-border);
+}
+
+.status-indicator.info::before {
+  background: var(--status-info);
+}
+
+/* ===========================================
+   UNIFIED HOVER EFFECTS
+   =========================================== */
+
+.hover-lift {
+  transition: all var(--transition-smooth);
+}
+
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-xl);
+}
+
+.hover-glow {
+  transition: all var(--transition-smooth);
+}
+
+.hover-glow:hover {
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
+}
+
+.hover-scale {
+  transition: all var(--transition-fast);
+}
+
+.hover-scale:hover {
+  transform: scale(1.05);
+}
+
+.hover-rotate {
+  transition: all var(--transition-smooth);
+}
+
+.hover-rotate:hover {
+  transform: rotate(5deg);
+}
+
+/* ===========================================
+   UNIFIED LOADING STATES
+   =========================================== */
+
+.loading-shimmer {
+  background: linear-gradient(90deg, var(--muted) 25%, var(--accent) 50%, var(--muted) 75%);
+  background-size: 200px 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+.loading-pulse {
+  animation: scale 2s infinite ease-in-out;
+}
+
+.loading-spin {
+  animation: rotate 1s linear infinite;
+}
+
+.loading-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* ===========================================
+   THEME-SPECIFIC ENHANCEMENTS
+   =========================================== */
+
+/* Light Theme - Professional touches */
+.theme-light .modern-card {
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.theme-light .modern-button {
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+/* Dark Theme - Elegant enhancements */
+.theme-dark .modern-card {
+  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.theme-dark .modern-button {
+  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* Advanced Theme - Spectacular effects */
+.theme-advanced .modern-card {
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
+  background: var(--gradient-card), var(--nebula-glow);
+}
+
+.theme-advanced .modern-button {
+  box-shadow: var(--shadow-lg), 0 0 20px rgba(123, 97, 255, 0.3);
+  background: var(--gradient-primary), var(--gradient-cosmic);
+}
+
+.theme-advanced .modern-card:hover,
+.theme-advanced .modern-button:hover,
+.theme-advanced .modern-tabs:hover {
+  box-shadow: var(--shadow-2xl), var(--hover-glow);
+}
+
+/* ===========================================
+   RESPONSIVE DESIGN
+   =========================================== */
+
+@media (max-width: 768px) {
+  .modern-tabs {
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+  
+  .modern-tab {
+    text-align: center;
+  }
+  
+  .modern-card {
+    margin: var(--space-sm);
+  }
+  
+  .hover-lift:hover,
+  .hover-scale:hover,
+  .hover-rotate:hover {
+    transform: none; /* Disable hover effects on mobile */
+  }
+}
+
+/* ===========================================
+   ACCESSIBILITY & REDUCED MOTION
+   =========================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  
+  .loading-shimmer,
+  .loading-pulse,
+  .loading-spin,
+  .loading-float {
+    animation: none;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .modern-card,
+  .modern-button,
+  .modern-input,
+  .modern-tabs {
+    border-width: 2px;
+    box-shadow: none;
+  }
+}
