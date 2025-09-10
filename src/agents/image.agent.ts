@@ -134,6 +134,7 @@ export class ImageAgent implements IAgent {
           headers: {
             'x-api-key': context.config.APIKEY,
             'content-type': 'application/json',
+            'accept': 'text/event-stream',
           },
           body: JSON.stringify({
             model: context.config.Router.image,

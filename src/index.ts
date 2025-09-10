@@ -275,6 +275,7 @@ async function run(options: RunOptions = {}) {
                   headers: {
                     'x-api-key': config.APIKEY,
                     'content-type': 'application/json',
+                    'accept': 'text/event-stream',
                   },
                   body: JSON.stringify(req.body),
                 })
