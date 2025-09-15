@@ -500,85 +500,570 @@ If you find this project helpful, please consider sponsoring its development. Yo
   </tr>
 </table>
 
+
 ### Our Sponsors
 
 A huge thank you to all our sponsors for their generous support!
 
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://aihubmix.com/">
+        <img src="https://github.com/aihubmix.png" width="100px;" alt="AIHubmix"/>
+        <br />
+        <sub>AIHubmix</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://ai.burncloud.com">
+        <img src="https://github.com/BurnCloud.png" width="100px;" alt="BurnCloud"/>
+        <br />
+        <sub>BurnCloud</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="Simon Leischnig"/>
+        <br />
+        <sub>@Simon Leischnig</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/duanshuaimin">
+        <img src="https://github.com/duanshuaimin.png" width="100px;" alt="duanshuaimin"/>
+        <br />
+        <sub>@duanshuaimin</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/vrgitadmin">
+        <img src="https://github.com/vrgitadmin.png" width="100px;" alt="vrgitadmin"/>
+        <br />
+        <sub>@vrgitadmin</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*o"/>
+        <br />
+        <sub>@*o</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/ceilwoo">
+        <img src="https://github.com/ceilwoo.png" width="100px;" alt="ceilwoo"/>
+        <br />
+        <sub>@ceilwoo</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*说"/>
+        <br />
+        <sub>@*说</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*更"/>
+        <br />
+        <sub>@*更</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="K*g"/>
+        <br />
+        <sub>@K*g</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="R*R"/>
+        <br />
+        <sub>@R*R</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/bobleer">
+        <img src="https://github.com/bobleer.png" width="100px;" alt="bobleer"/>
+        <br />
+        <sub>@bobleer</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*苗"/>
+        <br />
+        <sub>@*苗</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*划"/>
+        <br />
+        <sub>@*划</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/Clarence-pan">
+        <img src="https://github.com/Clarence-pan.png" width="100px;" alt="Clarence-pan"/>
+        <br />
+        <sub>@Clarence-pan</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/carter003">
+        <img src="https://github.com/carter003.png" width="100px;" alt="carter003"/>
+        <br />
+        <sub>@carter003</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="S*r"/>
+        <br />
+        <sub>@S*r</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*晖"/>
+        <br />
+        <sub>@*晖</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*敏"/>
+        <br />
+        <sub>@*敏</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="Z*z"/>
+        <br />
+        <sub>@Z*z</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*然"/>
+        <br />
+        <sub>@*然</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/cluic">
+        <img src="https://github.com/cluic.png" width="100px;" alt="cluic"/>
+        <br />
+        <sub>@cluic</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*苗"/>
+        <br />
+        <sub>@*苗</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/PromptExpert">
+        <img src="https://github.com/PromptExpert.png" width="100px;" alt="PromptExpert"/>
+        <br />
+        <sub>@PromptExpert</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*应"/>
+        <br />
+        <sub>@*应</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/yusnake">
+        <img src="https://github.com/yusnake.png" width="100px;" alt="yusnake"/>
+        <br />
+        <sub>@yusnake</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*飞"/>
+        <br />
+        <sub>@*飞</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="董*"/>
+        <br />
+        <sub>@董*</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*汀"/>
+        <br />
+        <sub>@*汀</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*涯"/>
+        <br />
+        <sub>@*涯</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*:-）"/>
+        <br />
+        <sub>@*:-）</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="**磊"/>
+        <br />
+        <sub>@**磊</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*琢"/>
+        <br />
+        <sub>@*琢</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*成"/>
+        <br />
+        <sub>@*成</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="Z*o"/>
+        <br />
+        <sub>@Z*o</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*琨"/>
+        <br />
+        <sub>@*琨</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/congzhangzh">
+        <img src="https://github.com/congzhangzh.png" width="100px;" alt="congzhangzh"/>
+        <br />
+        <sub>@congzhangzh</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*_"/>
+        <br />
+        <sub>@*_</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="Z*m"/>
+        <br />
+        <sub>@Z*m</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*鑫"/>
+        <br />
+        <sub>@*鑫</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="c*y"/>
+        <br />
+        <sub>@c*y</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*昕"/>
+        <br />
+        <sub>@*昕</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/witsice">
+        <img src="https://github.com/witsice.png" width="100px;" alt="witsice"/>
+        <br />
+        <sub>@witsice</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="b*g"/>
+        <br />
+        <sub>@b*g</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*亿"/>
+        <br />
+        <sub>@*亿</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*辉"/>
+        <br />
+        <sub>@*辉</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="JACK"/>
+        <br />
+        <sub>@JACK</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*光"/>
+        <br />
+        <sub>@*光</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="W*l"/>
+        <br />
+        <sub>@W*l</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/kesku">
+        <img src="https://github.com/kesku.png" width="100px;" alt="kesku"/>
+        <br />
+        <sub>@kesku</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/biguncle">
+        <img src="https://github.com/biguncle.png" width="100px;" alt="biguncle"/>
+        <br />
+        <sub>@biguncle</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="二吉吉"/>
+        <br />
+        <sub>@二吉吉</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="a*g"/>
+        <br />
+        <sub>@a*g</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*林"/>
+        <br />
+        <sub>@*林</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*咸"/>
+        <br />
+        <sub>@*咸</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*明"/>
+        <br />
+        <sub>@*明</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="S*y"/>
+        <br />
+        <sub>@S*y</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="f*o"/>
+        <br />
+        <sub>@f*o</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*智"/>
+        <br />
+        <sub>@*智</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="F*t"/>
+        <br />
+        <sub>@F*t</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="r*c"/>
+        <br />
+        <sub>@r*c</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="http://github.com/qierkang">
+        <img src="https://github.com/qierkang.png" width="100px;" alt="qierkang"/>
+        <br />
+        <sub>@qierkang</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*军"/>
+        <br />
+        <sub>@*军</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="http://github.com/snrise-z">
+        <img src="https://github.com/snrise-z.png" width="100px;" alt="snrise-z"/>
+        <br />
+        <sub>@snrise-z</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*王"/>
+        <br />
+        <sub>@*王</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="http://github.com/greatheart1000">
+        <img src="https://github.com/greatheart1000.png" width="100px;" alt="greatheart1000"/>
+        <br />
+        <sub>@greatheart1000</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*王"/>
+        <br />
+        <sub>@*王</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="zcutlip"/>
+        <br />
+        <sub>@zcutlip</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="http://github.com/Peng-YM">
+        <img src="https://github.com/Peng-YM.png" width="100px;" alt="Peng-YM"/>
+        <br />
+        <sub>@Peng-YM</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*更"/>
+        <br />
+        <sub>@*更</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*."/>
+        <br />
+        <sub>@*.</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="F*t"/>
+        <br />
+        <sub>@F*t</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*政"/>
+        <br />
+        <sub>@*政</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*铭"/>
+        <br />
+        <sub>@*铭</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="#">
+        <img src="https://github.com/github.png" width="100px;" alt="*叶"/>
+        <br />
+        <sub>@*叶</sub>
+      </a>
+    </td>
+  </tr>
+</table>
 
-- [AIHubmix](https://aihubmix.com/)
-- [BurnCloud](https://ai.burncloud.com)
-- @Simon Leischnig
-- [@duanshuaimin](https://github.com/duanshuaimin)
-- [@vrgitadmin](https://github.com/vrgitadmin)
-- @\*o
-- [@ceilwoo](https://github.com/ceilwoo)
-- @\*说
-- @\*更
-- @K\*g
-- @R\*R
-- [@bobleer](https://github.com/bobleer)
-- @\*苗
-- @\*划
-- [@Clarence-pan](https://github.com/Clarence-pan)
-- [@carter003](https://github.com/carter003)
-- @S\*r
-- @\*晖
-- @\*敏
-- @Z\*z
-- @\*然
-- [@cluic](https://github.com/cluic)
-- @\*苗
-- [@PromptExpert](https://github.com/PromptExpert)
-- @\*应
-- [@yusnake](https://github.com/yusnake)
-- @\*飞
-- @董\*
-- @\*汀
-- @\*涯
-- @\*:-）
-- @\*\*磊
-- @\*琢
-- @\*成
-- @Z\*o
-- @\*琨
-- [@congzhangzh](https://github.com/congzhangzh)
-- @\*\_
-- @Z\*m
-- @*鑫
-- @c\*y
-- @\*昕
-- [@witsice](https://github.com/witsice)
-- @b\*g
-- @\*亿
-- @\*辉
-- @JACK
-- @\*光
-- @W\*l
-- [@kesku](https://github.com/kesku)
-- [@biguncle](https://github.com/biguncle)
-- @二吉吉
-- @a\*g
-- @\*林
-- @\*咸
-- @\*明
-- @S\*y
-- @f\*o
-- @\*智
-- @F\*t
-- @r\*c
-- [@qierkang](http://github.com/qierkang)
-- @\*军
-- [@snrise-z](http://github.com/snrise-z)
-- @\*王
-- [@greatheart1000](http://github.com/greatheart1000)
-- @\*王
-- @zcutlip
-- [@Peng-YM](http://github.com/Peng-YM)
-- @\*更
-- @\*.
-- @F\*t
-- @\*政
-- @\*铭
-- @\*叶
 
 (If your name is masked, please contact me via my homepage email to update it with your GitHub username.)
+
+### ⭐️ Star History
+[![⭐️ Star History Chart](https://api.star-history.com/svg?repos=musistudio/claude-code-router&type=Date)](https://www.star-history.com/#musistudio/claude-code-router&Date)
+
+## Wechat Group
+<img src="/blog/images/wechat_group.jpg" width="200" alt="wechat_group" />
