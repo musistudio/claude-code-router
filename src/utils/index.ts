@@ -170,6 +170,86 @@ export const writeConfigFile = async (config: any) => {
 export const initConfig = async () => {
   const config = await readConfigFile();
   Object.assign(process.env, config);
+
+  // Vertex Gemini support: allow specifying service account credentials via config
+  // Accepted shapes:
+  // 1) Top-level keys: VERTEX_GEMINI_KEY_FILE, VERTEX_GEMINI_PROJECT, VERTEX_GEMINI_LOCATION
+  // 2) Nested object: vertexGemini: { keyFile?: string; keyJson?: object|string; project?: string; location?: string }
+  // 3) Provider-specific: providers[].vertexAuth: { keyFile?: string; keyJson?: object|string; project?: string; location?: string }
+  // If keyJson is provided we persist it to ~/.claude-code-router/vertex-key.json and point GOOGLE_APPLICATION_CREDENTIALS to it.
+  try {
+    const vg = (config as any).vertexGemini || {};
+    const keyFile = (config as any).VERTEX_GEMINI_KEY_FILE || vg.keyFile;
+    const keyJson = vg.keyJson || (config as any).VERTEX_GEMINI_KEY_JSON;
+    const project = (config as any).VERTEX_GEMINI_PROJECT || vg.project;
+    const location = (config as any).VERTEX_GEMINI_LOCATION || vg.location;
+
+    // Also check for provider-specific vertex auth configurations
+    let providerVertexAuth: any = null;
+    if ((config as any).Providers && Array.isArray((config as any).Providers)) {
+      for (const provider of (config as any).Providers) {
+        if (provider.vertexAuth && provider.transformer?.use?.some((t: any) => 
+          (typeof t === 'string' && t === 'vertex-gemini') ||
+          (Array.isArray(t) && t[0] === 'vertex-gemini')
+        )) {
+          providerVertexAuth = provider.vertexAuth;
+          break; // Use the first vertex provider found
+        }
+      }
+    }
+
+    // Merge global and provider-specific configurations (provider takes precedence)
+    const finalKeyFile = providerVertexAuth?.keyFile || keyFile;
+    const finalKeyJson = providerVertexAuth?.keyJson || keyJson;
+    const finalProject = providerVertexAuth?.project || project;
+    const finalLocation = providerVertexAuth?.location || location;
+
+    let resolvedProject = finalProject;
+
+    if (finalKeyJson && !finalKeyFile) {
+      // Persist inline JSON to file
+      const targetPath = path.join(HOME_DIR, 'vertex-gemini-key.json');
+      const serialized = typeof finalKeyJson === 'string' ? finalKeyJson : JSON.stringify(finalKeyJson, null, 2);
+      await fs.writeFile(targetPath, serialized, { encoding: 'utf-8' });
+      process.env.GOOGLE_APPLICATION_CREDENTIALS = targetPath;
+      
+      // Extract project_id from the service account JSON if not explicitly provided
+      if (!resolvedProject) {
+        try {
+          const credentials = typeof finalKeyJson === 'string' ? JSON.parse(finalKeyJson) : finalKeyJson;
+          if (credentials && credentials.project_id) {
+            resolvedProject = credentials.project_id;
+          }
+        } catch (e) {
+          console.warn('Failed to parse service account JSON for project_id:', (e as Error).message);
+        }
+      }
+    } else if (finalKeyFile) {
+      process.env.GOOGLE_APPLICATION_CREDENTIALS = finalKeyFile;
+      
+      // Extract project_id from the service account file if not explicitly provided
+      if (!resolvedProject) {
+        try {
+          const credentialsContent = await fs.readFile(finalKeyFile, 'utf-8');
+          const credentials = JSON.parse(credentialsContent);
+          if (credentials && credentials.project_id) {
+            resolvedProject = credentials.project_id;
+          }
+        } catch (e) {
+          console.warn('Failed to read service account file for project_id:', (e as Error).message);
+        }
+      }
+    }
+    
+    // Set both GOOGLE_CLOUD_PROJECT (for vertex transformer) and VERTEX_GEMINI_PROJECT (legacy)
+    if (resolvedProject) {
+      process.env.GOOGLE_CLOUD_PROJECT = resolvedProject;
+      process.env.VERTEX_GEMINI_PROJECT = resolvedProject;
+    }
+    if (finalLocation) process.env.VERTEX_GEMINI_LOCATION = finalLocation;
+  } catch (e) {
+    console.warn('Failed to initialize vertex gemini credentials:', (e as Error).message);
+  }
   return config;
 };
 

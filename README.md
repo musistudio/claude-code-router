@@ -324,6 +324,90 @@ Transformers allow you to modify the request and response payloads to ensure com
 - `enhancetool`: Adds a layer of error tolerance to the tool call parameters returned by the LLM (this will cause the tool call information to no longer be streamed).
 - `cleancache`: Clears the `cache_control` field from requests.
 - `vertex-gemini`: Handles the Gemini API using Vertex authentication.
+-   Vertex authentication now supports specifying a service account key via either a file path or inline JSON in your main `config.json`.
+    Minimal examples (choose ONE form):
+
+    Using a key file you already have:
+    ```jsonc
+    {
+      "vertexGemini": {
+        "keyFile": "/Users/me/keys/gcp-service-account.json",
+        "project": "my-gcp-project",
+        "location": "us-central1"
+      },
+      "Providers": [
+        {
+          "name": "vertex",
+          "api_base_url": "https://generativelanguage.googleapis.com/v1beta/models/",
+          "api_key": "vertex", // placeholder – real auth comes from service account
+          "models": ["gemini-2.5-pro"],
+          "transformer": { "use": ["vertex-gemini"] }
+        }
+      ],
+      "Router": { "default": "vertex,gemini-2.5-pro" }
+    }
+    ```
+
+    Embedding the JSON directly (it will be written to `~/.claude-code-router/vertex-gemini-key.json`):
+    ```jsonc
+    {
+      "vertexGemini": {
+        "keyJson": {
+          "type": "service_account",
+          "project_id": "my-gcp-project",
+          "private_key_id": "xxxx",
+          "private_key": "-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\n",
+          "client_email": "vertex-sa@my-gcp-project.iam.gserviceaccount.com",
+          "client_id": "1234567890",
+          "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+          "token_uri": "https://oauth2.googleapis.com/token",
+          "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+          "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/vertex-sa%40my-gcp-project.iam.gserviceaccount.com"
+        },
+        "project": "my-gcp-project",
+        "location": "us-central1"
+      },
+      "Providers": [
+        {
+          "name": "vertex",
+          "api_base_url": "https://generativelanguage.googleapis.com/v1beta/models/",
+          "api_key": "vertex",
+          "models": ["gemini-2.5-pro"],
+          "transformer": { "use": ["vertex-gemini"] }
+        }
+      ],
+      "Router": { "default": "vertex,gemini-2.5-pro" }
+    }
+    ```
+
+    Under the hood the router sets:
+    - `GOOGLE_APPLICATION_CREDENTIALS` to the file path (existing or generated)
+    - `VERTEX_GEMINI_PROJECT` / `VERTEX_GEMINI_LOCATION` for the transformer to construct requests
+    If you prefer environment variables instead, you can omit `vertexGemini` and set those directly before starting `ccr`.
+
+    **Provider-specific Vertex authentication:**
+
+    You can also configure Vertex authentication on a per-provider basis using the `vertexAuth` field:
+    ```jsonc
+    {
+      "Providers": [
+        {
+          "name": "vertex",
+          "api_base_url": "https://us-central1-aiplatform.googleapis.com/v1/projects/my-gcp-project/locations/us-central1/publishers/google/models/",
+          "api_key": "vertex",
+          "models": ["gemini-2.5-pro"],
+          "transformer": { "use": ["vertex-gemini"] },
+          "vertexAuth": {
+            "keyFile": "/path/to/service-account-key.json",
+            "project": "my-gcp-project",
+            "location": "us-central1"
+          }
+        }
+      ]
+    }
+    ```
+
+    Note: Provider-specific `vertexAuth` takes precedence over global `vertexGemini` configuration.
 - `chutes-glm` Unofficial support for GLM 4.5 model via Chutes [chutes-glm-transformer.js](https://gist.github.com/vitobotta/2be3f33722e05e8d4f9d2b0138b8c863).
 - `qwen-cli` (experimental): Unofficial support for qwen3-coder-plus model via Qwen CLI [qwen-cli.js](https://gist.github.com/musistudio/f5a67841ced39912fd99e42200d5ca8b).
 - `rovo-cli` (experimental): Unofficial support for gpt-5 via Atlassian Rovo Dev CLI [rovo-cli.js](https://gist.github.com/SaseQ/c2a20a38b11276537ec5332d1f7a5e53).
