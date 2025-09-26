@@ -21,6 +21,8 @@ export async function executeCodeCommand(args: string[] = []) {
     DISABLE_TELEMETRY: 'true',
     DISABLE_COST_WARNINGS: 'true',
     API_TIMEOUT_MS: String(config.API_TIMEOUT_MS ?? 600000), // Default to 10 minutes if not set
+   // Reset CLAUDE_CODE_USE_BEDROCK when running with ccr code
+    CLAUDE_CODE_USE_BEDROCK: undefined,
   };
   let settingsFlag: Record<string, any> | undefined;
   if (config?.StatusLine?.enabled) {
