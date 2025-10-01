@@ -1,0 +1,67 @@
+<svg viewBox="0 0 1200 420" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .road { stroke: #7aa2ff; stroke-width: 6; fill: none; filter: drop-shadow(0 6px 18px rgba(122,162,255,0.25)); }
+      .dash { stroke: rgba(122,162,255,0.25); stroke-width: 6; fill: none; stroke-dasharray: 2 18; }
+      .node { filter: drop-shadow(0 3px 10px rgba(126,240,193,0.35)); }
+      .node-circle { fill: #7ef0c1; }
+      .node-core { fill: #181b22; stroke: white; stroke-width: 1.5; }
+      .label-bg { fill: rgba(24,27,34,0.8); stroke: rgba(255,255,255,0.12); rx: 12; }
+      .label-text { fill: #e8ecf1; font-weight: 700; font-size: 14px; font-family: Arial, sans-serif; }
+      .label-sub { fill: #9aa6b2; font-weight: 500; font-size: 12px; font-family: Arial, sans-serif; }
+      .spark { fill: none; stroke: #ffd36e; stroke-width: 1.6; stroke-linecap: round; }
+    </style>
+  </defs>
+
+  <!-- Background road with dash -->
+  <path class="dash" d="M60,330 C320,260 460,100 720,160 C930,205 990,260 1140,260"/>
+
+  <!-- Main road -->
+  <path class="road" d="M60,330 C320,260 460,100 720,160 C930,205 990,260 1140,260"/>
+
+  <!-- New Documentation Node -->
+  <g class="node" transform="translate(200,280)">
+    <circle class="node-circle" r="10"/>
+    <circle class="node-core" r="6"/>
+  </g>
+
+  <!-- New Documentation Label -->
+  <g transform="translate(80,120)">
+    <rect class="label-bg" width="260" height="92"/>
+    <text class="label-text" x="16" y="34">New Documentation</text>
+    <text class="label-sub" x="16" y="58">Clear structure, examples &amp; best practices</text>
+  </g>
+
+  <!-- Plugin Marketplace Node -->
+  <g class="node" transform="translate(640,150)">
+    <circle class="node-circle" r="10"/>
+    <circle class="node-core" r="6"/>
+  </g>
+
+  <!-- Plugin Marketplace Label -->
+  <g transform="translate(560,20)">
+    <rect class="label-bg" width="320" height="100"/>
+    <text class="label-text" x="16" y="34">Plugin Marketplace</text>
+    <text class="label-sub" x="16" y="58">Community submissions, ratings &amp; version constraints</text>
+  </g>
+
+  <!-- One More Thing Node -->
+  <g class="node" transform="translate(1080,255)">
+    <circle class="node-circle" r="10"/>
+    <circle class="node-core" r="6"/>
+  </g>
+
+  <!-- One More Thing Label -->
+  <g transform="translate(940,300)">
+    <rect class="label-bg" width="250" height="86"/>
+    <text class="label-text" x="16" y="34">One More Thing</text>
+    <text class="label-sub" x="16" y="58">🚀 Confidential project · Revealing soon</text>
+  </g>
+
+  <!-- Spark decorations -->
+  <g transform="translate(1125,290)">
+    <path class="spark" d="M0 0 L8 0 M4 -4 L4 4"/>
+    <path class="spark" d="M14 -2 L22 -2 M18 -6 L18 2"/>
+    <path class="spark" d="M-10 6 L-2 6 M-6 2 L-6 10"/>
+  </g>
+</svg>

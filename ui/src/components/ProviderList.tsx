@@ -64,7 +64,7 @@ export function ProviderList({ providers, onEdit, onRemove, onTestProvider, prov
         
         return (
           <div key={index} className="flex items-start justify-between rounded-md border bg-white p-4 transition-all hover:shadow-md animate-slide-in hover:scale-[1.01]">
-            <div className="flex-1 space-y-1.5">
+            <div className="flex-1 min-w-0 space-y-1.5 pr-4">
               <div className="flex items-center gap-2">
                 <p className="text-md font-semibold text-gray-800">{providerName}</p>
                 {providerStatus && (
@@ -84,7 +84,7 @@ export function ProviderList({ providers, onEdit, onRemove, onTestProvider, prov
                   </div>
                 )}
               </div>
-              <p className="text-sm text-gray-500">{apiBaseUrl}</p>
+              <p className="text-sm text-gray-500 break-all overflow-hidden text-ellipsis">{apiBaseUrl}</p>
               {providerStatus && providerStatus.message && (
                 <p className={`text-xs ${providerStatus.status === 'success' ? 'text-green-600' : 'text-red-600'}`}>
                   {providerStatus.message}
@@ -100,7 +100,7 @@ export function ProviderList({ providers, onEdit, onRemove, onTestProvider, prov
                 ))}
               </div>
             </div>
-            <div className="ml-4 flex flex-shrink-0 items-center gap-2">
+            <div className="flex flex-shrink-0 items-center gap-2 min-w-[120px]">
               {onTestProvider && (
                 <Button 
                   variant="ghost" 

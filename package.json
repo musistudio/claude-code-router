@@ -1,9 +1,9 @@
 {
   "name": "@musistudio/claude-code-router",
-  "version": "1.0.43",
+  "version": "1.0.52",
   "description": "Use Claude Code without an Anthropics account and route it to another LLM provider",
   "bin": {
-    "ccr": "./dist/cli.js"
+    "ccr": "dist/cli.js"
   },
   "scripts": {
     "build": "node scripts/build.js",
@@ -20,12 +20,13 @@
   "license": "MIT",
   "dependencies": {
     "@fastify/static": "^8.2.0",
-    "@musistudio/llms": "^1.0.28",
+    "@musistudio/llms": "^1.0.34",
     "axios": "^1.11.0",
     "dotenv": "^16.4.7",
+    "find-process": "^2.0.0",
     "json5": "^2.2.3",
     "openurl": "^1.1.1",
-    "pino-rotating-file-stream": "^0.0.2",
+    "rotating-file-stream": "^3.2.7",
     "tiktoken": "^1.0.21",
     "uuid": "^11.1.0"
   },

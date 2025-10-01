@@ -1,6 +1,12 @@
-# Claude Code Router
+![](blog/images/claude-code-router-img.png)
 
-我正在为该项目寻求资金支持，以更好地维持其发展。如果您有任何想法，请随时与我联系: [m@musiiot.top](mailto:m@musiiot.top)
+[![](https://img.shields.io/badge/%F0%9F%87%AC%F0%9F%87%A7-English-000aff?style=flat)](README.md)
+[![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white)](https://discord.gg/rdftVMaUcS)
+[![](https://img.shields.io/github/license/musistudio/claude-code-router)](https://github.com/musistudio/claude-code-router/blob/main/LICENSE)
+
+<hr>
+
+> 我目前正在寻找 **Agent 开发相关的工作机会**，可 base 在 **杭州**，也接受 **远程** 合作。如果你对我的项目感兴趣，或有合适的岗位/合作机会，欢迎联系我！ 📧 Email: m@musiiot.top
 
 > 一款强大的工具，可将 Claude Code 请求路由到不同的模型，并自定义任何请求。
 
@@ -9,6 +15,9 @@
 > 如果你想获得更好的体验，可以尝试[iFlow CLI](https://cli.iflow.cn)。      
 
 ![](blog/images/claude-code.png)
+
+![](blog/images/roadmap.svg)
+
 
 ## ✨ 功能
 ui
@@ -383,6 +392,7 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
 -   `longContext`: 用于处理长上下文（例如，> 60K 令牌）的模型。
 -   `longContextThreshold` (可选): 触发长上下文模型的令牌数阈值。如果未指定，默认为 60000。
 -   `webSearch`: 用于处理网络搜索任务，需要模型本身支持。如果使用`openrouter`需要在模型后面加上`:online`后缀。
+-   `image`(测试版): 用于处理图片类任务（采用CCR内置的agent支持），如果该模型不支持工具调用，需要将`config.forceUseImageAgent`属性设置为`true`。
 
 您还可以使用 `/model` 命令在 Claude Code 中动态切换模型：
 `/model provider_name,model_name`
@@ -564,6 +574,7 @@ jobs:
 - @*琢
 - @*成
 - @Z*o
+- @\*琨
 - [@congzhangzh](https://github.com/congzhangzh)
 - @*_
 - @Z\*m
@@ -596,6 +607,20 @@ jobs:
 - [@greatheart1000](http://github.com/greatheart1000)
 - @\*王
 - @zcutlip
+- [@Peng-YM](http://github.com/Peng-YM)
+- @\*更
+- @\*.
+- @F\*t
+- @\*政
+- @\*铭
+- @\*叶
+- @七\*o
+- @\*青
+- @\*\*晨
+- @\*远
+- @\*霄
+- @\*\*吉
+- @\*\*飞
 
 （如果您的名字被屏蔽，请通过我的主页电子邮件与我联系，以便使用您的 GitHub 用户名进行更新。）
 

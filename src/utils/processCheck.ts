@@ -1,6 +1,16 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { PID_FILE, REFERENCE_COUNT_FILE } from '../constants';
 import { readConfigFile } from '.';
+import find from 'find-process';
+
+export async function isProcessRunning(pid: number): Promise<boolean> {
+    try {
+        const processes = await find('pid', pid);
+        return processes.length > 0;
+    } catch (error) {
+        return false;
+    }
+}
 
 export function incrementReferenceCount() {
     let count = 0;
@@ -27,15 +37,14 @@ export function getReferenceCount(): number {
     return parseInt(readFileSync(REFERENCE_COUNT_FILE, 'utf-8')) || 0;
 }
 
-export function isServiceRunning(): boolean {
+export async function isServiceRunning(): Promise<boolean> {
     if (!existsSync(PID_FILE)) {
         return false;
     }
 
     try {
         const pid = parseInt(readFileSync(PID_FILE, 'utf-8'));
-        process.kill(pid, 0);
-        return true;
+        return await isProcessRunning(pid);
     } catch (e) {
         // Process not running, clean up pid file
         cleanupPidFile();
@@ -62,7 +71,7 @@ export function getServicePid(): number | null {
     if (!existsSync(PID_FILE)) {
         return null;
     }
-    
+
     try {
         const pid = parseInt(readFileSync(PID_FILE, 'utf-8'));
         return isNaN(pid) ? null : pid;
@@ -73,10 +82,10 @@ export function getServicePid(): number | null {
 
 export async function getServiceInfo() {
     const pid = getServicePid();
-    const running = isServiceRunning();
+    const running = await isServiceRunning();
     const config = await readConfigFile();
     const port = config.PORT || 3456;
-    
+
     return {
         running,
         pid,

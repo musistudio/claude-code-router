@@ -1,4 +1,8 @@
 {
+  "common": {
+    "yes": "Yes",
+    "no": "No"
+  },
   "app": {
     "title": "Claude Code Router",
     "save": "Save",
@@ -108,6 +112,8 @@
     "longContext": "Long Context",
     "longContextThreshold": "Context Threshold",
     "webSearch": "Web Search",
+    "image": "Image",
+    "forceUseImageAgent": "Force Use Image Agent",
     "selectModel": "Select a model...",
     "searchModel": "Search model...",
     "noModelFound": "No model found."
@@ -188,5 +194,36 @@
     "template_download_success": "Template downloaded successfully",
     "template_download_success_desc": "Configuration template has been downloaded to your device",
     "template_download_failed": "Failed to download template"
+  },
+  "log_viewer": {
+    "title": "Log Viewer",
+    "close": "Close",
+    "download": "Download",
+    "clear": "Clear",
+    "auto_refresh_on": "Auto Refresh On",
+    "auto_refresh_off": "Auto Refresh Off",
+    "load_failed": "Failed to load logs",
+    "no_logs_available": "No logs available",
+    "logs_cleared": "Logs cleared successfully",
+    "clear_failed": "Failed to clear logs",
+    "logs_downloaded": "Logs downloaded successfully",
+    "back_to_files": "Back to Files",
+    "select_file": "Select a log file to view",
+    "no_log_files_available": "No log files available",
+    "load_files_failed": "Failed to load log files",
+    "group_by_req_id": "Group by Request ID",
+    "grouped_on": "Grouped",
+    "request_groups": "Request Groups",
+    "total_requests": "Total Requests",
+    "total_logs": "Total Logs",
+    "request": "Request",
+    "logs": "logs",
+    "first_log": "First Log",
+    "last_log": "Last Log",
+    "back_to_all_logs": "Back to All Logs",
+    "worker_error": "Worker error",
+    "worker_init_failed": "Failed to initialize worker",
+    "grouping_not_supported": "Log grouping not supported by server",
+    "back": "Back"
   }
 }

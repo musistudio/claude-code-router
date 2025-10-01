@@ -95,14 +95,16 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
             think: typeof data.Router.think === 'string' ? data.Router.think : '',
             longContext: typeof data.Router.longContext === 'string' ? data.Router.longContext : '',
             longContextThreshold: typeof data.Router.longContextThreshold === 'number' ? data.Router.longContextThreshold : 60000,
-            webSearch: typeof data.Router.webSearch === 'string' ? data.Router.webSearch : ''
+            webSearch: typeof data.Router.webSearch === 'string' ? data.Router.webSearch : '',
+            image: typeof data.Router.image === 'string' ? data.Router.image : ''
           } : {
             default: '',
             background: '',
             think: '',
             longContext: '',
             longContextThreshold: 60000,
-            webSearch: ''
+            webSearch: '',
+            image: ''
           },
           CUSTOM_ROUTER_PATH: typeof data.CUSTOM_ROUTER_PATH === 'string' ? data.CUSTOM_ROUTER_PATH : ''
         };
@@ -132,7 +134,8 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
               think: '',
               longContext: '',
               longContextThreshold: 60000,
-              webSearch: ''
+              webSearch: '',
+              image: ''
             },
             CUSTOM_ROUTER_PATH: ''
           });

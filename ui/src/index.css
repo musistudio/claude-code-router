@@ -119,7 +119,7 @@
   body {
     @apply bg-background text-foreground;
   }
-  
+
   /* 美化滚动条 - WebKit浏览器 (Chrome, Safari, Edge) */
   ::-webkit-scrollbar {
     width: 8px;
@@ -153,4 +153,25 @@
   .dark * {
     scrollbar-color: oklch(0.708 0 0) oklch(0.269 0 0);
   }
+}
+
+/* Monaco Editor 调试按钮样式 */
+.debug-button-glyph {
+  background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%23056bfe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20v-9"/><path d="M14 7a4 4 0 0 1 4 4v3a6 6 0 0 1-12 0v-3a4 4 0 0 1 4-4z"/><path d="M14.12 3.88 16 2"/><path d="M21 21a4 4 0 0 0-3.81-4"/><path d="M21 5a4 4 0 0 1-3.55 3.97"/><path d="M22 13h-4"/><path d="M3 21a4 4 0 0 1 3.81-4"/><path d="M3 5a4 4 0 0 0 3.55 3.97"/><path d="M6 13H2"/><path d="m8 2 1.88 1.88"/><path d="M9 7.13V6a3 3 0 1 1 6 0v1.13"/></svg>') center center no-repeat;
+  background-size: 14px 14px;
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.2s ease;
+}
+
+.debug-button-glyph:hover {
+  opacity: 1;
+}
+
+/* 确保调试按钮在glyph margin中可见 */
+.monaco-editor .margin-view-overlays .debug-button-glyph {
+  display: block !important;
+  width: 16px !important;
+  height: 16px !important;
+  margin: 2px 0;
 }
