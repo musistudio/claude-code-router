@@ -1,6 +1,7 @@
 import Server from "@musistudio/llms";
 import { readConfigFile, writeConfigFile, backupConfigFile } from "./utils";
 import { checkForUpdates, performUpdate } from "./utils";
+import { testProviderConnectivity, testAllProviders, testSpecificProvider } from "./utils/providerTest";
 import { join } from "path";
 import fastifyStatic from "@fastify/static";
 import { readdirSync, statSync, readFileSync, writeFileSync, existsSync } from "fs";
@@ -38,6 +39,49 @@ export const createServer = (config: any): Server => {
 
     await writeConfigFile(newConfig);
     return { success: true, message: "Config saved successfully" };
+  });
+
+  // Add endpoint to test single provider connectivity
+  server.app.post("/api/test-provider", async (req, reply) => {
+    try {
+      const { providerName } = req.body;
+      const config = await readConfigFile();
+      
+      if (!providerName) {
+        reply.status(400).send({ 
+          success: false, 
+          error: "Provider name is required for single provider test" 
+        });
+        return;
+      }
+      
+      // Test specific provider
+      const result = await testSpecificProvider(config, providerName);
+      return { success: true, result };
+    } catch (error: any) {
+      console.error("Provider test failed:", error);
+      reply.status(500).send({ 
+        success: false, 
+        error: error.message || "Provider test failed" 
+      });
+    }
+  });
+
+  // Add endpoint to test all providers connectivity
+  server.app.post("/api/test-providers", async (req, reply) => {
+    try {
+      const config = await readConfigFile();
+      
+      // Test all providers
+      const results = await testAllProviders(config);
+      return { success: true, results };
+    } catch (error: any) {
+      console.error("Providers test failed:", error);
+      reply.status(500).send({ 
+        success: false, 
+        error: error.message || "Providers test failed" 
+      });
+    }
   });
 
   // Add endpoint to restart the service with access control
