@@ -83,25 +83,38 @@ export const readConfigFile = async () => {
   } catch (readError: any) {
     if (readError.code === "ENOENT") {
       // Config file doesn't exist, prompt user for initial setup
-      const name = await question("Enter Provider Name: ");
-      const APIKEY = await question("Enter Provider API KEY: ");
-      const baseUrl = await question("Enter Provider URL: ");
-      const model = await question("Enter MODEL Name: ");
-      const config = Object.assign({}, DEFAULT_CONFIG, {
-        Providers: [
-          {
-            name,
-            api_base_url: baseUrl,
-            api_key: APIKEY,
-            models: [model],
-          },
-        ],
-        Router: {
-          default: `${name},${model}`,
-        },
-      });
-      await writeConfigFile(config);
-      return config;
+      try {
+        // Initialize directories
+        await initDir();
+
+        // Backup existing config file if it exists
+        const backupPath = await backupConfigFile();
+        if (backupPath) {
+          console.log(
+              `Backed up existing configuration file to ${backupPath}`
+          );
+        }
+        const config = {
+          PORT: 3456,
+          Providers: [],
+          Router: {},
+        }
+        // Create a minimal default config file
+        await writeConfigFile(config);
+        console.log(
+            "Created minimal default configuration file at ~/.claude-code-router/config.json"
+        );
+        console.log(
+            "Please edit this file with your actual configuration."
+        );
+        return config
+      } catch (error: any) {
+        console.error(
+            "Failed to create default configuration:",
+            error.message
+        );
+        process.exit(1);
+      }
     } else {
       console.error(`Failed to read config file at ${CONFIG_FILE}`);
       console.error("Error details:", readError.message);
@@ -116,19 +129,19 @@ export const backupConfigFile = async () => {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const backupPath = `${CONFIG_FILE}.${timestamp}.bak`;
       await fs.copyFile(CONFIG_FILE, backupPath);
-      
+
       // Clean up old backups, keeping only the 3 most recent
       try {
         const configDir = path.dirname(CONFIG_FILE);
         const configFileName = path.basename(CONFIG_FILE);
         const files = await fs.readdir(configDir);
-        
+
         // Find all backup files for this config
         const backupFiles = files
           .filter(file => file.startsWith(configFileName) && file.endsWith('.bak'))
           .sort()
           .reverse(); // Sort in descending order (newest first)
-        
+
         // Delete all but the 3 most recent backups
         if (backupFiles.length > 3) {
           for (let i = 3; i < backupFiles.length; i++) {
@@ -139,7 +152,7 @@ export const backupConfigFile = async () => {
       } catch (cleanupError) {
         console.warn("Failed to clean up old backups:", cleanupError);
       }
-      
+
       return backupPath;
     }
   } catch (error) {

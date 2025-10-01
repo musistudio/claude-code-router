@@ -1,5 +1,21 @@
 import type { Config, Provider, Transformer } from '@/types';
 
+// 日志聚合响应类型
+interface GroupedLogsResponse {
+  grouped: boolean;
+  groups: { [reqId: string]: Array<{ timestamp: string; level: string; message: string; source?: string; reqId?: string }> };
+  summary: {
+    totalRequests: number;
+    totalLogs: number;
+    requests: Array<{
+      reqId: string;
+      logCount: number;
+      firstLog: string;
+      lastLog: string;
+    }>;
+  };
+}
+
 // API Client Class for handling requests with baseUrl and apikey authentication
 class ApiClient {
   private baseUrl: string;
@@ -203,6 +219,21 @@ class ApiClient {
   // Perform update
   async performUpdate(): Promise<{ success: boolean; message: string }> {
     return this.post<{ success: boolean; message: string }>('/api/update/perform', {});
+  }
+  
+  // Get log files list
+  async getLogFiles(): Promise<Array<{ name: string; path: string; size: number; lastModified: string }>> {
+    return this.get<Array<{ name: string; path: string; size: number; lastModified: string }>>('/logs/files');
+  }
+  
+  // Get logs from specific file
+  async getLogs(filePath: string): Promise<string[]> {
+    return this.get<string[]>(`/logs?file=${encodeURIComponent(filePath)}`);
+  }
+  
+  // Clear logs from specific file
+  async clearLogs(filePath: string): Promise<void> {
+    return this.delete<void>(`/logs?file=${encodeURIComponent(filePath)}`);
   }
 }
 

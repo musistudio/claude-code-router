@@ -50,7 +50,8 @@ async function waitForService(
 
   const startTime = Date.now();
   while (Date.now() - startTime < timeout) {
-    if (isServiceRunning()) {
+    const isRunning = await isServiceRunning()
+    if (isRunning) {
       // Wait for an additional short period to ensure service is fully ready
       await new Promise((resolve) => setTimeout(resolve, 500));
       return true;
@@ -61,6 +62,7 @@ async function waitForService(
 }
 
 async function main() {
+  const isRunning = await isServiceRunning()
   switch (command) {
     case "start":
       run();
@@ -100,7 +102,7 @@ async function main() {
           inputData += chunk;
         }
       });
-      
+
       process.stdin.on("end", async () => {
         try {
           const input: StatusLineInput = JSON.parse(inputData);
@@ -113,7 +115,7 @@ async function main() {
       });
       break;
     case "code":
-      if (!isServiceRunning()) {
+      if (!isRunning) {
         console.log("Service not running, starting service...");
         const cliPath = join(__dirname, "cli.js");
         const startProcess = spawn("node", [cliPath, "start"], {
@@ -158,7 +160,7 @@ async function main() {
       break;
     case "ui":
       // Check if service is running
-      if (!isServiceRunning()) {
+      if (!isRunning) {
         console.log("Service not running, starting service...");
         const cliPath = join(__dirname, "cli.js");
         const startProcess = spawn("node", [cliPath, "start"], {

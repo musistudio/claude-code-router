@@ -24,48 +24,6 @@ export const apiKeyAuth =
       }
       return done();
     }
-    const isConfigEndpoint = req.url.startsWith("/api/config");
-    const isRestartEndpoint = req.url === "/api/restart";
-
-    // For config endpoints and restart endpoint, we implement granular access control
-    if (isConfigEndpoint || isRestartEndpoint) {
-      // Attach access level to request for later use
-      (req as any).accessLevel = "restricted";
-
-      // If no API key is set in config, allow restricted access
-      if (!apiKey) {
-        (req as any).accessLevel = "restricted";
-        return done();
-      }
-
-      // If API key is set, check authentication
-      const authHeaderValue =
-        req.headers.authorization || req.headers["x-api-key"];
-      const authKey: string = Array.isArray(authHeaderValue)
-        ? authHeaderValue[0]
-        : authHeaderValue || "";
-
-      if (!authKey) {
-        (req as any).accessLevel = "restricted";
-        return done();
-      }
-
-      let token = "";
-      if (authKey.startsWith("Bearer")) {
-        token = authKey.split(" ")[1];
-      } else {
-        token = authKey;
-      }
-
-      if (token !== apiKey) {
-        (req as any).accessLevel = "restricted";
-        return done();
-      }
-
-      // Full access for authenticated users
-      (req as any).accessLevel = "full";
-      return done();
-    }
 
     const authHeaderValue =
       req.headers.authorization || req.headers["x-api-key"];

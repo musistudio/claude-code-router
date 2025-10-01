@@ -30,7 +30,8 @@ export function Router() {
     think: "",
     longContext: "",
     longContextThreshold: 60000,
-    webSearch: ""
+    webSearch: "",
+    image: ""
   };
 
   const handleRouterChange = (field: string, value: string | number) => {
@@ -38,6 +39,10 @@ export function Router() {
     const currentRouter = config.Router || {};
     const newRouter = { ...currentRouter, [field]: value };
     setConfig({ ...config, Router: newRouter });
+  };
+
+  const handleForceUseImageAgentChange = (value: boolean) => {
+    setConfig({ ...config, forceUseImageAgent: value });
   };
 
   // Handle case where config.Providers might be null or undefined
@@ -132,6 +137,33 @@ export function Router() {
             searchPlaceholder={t("router.searchModel")}
             emptyPlaceholder={t("router.noModelFound")}
           />
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center gap-4">
+            <div className="flex-1">
+              <Label>{t("router.image")} (beta)</Label>
+              <Combobox
+                options={modelOptions}
+                value={routerConfig.image || ""}
+                onChange={(value) => handleRouterChange("image", value)}
+                placeholder={t("router.selectModel")}
+                searchPlaceholder={t("router.searchModel")}
+                emptyPlaceholder={t("router.noModelFound")}
+              />
+            </div>
+            <div className="w-48">
+              <Label htmlFor="forceUseImageAgent">{t("router.forceUseImageAgent")}</Label>
+              <select
+                id="forceUseImageAgent"
+                value={config.forceUseImageAgent ? "true" : "false"}
+                onChange={(e) => handleForceUseImageAgentChange(e.target.value === "true")}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="false">{t("common.no")}</option>
+                <option value="true">{t("common.yes")}</option>
+              </select>
+            </div>
+          </div>
         </div>
       </CardContent>
     </Card>

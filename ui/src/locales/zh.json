@@ -1,4 +1,8 @@
 {
+  "common": {
+    "yes": "是",
+    "no": "否"
+  },
   "app": {
     "title": "Claude Code Router",
     "save": "保存",
@@ -108,6 +112,8 @@
     "longContext": "长上下文",
     "longContextThreshold": "上下文阈值",
     "webSearch": "网络搜索",
+    "image": "图像",
+    "forceUseImageAgent": "强制使用图像代理",
     "selectModel": "选择一个模型...",
     "searchModel": "搜索模型...",
     "noModelFound": "未找到模型."
@@ -188,5 +194,36 @@
     "template_download_success": "模板下载成功",
     "template_download_success_desc": "配置模板已下载到您的设备",
     "template_download_failed": "模板下载失败"
+  },
+  "log_viewer": {
+    "title": "日志查看器",
+    "close": "关闭",
+    "download": "下载",
+    "clear": "清除",
+    "auto_refresh_on": "自动刷新开启",
+    "auto_refresh_off": "自动刷新关闭",
+    "load_failed": "加载日志失败",
+    "no_logs_available": "暂无日志",
+    "logs_cleared": "日志清除成功",
+    "clear_failed": "清除日志失败",
+    "logs_downloaded": "日志下载成功",
+    "back_to_files": "返回文件列表",
+    "select_file": "选择要查看的日志文件",
+    "no_log_files_available": "暂无日志文件",
+    "load_files_failed": "加载日志文件失败",
+    "group_by_req_id": "按请求ID分组",
+    "grouped_on": "已分组",
+    "request_groups": "请求组",
+    "total_requests": "总请求数",
+    "total_logs": "总日志数",
+    "request": "请求",
+    "logs": "条日志",
+    "first_log": "首条日志",
+    "last_log": "末条日志",
+    "back_to_all_logs": "返回所有日志",
+    "worker_error": "Worker错误",
+    "worker_init_failed": "Worker初始化失败",
+    "grouping_not_supported": "服务器不支持日志分组",
+    "back": "返回"
   }
 }

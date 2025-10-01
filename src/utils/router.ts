@@ -4,8 +4,8 @@ import {
   Tool,
 } from "@anthropic-ai/sdk/resources/messages";
 import { get_encoding } from "tiktoken";
-import { log } from "./log";
 import { sessionUsageCache, Usage } from "./cache";
+import { readFile } from 'fs/promises'
 
 const enc = get_encoding("cl100k_base");
 
@@ -94,11 +94,8 @@ const getUseModel = async (
     (lastUsageThreshold || tokenCountThreshold) &&
     config.Router.longContext
   ) {
-    log(
-      "Using long context model due to token count:",
-      tokenCount,
-      "threshold:",
-      longContextThreshold
+        req.log.info(
+      `Using long context model due to token count: ${tokenCount}, threshold: ${longContextThreshold}`
     );
     return config.Router.longContext;
   }
@@ -122,12 +119,12 @@ const getUseModel = async (
     req.body.model?.startsWith("claude-3-5-haiku") &&
     config.Router.background
   ) {
-    log("Using background model for ", req.body.model);
+    req.log.info(`Using background model for ${req.body.model}`);
     return config.Router.background;
   }
   // if exits thinking, use the think model
   if (req.body.thinking && config.Router.think) {
-    log("Using think model for ", req.body.thinking);
+    req.log.info(`Using think model for ${req.body.thinking}`);
     return config.Router.think;
   }
   if (
@@ -140,7 +137,8 @@ const getUseModel = async (
   return config.Router!.default;
 };
 
-export const router = async (req: any, _res: any, config: any) => {
+export const router = async (req: any, _res: any, context: any) => {
+  const { config, event } = context;
   // Parse sessionId from metadata.user_id
   if (req.body.metadata?.user_id) {
     const parts = req.body.metadata.user_id.split("_session_");
@@ -150,6 +148,11 @@ export const router = async (req: any, _res: any, config: any) => {
   }
   const lastMessageUsage = sessionUsageCache.get(req.sessionId);
   const { messages, system = [], tools }: MessageCreateParamsBase = req.body;
+  if (config.REWRITE_SYSTEM_PROMPT && system.length > 1 && system[1]?.text?.includes('<env>')) {
+    const prompt = await readFile(config.REWRITE_SYSTEM_PROMPT, 'utf-8');
+    system[1].text = `${prompt}<env>${system[1].text.split('<env>').pop()}`
+  }
+
   try {
     const tokenCount = calculateTokenCount(
       messages as MessageParam[],
@@ -162,9 +165,11 @@ export const router = async (req: any, _res: any, config: any) => {
       try {
         const customRouter = require(config.CUSTOM_ROUTER_PATH);
         req.tokenCount = tokenCount; // Pass token count to custom router
-        model = await customRouter(req, config);
+        model = await customRouter(req, config, {
+          event
+        });
       } catch (e: any) {
-        log("failed to load custom router", e.message);
+        req.log.error(`failed to load custom router: ${e.message}`);
       }
     }
     if (!model) {
@@ -172,7 +177,7 @@ export const router = async (req: any, _res: any, config: any) => {
     }
     req.body.model = model;
   } catch (error: any) {
-    log("Error in router middleware:", error.message);
+    req.log.error(`Error in router middleware: ${error.message}`);
     req.body.model = config.Router!.default;
   }
   return;

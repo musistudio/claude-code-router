@@ -1,9 +1,12 @@
-# Claude Code Router
+![](blog/images/claude-code-router-img.png)
 
-I am seeking funding support for this project to better sustain its development. If you have any ideas, feel free to reach out to me: [m@musiiot.top](mailto:m@musiiot.top)
+[![](https://img.shields.io/badge/%F0%9F%87%A8%F0%9F%87%B3-%E4%B8%AD%E6%96%87%E7%89%88-ff0000?style=flat)](README_zh.md)
+[![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white)](https://discord.gg/rdftVMaUcS)
+[![](https://img.shields.io/github/license/musistudio/claude-code-router)](https://github.com/musistudio/claude-code-router/blob/main/LICENSE)
 
+<hr>
 
-[中文版](README_zh.md)
+> I am currently seeking **Agent development related job opportunities**, either **based in Hangzhou** or **remote**. If you are interested in my projects or have suitable opportunities, feel free to reach out! 📧 Email: m@musiiot.top
 
 > A powerful tool to route Claude Code requests to different models and customize any request.
 
@@ -12,6 +15,8 @@ I am seeking funding support for this project to better sustain its development.
 > If you’d like a better experience, you can try [iFlow CLI](https://cli.iflow.cn).
 
 ![](blog/images/claude-code.png)
+
+![](blog/images/roadmap.svg)
 
 ## ✨ Features
 
@@ -350,8 +355,9 @@ The `Router` object defines which model to use for different scenarios:
 - `longContext`: A model for handling long contexts (e.g., > 60K tokens).
 - `longContextThreshold` (optional): The token count threshold for triggering the long context model. Defaults to 60000 if not specified.
 - `webSearch`: Used for handling web search tasks and this requires the model itself to support the feature. If you're using openrouter, you need to add the `:online` suffix after the model name.
+- `image` (beta): Used for handling image-related tasks (supported by CCR’s built-in agent). If the model does not support tool calling, you need to set the `config.forceUseImageAgent` property to `true`.
 
-You can also switch models dynamically in Claude Code with the `/model` command:
+- You can also switch models dynamically in Claude Code with the `/model` command:
 `/model provider_name,model_name`
 Example: `/model openrouter,anthropic/claude-3.5-sonnet`
 
@@ -567,5 +573,19 @@ A huge thank you to all our sponsors for their generous support!
 - [@greatheart1000](http://github.com/greatheart1000)
 - @\*王
 - @zcutlip
+- [@Peng-YM](http://github.com/Peng-YM)
+- @\*更
+- @\*.
+- @F\*t
+- @\*政
+- @\*铭
+- @\*叶
+- @七\*o
+- @\*青
+- @\*\*晨
+- @\*远
+- @\*霄
+- @\*\*吉
+- @\*\*飞
 
 (If your name is masked, please contact me via my homepage email to update it with your GitHub username.)
