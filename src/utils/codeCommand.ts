@@ -6,9 +6,8 @@ import {
   incrementReferenceCount,
 } from "./processCheck";
 import { quote } from 'shell-quote';
-import { writeFileSync, unlinkSync } from 'fs';
-import { join } from 'path';
-import { tmpdir } from 'os';
+import minimist from "minimist";
+
 
 export async function executeCodeCommand(args: string[] = []) {
   // Set environment variables
@@ -33,18 +32,7 @@ export async function executeCodeCommand(args: string[] = []) {
       padding: 0,
     }
   }
-  
-  // Create a temporary settings file
-  const tempSettingsPath = join(tmpdir(), `claude-settings-${Date.now()}.json`);
-  try {
-    const settingsContent = JSON.stringify(settingsFlag, null, 2);
-    writeFileSync(tempSettingsPath, settingsContent);
-  } catch (error) {
-    console.error("Failed to create temporary settings file:", error);
-    process.exit(1);
-  }
-  
-  args.push('--settings', tempSettingsPath);
+  args.push('--settings', `${JSON.stringify(settingsFlag)}`);
 
   // Non-interactive mode for automation environments
   if (config.NON_INTERACTIVE_MODE) {
@@ -65,18 +53,26 @@ export async function executeCodeCommand(args: string[] = []) {
   // Execute claude command
   const claudePath = config?.CLAUDE_PATH || process.env.CLAUDE_PATH || "claude";
 
-  // Don't use quote for the entire args array since it escapes colons in paths
-  // Instead, use spawn with proper args array
+  const joinedArgs = args.length > 0 ? quote(args) : "";
+
   const stdioConfig: StdioOptions = config.NON_INTERACTIVE_MODE
     ? ["pipe", "inherit", "inherit"] // Pipe stdin for non-interactive
     : "inherit"; // Default inherited behavior
+
+  const argsObj = minimist(args)
+  const argsArr = []
+  for (const [argsObjKey, argsObjValue] of Object.entries(argsObj)) {
+    if (argsObjKey !== '_' && argsObj[argsObjKey]) {
+      argsArr.push(`${argsObjKey.length === 1 ? '-' : '--'}${argsObjKey} ${JSON.stringify(argsObjValue)}`);
+    }
+  }
   const claudeProcess = spawn(
     claudePath,
-    args,
+    argsArr,
     {
       env: process.env,
       stdio: stdioConfig,
-      shell: true, // Use shell on all platforms for PATH resolution
+      shell: true,
     }
   );
 
@@ -90,23 +86,11 @@ export async function executeCodeCommand(args: string[] = []) {
     console.log(
       "Make sure Claude Code is installed: npm install -g @anthropic-ai/claude-code"
     );
-    // Clean up temporary settings file
-    try {
-      unlinkSync(tempSettingsPath);
-    } catch (e) {
-      // Ignore cleanup errors
-    }
     decrementReferenceCount();
     process.exit(1);
   });
 
   claudeProcess.on("close", (code) => {
-    // Clean up temporary settings file
-    try {
-      unlinkSync(tempSettingsPath);
-    } catch (e) {
-      // Ignore cleanup errors
-    }
     decrementReferenceCount();
     closeService();
     process.exit(code || 0);

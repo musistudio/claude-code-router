@@ -23,6 +23,9 @@ importers:
       json5:
         specifier: ^2.2.3
         version: 2.2.3
+      minimist:
+        specifier: ^1.2.8
+        version: 1.2.8
       openurl:
         specifier: ^1.1.1
         version: 1.1.1

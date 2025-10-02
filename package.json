@@ -1,6 +1,6 @@
 {
   "name": "@musistudio/claude-code-router",
-  "version": "1.0.53",
+  "version": "1.0.54",
   "description": "Use Claude Code without an Anthropics account and route it to another LLM provider",
   "bin": {
     "ccr": "dist/cli.js"
@@ -24,6 +24,7 @@
     "dotenv": "^16.4.7",
     "find-process": "^2.0.0",
     "json5": "^2.2.3",
+    "minimist": "^1.2.8",
     "openurl": "^1.1.1",
     "rotating-file-stream": "^3.2.7",
     "shell-quote": "^1.8.3",
