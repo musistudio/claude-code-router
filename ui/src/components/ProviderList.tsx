@@ -1,4 +1,4 @@
-import { Pencil, Trash2, Wifi, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { Pencil, Trash2, Stethoscope, CheckCircle, XCircle, Loader2, CircleDashed, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { Provider } from "@/types";
@@ -79,7 +79,7 @@ export function ProviderList({ providers, onEdit, onRemove, onTestProvider, prov
                       <XCircle className="h-4 w-4 text-red-500" />
                     )}
                     {providerStatus.status === 'pending' && (
-                      <Wifi className="h-4 w-4 text-gray-400" />
+                      <CircleDashed className="h-4 w-4 text-gray-400" />
                     )}
                   </div>
                 )}
@@ -102,14 +102,14 @@ export function ProviderList({ providers, onEdit, onRemove, onTestProvider, prov
             </div>
             <div className="flex flex-shrink-0 items-center gap-2 min-w-[120px]">
               {onTestProvider && (
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
+                <Button
+                  variant="ghost"
+                  size="icon"
                   onClick={() => onTestProvider(index)}
                   disabled={providerStatus?.status === 'testing'}
                   className="transition-all-ease hover:scale-110"
                 >
-                  <Wifi className="h-4 w-4" />
+                  <Stethoscope className="h-4 w-4" />
                 </Button>
               )}
               <Button variant="ghost" size="icon" onClick={() => onEdit(index)} className="transition-all-ease hover:scale-110">
