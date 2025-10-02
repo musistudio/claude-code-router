@@ -11,7 +11,6 @@ export const PID_FILE = path.join(HOME_DIR, '.claude-code-router.pid');
 
 export const REFERENCE_COUNT_FILE = path.join(os.tmpdir(), "claude-code-reference-count.txt");
 
-
 export const DEFAULT_CONFIG = {
   LOG: false,
   OPENAI_API_KEY: "",
