@@ -76,7 +76,7 @@ export async function executeCodeCommand(args: string[] = []) {
     {
       env: process.env,
       stdio: stdioConfig,
-      shell: process.platform === 'win32', // Use shell on Windows for PATH resolution
+      shell: true, // Use shell on all platforms for PATH resolution
     }
   );
 
