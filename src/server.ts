@@ -212,7 +212,7 @@ export const createServer = (config: any, ccrConfig): Server => {
         else resolve();
       };
       // Call the async auth function
-      apiKeyAuth(config)(req, reply, done).catch(reject);
+      apiKeyAuth(ccrConfig)(req, reply, done).catch(reject);
     });
   });
   server.addHook("preHandler", async (req, reply) => {
@@ -220,12 +220,12 @@ export const createServer = (config: any, ccrConfig): Server => {
       const useAgents = []
 
       for (const agent of agentsManager.getAllAgents()) {
-        if (agent.shouldHandle(req, config)) {
+        if (agent.shouldHandle(req, ccrConfig)) {
           // 设置agent标识
           useAgents.push(agent.name)
 
           // change request body
-          agent.reqHandler(req, config);
+          agent.reqHandler(req, ccrConfig);
 
           // append agent tools
           if (agent.tools.size) {
@@ -247,7 +247,7 @@ export const createServer = (config: any, ccrConfig): Server => {
         req.agents = useAgents;
       }
       await router(req, reply, {
-        config,
+        config: ccrConfig,
         event
       });
     }
@@ -301,7 +301,7 @@ export const createServer = (config: any, ccrConfig): Server => {
                   })
                   const toolResult = await currentAgent?.tools.get(currentToolName)?.handler(args, {
                     req,
-                    config
+                    ccrConfig
                   });
                   toolMessages.push({
                     "tool_use_id": currentToolId,
@@ -328,10 +328,10 @@ export const createServer = (config: any, ccrConfig): Server => {
                   role: 'user',
                   content: toolMessages
                 })
-                const response = await fetch(`http://127.0.0.1:${config.PORT}/v1/messages`, {
+                const response = await fetch(`http://127.0.0.1:${ccrConfig.PORT}/v1/messages`, {
                   method: "POST",
                   headers: {
-                    'x-api-key': config.APIKEY,
+                    'x-api-key': ccrConfig.APIKEY,
                     'content-type': 'application/json',
                   },
                   body: JSON.stringify(req.body),
