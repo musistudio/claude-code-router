@@ -6,6 +6,8 @@ import {
   incrementReferenceCount,
 } from "./processCheck";
 import { quote } from 'shell-quote';
+import minimist from "minimist";
+
 
 export async function executeCodeCommand(args: string[] = []) {
   // Set environment variables
@@ -57,10 +59,16 @@ export async function executeCodeCommand(args: string[] = []) {
     ? ["pipe", "inherit", "inherit"] // Pipe stdin for non-interactive
     : "inherit"; // Default inherited behavior
 
-  console.log(claudePath + (joinedArgs ? ` ${joinedArgs}` : ""))
+  const argsObj = minimist(args)
+  const argsArr = []
+  for (const [argsObjKey, argsObjValue] of Object.entries(argsObj)) {
+    if (argsObjKey !== '_' && argsObj[argsObjKey]) {
+      argsArr.push(`${argsObjKey.length === 1 ? '-' : '--'}${argsObjKey} ${JSON.stringify(argsObjValue)}`);
+    }
+  }
   const claudeProcess = spawn(
-    claudePath + (joinedArgs ? ` ${joinedArgs}` : ""),
-    [],
+    claudePath,
+    argsArr,
     {
       env: process.env,
       stdio: stdioConfig,
