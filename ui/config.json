@@ -1,0 +1,97 @@
+{
+  "LOG": true,
+  "LOG_LEVEL": "debug",
+  "CLAUDE_PATH": "",
+  "HOST": "0.0.0.0",
+  "PORT": 3456,
+  "APIKEY": "",
+  "API_TIMEOUT_MS": "600000",
+  "PROXY_URL": "",
+  "transformers": [
+    {
+      "path": "/Users/zbj/.claude-code-router/plugins/qwen-cli.js"
+    },
+    {
+      "path": "/Users/zbj/.claude-code-router/plugins/gemini-cli.js",
+      "options": {
+        "project": "nomadic-rig-467117-u9"
+      }
+    }
+  ],
+  "Providers": [
+    {
+      "name": "gemini_cli_oauth",
+      "api_base_url": "https://cloudcode-pa.googleapis.com/v1internal",
+      "api_key": "oauth-managed",
+      "models": [
+        "gemini-2.5-flash",
+        "gemini-2.5-pro"
+      ],
+      "transformer": {
+        "use": [
+          "gemini-cli"
+        ]
+      }
+    },
+    {
+      "name": "qwen_cli",
+      "api_base_url": "https://portal.qwen.ai/v1/chat/completions",
+      "api_key": "oauth-managed",
+      "models": [
+        "qwen3-coder-plus"
+      ],
+      "transformer": {
+        "use": [
+          "qwen-cli",
+          "enhancetool"
+        ]
+      }
+    },
+    {
+      "name": "gemini",
+      "api_base_url": "https://generativelanguage.googleapis.com/v1beta/models/",
+      "api_key": "your_api_key",
+      "models": [
+        "gemini-2.5-flash",
+        "gemini-2.5-pro"
+      ],
+      "transformer": {
+        "use": [
+          "gemini"
+        ]
+      }
+    },
+    {
+      "name": "gemini_1",
+      "api_base_url": "https://generativelanguage.googleapis.com/v1beta/models/",
+      "api_key": "your_api_key",
+      "models": [
+        "gemini-2.5-flash",
+        "gemini-2.5-pro"
+      ],
+      "transformer": {
+        "use": [
+          "gemini"
+        ]
+      }
+    }
+  ],
+  "StatusLine": {
+    "enabled": false,
+    "currentStyle": "default",
+    "default": {
+      "modules": []
+    },
+    "powerline": {
+      "modules": []
+    }
+  },
+  "Router": {
+    "default": "qwen_cli,qwen3-coder-plus",
+    "background": "qwen_cli,qwen3-coder-plus",
+    "think": "qwen_cli,qwen3-coder-plus",
+    "longContext": "qwen_cli,qwen3-coder-plus",
+    "longContextThreshold": 200000,
+    "webSearch": "qwen_cli,qwen3-coder-plus"
+  }
+}

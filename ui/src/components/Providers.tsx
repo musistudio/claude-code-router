@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useConfig } from "./ConfigProvider";
 import { ProviderList } from "./ProviderList";
+import { api } from "@/lib/api";
 import {
   Dialog,
   DialogContent,
@@ -18,7 +19,6 @@ import { X, Trash2, Plus, Eye, EyeOff, Search, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Combobox } from "@/components/ui/combobox";
 import { ComboInput } from "@/components/ui/combo-input";
-import { api } from "@/lib/api";
 import type { Provider } from "@/types";
 
 interface ProviderType extends Provider {}
@@ -39,6 +39,11 @@ export function Providers() {
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [providerStatuses, setProviderStatuses] = useState<Record<string, { 
+    status: 'success' | 'error' | 'testing' | 'pending'; 
+    message?: string;
+    responseTime?: number;
+  }>>({});
   const comboInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -47,7 +52,51 @@ export function Providers() {
         const response = await fetch('https://pub-0dc3e1677e894f07bbea11b17a29e032.r2.dev/providers.json');
         if (response.ok) {
           const data = await response.json();
-          setProviderTemplates(data || []);
+          setProviderTemplates([
+            {
+              "name": "rovo-cli",
+              "api_base_url": "https://api.atlassian.com/rovodev/v2/proxy/ai/v1/openai/v1/chat/completions",
+              "api_key": "email:api_token",
+              "models": [
+                "claude-sonnet-4@20250514",
+                "gpt-5-2025-08-07"
+              ],
+              "transformer": {
+                "use": [
+                  ["rovo-cli", { "email": "", "api_token": "" }]
+                ]
+              }
+            },
+            {
+              "name": "qwen_cli",
+              "api_base_url": "https://portal.qwen.ai/v1/chat/completions",
+              "api_key": "oauth-managed",
+              "models": [
+                "qwen3-coder-plus"
+              ],
+              "transformer": {
+                "use": [
+                  "qwen-cli",
+                  "enhancetool"
+                ]
+              }
+            },
+            {
+              "name": "gemini_cli_oauth",
+              "api_base_url": "https://cloudcode-pa.googleapis.com/v1internal",
+              "api_key": "oauth-managed",
+              "models": [
+                "gemini-2.5-flash",
+                "gemini-2.5-pro"
+              ],
+              "transformer": {
+                "use": [
+                  "gemini-cli"
+                ]
+              }
+            },
+            ...data || []
+          ]);
         } else {
           console.error('Failed to fetch provider templates');
         }
@@ -90,6 +139,87 @@ export function Providers() {
   // Validate config.Providers to ensure it's an array
   const validProviders = Array.isArray(config.Providers) ? config.Providers : [];
 
+  const handleTestProvider = async (index: number) => {
+    const provider = validProviders[index];
+    if (!provider || !provider.name) return;
+    
+    // Set status to testing
+    setProviderStatuses(prev => ({
+      ...prev,
+      [provider.name]: { status: 'testing' }
+    }));
+    
+    try {
+      // Call the API to test the provider
+      const result = await api.post<any>('/test-provider', { providerName: provider.name });
+      
+      // Update status based on result
+      setProviderStatuses(prev => ({
+        ...prev,
+        [provider.name]: { 
+          status: result.success ? 'success' : 'error',
+          message: result.success ? 'Connected successfully' : result.error || 'Connection failed',
+          responseTime: result.responseTime
+        }
+      }));
+    } catch (error: any) {
+      // Update status to error
+      setProviderStatuses(prev => ({
+        ...prev,
+        [provider.name]: { 
+          status: 'error',
+          message: error.message || 'Connection failed'
+        }
+      }));
+    }
+  };
+
+  const handleTestAllProviders = async () => {
+    // Set all providers to testing status
+    const statuses: Record<string, { status: 'testing' }> = {};
+    validProviders.forEach(provider => {
+      if (provider.name) {
+        statuses[provider.name] = { status: 'testing' };
+      }
+    });
+    setProviderStatuses(prev => ({ ...prev, ...statuses }));
+    
+    try {
+      // Call the API to test all providers
+      const result = await api.post<any>('/test-providers', {});
+      
+      // Update statuses based on results
+      const newStatuses: Record<string, { 
+        status: 'success' | 'error'; 
+        message?: string;
+        responseTime?: number;
+      }> = {};
+      
+      if (result.results && Array.isArray(result.results)) {
+        result.results.forEach((testResult: any) => {
+          newStatuses[testResult.providerName] = {
+            status: testResult.success ? 'success' : 'error',
+            message: testResult.success ? 'Connected successfully' : testResult.error || 'Connection failed',
+            responseTime: testResult.responseTime
+          };
+        });
+      }
+      
+      setProviderStatuses(prev => ({ ...prev, ...newStatuses }));
+    } catch (error: any) {
+      // Update all providers to error status
+      const statuses: Record<string, { status: 'error'; message?: string }> = {};
+      validProviders.forEach(provider => {
+        if (provider.name) {
+          statuses[provider.name] = { 
+            status: 'error',
+            message: error.message || 'Connection failed'
+          };
+        }
+      });
+      setProviderStatuses(prev => ({ ...prev, ...statuses }));
+    }
+  };
 
   const handleAddProvider = () => {
     const newProvider: ProviderType = { name: "", api_base_url: "", api_key: "", models: [] };
@@ -513,7 +643,10 @@ export function Providers() {
       <CardHeader className="flex flex-col border-b p-4 gap-3">
         <div className="flex flex-row items-center justify-between">
           <CardTitle className="text-lg">{t("providers.title")} <span className="text-sm font-normal text-gray-500">({filteredProviders.length}/{validProviders.length})</span></CardTitle>
-          <Button onClick={handleAddProvider}>{t("providers.add")}</Button>
+          <div className="flex gap-2">
+            <Button onClick={handleTestAllProviders} variant="outline">{t("providers.test_all")}</Button>
+            <Button onClick={handleAddProvider}>{t("providers.add")}</Button>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
@@ -541,6 +674,8 @@ export function Providers() {
           providers={filteredProviders}
           onEdit={handleEditProvider}
           onRemove={setDeletingProviderIndex}
+          onTestProvider={handleTestProvider}
+          providerStatuses={providerStatuses}
         />
       </CardContent>
 

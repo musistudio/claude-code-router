@@ -84,6 +84,7 @@
     "fetch_available_models": "Fetch available models",
     "fetching_models": "Fetching models...",
     "fetch_models_failed": "Failed to fetch models",
+    "test_all": "Test All Providers",
     "transformers": "Transformers",
     "select_transformer": "Select Transformer",
     "no_transformers": "No transformers available",
