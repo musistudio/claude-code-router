@@ -53,6 +53,7 @@ export function isServiceRunning(): boolean {
             return false;
         }
     } catch (e) {
+        console.log(e);
         // 读取文件失败
         return false;
     }

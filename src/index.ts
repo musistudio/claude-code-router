@@ -40,7 +40,7 @@ export async function getServer(options: RunOptions = {}) {
   await initializeClaudeConfig();
   await initDir();
   // Clean up old log files, keeping only the 10 most recent ones
-  await cleanupLogFiles();
+  await cleanupLogFiles(4);
   const config = await initConfig();
 
   let HOST = config.HOST || "127.0.0.1";
