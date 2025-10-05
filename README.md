@@ -1,8 +1,92 @@
+# Claude Code Router
+
 ![](blog/images/claude-code-router-img.png)
 
 [![](https://img.shields.io/badge/%F0%9F%87%A8%F0%9F%87%B3-%E4%B8%AD%E6%96%87%E7%89%88-ff0000?style=flat)](README_zh.md)
 [![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white)](https://discord.gg/rdftVMaUcS)
 [![](https://img.shields.io/github/license/musistudio/claude-code-router)](https://github.com/musistudio/claude-code-router/blob/main/LICENSE)
+
+## 📦 Monorepo Structure
+
+This project has been restructured as a pnpm monorepo with two main packages:
+
+### @musistudio/claude-code-router-core
+Core library package providing the fundamental functionality of Claude Code Router.
+
+- **Location**: `packages/core`
+- **Purpose**: Provides core APIs and server functionality for third-party integration
+- **Exports**: Server creation, configuration management, routing logic, and other core features
+
+### @musistudio/claude-code-router
+CLI package built on top of the core package, providing the command-line interface.
+
+- **Location**: `packages/cli`
+- **Purpose**: Provides the `ccr` command-line tool
+- **Dependencies**: Depends on `@musistudio/claude-code-router-core`
+
+## 🚀 Development
+
+### Install Dependencies
+```bash
+pnpm install
+```
+
+### Build All Packages
+```bash
+pnpm build
+```
+
+### Build Specific Package
+```bash
+# Build core package
+pnpm --filter @musistudio/claude-code-router-core build
+
+# Build cli package
+pnpm --filter @musistudio/claude-code-router build
+```
+
+### Publish
+```bash
+pnpm release
+```
+
+## 📖 Usage
+
+### 1. CLI Usage (Unchanged)
+```bash
+# Install CLI package
+npm install -g @musistudio/claude-code-router
+
+# Use commands
+ccr start
+ccr code "Write a Hello World"
+```
+
+### 2. Library Usage (New Feature)
+```bash
+# Install core package
+npm install @musistudio/claude-code-router-core
+```
+
+```javascript
+import { getServer, run } from '@musistudio/claude-code-router-core';
+
+// Create server instance
+const server = await getServer({ port: 3456 });
+
+// Start server
+server.start();
+
+// Or run directly
+await run({ port: 3456 });
+```
+
+## 🔄 Migration Notes
+
+This refactoring maintains backward compatibility:
+- CLI usage remains completely unchanged
+- Added library usage capability
+- Core logic separated into independent package for third-party integration
 
 <hr>
 

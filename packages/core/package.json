@@ -1,0 +1,49 @@
+{
+  "name": "@claude-code-router/core",
+  "version": "1.0.54",
+  "description": "Core library for Claude Code Router",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.js",
+    "dev": "node scripts/build.js --watch",
+    "clean": "shx rm -rf dist"
+  },
+  "keywords": [
+    "claude",
+    "code",
+    "router",
+    "llm",
+    "anthropic",
+    "core"
+  ],
+  "author": "musistudio",
+  "license": "MIT",
+  "dependencies": {
+    "json5": "^2.2.3",
+    "lru-cache": "^11.0.2",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@musistudio/llms": "^1.0.35",
+    "@types/node": "^24.0.15",
+    "esbuild": "^0.25.1",
+    "fastify": "^5.4.0",
+    "typescript": "^5.8.2",
+    "shx": "^0.4.0"
+  },
+  "peerDependencies": {
+    "tiktoken": "^1.0.21"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

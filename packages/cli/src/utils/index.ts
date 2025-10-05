@@ -8,7 +8,6 @@ import {
   HOME_DIR,
   PLUGINS_DIR,
 } from "../constants";
-import { cleanupLogFiles } from "./logCleanup";
 
 // Function to interpolate environment variables in config values
 const interpolateEnvVars = (obj: any): any => {
@@ -172,9 +171,3 @@ export const initConfig = async () => {
   Object.assign(process.env, config);
   return config;
 };
-
-// 导出日志清理函数
-export { cleanupLogFiles };
-
-// 导出更新功能
-export { checkForUpdates, performUpdate } from "./update";

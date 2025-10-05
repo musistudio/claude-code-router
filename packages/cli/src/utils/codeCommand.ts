@@ -1,5 +1,5 @@
 import { spawn, type StdioOptions } from "child_process";
-import { readConfigFile } from ".";
+import { readConfigFile } from "./index";
 import { closeService } from "./close";
 import {
   decrementReferenceCount,

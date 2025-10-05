@@ -54,11 +54,11 @@ export class ImageAgent implements IAgent {
     this.appendTools()
   }
 
-  shouldHandle(req: any, config: any): boolean {
-    if (!config.Router.image || req.body.model === config.Router.image) return false;
+  shouldHandle(req: any): boolean {
+    if (!req.__config__.Router.image || req.body.model === req.__config__.Router.image) return false;
     const lastMessage = req.body.messages[req.body.messages.length - 1]
-    if (!config.forceUseImageAgent && lastMessage.role === 'user' && Array.isArray(lastMessage.content) && lastMessage.content.find((item: any) => item.type === 'image' || (Array.isArray(item?.content) && item.content.some((sub: any) => sub.type === 'image')))) {
-      req.body.model = config.Router.image
+    if (!req.__config__.forceUseImageAgent && lastMessage.role === 'user' && Array.isArray(lastMessage.content) && lastMessage.content.find((item: any) => item.type === 'image' || (Array.isArray(item?.content) && item.content.some((sub: any) => sub.type === 'image')))) {
+      req.body.model = req.__config__.Router.image
       const images = []
       lastMessage.content.filter((item: any) => item.type === 'tool_result').forEach((item: any) => {
         item.content.forEach((element: any) => {
@@ -189,7 +189,7 @@ Always ensure that your response reflects a clear, accurate interpretation of th
     })
   }
 
-  reqHandler(req: any, config: any) {
+  reqHandler(req: any) {
     // Inject system prompt
     req.body?.system?.push({
       type: "text",

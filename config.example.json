@@ -1,0 +1,156 @@
+{
+  "LOG": true,
+  "LOG_LEVEL": "debug",
+  "CLAUDE_PATH": "",
+  "HOST": "0.0.0.0",
+  "PORT": 3456,
+  "APIKEY": "sk-123",
+  "API_TIMEOUT_MS": "600000",
+  "PROXY_URL": "",
+  "transformers": [
+    {
+      "path": "/Users/jinhuilee/.claude-code-router/plugins/gemini-cli.js",
+      "options": {
+        "project": "fuji-tools"
+      }
+    },
+    {
+      "path": "/Users/jinhuilee/.claude-code-router/plugins/qwen-cli.js"
+    }
+  ],
+  "Providers": [
+    {
+      "name": "kimi",
+      "api_base_url": "https://api.moonshot.cn/v1/chat/completions",
+      "api_key": "sk-123",
+      "models": [
+        "kimi-k2-0711-preview"
+      ],
+      "transformer": {
+        "use": [
+          "openrouter"
+        ]
+      }
+    },
+    {
+      "name": "siliconflow",
+      "api_base_url": "https://api.siliconflow.cn/v1/chat/completions",
+      "api_key": "sk-12",
+      "models": [
+        "moonshotai/Kimi-K2-Instruct"
+      ],
+      "transformer": {
+        "use": [
+          [
+            "maxtoken",
+            {
+              "max_tokens": 16384
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "name": "modelscope",
+      "api_base_url": "https://api-inference.modelscope.cn/v1/chat/completions",
+      "api_key": "sk-123",
+      "models": [
+        "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+        "Qwen/Qwen3-235B-A22B-Thinking-2507",
+        "moonshotai/Kimi-K2-Instruct-0905"
+      ],
+      "transformer": {
+        "use": [
+          [
+            "maxtoken",
+            {
+              "max_tokens": 65536
+            }
+          ],
+          "enhancetool",
+          "streamoptions"
+        ],
+        "Qwen/Qwen3-235B-A22B-Thinking-2507": {
+          "use": [
+            "reasoning"
+          ]
+        }
+      }
+    }
+  ],
+  "StatusLine": {
+    "enabled": true,
+    "currentStyle": "default",
+    "default": {
+      "modules": [
+        {
+          "type": "workDir",
+          "icon": "󰉋",
+          "text": "{{workDirName}}",
+          "color": "#00d6e7"
+        },
+        {
+          "type": "gitBranch",
+          "icon": "",
+          "text": "{{gitBranch}}",
+          "color": "#00d6e7"
+        },
+        {
+          "type": "model",
+          "icon": "󰚩",
+          "text": "{{model}}",
+          "color": "#00d6e7"
+        },
+        {
+          "type": "usage",
+          "icon": "",
+          "text": "↑{{inputTokens}}  ↓{{outputTokens}}",
+          "color": "#00d6e7"
+        }
+      ]
+    },
+    "powerline": {
+      "modules": [
+        {
+          "type": "workDir",
+          "icon": "󰉋",
+          "text": "{{workDirName}}({{gitBranch}})",
+          "color": "#e7e5f2",
+          "background": "#1f00f4"
+        },
+        {
+          "type": "model",
+          "icon": "󰚩",
+          "text": "{{model}}",
+          "color": "#024f0f",
+          "background": "#0abe27"
+        },
+        {
+          "type": "usage",
+          "icon": "",
+          "text": "↑{{inputTokens}}  ↓{{outputTokens}}",
+          "color": "#74a003",
+          "background": "#a3e203"
+        },
+        {
+          "type": "script",
+          "icon": "",
+          "text": "",
+          "color": "#000000",
+          "scriptPath": "/Users/jinhuilee/.claude-code-router/statusline/modelscope.js",
+          "background": "#00d6e7"
+        }
+      ]
+    }
+  },
+  "Router": {
+    "default": "iflow,qwen3-coder-plus",
+    "background": "bigmodelanthropic,glm-4.5-air",
+    "think": "iflow,qwen3-235B-A22B-Thinking-2507",
+    "longContext": "qwen-cli,qwen3-coder-plus",
+    "longContextThreshold": 200000,
+    "webSearch": "gemini-cli,gemini-2.5-flash",
+    "image": "iflow,qwen3-vl-plus"
+  },
+  "CUSTOM_ROUTER_PATH": ""
+}

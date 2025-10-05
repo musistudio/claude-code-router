@@ -11,9 +11,9 @@ export interface IAgent {
 
   tools: Map<string, ITool>;
 
-  shouldHandle: (req: any, config: any) => boolean;
+  shouldHandle: (req: any) => boolean;
 
-  reqHandler: (req: any, config: any) => void;
+  reqHandler: (req: any) => void;
 
-  resHandler?: (payload: any, config: any) => void;
+  resHandler?: (payload: any) => void;
 }
