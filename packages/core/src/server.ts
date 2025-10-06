@@ -1,5 +1,5 @@
 import Server from "@musistudio/llms";
-import { router } from "./utils/router";
+import {calculateTokenCount, router} from "./utils/router";
 import { sessionUsageCache } from "./utils/cache";
 import {SSEParserTransform} from "./utils/SSEParser.transform";
 import {SSESerializerTransform} from "./utils/SSESerializer.transform";
@@ -22,8 +22,14 @@ export const createServer = (config: any): Server => {
     req.__config__ = config;
   })
 
+  server.app.post("/v1/messages/count_tokens", async (req, reply) => {
+    const {messages, tools, system} = req.body;
+    const tokenCount = calculateTokenCount(messages, system, tools);
+    return { "input_tokens": tokenCount }
+  });
+
   server.addHook("preHandler", async (req, reply) => {
-    if (req.url.startsWith("/v1/messages")) {
+    if (req.url.startsWith("/v1/messages") && !req.url.startsWith("/v1/messages/count_tokens")) {
       const useAgents = []
 
       for (const agent of agentsManager.getAllAgents()) {
@@ -59,7 +65,7 @@ export const createServer = (config: any): Server => {
     }
   });
   server.addHook("onSend", (req, reply, payload, done) => {
-    if (req.sessionId && req.url.startsWith("/v1/messages")) {
+    if (req.sessionId && req.url.startsWith("/v1/messages") && !req.url.startsWith("/v1/messages/count_tokens")) {
       if (payload instanceof ReadableStream) {
         if (req.agents) {
           const abortController = new AbortController();

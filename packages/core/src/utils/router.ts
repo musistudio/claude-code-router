@@ -9,7 +9,7 @@ import { readFile } from 'fs/promises'
 
 const enc = get_encoding("cl100k_base");
 
-const calculateTokenCount = (
+export const calculateTokenCount = (
   messages: MessageParam[],
   system: any,
   tools: Tool[]
