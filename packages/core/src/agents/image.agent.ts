@@ -208,7 +208,7 @@ Your response should consistently follow this rule whenever image-related analys
 
     const imageContents = req.body.messages.filter((item: any) => {
       return item.role === 'user' && Array.isArray(item.content) &&
-          item.content.some((msg: any) => msg.type === "image" || msg?.content?.some((sub: any) => sub.type === 'image'));
+          item.content.some((msg: any) => msg.type === "image" || (Array.isArray(msg.content) && msg.content?.some((sub: any) => sub.type === 'image')));
     });
 
     let imgId = 1;
