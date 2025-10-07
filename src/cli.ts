@@ -13,6 +13,8 @@ import { spawn, exec } from "child_process";
 import { PID_FILE, REFERENCE_COUNT_FILE } from "./constants";
 import fs, { existsSync, readFileSync } from "fs";
 import { join } from "path";
+import { keyStore } from "./utils/keystore";
+import readline from "node:readline";
 
 const command = process.argv[2];
 
@@ -26,6 +28,7 @@ Commands:
   status        Show server status
   statusline    Integrated statusline
   code          Execute claude command
+  config        Manage API keys securely
   ui            Open the web UI in browser
   -v, version   Show version information
   -h, help      Show help information
@@ -33,6 +36,7 @@ Commands:
 Example:
   ccr start
   ccr code "Write a Hello World"
+  ccr config set cerebras
   ccr ui
 `;
 
@@ -54,6 +58,147 @@ async function waitForService(
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   return false;
+}
+
+async function handleConfig() {
+  const subCommand = process.argv[3];
+  const provider = process.argv[4];
+  
+  const storageType = keyStore.getStorageType();
+  
+  switch (subCommand) {
+    case "set":
+      if (!provider) {
+        console.error("Error: Provider name required");
+        console.log("Usage: ccr config set <provider>");
+        process.exit(1);
+      }
+      
+      let apiKey: string;
+      
+      // Check if input is being piped
+      if (!process.stdin.isTTY) {
+        // Read from piped input
+        const chunks: Buffer[] = [];
+        for await (const chunk of process.stdin) {
+          chunks.push(chunk);
+        }
+        apiKey = Buffer.concat(chunks).toString().trim();
+      } else {
+        // Interactive prompt
+        const rl = readline.createInterface({
+          input: process.stdin,
+          output: process.stdout,
+        });
+        
+        const question = (prompt: string) => new Promise<string>((resolve) => {
+          rl.question(prompt, (answer) => resolve(answer));
+        });
+        
+        console.log(`Storing API key for '${provider}' in ${storageType}`);
+        apiKey = await question(`Enter API key for ${provider}: `);
+        rl.close();
+      }
+      
+      if (!keyStore.validateKey(apiKey)) {
+        console.error("Error: Invalid API key format (must be at least 10 characters)");
+        process.exit(1);
+      }
+      
+      try {
+        await keyStore.setKey(provider, apiKey);
+        console.log(`✓ API key for '${provider}' stored securely in ${storageType}`);
+      } catch (error: any) {
+        console.error(`Error storing API key: ${error.message}`);
+        process.exit(1);
+      }
+      break;
+      
+    case "get":
+      if (!provider) {
+        console.error("Error: Provider name required");
+        console.log("Usage: ccr config get <provider>");
+        process.exit(1);
+      }
+      
+      try {
+        const key = await keyStore.getKey(provider);
+        if (key) {
+          console.log(`API key for '${provider}' is configured (${keyStore.maskKey(key)})`);
+        } else {
+          console.log(`No API key found for '${provider}'`);
+        }
+      } catch (error: any) {
+        console.error(`Error checking API key: ${error.message}`);
+        process.exit(1);
+      }
+      break;
+      
+    case "delete":
+      if (!provider) {
+        console.error("Error: Provider name required");
+        console.log("Usage: ccr config delete <provider>");
+        process.exit(1);
+      }
+      
+      try {
+        await keyStore.deleteKey(provider);
+        console.log(`✓ API key for '${provider}' deleted`);
+      } catch (error: any) {
+        console.error(`Error deleting API key: ${error.message}`);
+        process.exit(1);
+      }
+      break;
+      
+    case "list":
+      try {
+        const providers = await keyStore.listProviders();
+        if (providers.length > 0) {
+          console.log(`Configured providers (${storageType}):`);
+          for (const p of providers) {
+            const key = await keyStore.getKey(p);
+            if (key) {
+              console.log(`  - ${p}: ${keyStore.maskKey(key)}`);
+            }
+          }
+        } else {
+          console.log(`No API keys configured (storage: ${storageType})`);
+        }
+      } catch (error: any) {
+        console.error(`Error listing providers: ${error.message}`);
+        process.exit(1);
+      }
+      break;
+      
+    default:
+      console.log(`
+Usage: ccr config <command> [provider]
+
+Commands:
+  set <provider>     Store API key for a provider
+  get <provider>     Check if API key is configured
+  list               List all configured providers
+  delete <provider>  Remove stored API key
+
+Examples:
+  ccr config set cerebras
+  ccr config get cerebras
+  ccr config list
+  ccr config delete cerebras
+
+Storage: ${storageType}
+
+Migration from environment variables:
+  If you have API keys in environment variables, you can migrate them:
+  
+  echo $CEREBRAS_API_KEY | ccr config set cerebras
+  
+  Then unset the environment variable:
+  unset CEREBRAS_API_KEY
+
+Note: Stored keys take precedence over environment variables.
+`);
+  }
 }
 
 async function main() {
@@ -275,6 +420,9 @@ async function main() {
     case "-v":
     case "version":
       console.log(`claude-code-router version: ${version}`);
+      break;
+    case "config":
+      await handleConfig();
       break;
     case "restart":
       // Stop the service if it's running
