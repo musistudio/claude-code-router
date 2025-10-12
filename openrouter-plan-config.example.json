@@ -1,0 +1,28 @@
+{
+  "LOG": true,
+  "CLAUDE_PATH": "/Users/jinhuilee/.claude/local/claude",
+  "HOST": "127.0.0.1",
+  "PORT": 8080,
+  "APIKEY": "1",
+  "API_TIMEOUT_MS": 600000,
+  "Providers": [
+    {
+      "name": "openrouter",
+      "api_base_url": "https://openrouter.ai/api/v1/chat/completions",
+      "api_key": "sk-or-v1-",
+      "models": [
+        "anthropic/claude-3.5-sonnet",
+        "google/gemini-2.5-pro-preview"
+      ],
+      "transformer": {
+        "use": ["openrouter", "openrouter-plan"]
+      }
+    }
+  ],
+  "Router": {
+    "default": "openrouter,anthropic/claude-3.5-sonnet",
+    "think": "openrouter,anthropic/claude-3.5-sonnet",
+    "longContext": "openrouter,google/gemini-2.5-pro-preview"
+  },
+  "NON_INTERACTIVE_MODE": false
+}

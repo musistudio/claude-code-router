@@ -122,6 +122,20 @@ const getUseModel = async (
     req.log.info(`Using background model for ${req.body.model}`);
     return config.Router.background;
   }
+  // Check if using OpenRouter and enable plan mode by default
+  if (req.body.model && req.body.model.startsWith('openrouter,')) {
+    // Enable thinking mode by default for OpenRouter models
+    if (!req.body.thinking) {
+      req.body.thinking = true;
+    }
+    
+    // Use think model if configured
+    if (config.Router.think) {
+      req.log.info(`Using think model for OpenRouter request`);
+      return config.Router.think;
+    }
+  }
+  
   // if exits thinking, use the think model
   if (req.body.thinking && config.Router.think) {
     req.log.info(`Using think model for ${req.body.thinking}`);

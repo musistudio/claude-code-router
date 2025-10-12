@@ -6,9 +6,13 @@ import fastifyStatic from "@fastify/static";
 import { readdirSync, statSync, readFileSync, writeFileSync, existsSync } from "fs";
 import { homedir } from "os";
 import {calculateTokenCount} from "./utils/router";
+import { OpenRouterPlanTransformer } from "./transformers/openrouter-plan.transformer";
 
 export const createServer = (config: any): Server => {
   const server = new Server(config);
+
+  // Register custom transformers
+  server.app._server!.transformerService.registerTransformer('openrouter-plan', OpenRouterPlanTransformer);
 
   server.app.post("/v1/messages/count_tokens", async (req, reply) => {
     const {messages, tools, system} = req.body;

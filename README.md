@@ -22,6 +22,7 @@
 
 - **Model Routing**: Route requests to different models based on your needs (e.g., background tasks, thinking, long context).
 - **Multi-Provider Support**: Supports various model providers like OpenRouter, DeepSeek, Ollama, Gemini, Volcengine, and SiliconFlow.
+- **OpenRouter Plan Mode**: When using OpenRouter models, the system automatically enables plan mode by default for enhanced reasoning and multi-step processing.
 - **Request/Response Transformation**: Customize requests and responses for different providers using transformers.
 - **Dynamic Model Switching**: Switch models on-the-fly within Claude Code using the `/model` command.
 - **CLI Model Management**: Manage models and providers directly from the terminal with `ccr model`.
@@ -354,6 +355,21 @@ Transformers allow you to modify the request and response payloads to ensure com
 - `chutes-glm` Unofficial support for GLM 4.5 model via Chutes [chutes-glm-transformer.js](https://gist.github.com/vitobotta/2be3f33722e05e8d4f9d2b0138b8c863).
 - `qwen-cli` (experimental): Unofficial support for qwen3-coder-plus model via Qwen CLI [qwen-cli.js](https://gist.github.com/musistudio/f5a67841ced39912fd99e42200d5ca8b).
 - `rovo-cli` (experimental): Unofficial support for gpt-5 via Atlassian Rovo Dev CLI [rovo-cli.js](https://gist.github.com/SaseQ/c2a20a38b11276537ec5332d1f7a5e53).
+- `openrouter-plan`: Automatically enables plan mode by default for OpenRouter models, enhances multi-step processing, and maximizes token usage. This transformer adds system instructions to encourage step-by-step reasoning and adjusts max_tokens based on the model's capabilities. To use it, simply include it in your transformer configuration:
+
+  ```json
+  {
+    "name": "openrouter",
+    "api_base_url": "https://openrouter.ai/api/v1/chat/completions",
+    "api_key": "sk-xxx",
+    "models": [
+      "anthropic/claude-3.5-sonnet"
+    ],
+    "transformer": {
+      "use": ["openrouter", "openrouter-plan"]
+    }
+  }
+  ```
 
 **Custom Transformers:**
 
