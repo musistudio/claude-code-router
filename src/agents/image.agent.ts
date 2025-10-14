@@ -1,4 +1,4 @@
-import {IAgent, ITool} from "./type";
+import { IAgent, ITool } from "./type";
 import { createHash } from 'crypto';
 import * as LRU from 'lru-cache';
 
@@ -99,12 +99,12 @@ export class ImageAgent implements IAgent {
             "items": {
               "type": "object",
               "properties": {
-                "name": {"type": "string", "description": "Optional label for the region"},
-                "x": {"type": "number", "description": "X coordinate"},
-                "y": {"type": "number", "description": "Y coordinate"},
-                "w": {"type": "number", "description": "Width of the region"},
-                "h": {"type": "number", "description": "Height of the region"},
-                "units": {"type": "string", "enum": ["px", "pct"], "description": "Units for coordinates and size"}
+                "name": { "type": "string", "description": "Optional label for the region" },
+                "x": { "type": "number", "description": "X coordinate" },
+                "y": { "type": "number", "description": "Y coordinate" },
+                "w": { "type": "number", "description": "Width of the region" },
+                "h": { "type": "number", "description": "Height of the region" },
+                "units": { "type": "string", "enum": ["px", "pct"], "description": "Units for coordinates and size" }
               },
               "required": ["x", "y", "w", "h", "units"]
             }
@@ -209,7 +209,7 @@ Your response should consistently follow this rule whenever image-related analys
 
     const imageContents = req.body.messages.filter((item: any) => {
       return item.role === 'user' && Array.isArray(item.content) &&
-          item.content.some((msg: any) => msg.type === "image" || (Array.isArray(msg.content) && msg.content.some((sub: any) => sub.type === 'image')));
+        item.content.some((msg: any) => msg.type === "image" || (Array.isArray(msg.content) && msg.content.some((sub: any) => sub.type === 'image')));
     });
 
     let imgId = 1;
