@@ -222,7 +222,9 @@ Your response should consistently follow this rule whenever image-related analys
           msg.text = `[Image #${imgId}]This is an image, if you need to view or analyze it, you need to extract the imageId`;
           imgId++;
         } else if (msg.type === "text" && msg.text.includes('[Image #')) {
-          msg.text = msg.text.replace(/\[Image #\d+\]/g, '');
+          const cleanedText = msg.text.replace(/\[Image #\d+\]/g, '').trim();
+          // Ensure text is not empty to prevent "text content blocks must be non-empty" error
+          msg.text = cleanedText || '[Image reference removed]';
         } else if (msg.type === "tool_result") {
           if (Array.isArray(msg.content) && msg.content.some(ele => ele.type === "image")) {
             imageCache.storeImage(`${req.id}_Image#${imgId}`, msg.content[0].source);
