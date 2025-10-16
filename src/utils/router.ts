@@ -138,6 +138,23 @@ const getUseModel = async (
   return config.Router!.default;
 };
 
+const setReqModel = (req: any, model: string) => {
+  // If the model is in format "{provider},default", use the original request model
+  if (model && model.includes(",")) {
+    const [provider, modelName] = model.split(",");
+    if (modelName.toLowerCase() === "default") {
+      // Extract the original model from request, keep provider but use original model name
+      const originalModel = req.body.model;
+      req.log.info(`Using default model placeholder - keeping original model: ${originalModel} with provider: ${provider}`);
+      req.body.model = `${provider},${originalModel}`;
+    } else {
+      req.body.model = model;
+    }
+  } else {
+    req.body.model = model;
+  }
+}
+
 export const router = async (req: any, _res: any, context: any) => {
   const { config, event } = context;
   // Parse sessionId from metadata.user_id
@@ -176,10 +193,11 @@ export const router = async (req: any, _res: any, context: any) => {
     if (!model) {
       model = await getUseModel(req, tokenCount, config, lastMessageUsage);
     }
-    req.body.model = model;
+    setReqModel(req, model);
   } catch (error: any) {
     req.log.error(`Error in router middleware: ${error.message}`);
-    req.body.model = config.Router!.default;
+    // Fallback to default model in case of error
+    setReqModel(req, config.Router!.default);
   }
   return;
 };
