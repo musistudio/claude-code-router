@@ -480,7 +480,7 @@ jobs:
 
 - [AIHubmix](https://aihubmix.com/)
 - [BurnCloud](https://ai.burncloud.com)
-- [302.ai](https://302.ai/)
+- [302.AI](https://share.302.ai/ZGVF9w)
 - @Simon Leischnig
 - [@duanshuaimin](https://github.com/duanshuaimin)
 - [@vrgitadmin](https://github.com/vrgitadmin)
