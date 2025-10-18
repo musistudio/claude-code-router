@@ -7,6 +7,45 @@ import { readdirSync, statSync, readFileSync, writeFileSync, existsSync } from "
 import { homedir } from "os";
 import {calculateTokenCount} from "./utils/router";
 
+function loadUserTools() {
+  const commandsDir = join(homedir(), ".claude", "commands");
+  const tools: any[] = [];
+
+  if (!existsSync(commandsDir)) return tools;
+
+  for (const file of readdirSync(commandsDir)) {
+    const fullPath = join(commandsDir, file);
+    const ext = extname(fullPath);
+
+    try {
+      if (ext === ".json") {
+        const def = JSON.parse(readFileSync(fullPath, "utf8"));
+        tools.push(def);
+      } else if (ext === ".js") {
+        const mod = require(fullPath);
+        tools.push(mod.default || mod);
+      } else if (ext === ".md") {
+        // Markdown support
+        const content = readFileSync(fullPath, "utf8");
+        const [header, ...body] = content.split("\n\n");
+        const name = header.replace(/^# /, "").trim();
+        const description = body.join("\n").trim();
+
+        tools.push({
+          name,
+          description,
+          input_schema: { type: "object", properties: {} },
+        });
+        console.log(`[router] Loaded command from Markdown: ${name}`);
+      }
+    } catch (err) {
+      console.warn(`[router] Failed to load ${file}:`, err);
+    }
+  }
+
+  return tools;
+}
+
 export const createServer = (config: any): Server => {
   const server = new Server(config);
 
@@ -196,6 +235,22 @@ export const createServer = (config: any): Server => {
       console.error("Failed to clear logs:", error);
       reply.status(500).send({ error: "Failed to clear logs" });
     }
+  });
+  
+  server.app.addHook("onSend", async (req, reply, payload) => {
+    // apply to only response of Claude Code's /v1/messages
+    if (req.url === "/v1/messages" && reply.statusCode === 200) {
+      try {
+        const body = JSON.parse(payload.toString());
+        if (!body.tools || !body.tools.length) {
+          body.tools = loadUserTools();
+        }
+        return JSON.stringify(body);
+      } catch {
+        return payload;
+      }
+    }
+    return payload;
   });
 
   return server;
