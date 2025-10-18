@@ -6,6 +6,8 @@ import fastifyStatic from "@fastify/static";
 import { readdirSync, statSync, readFileSync, writeFileSync, existsSync } from "fs";
 import { homedir } from "os";
 import {calculateTokenCount} from "./utils/router";
+import { join, extname } from "path";
+
 
 function loadUserTools() {
   const commandsDir = join(homedir(), ".claude", "commands");
