@@ -22,6 +22,7 @@ import JSON5 from "json5";
 import { IAgent } from "./agents/type";
 import agentsManager from "./agents";
 import { EventEmitter } from "node:events";
+import { extractForwardHeaders } from "./utils/headerFilter";
 
 const event = new EventEmitter()
 
@@ -270,11 +271,16 @@ async function run(options: RunOptions = {}) {
                   role: 'user',
                   content: toolMessages
                 })
+                
+                // 提取并转发客户端 headers
+                const forwardHeaders = extractForwardHeaders(req.headers);
+                
                 const response = await fetch(`http://127.0.0.1:${config.PORT || 3456}/v1/messages`, {
                   method: "POST",
                   headers: {
                     'x-api-key': config.APIKEY,
                     'content-type': 'application/json',
+                    ...forwardHeaders,
                   },
                   body: JSON.stringify(req.body),
                 })

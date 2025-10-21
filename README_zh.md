@@ -58,6 +58,8 @@ npm install -g @musistudio/claude-code-router
 - **`APIKEY`** (可选): 您可以设置一个密钥来进行身份验证。设置后，客户端请求必须在 `Authorization` 请求头 (例如, `Bearer your-secret-key`) 或 `x-api-key` 请求头中提供此密钥。例如：`"APIKEY": "your-secret-key"`。
 - **`HOST`** (可选): 您可以设置服务的主机地址。如果未设置 `APIKEY`，出于安全考虑，主机地址将强制设置为 `127.0.0.1`，以防止未经授权的访问。例如：`"HOST": "0.0.0.0"`。
 - **`NON_INTERACTIVE_MODE`** (可选): 当设置为 `true` 时，启用与非交互式环境（如 GitHub Actions、Docker 容器或其他 CI/CD 系统）的兼容性。这会设置适当的环境变量（`CI=true`、`FORCE_COLOR=0` 等）并配置 stdin 处理，以防止进程在自动化环境中挂起。例如：`"NON_INTERACTIVE_MODE": true`。
+- **`FORWARD_HEADERS`** (可选): 指定应该从客户端请求转发到 LLM 提供商的 HTTP headers。这对于传递跟踪信息、请求 ID 或其他元数据很有用。可以提供数组或逗号分隔的字符串。如果未指定，默认会转发以下 headers：`x-request-id`、`x-trace-id`、`x-correlation-id`、`user-agent`、`x-forwarded-for`、`x-real-ip`、`accept-language`。例如：`"FORWARD_HEADERS": ["x-request-id", "x-trace-id", "custom-header"]` 或 `"FORWARD_HEADERS": "x-request-id,x-trace-id,custom-header"`。
+
 - **`Providers`**: 用于配置不同的模型提供商。
 - **`Router`**: 用于设置路由规则。`default` 指定默认模型，如果未配置其他路由，则该模型将用于所有请求。
 - **`API_TIMEOUT_MS`**: API 请求超时时间，单位为毫秒。
