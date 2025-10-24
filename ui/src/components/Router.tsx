@@ -59,21 +59,12 @@ export function Router() {
     // Handle case where provider.name might be null or undefined
     const providerName = provider.name || "Unknown Provider";
 
-    // Add "default" option first, then all provider models
-    return [
-      {
-        value: `${providerName},default`,
-        label: `default`,
-        displayLabel: `${providerName}, default`,
-        group: providerName,
-      },
-      ...models.map((model) => ({
-        value: `${providerName},${model || "Unknown Model"}`,
-        label: `${model || "Unknown Model"}`,
-        displayLabel: `${providerName}, ${model || "Unknown Model"}`,
-        group: providerName,
-      }))
-    ];
+    return models.map((model) => ({
+      value: `${providerName},${model || "Unknown Model"}`,
+      label: `${model || "Unknown Model"}`,
+      displayLabel: `${providerName}, ${model || "Unknown Model"}`,
+      group: providerName,
+    }))
   });
 
   return (
