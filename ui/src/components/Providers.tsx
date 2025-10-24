@@ -106,14 +106,16 @@ export function Providers() {
   };
 
   const handleEditProvider = (index: number) => {
-    const provider = config.Providers[index];
-    setEditingProviderIndex(index);
+    // Find the actual index in the original providers array
+    const actualIndex = validProviders.indexOf(filteredProviders[index]);
+    const provider = config.Providers[actualIndex];
+    setEditingProviderIndex(actualIndex);
     setEditingProviderData(JSON.parse(JSON.stringify(provider))); // 深拷贝
     setIsNewProvider(false);
     // Reset API key visibility and error when opening edit dialog
     setShowApiKey(prev => ({
       ...prev,
-      [index]: false
+      [actualIndex]: false
     }));
     setApiKeyError(null);
     setNameError(null);
@@ -197,9 +199,17 @@ export function Providers() {
     setNameError(null);
   };
 
-  const handleRemoveProvider = (index: number) => {
+  // Handle deletion by setting the correct index in the state
+  const handleSetDeletingProviderIndex = (filteredIndex: number) => {
+    setDeletingProviderIndex(filteredIndex);
+  };
+
+  // Handle deletion by passing the filtered index to get the actual index in the original array
+  const handleRemoveProvider = (filteredIndex: number) => {
+    // Find the actual index in the original providers array
+    const actualIndex = validProviders.indexOf(filteredProviders[filteredIndex]);
     const newProviders = [...config.Providers];
-    newProviders.splice(index, 1);
+    newProviders.splice(actualIndex, 1);
     setConfig({ ...config, Providers: newProviders });
     setDeletingProviderIndex(null);
   };
@@ -540,7 +550,7 @@ export function Providers() {
         <ProviderList
           providers={filteredProviders}
           onEdit={handleEditProvider}
-          onRemove={setDeletingProviderIndex}
+          onRemove={handleSetDeletingProviderIndex}
         />
       </CardContent>
 
