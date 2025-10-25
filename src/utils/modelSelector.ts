@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { select, input, confirm } from '@inquirer/prompts';
+import JSON5 from 'json5';
 
 // ANSI color codes
 const RESET = "\x1B[0m";
@@ -80,7 +81,7 @@ function getConfigPath(): string {
 
 function loadConfig(): Config {
   const configPath = getConfigPath();
-  return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+  return JSON5.parse(fs.readFileSync(configPath, 'utf-8'));
 }
 
 function saveConfig(config: Config): void {
