@@ -11,6 +11,7 @@ import {
   isServiceRunning,
   savePid,
 } from "./utils/processCheck";
+import { isPortAvailable } from "./utils/portCheck";
 import { CONFIG_FILE } from "./constants";
 import { createStream } from 'rotating-file-stream';
 import { HOME_DIR } from "./constants";
@@ -73,6 +74,17 @@ async function run(options: RunOptions = {}) {
 
   const port = config.PORT || 3456;
 
+  // Check port availability before starting the service
+  try {
+    const isAvailable = await isPortAvailable(port);
+    if (!isAvailable) {
+      console.log(`Port ${port} is already in use. Please stop the process using this port or change the PORT in your config file.`);
+      process.exit(1);
+    }
+    console.log(`Port ${port} is not in use. start process ....`);
+  } catch (error) {
+    console.log("Could not check port availability, proceeding with start...");
+  }
   // Save the PID of the background process
   savePid(process.pid);
 
