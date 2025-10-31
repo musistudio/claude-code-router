@@ -8,7 +8,7 @@ import {
   isServiceRunning,
   getServiceInfo,
 } from "./utils/processCheck";
-import { runModelSelector } from "./utils/modelSelector"; // ADD THIS LINE
+import { runModelSelector } from "./utils/modelSelector"; 
 import { version } from "../package.json";
 import { spawn, exec } from "child_process";
 import { PID_FILE, REFERENCE_COUNT_FILE } from "./constants";
@@ -112,7 +112,6 @@ async function main() {
         }
       });
       break;
-    // ADD THIS CASE
     case "model":
       await runModelSelector();
       break;
