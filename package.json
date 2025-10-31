@@ -20,8 +20,8 @@
   "license": "MIT",
   "dependencies": {
     "@fastify/static": "^8.2.0",
-    "@musistudio/llms": "^1.0.38",
     "@inquirer/prompts": "^5.0.0",
+    "@musistudio/llms": "^1.0.38",
     "dotenv": "^16.4.7",
     "find-process": "^2.0.0",
     "json5": "^2.2.3",
@@ -29,11 +29,11 @@
     "minimist": "^1.2.8",
     "openurl": "^1.1.1",
     "rotating-file-stream": "^3.2.7",
-    "shell-quote": "^1.8.3",
     "tiktoken": "^1.0.21",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
+    "@types/minimist": "^1.2.5",
     "@types/node": "^24.0.15",
     "esbuild": "^0.25.1",
     "fastify": "^5.4.0",
@@ -46,5 +46,6 @@
       "src/",
       "screenshots/"
     ]
-  }
+  },
+  "packageManager": "pnpm@10.14.0+sha512.ad27a79641b49c3e481a16a805baa71817a04bbe06a38d17e60e2eaee83f6a146c6a688125f5792e48dd5ba30e7da52a5cda4c3992b9ccf333f9ce223af84748"
 }
