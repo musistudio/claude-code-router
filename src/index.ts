@@ -130,8 +130,7 @@ async function run(options: RunOptions = {}) {
       HOST: HOST,
       PORT: servicePort,
       LOG_FILE: join(
-        homedir(),
-        ".claude-code-router",
+        HOME_DIR,
         "claude-code-router.log"
       ),
     },

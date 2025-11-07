@@ -11,7 +11,7 @@ import {
 import { runModelSelector } from "./utils/modelSelector"; // ADD THIS LINE
 import { version } from "../package.json";
 import { spawn, exec } from "child_process";
-import { PID_FILE, REFERENCE_COUNT_FILE } from "./constants";
+import { PID_FILE, REFERENCE_COUNT_FILE, CONFIG_FILE } from "./constants";
 import fs, { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
@@ -207,7 +207,7 @@ async function main() {
               Router: {},
             });
             console.log(
-              "Created minimal default configuration file at ~/.claude-code-router/config.json"
+              `Created minimal default configuration file at ${CONFIG_FILE}`
             );
             console.log(
               "Please edit this file with your actual configuration."

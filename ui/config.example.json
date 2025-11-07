@@ -7,7 +7,7 @@
   "API_TIMEOUT_MS": 600000,
   "transformers": [
     {
-      "path": "/Users/abc/.claude-code-router/plugins/gemini-cli.js",
+      "path": "/path/to/your/claude-code-router/plugins/gemini-cli.js",
       "options": {
         "project": "x"
       }
