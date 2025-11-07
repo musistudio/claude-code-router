@@ -4,7 +4,6 @@ import { checkForUpdates, performUpdate } from "./utils";
 import { join } from "path";
 import fastifyStatic from "@fastify/static";
 import { readdirSync, statSync, readFileSync, writeFileSync, existsSync } from "fs";
-import { homedir } from "os";
 import {calculateTokenCount} from "./utils/router";
 import { HOME_DIR } from "./constants";
 
