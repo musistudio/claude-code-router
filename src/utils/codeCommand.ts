@@ -55,7 +55,12 @@ export async function executeCodeCommand(args: string[] = []) {
   // Execute claude command
   const claudePath = config?.CLAUDE_PATH || process.env.CLAUDE_PATH || "claude";
 
-  const joinedArgs = args.length > 0 ? quote(args) : "";
+  // Security: Validate claudePath doesn't contain shell metacharacters
+  if (/[;&|`$()]/.test(claudePath)) {
+    console.error("Invalid CLAUDE_PATH: contains shell metacharacters");
+    decrementReferenceCount();
+    process.exit(1);
+  }
 
   const stdioConfig: StdioOptions = config.NON_INTERACTIVE_MODE
     ? ["pipe", "inherit", "inherit"] // Pipe stdin for non-interactive
@@ -70,17 +75,21 @@ export async function executeCodeCommand(args: string[] = []) {
       if (argsObjValue === true) {
         argsArr.push(`${prefix}${argsObjKey}`);
       } else {
-        argsArr.push(`${prefix}${argsObjKey} ${JSON.stringify(argsObjValue)}`);
+        // Security: Pass as separate arguments instead of concatenating
+        argsArr.push(`${prefix}${argsObjKey}`);
+        argsArr.push(String(argsObjValue));
       }
     }
   }
+
+  // Security: Use spawn without shell to prevent command injection
   const claudeProcess = spawn(
     claudePath,
     argsArr,
     {
       env: process.env,
       stdio: stdioConfig,
-      shell: true,
+      shell: false,
     }
   );
 

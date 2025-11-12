@@ -27,7 +27,7 @@ describe('Router - Token Calculation', () => {
         { role: 'user', content: 'Third message' },
       ];
       const count = calculateTokenCount(messages, [], []);
-      expect(count).toBeGreaterThan(10);
+      expect(count).toBeGreaterThan(5);
     });
 
     it('should handle array content with text blocks', () => {

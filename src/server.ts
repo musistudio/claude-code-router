@@ -2,6 +2,7 @@ import Server from "@musistudio/llms";
 import { readConfigFile, writeConfigFile, backupConfigFile } from "./utils";
 import { checkForUpdates, performUpdate } from "./utils";
 import { join } from "path";
+import * as path from "path";
 import fastifyStatic from "@fastify/static";
 import { readdirSync, statSync, readFileSync, writeFileSync, existsSync } from "fs";
 import { homedir } from "os";
@@ -150,13 +151,25 @@ export const createServer = (config: any): Server => {
     try {
       const filePath = (req.query as any).file as string;
       let logFilePath: string;
+      const logDir = join(homedir(), ".claude-code-router", "logs");
 
       if (filePath) {
-        // 如果指定了文件路径，使用指定的路径
-        logFilePath = filePath;
+        // Validate that the file path is within the allowed log directory
+        const normalizedPath = path.normalize(filePath);
+        const absolutePath = path.isAbsolute(normalizedPath)
+          ? normalizedPath
+          : path.resolve(logDir, normalizedPath);
+
+        // Security check: ensure the path is within the log directory
+        if (!absolutePath.startsWith(logDir)) {
+          reply.status(403).send({ error: "Access denied" });
+          return;
+        }
+
+        logFilePath = absolutePath;
       } else {
         // 如果没有指定文件路径，使用默认的日志文件路径
-        logFilePath = join(homedir(), ".claude-code-router", "logs", "app.log");
+        logFilePath = join(logDir, "app.log");
       }
 
       if (!existsSync(logFilePath)) {
@@ -178,13 +191,25 @@ export const createServer = (config: any): Server => {
     try {
       const filePath = (req.query as any).file as string;
       let logFilePath: string;
+      const logDir = join(homedir(), ".claude-code-router", "logs");
 
       if (filePath) {
-        // 如果指定了文件路径，使用指定的路径
-        logFilePath = filePath;
+        // Validate that the file path is within the allowed log directory
+        const normalizedPath = path.normalize(filePath);
+        const absolutePath = path.isAbsolute(normalizedPath)
+          ? normalizedPath
+          : path.resolve(logDir, normalizedPath);
+
+        // Security check: ensure the path is within the log directory
+        if (!absolutePath.startsWith(logDir)) {
+          reply.status(403).send({ error: "Access denied" });
+          return;
+        }
+
+        logFilePath = absolutePath;
       } else {
         // 如果没有指定文件路径，使用默认的日志文件路径
-        logFilePath = join(homedir(), ".claude-code-router", "logs", "app.log");
+        logFilePath = join(logDir, "app.log");
       }
 
       if (existsSync(logFilePath)) {
