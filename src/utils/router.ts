@@ -8,10 +8,48 @@ import { sessionUsageCache, Usage } from "./cache";
 import { readFile, access } from "fs/promises";
 import { opendir, stat } from "fs/promises";
 import { join } from "path";
+import * as path from "path";
 import { CLAUDE_PROJECTS_DIR, HOME_DIR } from "../constants";
 import { LRUCache } from "lru-cache";
 
 const enc = get_encoding("cl100k_base");
+
+/**
+ * Security: Validate file path is within allowed directory
+ * @param filePath - Path to validate
+ * @param allowedExtensions - Array of allowed file extensions (e.g., ['.js', '.mjs'])
+ * @returns Validated absolute path or null if invalid
+ */
+function validateFilePath(
+  filePath: string,
+  allowedExtensions: string[] = ['.js', '.mjs', '.txt']
+): string | null {
+  if (!filePath) return null;
+
+  // Get the allowed directory (claude-code-router config directory)
+  const allowedDir = HOME_DIR;
+
+  // Normalize and resolve the path
+  const normalizedPath = path.normalize(filePath);
+  const absolutePath = path.isAbsolute(normalizedPath)
+    ? normalizedPath
+    : path.resolve(allowedDir, normalizedPath);
+
+  // Security check 1: Ensure path is within allowed directory
+  if (!absolutePath.startsWith(allowedDir)) {
+    console.error(`Security: File path outside allowed directory: ${filePath}`);
+    return null;
+  }
+
+  // Security check 2: Validate file extension
+  const ext = path.extname(absolutePath);
+  if (!allowedExtensions.includes(ext)) {
+    console.error(`Security: Invalid file extension: ${ext}`);
+    return null;
+  }
+
+  return absolutePath;
+}
 
 export const calculateTokenCount = (
   messages: MessageParam[],
@@ -82,11 +120,21 @@ const getProjectSpecificRouter = async (req: any) => {
   if (req.sessionId) {
     const project = await searchProjectBySession(req.sessionId);
     if (project) {
-      const projectConfigPath = join(HOME_DIR, project, "config.json");
+      // Security: Sanitize project and sessionId to prevent path traversal
+      const sanitizedProject = project.replace(/[^a-zA-Z0-9_-]/g, '');
+      const sanitizedSessionId = req.sessionId.replace(/[^a-zA-Z0-9_-]/g, '');
+
+      // Validate sanitization didn't change the values (detect attack attempts)
+      if (sanitizedProject !== project || sanitizedSessionId !== req.sessionId) {
+        console.warn(`Security: Invalid project or session name detected`);
+        return undefined;
+      }
+
+      const projectConfigPath = join(HOME_DIR, sanitizedProject, "config.json");
       const sessionConfigPath = join(
         HOME_DIR,
-        project,
-        `${req.sessionId}.json`
+        sanitizedProject,
+        `${sanitizedSessionId}.json`
       );
 
       // 首先尝试读取sessionConfig文件
@@ -193,10 +241,18 @@ export const router = async (req: any, _res: any, context: any) => {
   if (
     config.REWRITE_SYSTEM_PROMPT &&
     system.length > 1 &&
+    typeof system[1] === 'object' &&
     system[1]?.text?.includes("<env>")
   ) {
-    const prompt = await readFile(config.REWRITE_SYSTEM_PROMPT, "utf-8");
-    system[1].text = `${prompt}<env>${system[1].text.split("<env>").pop()}`;
+    // Security: Validate file path before reading
+    const validatedPath = validateFilePath(config.REWRITE_SYSTEM_PROMPT, ['.txt', '.md']);
+    if (validatedPath) {
+      const prompt = await readFile(validatedPath, "utf-8");
+      const systemBlock: any = system[1];
+      systemBlock.text = `${prompt}<env>${systemBlock.text.split("<env>").pop()}`;
+    } else {
+      req.log.warn(`Invalid REWRITE_SYSTEM_PROMPT path: ${config.REWRITE_SYSTEM_PROMPT}`);
+    }
   }
 
   try {
@@ -208,14 +264,20 @@ export const router = async (req: any, _res: any, context: any) => {
 
     let model;
     if (config.CUSTOM_ROUTER_PATH) {
-      try {
-        const customRouter = require(config.CUSTOM_ROUTER_PATH);
-        req.tokenCount = tokenCount; // Pass token count to custom router
-        model = await customRouter(req, config, {
-          event,
-        });
-      } catch (e: any) {
-        req.log.error(`failed to load custom router: ${e.message}`);
+      // Security: Validate custom router path before loading
+      const validatedPath = validateFilePath(config.CUSTOM_ROUTER_PATH, ['.js', '.mjs']);
+      if (validatedPath) {
+        try {
+          const customRouter = require(validatedPath);
+          req.tokenCount = tokenCount; // Pass token count to custom router
+          model = await customRouter(req, config, {
+            event,
+          });
+        } catch (e: any) {
+          req.log.error(`failed to load custom router: ${e.message}`);
+        }
+      } else {
+        req.log.error(`Invalid CUSTOM_ROUTER_PATH: ${config.CUSTOM_ROUTER_PATH}`);
       }
     }
     if (!model) {
@@ -230,18 +292,20 @@ export const router = async (req: any, _res: any, context: any) => {
 };
 
 // 内存缓存，存储sessionId到项目名称的映射
-// null值表示之前已查找过但未找到项目
+// 使用特殊值 '__NOT_FOUND__' 表示之前已查找过但未找到项目
 // 使用LRU缓存，限制最大1000个条目
-const sessionProjectCache = new LRUCache<string, string | null>({
+const sessionProjectCache = new LRUCache<string, string>({
   max: 1000,
 });
+const NOT_FOUND_MARKER = '__NOT_FOUND__';
 
 export const searchProjectBySession = async (
   sessionId: string
 ): Promise<string | null> => {
   // 首先检查缓存
   if (sessionProjectCache.has(sessionId)) {
-    return sessionProjectCache.get(sessionId)!;
+    const cached = sessionProjectCache.get(sessionId)!;
+    return cached === NOT_FOUND_MARKER ? null : cached;
   }
 
   try {
@@ -282,13 +346,13 @@ export const searchProjectBySession = async (
       }
     }
 
-    // 缓存未找到的结果（null值表示之前已查找过但未找到项目）
-    sessionProjectCache.set(sessionId, null);
+    // 缓存未找到的结果（使用特殊标记表示之前已查找过但未找到项目）
+    sessionProjectCache.set(sessionId, NOT_FOUND_MARKER);
     return null; // 没有找到匹配的项目
   } catch (error) {
     console.error("Error searching for project by session:", error);
-    // 出错时也缓存null结果，避免重复出错
-    sessionProjectCache.set(sessionId, null);
+    // 出错时也缓存未找到结果，避免重复出错
+    sessionProjectCache.set(sessionId, NOT_FOUND_MARKER);
     return null;
   }
 };

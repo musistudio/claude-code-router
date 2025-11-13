@@ -15,6 +15,7 @@ import { spawn, exec } from "child_process";
 import { PID_FILE, REFERENCE_COUNT_FILE } from "./constants";
 import fs, { existsSync, readFileSync } from "fs";
 import { join } from "path";
+import * as openurl from "openurl";
 
 const command = process.argv[2];
 
@@ -261,30 +262,13 @@ async function main() {
 
       console.log(`Opening UI at ${uiUrl}`);
 
-      // Open URL in browser based on platform
-      const platform = process.platform;
-      let openCommand = "";
-
-      if (platform === "win32") {
-        // Windows
-        openCommand = `start ${uiUrl}`;
-      } else if (platform === "darwin") {
-        // macOS
-        openCommand = `open ${uiUrl}`;
-      } else if (platform === "linux") {
-        // Linux
-        openCommand = `xdg-open ${uiUrl}`;
-      } else {
-        console.error("Unsupported platform for opening browser");
+      // Open URL in browser using safe openurl library
+      try {
+        openurl.open(uiUrl);
+      } catch (error: any) {
+        console.error("Failed to open browser:", error.message);
         process.exit(1);
       }
-
-      exec(openCommand, (error) => {
-        if (error) {
-          console.error("Failed to open browser:", error.message);
-          process.exit(1);
-        }
-      });
       break;
     case "-v":
     case "version":
