@@ -3,9 +3,11 @@ import { readConfigFile, writeConfigFile, backupConfigFile } from "./utils";
 import { checkForUpdates, performUpdate } from "./utils";
 import { join } from "path";
 import fastifyStatic from "@fastify/static";
-import { readdirSync, statSync, readFileSync, writeFileSync, existsSync } from "fs";
+import { readdirSync, statSync, readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { homedir } from "os";
 import {calculateTokenCount} from "./utils/router";
+import { NpmDownloader } from "./codeManager/downloder";
+import { HOME_DIR } from "./constants";
 
 export const createServer = (config: any): Server => {
   const server = new Server(config);
@@ -195,6 +197,196 @@ export const createServer = (config: any): Server => {
     } catch (error) {
       console.error("Failed to clear logs:", error);
       reply.status(500).send({ error: "Failed to clear logs" });
+    }
+  });
+
+  // Claude Code 版本管理相关 API
+  const versionsDir = join(HOME_DIR, 'versions');
+  const currentVersionPath = join(HOME_DIR, 'current-version.json');
+
+  // 确保版本目录存在
+  if (!existsSync(versionsDir)) {
+    mkdirSync(versionsDir, { recursive: true });
+  }
+
+  // 初始化下载器
+  const downloader = new NpmDownloader();
+
+  // 辅助函数：读取当前版本
+  const readCurrentVersion = () => {
+    try {
+      if (existsSync(currentVersionPath)) {
+        const content = readFileSync(currentVersionPath, 'utf8');
+        const data = JSON.parse(content);
+        return data.currentVersion || '';
+      }
+    } catch (error) {
+      console.error('Failed to read current version:', error);
+    }
+    return '';
+  };
+
+  // 辅助函数：保存当前版本
+  const saveCurrentVersion = (version: string) => {
+    try {
+      writeFileSync(currentVersionPath, JSON.stringify({ currentVersion: version }, null, 2));
+    } catch (error) {
+      console.error('Failed to save current version:', error);
+    }
+  };
+
+  // 辅助函数：获取已下载的版本列表（扫描 versions 文件夹）
+  const getDownloadedVersions = () => {
+    try {
+      const versions = [];
+      if (existsSync(versionsDir)) {
+        const folders = readdirSync(versionsDir);
+        for (const folder of folders) {
+          const folderPath = join(versionsDir, folder);
+          const stats = statSync(folderPath);
+          if (stats.isDirectory()) {
+            versions.push({
+              version: folder,
+              downloadPath: folderPath,
+              downloadedAt: stats.birthtime.toISOString()
+            });
+          }
+        }
+        // 按下载时间倒序排列
+        versions.sort((a, b) => new Date(b.downloadedAt).getTime() - new Date(a.downloadedAt).getTime());
+      }
+      return versions;
+    } catch (error) {
+      console.error('Failed to get downloaded versions:', error);
+      return [];
+    }
+  };
+
+  // 获取可用版本列表
+  server.app.get("/api/claude-code/versions", async (req, reply) => {
+    try {
+      const versions = await downloader.getAvailableVersions();
+
+      // 按版本号倒序排列（最新在前）
+      const sortedVersions = versions.sort((a, b) => b.localeCompare(a));
+
+      return { versions: sortedVersions };
+    } catch (error) {
+      console.error("Failed to get available versions:", error);
+      reply.status(500).send({ error: "Failed to get available versions" });
+    }
+  });
+
+  // 获取已下载的版本列表
+  server.app.get("/api/claude-code/downloaded", async (req, reply) => {
+    try {
+      const currentVersion = readCurrentVersion();
+      const downloadedVersions = getDownloadedVersions();
+      const versionsWithStatus = downloadedVersions.map(v => ({
+        ...v,
+        isCurrent: v.version === currentVersion
+      }));
+      return { versions: versionsWithStatus, currentVersion };
+    } catch (error) {
+      console.error("Failed to get downloaded versions:", error);
+      reply.status(500).send({ error: "Failed to get downloaded versions" });
+    }
+  });
+
+  // 下载指定版本
+  server.app.post("/api/claude-code/download/:version", async (req, reply) => {
+    try {
+      const { version } = req.params as any;
+      const currentVersion = readCurrentVersion();
+      const downloadedVersions = getDownloadedVersions();
+
+      // 检查是否已下载
+      if (downloadedVersions.some((v: any) => v.version === version)) {
+        reply.status(400).send({ error: "Version already downloaded" });
+        return;
+      }
+
+      // 创建版本号目录
+      const versionDir = join(versionsDir, version);
+      if (!existsSync(versionDir)) {
+        mkdirSync(versionDir, { recursive: true });
+      }
+
+      // 开始下载到版本号目录
+      const extractedPath = await downloader.downloadAndExtract({
+        version,
+        destination: versionDir,
+        onProgress: (message) => console.log(`Download progress for ${version}:`, message)
+      });
+
+      // 如果没有当前版本，设置当前版本
+      if (!currentVersion) {
+        saveCurrentVersion(version);
+      }
+
+      return { success: true, version, path: extractedPath };
+    } catch (error) {
+      console.error("Failed to download version:", error);
+      reply.status(500).send({ error: `Failed to download version: ${(error as Error).message}` });
+    }
+  });
+
+  // 删除指定版本
+  server.app.post("/api/claude-code/version/delete", async (req, reply) => {
+    try {
+      const { version } = req.body as any;
+      const currentVersion = readCurrentVersion();
+      const downloadedVersions = getDownloadedVersions();
+
+      // 不能删除当前版本
+      if (version === currentVersion) {
+        reply.status(400).send({ error: "Cannot delete current version" });
+        return;
+      }
+
+      const versionDir = join(versionsDir, version);
+
+      // 检查版本目录是否存在
+      if (!existsSync(versionDir)) {
+        reply.status(404).send({ error: "Version not found" });
+        return;
+      }
+
+      // 删除版本目录
+      const { execSync } = require('child_process');
+      try {
+        execSync(`rm -rf "${versionDir}"`, { stdio: 'pipe' });
+      } catch (error) {
+        console.warn('Failed to delete directory for version', version, ':', error);
+      }
+
+      return { success: true, version };
+    } catch (error) {
+      console.error("Failed to delete version:", error);
+      reply.status(500).send({ error: "Failed to delete version" });
+    }
+  });
+
+  // 切换到指定版本
+  server.app.post("/api/claude-code/switch/:version", async (req, reply) => {
+    try {
+      const { version } = req.params as any;
+      const downloadedVersions = getDownloadedVersions();
+
+      // 检查版本是否已下载
+      const versionExists = downloadedVersions.some((v: any) => v.version === version);
+      if (!versionExists) {
+        reply.status(404).send({ error: "Version not downloaded" });
+        return;
+      }
+
+      // 更新当前版本
+      saveCurrentVersion(version);
+
+      return { success: true, currentVersion: version };
+    } catch (error) {
+      console.error("Failed to switch version:", error);
+      reply.status(500).send({ error: "Failed to switch version" });
     }
   });
 
