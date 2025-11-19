@@ -158,6 +158,7 @@ const getUseModel = async (
   if (
     req.body.model?.includes("claude") &&
     req.body.model?.includes("haiku") &&
+    config.Router &&
     config.Router.background
   ) {
     req.log.info(`Using background model for ${req.body.model}`);
@@ -224,7 +225,7 @@ export const router = async (req: any, _res: any, context: any) => {
     req.body.model = model;
   } catch (error: any) {
     req.log.error(`Error in router middleware: ${error.message}`);
-    req.body.model = config.Router!.default;
+    req.body.model = config.Router && config.Router.default ? config.Router.default : 'default';
   }
   return;
 };
