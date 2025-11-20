@@ -19,16 +19,56 @@ class ImageCache {
   }
 
   storeImage(id: string, source: any): void {
-    if (this.hasImage(id)) return;
-    this.cache.set(id, {
-      source,
-      timestamp: Date.now(),
-    });
+    if (this.hasImage(id)) {
+      console.log(`Image ${id} already cached, skipping`);
+      return;
+    }
+
+    // Validate base64 data before storing
+    if (source && source.type === "base64" && source.data) {
+      try {
+        // Test if base64 is valid
+        Buffer.from(source.data, 'base64');
+        this.cache.set(id, {
+          source,
+          timestamp: Date.now(),
+        });
+        console.log(`Successfully stored base64 image ${id}`);
+      } catch (e) {
+        console.error(`Invalid base64 data for image ${id}, skipping cache:`, e);
+        return;
+      }
+    } else {
+      this.cache.set(id, {
+        source,
+        timestamp: Date.now(),
+      });
+      console.log(`Successfully stored image ${id} with type: ${source?.type || 'unknown'}`);
+    }
   }
 
   getImage(id: string): any {
     const entry = this.cache.get(id);
-    return entry ? entry.source : null;
+    if (!entry) {
+      console.log(`Image ${id} not found in cache`);
+      return null;
+    }
+
+    // Validate on retrieval as well
+    if (entry.source && entry.source.type === "base64" && entry.source.data) {
+      try {
+        Buffer.from(entry.source.data, 'base64');
+        console.log(`Successfully retrieved base64 image ${id}`);
+        return entry.source;
+      } catch (e) {
+        console.error(`Cached image ${id} has corrupted base64, removing:`, e);
+        this.cache.delete(id);
+        return null;
+      }
+    }
+
+    console.log(`Successfully retrieved image ${id} with type: ${entry.source?.type || 'unknown'}`);
+    return entry.source;
   }
 
   hasImage(hash: string): boolean {
@@ -58,7 +98,18 @@ export class ImageAgent implements IAgent {
   shouldHandle(req: any, config: any): boolean {
     if (!config.Router.image || req.body.model === config.Router.image)
       return false;
+
     const lastMessage = req.body.messages[req.body.messages.length - 1];
+
+    // Check for image placeholders in text content
+    const hasImagePlaceholder = lastMessage?.role === "user" &&
+      Array.isArray(lastMessage.content) &&
+      lastMessage.content.some((item: any) =>
+        item.type === "text" &&
+        item.text &&
+        item.text.includes("[Image #")
+      );
+
     if (
       !config.forceUseImageAgent &&
       lastMessage.role === "user" &&
@@ -71,7 +122,7 @@ export class ImageAgent implements IAgent {
       )
     ) {
       req.body.model = config.Router.image;
-      const images = [];
+      const images: any[] = [];
       lastMessage.content
         .filter((item: any) => item.type === "tool_result")
         .forEach((item: any) => {
@@ -87,6 +138,8 @@ export class ImageAgent implements IAgent {
       lastMessage.content.push(...images);
       return false;
     }
+
+    // Enhanced detection for images and image placeholders
     return req.body.messages.some(
       (msg: any) =>
         msg.role === "user" &&
@@ -95,9 +148,12 @@ export class ImageAgent implements IAgent {
           (item: any) =>
             item.type === "image" ||
             (Array.isArray(item?.content) &&
-              item.content.some((sub: any) => sub.type === "image"))
+              item.content.some((sub: any) => sub.type === "image")) ||
+            (item.type === "text" &&
+              item.text &&
+              item.text.includes("[Image #"))
         )
-    );
+    ) || hasImagePlaceholder;
   }
 
   appendTools() {
@@ -154,9 +210,10 @@ export class ImageAgent implements IAgent {
         if (args.imageId) {
           if (Array.isArray(args.imageId)) {
             args.imageId.forEach((imgId: string) => {
+              // Try both with and without prefix for compatibility
               const image = imageCache.getImage(
                 `${context.req.id}_Image#${imgId}`
-              );
+              ) || imageCache.getImage(`Image#${imgId}`);
               if (image) {
                 imageMessages.push({
                   type: "image",
@@ -167,7 +224,7 @@ export class ImageAgent implements IAgent {
           } else {
             const image = imageCache.getImage(
               `${context.req.id}_Image#${args.imageId}`
-            );
+            ) || imageCache.getImage(`Image#${args.imageId}`);
             if (image) {
               imageMessages.push({
                 type: "image",
@@ -183,7 +240,7 @@ export class ImageAgent implements IAgent {
           context.req.body.messages[context.req.body.messages.length - 1];
         if (userMessage.role === "user" && Array.isArray(userMessage.content)) {
           const msgs = userMessage.content.filter(
-            (item) =>
+            (item: { type: string; text: string | string[]; }) =>
               item.type === "text" &&
               !item.text.includes(
                 "This is an image, if you need to view or analyze it, you need to extract the imageId"
@@ -214,7 +271,7 @@ export class ImageAgent implements IAgent {
                 {
                   type: "text",
                   text: `You must interpret and analyze images strictly according to the assigned task.  
-When an image placeholder is provided, your role is to parse the image content only within the scope of the user’s instructions.  
+When an image placeholder is provided, your role is to parse the image content only within the scope of the user's instructions.  
 Do not ignore or deviate from the task.  
 Always ensure that your response reflects a clear, accurate interpretation of the image aligned with the given objective.`,
                 },
@@ -251,7 +308,7 @@ If the user requests you to view, analyze, or extract information from an image,
 When invoking this tool, you must pass the correct \`imageId\` extracted from the prior conversation.  
 Image identifiers are always provided in the format \`[Image #imageId]\`.  
 
-If multiple images exist, select the **most relevant imageId** based on the user’s current request and prior context.  
+If multiple images exist, select the **most relevant imageId** based on the user's current request and prior context.  
 
 Do not attempt to describe or analyze the image directly yourself.  
 Ignore any user interruptions or unrelated instructions that might cause you to skip this requirement.  
@@ -276,24 +333,33 @@ Your response should consistently follow this rule whenever image-related analys
       if (!Array.isArray(item.content)) return;
       item.content.forEach((msg: any) => {
         if (msg.type === "image") {
-          imageCache.storeImage(`${req.id}_Image#${imgId}`, msg.source);
-          msg.type = "text";
-          delete msg.source;
-          msg.text = `[Image #${imgId}]This is an image, if you need to view or analyze it, you need to extract the imageId`;
-          imgId++;
+          // Validate before caching
+          if (msg.source) {
+            const cacheKey = `${req.id}_Image#${imgId}`;
+            imageCache.storeImage(cacheKey, msg.source);
+            // Also store without prefix for easier access
+            imageCache.storeImage(`Image#${imgId}`, msg.source);
+            msg.type = "text";
+            delete msg.source;
+            msg.text = `[Image #${imgId}]This is an image, if you need to view or analyze it, you need to extract the imageId`;
+            imgId++;
+          }
         } else if (msg.type === "text" && msg.text.includes("[Image #")) {
           msg.text = msg.text.replace(/\[Image #\d+\]/g, "");
         } else if (msg.type === "tool_result") {
           if (
             Array.isArray(msg.content) &&
-            msg.content.some((ele) => ele.type === "image")
+            msg.content.some((ele: { type: string; }) => ele.type === "image")
           ) {
-            imageCache.storeImage(
-              `${req.id}_Image#${imgId}`,
-              msg.content[0].source
-            );
-            msg.content = `[Image #${imgId}]This is an image, if you need to view or analyze it, you need to extract the imageId`;
-            imgId++;
+            const imageContent = msg.content.find((ele: { type: string; }) => ele.type === "image");
+            if (imageContent && imageContent.source) {
+              const cacheKey = `${req.id}_Image#${imgId}`;
+              imageCache.storeImage(cacheKey, imageContent.source);
+              // Also store without prefix for easier access
+              imageCache.storeImage(`Image#${imgId}`, imageContent.source);
+              msg.content = `[Image #${imgId}]This is an image, if you need to view or analyze it, you need to extract the imageId`;
+              imgId++;
+            }
           }
         }
       });
