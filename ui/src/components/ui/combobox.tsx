@@ -20,7 +20,12 @@ import {
 } from "@/components/ui/popover"
 
 interface ComboboxProps {
-  options: { label: string; value: string }[];
+  options: {
+    label: string;
+    value: string;
+    group?: string;
+    displayLabel?: string;
+  }[];
   value?: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -40,6 +45,31 @@ export function Combobox({
 
   const selectedOption = options.find((option) => option.value === value)
 
+  // Check if any options have groups
+  const hasGroups = React.useMemo(() => {
+    return options.some((option) => option.group !== undefined);
+  }, [options])
+
+  // Group options by their group property if groups exist
+  const groupedOptions = React.useMemo(() => {
+    if (!hasGroups) {
+      // If no groups, return all options in a single unnamed group
+      return [[undefined, options] as [undefined, typeof options]]
+    }
+
+    const groups = new Map<string, typeof options>()
+
+    options.forEach((option) => {
+      const groupName = option.group || "Other";
+      if (!groups.has(groupName)) {
+        groups.set(groupName, [])
+      }
+      groups.get(groupName)?.push(option)
+    });
+
+    return Array.from(groups.entries());
+  }, [options, hasGroups])
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -49,7 +79,9 @@ export function Combobox({
           aria-expanded={open}
           className="w-full justify-between transition-all-ease hover:scale-[1.02] active:scale-[0.98]"
         >
-          {selectedOption ? selectedOption.label : placeholder}
+          {selectedOption
+            ? selectedOption.displayLabel || selectedOption.label
+            : placeholder}
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50 transition-transform duration-200 group-data-[state=open]:rotate-180" />
         </Button>
       </PopoverTrigger>
@@ -58,30 +90,32 @@ export function Combobox({
           <CommandInput placeholder={searchPlaceholder} />
           <CommandList>
             <CommandEmpty>{emptyPlaceholder}</CommandEmpty>
-            <CommandGroup>
-              {options.map((option) => (
-                <CommandItem
-                  key={option.value}
-                  value={option.value}
-                  onSelect={(currentValue) => {
-                    onChange(currentValue === value ? "" : currentValue)
-                    setOpen(false)
-                  }}
-                  className="transition-all-ease hover:bg-accent hover:text-accent-foreground"
-                >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4 transition-opacity",
-                      value === option.value ? "opacity-100" : "opacity-0"
-                    )}
-                  />
-                  {option.label}
-                </CommandItem>
-              ))}
-            </CommandGroup>
+            {groupedOptions.map(([groupName, groupOptions]) => (
+              <CommandGroup key={groupName || "default"} heading={groupName}>
+                {groupOptions.map((option) => (
+                  <CommandItem
+                    key={option.value}
+                    value={option.value}
+                    onSelect={(currentValue) => {
+                      onChange(currentValue === value ? "" : currentValue)
+                      setOpen(false)
+                    }}
+                    className="transition-all-ease hover:bg-accent hover:text-accent-foreground"
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4 transition-opacity",
+                        value === option.value ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    {option.label}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            ))}
           </CommandList>
         </Command>
       </PopoverContent>
     </Popover>
-  )
+  );
 }
