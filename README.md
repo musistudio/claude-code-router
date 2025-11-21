@@ -476,56 +476,127 @@ Integrate Claude Code Router into your CI/CD pipeline. After setting up [Claude 
 
 ```yaml
 name: Claude Code
-
 on:
   issue_comment:
     types: [created]
-  # ... other triggers
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
 
 jobs:
   claude:
     if: |
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      # ... other conditions
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: read
       issues: read
       id-token: write
+      actions: read # Required for Claude to read CI results on PRs
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Prepare Environment
+      - name: Setup Claude Code Router
         run: |
+          # Install bun package manager
           curl -fsSL https://bun.sh/install | bash
+          
+          # Create router config directory
           mkdir -p $HOME/.claude-code-router
+          
+          # Create configration file
           cat << 'EOF' > $HOME/.claude-code-router/config.json
           {
-            "log": true,
+            "LOG": true,
+            "LOG_LEVEL": "info",
             "NON_INTERACTIVE_MODE": true,
-            "OPENAI_API_KEY": "${{ secrets.OPENAI_API_KEY }}",
-            "OPENAI_BASE_URL": "https://api.deepseek.com",
-            "OPENAI_MODEL": "deepseek-chat"
+            "API_TIMEOUT_MS": 600000,
+            "Providers": [
+              {
+                "name": "gemini",
+                "api_base_url": "https://generativelanguage.googleapis.com/v1beta/models/",
+                "api_key": "$GEMINI_API_KEY",
+                "models": [
+                  "gemini-2.5-flash"
+                ],
+                "transformer": {
+                  "use": ["gemini"]
+                }
+              }
+            ],
+            "Router": {
+              "default": "gemini,gemini-2.5-flash"
+            }
           }
           EOF
+          
+          echo "✅ Router configured"
         shell: bash
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
       - name: Start Claude Code Router
         run: |
-          nohup ~/.bun/bin/bunx @musistudio/claude-code-router@1.0.8 start &
+          # Start the router in background
+          nohup ~/.bun/bin/bunx @musistudio/claude-code-router@latest start &
+          
+          # Wait for service initialization
+          sleep 5
+          
+          # Verify service is running
+          if curl -f http://localhost:3456/health 2>/dev/null; then
+            echo "✅ Router service is healthy"
+          else
+            echo "⚠️ Health check failed, but service may still be running"
+          fi
         shell: bash
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
       - name: Run Claude Code
         id: claude
-        uses: anthropics/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         env:
+          # Point to local router
           ANTHROPIC_BASE_URL: http://localhost:3456
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         with:
-          anthropic_api_key: "any-string-is-ok"
+          # Router handles auth
+          anthropic_api_key: "router-managed"
+          
+          # Preserve your additional permissions
+          additional_permissions: |
+            actions: read
+          
+          # Allow Claude to use necessary development tools (EXPANDED)
+          claude_args: '--allowedTools "Edit,MultiEdit,Glob,Grep,LS,Read,Write,mcp__github_comment__update_claude_comment,Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git branch:*),Bash(git checkout:*),Bash(git fetch:*),Bash(npm install:*),Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*),Bash(npm start:*),Bash(npm build:*),Bash(npm audit:*),Bash(cd:*),Bash(ls:*),Bash(pwd:*),Bash(cat:*),Bash(mkdir:*),Bash(mv:*),Bash(cp:*),Bash(find:*),Bash(grep:*),Bash(echo:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(touch:*),Bash(node:*)"'
+
+      - name: Usage Report (Optional)
+        if: always()
+        run: |
+          echo "=== Model Usage ==="
+          echo "💰 Cost: $0.00 per request"
+          echo "📊 No usage limits on free tier"
+        continue-on-error: true
+
+      - name: Debug on Failure (Optional)
+        if: failure()
+        run: |
+          echo "=== Router Logs ==="
+          tail -n 50 $HOME/.claude-code-router/logs/ccr-*.log 2>/dev/null || echo "No logs found"
+          echo "=== Service Check ==="
+          ps aux | grep claude-code-router || echo "Router not running"
+
 ```
 
 > **Note**: When running in GitHub Actions or other automation environments, make sure to set `"NON_INTERACTIVE_MODE": true` in your configuration to prevent the process from hanging due to stdin handling issues.
