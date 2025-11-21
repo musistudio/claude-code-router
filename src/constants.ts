@@ -11,6 +11,9 @@ export const PID_FILE = path.join(HOME_DIR, '.claude-code-router.pid');
 
 export const REFERENCE_COUNT_FILE = path.join(os.tmpdir(), "claude-code-reference-count.txt");
 
+// Claude projects directory
+export const CLAUDE_PROJECTS_DIR = path.join(os.homedir(), ".claude", "projects");
+
 
 export const DEFAULT_CONFIG = {
   LOG: false,

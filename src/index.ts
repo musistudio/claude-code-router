@@ -270,7 +270,7 @@ async function run(options: RunOptions = {}) {
                   role: 'user',
                   content: toolMessages
                 })
-                const response = await fetch(`http://127.0.0.1:${config.PORT}/v1/messages`, {
+                const response = await fetch(`http://127.0.0.1:${config.PORT || 3456}/v1/messages`, {
                   method: "POST",
                   headers: {
                     'x-api-key': config.APIKEY,

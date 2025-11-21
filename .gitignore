@@ -5,3 +5,4 @@ log.txt
 dist
 .DS_Store
 .vscode
+tsconfig.tsbuildinfo
