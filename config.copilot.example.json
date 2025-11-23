@@ -1,0 +1,55 @@
+{
+  "// GITHUB COPILOT API INTEGRATION": "Example configuration for copilot-api",
+  "// Prerequisites": "1. Install copilot-api: https://github.com/ericc-ch/copilot-api",
+  "//               ": "2. Start copilot-api server (default port 4141)",
+  "//               ": "3. Use this config with CCR",
+
+  "LOG": true,
+  "PORT": 3456,
+  "APIKEY": "your-api-key",
+
+  "Providers": [
+    {
+      "name": "copilot",
+      "api_base_url": "http://localhost:4141/v1/messages",
+      "api_key": "dummy-key-for-local-copilot",
+      "models": [
+        "claude-sonnet-4.5",
+        "gpt-5.1",
+        "gpt-5.1-codex"
+      ],
+      "// IMPORTANT": "Use anthropic transformer for proper message format",
+      "transformer": {
+        "use": ["anthropic"]
+      }
+    },
+    {
+      "// Fallback provider": "In case copilot-api is down",
+      "name": "gemini",
+      "api_base_url": "https://generativelanguage.googleapis.com/v1beta/models/",
+      "api_key": "YOUR_GEMINI_API_KEY",
+      "models": [
+        "gemini-2.5-flash",
+        "gemini-2.5-pro"
+      ],
+      "transformer": {
+        "use": ["gemini"]
+      }
+    }
+  ],
+
+  "Router": {
+    "default": "copilot,claude-sonnet-4.5",
+    "background": "copilot,gpt-5.1",
+    "think": "copilot,gpt-5.1",
+    "longContext": "gemini,gemini-2.5-pro",
+    "webSearch": "gemini,gemini-2.5-flash"
+  },
+
+  "// NOTES": {
+    "working_models": "Claude Sonnet 4.5, GPT-5.1, GPT-5.1-Codex work well",
+    "known_issues": "Gemini 3 Pro Preview may have format incompatibility",
+    "solution": "Use anthropic transformer for all Copilot models",
+    "reference": "https://github.com/musistudio/claude-code-router/issues/1021"
+  }
+}

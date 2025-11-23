@@ -1,0 +1,134 @@
+{
+  "// BASIC CONFIGURATION": "Claude Code Router - Example Configuration",
+  "// Copy this file to ~/.claude-code-router/config.json and customize it": "",
+
+  "LOG": true,
+  "LOG_LEVEL": "info",
+  "PORT": 3456,
+  "HOST": "127.0.0.1",
+  "APIKEY": "your-api-key-here",
+  "API_TIMEOUT_MS": 600000,
+
+  "// PROVIDERS CONFIGURATION": "Configure your LLM providers below",
+  "Providers": [
+    {
+      "// OpenRouter": "Route to multiple models through OpenRouter",
+      "name": "openrouter",
+      "api_base_url": "https://openrouter.ai/api/v1/chat/completions",
+      "api_key": "sk-or-v1-YOUR_KEY_HERE",
+      "models": [
+        "anthropic/claude-sonnet-4",
+        "anthropic/claude-3.5-sonnet",
+        "google/gemini-2.5-pro-preview",
+        "deepseek/deepseek-chat-v3-0324"
+      ],
+      "transformer": {
+        "use": ["openrouter"],
+        "// Model-specific transformers": "Add anthropic transformer for Claude models",
+        "anthropic/claude-sonnet-4": {
+          "use": ["anthropic", "openrouter"]
+        },
+        "anthropic/claude-3.5-sonnet": {
+          "use": ["anthropic", "openrouter"]
+        }
+      }
+    },
+    {
+      "// DeepSeek": "Direct DeepSeek API",
+      "name": "deepseek",
+      "api_base_url": "https://api.deepseek.com/chat/completions",
+      "api_key": "sk-YOUR_KEY_HERE",
+      "models": [
+        "deepseek-chat",
+        "deepseek-reasoner"
+      ],
+      "transformer": {
+        "use": ["deepseek"],
+        "deepseek-chat": {
+          "use": ["tooluse"]
+        }
+      }
+    },
+    {
+      "// Google Gemini": "Direct Gemini API",
+      "name": "gemini",
+      "api_base_url": "https://generativelanguage.googleapis.com/v1beta/models/",
+      "api_key": "YOUR_GEMINI_API_KEY",
+      "models": [
+        "gemini-2.5-flash",
+        "gemini-2.5-pro"
+      ],
+      "transformer": {
+        "use": ["gemini"]
+      }
+    },
+    {
+      "// Ollama": "Local models via Ollama",
+      "name": "ollama",
+      "api_base_url": "http://localhost:11434/v1/chat/completions",
+      "api_key": "ollama",
+      "models": [
+        "qwen2.5-coder:latest",
+        "deepseek-coder-v2:latest"
+      ]
+    },
+    {
+      "// GitHub Copilot API": "Use copilot-api for multiple models",
+      "// See": "https://github.com/ericc-ch/copilot-api",
+      "name": "copilot",
+      "api_base_url": "http://localhost:4141/v1/messages",
+      "api_key": "dummy-key-for-local",
+      "models": [
+        "claude-sonnet-4.5",
+        "gpt-5.1",
+        "gemini-3-pro-preview"
+      ],
+      "transformer": {
+        "use": ["anthropic"]
+      }
+    },
+    {
+      "// Groq": "Fast inference with Groq",
+      "name": "groq",
+      "api_base_url": "https://api.groq.com/openai/v1/chat/completions",
+      "api_key": "gsk-YOUR_KEY_HERE",
+      "models": [
+        "llama-3.3-70b-versatile",
+        "deepseek-r1-distill-llama-70b"
+      ],
+      "transformer": {
+        "use": ["groq"]
+      }
+    }
+  ],
+
+  "// ROUTER CONFIGURATION": "Define which models to use for different scenarios",
+  "Router": {
+    "default": "openrouter,anthropic/claude-sonnet-4",
+    "background": "gemini,gemini-2.5-flash",
+    "think": "deepseek,deepseek-reasoner",
+    "longContext": "gemini,gemini-2.5-pro",
+    "longContextThreshold": 60000,
+    "webSearch": "openrouter,google/gemini-2.5-pro-preview",
+    "image": "gemini,gemini-2.5-flash"
+  },
+
+  "// IMAGE AGENT": "Force image agent for models without tool calling support",
+  "forceUseImageAgent": false,
+
+  "// STATUS LINE": "Custom status line configuration",
+  "StatusLine": {
+    "enabled": true,
+    "format": "[{sessionId}] {model} | Tokens: {tokens}"
+  },
+
+  "// ADVANCED": "Advanced transformer configurations",
+  "transformers": [
+    {
+      "path": "~/.claude-code-router/plugins/custom-transformer.js",
+      "options": {
+        "customOption": "value"
+      }
+    }
+  ]
+}

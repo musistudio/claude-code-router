@@ -47,21 +47,49 @@ async function initializeClaudeConfig() {
 
 interface RunOptions {
   port?: number;
+  configPath?: string;
 }
 
 async function run(options: RunOptions = {}) {
-  // Check if service is already running
-  const isRunning = await isServiceRunning()
-  if (isRunning) {
-    console.log("✅ Service is already running in the background.");
-    return;
+  // Import instance manager (lazy import to avoid circular dependency)
+  const {
+    getConfigPath,
+    getInstanceId,
+    getInstanceByConfigPath,
+    registerInstance,
+    isInstanceRunning,
+    findAvailablePort,
+  } = require('./utils/instanceManager');
+
+  // Determine config path
+  const configPath = getConfigPath(options.configPath);
+  const instanceId = getInstanceId(configPath);
+  const isCustomConfig = configPath !== require('./constants').CONFIG_FILE;
+
+  // Check if this specific instance is already running
+  if (isCustomConfig) {
+    if (isInstanceRunning(instanceId)) {
+      const instance = getInstanceByConfigPath(configPath);
+      console.log(`✅ Instance with config ${configPath} is already running on port ${instance.port} (PID: ${instance.pid})`);
+      return;
+    }
+  } else {
+    // For default config, use existing check
+    const isRunning = await isServiceRunning()
+    if (isRunning) {
+      console.log("✅ Service is already running in the background.");
+      return;
+    }
   }
 
   await initializeClaudeConfig();
   await initDir();
   // Clean up old log files, keeping only the 10 most recent ones
   await cleanupLogFiles();
-  const config = await initConfig();
+
+  // Read config from specified path
+  const { readConfigFile: readConfigFromPath } = require('./utils');
+  const config = await readConfigFromPath(configPath);
 
 
   let HOST = config.HOST || "127.0.0.1";
@@ -71,28 +99,55 @@ async function run(options: RunOptions = {}) {
     console.warn("⚠️ API key is not set. HOST is forced to 127.0.0.1.");
   }
 
-  const port = config.PORT || 3456;
+  // Auto-allocate port for custom configs or use configured port
+  let port = config.PORT || 3456;
+  if (isCustomConfig) {
+    // For custom configs, auto-allocate an available port
+    const startPort = config.PORT || 3456;
+    port = await findAvailablePort(startPort);
+    if (port !== startPort) {
+      console.log(`⚠️ Port ${startPort} is in use, using port ${port} instead`);
+    }
+  }
 
   // Save the PID of the background process
   savePid(process.pid);
+
+  // Register this instance if it's a custom config
+  if (isCustomConfig) {
+    registerInstance(instanceId, {
+      pid: process.pid,
+      port: port,
+      configPath: configPath,
+      configHash: getInstanceId(configPath),
+      startedAt: Date.now()
+    });
+    console.log(`✅ Instance registered: ${instanceId} on port ${port}`);
+  }
 
   // Handle SIGINT (Ctrl+C) to clean up PID file
   process.on("SIGINT", () => {
     console.log("Received SIGINT, cleaning up...");
     cleanupPidFile();
+    if (isCustomConfig) {
+      const { unregisterInstance } = require('./utils/instanceManager');
+      unregisterInstance(instanceId);
+    }
     process.exit(0);
   });
 
   // Handle SIGTERM to clean up PID file
   process.on("SIGTERM", () => {
     cleanupPidFile();
+    if (isCustomConfig) {
+      const { unregisterInstance } = require('./utils/instanceManager');
+      unregisterInstance(instanceId);
+    }
     process.exit(0);
   });
 
-  // Use port from environment variable if set (for background process)
-  const servicePort = process.env.SERVICE_PORT
-    ? parseInt(process.env.SERVICE_PORT)
-    : port;
+  // Use the determined port (already allocated if needed)
+  const servicePort = port;
 
   // Configure logger based on config settings
   const pad = num => (num > 9 ? "" : "0") + num;
