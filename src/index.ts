@@ -64,7 +64,7 @@ async function run(options: RunOptions = {}) {
   // Determine config path
   const configPath = getConfigPath(options.configPath);
   const instanceId = getInstanceId(configPath);
-  const isCustomConfig = configPath !== require('./constants').CONFIG_FILE;
+  const isCustomConfig = configPath !== CONFIG_FILE;
 
   // Check if this specific instance is already running
   if (isCustomConfig) {
