@@ -119,9 +119,13 @@ function displayCurrentConfig(config: Config): void {
   };
   
   console.log(`${BOLDCYAN}Default Model:${RESET}`);
-  console.log(`  ${formatModel(config.Router.default)}\n`);
-  
-  if (config.Router.background) {
+  if (config.Router && config.Router.default) {
+    console.log(`  ${formatModel(config.Router.default)}\n`);
+  } else {
+    console.log(`  ${DIM}Not configured${RESET}\n`);
+  }
+
+  if (config.Router && config.Router.background) {
     console.log(`${BOLDCYAN}Background Model:${RESET}`);
     console.log(`  ${formatModel(config.Router.background)}\n`);
   }
