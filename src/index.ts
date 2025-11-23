@@ -75,7 +75,7 @@ async function run(options: RunOptions = {}) {
     }
   } else {
     // For default config, use existing check
-    const isRunning = await isServiceRunning()
+    const isRunning = await isServiceRunning();
     if (isRunning) {
       console.log("✅ Service is already running in the background.");
       return;
