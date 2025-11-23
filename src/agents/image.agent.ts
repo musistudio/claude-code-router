@@ -109,7 +109,7 @@ export class ImageAgent implements IAgent {
 
   shouldHandle(req: any, config: any): boolean {
     // Add null/undefined checks for config.Router to prevent crashes
-    if (!config || !config.Router || !config.Router.image || req.body.model === config.Router.image)
+    if (!config?.Router?.image || req.body.model === config.Router.image)
       return false;
     const lastMessage = req.body.messages[req.body.messages.length - 1];
     if (
