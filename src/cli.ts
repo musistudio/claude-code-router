@@ -9,6 +9,7 @@ import {
   getServiceInfo,
 } from "./utils/processCheck";
 import { runModelSelector } from "./utils/modelSelector"; // ADD THIS LINE
+import { activateCommand } from "./utils/activateCommand";
 import { version } from "../package.json";
 import { spawn, exec } from "child_process";
 import { PID_FILE, REFERENCE_COUNT_FILE } from "./constants";
@@ -21,13 +22,14 @@ const HELP_TEXT = `
 Usage: ccr [command]
 
 Commands:
-  start         Start server 
+  start         Start server
   stop          Stop server
   restart       Restart server
   status        Show server status
   statusline    Integrated statusline
   code          Execute claude command
   model         Interactive model selection and configuration
+  activate      Output environment variables for shell integration
   ui            Open the web UI in browser
   -v, version   Show version information
   -h, help      Show help information
@@ -36,6 +38,7 @@ Example:
   ccr start
   ccr code "Write a Hello World"
   ccr model
+  eval "$(ccr activate)"  # Set environment variables globally
   ccr ui
 `;
 
@@ -115,6 +118,10 @@ async function main() {
     // ADD THIS CASE
     case "model":
       await runModelSelector();
+      break;
+    case "activate":
+    case "env":
+      await activateCommand();
       break;
     case "code":
       if (!isRunning) {

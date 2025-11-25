@@ -194,6 +194,15 @@
     "template_download_success_desc": "配置模板已下载到您的设备",
     "template_download_failed": "模板下载失败"
   },
+  "color_picker": {
+    "placeholder": "选择颜色...",
+    "title": "颜色选择器",
+    "clear": "清除",
+    "no_color_selected": "未选择颜色",
+    "custom_color": "自定义颜色",
+    "apply": "应用",
+    "hex_input_help": "输入十六进制颜色值 (例如: #FF0000)"
+  },
   "log_viewer": {
     "title": "日志查看器",
     "close": "关闭",

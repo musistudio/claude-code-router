@@ -7,23 +7,13 @@ import {
 } from "./processCheck";
 import { quote } from 'shell-quote';
 import minimist from "minimist";
+import { createEnvVariables } from "./createEnvVariables";
 
 
 export async function executeCodeCommand(args: string[] = []) {
-  // Set environment variables
+  // Set environment variables using shared function
   const config = await readConfigFile();
-  const port = config.PORT || 3456;
-  const env: Record<string, string> = {
-    ANTHROPIC_AUTH_TOKEN: config?.APIKEY || "test",
-    ANTHROPIC_API_KEY: '',
-    ANTHROPIC_BASE_URL: `http://127.0.0.1:${port}`,
-    NO_PROXY: `127.0.0.1`,
-    DISABLE_TELEMETRY: 'true',
-    DISABLE_COST_WARNINGS: 'true',
-    API_TIMEOUT_MS: String(config.API_TIMEOUT_MS ?? 600000), // Default to 10 minutes if not set
-   // Reset CLAUDE_CODE_USE_BEDROCK when running with ccr code
-    CLAUDE_CODE_USE_BEDROCK: undefined,
-  };
+  const env = await createEnvVariables();
   const settingsFlag = {
     env
   };

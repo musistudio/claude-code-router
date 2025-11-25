@@ -194,6 +194,15 @@
     "template_download_success_desc": "Configuration template has been downloaded to your device",
     "template_download_failed": "Failed to download template"
   },
+  "color_picker": {
+    "placeholder": "Select color...",
+    "title": "Color Picker",
+    "clear": "Clear",
+    "no_color_selected": "No color selected",
+    "custom_color": "Custom Color",
+    "apply": "Apply",
+    "hex_input_help": "Enter hex color value (e.g.: #FF0000)"
+  },
   "log_viewer": {
     "title": "Log Viewer",
     "close": "Close",

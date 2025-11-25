@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useTranslation } from "react-i18next"
 import { HexColorPicker } from "react-colorful"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -28,9 +29,10 @@ const getColorValue = (color: string): string => {
 export function ColorPicker({
   value = "",
   onChange,
-  placeholder = "选择颜色...",
+  placeholder,
   showPreview = true
 }: ColorPickerProps) {
+  const { t } = useTranslation()
   const [open, setOpen] = React.useState(false)
   const [customColor, setCustomColor] = React.useState("")
   
@@ -78,7 +80,7 @@ export function ColorPicker({
                 />
               )}
               <span className="truncate flex-1">
-                {value || placeholder}
+                {value || placeholder || t('color_picker.placeholder')}
               </span>
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="m7 15 5 5 5-5"/>
@@ -91,14 +93,14 @@ export function ColorPicker({
           <div className="space-y-4">
             {/* 颜色选择器标题 */}
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-semibold">颜色选择器</h4>
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <h4 className="text-sm font-semibold">{t('color_picker.title')}</h4>
+              <Button
+                variant="ghost"
+                size="sm"
                 className="h-6 px-2 text-xs"
                 onClick={() => handleColorChange("")}
               >
-                清除
+                {t('color_picker.clear')}
               </Button>
             </div>
             
@@ -110,7 +112,7 @@ export function ColorPicker({
               />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium truncate">
-                  {value || "未选择颜色"}
+                  {value || t('color_picker.no_color_selected')}
                 </div>
                 {value && value.startsWith("#") && (
                   <div className="text-xs text-muted-foreground font-mono">
@@ -131,7 +133,7 @@ export function ColorPicker({
             
             {/* 自定义颜色输入 */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">自定义颜色</label>
+              <label className="text-sm font-medium">{t('color_picker.custom_color')}</label>
               <div className="flex gap-2">
                 <Input
                   type="text"
@@ -140,8 +142,8 @@ export function ColorPicker({
                   placeholder="#RRGGBB"
                   className="font-mono flex-1"
                 />
-                <Button 
-                  size="sm" 
+                <Button
+                  size="sm"
                   onClick={() => {
                     if (customColor && /^#[0-9A-F]{6}$/i.test(customColor)) {
                       handleColorChange(customColor)
@@ -150,11 +152,11 @@ export function ColorPicker({
                   }}
                   disabled={!customColor || !/^#[0-9A-F]{6}$/i.test(customColor)}
                 >
-                  应用
+                  {t('color_picker.apply')}
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                输入十六进制颜色值 (例如: #FF0000)
+                {t('color_picker.hex_input_help')}
               </p>
             </div>
           </div>

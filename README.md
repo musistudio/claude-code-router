@@ -6,17 +6,16 @@
 
 <hr>
 
-> I am currently seeking **Agent development related job opportunities**, either **based in Hangzhou** or **remote**. If you are interested in my projects or have suitable opportunities, feel free to reach out! 📧 Email: m@musiiot.top
+![](blog/images/sponsors/glm-en.jpg)
+> This project is sponsored by Z.ai, supporting us with their GLM CODING PLAN.    
+> GLM CODING PLAN is a subscription service designed for AI coding, starting at just $3/month. It provides access to their flagship GLM-4.6 model across 10+ popular AI coding tools (Claude Code, Cline, Roo Code, etc.), offering developers top-tier, fast, and stable coding experiences.     
+> Get 10% OFF GLM CODING PLAN：https://z.ai/subscribe?ic=8JVLJQFSKB     
 
 > A powerful tool to route Claude Code requests to different models and customize any request.
 
-> Now you can use models such as `GLM-4.5`, `Kimi-K2`, `Qwen3-Coder-480B-A35B`, and `DeepSeek v3.1` for free through the [iFlow Platform](https://platform.iflow.cn/docs/api-mode).     
-> You can use the `ccr ui` command to directly import the `iflow` template in the UI. It’s worth noting that iFlow limits each user to a concurrency of 1, which means you’ll need to route background requests to other models.      
-> If you’d like a better experience, you can try [iFlow CLI](https://cli.iflow.cn).
+> [GLM-4.6 Supports Reasoning and Interleaved Thinking](blog/en/glm-4.6-supports-reasoning.md)
 
 ![](blog/images/claude-code.png)
-
-![](blog/images/roadmap.svg)
 
 ## ✨ Features
 
@@ -255,6 +254,32 @@ This command provides an interactive interface to:
      - Provider-specific routing (e.g., OpenRouter provider preferences)
 
 The CLI tool validates all inputs and provides helpful prompts to guide you through the configuration process, making it easy to manage complex setups without editing JSON files manually.
+
+### 6. Activate Command (Environment Variables Setup)
+
+The `activate` command allows you to set up environment variables globally in your shell, enabling you to use the `claude` command directly or integrate Claude Code Router with applications built using the Agent SDK.
+
+To activate the environment variables, run:
+
+```shell
+eval "$(ccr activate)"
+```
+
+This command outputs the necessary environment variables in shell-friendly format, which are then set in your current shell session. After activation, you can:
+
+- **Use `claude` command directly**: Run `claude` commands without needing to use `ccr code`. The `claude` command will automatically route requests through Claude Code Router.
+- **Integrate with Agent SDK applications**: Applications built with the Anthropic Agent SDK will automatically use the configured router and models.
+
+The `activate` command sets the following environment variables:
+
+- `ANTHROPIC_AUTH_TOKEN`: API key from your configuration
+- `ANTHROPIC_BASE_URL`: The local router endpoint (default: `http://127.0.0.1:3456`)
+- `NO_PROXY`: Set to `127.0.0.1` to prevent proxy interference
+- `DISABLE_TELEMETRY`: Disables telemetry
+- `DISABLE_COST_WARNINGS`: Disables cost warnings
+- `API_TIMEOUT_MS`: API timeout from your configuration
+
+> **Note**: Make sure the Claude Code Router service is running (`ccr start`) before using the activated environment variables. The environment variables are only valid for the current shell session. To make them persistent, you can add `eval "$(ccr activate)"` to your shell configuration file (e.g., `~/.zshrc` or `~/.bashrc`).
 
 #### Providers
 
@@ -511,6 +536,7 @@ This setup allows for interesting automations, like running tasks during off-pea
 
 - [Project Motivation and How It Works](blog/en/project-motivation-and-how-it-works.md)
 - [Maybe We Can Do More with the Router](blog/en/maybe-we-can-do-more-with-the-route.md)
+- [GLM-4.6 Supports Reasoning and Interleaved Thinking](blog/en/glm-4.6-supports-reasoning.md)
 
 ## ❤️ Support & Sponsoring
 
@@ -535,6 +561,7 @@ A huge thank you to all our sponsors for their generous support!
 - [AIHubmix](https://aihubmix.com/)
 - [BurnCloud](https://ai.burncloud.com)
 - [302.AI](https://share.302.ai/ZGVF9w)
+- [Z智谱](https://www.bigmodel.cn/claude-code?ic=FPF9IVAGFJ)
 - @Simon Leischnig
 - [@duanshuaimin](https://github.com/duanshuaimin)
 - [@vrgitadmin](https://github.com/vrgitadmin)
@@ -621,5 +648,15 @@ A huge thank you to all our sponsors for their generous support!
 - @\*落
 - @哆\*k
 - @\*涛
+- [@苗大](https://github.com/WitMiao)
+- @\*呢
+- @\d*u
+- @crizcraig
+- s\*s
+- \*火
+- \*勤
+- \*\*锟
+- \*涛
+
 
 (If your name is masked, please contact me via my homepage email to update it with your GitHub username.)
