@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(npm run build)",
+      "Bash(ccr restart:*)",
+      "Bash(ccr:*)",
+      "Bash(curl:*)",
+      "Bash(Select-Object -Last 30)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
