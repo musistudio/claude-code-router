@@ -10,7 +10,10 @@
       "Bash(git log:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(del:*)"
+      "Bash(del:*)",
+      "Bash(git rm:*)",
+      "Bash(node -r ts-node/register src/utils/SSEParserUtils.test.ts:*)",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": []

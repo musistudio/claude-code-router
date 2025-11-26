@@ -265,9 +265,33 @@ export function getAllToolCalls(message: CompleteMessage): ToolUseContent[] {
 
 export function getFullContent(events: string[]): string {
   const result = parseSSEContent(events);
-  if( result != null )
-      return  getAllTextContent(result) + '\n' +  JSON.stringify( getAllToolCalls(result) );
-  return JSON.stringify(events);
+
+  if (result != null) {
+    // 修复 Bug #1: 提取文本内容并检查是否为空
+    const textContent = getAllTextContent(result);
+    const toolCalls = getAllToolCalls(result);
+
+    let output = '';
+
+    // 只有当文本内容不为空时才添加到输出中
+    if (textContent.trim()) {
+      output += textContent;
+    }
+
+    // 修复 Bug #3: 格式化工具调用输出
+    if (toolCalls.length > 0) {
+      // 如果有文本内容，添加换行符分隔
+      if (output) {
+        output += '\n';
+      }
+      // 修复 Bug #3: 使用格式化的 JSON 输出，提高可读性
+      output += JSON.stringify(toolCalls, null, 2);
+    }
+
+    return output;
+  } else {
+    return `Error: Failed to parse SSE events. Original events:\n${JSON.stringify(events, null, 2)}`;
+  }
 }
 
 
