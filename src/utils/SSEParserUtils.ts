@@ -1,3 +1,4 @@
+// Content block types
 interface TextContent {
   type: 'text';
   text: string;
@@ -7,7 +8,7 @@ interface ToolUseContent {
   type: 'tool_use';
   id: string;
   name: string;
-  input: any;
+  input: Record<string, unknown>;
   partialInput?: string;
 }
 
@@ -18,6 +19,31 @@ interface RedactedThinkingContent {
 
 type ContentBlock = TextContent | ToolUseContent | RedactedThinkingContent;
 
+// Event type constants for better maintainability
+const SSE_EVENT_TYPES = {
+  MESSAGE_START: 'message_start',
+  CONTENT_BLOCK_START: 'content_block_start',
+  CONTENT_BLOCK_DELTA: 'content_block_delta',
+  CONTENT_BLOCK_STOP: 'content_block_stop',
+  MESSAGE_DELTA: 'message_delta',
+  MESSAGE_STOP: 'message_stop',
+  PING: 'ping'
+} as const;
+
+// Content block type constants
+const CONTENT_BLOCK_TYPES = {
+  TEXT: 'text',
+  TOOL_USE: 'tool_use',
+  REDACTED_THINKING: 'redacted_thinking'
+} as const;
+
+// Delta type constants
+const DELTA_TYPES = {
+  TEXT_DELTA: 'text_delta',
+  INPUT_JSON_DELTA: 'input_json_delta'
+} as const;
+
+// Message and SSE data types
 interface CompleteMessage {
   id: string | null;
   role: string | null;
@@ -48,6 +74,10 @@ interface SSEData {
   };
 }
 
+// =============================================================================
+// SSE Message Assembler Class
+// =============================================================================
+
 class SSEMessageAssembler {
   private currentMessage: CompleteMessage | null = null;
   private currentContentBlock: ContentBlock | null = null;
@@ -61,33 +91,48 @@ class SSEMessageAssembler {
 
   public processEvent(eventData: string): CompleteMessage | null {
     try {
-      const data: SSEData = JSON.parse(eventData);
-      
+      const processedEventData = this.fixTruncatedData(eventData);
+      const data: SSEData = JSON.parse(processedEventData);
+
       switch (data.type) {
-        case 'message_start':
+        case SSE_EVENT_TYPES.MESSAGE_START:
           return this.handleMessageStart(data);
-        case 'content_block_start':
+        case SSE_EVENT_TYPES.CONTENT_BLOCK_START:
           this.handleContentBlockStart(data);
           break;
-        case 'content_block_delta':
+        case SSE_EVENT_TYPES.CONTENT_BLOCK_DELTA:
           this.handleContentBlockDelta(data);
           break;
-        case 'content_block_stop':
+        case SSE_EVENT_TYPES.CONTENT_BLOCK_STOP:
           this.handleContentBlockStop(data);
           break;
-        case 'message_stop':
+        case SSE_EVENT_TYPES.MESSAGE_DELTA:
+          // message_delta 事件包含使用信息，但不需要处理为内容块
+          break;
+        case SSE_EVENT_TYPES.MESSAGE_STOP:
           return this.handleMessageStop(data);
-        case 'ping':
+        case SSE_EVENT_TYPES.PING:
           // 忽略心跳包，但保持当前状态
           break;
         default:
-          console.warn('未知的 SSE 事件类型:', data.type);
+          console.warn(`Unknown SSE event type: ${data.type}`);
       }
     } catch (error) {
-      console.error('解析 SSE 事件数据失败:', error, '原始数据:', eventData);
+      console.error(`Failed to parse SSE event data:`, error, `Raw data:`, eventData);
+      return null;
     }
-    
+
     return null;
+  }
+
+  /**
+   * Fix common truncated JSON data patterns
+   */
+  private fixTruncatedData(eventData: string): string {
+    if (eventData.includes('"output_to"') && !eventData.includes('"output_tokens"')) {
+      return eventData.replace('"output_to"', '"output_tokens"');
+    }
+    return eventData;
   }
 
   private handleMessageStart(data: SSEData): null {
@@ -104,37 +149,37 @@ class SSEMessageAssembler {
     if (!this.currentMessage) return;
 
     this.currentIndex = data.index ?? 0;
-    
+
     const contentBlock = data.content_block;
     if (!contentBlock) return;
 
     switch (contentBlock.type) {
-      case 'text':
+      case CONTENT_BLOCK_TYPES.TEXT:
         this.currentContentBlock = {
-          type: 'text',
+          type: CONTENT_BLOCK_TYPES.TEXT,
           text: contentBlock.text || ''
         };
         break;
-      
-      case 'tool_use':
+
+      case CONTENT_BLOCK_TYPES.TOOL_USE:
         this.currentContentBlock = {
-          type: 'tool_use',
+          type: CONTENT_BLOCK_TYPES.TOOL_USE,
           id: contentBlock.id || '',
           name: contentBlock.name || '',
-          input: contentBlock.input || {},
+          input: contentBlock.input as Record<string, unknown> || {},
           partialInput: ''
         };
         break;
-      
-      case 'redacted_thinking':
+
+      case CONTENT_BLOCK_TYPES.REDACTED_THINKING:
         this.currentContentBlock = {
-          type: 'redacted_thinking',
+          type: CONTENT_BLOCK_TYPES.REDACTED_THINKING,
           text: contentBlock.text || ''
         };
         break;
-      
+
       default:
-        console.warn('未知的内容块类型:', contentBlock.type);
+        console.warn(`Unknown content block type: ${(contentBlock as any).type}`);
         this.currentContentBlock = null;
         return;
     }
@@ -151,30 +196,19 @@ class SSEMessageAssembler {
     if (!delta) return;
 
     switch (this.currentContentBlock.type) {
-      case 'text':
+      case CONTENT_BLOCK_TYPES.TEXT:
         if (delta.text) {
           this.currentContentBlock.text += delta.text;
         }
         break;
-      
-      case 'tool_use':
-        if (delta.type === 'input_json_delta' && delta.partial_json) {
-          // 累积部分 JSON 输入
-          if (!this.currentContentBlock.partialInput) {
-            this.currentContentBlock.partialInput = '';
-          }
-          this.currentContentBlock.partialInput += delta.partial_json;
-          
-          // 尝试解析为完整对象（可能失败，因为 JSON 还不完整）
-          try {
-            this.currentContentBlock.input = JSON.parse(this.currentContentBlock.partialInput);
-          } catch (e) {
-            // JSON 还不完整，继续累积
-          }
+
+      case CONTENT_BLOCK_TYPES.TOOL_USE:
+        if (delta.type === DELTA_TYPES.INPUT_JSON_DELTA && delta.partial_json) {
+          this.accumulatePartialJsonInput(delta.partial_json);
         }
         break;
-      
-      case 'redacted_thinking':
+
+      case CONTENT_BLOCK_TYPES.REDACTED_THINKING:
         if (delta.text) {
           this.currentContentBlock.text += delta.text;
         }
@@ -185,15 +219,33 @@ class SSEMessageAssembler {
     this.currentMessage.content[this.currentIndex] = this.currentContentBlock;
   }
 
+  /**
+   * Accumulate partial JSON input for tool calls
+   */
+  private accumulatePartialJsonInput(partialJson: string): void {
+    if (!this.currentContentBlock || this.currentContentBlock.type !== CONTENT_BLOCK_TYPES.TOOL_USE) {
+      return;
+    }
+
+    if (!this.currentContentBlock.partialInput) {
+      this.currentContentBlock.partialInput = '';
+    }
+    this.currentContentBlock.partialInput += partialJson;
+
+    try {
+      this.currentContentBlock.input = JSON.parse(this.currentContentBlock.partialInput);
+    } catch (e) {
+      // JSON parsing incomplete, continue accumulation
+    }
+  }
+
   private handleContentBlockStop(data: SSEData): void {
-    if (this.currentContentBlock?.type === 'tool_use' && this.currentContentBlock.partialInput) {
-      // 对于工具调用，在块结束时尝试最终解析
+    if (this.currentContentBlock?.type === CONTENT_BLOCK_TYPES.TOOL_USE && this.currentContentBlock.partialInput) {
       try {
         this.currentContentBlock.input = JSON.parse(this.currentContentBlock.partialInput);
         delete this.currentContentBlock.partialInput;
       } catch (e) {
-        console.error('工具调用输入 JSON 解析失败:', e, '原始数据:', this.currentContentBlock.partialInput);
-        // 保留部分输入以便调试
+        console.error(`Failed to parse tool call input JSON:`, e, `Raw data:`, this.currentContentBlock.partialInput);
       }
     }
 
@@ -218,25 +270,34 @@ class SSEMessageAssembler {
   }
 }
 
-// 主函数 - 直接使用这个函数
+// =============================================================================
+// Main SSE Parser Functions
+// =============================================================================
+
+/**
+ * Parse SSE content from an array of SSE event strings
+ * Main function for SSE parsing - use this directly
+ */
 export function parseSSEContent(events: string[]): CompleteMessage | null {
   const assembler = new SSEMessageAssembler();
   let finalMessage: CompleteMessage | null = null;
 
-  for (const event of events) {
-    // 清理事件数据（移除 "data: " 前缀等）
-    const cleanEvent = event.replace(/^data: /, '').trim();
-    
-    // 跳过空行和注释
-    if (!cleanEvent || cleanEvent.startsWith(':')) continue;
-    
-    const result = assembler.processEvent(cleanEvent);
+  const sseEvents = parseSSEEvents(events);
+
+  for (const sseEvent of sseEvents) {
+    const eventData = extractEventData(sseEvent);
+
+    if (!eventData) {
+      continue;
+    }
+
+    const result = assembler.processEvent(eventData);
     if (result) {
       finalMessage = result;
     }
   }
 
-  // 如果没有收到 message_stop 事件，但想强制获取当前状态
+  // If no message_stop event received, get current state
   if (!finalMessage) {
     const state = assembler.getCurrentState();
     finalMessage = state.message;
@@ -245,75 +306,154 @@ export function parseSSEContent(events: string[]): CompleteMessage | null {
   return finalMessage;
 }
 
-// 工具函数：从完整消息中提取特定类型的内容
-export function extractContentByType(message: CompleteMessage, type: 'text' | 'tool_use' | 'redacted_thinking'): any[] {
-  return message.content.filter(block => block.type === type);
+/**
+ * Parses and filters SSE events from raw event strings
+ */
+function parseSSEEvents(events: string[]): string[] {
+  const fullSSEStream = events.join('\n');
+
+  return fullSSEStream
+    .split('\n\n')
+    .filter(event => event.trim())
+    .filter(sseEvent => !isPingEvent(sseEvent));
 }
 
-// 工具函数：获取所有文本内容（合并所有 text 块）
+/**
+ * Checks if SSE event is a ping event
+ */
+function isPingEvent(sseEvent: string): boolean {
+  const lines = sseEvent.split('\n');
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (trimmedLine.startsWith('event:')) {
+      const eventType = trimmedLine.replace(/^event:\s*/, '').trim();
+      return eventType === SSE_EVENT_TYPES.PING;
+    }
+  }
+  return false;
+}
+
+/**
+ * Extracts event data from SSE event string
+ */
+function extractEventData(sseEvent: string): string {
+  const lines = sseEvent.split('\n');
+  let eventData = '';
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (trimmedLine.startsWith('data:')) {
+      eventData = trimmedLine.replace(/^data:\s*/, '').trim();
+    }
+  }
+
+  return eventData;
+}
+
+// =============================================================================
+// Utility Functions
+// =============================================================================
+
+/**
+ * Extract content blocks by type from a complete message
+ */
+export function extractContentByType(
+  message: CompleteMessage,
+  contentType: ContentBlock['type']
+): ContentBlock[] {
+  return message.content.filter(block => block.type === contentType);
+}
+
+/**
+ * Get all text content from a complete message (joins all text blocks)
+ */
 export function getAllTextContent(message: CompleteMessage): string {
   return message.content
-    .filter((block): block is TextContent => block.type === 'text')
+    .filter((block): block is TextContent => block.type === CONTENT_BLOCK_TYPES.TEXT)
     .map(block => block.text)
-    .join('\n');
+    .join('\n')
+    .trim();
 }
 
-// 工具函数：获取所有工具调用
+/**
+ * Get all tool calls from a complete message
+ */
 export function getAllToolCalls(message: CompleteMessage): ToolUseContent[] {
-  return message.content.filter((block): block is ToolUseContent => block.type === 'tool_use');
+  return message.content
+    .filter((block): block is ToolUseContent => block.type === CONTENT_BLOCK_TYPES.TOOL_USE);
 }
 
-export function getFullContent(events: string[]): string {
-  const result = parseSSEContent(events);
+/**
+ * Format tool calls for output with proper error handling
+ */
+function formatToolCalls(toolCalls: ToolUseContent[]): Array<Record<string, unknown>> {
+  return toolCalls.map(toolCall => {
+    const sanitized: Record<string, unknown> = {
+      type: toolCall.type,
+      id: toolCall.id,
+      name: toolCall.name
+    };
 
-  if (result != null) {
-    // 修复 Bug #1: 提取文本内容并检查是否为空
-    const textContent = getAllTextContent(result);
-    const toolCalls = getAllToolCalls(result);
-
-    let output = '';
-
-    // 只有当文本内容不为空时才添加到输出中
-    if (textContent.trim()) {
-      output += textContent;
+    // Use complete input if available and not empty, otherwise try partialInput
+    if (toolCall.input && Object.keys(toolCall.input).length > 0) {
+      sanitized.input = toolCall.input;
+    } else if (toolCall.partialInput && toolCall.partialInput.trim()) {
+      sanitized.input = parsePartialInput(toolCall.partialInput);
+    } else {
+      sanitized.input = {};
     }
 
-    // 修复 Bug #3: 格式化工具调用输出
-    if (toolCalls.length > 0) {
-      // 如果有文本内容，添加换行符分隔
-      if (output) {
-        output += '\n';
-      }
-      // 修复 Bug #3: 使用格式化的 JSON 输出，提高可读性
-      output += JSON.stringify(toolCalls, null, 2);
-    }
+    return sanitized;
+  });
+}
 
-    return output;
-  } else {
-    return `Error: Failed to parse SSE events. Original events:\n${JSON.stringify(events, null, 2)}`;
+/**
+ * Parse partial input with error handling
+ */
+function parsePartialInput(partialInput: string): unknown {
+  try {
+    const parsedInput = JSON.parse(partialInput);
+    // Return parsed input if it's a non-empty object
+    return parsedInput && Object.keys(parsedInput as Record<string, unknown>).length > 0
+      ? parsedInput
+      : partialInput;
+  } catch (e) {
+    // Return raw string if parsing fails
+    return partialInput;
   }
 }
 
-
-// 使用示例
-/*
-const sseEvents = [
-  `data: {"type": "message_start", "message": {"id": "msg_123", "role": "assistant", "model": "claude-3-sonnet"}}`,
-  `data: {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}`,
-  `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hello"}}`,
-  `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": " World"}}`,
-  `data: {"type": "content_block_stop", "index": 0}`,
-  `data: {"type": "content_block_start", "index": 1, "content_block": {"type": "tool_use", "id": "toolu_001", "name": "get_weather"}}`,
-  `data: {"type": "content_block_delta", "index": 1, "delta": {"type": "input_json_delta", "partial_json": "{\\"location\\":\\"Beijing\\""}}`,
-  `data: {"type": "content_block_delta", "index": 1, "delta": {"type": "input_json_delta", "partial_json": ",\\"unit\\":\\"celsius\\"}"}}`,
-  `data: {"type": "content_block_stop", "index": 1}`,
-  `data: {"type": "message_stop"}`,
-];
-
-const result = parseSSEContent(sseEvents);
-if (result) {
-  console.log('完整消息:', JSON.stringify(result, null, 2));
-  console.log('所有文本:', getAllTextContent(result));
-  console.log('工具调用:', getAllToolCalls(result));
+/**
+ * Create error response for failed SSE parsing
+ */
+function createErrorResponse(events: string[]): string {
+  return `Error: Failed to parse SSE events. Original events:\n${JSON.stringify(events, null, 2)}`;
 }
-*/
+
+/**
+ * Main export function: Parse SSE events and return formatted content
+ */
+export function getFullContent(events: string[]): Record<string, unknown> | string {
+  const result = parseSSEContent(events);
+
+  if (!result) {
+    return createErrorResponse(events);
+  }
+
+  const textContent = getAllTextContent(result);
+  const toolCalls = getAllToolCalls(result);
+
+  const output: Record<string, unknown> = {};
+
+  // Only add text content if it's not empty
+  if (textContent) {
+    output.text = textContent;
+  }
+
+  // Format tool calls output
+  if (toolCalls.length > 0) {
+    output.toolCalls = formatToolCalls(toolCalls);
+  }
+
+  return output;
+}

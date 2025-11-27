@@ -18,9 +18,7 @@ import {
   setupAgentAndRoutingHook,
   setupErrorEventHook,
   setupSendEventHook,
-  setupAgentProcessingHook,
-  setupSessionUsageHook,
-  setupErrorPayloadHook
+  setupAgentProcessingHook
 } from "./utils/hooks";
 import { EventEmitter } from "node:events";
 
@@ -64,6 +62,13 @@ function setupSignalHandlers(): void {
 }
 
 /**
+ * Pads a number with leading zero if needed
+ */
+function padNumber(num: number): string {
+  return (num > 9 ? "" : "0") + num;
+}
+
+/**
  * Configure logger based on config settings
  */
 function configureLogger(config: any, homeDir: string) {
@@ -75,12 +80,11 @@ function configureLogger(config: any, homeDir: string) {
             time = new Date();
           }
 
-          const pad = (num: number) => (num > 9 ? "" : "0") + num;
-          const yearAndMonth = time.getFullYear() + "" + pad(time.getMonth() + 1);
-          const day = pad(time.getDate());
-          const hour = pad(time.getHours());
-          const minute = pad(time.getMinutes());
-          const second = pad(time.getSeconds());
+          const yearAndMonth = time.getFullYear() + "" + padNumber(time.getMonth() + 1);
+          const day = padNumber(time.getDate());
+          const hour = padNumber(time.getHours());
+          const minute = padNumber(time.getMinutes());
+          const second = padNumber(time.getSeconds());
 
           return `./logs/ccr-${yearAndMonth}${day}${hour}${minute}${second}${index ? `_${index}` : ''}.log`;
         }, {
@@ -108,28 +112,41 @@ async function initializeApp(): Promise<any> {
   return await initConfig();
 }
 
+// Configuration constants
+const DEFAULT_HOST = "127.0.0.1";
+const DEFAULT_PORT = 3456;
+
 /**
- * Resolve host configuration
+ * Resolve host configuration with security considerations
  */
 function resolveHostConfig(config: any): string {
-  let host = config.HOST || "127.0.0.1";
+  let host = config.HOST || DEFAULT_HOST;
 
   if (config.HOST && !config.APIKEY) {
-    host = "127.0.0.1";
-    console.warn("⚠️ API key is not set. HOST is forced to 127.0.0.1.");
+    host = DEFAULT_HOST;
+    console.warn("⚠️ API key is not set. HOST is forced to 127.0.0.1 for security.");
   }
 
   return host;
 }
 
 /**
- * Resolve service port configuration
+ * Resolve service port configuration from environment or config
  */
 function resolveServicePort(config: any): number {
-  const defaultPort = config.PORT || 3456;
-  return process.env.SERVICE_PORT
-    ? parseInt(process.env.SERVICE_PORT)
-    : defaultPort;
+  const configPort = config.PORT || DEFAULT_PORT;
+  const envPort = process.env.SERVICE_PORT;
+
+  if (envPort) {
+    const parsedEnvPort = parseInt(envPort, 10);
+    if (isNaN(parsedEnvPort)) {
+      console.warn(`⚠️ Invalid SERVICE_PORT: ${envPort}. Using default port ${configPort}.`);
+      return configPort;
+    }
+    return parsedEnvPort;
+  }
+
+  return configPort;
 }
 
 /**
@@ -189,8 +206,6 @@ async function run(options: RunOptions = {}): Promise<void> {
   setupErrorEventHook(server, event);
   setupSendEventHook(server, event);
   setupAgentProcessingHook(server, config);
-  setupSessionUsageHook(server, config);
-  setupErrorPayloadHook(server);
 
   server.start();
 }

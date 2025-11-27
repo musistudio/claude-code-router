@@ -7,70 +7,33 @@ import { router } from "./router";
 import { SSEParserTransform } from "./SSEParser.transform";
 import { SSESerializerTransform } from "./SSESerializer.transform";
 import { rewriteStream } from "./rewriteStream";
-import {getFullContent} from "./SSEParserUtils"
+import { getFullContent } from "./SSEParserUtils";
 import JSON5 from "json5";
 
-/**
- * Agent processing state for handling tool calls
- */
-interface AgentProcessingState {
-  currentAgent?: IAgent;
-  currentToolIndex: number;
-  currentToolName: string;
-  currentToolArgs: string;
-  currentToolId: string;
-  toolMessages: ToolMessage[];
-  assistantMessages: AssistantMessage[];
-}
-
-/**
- * Tool message structure
- */
-interface ToolMessage {
+// Type aliases for better readability
+type ToolMessage = {
   tool_use_id: string;
   type: "tool_result";
   content: string;
-}
+};
 
-/**
- * Assistant message structure for tool use
- */
-interface AssistantMessage {
+type AssistantMessage = {
   type: "tool_use";
   id: string;
   name: string;
-  input: any;
-}
+  input: Record<string, unknown>;
+};
 
-/**
- * Stream processing metadata
- */
-interface StreamMetadata {
+type StreamMetadata = {
   totalChunks: number;
   duration: number;
   method: string;
   url: string;
   statusCode: number;
   timestamp: string;
-}
+};
 
-/**
- * Parsed SSE response structure
- */
-interface PSSEResponse {
-  type: "parsed_sse_response";
-  body: string;
-  summary: {
-    totalEvents: number;
-    hasUsage: boolean;
-    textEvents: number;
-  };
-}
-
-/**
- * Stream error information
- */
-interface StreamErrorInfo {
+type StreamErrorInfo = {
   error: string;
   stack: string;
   metadata: {
@@ -80,6 +43,31 @@ interface StreamErrorInfo {
     url: string;
     timestamp: string;
   };
+};
+
+/**
+ * Agent processing state for handling tool calls
+ */
+class AgentProcessingState {
+  currentAgent?: IAgent;
+  currentToolIndex: number = -1;
+  currentToolName: string = '';
+  currentToolArgs: string = '';
+  currentToolId: string = '';
+  toolMessages: ToolMessage[] = [];
+  assistantMessages: AssistantMessage[] = [];
+
+  reset(): void {
+    this.currentAgent = undefined;
+    this.currentToolIndex = -1;
+    this.currentToolName = '';
+    this.currentToolArgs = '';
+    this.currentToolId = '';
+  }
+
+  isValid(): boolean {
+    return this.currentToolIndex > -1 && this.currentToolName.length > 0;
+  }
 }
 
 /**
@@ -322,28 +310,13 @@ function handleErrorResponse(payload: any): any {
   return payload;
 }
 
-/**
- * Setup session usage hook
- * @deprecated This functionality is now integrated in setupAgentProcessingHook
- */
-export function setupSessionUsageHook(server: any, config: any): void {
-  // Session usage tracking is now handled in setupAgentProcessingHook
-}
-
-/**
- * Setup error payload hook
- * @deprecated This functionality is now integrated in setupAgentProcessingHook
- */
-export function setupErrorPayloadHook(server: any): void {
-  // Error payload handling is now integrated in setupAgentProcessingHook
-}
 
 // ============= Stream Utilities =============
 
 /**
  * Pads a number with leading zero if needed
  */
-function padZero(num: number): string {
+function padNumber(num: number): string {
   return (num > 9 ? "" : "0") + num;
 }
 
@@ -355,18 +328,18 @@ export function generateLogFileName(time?: Date, index?: number): string {
     time = new Date();
   }
 
-  const yearAndMonth = time.getFullYear() + "" + padZero(time.getMonth() + 1);
-  const day = padZero(time.getDate());
-  const hour = padZero(time.getHours());
-  const minute = padZero(time.getMinutes());
-  const second = padZero(time.getSeconds());
+  const yearAndMonth = time.getFullYear() + "" + padNumber(time.getMonth() + 1);
+  const day = padNumber(time.getDate());
+  const hour = padNumber(time.getHours());
+  const minute = padNumber(time.getMinutes());
+  const second = padNumber(time.getSeconds());
 
   return `./logs/ccr-${yearAndMonth}${day}${hour}${minute}${second}${index ? `_${index}` : ''}.log`;
 }
 
 
 /**
- * Create a wrapped stream that logs complete response content
+ * Creates a logging wrapper for response streams
  */
 function createLoggingWrappedStream(
   originalStream: ReadableStream,
@@ -401,7 +374,7 @@ function createLoggingWrappedStream(
 }
 
 /**
- * Handle stream completion and logging
+ * Handles stream completion and logs final response
  */
 async function handleStreamCompletion(
   loggedChunks: string[],
@@ -426,7 +399,7 @@ async function handleStreamCompletion(
 }
 
 /**
- * Handle stream errors
+ * Handles stream errors and logs error information
  */
 function handleStreamError(
   error: Error,
@@ -446,7 +419,7 @@ function handleStreamError(
 }
 
 /**
- * Create stream metadata for logging
+ * Creates stream metadata for logging purposes
  */
 function createStreamMetadata(
   totalChunks: number,
@@ -465,7 +438,7 @@ function createStreamMetadata(
 }
 
 /**
- * Create stream error information for logging
+ * Creates stream error information for logging purposes
  */
 function createStreamErrorInfo(
   error: Error,
@@ -487,7 +460,7 @@ function createStreamErrorInfo(
 }
 
 /**
- * Read session usage from stream in background
+ * Reads session usage from background stream
  */
 function readSessionUsageFromStream(stream: ReadableStream, sessionId: string): void {
   const read = async (stream: ReadableStream) => {
@@ -521,7 +494,7 @@ function readSessionUsageFromStream(stream: ReadableStream, sessionId: string): 
 }
 
 /**
- * Handle background read stream errors
+ * Handles background read stream errors
  */
 function handleBackgroundReadError(readError: any): void {
   if (readError.name === 'AbortError' || readError.code === 'ERR_STREAM_PREMATURE_CLOSE') {
@@ -569,15 +542,7 @@ function handleAgentStreamProcessing(
  * Create initial agent processing state
  */
 function createInitialAgentState(): AgentProcessingState {
-  return {
-    currentAgent: undefined,
-    currentToolIndex: -1,
-    currentToolName: '',
-    currentToolArgs: '',
-    currentToolId: '',
-    toolMessages: [],
-    assistantMessages: []
-  };
+  return new AgentProcessingState();
 }
 
 /**
@@ -644,6 +609,11 @@ function updateAgentStateForToolStart(
   data: any
 ): void {
   const agent = agentsManager.getAgent(agentName);
+  if (!agent) {
+    console.error(`Agent not found: ${agentName}`);
+    return;
+  }
+
   agentState.currentAgent = agent;
   agentState.currentToolIndex = data.data.index;
   agentState.currentToolName = data.data.content_block.name;
@@ -743,11 +713,7 @@ function createToolMessage(toolUseId: string, toolResult: string): ToolMessage {
  * Reset agent tool-specific state
  */
 function resetAgentToolState(agentState: AgentProcessingState): void {
-  agentState.currentAgent = undefined;
-  agentState.currentToolIndex = -1;
-  agentState.currentToolName = '';
-  agentState.currentToolArgs = '';
-  agentState.currentToolId = '';
+  agentState.reset();
 }
 
 /**
