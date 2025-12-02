@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { select, input, confirm } from '@inquirer/prompts';
+import { HOME_DIR } from '../constants';
 
 // ANSI color codes
 const RESET = "\x1B[0m";
@@ -68,8 +69,7 @@ const AVAILABLE_TRANSFORMERS = [
 ];
 
 function getConfigPath(): string {
-  const configDir = path.join(process.env.HOME || process.env.USERPROFILE || '', '.claude-code-router');
-  const configPath = path.join(configDir, 'config.json');
+  const configPath = path.join(HOME_DIR, 'config.json');
   
   if (!fs.existsSync(configPath)) {
     throw new Error(`config.json not found at ${configPath}`);
