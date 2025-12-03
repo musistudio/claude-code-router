@@ -25,6 +25,66 @@ import { EventEmitter } from "node:events";
 
 const event = new EventEmitter()
 
+function parseSSEResponse(responseBody: string) {
+  const lines = responseBody.split('\n');
+  let currentEvent: any = {};
+  const events: any[] = [];
+
+  for (const line of lines) {
+    if (!line.trim()) {
+      if (Object.keys(currentEvent).length > 0) {
+        events.push(currentEvent);
+        currentEvent = {};
+      }
+      continue;
+    }
+    if (line.startsWith('event: ')) {
+      currentEvent.event = line.slice(7).trim();
+    } else if (line.startsWith('data: ')) {
+      try {
+        currentEvent.data = JSON.parse(line.slice(6));
+      } catch (e) {
+        currentEvent.data = line.slice(6);
+      }
+    }
+  }
+  if (Object.keys(currentEvent).length > 0) {
+    events.push(currentEvent);
+  }
+
+  const blocks: Record<number, any> = {};
+
+  for (const event of events) {
+    if (!event.data) continue;
+    const data = event.data;
+
+    if (data.type === 'content_block_start') {
+      blocks[data.index] = { ...data.content_block };
+      if (blocks[data.index].type === 'tool_use') {
+        blocks[data.index].input = "";
+      }
+    } else if (data.type === 'content_block_delta') {
+      const block = blocks[data.index];
+      if (block) {
+        if (data.delta.type === 'text_delta') {
+          block.text += data.delta.text;
+        } else if (data.delta.type === 'input_json_delta') {
+          block.input += data.delta.partial_json;
+        }
+      }
+    } else if (data.type === 'content_block_stop') {
+      const block = blocks[data.index];
+      if (block && block.type === 'tool_use') {
+        try {
+          block.input = JSON5.parse(block.input);
+        } catch (e) { }
+      }
+    }
+  }
+
+  return Object.values(blocks);
+}
+
 async function initializeClaudeConfig() {
   const homeDir = homedir();
   const configPath = join(homeDir, ".claude.json");
@@ -111,15 +171,15 @@ async function run(options: RunOptions = {}) {
   const loggerConfig =
     config.LOG !== false
       ? {
-          level: config.LOG_LEVEL || "debug",
-          stream: createStream(generator, {
-            path: HOME_DIR,
-            maxFiles: 3,
-            interval: "1d",
-            compress: false,
-            maxSize: "50M"
-          }),
-        }
+        level: config.LOG_LEVEL || "debug",
+        stream: createStream(generator, {
+          path: HOME_DIR,
+          maxFiles: 3,
+          interval: "1d",
+          compress: false,
+          maxSize: "50M"
+        }),
+      }
       : false;
 
   const server = createServer({
@@ -329,11 +389,14 @@ async function run(options: RunOptions = {}) {
         const [originalStream, clonedStream] = payload.tee();
         const read = async (stream: ReadableStream) => {
           const reader = stream.getReader();
+          const responseDecoder = new TextDecoder();
+          let responseBody = "";
           try {
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
               // Process the value if needed
+              responseBody += responseDecoder.decode(value, { stream: true });
               const dataStr = new TextDecoder().decode(value);
               if (!dataStr.startsWith("event: message_delta")) {
                 continue;
@@ -343,6 +406,17 @@ async function run(options: RunOptions = {}) {
                 const message = JSON.parse(str);
                 sessionUsageCache.put(req.sessionId, message.usage);
               } catch {}
+            }
+            responseBody += responseDecoder.decode();
+            try {
+              const parsedBody = parseSSEResponse(responseBody);
+              if (parsedBody.length > 0) {
+                req.log.info({ responseBody: parsedBody }, "Response Body");
+              } else {
+                req.log.info({ responseBody }, "Response Body");
+              }
+            } catch (error) {
+              req.log.info({ responseBody }, "Response Body");
             }
           } catch (readError: any) {
             if (readError.name === 'AbortError' || readError.code === 'ERR_STREAM_PREMATURE_CLOSE') {
