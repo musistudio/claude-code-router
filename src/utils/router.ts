@@ -103,17 +103,31 @@ const getProjectSpecificRouter = async (req: any) => {
   return undefined; // 返回undefined表示使用原始配置
 };
 
+// Parse model config string, returns { model, reasoningEffort }
+// Format: "provider,model" or "provider,model,reasoning_effort"
+const parseModelConfig = (modelConfig: string): { model: string; reasoningEffort?: string } => {
+  const parts = modelConfig.split(",");
+  if (parts.length >= 3) {
+    return {
+      model: `${parts[0]},${parts[1]}`,
+      reasoningEffort: parts[2],
+    };
+  }
+  return { model: modelConfig };
+};
+
 const getUseModel = async (
   req: any,
   tokenCount: number,
   config: any,
   lastUsage?: Usage | undefined
-) => {
+): Promise<{ model: string; reasoningEffort?: string }> => {
   const projectSpecificRouter = await getProjectSpecificRouter(req);
   const Router = projectSpecificRouter || config.Router;
 
   if (req.body.model.includes(",")) {
-    const [provider, model] = req.body.model.split(",");
+    const parts = req.body.model.split(",");
+    const [provider, model] = parts;
     const finalProvider = config.Providers.find(
       (p: any) => p.name.toLowerCase() === provider
     );
@@ -121,9 +135,14 @@ const getUseModel = async (
       (m: any) => m.toLowerCase() === model
     );
     if (finalProvider && finalModel) {
-      return `${finalProvider.name},${finalModel}`;
+      const result = `${finalProvider.name},${finalModel}`;
+      // Check if reasoning_effort is specified as third parameter
+      if (parts.length >= 3) {
+        return { model: result, reasoningEffort: parts[2] };
+      }
+      return { model: result };
     }
-    return req.body.model;
+    return parseModelConfig(req.body.model);
   }
 
   // if tokenCount is greater than the configured threshold, use the long context model
@@ -137,7 +156,7 @@ const getUseModel = async (
     req.log.info(
       `Using long context model due to token count: ${tokenCount}, threshold: ${longContextThreshold}`
     );
-    return Router.longContext;
+    return parseModelConfig(Router.longContext);
   }
   if (
     req.body?.system?.length > 1 &&
@@ -151,7 +170,7 @@ const getUseModel = async (
         `<CCR-SUBAGENT-MODEL>${model[1]}</CCR-SUBAGENT-MODEL>`,
         ""
       );
-      return model[1];
+      return parseModelConfig(model[1]);
     }
   }
   // Use the background model for any Claude Haiku variant
@@ -161,7 +180,7 @@ const getUseModel = async (
     config.Router.background
   ) {
     req.log.info(`Using background model for ${req.body.model}`);
-    return config.Router.background;
+    return parseModelConfig(config.Router.background);
   }
   // The priority of websearch must be higher than thinking.
   if (
@@ -169,14 +188,14 @@ const getUseModel = async (
     req.body.tools.some((tool: any) => tool.type?.startsWith("web_search")) &&
     Router.webSearch
   ) {
-    return Router.webSearch;
+    return parseModelConfig(Router.webSearch);
   }
   // if exits thinking, use the think model
   if (req.body.thinking && Router.think) {
     req.log.info(`Using think model for ${req.body.thinking}`);
-    return Router.think;
+    return parseModelConfig(Router.think);
   }
-  return Router!.default;
+  return parseModelConfig(Router!.default);
 };
 
 export const router = async (req: any, _res: any, context: any) => {
@@ -206,25 +225,39 @@ export const router = async (req: any, _res: any, context: any) => {
       tools as Tool[]
     );
 
-    let model;
+    let modelResult: { model: string; reasoningEffort?: string } | undefined;
     if (config.CUSTOM_ROUTER_PATH) {
       try {
         const customRouter = require(config.CUSTOM_ROUTER_PATH);
         req.tokenCount = tokenCount; // Pass token count to custom router
-        model = await customRouter(req, config, {
+        const customResult = await customRouter(req, config, {
           event,
         });
+        // Support both string and object return from custom router
+        if (typeof customResult === "string") {
+          modelResult = parseModelConfig(customResult);
+        } else if (customResult) {
+          modelResult = customResult;
+        }
       } catch (e: any) {
         req.log.error(`failed to load custom router: ${e.message}`);
       }
     }
-    if (!model) {
-      model = await getUseModel(req, tokenCount, config, lastMessageUsage);
+    if (!modelResult) {
+      modelResult = await getUseModel(req, tokenCount, config, lastMessageUsage);
     }
-    req.body.model = model;
+    req.body.model = modelResult.model;
+    // Inject reasoning_effort: user request > config > no injection
+    // Only inject if user hasn't already specified one
+    if (modelResult.reasoningEffort && !req.body.reasoning_effort) {
+      req.body.reasoning_effort = modelResult.reasoningEffort;
+      req.log.info(`Injecting reasoning_effort from config: ${modelResult.reasoningEffort}`);
+    } else if (req.body.reasoning_effort) {
+      req.log.info(`Using user-specified reasoning_effort: ${req.body.reasoning_effort}`);
+    }
   } catch (error: any) {
     req.log.error(`Error in router middleware: ${error.message}`);
-    req.body.model = config.Router!.default;
+    req.body.model = parseModelConfig(config.Router!.default).model;
   }
   return;
 };
