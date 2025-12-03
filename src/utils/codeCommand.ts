@@ -10,10 +10,37 @@ import minimist from "minimist";
 import { createEnvVariables } from "./createEnvVariables";
 
 
-export async function executeCodeCommand(args: string[] = []) {
+export async function executeCodeCommand(args: string[] = [], configPath?: string) {
   // Set environment variables using shared function
-  const config = await readConfigFile();
-  const env = await createEnvVariables();
+  const config = await readConfigFile(configPath);
+  let env = await createEnvVariables();
+
+  // If configPath is specified, use the instance's port
+  if (configPath) {
+    const {
+      getConfigPath,
+      getInstanceId,
+      getInstance,
+      isInstanceRunning
+    } = require('./instanceManager');
+
+    const resolvedConfigPath = getConfigPath(configPath);
+    const instanceId = getInstanceId(resolvedConfigPath);
+    const instance = getInstance(instanceId);
+
+    if (!instance || !isInstanceRunning(instanceId)) {
+      console.error(`❌ Instance not running for config: ${resolvedConfigPath}`);
+      console.error(`💡 Start it with: ccr start --config ${configPath}`);
+      process.exit(1);
+    }
+
+    // Override env to use instance's port
+    env = {
+      ...env,
+      ANTHROPIC_API_URL: `http://127.0.0.1:${instance.port}/v1`
+    };
+    console.log(`🔧 Using instance on port ${instance.port}`);
+  }
   const settingsFlag = {
     env
   };

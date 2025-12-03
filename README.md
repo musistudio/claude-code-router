@@ -21,6 +21,7 @@
 
 - **Model Routing**: Route requests to different models based on your needs (e.g., background tasks, thinking, long context).
 - **Multi-Provider Support**: Supports various model providers like OpenRouter, DeepSeek, Ollama, Gemini, Volcengine, and SiliconFlow.
+- **Multiple Instances**: Run unlimited CCR instances simultaneously with different configurations.
 - **Request/Response Transformation**: Customize requests and responses for different providers using transformers.
 - **Dynamic Model Switching**: Switch models on-the-fly within Claude Code using the `/model` command.
 - **CLI Model Management**: Manage models and providers directly from the terminal with `ccr model`.
@@ -413,6 +414,56 @@ The `Router` object defines which model to use for different scenarios:
 `/model provider_name,model_name`
 Example: `/model openrouter,anthropic/claude-3.5-sonnet`
 
+#### Configuration Examples
+
+This repository includes several ready-to-use configuration examples in the root directory:
+
+- **`config.example.json`** - Comprehensive example with all major providers (OpenRouter, DeepSeek, Gemini, Ollama, Groq, Copilot API)
+- **`config.copilot.example.json`** - GitHub Copilot API integration example (see below)
+- **`config.multimodel.example.json`** - Multi-model strategy for cost optimization
+
+Copy and customize these examples to `~/.claude-code-router/config.json` to get started quickly.
+
+#### GitHub Copilot API Integration
+
+Claude Code Router supports integration with [copilot-api](https://github.com/ericc-ch/copilot-api), a local API wrapper that provides access to multiple AI models through a unified interface.
+
+**Setup Steps:**
+
+1. Install and start copilot-api (default port: 4141)
+2. Configure CCR to use the Copilot API endpoint:
+
+```json
+{
+  "Providers": [
+    {
+      "name": "copilot",
+      "api_base_url": "http://localhost:4141/v1/messages",
+      "api_key": "dummy-key-for-local",
+      "models": [
+        "claude-sonnet-4.5",
+        "gpt-5.1",
+        "gpt-5.1-codex"
+      ],
+      "transformer": {
+        "use": ["anthropic"]
+      }
+    }
+  ],
+  "Router": {
+    "default": "copilot,claude-sonnet-4.5",
+    "think": "copilot,gpt-5.1"
+  }
+}
+```
+
+**Important:** Use the `anthropic` transformer for proper message format compatibility. See `config.copilot.example.json` for a complete working example.
+
+**Working Models:** Claude Sonnet 4.5, GPT-5.1, GPT-5.1-Codex
+**Known Issues:** Gemini 3 Pro Preview may have format incompatibility
+
+See [Issue #1021](https://github.com/musistudio/claude-code-router/issues/1021) for more details.
+
 #### Custom Router
 
 For more advanced routing logic, you can specify a custom router script via the `CUSTOM_ROUTER_PATH` in your `config.json`. This allows you to implement complex routing rules beyond the default scenarios.
@@ -462,6 +513,63 @@ For routing within subagents, you must specify a particular provider and model b
 <CCR-SUBAGENT-MODEL>openrouter,anthropic/claude-3.5-sonnet</CCR-SUBAGENT-MODEL>
 Please help me analyze this code snippet for potential optimizations...
 ```
+
+## 🔀 Multiple Instances Support
+
+Run multiple CCR instances simultaneously with different configurations! Perfect for:
+- Different projects requiring different model setups
+- Testing configurations without affecting your main setup
+- Separating work contexts (e.g., personal vs work)
+
+### Usage
+
+**Start a custom instance:**
+```bash
+ccr start --config /path/to/custom-config.json
+```
+
+The port will be auto-allocated if the specified port is busy. Each instance runs independently with its own PID and configuration.
+
+**Use a specific instance:**
+```bash
+ccr code --config /path/to/custom-config.json "your task"
+```
+
+**Check all running instances:**
+```bash
+ccr status                              # Show all instances
+ccr status --config /path/to/config.json  # Show specific instance
+```
+
+**Stop a specific instance:**
+```bash
+ccr stop --config /path/to/custom-config.json
+```
+
+### Example Scenario
+
+```bash
+# Default instance (production setup)
+ccr start
+# -> Runs on port 3456
+
+# Project-specific instance with different models
+ccr start --config ~/project-a/ccr-config.json
+# -> Auto-allocates port 3457
+
+# Another project with local models
+ccr start --config ~/project-b/ccr-config.json
+# -> Auto-allocates port 3458
+
+# View all running instances
+ccr status
+# Shows: Default + 2 custom instances
+
+# Use specific instance
+ccr code --config ~/project-a/ccr-config.json "implement feature X"
+```
+
+See `config.multiinstance.example.json` for a complete example configuration.
 
 ## Status Line (Beta)
 To better monitor the status of claude-code-router at runtime, version v1.0.40 includes a built-in statusline tool, which you can enable in the UI.
