@@ -19,7 +19,8 @@
       "Bash(if [ -f \".dockerignore\" ])",
       "Bash(else echo \"MISSING\")",
       "Bash(npm run build:*)",
-      "Bash(node dist/cli.js:*)"
+      "Bash(node dist/cli.js:*)",
+      "Bash(dir:*)"
     ],
     "deny": [],
     "ask": []

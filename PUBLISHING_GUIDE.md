@@ -97,41 +97,41 @@ ls dist/
 
 **Before publishing**, test that it works:
 
-```bash
-# Create a test installation in a temp directory
-cd /tmp
+**Windows CMD:**
+```cmd
+REM Create a test installation in a temp directory
+cd %TEMP%
 mkdir test-install
 cd test-install
 
-# Link your local package
-npm link /path/to/claude-code-router
+REM Link your local package
+npm link D:\claude-code-router
 
-# Test the CLI command
+REM Test the CLI command
 ccr --help
 ccr status
 
-# If it works, you're ready to publish!
+REM If it works, you're ready to publish!
 
-# Clean up
+REM Clean up
 cd ..
-rm -rf test-install
+rmdir /s /q test-install
 ```
 
 ---
 
 ### **Step 5: Review What Will Be Published**
 
-```bash
-# See what files will be included in the package
+**Windows CMD:**
+```cmd
+REM See what files will be included in the package
 npm pack --dry-run
 
-# OR create a tarball to inspect
+REM OR create a tarball to inspect
 npm pack
 
-# This creates: musistudio-claude-code-router-1.1.0.tgz
-# Extract and inspect:
-tar -xzf musistudio-claude-code-router-1.1.0.tgz
-ls package/
+REM This creates: dev_fasih-claude-code-router-1.1.0.tgz
+REM You can extract it with 7-Zip or WinRAR to inspect
 ```
 
 **Should include**:
@@ -165,7 +165,7 @@ npm publish
 **What happens**:
 1. npm packages your files
 2. Uploads to npm registry
-3. Package is now live at: https://npmjs.com/package/@musistudio/claude-code-router
+3. Package is now live at: https://npmjs.com/package/@dev_fasih/claude-code-router
 
 **Expected output**:
 ```
