@@ -22,8 +22,13 @@ import JSON5 from "json5";
 import { IAgent } from "./agents/type";
 import agentsManager from "./agents";
 import { EventEmitter } from "node:events";
+import { WizardManager } from "./utils/wizardManager";
+import { ConfigManager } from "./utils/configManager";
+import { randomUUID } from "crypto";
 
-const event = new EventEmitter()
+const event = new EventEmitter();
+const configManager = new ConfigManager();
+const wizardManager = new WizardManager(configManager);
 
 async function initializeClaudeConfig() {
   const homeDir = homedir();
@@ -79,12 +84,14 @@ async function run(options: RunOptions = {}) {
   // Handle SIGINT (Ctrl+C) to clean up PID file
   process.on("SIGINT", () => {
     console.log("Received SIGINT, cleaning up...");
+    wizardManager.shutdown();
     cleanupPidFile();
     process.exit(0);
   });
 
   // Handle SIGTERM to clean up PID file
   process.on("SIGTERM", () => {
+    wizardManager.shutdown();
     cleanupPidFile();
     process.exit(0);
   });
@@ -159,6 +166,81 @@ async function run(options: RunOptions = {}) {
   });
   server.addHook("preHandler", async (req, reply) => {
     if (req.url.startsWith("/v1/messages") && !req.url.startsWith("/v1/messages/count_tokens")) {
+      // T082-T091: Wizard Interceptor Integration
+      // Extract message content from request body
+      const body = req.body as any;
+      const messages = body?.messages || [];
+
+      // Get last user message
+      const lastUserMessage = messages
+        .filter((m: any) => m.role === 'user')
+        .pop();
+
+      // Extract text content (handle both string and content block array)
+      let messageContent = '';
+      if (typeof lastUserMessage?.content === 'string') {
+        messageContent = lastUserMessage.content;
+      } else if (Array.isArray(lastUserMessage?.content)) {
+        // Handle content blocks (extract text blocks)
+        const textBlocks = lastUserMessage.content
+          .filter((block: any) => block.type === 'text');
+        messageContent = textBlocks
+          .map((block: any) => block.text)
+          .join(' ');
+      }
+
+      // Extract or generate wizard session ID
+      const wizardSessionId = (req.headers['x-wizard-session'] as string) || randomUUID();
+
+      // Check if this is a wizard command or active wizard session
+      if (wizardManager.isWizardCommand(messageContent) || wizardManager.hasActiveSession(wizardSessionId)) {
+        try {
+          // Process wizard input
+          const wizardResponse = await wizardManager.processInput(wizardSessionId, messageContent);
+
+          // Create Anthropic-compatible response object
+          const anthropicResponse = {
+            id: randomUUID(),
+            type: 'message',
+            role: 'assistant',
+            content: [{
+              type: 'text',
+              text: wizardResponse
+            }],
+            model: 'wizard',
+            stop_reason: 'end_turn',
+            usage: { input_tokens: 0, output_tokens: 0 }
+          };
+
+          // Set wizard session header
+          reply.header('x-wizard-session', wizardSessionId);
+
+          // Send response and short-circuit pipeline
+          reply.send(anthropicResponse);
+          return;
+        } catch (error: any) {
+          server.logger.error('Wizard error:', error);
+
+          // Send error response in Anthropic format
+          const errorResponse = {
+            id: randomUUID(),
+            type: 'message',
+            role: 'assistant',
+            content: [{
+              type: 'text',
+              text: `Error in wizard: ${error.message}\n\nPlease try again or type /cancel to exit.`
+            }],
+            model: 'wizard',
+            stop_reason: 'end_turn',
+            usage: { input_tokens: 0, output_tokens: 0 }
+          };
+
+          reply.header('x-wizard-session', wizardSessionId);
+          reply.send(errorResponse);
+          return;
+        }
+      }
+
       const useAgents = []
 
       for (const agent of agentsManager.getAllAgents()) {

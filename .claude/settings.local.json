@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.specify/scripts/bash/create-phr.sh:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git fetch:*)",
+      "Bash(powershell -File:*)",
+      "Bash(git config:*)",
+      "Bash(cd:*)",
+      "Bash(if [ ! -d \"history/prompts/external-model-wizard\" ])",
+      "Bash(then mkdir -p \"history/prompts/external-model-wizard\")",
+      "Bash(fi)",
+      "Bash(powershell -Command:*)",
+      "Bash(npm test:*)",
+      "Bash(npm install:*)",
+      "Bash(if [ -f \".specify/scripts/bash/create-phr.sh\" ])",
+      "Bash(then echo \"EXISTS\")",
+      "Bash(else echo \"NOT_FOUND\")",
+      "Bash(if [ -f \".dockerignore\" ])",
+      "Bash(else echo \"MISSING\")",
+      "Bash(npm run build:*)",
+      "Bash(node dist/cli.js:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

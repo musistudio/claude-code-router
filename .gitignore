@@ -1,8 +1,16 @@
 node_modules
 .env
+.env.*
+!.env.example
 log.txt
+*.log
 .idea
 dist
+build
 .DS_Store
 .vscode
 tsconfig.tsbuildinfo
+*.tmp
+*.swp
+*.swo
+Thumbs.db

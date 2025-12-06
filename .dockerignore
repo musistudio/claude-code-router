@@ -1,2 +1,42 @@
-node_modules
+# Dependencies
+node_modules/
+
+# Logs
 npm-debug.log
+*.log
+log.txt
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Build outputs
+dist/
+build/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+
+# TypeScript
+tsconfig.tsbuildinfo
+*.tmp
+
+# Specs and documentation (not needed in container)
+specs/
+history/
+.specify/
