@@ -64,9 +64,12 @@ export async function executeCodeCommand(args: string[] = []) {
       }
     }
   }
+  // Fix for DEP0190: Passing args to a child process with shell option true
+  // We join the command and arguments into a single string
+  const command = `${JSON.stringify(claudePath)} ${argsArr.join(" ")}`;
   const claudeProcess = spawn(
-    claudePath,
-    argsArr,
+    command,
+    [],
     {
       env: {
         ...process.env,
