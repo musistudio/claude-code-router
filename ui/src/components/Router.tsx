@@ -47,21 +47,24 @@ export function Router() {
 
   // Handle case where config.Providers might be null or undefined
   const providers = Array.isArray(config.Providers) ? config.Providers : [];
-  
+
+  // Create model options with provider grouping and add "default" option for each provider
   const modelOptions = providers.flatMap((provider) => {
     // Handle case where individual provider might be null or undefined
     if (!provider) return [];
-    
+
     // Handle case where provider.models might be null or undefined
     const models = Array.isArray(provider.models) ? provider.models : [];
-    
+
     // Handle case where provider.name might be null or undefined
     const providerName = provider.name || "Unknown Provider";
-    
+
     return models.map((model) => ({
       value: `${providerName},${model || "Unknown Model"}`,
-      label: `${providerName}, ${model || "Unknown Model"}`,
-    }));
+      label: `${model || "Unknown Model"}`,
+      displayLabel: `${providerName}, ${model || "Unknown Model"}`,
+      group: providerName,
+    }))
   });
 
   return (
