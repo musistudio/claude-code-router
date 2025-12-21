@@ -41,7 +41,11 @@ export const apiKeyAuth =
       token = authKey;
     }
 
-    if (token !== apiKey) {
+    const validKeys = Array.isArray(apiKey)
+      ? apiKey.map((k: string) => k.trim()).filter(Boolean)
+      : String(apiKey).split(",").map((k) => k.trim()).filter(Boolean);
+
+    if (!validKeys.includes(token)) {
       reply.status(401).send("Invalid API key");
       return;
     }
