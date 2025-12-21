@@ -26,7 +26,7 @@ Commands:
   stop          Stop server
   restart       Restart server
   status        Show server status
-  statusline    Integrated statusline
+  statusline    Statusline command (called by Claude Code, not for direct use)
   code          Execute claude command
   model         Interactive model selection and configuration
   activate      Output environment variables for shell integration
