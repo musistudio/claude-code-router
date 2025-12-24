@@ -44,15 +44,17 @@ npm install -g @musistudio/claude-code-router
 
 ### 2. 配置
 
-创建并配置您的 `~/.claude-code-router/config.json` 文件。有关更多详细信息，您可以参考 `config.example.json`。
+> **注意**: 您可以通过设置 `CLAUDE_CODE_ROUTER_DIR` 环境变量自定义配置目录。默认情况下，它位于 `~/.claude-code-router`。
+
+在 claude-code-router 目录中创建并配置您的 `config.json` 文件。有关更多详细信息，您可以参考 `config.example.json`。
 
 `config.json` 文件有几个关键部分：
 - **`PROXY_URL`** (可选): 您可以为 API 请求设置代理，例如：`"PROXY_URL": "http://127.0.0.1:7890"`。
 - **`LOG`** (可选): 您可以通过将其设置为 `true` 来启用日志记录。当设置为 `false` 时，将不会创建日志文件。默认值为 `true`。
 - **`LOG_LEVEL`** (可选): 设置日志级别。可用选项包括：`"fatal"`、`"error"`、`"warn"`、`"info"`、`"debug"`、`"trace"`。默认值为 `"debug"`。
 - **日志系统**: Claude Code Router 使用两个独立的日志系统：
-  - **服务器级别日志**: HTTP 请求、API 调用和服务器事件使用 pino 记录在 `~/.claude-code-router/logs/` 目录中，文件名类似于 `ccr-*.log`
-  - **应用程序级别日志**: 路由决策和业务逻辑事件记录在 `~/.claude-code-router/claude-code-router.log` 文件中
+  - **服务器级别日志**: HTTP 请求、API 调用和服务器事件使用 pino 记录在 `logs/` 子目录中，文件名类似于 `ccr-*.log`
+  - **应用程序级别日志**: 路由决策和业务逻辑事件记录在 `claude-code-router.log` 文件中
 - **`APIKEY`** (可选): 您可以设置一个密钥来进行身份验证。设置后，客户端请求必须在 `Authorization` 请求头 (例如, `Bearer your-secret-key`) 或 `x-api-key` 请求头中提供此密钥。例如：`"APIKEY": "your-secret-key"`。
 - **`HOST`** (可选): 您可以设置服务的主机地址。如果未设置 `APIKEY`，出于安全考虑，主机地址将强制设置为 `127.0.0.1`，以防止未经授权的访问。例如：`"HOST": "0.0.0.0"`。
 - **`NON_INTERACTIVE_MODE`** (可选): 当设置为 `true` 时，启用与非交互式环境（如 GitHub Actions、Docker 容器或其他 CI/CD 系统）的兼容性。这会设置适当的环境变量（`CI=true`、`FORCE_COLOR=0` 等）并配置 stdin 处理，以防止进程在自动化环境中挂起。例如：`"NON_INTERACTIVE_MODE": true`。
@@ -336,7 +338,7 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
 {
   "transformers": [
       {
-        "path": "/User/xxx/.claude-code-router/plugins/gemini-cli.js",
+        "path": "/path/to/your/claude-code-router/plugins/gemini-cli.js",
         "options": {
           "project": "xxx"
         }
@@ -369,7 +371,7 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
 
 ```json
 {
-  "CUSTOM_ROUTER_PATH": "/User/xxx/.claude-code-router/custom-router.js"
+  "CUSTOM_ROUTER_PATH": "/path/to/your/claude-code-router/custom-router.js"
 }
 ```
 
@@ -378,7 +380,7 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
 这是一个基于 `custom-router.example.js` 的 `custom-router.js` 示例：
 
 ```javascript
-// /User/xxx/.claude-code-router/custom-router.js
+// /path/to/your/claude-code-router/custom-router.js
 
 /**
  * 一个自定义路由函数，用于根据请求确定使用哪个模型。
@@ -450,6 +452,8 @@ jobs:
       - name: Prepare Environment
         run: |
           curl -fsSL https://bun.sh/install | bash
+          # 为工作流设置 CLAUDE_CODE_ROUTER_DIR 环境变量
+          echo "CLAUDE_CODE_ROUTER_DIR=$HOME/.claude-code-router" >> $GITHUB_ENV
           mkdir -p $HOME/.claude-code-router
           cat << 'EOF' > $HOME/.claude-code-router/config.json
           {

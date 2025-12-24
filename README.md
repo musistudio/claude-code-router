@@ -45,7 +45,9 @@ npm install -g @musistudio/claude-code-router
 
 ### 2. Configuration
 
-Create and configure your `~/.claude-code-router/config.json` file. For more details, you can refer to `config.example.json`.
+> **Note**: You can customize the configuration directory by setting the `CLAUDE_CODE_ROUTER_DIR` environment variable. By default, it is located at `~/.claude-code-router`.
+
+Create and configure your `config.json` file in the claude-code-router directory. For more details, you can refer to `config.example.json`.
 
 The `config.json` file has several key sections:
 
@@ -53,8 +55,8 @@ The `config.json` file has several key sections:
 - **`LOG`** (optional): You can enable logging by setting it to `true`. When set to `false`, no log files will be created. Default is `true`.
 - **`LOG_LEVEL`** (optional): Set the logging level. Available options are: `"fatal"`, `"error"`, `"warn"`, `"info"`, `"debug"`, `"trace"`. Default is `"debug"`.
 - **Logging Systems**: The Claude Code Router uses two separate logging systems:
-  - **Server-level logs**: HTTP requests, API calls, and server events are logged using pino in the `~/.claude-code-router/logs/` directory with filenames like `ccr-*.log`
-  - **Application-level logs**: Routing decisions and business logic events are logged in `~/.claude-code-router/claude-code-router.log`
+  - **Server-level logs**: HTTP requests, API calls, and server events are logged using pino in the `logs/` subdirectory with filenames like `ccr-*.log`
+  - **Application-level logs**: Routing decisions and business logic events are logged in `claude-code-router.log`
 - **`APIKEY`** (optional): You can set a secret key to authenticate requests. When set, clients must provide this key in the `Authorization` header (e.g., `Bearer your-secret-key`) or the `x-api-key` header. Example: `"APIKEY": "your-secret-key"`.
 - **`HOST`** (optional): You can set the host address for the server. If `APIKEY` is not set, the host will be forced to `127.0.0.1` for security reasons to prevent unauthorized access. Example: `"HOST": "0.0.0.0"`.
 - **`NON_INTERACTIVE_MODE`** (optional): When set to `true`, enables compatibility with non-interactive environments like GitHub Actions, Docker containers, or other CI/CD systems. This sets appropriate environment variables (`CI=true`, `FORCE_COLOR=0`, etc.) and configures stdin handling to prevent the process from hanging in automated environments. Example: `"NON_INTERACTIVE_MODE": true`.
@@ -388,7 +390,7 @@ You can also create your own transformers and load them via the `transformers` f
 {
   "transformers": [
     {
-      "path": "/User/xxx/.claude-code-router/plugins/gemini-cli.js",
+      "path": "/path/to/your/claude-code-router/plugins/gemini-cli.js",
       "options": {
         "project": "xxx"
       }
@@ -421,7 +423,7 @@ In your `config.json`:
 
 ```json
 {
-  "CUSTOM_ROUTER_PATH": "/User/xxx/.claude-code-router/custom-router.js"
+  "CUSTOM_ROUTER_PATH": "/path/to/your/claude-code-router/custom-router.js"
 }
 ```
 
@@ -430,7 +432,7 @@ The custom router file must be a JavaScript module that exports an `async` funct
 Here is an example of a `custom-router.js` based on `custom-router.example.js`:
 
 ```javascript
-// /User/xxx/.claude-code-router/custom-router.js
+// /path/to/your/claude-code-router/custom-router.js
 
 /**
  * A custom router function to determine which model to use based on the request.
@@ -502,6 +504,8 @@ jobs:
       - name: Prepare Environment
         run: |
           curl -fsSL https://bun.sh/install | bash
+          # Set the CLAUDE_CODE_ROUTER_DIR environment variable for the workflow
+          echo "CLAUDE_CODE_ROUTER_DIR=$HOME/.claude-code-router" >> $GITHUB_ENV
           mkdir -p $HOME/.claude-code-router
           cat << 'EOF' > $HOME/.claude-code-router/config.json
           {

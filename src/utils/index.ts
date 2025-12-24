@@ -102,7 +102,7 @@ export const readConfigFile = async () => {
         // Create a minimal default config file
         await writeConfigFile(config);
         console.log(
-            "Created minimal default configuration file at ~/.claude-code-router/config.json"
+            `Created minimal default configuration file at ${CONFIG_FILE}`
         );
         console.log(
             "Please edit this file with your actual configuration."
