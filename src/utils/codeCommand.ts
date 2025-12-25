@@ -24,7 +24,7 @@ export async function executeCodeCommand(args: string[] = []) {
       padding: 0,
     }
   }
-  // args.push('--settings', `${JSON.stringify(settingsFlag)}`);
+  args.push('--settings', `${JSON.stringify(settingsFlag)}`);
 
   // Non-interactive mode for automation environments
   if (config.NON_INTERACTIVE_MODE) {
