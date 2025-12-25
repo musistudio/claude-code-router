@@ -34,12 +34,20 @@ Commands:
   -v, version   Show version information
   -h, help      Show help information
 
-Example:
+Examples:
   ccr start
   ccr code "Write a Hello World"
+  ccr code "Explain this code" --claude-option="--model claude-3-5-sonnet-20241022"
+  ccr code "Help me debug" -C "--max-tokens 1000" -C "--temperature 0.1"
   ccr model
   eval "$(ccr activate)"  # Set environment variables globally
   ccr ui
+
+Claude Code Options:
+  --claude-option, -C    Forward additional options to Claude Code
+                         Can be used multiple times to pass multiple options
+                         Examples: --claude-option="--model claude-3-5-sonnet"
+                                   -C "--max-tokens 1000" -C "--temperature 0.5"
 `;
 
 async function waitForService(

@@ -42,31 +42,77 @@ export async function executeCodeCommand(args: string[] = []) {
   // Increment reference count when command starts
   incrementReferenceCount();
 
+  // Parse arguments to handle claude-option forwarding
+  // We need to manually parse because minimist doesn't handle options with values well when they're mixed
+  const claudeOptions: string[] = [];
+  const regularArgs: string[] = [];
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+
+    if (arg === '--claude-option' || arg === '-C') {
+      // Next argument is the value for claude-option
+      if (i + 1 < args.length) {
+        claudeOptions.push(args[i + 1]);
+        i++; // Skip the next argument since we consumed it
+      }
+    } else if (arg.startsWith('--claude-option=')) {
+      // Handle --claude-option=value format
+      const value = arg.substring('--claude-option='.length);
+      claudeOptions.push(value);
+    } else if (arg.startsWith('-C=')) {
+      // Handle -C=value format
+      const value = arg.substring('-C='.length);
+      claudeOptions.push(value);
+    } else {
+      regularArgs.push(arg);
+    }
+  }
+
   // Execute claude command
   const claudePath = config?.CLAUDE_PATH || process.env.CLAUDE_PATH || "claude";
-
-  const joinedArgs = args.length > 0 ? quote(args) : "";
 
   const stdioConfig: StdioOptions = config.NON_INTERACTIVE_MODE
     ? ["pipe", "inherit", "inherit"] // Pipe stdin for non-interactive
     : "inherit"; // Default inherited behavior
 
-  const argsObj = minimist(args)
-  const argsArr = []
-  for (const [argsObjKey, argsObjValue] of Object.entries(argsObj)) {
-    if (argsObjKey !== '_' && argsObj[argsObjKey]) {
-      const prefix = argsObjKey.length === 1 ? '-' : '--';
-      // For boolean flags, don't append the value
-      if (argsObjValue === true) {
-        argsArr.push(`${prefix}${argsObjKey}`);
-      } else {
-        argsArr.push(`${prefix}${argsObjKey} ${JSON.stringify(argsObjValue)}`);
+  // Build final args for Claude Code: regular args + forwarded claude options
+  const finalClaudeArgs = [
+    ...regularArgs,
+    ...claudeOptions.flatMap(option => {
+      // Split options by spaces while preserving quoted strings
+      const parts: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      let quoteChar = '';
+
+      for (let i = 0; i < option.length; i++) {
+        const char = option[i];
+        if ((char === '"' || char === "'") && !inQuotes) {
+          inQuotes = true;
+          quoteChar = char;
+        } else if (char === quoteChar && inQuotes) {
+          inQuotes = false;
+          quoteChar = '';
+        } else if (char === ' ' && !inQuotes) {
+          if (current) {
+            parts.push(current);
+            current = '';
+          }
+        } else {
+          current += char;
+        }
       }
-    }
-  }
+      if (current) {
+        parts.push(current);
+      }
+      return parts;
+    })
+  ];
+
   const claudeProcess = spawn(
     claudePath,
-    argsArr,
+    finalClaudeArgs,
     {
       env: {
         ...process.env,

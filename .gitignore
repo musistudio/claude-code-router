@@ -6,3 +6,5 @@ dist
 .DS_Store
 .vscode
 tsconfig.tsbuildinfo
+ui/tsconfig.tsbuildinfo
+package-lock.json
