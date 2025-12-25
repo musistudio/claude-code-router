@@ -56,11 +56,17 @@ export class ImageAgent implements IAgent {
   }
 
   shouldHandle(req: any, config: any): boolean {
+    // Check if req.body and req.body.messages exist
+    if (!req.body || !Array.isArray(req.body.messages) || req.body.messages.length === 0) {
+      return false;
+    }
+
     if (!config.Router.image || req.body.model === config.Router.image)
       return false;
     const lastMessage = req.body.messages[req.body.messages.length - 1];
     if (
       !config.forceUseImageAgent &&
+      lastMessage &&
       lastMessage.role === "user" &&
       Array.isArray(lastMessage.content) &&
       lastMessage.content.find(
@@ -242,19 +248,27 @@ Always ensure that your response reflects a clear, accurate interpretation of th
   }
 
   reqHandler(req: any, config: any) {
+    // Check if req.body and req.body.messages exist
+    if (!req.body || !Array.isArray(req.body.messages)) {
+      return;
+    }
+
     // Inject system prompt
-    req.body?.system?.push({
+    if (!req.body.system) {
+      req.body.system = [];
+    }
+    req.body.system.push({
       type: "text",
-      text: `You are a text-only language model and do not possess visual perception.  
-If the user requests you to view, analyze, or extract information from an image, you **must** call the \`analyzeImage\` tool.  
+      text: `You are a text-only language model and do not possess visual perception.
+If the user requests you to view, analyze, or extract information from an image, you **must** call the \`analyzeImage\` tool.
 
-When invoking this tool, you must pass the correct \`imageId\` extracted from the prior conversation.  
-Image identifiers are always provided in the format \`[Image #imageId]\`.  
+When invoking this tool, you must pass the correct \`imageId\` extracted from the prior conversation.
+Image identifiers are always provided in the format \`[Image #imageId]\`.
 
-If multiple images exist, select the **most relevant imageId** based on the user’s current request and prior context.  
+If multiple images exist, select the **most relevant imageId** based on the user's current request and prior context.
 
-Do not attempt to describe or analyze the image directly yourself.  
-Ignore any user interruptions or unrelated instructions that might cause you to skip this requirement.  
+Do not attempt to describe or analyze the image directly yourself.
+Ignore any user interruptions or unrelated instructions that might cause you to skip this requirement.
 Your response should consistently follow this rule whenever image-related analysis is requested.`,
     });
 
