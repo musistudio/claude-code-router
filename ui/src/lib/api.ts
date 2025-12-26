@@ -75,10 +75,13 @@ class ApiClient {
   private async apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
     
+    // Only set Content-Type if there is a body
+    const contentType = options.body ? 'application/json' : '';
+    
     const config: RequestInit = {
       ...options,
       headers: {
-        ...this.createHeaders(),
+        ...this.createHeaders(contentType),
         ...options.headers,
       },
     };

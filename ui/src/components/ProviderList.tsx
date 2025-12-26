@@ -7,9 +7,10 @@ interface ProviderListProps {
   providers: Provider[];
   onEdit: (index: number) => void;
   onRemove: (index: number) => void;
+  showToast: (message: string, type: 'success' | 'error' | 'warning') => void;
 }
 
-export function ProviderList({ providers, onEdit, onRemove }: ProviderListProps) {
+export function ProviderList({ providers, onEdit, onRemove, showToast }: ProviderListProps) {
   // Handle case where providers might be null or undefined
   if (!providers || !Array.isArray(providers)) {
     return (
@@ -61,7 +62,21 @@ export function ProviderList({ providers, onEdit, onRemove }: ProviderListProps)
               <div className="flex flex-wrap gap-2 pt-2">
                 {models.map((model, modelIndex) => (
                   // Handle case where model might be null or undefined
-                  <Badge key={modelIndex} variant="outline" className="font-normal transition-all-ease hover:scale-105">
+                  <Badge 
+                    key={modelIndex} 
+                    variant="outline" 
+                    className="font-normal transition-all-ease hover:scale-105 cursor-pointer"
+                    onClick={async () => {
+                      const textToCopy = `${providerName},${model}`;
+                      try {
+                        await navigator.clipboard.writeText(textToCopy);
+                        showToast(`"${textToCopy}" copied to clipboard!`, 'success');
+                      } catch (err) {
+                        console.error('Failed to copy text: ', err);
+                        showToast('Failed to copy to clipboard.', 'error');
+                      }
+                    }}
+                  >
                     {model || "Unnamed Model"}
                   </Badge>
                 ))}

@@ -338,7 +338,7 @@ function App() {
       </header>
       <main className="flex h-[calc(100vh-4rem)] gap-4 p-4 overflow-hidden">
         <div className="w-3/5">
-          <Providers />
+          <Providers showToast={(message, type) => setToast({ message, type })} />
         </div>
         <div className="flex w-2/5 flex-col gap-4">
           <div className="h-3/5">

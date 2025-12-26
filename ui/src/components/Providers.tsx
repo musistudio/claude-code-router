@@ -23,7 +23,7 @@ import type { Provider } from "@/types";
 
 interface ProviderType extends Provider {}
 
-export function Providers() {
+export function Providers({ showToast }: { showToast: (message: string, type: 'success' | 'error' | 'warning') => void }) {
   const { t } = useTranslation();
   const { config, setConfig } = useConfig();
   const [editingProviderIndex, setEditingProviderIndex] = useState<number | null>(null);
@@ -551,6 +551,7 @@ export function Providers() {
           providers={filteredProviders}
           onEdit={handleEditProvider}
           onRemove={handleSetDeletingProviderIndex}
+          showToast={showToast}
         />
       </CardContent>
 
