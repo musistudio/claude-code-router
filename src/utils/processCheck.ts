@@ -3,6 +3,7 @@ import { PID_FILE, REFERENCE_COUNT_FILE } from '../constants';
 import { readConfigFile } from '.';
 import find from 'find-process';
 import { execSync } from 'child_process'; // 引入 execSync 来执行命令行
+import { getRuntimeState } from './runtimeState';
 
 export async function isProcessRunning(pid: number): Promise<boolean> {
     try {
@@ -123,12 +124,18 @@ export async function getServiceInfo() {
     const pid = getServicePid();
     const running = await isServiceRunning();
     const config = await readConfigFile();
-    const port = config.PORT || 3456;
+    const runtimeState = getRuntimeState();
+    
+    const configPort = config.PORT || 3456;
+    // Prioritize runtime port over config port (Requirements 2.1, 2.2)
+    const port = runtimeState?.port || configPort;
 
     return {
         running,
         pid,
         port,
+        configPort,                          // Config file port (Requirements 2.3)
+        isRuntimePort: !!runtimeState,       // Whether port is from runtime state (Requirements 2.2)
         endpoint: `http://127.0.0.1:${port}`,
         pidFile: PID_FILE,
         referenceCount: getReferenceCount()

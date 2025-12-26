@@ -6,6 +6,7 @@ import fastifyStatic from "@fastify/static";
 import { readdirSync, statSync, readFileSync, writeFileSync, existsSync } from "fs";
 import { homedir } from "os";
 import {calculateTokenCount} from "./utils/router";
+import { getRuntimeState } from "./utils/runtimeState";
 
 export const createServer = (config: any): Server => {
   const server = new Server(config);
@@ -18,7 +19,14 @@ export const createServer = (config: any): Server => {
 
   // Add endpoint to read config.json with access control
   server.app.get("/api/config", async (req, reply) => {
-    return await readConfigFile();
+    const config = await readConfigFile();
+    const runtimeState = getRuntimeState();
+    
+    return {
+      ...config,
+      runtimePort: runtimeState?.port ?? null,
+      runtimeHost: runtimeState?.host ?? null,
+    };
   });
 
   server.app.get("/api/transformers", async () => {
@@ -36,6 +44,12 @@ export const createServer = (config: any): Server => {
   // Add endpoint to save config.json with access control
   server.app.post("/api/config", async (req, reply) => {
     const newConfig = req.body;
+    const existingConfig = await readConfigFile();
+
+    // If PORT is not provided in request, preserve existing value
+    if (newConfig.PORT === undefined) {
+      newConfig.PORT = existingConfig.PORT;
+    }
 
     // Backup existing config file if it exists
     const backupPath = await backupConfigFile();

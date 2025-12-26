@@ -55,6 +55,7 @@ The `config.json` file has several key sections:
   - **Application-level logs**: Routing decisions and business logic events are logged in `~/.claude-code-router/claude-code-router.log`
 - **`APIKEY`** (optional): You can set a secret key to authenticate requests. When set, clients must provide this key in the `Authorization` header (e.g., `Bearer your-secret-key`) or the `x-api-key` header. Example: `"APIKEY": "your-secret-key"`.
 - **`HOST`** (optional): You can set the host address for the server. If `APIKEY` is not set, the host will be forced to `127.0.0.1` for security reasons to prevent unauthorized access. Example: `"HOST": "0.0.0.0"`.
+- **`ALLOWED_ORIGINS`** (optional): An array of custom origins allowed for CORS when no APIKEY is set. By default, only `http://127.0.0.1:{PORT}` and `http://localhost:{PORT}` are allowed. Use this to allow access from custom domains or proxies. Example: `"ALLOWED_ORIGINS": ["http://ccr.local", "http://my-proxy.local:8080"]`.
 - **`NON_INTERACTIVE_MODE`** (optional): When set to `true`, enables compatibility with non-interactive environments like GitHub Actions, Docker containers, or other CI/CD systems. This sets appropriate environment variables (`CI=true`, `FORCE_COLOR=0`, etc.) and configures stdin handling to prevent the process from hanging in automated environments. Example: `"NON_INTERACTIVE_MODE": true`.
 
 - **`Providers`**: Used to configure different model providers.

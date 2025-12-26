@@ -53,6 +53,7 @@ npm install -g @musistudio/claude-code-router
   - **应用程序级别日志**: 路由决策和业务逻辑事件记录在 `~/.claude-code-router/claude-code-router.log` 文件中
 - **`APIKEY`** (可选): 您可以设置一个密钥来进行身份验证。设置后，客户端请求必须在 `Authorization` 请求头 (例如, `Bearer your-secret-key`) 或 `x-api-key` 请求头中提供此密钥。例如：`"APIKEY": "your-secret-key"`。
 - **`HOST`** (可选): 您可以设置服务的主机地址。如果未设置 `APIKEY`，出于安全考虑，主机地址将强制设置为 `127.0.0.1`，以防止未经授权的访问。例如：`"HOST": "0.0.0.0"`。
+- **`ALLOWED_ORIGINS`** (可选): 当未设置 `APIKEY` 时，允许的自定义 CORS 来源数组。默认情况下，只允许 `http://127.0.0.1:{PORT}` 和 `http://localhost:{PORT}`。使用此配置可以允许从自定义域名或代理访问。例如：`"ALLOWED_ORIGINS": ["http://ccr.local", "http://my-proxy.local:8080"]`。
 - **`NON_INTERACTIVE_MODE`** (可选): 当设置为 `true` 时，启用与非交互式环境（如 GitHub Actions、Docker 容器或其他 CI/CD 系统）的兼容性。这会设置适当的环境变量（`CI=true`、`FORCE_COLOR=0` 等）并配置 stdin 处理，以防止进程在自动化环境中挂起。例如：`"NON_INTERACTIVE_MODE": true`。
 - **`Providers`**: 用于配置不同的模型提供商。
 - **`Router`**: 用于设置路由规则。`default` 指定默认模型，如果未配置其他路由，则该模型将用于所有请求。

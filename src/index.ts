@@ -11,6 +11,7 @@ import {
   isServiceRunning,
   savePid,
 } from "./utils/processCheck";
+import { saveRuntimeState, cleanupRuntimeState } from "./utils/runtimeState";
 import { CONFIG_FILE } from "./constants";
 import { createStream } from 'rotating-file-stream';
 import { HOME_DIR } from "./constants";
@@ -79,12 +80,14 @@ async function run(options: RunOptions = {}) {
   // Handle SIGINT (Ctrl+C) to clean up PID file
   process.on("SIGINT", () => {
     console.log("Received SIGINT, cleaning up...");
+    cleanupRuntimeState();
     cleanupPidFile();
     process.exit(0);
   });
 
   // Handle SIGTERM to clean up PID file
   process.on("SIGTERM", () => {
+    cleanupRuntimeState();
     cleanupPidFile();
     process.exit(0);
   });
@@ -93,6 +96,13 @@ async function run(options: RunOptions = {}) {
   const servicePort = process.env.SERVICE_PORT
     ? parseInt(process.env.SERVICE_PORT)
     : port;
+
+  // Save runtime state with actual port being used
+  saveRuntimeState({
+    port: servicePort,
+    host: HOST,
+    startTime: new Date().toISOString()
+  });
 
   // Configure logger based on config settings
   const pad = num => (num > 9 ? "" : "0") + num;
