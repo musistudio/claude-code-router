@@ -48,7 +48,8 @@
     "timeout": "API Timeout (ms)",
     "proxy_url": "Proxy URL",
     "custom_router_path": "Custom Router Script Path",
-    "custom_router_path_placeholder": "Enter absolute path to custom router script file"
+    "custom_router_path_placeholder": "Enter absolute path to custom router script file",
+    "runtime_port_hint": "Runtime port (config file: {{configPort}})"
   },
   "transformers": {
     "title": "Custom Transformers",

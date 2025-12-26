@@ -8,6 +8,7 @@ import {
   isServiceRunning,
   getServiceInfo,
 } from "./utils/processCheck";
+import { cleanupRuntimeState } from "./utils/runtimeState";
 import { runModelSelector } from "./utils/modelSelector"; // ADD THIS LINE
 import { activateCommand } from "./utils/activateCommand";
 import { version } from "../package.json";
@@ -72,6 +73,7 @@ async function main() {
       try {
         const pid = parseInt(readFileSync(PID_FILE, "utf-8"));
         process.kill(pid);
+        cleanupRuntimeState();
         cleanupPidFile();
         if (existsSync(REFERENCE_COUNT_FILE)) {
           try {
@@ -87,6 +89,7 @@ async function main() {
         console.log(
           "Failed to stop the service. It may have already been stopped."
         );
+        cleanupRuntimeState();
         cleanupPidFile();
       }
       break;
@@ -295,6 +298,7 @@ async function main() {
       try {
         const pid = parseInt(readFileSync(PID_FILE, "utf-8"));
         process.kill(pid);
+        cleanupRuntimeState();
         cleanupPidFile();
         if (existsSync(REFERENCE_COUNT_FILE)) {
           try {
@@ -306,6 +310,7 @@ async function main() {
         console.log("claude code router service has been stopped.");
       } catch (e) {
         console.log("Service was not running or failed to stop.");
+        cleanupRuntimeState();
         cleanupPidFile();
       }
 

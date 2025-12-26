@@ -23,8 +23,12 @@ interface SettingsDialogProps {
 
 export function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogProps) {
   const { t } = useTranslation();
-  const { config, setConfig } = useConfig();
+  const { config, setConfig, runtimePort, markFieldModified } = useConfig();
   const [isStatusLineConfigOpen, setIsStatusLineConfigOpen] = useState(false);
+
+  // Display runtime port if available, otherwise config port
+  const displayPort = runtimePort ?? config?.PORT ?? 3456;
+  const isRuntimePort = runtimePort !== null && runtimePort !== config?.PORT;
 
   if (!config) {
     return null;
@@ -157,12 +161,18 @@ export function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogProps) {
             <Input
               id="port"
               type="number"
-              value={config.PORT}
-              onChange={(e) =>
-                setConfig({ ...config, PORT: parseInt(e.target.value, 10) })
-              }
+              value={displayPort}
+              onChange={(e) => {
+                markFieldModified('PORT');
+                setConfig({ ...config, PORT: parseInt(e.target.value, 10) });
+              }}
               className="transition-all-ease focus:scale-[1.01]"
             />
+            {isRuntimePort && (
+              <span className="text-xs text-muted-foreground">
+                {t("toplevel.runtime_port_hint", { configPort: config.PORT })}
+              </span>
+            )}
           </div>
           <div className="space-y-2">
             <Label

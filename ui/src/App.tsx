@@ -30,7 +30,7 @@ import "@/styles/animations.css";
 function App() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { config, error } = useConfig();
+  const { config, runtimePort, modifiedFields, clearModifiedFields, error } = useConfig();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isJsonEditorOpen, setIsJsonEditorOpen] = useState(false);
   const [isLogViewerOpen, setIsLogViewerOpen] = useState(false);
@@ -44,6 +44,27 @@ function App() {
   const [hasCheckedUpdate, setHasCheckedUpdate] = useState(false);
   const hasAutoCheckedUpdate = useRef(false);
 
+  // Prepare config for saving, excluding PORT if not modified
+  const prepareConfigForSave = useCallback(() => {
+    if (!config) return null;
+    
+    // Create a copy of config to modify
+    const configToSave = { ...config };
+    
+    // If PORT was not explicitly modified by user, and we have a runtime port,
+    // exclude PORT from the save payload to preserve the config file value
+    if (!modifiedFields.has('PORT') && runtimePort !== null) {
+      // Remove PORT from the config to save - the server will preserve existing value
+      delete (configToSave as Record<string, unknown>).PORT;
+    }
+    
+    // Remove runtime-only fields that shouldn't be saved
+    delete (configToSave as Record<string, unknown>).runtimePort;
+    delete (configToSave as Record<string, unknown>).runtimeHost;
+    
+    return configToSave;
+  }, [config, modifiedFields, runtimePort]);
+
   const saveConfig = async () => {
     // Handle case where config might be null or undefined
     if (!config) {
@@ -51,11 +72,20 @@ function App() {
       return;
     }
     
+    const configToSave = prepareConfigForSave();
+    if (!configToSave) {
+      setToast({ message: t('app.config_missing'), type: 'error' });
+      return;
+    }
+    
     try {
       // Save to API
-      const response = await api.updateConfig(config);
+      const response = await api.updateConfig(configToSave);
       // Show success message or handle as needed
       console.log('Config saved successfully');
+      
+      // Clear modified fields after successful save
+      clearModifiedFields();
       
       // 根据响应信息进行提示
       if (response && typeof response === 'object' && 'success' in response) {
@@ -83,9 +113,15 @@ function App() {
       return;
     }
     
+    const configToSave = prepareConfigForSave();
+    if (!configToSave) {
+      setToast({ message: t('app.config_missing'), type: 'error' });
+      return;
+    }
+    
     try {
       // Save to API
-      const response = await api.updateConfig(config);
+      const response = await api.updateConfig(configToSave);
       
       // Check if save was successful before restarting
       let saveSuccessful = true;
@@ -99,6 +135,9 @@ function App() {
       
       // Only restart if save was successful
       if (saveSuccessful) {
+        // Clear modified fields after successful save
+        clearModifiedFields();
+        
         // Restart service
         const response = await api.restartService();
         

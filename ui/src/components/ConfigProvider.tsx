@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode, Dispatch, SetStateAction } from 'react';
 import { api } from '@/lib/api';
 import type { Config, StatusLineConfig } from '@/types';
@@ -6,6 +6,10 @@ import type { Config, StatusLineConfig } from '@/types';
 interface ConfigContextType {
   config: Config | null;
   setConfig: Dispatch<SetStateAction<Config | null>>;
+  runtimePort: number | null;
+  modifiedFields: Set<string>;
+  markFieldModified: (field: string) => void;
+  clearModifiedFields: () => void;
   error: Error | null;
 }
 
@@ -26,9 +30,19 @@ interface ConfigProviderProps {
 
 export function ConfigProvider({ children }: ConfigProviderProps) {
   const [config, setConfig] = useState<Config | null>(null);
+  const [runtimePort, setRuntimePort] = useState<number | null>(null);
+  const [modifiedFields, setModifiedFields] = useState<Set<string>>(new Set());
   const [error, setError] = useState<Error | null>(null);
   const [hasFetched, setHasFetched] = useState<boolean>(false);
   const [apiKey, setApiKey] = useState<string | null>(localStorage.getItem('apiKey'));
+
+  const markFieldModified = useCallback((field: string) => {
+    setModifiedFields(prev => new Set(prev).add(field));
+  }, []);
+
+  const clearModifiedFields = useCallback(() => {
+    setModifiedFields(new Set());
+  }, []);
 
   // Listen for localStorage changes
   useEffect(() => {
@@ -47,6 +61,8 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
       // Reset fetch state when API key changes
       setHasFetched(false);
       setConfig(null);
+      setRuntimePort(null);
+      setModifiedFields(new Set());
       setError(null);
     };
 
@@ -109,6 +125,11 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
           CUSTOM_ROUTER_PATH: typeof data.CUSTOM_ROUTER_PATH === 'string' ? data.CUSTOM_ROUTER_PATH : ''
         };
         
+        // Extract runtime port from response (if available)
+        if (typeof data.runtimePort === 'number') {
+          setRuntimePort(data.runtimePort);
+        }
+        
         setConfig(validConfig);
       } catch (err) {
         console.error('Failed to fetch config:', err);
@@ -148,7 +169,7 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
   }, [hasFetched, apiKey]);
 
   return (
-    <ConfigContext.Provider value={{ config, setConfig, error }}>
+    <ConfigContext.Provider value={{ config, setConfig, runtimePort, modifiedFields, markFieldModified, clearModifiedFields, error }}>
       {children}
     </ConfigContext.Provider>
   );

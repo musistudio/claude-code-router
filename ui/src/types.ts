@@ -65,6 +65,9 @@ export interface Config {
   API_TIMEOUT_MS: string;
   PROXY_URL: string;
   CUSTOM_ROUTER_PATH?: string;
+  // Runtime state (read-only, from server)
+  runtimePort?: number;
+  runtimeHost?: string;
 }
 
 export type AccessLevel = 'restricted' | 'full';
