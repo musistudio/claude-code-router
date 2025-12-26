@@ -18,17 +18,69 @@ class ImageCache {
     });
   }
 
+  /**
+   * Validate and normalize base64 image source to prevent duplicate prefixes
+   */
+  private normalizeImageSource(source: any): any {
+    if (!source) return null;
+
+    // If source has 'data' property (base64 string), validate and normalize it
+    if (source.data && typeof source.data === 'string') {
+      try {
+        // Remove any existing data:image prefix to prevent duplication
+        let base64Data = source.data;
+        const dataUrlMatch = base64Data.match(/^data:image\/[^;]+;base64,(.+)$/);
+        if (dataUrlMatch) {
+          // Already has prefix, extract just the base64 part
+          base64Data = dataUrlMatch[1];
+        }
+
+        // Validate that it's actually valid base64
+        Buffer.from(base64Data, 'base64');
+
+        // Return normalized source with clean base64 data
+        return {
+          ...source,
+          data: base64Data
+        };
+      } catch (error) {
+        console.error('Invalid base64 data detected, skipping cache storage:', error);
+        return null;
+      }
+    }
+
+    return source;
+  }
+
   storeImage(id: string, source: any): void {
     if (this.hasImage(id)) return;
+
+    // Normalize and validate the image source before caching
+    const normalizedSource = this.normalizeImageSource(source);
+    if (!normalizedSource) {
+      console.warn(`Failed to normalize image source for ${id}, skipping cache`);
+      return;
+    }
+
     this.cache.set(id, {
-      source,
+      source: normalizedSource,
       timestamp: Date.now(),
     });
   }
 
   getImage(id: string): any {
     const entry = this.cache.get(id);
-    return entry ? entry.source : null;
+    if (!entry) return null;
+
+    // Re-validate on retrieval and remove corrupted entries
+    const normalizedSource = this.normalizeImageSource(entry.source);
+    if (!normalizedSource) {
+      console.warn(`Corrupted image data detected for ${id}, removing from cache`);
+      this.cache.delete(id);
+      return null;
+    }
+
+    return normalizedSource;
   }
 
   hasImage(hash: string): boolean {
@@ -56,7 +108,8 @@ export class ImageAgent implements IAgent {
   }
 
   shouldHandle(req: any, config: any): boolean {
-    if (!config.Router.image || req.body.model === config.Router.image)
+    // Add null/undefined checks for config.Router to prevent crashes
+    if (!config?.Router?.image || req.body.model === config.Router.image)
       return false;
     const lastMessage = req.body.messages[req.body.messages.length - 1];
     if (

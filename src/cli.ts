@@ -15,17 +15,20 @@ import { spawn, exec } from "child_process";
 import { PID_FILE, REFERENCE_COUNT_FILE } from "./constants";
 import fs, { existsSync, readFileSync } from "fs";
 import { join } from "path";
+import minimist from "minimist";
 
-const command = process.argv[2];
+// Parse command line arguments
+const argv = minimist(process.argv.slice(2));
+const command = argv._[0];
 
 const HELP_TEXT = `
-Usage: ccr [command]
+Usage: ccr [command] [options]
 
 Commands:
   start         Start server
-  stop          Stop server
+  stop          Stop server (or specific instance with --config)
   restart       Restart server
-  status        Show server status
+  status        Show server status (all instances or specific with --config)
   statusline    Integrated statusline
   code          Execute claude command
   model         Interactive model selection and configuration
@@ -34,11 +37,19 @@ Commands:
   -v, version   Show version information
   -h, help      Show help information
 
-Example:
-  ccr start
+Options:
+  --config, -c  Path to config file (for multiple instances)
+
+Examples:
+  ccr start                              # Start with default config
+  ccr start --config /path/to/config.json # Start instance with custom config
   ccr code "Write a Hello World"
+  ccr code --config /path/to/config.json "task"  # Use specific instance
+  ccr status                             # Show all instances
+  ccr status --config /path/to/config.json  # Show specific instance
+  ccr stop --config /path/to/config.json    # Stop specific instance
   ccr model
-  eval "$(ccr activate)"  # Set environment variables globally
+  eval "$(ccr activate)"                 # Set environment variables globally
   ccr ui
 `;
 
@@ -64,34 +75,67 @@ async function waitForService(
 
 async function main() {
   const isRunning = await isServiceRunning()
+  const configPath = argv.config || argv.c; // Support --config or -c
+
   switch (command) {
     case "start":
-      run();
+      run({ configPath });
       break;
     case "stop":
       try {
-        const pid = parseInt(readFileSync(PID_FILE, "utf-8"));
-        process.kill(pid);
-        cleanupPidFile();
-        if (existsSync(REFERENCE_COUNT_FILE)) {
-          try {
-            fs.unlinkSync(REFERENCE_COUNT_FILE);
-          } catch (e) {
-            // Ignore cleanup errors
+        if (configPath) {
+          // Stop specific instance
+          const {
+            getConfigPath,
+            getInstanceId,
+            getInstance,
+            unregisterInstance
+          } = require('./utils/instanceManager');
+
+          const resolvedConfigPath = getConfigPath(configPath);
+          const instanceId = getInstanceId(resolvedConfigPath);
+          const instance = getInstance(instanceId);
+
+          if (!instance) {
+            console.log(`❌ No instance found for config: ${resolvedConfigPath}`);
+            process.exit(1);
           }
+
+          try {
+            process.kill(instance.pid);
+            unregisterInstance(instanceId);
+            console.log(`✅ Instance stopped: ${instanceId} (port ${instance.port})`);
+          } catch (killError) {
+            console.log(`⚠️ Failed to kill process ${instance.pid}, cleaning up registry`);
+            unregisterInstance(instanceId);
+          }
+        } else {
+          // Stop default instance
+          const pid = parseInt(readFileSync(PID_FILE, "utf-8"));
+          process.kill(pid);
+          cleanupPidFile();
+          if (existsSync(REFERENCE_COUNT_FILE)) {
+            try {
+              fs.unlinkSync(REFERENCE_COUNT_FILE);
+            } catch (e) {
+              // Ignore cleanup errors
+            }
+          }
+          console.log(
+            "✅ Claude code router service has been successfully stopped."
+          );
         }
-        console.log(
-          "claude code router service has been successfully stopped."
-        );
       } catch (e) {
         console.log(
-          "Failed to stop the service. It may have already been stopped."
+          "❌ Failed to stop the service. It may have already been stopped."
         );
-        cleanupPidFile();
+        if (!configPath) {
+          cleanupPidFile();
+        }
       }
       break;
     case "status":
-      await showStatus();
+      await showStatus(configPath);
       break;
     case "statusline":
       // 从stdin读取JSON输入
@@ -124,10 +168,29 @@ async function main() {
       await activateCommand();
       break;
     case "code":
-      if (!isRunning) {
+      // Check if we need to start a service (default or specific instance)
+      let needsStart = false;
+      if (configPath) {
+        // Check if specific instance is running
+        const {
+          getConfigPath,
+          getInstanceId,
+          isInstanceRunning
+        } = require('./utils/instanceManager');
+
+        const resolvedConfigPath = getConfigPath(configPath);
+        const instanceId = getInstanceId(resolvedConfigPath);
+        needsStart = !isInstanceRunning(instanceId);
+      } else {
+        // Check if default instance is running
+        needsStart = !isRunning;
+      }
+
+      if (needsStart) {
         console.log("Service not running, starting service...");
         const cliPath = join(__dirname, "cli.js");
-        const startProcess = spawn("node", [cliPath, "start"], {
+        const startArgs = configPath ? ["start", "--config", configPath] : ["start"];
+        const startProcess = spawn("node", [cliPath, ...startArgs], {
           detached: true,
           stdio: "ignore",
         });
@@ -153,8 +216,8 @@ async function main() {
 
         if (await waitForService()) {
           // Join all code arguments into a single string to preserve spaces within quotes
-          const codeArgs = process.argv.slice(3);
-          executeCodeCommand(codeArgs);
+          const codeArgs = process.argv.slice(3).filter(arg => arg !== '--config' && arg !== '-c' && arg !== configPath);
+          executeCodeCommand(codeArgs, configPath);
         } else {
           console.error(
             "Service startup timeout, please manually run `ccr start` to start the service"
@@ -163,8 +226,8 @@ async function main() {
         }
       } else {
         // Join all code arguments into a single string to preserve spaces within quotes
-        const codeArgs = process.argv.slice(3);
-        executeCodeCommand(codeArgs);
+        const codeArgs = process.argv.slice(3).filter(arg => arg !== '--config' && arg !== '-c' && arg !== configPath);
+        executeCodeCommand(codeArgs, configPath);
       }
       break;
     case "ui":

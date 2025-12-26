@@ -1,0 +1,69 @@
+{
+  "// MULTI-MODEL STRATEGY": "Use different models for different tasks",
+  "// This example shows how to optimize for cost, speed, and quality",
+
+  "LOG": true,
+  "PORT": 3456,
+  "APIKEY": "your-api-key",
+
+  "Providers": [
+    {
+      "// Fast & Cheap": "For background tasks and quick responses",
+      "name": "gemini-fast",
+      "api_base_url": "https://generativelanguage.googleapis.com/v1beta/models/",
+      "api_key": "YOUR_GEMINI_API_KEY",
+      "models": ["gemini-2.5-flash"],
+      "transformer": {"use": ["gemini"]}
+    },
+    {
+      "// High Quality": "For main coding tasks",
+      "name": "openrouter-quality",
+      "api_base_url": "https://openrouter.ai/api/v1/chat/completions",
+      "api_key": "sk-or-v1-YOUR_KEY",
+      "models": ["anthropic/claude-sonnet-4"],
+      "transformer": {"use": ["anthropic", "openrouter"]}
+    },
+    {
+      "// Reasoning": "For complex problem solving",
+      "name": "deepseek-reasoning",
+      "api_base_url": "https://api.deepseek.com/chat/completions",
+      "api_key": "sk-YOUR_KEY",
+      "models": ["deepseek-reasoner"],
+      "transformer": {"use": ["deepseek", "reasoning"]}
+    },
+    {
+      "// Local/Free": "For experiments and testing",
+      "name": "ollama-local",
+      "api_base_url": "http://localhost:11434/v1/chat/completions",
+      "api_key": "ollama",
+      "models": ["qwen2.5-coder:latest"]
+    }
+  ],
+
+  "Router": {
+    "// Main coding": "Use high-quality Claude",
+    "default": "openrouter-quality,anthropic/claude-sonnet-4",
+
+    "// Background tasks": "Use fast, cheap model",
+    "background": "gemini-fast,gemini-2.5-flash",
+
+    "// Complex reasoning": "Use DeepSeek R1",
+    "think": "deepseek-reasoning,deepseek-reasoner",
+
+    "// Long documents": "Use model with large context",
+    "longContext": "gemini-fast,gemini-2.5-flash",
+    "longContextThreshold": 60000,
+
+    "// Web search": "Use model with web search support",
+    "webSearch": "gemini-fast,gemini-2.5-flash",
+
+    "// Image analysis": "Use vision-capable model",
+    "image": "gemini-fast,gemini-2.5-flash"
+  },
+
+  "// COST OPTIMIZATION": {
+    "strategy": "Gemini Flash for fast/cheap tasks, Claude for quality, DeepSeek for reasoning",
+    "estimated_savings": "Up to 90% compared to using Claude for everything",
+    "tip": "Adjust Router settings based on your usage patterns"
+  }
+}
