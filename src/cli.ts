@@ -9,10 +9,12 @@ import {
   getServiceInfo,
 } from "./utils/processCheck";
 import { runModelSelector } from "./utils/modelSelector"; // ADD THIS LINE
+import { GroupCommand } from "./utils/groupCommand";
+import { BOLDYELLOW, CYAN, RESET } from "./utils/groupCommand";
 import { activateCommand } from "./utils/activateCommand";
 import { version } from "../package.json";
 import { spawn, exec } from "child_process";
-import { PID_FILE, REFERENCE_COUNT_FILE } from "./constants";
+import { PID_FILE, REFERENCE_COUNT_FILE, ROUTE_GROUP_COMMANDS } from "./constants";
 import fs, { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
@@ -29,6 +31,7 @@ Commands:
   statusline    Integrated statusline
   code          Execute claude command
   model         Interactive model selection and configuration
+  group         Route group management
   activate      Output environment variables for shell integration
   ui            Open the web UI in browser
   -v, version   Show version information
@@ -40,6 +43,14 @@ Example:
   ccr model
   eval "$(ccr activate)"  # Set environment variables globally
   ccr ui
+
+${ROUTE_GROUP_COMMANDS.title}:
+  ${ROUTE_GROUP_COMMANDS.create}
+  ${ROUTE_GROUP_COMMANDS.list}
+  ${ROUTE_GROUP_COMMANDS.use}
+  ${ROUTE_GROUP_COMMANDS.delete}
+  ${ROUTE_GROUP_COMMANDS.edit}
+  ${ROUTE_GROUP_COMMANDS.show}
 `;
 
 async function waitForService(
@@ -118,6 +129,39 @@ async function main() {
     // ADD THIS CASE
     case "model":
       await runModelSelector();
+      break;
+    case "group":
+      const groupSubCommand = process.argv[3];
+
+      switch (groupSubCommand) {
+        case "create":
+          await GroupCommand.create(process.argv[4]);
+          break;
+        case "list":
+          await GroupCommand.list();
+          break;
+        case "use":
+          await GroupCommand.use(process.argv[4]);
+          break;
+        case "delete":
+          await GroupCommand.delete(process.argv[4]);
+          break;
+        case "edit":
+          await GroupCommand.edit(process.argv[4]);
+          break;
+        case "show":
+          await GroupCommand.show();
+          break;
+        default:
+          console.log(`${BOLDYELLOW}${ROUTE_GROUP_COMMANDS.title}:${RESET}`);
+          console.log(`  ${CYAN}${ROUTE_GROUP_COMMANDS.create}${RESET}`);
+          console.log(`  ${CYAN}${ROUTE_GROUP_COMMANDS.list}${RESET}`);
+          console.log(`  ${CYAN}${ROUTE_GROUP_COMMANDS.use}${RESET}`);
+          console.log(`  ${CYAN}${ROUTE_GROUP_COMMANDS.delete}${RESET}`);
+          console.log(`  ${CYAN}${ROUTE_GROUP_COMMANDS.edit}${RESET}`);
+          console.log(`  ${CYAN}${ROUTE_GROUP_COMMANDS.show}${RESET}`);
+          break;
+      }
       break;
     case "activate":
     case "env":

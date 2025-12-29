@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { select, input, confirm } from '@inquirer/prompts';
+import { MODEL_TYPE_VALUES } from '../constants';
 
 // ANSI color codes
 const RESET = "\x1B[0m";
@@ -17,7 +18,7 @@ interface TransformerConfig {
   [key: string]: any;
 }
 
-interface Provider {
+export interface Provider {
   name: string;
   api_base_url: string;
   api_key: string;
@@ -25,7 +26,7 @@ interface Provider {
   transformer?: TransformerConfig;
 }
 
-interface RouterConfig {
+export interface RouterConfig {
   default: string;
   background?: string;
   think?: string;
@@ -78,7 +79,7 @@ function getConfigPath(): string {
   return configPath;
 }
 
-function loadConfig(): Config {
+export function loadConfig(): Config {
   const configPath = getConfigPath();
   return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
 }
@@ -109,7 +110,17 @@ function displayCurrentConfig(config: Config): void {
   console.log(`\n${BOLDCYAN}═══════════════════════════════════════════════${RESET}`);
   console.log(`${BOLDCYAN}           Current Configuration${RESET}`);
   console.log(`${BOLDCYAN}═══════════════════════════════════════════════${RESET}\n`);
-  
+
+  // Display currently active route group
+  if (config.RouteGroups) {
+    const activeGroupName = config.RouteGroups.activeGroup;
+    const activeGroup = config.RouteGroups.groups[activeGroupName];
+
+    if (activeGroup) {
+      console.log(`${GREEN} Current active route group: ${activeGroupName}${RESET}\n`);
+    }
+  }
+
   const formatModel = (routerValue?: string | number) => {
     if (!routerValue || typeof routerValue === 'number') {
       return `${DIM}Not configured${RESET}`;
@@ -117,58 +128,68 @@ function displayCurrentConfig(config: Config): void {
     const [provider, model] = routerValue.split(',');
     return `${YELLOW}${provider}${RESET} | ${model}\n  ${DIM}- ${routerValue}${RESET}`;
   };
-  
+
   console.log(`${BOLDCYAN}Default Model:${RESET}`);
   console.log(`  ${formatModel(config.Router.default)}\n`);
-  
+
   if (config.Router.background) {
     console.log(`${BOLDCYAN}Background Model:${RESET}`);
     console.log(`  ${formatModel(config.Router.background)}\n`);
   }
-  
+
   if (config.Router.think) {
     console.log(`${BOLDCYAN}Think Model:${RESET}`);
     console.log(`  ${formatModel(config.Router.think)}\n`);
   }
-  
+
   if (config.Router.longContext) {
     console.log(`${BOLDCYAN}Long Context Model:${RESET}`);
     console.log(`  ${formatModel(config.Router.longContext)}\n`);
   }
-  
+
   if (config.Router.webSearch) {
     console.log(`${BOLDCYAN}Web Search Model:${RESET}`);
     console.log(`  ${formatModel(config.Router.webSearch)}\n`);
   }
-  
+
   if (config.Router.image) {
     console.log(`${BOLDCYAN}Image Model:${RESET}`);
     console.log(`  ${formatModel(config.Router.image)}\n`);
   }
-  
+
   console.log(`\n${BOLDCYAN}═══════════════════════════════════════════════${RESET}`);
   console.log(`${BOLDCYAN}           Add/Update Model${RESET}`);
   console.log(`${BOLDCYAN}═══════════════════════════════════════════════${RESET}\n`);
 }
 
-async function selectModelType() {
+export async function selectModelType(showDone?: boolean) {
+  const typeNameMap: Record<string, string> = {
+    default: 'Default',
+    background: 'Background',
+    think: 'Think',
+    longContext: 'Long Context',
+    webSearch: 'Web Search',
+    image: 'Image'
+  };
+
+  const choices = MODEL_TYPE_VALUES.map(value => ({
+    name: `${typeNameMap[value] || value} Model`,
+    value
+  }));
+
+  if (showDone) {
+    choices.push({ name: 'Done', value: '__done__' });
+  }
+
   return await select({
     message: `${BOLDYELLOW}Which model configuration do you want to update?${RESET}`,
-    choices: [
-      { name: 'Default Model', value: 'default' },
-      { name: 'Background Model', value: 'background' },
-      { name: 'Think Model', value: 'think' },
-      { name: 'Long Context Model', value: 'longContext' },
-      { name: 'Web Search Model', value: 'webSearch' },
-      { name: 'Image Model', value: 'image' },
-      { name: `${BOLDGREEN}+ Add New Model${RESET}`, value: 'addModel' }
-    ]
+    choices
   });
 }
 
-async function selectModel(config: Config, modelType: string) {
+export async function selectModel(config: Config, modelType: string) {
   const models = getAllModels(config);
-  
+
   return await select({
     message: `\n${BOLDYELLOW}Select a model for ${modelType}:${RESET}`,
     choices: models,
@@ -430,16 +451,16 @@ async function addNewProvider(config: Config): Promise<ModelResult | null> {
 
 export async function runModelSelector(): Promise<void> {
   console.clear();
-  
+
   try {
     let config = loadConfig();
     displayCurrentConfig(config);
-    
+
     const action = await selectModelType() as string;
-    
+
     if (action === 'addModel') {
       const result = await addNewModel(config);
-      
+
       if (result) {
         config = loadConfig();
         config.Router[result.modelType] = `${result.providerName},${result.modelName}`;
@@ -450,10 +471,10 @@ export async function runModelSelector(): Promise<void> {
       const selectedModel = await selectModel(config, action) as string;
       config.Router[action] = selectedModel;
       saveConfig(config);
-      
+
       console.log(`${GREEN}✓ ${action} model updated to: ${selectedModel}${RESET}`);
     }
-    
+
     displayCurrentConfig(config);
   } catch (error: any) {
     console.error(`${YELLOW}Error:${RESET}`, error.message);
