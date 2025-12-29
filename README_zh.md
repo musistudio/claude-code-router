@@ -7,12 +7,10 @@
 <hr>
 
 ![](blog/images/sponsors/glm-zh.jpg)
-> GLM CODING PLAN 是专为AI编码打造的订阅套餐，每月最低仅需20元，即可在十余款主流AI编码工具如Claude Code、中畅享智谱旗舰模型GLM-4.6，为开发者提供顶尖的编码体验。   
+> GLM CODING PLAN 是专为AI编码打造的订阅套餐，每月最低仅需20元，即可在十余款主流AI编码工具如Claude Code、中畅享智谱旗舰模型GLM-4.7，为开发者提供顶尖的编码体验。   
 > 智谱AI为本软件提供了特别优惠，使用以下链接购买可以享受九折优惠：https://www.bigmodel.cn/claude-code?ic=RRVJPB5SII
 
 > 一款强大的工具，可将 Claude Code 请求路由到不同的模型，并自定义任何请求。
-
-> [GLM-4.6支持思考及思维链回传](blog/zh/GLM-4.6支持思考及思维链回传.md)
 
 ![](blog/images/claude-code.png)
 
@@ -601,6 +599,10 @@ jobs:
 - \*勤
 - \*\*锟
 - \*涛
+- \*\*明
+- \*知
+- \*语
+- \*瓜
 
 （如果您的名字被屏蔽，请通过我的主页电子邮件与我联系，以便使用您的 GitHub 用户名进行更新。）
 
