@@ -325,58 +325,6 @@ export class RouteGroupManager {
   }
 
   /**
-   * Validate all route group configurations
-   */
-  static validateAllGroups(): { groupName: string; result: ValidationResult }[] {
-    const configPath = this.getConfigPath();
-    const fullConfig: ExtendedConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-
-    if (!fullConfig.RouteGroups) {
-      return [];
-    }
-
-    return Object.entries(fullConfig.RouteGroups.groups).map(([name, group]) => ({
-      groupName: name,
-      result: this.validateGroupConfig(group, fullConfig.Providers)
-    }));
-  }
-
-  /**
-   * Migrate from existing Router configuration to route groups
-   */
-  static async migrateFromRouter(): Promise<void> {
-    const configPath = this.getConfigPath();
-    const fullConfig: ExtendedConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-
-    if (fullConfig.RouteGroups) {
-      console.log(`${YELLOW}Route group configuration already exists, skipping migration${RESET}`);
-      return;
-    }
-
-    if (!fullConfig.Router || Object.keys(fullConfig.Router).length === 0) {
-      console.log(`${YELLOW}Router configuration is empty, skipping migration${RESET}`);
-      return;
-    }
-
-    // Create default route group
-    const defaultGroup: RouteGroup = { ...fullConfig.Router };
-
-    // Initialize route group configuration
-    fullConfig.RouteGroups = {
-      activeGroup: 'Default Model Group',
-      groups: {
-        'Default Model Group': defaultGroup
-      }
-    };
-
-    // Backup original configuration
-    await backupConfigFile();
-
-    // Save configuration
-    fs.writeFileSync(configPath, JSON.stringify(fullConfig, null, 2), 'utf-8');
-  }
-
-  /**
    * Get configuration file path
    */
   private static getConfigPath(): string {
