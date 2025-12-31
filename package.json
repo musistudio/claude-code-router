@@ -6,6 +6,7 @@
     "ccr": "dist/cli.js"
   },
   "scripts": {
+    "start": "node dist/cli.js start",  
     "build": "node scripts/build.js",
     "release": "npm run build && npm publish"
   },
