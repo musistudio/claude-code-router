@@ -5,6 +5,9 @@ services:
     build: .
     ports:
       - "3456:3456"
+    # You can set the CLAUDE_CODE_ROUTER_DIR environment variable to customize the configuration directory.
+    # environment:
+    #   - CLAUDE_CODE_ROUTER_DIR=/data
     volumes:
       - ~/.claude-code-router:/root/.claude-code-router
     restart: unless-stopped
