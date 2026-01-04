@@ -203,7 +203,70 @@ ccr ui
 
 ![UI](/blog/images/ui.png)
 
-### 5. Activate 命令（环境变量设置）
+### 5. CLI 模型管理
+
+对于偏好终端工作流的用户，可以使用交互式 CLI 模型选择器：
+
+```shell
+ccr model
+```
+
+该命令提供交互式界面来：
+
+- 查看当前配置
+- 查看所有配置的模型（default、background、think、longContext、webSearch、image）
+- 切换模型：快速更改每个路由器类型使用的模型
+- 添加新模型：向现有提供商添加模型
+- 创建新提供商：设置完整的提供商配置，包括：
+   - 提供商名称和 API 端点
+   - API 密钥
+   - 可用模型
+   - Transformer 配置，支持：
+     - 多个转换器（openrouter、deepseek、gemini 等）
+     - Transformer 选项（例如，带自定义限制的 maxtoken）
+     - 特定于提供商的路由（例如，OpenRouter 提供商偏好）
+
+CLI 工具验证所有输入并提供有用的提示来引导您完成配置过程，使管理复杂的设置变得容易，无需手动编辑 JSON 文件。
+
+### 6. 预设管理
+
+预设允许您轻松保存、共享和重用配置。您可以将当前配置导出为预设，并从文件或 URL 安装预设。
+
+```shell
+# 将当前配置导出为预设
+ccr preset export my-preset
+
+# 使用元数据导出
+ccr preset export my-preset --description "我的 OpenAI 配置" --author "您的名字" --tags "openai,生产环境"
+
+# 从本地目录安装预设
+ccr preset install /path/to/preset
+
+# 列出所有已安装的预设
+ccr preset list
+
+# 显示预设信息
+ccr preset info my-preset
+
+# 删除预设
+ccr preset delete my-preset
+```
+
+**预设功能：**
+- **导出**：将当前配置保存为预设目录（包含 manifest.json）
+- **安装**：从本地目录安装预设
+- **敏感数据处理**：导出期间自动清理 API 密钥和其他敏感数据（标记为 `{{field}}` 占位符）
+- **动态配置**：预设可以包含输入架构，用于在安装期间收集所需信息
+- **版本控制**：每个预设包含版本元数据，用于跟踪更新
+
+**预设文件结构：**
+```
+~/.claude-code-router/presets/
+├── my-preset/
+│   └── manifest.json    # 包含配置和元数据
+```
+
+### 7. Activate 命令（环境变量设置）
 
 `activate` 命令允许您在 shell 中全局设置环境变量，使您能够直接使用 `claude` 命令或将 Claude Code Router 与使用 Agent SDK 构建的应用程序集成。
 

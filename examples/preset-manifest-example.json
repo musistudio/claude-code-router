@@ -1,0 +1,268 @@
+{
+  "name": "multi-provider-example",
+  "version": "1.0.0",
+  "description": "多Provider配置示例 - 支持OpenAI和DeepSeek切换",
+  "author": "CCR Team",
+  "keywords": ["openai", "deepseek", "multi-provider"],
+  "ccrVersion": "2.0.0",
+  "Providers": [
+    {
+      "name": "openai",
+      "api_base_url": "https://api.openai.com/v1",
+      "models": ["gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"]
+    },
+    {
+      "name": "deepseek",
+      "api_base_url": "https://api.deepseek.com",
+      "models": ["deepseek-v3", "deepseek-chat"]
+    }
+  ],
+  "schema": [
+    {
+      "id": "primaryProvider",
+      "type": "select",
+      "label": "主要Provider",
+      "prompt": "选择您主要使用的LLM提供商",
+      "options": {
+        "type": "providers"
+      },
+      "required": true,
+      "defaultValue": "openai"
+    },
+    {
+      "id": "apiKey",
+      "type": "password",
+      "label": "API Key",
+      "prompt": "请输入您的API Key（将从环境变量或安全存储中读取）",
+      "placeholder": "sk-...",
+      "required": true,
+      "when": {
+        "field": "primaryProvider",
+        "operator": "exists"
+      }
+    },
+    {
+      "id": "customBaseUrl",
+      "type": "input",
+      "label": "自定义Base URL",
+      "prompt": "如果使用代理或自定义端点，请输入Base URL（留空使用默认值）",
+      "placeholder": "https://api.openai.com/v1",
+      "required": false,
+      "when": {
+        "field": "primaryProvider",
+        "operator": "exists"
+      }
+    },
+    {
+      "id": "defaultModel",
+      "type": "select",
+      "label": "默认模型",
+      "prompt": "选择默认使用的模型",
+      "options": {
+        "type": "models",
+        "providerField": "{{primaryProvider}}"
+      },
+      "required": true,
+      "defaultValue": "gpt-4o",
+      "when": {
+        "field": "primaryProvider",
+        "operator": "eq",
+        "value": "openai"
+      }
+    },
+    {
+      "id": "backgroundModel",
+      "type": "select",
+      "label": "后台任务模型",
+      "prompt": "用于后台任务的轻量级模型",
+      "options": {
+        "type": "models",
+        "providerField": "{{primaryProvider}}"
+      },
+      "required": false,
+      "when": {
+        "field": "primaryProvider",
+        "operator": "exists"
+      }
+    },
+    {
+      "id": "enableProxy",
+      "type": "confirm",
+      "label": "启用代理",
+      "prompt": "是否通过代理访问API？",
+      "defaultValue": false
+    },
+    {
+      "id": "proxyUrl",
+      "type": "input",
+      "label": "代理地址",
+      "prompt": "输入代理服务器地址",
+      "placeholder": "http://127.0.0.1:7890",
+      "required": true,
+      "when": {
+        "field": "enableProxy",
+        "operator": "eq",
+        "value": true
+      }
+    },
+    {
+      "id": "maxTokens",
+      "type": "number",
+      "label": "最大Token数",
+      "prompt": "设置单次请求的最大token数量",
+      "min": 100,
+      "max": 128000,
+      "defaultValue": 4096,
+      "required": false
+    },
+    {
+      "id": "timeout",
+      "type": "number",
+      "label": "请求超时（秒）",
+      "prompt": "API请求超时时间",
+      "min": 10,
+      "max": 300,
+      "defaultValue": 60,
+      "required": false
+    },
+    {
+      "id": "enableFeatures",
+      "type": "multiselect",
+      "label": "启用功能",
+      "prompt": "选择要启用的功能",
+      "options": {
+        "type": "static",
+        "options": [
+          {
+            "label": "流式输出",
+            "value": "stream",
+            "description": "实时显示AI响应"
+          },
+          {
+            "label": "工具调用",
+            "value": "tools",
+            "description": "启用Function Calling功能"
+          },
+          {
+            "label": "长上下文",
+            "value": "longContext",
+            "description": "支持长文本处理"
+          },
+          {
+            "label": "思维链",
+            "value": "think",
+            "description": "在思考模式中使用"
+          }
+        ]
+      },
+      "defaultValue": ["stream", "tools"],
+      "required": false
+    },
+    {
+      "id": "advancedMode",
+      "type": "confirm",
+      "label": "高级模式",
+      "prompt": "启用高级配置选项？",
+      "defaultValue": false
+    },
+    {
+      "id": "temperature",
+      "type": "number",
+      "label": "Temperature",
+      "prompt": "控制生成随机性（0-2，值越高越随机）",
+      "min": 0,
+      "max": 2,
+      "defaultValue": 0.7,
+      "required": false,
+      "when": {
+        "field": "advancedMode",
+        "operator": "eq",
+        "value": true
+      }
+    },
+    {
+      "id": "logLevel",
+      "type": "select",
+      "label": "日志级别",
+      "prompt": "设置详细的日志级别",
+      "options": {
+        "type": "static",
+        "options": [
+          {
+            "label": "错误",
+            "value": "error"
+          },
+          {
+            "label": "警告",
+            "value": "warn"
+          },
+          {
+            "label": "信息",
+            "value": "info"
+          },
+          {
+            "label": "调试",
+            "value": "debug"
+          }
+        ]
+      },
+      "defaultValue": "info",
+      "required": false,
+      "when": {
+        "field": "advancedMode",
+        "operator": "eq",
+        "value": true
+      }
+    }
+  ],
+  "template": {
+    "Providers": [
+      {
+        "name": "{{primaryProvider}}",
+        "api_base_url": "{{customBaseUrl}}",
+        "api_key": "{{apiKey}}",
+        "models": ["{{defaultModel}}", "{{backgroundModel}}"]
+      }
+    ],
+    "Router": {
+      "default": "{{primaryProvider}}/{{defaultModel}}",
+      "background": "{{backgroundModel}}",
+      "think": "{{primaryProvider}}/{{defaultModel}}"
+    },
+    "PROXY_URL": "{{proxyUrl}}",
+    "API_TIMEOUT_MS": 60000,
+    "LOG_LEVEL": "info"
+  },
+  "configMappings": [
+    {
+      "target": "Providers[0].api_base_url",
+      "value": "{{customBaseUrl}}",
+      "when": {
+        "field": "customBaseUrl",
+        "operator": "exists"
+      }
+    },
+    {
+      "target": "PROXY_URL",
+      "value": "{{proxyUrl}}",
+      "when": {
+        "field": "enableProxy",
+        "operator": "eq",
+        "value": true
+      }
+    },
+    {
+      "target": "API_TIMEOUT_MS",
+      "value": 60000
+    },
+    {
+      "target": "LOG_LEVEL",
+      "value": "{{logLevel}}",
+      "when": {
+        "field": "advancedMode",
+        "operator": "eq",
+        "value": true
+      }
+    }
+  ]
+}

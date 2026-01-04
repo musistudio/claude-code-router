@@ -1,0 +1,366 @@
+/**
+ * Any CSS included here will be global. The classic template
+ * bundles Infima by default. Infima is a CSS framework designed to
+ * work well for content-centric websites.
+ */
+
+/* Tailwind CSS directives */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* You can override the default Infima variables here. */
+:root {
+  --ifm-color-primary: #CC7C5E;
+  --ifm-color-primary-dark: #BC5C3E;
+  --ifm-color-primary-darker: #964630;
+  --ifm-color-primary-darkest: #7A3B2C;
+  --ifm-color-primary-light: #F28B68;
+  --ifm-color-primary-lighter: #F7AC92;
+  --ifm-color-primary-lightest: #FEF6F3;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(204, 124, 94, 0.1);
+
+  /* Custom animations */
+  --animation-duration-slow: 0.6s;
+  --animation-duration-normal: 0.3s;
+  --animation-duration-fast: 0.15s;
+}
+
+/* Apply Tailwind Typography to Docusaurus markdown content */
+@layer components {
+  /* Apply prose styles to article content (main markdown container in Docusaurus) */
+  article {
+    @apply prose prose-neutral max-w-none;
+    @apply prose-headings:font-bold prose-headings:text-neutral-900;
+    @apply prose-h1:text-3xl prose-h1:mt-8 prose-h1:mb-4;
+    @apply prose-h2:text-2xl prose-h2:mt-6 prose-h2:mb-3;
+    @apply prose-h3:text-xl prose-h3:mt-5 prose-h3:mb-2;
+    @apply prose-h4:text-lg prose-h4:mt-4 prose-h4:mb-2;
+    @apply prose-p:text-base prose-p:leading-7 prose-p:mb-4;
+    @apply prose-a:text-primary-600 prose-a:no-underline hover:prose-a:underline;
+    @apply prose-strong:text-neutral-900 prose-strong:font-semibold;
+    @apply prose-code:text-primary-600 prose-code:px-1 prose-code:py-0.5 prose-code:bg-neutral-100 prose-code:rounded;
+    @apply prose-pre:bg-neutral-900 prose-pre:text-neutral-100;
+    @apply prose-blockquote:border-l-4 prose-blockquote:border-primary-600 prose-blockquote:pl-4 prose-blockquote:italic;
+    @apply prose-ul:list-disc prose-ul:pl-6;
+    @apply prose-ol:list-decimal prose-ol:pl-6;
+  }
+
+  /* Handle nested markdown containers */
+  .markdown,
+  .theme-doc-markdown {
+    @apply prose prose-neutral;
+    @apply prose-headings:font-bold prose-headings:text-neutral-900;
+    @apply prose-h1:text-3xl prose-h1:mt-8 prose-h1:mb-4;
+    @apply prose-h2:text-2xl prose-h2:mt-6 prose-h2:mb-3;
+    @apply prose-h3:text-xl prose-h3:mt-5 prose-h3:mb-2;
+    @apply prose-h4:text-lg prose-h4:mt-4 prose-h4:mb-2;
+    @apply prose-p:text-base prose-p:leading-7 prose-p:mb-4;
+    @apply prose-a:text-primary-600 prose-a:no-underline hover:prose-a:underline;
+    @apply prose-strong:text-neutral-900 prose-strong:font-semibold;
+    @apply prose-code:text-primary-600 prose-code:px-1 prose-code:py-0.5 prose-code:bg-neutral-100 prose-code:rounded;
+    @apply prose-pre:bg-neutral-900 prose-pre:text-neutral-100;
+    @apply prose-blockquote:border-l-4 prose-blockquote:border-primary-600 prose-blockquote:pl-4 prose-blockquote:italic;
+    @apply prose-ul:list-disc prose-ul:pl-6;
+    @apply prose-ol:list-decimal prose-ol:pl-6;
+  }
+}
+
+/* Override Docusaurus default max-width - must be outside @layer to take precedence */
+.markdown,
+.theme-doc-markdown {
+  max-width: 56rem !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (min-width: 640px) {
+  .markdown,
+  .theme-doc-markdown {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .markdown,
+  .theme-doc-markdown {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+
+/* Custom styles */
+.hero {
+  padding: 4rem 0;
+  text-align: center;
+}
+
+.hero__title {
+  font-size: 3rem;
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+}
+
+.hero__subtitle {
+  font-size: 1.5rem;
+  color: var(--ifm-color-emphasis-600);
+  margin-bottom: 2rem;
+}
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+  margin-top: 3rem;
+}
+
+.feature {
+  padding: 1.5rem;
+  border-radius: 8px;
+  background: var(--ifm-background-surface-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.feature__title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.feature__text {
+  color: var(--ifm-color-emphasis-600);
+}
+
+/* Smooth scroll behavior */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar for webkit browsers */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--ifm-background-surface-color);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--ifm-color-primary);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ifm-color-primary-dark);
+}
+
+/* Enhanced animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp var(--animation-duration-slow) ease-out forwards;
+  opacity: 0;
+}
+
+.animate-fade-in {
+  animation: fadeIn var(--animation-duration-slow) ease-out forwards;
+  opacity: 0;
+}
+
+.animate-slide-in-left {
+  animation: slideInLeft var(--animation-duration-slow) ease-out forwards;
+  opacity: 0;
+}
+
+.animate-scale-in {
+  animation: scaleIn var(--animation-duration-slow) ease-out forwards;
+  opacity: 0;
+}
+
+/* Hover effects for cards */
+.hover-lift {
+  transition: transform var(--animation-duration-normal) ease,
+              box-shadow var(--animation-duration-normal) ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, var(--ifm-color-primary) 0%, var(--ifm-color-primary-dark) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glass morphism effect */
+.glass {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Focus styles for accessibility */
+:focus-visible {
+  outline: 2px solid var(--ifm-color-primary);
+  outline-offset: 2px;
+}
+
+/* Button hover effects */
+button,
+a {
+  transition: all var(--animation-duration-fast) ease;
+}
+
+/* Prevent navbar items from wrapping */
+.navbar__item,
+.navbar__link {
+  white-space: nowrap;
+}
+
+/* Ensure navbar links with icons stay on same line */
+.navbar__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.dropdown > .navbar__link:after{
+  top: 4px;
+}
+
+/* Prevent footer links from wrapping */
+.footer__link-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+/* Prevent "Edit this page" button from wrapping */
+.theme-edit-this-page {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+/* Breadcrumbs alignment */
+.breadcrumbs {
+  margin-top: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.breadcrumbs__item {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.breadcrumbs__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  line-height: 1;
+}
+
+.breadcrumbs__link svg {
+  display: inline-flex;
+  align-items: center;
+}
+
+.breadcrumbs__link span {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Breadcrumb separator alignment */
+.breadcrumbs__item::after,
+.breadcrumbs__item--separator {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 0.5rem;
+}
+
+/* Responsive improvements */
+@media (max-width: 996px) {
+  .features {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .features {
+    grid-template-columns: 1fr;
+  }
+
+  .hero__title {
+    font-size: 2rem;
+  }
+
+  /* Reduce animation on mobile for better performance */
+  .animate-fade-in-up,
+  .animate-fade-in,
+  .animate-slide-in-left,
+  .animate-scale-in {
+    animation-duration: 0.3s;
+  }
+}
+
+/* Print styles */
+@media print {
+  .hero,
+  .features {
+    page-break-inside: avoid;
+  }
+}

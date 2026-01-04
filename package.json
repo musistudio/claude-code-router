@@ -1,13 +1,27 @@
 {
   "name": "@musistudio/claude-code-router",
-  "version": "1.0.73",
+  "version": "2.0.0",
   "description": "Use Claude Code without an Anthropics account and route it to another LLM provider",
+  "scripts": {
+    "build": "pnpm build:shared && pnpm build:core && pnpm build:server && pnpm build:cli && pnpm build:ui",
+    "build:core": "pnpm --filter @musistudio/llms build",
+    "build:shared": "pnpm --filter @CCR/shared build",
+    "build:cli": "pnpm --filter @CCR/cli build",
+    "build:server": "pnpm --filter @CCR/server build",
+    "build:ui": "pnpm --filter @CCR/ui build",
+    "build:docs": "pnpm --filter claude-code-router-docs build",
+    "release": "pnpm build && bash scripts/release.sh all",
+    "release:npm": "bash scripts/release.sh npm",
+    "release:docker": "bash scripts/release.sh docker",
+    "dev:cli": "pnpm --filter @CCR/cli dev",
+    "dev:server": "pnpm --filter @CCR/server dev",
+    "dev:ui": "pnpm --filter @CCR/ui dev",
+    "dev:core": "pnpm --filter @musistudio/llms dev",
+    "dev:docs": "pnpm --filter claude-code-router-docs start",
+    "serve:docs": "pnpm --filter claude-code-router-docs serve"
+  },
   "bin": {
     "ccr": "dist/cli.js"
-  },
-  "scripts": {
-    "build": "node scripts/build.js",
-    "release": "npm run build && npm publish"
   },
   "keywords": [
     "claude",
@@ -18,33 +32,19 @@
   ],
   "author": "musistudio",
   "license": "MIT",
-  "dependencies": {
-    "@fastify/static": "^8.2.0",
-    "@musistudio/llms": "^1.0.51",
-    "@inquirer/prompts": "^5.0.0",
-    "dotenv": "^16.4.7",
-    "find-process": "^2.0.0",
-    "json5": "^2.2.3",
-    "lru-cache": "^11.2.2",
-    "minimist": "^1.2.8",
-    "openurl": "^1.1.1",
-    "rotating-file-stream": "^3.2.7",
-    "shell-quote": "^1.8.3",
-    "tiktoken": "^1.0.21",
-    "uuid": "^11.1.0"
-  },
   "devDependencies": {
     "@types/node": "^24.0.15",
     "esbuild": "^0.25.1",
-    "fastify": "^5.4.0",
     "shx": "^0.4.0",
     "typescript": "^5.8.2"
   },
-  "publishConfig": {
-    "ignore": [
-      "!build/",
-      "src/",
-      "screenshots/"
-    ]
+  "pnpm": {
+    "overrides": {
+      "@types/react": "18"
+    }
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=8.0.0"
   }
 }

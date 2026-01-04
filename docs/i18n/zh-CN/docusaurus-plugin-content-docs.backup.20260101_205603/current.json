@@ -1,0 +1,78 @@
+{
+  "version.label": {
+    "message": "Next",
+    "description": "The label for version current"
+  },
+  "sidebar.tutorialSidebar.category.Server": {
+    "message": "服务器",
+    "description": "The label for category 'Server' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Server.link.generated-index.title": {
+    "message": "Claude Code Router 服务器",
+    "description": "The generated-index page title for category 'Server' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Server.link.generated-index.description": {
+    "message": "部署和管理 Claude Code Router 服务器",
+    "description": "The generated-index page description for category 'Server' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.API Reference": {
+    "message": "API 参考",
+    "description": "The label for category 'API Reference' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.API Reference.link.generated-index.title": {
+    "message": "API 参考",
+    "description": "The generated-index page title for category 'API Reference' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.API Reference.link.generated-index.description": {
+    "message": "服务器 API 接口文档",
+    "description": "The generated-index page description for category 'API Reference' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Configuration": {
+    "message": "配置",
+    "description": "The label for category 'Configuration' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Configuration.link.generated-index.title": {
+    "message": "服务器配置",
+    "description": "The generated-index page title for category 'Configuration' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Configuration.link.generated-index.description": {
+    "message": "服务器配置说明",
+    "description": "The generated-index page description for category 'Configuration' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Advanced": {
+    "message": "高级",
+    "description": "The label for category 'Advanced' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Advanced.link.generated-index.title": {
+    "message": "高级主题",
+    "description": "The generated-index page title for category 'Advanced' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Advanced.link.generated-index.description": {
+    "message": "高级功能和自定义",
+    "description": "The generated-index page description for category 'Advanced' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.CLI": {
+    "message": "CLI",
+    "description": "The label for category 'CLI' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.CLI.link.generated-index.title": {
+    "message": "Claude Code Router CLI",
+    "description": "The generated-index page title for category 'CLI' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.CLI.link.generated-index.description": {
+    "message": "命令行工具使用指南",
+    "description": "The generated-index page description for category 'CLI' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Commands": {
+    "message": "命令",
+    "description": "The label for category 'Commands' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Commands.link.generated-index.title": {
+    "message": "CLI 命令",
+    "description": "The generated-index page title for category 'Commands' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Commands.link.generated-index.description": {
+    "message": "完整的命令参考",
+    "description": "The generated-index page description for category 'Commands' in sidebar 'tutorialSidebar'"
+  }
+}

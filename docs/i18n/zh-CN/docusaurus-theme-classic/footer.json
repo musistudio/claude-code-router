@@ -1,0 +1,50 @@
+{
+  "link.title.Documentation": {
+    "message": "文档",
+    "description": "The title of the footer links column with title=Documentation in the footer"
+  },
+  "link.title.Community": {
+    "message": "社区",
+    "description": "The title of the footer links column with title=Community in the footer"
+  },
+  "link.title.Resources": {
+    "message": "资源",
+    "description": "The title of the footer links column with title=Resources in the footer"
+  },
+  "link.item.label.Introduction": {
+    "message": "简介",
+    "description": "The label of footer link with label=Introduction linking to /docs/intro"
+  },
+  "link.item.label.Installation": {
+    "message": "安装",
+    "description": "The label of footer link with label=Installation linking to /docs/cli/installation"
+  },
+  "link.item.label.Quick Start": {
+    "message": "快速开始",
+    "description": "The label of footer link with label=Quick Start linking to /docs/cli/quick-start"
+  },
+  "link.item.label.GitHub": {
+    "message": "GitHub",
+    "description": "The label of footer link with label=GitHub linking to https://github.com/musistudio/claude-code-router"
+  },
+  "link.item.label.Issues": {
+    "message": "问题反馈",
+    "description": "The label of footer link with label=Issues linking to https://github.com/musistudio/claude-code-router/issues"
+  },
+  "link.item.label.Releases": {
+    "message": "发布版本",
+    "description": "The label of footer link with label=Releases linking to https://github.com/musistudio/claude-code-router/releases"
+  },
+  "link.item.label.Blog": {
+    "message": "博客",
+    "description": "The label of footer link with label=Blog linking to /blog"
+  },
+  "link.item.label.NPM Package": {
+    "message": "NPM 包",
+    "description": "The label of footer link with label=NPM Package linking to https://www.npmjs.com/package/@musistudio/claude-code-router"
+  },
+  "copyright": {
+    "message": "Copyright © 2025 Claude Code Router. 保留所有权利。",
+    "description": "The footer copyright"
+  }
+}

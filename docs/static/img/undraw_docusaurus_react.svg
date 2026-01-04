@@ -1,0 +1,7 @@
+<svg width="500" height="500" viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
+  <rect width="500" height="500" fill="#f8f9fa"/>
+  <circle cx="200" cy="200" r="60" fill="#2e8555" opacity="0.6"/>
+  <circle cx="300" cy="200" r="60" fill="#25c2a0" opacity="0.6"/>
+  <circle cx="250" cy="300" r="60" fill="#21af90" opacity="0.6"/>
+  <text x="250" y="420" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#333">Provider Agnostic</text>
+</svg>

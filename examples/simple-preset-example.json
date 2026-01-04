@@ -1,0 +1,87 @@
+{
+  "name": "simple-openai-preset",
+  "version": "1.0.0",
+  "description": "简单的OpenAI配置预设",
+  "author": "Your Name",
+  "keywords": ["openai", "simple"],
+  "schema": [
+    {
+      "id": "apiKey",
+      "type": "password",
+      "label": "OpenAI API Key",
+      "prompt": "请输入您的OpenAI API Key",
+      "placeholder": "sk-...",
+      "required": true
+    },
+    {
+      "id": "model",
+      "type": "select",
+      "label": "选择模型",
+      "prompt": "选择要使用的GPT模型",
+      "options": {
+        "type": "static",
+        "options": [
+          {
+            "label": "GPT-4o (推荐)",
+            "value": "gpt-4o"
+          },
+          {
+            "label": "GPT-4o-mini (快速)",
+            "value": "gpt-4o-mini"
+          },
+          {
+            "label": "GPT-3.5 Turbo (经济)",
+            "value": "gpt-3.5-turbo"
+          }
+        ]
+      },
+      "required": true,
+      "defaultValue": "gpt-4o"
+    },
+    {
+      "id": "useProxy",
+      "type": "confirm",
+      "label": "使用代理",
+      "prompt": "是否需要通过代理访问OpenAI API？",
+      "defaultValue": false
+    },
+    {
+      "id": "proxyUrl",
+      "type": "input",
+      "label": "代理地址",
+      "prompt": "请输入代理地址",
+      "placeholder": "http://127.0.0.1:7890",
+      "required": true,
+      "when": {
+        "field": "useProxy",
+        "operator": "eq",
+        "value": true
+      }
+    }
+  ],
+  "template": {
+    "Providers": [
+      {
+        "name": "openai",
+        "api_base_url": "https://api.openai.com/v1",
+        "api_key": "{{apiKey}}",
+        "models": ["{{model}}"]
+      }
+    ],
+    "Router": {
+      "default": "openai/{{model}}"
+    },
+    "PROXY_URL": "{{proxyUrl}}"
+  },
+  "configMappings": [
+    {
+      "target": "PROXY_URL",
+      "value": "{{proxyUrl}}",
+      "when": {
+        "field": "useProxy",
+        "operator": "eq",
+        "value": true
+      }
+    }
+  ]
+}

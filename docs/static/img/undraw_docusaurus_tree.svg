@@ -1,0 +1,7 @@
+<svg width="500" height="500" viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
+  <rect width="500" height="500" fill="#f8f9fa"/>
+  <circle cx="250" cy="120" r="80" fill="#2e8555" opacity="0.6"/>
+  <rect x="230" y="180" width="40" height="200" fill="#8B4513"/>
+  <path d="M250 280 L350 350 L150 350 Z" fill="#2e8555" opacity="0.8"/>
+  <text x="250" y="420" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#333">Flexible Routing</text>
+</svg>

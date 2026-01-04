@@ -1,0 +1,90 @@
+{
+  "version.label": {
+    "message": "Next",
+    "description": "The label for version current"
+  },
+  "sidebar.tutorialSidebar.category.Server": {
+    "message": "Server",
+    "description": "The label for category 'Server' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Server.link.generated-index.title": {
+    "message": "Claude Code Router Server",
+    "description": "The generated-index page title for category 'Server' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Server.link.generated-index.description": {
+    "message": "Deploy and manage Claude Code Router server",
+    "description": "The generated-index page description for category 'Server' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.API Reference": {
+    "message": "API Reference",
+    "description": "The label for category 'API Reference' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.API Reference.link.generated-index.title": {
+    "message": "API Reference",
+    "description": "The generated-index page title for category 'API Reference' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.API Reference.link.generated-index.description": {
+    "message": "Server API documentation",
+    "description": "The generated-index page description for category 'API Reference' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.server-configuration-category": {
+    "message": "Configuration",
+    "description": "The label for category 'Configuration' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.server-configuration-category.link.generated-index.title": {
+    "message": "Server Configuration",
+    "description": "The generated-index page title for category 'Configuration' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.server-configuration-category.link.generated-index.description": {
+    "message": "Server configuration guide",
+    "description": "The generated-index page description for category 'Configuration' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Advanced": {
+    "message": "Advanced",
+    "description": "The label for category 'Advanced' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Advanced.link.generated-index.title": {
+    "message": "Advanced Topics",
+    "description": "The generated-index page title for category 'Advanced' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Advanced.link.generated-index.description": {
+    "message": "Advanced features and customization",
+    "description": "The generated-index page description for category 'Advanced' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.CLI": {
+    "message": "CLI",
+    "description": "The label for category 'CLI' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.CLI.link.generated-index.title": {
+    "message": "Claude Code Router CLI",
+    "description": "The generated-index page title for category 'CLI' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.CLI.link.generated-index.description": {
+    "message": "Command-line tool usage guide",
+    "description": "The generated-index page description for category 'CLI' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Commands": {
+    "message": "Commands",
+    "description": "The label for category 'Commands' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Commands.link.generated-index.title": {
+    "message": "CLI Commands",
+    "description": "The generated-index page title for category 'Commands' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Commands.link.generated-index.description": {
+    "message": "Complete command reference",
+    "description": "The generated-index page description for category 'Commands' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.cli-configuration-category": {
+    "message": "Configuration",
+    "description": "The label for category 'Configuration' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.cli-configuration-category.link.generated-index.title": {
+    "message": "CLI Configuration",
+    "description": "The generated-index page title for category 'Configuration' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.cli-configuration-category.link.generated-index.description": {
+    "message": "CLI configuration guide",
+    "description": "The generated-index page description for category 'Configuration' in sidebar 'tutorialSidebar'"
+  }
+}

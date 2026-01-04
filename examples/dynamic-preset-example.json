@@ -1,0 +1,246 @@
+{
+  "metadata": {
+    "name": "multi-provider-preset",
+    "version": "1.0.0",
+    "description": "示例预设：支持多provider选择和动态配置",
+    "author": "CCR Team",
+    "keywords": ["example", "multi-provider", "dynamic"],
+    "ccrVersion": "2.0.0"
+  },
+  "schema": [
+    {
+      "id": "providerChoice",
+      "type": "select",
+      "label": "选择Provider",
+      "prompt": "请选择要使用的LLM提供商",
+      "options": {
+        "type": "static",
+        "options": [
+          {
+            "label": "OpenAI",
+            "value": "openai",
+            "description": "使用OpenAI的GPT模型"
+          },
+          {
+            "label": "DeepSeek",
+            "value": "deepseek",
+            "description": "使用DeepSeek的高性价比模型"
+          },
+          {
+            "label": "Gemini",
+            "value": "gemini",
+            "description": "使用Google的Gemini模型"
+          }
+        ]
+      },
+      "required": true,
+      "defaultValue": "openai"
+    },
+    {
+      "id": "apiKey",
+      "type": "password",
+      "label": "API Key",
+      "prompt": "请输入您的API Key",
+      "placeholder": "sk-...",
+      "required": true,
+      "when": {
+        "field": "providerChoice",
+        "operator": "exists"
+      }
+    },
+    {
+      "id": "baseUrl",
+      "type": "input",
+      "label": "Base URL（可选）",
+      "prompt": "自定义API Base URL，留空使用默认值",
+      "required": false,
+      "when": {
+        "field": "providerChoice",
+        "operator": "exists"
+      }
+    },
+    {
+      "id": "modelChoice",
+      "type": "select",
+      "label": "选择模型",
+      "prompt": "请选择要使用的模型",
+      "options": {
+        "type": "static",
+        "options": [
+          {
+            "label": "GPT-4o",
+            "value": "gpt-4o"
+          },
+          {
+            "label": "GPT-4o-mini",
+            "value": "gpt-4o-mini"
+          },
+          {
+            "label": "GPT-3.5-turbo",
+            "value": "gpt-3.5-turbo"
+          }
+        ]
+      },
+      "required": true,
+      "when": {
+        "field": "providerChoice",
+        "operator": "eq",
+        "value": "openai"
+      },
+      "defaultValue": "gpt-4o"
+    },
+    {
+      "id": "deepseekModelChoice",
+      "type": "select",
+      "label": "选择模型",
+      "prompt": "请选择要使用的DeepSeek模型",
+      "options": {
+        "type": "static",
+        "options": [
+          {
+            "label": "DeepSeek-V3",
+            "value": "deepseek-v3"
+          },
+          {
+            "label": "DeepSeek-Chat",
+            "value": "deepseek-chat"
+          }
+        ]
+      },
+      "required": true,
+      "when": {
+        "field": "providerChoice",
+        "operator": "eq",
+        "value": "deepseek"
+      },
+      "defaultValue": "deepseek-v3"
+    },
+    {
+      "id": "useProxy",
+      "type": "confirm",
+      "label": "使用代理",
+      "prompt": "是否通过代理访问API？",
+      "defaultValue": false
+    },
+    {
+      "id": "proxyUrl",
+      "type": "input",
+      "label": "代理URL",
+      "prompt": "请输入代理地址（如：http://127.0.0.1:7890）",
+      "placeholder": "http://127.0.0.1:7890",
+      "required": true,
+      "when": {
+        "field": "useProxy",
+        "operator": "eq",
+        "value": true
+      }
+    },
+    {
+      "id": "maxTokens",
+      "type": "number",
+      "label": "最大Token数",
+      "prompt": "设置单次请求的最大token数量",
+      "min": 100,
+      "max": 128000,
+      "defaultValue": 4096,
+      "required": false
+    },
+    {
+      "id": "advancedSettings",
+      "type": "confirm",
+      "label": "高级设置",
+      "prompt": "是否配置高级选项？",
+      "defaultValue": false
+    },
+    {
+      "id": "temperature",
+      "type": "number",
+      "label": "Temperature",
+      "prompt": "控制生成随机性（0-2）",
+      "min": 0,
+      "max": 2,
+      "defaultValue": 0.7,
+      "required": false,
+      "when": {
+        "field": "advancedSettings",
+        "operator": "eq",
+        "value": true
+      }
+    },
+    {
+      "id": "features",
+      "type": "multiselect",
+      "label": "启用功能",
+      "prompt": "选择要启用的功能",
+      "options": {
+        "type": "static",
+        "options": [
+          {
+            "label": "流式输出",
+            "value": "stream"
+          },
+          {
+            "label": "工具调用",
+            "value": "tools"
+          },
+          {
+            "label": "长上下文支持",
+            "value": "longContext"
+          }
+        ]
+      },
+      "defaultValue": ["stream"],
+      "required": false
+    }
+  ],
+  "template": {
+    "Providers": [
+      {
+        "name": "{{providerChoice}}",
+        "api_base_url": "{{baseUrl}}",
+        "api_key": "{{apiKey}}",
+        "models": ["{{modelChoice}}", "{{deepseekModelChoice}}"]
+      }
+    ],
+    "Router": {
+      "default": "{{providerChoice}}/{{modelChoice}}{{deepseekModelChoice}}"
+    },
+    "PROXY_URL": "{{proxyUrl}}",
+    "API_TIMEOUT_MS": 60000
+  },
+  "configMappings": [
+    {
+      "target": "Providers[0].name",
+      "value": "{{providerChoice}}"
+    },
+    {
+      "target": "Providers[0].api_key",
+      "value": "{{apiKey}}"
+    },
+    {
+      "target": "Providers[0].api_base_url",
+      "value": "{{baseUrl}}",
+      "when": {
+        "field": "baseUrl",
+        "operator": "exists"
+      }
+    },
+    {
+      "target": "Router.default",
+      "value": "{{providerChoice}}/{{modelChoice}}{{deepseekModelChoice}}"
+    },
+    {
+      "target": "PROXY_URL",
+      "value": "{{proxyUrl}}",
+      "when": {
+        "field": "useProxy",
+        "operator": "eq",
+        "value": true
+      }
+    },
+    {
+      "target": "API_TIMEOUT_MS",
+      "value": 60000
+    }
+  ]
+}

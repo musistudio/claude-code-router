@@ -253,7 +253,45 @@ This command provides an interactive interface to:
 
 The CLI tool validates all inputs and provides helpful prompts to guide you through the configuration process, making it easy to manage complex setups without editing JSON files manually.
 
-### 6. Activate Command (Environment Variables Setup)
+### 6. Presets Management
+
+Presets allow you to save, share, and reuse configurations easily. You can export your current configuration as a preset and install presets from files or URLs.
+
+```shell
+# Export current configuration as a preset
+ccr preset export my-preset
+
+# Export with metadata
+ccr preset export my-preset --description "My OpenAI config" --author "Your Name" --tags "openai,production"
+
+# Install a preset from local directory
+ccr preset install /path/to/preset
+
+# List all installed presets
+ccr preset list
+
+# Show preset information
+ccr preset info my-preset
+
+# Delete a preset
+ccr preset delete my-preset
+```
+
+**Preset Features:**
+- **Export**: Save your current configuration as a preset directory (with manifest.json)
+- **Install**: Install presets from local directories
+- **Sensitive Data Handling**: API keys and other sensitive data are automatically sanitized during export (marked as `{{field}}` placeholders)
+- **Dynamic Configuration**: Presets can include input schemas for collecting required information during installation
+- **Version Control**: Each preset includes version metadata for tracking updates
+
+**Preset File Structure:**
+```
+~/.claude-code-router/presets/
+├── my-preset/
+│   └── manifest.json    # Contains configuration and metadata
+```
+
+### 7. Activate Command (Environment Variables Setup)
 
 The `activate` command allows you to set up environment variables globally in your shell, enabling you to use the `claude` command directly or integrate Claude Code Router with applications built using the Agent SDK.
 

@@ -1,0 +1,22 @@
+{
+  "title": {
+    "message": "Claude Code Router",
+    "description": "The title in the navbar"
+  },
+  "logo.alt": {
+    "message": "Claude Code Router Logo",
+    "description": "The alt text of navbar logo"
+  },
+  "item.label.Documentation": {
+    "message": "文档",
+    "description": "Navbar item with label Documentation"
+  },
+  "item.label.Blog": {
+    "message": "博客",
+    "description": "Navbar item with label Blog"
+  },
+  "item.label.GitHub": {
+    "message": "GitHub",
+    "description": "Navbar item with label GitHub"
+  }
+}
