@@ -5,7 +5,7 @@ import { join } from "path";
 import { initConfig, initDir } from "./utils";
 import { createServer } from "./server";
 import { apiKeyAuth } from "./middleware/auth";
-import { CONFIG_FILE, HOME_DIR, listPresets } from "@CCR/shared";
+import { CONFIG_FILE, HOME_DIR, listPresets, saveRuntimeState, cleanupRuntimeState } from "@CCR/shared";
 import { createStream } from 'rotating-file-stream';
 import { sessionUsageCache } from "@musistudio/llms";
 import { SSEParserTransform } from "./utils/SSEParser.transform";
@@ -116,6 +116,13 @@ async function getServer(options: RunOptions = {}) {
   const servicePort = process.env.SERVICE_PORT
     ? parseInt(process.env.SERVICE_PORT)
     : port;
+
+  // Save runtime state with actual port being used
+  saveRuntimeState({
+    port: servicePort,
+    host: HOST,
+    startTime: new Date().toISOString()
+  });
 
   // Configure logger based on config settings or external options
   const pad = (num: number) => (num > 9 ? "" : "0") + num;
@@ -431,6 +438,19 @@ async function getServer(options: RunOptions = {}) {
 
   process.on("unhandledRejection", (reason, promise) => {
     serverInstance.app.log.error("Unhandled rejection at:", promise, "reason:", reason);
+  });
+
+  // Handle SIGINT (Ctrl+C) to clean up runtime state
+  process.on("SIGINT", () => {
+    console.log("Received SIGINT, cleaning up...");
+    cleanupRuntimeState();
+    process.exit(0);
+  });
+
+  // Handle SIGTERM to clean up runtime state
+  process.on("SIGTERM", () => {
+    cleanupRuntimeState();
+    process.exit(0);
   });
 
   return serverInstance;
