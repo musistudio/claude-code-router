@@ -12,7 +12,7 @@ import { activateCommand } from "./utils/activateCommand";
 import { readConfigFile } from "./utils";
 import { version } from "../package.json";
 import { spawn, exec } from "child_process";
-import {getPresetDir, loadConfigFromManifest, PID_FILE, readPresetFile, REFERENCE_COUNT_FILE} from "@CCR/shared";
+import {getPresetDir, loadConfigFromManifest, PID_FILE, readPresetFile, REFERENCE_COUNT_FILE, cleanupRuntimeState} from "@CCR/shared";
 import fs, { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { parseStatusLineData, StatusLineInput } from "./utils/statusline";
@@ -216,6 +216,7 @@ async function main() {
       try {
         const pid = parseInt(readFileSync(PID_FILE, "utf-8"));
         process.kill(pid);
+        cleanupRuntimeState();
         cleanupPidFile();
         if (existsSync(REFERENCE_COUNT_FILE)) {
           try {
@@ -231,6 +232,7 @@ async function main() {
         console.log(
           "Failed to stop the service. It may have already been stopped."
         );
+        cleanupRuntimeState();
         cleanupPidFile();
       }
       break;
@@ -434,6 +436,7 @@ async function main() {
       try {
         const pid = parseInt(readFileSync(PID_FILE, "utf-8"));
         process.kill(pid);
+        cleanupRuntimeState();
         cleanupPidFile();
         if (existsSync(REFERENCE_COUNT_FILE)) {
           try {
@@ -445,6 +448,7 @@ async function main() {
         console.log("claude code router service has been stopped.");
       } catch (e) {
         console.log("Service was not running or failed to stop.");
+        cleanupRuntimeState();
         cleanupPidFile();
       }
 

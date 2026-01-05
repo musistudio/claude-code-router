@@ -10,6 +10,10 @@
     "build:server": "pnpm --filter @CCR/server build",
     "build:ui": "pnpm --filter @CCR/ui build",
     "build:docs": "pnpm --filter claude-code-router-docs build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
     "release": "pnpm build && bash scripts/release.sh all",
     "release:npm": "bash scripts/release.sh npm",
     "release:docker": "bash scripts/release.sh docker",
@@ -34,9 +38,12 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^24.0.15",
+    "@vitest/ui": "^4.0.16",
     "esbuild": "^0.25.1",
+    "fast-check": "^4.5.3",
     "shx": "^0.4.0",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "vitest": "^4.0.16"
   },
   "pnpm": {
     "overrides": {

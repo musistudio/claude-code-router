@@ -1,4 +1,5 @@
 import { readConfigFile } from ".";
+import { getRuntimePort } from "@CCR/shared";
 
 /**
  * Get environment variables for Agent SDK/Claude Code integration
@@ -6,7 +7,9 @@ import { readConfigFile } from ".";
  */
 export const createEnvVariables = async (): Promise<Record<string, string | undefined>> => {
   const config = await readConfigFile();
-  const port = config.PORT || 3456;
+  const configPort = config.PORT || 3456;
+  // Use actual runtime port if service is running, otherwise use config port
+  const port = getRuntimePort(configPort);
   const apiKey = config.APIKEY || "test";
 
   return {
