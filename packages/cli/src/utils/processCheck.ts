@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs';
-import { PID_FILE, REFERENCE_COUNT_FILE } from '@CCR/shared';
+import { PID_FILE, REFERENCE_COUNT_FILE, getRuntimeState } from '@CCR/shared';
 import { readConfigFile } from '.';
 import find from 'find-process';
 import { execSync } from 'child_process'; // 引入 execSync 来执行命令行
@@ -123,12 +123,18 @@ export async function getServiceInfo() {
     const pid = getServicePid();
     const running = await isServiceRunning();
     const config = await readConfigFile();
-    const port = config.PORT || 3456;
+    const runtimeState = getRuntimeState();
+    
+    const configPort = config.PORT || 3456;
+    // Prioritize runtime port over config port
+    const port = runtimeState?.port || configPort;
 
     return {
         running,
         pid,
         port,
+        configPort,                          // Config file port
+        isRuntimePort: !!runtimeState,       // Whether port is from runtime state
         endpoint: `http://127.0.0.1:${port}`,
         pidFile: PID_FILE,
         referenceCount: getReferenceCount()
