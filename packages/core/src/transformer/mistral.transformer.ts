@@ -7,6 +7,7 @@ import { Transformer, TransformerContext } from "../types/transformer";
  * Transforms Anthropic-style requests to Mistral's OpenAI-compatible API format.
  * Handles the key differences:
  * - Removes `cache_control` fields (not supported by Mistral)
+ * - Removes `$schema` from tool parameters (not supported by Mistral)
  * - Flattens array content to strings where needed
  * - Ensures tool definitions match OpenAI function calling format
  */
@@ -21,38 +22,39 @@ export class MistralTransformer implements Transformer {
     _provider: any,
     _context: TransformerContext
   ): Promise<UnifiedChatRequest> {
-    // Deep clone to avoid mutating original
-    const transformedRequest = JSON.parse(JSON.stringify(request)) as UnifiedChatRequest;
-
-    // Process messages
-    if (Array.isArray(transformedRequest.messages)) {
-      transformedRequest.messages = transformedRequest.messages.map((msg) => 
-        this.transformMessage(msg)
-      );
+    // Process messages - mutate directly for consistency with other transformers
+    if (Array.isArray(request.messages)) {
+      request.messages.forEach((msg) => {
+        this.transformMessage(msg);
+      });
     }
 
     // Ensure stream is set (Mistral defaults to non-streaming)
-    if (transformedRequest.stream === undefined) {
-      transformedRequest.stream = true;
+    if (request.stream === undefined) {
+      request.stream = true;
     }
 
     // Handle tool_choice conversion
-    if (transformedRequest.tool_choice) {
-      transformedRequest.tool_choice = this.transformToolChoice(transformedRequest.tool_choice);
+    if (request.tool_choice) {
+      request.tool_choice = this.transformToolChoice(request.tool_choice);
     }
 
-    return transformedRequest;
+    // Remove $schema from tool function parameters if present
+    if (Array.isArray(request.tools)) {
+      request.tools.forEach((tool) => {
+        if (tool?.function?.parameters?.$schema) {
+          delete tool.function.parameters.$schema;
+        }
+      });
+    }
+
+    return request;
   }
 
   /**
-   * Transform a single message to Mistral-compatible format
+   * Transform a single message to Mistral-compatible format (mutates in place)
    */
-  private transformMessage(msg: UnifiedMessage): UnifiedMessage {
-    const transformed: UnifiedMessage = {
-      role: msg.role,
-      content: msg.content,
-    };
-
+  private transformMessage(msg: UnifiedMessage): void {
     // Handle array content - flatten to string and remove cache_control
     if (Array.isArray(msg.content)) {
       const contentArray = msg.content as MessageContent[];
@@ -64,7 +66,7 @@ export class MistralTransformer implements Transformer {
 
       if (hasImages) {
         // Keep as array but clean up cache_control
-        transformed.content = contentArray.map((part) => {
+        msg.content = contentArray.map((part) => {
           if (part.type === "text") {
             const { cache_control, ...rest } = part as TextContent;
             return rest;
@@ -78,26 +80,14 @@ export class MistralTransformer implements Transformer {
           .map((part) => part.text)
           .filter((text) => text && text.length > 0);
         
-        transformed.content = textParts.join("\n");
+        msg.content = textParts.join("\n");
       }
     }
 
     // Remove cache_control from message level
     if ((msg as any).cache_control) {
-      delete (transformed as any).cache_control;
+      delete (msg as any).cache_control;
     }
-
-    // Copy tool_calls if present
-    if (msg.tool_calls) {
-      transformed.tool_calls = msg.tool_calls;
-    }
-
-    // Copy tool_call_id if present (for tool response messages)
-    if (msg.tool_call_id) {
-      transformed.tool_call_id = msg.tool_call_id;
-    }
-
-    return transformed;
   }
 
   /**
@@ -112,7 +102,8 @@ export class MistralTransformer implements Transformer {
     
     if (toolChoice === "required") {
       // Mistral uses "any" instead of "required"
-      return "any" as any;
+      // Note: "any" is valid for Mistral but not in UnifiedChatRequest type
+      return "any";
     }
 
     // Handle object format
