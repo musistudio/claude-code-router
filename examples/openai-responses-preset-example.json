@@ -1,0 +1,53 @@
+{
+  "metadata": {
+    "name": "openai-responses-preset-example",
+    "version": "1.0.0",
+    "description": "Shows how to use OpenAI models with Claude Code.",
+    "author": "CCR Team",
+    "keywords": ["example", "transformer"],
+    "ccrVersion": "2.0.0"
+  },
+  "LOG": false,
+  "LOG_LEVEL": "debug",
+  "CLAUDE_PATH": "",
+  "HOST": "127.0.0.1",
+  "PORT": 3456,
+  "APIKEY": "",
+  "API_TIMEOUT_MS": "600000",
+  "PROXY_URL": "",
+  "transformers": [],
+  "Providers": [
+    {
+      "name": "openai",
+      "api_base_url": "https://api.openai.com/v1/responses",
+      "api_key": "sk-xxx",
+      "models": [
+        "gpt-5.2"
+      ],
+      "transformer": 
+      { 
+        "use": ["openai-responses"]
+      }
+    }
+  ],
+  "StatusLine": {
+    "enabled": true,
+    "currentStyle": "default",
+    "default": {
+      "modules": []
+    },
+    "powerline": {
+      "modules": []
+    }
+  },
+  "Router": {
+    "default": "openai,gpt-5.2",
+    "background": "",
+    "think": "",
+    "longContext": "",
+    "longContextThreshold": 60000,
+    "webSearch": "",
+    "image": ""
+  },
+  "CUSTOM_ROUTER_PATH": ""
+}

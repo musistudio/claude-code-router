@@ -25,12 +25,18 @@ Demonstrates all advanced features:
 
 **Use Case**: Complete configuration of production environment
 
-### 3 `dynamic-preset-example.json` - Multi-Provider Example
+### 3. `dynamic-preset-example.json` - Multi-Provider Example
 Shows how to switch between multiple providers:
 - Provider Selector (`"select"`)
 - Dynamically display the corresponding model options based on the selected Provider
 - Proxy configuration
 - Advanced function switches
+
+### 4. `openai-responses-preset-example.json` - Transformer example
+Shows how to use OpenAI models with Claude Code:
+- Transformer to convert Anthropic APIs to OpenAI Responses APIs (`"transformer"`)
+
+See [maybe-we-can-do-more-with-the-route.md](../blog/en/maybe-we-can-do-more-with-the-route.md) and [transformers in llms](https://github.com/musistudio/llms/tree/main/src/transformer).
 
 ## How to use these examples
 

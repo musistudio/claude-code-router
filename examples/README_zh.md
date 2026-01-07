@@ -30,6 +30,12 @@
 - 代理配置
 - 高级功能开关
 
+### 4. `openai-responses-preset-example.json` - Transformer example
+Shows how to use OpenAI models with Claude Code:
+- Transformer to convert Anthropic APIs to OpenAI Responses APIs (`"transformer"`)
+
+See [maybe-we-can-do-more-with-the-route.md](../blog/en/maybe-we-can-do-more-with-the-route.md) and [transformers in llms](https://github.com/musistudio/llms/tree/main/src/transformer).
+
 ## 如何使用这些示例
 
 ### 方法1：直接复制到预设目录
