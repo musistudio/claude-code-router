@@ -43,7 +43,7 @@ npm install -g @musistudio/claude-code-router
 
 ### 2. Configuration
 
-Create and configure your `~/.claude-code-router/config.json` file. For more details, you can refer to `config.example.json`.
+Create and configure your `~/.claude-code-router/config.json` file. For more details, you can refer to [config.example.json](./packages/ui/config.example.json) / [examples](./examples/README.md).
 
 The `config.json` file has several key sections:
 
@@ -215,7 +215,9 @@ ccr code
 > ccr restart
 > ```
 
-### 4. UI Mode
+## CLI commands
+
+### UI Mode
 
 For a more intuitive experience, you can use the UI mode to manage your configuration:
 
@@ -227,7 +229,7 @@ This will open a web-based interface where you can easily view and edit your `co
 
 ![UI](/blog/images/ui.png)
 
-### 5. CLI Model Management
+### CLI Model Management
 
 For users who prefer terminal-based workflows, you can use the interactive CLI model selector:
 
@@ -253,7 +255,7 @@ This command provides an interactive interface to:
 
 The CLI tool validates all inputs and provides helpful prompts to guide you through the configuration process, making it easy to manage complex setups without editing JSON files manually.
 
-### 6. Presets Management
+### Presets Management
 
 Presets allow you to save, share, and reuse configurations easily. You can export your current configuration as a preset and install presets from files or URLs.
 
@@ -291,7 +293,7 @@ ccr preset delete my-preset
 │   └── manifest.json    # Contains configuration and metadata
 ```
 
-### 7. Activate Command (Environment Variables Setup)
+### Activate Command (Environment Variables Setup)
 
 The `activate` command allows you to set up environment variables globally in your shell, enabling you to use the `claude` command directly or integrate Claude Code Router with applications built using the Agent SDK.
 
@@ -317,7 +319,9 @@ The `activate` command sets the following environment variables:
 
 > **Note**: Make sure the Claude Code Router service is running (`ccr start`) before using the activated environment variables. The environment variables are only valid for the current shell session. To make them persistent, you can add `eval "$(ccr activate)"` to your shell configuration file (e.g., `~/.zshrc` or `~/.bashrc`).
 
-#### Providers
+## Advanced Configuration
+
+### Providers
 
 The `Providers` array is where you define the different model providers you want to use. Each provider object requires:
 
@@ -327,7 +331,7 @@ The `Providers` array is where you define the different model providers you want
 - `models`: A list of model names available from this provider.
 - `transformer` (optional): Specifies transformers to process requests and responses.
 
-#### Transformers
+### Transformers
 
 Transformers allow you to modify the request and response payloads to ensure compatibility with different provider APIs.
 
@@ -433,7 +437,7 @@ You can also create your own transformers and load them via the `transformers` f
 }
 ```
 
-#### Router
+### Router
 
 The `Router` object defines which model to use for different scenarios:
 
@@ -449,7 +453,7 @@ The `Router` object defines which model to use for different scenarios:
 `/model provider_name,model_name`
 Example: `/model openrouter,anthropic/claude-3.5-sonnet`
 
-#### Custom Router
+### Custom Router
 
 For more advanced routing logic, you can specify a custom router script via the `CUSTOM_ROUTER_PATH` in your `config.json`. This allows you to implement complex routing rules beyond the default scenarios.
 
@@ -488,7 +492,7 @@ module.exports = async function router(req, config) {
 };
 ```
 
-##### Subagent Routing
+#### Subagent Routing
 
 For routing within subagents, you must specify a particular provider and model by including `<CCR-SUBAGENT-MODEL>provider,model</CCR-SUBAGENT-MODEL>` at the **beginning** of the subagent's prompt. This allows you to direct specific subagent tasks to designated models.
 
@@ -592,7 +596,6 @@ If you find this project helpful, please consider sponsoring its development. Yo
 ### Our Sponsors
 
 A huge thank you to all our sponsors for their generous support!
-
 
 - [AIHubmix](https://aihubmix.com/)
 - [BurnCloud](https://ai.burncloud.com)
