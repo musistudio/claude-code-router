@@ -6,26 +6,26 @@
 
 ### 1. `simple-preset-example.json` - 简单示例
 适合初学者，展示了基本的动态配置功能：
-- 密码输入（API Key）
-- 单选下拉框（选择模型）
-- 确认框（是否使用代理）
-- 条件显示（只有选择使用代理时才显示代理地址输入）
+- 密码输入（API Key）(`"password"`)
+- 单选下拉框（选择模型）(`"select`)
+- 确认框（是否使用代理）(`"confirm"`)
+- 条件显示（只有选择使用代理时才显示代理地址输入）(`"when"` condition)
 
 **使用场景**：快速配置单个 Provider
 
 ### 2. `preset-manifest-example.json` - 完整示例
 展示了所有高级功能：
-- 多种输入类型（password, select, confirm, number, multiselect）
+- 多种输入类型（(`"password"`, `"select"`, `"confirm"`, `"number"`, `"multiselect"`)
 - 动态选项（从 Providers 配置中提取）
-- 复杂条件逻辑（when 条件）
-- 模板变量替换（{{variable}}）
-- 配置映射（configMappings）
+- 复杂条件逻辑（`"when"` 条件）
+- 模板变量替换（(`"{{variable}}"`)
+- 配置映射 (`"configMappings"`)
 
 **使用场景**：生产环境的完整配置
 
 ### 3. `dynamic-preset-example.json` - 多Provider示例
 展示了如何在多个 Provider 之间切换：
-- Provider 选择器
+- Provider 选择器 (`"select"`)
 - 根据选择的 Provider 动态显示对应的模型选项
 - 代理配置
 - 高级功能开关
