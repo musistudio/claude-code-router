@@ -1,9 +1,17 @@
-import Server, { calculateTokenCount, TokenizerService } from "@musistudio/llms";
-import { readConfigFile, writeConfigFile, backupConfigFile } from "./utils";
-import { join } from "path";
+import {
+  readdirSync,
+  statSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  unlinkSync,
+  rmSync,
+} from "node:fs";
+import { join } from "node:path";
+import fastifyMultipart from "@fastify/multipart";
+import AdmZip from "adm-zip";
 import fastifyStatic from "@fastify/static";
-import { readdirSync, statSync, readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, rmSync } from "fs";
-import { homedir } from "os";
+
 import {
   getPresetDir,
   readManifestFromDir,
@@ -12,18 +20,19 @@ import {
   isPresetInstalled,
   extractPreset,
   HOME_DIR,
-  extractMetadata,
   loadConfigFromManifest,
   downloadPresetToTemp,
-  getTempDir,
   findMarketPresetByName,
   getMarketPresets,
   type PresetFile,
   type ManifestFile,
   type PresetMetadata,
 } from "@CCR/shared";
-import fastifyMultipart from "@fastify/multipart";
-import AdmZip from "adm-zip";
+import Server, {
+  calculateTokenCount,
+  TokenizerService,
+} from "@musistudio/llms";
+import { readConfigFile, writeConfigFile, backupConfigFile } from "./utils";
 
 export const createServer = async (config: any): Promise<any> => {
   const server = new Server(config);
@@ -36,21 +45,31 @@ export const createServer = async (config: any): Promise<any> => {
   });
 
   app.post("/v1/messages/count_tokens", async (req: any, reply: any) => {
-    const {messages, tools, system, model} = req.body;
-    const tokenizerService = (app as any)._server!.tokenizerService as TokenizerService;
+    const { messages, tools, system, model } = req.body;
+    const tokenizerService = (app as any)._server!
+      .tokenizerService as TokenizerService;
 
     // If model is specified in "providerName,modelName" format, use the configured tokenizer
     if (model && model.includes(",") && tokenizerService) {
       try {
         const [provider, modelName] = model.split(",");
-        req.log?.info(`Looking up tokenizer for provider: ${provider}, model: ${modelName}`);
+        req.log?.info(
+          `Looking up tokenizer for provider: ${provider}, model: ${modelName}`
+        );
 
-        const tokenizerConfig = tokenizerService.getTokenizerConfigForModel(provider, modelName);
+        const tokenizerConfig = tokenizerService.getTokenizerConfigForModel(
+          provider,
+          modelName
+        );
 
         if (!tokenizerConfig) {
-          req.log?.warn(`No tokenizer config found for ${provider},${modelName}, using default tiktoken`);
+          req.log?.warn(
+            `No tokenizer config found for ${provider},${modelName}, using default tiktoken`
+          );
         } else {
-          req.log?.info(`Using tokenizer config: ${JSON.stringify(tokenizerConfig)}`);
+          req.log?.info(
+            `Using tokenizer config: ${JSON.stringify(tokenizerConfig)}`
+          );
         }
 
         const result = await tokenizerService.countTokens(
@@ -59,8 +78,8 @@ export const createServer = async (config: any): Promise<any> => {
         );
 
         return {
-          "input_tokens": result.tokenCount,
-          "tokenizer": result.tokenizerUsed,
+          input_tokens: result.tokenCount,
+          tokenizer: result.tokenizerUsed,
         };
       } catch (error: any) {
         req.log?.error(`Error using configured tokenizer: ${error.message}`);
@@ -71,7 +90,9 @@ export const createServer = async (config: any): Promise<any> => {
       if (!model) {
         req.log?.info(`No model specified, using default tiktoken`);
       } else if (!model.includes(",")) {
-        req.log?.info(`Model "${model}" does not contain comma, using default tiktoken`);
+        req.log?.info(
+          `Model "${model}" does not contain comma, using default tiktoken`
+        );
       } else if (!tokenizerService) {
         req.log?.warn(`TokenizerService not available, using default tiktoken`);
       }
@@ -79,7 +100,7 @@ export const createServer = async (config: any): Promise<any> => {
 
     // Default to tiktoken calculation
     const tokenCount = calculateTokenCount(messages, system, tools);
-    return { "input_tokens": tokenCount }
+    return { input_tokens: tokenCount };
   });
 
   // Add endpoint to read config.json with access control
@@ -88,8 +109,9 @@ export const createServer = async (config: any): Promise<any> => {
   });
 
   app.get("/api/transformers", async (req: any, reply: any) => {
-    const transformers =
-      (app as any)._server!.transformerService.getAllTransformers();
+    const transformers = (
+      app as any
+    )._server!.transformerService.getAllTransformers();
     const transformerList = Array.from(transformers.entries()).map(
       ([name, transformer]: any) => ({
         name,
@@ -128,14 +150,19 @@ export const createServer = async (config: any): Promise<any> => {
   // Get log file list endpoint
   app.get("/api/logs/files", async (req: any, reply: any) => {
     try {
-      const logDir = join(homedir(), ".claude-code-router", "logs");
-      const logFiles: Array<{ name: string; path: string; size: number; lastModified: string }> = [];
+      const logDir = join(HOME_DIR, ".claude-code-router", "logs");
+      const logFiles: Array<{
+        name: string;
+        path: string;
+        size: number;
+        lastModified: string;
+      }> = [];
 
       if (existsSync(logDir)) {
         const files = readdirSync(logDir);
 
         for (const file of files) {
-          if (file.endsWith('.log')) {
+          if (file.endsWith(".log")) {
             const filePath = join(logDir, file);
             const stats = statSync(filePath);
 
@@ -143,13 +170,17 @@ export const createServer = async (config: any): Promise<any> => {
               name: file,
               path: filePath,
               size: stats.size,
-              lastModified: stats.mtime.toISOString()
+              lastModified: stats.mtime.toISOString(),
             });
           }
         }
 
         // Sort by modification time in descending order
-        logFiles.sort((a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime());
+        logFiles.sort(
+          (a, b) =>
+            new Date(b.lastModified).getTime() -
+            new Date(a.lastModified).getTime()
+        );
       }
 
       return logFiles;
@@ -170,15 +201,15 @@ export const createServer = async (config: any): Promise<any> => {
         logFilePath = filePath;
       } else {
         // If file path is not specified, use default log file path
-        logFilePath = join(homedir(), ".claude-code-router", "logs", "app.log");
+        logFilePath = join(HOME_DIR, ".claude-code-router", "logs", "app.log");
       }
 
       if (!existsSync(logFilePath)) {
         return [];
       }
 
-      const logContent = readFileSync(logFilePath, 'utf8');
-      const logLines = logContent.split('\n').filter(line => line.trim())
+      const logContent = readFileSync(logFilePath, "utf8");
+      const logLines = logContent.split("\n").filter((line) => line.trim());
 
       return logLines;
     } catch (error) {
@@ -198,11 +229,11 @@ export const createServer = async (config: any): Promise<any> => {
         logFilePath = filePath;
       } else {
         // If file path is not specified, use default log file path
-        logFilePath = join(homedir(), ".claude-code-router", "logs", "app.log");
+        logFilePath = join(HOME_DIR, ".claude-code-router", "logs", "app.log");
       }
 
       if (existsSync(logFilePath)) {
-        writeFileSync(logFilePath, '', 'utf8');
+        writeFileSync(logFilePath, "", "utf8");
       }
 
       return { success: true, message: "Logs cleared successfully" };
@@ -222,24 +253,40 @@ export const createServer = async (config: any): Promise<any> => {
       }
 
       const entries = readdirSync(presetsDir, { withFileTypes: true });
-      const presetDirs = entries.filter(e => e.isDirectory() && !e.name.startsWith('.')).map(e => e.name);
+      const presetDirs = entries
+        .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+        .map((e) => e.name);
 
-      const presets: Array<PresetMetadata & { installed: boolean; id: string }> = [];
+      const presets: Array<
+        PresetMetadata & { installed: boolean; id: string }
+      > = [];
 
       for (const dirName of presetDirs) {
         const presetDir = join(presetsDir, dirName);
         try {
           const manifestPath = join(presetDir, "manifest.json");
-          const content = readFileSync(manifestPath, 'utf-8');
+          const content = readFileSync(manifestPath, "utf-8");
           const manifest = JSON.parse(content);
 
           // Extract metadata fields
-          const { Providers, Router, PORT, HOST, API_TIMEOUT_MS, PROXY_URL, LOG, LOG_LEVEL, StatusLine, NON_INTERACTIVE_MODE, ...metadata } = manifest;
+          const {
+            Providers,
+            Router,
+            PORT,
+            HOST,
+            API_TIMEOUT_MS,
+            PROXY_URL,
+            LOG,
+            LOG_LEVEL,
+            StatusLine,
+            NON_INTERACTIVE_MODE,
+            ...metadata
+          } = manifest;
 
           presets.push({
-            id: dirName,  // Use directory name as unique identifier
+            id: dirName, // Use directory name as unique identifier
             name: metadata.name || dirName,
-            version: metadata.version || '1.0.0',
+            version: metadata.version || "1.0.0",
             description: metadata.description,
             author: metadata.author,
             homepage: metadata.homepage,
@@ -286,7 +333,9 @@ export const createServer = async (config: any): Promise<any> => {
       };
     } catch (error: any) {
       console.error("Failed to get preset:", error);
-      reply.status(500).send({ error: error.message || "Failed to get preset" });
+      reply
+        .status(500)
+        .send({ error: error.message || "Failed to get preset" });
     }
   });
 
@@ -323,7 +372,9 @@ export const createServer = async (config: any): Promise<any> => {
       return { success: true, message: "Preset applied successfully" };
     } catch (error: any) {
       console.error("Failed to apply preset:", error);
-      reply.status(500).send({ error: error.message || "Failed to apply preset" });
+      reply
+        .status(500)
+        .send({ error: error.message || "Failed to apply preset" });
     }
   });
 
@@ -344,7 +395,9 @@ export const createServer = async (config: any): Promise<any> => {
       return { success: true, message: "Preset deleted successfully" };
     } catch (error: any) {
       console.error("Failed to delete preset:", error);
-      reply.status(500).send({ error: error.message || "Failed to delete preset" });
+      reply
+        .status(500)
+        .send({ error: error.message || "Failed to delete preset" });
     }
   });
 
@@ -356,7 +409,9 @@ export const createServer = async (config: any): Promise<any> => {
       return { presets: marketPresets };
     } catch (error: any) {
       console.error("Failed to get market presets:", error);
-      reply.status(500).send({ error: error.message || "Failed to get market presets" });
+      reply
+        .status(500)
+        .send({ error: error.message || "Failed to get market presets" });
     }
   });
 
@@ -375,7 +430,7 @@ export const createServer = async (config: any): Promise<any> => {
       if (!marketPreset) {
         reply.status(400).send({
           error: "Preset not found in marketplace",
-          message: `Preset '${presetName}' is not available in the official marketplace. Please check the available presets.`
+          message: `Preset '${presetName}' is not available in the official marketplace. Please check the available presets.`,
         });
         return;
       }
@@ -384,13 +439,15 @@ export const createServer = async (config: any): Promise<any> => {
       if (!marketPreset.repo) {
         reply.status(400).send({
           error: "Invalid preset data",
-          message: `Preset '${presetName}' does not have repository information`
+          message: `Preset '${presetName}' does not have repository information`,
         });
         return;
       }
 
       // Parse GitHub repository URL
-      const githubRepoMatch = marketPreset.repo.match(/(?:github\.com[:/]|^)([^/]+)\/([^/\s#]+?)(?:\.git)?$/);
+      const githubRepoMatch = marketPreset.repo.match(
+        /(?:github\.com[:/]|^)([^/]+)\/([^/\s#]+?)(?:\.git)?$/
+      );
       if (!githubRepoMatch) {
         reply.status(400).send({ error: "Invalid GitHub repository URL" });
         return;
@@ -406,7 +463,7 @@ export const createServer = async (config: any): Promise<any> => {
         reply.status(409).send({
           error: "Preset already installed",
           message: `Preset '${installedPresetName}' is already installed. To update or reconfigure, please delete it first using the delete button.`,
-          presetName: installedPresetName
+          presetName: installedPresetName,
         });
         return;
       }
@@ -424,7 +481,7 @@ export const createServer = async (config: any): Promise<any> => {
         reply.status(409).send({
           error: "Preset already installed",
           message: `Preset '${installedPresetName}' was installed while downloading. Please try again.`,
-          presetName: installedPresetName
+          presetName: installedPresetName,
         });
         return;
       }
@@ -454,11 +511,13 @@ export const createServer = async (config: any): Promise<any> => {
         preset: {
           ...preset.metadata,
           installed: true,
-        }
+        },
       };
     } catch (error: any) {
       console.error("Failed to install preset from GitHub:", error);
-      reply.status(500).send({ error: error.message || "Failed to install preset from GitHub" });
+      reply.status(500).send({
+        error: error.message || "Failed to install preset from GitHub",
+      });
     }
   });
 
@@ -467,20 +526,23 @@ export const createServer = async (config: any): Promise<any> => {
     const zip = new AdmZip(zipFile);
 
     // First try to find manifest.json in root directory
-    let entry = zip.getEntry('manifest.json');
+    let entry = zip.getEntry("manifest.json");
 
     // If not in root, try to find in subdirectories (handle GitHub repo archive structure)
     if (!entry) {
       const entries = zip.getEntries();
       // Find any manifest.json file
-      entry = entries.find(e => e.entryName.includes('manifest.json')) || null;
+      entry =
+        entries.find((e) => e.entryName.includes("manifest.json")) || null;
     }
 
     if (!entry) {
-      throw new Error('Invalid preset file: manifest.json not found');
+      throw new Error("Invalid preset file: manifest.json not found");
     }
 
-    const manifest = JSON.parse(entry.getData().toString('utf-8')) as ManifestFile;
+    const manifest = JSON.parse(
+      entry.getData().toString("utf-8")
+    ) as ManifestFile;
     return manifestToPresetFile(manifest);
   }
 

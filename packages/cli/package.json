@@ -17,19 +17,30 @@
   ],
   "author": "musistudio",
   "license": "MIT",
-  "devDependencies": {
+  "dependencies": {
     "@CCR/server": "workspace:*",
     "@CCR/shared": "workspace:*",
+    "adm-zip": "^0.5.16",
     "@inquirer/prompts": "^5.0.0",
+    "@inquirer/input": "^2.3.0",
+    "@inquirer/confirm": "^3.2.0",
+    "@inquirer/select": "^2.5.0",
+    "@inquirer/password": "^2.2.0",
+    "@inquirer/checkbox": "^2.5.0",
+    "@inquirer/editor": "^2.2.0"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
     "@types/archiver": "^7.0.0",
     "@types/node": "^24.0.15",
-    "adm-zip": "^0.5.16",
+    "@types/minimist": "^1.2.5",
+    "@types/shell-quote": "^1.7.5",
     "archiver": "^7.0.1",
     "esbuild": "^0.25.1",
     "find-process": "^2.0.0",
     "minimist": "^1.2.8",
     "openurl": "^1.1.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.2"
+    "typescript": "^5.9.3"
   }
 }

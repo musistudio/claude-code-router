@@ -7,8 +7,8 @@
 <hr>
 
 ![](blog/images/sponsors/glm-zh.jpg)
-> GLM CODING PLAN 是专为AI编码打造的订阅套餐，每月最低仅需20元，即可在十余款主流AI编码工具如Claude Code、中畅享智谱旗舰模型GLM-4.7，为开发者提供顶尖的编码体验。   
-> 智谱AI为本软件提供了特别优惠，使用以下链接购买可以享受九折优惠：https://www.bigmodel.cn/claude-code?ic=RRVJPB5SII
+> GLM CODING PLAN 是专为AI编码打造的订阅套餐，每月最低仅需20元，即可在十余款主流AI编码工具如Claude Code、中畅享智谱旗舰模型GLM-4.7，为开发者提供顶尖的编码体验。
+> 智谱AI为本软件提供了特别优惠，使用以下链接购买可以享受九折优惠：<https://www.bigmodel.cn/claude-code?ic=RRVJPB5SII>
 
 > [从CLI工具风格看工具渐进式披露](/blog/zh/从CLI工具风格看工具渐进式披露.md)
 
@@ -16,15 +16,14 @@
 
 ![](blog/images/claude-code.png)
 
-
 ## ✨ 功能
 
--   **模型路由**: 根据您的需求将请求路由到不同的模型（例如，后台任务、思考、长上下文）。
--   **多提供商支持**: 支持 OpenRouter、DeepSeek、Ollama、Gemini、Volcengine 和 SiliconFlow 等各种模型提供商。
--   **请求/响应转换**: 使用转换器为不同的提供商自定义请求和响应。
--   **动态模型切换**: 在 Claude Code 中使用 `/model` 命令动态切换模型。
--   **GitHub Actions 集成**: 在您的 GitHub 工作流程中触发 Claude Code 任务。
--   **插件系统**: 使用自定义转换器扩展功能。
+- **模型路由**: 根据您的需求将请求路由到不同的模型（例如，后台任务、思考、长上下文）。
+- **多提供商支持**: 支持 OpenRouter、DeepSeek、Ollama、Gemini、Volcengine 和 SiliconFlow 等各种模型提供商。
+- **请求/响应转换**: 使用转换器为不同的提供商自定义请求和响应。
+- **动态模型切换**: 在 Claude Code 中使用 `/model` 命令动态切换模型。
+- **GitHub Actions 集成**: 在您的 GitHub 工作流程中触发 Claude Code 任务。
+- **插件系统**: 使用自定义转换器扩展功能。
 
 ## 🚀 快速入门
 
@@ -45,14 +44,16 @@ npm install -g @musistudio/claude-code-router
 ### 2. 配置
 
 创建并配置您的 `~/.claude-code-router/config.json` 文件。有关更多详细信息，您可以参考 `config.example.json`。
+> **注意**: 您可以通过设置 `CLAUDE_CODE_ROUTER_DIR` 环境变量自定义配置目录。默认情况下，它位于 `~/.claude-code-router`。
 
 `config.json` 文件有几个关键部分：
+
 - **`PROXY_URL`** (可选): 您可以为 API 请求设置代理，例如：`"PROXY_URL": "http://127.0.0.1:7890"`。
 - **`LOG`** (可选): 您可以通过将其设置为 `true` 来启用日志记录。当设置为 `false` 时，将不会创建日志文件。默认值为 `true`。
 - **`LOG_LEVEL`** (可选): 设置日志级别。可用选项包括：`"fatal"`、`"error"`、`"warn"`、`"info"`、`"debug"`、`"trace"`。默认值为 `"debug"`。
 - **日志系统**: Claude Code Router 使用两个独立的日志系统：
-  - **服务器级别日志**: HTTP 请求、API 调用和服务器事件使用 pino 记录在 `~/.claude-code-router/logs/` 目录中，文件名类似于 `ccr-*.log`
-  - **应用程序级别日志**: 路由决策和业务逻辑事件记录在 `~/.claude-code-router/claude-code-router.log` 文件中
+  - **服务器级别日志**: HTTP 请求、API 调用和服务器事件使用 pino 记录在 `logs/` 子目录中，文件名类似于 `ccr-*.log`
+  - **应用程序级别日志**: 路由决策和业务逻辑事件记录在 `claude-code-router.log` 文件中
 - **`APIKEY`** (可选): 您可以设置一个密钥来进行身份验证。设置后，客户端请求必须在 `Authorization` 请求头 (例如, `Bearer your-secret-key`) 或 `x-api-key` 请求头中提供此密钥。例如：`"APIKEY": "your-secret-key"`。
 - **`HOST`** (可选): 您可以设置服务的主机地址。如果未设置 `APIKEY`，出于安全考虑，主机地址将强制设置为 `127.0.0.1`，以防止未经授权的访问。例如：`"HOST": "0.0.0.0"`。
 - **`NON_INTERACTIVE_MODE`** (可选): 当设置为 `true` 时，启用与非交互式环境（如 GitHub Actions、Docker 容器或其他 CI/CD 系统）的兼容性。这会设置适当的环境变量（`CI=true`、`FORCE_COLOR=0` 等）并配置 stdin 处理，以防止进程在自动化环境中挂起。例如：`"NON_INTERACTIVE_MODE": true`。
@@ -179,7 +180,6 @@ npm install -g @musistudio/claude-code-router
 }
 ```
 
-
 ### 3. 使用 Router 运行 Claude Code
 
 使用 router 启动 Claude Code：
@@ -189,6 +189,7 @@ ccr code
 ```
 
 > **注意**: 修改配置文件后，需要重启服务使配置生效：
+>
 > ```shell
 > ccr restart
 > ```
@@ -220,13 +221,13 @@ ccr model
 - 切换模型：快速更改每个路由器类型使用的模型
 - 添加新模型：向现有提供商添加模型
 - 创建新提供商：设置完整的提供商配置，包括：
-   - 提供商名称和 API 端点
-   - API 密钥
-   - 可用模型
-   - Transformer 配置，支持：
-     - 多个转换器（openrouter、deepseek、gemini 等）
-     - Transformer 选项（例如，带自定义限制的 maxtoken）
-     - 特定于提供商的路由（例如，OpenRouter 提供商偏好）
+  - 提供商名称和 API 端点
+  - API 密钥
+  - 可用模型
+  - Transformer 配置，支持：
+    - 多个转换器（openrouter、deepseek、gemini 等）
+    - Transformer 选项（例如，带自定义限制的 maxtoken）
+    - 特定于提供商的路由（例如，OpenRouter 提供商偏好）
 
 CLI 工具验证所有输入并提供有用的提示来引导您完成配置过程，使管理复杂的设置变得容易，无需手动编辑 JSON 文件。
 
@@ -255,6 +256,7 @@ ccr preset delete my-preset
 ```
 
 **预设功能：**
+
 - **导出**：将当前配置保存为预设目录（包含 manifest.json）
 - **安装**：从本地目录安装预设
 - **敏感数据处理**：导出期间自动清理 API 密钥和其他敏感数据（标记为 `{{field}}` 占位符）
@@ -262,6 +264,7 @@ ccr preset delete my-preset
 - **版本控制**：每个预设包含版本元数据，用于跟踪更新
 
 **预设文件结构：**
+
 ```
 ~/.claude-code-router/presets/
 ├── my-preset/
@@ -298,17 +301,18 @@ eval "$(ccr activate)"
 
 `Providers` 数组是您定义要使用的不同模型提供商的地方。每个提供商对象都需要：
 
--   `name`: 提供商的唯一名称。
--   `api_base_url`: 聊天补全的完整 API 端点。
--   `api_key`: 您提供商的 API 密钥。
--   `models`: 此提供商可用的模型名称列表。
--   `transformer` (可选): 指定用于处理请求和响应的转换器。
+- `name`: 提供商的唯一名称。
+- `api_base_url`: 聊天补全的完整 API 端点。
+- `api_key`: 您提供商的 API 密钥。
+- `models`: 此提供商可用的模型名称列表。
+- `transformer` (可选): 指定用于处理请求和响应的转换器。
 
 #### Transformers
 
 Transformers 允许您修改请求和响应负载，以确保与不同提供商 API 的兼容性。
 
--   **全局 Transformer**: 将转换器应用于提供商的所有模型。在此示例中，`openrouter` 转换器将应用于 `openrouter` 提供商下的所有模型。
+- **全局 Transformer**: 将转换器应用于提供商的所有模型。在此示例中，`openrouter` 转换器将应用于 `openrouter` 提供商下的所有模型。
+
     ```json
      {
        "name": "openrouter",
@@ -322,7 +326,9 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
        "transformer": { "use": ["openrouter"] }
      }
     ```
--   **特定于模型的 Transformer**: 将转换器应用于特定模型。在此示例中，`deepseek` 转换器应用于所有模型，而额外的 `tooluse` 转换器仅应用于 `deepseek-chat` 模型。
+
+- **特定于模型的 Transformer**: 将转换器应用于特定模型。在此示例中，`deepseek` 转换器应用于所有模型，而额外的 `tooluse` 转换器仅应用于 `deepseek-chat` 模型。
+
     ```json
      {
        "name": "deepseek",
@@ -336,7 +342,8 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
      }
     ```
 
--   **向 Transformer 传递选项**: 某些转换器（如 `maxtoken`）接受选项。要传递选项，请使用嵌套数组，其中第一个元素是转换器名称，第二个元素是选项对象。
+- **向 Transformer 传递选项**: 某些转换器（如 `maxtoken`）接受选项。要传递选项，请使用嵌套数组，其中第一个元素是转换器名称，第二个元素是选项对象。
+
     ```json
     {
       "name": "siliconflow",
@@ -358,10 +365,11 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
 
 **可用的内置 Transformer：**
 
--   `Anthropic`: 如果你只使用这一个转换器，则会直接透传请求和响应(你可以用它来接入其他支持Anthropic端点的服务商)。
--   `deepseek`: 适配 DeepSeek API 的请求/响应。
--   `gemini`: 适配 Gemini API 的请求/响应。
--   `openrouter`: 适配 OpenRouter API 的请求/响应。它还可以接受一个 `provider` 路由参数，以指定 OpenRouter 应使用哪些底层提供商。有关更多详细信息，请参阅 [OpenRouter 文档](https://openrouter.ai/docs/features/provider-routing)。请参阅下面的示例：
+- `Anthropic`: 如果你只使用这一个转换器，则会直接透传请求和响应(你可以用它来接入其他支持Anthropic端点的服务商)。
+- `deepseek`: 适配 DeepSeek API 的请求/响应。
+- `gemini`: 适配 Gemini API 的请求/响应。
+- `openrouter`: 适配 OpenRouter API 的请求/响应。它还可以接受一个 `provider` 路由参数，以指定 OpenRouter 应使用哪些底层提供商。有关更多详细信息，请参阅 [OpenRouter 文档](https://openrouter.ai/docs/features/provider-routing)。请参阅下面的示例：
+
     ```json
       "transformer": {
         "use": ["openrouter"],
@@ -379,17 +387,18 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
         }
       }
     ```
--   `groq`: 适配 groq API 的请求/响应
--   `maxtoken`: 设置特定的 `max_tokens` 值。
--   `tooluse`: 优化某些模型的工具使用(通过`tool_choice`参数)。
--   `gemini-cli` (实验性): 通过 Gemini CLI [gemini-cli.js](https://gist.github.com/musistudio/1c13a65f35916a7ab690649d3df8d1cd) 对 Gemini 的非官方支持。
--   `reasoning`: 用于处理 `reasoning_content` 字段。
--   `sampling`: 用于处理采样信息字段，如 `temperature`、`top_p`、`top_k` 和 `repetition_penalty`。
--   `enhancetool`: 对 LLM 返回的工具调用参数增加一层容错处理（这会导致不再流式返回工具调用信息）。
--   `cleancache`: 清除请求中的 `cache_control` 字段。
--   `vertex-gemini`: 处理使用 vertex 鉴权的 gemini api。
--   `qwen-cli` (实验性): 通过 Qwen CLI [qwen-cli.js](https://gist.github.com/musistudio/f5a67841ced39912fd99e42200d5ca8b) 对 qwen3-coder-plus 的非官方支持。
--   `rovo-cli` (experimental): 通过 Atlassian Rovo Dev CLI [rovo-cli.js](https://gist.github.com/SaseQ/c2a20a38b11276537ec5332d1f7a5e53) 对 GPT-5 的非官方支持。
+
+- `groq`: 适配 groq API 的请求/响应
+- `maxtoken`: 设置特定的 `max_tokens` 值。
+- `tooluse`: 优化某些模型的工具使用(通过`tool_choice`参数)。
+- `gemini-cli` (实验性): 通过 Gemini CLI [gemini-cli.js](https://gist.github.com/musistudio/1c13a65f35916a7ab690649d3df8d1cd) 对 Gemini 的非官方支持。
+- `reasoning`: 用于处理 `reasoning_content` 字段。
+- `sampling`: 用于处理采样信息字段，如 `temperature`、`top_p`、`top_k` 和 `repetition_penalty`。
+- `enhancetool`: 对 LLM 返回的工具调用参数增加一层容错处理（这会导致不再流式返回工具调用信息）。
+- `cleancache`: 清除请求中的 `cache_control` 字段。
+- `vertex-gemini`: 处理使用 vertex 鉴权的 gemini api。
+- `qwen-cli` (实验性): 通过 Qwen CLI [qwen-cli.js](https://gist.github.com/musistudio/f5a67841ced39912fd99e42200d5ca8b) 对 qwen3-coder-plus 的非官方支持。
+- `rovo-cli` (experimental): 通过 Atlassian Rovo Dev CLI [rovo-cli.js](https://gist.github.com/SaseQ/c2a20a38b11276537ec5332d1f7a5e53) 对 GPT-5 的非官方支持。
 
 **自定义 Transformer:**
 
@@ -412,13 +421,13 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
 
 `Router` 对象定义了在不同场景下使用哪个模型：
 
--   `default`: 用于常规任务的默认模型。
--   `background`: 用于后台任务的模型。这可以是一个较小的本地模型以节省成本。
--   `think`: 用于推理密集型任务（如计划模式）的模型。
--   `longContext`: 用于处理长上下文（例如，> 60K 令牌）的模型。
--   `longContextThreshold` (可选): 触发长上下文模型的令牌数阈值。如果未指定，默认为 60000。
--   `webSearch`: 用于处理网络搜索任务，需要模型本身支持。如果使用`openrouter`需要在模型后面加上`:online`后缀。
--   `image`(测试版): 用于处理图片类任务（采用CCR内置的agent支持），如果该模型不支持工具调用，需要将`config.forceUseImageAgent`属性设置为`true`。
+- `default`: 用于常规任务的默认模型。
+- `background`: 用于后台任务的模型。这可以是一个较小的本地模型以节省成本。
+- `think`: 用于推理密集型任务（如计划模式）的模型。
+- `longContext`: 用于处理长上下文（例如，> 60K 令牌）的模型。
+- `longContextThreshold` (可选): 触发长上下文模型的令牌数阈值。如果未指定，默认为 60000。
+- `webSearch`: 用于处理网络搜索任务，需要模型本身支持。如果使用`openrouter`需要在模型后面加上`:online`后缀。
+- `image`(测试版): 用于处理图片类任务（采用CCR内置的agent支持），如果该模型不支持工具调用，需要将`config.forceUseImageAgent`属性设置为`true`。
 
 您还可以使用 `/model` 命令在 Claude Code 中动态切换模型：
 `/model provider_name,model_name`
@@ -475,6 +484,7 @@ module.exports = async function router(req, config) {
 ```
 
 ## Status Line (Beta)
+
 为了在运行时更好的查看claude-code-router的状态，claude-code-router在v1.0.40内置了一个statusline工具，你可以在UI中启用它，
 ![statusline-config.png](/blog/images/statusline-config.png)
 
@@ -543,8 +553,8 @@ jobs:
 
 ## 📝 深入阅读
 
--   [项目动机和工作原理](blog/zh/项目初衷及原理.md)
--   [也许我们可以用路由器做更多事情](blog/zh/或许我们能在Router中做更多事情.md)
+- [项目动机和工作原理](blog/zh/项目初衷及原理.md)
+- [也许我们可以用路由器做更多事情](blog/zh/或许我们能在Router中做更多事情.md)
 
 ## ❤️ 支持与赞助
 
@@ -613,7 +623,7 @@ jobs:
 - @b\*g
 - @\*亿
 - @\*辉
-- @JACK 
+- @JACK
 - @\*光
 - @W\*l
 - [@kesku](https://github.com/kesku)
@@ -671,6 +681,6 @@ jobs:
 
 （如果您的名字被屏蔽，请通过我的主页电子邮件与我联系，以便使用您的 GitHub 用户名进行更新。）
 
-
 ## 交流群
+
 <img src="/blog/images/wechat_group.jpg" width="200" alt="wechat_group" />

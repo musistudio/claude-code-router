@@ -7,6 +7,7 @@ import {
 } from "./processCheck";
 import { quote } from 'shell-quote';
 import minimist from "minimist";
+import type { ClaudeSettingsFlag } from "../types";
 import { createEnvVariables } from "./createEnvVariables";
 
 export interface PresetConfig {

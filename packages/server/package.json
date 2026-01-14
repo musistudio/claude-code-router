@@ -33,9 +33,10 @@
     "@CCR/shared": "workspace:*",
     "@types/adm-zip": "^0.5.7",
     "@types/node": "^24.0.15",
+    "@types/shell-quote": "^1.7.5",
     "esbuild": "^0.25.1",
     "fastify": "^5.4.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.2"
+    "typescript": "^5.9.3"
   }
 }

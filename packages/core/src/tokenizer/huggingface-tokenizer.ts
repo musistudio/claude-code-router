@@ -1,11 +1,7 @@
 import { join } from "path";
-import { homedir } from "os";
 import { existsSync, mkdirSync } from "fs";
 import { promises as fs } from "fs";
-import {
-  ITokenizer,
-  TokenizeRequest,
-} from "../types/tokenizer";
+import { ITokenizer, TokenizeRequest } from "../types/tokenizer";
 import { Tokenizer } from "@huggingface/tokenizers";
 
 /**
@@ -34,9 +30,12 @@ export class HuggingFaceTokenizer implements ITokenizer {
     this.modelId = modelId;
     this.logger = logger;
     this.options = options;
-    this.cacheDir = options.cacheDir || join(homedir(), ".claude-code-router", ".huggingface");
+    this.cacheDir =
+      options.cacheDir || join(HOME_DIR, ".claude-code-router", ".huggingface");
     // Cache safe model name to avoid repeated regex operations
-    this.safeModelName = modelId.replace(/\//g, "_").replace(/[^a-zA-Z0-9_-]/g, "_");
+    this.safeModelName = modelId
+      .replace(/\//g, "_")
+      .replace(/[^a-zA-Z0-9_-]/g, "_");
     this.name = `huggingface-${modelId.split("/").pop()}`;
   }
 
@@ -64,11 +63,17 @@ export class HuggingFaceTokenizer implements ITokenizer {
   /**
    * Load tokenizer files from local cache
    */
-  private async loadFromCache(): Promise<{ tokenizerJson: any; tokenizerConfig: any } | null> {
+  private async loadFromCache(): Promise<{
+    tokenizerJson: any;
+    tokenizerConfig: any;
+  } | null> {
     try {
       const paths = this.getCachePaths();
 
-      if (!existsSync(paths.tokenizerJson) || !existsSync(paths.tokenizerConfig)) {
+      if (
+        !existsSync(paths.tokenizerJson) ||
+        !existsSync(paths.tokenizerConfig)
+      ) {
         return null;
       }
 
@@ -90,7 +95,10 @@ export class HuggingFaceTokenizer implements ITokenizer {
   /**
    * Download tokenizer files from Hugging Face Hub and save to cache
    */
-  private async downloadAndCache(): Promise<{ tokenizerJson: any; tokenizerConfig: any }> {
+  private async downloadAndCache(): Promise<{
+    tokenizerJson: any;
+    tokenizerConfig: any;
+  }> {
     const paths = this.getCachePaths();
     const urls = {
       json: `https://huggingface.co/${this.modelId}/resolve/main/tokenizer.json`,
@@ -100,7 +108,10 @@ export class HuggingFaceTokenizer implements ITokenizer {
     this.logger?.info(`Downloading tokenizer files for ${this.modelId}`);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.options.timeout || 30000);
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      this.options.timeout || 30000
+    );
 
     try {
       const [jsonRes, configRes] = await Promise.all([
@@ -109,7 +120,9 @@ export class HuggingFaceTokenizer implements ITokenizer {
       ]);
 
       if (!jsonRes.ok) {
-        throw new Error(`Failed to fetch tokenizer.json: ${jsonRes.statusText}`);
+        throw new Error(
+          `Failed to fetch tokenizer.json: ${jsonRes.statusText}`
+        );
       }
 
       const [tokenizerJson, tokenizerConfig] = await Promise.all([
@@ -119,8 +132,14 @@ export class HuggingFaceTokenizer implements ITokenizer {
 
       this.ensureDir(paths.modelDir);
       await Promise.all([
-        fs.writeFile(paths.tokenizerJson, JSON.stringify(tokenizerJson, null, 2)),
-        fs.writeFile(paths.tokenizerConfig, JSON.stringify(tokenizerConfig, null, 2)),
+        fs.writeFile(
+          paths.tokenizerJson,
+          JSON.stringify(tokenizerJson, null, 2)
+        ),
+        fs.writeFile(
+          paths.tokenizerConfig,
+          JSON.stringify(tokenizerConfig, null, 2)
+        ),
       ]);
 
       return { tokenizerJson, tokenizerConfig };
@@ -136,13 +155,19 @@ export class HuggingFaceTokenizer implements ITokenizer {
       const paths = this.getCachePaths();
       this.ensureDir(this.cacheDir);
 
-      const tokenizerData = await this.loadFromCache() || await this.downloadAndCache();
-      this.tokenizer = new Tokenizer(tokenizerData.tokenizerJson, tokenizerData.tokenizerConfig);
+      const tokenizerData =
+        (await this.loadFromCache()) || (await this.downloadAndCache());
+      this.tokenizer = new Tokenizer(
+        tokenizerData.tokenizerJson,
+        tokenizerData.tokenizerConfig
+      );
 
       this.logger?.info(`Tokenizer initialized: ${this.name}`);
     } catch (error: any) {
       this.logger?.error(`Failed to initialize tokenizer: ${error.message}`);
-      throw new Error(`Failed to initialize HuggingFace tokenizer for ${this.modelId}: ${error.message}`);
+      throw new Error(
+        `Failed to initialize HuggingFace tokenizer for ${this.modelId}: ${error.message}`
+      );
     }
   }
 
