@@ -1,6 +1,5 @@
 // Type declarations for @inquirer packages
-declare module '@inquirer/input' {
-  import { DistinctChoice } from '@inquirer/core';
+declare module "@inquirer/input" {
   interface PromptConfig {
     message: string;
     default?: string;
@@ -8,7 +7,7 @@ declare module '@inquirer/input' {
   export default function prompt<T = string>(config: PromptConfig): Promise<T>;
 }
 
-declare module '@inquirer/confirm' {
+declare module "@inquirer/confirm" {
   interface PromptConfig {
     message: string;
     default?: boolean;
@@ -16,7 +15,7 @@ declare module '@inquirer/confirm' {
   export default function prompt(config: PromptConfig): Promise<boolean>;
 }
 
-declare module '@inquirer/select' {
+declare module "@inquirer/select" {
   export default function prompt<T = string>(config: {
     message: string;
     choices: Array<{ name: string; value: T; description?: string }>;
@@ -24,7 +23,7 @@ declare module '@inquirer/select' {
   }): Promise<T>;
 }
 
-declare module '@inquirer/password' {
+declare module "@inquirer/password" {
   interface PromptConfig {
     message: string;
     mask?: string;
@@ -32,14 +31,14 @@ declare module '@inquirer/password' {
   export default function prompt(config: PromptConfig): Promise<string>;
 }
 
-declare module '@inquirer/checkbox' {
+declare module "@inquirer/checkbox" {
   export default function prompt<T = string>(config: {
     message: string;
     choices: Array<{ name: string; value: T; checked?: boolean }>;
   }): Promise<T[]>;
 }
 
-declare module '@inquirer/editor' {
+declare module "@inquirer/editor" {
   interface PromptConfig {
     message: string;
     default?: string;

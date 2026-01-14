@@ -54,6 +54,6 @@
     "@types/node": "^24.0.15",
     "esbuild": "^0.25.1",
     "tsx": "^4.20.3",
-    "typescript": "^5.8.2"
+    "typescript": "^5.9.3"
   }
 }

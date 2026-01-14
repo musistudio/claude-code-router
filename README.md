@@ -7,9 +7,9 @@
 <hr>
 
 ![](blog/images/sponsors/glm-en.jpg)
-> This project is sponsored by Z.ai, supporting us with their GLM CODING PLAN.    
-> GLM CODING PLAN is a subscription service designed for AI coding, starting at just $3/month. It provides access to their flagship GLM-4.7 model across 10+ popular AI coding tools (Claude Code, Cline, Roo Code, etc.), offering developers top-tier, fast, and stable coding experiences.     
-> Get 10% OFF GLM CODING PLAN：https://z.ai/subscribe?ic=8JVLJQFSKB     
+> This project is sponsored by Z.ai, supporting us with their GLM CODING PLAN.
+> GLM CODING PLAN is a subscription service designed for AI coding, starting at just $3/month. It provides access to their flagship GLM-4.7 model across 10+ popular AI coding tools (Claude Code, Cline, Roo Code, etc.), offering developers top-tier, fast, and stable coding experiences.
+> Get 10% OFF GLM CODING PLAN：<https://z.ai/subscribe?ic=8JVLJQFSKB>
 
 > [Progressive Disclosure of Agent Tools from the Perspective of CLI Tool Style](/blog/en/progressive-disclosure-of-agent-tools-from-the-perspective-of-cli-tool-style.md)
 
@@ -46,6 +46,7 @@ npm install -g @musistudio/claude-code-router
 ### 2. Configuration
 
 Create and configure your `~/.claude-code-router/config.json` file. For more details, you can refer to `config.example.json`.
+> **Note**: You can customize the configuration directory by setting the `CLAUDE_CODE_ROUTER_DIR` environment variable. By default, it is located at `~/.claude-code-router`.
 
 The `config.json` file has several key sections:
 
@@ -53,8 +54,8 @@ The `config.json` file has several key sections:
 - **`LOG`** (optional): You can enable logging by setting it to `true`. When set to `false`, no log files will be created. Default is `true`.
 - **`LOG_LEVEL`** (optional): Set the logging level. Available options are: `"fatal"`, `"error"`, `"warn"`, `"info"`, `"debug"`, `"trace"`. Default is `"debug"`.
 - **Logging Systems**: The Claude Code Router uses two separate logging systems:
-  - **Server-level logs**: HTTP requests, API calls, and server events are logged using pino in the `~/.claude-code-router/logs/` directory with filenames like `ccr-*.log`
-  - **Application-level logs**: Routing decisions and business logic events are logged in `~/.claude-code-router/claude-code-router.log`
+  - **Server-level logs**: HTTP requests, API calls, and server events are logged using pino in the `logs/` subdirectory with filenames like `ccr-*.log`
+  - **Application-level logs**: Routing decisions and business logic events are logged in `claude-code-router.log`
 - **`APIKEY`** (optional): You can set a secret key to authenticate requests. When set, clients must provide this key in the `Authorization` header (e.g., `Bearer your-secret-key`) or the `x-api-key` header. Example: `"APIKEY": "your-secret-key"`.
 - **`HOST`** (optional): You can set the host address for the server. If `APIKEY` is not set, the host will be forced to `127.0.0.1` for security reasons to prevent unauthorized access. Example: `"HOST": "0.0.0.0"`.
 - **`NON_INTERACTIVE_MODE`** (optional): When set to `true`, enables compatibility with non-interactive environments like GitHub Actions, Docker containers, or other CI/CD systems. This sets appropriate environment variables (`CI=true`, `FORCE_COLOR=0`, etc.) and configures stdin handling to prevent the process from hanging in automated environments. Example: `"NON_INTERACTIVE_MODE": true`.
@@ -236,6 +237,7 @@ For users who prefer terminal-based workflows, you can use the interactive CLI m
 ```shell
 ccr model
 ```
+
 ![](blog/images/models.gif)
 
 This command provides an interactive interface to:
@@ -245,13 +247,13 @@ This command provides an interactive interface to:
 - Switch models: Quickly change which model is used for each router type
 - Add new models: Add models to existing providers
 - Create new providers: Set up complete provider configurations including:
-   - Provider name and API endpoint
-   - API key
-   - Available models
-   - Transformer configuration with support for:
-     - Multiple transformers (openrouter, deepseek, gemini, etc.)
-     - Transformer options (e.g., maxtoken with custom limits)
-     - Provider-specific routing (e.g., OpenRouter provider preferences)
+  - Provider name and API endpoint
+  - API key
+  - Available models
+  - Transformer configuration with support for:
+    - Multiple transformers (openrouter, deepseek, gemini, etc.)
+    - Transformer options (e.g., maxtoken with custom limits)
+    - Provider-specific routing (e.g., OpenRouter provider preferences)
 
 The CLI tool validates all inputs and provides helpful prompts to guide you through the configuration process, making it easy to manage complex setups without editing JSON files manually.
 
@@ -280,6 +282,7 @@ ccr preset delete my-preset
 ```
 
 **Preset Features:**
+
 - **Export**: Save your current configuration as a preset directory (with manifest.json)
 - **Install**: Install presets from local directories
 - **Sensitive Data Handling**: API keys and other sensitive data are automatically sanitized during export (marked as `{{field}}` placeholders)
@@ -287,6 +290,7 @@ ccr preset delete my-preset
 - **Version Control**: Each preset includes version metadata for tracking updates
 
 **Preset File Structure:**
+
 ```
 ~/.claude-code-router/presets/
 ├── my-preset/
@@ -334,6 +338,7 @@ The `Providers` array is where you define the different model providers you want
 Transformers allow you to modify the request and response payloads to ensure compatibility with different provider APIs.
 
 - **Global Transformer**: Apply a transformer to all models from a provider. In this example, the `openrouter` transformer is applied to all models under the `openrouter` provider.
+
   ```json
   {
     "name": "openrouter",
@@ -347,6 +352,7 @@ Transformers allow you to modify the request and response payloads to ensure com
     "transformer": { "use": ["openrouter"] }
   }
   ```
+
 - **Model-Specific Transformer**: Apply a transformer to a specific model. In this example, the `deepseek` transformer is applied to all models, and an additional `tooluse` transformer is applied only to the `deepseek-chat` model.
 
   ```json
@@ -363,6 +369,7 @@ Transformers allow you to modify the request and response payloads to ensure com
   ```
 
 - **Passing Options to a Transformer**: Some transformers, like `maxtoken`, accept options. To pass options, use a nested array where the first element is the transformer name and the second is an options object.
+
   ```json
   {
     "name": "siliconflow",
@@ -388,6 +395,7 @@ Transformers allow you to modify the request and response payloads to ensure com
 - `deepseek`: Adapts requests/responses for DeepSeek API.
 - `gemini`: Adapts requests/responses for Gemini API.
 - `openrouter`: Adapts requests/responses for OpenRouter API. It can also accept a `provider` routing parameter to specify which underlying providers OpenRouter should use. For more details, refer to the [OpenRouter documentation](https://openrouter.ai/docs/features/provider-routing). See an example below:
+
   ```json
     "transformer": {
       "use": ["openrouter"],
@@ -405,6 +413,7 @@ Transformers allow you to modify the request and response payloads to ensure com
       }
     }
   ```
+
 - `groq`: Adapts requests/responses for groq API.
 - `maxtoken`: Sets a specific `max_tokens` value.
 - `tooluse`: Optimizes tool usage for certain models via `tool_choice`.
@@ -502,6 +511,7 @@ Please help me analyze this code snippet for potential optimizations...
 ```
 
 ## Status Line (Beta)
+
 To better monitor the status of claude-code-router at runtime, version v1.0.40 includes a built-in statusline tool, which you can enable in the UI.
 ![statusline-config.png](/blog/images/statusline-config.png)
 
@@ -594,7 +604,6 @@ If you find this project helpful, please consider sponsoring its development. Yo
 ### Our Sponsors
 
 A huge thank you to all our sponsors for their generous support!
-
 
 - [AIHubmix](https://aihubmix.com/)
 - [BurnCloud](https://ai.burncloud.com)
@@ -699,6 +708,5 @@ A huge thank you to all our sponsors for their generous support!
 - \*知
 - \*语
 - \*瓜
-
 
 (If your name is masked, please contact me via my homepage email to update it with your GitHub username.)

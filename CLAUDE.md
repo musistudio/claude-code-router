@@ -14,11 +14,13 @@ Claude Code Router is a tool that routes Claude Code requests to different LLM p
 ## Build Commands
 
 ### Build all packages
+
 ```bash
 pnpm build
 ```
 
 ### Build individual packages
+
 ```bash
 pnpm build:cli      # Build CLI
 pnpm build:server   # Build Server
@@ -26,6 +28,7 @@ pnpm build:ui       # Build UI
 ```
 
 ### Development mode
+
 ```bash
 pnpm dev:cli        # Develop CLI (ts-node)
 pnpm dev:server     # Develop Server (ts-node)
@@ -33,6 +36,7 @@ pnpm dev:ui         # Develop UI (Vite)
 ```
 
 ### Publish
+
 ```bash
 pnpm release        # Build and publish all packages
 ```
@@ -63,6 +67,7 @@ The project uses the `@musistudio/llms` package (external dependency) to handle 
 - Custom transformers: Load external plugins via `transformers` array in `config.json`
 
 Transformer configuration supports:
+
 - Global application (provider level)
 - Model-specific application
 - Option passing (e.g., `max_tokens` parameter for `maxtoken`)
@@ -70,14 +75,17 @@ Transformer configuration supports:
 ### 3. Agent System (packages/server/src/agents/)
 
 Agents are pluggable feature modules that can:
+
 - Detect whether to handle a request (`shouldHandle`)
 - Modify requests (`reqHandler`)
 - Provide custom tools (`tools`)
 
 Built-in agents:
+
 - **imageAgent**: Handles image-related tasks
 
 Agent tool call flow:
+
 1. Detect and mark agents in `preHandler` hook
 2. Add agent tools to the request
 3. Intercept tool call events in `onSend` hook
@@ -87,21 +95,24 @@ Agent tool call flow:
 ### 4. SSE Stream Processing
 
 The server uses custom Transform streams to handle Server-Sent Events:
+
 - `SSEParserTransform`: Parses SSE text stream into event objects
 - `SSESerializerTransform`: Serializes event objects into SSE text stream
 - `rewriteStream`: Intercepts and modifies stream data (for agent tool calls)
 
 ### 5. Configuration Management
 
-Configuration file location: `~/.claude-code-router/config.json`
+Configuration file location: `~/.claude-code-router/config.json`. You can customize this directory by setting the `CLAUDE_CODE_ROUTER_DIR` environment variable. This file defines API providers, routing rules, and custom transformers. An example can be found in `config.example.json`.
 
 Key features:
+
 - Supports environment variable interpolation (`$VAR_NAME` or `${VAR_NAME}`)
 - JSON5 format (supports comments)
 - Automatic backups (keeps last 3 backups)
 - Hot reload requires service restart (`ccr restart`)
 
 Configuration validation:
+
 - If `Providers` are configured, both `HOST` and `APIKEY` must be set
 - Otherwise listens on `0.0.0.0` without authentication
 
@@ -110,11 +121,13 @@ Configuration validation:
 Two separate logging systems:
 
 **Server-level logs** (pino):
+
 - Location: `~/.claude-code-router/logs/ccr-*.log`
 - Content: HTTP requests, API calls, server events
 - Configuration: `LOG_LEVEL` (fatal/error/warn/info/debug/trace)
 
 **Application-level logs**:
+
 - Location: `~/.claude-code-router/claude-code-router.log`
 - Content: Routing decisions, business logic events
 
@@ -146,6 +159,7 @@ ccr preset delete <name>      # Delete a preset
 ## Subagent Routing
 
 Use special tags in subagent prompts to specify models:
+
 ```
 <CCR-SUBAGENT-MODEL>provider,model</CCR-SUBAGENT-MODEL>
 Please help me analyze this code...
@@ -160,6 +174,7 @@ The preset system allows users to save, share, and reuse configurations easily.
 Presets are stored in `~/.claude-code-router/presets/<preset-name>/manifest.json`
 
 Each preset contains:
+
 - **Metadata**: name, version, description, author, keywords, etc.
 - **Configuration**: Providers, Router, transformers, and other settings
 - **Dynamic Schema** (optional): Input fields for collecting required information during installation
@@ -190,6 +205,7 @@ Located in `packages/shared/src/preset/`:
 ### Preset File Format
 
 **manifest.json** (in preset directory):
+
 ```json
 {
   "name": "my-preset",
@@ -213,11 +229,13 @@ Located in `packages/shared/src/preset/`:
 ### CLI Integration
 
 The CLI layer (`packages/cli/src/utils/preset/`) handles:
+
 - User interaction and prompts
 - File operations
 - Display formatting
 
 Key files:
+
 - `commands.ts`: Command handlers for `ccr preset` subcommands
 - `export.ts`: CLI wrapper for export functionality
 - `install.ts`: CLI wrapper for install functionality
