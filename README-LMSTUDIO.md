@@ -17,7 +17,7 @@ This guide explains how to integrate Claude Code Router (CCR) with LM Studio to 
 
 2. **Configure CCR for LM Studio**:
    ```bash
-   ./setup-lmstudio.sh
+   ./examples/setup-lmstudio.sh
    ```
 
 3. **Start CCR**:

@@ -3,12 +3,15 @@
 # Setup script for integrating Claude Code Router with LM Studio
 echo "Setting up Claude Code Router for LM Studio..."
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Create .claude-code-router directory if it doesn't exist
 mkdir -p "$HOME/.claude-code-router"
 
 # Copy the LM Studio configuration
 echo "Copying LM Studio configuration..."
-cp config.lmstudio.json "$HOME/.claude-code-router/config.json"
+cp "$SCRIPT_DIR/config.lmstudio.json" "$HOME/.claude-code-router/config.json"
 
 echo "Configuration copied to $HOME/.claude-code-router/config.json"
 echo ""
