@@ -12,6 +12,7 @@
     "allowSyntheticDefaultImports": true,
     "sourceMap": true,
     "declaration": true,
-    "typeRoots": ["./node_modules/@types", "./packages/*/node_modules/@types"]
+    "typeRoots": ["./node_modules/@types", "./packages/*/node_modules/@types"],
+    "types": ["node"]
   }
 }
