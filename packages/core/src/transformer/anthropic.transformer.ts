@@ -253,6 +253,13 @@ export class AnthropicTransformer implements Transformer {
     }));
   }
 
+  private getCachedTokens(usage: any): number {
+    // Try prompt_tokens_details?.cached_tokens first, then prompt_cache_hit_tokens
+    return usage?.prompt_tokens_details?.cached_tokens ||
+           usage?.prompt_cache_hit_tokens ||
+           0;
+  }
+
   private async convertOpenAIStreamToAnthropic(
     openaiStream: ReadableStream,
     context: TransformerContext
@@ -484,23 +491,18 @@ export class AnthropicTransformer implements Transformer {
                       usage: {
                         input_tokens:
                           (chunk.usage?.prompt_tokens || 0) -
-                          (chunk.usage?.prompt_tokens_details?.cached_tokens ||
-                            0),
+                          this.getCachedTokens(chunk.usage),
                         output_tokens: chunk.usage?.completion_tokens || 0,
-                        cache_read_input_tokens:
-                          chunk.usage?.prompt_tokens_details?.cached_tokens ||
-                          0,
+                        cache_read_input_tokens: this.getCachedTokens(chunk.usage),
                       },
                     };
                   } else {
                     stopReasonMessageDelta.usage = {
                       input_tokens:
                         (chunk.usage?.prompt_tokens || 0) -
-                        (chunk.usage?.prompt_tokens_details?.cached_tokens ||
-                          0),
+                        this.getCachedTokens(chunk.usage),
                       output_tokens: chunk.usage?.completion_tokens || 0,
-                      cache_read_input_tokens:
-                        chunk.usage?.prompt_tokens_details?.cached_tokens || 0,
+                      cache_read_input_tokens: this.getCachedTokens(chunk.usage),
                     };
                   }
                 }
@@ -898,12 +900,9 @@ export class AnthropicTransformer implements Transformer {
                       usage: {
                         input_tokens:
                           (chunk.usage?.prompt_tokens || 0) -
-                          (chunk.usage?.prompt_tokens_details?.cached_tokens ||
-                            0),
+                          this.getCachedTokens(chunk.usage),
                         output_tokens: chunk.usage?.completion_tokens || 0,
-                        cache_read_input_tokens:
-                          chunk.usage?.prompt_tokens_details?.cached_tokens ||
-                          0,
+                        cache_read_input_tokens: this.getCachedTokens(chunk.usage),
                       },
                     };
                   }
@@ -1044,10 +1043,9 @@ export class AnthropicTransformer implements Transformer {
         usage: {
           input_tokens:
             (openaiResponse.usage?.prompt_tokens || 0) -
-            (openaiResponse.usage?.prompt_tokens_details?.cached_tokens || 0),
+            this.getCachedTokens(openaiResponse.usage),
           output_tokens: openaiResponse.usage?.completion_tokens || 0,
-          cache_read_input_tokens:
-            openaiResponse.usage?.prompt_tokens_details?.cached_tokens || 0,
+          cache_read_input_tokens: this.getCachedTokens(openaiResponse.usage),
         },
       };
       this.logger.debug(
