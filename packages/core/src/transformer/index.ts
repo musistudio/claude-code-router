@@ -19,6 +19,7 @@ import { CustomParamsTransformer } from "./customparams.transformer";
 import { VercelTransformer } from "./vercel.transformer";
 import { OpenAIResponsesTransformer } from "./openai.responses.transformer";
 import { ForceReasoningTransformer } from "./forcereasoning.transformer"
+import { CleanThinkingInMessageTransformer } from "./cleanThinkingInMessage.transformer";
 
 export default {
   AnthropicTransformer,
@@ -41,5 +42,6 @@ export default {
   CustomParamsTransformer,
   VercelTransformer,
   OpenAIResponsesTransformer,
-  ForceReasoningTransformer
+  ForceReasoningTransformer,
+  CleanThinkingInMessageTransformer,
 };
