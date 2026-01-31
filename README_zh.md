@@ -451,7 +451,19 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
  * @returns {Promise<string|null>} - 一个解析为 "provider,model_name" 字符串的 Promise，如果返回 null，则使用默认路由。
  */
 module.exports = async function router(req, config) {
-  const userMessage = req.body.messages.find(m => m.role === 'user')?.content;
+  const message = req.body.messages.find((m) => m.role === "user");
+  let userMessage = "";
+
+  if (message?.content) {
+    if (Array.isArray(message.content)) {
+      userMessage = message.content
+        .filter((item) => item.type === "text")
+        .map((item) => item.text)
+        .join("\n");
+    } else {
+      userMessage = message.content;
+    }
+  }
 
   if (userMessage && userMessage.includes('解释这段代码')) {
     // 为代码解释任务使用更强大的模型

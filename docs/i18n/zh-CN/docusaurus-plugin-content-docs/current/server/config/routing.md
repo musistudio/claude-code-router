@@ -214,7 +214,19 @@ sidebar_position: 3
 ```javascript
 module.exports = async function(req, config) {
   // 分析请求上下文
-  const userMessage = req.body.messages.find(m => m.role === 'user')?.content;
+  const message = req.body.messages.find(m => m.role === 'user');
+  let userMessage = "";
+
+  if (message?.content) {
+    if (Array.isArray(message.content)) {
+      userMessage = message.content
+        .filter(item => item.type === 'text')
+        .map(item => item.text)
+        .join('\n');
+    } else {
+      userMessage = message.content;
+    }
+  }
 
   // 自定义路由逻辑
   if (userMessage && userMessage.includes('解释代码')) {
