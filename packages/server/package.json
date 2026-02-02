@@ -1,6 +1,6 @@
 {
   "name": "@CCR/server",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Server for Claude Code Router",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

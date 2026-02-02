@@ -66,8 +66,7 @@ export interface UnifiedMessage {
   };
 }
 
-// 统一的工具定义接口
-export interface UnifiedTool {
+export interface UnifiedTool1  {
   type: "function";
   function: {
     name: string;
@@ -81,6 +80,21 @@ export interface UnifiedTool {
     };
   };
 }
+
+export interface UnifiedTool2 {
+  name: string;
+  description: string;
+  input_schema: {
+    type: "object";
+    properties?: Record<string, any>;
+    required?: string[];
+    additionalProperties?: boolean;
+    $schema?: string;
+  };
+}
+
+// 统一的工具定义接口
+export type UnifiedTool = UnifiedTool1 | UnifiedTool2;
 
 export type ThinkLevel = "none" | "low" | "medium" | "high";
 

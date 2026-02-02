@@ -45,8 +45,12 @@ export class AnthropicTransformer implements Transformer {
   }
 
   async transformRequestOut(
-    request: Record<string, any>
+    request: Record<string, any>,
   ): Promise<UnifiedChatRequest> {
+    this.logger?.debug(
+      `[AnthropicTransformer] transformRequestOut: model=${request.model}, messagesCount=${request.messages?.length}, system=${!!request.system}`,
+    );
+
     const messages: UnifiedMessage[] = [];
 
     if (request.system) {
@@ -85,7 +89,7 @@ export class AnthropicTransformer implements Transformer {
         if (Array.isArray(msg.content)) {
           if (msg.role === "user") {
             const toolParts = msg.content.filter(
-              (c: any) => c.type === "tool_result" && c.tool_use_id
+              (c: any) => c.type === "tool_result" && c.tool_use_id,
             );
             if (toolParts.length) {
               toolParts.forEach((tool: any) => {
@@ -105,7 +109,7 @@ export class AnthropicTransformer implements Transformer {
             const textAndMediaParts = msg.content.filter(
               (c: any) =>
                 (c.type === "text" && c.text) ||
-                (c.type === "image" && c.source)
+                (c.type === "image" && c.source),
             );
             if (textAndMediaParts.length) {
               messages.push({
@@ -119,7 +123,7 @@ export class AnthropicTransformer implements Transformer {
                           part.source?.type === "base64"
                             ? formatBase64(
                                 part.source.data,
-                                part.source.media_type
+                                part.source.media_type,
                               )
                             : part.source.url,
                       },
@@ -136,7 +140,7 @@ export class AnthropicTransformer implements Transformer {
               content: "",
             };
             const textParts = msg.content.filter(
-              (c: any) => c.type === "text" && c.text
+              (c: any) => c.type === "text" && c.text,
             );
             if (textParts.length) {
               assistantMessage.content = textParts
@@ -145,7 +149,7 @@ export class AnthropicTransformer implements Transformer {
             }
 
             const toolCallParts = msg.content.filter(
-              (c: any) => c.type === "tool_use" && c.id
+              (c: any) => c.type === "tool_use" && c.id,
             );
             if (toolCallParts.length) {
               assistantMessage.tool_calls = toolCallParts.map((tool: any) => {
@@ -161,7 +165,7 @@ export class AnthropicTransformer implements Transformer {
             }
 
             const thinkingPart = msg.content.find(
-              (c: any) => c.type === "thinking" && c.signature
+              (c: any) => c.type === "thinking" && c.signature,
             );
             if (thinkingPart) {
               assistantMessage.thinking = {
@@ -205,12 +209,16 @@ export class AnthropicTransformer implements Transformer {
         result.tool_choice = request.tool_choice.type;
       }
     }
+    this.logger?.debug(
+      "[AnthropicTransformer] transformRequestToAnthropic",
+      result,
+    );
     return result;
   }
 
   async transformResponseIn(
     response: Response,
-    context?: TransformerContext
+    context?: TransformerContext,
   ): Promise<Response> {
     const isStream = response.headers
       .get("Content-Type")
@@ -221,7 +229,7 @@ export class AnthropicTransformer implements Transformer {
       }
       const convertedStream = await this.convertOpenAIStreamToAnthropic(
         response.body,
-        context!
+        context!,
       );
       return new Response(convertedStream, {
         headers: {
@@ -234,7 +242,7 @@ export class AnthropicTransformer implements Transformer {
       const data = (await response.json()) as any;
       const anthropicResponse = this.convertOpenAIResponseToAnthropic(
         data,
-        context!
+        context!,
       );
       return new Response(JSON.stringify(anthropicResponse), {
         headers: { "Content-Type": "application/json" },
@@ -243,19 +251,36 @@ export class AnthropicTransformer implements Transformer {
   }
 
   private convertAnthropicToolsToUnified(tools: any[]): UnifiedTool[] {
-    return tools.map((tool) => ({
-      type: "function",
-      function: {
-        name: tool.name,
-        description: tool.description || "",
-        parameters: tool.input_schema,
-      },
-    }));
+    var logger = this.logger;
+    return tools.map((tool) => {
+      logger.debug(
+        `[AnthropicTransformer] convertAnthropicToolsToUnified: ${JSON.stringify(tool)}`,
+      );
+      if (tool.type == "function") {
+        return {
+          type: "function",
+          function: {
+            name: tool.function.name,
+            description: tool.function.description || "",
+            parameters: tool.function.parameters,
+          },
+        };
+      } else {
+        return {
+          type: "function" as const,
+          function: {
+            name: tool.name,
+            description: tool.description || "",
+            parameters: tool.input_schema,  
+          }
+        };
+      }
+    });
   }
 
   private async convertOpenAIStreamToAnthropic(
     openaiStream: ReadableStream,
-    context: TransformerContext
+    context: TransformerContext,
   ): Promise<ReadableStream> {
     const readable = new ReadableStream({
       start: async (controller) => {
@@ -323,9 +348,9 @@ export class AnthropicTransformer implements Transformer {
                 safeEnqueue(
                   encoder.encode(
                     `event: content_block_stop\ndata: ${JSON.stringify(
-                      contentBlockStop
-                    )}\n\n`
-                  )
+                      contentBlockStop,
+                    )}\n\n`,
+                  ),
                 );
                 currentContentBlockIndex = -1;
               }
@@ -334,9 +359,9 @@ export class AnthropicTransformer implements Transformer {
                 safeEnqueue(
                   encoder.encode(
                     `event: message_delta\ndata: ${JSON.stringify(
-                      stopReasonMessageDelta
-                    )}\n\n`
-                  )
+                      stopReasonMessageDelta,
+                    )}\n\n`,
+                  ),
                 );
                 stopReasonMessageDelta = null;
               } else {
@@ -353,8 +378,8 @@ export class AnthropicTransformer implements Transformer {
                         output_tokens: 0,
                         cache_read_input_tokens: 0,
                       },
-                    })}\n\n`
-                  )
+                    })}\n\n`,
+                  ),
                 );
               }
               const messageStop = {
@@ -363,9 +388,9 @@ export class AnthropicTransformer implements Transformer {
               safeEnqueue(
                 encoder.encode(
                   `event: message_stop\ndata: ${JSON.stringify(
-                    messageStop
-                  )}\n\n`
-                )
+                    messageStop,
+                  )}\n\n`,
+                ),
               );
               controller.close();
               isClosed = true;
@@ -435,8 +460,8 @@ export class AnthropicTransformer implements Transformer {
 
                   safeEnqueue(
                     encoder.encode(
-                      `event: error\ndata: ${JSON.stringify(errorMessage)}\n\n`
-                    )
+                      `event: error\ndata: ${JSON.stringify(errorMessage)}\n\n`,
+                    ),
                   );
                   continue;
                 }
@@ -466,9 +491,9 @@ export class AnthropicTransformer implements Transformer {
                   safeEnqueue(
                     encoder.encode(
                       `event: message_start\ndata: ${JSON.stringify(
-                        messageStart
-                      )}\n\n`
-                    )
+                        messageStart,
+                      )}\n\n`,
+                    ),
                   );
                 }
 
@@ -535,9 +560,9 @@ export class AnthropicTransformer implements Transformer {
                     safeEnqueue(
                       encoder.encode(
                         `event: content_block_start\ndata: ${JSON.stringify(
-                          contentBlockStart
-                        )}\n\n`
-                      )
+                          contentBlockStart,
+                        )}\n\n`,
+                      ),
                     );
                     currentContentBlockIndex = thinkingBlockIndex;
                     isThinkingStarted = true;
@@ -554,9 +579,9 @@ export class AnthropicTransformer implements Transformer {
                     safeEnqueue(
                       encoder.encode(
                         `event: content_block_delta\ndata: ${JSON.stringify(
-                          thinkingSignature
-                        )}\n\n`
-                      )
+                          thinkingSignature,
+                        )}\n\n`,
+                      ),
                     );
                     const contentBlockStop = {
                       type: "content_block_stop",
@@ -565,9 +590,9 @@ export class AnthropicTransformer implements Transformer {
                     safeEnqueue(
                       encoder.encode(
                         `event: content_block_stop\ndata: ${JSON.stringify(
-                          contentBlockStop
-                        )}\n\n`
-                      )
+                          contentBlockStop,
+                        )}\n\n`,
+                      ),
                     );
                     currentContentBlockIndex = -1;
                   } else if (choice.delta.thinking.content) {
@@ -582,9 +607,9 @@ export class AnthropicTransformer implements Transformer {
                     safeEnqueue(
                       encoder.encode(
                         `event: content_block_delta\ndata: ${JSON.stringify(
-                          thinkingChunk
-                        )}\n\n`
-                      )
+                          thinkingChunk,
+                        )}\n\n`,
+                      ),
                     );
                   }
                 }
@@ -604,9 +629,9 @@ export class AnthropicTransformer implements Transformer {
                       safeEnqueue(
                         encoder.encode(
                           `event: content_block_stop\ndata: ${JSON.stringify(
-                            contentBlockStop
-                          )}\n\n`
-                        )
+                            contentBlockStop,
+                          )}\n\n`,
+                        ),
                       );
                       currentContentBlockIndex = -1;
                     }
@@ -626,9 +651,9 @@ export class AnthropicTransformer implements Transformer {
                     safeEnqueue(
                       encoder.encode(
                         `event: content_block_start\ndata: ${JSON.stringify(
-                          contentBlockStart
-                        )}\n\n`
-                      )
+                          contentBlockStart,
+                        )}\n\n`,
+                      ),
                     );
                     currentContentBlockIndex = textBlockIndex;
                   }
@@ -645,9 +670,9 @@ export class AnthropicTransformer implements Transformer {
                     safeEnqueue(
                       encoder.encode(
                         `event: content_block_delta\ndata: ${JSON.stringify(
-                          anthropicChunk
-                        )}\n\n`
-                      )
+                          anthropicChunk,
+                        )}\n\n`,
+                      ),
                     );
                   }
                 }
@@ -666,9 +691,9 @@ export class AnthropicTransformer implements Transformer {
                     safeEnqueue(
                       encoder.encode(
                         `event: content_block_stop\ndata: ${JSON.stringify(
-                          contentBlockStop
-                        )}\n\n`
-                      )
+                          contentBlockStop,
+                        )}\n\n`,
+                      ),
                     );
                     currentContentBlockIndex = -1;
                     hasTextContentStarted = false;
@@ -694,9 +719,9 @@ export class AnthropicTransformer implements Transformer {
                     safeEnqueue(
                       encoder.encode(
                         `event: content_block_start\ndata: ${JSON.stringify(
-                          contentBlockStart
-                        )}\n\n`
-                      )
+                          contentBlockStart,
+                        )}\n\n`,
+                      ),
                     );
 
                     const contentBlockStop = {
@@ -706,9 +731,9 @@ export class AnthropicTransformer implements Transformer {
                     safeEnqueue(
                       encoder.encode(
                         `event: content_block_stop\ndata: ${JSON.stringify(
-                          contentBlockStop
-                        )}\n\n`
-                      )
+                          contentBlockStop,
+                        )}\n\n`,
+                      ),
                     );
                     currentContentBlockIndex = -1;
                   });
@@ -738,9 +763,9 @@ export class AnthropicTransformer implements Transformer {
                         safeEnqueue(
                           encoder.encode(
                             `event: content_block_stop\ndata: ${JSON.stringify(
-                              contentBlockStop
-                            )}\n\n`
-                          )
+                              contentBlockStop,
+                            )}\n\n`,
+                          ),
                         );
                         currentContentBlockIndex = -1;
                       }
@@ -748,7 +773,7 @@ export class AnthropicTransformer implements Transformer {
                       const newContentBlockIndex = assignContentBlockIndex();
                       toolCallIndexToContentBlockIndex.set(
                         toolCallIndex,
-                        newContentBlockIndex
+                        newContentBlockIndex,
                       );
                       const toolCallId =
                         toolCall.id || `call_${Date.now()}_${toolCallIndex}`;
@@ -768,9 +793,9 @@ export class AnthropicTransformer implements Transformer {
                       safeEnqueue(
                         encoder.encode(
                           `event: content_block_start\ndata: ${JSON.stringify(
-                            contentBlockStart
-                          )}\n\n`
-                        )
+                            contentBlockStart,
+                          )}\n\n`,
+                        ),
                       );
                       currentContentBlockIndex = newContentBlockIndex;
 
@@ -821,9 +846,9 @@ export class AnthropicTransformer implements Transformer {
                         safeEnqueue(
                           encoder.encode(
                             `event: content_block_delta\ndata: ${JSON.stringify(
-                              anthropicChunk
-                            )}\n\n`
-                          )
+                              anthropicChunk,
+                            )}\n\n`,
+                          ),
                         );
                       } catch {
                         try {
@@ -843,9 +868,9 @@ export class AnthropicTransformer implements Transformer {
                           safeEnqueue(
                             encoder.encode(
                               `event: content_block_delta\ndata: ${JSON.stringify(
-                                fixedChunk
-                              )}\n\n`
-                            )
+                                fixedChunk,
+                              )}\n\n`,
+                            ),
                           );
                         } catch (fixError) {
                           console.error(fixError);
@@ -858,7 +883,7 @@ export class AnthropicTransformer implements Transformer {
                 if (choice?.finish_reason && !isClosed && !hasFinished) {
                   if (contentChunks === 0 && toolCallChunks === 0) {
                     console.error(
-                      "Warning: No content in the stream response!"
+                      "Warning: No content in the stream response!",
                     );
                   }
 
@@ -871,9 +896,9 @@ export class AnthropicTransformer implements Transformer {
                     safeEnqueue(
                       encoder.encode(
                         `event: content_block_stop\ndata: ${JSON.stringify(
-                          contentBlockStop
-                        )}\n\n`
-                      )
+                          contentBlockStop,
+                        )}\n\n`,
+                      ),
                     );
                     currentContentBlockIndex = -1;
                   }
@@ -912,7 +937,7 @@ export class AnthropicTransformer implements Transformer {
                 }
               } catch (parseError: any) {
                 this.logger?.error(
-                  `parseError: ${parseError.name} message: ${parseError.message} stack: ${parseError.stack} data: ${data}`
+                  `parseError: ${parseError.name} message: ${parseError.message} stack: ${parseError.stack} data: ${data}`,
                 );
               }
             }
@@ -941,7 +966,7 @@ export class AnthropicTransformer implements Transformer {
           {
             reqId: context.req.id,
           },
-          `cancle stream: ${reason}`
+          `cancle stream: ${reason}`,
         );
       },
     });
@@ -951,14 +976,14 @@ export class AnthropicTransformer implements Transformer {
 
   private convertOpenAIResponseToAnthropic(
     openaiResponse: ChatCompletion,
-    context: TransformerContext
+    context: TransformerContext,
   ): any {
     this.logger.debug(
       {
         reqId: context.req.id,
         response: openaiResponse,
       },
-      `Original OpenAI response`
+      `Original OpenAI response`,
     );
     try {
       const choice = openaiResponse.choices[0];
@@ -1034,12 +1059,12 @@ export class AnthropicTransformer implements Transformer {
           choice.finish_reason === "stop"
             ? "end_turn"
             : choice.finish_reason === "length"
-            ? "max_tokens"
-            : choice.finish_reason === "tool_calls"
-            ? "tool_use"
-            : choice.finish_reason === "content_filter"
-            ? "stop_sequence"
-            : "end_turn",
+              ? "max_tokens"
+              : choice.finish_reason === "tool_calls"
+                ? "tool_use"
+                : choice.finish_reason === "content_filter"
+                  ? "stop_sequence"
+                  : "end_turn",
         stop_sequence: null,
         usage: {
           input_tokens:
@@ -1055,14 +1080,14 @@ export class AnthropicTransformer implements Transformer {
           reqId: context.req.id,
           result,
         },
-        `Conversion complete, final Anthropic response`
+        `Conversion complete, final Anthropic response`,
       );
       return result;
     } catch {
       throw createApiError(
         `Provider error: ${JSON.stringify(openaiResponse)}`,
         500,
-        "provider_error"
+        "provider_error",
       );
     }
   }

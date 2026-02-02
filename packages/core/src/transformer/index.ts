@@ -15,10 +15,11 @@ import { VertexClaudeTransformer } from "./vertex-claude.transformer";
 import { CerebrasTransformer } from "./cerebras.transformer";
 import { StreamOptionsTransformer } from "./streamoptions.transformer";
 import { OpenAITransformer } from "./openai.transformer";
+import { OpenAICompatibleTransformer } from "./openai-compatible.transformer";
 import { CustomParamsTransformer } from "./customparams.transformer";
 import { VercelTransformer } from "./vercel.transformer";
 import { OpenAIResponsesTransformer } from "./openai.responses.transformer";
-import { ForceReasoningTransformer } from "./forcereasoning.transformer"
+import { ForceReasoningTransformer } from "./forcereasoning.transformer";
 
 export default {
   AnthropicTransformer,
@@ -29,6 +30,7 @@ export default {
   TooluseTransformer,
   OpenrouterTransformer,
   OpenAITransformer,
+  OpenAICompatibleTransformer,
   MaxTokenTransformer,
   GroqTransformer,
   CleancacheTransformer,
