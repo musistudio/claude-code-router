@@ -34,9 +34,12 @@ export class ReasoningTransformer implements Transformer {
     if (!this.enable) return response;
     if (response.headers.get("Content-Type")?.includes("application/json")) {
       const jsonResponse = await response.json();
-      if (jsonResponse.choices[0]?.message.reasoning_content) {
+      // Support both 'reasoning' (new) and 'reasoning_content' (legacy)
+      const reasoningContent = jsonResponse.choices[0]?.message?.reasoning ??
+                              jsonResponse.choices[0]?.message?.reasoning_content;
+      if (reasoningContent) {
         jsonResponse.thinking = {
-          content: jsonResponse.choices[0]?.message.reasoning_content
+          content: reasoningContent
         }
       }
       // Handle non-streaming response if needed
@@ -95,11 +98,13 @@ export class ReasoningTransformer implements Transformer {
                 const data = JSON.parse(line.slice(6));
                 console.log(JSON.stringify(data))
 
-                // Extract reasoning_content from delta
-                if (data.choices?.[0]?.delta?.reasoning_content) {
-                  context.appendReasoningContent(
-                    data.choices[0].delta.reasoning_content
-                  );
+                // Extract reasoning content from delta
+                // Support both 'reasoning' (new) and 'reasoning_content' (legacy)
+                const reasoningDelta = data.choices?.[0]?.delta?.reasoning ??
+                                      data.choices?.[0]?.delta?.reasoning_content;
+
+                if (reasoningDelta) {
+                  context.appendReasoningContent(reasoningDelta);
                   const thinkingChunk = {
                     ...data,
                     choices: [
@@ -108,12 +113,14 @@ export class ReasoningTransformer implements Transformer {
                         delta: {
                           ...data.choices[0].delta,
                           thinking: {
-                            content: data.choices[0].delta.reasoning_content,
+                            content: reasoningDelta,
                           },
                         },
                       },
                     ],
                   };
+                  // Clean up both possible field names
+                  delete thinkingChunk.choices[0].delta.reasoning;
                   delete thinkingChunk.choices[0].delta.reasoning_content;
                   const thinkingLine = `data: ${JSON.stringify(
                     thinkingChunk
@@ -122,7 +129,7 @@ export class ReasoningTransformer implements Transformer {
                   return;
                 }
 
-                // Check if reasoning is complete (when delta has content but no reasoning_content)
+                // Check if reasoning is complete (when delta has content but no reasoning fields)
                 if (
                   (data.choices?.[0]?.delta?.content ||
                     data.choices?.[0]?.delta?.tool_calls) &&
@@ -149,6 +156,8 @@ export class ReasoningTransformer implements Transformer {
                       },
                     ],
                   };
+                  // Clean up both possible field names
+                  delete thinkingChunk.choices[0].delta.reasoning;
                   delete thinkingChunk.choices[0].delta.reasoning_content;
                   // Send the thinking chunk
                   const thinkingLine = `data: ${JSON.stringify(
@@ -157,7 +166,9 @@ export class ReasoningTransformer implements Transformer {
                   controller.enqueue(encoder.encode(thinkingLine));
                 }
 
-                if (data.choices?.[0]?.delta?.reasoning_content) {
+                // Clean up reasoning fields from the original data
+                if (data.choices?.[0]?.delta) {
+                  delete data.choices[0].delta.reasoning;
                   delete data.choices[0].delta.reasoning_content;
                 }
 
