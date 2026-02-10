@@ -107,6 +107,11 @@ export interface UnifiedChatRequest {
 
     enabled?: boolean;
   };
+  thinking?: {
+    type?: "enabled" | "disabled";
+    budget_tokens?: number;
+  };
+  enable_thinking?: boolean;
 }
 
 // 统一的响应接口

@@ -163,6 +163,13 @@ export function convertToOpenAI(
     }
   }
 
+  if (request.enable_thinking !== undefined) {
+    result.enable_thinking = request.enable_thinking;
+  }
+  if (request.thinking) {
+    result.thinking = request.thinking;
+  }
+
   return result;
 }
 
