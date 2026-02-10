@@ -11,8 +11,6 @@
 > GLM CODING PLAN is a subscription service designed for AI coding, starting at just $3/month. It provides access to their flagship GLM-4.7 model across 10+ popular AI coding tools (Claude Code, Cline, Roo Code, etc.), offering developers top-tier, fast, and stable coding experiences.     
 > Get 10% OFF GLM CODING PLAN：https://z.ai/subscribe?ic=8JVLJQFSKB     
 
-> [Progressive Disclosure of Agent Tools from the Perspective of CLI Tool Style](/blog/en/progressive-disclosure-of-agent-tools-from-the-perspective-of-cli-tool-style.md)
-
 > A powerful tool to route Claude Code requests to different models and customize any request.
 
 ![](blog/images/claude-code.png)

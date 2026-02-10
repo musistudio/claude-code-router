@@ -19,6 +19,31 @@ import { version } from "../../package.json";
 import { spawn } from "child_process";
 import {cleanupPidFile, isServiceRunning} from "./processCheck";
 
+const resolveStartCommand = (): { command: string; args: string[] } => {
+  const entry = process.argv[1];
+  if (entry && existsSync(entry)) {
+    return {
+      command: process.execPath,
+      args: [...process.execArgv, entry, "start"],
+    };
+  }
+
+  const candidates = [
+    path.join(__dirname, "cli.js"),
+    path.join(__dirname, "../cli.js"),
+  ];
+  const cliPath = candidates.find((candidate) => existsSync(candidate));
+
+  if (!cliPath) {
+    throw new Error("Unable to locate CLI entry for restart.");
+  }
+
+  return {
+    command: process.execPath,
+    args: [cliPath, "start"],
+  };
+};
+
 // Function to interpolate environment variables in config values
 const interpolateEnvVars = (obj: any): any => {
   if (typeof obj === "string") {
@@ -238,8 +263,8 @@ export const restartService = async () => {
 
   // Start the service again in the background
   console.log("Starting claude code router service...");
-  const cliPath = path.join(__dirname, "cli.js");
-  const startProcess = spawn("node", [cliPath, "start"], {
+  const { command, args } = resolveStartCommand();
+  const startProcess = spawn(command, args, {
     detached: true,
     stdio: "ignore",
   });
