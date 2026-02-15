@@ -526,7 +526,16 @@ export async function transformResponseOut(
     let thinkingContent = "";
     let thinkingSignature = "";
 
-    const parts = jsonResponse.candidates[0]?.content?.parts || [];
+    const finalChoice = Array.isArray(jsonResponse)
+      ? jsonResponse.find((r: any) =>
+        r.candidates?.some((c: any) => c.finishReason)
+      ) || jsonResponse[jsonResponse.length - 1]
+      : jsonResponse;
+
+    const parts =
+      finalChoice?.candidates?.[0]?.content?.parts ||
+      jsonResponse[0]?.candidates?.[0]?.content?.parts ||
+      [];
     const nonThinkingParts: Part[] = [];
 
     for (const part of parts) {
@@ -567,9 +576,8 @@ export async function transformResponseOut(
       choices: [
         {
           finish_reason:
-            (
-              jsonResponse.candidates[0].finishReason as string
-            )?.toLowerCase() || null,
+            (finalChoice?.candidates?.[0]?.finishReason as string)?.toLowerCase() ||
+            null,
           index: 0,
           message: {
             content: textContent,
@@ -1041,4 +1049,6 @@ export async function transformResponseOut(
       headers: response.headers,
     });
   }
+
+  return response;
 }
