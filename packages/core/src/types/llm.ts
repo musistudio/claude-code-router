@@ -200,7 +200,8 @@ export interface ConversionOptions {
 export interface LLMProvider {
   name: string;
   baseUrl: string;
-  apiKey: string;
+  apiKey?: string;
+  passthroughAuth?: boolean;
   models: string[];
   transformer?: {
     [key: string]: {
@@ -228,7 +229,8 @@ export interface RequestRouteInfo {
 export interface ConfigProvider {
   name: string;
   api_base_url: string;
-  api_key: string;
+  api_key?: string;
+  passthrough_auth?: boolean;
   models: string[];
   transformer: {
     use?: string[] | Array<any>[];

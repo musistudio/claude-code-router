@@ -32,7 +32,7 @@ export class ProviderService {
         if (
           !providerConfig.name ||
           !providerConfig.api_base_url ||
-          !providerConfig.api_key
+          (!providerConfig.api_key && !providerConfig.passthrough_auth)
         ) {
           return;
         }
@@ -87,6 +87,7 @@ export class ProviderService {
           name: providerConfig.name,
           baseUrl: providerConfig.api_base_url,
           apiKey: providerConfig.api_key,
+          passthroughAuth: providerConfig.passthrough_auth,
           models: providerConfig.models || [],
           transformer: providerConfig.transformer ? transformer : undefined,
         });
