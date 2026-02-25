@@ -2,7 +2,7 @@ import { LLMProvider, UnifiedChatRequest } from "../types/llm";
 import { Transformer, TransformerContext } from "../types/transformer";
 
 export class VeniceTransformer implements Transformer {
-  static TransformerName = "venice";
+  static TransformerName = "Venice";
 
   async transformRequestIn(
     request: UnifiedChatRequest,
