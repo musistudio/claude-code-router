@@ -13,7 +13,7 @@ import {
 import { v4 as uuidv4 } from "uuid";
 import { getThinkLevel } from "@/utils/thinking";
 import { createApiError } from "@/api/middleware";
-import { formatBase64 } from "@/utils/image";
+import { toImageUrlPart } from "@/utils/image";
 
 export class AnthropicTransformer implements Transformer {
   name = "Anthropic";
@@ -89,16 +89,43 @@ export class AnthropicTransformer implements Transformer {
             );
             if (toolParts.length) {
               toolParts.forEach((tool: any) => {
+                let toolContent: string;
+                const extractedImages: any[] = [];
+
+                if (typeof tool.content === "string") {
+                  toolContent = tool.content;
+                } else if (Array.isArray(tool.content)) {
+                  const textParts: string[] = [];
+                  tool.content.forEach((c: any) => {
+                    if (c.type === "image" && c.source) {
+                      extractedImages.push(c);
+                    } else if (c.type === "text") {
+                      textParts.push(c.text);
+                    } else {
+                      textParts.push(JSON.stringify(c));
+                    }
+                  });
+                  toolContent = textParts.length
+                    ? textParts.join("\n")
+                    : "[see image below]";
+                } else {
+                  toolContent = JSON.stringify(tool.content);
+                }
+
                 const toolMessage: UnifiedMessage = {
                   role: "tool",
-                  content:
-                    typeof tool.content === "string"
-                      ? tool.content
-                      : JSON.stringify(tool.content),
+                  content: toolContent,
                   tool_call_id: tool.tool_use_id,
                   cache_control: tool.cache_control,
                 };
                 messages.push(toolMessage);
+
+                if (extractedImages.length) {
+                  messages.push({
+                    role: "user",
+                    content: extractedImages.map(toImageUrlPart),
+                  });
+                }
               });
             }
 
@@ -112,19 +139,7 @@ export class AnthropicTransformer implements Transformer {
                 role: "user",
                 content: textAndMediaParts.map((part: any) => {
                   if (part?.type === "image") {
-                    return {
-                      type: "image_url",
-                      image_url: {
-                        url:
-                          part.source?.type === "base64"
-                            ? formatBase64(
-                                part.source.data,
-                                part.source.media_type
-                              )
-                            : part.source.url,
-                      },
-                      media_type: part.source.media_type,
-                    };
+                    return toImageUrlPart(part);
                   }
                   return part;
                 }),
