@@ -13,7 +13,7 @@ import {
 import { v4 as uuidv4 } from "uuid";
 import { getThinkLevel } from "@/utils/thinking";
 import { createApiError } from "@/api/middleware";
-import { formatBase64 } from "@/utils/image";
+import { toImageUrlPart } from "@/utils/image";
 
 export class AnthropicTransformer implements Transformer {
   name = "Anthropic";
@@ -123,19 +123,7 @@ export class AnthropicTransformer implements Transformer {
                 if (extractedImages.length) {
                   messages.push({
                     role: "user",
-                    content: extractedImages.map((img: any) => ({
-                      type: "image_url",
-                      image_url: {
-                        url:
-                          img.source?.type === "base64"
-                            ? formatBase64(
-                                img.source.data,
-                                img.source.media_type
-                              )
-                            : img.source.url,
-                      },
-                      media_type: img.source.media_type,
-                    })),
+                    content: extractedImages.map(toImageUrlPart),
                   });
                 }
               });
@@ -151,19 +139,7 @@ export class AnthropicTransformer implements Transformer {
                 role: "user",
                 content: textAndMediaParts.map((part: any) => {
                   if (part?.type === "image") {
-                    return {
-                      type: "image_url",
-                      image_url: {
-                        url:
-                          part.source?.type === "base64"
-                            ? formatBase64(
-                                part.source.data,
-                                part.source.media_type
-                              )
-                            : part.source.url,
-                      },
-                      media_type: part.source.media_type,
-                    };
+                    return toImageUrlPart(part);
                   }
                   return part;
                 }),
