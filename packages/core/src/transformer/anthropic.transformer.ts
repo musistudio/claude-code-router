@@ -220,6 +220,7 @@ export class AnthropicTransformer implements Transformer {
         result.tool_choice = request.tool_choice.type;
       }
     }
+
     return result;
   }
 
