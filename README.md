@@ -1,3 +1,7 @@
+> **Fork Note:** This fork adds additional functionality to support **Venice** as a provider:
+> - **Web search** support for Venice-backed models
+> - **Image recognition** in tool results, enabling models to process and understand images returned by tools
+
 ![](blog/images/claude-code-router-img.png)
 
 [![](https://img.shields.io/badge/%F0%9F%87%A8%F0%9F%87%B3-%E4%B8%AD%E6%96%87%E7%89%88-ff0000?style=flat)](README_zh.md)
