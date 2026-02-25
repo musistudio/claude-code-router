@@ -237,7 +237,9 @@
     "worker_error": "Worker错误",
     "worker_init_failed": "Worker初始化失败",
     "grouping_not_supported": "服务器不支持日志分组",
-    "back": "返回"
+    "back": "返回",
+    "visualize": "可视化",
+    "visualize_failed": "生成可视化失败"
   },
   "presets": {
     "title": "预设",
