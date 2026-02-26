@@ -266,12 +266,12 @@ export const router = async (req: any, _res: any, context: RouterContext) => {
       );
     }
 
+    req.tokenCount = tokenCount; // Always set for context window tracking
     let model;
     const customRouterPath = configService.get("CUSTOM_ROUTER_PATH");
     if (customRouterPath) {
       try {
         const customRouter = require(customRouterPath);
-        req.tokenCount = tokenCount; // Pass token count to custom router
         model = await customRouter(req, configService.getAll(), {
           event,
         });

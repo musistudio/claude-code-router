@@ -349,7 +349,7 @@ export class AnthropicTransformer implements Transformer {
                         stop_sequence: null,
                       },
                       usage: {
-                        input_tokens: 0,
+                        input_tokens: context?.req?.tokenCount || 0,
                         output_tokens: 0,
                         cache_read_input_tokens: 0,
                       },
@@ -457,7 +457,7 @@ export class AnthropicTransformer implements Transformer {
                       stop_reason: null,
                       stop_sequence: null,
                       usage: {
-                        input_tokens: 0,
+                        input_tokens: context?.req?.tokenCount || 0,
                         output_tokens: 0,
                       },
                     },
