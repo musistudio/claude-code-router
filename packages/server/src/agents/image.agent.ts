@@ -200,7 +200,8 @@ export class ImageAgent implements IAgent {
       lastMessage.content.push(...images);
       return false;
     }
-    return req.body.messages.some(
+    // Check if any message in history has raw images
+    const hasImages = req.body.messages.some(
       (msg: any) =>
         msg.role === "user" &&
         Array.isArray(msg.content) &&
@@ -211,6 +212,43 @@ export class ImageAgent implements IAgent {
               item.content.some((sub: any) => sub.type === "image"))
         )
     );
+    if (!hasImages) return false;
+
+    // Guard: if images were already analyzed (analyzeImage tool_result exists
+    // in history) AND the last user message has no NEW raw images, skip re-analysis.
+    const lastMessageHasRawImages =
+      lastMessage.role === "user" &&
+      Array.isArray(lastMessage.content) &&
+      lastMessage.content.some(
+        (item: any) =>
+          item.type === "image" ||
+          (Array.isArray(item?.content) &&
+            item.content.some((sub: any) => sub.type === "image"))
+      );
+
+    const hasAnalyzeImageResult = req.body.messages.some(
+      (msg: any) =>
+        msg.role === "user" &&
+        Array.isArray(msg.content) &&
+        msg.content.some(
+          (item: any) =>
+            item.type === "tool_result" &&
+            req.body.messages.some(
+              (a: any) =>
+                a.role === "assistant" &&
+                Array.isArray(a.content) &&
+                a.content.some(
+                  (b: any) =>
+                    b.type === "tool_use" &&
+                    b.name === "analyzeImage" &&
+                    b.id === item.tool_use_id
+                )
+            )
+        )
+    );
+
+    if (hasAnalyzeImageResult && !lastMessageHasRawImages) return false;
+    return true;
   }
 
   appendTools() {

@@ -257,6 +257,7 @@ async function getServer(options: RunOptions = {}) {
           let currentToolId = ''
           const toolMessages: any[] = []
           const assistantMessages: any[] = []
+          let maxContentBlockIndex = -1
           // Store Anthropic format message body, distinguishing text and tool types
           return done(null, rewriteStream(eventStream, async (data, controller) => {
             try {
@@ -355,9 +356,14 @@ async function getServer(options: RunOptions = {}) {
                       continue
                     }
 
-                    // Check if stream is still writable
-                    if (!controller.desiredSize) {
+                    // Check if stream is closed (null), but NOT on backpressure (0)
+                    if (controller.desiredSize === null) {
                       break;
+                    }
+
+                    // Remap content block indices to avoid collision with original stream
+                    if (eventData.data?.index !== undefined) {
+                      eventData.data = { ...eventData.data, index: eventData.data.index + maxContentBlockIndex + 1 };
                     }
 
                     controller.enqueue(eventData)
@@ -371,6 +377,10 @@ async function getServer(options: RunOptions = {}) {
 
                 }
                 return undefined
+              }
+              // Track max content block index from original stream
+              if (data.data?.index !== undefined && data.data.index > maxContentBlockIndex) {
+                maxContentBlockIndex = data.data.index;
               }
               return data
             }catch (error: any) {
