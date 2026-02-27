@@ -46,6 +46,18 @@ interface TokenSpeedOptions extends CCRPluginOptions {
 // Store request-level statistics
 const requestStats = new Map<string, TokenStats>();
 
+// Type guard for ReadableStream using duck-typing.
+// `instanceof ReadableStream` is unreliable because Node.js exposes multiple distinct
+// ReadableStream constructors (globalThis, node:stream/web, undici's internal copy,
+// esbuild-bundled copies). Duck-typing is the only realm-agnostic check.
+function isReadableStream(value: unknown): value is ReadableStream {
+  return (
+    value != null &&
+    typeof (value as any).getReader === 'function' &&
+    typeof (value as any).pipeThrough === 'function'
+  );
+}
+
 // Cache tokenizers by provider and model to avoid repeated initialization
 const tokenizerCache = new Map<string, ITokenizer>();
 
@@ -187,7 +199,7 @@ export const tokenSpeedPlugin: CCRPlugin = {
       const tokenizer = await getTokenizerForRequest(request);
 
       // Handle streaming responses
-      if (payload instanceof ReadableStream) {
+      if (isReadableStream(payload)) {
         // Mark this request as streaming
         requestStats.set(requestId, {
           requestId,

@@ -1,6 +1,119 @@
 import { IAgent, ITool } from "./type";
 import { createHash } from "crypto";
 import * as LRU from "lru-cache";
+import { inflateSync, deflateSync } from "zlib";
+
+const MIN_IMAGE_DIM = 56; // qwen3-vl crashes on images smaller than ~56x56
+
+/**
+ * Read PNG dimensions from IHDR chunk without full decode.
+ * Returns null if the buffer is not a valid PNG.
+ */
+function getPngDimensions(base64Data: string): { w: number; h: number } | null {
+  try {
+    const buf = Buffer.from(base64Data, "base64");
+    if (buf.length < 24 || buf[1] !== 0x50 || buf[2] !== 0x4e || buf[3] !== 0x47)
+      return null;
+    return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Pad a small PNG onto a white canvas of at least MIN_IMAGE_DIM x MIN_IMAGE_DIM.
+ * Only handles 8-bit RGB PNGs (the format we create in tests and Claude Code screenshots).
+ * Returns the original source unchanged if padding is not needed or the format is unsupported.
+ */
+function padImageIfNeeded(source: any): any {
+  if (!source || source.type !== "base64" || !source.media_type?.includes("png"))
+    return source;
+  const dims = getPngDimensions(source.data);
+  if (!dims || (dims.w >= MIN_IMAGE_DIM && dims.h >= MIN_IMAGE_DIM))
+    return source;
+
+  try {
+    const buf = Buffer.from(source.data, "base64");
+    // Validate: 8-bit RGB (bit depth at byte 24, color type at byte 25)
+    if (buf[24] !== 8 || buf[25] !== 2) return source;
+
+    const srcW = dims.w;
+    const srcH = dims.h;
+    const dstW = Math.max(srcW, MIN_IMAGE_DIM);
+    const dstH = Math.max(srcH, MIN_IMAGE_DIM);
+
+    // Decode original IDAT (collect all IDAT chunks, then inflate)
+    let idatRaw = Buffer.alloc(0);
+    let pos = 8;
+    while (pos + 12 <= buf.length) {
+      const chunkLen = buf.readUInt32BE(pos);
+      const chunkType = buf.subarray(pos + 4, pos + 8).toString("ascii");
+      if (chunkType === "IDAT") {
+        idatRaw = Buffer.concat([idatRaw, buf.subarray(pos + 8, pos + 8 + chunkLen)]);
+      } else if (chunkType === "IEND") break;
+      pos += 12 + chunkLen;
+    }
+    const rawPixels = inflateSync(idatRaw);
+
+    // Read source pixels row by row (each row: 1 filter byte + w*3 RGB bytes)
+    const srcPixels: number[][][] = [];
+    for (let y = 0; y < srcH; y++) {
+      const rowOffset = y * (1 + srcW * 3);
+      const filter = rawPixels[rowOffset];
+      // Only handle filter type 0 (None)
+      if (filter !== 0) return source;
+      const row: number[][] = [];
+      for (let x = 0; x < srcW; x++) {
+        const base = rowOffset + 1 + x * 3;
+        row.push([rawPixels[base], rawPixels[base + 1], rawPixels[base + 2]]);
+      }
+      srcPixels.push(row);
+    }
+
+    // Build new raw pixel data: white background, original image in top-left
+    let newRaw = Buffer.alloc(dstH * (1 + dstW * 3));
+    let writePos = 0;
+    for (let y = 0; y < dstH; y++) {
+      newRaw[writePos++] = 0; // filter: None
+      for (let x = 0; x < dstW; x++) {
+        const pixel = y < srcH && x < srcW ? srcPixels[y][x] : [255, 255, 255];
+        newRaw[writePos++] = pixel[0];
+        newRaw[writePos++] = pixel[1];
+        newRaw[writePos++] = pixel[2];
+      }
+    }
+
+    // Build new PNG
+    function pngChunk(type: string, data: Buffer): Buffer {
+      const typeBytes = Buffer.from(type, "ascii");
+      const lenBuf = Buffer.alloc(4);
+      lenBuf.writeUInt32BE(data.length, 0);
+      const crcBuf = Buffer.alloc(4);
+      const crc = require("zlib").crc32(Buffer.concat([typeBytes, data])) >>> 0;
+      crcBuf.writeUInt32BE(crc, 0);
+      return Buffer.concat([lenBuf, typeBytes, data, crcBuf]);
+    }
+
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(dstW, 0);
+    ihdr.writeUInt32BE(dstH, 4);
+    ihdr[8] = 8; // bit depth
+    ihdr[9] = 2; // color type: RGB
+    ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+
+    const compressed = deflateSync(newRaw);
+    const png = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      pngChunk("IHDR", ihdr),
+      pngChunk("IDAT", compressed),
+      pngChunk("IEND", Buffer.alloc(0)),
+    ]);
+
+    return { ...source, data: png.toString("base64") };
+  } catch {
+    return source; // On any error, fall back to original
+  }
+}
 
 interface ImageCacheEntry {
   source: any;
@@ -151,31 +264,20 @@ export class ImageAgent implements IAgent {
         let imageId;
 
         // Create image messages from cached images
+        // Use stable session key (metadata.user_id) so images cached in one request
+        // can be found by follow-up requests in the same session.
+        // Send in Anthropic format — the local server's transformer converts to OpenAI for the provider.
+        const sessionKey = context.req.body?.metadata?.user_id || context.req.id;
         if (args.imageId) {
-          if (Array.isArray(args.imageId)) {
-            args.imageId.forEach((imgId: string) => {
-              const image = imageCache.getImage(
-                `${context.req.id}_Image#${imgId}`
-              );
-              if (image) {
-                imageMessages.push({
-                  type: "image",
-                  source: image,
-                });
-              }
-            });
-          } else {
+          const imgIds = Array.isArray(args.imageId) ? args.imageId : [args.imageId];
+          for (const imgId of imgIds) {
             const image = imageCache.getImage(
-              `${context.req.id}_Image#${args.imageId}`
+              `${sessionKey}_Image#${imgId}`
             );
             if (image) {
-              imageMessages.push({
-                type: "image",
-                source: image,
-              });
+              imageMessages.push({ type: "image", source: padImageIfNeeded(image) });
             }
           }
-          imageId = args.imageId;
           delete args.imageId;
         }
 
@@ -190,6 +292,27 @@ export class ImageAgent implements IAgent {
               )
           );
           imageMessages.push(...msgs);
+        }
+
+        // Extract images from tool_result content and add to messages
+        const extractImagesFromToolResults = (content: any) => {
+          if (!content || !Array.isArray(content)) return;
+          for (const item of content) {
+            if (item.type === "image" && item.source) {
+              imageMessages.push({ type: "image", source: padImageIfNeeded(item.source) });
+            }
+          }
+        };
+
+        // Check all messages for tool_result with images
+        for (const msg of context.req.body.messages) {
+          if (msg.role === "user" && Array.isArray(msg.content)) {
+            for (const item of msg.content) {
+              if (item.type === "tool_result" && item.content) {
+                extractImagesFromToolResults(item.content);
+              }
+            }
+          }
         }
 
         if (Object.keys(args).length > 0) {
@@ -241,23 +364,36 @@ Always ensure that your response reflects a clear, accurate interpretation of th
     });
   }
 
-  reqHandler(req: any, config: any) {
-    // Inject system prompt
-    req.body?.system?.push({
+  reqHandler(req: any, _config: any) {
+    // Ensure system is an array so we can push to it
+    if (!req.body.system) {
+      req.body.system = [];
+    } else if (typeof req.body.system === "string") {
+      req.body.system = [{ type: "text", text: req.body.system }];
+    }
+
+    req.body.system.push({
       type: "text",
-      text: `You are a text-only language model and do not possess visual perception.  
-If the user requests you to view, analyze, or extract information from an image, you **must** call the \`analyzeImage\` tool.  
+      _agentInjected: true,
+      text: `CRITICAL INSTRUCTION - IMAGE ANALYSIS:
+You are a text-only language model. You CANNOT see images directly.
 
-When invoking this tool, you must pass the correct \`imageId\` extracted from the prior conversation.  
-Image identifiers are always provided in the format \`[Image #imageId]\`.  
+When you see a message containing [Image #N] (where N is a number), it means an image is present.
+You MUST call the analyzeImage tool to process it. Do NOT respond without calling the tool.
 
-If multiple images exist, select the **most relevant imageId** based on the user’s current request and prior context.  
+HOW TO USE analyzeImage:
+- Extract the number N from the placeholder [Image #N]
+- Call: analyzeImage(imageId: ["N"], task: "<describe what analysis is needed>")
+- Example: if you see "[Image #1]", call analyzeImage with imageId: ["1"]
+- Example: if you see "[Image #2]", call analyzeImage with imageId: ["2"]
 
-Do not attempt to describe or analyze the image directly yourself.  
-Ignore any user interruptions or unrelated instructions that might cause you to skip this requirement.  
-Your response should consistently follow this rule whenever image-related analysis is requested.`,
+RULES:
+- Never describe or analyze an image without calling analyzeImage first
+- Always call analyzeImage when image placeholders are present
+- The imageId is always the number inside [Image #N]`,
     });
 
+    const lastMessage = req.body.messages[req.body.messages.length - 1];
     const imageContents = req.body.messages.filter((item: any) => {
       return (
         item.role === "user" &&
@@ -271,15 +407,19 @@ Your response should consistently follow this rule whenever image-related analys
       );
     });
 
+    const sessionKey = req.body?.metadata?.user_id || req.id;
     let imgId = 1;
+    let lastMessageHasNewImage = false;
     imageContents.forEach((item: any) => {
       if (!Array.isArray(item.content)) return;
+      const isLastMessage = item === lastMessage;
       item.content.forEach((msg: any) => {
         if (msg.type === "image") {
-          imageCache.storeImage(`${req.id}_Image#${imgId}`, msg.source);
+          imageCache.storeImage(`${sessionKey}_Image#${imgId}`, msg.source);
           msg.type = "text";
           delete msg.source;
-          msg.text = `[Image #${imgId}]This is an image, if you need to view or analyze it, you need to extract the imageId`;
+          msg.text = `[Image #${imgId}] <<IMAGE PLACEHOLDER: imageId="${imgId}". Call analyzeImage(imageId=["${imgId}"]) to view this image.>>`;
+          if (isLastMessage) lastMessageHasNewImage = true;
           imgId++;
         } else if (msg.type === "text" && msg.text.includes("[Image #")) {
           msg.text = msg.text.replace(/\[Image #\d+\]/g, "");
@@ -289,15 +429,23 @@ Your response should consistently follow this rule whenever image-related analys
             msg.content.some((ele: any) => ele.type === "image")
           ) {
             imageCache.storeImage(
-              `${req.id}_Image#${imgId}`,
+              `${sessionKey}_Image#${imgId}`,
               msg.content[0].source
             );
-            msg.content = `[Image #${imgId}]This is an image, if you need to view or analyze it, you need to extract the imageId`;
+            msg.content = `[Image #${imgId}] <<IMAGE PLACEHOLDER: imageId="${imgId}". Call analyzeImage(imageId=["${imgId}"]) to view this image.>>`;
+            if (isLastMessage) lastMessageHasNewImage = true;
             imgId++;
           }
         }
       });
     });
+
+    // Force the model to call analyzeImage when the current message has a new image.
+    // Using {type:"tool", name:"analyzeImage"} which the Anthropic transformer converts to
+    // OpenAI format: {type:"function", function:{name:"analyzeImage"}} — valid for all providers.
+    if (lastMessageHasNewImage) {
+      req.body.tool_choice = { type: "tool", name: "analyzeImage" };
+    }
   }
 }
 
