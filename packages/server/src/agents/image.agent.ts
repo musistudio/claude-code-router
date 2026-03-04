@@ -1,6 +1,17 @@
 import { IAgent, ITool } from "./type";
 import { createHash } from "crypto";
+import { appendFileSync } from "fs";
+import { join } from "path";
+import { homedir } from "os";
 import * as LRU from "lru-cache";
+
+const IMAGE_AGENT_LOG = join(homedir(), ".claude-code-router", "image-agent.log");
+
+function logDebug(...args: any[]) {
+  const ts = new Date().toISOString();
+  const msg = args.map(a => typeof a === "string" ? a : JSON.stringify(a)?.slice(0, 1000)).join(" ");
+  try { appendFileSync(IMAGE_AGENT_LOG, `${ts} ${msg}\n`); } catch {}
+}
 
 interface ImageCacheEntry {
   source: any;
@@ -56,8 +67,10 @@ export class ImageAgent implements IAgent {
   }
 
   shouldHandle(req: any, config: any): boolean {
-    if (!config.Router.image || req.body.model === config.Router.image)
+    if (!config.Router.image || req.body.model === config.Router.image) {
+      logDebug(`[ImageAgent] shouldHandle: skipping — Router.image=${config.Router?.image}, req model=${req.body.model}`);
       return false;
+    }
     const lastMessage = req.body.messages[req.body.messages.length - 1];
     if (
       !config.forceUseImageAgent &&
@@ -70,6 +83,7 @@ export class ImageAgent implements IAgent {
             item.content.some((sub: any) => sub.type === "image"))
       )
     ) {
+      logDebug(`[ImageAgent] shouldHandle: Path A — direct model swap to ${config.Router.image}, images in last message`);
       req.body.model = config.Router.image;
       const images: any[] = [];
       lastMessage.content
@@ -87,7 +101,7 @@ export class ImageAgent implements IAgent {
       lastMessage.content.push(...images);
       return false;
     }
-    return req.body.messages.some(
+    const hasImagesInHistory = req.body.messages.some(
       (msg: any) =>
         msg.role === "user" &&
         Array.isArray(msg.content) &&
@@ -98,6 +112,8 @@ export class ImageAgent implements IAgent {
               item.content.some((sub: any) => sub.type === "image"))
         )
     );
+    logDebug(`[ImageAgent] shouldHandle: Path B — images in history=${hasImagesInHistory}, will inject analyzeImage tool`);
+    return hasImagesInHistory;
   }
 
   appendTools() {
@@ -200,22 +216,31 @@ export class ImageAgent implements IAgent {
         }
 
         // Send to analysis agent and get response
-        const agentResponse = await fetch(
-          `http://127.0.0.1:${context.config.PORT || 3456}/v1/messages`,
-          {
+        const loopbackUrl = `http://127.0.0.1:${context.config.PORT || 3456}/v1/messages`;
+        const loopbackModel = context.config.Router.image;
+        const imgSummary = imageMessages.map((m: any) => {
+          if (m.type === "image") return `image(mediaType=${m.source?.media_type}, dataLen=${m.source?.data?.length}, sourceType=${m.source?.type})`;
+          if (m.type === "text") return `text(${m.text?.slice(0, 60)})`;
+          return `${m.type}(?)`;
+        });
+        logDebug(`[ImageAgent] analyzeImage: sending loopback to ${loopbackUrl}, model=${loopbackModel}, messages=${JSON.stringify(imgSummary)}`);
+
+        let agentResponse: any = null;
+        try {
+          const res = await fetch(loopbackUrl, {
             method: "POST",
             headers: {
               "x-api-key": context.config.APIKEY,
               "content-type": "application/json",
             },
             body: JSON.stringify({
-              model: context.config.Router.image,
+              model: loopbackModel,
               system: [
                 {
                   type: "text",
-                  text: `You must interpret and analyze images strictly according to the assigned task.  
-When an image placeholder is provided, your role is to parse the image content only within the scope of the user’s instructions.  
-Do not ignore or deviate from the task.  
+                  text: `You must interpret and analyze images strictly according to the assigned task.
+When an image placeholder is provided, your role is to parse the image content only within the scope of the user’s instructions.
+Do not ignore or deviate from the task.
 Always ensure that your response reflects a clear, accurate interpretation of the image aligned with the given objective.`,
                 },
               ],
@@ -227,14 +252,27 @@ Always ensure that your response reflects a clear, accurate interpretation of th
               ],
               stream: false,
             }),
-          }
-        )
-          .then((res) => res.json())
-          .catch((err) => {
-            return null;
           });
+
+          if (!res.ok) {
+            const errorBody = await res.text().catch(() => "(could not read body)");
+            logDebug(`[ImageAgent] analyzeImage: loopback request failed — status=${res.status}, body=${errorBody}`);
+            return `analyzeImage Error: loopback returned ${res.status}`;
+          }
+
+          agentResponse = await res.json();
+        } catch (err: any) {
+          logDebug(`[ImageAgent] analyzeImage: fetch threw —`, err?.stack || err);
+          return `analyzeImage Error: ${err?.message || "fetch failed"}`;
+        }
+
         if (!agentResponse || !agentResponse.content) {
-          return "analyzeImage Error";
+          logDebug(`[ImageAgent] analyzeImage: unexpected response shape —`, JSON.stringify(agentResponse)?.slice(0, 500));
+          return `analyzeImage Error: unexpected response — ${JSON.stringify(agentResponse)?.slice(0, 200)}`;
+        }
+        if (!agentResponse.content[0]?.text) {
+          logDebug(`[ImageAgent] analyzeImage: no text in content[0] —`, JSON.stringify(agentResponse.content[0])?.slice(0, 500));
+          return `analyzeImage Error: no text in response content`;
         }
         return agentResponse.content[0].text;
       },
@@ -242,6 +280,7 @@ Always ensure that your response reflects a clear, accurate interpretation of th
   }
 
   reqHandler(req: any, config: any) {
+    logDebug(`[ImageAgent] reqHandler: req.id=${req.id}, messages=${req.body.messages?.length}`);
     // Inject system prompt
     req.body?.system?.push({
       type: "text",
@@ -298,6 +337,7 @@ Your response should consistently follow this rule whenever image-related analys
         }
       });
     });
+    logDebug(`[ImageAgent] reqHandler: cached ${imgId - 1} images, cache size=${imageCache.size()}`);
   }
 }
 
