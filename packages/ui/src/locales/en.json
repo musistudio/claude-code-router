@@ -237,7 +237,9 @@
     "worker_error": "Worker error",
     "worker_init_failed": "Failed to initialize worker",
     "grouping_not_supported": "Log grouping not supported by server",
-    "back": "Back"
+    "back": "Back",
+    "visualize": "Visualize",
+    "visualize_failed": "Failed to generate visualization"
   },
   "presets": {
     "title": "Presets",

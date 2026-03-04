@@ -4,7 +4,8 @@ import Editor from '@monaco-editor/react';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import { useTranslation } from 'react-i18next';
-import { X, RefreshCw, Download, Trash2, ArrowLeft, File, Layers, Bug } from 'lucide-react';
+import { X, RefreshCw, Download, Trash2, ArrowLeft, File, Layers, Bug, BarChart2 } from 'lucide-react';
+import { generateVisualization } from './CcrVisualizer';
 
 interface LogViewerProps {
   open: boolean;
@@ -412,6 +413,33 @@ export function LogViewer({ open, onOpenChange, showToast }: LogViewerProps) {
     }
   };
 
+  const handleVisualize = () => {
+    if (!selectedFile || logs.length === 0) return;
+    let blobUrl: string | null = null;
+    try {
+      const logText = logs.join('\n');
+      const html = generateVisualization(logText);
+      const blob = new Blob([html], { type: 'text/html' });
+      blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Revoke after the browser has had time to load the blob
+      setTimeout(() => { if (blobUrl) URL.revokeObjectURL(blobUrl); }, 60000);
+    } catch (error) {
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      console.error('Failed to generate visualization:', error);
+      if (showToast) {
+        const msg = error instanceof Error ? error.message : String(error);
+        showToast(`${t('log_viewer.visualize_failed')}: ${msg}`, 'error');
+      }
+    }
+  };
+
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -777,6 +805,15 @@ export function LogViewer({ open, onOpenChange, showToast }: LogViewerProps) {
                 >
                   <Download className="h-4 w-4 mr-2" />
                   {t('log_viewer.download')}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleVisualize}
+                  disabled={logs.length === 0}
+                >
+                  <BarChart2 className="h-4 w-4 mr-2" />
+                  {t('log_viewer.visualize')}
                 </Button>
                 <Button
                   variant="outline"

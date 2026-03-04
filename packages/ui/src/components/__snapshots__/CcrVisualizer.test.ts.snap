@@ -1,0 +1,449 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`generateVisualization — snapshot > produces byte-for-byte identical HTML across refactors 1`] = `
+"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CCR Log Visualizer</title>
+<style>
+/* ---- Theme ---- */
+:root {
+  --bg: #f1f5f9; --card-bg: #fff; --card-hdr: #f8fafc;
+  --border: #e2e8f0; --text: #0f172a; --text-muted: #64748b; --text-dim: #94a3b8;
+  --accent: #2563eb; --hover: #f8fafc;
+  --green: #16a34a; --red: #dc2626; --amber: #d97706; --purple: #7c3aed; --blue: #2563eb;
+  --tok-in: #2563eb; --tok-out: #16a34a;
+  --sc-think-bg: #f5f3ff; --sc-think-c: #7c3aed;
+  --sc-background-bg: #eff6ff; --sc-background-c: #1d4ed8;
+  --sc-longContext-bg: #fff7ed; --sc-longContext-c: #c2410c;
+  --sc-webSearch-bg: #f0fdf4; --sc-webSearch-c: #15803d;
+  --sc-default-bg: #f1f5f9; --sc-default-c: #475569;
+  --sc-thinking-bg: #fdf2f8; --sc-thinking-c: #9d174d;
+  --sc-injected-bg: #fefce8; --sc-injected-c: #854d0e;
+  --ev-incoming: #2563eb; --ev-body: #7c3aed; --ev-routing: #8b5cf6;
+  --ev-final: #059669; --ev-fallback: #d97706; --ev-error: #dc2626; --ev-completed: #16a34a;
+  --fb-ok-bg: #f0fdf4; --fb-ok-c: #166534; --fb-ok-b: #bbf7d0;
+  --fb-err-bg: #fef2f2; --fb-err-c: #991b1b; --fb-err-b: #fecaca;
+  --fb-pend-bg: #f8fafc; --fb-pend-c: #475569; --fb-pend-b: #e2e8f0;
+  --pg-arms-bg: #f5f3ff; --pg-arms-b: #ddd6fe;
+  --pg-fork-bg:#f5f3ff; --pg-fork-c:#6d28d9; --pg-fork-b:#c4b5fd;
+  --pg-branch-bg:#eff6ff; --pg-branch-c:#1d4ed8; --pg-branch-b:#bfdbfe;
+  --pg-join-bg:#fdf2f8; --pg-join-c:#9d174d; --pg-join-b:#fbcfe8;
+  --code-bg: #f8fafc; --code-c: #1e293b;
+  --sec-req-c: #2563eb; --sec-resp-c: #16a34a;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f172a; --card-bg: #1e293b; --card-hdr: #172032;
+    --border: #334155; --text: #f1f5f9; --text-muted: #94a3b8; --text-dim: #475569;
+    --accent: #3b82f6; --hover: #1a2744;
+    --green: #22c55e; --red: #ef4444; --amber: #f59e0b; --purple: #a78bfa; --blue: #3b82f6;
+    --tok-in: #60a5fa; --tok-out: #4ade80;
+    --sc-think-bg: #3b1f6e; --sc-think-c: #c4b5fd;
+    --sc-background-bg: #1e3a5f; --sc-background-c: #93c5fd;
+    --sc-longContext-bg: #5c2a0e; --sc-longContext-c: #fdba74;
+    --sc-webSearch-bg: #1a3e2a; --sc-webSearch-c: #86efac;
+    --sc-default-bg: #1e293b; --sc-default-c: #94a3b8;
+    --sc-thinking-bg: #4a1a2a; --sc-thinking-c: #f9a8d4;
+    --sc-injected-bg: #3a2e0a; --sc-injected-c: #fde68a;
+    --ev-incoming: #60a5fa; --ev-body: #a78bfa; --ev-routing: #c4b5fd;
+    --ev-final: #34d399; --ev-fallback: #fbbf24; --ev-error: #f87171; --ev-completed: #4ade80;
+    --fb-ok-bg: #052e16; --fb-ok-c: #86efac; --fb-ok-b: #166534;
+    --fb-err-bg: #2d0a0a; --fb-err-c: #fca5a5; --fb-err-b: #7f1d1d;
+    --fb-pend-bg: #1e293b; --fb-pend-c: #94a3b8; --fb-pend-b: #334155;
+    --pg-arms-bg: #1e1a3a; --pg-arms-b: #3730a3;
+    --pg-fork-bg:#2d1f4e; --pg-fork-c:#c4b5fd; --pg-fork-b:#4c1d95;
+    --pg-branch-bg:#1e3a5f; --pg-branch-c:#93c5fd; --pg-branch-b:#1e40af;
+    --pg-join-bg:#3a1a2a; --pg-join-c:#f9a8d4; --pg-join-b:#9d174d;
+    --code-bg: #0f172a; --code-c: #cbd5e1;
+    --sec-req-c: #3b82f6; --sec-resp-c: #22c55e;
+  }
+}
+
+/* ---- Reset & Base ---- */
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:14px;line-height:1.5;background:var(--bg);color:var(--text)}
+.page-wrap{max-width:1080px;margin:0 auto;padding:24px 32px}
+a{color:var(--accent)}
+
+/* ---- Stats ---- */
+.stats-row{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
+.stat-box{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:14px 20px;flex:1;min-width:110px;text-align:center}
+.stat-n{font-size:26px;font-weight:800;color:var(--text);letter-spacing:-.02em;line-height:1.1}
+.stat-n-ok{color:var(--green)}
+.stat-n-warn{color:var(--amber)}
+.stat-n-blue{color:var(--tok-in)}
+.stat-n-grn{color:var(--tok-out)}
+.stat-sub{font-size:12px;color:var(--text-muted)}
+.stat-lbl{font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-top:3px}
+
+/* ---- Section cards ---- */
+.section-card{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:14px}
+.section-hdr{padding:10px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;background:var(--card-hdr);font-size:13px;font-weight:700;color:var(--text-muted)}
+.section-hdr:hover{background:var(--hover)}
+.section-body-pad{padding:14px 16px}
+.what-happened p{margin-bottom:6px;font-size:13px;color:var(--text)}
+.what-happened p:last-child{margin-bottom:0}
+
+/* ---- Cost table ---- */
+.ct-note{font-size:11px;color:var(--text-dim);padding:8px 12px 0}
+.cost-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+.cost-table th{padding:6px 10px;text-align:inherit;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;background:var(--card-hdr);border-bottom:1px solid var(--border)}
+.cost-table td{padding:6px 10px;border-bottom:1px solid var(--border)}
+.cost-table tr:last-child td{border-bottom:none}
+.cost-table tbody tr:hover td{background:var(--hover)}
+.ct-l{text-align:left}.ct-r{text-align:right}.ct-c{text-align:center}
+.ct-total td{border-top:2px solid var(--border)!important}
+.grand-cost{color:var(--accent)}
+.mono{font-family:ui-monospace,SFMono-Regular,monospace}
+.free-tag{font-size:10px;color:var(--green);margin-left:4px;font-weight:700}
+.fetching-tag{font-size:10px;color:var(--amber);margin-left:4px;font-style:italic}
+.free-cost{color:var(--green)}
+.pi{background:var(--card-hdr);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:2px 5px;font-size:11px;font-family:ui-monospace,monospace;width:62px;text-align:right}
+.pi:focus{outline:none;border-color:var(--accent)}
+
+/* ---- Timeline ---- */
+.timeline-wrap{margin-bottom:14px;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.timeline-hdr{padding:10px 14px;display:flex;justify-content:space-between;align-items:center;background:var(--card-hdr)}
+.timeline-hdr-l{font-size:13px;font-weight:700;color:var(--text-muted)}
+.tl-btn{padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--card-bg);color:var(--text-muted);font-size:11px;cursor:pointer}
+.tl-btn:hover{background:var(--hover);color:var(--text)}
+.timeline-body{padding:12px 14px;background:var(--card-bg)}
+
+/* ---- Filter ---- */
+.filter-row{margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.f-lbl{font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+.f-btn{padding:4px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text-muted);cursor:pointer;font-size:12px}
+.f-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.f-btn:hover:not(.active){background:var(--hover);color:var(--text)}
+.f-err{border-color:#fecaca;color:var(--red)}
+.f-err.active{background:var(--red);border-color:var(--red);color:#fff}
+
+/* ---- Request cards ---- */
+.req-card{border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:8px}
+.req-row{display:flex;align-items:center;gap:8px;padding:11px 14px;background:var(--card-bg);cursor:pointer;flex-wrap:wrap}
+.req-row:hover{background:var(--hover)}
+.rn{font-size:12px;color:var(--text-dim);font-weight:700;min-width:26px}
+.rm{flex:1;font-size:13px;color:var(--text);font-family:ui-monospace,SFMono-Regular,monospace;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rs{font-size:13px;font-weight:700;flex-shrink:0}
+.rs-ok{color:var(--green)}.rs-err{color:var(--red)}.rs-warn{color:var(--amber)}.rs-dim{color:var(--text-dim)}
+.rt{font-size:12px;color:var(--text-muted);min-width:56px;text-align:right;flex-shrink:0}
+.req-body{border-top:1px solid var(--border)}
+
+/* ---- Metadata lines ---- */
+.meta-line{padding:8px 14px;font-size:12px;color:var(--text);border-bottom:1px solid var(--border);background:var(--card-hdr);line-height:1.8}
+.tok-line{padding:6px 14px;font-size:12px;color:var(--text);border-bottom:1px solid var(--border);background:var(--card-hdr)}
+.mk{color:var(--text-muted);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-right:3px}
+.tok-in{color:var(--tok-in);font-weight:700}
+.tok-out{color:var(--tok-out);font-weight:700}
+
+/* ---- Section blocks (REQUEST/RESPONSE) ---- */
+.sec-block{border-left:3px solid var(--border);margin:10px 14px 6px}
+.sec-req{border-left-color:var(--sec-req-c)}
+.sec-resp{border-left-color:var(--sec-resp-c)}
+.sec-hdr{padding:6px 10px;font-size:12px;font-weight:700;cursor:default}
+.sec-req .sec-hdr{color:var(--sec-req-c)}
+.sec-resp .sec-hdr{color:var(--sec-resp-c)}
+.sec-d{font-weight:400;color:var(--text-muted);font-size:11px}
+.sec-body{padding:2px 10px 8px}
+
+/* ---- Sub items ---- */
+.sub-item{margin-bottom:2px}
+.sub-row{display:flex;align-items:baseline;gap:5px;padding:3px 0;cursor:pointer;font-size:13px;color:var(--text-muted)}
+.sub-row:hover{color:var(--text)}
+.no-toggle{cursor:default}
+.sub-arr{font-size:9px;flex-shrink:0;color:var(--text-dim)}
+.sub-hdr{flex:1}
+.sd{font-weight:400;color:var(--text-dim);font-size:11px}
+.sub-body{padding:4px 0 4px 14px}
+
+/* ---- Code blocks ---- */
+.cb{background:var(--code-bg);border:1px solid var(--border);border-radius:5px;padding:7px 10px;font-size:12px;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:var(--code-c);margin:4px 0}
+.sm-cb{font-size:11px}
+.cb-trunc{color:var(--text-dim);font-style:italic}
+.view-full-btn{display:inline-block;margin-top:4px;padding:3px 9px;border:1px solid var(--border);border-radius:5px;background:var(--card-hdr);color:var(--accent);font-size:11px;cursor:pointer;text-decoration:none}
+.view-full-btn:hover{background:var(--hover);text-decoration:underline}
+.purple-cb{color:var(--purple)}.err-cb{color:var(--red)}
+.err-block{margin:4px 0}.err-label{font-size:12px;font-weight:600;color:var(--red);margin-bottom:4px}
+.chip-row{display:flex;flex-wrap:wrap;gap:4px;padding:4px 0}
+.chip{display:inline-block;padding:2px 7px;background:var(--card-hdr);border:1px solid var(--border);border-radius:4px;font-size:11px;color:var(--text-muted)}
+.inj-item{margin-bottom:6px}
+.dim-text{color:var(--text-dim)}
+
+/* ---- Tool calls (response) ---- */
+.tc-item{margin-bottom:8px}
+.tc-name{font-size:12px;font-weight:700;color:var(--blue);display:block;margin-bottom:3px}
+
+/* ---- Tool definitions (request) ---- */
+.tool-defs-list{padding:2px 0}
+.tool-def-name{font-size:13px;font-weight:700;color:var(--blue)}
+.tool-def-desc{font-size:12px;color:var(--text-muted)}
+.tool-full-desc{font-size:12px;color:var(--text);margin-bottom:8px;line-height:1.6;padding:4px 0}
+.param-table{width:100%;border-collapse:collapse;font-size:12px;margin:4px 0 8px}
+.param-table th{padding:4px 8px;text-align:left;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);background:var(--card-hdr)}
+.param-table td{padding:4px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+.param-table tr:last-child td{border-bottom:none}
+.param-name{font-family:ui-monospace,SFMono-Regular,monospace;font-weight:700;color:var(--text);white-space:nowrap}
+.param-type{font-family:ui-monospace,SFMono-Regular,monospace;font-size:11px;color:var(--purple);white-space:nowrap}
+.param-desc{color:var(--text-muted)}
+.param-req{font-size:10px;font-weight:700;color:var(--amber);white-space:nowrap}
+.param-opt{font-size:10px;color:var(--text-dim);white-space:nowrap}
+
+/* ---- Scrollable text previews ---- */
+.text-scroll-wrap{max-height:320px;overflow-y:auto;border-radius:5px}
+.text-preview{max-height:none;overflow:visible}
+
+/* ---- Conversation ---- */
+.conv-scroll{max-height:280px;overflow-y:auto}
+.conv-msg{margin-bottom:10px}
+.conv-role{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:3px}
+.role-user{color:var(--blue)}.role-asst{color:var(--purple)}
+.conv-blocks{padding-left:8px;border-left:2px solid var(--border)}
+.conv-text{font-size:12px;color:var(--text);white-space:pre-wrap;margin-bottom:3px}
+.conv-think{font-size:12px;color:var(--purple);font-style:italic;margin-bottom:3px}
+.conv-tool{background:var(--card-hdr);border:1px solid var(--border);border-radius:4px;padding:5px 8px;margin-bottom:3px}
+.tool-name{font-size:12px;color:var(--blue);display:block;margin-bottom:2px}
+.tool-input{font-size:11px;color:var(--text-muted)}
+.conv-result{font-size:12px;background:var(--card-hdr);border:1px solid var(--border);border-radius:4px;padding:4px 8px;margin-bottom:3px}
+.result-ok{color:var(--green)}
+.conv-image{font-size:12px;background:var(--card-hdr);border:1px solid var(--border);border-radius:4px;padding:4px 8px;margin-bottom:3px}
+
+/* ---- Fallback chain ---- */
+.fb-chain{display:flex;flex-wrap:wrap;gap:8px;padding:8px 14px}
+.fb-node{border-radius:6px;padding:6px 12px;font-size:12px;border:1px solid}
+.fb-ok{background:var(--fb-ok-bg);color:var(--fb-ok-c);border-color:var(--fb-ok-b)}
+.fb-err{background:var(--fb-err-bg);color:var(--fb-err-c);border-color:var(--fb-err-b)}
+.fb-pend{background:var(--fb-pend-bg);color:var(--fb-pend-c);border-color:var(--fb-pend-b)}
+.fb-st{opacity:.7;margin-left:2px}
+.fb-err-body{font-size:11px;margin-top:3px;opacity:.75;font-family:ui-monospace,monospace}
+
+/* ---- Event timeline ---- */
+.ev-section{padding:8px 14px 10px;border-top:1px solid var(--border)}
+.ev-label{font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
+.ev-list{border-left:2px solid var(--border);padding-left:10px}
+.ev-row{display:flex;align-items:baseline;gap:10px;margin-bottom:3px;font-size:12px}
+.ev-time{font-family:ui-monospace,monospace;color:var(--text-dim);min-width:100px;flex-shrink:0}
+.ev-type{font-family:ui-monospace,monospace;min-width:96px;flex-shrink:0;font-weight:600;font-size:11px}
+.ev-detail{color:var(--text-muted);word-break:break-all}
+.ev-incoming{color:var(--ev-incoming)}.ev-body{color:var(--ev-body)}.ev-routing{color:var(--ev-routing)}
+.ev-final{color:var(--ev-final)}.ev-fallback{color:var(--ev-fallback)}.ev-error{color:var(--ev-error)}.ev-completed{color:var(--ev-completed)}.ev-other{color:var(--text-dim)}
+
+/* ---- Badges ---- */
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.02em}
+.sc-think{background:var(--sc-think-bg);color:var(--sc-think-c)}
+.sc-background{background:var(--sc-background-bg);color:var(--sc-background-c)}
+.sc-longContext{background:var(--sc-longContext-bg);color:var(--sc-longContext-c)}
+.sc-webSearch{background:var(--sc-webSearch-bg);color:var(--sc-webSearch-c)}
+.sc-default{background:var(--sc-default-bg);color:var(--sc-default-c)}
+.sc-thinking{background:var(--sc-thinking-bg);color:var(--sc-thinking-c)}
+.sc-injected{background:var(--sc-injected-bg);color:var(--sc-injected-c)}
+.pg-fork{background:var(--pg-fork-bg);color:var(--pg-fork-c);border:1px solid var(--pg-fork-b)}
+.pg-branch{background:var(--pg-branch-bg);color:var(--pg-branch-c);border:1px solid var(--pg-branch-b)}
+.pg-join{background:var(--pg-join-bg);color:var(--pg-join-c);border:1px solid var(--pg-join-b)}
+
+/* ---- Chevron ---- */
+.chevron{display:inline-block;transition:transform .2s;color:var(--text-dim);font-size:10px;flex-shrink:0}
+.chevron.open{transform:rotate(180deg)}
+
+/* ---- Parallel group arms ---- */
+.pg-arms{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:6px 14px 10px;border:1px solid var(--pg-arms-b);border-radius:8px;padding:12px;background:var(--pg-arms-bg)}
+.pg-col-hdr{font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px">
+  <div>
+    <h1 style="font-size:22px;font-weight:800;letter-spacing:-.02em">CCR Log Visualizer</h1>
+  </div>
+  <span style="font-size:11px;color:var(--text-dim)">SNAPSHOT_DATE</span>
+</div>
+
+<div class="stats-row">
+  <div class="stat-box"><div class="stat-n">2</div><div class="stat-lbl">API Requests</div></div>
+  <div class="stat-box"><div class="stat-n stat-n-ok">100%</div><div class="stat-sub">2/2</div><div class="stat-lbl">Success Rate</div></div>
+  <div class="stat-box"><div class="stat-n stat-n-warn">50%</div><div class="stat-sub">1/2</div><div class="stat-lbl">Fallback Rate</div></div>
+  <div class="stat-box"><div class="stat-n">2</div><div class="stat-lbl">Models Used</div></div>
+  <div class="stat-box"><div class="stat-n">1.90s</div><div class="stat-lbl">Avg Response Time</div></div>
+  <div class="stat-box"><div class="stat-n stat-n-blue">600</div><div class="stat-lbl">Input Tokens</div></div>
+  <div class="stat-box"><div class="stat-n stat-n-grn">250</div><div class="stat-lbl">Output Tokens</div></div>
+</div>
+
+<div class="section-card" style="margin-bottom:14px">
+  <div class="section-hdr" style="cursor:default">What Happened</div>
+  <div class="section-body-pad what-happened"><p>2 API requests across 2 conversation turns over 4.00s.</p><p>2 default requests — all succeeded.</p><p>1 request used extended thinking — 0 chars of thinking output.</p><p>Response times: avg 1.90s, min 800ms, max 3.00s.</p></div>
+</div>
+
+<div class="section-card" style="margin-bottom:14px">
+  <div class="section-hdr" onclick="toggleSection('cost-body')">
+    <span>Token Usage &amp; Cost Estimate</span>
+    <span id="cost-body-chevron" class="chevron open">&#9660;</span>
+  </div>
+  <div id="cost-body" data-fetch="minimax%2Fminimax-m2.5">
+    <p class="ct-note">Pricing auto-fetched from OpenRouter for routed models. Edit rates for custom/unlisted models.</p>
+    <table class="cost-table">
+      <thead><tr>
+        <th class="ct-l">Model</th><th class="ct-r">Reqs</th><th class="ct-r">Input</th>
+        <th class="ct-r">Cache Read</th><th class="ct-r">Output</th>
+        <th class="ct-c">$/M In</th><th class="ct-c">$/M Out</th><th class="ct-r">Est. Cost</th>
+        <th style="display:none"></th>
+      </tr></thead>
+      <tbody><tr data-model="minimax/minimax-m2.5">
+      <td class="ct-l mono">minimax/minimax-m2.5 <span class="fetching-tag">fetching…</span></td>
+      <td class="ct-r">1</td>
+      <td class="ct-r">500</td>
+      <td class="ct-r">&#8212;</td>
+      <td class="ct-r">200</td>
+      <td class="ct-c"><input class="pi" id="cr-minimax-minimax-m2-5-pin" data-row="cr-minimax-minimax-m2-5" data-type="in" type="number" step="0.001" min="0" value="0.0000" onchange="recalcRow('cr-minimax-minimax-m2-5')" /></td><td class="ct-c"><input class="pi" id="cr-minimax-minimax-m2-5-pout" data-row="cr-minimax-minimax-m2-5" data-type="out" type="number" step="0.001" min="0" value="0.0000" onchange="recalcRow('cr-minimax-minimax-m2-5')" /></td>
+      <td id="cr-minimax-minimax-m2-5-cost" class="ct-r">$0.0000</td>
+      <td style="display:none" id="cr-minimax-minimax-m2-5-data" data-in="500" data-out="200"></td>
+    </tr><tr data-model="claude-sonnet-4-6">
+      <td class="ct-l mono">claude-sonnet-4-6</td>
+      <td class="ct-r">1</td>
+      <td class="ct-r">100</td>
+      <td class="ct-r">&#8212;</td>
+      <td class="ct-r">50</td>
+      <td class="ct-c"><input class="pi" id="cr-claude-sonnet-4-6-pin" data-row="cr-claude-sonnet-4-6" data-type="in" type="number" step="0.001" min="0" value="3.0000" onchange="recalcRow('cr-claude-sonnet-4-6')" /></td><td class="ct-c"><input class="pi" id="cr-claude-sonnet-4-6-pout" data-row="cr-claude-sonnet-4-6" data-type="out" type="number" step="0.001" min="0" value="15.0000" onchange="recalcRow('cr-claude-sonnet-4-6')" /></td>
+      <td id="cr-claude-sonnet-4-6-cost" class="ct-r">$0.0010</td>
+      <td style="display:none" id="cr-claude-sonnet-4-6-data" data-in="100" data-out="50"></td>
+    </tr>
+        <tr class="ct-total">
+          <td class="ct-l" colspan="2"><strong>Grand Total</strong></td>
+          <td class="ct-r"><strong>600</strong></td>
+          <td class="ct-r">&#8212;</td>
+          <td class="ct-r"><strong>250</strong></td>
+          <td colspan="2"></td>
+          <td id="grand-total-cost" class="ct-r grand-cost"><strong>$0.0010</strong></td>
+          <td style="display:none"></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="timeline-wrap">
+  <div class="timeline-hdr">
+    <span class="timeline-hdr-l">Request Timeline</span>
+    <button class="tl-btn" id="tl-btn" onclick="toggleTimeline()">Show Timeline &#9660;</button>
+  </div>
+  <div id="timeline-body" class="timeline-body" style="display:none"><svg viewBox="0 0 754 112" height="112" style="width:100%;display:block;font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px"><rect x="44" y="8" width="11" height="11" rx="2" fill="#22c55e"/><text x="59" y="18" fill="var(--text-muted)" font-size="10">success</text><rect x="110" y="8" width="11" height="11" rx="2" fill="#ef4444"/><text x="125" y="18" fill="var(--text-muted)" font-size="10">failed</text><rect x="170" y="8" width="11" height="11" rx="2" fill="#f59e0b"/><text x="185" y="18" fill="var(--text-muted)" font-size="10">fallback attempted</text><line x1="302" y1="8" x2="302" y2="19" stroke="var(--text-dim)" stroke-width="1.5" stroke-dasharray="3,2"/><text x="307" y="18" fill="var(--text-muted)" font-size="10">conversation turn</text><line x1="44.0" y1="28" x2="44.0" y2="88" stroke="var(--text-dim)" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/><line x1="743.3" y1="28" x2="743.3" y2="88" stroke="var(--text-dim)" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/><text x="40" y="47" text-anchor="end" fill="var(--text-muted)" font-size="10" font-weight="600">DEF</text><rect x="44.0" y="33.0" width="4.0" height="20" rx="3" fill="#f59e0b"/><text x="40" y="77" text-anchor="end" fill="var(--text-muted)" font-size="10" font-weight="600">DEF</text><rect x="743.3" y="63.0" width="4.0" height="20" rx="3" fill="#22c55e"/><line x1="44" y1="92" x2="744" y2="92" stroke="var(--border)" stroke-width="1"/><line x1="44.0" y1="92" x2="44.0" y2="96" stroke="var(--border)" stroke-width="1"/><text x="44.0" y="106" text-anchor="middle" fill="var(--text-dim)" font-size="9">0.0s</text><line x1="114.0" y1="92" x2="114.0" y2="96" stroke="var(--border)" stroke-width="1"/><text x="114.0" y="106" text-anchor="middle" fill="var(--text-dim)" font-size="9">0.4s</text><line x1="184.0" y1="92" x2="184.0" y2="96" stroke="var(--border)" stroke-width="1"/><text x="184.0" y="106" text-anchor="middle" fill="var(--text-dim)" font-size="9">0.8s</text><line x1="254.0" y1="92" x2="254.0" y2="96" stroke="var(--border)" stroke-width="1"/><text x="254.0" y="106" text-anchor="middle" fill="var(--text-dim)" font-size="9">1.2s</text><line x1="324.0" y1="92" x2="324.0" y2="96" stroke="var(--border)" stroke-width="1"/><text x="324.0" y="106" text-anchor="middle" fill="var(--text-dim)" font-size="9">1.6s</text><line x1="394.0" y1="92" x2="394.0" y2="96" stroke="var(--border)" stroke-width="1"/><text x="394.0" y="106" text-anchor="middle" fill="var(--text-dim)" font-size="9">2.0s</text><line x1="464.0" y1="92" x2="464.0" y2="96" stroke="var(--border)" stroke-width="1"/><text x="464.0" y="106" text-anchor="middle" fill="var(--text-dim)" font-size="9">2.4s</text><line x1="534.0" y1="92" x2="534.0" y2="96" stroke="var(--border)" stroke-width="1"/><text x="534.0" y="106" text-anchor="middle" fill="var(--text-dim)" font-size="9">2.8s</text><line x1="604.0" y1="92" x2="604.0" y2="96" stroke="var(--border)" stroke-width="1"/><text x="604.0" y="106" text-anchor="middle" fill="var(--text-dim)" font-size="9">3.2s</text><line x1="674.0" y1="92" x2="674.0" y2="96" stroke="var(--border)" stroke-width="1"/><text x="674.0" y="106" text-anchor="middle" fill="var(--text-dim)" font-size="9">3.6s</text><line x1="744.0" y1="92" x2="744.0" y2="96" stroke="var(--border)" stroke-width="1"/><text x="744.0" y="106" text-anchor="middle" fill="var(--text-dim)" font-size="9">4.0s</text></svg></div>
+</div>
+
+<div class="filter-row">
+  <span class="f-lbl">Filter:</span>
+  <button class="f-btn active" onclick="filterCards('all',this)">All (2)</button><button class="f-btn" onclick="filterCards('default',this)">default (2)</button>
+</div>
+
+<div id="cards-container"><div class="req-card" data-scenario="default" data-status="ok"><div class="req-row" onclick="toggleCard('u1')"><span class="rn">#1</span><span class="badge sc-default">DEFAULT</span><span class="badge sc-thinking" title="reasoning/thinking mode">&#129504; HIGH</span><span class="rm">claude-opus-4-6 → minimax/minimax-m2.5</span><span class="rs rs-warn">[200&#x21A9;]</span><span class="rt">3.00s</span><span class="chevron" id="u1-chevron">&#9660;</span></div><div id="u1" style="display:none" class="req-body"><div class="meta-line"><span class="mk">Original Model</span> claude-opus-4-6  <span class="mk">Routed Model</span> minimax/minimax-m2.5  <span class="mk">Provider</span> openrouter.ai  <span class="mk">Scenario</span> default  <span class="mk">Messages</span> 1  <span class="mk">Tools</span> 1</div><div class="tok-line"><span class="mk">Input Tokens</span> <span class="tok-in">500</span>  <span class="mk">Output Tokens</span> <span class="tok-out">200</span></div><div class="sec-block sec-req"><div class="sec-hdr" onclick="toggleSec('u6')">&#9654; REQUEST <span class="sec-d">(1 msgs · 1 tools)</span></div><div class="sec-body"><div class="sub-item"><div class="sub-row" onclick="toggleSub('u3')"><span class="sub-arr" id="u3-arr">&#9658;</span><span class="sub-hdr">Tool Definitions <span class="sd">(1 tools)</span></span></div><div id="u3" style="display:none" class="sub-body"><div class="tool-defs-list"><div class="sub-item"><div class="sub-row" onclick="toggleSub('u2')"><span class="sub-arr" id="u2-arr">&#9658;</span><span class="sub-hdr"><span class="tool-def-name">bash</span></span></div><div id="u2" style="display:none" class="sub-body"></div></div></div></div></div><div class="sub-item"><div class="sub-row" onclick="toggleSub('u4')"><span class="sub-arr" id="u4-arr">&#9660;</span><span class="sub-hdr">User Query <span class="sd">(19 chars)</span></span></div><div id="u4" style="display:block" class="sub-body"><pre class="cb">Snapshot test query</pre></div></div><div class="sub-item"><div class="sub-row" onclick="toggleSub('u5')"><span class="sub-arr" id="u5-arr">&#9658;</span><span class="sub-hdr">Conversation <span class="sd">(1 messages)</span></span></div><div id="u5" style="display:none" class="sub-body"><div class="conv-scroll"><div class="conv-msg"><span class="conv-role role-user">user</span><div class="conv-blocks"><div class="conv-text">Snapshot test query</div></div></div></div></div></div><div class="sub-row no-toggle" style="color:var(--purple)">&#129504; Reasoning: effort: high (10,000 token budget)</div></div></div><div class="sec-block sec-resp"><div class="sec-hdr">&#9668; RESPONSE</div><div class="sec-body"><div class="err-block"><div class="err-label">&#10060; Stream Error</div><pre class="cb err-cb">Service unavailable</pre></div></div></div><div class="fb-chain"><div class="fb-node fb-err"><strong>claude-opus-4-6</strong> (primary)<span class="fb-st"> · HTTP 503</span><div class="fb-err-body">Service unavailable</div></div><div class="fb-node fb-ok"><strong>minimax/minimax-m2.5</strong><span class="fb-st"> · success</span></div></div><div class="ev-section"><div class="ev-label">Event Timeline</div><div class="ev-list"><div class="ev-row"><span class="ev-time">05:30:01.000</span><span class="ev-type ev-incoming">incoming</span><span class="ev-detail">POST /v1/messages</span></div><div class="ev-row"><span class="ev-time">05:30:01.001</span><span class="ev-type ev-body">request_body</span><span class="ev-detail">Body: claude-opus-4-6 · 1 msgs · 1 tools</span></div><div class="ev-row"><span class="ev-time">05:30:01.002</span><span class="ev-type ev-final">final_request</span><span class="ev-detail">-&gt; claude-opus-4-6 via https://api.anthropic.com/v1/messages</span></div><div class="ev-row"><span class="ev-time">05:30:01.003</span><span class="ev-type ev-error">error</span><span class="ev-detail">HTTP 503: Service unavailable</span></div><div class="ev-row"><span class="ev-time">05:30:01.004</span><span class="ev-type ev-fallback">fallback</span><span class="ev-detail">Trying minimax/minimax-m2.5</span></div><div class="ev-row"><span class="ev-time">05:30:01.004</span><span class="ev-type ev-final">final_request</span><span class="ev-detail">-&gt; minimax/minimax-m2.5 via https://openrouter.ai/api/v1/chat/completions</span></div><div class="ev-row"><span class="ev-time">05:30:01.006</span><span class="ev-type ev-completed">completed</span><span class="ev-detail">HTTP 200 in 3.00s</span></div></div></div></div></div><div class="req-card" data-scenario="default" data-status="ok"><div class="req-row" onclick="toggleCard('u7')"><span class="rn">#2</span><span class="badge sc-default">DEFAULT</span><span class="rm">claude-sonnet-4-6 → claude-sonnet-4-6</span><span class="rs rs-ok">[200]</span><span class="rt">800ms</span><span class="chevron" id="u7-chevron">&#9660;</span></div><div id="u7" style="display:none" class="req-body"><div class="meta-line"><span class="mk">Original Model</span> claude-sonnet-4-6  <span class="mk">Routed Model</span> claude-sonnet-4-6  <span class="mk">Provider</span> api.anthropic.com  <span class="mk">Scenario</span> default  <span class="mk">Messages</span> 1  <span class="mk">Tools</span> 0</div><div class="tok-line"><span class="mk">Input Tokens</span> <span class="tok-in">100</span>  <span class="mk">Output Tokens</span> <span class="tok-out">50</span></div><div class="sec-block sec-req"><div class="sec-hdr" onclick="toggleSec('u10')">&#9654; REQUEST <span class="sec-d">(1 msgs · 0 tools)</span></div><div class="sec-body"><div class="sub-item"><div class="sub-row" onclick="toggleSub('u8')"><span class="sub-arr" id="u8-arr">&#9660;</span><span class="sub-hdr">User Query <span class="sd">(12 chars)</span></span></div><div id="u8" style="display:block" class="sub-body"><pre class="cb">Simple query</pre></div></div><div class="sub-item"><div class="sub-row" onclick="toggleSub('u9')"><span class="sub-arr" id="u9-arr">&#9658;</span><span class="sub-hdr">Conversation <span class="sd">(1 messages)</span></span></div><div id="u9" style="display:none" class="sub-body"><div class="conv-scroll"><div class="conv-msg"><span class="conv-role role-user">user</span><div class="conv-blocks"><div class="conv-text">Simple query</div></div></div></div></div></div></div></div><div class="sec-block sec-resp"><div class="sec-hdr">&#9668; RESPONSE</div><div class="sec-body"><div class="sub-row no-toggle dim-text">No response content captured</div></div></div><div class="ev-section"><div class="ev-label">Event Timeline</div><div class="ev-list"><div class="ev-row"><span class="ev-time">05:30:05.000</span><span class="ev-type ev-incoming">incoming</span><span class="ev-detail">POST /v1/messages</span></div><div class="ev-row"><span class="ev-time">05:30:05.001</span><span class="ev-type ev-body">request_body</span><span class="ev-detail">Body: claude-sonnet-4-6 · 1 msgs · 0 tools</span></div><div class="ev-row"><span class="ev-time">05:30:05.002</span><span class="ev-type ev-final">final_request</span><span class="ev-detail">-&gt; claude-sonnet-4-6 via https://api.anthropic.com/v1/messages</span></div><div class="ev-row"><span class="ev-time">05:30:05.004</span><span class="ev-type ev-completed">completed</span><span class="ev-detail">HTTP 200 in 800ms</span></div></div></div></div></div></div>
+</div>
+
+<script>
+function toggleCard(id){
+  var b=document.getElementById(id),c=document.getElementById(id+'-chevron');
+  if(!b)return;
+  if(b.style.display==='none'){b.style.display='block';if(c)c.classList.add('open');}
+  else{b.style.display='none';if(c)c.classList.remove('open');}
+}
+function toggleSection(id){
+  var b=document.getElementById(id),c=document.getElementById(id+'-chevron');
+  if(!b)return;
+  if(b.style.display==='none'){b.style.display='block';if(c)c.classList.add('open');}
+  else{b.style.display='none';if(c)c.classList.remove('open');}
+}
+function toggleSub(id){
+  var b=document.getElementById(id),a=document.getElementById(id+'-arr');
+  if(!b)return;
+  if(b.style.display==='none'){b.style.display='block';if(a)a.innerHTML='&#9660;';}
+  else{b.style.display='none';if(a)a.innerHTML='&#9658;';}
+}
+function toggleSec(id){
+  var b=document.getElementById(id);if(!b)return;
+  b.style.display=b.style.display==='none'?'block':'none';
+}
+var _tlOpen=false;
+function toggleTimeline(){
+  var b=document.getElementById('timeline-body'),btn=document.getElementById('tl-btn');
+  if(!b)return;
+  _tlOpen=!_tlOpen;
+  b.style.display=_tlOpen?'block':'none';
+  btn.innerHTML=_tlOpen?'Hide Timeline &#9650;':'Show Timeline &#9660;';
+}
+function filterCards(s,btn){
+  document.querySelectorAll('.f-btn').forEach(function(b){b.classList.remove('active');});
+  btn.classList.add('active');
+  document.querySelectorAll('.req-card').forEach(function(c){
+    c.style.display=(s==='all'||c.dataset.scenario===s)?'':'none';
+  });
+}
+function filterErrors(btn){
+  document.querySelectorAll('.f-btn').forEach(function(b){b.classList.remove('active');});
+  btn.classList.add('active');
+  document.querySelectorAll('.req-card').forEach(function(c){
+    c.style.display=c.dataset.status==='error'?'':'none';
+  });
+}
+// Fetch OpenRouter prices for models not in default price table
+(async function(){
+  var costDiv=document.getElementById('cost-body');
+  if(!costDiv||!costDiv.dataset.fetch)return;
+  var models=costDiv.dataset.fetch.split(',').map(decodeURIComponent);
+  try{
+    var resp=await fetch('https://openrouter.ai/api/v1/models');
+    if(!resp.ok)return;
+    var data=await resp.json();
+    var priceMap={};
+    (data.data||[]).forEach(function(m){
+      if(m.pricing){
+        // OpenRouter prices are per-token strings, convert to $/M
+        var pIn=parseFloat(m.pricing.prompt||'0')*1e6;
+        var pOut=parseFloat(m.pricing.completion||'0')*1e6;
+        priceMap[m.id]=[pIn,pOut];
+      }
+    });
+    models.forEach(function(model){
+      var rid='cr-'+model.replace(/[^a-zA-Z0-9]/g,'-');
+      var prices=priceMap[model];
+      if(!prices)return;
+      var pinEl=document.getElementById(rid+'-pin');
+      var poutEl=document.getElementById(rid+'-pout');
+      if(pinEl&&prices[0]>0){pinEl.value=prices[0].toFixed(4);}
+      if(poutEl&&prices[1]>0){poutEl.value=prices[1].toFixed(4);}
+      // Remove the "fetching…" tag
+      var row=document.querySelector('tr[data-model="'+model+'"]');
+      if(row){var ft=row.querySelector('.fetching-tag');if(ft)ft.remove();}
+      recalcRow(rid);
+    });
+  }catch(e){
+    // Silently ignore fetch errors - user can manually enter prices
+    document.querySelectorAll('.fetching-tag').forEach(function(el){el.textContent='(enter manually)';});
+  }
+})();
+function openFullFromData(btn){
+  var text=btn.getAttribute('data-fulltext')||'';
+  var title=btn.getAttribute('data-title')||'Full Text';
+  openFullText(text,title);
+}
+function openFullText(text, title){
+  var w=window.open('','_blank');
+  if(!w)return;
+  var e=function(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+e(title||'Full Text')+'</title><style>body{font-family:ui-monospace,monospace;font-size:13px;line-height:1.6;padding:24px;background:#f8fafc;color:#0f172a;white-space:pre-wrap;word-break:break-word}@media(prefers-color-scheme:dark){body{background:#0f172a;color:#f1f5f9}}</style></head><body>'+e(text)+'</body></html>');
+  w.document.close();
+}
+function recalcRow(rid){
+  var d=document.getElementById(rid+'-data'),el=document.getElementById(rid+'-cost');
+  if(!d||!el)return;
+  var pIn=parseFloat((document.querySelector('.pi[data-row="'+rid+'"][data-type="in"]')||{}).value)||0;
+  var pOut=parseFloat((document.querySelector('.pi[data-row="'+rid+'"][data-type="out"]')||{}).value)||0;
+  var cost=(parseFloat(d.dataset.in||'0')*pIn+parseFloat(d.dataset.out||'0')*pOut)/1e6;
+  el.textContent='$'+cost.toFixed(4);
+  var grand=0;
+  document.querySelectorAll('[id$="-cost"]:not(#grand-total-cost)').forEach(function(e){grand+=parseFloat(e.textContent.replace('$',''))||0;});
+  var gt=document.getElementById('grand-total-cost');
+  if(gt)gt.innerHTML='<strong>$'+grand.toFixed(4)+'</strong>';
+}
+</script>
+</body>
+</html>"
+`;
