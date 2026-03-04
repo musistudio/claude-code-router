@@ -480,7 +480,19 @@ Here is an example of a `custom-router.js` based on `custom-router.example.js`:
  * @returns {Promise<string|null>} - A promise that resolves to the "provider,model_name" string, or null to use the default router.
  */
 module.exports = async function router(req, config) {
-  const userMessage = req.body.messages.find((m) => m.role === "user")?.content;
+  const message = req.body.messages.find((m) => m.role === "user");
+  let userMessage = "";
+
+  if (message?.content) {
+    if (Array.isArray(message.content)) {
+      userMessage = message.content
+        .filter((item) => item.type === "text")
+        .map((item) => item.text)
+        .join("\n");
+    } else {
+      userMessage = message.content;
+    }
+  }
 
   if (userMessage && userMessage.includes("explain this code")) {
     // Use a powerful model for code explanation
