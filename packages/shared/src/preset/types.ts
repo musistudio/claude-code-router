@@ -264,3 +264,9 @@ export interface PresetInfo {
   author?: string;                // Author
   config: PresetConfigSection;
 }
+
+// Route group configuration collection
+export interface RouteGroupsConfig {
+  activeGroup: string;
+  groups: Record<string, RouterConfig>;
+}
