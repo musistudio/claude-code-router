@@ -33,6 +33,30 @@ interface MessageCreateParamsBase {
 }
 
 const enc = get_encoding("cl100k_base");
+const SUBAGENT_MODEL_TAG_REGEX =
+  /<CCR-SUBAGENT-MODEL>([\s\S]*?)<\/CCR-SUBAGENT-MODEL>/;
+
+const extractSubagentOverrideModel = (system: any): string | undefined => {
+  if (!Array.isArray(system)) {
+    return undefined;
+  }
+
+  for (const item of system) {
+    if (item?.type !== "text" || typeof item.text !== "string") {
+      continue;
+    }
+
+    const match = item.text.match(SUBAGENT_MODEL_TAG_REGEX);
+    if (!match || !match[1]?.trim()) {
+      continue;
+    }
+
+    item.text = item.text.replace(SUBAGENT_MODEL_TAG_REGEX, "");
+    return match[1].trim();
+  }
+
+  return undefined;
+};
 
 export const calculateTokenCount = (
   messages: MessageParam[],
@@ -130,6 +154,12 @@ const getUseModel = async (
   const projectSpecificRouter = await getProjectSpecificRouter(req, configService);
   const providers = configService.get<any[]>("providers") || [];
   const Router = projectSpecificRouter || configService.get("Router");
+  const subagentOverrideModel = extractSubagentOverrideModel(req.body?.system);
+
+  if (subagentOverrideModel) {
+    req.log.info(`Using subagent override model: ${subagentOverrideModel}`);
+    return { model: subagentOverrideModel, scenarioType: "default" };
+  }
 
   if (req.body.model.includes(",")) {
     const [provider, model] = req.body.model.split(",");
@@ -157,21 +187,6 @@ const getUseModel = async (
       `Using long context model due to token count: ${tokenCount}, threshold: ${longContextThreshold}`
     );
     return { model: Router.longContext, scenarioType: 'longContext' };
-  }
-  if (
-    req.body?.system?.length > 1 &&
-    req.body?.system[1]?.text?.startsWith("<CCR-SUBAGENT-MODEL>")
-  ) {
-    const model = req.body?.system[1].text.match(
-      /<CCR-SUBAGENT-MODEL>(.*?)<\/CCR-SUBAGENT-MODEL>/s
-    );
-    if (model) {
-      req.body.system[1].text = req.body.system[1].text.replace(
-        `<CCR-SUBAGENT-MODEL>${model[1]}</CCR-SUBAGENT-MODEL>`,
-        ""
-      );
-      return { model: model[1], scenarioType: 'default' };
-    }
   }
   // Use the background model for any Claude Haiku variant
   const globalRouter = configService.get("Router");
