@@ -1,8 +1,15 @@
-import { existsSync } from "fs";
+import { existsSync, appendFileSync } from "fs";
 import { writeFile } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
 import { initConfig, initDir } from "./utils";
+
+const IMAGE_AGENT_LOG = join(homedir(), ".claude-code-router", "image-agent.log");
+function logDebug(...args: any[]) {
+  const ts = new Date().toISOString();
+  const msg = args.map(a => typeof a === "string" ? a : JSON.stringify(a)?.slice(0, 1000)).join(" ");
+  try { appendFileSync(IMAGE_AGENT_LOG, `${ts} ${msg}\n`); } catch {}
+}
 import { createServer } from "./server";
 import { apiKeyAuth } from "./middleware/auth";
 import { CONFIG_FILE, HOME_DIR, listPresets } from "@CCR/shared";
@@ -249,7 +256,8 @@ async function getServer(options: RunOptions = {}) {
       if (payload instanceof ReadableStream) {
         if (req.agents) {
           const abortController = new AbortController();
-          const eventStream = payload.pipeThrough(new SSEParserTransform())
+          const textDecoder = new TextDecoderStream();
+          const eventStream = payload.pipeThrough(textDecoder).pipeThrough(new SSEParserTransform())
           let currentAgent: undefined | IAgent;
           let currentToolIndex = -1
           let currentToolName = ''
@@ -264,6 +272,7 @@ async function getServer(options: RunOptions = {}) {
               if (data.event === 'content_block_start' && data?.data?.content_block?.name) {
                 const agent = req.agents.find((name: string) => agentsManager.getAgent(name)?.tools.get(data.data.content_block.name))
                 if (agent) {
+                  logDebug(`[ImageAgent] onSend: intercepting tool call "${data.data.content_block.name}" for agent "${agent}"`);
                   currentAgent = agentsManager.getAgent(agent)
                   currentToolIndex = data.data.index
                   currentToolName = data.data.content_block.name
@@ -280,6 +289,7 @@ async function getServer(options: RunOptions = {}) {
 
               // Tool call completed, handle agent invocation
               if (currentToolIndex > -1 && data.data.index === currentToolIndex && data.data.type === 'content_block_stop') {
+                logDebug(`[ImageAgent] onSend: tool call complete, executing "${currentToolName}"`);
                 try {
                   const args = JSON5.parse(currentToolArgs);
                   assistantMessages.push({
@@ -302,13 +312,14 @@ async function getServer(options: RunOptions = {}) {
                   currentToolName = ''
                   currentToolArgs = ''
                   currentToolId = ''
-                } catch (e) {
-                  console.log(e);
+                } catch (e: any) {
+                  logDebug(`[ImageAgent] onSend: tool execution error for "${currentToolName}" —`, e?.stack || e);
                 }
                 return undefined;
               }
 
               if (data.event === 'message_delta' && toolMessages.length) {
+                logDebug(`[ImageAgent] onSend: sending follow-up with ${toolMessages.length} tool results`);
                 req.body.messages.push({
                   role: 'assistant',
                   content: assistantMessages
@@ -326,9 +337,11 @@ async function getServer(options: RunOptions = {}) {
                   body: JSON.stringify(req.body),
                 })
                 if (!response.ok) {
+                  const errBody = await response.text().catch(() => "(could not read body)");
+                  logDebug(`[ImageAgent] onSend: follow-up loopback failed — status=${response.status}, body=${errBody}`);
                   return undefined;
                 }
-                const stream = response.body!.pipeThrough(new SSEParserTransform() as any)
+                const stream = response.body!.pipeThrough(new TextDecoderStream()).pipeThrough(new SSEParserTransform() as any)
                 const reader = stream.getReader()
                 while (true) {
                   try {
