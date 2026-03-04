@@ -194,6 +194,16 @@ export class AnthropicTransformer implements Transformer {
         // max_tokens: request.thinking.budget_tokens,
         enabled: request.thinking.type === "enabled",
       };
+      result.thinking = {
+        type: request.thinking.type,
+        budget_tokens: request.thinking.budget_tokens,
+      };
+    } else if (request.reasoning) {
+      result.reasoning = request.reasoning;
+      result.thinking = {
+        type: request.reasoning.enabled ? "enabled" : "disabled",
+        budget_tokens: request.reasoning.max_tokens || 10000,
+      };
     }
     if (request.tool_choice) {
       if (request.tool_choice.type === "tool") {
@@ -1022,6 +1032,12 @@ export class AnthropicTransformer implements Transformer {
           type: "thinking",
           thinking: (choice.message as any).thinking.content,
           signature: (choice.message as any).thinking.signature,
+        });
+      } else if ((choice.message as any)?.reasoning_content) {
+        content.push({
+          type: "thinking",
+          thinking: (choice.message as any).reasoning_content,
+          signature: undefined,
         });
       }
       const result = {

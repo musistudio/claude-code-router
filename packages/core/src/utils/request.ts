@@ -53,5 +53,6 @@ export function sendUnifiedRequest(
     },
     "final request"
   );
+
   return fetch(typeof url === "string" ? url : url.toString(), fetchOptions);
 }
