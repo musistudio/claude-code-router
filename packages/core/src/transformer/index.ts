@@ -20,6 +20,7 @@ import { VercelTransformer } from "./vercel.transformer";
 import { OpenAIResponsesTransformer } from "./openai.responses.transformer";
 import { ForceReasoningTransformer } from "./forcereasoning.transformer";
 import { QwenCLITransformer } from "./qwen-cli.transformer";
+import { CopilotTransformer } from "./copilot.transformer";
 
 export default {
   AnthropicTransformer,
@@ -30,6 +31,7 @@ export default {
   TooluseTransformer,
   OpenrouterTransformer,
   OpenAITransformer,
+  CopilotTransformer,
   MaxTokenTransformer,
   GroqTransformer,
   CleancacheTransformer,
