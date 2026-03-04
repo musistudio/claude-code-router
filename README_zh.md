@@ -45,7 +45,7 @@ npm install -g @musistudio/claude-code-router
 
 ### 2. 配置
 
-创建并配置您的 `~/.claude-code-router/config.json` 文件。有关更多详细信息，您可以参考 `config.example.json`。
+创建并配置您的 `~/.claude-code-router/config.json` 文件。有关更多详细信息，您可以参考 [config.example.json](./packages/ui/config.example.json) / [examples](./examples/README_zh.md).
 
 `config.json` 文件有几个关键部分：
 - **`PROXY_URL`** (可选): 您可以为 API 请求设置代理，例如：`"PROXY_URL": "http://127.0.0.1:7890"`。
@@ -180,7 +180,6 @@ npm install -g @musistudio/claude-code-router
 }
 ```
 
-
 ### 3. 使用 Router 运行 Claude Code
 
 使用 router 启动 Claude Code：
@@ -194,7 +193,9 @@ ccr code
 > ccr restart
 > ```
 
-### 4. UI 模式
+## CLI commands
+
+### UI 模式
 
 为了获得更直观的体验，您可以使用 UI 模式来管理您的配置：
 
@@ -206,7 +207,7 @@ ccr ui
 
 ![UI](/blog/images/ui.png)
 
-### 5. CLI 模型管理
+### CLI 模型管理
 
 对于偏好终端工作流的用户，可以使用交互式 CLI 模型选择器：
 
@@ -231,7 +232,7 @@ ccr model
 
 CLI 工具验证所有输入并提供有用的提示来引导您完成配置过程，使管理复杂的设置变得容易，无需手动编辑 JSON 文件。
 
-### 6. 预设管理
+### 预设管理
 
 预设允许您轻松保存、共享和重用配置。您可以将当前配置导出为预设，并从文件或 URL 安装预设。
 
@@ -269,7 +270,7 @@ ccr preset delete my-preset
 │   └── manifest.json    # 包含配置和元数据
 ```
 
-### 7. Activate 命令（环境变量设置）
+### Activate 命令（环境变量设置）
 
 `activate` 命令允许您在 shell 中全局设置环境变量，使您能够直接使用 `claude` 命令或将 Claude Code Router 与使用 Agent SDK 构建的应用程序集成。
 
@@ -295,7 +296,9 @@ eval "$(ccr activate)"
 
 > **注意**：在使用激活的环境变量之前，请确保 Claude Code Router 服务正在运行（`ccr start`）。环境变量仅在当前 shell 会话中有效。要使其持久化，您可以将 `eval "$(ccr activate)"` 添加到您的 shell 配置文件（例如 `~/.zshrc` 或 `~/.bashrc`）中。
 
-#### Providers
+## Advanced Configuration
+
+### Providers
 
 `Providers` 数组是您定义要使用的不同模型提供商的地方。每个提供商对象都需要：
 
@@ -305,7 +308,7 @@ eval "$(ccr activate)"
 -   `models`: 此提供商可用的模型名称列表。
 -   `transformer` (可选): 指定用于处理请求和响应的转换器。
 
-#### Transformers
+### Transformers
 
 Transformers 允许您修改请求和响应负载，以确保与不同提供商 API 的兼容性。
 
@@ -409,7 +412,7 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
 }
 ```
 
-#### Router
+### Router
 
 `Router` 对象定义了在不同场景下使用哪个模型：
 
@@ -425,7 +428,7 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
 `/model provider_name,model_name`
 示例: `/model openrouter,anthropic/claude-3.5-sonnet`
 
-#### 自定义路由器
+### 自定义路由器
 
 对于更高级的路由逻辑，您可以在 `config.json` 中通过 `CUSTOM_ROUTER_PATH` 字段指定一个自定义路由器脚本。这允许您实现超出默认场景的复杂路由规则。
 
@@ -464,7 +467,7 @@ module.exports = async function router(req, config) {
 };
 ```
 
-##### 子代理路由
+#### 子代理路由
 
 对于子代理内的路由，您必须在子代理提示词的**开头**包含 `<CCR-SUBAGENT-MODEL>provider,model</CCR-SUBAGENT-MODEL>` 来指定特定的提供商和模型。这样可以将特定的子代理任务定向到指定的模型。
 
