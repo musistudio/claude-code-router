@@ -264,11 +264,17 @@ async function processRequestTransformers(
       ) {
         continue;
       }
-      requestBody = await modelTransformer.transformRequestIn(
+      const transformIn = await modelTransformer.transformRequestIn(
         requestBody,
         provider,
         context
       );
+      if (transformIn.body) {
+        requestBody = transformIn.body;
+        config = { ...config, ...transformIn.config };
+      } else {
+        requestBody = transformIn;
+      }
     }
   }
 
