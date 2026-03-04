@@ -113,13 +113,43 @@ async function handleFallback(
   error: any
 ): Promise<any> {
   const scenarioType = (req as any).scenarioType || 'default';
-  const fallbackConfig = fastify.configService.get<any>('fallback');
+  let fallbackList: string[] = [];
 
-  if (!fallbackConfig || !fallbackConfig[scenarioType]) {
-    return null;
+  // Try custom router error handler first
+  const customRouterPath = fastify.configService.get("CUSTOM_ROUTER_PATH");
+  if (customRouterPath && typeof customRouterPath === 'string') {
+    try {
+      const customRouter = require(customRouterPath);
+      if (customRouter.handleError && typeof customRouter.handleError === 'function') {
+        const providerName = (req as any).provider;
+        const modelName = (req.body as any)?.model;
+        const statusCode = error.statusCode || 500;
+        
+        const fallbackModel = await customRouter.handleError(
+          providerName,
+          modelName,
+          statusCode,
+          error
+        );
+
+        if (fallbackModel && typeof fallbackModel === 'string') {
+          fallbackList.push(fallbackModel);
+          req.log.info(`Custom router suggested fallback model: ${fallbackModel}`);
+        }
+      }
+    } catch (e: any) {
+      req.log.error(`Failed to execute custom router error handler: ${e.message}`);
+    }
   }
 
-  const fallbackList = fallbackConfig[scenarioType] as string[];
+  // If no custom fallback, try configuration fallback
+  if (fallbackList.length === 0) {
+    const fallbackConfig = fastify.configService.get<any>('fallback');
+    if (fallbackConfig && fallbackConfig[scenarioType]) {
+      fallbackList = fallbackConfig[scenarioType] as string[];
+    }
+  }
+
   if (!Array.isArray(fallbackList) || fallbackList.length === 0) {
     return null;
   }
