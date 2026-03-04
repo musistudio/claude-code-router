@@ -61,6 +61,7 @@ const AVAILABLE_TRANSFORMERS = [
   'sampling',
   'enhancetool',
   'cleancache',
+  'cleanThinkingInMessage',
   'vertex-gemini',
   'chutes-glm',
   'qwen-cli',
