@@ -10,6 +10,7 @@ try {
   const rootDir = path.join(__dirname, '..');
   const sharedDir = path.join(rootDir, 'packages/shared');
   const cliDir = path.join(rootDir, 'packages/cli');
+  const coreDir = path.join(rootDir, 'packages/core');
   const serverDir = path.join(rootDir, 'packages/server');
   const uiDir = path.join(rootDir, 'packages/ui');
 
@@ -19,6 +20,17 @@ try {
   if (!fs.existsSync(sharedDistDir) || !fs.existsSync(path.join(sharedDistDir, 'index.js'))) {
     console.log('Shared package not found, building it first...');
     execSync('node scripts/build-shared.js', {
+      stdio: 'inherit',
+      cwd: rootDir
+    });
+  }
+
+  // Step 0.5: Ensure core package is built
+  console.log('Ensuring core package is built...');
+  const coreDistFile = path.join(coreDir, 'dist/esm/server.mjs');
+  if (!fs.existsSync(coreDistFile)) {
+    console.log('Core package not found, building it first...');
+    execSync('node scripts/build-core.js', {
       stdio: 'inherit',
       cwd: rootDir
     });

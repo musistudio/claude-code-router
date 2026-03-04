@@ -5,8 +5,6 @@ import {
   incrementReferenceCount,
   closeService,
 } from "./processCheck";
-import { quote } from 'shell-quote';
-import minimist from "minimist";
 import { createEnvVariables } from "./createEnvVariables";
 
 export interface PresetConfig {
@@ -93,34 +91,16 @@ export async function executeCodeCommand(
   // Execute claude command
   const claudePath = config?.CLAUDE_PATH || process.env.CLAUDE_PATH || "claude";
 
-  const joinedArgs = args.length > 0 ? quote(args) : "";
-
   const stdioConfig: StdioOptions = config.NON_INTERACTIVE_MODE
     ? ["pipe", "inherit", "inherit"] // Pipe stdin for non-interactive
     : "inherit"; // Default inherited behavior
 
-  const argsObj = minimist(args)
-  const argsArr = []
-  for (const [argsObjKey, argsObjValue] of Object.entries(argsObj)) {
-    if (argsObjKey !== '_' && argsObj[argsObjKey]) {
-      const prefix = argsObjKey.length === 1 ? '-' : '--';
-      // For boolean flags, don't append the value
-      if (argsObjValue === true) {
-        argsArr.push(`${prefix}${argsObjKey}`);
-      } else {
-        argsArr.push(`${prefix}${argsObjKey} ${JSON.stringify(argsObjValue)}`);
-      }
-    }
-  }
   const claudeProcess = spawn(
     claudePath,
-    argsArr,
+    args,
     {
-      env: {
-        ...process.env,
-      },
+      env: { ...process.env },
       stdio: stdioConfig,
-      shell: true,
     }
   );
 
