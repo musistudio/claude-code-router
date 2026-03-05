@@ -350,6 +350,22 @@ async function sendRequestToProvider(
     }
   }
 
+  // Passthrough auth: forward auth and relevant headers from the incoming request
+  if (provider.passthroughAuth && context?.req?.headers) {
+    const incomingHeaders = context.req.headers;
+    const passthroughHeaders = [
+      'authorization',
+      'x-api-key',
+      'anthropic-version',
+      'anthropic-beta',
+    ];
+    for (const header of passthroughHeaders) {
+      if (incomingHeaders[header]) {
+        requestHeaders[header] = incomingHeaders[header];
+      }
+    }
+  }
+
   const response = await sendUnifiedRequest(
     url,
     requestBody,
