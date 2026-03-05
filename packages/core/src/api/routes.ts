@@ -336,6 +336,7 @@ async function sendRequestToProvider(
   // Prepare headers
   const requestHeaders: Record<string, string> = {
     Authorization: `Bearer ${provider.apiKey}`,
+    ...(provider.headers || {}),
     ...(config?.headers || {}),
   };
 
