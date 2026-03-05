@@ -10,22 +10,33 @@ export class OpenrouterTransformer implements Transformer {
   async transformRequestIn(
     request: UnifiedChatRequest
   ): Promise<UnifiedChatRequest> {
-    if (!request.model.includes("claude")) {
+    // 检查是否为Claude模型
+    const isClaudeModel = request.model.includes("claude");
+
+    if (!isClaudeModel) {
+      // 对于非Claude模型(如GPT-4, Gemini等), 移除不支持的参数
+      // reasoning是Anthropic特有的参数, OpenAI兼容API不支持
+      delete (request as any).reasoning;
+
       request.messages.forEach((msg) => {
+        // 清理消息级别的Anthropic特有字段
+        delete (msg as any).thinking;
+        delete (msg as any).cache_control;
+
         if (Array.isArray(msg.content)) {
           msg.content.forEach((item: any) => {
             if (item.cache_control) {
               delete item.cache_control;
             }
             if (item.type === "image_url") {
-              if (!item.image_url.url.startsWith("http")) {
-                item.image_url.url = `${item.image_url.url}`;
+              // 对于非Claude模型,确保图片URL格式正确
+              // 只有当URL既不是http链接也不是data URI时才添加前缀
+              if (!item.image_url.url.startsWith("http") && !item.image_url.url.startsWith("data:")) {
+                item.image_url.url = `data:${item.media_type};base64,${item.image_url.url}`;
               }
               delete item.media_type;
             }
           });
-        } else if (msg.cache_control) {
-          delete msg.cache_control;
         }
       });
     } else {
@@ -33,9 +44,12 @@ export class OpenrouterTransformer implements Transformer {
         if (Array.isArray(msg.content)) {
           msg.content.forEach((item: any) => {
             if (item.type === "image_url") {
-              if (!item.image_url.url.startsWith("http")) {
+              // 只有当URL既不是http链接也不是data URI时才添加前缀
+              // 这避免了对已经格式化的data URI重复添加前缀
+              if (!item.image_url.url.startsWith("http") && !item.image_url.url.startsWith("data:")) {
                 item.image_url.url = `data:${item.media_type};base64,${item.image_url.url}`;
               }
+              // OpenAI API不需要media_type字段
               delete item.media_type;
             }
           });
