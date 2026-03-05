@@ -245,11 +245,11 @@ async function getServer(options: RunOptions = {}) {
     event.emit('onError', request, reply, error);
   })
   serverInstance.addHook("onSend", (req: any, reply: any, payload: any, done: any) => {
-    if (req.sessionId && req.pathname.endsWith("/v1/messages")) {
-      if (payload instanceof ReadableStream) {
+    if (req.pathname.endsWith("/v1/messages")) {
+      if (payload && typeof payload.getReader === 'function' && typeof payload.pipeThrough === 'function') {
         if (req.agents) {
           const abortController = new AbortController();
-          const eventStream = payload.pipeThrough(new SSEParserTransform())
+          const eventStream = payload.pipeThrough(new TextDecoderStream()).pipeThrough(new SSEParserTransform())
           let currentAgent: undefined | IAgent;
           let currentToolIndex = -1
           let currentToolName = ''
@@ -257,6 +257,7 @@ async function getServer(options: RunOptions = {}) {
           let currentToolId = ''
           const toolMessages: any[] = []
           const assistantMessages: any[] = []
+          let maxContentBlockIndex = -1
           // Store Anthropic format message body, distinguishing text and tool types
           return done(null, rewriteStream(eventStream, async (data, controller) => {
             try {
@@ -317,18 +318,32 @@ async function getServer(options: RunOptions = {}) {
                   role: 'user',
                   content: toolMessages
                 })
+                // Exclude tool_choice, agent tools, and agent-injected system prompts from follow-up
+                const { tool_choice: _tc, ...followUpBody } = req.body;
+                const agentToolNames = new Set(
+                  req.agents.flatMap((name: string) =>
+                    Array.from(agentsManager.getAgent(name)?.tools.keys() || [])
+                  )
+                );
+                if (followUpBody.tools?.length) {
+                  followUpBody.tools = followUpBody.tools.filter((t: any) => !agentToolNames.has(t.name));
+                  if (!followUpBody.tools.length) delete followUpBody.tools;
+                }
+                if (Array.isArray(followUpBody.system)) {
+                  followUpBody.system = followUpBody.system.filter((s: any) => !s._agentInjected);
+                }
                 const response = await fetch(`http://127.0.0.1:${config.PORT || 3456}/v1/messages`, {
                   method: "POST",
                   headers: {
                     'x-api-key': config.APIKEY,
                     'content-type': 'application/json',
                   },
-                  body: JSON.stringify(req.body),
+                  body: JSON.stringify(followUpBody),
                 })
                 if (!response.ok) {
                   return undefined;
                 }
-                const stream = response.body!.pipeThrough(new SSEParserTransform() as any)
+                const stream = response.body!.pipeThrough(new TextDecoderStream() as any).pipeThrough(new SSEParserTransform() as any)
                 const reader = stream.getReader()
                 while (true) {
                   try {
@@ -341,9 +356,14 @@ async function getServer(options: RunOptions = {}) {
                       continue
                     }
 
-                    // Check if stream is still writable
-                    if (!controller.desiredSize) {
+                    // Check if stream is closed (null), but NOT on backpressure (0)
+                    if (controller.desiredSize === null) {
                       break;
+                    }
+
+                    // Remap content block indices to avoid collision with original stream
+                    if (eventData.data?.index !== undefined) {
+                      eventData.data = { ...eventData.data, index: eventData.data.index + maxContentBlockIndex + 1 };
                     }
 
                     controller.enqueue(eventData)
@@ -357,6 +377,10 @@ async function getServer(options: RunOptions = {}) {
 
                 }
                 return undefined
+              }
+              // Track max content block index from original stream
+              if (data.data?.index !== undefined && data.data.index > maxContentBlockIndex) {
+                maxContentBlockIndex = data.data.index;
               }
               return data
             }catch (error: any) {
@@ -389,7 +413,9 @@ async function getServer(options: RunOptions = {}) {
               const str = dataStr.slice(27);
               try {
                 const message = JSON.parse(str);
-                sessionUsageCache.put(req.sessionId, message.usage);
+                if (req.sessionId) {
+                  sessionUsageCache.put(req.sessionId, message.usage);
+                }
               } catch {}
             }
           } catch (readError: any) {
@@ -405,7 +431,84 @@ async function getServer(options: RunOptions = {}) {
         read(clonedStream);
         return done(null, originalStream)
       }
-      sessionUsageCache.put(req.sessionId, payload.usage);
+      // Handle non-streaming response with agent tool calls.
+      // Check content for agent tool_use blocks regardless of stop_reason, because some
+      // providers (e.g. MiniMax-M2.5) return finish_reason "stop" (mapped to "end_turn")
+      // even when tool_choice forces a tool call.
+      if (req.agents && typeof payload === 'string') {
+        let parsedPayload: any;
+        try {
+          parsedPayload = JSON.parse(payload);
+        } catch (e) {
+          // Not valid JSON, fall through
+        }
+        {
+          const toolUseBlocks = (parsedPayload?.content || []).filter((c: any) => c.type === 'tool_use');
+          const agentToolUseBlocks = toolUseBlocks.filter((c: any) =>
+            req.agents.some((name: string) => agentsManager.getAgent(name)?.tools.get(c.name))
+          );
+          if (agentToolUseBlocks.length > 0) {
+            (async () => {
+              try {
+                const assistantMessages: any[] = [];
+                const toolMessages: any[] = [];
+                for (const block of agentToolUseBlocks) {
+                  const agentName = req.agents.find((name: string) => agentsManager.getAgent(name)?.tools.get(block.name));
+                  const agent = agentsManager.getAgent(agentName);
+                  assistantMessages.push({
+                    type: 'tool_use',
+                    id: block.id,
+                    name: block.name,
+                    input: block.input
+                  });
+                  const toolResult = await agent?.tools.get(block.name)?.handler(block.input, { req, config });
+                  toolMessages.push({
+                    tool_use_id: block.id,
+                    type: 'tool_result',
+                    content: toolResult
+                  });
+                }
+                req.body.messages.push({ role: 'assistant', content: assistantMessages });
+                req.body.messages.push({ role: 'user', content: toolMessages });
+                // Exclude tool_choice, agent tools, and agent-injected system prompts from follow-up
+                const { tool_choice: _tc, ...followUpBody } = req.body;
+                const agentToolNames = new Set(
+                  req.agents.flatMap((name: string) =>
+                    Array.from(agentsManager.getAgent(name)?.tools.keys() || [])
+                  )
+                );
+                if (followUpBody.tools?.length) {
+                  followUpBody.tools = followUpBody.tools.filter((t: any) => !agentToolNames.has(t.name));
+                  if (!followUpBody.tools.length) delete followUpBody.tools;
+                }
+                if (Array.isArray(followUpBody.system)) {
+                  followUpBody.system = followUpBody.system.filter((s: any) => !s._agentInjected);
+                }
+                const followUpResponse = await fetch(`http://127.0.0.1:${config.PORT || 3456}/v1/messages`, {
+                  method: 'POST',
+                  headers: {
+                    'x-api-key': config.APIKEY,
+                    'content-type': 'application/json',
+                  },
+                  body: JSON.stringify(followUpBody),
+                });
+                if (followUpResponse.ok) {
+                  done(null, await followUpResponse.text());
+                } else {
+                  done(null, payload);
+                }
+              } catch (e) {
+                console.error('Error handling non-streaming agent tool call:', e);
+                done(null, payload);
+              }
+            })();
+            return;
+          }
+        }
+      }
+      if (req.sessionId) {
+        sessionUsageCache.put(req.sessionId, payload.usage);
+      }
       if (typeof payload ==='object') {
         if (payload.error) {
           return done(payload.error, null)
