@@ -402,7 +402,7 @@ export class AnthropicTransformer implements Transformer {
             buffer = lines.pop() || "";
 
             for (const line of lines) {
-              if (isClosed || hasFinished) break;
+              if (isClosed) break;
 
               if (!line.startsWith("data:")) continue;
               const data = line.slice(5).trim();
@@ -856,6 +856,8 @@ export class AnthropicTransformer implements Transformer {
                 }
 
                 if (choice?.finish_reason && !isClosed && !hasFinished) {
+                  hasFinished = true;
+
                   if (contentChunks === 0 && toolCallChunks === 0) {
                     console.error(
                       "Warning: No content in the stream response!"
@@ -907,8 +909,8 @@ export class AnthropicTransformer implements Transformer {
                       },
                     };
                   }
-
-                  break;
+                  // Continue processing to collect any remaining chunks (like usage)
+                  // The stream will end when done: true or isClosed
                 }
               } catch (parseError: any) {
                 this.logger?.error(
