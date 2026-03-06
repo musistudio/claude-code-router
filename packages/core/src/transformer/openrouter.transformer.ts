@@ -8,8 +8,19 @@ export class OpenrouterTransformer implements Transformer {
   constructor(private readonly options?: TransformerOptions) {}
 
   async transformRequestIn(
-    request: UnifiedChatRequest
+    request: UnifiedChatRequest,
   ): Promise<UnifiedChatRequest> {
+    if (request.reasoning) {
+      // Gemini models requires reasoning, so we can't explicitly disable it.
+      // Deleting it lets OpenRouter use the model's default behavior.
+      if (request.reasoning.enabled === false) {
+        delete request.reasoning;
+      } else {
+        // OpenRouter only expects `effort`, not `enabled`
+        delete request.reasoning.enabled;
+      }
+    }
+
     if (!request.model.includes("claude")) {
       request.messages.forEach((msg) => {
         if (Array.isArray(msg.content)) {
@@ -74,7 +85,7 @@ export class OpenrouterTransformer implements Transformer {
           const processBuffer = (
             buffer: string,
             controller: ReadableStreamDefaultController,
-            encoder: TextEncoder
+            encoder: TextEncoder,
           ) => {
             const lines = buffer.split("\n");
             for (const line of lines) {
@@ -95,7 +106,7 @@ export class OpenrouterTransformer implements Transformer {
               appendReasoningContent: (content: string) => void;
               isReasoningComplete: () => boolean;
               setReasoningComplete: (val: boolean) => void;
-            }
+            },
           ) => {
             const { controller, encoder } = context;
 
@@ -106,7 +117,7 @@ export class OpenrouterTransformer implements Transformer {
                 if (data.usage) {
                   this.logger?.debug(
                     { usage: data.usage, hasToolCall },
-                    "usage"
+                    "usage",
                   );
                   data.choices[0].finish_reason = hasToolCall
                     ? "tool_calls"
@@ -118,8 +129,8 @@ export class OpenrouterTransformer implements Transformer {
                     encoder.encode(
                       `data: ${JSON.stringify({
                         error: data.choices?.[0].error,
-                      })}\n\n`
-                    )
+                      })}\n\n`,
+                    ),
                   );
                 }
 
@@ -133,7 +144,7 @@ export class OpenrouterTransformer implements Transformer {
                 // Extract reasoning_content from delta
                 if (data.choices?.[0]?.delta?.reasoning) {
                   context.appendReasoningContent(
-                    data.choices[0].delta.reasoning
+                    data.choices[0].delta.reasoning,
                   );
                   const thinkingChunk = {
                     ...data,
@@ -153,7 +164,7 @@ export class OpenrouterTransformer implements Transformer {
                     delete thinkingChunk.choices[0].delta.reasoning;
                   }
                   const thinkingLine = `data: ${JSON.stringify(
-                    thinkingChunk
+                    thinkingChunk,
                   )}\n\n`;
                   controller.enqueue(encoder.encode(thinkingLine));
                   return;
@@ -188,7 +199,7 @@ export class OpenrouterTransformer implements Transformer {
                     delete thinkingChunk.choices[0].delta.reasoning;
                   }
                   const thinkingLine = `data: ${JSON.stringify(
-                    thinkingChunk
+                    thinkingChunk,
                   )}\n\n`;
                   controller.enqueue(encoder.encode(thinkingLine));
                 }
@@ -199,7 +210,7 @@ export class OpenrouterTransformer implements Transformer {
                 if (
                   data.choices?.[0]?.delta?.tool_calls?.length &&
                   !Number.isNaN(
-                    parseInt(data.choices?.[0]?.delta?.tool_calls[0].id, 10)
+                    parseInt(data.choices?.[0]?.delta?.tool_calls[0].id, 10),
                   )
                 ) {
                   data.choices?.[0]?.delta?.tool_calls.forEach((tool: any) => {
@@ -271,7 +282,7 @@ export class OpenrouterTransformer implements Transformer {
               if (buffer.length > 1000000) {
                 // 1MB 限制
                 console.warn(
-                  "Buffer size exceeds limit, processing partial data"
+                  "Buffer size exceeds limit, processing partial data",
                 );
                 const lines = buffer.split("\n");
                 buffer = lines.pop() || "";
