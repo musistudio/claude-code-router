@@ -333,11 +333,16 @@ async function sendRequestToProvider(
   }
 
   // Send HTTP request
-  // Prepare headers
+  // Prepare headers - auth headers (from config.headers) should take precedence over provider.apiKey
   const requestHeaders: Record<string, string> = {
     Authorization: `Bearer ${provider.apiKey}`,
     ...(config?.headers || {}),
   };
+
+  // Only set default Authorization if auth method didn't provide one
+  if (!requestHeaders.Authorization && !requestHeaders.authorization) {
+    requestHeaders.Authorization = `Bearer ${provider.apiKey}`;
+  }
 
   for (const key in requestHeaders) {
     if (requestHeaders[key] === "undefined") {
