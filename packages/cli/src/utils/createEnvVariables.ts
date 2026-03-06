@@ -15,6 +15,7 @@ export const createEnvVariables = async (): Promise<Record<string, string | unde
     NO_PROXY: "127.0.0.1",
     DISABLE_TELEMETRY: "true",
     DISABLE_COST_WARNINGS: "true",
+    CLAUDE_CODE_ATTRIBUTION_HEADER: "0",
     API_TIMEOUT_MS: String(config.API_TIMEOUT_MS ?? 600000),
     // Reset CLAUDE_CODE_USE_BEDROCK when running with ccr
     CLAUDE_CODE_USE_BEDROCK: undefined,

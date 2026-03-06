@@ -70,6 +70,7 @@ interface ClaudeSettingsFlag {
     NO_PROXY: string;
     DISABLE_TELEMETRY: string;
     DISABLE_COST_WARNINGS: string;
+    CLAUDE_CODE_ATTRIBUTION_HEADER: any;
     API_TIMEOUT_MS: string;
     CLAUDE_CODE_USE_BEDROCK?: undefined;
     [key: string]: any;
