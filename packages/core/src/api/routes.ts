@@ -350,32 +350,50 @@ async function sendRequestToProvider(
     }
   }
 
-  const response = await sendUnifiedRequest(
-    url,
-    requestBody,
-    {
-      httpsProxy: fastify.configService.getHttpsProxy(),
-      ...config,
-      headers: JSON.parse(JSON.stringify(requestHeaders)),
-    },
-    context,
-    fastify.log
-  );
+  const maxRetries = fastify.configService.get<number>("RETRY_COUNT") ?? 2;
+  const retryDelay = fastify.configService.get<number>("RETRY_DELAY") ?? 1000;
 
-  // Handle request errors
-  if (!response.ok) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const response = await sendUnifiedRequest(
+      url,
+      requestBody,
+      {
+        httpsProxy: fastify.configService.getHttpsProxy(),
+        ...config,
+        headers: JSON.parse(JSON.stringify(requestHeaders)),
+      },
+      context,
+      fastify.log
+    );
+
+    if (response.ok) {
+      return response;
+    }
+
     const errorText = await response.text();
-    fastify.log.error(
-      `[provider_response_error] Error from provider(${provider.name},${requestBody.model}: ${response.status}): ${errorText}`,
+
+    // Only retry on 5xx server errors, not 4xx client errors
+    if (response.status < 500 || attempt === maxRetries) {
+      fastify.log.error(
+        `[provider_response_error] Error from provider(${provider.name},${requestBody.model}: ${response.status}): ${errorText}`,
+      );
+      throw createApiError(
+        `Error from provider(${provider.name},${requestBody.model}: ${response.status}): ${errorText}`,
+        response.status,
+        "provider_response_error"
+      );
+    }
+
+    // 5xx error — retry after exponential backoff
+    const delay = retryDelay * Math.pow(2, attempt);
+    fastify.log.warn(
+      `[retry] Provider ${provider.name} returned ${response.status}, attempt ${attempt + 1}/${maxRetries}, retrying in ${delay}ms`,
     );
-    throw createApiError(
-      `Error from provider(${provider.name},${requestBody.model}: ${response.status}): ${errorText}`,
-      response.status,
-      "provider_response_error"
-    );
+    await new Promise(r => setTimeout(r, delay));
   }
 
-  return response;
+  // Should not reach here, but satisfy TypeScript
+  throw createApiError("Unexpected retry loop exit", 500, "internal_error");
 }
 
 /**

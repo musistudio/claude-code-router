@@ -416,7 +416,8 @@ export function buildRequestBody(
     generationConfig,
   };
 
-  if (request.tool_choice) {
+  const hasFunctions = functionDeclarations && functionDeclarations.length > 0;
+  if (hasFunctions && request.tool_choice) {
     const toolConfig = {
       functionCallingConfig: {},
     };
