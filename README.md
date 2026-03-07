@@ -192,6 +192,15 @@ Here is a comprehensive example:
         "claude-opus-4-20250514",
         "gemini-2.5-pro"
       ]
+    },
+    {
+      "name": "venice",
+      "api_base_url": "https://api.venice.ai/api/v1/chat/completions",
+      "api_key": "VENICE-INFERENCE-KEY-xxx",
+      "models": ["claude-opus-45", "claude-sonnet-45"],
+      "transformer": {
+        "use": ["anthropic"]
+      }
     }
   ],
   "Router": {
