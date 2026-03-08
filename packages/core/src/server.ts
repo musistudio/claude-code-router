@@ -67,7 +67,7 @@ function createApp(options: FastifyServerOptions = {}): FastifyInstance {
 
 // Server class
 class Server {
-  private app: FastifyInstance;
+  app: FastifyInstance;
   configService: ConfigService;
   providerService!: ProviderService;
   transformerService: TransformerService;
@@ -88,17 +88,24 @@ class Server {
       this.configService,
       this.app.log
     );
-    this.transformerService.initialize().finally(() => {
-      this.providerService = new ProviderService(
-        this.configService,
-        this.transformerService,
-        this.app.log
-      );
-    });
-    // Initialize tokenizer service
+  }
+
+  private async initialize(): Promise<void> {
+    await this.transformerService.initialize();
+    this.providerService = new ProviderService(
+      this.configService,
+      this.transformerService,
+      this.app.log
+    );
     this.tokenizerService.initialize().catch((error) => {
       this.app.log.error(`Failed to initialize TokenizerService: ${error}`);
     });
+  }
+
+  static async create(options: ServerOptions = {}): Promise<Server> {
+    const server = new Server(options);
+    await server.initialize();
+    return server;
   }
 
   async register<Options extends FastifyPluginOptions = FastifyPluginOptions>(

@@ -26,7 +26,7 @@ import fastifyMultipart from "@fastify/multipart";
 import AdmZip from "adm-zip";
 
 export const createServer = async (config: any): Promise<any> => {
-  const server = new Server(config);
+  const server = await Server.create(config);
   const app = server.app;
 
   app.register(fastifyMultipart, {

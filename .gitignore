@@ -10,3 +10,12 @@ tsconfig.tsbuildinfo
 # Documentation build output
 docs/build
 docs/.docusaurus
+
+# Local management scripts and AI instructions
+ccr-manage.sh
+CLAUDE.md
+
+# Lock files
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
