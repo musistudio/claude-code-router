@@ -157,22 +157,26 @@ export class OpenAIResponsesTransformer implements Transformer {
 
     if (Array.isArray(request.tools)) {
       const webSearch = request.tools.find(
-        (tool) => tool.function.name === "web_search"
+        (tool: any) => (tool.function?.name || tool.name) === "web_search"
       );
 
       (request as any).tools = request.tools
-        .filter((tool) => tool.function.name !== "web_search")
-        .map((tool) => {
-          if (tool.function.name === "WebSearch") {
-            delete tool.function.parameters.properties.allowed_domains;
+        .filter((tool: any) => (tool.function?.name || tool.name) !== "web_search")
+        .map((tool: any) => {
+          const name = tool.function?.name || tool.name;
+          const description = tool.function?.description || tool.description;
+          const parameters = tool.function?.parameters || tool.input_schema;
+          
+          if (name === "WebSearch") {
+            delete parameters.properties.allowed_domains;
           }
-          if (tool.function.name === "Edit") {
+          if (name === "Edit") {
             return {
               type: tool.type,
-              name: tool.function.name,
-              description: tool.function.description,
+              name: name,
+              description: description,
               parameters: {
-                ...tool.function.parameters,
+                ...parameters,
                 required: [
                   "file_path",
                   "old_string",
@@ -185,9 +189,9 @@ export class OpenAIResponsesTransformer implements Transformer {
           }
           return {
             type: tool.type,
-            name: tool.function.name,
-            description: tool.function.description,
-            parameters: tool.function.parameters,
+            name: name,
+            description: description,
+            parameters: parameters,
           };
         });
 

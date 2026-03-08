@@ -244,12 +244,12 @@ export function buildRequestBody(
 ): Record<string, any> {
   const tools = [];
   const functionDeclarations = request.tools
-    ?.filter((tool) => tool.function.name !== "web_search")
-    ?.map((tool) => {
+    ?.filter((tool: any) => (tool.function?.name || tool.name) !== "web_search")
+    ?.map((tool: any) => {
       return {
-        name: tool.function.name,
-        description: tool.function.description,
-        parametersJsonSchema: tool.function.parameters,
+        name: tool.function?.name || tool.name,
+        description: tool.function?.description || tool.description,
+        parametersJsonSchema: tool.function?.parameters || tool.input_schema,
       };
     });
   if (functionDeclarations?.length) {
@@ -260,7 +260,7 @@ export function buildRequestBody(
     );
   }
   const webSearch = request.tools?.find(
-    (tool) => tool.function.name === "web_search"
+    (tool: any) => (tool.function?.name || tool.name) === "web_search"
   );
   if (webSearch) {
     tools.push({
@@ -336,8 +336,8 @@ export function buildRequestBody(
                 id:
                   toolCall.id ||
                   `tool_${Math.random().toString(36).substring(2, 15)}`,
-                name: toolCall.function.name,
-                args: JSON.parse(toolCall.function.arguments || "{}"),
+                name: toolCall.function?.name || toolCall.name,
+                args: JSON.parse(toolCall.function?.arguments || toolCall.input || "{}"),
               },
               thoughtSignature:
                 index === 0 && message.thinking?.signature
@@ -426,10 +426,10 @@ export function buildRequestBody(
       toolConfig.functionCallingConfig.mode = "none";
     } else if (request.tool_choice === "required") {
       toolConfig.functionCallingConfig.mode = "any";
-    } else if (request.tool_choice?.function?.name) {
+    } else if (request.tool_choice?.function?.name || request.tool_choice?.name) {
       toolConfig.functionCallingConfig.mode = "any";
       toolConfig.functionCallingConfig.allowedFunctionNames = [
-        request.tool_choice?.function?.name,
+        request.tool_choice?.function?.name || request.tool_choice?.name,
       ];
     }
     body.toolConfig = toolConfig;
