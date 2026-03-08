@@ -182,9 +182,25 @@ async function getServer(options: RunOptions = {}) {
     logger: loggerConfig,
   });
 
-  await Promise.allSettled(
-      presets.map(async preset => await serverInstance.registerNamespace(`/preset/${preset.name}`, preset.config))
-  )
+  console.time('Preset registration');
+  const presetErrors: Array<{preset: string; error: Error}> = [];
+  for (let i = 0; i < presets.length; i++) {
+    const preset = presets[i];
+    try {
+      console.log(`Registering preset ${i + 1}/${presets.length}: ${preset.name}`);
+      console.time(`Preset registration: ${preset.name}`);
+      await serverInstance.registerNamespace(`/preset/${preset.name}`, preset.config);
+      console.timeEnd(`Preset registration: ${preset.name}`);
+    } catch (error) {
+      console.error(`Error registering preset ${preset.name}:`, error);
+      presetErrors.push({preset: preset.name, error: error as Error});
+    }
+  }
+  console.timeEnd('Preset registration');
+  if (presetErrors.length > 0) {
+    console.warn(`⚠️  ${presetErrors.length} presets failed to register:`,
+      presetErrors.map(e => `${e.preset}: ${e.error.message}`).join(', '));
+  }
 
   // Register and configure plugins from config
   await registerPluginsFromConfig(serverInstance, config);
