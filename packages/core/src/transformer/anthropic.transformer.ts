@@ -192,8 +192,15 @@ export class AnthropicTransformer implements Transformer {
       result.reasoning = {
         effort: getThinkLevel(request.thinking.budget_tokens),
         // max_tokens: request.thinking.budget_tokens,
-        enabled: request.thinking.type === "enabled",
       };
+
+      // Only add enabled: true when explicitly enabled
+      // When disabled, don't set enabled field to avoid conflicts with mandatory reasoning models
+      if (request.thinking.type === "enabled") {
+        result.reasoning.enabled = true;
+      }
+      // Note: When thinking.type is "disabled", we intentionally don't set enabled: false
+      // because some models (like MiniMax 2.5) require reasoning and don't accept explicit disable
     }
     if (request.tool_choice) {
       if (request.tool_choice.type === "tool") {
