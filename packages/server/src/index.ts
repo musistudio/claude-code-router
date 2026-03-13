@@ -16,6 +16,8 @@ import { IAgent, ITool } from "./agents/type";
 import agentsManager from "./agents";
 import { EventEmitter } from "node:events";
 import { pluginManager, tokenSpeedPlugin } from "@musistudio/llms";
+import { PassThrough, Readable } from "stream"; // [CCR_HOOK] Import PassThrough and Readable
+import { CustomRouter } from "./types/router"; // [CCR_HOOK] Import CustomRouter types
 
 const event = new EventEmitter()
 
@@ -206,7 +208,52 @@ async function getServer(options: RunOptions = {}) {
     if (req.pathname.endsWith("/v1/messages") && req.pathname !== "/v1/messages") {
       req.preset = req.pathname.replace("/v1/messages", "").replace("/", "");
     }
-  })
+  });
+
+  // [CCR_HOOK] Add preHandler hook for custom router logic
+  serverInstance.addHook("preHandler", async (req: any, reply: any) => {
+    if (req.pathname.endsWith("/v1/messages") && config.CUSTOM_ROUTER_PATH && existsSync(config.CUSTOM_ROUTER_PATH)) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        let customRouter: CustomRouter = require(config.CUSTOM_ROUTER_PATH);
+
+        // Backward compatibility: wrap function-based routers
+        if (typeof customRouter === "function") {
+          customRouter = { route: customRouter };
+        }
+
+        // Store router for other hooks
+        req.customRouter = customRouter;
+
+        // Get routing decision
+        let routeKey = await customRouter.route(req, config);
+
+        // Check if router needs to queue this request
+        if (customRouter.canAcquireSlot) {
+          const acquired = await customRouter.canAcquireSlot(routeKey);
+          if (!acquired) {
+            // Queue timeout - get failover route
+            routeKey = await customRouter.route(req, { ...config, failover: true });
+          }
+        }
+
+        req.routeKey = routeKey; // Store for onSend/onError hooks
+
+        // [CCR_HOOK] CRITICAL: Override the model in the request body to enforce the custom route.
+        if (req.body && typeof req.body === 'object') {
+          req.body.model = routeKey;
+        }
+
+        // Notify router that request is starting
+        if (customRouter.onRequestStart) {
+          customRouter.onRequestStart(req.routeKey);
+        }
+      } catch (err: any) {
+        req.log.error(`[CCR Hook Error] Custom router preHandler failed: ${err.message}`);
+        // Do not crash the server, proceed with default routing
+      }
+    }
+  });
 
   serverInstance.addHook("preHandler", async (req: any, reply: any) => {
     if (req.pathname.endsWith("/v1/messages")) {
@@ -242,9 +289,72 @@ async function getServer(options: RunOptions = {}) {
     }
   });
   serverInstance.addHook("onError", async (request: any, reply: any, error: any) => {
+    // [CCR_HOOK] Add onError hook logic
+    if (request.customRouter && request.routeKey) {
+      try {
+        if (request.customRouter.onRequestError) {
+          request.customRouter.onRequestError(request.routeKey, error);
+        }
+      } catch (err: any) {
+        request.log.error(`[CCR Hook Error] Custom router onError failed: ${err.message}`);
+      }
+    }
     event.emit('onError', request, reply, error);
   })
   serverInstance.addHook("onSend", (req: any, reply: any, payload: any, done: any) => {
+    // [CCR_HOOK] Start of onSend hook modifications
+    const { customRouter, routeKey } = req;
+
+    // Check if it's a stream response from a routed request
+    if (customRouter && routeKey && payload && (payload instanceof Readable || typeof payload.pipe === 'function')) {
+      const monitoredStream = new PassThrough();
+      let streamClosed = false;
+
+      const onError = (err: Error) => {
+        if (streamClosed) return;
+        streamClosed = true;
+        try {
+          if (customRouter.onRequestError) {
+            customRouter.onRequestError(routeKey, err);
+          }
+        } catch (hookErr: any) {
+          req.log.error(`[CCR Hook Error] Custom router onRequestError (on stream error) failed: ${hookErr.message}`);
+        }
+      };
+
+      const onComplete = () => {
+        if (streamClosed) return;
+        streamClosed = true;
+        try {
+          if (customRouter.onRequestComplete) {
+            customRouter.onRequestComplete(routeKey);
+          }
+        } catch (hookErr: any) {
+          req.log.error(`[CCR Hook Error] Custom router onRequestComplete failed: ${hookErr.message}`);
+        }
+      };
+
+      payload.pipe(monitoredStream);
+
+      monitoredStream.on('end', onComplete);
+      monitoredStream.on('finish', onComplete); // Also listen to finish event for completeness
+      monitoredStream.on('error', onError);
+
+      // Fastify request.raw is the Node.js http.IncomingMessage
+      if (req.raw) {
+        req.raw.on('close', () => {
+          if (!monitoredStream.destroyed) {
+            monitoredStream.destroy();
+            onError(new Error('Request aborted by client'));
+          }
+        });
+      }
+
+      // Replace original payload with the monitored one for the done() callback
+      payload = monitoredStream;
+    }
+    // [CCR_HOOK] End of onSend hook modifications
+
     if (req.sessionId && req.pathname.endsWith("/v1/messages")) {
       if (payload instanceof ReadableStream) {
         if (req.agents) {
