@@ -257,6 +257,7 @@ export class AnthropicTransformer implements Transformer {
     openaiStream: ReadableStream,
     context: TransformerContext
   ): Promise<ReadableStream> {
+    const FINISH_REASON_GRACE_PERIOD_MS = 1000;
     const readable = new ReadableStream({
       start: async (controller) => {
         const encoder = new TextEncoder();
@@ -266,6 +267,7 @@ export class AnthropicTransformer implements Transformer {
         let hasStarted = false;
         let hasTextContentStarted = false;
         let hasFinished = false;
+        let finishedAt: number | null = null;
         const toolCalls = new Map<number, any>();
         const toolCallIndexToContentBlockIndex = new Map<number, number>();
         let totalChunks = 0;
@@ -394,7 +396,43 @@ export class AnthropicTransformer implements Transformer {
               break;
             }
 
-            const { done, value } = await reader.read();
+            const readResult = hasFinished
+              ? await Promise.race([
+                  reader.read().then((result) => ({
+                    ...result,
+                    timedOut: false,
+                  })),
+                  new Promise<{
+                    done: true;
+                    value: undefined;
+                    timedOut: true;
+                  }>((resolve) => {
+                    const remaining =
+                      FINISH_REASON_GRACE_PERIOD_MS -
+                      (Date.now() - (finishedAt || Date.now()));
+                    setTimeout(
+                      () =>
+                        resolve({
+                          done: true,
+                          value: undefined,
+                          timedOut: true,
+                        }),
+                      Math.max(remaining, 0)
+                    );
+                  }),
+                ])
+              : {
+                  ...(await reader.read()),
+                  timedOut: false,
+                };
+            const { done, value, timedOut } = readResult;
+            if (timedOut) {
+              try {
+                await reader.cancel("finish_reason grace timeout");
+              } catch {
+                // Ignore cancellation errors; the stream is being finalized.
+              }
+            }
             if (done) break;
 
             buffer += decoder.decode(value, { stream: true });
@@ -402,7 +440,7 @@ export class AnthropicTransformer implements Transformer {
             buffer = lines.pop() || "";
 
             for (const line of lines) {
-              if (isClosed || hasFinished) break;
+              if (isClosed) break;
 
               if (!line.startsWith("data:")) continue;
               const data = line.slice(5).trim();
@@ -413,7 +451,8 @@ export class AnthropicTransformer implements Transformer {
               });
 
               if (data === "[DONE]") {
-                continue;
+                safeClose();
+                break;
               }
 
               try {
@@ -856,6 +895,9 @@ export class AnthropicTransformer implements Transformer {
                 }
 
                 if (choice?.finish_reason && !isClosed && !hasFinished) {
+                  hasFinished = true;
+                  finishedAt = Date.now();
+
                   if (contentChunks === 0 && toolCallChunks === 0) {
                     console.error(
                       "Warning: No content in the stream response!"
@@ -907,8 +949,6 @@ export class AnthropicTransformer implements Transformer {
                       },
                     };
                   }
-
-                  break;
                 }
               } catch (parseError: any) {
                 this.logger?.error(
