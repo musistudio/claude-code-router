@@ -14,7 +14,14 @@ export function sendUnifiedRequest(
   if (config.headers) {
     Object.entries(config.headers).forEach(([key, value]) => {
       if (value) {
-        headers.set(key, value as string);
+        const strValue = String(value);
+        // HTTP headers only support ASCII (ByteString). Non-ASCII values
+        // (e.g. Chinese characters from Claude Code system prompts) must be
+        // percent-encoded to avoid "Cannot convert argument to a ByteString" errors.
+        const safeValue = /^[\x00-\xff]*$/.test(strValue)
+          ? strValue
+          : encodeURIComponent(strValue);
+        headers.set(key, safeValue);
       }
     });
   }
