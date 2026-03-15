@@ -680,7 +680,7 @@ export async function transformResponseOut(
                 let signature = parts.find(
                   (part: Part) => part.thoughtSignature
                 )?.thoughtSignature;
-                if (signature && !signatureSent) {
+                if (signature && !signatureSent && hasThinkingContent) {
                   if (!hasThinkingContent) {
                     const thinkingChunk = {
                       choices: [
