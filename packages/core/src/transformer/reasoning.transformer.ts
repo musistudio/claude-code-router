@@ -20,13 +20,23 @@ export class ReasoningTransformer implements Transformer {
       request.enable_thinking = false;
       return request;
     }
-    if (request.reasoning) {
-      request.thinking = {
-        type: "enabled",
-        budget_tokens: request.reasoning.max_tokens,
-      };
-      request.enable_thinking = true;
-    }
+
+    // `transformRequestOut` (Claude→OpenAI format conversion) runs before
+    // provider transformers. By the time this transformer executes, a normal
+    // Claude request with `thinking: {type: "disabled"}` has already been
+    // converted to `reasoning: {enabled: false, effort: "none"}`.
+    // Mutating `request.thinking` here has no effect on the outgoing body.
+    //
+    // Fix: directly override `request.reasoning` to force reasoning on.
+    // This handles models where reasoning is mandatory (e.g. stepfun/step-3.5-flash)
+    // and would reject the request if `reasoning.enabled` is false.
+    request.reasoning = Object.assign(
+      { effort: "high" },
+      request.reasoning || {},
+      { enabled: true }
+    );
+    delete request.thinking;
+
     return request;
   }
 
