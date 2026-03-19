@@ -188,11 +188,18 @@ export class AnthropicTransformer implements Transformer {
         : undefined,
       tool_choice: request.tool_choice,
     };
-    if (request.thinking) {
+    if (request.output_config?.effort) {
+      const effort = getThinkLevel(request.output_config.effort);
+      this.logger?.info(
+        {
+          model: request.model,
+          reasoning_effort: effort,
+        },
+        "Mapped Anthropic output_config effort to reasoning effort"
+      );
       result.reasoning = {
-        effort: getThinkLevel(request.thinking.budget_tokens),
-        // max_tokens: request.thinking.budget_tokens,
-        enabled: request.thinking.type === "enabled",
+        effort,
+        enabled: request.thinking?.type === "enabled",
       };
     }
     if (request.tool_choice) {
