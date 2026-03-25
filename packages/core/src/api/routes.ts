@@ -219,6 +219,17 @@ async function processRequestTransformers(
       delete headers["content-length"];
     }
     config.headers = headers;
+
+    // PATCH: strip CC-internal fields that non-Anthropic providers reject
+    if (provider.name !== "anthropic") {
+      delete requestBody.context_management;
+      delete requestBody.output_config;
+      delete requestBody.metadata;
+      // Convert adaptive thinking to standard format for providers that don't support it
+      if (requestBody.thinking?.type === "adaptive") {
+        delete requestBody.thinking;
+      }
+    }
   }
 
   // Execute transformer's transformRequestOut method
@@ -333,11 +344,66 @@ async function sendRequestToProvider(
   }
 
   // Send HTTP request
-  // Prepare headers
+  // Prepare headers based on auth type
   const requestHeaders: Record<string, string> = {
-    Authorization: `Bearer ${provider.apiKey}`,
     ...(config?.headers || {}),
   };
+
+  // Apply provider custom headers first
+  if (provider.headers) {
+    Object.assign(requestHeaders, provider.headers);
+  }
+
+  // For x-api-key auth type, forward the incoming x-api-key header from CC
+  const authType = provider.authType || "bearer";
+  const origReq = (context?.req as any);
+  if (authType === "x-api-key" && origReq?.headers) {
+    const clientApiKey = origReq.headers["x-api-key"] || origReq.headers.authorization?.replace(/^Bearer\s+/i, "");
+    if (clientApiKey) {
+      requestHeaders["x-api-key"] = clientApiKey as string;
+      delete requestHeaders["Authorization"];
+      delete requestHeaders["authorization"];
+      // Forward anthropic headers from original request
+      if (origReq.headers["anthropic-version"]) {
+        requestHeaders["anthropic-version"] = origReq.headers["anthropic-version"] as string;
+      }
+      // OAuth + CC betas (both required for subscription passthrough)
+      requestHeaders["anthropic-beta"] = "oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14,prompt-caching-2024-07-31";
+      // Strip CC-internal fields the API doesn't accept without full CC beta set
+      if (requestBody) {
+        delete requestBody.context_management;
+        delete requestBody.output_config;
+      }
+    }
+  } else {
+    // Remove incoming auth headers when using provider-level auth
+    delete requestHeaders["x-api-key"];
+    delete requestHeaders["authorization"];
+    delete requestHeaders["Authorization"];
+
+    // Apply authentication based on auth_type
+    switch (authType) {
+      case "bearer":
+        requestHeaders.Authorization = `Bearer ${provider.apiKey}`;
+        break;
+      case "cookie":
+        requestHeaders.Cookie = provider.apiKey;
+        break;
+      case "custom":
+        if (provider.authHeader) {
+          requestHeaders[provider.authHeader] = provider.apiKey;
+        }
+        break;
+      case "oauth":
+        requestHeaders.Cookie = `sessionKey=${provider.apiKey}`;
+        requestHeaders["anthropic-client"] = "web";
+        requestHeaders["anthropic-version"] = "2023-06-01";
+        requestHeaders["anthropic-dangerous-direct-browser-access"] = "true";
+        break;
+      default:
+        requestHeaders.Authorization = `Bearer ${provider.apiKey}`;
+    }
+  }
 
   for (const key in requestHeaders) {
     if (requestHeaders[key] === "undefined") {

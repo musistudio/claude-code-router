@@ -3,6 +3,26 @@ import { join } from "path";
 import { config } from "dotenv";
 import JSON5 from 'json5';
 
+// Function to interpolate environment variables in config values
+const interpolateEnvVars = (obj: any): any => {
+  if (typeof obj === "string") {
+    // Replace $VAR_NAME or ${VAR_NAME} with environment variable values
+    return obj.replace(/\$\{([^}]+)\}|\$([A-Z_][A-Z0-9_]*)/g, (match, braced, unbraced) => {
+      const varName = braced || unbraced;
+      return process.env[varName] || match; // Keep original if env var doesn't exist
+    });
+  } else if (Array.isArray(obj)) {
+    return obj.map(interpolateEnvVars);
+  } else if (obj !== null && typeof obj === "object") {
+    const result: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = interpolateEnvVars(value);
+    }
+    return result;
+  }
+  return obj;
+};
+
 export interface ConfigOptions {
   envPath?: string;
   jsonPath?: string;
@@ -73,7 +93,9 @@ export class ConfigService {
       try {
         const jsonContent = readFileSync(jsonPath, "utf-8");
         const jsonConfig = JSON5.parse(jsonContent);
-        this.config = { ...this.config, ...jsonConfig };
+        // Interpolate environment variables in the parsed config
+        const interpolatedConfig = interpolateEnvVars(jsonConfig);
+        this.config = { ...this.config, ...interpolatedConfig };
         console.log(`Loaded JSON config from: ${jsonPath}`);
       } catch (error) {
         console.warn(`Failed to load JSON config from ${jsonPath}:`, error);

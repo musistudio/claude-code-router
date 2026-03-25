@@ -267,18 +267,7 @@ export const router = async (req: any, _res: any, context: RouterContext) => {
     }
 
     let model;
-    const customRouterPath = configService.get("CUSTOM_ROUTER_PATH");
-    if (customRouterPath) {
-      try {
-        const customRouter = require(customRouterPath);
-        req.tokenCount = tokenCount; // Pass token count to custom router
-        model = await customRouter(req, configService.getAll(), {
-          event,
-        });
-      } catch (e: any) {
-        req.log.error(`failed to load custom router: ${e.message}`);
-      }
-    }
+    // SECURITY PATCH: CUSTOM_ROUTER_PATH disabled — arbitrary require() execution
     if (!model) {
       const result = await getUseModel(req, tokenCount, configService, lastMessageUsage);
       model = result.model;
