@@ -85,21 +85,9 @@ export class TransformerService {
   }): Promise<boolean> {
     try {
       if (config.path) {
-        const module = require(require.resolve(config.path));
-        if (module) {
-          const instance = new module(config.options);
-          // Set logger for transformer instance
-          if (instance && typeof instance === "object") {
-            (instance as any).logger = this.logger;
-          }
-          if (!instance.name) {
-            throw new Error(
-              `Transformer instance from ${config.path} does not have a name property.`
-            );
-          }
-          this.registerTransformer(instance.name, instance);
-          return true;
-        }
+        // SECURITY PATCH: Custom transformer require() disabled — arbitrary code execution
+        this.logger.warn(`Custom transformer loading is disabled: ${config.path}`);
+        return false;
       }
       return false;
     } catch (error: any) {
