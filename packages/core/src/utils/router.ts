@@ -7,6 +7,8 @@ import { CLAUDE_PROJECTS_DIR, HOME_DIR } from "@CCR/shared";
 import { LRUCache } from "lru-cache";
 import { ConfigService } from "../services/config";
 import { TokenizerService } from "../services/tokenizer";
+import * as pool from "../pool";
+import { isPoolConfig } from "../pool";
 
 // Types from @anthropic-ai/sdk
 interface Tool {
@@ -121,6 +123,20 @@ const getProjectSpecificRouter = async (
   return undefined; // Return undefined to use original configuration
 };
 
+/**
+ * Initialize pools from router configuration
+ */
+export const initializePools = (Router: any): void => {
+  if (Router) {
+    try {
+      pool.initializePools(Router);
+    } catch (err: any) {
+      console.error('Failed to initialize pools:', err.message);
+      throw err;
+    }
+  }
+};
+
 const getUseModel = async (
   req: any,
   tokenCount: number,
@@ -181,7 +197,27 @@ const getUseModel = async (
     globalRouter?.background
   ) {
     req.log.info(`Using background model for ${req.body.model}`);
-    return { model: globalRouter.background, scenarioType: 'background' };
+    const backgroundRoute = globalRouter.background;
+
+    // Check if background route is a pool
+    if (typeof backgroundRoute === 'object' && isPoolConfig(backgroundRoute)) {
+      try {
+        const { target } = pool.selectTargetFromPool('background');
+        req.log.info({
+          event: 'pool_target_selected',
+          scenario: 'background',
+          model: target.model,
+          effectiveWeight: target.effectiveWeight,
+          selectedFrom: 'healthy'
+        });
+        pool.updateTargetRecovery('background', target.model);
+        return { model: target.model, scenarioType: 'background' };
+      } catch (err: any) {
+        req.log.error(`Pool selection failed for background: ${err.message}`);
+        // Fallback to default behavior
+      }
+    }
+    return { model: backgroundRoute, scenarioType: 'background' };
   }
   // The priority of websearch must be higher than thinking.
   if (
@@ -189,14 +225,77 @@ const getUseModel = async (
     req.body.tools.some((tool: any) => tool.type?.startsWith("web_search")) &&
     Router?.webSearch
   ) {
-    return { model: Router.webSearch, scenarioType: 'webSearch' };
+    const webSearchRoute = Router.webSearch;
+
+    // Check if webSearch route is a pool
+    if (typeof webSearchRoute === 'object' && isPoolConfig(webSearchRoute)) {
+      try {
+        const { target } = pool.selectTargetFromPool('webSearch');
+        req.log.info({
+          event: 'pool_target_selected',
+          scenario: 'webSearch',
+          model: target.model,
+          effectiveWeight: target.effectiveWeight,
+          selectedFrom: 'healthy'
+        });
+        pool.updateTargetRecovery('webSearch', target.model);
+        return { model: target.model, scenarioType: 'webSearch' };
+      } catch (err: any) {
+        req.log.error(`Pool selection failed for webSearch: ${err.message}`);
+        // Fallback to default behavior
+      }
+    }
+    return { model: webSearchRoute, scenarioType: 'webSearch' };
   }
   // if exits thinking, use the think model
   if (req.body.thinking && Router?.think) {
     req.log.info(`Using think model for ${req.body.thinking}`);
-    return { model: Router.think, scenarioType: 'think' };
+    const thinkRoute = Router.think;
+
+    // Check if think route is a pool
+    if (typeof thinkRoute === 'object' && isPoolConfig(thinkRoute)) {
+      try {
+        const { target } = pool.selectTargetFromPool('think');
+        req.log.info({
+          event: 'pool_target_selected',
+          scenario: 'think',
+          model: target.model,
+          effectiveWeight: target.effectiveWeight,
+          selectedFrom: 'healthy'
+        });
+        pool.updateTargetRecovery('think', target.model);
+        return { model: target.model, scenarioType: 'think' };
+      } catch (err: any) {
+        req.log.error(`Pool selection failed for think: ${err.message}`);
+        // Fallback to default behavior
+      }
+    }
+    return { model: thinkRoute, scenarioType: 'think' };
   }
-  return { model: Router?.default, scenarioType: 'default' };
+
+  // Handle default route (most common case)
+  const defaultRoute = Router?.default;
+
+  // Check if default route is a pool
+  if (typeof defaultRoute === 'object' && isPoolConfig(defaultRoute)) {
+    try {
+      const { target } = pool.selectTargetFromPool('default');
+      req.log.info({
+        event: 'pool_target_selected',
+        scenario: 'default',
+        model: target.model,
+        effectiveWeight: target.effectiveWeight,
+        selectedFrom: 'healthy'
+      });
+      pool.updateTargetRecovery('default', target.model);
+      return { model: target.model, scenarioType: 'default' };
+    } catch (err: any) {
+      req.log.error(`Pool selection failed for default: ${err.message}`);
+      // Fallback to default behavior
+    }
+  }
+
+  return { model: defaultRoute, scenarioType: 'default' };
 };
 
 export interface RouterContext {
@@ -237,6 +336,16 @@ export const router = async (req: any, _res: any, context: RouterContext) => {
   }
 
   try {
+    // Initialize pools on first request (lazy initialization)
+    const Router = configService.get("Router");
+    if (!poolsInitialized && Router) {
+      initializePools(Router);
+      poolsInitialized = true;
+      req.log.info('Pool load balancing initialized', {
+        poolScenarios: pool.getPoolScenarios()
+      });
+    }
+
     // Try to get tokenizer config for the current model
     const [providerName, modelName] = req.body.model.split(",");
     const tokenizerConfig = context.tokenizerService?.getTokenizerConfigForModel(
@@ -304,6 +413,9 @@ const sessionProjectCache = new LRUCache<string, string>({
   max: 1000,
 });
 
+// Track if pools have been initialized
+let poolsInitialized = false;
+
 export const searchProjectBySession = async (
   sessionId: string
 ): Promise<string | null> => {
@@ -363,4 +475,23 @@ export const searchProjectBySession = async (
     sessionProjectCache.set(sessionId, '');
     return null;
   }
+};
+
+/**
+ * Get pool debug info for observability
+ */
+export const getPoolStatus = () => {
+  return pool.getPoolStatusSummary();
+};
+
+/**
+ * Record a failure for a pool target
+ */
+export const recordPoolFailure = (
+  scenario: string,
+  model: string,
+  httpStatus?: number,
+  errorMessage?: string
+) => {
+  return pool.recordFailure(scenario, model, httpStatus, errorMessage);
 };
