@@ -173,6 +173,12 @@ export function parseAllRoutes(
   const result = new Map<string, PoolState | string>()
 
   for (const [scenario, value] of Object.entries(routerConfig)) {
+    // Skip non-route fields (numbers, booleans, etc.)
+    // Route values must be strings or pool config objects
+    if (typeof value !== 'string' && typeof value !== 'object') {
+      continue
+    }
+
     try {
       result.set(scenario, parseRouteValue(scenario, value))
     } catch (err: any) {
