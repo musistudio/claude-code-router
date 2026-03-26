@@ -22,7 +22,7 @@
 ## ✨ Features
 
 - **Model Routing**: Route requests to different models based on your needs (e.g., background tasks, thinking, long context).
-- **Multi-Provider Support**: Supports various model providers like OpenRouter, DeepSeek, Ollama, Gemini, Volcengine, and SiliconFlow.
+- **Multi-Provider Support**: Supports various model providers like OpenRouter, DeepSeek, Ollama, Gemini, Volcengine, SiliconFlow, and Vercel.
 - **Request/Response Transformation**: Customize requests and responses for different providers using transformers.
 - **Dynamic Model Switching**: Switch models on-the-fly within Claude Code using the `/model` command.
 - **CLI Model Management**: Manage models and providers directly from the terminal with `ccr model`.
@@ -108,6 +108,18 @@ Here is a comprehensive example:
       ],
       "transformer": {
         "use": ["openrouter"]
+      }
+    },
+    {
+      "name": "vercel",
+      "api_base_url": "https://ai-gateway.vercel.sh/v1/chat/completions",
+      "api_key": "$VERCEL_AI_GATEWAY_API_KEY",
+      "models": [
+        "anthropic/claude-opus-4.6",
+        "google/gemini-3-pro-preview"
+      ],
+      "transformer": {
+        "use": ["vercel"]
       }
     },
     {

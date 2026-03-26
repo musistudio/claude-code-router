@@ -67,6 +67,15 @@ ccr config edit
       "api_base_url": "https://api.deepseek.com/chat/completions",
       "api_key": "your-deepseek-api-key",
       "models": ["deepseek-chat", "deepseek-coder"]
+    },
+    {
+      "name": "vercel",
+      "api_base_url": "https://ai-gateway.vercel.sh/v1/chat/completions",
+      "api_key": "$VERCEL_AI_GATEWAY_API_KEY",
+      "models": ["anthropic/claude-opus-4.6", "google/gemini-3-pro-preview"],
+      "transformer": {
+        "use": ["vercel"]
+      }
     }
   ],
   "Router": {

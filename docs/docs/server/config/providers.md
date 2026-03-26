@@ -56,6 +56,20 @@ Detailed guide for configuring LLM providers.
 }
 ```
 
+### Vercel AI Gateway
+
+```json
+{
+  "name": "vercel",
+  "api_base_url": "https://ai-gateway.vercel.sh/v1/chat/completions",
+  "api_key": "$VERCEL_AI_GATEWAY_API_KEY",
+  "models": ["anthropic/claude-opus-4.6", "google/gemini-3-pro-preview"],
+  "transformer": {
+    "use": ["vercel"]
+  }
+}
+```
+
 ## Provider Configuration Options
 
 | Field | Type | Required | Description |

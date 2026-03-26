@@ -53,6 +53,7 @@ const AVAILABLE_TRANSFORMERS = [
   'deepseek',
   'gemini',
   'openrouter',
+  'vercel',
   'groq',
   'maxtoken',
   'tooluse',
@@ -222,6 +223,20 @@ async function configureTransformers(): Promise<TransformerConfig | undefined> {
           validate: (value: string) => value.trim() !== '' || 'Provider cannot be empty'
         });
         transformers.push(['openrouter', { provider: { only: [providerInput] } }]);
+      } else {
+        transformers.push(transformer);
+      }
+    } else if (transformer === 'vercel') {
+      const addProvider = await confirm({
+        message: `\n${BOLDYELLOW}Add provider routing options?${RESET}`,
+        default: false
+      });
+      if (addProvider) {
+        const providerInput = await input({
+          message: 'Provider (e.g., vertex):',
+          validate: (value: string) => value.trim() !== '' || 'Provider cannot be empty'
+        });
+        transformers.push(['vercel', { provider: { only: [providerInput] } }]);
       } else {
         transformers.push(transformer);
       }
