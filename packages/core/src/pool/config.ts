@@ -76,6 +76,9 @@ export function validatePoolConfig(pool: RoutePoolConfig): void {
         `Target ${target.model}: weight must be >= 0, got ${target.weight}`
       )
     }
+    // Note: weight: 0 is valid and means permanently disabled
+    // - Excluded from routing selection entirely
+    // - Never participates in recovery
 
     // Check duplicate
     if (seen.has(target.model)) {
@@ -140,6 +143,7 @@ export function parseRouteValue(
           model: t.model,
           defaultWeight: t.weight,
           effectiveWeight: t.weight,
+          baseCooldown: health.cooldown_ms,  // Store original cooldown for backoff
           suppressedUntil: undefined,
           lastFailureAt: undefined,
           lastRecoveryStartedAt: undefined,

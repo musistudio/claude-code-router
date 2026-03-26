@@ -3,6 +3,12 @@
  */
 
 /**
+ * Maximum cooldown time for exponential backoff
+ * After this cap, cooldown stops doubling
+ */
+export const MAX_COOLDOWN_MS = 12 * 60 * 60 * 1000  // 12 hours in milliseconds
+
+/**
  * Represents a single target in a weighted round-robin pool
  */
 export type RouteTarget = {
@@ -57,12 +63,13 @@ export function isPoolConfig(value: any): value is RoutePoolConfig {
  */
 export type TargetState = {
   model: string                    // From config: "provider,model"
-  defaultWeight: number            // From config, never changes
+  defaultWeight: number            // From config, never changes. 0 = permanently disabled
   effectiveWeight: number          // Runtime weight, can be 0 (suppressed) or recovering
+  baseCooldown?: number            // Original cooldown from config (for exponential backoff)
   suppressedUntil?: number         // Timestamp in ms when suppression ends, undefined = not suppressed
   lastFailureAt?: number          // Timestamp in ms of last failure
   lastRecoveryStartedAt?: number  // Timestamp in ms when recovery phase started
-  consecutiveFailures: number     // Counter for logging (not used in algorithm)
+  consecutiveFailures: number     // Used for exponential backoff calculation
   currentWeight: number           // Internal WRR accumulator (starts at 0)
 }
 

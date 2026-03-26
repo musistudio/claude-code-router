@@ -1,4 +1,4 @@
-import { TargetState, FailureType, RouteHealthConfig } from './types'
+import { TargetState, FailureType, RouteHealthConfig, MAX_COOLDOWN_MS } from './types'
 
 /**
  * Classify HTTP status + error into failure type
@@ -40,6 +40,7 @@ export function classifyFailure(
 
 /**
  * Apply failure to target: suppress and mark
+ * Uses exponential backoff: cooldown doubles with each consecutive failure
  */
 export function applyFailure(
   target: TargetState,
@@ -49,16 +50,23 @@ export function applyFailure(
 ): void {
   const now = Date.now()
 
-  // Set effective weight to 0
+  // Hard drop to 0
   target.effectiveWeight = 0
 
-  // Set suppression timer
-  const cooldown = health?.cooldown_ms ?? 60000
-  target.suppressedUntil = now + cooldown
-
-  // Update tracking
-  target.lastFailureAt = now
+  // Increment failure count BEFORE calculating backoff
   target.consecutiveFailures += 1
+
+  // Exponential backoff: baseCooldown * 2^(failures-1)
+  // Capped at MAX_COOLDOWN_MS
+  const baseCooldown = target.baseCooldown ?? health?.cooldown_ms ?? 60000
+  const backoffMultiplier = Math.pow(2, target.consecutiveFailures - 1)
+  const exponentialCooldown = Math.min(
+    baseCooldown * backoffMultiplier,
+    MAX_COOLDOWN_MS
+  )
+
+  target.suppressedUntil = now + exponentialCooldown
+  target.lastFailureAt = now
 
   // Log is done by caller (has context for structured logging)
 }

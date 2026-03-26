@@ -11,9 +11,11 @@ import { PoolState, TargetState, SelectionResult } from './types'
  * This ensures proportional distribution without clustering.
  */
 export function selectTarget(pool: PoolState): SelectionResult {
-  // Filter eligible targets (effective weight > 0)
+  // Filter eligible targets:
+  // - effectiveWeight > 0 (not temporarily suppressed)
+  // - defaultWeight > 0 (not permanently disabled)
   const eligibleTargets = Array.from(pool.targets.values()).filter(
-    t => t.effectiveWeight > 0
+    t => t.effectiveWeight > 0 && t.defaultWeight > 0
   )
 
   // If no eligible targets, use fail-open policy
@@ -50,14 +52,24 @@ export function selectTarget(pool: PoolState): SelectionResult {
  * Fail-open policy: select target with earliest suppression recovery time
  *
  * Logic:
+ * - Skip targets with defaultWeight === 0 (permanently disabled)
  * - If suppressedUntil is set, use that
  * - Otherwise use lastFailureAt + cooldown_ms
  * - If neither exists, pick any (shouldn't happen)
  */
 function selectFailOpen(pool: PoolState): SelectionResult {
-  let earliest = Array.from(pool.targets.values())[0]
+  // Filter out permanently disabled targets
+  const candidates = Array.from(pool.targets.values()).filter(
+    t => t.defaultWeight > 0
+  )
 
-  for (const target of pool.targets.values()) {
+  if (candidates.length === 0) {
+    throw new Error('No eligible targets: all targets have weight 0 (permanently disabled)')
+  }
+
+  let earliest = candidates[0]
+
+  for (const target of candidates) {
     const earliestRecoveryTime = getRecoveryTime(target, pool.health.cooldown_ms)
     const candidateRecoveryTime = getRecoveryTime(earliest, pool.health.cooldown_ms)
 
@@ -93,10 +105,12 @@ function getRecoveryTime(
  */
 export function getCandidates(
   pool: PoolState
-): Array<{ model: string; effectiveWeight: number; isEligible: boolean }> {
+): Array<{ model: string; defaultWeight: number; effectiveWeight: number; isEligible: boolean; isDisabled: boolean }> {
   return Array.from(pool.targets.values()).map(t => ({
     model: t.model,
+    defaultWeight: t.defaultWeight,
     effectiveWeight: t.effectiveWeight,
-    isEligible: t.effectiveWeight > 0
+    isEligible: t.effectiveWeight > 0 && t.defaultWeight > 0,
+    isDisabled: t.defaultWeight === 0
   }))
 }
