@@ -88,7 +88,7 @@ npm install -g @musistudio/claude-code-router
     {
       "name": "vercel",
       "api_base_url": "https://ai-gateway.vercel.sh/v1/chat/completions",
-      "api_key": "$VERCEL_AI_GATEWAY_API_KEY",
+      "api_key": "vck_xxx",
       "models": [
         "anthropic/claude-opus-4.6",
         "google/gemini-3-pro-preview"

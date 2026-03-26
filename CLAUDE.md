@@ -59,7 +59,7 @@ Token calculation uses `tiktoken` (cl100k_base) to estimate request size.
 
 The project uses the `@musistudio/llms` package (external dependency) to handle request/response transformations. Transformers adapt to different provider API differences:
 
-- Built-in transformers: `anthropic`, `deepseek`, `gemini`, `openrouter`, `groq`, `maxtoken`, `tooluse`, `reasoning`, `enhancetool`, etc.
+- Built-in transformers: `anthropic`, `deepseek`, `gemini`, `openrouter`, `vercel`, `groq`, `maxtoken`, `tooluse`, `reasoning`, `enhancetool`, etc.
 - Custom transformers: Load external plugins via `transformers` array in `config.json`
 
 Transformer configuration supports:

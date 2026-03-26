@@ -46,7 +46,15 @@ export class VercelTransformer implements Transformer {
         }
       });
     }
-    Object.assign(request, this.options || {});
+    if (this.options?.provider?.only) {
+      (request as any).providerOptions = {
+        ...((request as any).providerOptions || {}),
+        gateway: {
+          ...((request as any).providerOptions?.gateway || {}),
+          only: this.options.provider.only,
+        },
+      };
+    }
     return request;
   }
 

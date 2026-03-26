@@ -83,6 +83,21 @@
       }
     },
     {
+      "name": "vercel",
+      "api_base_url": "https://ai-gateway.vercel.sh/v1/chat/completions",
+      "api_key": "vck_xxx",
+      "models": [
+        "anthropic/claude-opus-4.6",
+        "openai/gpt-5",
+        "google/gemini-3-pro-preview"
+      ],
+      "transformer": {
+        "use": [
+          "vercel"
+        ]
+      }
+    },
+    {
       "name": "deepseek",
       "api_base_url": "https://api.deepseek.com/chat/completions",
       "api_key": "sk-",
