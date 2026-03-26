@@ -1,7 +1,10 @@
-import { RouteValue, PoolState, TargetState, FailureContext } from './types'
+import { RouteValue, PoolState, TargetState, FailureContext, isPoolConfig } from './types'
 import { parseAllRoutes } from './config'
 import { selectTarget, getCandidates } from './selection'
 import { applyFailure, updateRecovery, classifyFailure } from './health'
+
+// Re-export isPoolConfig for router
+export { isPoolConfig }
 
 /**
  * Global pool state store
