@@ -2,6 +2,7 @@ src
 node_modules
 .claude
 CLAUDE.md
+claude
 screenshoots
 .DS_Store
 .vscode
@@ -17,3 +18,4 @@ scripts
 packages
 custom-router.example.js
 examples
+claude
