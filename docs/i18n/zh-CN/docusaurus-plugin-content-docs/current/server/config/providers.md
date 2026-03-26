@@ -65,6 +65,20 @@ sidebar_position: 2
 }
 ```
 
+### Vercel AI Gateway
+
+```json
+{
+  "name": "vercel",
+  "api_base_url": "https://ai-gateway.vercel.sh/v1/chat/completions",
+  "api_key": "vck_xxx",
+  "models": ["anthropic/claude-opus-4.6", "google/gemini-3-pro-preview"],
+  "transformer": {
+    "use": ["vercel"]
+  }
+}
+```
+
 ### Ollama（本地模型）
 
 ```json

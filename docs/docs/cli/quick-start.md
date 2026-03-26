@@ -24,6 +24,15 @@ Edit `~/.claude-code-router/config.json`:
       "api_base_url": "https://api.openai.com/v1/chat/completions",
       "api_key": "your-api-key-here",
       "models": ["gpt-4", "gpt-3.5-turbo"]
+    },
+    {
+      "name": "vercel",
+      "api_base_url": "https://ai-gateway.vercel.sh/v1/chat/completions",
+      "api_key": "vck_xxx",
+      "models": ["anthropic/claude-opus-4.6", "google/gemini-3-pro-preview"],
+      "transformer": {
+        "use": ["vercel"]
+      }
     }
   ],
   "Router": {

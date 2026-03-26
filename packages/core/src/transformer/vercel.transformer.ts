@@ -19,7 +19,7 @@ export class VercelTransformer implements Transformer {
               delete item.cache_control;
             }
             if (item.type === "image_url") {
-              if (!item.image_url.url.startsWith("http")) {
+              if (!item.image_url.url.startsWith("http") && !item.image_url.url.startsWith("data:")) {
                 item.image_url.url = `data:${item.media_type};base64,${item.image_url.url}`;
               }
               delete item.media_type;
@@ -29,12 +29,15 @@ export class VercelTransformer implements Transformer {
           delete msg.cache_control;
         }
       });
+      (request as any).providerOptions = {
+        gateway: { caching: "auto" },
+      };
     } else {
       request.messages.forEach((msg) => {
         if (Array.isArray(msg.content)) {
           msg.content.forEach((item: any) => {
             if (item.type === "image_url") {
-              if (!item.image_url.url.startsWith("http")) {
+              if (!item.image_url.url.startsWith("http") && !item.image_url.url.startsWith("data:")) {
                 item.image_url.url = `data:${item.media_type};base64,${item.image_url.url}`;
               }
               delete item.media_type;
@@ -43,7 +46,15 @@ export class VercelTransformer implements Transformer {
         }
       });
     }
-    Object.assign(request, this.options || {});
+    if (this.options?.provider?.only) {
+      (request as any).providerOptions = {
+        ...((request as any).providerOptions || {}),
+        gateway: {
+          ...((request as any).providerOptions?.gateway || {}),
+          only: this.options.provider.only,
+        },
+      };
+    }
     return request;
   }
 
@@ -67,6 +78,7 @@ export class VercelTransformer implements Transformer {
       let reasoningContent = "";
       let isReasoningComplete = false;
       let hasToolCall = false;
+      let isStreamEnded = false;
       let buffer = ""; // Buffer for incomplete data
 
       const stream = new ReadableStream({
@@ -233,7 +245,9 @@ export class VercelTransformer implements Transformer {
                 controller.enqueue(encoder.encode(line + "\n"));
               }
             } else {
-              // Pass through non-data lines (like [DONE])
+              if (line.trim() === "data: [DONE]") {
+                isStreamEnded = true;
+              }
               controller.enqueue(encoder.encode(line + "\n"));
             }
           };
@@ -241,8 +255,7 @@ export class VercelTransformer implements Transformer {
           try {
             while (true) {
               const { done, value } = await reader.read();
-              if (done) {
-                // Process remaining data in buffer
+              if (done || isStreamEnded) {
                 if (buffer.trim()) {
                   processBuffer(buffer, controller, encoder);
                 }
@@ -323,10 +336,11 @@ export class VercelTransformer implements Transformer {
                   });
                 } catch (error) {
                   console.error("Error processing line:", line, error);
-                  // If parsing fails, pass through the original line
                   controller.enqueue(encoder.encode(line + "\n"));
                 }
+                if (isStreamEnded) break;
               }
+              if (isStreamEnded) break;
             }
           } catch (error) {
             console.error("Stream error:", error);

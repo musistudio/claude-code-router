@@ -21,7 +21,7 @@
 ## ✨ 功能
 
 -   **模型路由**: 根据您的需求将请求路由到不同的模型（例如，后台任务、思考、长上下文）。
--   **多提供商支持**: 支持 OpenRouter、DeepSeek、Ollama、Gemini、Volcengine 和 SiliconFlow 等各种模型提供商。
+-   **多提供商支持**: 支持 OpenRouter、DeepSeek、Ollama、Gemini、Volcengine、SiliconFlow 和 Vercel 等各种模型提供商。
 -   **请求/响应转换**: 使用转换器为不同的提供商自定义请求和响应。
 -   **动态模型切换**: 在 Claude Code 中使用 `/model` 命令动态切换模型。
 -   **GitHub Actions 集成**: 在您的 GitHub 工作流程中触发 Claude Code 任务。
@@ -83,6 +83,18 @@ npm install -g @musistudio/claude-code-router
       ],
       "transformer": {
         "use": ["openrouter"]
+      }
+    },
+    {
+      "name": "vercel",
+      "api_base_url": "https://ai-gateway.vercel.sh/v1/chat/completions",
+      "api_key": "vck_xxx",
+      "models": [
+        "anthropic/claude-opus-4.6",
+        "google/gemini-3-pro-preview"
+      ],
+      "transformer": {
+        "use": ["vercel"]
       }
     },
     {
