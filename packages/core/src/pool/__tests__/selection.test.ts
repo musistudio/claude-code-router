@@ -231,8 +231,8 @@ describe('pool/selection', () => {
 
       const candidates = getCandidates(pool)
       expect(candidates).toEqual([
-        { model: 'a', effectiveWeight: 0, isEligible: false },
-        { model: 'b', effectiveWeight: 1, isEligible: true }
+        { model: 'a', defaultWeight: 2, effectiveWeight: 0, isEligible: false, isDisabled: false },
+        { model: 'b', defaultWeight: 1, effectiveWeight: 1, isEligible: true, isDisabled: false }
       ])
     })
 

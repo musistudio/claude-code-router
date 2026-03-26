@@ -100,6 +100,9 @@ export function updateRecovery(
     target.lastRecoveryStartedAt === undefined
   ) {
     target.lastRecoveryStartedAt = now
+    // Give initial recovery weight immediately
+    target.effectiveWeight = Math.min(target.defaultWeight, health.recovery_step)
+    return  // Early return - recovery just started
   }
 
   // If not in recovery, nothing to do

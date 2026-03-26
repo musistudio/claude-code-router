@@ -17,6 +17,15 @@ function makeTarget(): TargetState {
   }
 }
 
+// Helper to create suppressed target
+function makeSuppressedTarget(failures: number = 1): TargetState {
+  const target = makeTarget()
+  target.effectiveWeight = 0
+  target.consecutiveFailures = failures
+  target.suppressedUntil = Date.now() + 60000
+  return target
+}
+
 const defaultHealth = {
   cooldown_ms: 60000,
   recovery_interval_ms: 30000,
@@ -167,6 +176,7 @@ describe('pool/health', () => {
       const now = Date.now()
       target.suppressedUntil = now + 60000
       target.effectiveWeight = 0
+      target.consecutiveFailures = 1
 
       updateRecovery(target, defaultHealth)
 
@@ -175,10 +185,8 @@ describe('pool/health', () => {
     })
 
     it('starts recovery after cooldown', () => {
-      const target = makeTarget()
-      const now = Date.now()
-      target.suppressedUntil = now - 1000  // cooldown expired
-      target.effectiveWeight = 0
+      const target = makeSuppressedTarget()
+      target.suppressedUntil = Date.now() - 1000  // cooldown expired
 
       updateRecovery(target, defaultHealth)
 
@@ -192,6 +200,7 @@ describe('pool/health', () => {
 
       target.suppressedUntil = cooldownEnd
       target.effectiveWeight = 0
+      target.consecutiveFailures = 1
       target.lastRecoveryStartedAt = cooldownEnd
 
       // Simulate 60s of recovery with 30s interval, 1 step
@@ -206,6 +215,7 @@ describe('pool/health', () => {
       target.defaultWeight = 3
       target.suppressedUntil = Date.now() - 1000
       target.effectiveWeight = 0
+      target.consecutiveFailures = 1
       target.lastRecoveryStartedAt = Date.now() - 1000000  // very long ago
 
       updateRecovery(target, defaultHealth)
@@ -234,6 +244,7 @@ describe('pool/health', () => {
 
       target.suppressedUntil = Date.now() - 10000  // ended 10s ago
       target.effectiveWeight = 0
+      target.consecutiveFailures = 1
       target.lastRecoveryStartedAt = Date.now() - 10000
 
       updateRecovery(target, customHealth)

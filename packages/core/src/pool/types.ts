@@ -10,29 +10,42 @@ export const MAX_COOLDOWN_MS = 12 * 60 * 60 * 1000  // 12 hours in milliseconds
 
 /**
  * Represents a single target in a weighted round-robin pool
+ * weight is optional in input, defaults to 1
  */
 export type RouteTarget = {
   model: string
-  weight: number
+  weight?: number
 }
+
+/**
+ * Input format for targets - can be string or object
+ * Strings are converted to { model: string, weight: 1 }
+ */
+export type RouteTargetInput = string | RouteTarget
 
 /**
  * Health configuration for a pool
  * These settings control how targets recover from failures
  */
 export type RouteHealthConfig = {
-  cooldown_ms?: number            // Time to wait before starting recovery (default: 60000)
-  recovery_interval_ms?: number   // Time between recovery steps (default: 30000)
+  cooldown_ms?: number            // Time to wait before starting recovery (default: 120000 = 2min)
+  recovery_interval_ms?: number   // Time between recovery steps (default: 60000 = 1min)
   recovery_step?: number          // Weight increment per recovery step (default: 1)
 }
 
 /**
  * Pool configuration for a route
  * Enables weighted round-robin load balancing with health suppression
+ *
+ * Flexibility:
+ * - strategy: optional, defaults to 'weighted_round_robin'
+ * - targets: can be strings or objects
+ * - weight: optional, defaults to 1
+ * - health: optional, uses defaults
  */
 export type RoutePoolConfig = {
-  strategy: 'weighted_round_robin'
-  targets: RouteTarget[]
+  strategy?: 'weighted_round_robin'
+  targets: RouteTargetInput[]
   health?: RouteHealthConfig
 }
 
@@ -43,13 +56,14 @@ export type RouteValue = string | RoutePoolConfig
 
 /**
  * Type guard to check if a route value is a pool configuration
+ * Strategy is optional - detected by presence of targets array
  */
 export function isPoolConfig(value: any): value is RoutePoolConfig {
   return (
     typeof value === 'object' &&
     value !== null &&
-    value.strategy === 'weighted_round_robin' &&
-    Array.isArray(value.targets)
+    Array.isArray(value.targets) &&
+    (value.strategy === undefined || value.strategy === 'weighted_round_robin')
   )
 }
 

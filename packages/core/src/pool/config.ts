@@ -4,7 +4,8 @@ import {
   RouteHealthConfig,
   PoolState,
   TargetState,
-  isPoolConfig
+  isPoolConfig,
+  RouteTargetInput
 } from './types'
 
 /**
@@ -12,10 +13,15 @@ import {
  * Applied when not specified in the pool configuration
  */
 const DEFAULT_HEALTH_CONFIG: Required<RouteHealthConfig> = {
-  cooldown_ms: 60000,        // 1 minute cooldown
-  recovery_interval_ms: 30000, // 30 seconds between recovery steps
-  recovery_step: 1           // Weight increment per step
+  cooldown_ms: 120000,        // 2 minutes cooldown
+  recovery_interval_ms: 60000, // 1 minute between recovery steps
+  recovery_step: 1             // Weight increment per step
 }
+
+/**
+ * Default weight for targets when not specified
+ */
+const DEFAULT_WEIGHT = 1
 
 /**
  * Validate provider,model string format
@@ -34,15 +40,29 @@ function validateModelString(model: string): void {
 }
 
 /**
+ * Normalize target input to RouteTarget with weight
+ * Converts string to object with default weight
+ */
+function normalizeTarget(target: RouteTargetInput): { model: string; weight: number } {
+  if (typeof target === 'string') {
+    validateModelString(target)
+    return { model: target, weight: DEFAULT_WEIGHT }
+  }
+
+  validateModelString(target.model)
+  return {
+    model: target.model,
+    weight: target.weight ?? DEFAULT_WEIGHT
+  }
+}
+
+/**
  * Validate RoutePoolConfig at startup
  * Throws clear error messages for invalid configurations
  */
 export function validatePoolConfig(pool: RoutePoolConfig): void {
-  // Check strategy
-  if (!pool.strategy) {
-    throw new Error('Pool missing required field: strategy')
-  }
-  if (pool.strategy !== 'weighted_round_robin') {
+  // Strategy is optional, default to weighted_round_robin
+  if (pool.strategy !== undefined && pool.strategy !== 'weighted_round_robin') {
     throw new Error(`Unsupported strategy: ${pool.strategy}`)
   }
 
@@ -54,16 +74,13 @@ export function validatePoolConfig(pool: RoutePoolConfig): void {
     throw new Error('Pool must have at least one target')
   }
 
-  // Validate each target
+  // Validate and normalize each target
   const seen = new Set<string>()
   let hasPositiveWeight = false
 
-  for (const target of pool.targets) {
-    // Check model
-    if (!target.model) {
-      throw new Error('Target missing required field: model')
-    }
-    validateModelString(target.model)
+  for (const targetInput of pool.targets) {
+    // Normalize target (convert string to object if needed)
+    const target = normalizeTarget(targetInput)
 
     // Check weight
     if (typeof target.weight !== 'number' || !Number.isInteger(target.weight)) {
@@ -136,8 +153,11 @@ export function parseRouteValue(
       ...(value.health || {})
     }
 
+    // Normalize targets (convert strings to objects, apply default weights)
+    const normalizedTargets = value.targets.map(t => normalizeTarget(t))
+
     const targets = new Map<string, TargetState>(
-      value.targets.map(t => [
+      normalizedTargets.map(t => [
         t.model,
         {
           model: t.model,
