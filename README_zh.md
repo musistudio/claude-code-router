@@ -29,6 +29,45 @@
 
 ## 🚀 快速入门
 
+### ⚡ 一键安装（推荐）
+
+使用 `install.sh` 脚本可以自动完成所有安装和配置步骤，无需手动操作：
+
+```shell
+# 下载并执行安装脚本
+curl -fsSL https://raw.githubusercontent.com/w13263569508-crypto/claude-code-router/main/install.sh | bash
+```
+
+或者克隆仓库后本地执行：
+
+```shell
+git clone https://github.com/w13263569508-crypto/claude-code-router.git
+cd claude-code-router
+chmod +x install.sh
+./install.sh
+```
+
+安装脚本会自动完成：
+- ✅ 检测运行环境（Node.js / npm）
+- ✅ 安装 Claude Code
+- ✅ 安装 Claude Code Router（CCR）
+- ✅ 交互式配置 Provider、API Key、模型和路由规则
+- ✅ 生成 `~/.claude-code-router/config.json`
+- ✅ 同步默认模型到 `~/.claude/settings.json`
+- ✅ 创建 `/ccr-model` Skill（在 Claude Code 中快速切换模型）
+
+安装完成后按提示执行：
+
+```shell
+ccr restart   # 启动服务
+ccr status    # 确认服务状态
+ccr code      # 开启 Claude Code
+```
+
+---
+
+### 手动安装
+
 ### 1. 安装
 
 首先，请确保您已安装 [Claude Code](https://docs.anthropic.com/en/docs/claude-code/quickstart)：

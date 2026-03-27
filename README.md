@@ -31,6 +31,45 @@
 
 ## 🚀 Getting Started
 
+### ⚡ Quick Install (Recommended)
+
+Use the `install.sh` script to automatically complete all installation and configuration steps:
+
+```shell
+# Download and run the installer
+curl -fsSL https://raw.githubusercontent.com/w13263569508-crypto/claude-code-router/main/install.sh | bash
+```
+
+Or clone the repo and run locally:
+
+```shell
+git clone https://github.com/w13263569508-crypto/claude-code-router.git
+cd claude-code-router
+chmod +x install.sh
+./install.sh
+```
+
+The script will automatically:
+- ✅ Check environment (Node.js / npm)
+- ✅ Install Claude Code
+- ✅ Install Claude Code Router (CCR)
+- ✅ Interactively configure Provider, API Key, models and routing rules
+- ✅ Generate `~/.claude-code-router/config.json`
+- ✅ Sync default model to `~/.claude/settings.json`
+- ✅ Create `/ccr-model` Skill (for quick model switching inside Claude Code)
+
+After installation, follow the prompts:
+
+```shell
+ccr restart   # Start the service
+ccr status    # Check service status
+ccr code      # Launch Claude Code
+```
+
+---
+
+### Manual Installation
+
 ### 1. Installation
 
 First, ensure you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code/quickstart) installed:

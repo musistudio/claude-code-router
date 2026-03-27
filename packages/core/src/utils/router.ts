@@ -132,15 +132,25 @@ const getUseModel = async (
   const Router = projectSpecificRouter || configService.get("Router");
 
   if (req.body.model.includes(",")) {
-    const [provider, model] = req.body.model.split(",");
+    const [provider, modelOrAlias] = req.body.model.split(",");
     const finalProvider = providers.find(
-      (p: any) => p.name.toLowerCase() === provider
+        (p: any) => p.name.toLowerCase() === provider.toLowerCase()
     );
-    const finalModel = finalProvider?.models?.find(
-      (m: any) => m.toLowerCase() === model
-    );
-    if (finalProvider && finalModel) {
-      return { model: `${finalProvider.name},${finalModel}`, scenarioType: 'default' };
+    if (finalProvider) {
+      // Check alias first
+      const aliasEntry = (finalProvider.alias || []).find(
+          (a: any) => a.alias?.toLowerCase() === modelOrAlias.toLowerCase()
+      );
+      if (aliasEntry) {
+        return { model: `${finalProvider.name},${aliasEntry.modelId}`, scenarioType: 'default' };
+      }
+      // Fall back to exact model name match
+      const finalModel = finalProvider.models?.find(
+          (m: any) => m.toLowerCase() === modelOrAlias.toLowerCase()
+      );
+      if (finalModel) {
+        return { model: `${finalProvider.name},${finalModel}`, scenarioType: 'default' };
+      }
     }
     return { model: req.body.model, scenarioType: 'default' };
   }

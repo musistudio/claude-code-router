@@ -17,11 +17,17 @@ interface TransformerConfig {
   [key: string]: any;
 }
 
+interface AliasEntry {
+  modelId: string;
+  alias: string;
+}
+
 interface Provider {
   name: string;
   api_base_url: string;
   api_key: string;
   models: string[];
+  alias?: AliasEntry[];
   transformer?: TransformerConfig;
 }
 
@@ -92,14 +98,30 @@ function saveConfig(config: Config): void {
 function getAllModels(config: Config) {
   const models: any[] = [];
   for (const provider of config.Providers) {
+    // 优先添加别名条目（如果存在）
+    if (provider.alias && Array.isArray(provider.alias)) {
+      for (const aliasEntry of provider.alias) {
+        models.push({
+          name: `${BOLDCYAN}${provider.name}${RESET} → ${CYAN} ${aliasEntry.alias}${RESET}  ${DIM}(${aliasEntry.modelId})${RESET}`,
+          value: `${provider.name},${aliasEntry.alias}`,
+          description: `\n${BOLDCYAN}Provider:${RESET} ${provider.name}\n${DIM}Model ID: ${aliasEntry.modelId}${RESET}`,
+          provider: provider.name,
+          model: aliasEntry.alias
+        });
+      }
+    }
+    // 添加没有别名的原始模型 ID 条目
     for (const model of provider.models) {
-      models.push({
-        name: `${BOLDCYAN}${provider.name}${RESET} → ${CYAN} ${model}`,
-        value: `${provider.name},${model}`,
-        description: `\n${BOLDCYAN}Provider:${RESET} ${provider.name}`,
-        provider: provider.name,
-        model: model
-      });
+      const hasAlias = (provider.alias || []).some((a: AliasEntry) => a.modelId === model);
+      if (!hasAlias) {
+        models.push({
+          name: `${BOLDCYAN}${provider.name}${RESET} → ${CYAN} ${model}`,
+          value: `${provider.name},${model}`,
+          description: `\n${BOLDCYAN}Provider:${RESET} ${provider.name}`,
+          provider: provider.name,
+          model: model
+        });
+      }
     }
   }
   return models;
@@ -114,8 +136,15 @@ function displayCurrentConfig(config: Config): void {
     if (!routerValue || typeof routerValue === 'number') {
       return `${DIM}Not configured${RESET}`;
     }
-    const [provider, model] = routerValue.split(',');
-    return `${YELLOW}${provider}${RESET} | ${model}\n  ${DIM}- ${routerValue}${RESET}`;
+    const [provider, modelOrAlias] = routerValue.split(',');
+    const providerConfig = config.Providers.find(p => p.name === provider);
+    const aliasEntry = providerConfig?.alias?.find(
+      (a: AliasEntry) => a.alias?.toLowerCase() === modelOrAlias?.toLowerCase()
+    );
+    if (aliasEntry) {
+      return `${YELLOW}${provider}${RESET} | ${modelOrAlias}  ${DIM}(${aliasEntry.modelId})${RESET}\n  ${DIM}- ${routerValue}${RESET}`;
+    }
+    return `${YELLOW}${provider}${RESET} | ${modelOrAlias}\n  ${DIM}- ${routerValue}${RESET}`;
   };
   
   console.log(`${BOLDCYAN}Default Model:${RESET}`);
