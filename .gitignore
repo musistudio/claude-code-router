@@ -7,6 +7,8 @@ dist
 .vscode
 tsconfig.tsbuildinfo
 claude
+.claude
+CLAUDE.md
 
 # Documentation build output
 docs/build
