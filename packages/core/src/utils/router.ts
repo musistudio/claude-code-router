@@ -144,7 +144,7 @@ const getUseModel = async (
   lastUsage?: Usage | undefined
 ): Promise<{ model: string; scenarioType: RouterScenarioType }> => {
   const projectSpecificRouter = await getProjectSpecificRouter(req, configService);
-  const providers = configService.get<any[]>("providers") || [];
+  const providers = configService.get<any[]>("Providers") || [];
   const Router = projectSpecificRouter || configService.get("Router");
 
   if (req.body.model.includes(",")) {
