@@ -439,15 +439,93 @@ You can also create your own transformers and load them via the `transformers` f
 
 #### Router
 
-The `Router` object defines which model to use for different scenarios:
+The `Router` object defines which model to use for different scenarios. It supports both simple string routing and advanced pool-based load balancing:
 
+**Routing Scenarios:**
 - `default`: The default model for general tasks.
 - `background`: A model for background tasks. This can be a smaller, local model to save costs.
 - `think`: A model for reasoning-heavy tasks, like Plan Mode.
 - `longContext`: A model for handling long contexts (e.g., > 60K tokens).
 - `longContextThreshold` (optional): The token count threshold for triggering the long context model. Defaults to 60000 if not specified.
-- `webSearch`: Used for handling web search tasks and this requires the model itself to support the feature. If you're using openrouter, you need to add the `:online` suffix after the model name.
+- `webSearch`: Used for handling web search tasks and this requires the model itself to support the feature. If you’re using openrouter, you need to add the `:online` suffix after the model name.
 - `image` (beta): Used for handling image-related tasks (supported by CCR’s built-in agent). If the model does not support tool calling, you need to set the `config.forceUseImageAgent` property to `true`.
+
+**Simple Routing (Legacy):**
+```json
+{
+  "Router": {
+    "default": "deepseek,deepseek-chat",
+    "background": "ollama,qwen2.5-coder:latest",
+    "think": "deepseek,deepseek-reasoner"
+  }
+}
+```
+
+**Pool-Based Load Balancing (Recommended):**
+
+Configure multiple targets with weighted round-robin selection and automatic health recovery:
+
+```json
+{
+  "Router": {
+    "default": {
+      "strategy": "weighted_round_robin",
+      "targets": [
+        { "model": "openrouter,anthropic/claude-sonnet-4", "weight": 5 },
+        { "model": "openrouter,google/gemini-2.5-pro-preview", "weight": 3 },
+        { "model": "openrouter,anthropic/claude-3.5-sonnet", "weight": 2 }
+      ],
+      "health": {
+        "cooldown_ms": 120000,
+        "recovery_interval_ms": 60000,
+        "recovery_step": 1
+      }
+    }
+  }
+}
+```
+
+**Flexible Configuration Options:**
+
+- **`strategy`** (optional): Defaults to `"weighted_round_robin"`. Only supports weighted round-robin currently.
+- **`targets`** (required): Array of target configurations. Each target can be:
+  - A string: `"provider,model"` (defaults to weight 1)
+  - An object: `{ "model": "provider,model", "weight": 5 }`
+- **`weight`** (optional): Relative weight for target selection. Defaults to 1.
+  - `weight: 0` means permanently disabled (excluded from routing)
+- **`health`** (optional): Health recovery configuration
+  - `cooldown_ms`: Time before recovery starts after failure (default: 120000 = 2 minutes)
+  - `recovery_interval_ms`: Time between recovery steps (default: 60000 = 1 minute)
+  - `recovery_step`: Weight increment per recovery step (default: 1)
+
+**Concise Configuration Examples:**
+
+```json
+{
+  "Router": {
+    "default": {
+      "targets": ["openrouter,model1", "openrouter,model2"]
+    },
+    "think": {
+      "targets": [
+        { "model": "openrouter,claude-opus-4", "weight": 5 },
+        { "model": "deepseek,deepseek-reasoner", "weight": 3 }
+      ],
+      "health": {
+        "cooldown_ms": 30000,
+        "recovery_interval_ms": 10000
+      }
+    }
+  }
+}
+```
+
+**How It Works:**
+
+1. **Weighted Selection**: Targets are selected based on their weight relative to others. Higher weight = selected more frequently.
+2. **Health Suppression**: When a target fails (rate limit, 5xx error, network issue), it’s temporarily suppressed with exponential backoff.
+3. **Automatic Recovery**: After the cooldown period, targets gradually regain weight through recovery steps until fully restored.
+4. **Fail-Open**: If all targets are suppressed, the system falls back to selecting the least-recently-failed target.
 
 - You can also switch models dynamically in Claude Code with the `/model` command:
 `/model provider_name,model_name`
