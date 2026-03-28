@@ -137,6 +137,22 @@ export const initializePools = (Router: any): void => {
   }
 };
 
+// Helper to resolve pool or direct model route
+// Supports: string, pool object { targets: [...] }, or array shorthand [...]
+const resolveRoute = (route: any, scenario: string): string => {
+  // Handle pool configs (object with targets or direct array)
+  if (isPoolConfig(route)) {
+    // Initialize pool if not already done (for array shorthand)
+    if (!pool.getPoolState(scenario)) {
+      pool.initializePools({ [scenario]: route });
+    }
+    const { target } = pool.selectTargetFromPool(scenario);
+    pool.updateTargetRecovery(scenario, target.model);
+    return target.model;
+  }
+  return route;
+};
+
 const getUseModel = async (
   req: any,
   tokenCount: number,
@@ -144,7 +160,7 @@ const getUseModel = async (
   lastUsage?: Usage | undefined
 ): Promise<{ model: string; scenarioType: RouterScenarioType }> => {
   const projectSpecificRouter = await getProjectSpecificRouter(req, configService);
-  const providers = configService.get<any[]>("Providers") || [];
+  const providers = configService.get<any[]>("providers") || [];
   const Router = projectSpecificRouter || configService.get("Router");
 
   if (req.body.model.includes(",")) {
@@ -196,28 +212,7 @@ const getUseModel = async (
     req.body.model?.includes("haiku") &&
     globalRouter?.background
   ) {
-    req.log.info(`Using background model for ${req.body.model}`);
-    const backgroundRoute = globalRouter.background;
-
-    // Check if background route is a pool
-    if (typeof backgroundRoute === 'object' && isPoolConfig(backgroundRoute)) {
-      try {
-        const { target } = pool.selectTargetFromPool('background');
-        req.log.info({
-          event: 'pool_target_selected',
-          scenario: 'background',
-          model: target.model,
-          effectiveWeight: target.effectiveWeight,
-          selectedFrom: 'healthy'
-        });
-        pool.updateTargetRecovery('background', target.model);
-        return { model: target.model, scenarioType: 'background' };
-      } catch (err: any) {
-        req.log.error(`Pool selection failed for background: ${err.message}`);
-        // Fallback to default behavior
-      }
-    }
-    return { model: backgroundRoute, scenarioType: 'background' };
+    return { model: resolveRoute(globalRouter.background, 'background'), scenarioType: 'background' };
   }
   // The priority of websearch must be higher than thinking.
   if (
@@ -225,77 +220,15 @@ const getUseModel = async (
     req.body.tools.some((tool: any) => tool.type?.startsWith("web_search")) &&
     Router?.webSearch
   ) {
-    const webSearchRoute = Router.webSearch;
-
-    // Check if webSearch route is a pool
-    if (typeof webSearchRoute === 'object' && isPoolConfig(webSearchRoute)) {
-      try {
-        const { target } = pool.selectTargetFromPool('webSearch');
-        req.log.info({
-          event: 'pool_target_selected',
-          scenario: 'webSearch',
-          model: target.model,
-          effectiveWeight: target.effectiveWeight,
-          selectedFrom: 'healthy'
-        });
-        pool.updateTargetRecovery('webSearch', target.model);
-        return { model: target.model, scenarioType: 'webSearch' };
-      } catch (err: any) {
-        req.log.error(`Pool selection failed for webSearch: ${err.message}`);
-        // Fallback to default behavior
-      }
-    }
-    return { model: webSearchRoute, scenarioType: 'webSearch' };
+    return { model: resolveRoute(Router.webSearch, 'webSearch'), scenarioType: 'webSearch' };
   }
   // if exits thinking, use the think model
   if (req.body.thinking && Router?.think) {
-    req.log.info(`Using think model for ${req.body.thinking}`);
-    const thinkRoute = Router.think;
-
-    // Check if think route is a pool
-    if (typeof thinkRoute === 'object' && isPoolConfig(thinkRoute)) {
-      try {
-        const { target } = pool.selectTargetFromPool('think');
-        req.log.info({
-          event: 'pool_target_selected',
-          scenario: 'think',
-          model: target.model,
-          effectiveWeight: target.effectiveWeight,
-          selectedFrom: 'healthy'
-        });
-        pool.updateTargetRecovery('think', target.model);
-        return { model: target.model, scenarioType: 'think' };
-      } catch (err: any) {
-        req.log.error(`Pool selection failed for think: ${err.message}`);
-        // Fallback to default behavior
-      }
-    }
-    return { model: thinkRoute, scenarioType: 'think' };
+    return { model: resolveRoute(Router.think, 'think'), scenarioType: 'think' };
   }
 
   // Handle default route (most common case)
-  const defaultRoute = Router?.default;
-
-  // Check if default route is a pool
-  if (typeof defaultRoute === 'object' && isPoolConfig(defaultRoute)) {
-    try {
-      const { target } = pool.selectTargetFromPool('default');
-      req.log.info({
-        event: 'pool_target_selected',
-        scenario: 'default',
-        model: target.model,
-        effectiveWeight: target.effectiveWeight,
-        selectedFrom: 'healthy'
-      });
-      pool.updateTargetRecovery('default', target.model);
-      return { model: target.model, scenarioType: 'default' };
-    } catch (err: any) {
-      req.log.error(`Pool selection failed for default: ${err.message}`);
-      // Fallback to default behavior
-    }
-  }
-
-  return { model: defaultRoute, scenarioType: 'default' };
+  return { model: resolveRoute(Router?.default, 'default'), scenarioType: 'default' };
 };
 
 export interface RouterContext {
@@ -341,9 +274,6 @@ export const router = async (req: any, _res: any, context: RouterContext) => {
     if (!poolsInitialized && Router) {
       initializePools(Router);
       poolsInitialized = true;
-      req.log.info('Pool load balancing initialized', {
-        poolScenarios: pool.getPoolScenarios()
-      });
     }
 
     // Try to get tokenizer config for the current model

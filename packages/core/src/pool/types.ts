@@ -42,10 +42,12 @@ export type RouteHealthConfig = {
  * - targets: can be strings or objects
  * - weight: optional, defaults to 1
  * - health: optional, uses defaults
+ *
+ * Shorthand: ["provider,model1", "provider,model2"] is also valid (weight=1)
  */
 export type RoutePoolConfig = {
   strategy?: 'weighted_round_robin'
-  targets: RouteTargetInput[]
+  targets?: RouteTargetInput[]
   health?: RouteHealthConfig
 }
 
@@ -56,15 +58,24 @@ export type RouteValue = string | RoutePoolConfig
 
 /**
  * Type guard to check if a route value is a pool configuration
- * Strategy is optional - detected by presence of targets array
+ * Accepts: { targets: [...] } or directly [...] (array of targets)
  */
 export function isPoolConfig(value: any): value is RoutePoolConfig {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    Array.isArray(value.targets) &&
-    (value.strategy === undefined || value.strategy === 'weighted_round_robin')
-  )
+  if (typeof value !== 'object' || value === null) return false
+
+  // Direct array: ["provider,model", { model: "p,m", weight: 2 }]
+  if (Array.isArray(value)) {
+    return value.length > 0 && value.every(
+      v => typeof v === 'string' || (typeof v === 'object' && v.model)
+    )
+  }
+
+  // Object with targets: { targets: [...], strategy?: "..." }
+  if (Array.isArray(value.targets) && value.targets.length > 0) {
+    return value.strategy === undefined || value.strategy === 'weighted_round_robin'
+  }
+
+  return false
 }
 
 /**
