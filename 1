@@ -1,0 +1,120 @@
+
+> @zupermann/claude-code-router@2.1.3 release /home/george/dev/contributing/claude-code-router
+> pnpm build && bash scripts/release.sh all 2
+
+
+> @zupermann/claude-code-router@2.1.3 build /home/george/dev/contributing/claude-code-router
+> pnpm build:shared && pnpm build:core && pnpm build:server && pnpm build:cli && pnpm build:ui
+
+
+> @zupermann/claude-code-router@2.1.3 build:shared /home/george/dev/contributing/claude-code-router
+> pnpm --filter @CCR/shared build
+
+
+> @CCR/shared@2.0.0 build /home/george/dev/contributing/claude-code-router/packages/shared
+> node ../../scripts/build-shared.js
+
+Building Shared package...
+Generating type declaration files...
+Building shared package...
+Shared package build completed successfully!
+
+> @zupermann/claude-code-router@2.1.3 build:core /home/george/dev/contributing/claude-code-router
+> pnpm --filter @musistudio/llms build
+
+
+> @musistudio/llms@1.0.51 build /home/george/dev/contributing/claude-code-router/packages/core
+> tsx scripts/build.ts
+
+Building CJS and ESM versions...
+Skipping type declaration generation (using manual plugins.d.ts)...
+✅ Build completed successfully!
+  - CJS: dist/cjs/server.cjs
+  - ESM: dist/esm/server.mjs
+  - Types: dist/*.d.ts
+
+> @zupermann/claude-code-router@2.1.3 build:server /home/george/dev/contributing/claude-code-router
+> pnpm --filter @CCR/server build
+
+
+> @CCR/server@2.0.0 build /home/george/dev/contributing/claude-code-router/packages/server
+> node ../../scripts/build-server.js
+
+Building Server package...
+Generating type declaration files...
+Building server application...
+Copying tiktoken WASM file...
+Tiktoken WASM file copied successfully!
+Server build completed successfully!
+
+> @zupermann/claude-code-router@2.1.3 build:cli /home/george/dev/contributing/claude-code-router
+> pnpm --filter @CCR/cli build
+
+
+> @CCR/cli@2.0.0 build /home/george/dev/contributing/claude-code-router/packages/cli
+> node ../../scripts/build-cli.js
+
+Building CLI package...
+Ensuring shared package is built...
+Building Server package...
+Building Server package...
+Generating type declaration files...
+Building server application...
+Copying tiktoken WASM file...
+Tiktoken WASM file copied successfully!
+Server build completed successfully!
+Building UI package...
+
+> @CCR/ui@2.0.0 build /home/george/dev/contributing/claude-code-router/packages/ui
+> tsc -b && vite build
+
+vite v7.3.0 building client environment for production...
+transforming...
+✓ 1818 modules transformed.
+rendering chunks...
+[plugin vite:singlefile] 
+
+[plugin vite:singlefile] Inlining: index-3H_XU0MB.js
+[plugin vite:singlefile] Inlining: style-Df-nMpco.css
+[plugin vite:singlefile] NOTE: asset not inlined: remixicon-DS68KM4N.svg
+computing gzip size...
+dist/remixicon-DS68KM4N.svg  2,892.52 kB │ gzip:   614.89 kB
+dist/index.html              3,785.50 kB │ gzip: 1,697.74 kB
+✓ built in 1.89s
+Building CLI application...
+Copying tiktoken_bg.wasm from server to CLI dist...
+✓ tiktoken_bg.wasm copied successfully!
+Copying index.html from UI to CLI dist...
+✓ index.html copied successfully!
+
+Copying CLI dist to project root...
+✓ CLI dist copied to project root successfully!
+
+CLI build completed successfully!
+
+CLI dist contents:
+  - cli.js (2.58 MB)
+  - index.html (3.61 MB)
+  - tiktoken_bg.wasm (5.33 MB)
+
+> @zupermann/claude-code-router@2.1.3 build:ui /home/george/dev/contributing/claude-code-router
+> pnpm --filter @CCR/ui build
+
+
+> @CCR/ui@2.0.0 build /home/george/dev/contributing/claude-code-router/packages/ui
+> tsc -b && vite build
+
+vite v7.3.0 building client environment for production...
+transforming...
+✓ 1818 modules transformed.
+rendering chunks...
+[plugin vite:singlefile] 
+
+[plugin vite:singlefile] Inlining: index-3H_XU0MB.js
+[plugin vite:singlefile] Inlining: style-Df-nMpco.css
+[plugin vite:singlefile] NOTE: asset not inlined: remixicon-DS68KM4N.svg
+computing gzip size...
+dist/remixicon-DS68KM4N.svg  2,892.52 kB │ gzip:   614.89 kB
+dist/index.html              3,785.50 kB │ gzip: 1,697.74 kB
+✓ built in 1.88s
+ ELIFECYCLE  Command failed with exit code 1.

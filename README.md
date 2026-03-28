@@ -463,7 +463,24 @@ The `Router` object defines which model to use for different scenarios. It suppo
 
 **Pool-Based Load Balancing (Recommended):**
 
-Configure multiple targets with weighted round-robin selection and automatic health recovery:
+Configure multiple targets with weighted round-robin selection and automatic health recovery.
+
+**Simple Array Format (New - Recommended):**
+
+The simplest way to configure a pool - just provide an array of models. Each model gets equal weight (1) by default:
+
+```json
+{
+  "Router": {
+    "default": ["openrouter,model1", "openrouter,model2", "ollama,local-model"],
+    "think": ["deepseek,deepseek-reasoner", "openrouter,claude-opus-4"]
+  }
+}
+```
+
+**Advanced Format with Weights and Health Config:**
+
+For more control, use the object format with explicit weights and health recovery settings:
 
 ```json
 {
@@ -488,7 +505,7 @@ Configure multiple targets with weighted round-robin selection and automatic hea
 **Flexible Configuration Options:**
 
 - **`strategy`** (optional): Defaults to `"weighted_round_robin"`. Only supports weighted round-robin currently.
-- **`targets`** (required): Array of target configurations. Each target can be:
+- **`targets`** (required for object format): Array of target configurations. Each target can be:
   - A string: `"provider,model"` (defaults to weight 1)
   - An object: `{ "model": "provider,model", "weight": 5 }`
 - **`weight`** (optional): Relative weight for target selection. Defaults to 1.
@@ -498,14 +515,15 @@ Configure multiple targets with weighted round-robin selection and automatic hea
   - `recovery_interval_ms`: Time between recovery steps (default: 60000 = 1 minute)
   - `recovery_step`: Weight increment per recovery step (default: 1)
 
-**Concise Configuration Examples:**
+**Mixed Configuration Examples:**
+
+You can mix simple strings, arrays, and advanced objects in the same Router config:
 
 ```json
 {
   "Router": {
-    "default": {
-      "targets": ["openrouter,model1", "openrouter,model2"]
-    },
+    "default": ["openrouter,model1", "openrouter,model2"],
+    "background": "ollama,qwen2.5-coder:latest",
     "think": {
       "targets": [
         { "model": "openrouter,claude-opus-4", "weight": 5 },
@@ -515,6 +533,9 @@ Configure multiple targets with weighted round-robin selection and automatic hea
         "cooldown_ms": 30000,
         "recovery_interval_ms": 10000
       }
+    },
+    "longContext": {
+      "targets": ["gemini,gemini-2.5-pro", { "model": "openrouter,gemini-2.5-pro", "weight": 2 }]
     }
   }
 }

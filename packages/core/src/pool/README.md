@@ -12,7 +12,22 @@ This module provides **weighted round-robin load balancing** with **health-based
 
 ## Configuration
 
-### Minimal Configuration
+### Array Shorthand Format (New - Recommended)
+
+The simplest way to configure a pool - just provide an array of models. Each model gets equal weight (1) by default:
+
+```json
+{
+  "Router": {
+    "default": ["openrouter,model1", "openrouter,model2", "ollama,local-model"],
+    "think": ["deepseek,deepseek-reasoner", "openrouter,claude-opus-4"]
+  }
+}
+```
+
+This is equivalent to the full object format with all targets having `weight: 1`.
+
+### Minimal Object Configuration
 
 ```json
 {

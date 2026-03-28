@@ -66,7 +66,7 @@ export function validatePoolConfig(pool: RoutePoolConfig): void {
     throw new Error(`Unsupported strategy: ${pool.strategy}`)
   }
 
-  // Check targets
+  // Check targets (required for object form)
   if (!Array.isArray(pool.targets)) {
     throw new Error('Pool targets must be an array')
   }
@@ -133,6 +133,11 @@ export function validatePoolConfig(pool: RoutePoolConfig): void {
 /**
  * Parse RouteValue into PoolState or legacy string
  * Returns PoolState if pool config, string if legacy format
+ *
+ * Supports:
+ * - Legacy: "provider,model"
+ * - Pool object: { targets: [...], health?: {...} }
+ * - Array shorthand: ["provider,model1", "provider,model2"]
  */
 export function parseRouteValue(
   scenario: string,
@@ -144,17 +149,22 @@ export function parseRouteValue(
     return value
   }
 
-  // New: pool config
+  // New: pool config (object or array)
   if (isPoolConfig(value)) {
-    validatePoolConfig(value)
+    // Convert array shorthand to object format
+    const config: RoutePoolConfig = Array.isArray(value)
+      ? { targets: value }
+      : value
+
+    validatePoolConfig(config)
 
     const health = {
       ...DEFAULT_HEALTH_CONFIG,
-      ...(value.health || {})
+      ...(config.health || {})
     }
 
     // Normalize targets (convert strings to objects, apply default weights)
-    const normalizedTargets = value.targets.map(t => normalizeTarget(t))
+    const normalizedTargets = config.targets!.map(t => normalizeTarget(t))
 
     const targets = new Map<string, TargetState>(
       normalizedTargets.map(t => [
@@ -163,12 +173,12 @@ export function parseRouteValue(
           model: t.model,
           defaultWeight: t.weight,
           effectiveWeight: t.weight,
-          baseCooldown: health.cooldown_ms,  // Store original cooldown for backoff
+          baseCooldown: health.cooldown_ms,
           suppressedUntil: undefined,
           lastFailureAt: undefined,
           lastRecoveryStartedAt: undefined,
           consecutiveFailures: 0,
-          currentWeight: 0  // WRR accumulator starts at 0
+          currentWeight: 0
         }
       ])
     )
@@ -183,7 +193,7 @@ export function parseRouteValue(
 
   throw new Error(
     `Invalid route value for ${scenario}: ` +
-    `expected string or pool object, got ${typeof value}`
+    `expected string or pool config, got ${typeof value}`
   )
 }
 
