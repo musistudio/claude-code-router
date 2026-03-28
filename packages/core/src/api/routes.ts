@@ -284,12 +284,14 @@ function shouldBypassTransformers(
   transformer: any,
   body: any
 ): boolean {
+  const nameEq = (a?: string, b?: string) =>
+    a?.toLowerCase() === b?.toLowerCase();
   return (
     provider.transformer?.use?.length === 1 &&
-    provider.transformer.use[0].name === transformer.name &&
+    nameEq(provider.transformer.use[0].name, transformer.name) &&
     (!provider.transformer?.[body.model]?.use.length ||
       (provider.transformer?.[body.model]?.use.length === 1 &&
-        provider.transformer?.[body.model]?.use[0].name === transformer.name))
+        nameEq(provider.transformer?.[body.model]?.use[0].name, transformer.name)))
   );
 }
 

@@ -22,7 +22,7 @@ export class TransformerService {
   ) {}
 
   registerTransformer(name: string, transformer: Transformer): void {
-    this.transformers.set(name, transformer);
+    this.transformers.set(name.toLowerCase(), transformer);
     this.logger.info(
       `register transformer: ${name}${
         transformer.endPoint
@@ -35,7 +35,7 @@ export class TransformerService {
   getTransformer(
     name: string
   ): Transformer | TransformerConstructor | undefined {
-    return this.transformers.get(name);
+    return this.transformers.get(name.toLowerCase());
   }
 
   getAllTransformers(): Map<string, Transformer | TransformerConstructor> {
@@ -72,11 +72,11 @@ export class TransformerService {
   }
 
   removeTransformer(name: string): boolean {
-    return this.transformers.delete(name);
+    return this.transformers.delete(name.toLowerCase());
   }
 
   hasTransformer(name: string): boolean {
-    return this.transformers.has(name);
+    return this.transformers.has(name.toLowerCase());
   }
 
   async registerTransformerFromConfig(config: {
