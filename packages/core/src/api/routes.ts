@@ -309,8 +309,13 @@ async function sendRequestToProvider(
   const url = config.url || new URL(provider.baseUrl);
 
   // Handle authentication in passthrough mode
-  if (bypass && typeof transformer.auth === "function") {
-    const auth = await transformer.auth(requestBody, provider);
+  // Prefer provider's own transformer instance (may have options like OAuth:true) over the global one
+  const authTransformer =
+    bypass && provider.transformer?.use?.length === 1
+      ? provider.transformer.use[0]
+      : transformer;
+  if (bypass && typeof authTransformer.auth === "function") {
+    const auth = await authTransformer.auth(requestBody, provider, { headers: config.headers });
     if (auth.body) {
       requestBody = auth.body;
       let headers = config.headers || {};
