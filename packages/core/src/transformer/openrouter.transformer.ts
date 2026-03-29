@@ -44,13 +44,15 @@ export class OpenrouterTransformer implements Transformer {
     }
     Object.assign(request, this.options || {});
 
-    // MiniMax M2.x models require reasoning to be enabled
+    // Models that require reasoning to be enabled
     // https://openrouter.ai/docs/use-cases/reasoning-tokens
-    if (
+    const requiresReasoning =
       request.model.includes("minimax") ||
       request.model.includes("m2.") ||
-      request.model.includes("m2-")
-    ) {
+      request.model.includes("m2-") ||
+      request.model.includes("gpt-oss");
+
+    if (requiresReasoning) {
       request.reasoning = {
         ...(request.reasoning || {}),
         enabled: true,
