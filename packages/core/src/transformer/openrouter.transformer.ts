@@ -43,6 +43,20 @@ export class OpenrouterTransformer implements Transformer {
       });
     }
     Object.assign(request, this.options || {});
+
+    // MiniMax M2.x models require reasoning to be enabled
+    // https://openrouter.ai/docs/use-cases/reasoning-tokens
+    if (
+      request.model.includes("minimax") ||
+      request.model.includes("m2.") ||
+      request.model.includes("m2-")
+    ) {
+      request.reasoning = {
+        ...(request.reasoning || {}),
+        enabled: true,
+      };
+    }
+
     return request;
   }
 
