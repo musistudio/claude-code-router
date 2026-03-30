@@ -12,7 +12,7 @@ import {
 } from "@/types/transformer";
 import { v4 as uuidv4 } from "uuid";
 import { getThinkLevel } from "@/utils/thinking";
-import { createApiError } from "@/api/middleware";
+import { createApiError, ErrorCodes } from "@/api/middleware";
 import { formatBase64 } from "@/utils/image";
 
 export class AnthropicTransformer implements Transformer {
@@ -219,9 +219,11 @@ export class AnthropicTransformer implements Transformer {
       if (!response.body) {
         throw new Error("Stream response body is null");
       }
+      const onEmptyStream = context?.onEmptyStream as (() => void) | undefined;
       const convertedStream = await this.convertOpenAIStreamToAnthropic(
         response.body,
-        context!
+        context!,
+        onEmptyStream
       );
       return new Response(convertedStream, {
         headers: {
@@ -255,7 +257,8 @@ export class AnthropicTransformer implements Transformer {
 
   private async convertOpenAIStreamToAnthropic(
     openaiStream: ReadableStream,
-    context: TransformerContext
+    context: TransformerContext,
+    onEmptyStream?: () => void
   ): Promise<ReadableStream> {
     const readable = new ReadableStream({
       start: async (controller) => {
@@ -275,6 +278,119 @@ export class AnthropicTransformer implements Transformer {
         let isThinkingStarted = false;
         let contentIndex = 0;
         let currentContentBlockIndex = -1; // Track the current content block index
+
+        // Stream timeout tracking
+        const STREAM_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes max for entire stream
+        const STALL_TIMEOUT_MS = 30 * 1000; // 30 seconds of no data = stalled
+        let streamStartTime = Date.now();
+        let lastDataTime = Date.now();
+        let stallTimeoutId: ReturnType<typeof setTimeout> | null = null;
+        let streamTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+        const logStreamEvent = (event: string, data?: any) => {
+          this.logger?.debug({
+            reqId: context.req.id,
+            event,
+            elapsed: Date.now() - streamStartTime,
+            totalChunks,
+            contentChunks,
+            toolCallChunks,
+            ...(data ? data : {})
+          });
+        };
+
+        const clearStreamTimeouts = () => {
+          if (stallTimeoutId) {
+            clearTimeout(stallTimeoutId);
+            stallTimeoutId = null;
+          }
+          if (streamTimeoutId) {
+            clearTimeout(streamTimeoutId);
+            streamTimeoutId = null;
+          }
+        };
+
+        const handleStreamTimeout = () => {
+          // Log at INFO level for production visibility
+          this.logger?.info({
+            reqId: context.req.id,
+            event: 'stream_timeout',
+            model,
+            totalChunks,
+            contentChunks,
+            toolCallChunks,
+            elapsed: Date.now() - streamStartTime,
+            reason: 'max_duration_exceeded',
+          }, `Stream timeout after ${STREAM_TIMEOUT_MS}ms`);
+          clearStreamTimeouts();
+          if (!isClosed) {
+            isClosed = true;
+            try {
+              controller.error(new Error(`Stream timeout after ${STREAM_TIMEOUT_MS}ms`));
+            } catch (e) {
+              // Controller might already be closed
+            }
+          }
+        };
+
+        const handleStallTimeout = () => {
+          const stallDuration = Date.now() - lastDataTime;
+          // Log at INFO level for production visibility
+          this.logger?.info({
+            reqId: context.req.id,
+            event: 'stream_stalled',
+            model,
+            stallDuration,
+            totalChunks,
+            contentChunks,
+            toolCallChunks,
+            elapsed: Date.now() - streamStartTime,
+          }, `Stream stalled: no data for ${Math.round(stallDuration / 1000)}s`);
+          clearStreamTimeouts();
+          clearStreamTimeouts();
+          if (!isClosed) {
+            isClosed = true;
+            try {
+              const errorMsg = `Stream stalled: no data received for ${Math.round(stallDuration / 1000)}s`;
+              const errorMessage = {
+                type: "error",
+                error: {
+                  type: "api_error",
+                  message: errorMsg
+                }
+              };
+              controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify(errorMessage)}\n\n`));
+              if (onEmptyStream && totalChunks === 0) {
+                onEmptyStream();
+              }
+              controller.close();
+            } catch (e) {
+              // Controller might already be closed
+            }
+          }
+        };
+
+        // Set overall stream timeout
+        streamTimeoutId = setTimeout(handleStreamTimeout, STREAM_TIMEOUT_MS);
+
+        // Set stall timeout (reset on each data received)
+        const resetStallTimeout = () => {
+          if (stallTimeoutId) {
+            clearTimeout(stallTimeoutId);
+          }
+          stallTimeoutId = setTimeout(handleStallTimeout, STALL_TIMEOUT_MS);
+        };
+
+        // Log stream start at INFO level for visibility
+        this.logger?.info({
+          reqId: context.req.id,
+          event: 'stream_start',
+          timeout: STREAM_TIMEOUT_MS,
+          stallTimeout: STALL_TIMEOUT_MS,
+        }, 'Stream started');
+
+        // Start stall timeout tracking
+        resetStallTimeout();
 
         // 原子性的content block index分配函数
         const assignContentBlockIndex = (): number => {
@@ -396,6 +512,10 @@ export class AnthropicTransformer implements Transformer {
 
             const { done, value } = await reader.read();
             if (done) break;
+
+            // Reset stall timeout - we received data
+            lastDataTime = Date.now();
+            resetStallTimeout();
 
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split("\n");
@@ -860,6 +980,23 @@ export class AnthropicTransformer implements Transformer {
                     console.error(
                       "Warning: No content in the stream response!"
                     );
+                    // Record failure for pool health tracking
+                    if (onEmptyStream) {
+                      onEmptyStream();
+                    }
+                    // Emit error event to client
+                    const errorEvent = {
+                      type: "error",
+                      error: {
+                        type: "api_error",
+                        message: "Model returned empty response - no content or tool calls",
+                      },
+                    };
+                    safeEnqueue(
+                      encoder.encode(
+                        `event: error\ndata: ${JSON.stringify(errorEvent)}\n\n`
+                      )
+                    );
                   }
 
                   // Close any remaining open content block
@@ -927,6 +1064,20 @@ export class AnthropicTransformer implements Transformer {
             }
           }
         } finally {
+          // Clear all timeouts
+          clearStreamTimeouts();
+
+          // Log stream completion at INFO level
+          this.logger?.info({
+            reqId: context.req.id,
+            event: 'stream_end',
+            model,
+            totalChunks,
+            contentChunks,
+            toolCallChunks,
+            duration: Date.now() - streamStartTime,
+          });
+
           if (reader) {
             try {
               reader.releaseLock();
@@ -1024,6 +1175,17 @@ export class AnthropicTransformer implements Transformer {
           signature: (choice.message as any).thinking.signature,
         });
       }
+
+      // Check for empty response - no content, no tool calls, no thinking
+      if (content.length === 0) {
+        console.error("Warning: Empty response from model - no content, tool calls, or thinking");
+        throw createApiError(
+          "Empty response from model - no content, tool calls, or thinking received",
+          500,
+          ErrorCodes.EMPTY_STREAM_ERROR
+        );
+      }
+
       const result = {
         id: openaiResponse.id,
         type: "message",

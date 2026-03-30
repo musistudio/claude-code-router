@@ -7,6 +7,8 @@ import { CLAUDE_PROJECTS_DIR, HOME_DIR } from "@CCR/shared";
 import { LRUCache } from "lru-cache";
 import { ConfigService } from "../services/config";
 import { TokenizerService } from "../services/tokenizer";
+import * as pool from "../pool";
+import { isPoolConfig } from "../pool";
 
 // Types from @anthropic-ai/sdk
 interface Tool {
@@ -121,6 +123,36 @@ const getProjectSpecificRouter = async (
   return undefined; // Return undefined to use original configuration
 };
 
+/**
+ * Initialize pools from router configuration
+ */
+export const initializePools = (Router: any): void => {
+  if (Router) {
+    try {
+      pool.initializePools(Router);
+    } catch (err: any) {
+      console.error('Failed to initialize pools:', err.message);
+      throw err;
+    }
+  }
+};
+
+// Helper to resolve pool or direct model route
+// Supports: string, pool object { targets: [...] }, or array shorthand [...]
+const resolveRoute = (route: any, scenario: string): string => {
+  // Handle pool configs (object with targets or direct array)
+  if (isPoolConfig(route)) {
+    // Initialize pool if not already done (for array shorthand)
+    if (!pool.getPoolState(scenario)) {
+      pool.initializePools({ [scenario]: route });
+    }
+    const { target } = pool.selectTargetFromPool(scenario);
+    pool.updateTargetRecovery(scenario, target.model);
+    return target.model;
+  }
+  return route;
+};
+
 const getUseModel = async (
   req: any,
   tokenCount: number,
@@ -180,8 +212,7 @@ const getUseModel = async (
     req.body.model?.includes("haiku") &&
     globalRouter?.background
   ) {
-    req.log.info(`Using background model for ${req.body.model}`);
-    return { model: globalRouter.background, scenarioType: 'background' };
+    return { model: resolveRoute(globalRouter.background, 'background'), scenarioType: 'background' };
   }
   // The priority of websearch must be higher than thinking.
   if (
@@ -189,14 +220,15 @@ const getUseModel = async (
     req.body.tools.some((tool: any) => tool.type?.startsWith("web_search")) &&
     Router?.webSearch
   ) {
-    return { model: Router.webSearch, scenarioType: 'webSearch' };
+    return { model: resolveRoute(Router.webSearch, 'webSearch'), scenarioType: 'webSearch' };
   }
   // if exits thinking, use the think model
   if (req.body.thinking && Router?.think) {
-    req.log.info(`Using think model for ${req.body.thinking}`);
-    return { model: Router.think, scenarioType: 'think' };
+    return { model: resolveRoute(Router.think, 'think'), scenarioType: 'think' };
   }
-  return { model: Router?.default, scenarioType: 'default' };
+
+  // Handle default route (most common case)
+  return { model: resolveRoute(Router?.default, 'default'), scenarioType: 'default' };
 };
 
 export interface RouterContext {
@@ -237,6 +269,13 @@ export const router = async (req: any, _res: any, context: RouterContext) => {
   }
 
   try {
+    // Initialize pools on first request (lazy initialization)
+    const Router = configService.get("Router");
+    if (!poolsInitialized && Router) {
+      initializePools(Router);
+      poolsInitialized = true;
+    }
+
     // Try to get tokenizer config for the current model
     const [providerName, modelName] = req.body.model.split(",");
     const tokenizerConfig = context.tokenizerService?.getTokenizerConfigForModel(
@@ -304,6 +343,9 @@ const sessionProjectCache = new LRUCache<string, string>({
   max: 1000,
 });
 
+// Track if pools have been initialized
+let poolsInitialized = false;
+
 export const searchProjectBySession = async (
   sessionId: string
 ): Promise<string | null> => {
@@ -363,4 +405,23 @@ export const searchProjectBySession = async (
     sessionProjectCache.set(sessionId, '');
     return null;
   }
+};
+
+/**
+ * Get pool debug info for observability
+ */
+export const getPoolStatus = () => {
+  return pool.getPoolStatusSummary();
+};
+
+/**
+ * Record a failure for a pool target
+ */
+export const recordPoolFailure = (
+  scenario: string,
+  model: string,
+  httpStatus?: number,
+  errorMessage?: string
+) => {
+  return pool.recordFailure(scenario, model, httpStatus, errorMessage);
 };

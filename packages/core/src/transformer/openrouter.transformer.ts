@@ -43,6 +43,24 @@ export class OpenrouterTransformer implements Transformer {
       });
     }
     Object.assign(request, this.options || {});
+
+    // Models that require reasoning to be enabled
+    // https://openrouter.ai/docs/use-cases/reasoning-tokens
+    const requiresReasoning =
+      request.model.includes("minimax") ||
+      request.model.includes("m2.") ||
+      request.model.includes("m2-") ||
+      request.model.includes("gpt-oss") ||
+      request.model.includes("stepfun") ||
+      request.model.includes("step-");
+
+    if (requiresReasoning) {
+      request.reasoning = {
+        ...(request.reasoning || {}),
+        enabled: true,
+      };
+    }
+
     return request;
   }
 

@@ -97,17 +97,14 @@ async function getServer(options: RunOptions = {}) {
   const providers = config.Providers || config.providers || [];
   const hasProviders = providers && providers.length > 0;
 
-  let HOST = config.HOST || "127.0.0.1";
+  // Use HOST from config, default to 0.0.0.0 for network access
+  // Security note: If exposing to network, ensure APIKEY is set for authentication
+  const HOST = config.HOST || "0.0.0.0";
 
-  if (hasProviders) {
-    HOST = config.HOST;
-    if (!config.APIKEY) {
-      HOST = "127.0.0.1";
-    }
-  } else {
-    // When no providers are configured, listen on 0.0.0.0 without authentication
-    HOST = "0.0.0.0";
-    console.log("ℹ️  No providers configured. Listening on 0.0.0.0 without authentication.");
+  if (!hasProviders) {
+    console.log("ℹ️  No providers configured. Listening on " + HOST + " without authentication.");
+  } else if (!config.APIKEY && HOST !== "127.0.0.1") {
+    console.log("⚠️  WARNING: No APIKEY set. Authentication is disabled. Consider setting APIKEY for security.");
   }
 
   const port = config.PORT || 3456;
