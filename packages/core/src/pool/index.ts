@@ -64,7 +64,8 @@ export function selectTargetFromPool(scenario: string) {
 
 /**
  * Record failure for target
- * Updates health state, logs handled by caller
+ * Updates health state for the model across ALL scenarios (cross-pool aggregation)
+ * Logs handled by caller
  */
 export function recordFailure(
   scenario: string,
@@ -72,30 +73,35 @@ export function recordFailure(
   httpStatus?: number,
   errorMessage?: string
 ): { suppressed: boolean; suppressedUntil?: number } {
-  const pool = poolStore.get(scenario)
-  if (!pool) {
-    return { suppressed: false }
-  }
-
-  const target = pool.targets.get(model)
-  if (!target) {
-    return { suppressed: false }
-  }
-
-  // Classify failure
+  // Classify failure first
   const failureType = classifyFailure(httpStatus, errorMessage)
   if (!failureType) {
     return { suppressed: false }  // not a health failure
   }
 
-  // Apply failure
-  const prevWeight = target.effectiveWeight
-  applyFailure(target, httpStatus, errorMessage, pool.health)
+  // Find all pools that contain this model and apply failure to each
+  // This ensures cooldown is aggregated across all scenarios
+  let result = { suppressed: false, suppressedUntil: undefined as number | undefined }
 
-  return {
-    suppressed: true,
-    suppressedUntil: target.suppressedUntil
+  for (const [poolScenario, pool] of poolStore) {
+    const target = pool.targets.get(model)
+    if (!target) {
+      continue  // model not in this pool
+    }
+
+    // Apply failure to this target
+    applyFailure(target, httpStatus, errorMessage, pool.health)
+
+    // Update result (use the original scenario's result)
+    if (poolScenario === scenario) {
+      result = {
+        suppressed: true,
+        suppressedUntil: target.suppressedUntil
+      }
+    }
   }
+
+  return result
 }
 
 /**

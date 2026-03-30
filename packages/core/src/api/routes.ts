@@ -12,6 +12,7 @@ import { ConfigService } from "@/services/config";
 import { ProviderService } from "@/services/provider";
 import { TransformerService } from "@/services/transformer";
 import { Transformer } from "@/types/transformer";
+import { recordPoolFailure } from "@/utils/router";
 
 // Extend FastifyInstance to include custom services
 declare module "fastify" {
@@ -76,6 +77,15 @@ async function handleTransformerEndpoint(
     );
 
     // Process response transformer chain
+    // Create callback for recording empty stream failures (for streaming responses)
+    const scenarioType = (req as any).scenarioType || 'default';
+    const fullModel = `${req.provider},${body.model}`;
+
+    const onEmptyStream = () => {
+      req.log.warn(`Empty stream detected for ${fullModel}, recording failure`);
+      recordPoolFailure(scenarioType, fullModel, undefined, 'Empty stream response - no content or tool calls');
+    };
+
     const finalResponse = await processResponseTransformers(
       requestBody,
       response,
@@ -84,14 +94,23 @@ async function handleTransformerEndpoint(
       bypass,
       {
         req,
+        onEmptyStream,
       }
     );
 
     // Format and return response
     return formatResponse(finalResponse, reply, body);
   } catch (error: any) {
+    // Record pool failure for health tracking
+    const scenarioType = (req as any).scenarioType || 'default';
+    const modelName = body.model;
+    const providerName = req.provider;
+    const fullModel = `${providerName},${modelName}`;
+
+    recordPoolFailure(scenarioType, fullModel, undefined, error.message);
+
     // Handle fallback if error occurs
-    if (error.code === 'provider_response_error') {
+    if (error.code === 'provider_response_error' || error.code === 'empty_stream_error') {
       const fallbackResult = await handleFallback(req, reply, fastify, transformer, error);
       if (fallbackResult) {
         return fallbackResult;

@@ -12,7 +12,7 @@ import {
 } from "@/types/transformer";
 import { v4 as uuidv4 } from "uuid";
 import { getThinkLevel } from "@/utils/thinking";
-import { createApiError } from "@/api/middleware";
+import { createApiError, ErrorCodes } from "@/api/middleware";
 import { formatBase64 } from "@/utils/image";
 
 export class AnthropicTransformer implements Transformer {
@@ -219,9 +219,11 @@ export class AnthropicTransformer implements Transformer {
       if (!response.body) {
         throw new Error("Stream response body is null");
       }
+      const onEmptyStream = context?.onEmptyStream as (() => void) | undefined;
       const convertedStream = await this.convertOpenAIStreamToAnthropic(
         response.body,
-        context!
+        context!,
+        onEmptyStream
       );
       return new Response(convertedStream, {
         headers: {
@@ -255,7 +257,8 @@ export class AnthropicTransformer implements Transformer {
 
   private async convertOpenAIStreamToAnthropic(
     openaiStream: ReadableStream,
-    context: TransformerContext
+    context: TransformerContext,
+    onEmptyStream?: () => void
   ): Promise<ReadableStream> {
     const readable = new ReadableStream({
       start: async (controller) => {
@@ -860,6 +863,23 @@ export class AnthropicTransformer implements Transformer {
                     console.error(
                       "Warning: No content in the stream response!"
                     );
+                    // Record failure for pool health tracking
+                    if (onEmptyStream) {
+                      onEmptyStream();
+                    }
+                    // Emit error event to client
+                    const errorEvent = {
+                      type: "error",
+                      error: {
+                        type: "api_error",
+                        message: "Model returned empty response - no content or tool calls",
+                      },
+                    };
+                    safeEnqueue(
+                      encoder.encode(
+                        `event: error\ndata: ${JSON.stringify(errorEvent)}\n\n`
+                      )
+                    );
                   }
 
                   // Close any remaining open content block
@@ -1024,6 +1044,17 @@ export class AnthropicTransformer implements Transformer {
           signature: (choice.message as any).thinking.signature,
         });
       }
+
+      // Check for empty response - no content, no tool calls, no thinking
+      if (content.length === 0) {
+        console.error("Warning: Empty response from model - no content, tool calls, or thinking");
+        throw createApiError(
+          "Empty response from model - no content, tool calls, or thinking received",
+          500,
+          ErrorCodes.EMPTY_STREAM_ERROR
+        );
+      }
+
       const result = {
         id: openaiResponse.id,
         type: "message",
