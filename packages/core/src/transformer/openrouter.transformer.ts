@@ -50,7 +50,9 @@ export class OpenrouterTransformer implements Transformer {
       request.model.includes("minimax") ||
       request.model.includes("m2.") ||
       request.model.includes("m2-") ||
-      request.model.includes("gpt-oss");
+      request.model.includes("gpt-oss") ||
+      request.model.includes("stepfun") ||
+      request.model.includes("step-");
 
     if (requiresReasoning) {
       request.reasoning = {
