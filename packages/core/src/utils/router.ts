@@ -219,9 +219,28 @@ export const router = async (req: any, _res: any, context: RouterContext) => {
   const { configService, event } = context;
   // Parse sessionId from metadata.user_id
   if (req.body.metadata?.user_id) {
-    const parts = req.body.metadata.user_id.split("_session_");
-    if (parts.length > 1) {
-      req.sessionId = parts[1];
+    const userId = req.body.metadata.user_id;
+    // New format: JSON string {"device_id":"...","session_id":"..."}
+    // Old format: _session_<uuid>
+    if (userId.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(userId);
+        if (parsed.session_id) {
+          req.sessionId = parsed.session_id;
+        }
+      } catch {
+        // Fallback to old format parsing
+        const parts = userId.split("_session_");
+        if (parts.length > 1) {
+          req.sessionId = parts[1];
+        }
+      }
+    } else {
+      // Old format: _session_<uuid>
+      const parts = userId.split("_session_");
+      if (parts.length > 1) {
+        req.sessionId = parts[1];
+      }
     }
   }
   const lastMessageUsage = sessionUsageCache.get(req.sessionId);

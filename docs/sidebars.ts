@@ -76,6 +76,7 @@ const sidebars: SidebarsConfig = {
             'server/api/messages-api',
             'server/api/config-api',
             'server/api/logs-api',
+            'server/api/usage-api',
           ],
         },
         {

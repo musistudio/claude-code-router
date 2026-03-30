@@ -106,7 +106,8 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
             webSearch: '',
             image: ''
           },
-          CUSTOM_ROUTER_PATH: typeof data.CUSTOM_ROUTER_PATH === 'string' ? data.CUSTOM_ROUTER_PATH : ''
+          CUSTOM_ROUTER_PATH: typeof data.CUSTOM_ROUTER_PATH === 'string' ? data.CUSTOM_ROUTER_PATH : '',
+          plugins: Array.isArray(data.plugins) ? data.plugins : (Array.isArray(data.Plugins) ? data.Plugins : undefined)
         };
         
         setConfig(validConfig);
@@ -137,7 +138,8 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
               webSearch: '',
               image: ''
             },
-            CUSTOM_ROUTER_PATH: ''
+            CUSTOM_ROUTER_PATH: '',
+            plugins: undefined
           });
           setError(err as Error);
         }

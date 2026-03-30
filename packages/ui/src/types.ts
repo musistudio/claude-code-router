@@ -49,6 +49,12 @@ export interface StatusLineConfig {
   fontFamily?: string;
 }
 
+export interface PluginConfig {
+  name: string;
+  enabled?: boolean;
+  options?: Record<string, any>;
+}
+
 export interface Config {
   Providers: Provider[];
   Router: RouterConfig;
@@ -65,6 +71,8 @@ export interface Config {
   API_TIMEOUT_MS: string;
   PROXY_URL: string;
   CUSTOM_ROUTER_PATH?: string;
+  plugins?: PluginConfig[];
+  Plugins?: PluginConfig[];
 }
 
 export type AccessLevel = 'restricted' | 'full';

@@ -3,6 +3,8 @@ import { CCRPlugin, CCRPluginOptions } from './types';
 import { SSEParserTransform } from '../utils/sse';
 import { OutputHandlerConfig, OutputOptions, outputManager } from './output';
 import { ITokenizer, TokenizerConfig } from '../types/tokenizer';
+import { LRUCache } from 'lru-cache';
+import { isLLMApiPath } from '@CCR/shared';
 
 /**
  * Token statistics interface
@@ -43,11 +45,39 @@ interface TokenSpeedOptions extends CCRPluginOptions {
   outputOptions?: OutputOptions;
 }
 
-// Store request-level statistics
-const requestStats = new Map<string, TokenStats>();
+// Tokenizer cache with LRU eviction (max 100 entries)
+const tokenizerCache = new LRUCache<string, ITokenizer>({
+  max: 100,
+});
 
-// Cache tokenizers by provider and model to avoid repeated initialization
-const tokenizerCache = new Map<string, ITokenizer>();
+// Store request-level statistics with LRU eviction
+const requestStats = new Map<string, TokenStats>();
+const MAX_REQUEST_STATS = 1000;
+
+// Cleanup interval for stale entries (60 seconds)
+const CLEANUP_INTERVAL = 30000; // 30 seconds
+const STALE_THRESHOLD = 60000; // 60 seconds
+
+// Start periodic cleanup of stale entries
+let cleanupInterval: NodeJS.Timeout | null = null;
+
+function startCleanupTimer() {
+  if (cleanupInterval) return;
+
+  cleanupInterval = setInterval(() => {
+    const now = performance.now();
+    for (const [id, stats] of requestStats.entries()) {
+      if (now - stats.lastTokenTime > STALE_THRESHOLD) {
+        requestStats.delete(id);
+      }
+    }
+  }, CLEANUP_INTERVAL);
+
+  // Don't let the cleanup timer prevent process exit
+  if (cleanupInterval.unref) {
+    cleanupInterval.unref();
+  }
+}
 
 /**
  * Token speed measurement plugin
@@ -132,9 +162,10 @@ export const tokenSpeedPlugin: CCRPlugin = {
       // Create cache key
       const cacheKey = `${providerName}:${modelName}`;
 
-      // Check cache first
-      if (tokenizerCache.has(cacheKey)) {
-        return tokenizerCache.get(cacheKey)!;
+      // Check cache first (LRUCache.get() returns undefined if not found)
+      const cachedTokenizer = tokenizerCache.get(cacheKey);
+      if (cachedTokenizer) {
+        return cachedTokenizer;
       }
 
       // Get tokenizer config for this model
@@ -161,7 +192,12 @@ export const tokenSpeedPlugin: CCRPlugin = {
     // Add onRequest hook to capture actual request start time (before processing)
     fastify.addHook('onRequest', async (request) => {
       const url = new URL(`http://127.0.0.1${request.url}`);
-      if (!url.pathname.endsWith("/v1/messages")) return;
+      const pathname = url.pathname;
+
+      if (!isLLMApiPath(pathname)) {
+        return;
+      }
+
       (request as any).requestStartTime = performance.now();
     });
 
@@ -176,8 +212,15 @@ export const tokenSpeedPlugin: CCRPlugin = {
       try {
         const userId = (request.body as any)?.metadata?.user_id;
         if (userId && typeof userId === 'string') {
-          const match = userId.match(/_session_([a-f0-9-]+)/i);
-          sessionId = match ? match[1] : undefined;
+          // New format: JSON string {"device_id":"...","session_id":"..."}
+          if (userId.startsWith('{')) {
+            const parsed = JSON.parse(userId);
+            sessionId = parsed.session_id;
+          } else {
+            // Old format: _session_<uuid>
+            const match = userId.match(/_session_([a-f0-9-]+)/i);
+            sessionId = match ? match[1] : undefined;
+          }
         }
       } catch (error) {
       }
@@ -189,7 +232,7 @@ export const tokenSpeedPlugin: CCRPlugin = {
       // Handle streaming responses
       if (payload instanceof ReadableStream) {
         // Mark this request as streaming
-        requestStats.set(requestId, {
+        const stats: TokenStats = {
           requestId,
           sessionId,
           startTime,
@@ -198,7 +241,19 @@ export const tokenSpeedPlugin: CCRPlugin = {
           tokensPerSecond: 0,
           tokenTimestamps: [],
           stream: true
-        });
+        };
+        requestStats.set(requestId, stats);
+        // Save to request object for other plugins to access after stream ends
+        (request as any).tokenSpeedStats = stats;
+
+        // Start cleanup timer
+        startCleanupTimer();
+
+        // LRU eviction: remove oldest entry if at capacity
+        if (requestStats.size > MAX_REQUEST_STATS) {
+          const firstKey = requestStats.keys().next().value;
+          requestStats.delete(firstKey);
+        }
 
         // Tee the stream: one for stats, one for the client
         const [originalStream, statsStream] = payload.tee();
@@ -206,6 +261,30 @@ export const tokenSpeedPlugin: CCRPlugin = {
         // Process stats in background
         const processStats = async () => {
           let outputTimer: NodeJS.Timeout | null = null;
+          let timeoutTimer: NodeJS.Timeout | null = null;
+          let reader: ReadableStreamDefaultReader | null = null;
+
+          // Cleanup function - ensures all resources are released
+          const cleanup = () => {
+            if (outputTimer) {
+              clearInterval(outputTimer);
+              outputTimer = null;
+            }
+            if (timeoutTimer) {
+              clearTimeout(timeoutTimer);
+              timeoutTimer = null;
+            }
+            if (reader) {
+              try {
+                reader.releaseLock();
+              } catch {
+                // Ignore errors when releasing lock
+              }
+              reader = null;
+            }
+            // Always clean up requestStats to prevent memory leak
+            requestStats.delete(requestId);
+          };
 
           // Output stats function - calculate current speed using sliding window
           const doOutput = async (isFinal: boolean) => {
@@ -237,7 +316,7 @@ export const tokenSpeedPlugin: CCRPlugin = {
             const eventStream = statsStream
               .pipeThrough(new TextDecoderStream())
               .pipeThrough(new SSEParserTransform());
-            const reader = eventStream.getReader();
+            reader = eventStream.getReader();
 
             // Start timer immediately - output every 1 second
             outputTimer = setInterval(async () => {
@@ -246,6 +325,12 @@ export const tokenSpeedPlugin: CCRPlugin = {
                 await doOutput(false);
               }
             }, 1000);
+
+            // Add timeout protection - cleanup after 60 seconds
+            timeoutTimer = setTimeout(() => {
+              fastify.log?.warn(`Request ${requestId} timed out, cleaning up resources`);
+              cleanup();
+            }, 60000);
 
             while (true) {
               const { done, value } = await reader.read();
@@ -302,22 +387,13 @@ export const tokenSpeedPlugin: CCRPlugin = {
 
               // Output final statistics when message ends
               if (data.event === 'message_stop') {
-                // Clear timer
-                if (outputTimer) {
-                  clearInterval(outputTimer);
-                  outputTimer = null;
-                }
-
+                cleanup();
                 await doOutput(true);
-
-                requestStats.delete(requestId);
               }
             }
           } catch (error: any) {
-            // Clean up timer on error
-            if (outputTimer) {
-              clearInterval(outputTimer);
-            }
+            // Clean up all resources on error
+            cleanup();
             if (error.name !== 'AbortError' && error.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
               fastify.log?.warn(`Error processing token stats: ${error.message}`);
             }
@@ -389,6 +465,9 @@ export const tokenSpeedPlugin: CCRPlugin = {
           tokenTimestamps: []
         };
 
+        // Save to request object for other plugins to access
+        (request as any).tokenSpeedStats = stats;
+
         await outputStats(stats, reporters, opts.outputOptions, true);
       }
 
@@ -446,4 +525,70 @@ async function outputStats(
       console.error(`[TokenSpeedPlugin] Failed to output to ${reporter}:`, error);
     }
   }
+}
+
+/**
+ * Get token speed statistics for current request and global stats
+ * @param requestId - Optional request ID to find specific request stats
+ */
+export function getTokenSpeedStats(requestId?: string): {
+  current: TokenStats | null;
+  global: {
+    totalRequests: number;
+    totalTokens: number;
+    avgSpeed: number;
+    avgTimeToFirstToken: number;
+  };
+} {
+  // Get specific request stats if requestId provided
+  let current: TokenStats | null = null;
+
+  if (requestId && requestStats.has(requestId)) {
+    current = requestStats.get(requestId)!;
+  } else if (requestStats.size > 0) {
+    // Fallback: get the most recent request stats
+    const entries = Array.from(requestStats.entries());
+    current = entries[entries.length - 1][1];
+  }
+
+  // Calculate global stats
+  let totalTokens = 0;
+  let totalDuration = 0;
+  let totalTimeToFirstToken = 0;
+  let countWithStats = 0;
+
+  for (const stats of requestStats.values()) {
+    totalTokens += stats.tokenCount;
+    const duration = stats.lastTokenTime - stats.startTime;
+    totalDuration += duration;
+    if (stats.timeToFirstToken) {
+      totalTimeToFirstToken += stats.timeToFirstToken;
+      countWithStats++;
+    }
+  }
+
+  const avgSpeed = totalDuration > 0 ? Math.round(totalTokens / (totalDuration / 1000)) : 0;
+  const avgTimeToFirstToken = countWithStats > 0 ? Math.round(totalTimeToFirstToken / countWithStats) : 0;
+
+  return {
+    current,
+    global: {
+      totalRequests: requestStats.size,
+      totalTokens,
+      avgSpeed,
+      avgTimeToFirstToken
+    }
+  };
+}
+
+/**
+ * Get global token speed statistics
+ */
+export function getGlobalTokenSpeedStats(): {
+  totalRequests: number;
+  totalTokens: number;
+  avgSpeed: number;
+  avgTimeToFirstToken: number;
+} {
+  return getTokenSpeedStats().global;
 }

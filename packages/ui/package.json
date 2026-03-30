@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
@@ -34,12 +36,14 @@
     "react-dom": "^19.1.0",
     "react-i18next": "^15.6.1",
     "react-router-dom": "^7.7.0",
+    "recharts": "^3.8.1",
     "remixicon": "^4.7.0",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.1",
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.1.11",
     "@types/node": "^24.1.0",
     "@types/react": "^19.1.8",

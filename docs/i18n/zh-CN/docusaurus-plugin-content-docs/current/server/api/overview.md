@@ -5,6 +5,7 @@ Claude Code Router Server 提供了完整的 HTTP API，支持：
 - **消息 API**：兼容 Anthropic Claude API 的消息接口
 - **配置 API**：读取和更新服务器配置
 - **日志 API**：查看和管理服务日志
+- **用量 API**：查询和导出 Token 使用量统计数据
 - **工具 API**：计算 Token 数量
 
 ## 基础信息
@@ -41,6 +42,19 @@ curl -H "x-api-key: your-api-key" http://localhost:3456/api/config
 | `/api/logs/files` | GET | 获取日志文件列表 |
 | `/api/logs` | GET | 获取日志内容 |
 | `/api/logs` | DELETE | 清除日志 |
+
+### 用量统计
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/api/usage` | GET | 查询用量记录 |
+| `/api/usage/summary` | GET | 获取聚合统计数据 |
+| `/api/usage/daily` | GET | 获取每日总量 |
+| `/api/usage/hourly` | GET | 获取小时分布 |
+| `/api/usage/performance` | GET | 获取性能指标时间序列 |
+| `/api/usage/filters` | GET | 获取可选过滤器 |
+| `/api/usage/export` | GET | 导出用量数据 |
+| `/api/usage/cleanup` | DELETE | 清理旧数据 |
 
 ### 服务管理
 

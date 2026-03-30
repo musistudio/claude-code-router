@@ -113,16 +113,22 @@ export const createServer = async (config: any): Promise<any> => {
     return { success: true, message: "Config saved successfully" };
   });
 
-  // Register static file serving with caching
+  // Register static file serving with caching and SPA fallback
   app.register(fastifyStatic, {
     root: join(__dirname, "..", "dist"),
     prefix: "/ui/",
     maxAge: "1h",
+    wildcard: false, // Disable automatic wildcard to handle SPA routing manually
   });
 
   // Redirect /ui to /ui/ for proper static file serving
   app.get("/ui", async (_: any, reply: any) => {
     return reply.redirect("/ui/");
+  });
+
+  // SPA fallback: serve index.html for all other /ui/* routes
+  app.get("/ui/*", async (_: any, reply: any) => {
+    return reply.sendFile("index.html");
   });
 
   // Get log file list endpoint

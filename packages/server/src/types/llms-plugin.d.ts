@@ -45,6 +45,9 @@ declare module '@musistudio/llms' {
   export const tokenSpeedPlugin: CCRPlugin;
 
 
+  export const usageTrackingPlugin: CCRPlugin;
+
+
   export class SSEParserTransform extends TransformStream<string, any> {
     constructor();
   }

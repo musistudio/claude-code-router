@@ -15,7 +15,7 @@ import JSON5 from "json5";
 import { IAgent, ITool } from "./agents/type";
 import agentsManager from "./agents";
 import { EventEmitter } from "node:events";
-import { pluginManager, tokenSpeedPlugin } from "@musistudio/llms";
+import { pluginManager, tokenSpeedPlugin, usageTrackingPlugin } from "@musistudio/llms";
 
 const event = new EventEmitter()
 
@@ -53,38 +53,49 @@ interface PluginConfig {
   options?: Record<string, any>;
 }
 
+function registerTokenSpeedPlugin(options: Record<string, any> = {}) {
+  pluginManager.registerPlugin(tokenSpeedPlugin, {
+    enabled: true,
+    outputHandlers: [{ type: 'temp-file', enabled: true }],
+    ...options
+  });
+}
+
+function registerUsageTrackingPlugin(options: Record<string, any> = {}) {
+  // Auto-register token-speed if not already registered (dependency for performance metrics)
+  if (!pluginManager.hasPlugin('token-speed')) {
+    registerTokenSpeedPlugin();
+  }
+  pluginManager.registerPlugin(usageTrackingPlugin, {
+    enabled: true,
+    retentionDays: 90,
+    ...options
+  });
+}
+
 /**
  * Register plugins from configuration
  * @param serverInstance Server instance
  * @param config Application configuration
  */
 async function registerPluginsFromConfig(serverInstance: any, config: any): Promise<void> {
-  // Get plugins configuration from config file
   const pluginsConfig: PluginConfig[] = config.plugins || config.Plugins || [];
 
-  for (const pluginConfig of pluginsConfig) {
-      const { name, enabled = false, options = {} } = pluginConfig;
+  for (const { name, enabled = false, options = {} } of pluginsConfig) {
+    switch (name) {
+      case 'usage-tracking':
+        if (enabled) registerUsageTrackingPlugin(options);
+        break;
 
-      switch (name) {
-        case 'token-speed':
-          pluginManager.registerPlugin(tokenSpeedPlugin, {
-            enabled,
-            outputHandlers: [
-              {
-                type: 'temp-file',
-                enabled: true
-              }
-            ],
-            ...options
-          });
-          break;
+      case 'token-speed':
+        if (enabled) registerTokenSpeedPlugin(options);
+        break;
 
-        default:
-          console.warn(`Unknown plugin: ${name}`);
-          break;
-      }
+      default:
+        console.warn(`Unknown plugin: ${name}`);
     }
-  // Enable all registered plugins
+  }
+
   await pluginManager.enablePlugins(serverInstance);
 }
 
@@ -244,8 +255,10 @@ async function getServer(options: RunOptions = {}) {
   serverInstance.addHook("onError", async (request: any, reply: any, error: any) => {
     event.emit('onError', request, reply, error);
   })
+
+  // Agent stream handling
   serverInstance.addHook("onSend", (req: any, reply: any, payload: any, done: any) => {
-    if (req.sessionId && req.pathname.endsWith("/v1/messages")) {
+    if (req.sessionId && req.pathname?.endsWith("/v1/messages")) {
       if (payload instanceof ReadableStream) {
         if (req.agents) {
           const abortController = new AbortController();
@@ -373,45 +386,15 @@ async function getServer(options: RunOptions = {}) {
             }
           }).pipeThrough(new SSESerializerTransform()))
         }
-
-        const [originalStream, clonedStream] = payload.tee();
-        const read = async (stream: ReadableStream) => {
-          const reader = stream.getReader();
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              // Process the value if needed
-              const dataStr = new TextDecoder().decode(value);
-              if (!dataStr.startsWith("event: message_delta")) {
-                continue;
-              }
-              const str = dataStr.slice(27);
-              try {
-                const message = JSON.parse(str);
-                sessionUsageCache.put(req.sessionId, message.usage);
-              } catch {}
-            }
-          } catch (readError: any) {
-            if (readError.name === 'AbortError' || readError.code === 'ERR_STREAM_PREMATURE_CLOSE') {
-              console.error('Background read stream closed prematurely');
-            } else {
-              console.error('Error in background stream reading:', readError);
-            }
-          } finally {
-            reader.releaseLock();
-          }
-        }
-        read(clonedStream);
-        return done(null, originalStream)
       }
-      sessionUsageCache.put(req.sessionId, payload.usage);
-      if (typeof payload ==='object') {
-        if (payload.error) {
-          return done(payload.error, null)
-        } else {
-          return done(payload, null)
-        }
+
+      // Handle non-streaming response for session cache
+      if (payload && typeof payload === 'object' && payload.usage) {
+        sessionUsageCache.put(req.sessionId, payload.usage);
+      }
+
+      if (typeof payload === 'object' && payload.error) {
+        return done(payload.error, null)
       }
     }
     if (typeof payload ==='object' && payload.error) {
@@ -419,9 +402,22 @@ async function getServer(options: RunOptions = {}) {
     }
     done(null, payload)
   });
+
   serverInstance.addHook("onSend", async (req: any, reply: any, payload: any) => {
     event.emit('onSend', req, reply, payload);
     return payload;
+  });
+
+  // Plugin status API endpoint
+  serverInstance.app.get("/api/plugins/status", async () => {
+    const plugins = pluginManager.getPlugins();
+    return {
+      plugins: plugins.map(p => ({
+        name: p.name,
+        enabled: p.enabled,
+        hasOptions: !!p.options
+      }))
+    };
   });
 
   // Add global error handlers to prevent the service from crashing
@@ -452,7 +448,7 @@ export { getServer };
 export type { RunOptions };
 export type { IAgent, ITool } from "./agents/type";
 export { initDir, initConfig, readConfigFile, writeConfigFile, backupConfigFile } from "./utils";
-export { pluginManager, tokenSpeedPlugin } from "@musistudio/llms";
+export { pluginManager, tokenSpeedPlugin, usageTrackingPlugin } from "@musistudio/llms";
 
 // Start service if this file is run directly
 if (require.main === module) {

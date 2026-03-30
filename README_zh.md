@@ -269,7 +269,77 @@ ccr preset delete my-preset
 │   └── manifest.json    # 包含配置和元数据
 ```
 
-### 7. Activate 命令（环境变量设置）
+### 7. 用量跟踪
+
+Claude Code Router 提供全面的用量跟踪功能，帮助您监控 Token 消耗和性能指标：
+
+- **Token 用量统计**：按提供商和模型跟踪输入、输出、缓存和推理 Token
+- **性能指标**：监控延迟、首 Token 耗时和生成速度
+- **交互式仪表盘**：位于 `/usage` 的 Web UI 用于可视化趋势和过滤数据
+- **CLI 命令**：通过 `ccr usage` 在终端快速查看统计
+- **导出和清理**：导出数据为 CSV/JSON 并管理保留策略
+
+```shell
+# 查看今日用量
+ccr usage
+
+# 查看指定日期范围
+ccr usage --start 2025-03-01 --end 2025-03-31
+
+# 导出为 CSV
+ccr usage export --format csv
+
+# 清理旧数据
+ccr usage cleanup --retention 30
+```
+
+访问 Web 仪表盘 `http://localhost:3456/ui/usage` 获取详细的图表、数据表和过滤选项。
+
+更多详情请参阅 [用量 API 文档](docs/docs/server/api/usage-api.md)。
+
+#### 插件配置
+
+Claude Code Router 使用插件系统来启用/禁用可选功能。在 `config.json` 中配置插件：
+
+```json
+{
+  "plugins": [
+    {
+      "name": "usage-tracking",
+      "enabled": true,
+      "options": {
+        "retentionDays": 90
+      }
+    },
+    {
+      "name": "token-speed",
+      "enabled": false,
+      "options": {}
+    }
+  ]
+}
+```
+
+**可用插件：**
+
+| 插件 | 默认 | 说明 |
+|--------|---------|-------------|
+| `usage-tracking` | 禁用 | 跟踪 Token 用量、延迟和性能指标 |
+| `token-speed` | 禁用 | 测量流式 Token 生成速度 |
+
+**插件依赖：**
+- `usage-tracking` 依赖于 `token-speed` 来获取性能指标（首 Token 耗时和生成耗时）
+- 当启用 `usage-tracking` 时，`token-speed` 会自动启用
+- 如果只启用 `token-speed` 而不启用 `usage-tracking`，则只会记录性能数据但不会保存到用量日志
+
+当 `usage-tracking` 禁用时：
+- 不收集任何用量数据
+- 所有 `/api/usage/*` 端点返回 404
+- UI 中的用量页面显示禁用提示
+
+修改插件配置后需要重启服务。
+
+### 8. Activate 命令（环境变量设置）
 
 `activate` 命令允许您在 shell 中全局设置环境变量，使您能够直接使用 `claude` 命令或将 Claude Code Router 与使用 Agent SDK 构建的应用程序集成。
 

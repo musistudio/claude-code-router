@@ -135,7 +135,7 @@ declare module "@musistudio/llms" {
     }[];
   }
 
-  export function getTokenSpeedStats(): {
+  export function getTokenSpeedStats(requestId?: string): {
     current: TokenStats | null;
     global: {
       totalRequests: number;

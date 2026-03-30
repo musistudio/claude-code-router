@@ -18,6 +18,7 @@ import { join } from "path";
 import { parseStatusLineData, StatusLineInput } from "./utils/statusline";
 import {handlePresetCommand} from "./utils/preset";
 import { handleInstallCommand } from "./utils/installCommand";
+import { handleUsageCommand } from "./utils/usage";
 
 
 const command = process.argv[2];
@@ -36,6 +37,7 @@ const KNOWN_COMMANDS = [
   "activate",
   "env",
   "ui",
+  "usage",
   "-v",
   "version",
   "-h",
@@ -56,6 +58,7 @@ Commands:
   preset        Manage presets (export, install, list, delete)
   install       Install preset from GitHub marketplace
   activate      Output environment variables for shell integration
+  usage         Show token usage statistics
   ui            Open the web UI in browser
   -v, version   Show version information
   -h, help      Show help information
@@ -72,6 +75,8 @@ Examples:
   ccr preset install /path/to/preset     # Install a preset from directory
   ccr preset list                        # List all presets
   ccr install my-preset                  # Install preset from marketplace
+  ccr usage                              # Show today's token usage
+  ccr usage --date 2025-03-25            # Show usage for specific date
   eval "$(ccr activate)"  # Set environment variables globally
   ccr ui
 `;
@@ -271,6 +276,9 @@ async function main() {
     case "install":
       const presetName = process.argv[3];
       await handleInstallCommand(presetName);
+      break;
+    case "usage":
+      await handleUsageCommand(process.argv.slice(3));
       break;
     case "activate":
     case "env":
