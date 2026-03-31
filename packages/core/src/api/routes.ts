@@ -308,7 +308,7 @@ async function sendRequestToProvider(
 ) {
   const url = config.url || new URL(provider.baseUrl);
 
-  // Handle authentication in passthrough mode
+  // Handle authentication (both in passthrough and non-passthrough mode)
   if (bypass && typeof transformer.auth === "function") {
     const auth = await transformer.auth(requestBody, provider);
     if (auth.body) {
@@ -333,11 +333,15 @@ async function sendRequestToProvider(
   }
 
   // Send HTTP request
-  // Prepare headers
+  // Prepare headers - auth headers (from config.headers) should take precedence over provider.apiKey
   const requestHeaders: Record<string, string> = {
-    Authorization: `Bearer ${provider.apiKey}`,
     ...(config?.headers || {}),
   };
+
+  // Only set default Authorization if auth method didn't provide one
+  if (!requestHeaders.Authorization && !requestHeaders.authorization) {
+    requestHeaders.Authorization = `Bearer ${provider.apiKey}`;
+  }
 
   for (const key in requestHeaders) {
     if (requestHeaders[key] === "undefined") {
@@ -368,6 +372,59 @@ async function sendRequestToProvider(
     fastify.log.error(
       `[provider_response_error] Error from provider(${provider.name},${requestBody.model}: ${response.status}): ${errorText}`,
     );
+
+    // Give provider transformers a chance to handle the error (e.g., token refresh on 401)
+    if (provider.transformer?.use?.length) {
+      for (const providerTransformer of provider.transformer.use) {
+        if (typeof providerTransformer?.transformErrorOut === "function") {
+          try {
+            const shouldRetry = await providerTransformer.transformErrorOut(
+              { status: response.status, errorText, requestBody, provider },
+              context
+            );
+            // If transformer returns true, retry the request once
+            if (shouldRetry) {
+              fastify.log.info(`Retrying request after transformer handled error for provider ${provider.name}`);
+              // Clone the request body for retry
+              const retryRequestBody = JSON.parse(JSON.stringify(requestBody));
+              // Re-process request transformers to get fresh token
+              const { requestBody: newRequestBody, config: newConfig } = await processRequestTransformers(
+                retryRequestBody,
+                provider,
+                transformer,
+                context.req?.headers || {},
+                context
+              );
+              // Rebuild headers for retry
+              const retryHeaders: Record<string, string> = {
+                ...(newConfig?.headers || {}),
+              };
+              if (!retryHeaders.Authorization && !retryHeaders.authorization) {
+                retryHeaders.Authorization = `Bearer ${provider.apiKey}`;
+              }
+              // Retry the request
+              const retryResponse = await sendUnifiedRequest(
+                url,
+                newRequestBody,
+                {
+                  httpsProxy: fastify.configService.getHttpsProxy(),
+                  ...newConfig,
+                  headers: retryHeaders,
+                },
+                context,
+                fastify.log
+              );
+              if (retryResponse.ok) {
+                return retryResponse;
+              }
+            }
+          } catch (transformError) {
+            fastify.log.error(`Transformer error handling failed: ${transformError}`);
+          }
+        }
+      }
+    }
+
     throw createApiError(
       `Error from provider(${provider.name},${requestBody.model}: ${response.status}): ${errorText}`,
       response.status,
