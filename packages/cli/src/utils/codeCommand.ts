@@ -1,4 +1,4 @@
-import { spawn, type StdioOptions } from "child_process";
+﻿import { spawn, type StdioOptions } from "child_process";
 import {getSettingsPath, readConfigFile} from ".";
 import {
   decrementReferenceCount,
@@ -6,7 +6,6 @@ import {
   closeService,
 } from "./processCheck";
 import { quote } from 'shell-quote';
-import minimist from "minimist";
 import { createEnvVariables } from "./createEnvVariables";
 
 export interface PresetConfig {
@@ -99,30 +98,23 @@ export async function executeCodeCommand(
     ? ["pipe", "inherit", "inherit"] // Pipe stdin for non-interactive
     : "inherit"; // Default inherited behavior
 
-  const argsObj = minimist(args)
-  const argsArr = []
-  for (const [argsObjKey, argsObjValue] of Object.entries(argsObj)) {
-    if (argsObjKey !== '_' && argsObj[argsObjKey]) {
-      const prefix = argsObjKey.length === 1 ? '-' : '--';
-      // For boolean flags, don't append the value
-      if (argsObjValue === true) {
-        argsArr.push(`${prefix}${argsObjKey}`);
-      } else {
-        argsArr.push(`${prefix}${argsObjKey} ${JSON.stringify(argsObjValue)}`);
-      }
-    }
-  }
-  const claudeProcess = spawn(
-    claudePath,
-    argsArr,
-    {
-      env: {
-        ...process.env,
-      },
-      stdio: stdioConfig,
-      shell: true,
-    }
-  );
+  const isWindowsBatchWrapper = process.platform === "win32"
+    && /\.(cmd|bat)$/i.test(claudePath);
+
+  const claudeProcess = isWindowsBatchWrapper
+    ? spawn(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", claudePath, ...args], {
+        env: {
+          ...process.env,
+        },
+        stdio: stdioConfig,
+      })
+    : spawn(claudePath, args, {
+        env: {
+          ...process.env,
+        },
+        stdio: stdioConfig,
+        ...(process.platform === "win32" ? {} : { shell: true }),
+      });
 
   // Close stdin for non-interactive mode
   if (config.NON_INTERACTIVE_MODE) {
@@ -144,3 +136,4 @@ export async function executeCodeCommand(
     process.exit(code || 0);
   });
 }
+
