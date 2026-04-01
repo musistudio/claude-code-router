@@ -7,62 +7,9 @@ export class OpenrouterTransformer implements Transformer {
 
   constructor(private readonly options?: TransformerOptions) {}
 
-  private sanitizeClaudeMessages(request: UnifiedChatRequest): void {
-    request.messages = request.messages
-      .map((msg) => {
-        if (Array.isArray(msg.content)) {
-          msg.content = msg.content.filter((item: any) => {
-            if (item?.type !== "text") {
-              return true;
-            }
-            return (
-              typeof item.text === "string" && item.text.trim().length > 0
-            );
-          });
-        }
-
-        if (
-          msg.role === "assistant" &&
-          Array.isArray(msg.tool_calls) &&
-          msg.tool_calls.length > 0
-        ) {
-          if (
-            typeof msg.content === "string" &&
-            msg.content.trim().length === 0
-          ) {
-            msg.content = null;
-          } else if (Array.isArray(msg.content) && msg.content.length === 0) {
-            msg.content = null;
-          }
-        }
-
-        const hasStringContent =
-          typeof msg.content === "string" && msg.content.trim().length > 0;
-        const hasArrayContent =
-          Array.isArray(msg.content) && msg.content.length > 0;
-        const hasToolCalls =
-          Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0;
-
-        if (msg.role === "tool") {
-          return msg;
-        }
-
-        if (!hasStringContent && !hasArrayContent && !hasToolCalls) {
-          return null;
-        }
-
-        return msg;
-      })
-      .filter(
-        (msg): msg is UnifiedChatRequest["messages"][number] => msg !== null
-      );
-  }
-
   async transformRequestIn(
     request: UnifiedChatRequest
   ): Promise<UnifiedChatRequest> {
-    this.sanitizeClaudeMessages(request);
-
     if (!request.model.includes("claude")) {
       request.messages.forEach((msg) => {
         if (Array.isArray(msg.content)) {
