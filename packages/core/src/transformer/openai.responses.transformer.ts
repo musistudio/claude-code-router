@@ -110,26 +110,31 @@ export class OpenAIResponsesTransformer implements Transformer {
     request.messages.forEach((message) => {
       if (message.role === "system") return;
 
-      if (Array.isArray(message.content)) {
-        const convertedContent = message.content
-          .map((content) => this.normalizeRequestContent(content, message.role))
+      const sanitizedMessage: any = { ...message };
+      delete sanitizedMessage.thinking;
+      delete sanitizedMessage.cache_control;
+
+      if (Array.isArray(sanitizedMessage.content)) {
+        const convertedContent = sanitizedMessage.content
+          .map((content) =>
+            this.normalizeRequestContent(content, sanitizedMessage.role)
+          )
           .filter(
             (content): content is Record<string, unknown> => content !== null
           );
 
         if (convertedContent.length > 0) {
-          (message as any).content = convertedContent;
+          sanitizedMessage.content = convertedContent;
         } else {
-          delete (message as any).content;
+          delete sanitizedMessage.content;
         }
       }
 
-      if (message.role === "tool") {
-        const toolMessage: any = { ...message };
+      if (sanitizedMessage.role === "tool") {
+        const toolMessage: any = { ...sanitizedMessage };
         toolMessage.type = "function_call_output";
-        toolMessage.call_id = message.tool_call_id;
-        toolMessage.output = message.content;
-        delete toolMessage.cache_control;
+        toolMessage.call_id = sanitizedMessage.tool_call_id;
+        toolMessage.output = sanitizedMessage.content;
         delete toolMessage.role;
         delete toolMessage.tool_call_id;
         delete toolMessage.content;
@@ -137,8 +142,11 @@ export class OpenAIResponsesTransformer implements Transformer {
         return;
       }
 
-      if (message.role === "assistant" && Array.isArray(message.tool_calls)) {
-        message.tool_calls.forEach((tool) => {
+      if (
+        sanitizedMessage.role === "assistant" &&
+        Array.isArray(sanitizedMessage.tool_calls)
+      ) {
+        sanitizedMessage.tool_calls.forEach((tool) => {
           input.push({
             type: "function_call",
             arguments: tool.function.arguments,
@@ -149,7 +157,7 @@ export class OpenAIResponsesTransformer implements Transformer {
         return;
       }
 
-      input.push(message);
+      input.push(sanitizedMessage);
     });
 
     (request as any).input = input;
