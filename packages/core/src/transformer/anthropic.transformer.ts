@@ -215,20 +215,32 @@ export class AnthropicTransformer implements Transformer {
     const isStream = response.headers
       .get("Content-Type")
       ?.includes("text/event-stream");
+    const requestedStream = (context?.req as any)?.requestedStream === true;
     if (isStream) {
       if (!response.body) {
         throw new Error("Stream response body is null");
       }
-      const convertedStream = await this.convertOpenAIStreamToAnthropic(
-        response.body,
-        context!
-      );
-      return new Response(convertedStream, {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-        },
+      if (requestedStream) {
+        const convertedStream = await this.convertOpenAIStreamToAnthropic(
+          response.body,
+          context!
+        );
+        return new Response(convertedStream, {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
+          },
+        });
+      }
+
+      const anthropicResponse =
+        await this.convertOpenAIStreamToAnthropicResponse(
+          response.body,
+          context!
+        );
+      return new Response(JSON.stringify(anthropicResponse), {
+        headers: { "Content-Type": "application/json" },
       });
     } else {
       const data = (await response.json()) as any;
@@ -262,7 +274,47 @@ export class AnthropicTransformer implements Transformer {
         const encoder = new TextEncoder();
         const messageId = `msg_${Date.now()}`;
         let stopReasonMessageDelta: null | Record<string, any> = null;
-        let model = "unknown";
+        let model = context.req.body?.model || "unknown";
+        const requestedMaxTokens =
+          typeof context.req.body?.max_tokens === "number"
+            ? context.req.body.max_tokens
+            : null;
+        const estimateInputTokens = (requestBody: any): number => {
+          const parts: string[] = [];
+
+          if (Array.isArray(requestBody?.system)) {
+            for (const item of requestBody.system) {
+              if (typeof item === "string") {
+                parts.push(item);
+              } else if (item?.text) {
+                parts.push(item.text);
+              }
+            }
+          }
+
+          if (Array.isArray(requestBody?.messages)) {
+            for (const message of requestBody.messages) {
+              if (typeof message?.content === "string") {
+                parts.push(message.content);
+                continue;
+              }
+
+              if (Array.isArray(message?.content)) {
+                for (const block of message.content) {
+                  if (typeof block === "string") {
+                    parts.push(block);
+                  } else if (block?.text) {
+                    parts.push(block.text);
+                  }
+                }
+              }
+            }
+          }
+
+          const chars = parts.join("\n").length;
+          return Math.max(1, Math.ceil(chars / 4));
+        };
+        const fallbackInputTokens = estimateInputTokens(context.req.body);
         let hasStarted = false;
         let hasTextContentStarted = false;
         let hasFinished = false;
@@ -271,6 +323,8 @@ export class AnthropicTransformer implements Transformer {
         let totalChunks = 0;
         let contentChunks = 0;
         let toolCallChunks = 0;
+        let hasAnyContentBlock = false;
+        let emittedTextChunkCount = 0;
         let isClosed = false;
         let isThinkingStarted = false;
         let contentIndex = 0;
@@ -311,9 +365,77 @@ export class AnthropicTransformer implements Transformer {
           }
         };
 
+        const attachUsageToDelta = (payload: Record<string, any>) => {
+          if (payload.usage) {
+            payload.delta = {
+              ...(payload.delta || {}),
+              usage: payload.usage,
+            };
+          }
+          return payload;
+        };
+
         const safeClose = () => {
           if (!isClosed) {
             try {
+              if (!hasStarted) {
+                hasStarted = true;
+                const messageStart = {
+                  type: "message_start",
+                  message: {
+                    id: messageId,
+                    type: "message",
+                    role: "assistant",
+                    content: [],
+                    model: model,
+                    stop_reason: null,
+                    stop_sequence: null,
+                    usage: {
+                      input_tokens: fallbackInputTokens,
+                      output_tokens: 0,
+                    },
+                  },
+                };
+                safeEnqueue(
+                  encoder.encode(
+                    `event: message_start\ndata: ${JSON.stringify(
+                      messageStart
+                    )}\n\n`
+                  )
+                );
+              }
+
+              if (!hasAnyContentBlock) {
+                const emptyTextBlockIndex = assignContentBlockIndex();
+                safeEnqueue(
+                  encoder.encode(
+                    `event: content_block_start\ndata: ${JSON.stringify({
+                      type: "content_block_start",
+                      index: emptyTextBlockIndex,
+                      content_block: {
+                        type: "text",
+                        text: "",
+                      },
+                    })}\n\n`
+                  )
+                );
+                safeEnqueue(
+                  encoder.encode(
+                    `event: content_block_delta\ndata: ${JSON.stringify({
+                      type: "content_block_delta",
+                      index: emptyTextBlockIndex,
+                      delta: {
+                        type: "text_delta",
+                        text: "",
+                      },
+                    })}\n\n`
+                  )
+                );
+                hasAnyContentBlock = true;
+                currentContentBlockIndex = emptyTextBlockIndex;
+                emittedTextChunkCount = Math.max(emittedTextChunkCount, 1);
+              }
+
               // Close any remaining open content block
               if (currentContentBlockIndex >= 0) {
                 const contentBlockStop = {
@@ -334,7 +456,7 @@ export class AnthropicTransformer implements Transformer {
                 safeEnqueue(
                   encoder.encode(
                     `event: message_delta\ndata: ${JSON.stringify(
-                      stopReasonMessageDelta
+                      attachUsageToDelta(stopReasonMessageDelta)
                     )}\n\n`
                   )
                 );
@@ -342,18 +464,18 @@ export class AnthropicTransformer implements Transformer {
               } else {
                 safeEnqueue(
                   encoder.encode(
-                    `event: message_delta\ndata: ${JSON.stringify({
+                    `event: message_delta\ndata: ${JSON.stringify(attachUsageToDelta({
                       type: "message_delta",
                       delta: {
                         stop_reason: "end_turn",
                         stop_sequence: null,
                       },
                       usage: {
-                        input_tokens: 0,
-                        output_tokens: 0,
+                        input_tokens: fallbackInputTokens,
+                        output_tokens: emittedTextChunkCount > 0 ? 1 : 0,
                         cache_read_input_tokens: 0,
                       },
-                    })}\n\n`
+                    }))}\n\n`
                   )
                 );
               }
@@ -413,7 +535,9 @@ export class AnthropicTransformer implements Transformer {
               });
 
               if (data === "[DONE]") {
-                continue;
+                hasFinished = true;
+                safeClose();
+                break;
               }
 
               try {
@@ -457,7 +581,7 @@ export class AnthropicTransformer implements Transformer {
                       stop_reason: null,
                       stop_sequence: null,
                       usage: {
-                        input_tokens: 0,
+                        input_tokens: fallbackInputTokens,
                         output_tokens: 0,
                       },
                     },
@@ -472,7 +596,20 @@ export class AnthropicTransformer implements Transformer {
                   );
                 }
 
-                const choice = chunk.choices?.[0];
+                const choices = Array.isArray(chunk.choices)
+                  ? chunk.choices
+                  : [];
+                const choice =
+                  choices.find(
+                    (c: any) =>
+                      c?.delta?.content ||
+                      c?.delta?.thinking ||
+                      (Array.isArray(c?.delta?.tool_calls) &&
+                        c.delta.tool_calls.length > 0) ||
+                      (Array.isArray(c?.delta?.annotations) &&
+                        c.delta.annotations.length > 0) ||
+                      c?.finish_reason
+                  ) || choices[0];
                 if (chunk.usage) {
                   if (!stopReasonMessageDelta) {
                     stopReasonMessageDelta = {
@@ -483,9 +620,9 @@ export class AnthropicTransformer implements Transformer {
                       },
                       usage: {
                         input_tokens:
-                          (chunk.usage?.prompt_tokens || 0) -
+                          ((chunk.usage?.prompt_tokens || fallbackInputTokens) -
                           (chunk.usage?.prompt_tokens_details?.cached_tokens ||
-                            0),
+                            0)),
                         output_tokens: chunk.usage?.completion_tokens || 0,
                         cache_read_input_tokens:
                           chunk.usage?.prompt_tokens_details?.cached_tokens ||
@@ -495,9 +632,9 @@ export class AnthropicTransformer implements Transformer {
                   } else {
                     stopReasonMessageDelta.usage = {
                       input_tokens:
-                        (chunk.usage?.prompt_tokens || 0) -
+                        ((chunk.usage?.prompt_tokens || fallbackInputTokens) -
                         (chunk.usage?.prompt_tokens_details?.cached_tokens ||
-                          0),
+                          0)),
                       output_tokens: chunk.usage?.completion_tokens || 0,
                       cache_read_input_tokens:
                         chunk.usage?.prompt_tokens_details?.cached_tokens || 0,
@@ -539,6 +676,7 @@ export class AnthropicTransformer implements Transformer {
                         )}\n\n`
                       )
                     );
+                    hasAnyContentBlock = true;
                     currentContentBlockIndex = thinkingBlockIndex;
                     isThinkingStarted = true;
                   }
@@ -630,6 +768,7 @@ export class AnthropicTransformer implements Transformer {
                         )}\n\n`
                       )
                     );
+                    hasAnyContentBlock = true;
                     currentContentBlockIndex = textBlockIndex;
                   }
 
@@ -649,6 +788,40 @@ export class AnthropicTransformer implements Transformer {
                         )}\n\n`
                       )
                     );
+                    emittedTextChunkCount++;
+                    if (
+                      requestedMaxTokens === 1 &&
+                      emittedTextChunkCount >= 1
+                    ) {
+                      if (!stopReasonMessageDelta) {
+                        stopReasonMessageDelta = {
+                          type: "message_delta",
+                          delta: {
+                            stop_reason: "end_turn",
+                            stop_sequence: null,
+                          },
+                          usage: {
+                            input_tokens: fallbackInputTokens,
+                            output_tokens: 1,
+                            cache_read_input_tokens: 0,
+                          },
+                        };
+                      } else {
+                        stopReasonMessageDelta.usage = {
+                          ...(stopReasonMessageDelta.usage || {}),
+                          input_tokens:
+                            stopReasonMessageDelta.usage?.input_tokens ??
+                            fallbackInputTokens,
+                          output_tokens: 1,
+                          cache_read_input_tokens:
+                            stopReasonMessageDelta.usage
+                              ?.cache_read_input_tokens ?? 0,
+                        };
+                      }
+                      hasFinished = true;
+                      safeClose();
+                      break;
+                    }
                   }
                 }
 
@@ -698,6 +871,7 @@ export class AnthropicTransformer implements Transformer {
                         )}\n\n`
                       )
                     );
+                    hasAnyContentBlock = true;
 
                     const contentBlockStop = {
                       type: "content_block_stop",
@@ -772,6 +946,7 @@ export class AnthropicTransformer implements Transformer {
                           )}\n\n`
                         )
                       );
+                      hasAnyContentBlock = true;
                       currentContentBlockIndex = newContentBlockIndex;
 
                       const toolCallInfo = {
@@ -918,7 +1093,15 @@ export class AnthropicTransformer implements Transformer {
             }
           }
           safeClose();
-        } catch (error) {
+        } catch (error: any) {
+          if (
+            error?.name === "AbortError" ||
+            error?.code === "ERR_STREAM_PREMATURE_CLOSE"
+          ) {
+            safeClose();
+            return;
+          }
+
           if (!isClosed) {
             try {
               controller.error(error);
@@ -947,6 +1130,211 @@ export class AnthropicTransformer implements Transformer {
     });
 
     return readable;
+  }
+
+  private async convertOpenAIStreamToAnthropicResponse(
+    openaiStream: ReadableStream,
+    context: TransformerContext
+  ): Promise<any> {
+    const reader = openaiStream.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let model = context.req.body?.model || "unknown";
+    let responseId = `msg_${Date.now()}`;
+    let finishReason = "stop";
+    let textContent = "";
+    const toolCalls = new Map<number, any>();
+    let usage: any = null;
+
+    const estimateInputTokens = (requestBody: any): number => {
+      const parts: string[] = [];
+
+      if (Array.isArray(requestBody?.system)) {
+        for (const item of requestBody.system) {
+          if (typeof item === "string") {
+            parts.push(item);
+          } else if (item?.text) {
+            parts.push(item.text);
+          }
+        }
+      }
+
+      if (Array.isArray(requestBody?.messages)) {
+        for (const message of requestBody.messages) {
+          if (typeof message?.content === "string") {
+            parts.push(message.content);
+            continue;
+          }
+
+          if (Array.isArray(message?.content)) {
+            for (const block of message.content) {
+              if (typeof block === "string") {
+                parts.push(block);
+              } else if (block?.text) {
+                parts.push(block.text);
+              }
+            }
+          }
+        }
+      }
+
+      const chars = parts.join("\n").length;
+      return Math.max(1, Math.ceil(chars / 4));
+    };
+
+    const fallbackInputTokens = estimateInputTokens(context.req.body);
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          const data = line.slice(5).trim();
+          if (!data || data === "[DONE]") {
+            continue;
+          }
+
+          let chunk: any;
+          try {
+            chunk = JSON.parse(data);
+          } catch {
+            continue;
+          }
+
+          this.logger.debug({
+            reqId: context.req.id,
+            response: chunk,
+            type: "aggregated non-stream chunk",
+          });
+
+          if (chunk.error) {
+            throw createApiError(
+              `Provider error: ${JSON.stringify(chunk.error)}`,
+              500,
+              "provider_error"
+            );
+          }
+
+          responseId = chunk.id || responseId;
+          model = chunk.model || model;
+
+          const choice = chunk.choices?.[0];
+          if (!choice) {
+            continue;
+          }
+
+          if (typeof choice.delta?.content === "string") {
+            textContent += choice.delta.content;
+          }
+
+          if (Array.isArray(choice.delta?.tool_calls)) {
+            for (const toolCall of choice.delta.tool_calls) {
+              const index = toolCall.index ?? 0;
+              const existing = toolCalls.get(index) || {
+                id: toolCall.id || `call_${Date.now()}_${index}`,
+                name: toolCall.function?.name || `tool_${index}`,
+                arguments: "",
+              };
+
+              if (toolCall.id) {
+                existing.id = toolCall.id;
+              }
+              if (toolCall.function?.name) {
+                existing.name = toolCall.function.name;
+              }
+              if (typeof toolCall.function?.arguments === "string") {
+                existing.arguments += toolCall.function.arguments;
+              }
+
+              toolCalls.set(index, existing);
+            }
+          }
+
+          if (choice.finish_reason) {
+            finishReason = choice.finish_reason;
+          }
+
+          if (chunk.usage) {
+            usage = chunk.usage;
+          }
+        }
+      }
+    } finally {
+      try {
+        reader.releaseLock();
+      } catch {}
+    }
+
+    const content: any[] = [];
+
+    if (textContent) {
+      content.push({
+        type: "text",
+        text: textContent,
+      });
+    }
+
+    if (toolCalls.size > 0) {
+      for (const toolCall of toolCalls.values()) {
+        let parsedInput = {};
+        try {
+          parsedInput = toolCall.arguments
+            ? JSON.parse(toolCall.arguments)
+            : {};
+        } catch {
+          parsedInput = { text: toolCall.arguments || "" };
+        }
+
+        content.push({
+          type: "tool_use",
+          id: toolCall.id,
+          name: toolCall.name,
+          input: parsedInput,
+        });
+      }
+    }
+
+    if (content.length === 0) {
+      content.push({
+        type: "text",
+        text: "",
+      });
+    }
+
+    return {
+      id: responseId,
+      type: "message",
+      role: "assistant",
+      model,
+      content,
+      stop_reason:
+        finishReason === "stop"
+          ? "end_turn"
+          : finishReason === "length"
+          ? "max_tokens"
+          : finishReason === "tool_calls"
+          ? "tool_use"
+          : finishReason === "content_filter"
+          ? "stop_sequence"
+          : "end_turn",
+      stop_sequence: null,
+      usage: {
+        input_tokens:
+          (usage?.prompt_tokens || fallbackInputTokens) -
+          (usage?.prompt_tokens_details?.cached_tokens || 0),
+        output_tokens:
+          usage?.completion_tokens ||
+          Math.max(1, Math.ceil(textContent.length / 4)),
+        cache_read_input_tokens:
+          usage?.prompt_tokens_details?.cached_tokens || 0,
+      },
+    };
   }
 
   private convertOpenAIResponseToAnthropic(

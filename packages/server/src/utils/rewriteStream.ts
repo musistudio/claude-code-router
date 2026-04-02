@@ -21,7 +21,17 @@ export const rewriteStream = (stream: ReadableStream, processor: (data: any, con
             controller.enqueue(processed)
           }
         }
-      } catch (error) {
+      } catch (error: any) {
+        if (
+          error?.name === 'AbortError' ||
+          error?.code === 'ERR_STREAM_PREMATURE_CLOSE'
+        ) {
+          try {
+            controller.close()
+          } catch {}
+          return
+        }
+
         controller.error(error)
       } finally {
         reader.releaseLock()

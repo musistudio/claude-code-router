@@ -38,6 +38,8 @@ async function handleTransformerEndpoint(
   transformer: any
 ) {
   const body = req.body as any;
+  const requestedStream = body?.stream === true;
+  (req as any).requestedStream = requestedStream;
   const providerName = req.provider!;
   const provider = fastify.providerService.getProvider(providerName);
 
@@ -88,7 +90,7 @@ async function handleTransformerEndpoint(
     );
 
     // Format and return response
-    return formatResponse(finalResponse, reply, body);
+    return formatResponse(finalResponse, reply, requestedStream, req);
   } catch (error: any) {
     // Handle fallback if error occurs
     if (error.code === 'provider_response_error') {
@@ -182,7 +184,12 @@ async function handleFallback(
       req.log.info(`Fallback model ${fallbackModel} succeeded`);
 
       // Format and return response
-      return formatResponse(finalResponse, reply, newBody);
+      return formatResponse(
+        finalResponse,
+        reply,
+        newBody?.stream === true,
+        newReq as FastifyRequest
+      );
     } catch (fallbackError: any) {
       req.log.warn(`Fallback model ${fallbackModel} failed: ${fallbackError.message}`);
       continue;
@@ -443,19 +450,102 @@ async function processResponseTransformers(
  * Format and return response
  * Handle HTTP status codes, format streaming and regular responses
  */
-function formatResponse(response: any, reply: FastifyReply, body: any) {
+async function streamResponseToReply(
+  responseBody: ReadableStream,
+  reply: FastifyReply,
+  req?: FastifyRequest
+) {
+  const reader = responseBody.getReader();
+  let closed = false;
+
+  const closeStream = async () => {
+    if (closed) {
+      return;
+    }
+    closed = true;
+
+    try {
+      await reader.cancel();
+    } catch {}
+
+    if (!reply.raw.destroyed && !reply.raw.writableEnded) {
+      try {
+        reply.raw.end();
+      } catch {}
+    }
+  };
+
+  const onClose = () => {
+    void closeStream();
+  };
+
+  reply.raw.once("close", onClose);
+  reply.raw.once("error", onClose);
+  reply.hijack();
+
+  try {
+    while (!closed) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      if (reply.raw.destroyed || reply.raw.writableEnded) {
+        await closeStream();
+        break;
+      }
+
+      if (!value || value.length === 0) {
+        continue;
+      }
+
+      const canContinue = reply.raw.write(Buffer.from(value));
+      if (!canContinue) {
+        await new Promise<void>((resolve) => {
+          reply.raw.once("drain", resolve);
+        });
+      }
+    }
+  } catch (error: any) {
+    if (
+      error?.name !== "AbortError" &&
+      error?.code !== "ERR_STREAM_PREMATURE_CLOSE"
+    ) {
+      req?.log?.error(error);
+      if (!reply.raw.headersSent) {
+        reply.raw.statusCode = 500;
+      }
+    }
+  } finally {
+    reply.raw.removeListener("close", onClose);
+    reply.raw.removeListener("error", onClose);
+    try {
+      reader.releaseLock();
+    } catch {}
+    if (!reply.raw.destroyed && !reply.raw.writableEnded) {
+      reply.raw.end();
+    }
+  }
+}
+
+function formatResponse(
+  response: any,
+  reply: FastifyReply,
+  requestedStream: boolean,
+  req?: FastifyRequest
+) {
   // Set HTTP status code
   if (!response.ok) {
     reply.code(response.status);
   }
 
   // Handle streaming response
-  const isStream = body.stream === true;
+  const isStream = requestedStream;
   if (isStream) {
     reply.header("Content-Type", "text/event-stream");
     reply.header("Cache-Control", "no-cache");
     reply.header("Connection", "keep-alive");
-    return reply.send(response.body);
+    return streamResponseToReply(response.body, reply, req);
   } else {
     // Handle regular JSON response
     return response.json();

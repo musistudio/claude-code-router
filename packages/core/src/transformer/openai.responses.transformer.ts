@@ -71,7 +71,21 @@ export class OpenAIResponsesTransformer implements Transformer {
   async transformRequestIn(
     request: UnifiedChatRequest
   ): Promise<UnifiedChatRequest> {
+    // Strip unsupported thinking fields from messages history to prevent 400 errors
+    // from strict providers using the openai-responses protocol.
+    request.messages.forEach((msg: any) => {
+      if (msg.thinking) {
+        delete msg.thinking;
+      }
+      if (Array.isArray(msg.content)) {
+        msg.content = msg.content.filter((c: any) => c.type !== "thinking");
+      }
+    });
+
     delete request.temperature;
+    if (typeof request.max_tokens === "number") {
+      (request as any).max_output_tokens = request.max_tokens;
+    }
     delete request.max_tokens;
 
     // 处理 reasoning 参数
