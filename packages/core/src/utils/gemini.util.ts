@@ -342,7 +342,7 @@ export function buildRequestBody(
               thoughtSignature:
                 index === 0 && message.thinking?.signature
                   ? message.thinking?.signature
-                  : undefined,
+                  : "skip_thought_signature_validator",
             };
           })
         );
@@ -680,7 +680,7 @@ export async function transformResponseOut(
                 let signature = parts.find(
                   (part: Part) => part.thoughtSignature
                 )?.thoughtSignature;
-                if (signature && !signatureSent) {
+                if (signature && !signatureSent && hasThinkingContent) {
                   if (!hasThinkingContent) {
                     const thinkingChunk = {
                       choices: [

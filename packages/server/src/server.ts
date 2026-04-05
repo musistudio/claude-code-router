@@ -82,6 +82,27 @@ export const createServer = async (config: any): Promise<any> => {
     return { "input_tokens": tokenCount }
   });
 
+  // Intercept GET /v1/models
+  app.get("/v1/models", async (req: any, reply: any) => {
+    return {
+      "data": [
+        {
+          "type": "model",
+          "id": "claude-sonnet-4-6",
+          "display_name": "Claude Sonnet 4.6",
+          "created_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "type": "model",
+          "id": "claude-3-5-sonnet-20241022",
+          "display_name": "Claude 3.5 Sonnet",
+          "created_at": "2024-10-22T00:00:00Z"
+        }
+      ],
+      "has_more": false
+    };
+  });
+
   // Add endpoint to read config.json with access control
   app.get("/api/config", async (req: any, reply: any) => {
     return await readConfigFile();
