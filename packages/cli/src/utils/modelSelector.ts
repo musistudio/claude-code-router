@@ -161,7 +161,8 @@ async function selectModelType() {
       { name: 'Long Context Model', value: 'longContext' },
       { name: 'Web Search Model', value: 'webSearch' },
       { name: 'Image Model', value: 'image' },
-      { name: `${BOLDGREEN}+ Add New Model${RESET}`, value: 'addModel' }
+      { name: `${BOLDGREEN}+ Add New Model${RESET}`, value: 'addModel' },
+      { name: `${DIM}Exit${RESET}`, value: 'exit' }
     ]
   });
 }
@@ -432,30 +433,37 @@ export async function runModelSelector(): Promise<void> {
   console.clear();
   
   try {
-    let config = loadConfig();
-    displayCurrentConfig(config);
-    
-    const action = await selectModelType() as string;
-    
-    if (action === 'addModel') {
-      const result = await addNewModel(config);
+    while (true) {
+      let config = loadConfig();
+      displayCurrentConfig(config);
       
-      if (result) {
-        config = loadConfig();
-        config.Router[result.modelType] = `${result.providerName},${result.modelName}`;
-        saveConfig(config);
-        console.log(`${GREEN}✓ ${result.modelType} set to ${result.providerName},${result.modelName}${RESET}`);
+      const action = await selectModelType() as string;
+      
+      if (action === 'exit') {
+        break;
       }
-    } else {
-      const selectedModel = await selectModel(config, action) as string;
-      config.Router[action] = selectedModel;
-      saveConfig(config);
       
-      console.log(`${GREEN}✓ ${action} model updated to: ${selectedModel}${RESET}`);
+      if (action === 'addModel') {
+        const result = await addNewModel(config);
+        
+        if (result) {
+          config = loadConfig();
+          config.Router[result.modelType] = `${result.providerName},${result.modelName}`;
+          saveConfig(config);
+          console.log(`${GREEN}✓ ${result.modelType} set to ${result.providerName},${result.modelName}${RESET}`);
+        }
+      } else {
+        const selectedModel = await selectModel(config, action) as string;
+        config.Router[action] = selectedModel;
+        saveConfig(config);
+        
+        console.log(`${GREEN}✓ ${action} model updated to: ${selectedModel}${RESET}`);
+      }
     }
-    
-    displayCurrentConfig(config);
   } catch (error: any) {
+    if (error.name === 'ExitPromptError') {
+      return;
+    }
     console.error(`${YELLOW}Error:${RESET}`, error.message);
     process.exit(1);
   }
