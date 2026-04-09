@@ -200,8 +200,9 @@ export interface ConversionOptions {
 export interface LLMProvider {
   name: string;
   baseUrl: string;
-  apiKey: string;
+  apiKey?: string;
   models: string[];
+  auth?: ProviderAuthConfig;
   transformer?: {
     [key: string]: {
       use?: Transformer[];
@@ -228,8 +229,9 @@ export interface RequestRouteInfo {
 export interface ConfigProvider {
   name: string;
   api_base_url: string;
-  api_key: string;
+  api_key?: string;
   models: string[];
+  auth?: ProviderAuthConfig;
   transformer: {
     use?: string[] | Array<any>[];
   } & {
@@ -239,3 +241,12 @@ export interface ConfigProvider {
   };
   tokenizer?: ProviderTokenizerConfig;
 }
+
+export type ProviderAuthConfig =
+  | {
+      type: "api_key";
+    }
+  | {
+      type: "openai_codex_oauth";
+      codex_auth_path?: string;
+    };

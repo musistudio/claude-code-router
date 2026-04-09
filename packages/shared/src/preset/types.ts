@@ -98,8 +98,16 @@ export interface RequiredInput {
 export interface ProviderConfig {
   name: string;
   api_base_url: string;
-  api_key: string;
+  api_key?: string;
   models: string[];
+  auth?:
+    | {
+        type: 'api_key';
+      }
+    | {
+        type: 'openai_codex_oauth';
+        codex_auth_path?: string;
+      };
   transformer?: any;
   [key: string]: any;
 }

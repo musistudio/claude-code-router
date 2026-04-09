@@ -49,6 +49,10 @@ export function ProviderList({ providers, onEdit, onRemove }: ProviderListProps)
         
         // Handle case where provider.api_base_url might be null or undefined
         const apiBaseUrl = provider.api_base_url || "No API URL";
+        const authLabel =
+          provider.auth?.type === "openai_codex_oauth"
+            ? "OpenAI/Codex OAuth"
+            : "API Key";
         
         // Handle case where provider.models might be null or undefined
         const models = Array.isArray(provider.models) ? provider.models : [];
@@ -58,6 +62,7 @@ export function ProviderList({ providers, onEdit, onRemove }: ProviderListProps)
             <div className="flex-1 space-y-1.5">
               <p className="text-md font-semibold text-gray-800">{providerName}</p>
               <p className="text-sm text-gray-500">{apiBaseUrl}</p>
+              <p className="text-xs text-gray-400">{authLabel}</p>
               <div className="flex flex-wrap gap-2 pt-2">
                 {models.map((model, modelIndex) => (
                   // Handle case where model might be null or undefined

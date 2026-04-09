@@ -1,4 +1,10 @@
-import type { Config, Provider, Transformer } from '@/types';
+import type {
+  Config,
+  OpenAICodexAuthStatus,
+  OpenAICodexDeviceSession,
+  Provider,
+  Transformer
+} from '@/types';
 
 // 日志聚合响应类型
 interface GroupedLogsResponse {
@@ -160,6 +166,30 @@ class ApiClient {
   // Get current configuration
   async getConfig(): Promise<Config> {
     return this.get<Config>('/config');
+  }
+
+  async getOpenAICodexAuthStatus(authPath?: string): Promise<OpenAICodexAuthStatus> {
+    const query = authPath ? `?authPath=${encodeURIComponent(authPath)}` : '';
+    return this.get<OpenAICodexAuthStatus>(`/openai-codex/auth/status${query}`);
+  }
+
+  async startOpenAICodexDeviceLogin(authPath?: string): Promise<OpenAICodexDeviceSession> {
+    return this.post<OpenAICodexDeviceSession>('/openai-codex/auth/device/start', {
+      authPath,
+    });
+  }
+
+  async pollOpenAICodexDeviceLogin(sessionId: string): Promise<OpenAICodexDeviceSession> {
+    return this.get<OpenAICodexDeviceSession>(`/openai-codex/auth/device/${encodeURIComponent(sessionId)}`);
+  }
+
+  async cancelOpenAICodexDeviceLogin(sessionId: string): Promise<OpenAICodexDeviceSession> {
+    return this.delete<OpenAICodexDeviceSession>(`/openai-codex/auth/device/${encodeURIComponent(sessionId)}`);
+  }
+
+  async fetchOpenAICodexModels(authPath?: string): Promise<{ authPath: string; models: string[] }> {
+    const query = authPath ? `?authPath=${encodeURIComponent(authPath)}` : '';
+    return this.get<{ authPath: string; models: string[] }>(`/openai-codex/models${query}`);
   }
 
   // Update entire configuration

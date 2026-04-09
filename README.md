@@ -78,13 +78,35 @@ Claude Code Router supports environment variable interpolation for secure API ke
       "name": "openai",
       "api_base_url": "https://api.openai.com/v1/chat/completions",
       "api_key": "$OPENAI_API_KEY",
-      "models": ["gpt-5", "gpt-5-mini"]
+      "models": ["gpt-5.2-codex", "gpt-5.2", "gpt-5-codex-mini"]
     }
   ]
 }
 ```
 
 This allows you to keep sensitive API keys in environment variables instead of hardcoding them in configuration files. The interpolation works recursively through nested objects and arrays.
+
+#### OpenAI/Codex OAuth
+
+Claude Code Router can also use the local Codex OAuth session instead of a static `api_key`. Configure the provider with `auth.type = "openai_codex_oauth"` and point `codex_auth_path` at your Codex auth file if you do not use the default `~/.codex/auth.json`.
+
+```json
+{
+  "Providers": [
+    {
+      "name": "openai-codex",
+      "api_base_url": "https://chatgpt.com/backend-api/codex/responses",
+      "auth": {
+        "type": "openai_codex_oauth",
+        "codex_auth_path": "~/.codex/auth.json"
+      },
+      "models": ["gpt-5-codex", "gpt-5"]
+    }
+  ]
+}
+```
+
+When this auth mode is enabled, the router reads `tokens.access_token` from the Codex auth file and will attempt to refresh it with the stored `refresh_token` when the token is near expiry or after a `401` response.
 
 Here is a comprehensive example:
 

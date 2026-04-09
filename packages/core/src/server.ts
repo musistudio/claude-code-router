@@ -204,9 +204,6 @@ class Server {
         if (url.pathname.endsWith("/v1/messages") && req.body) {
           const body = req.body as any;
           req.log.info({ data: body, type: "request body" });
-          if (!body.stream) {
-            body.stream = false;
-          }
         }
         done();
       });
@@ -220,12 +217,19 @@ class Server {
           if (url.pathname.endsWith("/v1/messages") && req.body) {
             try {
               const body = req.body as any;
-              if (!body || !body.model) {
+              if (!body) {
                 return reply
                   .code(400)
-                  .send({ error: "Missing model in request body" });
+                  .send({ error: "Missing request body" });
               }
-              const [provider, ...model] = body.model.split(",");
+              if (!body.model) {
+                return;
+              }
+              const route = parseProviderModelRoute(body.model);
+              if (!route) {
+                return;
+              }
+              const { provider, model } = route;
               body.model = model.join(",");
               req.provider = provider;
               req.model = model;
@@ -259,6 +263,26 @@ class Server {
       process.exit(1);
     }
   }
+}
+
+function parseProviderModelRoute(
+  fullModel: string
+): { provider: string; model: string[] } | null {
+  if (typeof fullModel !== "string" || fullModel.length === 0) {
+    return null;
+  }
+
+  if (fullModel.includes(",")) {
+    const [provider, ...model] = fullModel.split(",");
+    return provider ? { provider, model } : null;
+  }
+
+  if (fullModel.includes("/")) {
+    const [provider, ...model] = fullModel.split("/");
+    return provider && model.length > 0 ? { provider, model } : null;
+  }
+
+  return null;
 }
 
 // Export for external use

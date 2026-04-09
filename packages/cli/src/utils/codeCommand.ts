@@ -118,6 +118,7 @@ export async function executeCodeCommand(
     {
       env: {
         ...process.env,
+        ...env,
       },
       stdio: stdioConfig,
       shell: true,

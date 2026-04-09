@@ -14,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Upload, Link, Trash2, Info, Download, Check, CheckCircle2, AlertCircle, Loader2, ArrowLeft, Store, Search, Package } from "lucide-react";
+import { Upload, Link, Trash2, Info, Download, Check, CheckCircle2, AlertCircle, Loader2, ArrowLeft, Store, Search, Package, Github } from "lucide-react";
 import { Toast } from "@/components/ui/toast";
 import { DynamicConfigForm } from "./preset/DynamicConfigForm";
 
@@ -685,7 +685,7 @@ export function Presets() {
                                   className="text-gray-600 hover:text-gray-900 transition-colors"
                                   title={t('presets.github_repository')}
                                 >
-                                  <i className="ri-github-fill text-xl"></i>
+                                  <Github className="h-5 w-5" />
                                 </a>
                               </div>
                             )}

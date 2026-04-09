@@ -32,7 +32,8 @@ export class ProviderService {
         if (
           !providerConfig.name ||
           !providerConfig.api_base_url ||
-          !providerConfig.api_key
+          (!providerConfig.api_key &&
+            providerConfig.auth?.type !== "openai_codex_oauth")
         ) {
           return;
         }
@@ -86,7 +87,8 @@ export class ProviderService {
         this.registerProvider({
           name: providerConfig.name,
           baseUrl: providerConfig.api_base_url,
-          apiKey: providerConfig.api_key,
+          apiKey: providerConfig.api_key || "",
+          auth: providerConfig.auth,
           models: providerConfig.models || [],
           transformer: providerConfig.transformer ? transformer : undefined,
         });
@@ -106,16 +108,7 @@ export class ProviderService {
     this.providers.set(provider.name, provider);
 
     request.models.forEach((model) => {
-      const fullModel = `${provider.name},${model}`;
-      const route: ModelRoute = {
-        provider: provider.name,
-        model,
-        fullModel,
-      };
-      this.modelRoutes.set(fullModel, route);
-      if (!this.modelRoutes.has(model)) {
-        this.modelRoutes.set(model, route);
-      }
+      this.registerModelRoute(provider.name, model, model);
     });
 
     return provider;
@@ -147,23 +140,10 @@ export class ProviderService {
     this.providers.set(id, updatedProvider);
 
     if (updates.models) {
-      provider.models.forEach((model) => {
-        const fullModel = `${provider.name},${model}`;
-        this.modelRoutes.delete(fullModel);
-        this.modelRoutes.delete(model);
-      });
+      this.clearProviderRoutes(provider);
 
       updates.models.forEach((model) => {
-        const fullModel = `${provider.name},${model}`;
-        const route: ModelRoute = {
-          provider: provider.name,
-          model,
-          fullModel,
-        };
-        this.modelRoutes.set(fullModel, route);
-        if (!this.modelRoutes.has(model)) {
-          this.modelRoutes.set(model, route);
-        }
+        this.registerModelRoute(provider.name, model, model);
       });
     }
 
@@ -176,11 +156,7 @@ export class ProviderService {
       return false;
     }
 
-    provider.models.forEach((model) => {
-      const fullModel = `${provider.name},${model}`;
-      this.modelRoutes.delete(fullModel);
-      this.modelRoutes.delete(model);
-    });
+    this.clearProviderRoutes(provider);
 
     this.providers.delete(id);
     return true;
@@ -225,6 +201,33 @@ export class ProviderService {
 
   getModelRoutes(): ModelRoute[] {
     return Array.from(this.modelRoutes.values());
+  }
+
+  private registerModelRoute(
+    providerName: string,
+    routeKey: string,
+    targetModel: string
+  ) {
+    const fullModel = `${providerName},${routeKey}`;
+    const route: ModelRoute = {
+      provider: providerName,
+      model: targetModel,
+      fullModel,
+    };
+    this.modelRoutes.set(fullModel, route);
+    if (!this.modelRoutes.has(routeKey)) {
+      this.modelRoutes.set(routeKey, route);
+    }
+  }
+
+  private clearProviderRoutes(provider: LLMProvider) {
+    const routeKeys = new Set(provider.models);
+
+    routeKeys.forEach((routeKey) => {
+      const fullModel = `${provider.name},${routeKey}`;
+      this.modelRoutes.delete(fullModel);
+      this.modelRoutes.delete(routeKey);
+    });
   }
 
   private parseTransformerConfig(transformerConfig: any): any {
