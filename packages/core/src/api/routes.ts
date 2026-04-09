@@ -12,6 +12,10 @@ import { ConfigService } from "@/services/config";
 import { ProviderService } from "@/services/provider";
 import { TransformerService } from "@/services/transformer";
 import { Transformer } from "@/types/transformer";
+import {
+  isOpenAICodexOAuthProvider,
+  resolveProviderRequestConfig,
+} from "@/utils/providerAuth";
 
 // Extend FastifyInstance to include custom services
 declare module "fastify" {
@@ -51,6 +55,13 @@ async function handleTransformerEndpoint(
   }
 
   try {
+    const routeInfo = fastify.providerService.resolveModelRoute(
+      `${providerName},${body.model}`
+    );
+    if (routeInfo) {
+      body.model = routeInfo.targetModel;
+    }
+
     // Process request transformer chain
     const { requestBody, config, bypass } = await processRequestTransformers(
       body,
@@ -332,35 +343,29 @@ async function sendRequestToProvider(
     }
   }
 
-  // Send HTTP request
-  // Prepare headers
-  const requestHeaders: Record<string, string> = {
-    Authorization: `Bearer ${provider.apiKey}`,
-    ...(config?.headers || {}),
-  };
-
-  for (const key in requestHeaders) {
-    if (requestHeaders[key] === "undefined") {
-      delete requestHeaders[key];
-    } else if (
-      ["authorization", "Authorization"].includes(key) &&
-      requestHeaders[key]?.includes("undefined")
-    ) {
-      delete requestHeaders[key];
-    }
-  }
-
-  const response = await sendUnifiedRequest(
+  let response = await sendRequestWithResolvedAuth(
     url,
     requestBody,
-    {
-      httpsProxy: fastify.configService.getHttpsProxy(),
-      ...config,
-      headers: JSON.parse(JSON.stringify(requestHeaders)),
-    },
-    context,
-    fastify.log
+    config,
+    provider,
+    fastify,
+    context
   );
+
+  if (response.status === 401 && isOpenAICodexOAuthProvider(provider)) {
+    fastify.log.warn(
+      `Provider "${provider.name}" returned 401, refreshing Codex OAuth token and retrying once`
+    );
+    response = await sendRequestWithResolvedAuth(
+      url,
+      requestBody,
+      config,
+      provider,
+      fastify,
+      context,
+      true
+    );
+  }
 
   // Handle request errors
   if (!response.ok) {
@@ -376,6 +381,80 @@ async function sendRequestToProvider(
   }
 
   return response;
+}
+
+async function sendRequestWithResolvedAuth(
+  url: URL | string,
+  requestBody: any,
+  config: any,
+  provider: LLMProvider,
+  fastify: FastifyInstance,
+  context: any,
+  forceRefresh = false
+) {
+  const resolvedAuthConfig = await resolveProviderRequestConfig(provider, {
+    forceRefresh,
+  });
+  const requestHeaders: Record<string, string> = {
+    ...resolvedAuthConfig.headers,
+    ...(config?.headers || {}),
+  };
+  const requestUrl = resolvedAuthConfig.url || url;
+
+  if (
+    requestBody?.stream === true &&
+    !requestHeaders.Accept &&
+    !requestHeaders.accept
+  ) {
+    requestHeaders.Accept = "text/event-stream";
+  }
+
+  const sessionId = extractSessionIdFromRequestBody(requestBody);
+  if (sessionId && !requestHeaders.session_id) {
+    requestHeaders.session_id = sessionId;
+  }
+
+  for (const key in requestHeaders) {
+    if (requestHeaders[key] === "undefined") {
+      delete requestHeaders[key];
+    } else if (
+      ["authorization", "Authorization"].includes(key) &&
+      requestHeaders[key]?.includes("undefined")
+    ) {
+      delete requestHeaders[key];
+    }
+  }
+
+  return sendUnifiedRequest(
+    requestUrl,
+    requestBody,
+    {
+      httpsProxy: fastify.configService.getHttpsProxy(),
+      ...config,
+      headers: JSON.parse(JSON.stringify(requestHeaders)),
+    },
+    context,
+    fastify.log
+  );
+}
+
+function extractSessionIdFromRequestBody(requestBody: any): string | undefined {
+  const userId = requestBody?.metadata?.user_id;
+  if (typeof userId !== "string" || userId.length === 0) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(userId) as { session_id?: string };
+    if (typeof parsed.session_id === "string" && parsed.session_id.length > 0) {
+      return parsed.session_id;
+    }
+  } catch {
+    // Fall back to legacy CCR user_id format.
+  }
+
+  const parts = userId.split("_session_");
+  return parts.length > 1 ? parts[1] : undefined;
 }
 
 /**
@@ -450,7 +529,9 @@ function formatResponse(response: any, reply: FastifyReply, body: any) {
   }
 
   // Handle streaming response
-  const isStream = body.stream === true;
+  const contentType = response.headers?.get?.("content-type") || "";
+  const isStream =
+    body.stream === true || contentType.includes("text/event-stream");
   if (isStream) {
     reply.header("Content-Type", "text/event-stream");
     reply.header("Cache-Control", "no-cache");
@@ -466,7 +547,11 @@ export const registerApiRoutes = async (
   fastify: FastifyInstance
 ) => {
   // Health and info endpoints
-  fastify.get("/", async () => {
+  fastify.get("/", async (req, reply) => {
+    const acceptHeader = req.headers.accept || "";
+    if (typeof acceptHeader === "string" && acceptHeader.includes("text/html")) {
+      return reply.redirect("/ui/");
+    }
     return { message: "LLMs API", version };
   });
 
@@ -500,9 +585,20 @@ export const registerApiRoutes = async (
             type: { type: "string", enum: ["openai", "anthropic"] },
             baseUrl: { type: "string" },
             apiKey: { type: "string" },
+            auth: {
+              type: "object",
+              properties: {
+                type: {
+                  type: "string",
+                  enum: ["api_key", "openai_codex_oauth"],
+                },
+                codex_auth_path: { type: "string" },
+              },
+              required: ["type"],
+            },
             models: { type: "array", items: { type: "string" } },
           },
-          required: ["id", "name", "type", "baseUrl", "apiKey", "models"],
+          required: ["id", "name", "type", "baseUrl", "models"],
         },
       },
     },
@@ -529,7 +625,7 @@ export const registerApiRoutes = async (
         );
       }
 
-      if (!apiKey?.trim()) {
+      if (request.body.auth?.type !== "openai_codex_oauth" && !apiKey?.trim()) {
         throw createApiError("API key is required", 400, "invalid_request");
       }
 
@@ -596,6 +692,16 @@ export const registerApiRoutes = async (
             type: { type: "string", enum: ["openai", "anthropic"] },
             baseUrl: { type: "string" },
             apiKey: { type: "string" },
+            auth: {
+              type: "object",
+              properties: {
+                type: {
+                  type: "string",
+                  enum: ["api_key", "openai_codex_oauth"],
+                },
+                codex_auth_path: { type: "string" },
+              },
+            },
             models: { type: "array", items: { type: "string" } },
             enabled: { type: "boolean" },
           },

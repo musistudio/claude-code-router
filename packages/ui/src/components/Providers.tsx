@@ -14,12 +14,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { X, Trash2, Plus, Eye, EyeOff, Search, XCircle } from "lucide-react";
+import { X, Trash2, Plus, Eye, EyeOff, Search, XCircle, ExternalLink, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Combobox } from "@/components/ui/combobox";
 import { ComboInput } from "@/components/ui/combo-input";
 import { api } from "@/lib/api";
-import type { Provider } from "@/types";
+import type {
+  OpenAICodexAuthStatus,
+  OpenAICodexDeviceSession,
+  Provider
+} from "@/types";
 
 interface ProviderType extends Provider {}
 
@@ -39,7 +43,15 @@ export function Providers() {
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [openAICodexAuthStatus, setOpenAICodexAuthStatus] = useState<OpenAICodexAuthStatus | null>(null);
+  const [isLoadingOpenAICodexAuthStatus, setIsLoadingOpenAICodexAuthStatus] = useState<boolean>(false);
+  const [isOpenAICodexLoginDialogOpen, setIsOpenAICodexLoginDialogOpen] = useState<boolean>(false);
+  const [openAICodexLoginSession, setOpenAICodexLoginSession] = useState<OpenAICodexDeviceSession | null>(null);
+  const [isStartingOpenAICodexLogin, setIsStartingOpenAICodexLogin] = useState<boolean>(false);
+  const [openAICodexLoginError, setOpenAICodexLoginError] = useState<string | null>(null);
+const [isFetchingModels, setIsFetchingModels] = useState<boolean>(false);
   const comboInputRef = useRef<HTMLInputElement>(null);
+  const defaultOpenAICodexApiBaseUrl = "https://chatgpt.com/backend-api/codex/responses";
 
   useEffect(() => {
     const fetchProviderTemplates = async () => {
@@ -73,6 +85,56 @@ export function Providers() {
     fetchTransformers();
   }, []);
 
+  const currentOpenAICodexAuthPath =
+    editingProviderData?.auth?.type === "openai_codex_oauth"
+      ? editingProviderData.auth.codex_auth_path || "~/.codex/auth.json"
+      : openAICodexAuthStatus?.authPath || "~/.codex/auth.json";
+
+  const loadOpenAICodexAuthStatus = async (authPath?: string) => {
+    setIsLoadingOpenAICodexAuthStatus(true);
+    try {
+      const status = await api.getOpenAICodexAuthStatus(authPath);
+      setOpenAICodexAuthStatus(status);
+    } catch (error) {
+      console.error("Failed to load OpenAI/Codex auth status:", error);
+      setOpenAICodexAuthStatus(null);
+    } finally {
+      setIsLoadingOpenAICodexAuthStatus(false);
+    }
+  };
+
+  useEffect(() => {
+    const authPath =
+      editingProviderData?.auth?.type === "openai_codex_oauth"
+        ? editingProviderData.auth.codex_auth_path
+        : undefined;
+    loadOpenAICodexAuthStatus(authPath);
+  }, [editingProviderData?.auth?.type, editingProviderData?.auth?.type === "openai_codex_oauth" ? editingProviderData.auth.codex_auth_path : undefined]);
+
+  useEffect(() => {
+    if (!openAICodexLoginSession || openAICodexLoginSession.state !== "pending") {
+      return;
+    }
+
+    const timeout = window.setTimeout(async () => {
+      try {
+        const nextSession = await api.pollOpenAICodexDeviceLogin(openAICodexLoginSession.sessionId);
+        setOpenAICodexLoginSession(nextSession);
+        if (nextSession.state === "completed") {
+          setOpenAICodexLoginError(null);
+          await loadOpenAICodexAuthStatus(nextSession.authPath);
+        } else if (nextSession.state === "error" || nextSession.state === "expired") {
+          setOpenAICodexLoginError(nextSession.error || t("providers.codex_login_failed"));
+        }
+      } catch (error) {
+        console.error("Failed to poll OpenAI/Codex login session:", error);
+        setOpenAICodexLoginError((error as Error).message);
+      }
+    }, Math.max(openAICodexLoginSession.intervalSeconds, 2) * 1000);
+
+    return () => window.clearTimeout(timeout);
+  }, [openAICodexLoginSession, t]);
+
   // Handle case where config is null or undefined
   if (!config) {
     return (
@@ -90,9 +152,18 @@ export function Providers() {
   // Validate config.Providers to ensure it's an array
   const validProviders = Array.isArray(config.Providers) ? config.Providers : [];
 
+  const getProviderAuthType = (provider?: ProviderType | null) =>
+    provider?.auth?.type === "openai_codex_oauth" ? "openai_codex_oauth" : "api_key";
+
 
   const handleAddProvider = () => {
-    const newProvider: ProviderType = { name: "", api_base_url: "", api_key: "", models: [] };
+    const newProvider: ProviderType = {
+      name: "",
+      api_base_url: "",
+      api_key: "",
+      auth: { type: "api_key" },
+      models: [],
+    };
     setEditingProviderIndex(config.Providers.length);
     setEditingProviderData(newProvider);
     setIsNewProvider(true);
@@ -145,8 +216,10 @@ export function Providers() {
       return;
     }
     
-    // Validate API key
-    if (!editingProviderData.api_key || editingProviderData.api_key.trim() === '') {
+    const authType = getProviderAuthType(editingProviderData);
+
+    // Validate API key when provider uses static key auth
+    if (authType === 'api_key' && (!editingProviderData.api_key || editingProviderData.api_key.trim() === '')) {
       setApiKeyError(t("providers.api_key_required"));
       return;
     }
@@ -219,6 +292,157 @@ export function Providers() {
       const updatedProvider = { ...editingProviderData, [field]: value };
       setEditingProviderData(updatedProvider);
     }
+  };
+
+  const handleProviderAuthTypeChange = (authType: "api_key" | "openai_codex_oauth") => {
+    if (!editingProviderData) return;
+
+    const updatedProvider: ProviderType = {
+      ...editingProviderData,
+      api_base_url:
+        authType === "openai_codex_oauth" && !editingProviderData.api_base_url
+          ? defaultOpenAICodexApiBaseUrl
+          : editingProviderData.api_base_url,
+      auth:
+        authType === "openai_codex_oauth"
+          ? {
+              type: "openai_codex_oauth",
+              codex_auth_path:
+                editingProviderData.auth?.type === "openai_codex_oauth"
+                  ? editingProviderData.auth.codex_auth_path
+                  : "~/.codex/auth.json",
+            }
+          : {
+              type: "api_key",
+            },
+      transformer:
+        authType === "openai_codex_oauth" && !editingProviderData.transformer
+          ? { use: ["openai-responses"] }
+          : editingProviderData.transformer,
+    };
+
+    setEditingProviderData(updatedProvider);
+    setApiKeyError(null);
+  };
+
+  const handleProviderAuthPathChange = (value: string) => {
+    if (!editingProviderData) return;
+
+    setEditingProviderData({
+      ...editingProviderData,
+      auth: {
+        type: "openai_codex_oauth",
+        codex_auth_path: value,
+      },
+    });
+  };
+
+  const startOpenAICodexLogin = async (authPath?: string) => {
+    setIsStartingOpenAICodexLogin(true);
+    setOpenAICodexLoginError(null);
+    try {
+      const session = await api.startOpenAICodexDeviceLogin(authPath);
+      setOpenAICodexLoginSession(session);
+      setIsOpenAICodexLoginDialogOpen(true);
+      window.open(session.verificationUrl, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      console.error("Failed to start OpenAI/Codex login:", error);
+      setOpenAICodexLoginError((error as Error).message);
+      setIsOpenAICodexLoginDialogOpen(true);
+    } finally {
+      setIsStartingOpenAICodexLogin(false);
+    }
+  };
+
+  const cancelOpenAICodexLogin = async () => {
+    if (!openAICodexLoginSession) {
+      setIsOpenAICodexLoginDialogOpen(false);
+      return;
+    }
+
+    if (openAICodexLoginSession.state === "pending") {
+      try {
+        const cancelledSession = await api.cancelOpenAICodexDeviceLogin(openAICodexLoginSession.sessionId);
+        setOpenAICodexLoginSession(cancelledSession);
+      } catch (error) {
+        console.error("Failed to cancel OpenAI/Codex login:", error);
+      }
+    }
+
+    setIsOpenAICodexLoginDialogOpen(false);
+  };
+
+  const fetchAvailableModels = async (provider: ProviderType) => {
+    if (provider.auth?.type !== "openai_codex_oauth") {
+      return;
+    }
+
+    setIsFetchingModels(true);
+    try {
+      const response = await api.fetchOpenAICodexModels(provider.auth.codex_auth_path);
+      const fetchedModels = response.models;
+      if (editingProviderData) {
+        setEditingProviderData({
+          ...editingProviderData,
+          models: fetchedModels,
+          auth: {
+            type: "openai_codex_oauth",
+            codex_auth_path: response.authPath,
+          },
+        });
+      }
+      if (editingProviderIndex !== null) {
+        setHasFetchedModels((prev) => ({
+          ...prev,
+          [editingProviderIndex]: true,
+        }));
+      }
+      await loadOpenAICodexAuthStatus(response.authPath);
+    } catch (error) {
+      console.error("Failed to fetch OpenAI/Codex models:", error);
+      setOpenAICodexLoginError((error as Error).message);
+      setIsOpenAICodexLoginDialogOpen(true);
+    } finally {
+      setIsFetchingModels(false);
+    }
+  };
+
+  const createOpenAICodexProvider = async () => {
+    const existingNames = new Set(validProviders.map((provider) => provider.name.toLowerCase()));
+    let providerName = "openai-codex";
+    let suffix = 2;
+    while (existingNames.has(providerName.toLowerCase())) {
+      providerName = `openai-codex-${suffix}`;
+      suffix += 1;
+    }
+
+    let models = ["gpt-5.4", "gpt-5.2-codex", "gpt-5-codex-mini"];
+    try {
+      const response = await api.fetchOpenAICodexModels(currentOpenAICodexAuthPath);
+      if (response.models.length > 0) {
+        models = response.models;
+      }
+    } catch (error) {
+      console.error("Failed to prefetch OpenAI/Codex models:", error);
+    }
+
+    setEditingProviderIndex(config.Providers.length);
+    setEditingProviderData({
+      name: providerName,
+      api_base_url: defaultOpenAICodexApiBaseUrl,
+      auth: {
+        type: "openai_codex_oauth",
+        codex_auth_path: currentOpenAICodexAuthPath,
+      },
+      api_key: "",
+      models,
+      transformer: {
+        use: ["openai-responses"],
+      },
+    });
+    setIsNewProvider(true);
+    setApiKeyError(null);
+    setNameError(null);
   };
 
   const handleProviderTransformerChange = (_index: number, transformerPath: string) => {
@@ -497,6 +721,7 @@ export function Providers() {
   };
 
   const editingProvider = editingProviderData || (editingProviderIndex !== null ? validProviders[editingProviderIndex] : null);
+  const editingProviderAuthType = getProviderAuthType(editingProviderData || editingProvider);
 
   // Filter providers based on search term
   const filteredProviders = validProviders.filter(provider => {
@@ -547,6 +772,50 @@ export function Providers() {
         </div>
       </CardHeader>
       <CardContent className="flex-grow overflow-y-auto p-4">
+        <div className="mb-4 rounded-lg border bg-gray-50 p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div className="space-y-1">
+              <div className="text-sm font-semibold text-gray-900">{t("providers.codex_auth_title")}</div>
+              <div className="text-sm text-gray-600">
+                {isLoadingOpenAICodexAuthStatus
+                  ? t("providers.codex_auth_loading")
+                  : openAICodexAuthStatus?.authenticated
+                    ? t("providers.codex_auth_connected")
+                    : t("providers.codex_auth_disconnected")}
+              </div>
+              <div className="text-xs text-gray-500">
+                {openAICodexAuthStatus?.email || t("providers.codex_auth_no_account")}
+                {openAICodexAuthStatus?.planType ? ` · ${openAICodexAuthStatus.planType}` : ""}
+              </div>
+              <div className="text-xs text-gray-400">
+                {openAICodexAuthStatus?.authPath || "~/.codex/auth.json"}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() => loadOpenAICodexAuthStatus(currentOpenAICodexAuthPath)}
+                disabled={isLoadingOpenAICodexAuthStatus}
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${isLoadingOpenAICodexAuthStatus ? "animate-spin" : ""}`} />
+                {t("providers.codex_auth_refresh")}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => startOpenAICodexLogin(currentOpenAICodexAuthPath)}
+                disabled={isStartingOpenAICodexLogin}
+              >
+                {isStartingOpenAICodexLogin ? t("providers.codex_login_starting") : t("providers.codex_login_start")}
+              </Button>
+              <Button
+                onClick={() => void createOpenAICodexProvider()}
+                disabled={!openAICodexAuthStatus?.authenticated}
+              >
+                {t("providers.codex_create_provider")}
+              </Button>
+            </div>
+          </div>
+        </div>
         <ProviderList
           providers={filteredProviders}
           onEdit={handleEditProvider}
@@ -601,39 +870,85 @@ export function Providers() {
                 <Input id="api_base_url" value={editingProvider.api_base_url || ''} onChange={(e) => handleProviderChange(editingProviderIndex, 'api_base_url', e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="api_key">{t("providers.api_key")}</Label>
-                <div className="relative">
-                  <Input 
-                    id="api_key" 
-                    type={showApiKey[editingProviderIndex || 0] ? "text" : "password"} 
-                    value={editingProvider.api_key || ''} 
-                    onChange={(e) => handleProviderChange(editingProviderIndex, 'api_key', e.target.value)} 
-                    className={apiKeyError ? "border-red-500" : ""}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 h-8 w-8"
-                    onClick={() => {
-                      const index = editingProviderIndex || 0;
-                      setShowApiKey(prev => ({
-                        ...prev,
-                        [index]: !prev[index]
-                      }));
-                    }}
-                  >
-                    {showApiKey[editingProviderIndex || 0] ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-                {apiKeyError && (
-                  <p className="text-sm text-red-500">{apiKeyError}</p>
-                )}
+                <Label>{t("providers.auth_type")}</Label>
+                <Combobox
+                  options={[
+                    { label: t("providers.auth_type_api_key"), value: "api_key" },
+                    { label: t("providers.auth_type_openai_codex_oauth"), value: "openai_codex_oauth" }
+                  ]}
+                  value={editingProviderAuthType}
+                  onChange={(value) => {
+                    if (value === "api_key" || value === "openai_codex_oauth") {
+                      handleProviderAuthTypeChange(value);
+                    }
+                  }}
+                  placeholder={t("providers.select_auth_type")}
+                  emptyPlaceholder={t("providers.no_auth_types")}
+                />
               </div>
+              {editingProviderAuthType === "api_key" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="api_key">{t("providers.api_key")}</Label>
+                  <div className="relative">
+                    <Input
+                      id="api_key"
+                      type={showApiKey[editingProviderIndex || 0] ? "text" : "password"}
+                      value={editingProvider.api_key || ''}
+                      onChange={(e) => handleProviderChange(editingProviderIndex, 'api_key', e.target.value)}
+                      className={apiKeyError ? "border-red-500" : ""}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 h-8 w-8"
+                      onClick={() => {
+                        const index = editingProviderIndex || 0;
+                        setShowApiKey(prev => ({
+                          ...prev,
+                          [index]: !prev[index]
+                        }));
+                      }}
+                    >
+                      {showApiKey[editingProviderIndex || 0] ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                  {apiKeyError && (
+                    <p className="text-sm text-red-500">{apiKeyError}</p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="codex_auth_path">{t("providers.codex_auth_path")}</Label>
+                  <Input
+                    id="codex_auth_path"
+                    value={editingProvider.auth?.type === "openai_codex_oauth" ? editingProvider.auth.codex_auth_path || "~/.codex/auth.json" : "~/.codex/auth.json"}
+                    onChange={(e) => handleProviderAuthPathChange(e.target.value)}
+                    placeholder="~/.codex/auth.json"
+                  />
+                  <p className="text-sm text-gray-500">{t("providers.codex_auth_path_help")}</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => startOpenAICodexLogin(currentOpenAICodexAuthPath)}
+                      disabled={isStartingOpenAICodexLogin}
+                    >
+                      {isStartingOpenAICodexLogin ? t("providers.codex_login_starting") : t("providers.codex_login_start")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => loadOpenAICodexAuthStatus(currentOpenAICodexAuthPath)}
+                      disabled={isLoadingOpenAICodexAuthStatus}
+                    >
+                      {t("providers.codex_auth_refresh")}
+                    </Button>
+                  </div>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="models">{t("providers.models")}</Label>
                 <div className="space-y-2">
@@ -690,13 +1005,15 @@ export function Providers() {
                     >
                       {t("providers.add_model")}
                     </Button>
-                    {/* <Button 
-                      onClick={() => editingProvider && fetchAvailableModels(editingProvider)}
-                      disabled={isFetchingModels}
-                      variant="outline"
-                    >
-                      {isFetchingModels ? t("providers.fetching_models") : t("providers.fetch_available_models")}
-                    </Button> */}
+                    {editingProvider.auth?.type === "openai_codex_oauth" && (
+                      <Button
+                        onClick={() => editingProvider && void fetchAvailableModels(editingProvider)}
+                        disabled={isFetchingModels}
+                        variant="outline"
+                      >
+                        {isFetchingModels ? t("providers.fetching_models") : t("providers.fetch_available_models")}
+                      </Button>
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-2 pt-2">
                     {(editingProvider.models || []).map((model: string, modelIndex: number) => (
@@ -1036,6 +1353,85 @@ export function Providers() {
               <Button onClick={handleSaveProvider}>{t("app.save")}</Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isOpenAICodexLoginDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            void cancelOpenAICodexLogin();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{t("providers.codex_login_dialog_title")}</DialogTitle>
+            <DialogDescription>
+              {t("providers.codex_login_dialog_description")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {openAICodexLoginSession ? (
+              <>
+                <div className="rounded-md border bg-gray-50 p-3">
+                  <div className="text-xs uppercase tracking-wide text-gray-500">{t("providers.codex_login_code")}</div>
+                  <div className="mt-1 text-2xl font-semibold tracking-[0.3em] text-gray-900">
+                    {openAICodexLoginSession.userCode}
+                  </div>
+                </div>
+                <div className="space-y-1 text-sm text-gray-600">
+                  <div>{t("providers.codex_login_url_label")}</div>
+                  <a
+                    href={openAICodexLoginSession.verificationUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="break-all text-blue-600 hover:underline"
+                  >
+                    {openAICodexLoginSession.verificationUrl}
+                  </a>
+                </div>
+                <div className="text-sm text-gray-600">
+                  {openAICodexLoginSession.state === "pending" && t("providers.codex_login_pending")}
+                  {openAICodexLoginSession.state === "completed" && t("providers.codex_login_completed")}
+                  {openAICodexLoginSession.state === "cancelled" && t("providers.codex_login_cancelled")}
+                  {openAICodexLoginSession.state === "expired" && t("providers.codex_login_expired")}
+                  {openAICodexLoginSession.state === "error" && (openAICodexLoginSession.error || openAICodexLoginError || t("providers.codex_login_failed"))}
+                </div>
+              </>
+            ) : (
+              <div className="text-sm text-gray-600">
+                {openAICodexLoginError || t("providers.codex_login_dialog_idle")}
+              </div>
+            )}
+            {openAICodexLoginError && openAICodexLoginSession?.state !== "error" && (
+              <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {openAICodexLoginError}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            {openAICodexLoginSession?.verificationUrl && (
+              <Button
+                variant="outline"
+                onClick={() => window.open(openAICodexLoginSession.verificationUrl, "_blank", "noopener,noreferrer")}
+              >
+                <ExternalLink className="mr-2 h-4 w-4" />
+                {t("providers.codex_login_open_browser")}
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => void cancelOpenAICodexLogin()}>
+              {t("providers.cancel")}
+            </Button>
+            {openAICodexLoginSession?.state === "completed" && (
+              <Button onClick={() => {
+                setIsOpenAICodexLoginDialogOpen(false);
+                void createOpenAICodexProvider();
+              }}>
+                {t("providers.codex_create_provider")}
+              </Button>
+            )}
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

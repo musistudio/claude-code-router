@@ -3,11 +3,21 @@ export interface ProviderTransformer {
   [key: string]: any; // Allow for model-specific transformers
 }
 
+export type ProviderAuth =
+  | {
+      type: "api_key";
+    }
+  | {
+      type: "openai_codex_oauth";
+      codex_auth_path?: string;
+    };
+
 export interface Provider {
   name: string;
   api_base_url: string;
-  api_key: string;
+  api_key?: string;
   models: string[];
+  auth?: ProviderAuth;
   transformer?: ProviderTransformer;
 }
 
@@ -68,3 +78,24 @@ export interface Config {
 }
 
 export type AccessLevel = 'restricted' | 'full';
+
+export interface OpenAICodexAuthStatus {
+  authenticated: boolean;
+  authPath: string;
+  authMode?: string | null;
+  lastRefresh?: string | null;
+  email?: string | null;
+  planType?: string | null;
+  accountId?: string | null;
+}
+
+export interface OpenAICodexDeviceSession {
+  sessionId: string;
+  authPath: string;
+  verificationUrl: string;
+  userCode: string;
+  intervalSeconds: number;
+  expiresAt: string;
+  state: 'pending' | 'completed' | 'error' | 'expired' | 'cancelled';
+  error?: string;
+}

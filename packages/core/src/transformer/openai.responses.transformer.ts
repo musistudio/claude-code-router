@@ -1,5 +1,6 @@
 import { UnifiedChatRequest, MessageContent } from "@/types/llm";
-import { Transformer } from "@/types/transformer";
+import { isOpenAICodexOAuthProvider } from "@/utils/providerAuth";
+import { Transformer, TransformerContext } from "@/types/transformer";
 
 interface ResponsesAPIOutputItem {
   type: string;
@@ -69,7 +70,8 @@ export class OpenAIResponsesTransformer implements Transformer {
   endPoint = "/v1/responses";
 
   async transformRequestIn(
-    request: UnifiedChatRequest
+    request: UnifiedChatRequest,
+    provider?: any
   ): Promise<UnifiedChatRequest> {
     delete request.temperature;
     delete request.max_tokens;
@@ -82,33 +84,47 @@ export class OpenAIResponsesTransformer implements Transformer {
       };
     }
 
+    if (this.isXAIProvider(provider)) {
+      delete (request as any).reasoning;
+    }
+
     const input: any[] = [];
 
-    const systemMessages = request.messages.filter(
-      (msg) => msg.role === "system"
-    );
+    const systemMessages = request.messages.filter((msg) => msg.role === "system");
     if (systemMessages.length > 0) {
-      const firstSystem = systemMessages[0];
-      if (Array.isArray(firstSystem.content)) {
-        firstSystem.content.forEach((item) => {
-          let text = "";
-          if (typeof item === "string") {
-            text = item;
-          } else if (item && typeof item === "object" && "text" in item) {
-            text = (item as { text: string }).text;
+      const instructionParts = systemMessages
+        .flatMap((message) => {
+          if (typeof message.content === "string") {
+            return [message.content];
           }
-          input.push({
-            role: "system",
-            content: text,
-          });
-        });
-      } else {
-        (request as any).instructions = firstSystem.content;
+          if (!Array.isArray(message.content)) {
+            return [];
+          }
+          return message.content
+            .map((item) => {
+              if (typeof item === "string") {
+                return item;
+              }
+              if (item && typeof item === "object" && "text" in item) {
+                return (item as { text?: string }).text || "";
+              }
+              return "";
+            })
+            .filter((text) => text.length > 0);
+        })
+        .filter((text) => text.length > 0);
+
+      if (instructionParts.length > 0) {
+        (request as any).instructions = instructionParts.join("\n\n");
       }
     }
 
     request.messages.forEach((message) => {
       if (message.role === "system") return;
+
+      // OpenAI Responses does not accept Anthropic-style per-message thinking
+      // metadata in the input payload. Keep request-level reasoning only.
+      delete (message as any).thinking;
 
       if (Array.isArray(message.content)) {
         const convertedContent = message.content
@@ -154,6 +170,17 @@ export class OpenAIResponsesTransformer implements Transformer {
 
     (request as any).input = input;
     delete (request as any).messages;
+
+    if (isOpenAICodexOAuthProvider(provider)) {
+      (request as any).stream = true;
+      if (!(request as any).instructions) {
+        (request as any).instructions = "You are Codex.";
+      }
+      if ((request as any).reasoning) {
+        (request as any).include = ["reasoning.encrypted_content"];
+      }
+      (request as any).store = false;
+    }
 
     if (Array.isArray(request.tools)) {
       const webSearch = request.tools.find(
@@ -203,11 +230,41 @@ export class OpenAIResponsesTransformer implements Transformer {
     return request;
   }
 
-  async transformResponseOut(response: Response): Promise<Response> {
+  private isXAIProvider(provider?: any): boolean {
+    const baseUrl =
+      typeof provider?.baseUrl === "string" ? provider.baseUrl.toLowerCase() : "";
+    const name =
+      typeof provider?.name === "string" ? provider.name.toLowerCase() : "";
+    return name === "xai" || baseUrl.includes("api.x.ai");
+  }
+
+  async transformResponseOut(
+    response: Response,
+    context?: TransformerContext
+  ): Promise<Response> {
     const contentType = response.headers.get("Content-Type") || "";
+    const requestedStream = context?.req?.body?.stream === true;
 
     if (contentType.includes("application/json")) {
-      const jsonResponse: any = await response.json();
+      const rawText = await response.text();
+      const trimmedText = rawText.trimStart();
+
+      if (
+        trimmedText.startsWith("event:") ||
+        trimmedText.startsWith("data:")
+      ) {
+        return this.transformResponseOut(
+          new Response(rawText, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: {
+              "Content-Type": "text/event-stream",
+            },
+          })
+        );
+      }
+
+      const jsonResponse: any = JSON.parse(rawText);
 
       // 检查是否为responses API格式的JSON响应
       if (jsonResponse.object === "response" && jsonResponse.output) {
@@ -226,7 +283,10 @@ export class OpenAIResponsesTransformer implements Transformer {
         statusText: response.statusText,
         headers: response.headers,
       });
-    } else if (contentType.includes("text/event-stream")) {
+    } else if (
+      contentType.includes("text/event-stream") ||
+      (!contentType && requestedStream)
+    ) {
       if (!response.body) {
         return response;
       }
@@ -244,6 +304,9 @@ export class OpenAIResponsesTransformer implements Transformer {
           // 索引跟踪变量，只有在事件类型切换时才增加索引
           let currentIndex = -1;
           let lastEventType = "";
+          let hasEmittedTextDelta = false;
+          let hasEmittedToolCall = false;
+          let hasStartedAssistantMessage = false;
 
           // 获取当前应该使用的索引的函数
           const getCurrentIndex = (eventType: string) => {
@@ -309,12 +372,132 @@ export class OpenAIResponsesTransformer implements Transformer {
                             },
                           ],
                         };
+                        hasStartedAssistantMessage = true;
+                        hasEmittedTextDelta = true;
 
                         controller.enqueue(
                           encoder.encode(
                             `data: ${JSON.stringify(chatChunk)}\n\n`
                           )
                         );
+                      } else if (data.type === "response.output_text.done") {
+                        const doneText = typeof (data as any).text === "string"
+                          ? (data as any).text
+                          : "";
+
+                        if (doneText.length > 0 && !hasEmittedTextDelta) {
+                          const chatChunk = {
+                            id: data.item_id || "chatcmpl-" + Date.now(),
+                            object: "chat.completion.chunk",
+                            created: Math.floor(Date.now() / 1000),
+                            model: data.response?.model,
+                            choices: [
+                              {
+                                index: getCurrentIndex(data.type),
+                                delta: hasStartedAssistantMessage
+                                  ? {
+                                      content: doneText,
+                                    }
+                                  : {
+                                      role: "assistant",
+                                      content: doneText,
+                                    },
+                                finish_reason: null,
+                              },
+                            ],
+                          };
+                          hasStartedAssistantMessage = true;
+                          hasEmittedTextDelta = true;
+
+                          controller.enqueue(
+                            encoder.encode(
+                              `data: ${JSON.stringify(chatChunk)}\n\n`
+                            )
+                          );
+                        }
+                      } else if (
+                        data.type === "response.content_part.done" &&
+                        (data as any).part?.type === "output_text"
+                      ) {
+                        const doneText =
+                          typeof (data as any).part?.text === "string"
+                            ? (data as any).part.text
+                            : "";
+
+                        if (doneText.length > 0 && !hasEmittedTextDelta) {
+                          const chatChunk = {
+                            id: data.item_id || "chatcmpl-" + Date.now(),
+                            object: "chat.completion.chunk",
+                            created: Math.floor(Date.now() / 1000),
+                            model: data.response?.model,
+                            choices: [
+                              {
+                                index: getCurrentIndex(data.type),
+                                delta: hasStartedAssistantMessage
+                                  ? {
+                                      content: doneText,
+                                    }
+                                  : {
+                                      role: "assistant",
+                                      content: doneText,
+                                    },
+                                finish_reason: null,
+                              },
+                            ],
+                          };
+                          hasStartedAssistantMessage = true;
+                          hasEmittedTextDelta = true;
+
+                          controller.enqueue(
+                            encoder.encode(
+                              `data: ${JSON.stringify(chatChunk)}\n\n`
+                            )
+                          );
+                        }
+                      } else if (
+                        data.type === "response.output_item.done" &&
+                        data.item?.type === "message"
+                      ) {
+                        const doneText = Array.isArray(data.item.content)
+                          ? data.item.content
+                              .filter((item: any) => item?.type === "output_text")
+                              .map((item: any) => item.text || "")
+                              .join("")
+                          : "";
+
+                        if (doneText.length > 0 && !hasEmittedTextDelta) {
+                          const chatChunk = {
+                            id:
+                              data.item.id ||
+                              data.item_id ||
+                              "chatcmpl-" + Date.now(),
+                            object: "chat.completion.chunk",
+                            created: Math.floor(Date.now() / 1000),
+                            model: data.response?.model,
+                            choices: [
+                              {
+                                index: getCurrentIndex(data.type),
+                                delta: hasStartedAssistantMessage
+                                  ? {
+                                      content: doneText,
+                                    }
+                                  : {
+                                      role: "assistant",
+                                      content: doneText,
+                                    },
+                                finish_reason: null,
+                              },
+                            ],
+                          };
+                          hasStartedAssistantMessage = true;
+                          hasEmittedTextDelta = true;
+
+                          controller.enqueue(
+                            encoder.encode(
+                              `data: ${JSON.stringify(chatChunk)}\n\n`
+                            )
+                          );
+                        }
                       } else if (
                         data.type === "response.output_item.added" &&
                         data.item?.type === "function_call"
@@ -349,6 +532,8 @@ export class OpenAIResponsesTransformer implements Transformer {
                             },
                           ],
                         };
+                        hasStartedAssistantMessage = true;
+                        hasEmittedToolCall = true;
 
                         controller.enqueue(
                           encoder.encode(
@@ -393,6 +578,18 @@ export class OpenAIResponsesTransformer implements Transformer {
                               },
                             ],
                           };
+                          hasStartedAssistantMessage = true;
+                          hasEmittedTextDelta =
+                            hasEmittedTextDelta ||
+                            (typeof delta.content === "string"
+                              ? delta.content.length > 0
+                              : Array.isArray(delta.content) &&
+                                delta.content.some(
+                                  (item: any) =>
+                                    item?.type === "text" &&
+                                    typeof item.text === "string" &&
+                                    item.text.length > 0
+                                ));
 
                           controller.enqueue(
                             encoder.encode(
@@ -470,6 +667,56 @@ export class OpenAIResponsesTransformer implements Transformer {
                           )
                         );
                       } else if (data.type === "response.completed") {
+                        if (!hasEmittedTextDelta && !hasEmittedToolCall) {
+                          const completedMessage = data.response?.output?.find(
+                            (item: any) =>
+                              item?.type === "message" &&
+                              Array.isArray(item.content)
+                          );
+
+                          const fallbackText =
+                            completedMessage?.content
+                              ?.filter(
+                                (item: any) => item?.type === "output_text"
+                              )
+                              .map((item: any) => item.text || "")
+                              .join("") || "";
+
+                          if (fallbackText.length > 0) {
+                            const fallbackChunk = {
+                              id:
+                                completedMessage?.id ||
+                                data.response?.id ||
+                                "chatcmpl-" + Date.now(),
+                              object: "chat.completion.chunk",
+                              created: Math.floor(Date.now() / 1000),
+                              model: data.response?.model,
+                              choices: [
+                                {
+                                  index: 0,
+                                  delta: hasStartedAssistantMessage
+                                    ? {
+                                        content: fallbackText,
+                                      }
+                                    : {
+                                        role: "assistant",
+                                        content: fallbackText,
+                                      },
+                                  finish_reason: null,
+                                },
+                              ],
+                            };
+
+                            controller.enqueue(
+                              encoder.encode(
+                                `data: ${JSON.stringify(fallbackChunk)}\n\n`
+                              )
+                            );
+                            hasStartedAssistantMessage = true;
+                            hasEmittedTextDelta = true;
+                          }
+                        }
+
                         // 发送结束标记 - 检查是否是tool_calls完成
                         const finishReason = data.response?.output?.some(
                           (item: any) => item.type === "function_call"
@@ -601,6 +848,50 @@ export class OpenAIResponsesTransformer implements Transformer {
           Connection: "keep-alive",
           "Access-Control-Allow-Origin": "*",
         },
+      });
+    }
+
+    if (!response.body) {
+      return response;
+    }
+
+    const rawText = await response.text();
+    const trimmedText = rawText.trimStart();
+
+    if (trimmedText.startsWith("event:") || trimmedText.startsWith("data:")) {
+      return this.transformResponseOut(
+        new Response(rawText, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: {
+            "Content-Type": "text/event-stream",
+          },
+        }),
+        context
+      );
+    }
+
+    try {
+      const jsonResponse: any = JSON.parse(rawText);
+      if (jsonResponse.object === "response" && jsonResponse.output) {
+        const chatResponse = this.convertResponseToChat(jsonResponse);
+        return new Response(JSON.stringify(chatResponse), {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers,
+        });
+      }
+
+      return new Response(JSON.stringify(jsonResponse), {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
+    } catch {
+      return new Response(rawText, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
       });
     }
 

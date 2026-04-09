@@ -24,6 +24,15 @@ import {
 } from "@CCR/shared";
 import fastifyMultipart from "@fastify/multipart";
 import AdmZip from "adm-zip";
+import {
+  cancelOpenAICodexDeviceLogin,
+  fetchOpenAICodexModels,
+  getDefaultCodexAuthPath,
+  getOpenAICodexAuthStatus,
+  pollOpenAICodexDeviceLogin,
+  startOpenAICodexDeviceLogin,
+  withOpenAICodexModelAliases,
+} from "./utils/openaiCodexAuth";
 
 export const createServer = async (config: any): Promise<any> => {
   const server = new Server(config);
@@ -111,6 +120,38 @@ export const createServer = async (config: any): Promise<any> => {
 
     await writeConfigFile(newConfig);
     return { success: true, message: "Config saved successfully" };
+  });
+
+  app.get("/api/openai-codex/auth/status", async (req: any) => {
+    const authPath =
+      typeof req.query?.authPath === "string" ? req.query.authPath : undefined;
+    return getOpenAICodexAuthStatus(authPath);
+  });
+
+  app.post("/api/openai-codex/auth/device/start", async (req: any) => {
+    const authPath =
+      typeof req.body?.authPath === "string" ? req.body.authPath : undefined;
+    return startOpenAICodexDeviceLogin(authPath);
+  });
+
+  app.get("/api/openai-codex/auth/device/:sessionId", async (req: any) => {
+    return pollOpenAICodexDeviceLogin(req.params.sessionId);
+  });
+
+  app.delete("/api/openai-codex/auth/device/:sessionId", async (req: any) => {
+    return cancelOpenAICodexDeviceLogin(req.params.sessionId);
+  });
+
+  app.get("/api/openai-codex/models", async (req: any) => {
+    const authPath =
+      typeof req.query?.authPath === "string" ? req.query.authPath : undefined;
+    const status = await getOpenAICodexAuthStatus(authPath);
+    return {
+      authPath: status.authPath || getDefaultCodexAuthPath(),
+      models: withOpenAICodexModelAliases(
+        await fetchOpenAICodexModels(authPath)
+      ),
+    };
   });
 
   // Register static file serving with caching

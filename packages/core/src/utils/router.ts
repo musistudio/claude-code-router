@@ -131,6 +131,24 @@ const getUseModel = async (
   const providers = configService.get<any[]>("providers") || [];
   const Router = projectSpecificRouter || configService.get("Router");
 
+  if (typeof req.body.model === "string" && req.body.model.includes("/")) {
+    const [provider, ...modelParts] = req.body.model.split("/");
+    const model = modelParts.join("/");
+    const finalProvider = providers.find(
+      (p: any) => p.name.toLowerCase() === provider.toLowerCase()
+    );
+    const finalModel = finalProvider?.models?.find(
+      (m: any) => m.toLowerCase() === model.toLowerCase()
+    );
+    if (finalProvider && finalModel) {
+      return {
+        model: `${finalProvider.name},${finalModel}`,
+        scenarioType: "default",
+      };
+    }
+    return { model: req.body.model, scenarioType: "default" };
+  }
+
   if (req.body.model.includes(",")) {
     const [provider, model] = req.body.model.split(",");
     const finalProvider = providers.find(
@@ -219,9 +237,19 @@ export const router = async (req: any, _res: any, context: RouterContext) => {
   const { configService, event } = context;
   // Parse sessionId from metadata.user_id
   if (req.body.metadata?.user_id) {
-    const parts = req.body.metadata.user_id.split("_session_");
-    if (parts.length > 1) {
-      req.sessionId = parts[1];
+    const userId = req.body.metadata.user_id;
+    if (typeof userId === "string") {
+      try {
+        const parsed = JSON.parse(userId) as { session_id?: string };
+        if (typeof parsed.session_id === "string" && parsed.session_id.length > 0) {
+          req.sessionId = parsed.session_id;
+        }
+      } catch {
+        const parts = userId.split("_session_");
+        if (parts.length > 1) {
+          req.sessionId = parts[1];
+        }
+      }
     }
   }
   const lastMessageUsage = sessionUsageCache.get(req.sessionId);
@@ -264,6 +292,12 @@ export const router = async (req: any, _res: any, context: RouterContext) => {
         system,
         tools as Tool[]
       );
+    }
+
+    if (req.provider && typeof req.body.model === "string" && req.body.model.length > 0) {
+      req.body.model = `${req.provider},${req.body.model}`;
+      req.scenarioType = "default";
+      return;
     }
 
     let model;
