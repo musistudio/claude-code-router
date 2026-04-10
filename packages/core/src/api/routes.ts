@@ -449,8 +449,13 @@ function formatResponse(response: any, reply: FastifyReply, body: any) {
     reply.code(response.status);
   }
 
-  // Handle streaming response
-  const isStream = body.stream === true;
+  // Determine stream mode from the actual response Content-Type set by transformers,
+  // NOT from the original request body's stream field.
+  // This handles cases where the upstream returns SSE even though the client
+  // didn't explicitly set stream: true (e.g. Claude Agent SDK requests).
+  const contentType = response.headers?.get("Content-Type") || "";
+  const isStream = contentType.includes("text/event-stream");
+
   if (isStream) {
     reply.header("Content-Type", "text/event-stream");
     reply.header("Cache-Control", "no-cache");

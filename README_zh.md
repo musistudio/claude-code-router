@@ -542,6 +542,56 @@ jobs:
 
 这种设置可以实现有趣的自动化，例如在非高峰时段运行任务以降低 API 成本。
 
+## 🔧 本地开发与自定义构建
+
+如果你需要修改 CCR 源码并使用自己的构建版本，按以下步骤操作：
+
+### 1. 克隆并构建
+
+```bash
+git clone https://github.com/musistudio/claude-code-router.git
+cd claude-code-router
+pnpm install
+pnpm build
+```
+
+### 2. 停止全局安装的 CCR 服务
+
+```bash
+ccr stop
+```
+
+### 3. 使用本地构建启动
+
+```bash
+node cli.js start
+```
+
+`cli.js` 位于项目根目录，是构建产物。它会读取 `~/.claude-code-router/config.json` 配置，行为与全局安装的 `ccr` 完全一致。
+
+### 4. 让 Claude Code 使用本地 CCR
+
+CCR 启动后，通过 `ccr activate` 设置环境变量即可让 Claude Code 和 Agent SDK 应用自动使用本地路由器：
+
+```bash
+ccr activate <预设名>
+```
+
+这会设置 `ANTHROPIC_BASE_URL=http://127.0.0.1:3456/preset/<预设名>`，所有 Claude 请求都会经过本地 CCR。
+
+### 5. 开发循环
+
+修改源码后只需重新构建并重启：
+
+```bash
+pnpm build:core   # 只改了核心包
+pnpm build:server # 只改了服务端包
+pnpm build:cli    # 只改了 CLI 包
+pnpm build        # 构建全部
+
+node cli.js restart
+```
+
 ## 📝 深入阅读
 
 -   [项目动机和工作原理](blog/zh/项目初衷及原理.md)

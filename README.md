@@ -572,6 +572,56 @@ jobs:
 
 This setup allows for interesting automations, like running tasks during off-peak hours to reduce API costs.
 
+## 🔧 Local Development & Custom Builds
+
+If you need to modify CCR source code and use your own build:
+
+### 1. Clone and build
+
+```bash
+git clone https://github.com/musistudio/claude-code-router.git
+cd claude-code-router
+pnpm install
+pnpm build
+```
+
+### 2. Stop the globally installed CCR service
+
+```bash
+ccr stop
+```
+
+### 3. Start using the local build
+
+```bash
+node cli.js start
+```
+
+`cli.js` is located in the project root directory. It reads `~/.claude-code-router/config.json` and behaves identically to the globally installed `ccr`.
+
+### 4. Configure Claude Code to use local CCR
+
+After starting CCR, use `ccr activate` to set environment variables so Claude Code and Agent SDK apps automatically use the local router:
+
+```bash
+ccr activate <preset-name>
+```
+
+This sets `ANTHROPIC_BASE_URL=http://127.0.0.1:3456/preset/<preset-name>`, routing all Claude requests through the local CCR.
+
+### 5. Development loop
+
+After modifying source code, rebuild and restart:
+
+```bash
+pnpm build:core   # Only core package changed
+pnpm build:server # Only server package changed
+pnpm build:cli    # Only CLI package changed
+pnpm build        # Build everything
+
+node cli.js restart
+```
+
 ## 📝 Further Reading
 
 - [Project Motivation and How It Works](blog/en/project-motivation-and-how-it-works.md)
