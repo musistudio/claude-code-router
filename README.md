@@ -572,54 +572,108 @@ jobs:
 
 This setup allows for interesting automations, like running tasks during off-peak hours to reduce API costs.
 
-## 🔧 Local Development & Custom Builds
+## 🔧 Local Development
 
-If you need to modify CCR source code and use your own build:
+### Prerequisites
 
-### 1. Clone and build
+- Node.js >= 20.0.0
+- pnpm >= 8.0.0
+
+### Project Structure
+
+```
+claude-code-router/
+├── packages/
+│   ├── core/      # @musistudio/llms - Core routing & transformer framework
+│   ├── shared/    # @CCR/shared - Shared constants, utilities, presets
+│   ├── server/    # @CCR/server - API server & routing logic
+│   ├── cli/       # @CCR/cli - CLI entry point (ccr command)
+│   └── ui/        # @CCR/ui - Web management interface (React + Vite)
+├── dist/          # Build output (cli.js, index.html, tiktoken_bg.wasm)
+└── cli.js         # Symlink to dist/cli.js, the runnable entry point
+```
+
+Build dependency order: `shared` → `core` → `server` → `cli` + `ui`
+
+### Quick Start
 
 ```bash
+# 1. Clone
 git clone https://github.com/musistudio/claude-code-router.git
 cd claude-code-router
+
+# 2. Install dependencies
 pnpm install
+
+# 3. Build all packages
 pnpm build
-```
 
-### 2. Stop the globally installed CCR service
-
-```bash
+# 4. Stop any globally installed CCR service
 ccr stop
-```
 
-### 3. Start using the local build
-
-```bash
+# 5. Start local build
 node cli.js start
 ```
 
-`cli.js` is located in the project root directory. It reads `~/.claude-code-router/config.json` and behaves identically to the globally installed `ccr`.
+### Development Loop
 
-### 4. Configure Claude Code to use local CCR
-
-After starting CCR, use `ccr activate` to set environment variables so Claude Code and Agent SDK apps automatically use the local router:
+After modifying source code, rebuild the affected package and restart:
 
 ```bash
-ccr activate <preset-name>
+# Rebuild only what changed
+pnpm build:shared  # Shared utilities changed
+pnpm build:core    # Core framework changed
+pnpm build:server  # Server logic changed
+pnpm build:cli     # CLI changed (also rebuilds server + ui)
+pnpm build:ui      # UI only changed
+
+# Or rebuild everything
+pnpm build
+
+# Restart the service
+node cli.js restart
 ```
 
-This sets `ANTHROPIC_BASE_URL=http://127.0.0.1:3456/preset/<preset-name>`, routing all Claude requests through the local CCR.
+> **Note**: `build:cli` also triggers `build:server` and `build:ui` because the CLI package bundles their outputs.
 
-### 5. Development loop
+### Development Mode (Hot Reload)
 
-After modifying source code, rebuild and restart:
+Run individual packages in dev mode with auto-restart on file changes:
 
 ```bash
-pnpm build:core   # Only core package changed
-pnpm build:server # Only server package changed
-pnpm build:cli    # Only CLI package changed
-pnpm build        # Build everything
+pnpm dev:server   # Server with ts-node (auto-restart on change)
+pnpm dev:cli      # CLI with ts-node
+pnpm dev:ui       # UI with Vite dev server (HMR)
+```
 
-node cli.js restart
+### Install as Global Command
+
+To use `ccr` command globally from your local build:
+
+```bash
+# From project root
+sudo npm link
+
+# Verify
+ccr -v   # claude-code-router version: 2.0.0
+```
+
+After `npm link`, the `ccr` command points to your local build. Run `pnpm build` + `ccr restart` after code changes.
+
+### Connect Claude Code
+
+After starting CCR, configure Claude Code to route through it:
+
+```bash
+# Option 1: Use ccr code (wraps claude command)
+ccr code
+
+# Option 2: Set environment variables globally
+eval "$(ccr activate)"
+claude   # Now routes through CCR
+
+# Option 3: Use with a specific preset
+ccr activate <preset-name>
 ```
 
 ## 📝 Further Reading
