@@ -402,7 +402,7 @@ export class AnthropicTransformer implements Transformer {
             buffer = lines.pop() || "";
 
             for (const line of lines) {
-              if (isClosed || hasFinished) break;
+              if (isClosed) break;
 
               if (!line.startsWith("data:")) continue;
               const data = line.slice(5).trim();
@@ -908,7 +908,7 @@ export class AnthropicTransformer implements Transformer {
                     };
                   }
 
-                  break;
+                  hasFinished = true;
                 }
               } catch (parseError: any) {
                 this.logger?.error(
