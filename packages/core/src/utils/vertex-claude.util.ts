@@ -275,10 +275,10 @@ export async function transformResponseOut(
       model: jsonResponse.model,
       object: "chat.completion",
       usage: {
-        completion_tokens: jsonResponse.usage.output_tokens,
-        prompt_tokens: jsonResponse.usage.input_tokens,
+        completion_tokens: jsonResponse.usage?.output_tokens ?? 0,
+        prompt_tokens: jsonResponse.usage?.input_tokens ?? 0,
         total_tokens:
-          jsonResponse.usage.input_tokens + jsonResponse.usage.output_tokens,
+          (jsonResponse.usage?.input_tokens ?? 0) + (jsonResponse.usage?.output_tokens ?? 0),
       },
     };
 

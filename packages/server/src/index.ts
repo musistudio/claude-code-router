@@ -381,15 +381,19 @@ async function getServer(options: RunOptions = {}) {
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
-              // Process the value if needed
               const dataStr = new TextDecoder().decode(value);
-              if (!dataStr.startsWith("event: message_delta")) {
+              // Capture usage from message_start which contains both input_tokens and output_tokens.
+              // message_delta only contains output_tokens and must not be used for this purpose.
+              if (!dataStr.includes("event: message_start")) {
                 continue;
               }
-              const str = dataStr.slice(27);
+              const dataLine = dataStr.split('\n').find((l: string) => l.startsWith('data: '));
+              if (!dataLine) continue;
               try {
-                const message = JSON.parse(str);
-                sessionUsageCache.put(req.sessionId, message.usage);
+                const message = JSON.parse(dataLine.slice(6));
+                if (message.message?.usage) {
+                  sessionUsageCache.put(req.sessionId, message.message.usage);
+                }
               } catch {}
             }
           } catch (readError: any) {
@@ -405,7 +409,17 @@ async function getServer(options: RunOptions = {}) {
         read(clonedStream);
         return done(null, originalStream)
       }
-      sessionUsageCache.put(req.sessionId, payload.usage);
+      // payload is a serialized JSON string in Fastify's onSend hook for non-streaming responses
+      if (typeof payload === 'string') {
+        try {
+          const parsed = JSON.parse(payload);
+          if (parsed.usage) {
+            sessionUsageCache.put(req.sessionId, parsed.usage);
+          }
+        } catch {}
+      } else if (typeof payload === 'object' && payload?.usage) {
+        sessionUsageCache.put(req.sessionId, payload.usage);
+      }
       if (typeof payload ==='object') {
         if (payload.error) {
           return done(payload.error, null)
