@@ -381,22 +381,34 @@ async function getServer(options: RunOptions = {}) {
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
-              // Process the value if needed
               const dataStr = new TextDecoder().decode(value);
-              if (!dataStr.startsWith("event: message_delta")) {
+              // Capture usage from message_start which contains both input_tokens and output_tokens.
+              // message_delta only contains output_tokens and must not be used for this purpose.
+              if (!dataStr.includes("event: message_start")) {
                 continue;
               }
-              const str = dataStr.slice(27);
+              const dataLine = dataStr.split('\n').find((l: string) => l.startsWith('data: '));
+              if (!dataLine) {
+                req.log?.warn({ sessionId: req.sessionId }, 'session-usage: message_start event found but no data line in chunk');
+                continue;
+              }
               try {
-                const message = JSON.parse(str);
-                sessionUsageCache.put(req.sessionId, message.usage);
-              } catch {}
+                const message = JSON.parse(dataLine.slice(6));
+                if (message.message?.usage) {
+                  sessionUsageCache.put(req.sessionId, message.message.usage);
+                  req.log?.debug({ sessionId: req.sessionId, usage: message.message.usage }, 'session-usage: cached from streaming message_start');
+                } else {
+                  req.log?.warn({ sessionId: req.sessionId, message }, 'session-usage: message_start parsed but usage field missing');
+                }
+              } catch (parseError: any) {
+                req.log?.warn({ sessionId: req.sessionId, err: parseError.message, raw: dataLine }, 'session-usage: failed to parse message_start data line');
+              }
             }
           } catch (readError: any) {
             if (readError.name === 'AbortError' || readError.code === 'ERR_STREAM_PREMATURE_CLOSE') {
-              console.error('Background read stream closed prematurely');
+              req.log?.warn({ sessionId: req.sessionId }, 'session-usage: background read stream closed prematurely');
             } else {
-              console.error('Error in background stream reading:', readError);
+              req.log?.error({ sessionId: req.sessionId, err: readError.message }, 'session-usage: unexpected error in background stream reading');
             }
           } finally {
             reader.releaseLock();
@@ -405,7 +417,23 @@ async function getServer(options: RunOptions = {}) {
         read(clonedStream);
         return done(null, originalStream)
       }
-      sessionUsageCache.put(req.sessionId, payload.usage);
+      // payload is a serialized JSON string in Fastify's onSend hook for non-streaming responses
+      if (typeof payload === 'string') {
+        try {
+          const parsed = JSON.parse(payload);
+          if (parsed.usage) {
+            sessionUsageCache.put(req.sessionId, parsed.usage);
+            req.log?.debug({ sessionId: req.sessionId, usage: parsed.usage }, 'session-usage: cached from non-streaming response');
+          } else {
+            req.log?.warn({ sessionId: req.sessionId }, 'session-usage: non-streaming response parsed but usage field missing');
+          }
+        } catch (parseError: any) {
+          req.log?.error({ sessionId: req.sessionId, err: parseError.message }, 'session-usage: failed to parse non-streaming payload');
+        }
+      } else if (typeof payload === 'object' && payload?.usage) {
+        sessionUsageCache.put(req.sessionId, payload.usage);
+        req.log?.debug({ sessionId: req.sessionId, usage: payload.usage }, 'session-usage: cached from non-streaming response object');
+      }
       if (typeof payload ==='object') {
         if (payload.error) {
           return done(payload.error, null)

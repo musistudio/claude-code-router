@@ -542,6 +542,110 @@ jobs:
 
 这种设置可以实现有趣的自动化，例如在非高峰时段运行任务以降低 API 成本。
 
+## 🔧 本地开发
+
+### 环境要求
+
+- Node.js >= 20.0.0
+- pnpm >= 8.0.0
+
+### 项目结构
+
+```
+claude-code-router/
+├── packages/
+│   ├── core/      # @musistudio/llms - 核心路由与转换框架
+│   ├── shared/    # @CCR/shared - 共享常量、工具、预设管理
+│   ├── server/    # @CCR/server - API 服务与路由逻辑
+│   ├── cli/       # @CCR/cli - CLI 入口（ccr 命令）
+│   └── ui/        # @CCR/ui - Web 管理界面（React + Vite）
+├── dist/          # 构建产物（cli.js、index.html、tiktoken_bg.wasm）
+└── cli.js         # 指向 dist/cli.js 的入口文件
+```
+
+构建依赖顺序：`shared` → `core` → `server` → `cli` + `ui`
+
+### 快速开始
+
+```bash
+# 1. 克隆项目
+git clone https://github.com/musistudio/claude-code-router.git
+cd claude-code-router
+
+# 2. 安装依赖
+pnpm install
+
+# 3. 构建全部包
+pnpm build
+
+# 4. 停止全局安装的 CCR 服务（如有）
+ccr stop
+
+# 5. 启动本地构建
+node cli.js start
+```
+
+### 开发循环
+
+修改源码后，重新构建受影响的包并重启：
+
+```bash
+# 只重建修改的部分
+pnpm build:shared  # 共享工具包改动
+pnpm build:core    # 核心框架改动
+pnpm build:server  # 服务端逻辑改动
+pnpm build:cli     # CLI 改动（同时会重建 server + ui）
+pnpm build:ui      # 仅 UI 改动
+
+# 或构建全部
+pnpm build
+
+# 重启服务
+node cli.js restart
+```
+
+> **注意**：`build:cli` 会同时触发 `build:server` 和 `build:ui`，因为 CLI 包会打包它们的产物。
+
+### 开发模式（热重载）
+
+以开发模式运行，文件变更时自动重启：
+
+```bash
+pnpm dev:server   # 服务端 ts-node 模式（文件变更自动重启）
+pnpm dev:cli      # CLI ts-node 模式
+pnpm dev:ui       # UI Vite 开发服务器（HMR 热更新）
+```
+
+### 安装为全局命令
+
+将本地构建注册为全局 `ccr` 命令：
+
+```bash
+# 在项目根目录执行
+sudo npm link
+
+# 验证
+ccr -v   # claude-code-router version: 2.0.0
+```
+
+`npm link` 后，`ccr` 命令指向本地构建。代码修改后执行 `pnpm build` + `ccr restart` 即可生效。
+
+### 连接 Claude Code
+
+启动 CCR 后，配置 Claude Code 通过路由器发请求：
+
+```bash
+# 方式一：使用 ccr code（封装 claude 命令）
+ccr code
+
+# 方式二：全局设置环境变量
+eval "$(ccr activate)"
+claude   # 现在请求会经过 CCR 路由
+
+# 方式三：使用指定预设
+ccr activate <预设名>
+```
+
 ## 📝 深入阅读
 
 -   [项目动机和工作原理](blog/zh/项目初衷及原理.md)
