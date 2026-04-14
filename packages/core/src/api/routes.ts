@@ -454,7 +454,7 @@ function formatResponse(response: any, reply: FastifyReply, body: any) {
   // This handles cases where the upstream returns SSE even though the client
   // didn't explicitly set stream: true (e.g. Claude Agent SDK requests).
   const contentType = response.headers?.get("Content-Type") || "";
-  const isStream = contentType.includes("text/event-stream");
+  const isStream = contentType.includes("text/event-stream") || body.stream === true;
 
   if (isStream) {
     reply.header("Content-Type", "text/event-stream");

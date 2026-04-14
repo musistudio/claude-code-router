@@ -388,19 +388,27 @@ async function getServer(options: RunOptions = {}) {
                 continue;
               }
               const dataLine = dataStr.split('\n').find((l: string) => l.startsWith('data: '));
-              if (!dataLine) continue;
+              if (!dataLine) {
+                req.log?.warn({ sessionId: req.sessionId }, 'session-usage: message_start event found but no data line in chunk');
+                continue;
+              }
               try {
                 const message = JSON.parse(dataLine.slice(6));
                 if (message.message?.usage) {
                   sessionUsageCache.put(req.sessionId, message.message.usage);
+                  req.log?.debug({ sessionId: req.sessionId, usage: message.message.usage }, 'session-usage: cached from streaming message_start');
+                } else {
+                  req.log?.warn({ sessionId: req.sessionId, message }, 'session-usage: message_start parsed but usage field missing');
                 }
-              } catch {}
+              } catch (parseError: any) {
+                req.log?.warn({ sessionId: req.sessionId, err: parseError.message, raw: dataLine }, 'session-usage: failed to parse message_start data line');
+              }
             }
           } catch (readError: any) {
             if (readError.name === 'AbortError' || readError.code === 'ERR_STREAM_PREMATURE_CLOSE') {
-              console.error('Background read stream closed prematurely');
+              req.log?.warn({ sessionId: req.sessionId }, 'session-usage: background read stream closed prematurely');
             } else {
-              console.error('Error in background stream reading:', readError);
+              req.log?.error({ sessionId: req.sessionId, err: readError.message }, 'session-usage: unexpected error in background stream reading');
             }
           } finally {
             reader.releaseLock();
@@ -415,10 +423,16 @@ async function getServer(options: RunOptions = {}) {
           const parsed = JSON.parse(payload);
           if (parsed.usage) {
             sessionUsageCache.put(req.sessionId, parsed.usage);
+            req.log?.debug({ sessionId: req.sessionId, usage: parsed.usage }, 'session-usage: cached from non-streaming response');
+          } else {
+            req.log?.warn({ sessionId: req.sessionId }, 'session-usage: non-streaming response parsed but usage field missing');
           }
-        } catch {}
+        } catch (parseError: any) {
+          req.log?.error({ sessionId: req.sessionId, err: parseError.message }, 'session-usage: failed to parse non-streaming payload');
+        }
       } else if (typeof payload === 'object' && payload?.usage) {
         sessionUsageCache.put(req.sessionId, payload.usage);
+        req.log?.debug({ sessionId: req.sessionId, usage: payload.usage }, 'session-usage: cached from non-streaming response object');
       }
       if (typeof payload ==='object') {
         if (payload.error) {

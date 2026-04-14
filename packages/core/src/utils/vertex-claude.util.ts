@@ -274,12 +274,17 @@ export async function transformResponseOut(
       created: parseInt(new Date().getTime() / 1000 + "", 10),
       model: jsonResponse.model,
       object: "chat.completion",
-      usage: {
-        completion_tokens: jsonResponse.usage?.output_tokens ?? 0,
-        prompt_tokens: jsonResponse.usage?.input_tokens ?? 0,
-        total_tokens:
-          (jsonResponse.usage?.input_tokens ?? 0) + (jsonResponse.usage?.output_tokens ?? 0),
-      },
+      usage: (() => {
+        if (!jsonResponse.usage) {
+          logger?.warn({ providerName, model: jsonResponse.model }, 'vertex-claude: usage field missing in non-streaming response, defaulting to 0');
+        }
+        return {
+          completion_tokens: jsonResponse.usage?.output_tokens ?? 0,
+          prompt_tokens: jsonResponse.usage?.input_tokens ?? 0,
+          total_tokens:
+            (jsonResponse.usage?.input_tokens ?? 0) + (jsonResponse.usage?.output_tokens ?? 0),
+        };
+      })(),
     };
 
     return new Response(JSON.stringify(res), {
