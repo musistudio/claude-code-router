@@ -11,7 +11,7 @@ import { runModelSelector } from "./utils/modelSelector";
 import { activateCommand } from "./utils/activateCommand";
 import { readConfigFile } from "./utils";
 import { version } from "../package.json";
-import { spawn, exec } from "child_process";
+import { spawn } from "child_process";
 import {getPresetDir, loadConfigFromManifest, PID_FILE, readPresetFile, REFERENCE_COUNT_FILE} from "@CCR/shared";
 import fs, { existsSync, readFileSync } from "fs";
 import { join } from "path";
@@ -400,29 +400,31 @@ async function main() {
 
       console.log(`Opening UI at ${uiUrl}`);
 
-      // Open URL in browser based on platform
+      // Open URL in browser based on platform using spawn (no shell)
+      // to avoid DEP0190 deprecation warning on Node.js 22+
       const platform = process.platform;
-      let openCommand = "";
+      let command: string;
+      let args: string[];
 
       if (platform === "win32") {
-        // Windows
-        openCommand = `start ${uiUrl}`;
+        // Windows: 'start' is a cmd builtin, needs cmd /c
+        command = "cmd";
+        args = ["/c", "start", uiUrl];
       } else if (platform === "darwin") {
-        // macOS
-        openCommand = `open ${uiUrl}`;
+        command = "open";
+        args = [uiUrl];
       } else if (platform === "linux") {
-        // Linux
-        openCommand = `xdg-open ${uiUrl}`;
+        command = "xdg-open";
+        args = [uiUrl];
       } else {
         console.error("Unsupported platform for opening browser");
         process.exit(1);
       }
 
-      exec(openCommand, (error) => {
-        if (error) {
-          console.error("Failed to open browser:", error.message);
-          process.exit(1);
-        }
+      const openProcess = spawn(command!, args!, { stdio: "ignore" });
+      openProcess.on("error", (error) => {
+        console.error("Failed to open browser:", error.message);
+        process.exit(1);
       });
       break;
     case "-v":
