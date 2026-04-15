@@ -334,8 +334,9 @@ async function sendRequestToProvider(
 
   // Send HTTP request
   // Prepare headers
+  // In bypass mode, auth is handled by transformer.auth() so skip the default Authorization header
   const requestHeaders: Record<string, string> = {
-    Authorization: `Bearer ${provider.apiKey}`,
+    ...(bypass ? {} : { Authorization: `Bearer ${provider.apiKey}` }),
     ...(config?.headers || {}),
   };
 
