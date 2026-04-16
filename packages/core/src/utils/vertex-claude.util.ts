@@ -3,15 +3,28 @@ import { UnifiedChatRequest, UnifiedMessage, UnifiedTool } from "../types/llm";
 // Vertex Claude message interface
 interface ClaudeMessage {
   role: "user" | "assistant";
-  content: Array<{
-    type: "text" | "image";
-    text?: string;
-    source?: {
-      type: "base64";
-      media_type: string;
-      data: string;
-    };
-  }>;
+  content: Array<
+    | {
+        type: "text" | "image";
+        text?: string;
+        source?: {
+          type: "base64";
+          media_type: string;
+          data: string;
+        };
+      }
+    | {
+        type: "tool_use";
+        id: string;
+        name: string;
+        input: Record<string, any>;
+      }
+    | {
+        type: "tool_result";
+        tool_use_id: string;
+        content: string;
+      }
+  >;
 }
 
 // Vertex Claude tool interface
@@ -64,7 +77,8 @@ interface VertexClaudeResponse {
 }
 
 export function buildRequestBody(
-  request: UnifiedChatRequest
+  request: UnifiedChatRequest,
+  logger?: any
 ): VertexClaudeRequest {
   const messages: ClaudeMessage[] = [];
 
@@ -74,6 +88,61 @@ export function buildRequestBody(
     const isAssistantMessage = message.role === "assistant";
 
     const content: ClaudeMessage["content"] = [];
+
+    // Handle tool results (role: tool)
+    if (message.role === "tool" && message.tool_call_id) {
+      messages.push({
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: message.tool_call_id,
+            content: typeof message.content === "string" ? message.content : JSON.stringify(message.content),
+          },
+        ],
+      });
+      continue;
+    }
+
+    // Handle tool calls from assistant
+    if (message.tool_calls?.length) {
+      // Add existing text content if any
+      if (typeof message.content === "string" && message.content) {
+        content.push({
+          type: "text",
+          text: message.content,
+        });
+      }
+
+      message.tool_calls.forEach((toolCall) => {
+        try {
+          const args =
+            typeof toolCall.function.arguments === "string"
+              ? JSON.parse(toolCall.function.arguments)
+              : toolCall.function.arguments;
+
+          if (args && typeof args === "object") {
+            delete args.description;
+          }
+
+          content.push({
+            type: "tool_use",
+            id: toolCall.id,
+            name: toolCall.function.name,
+            input: args,
+          });
+        } catch (e) {
+          logger?.error(`Error parsing tool_call arguments: ${e}`);
+        }
+      });
+
+      messages.push({
+        role: "assistant",
+        content: content as any,
+      });
+
+      continue;
+    }
 
     if (typeof message.content === "string") {
       // Keep all string content, even empty strings, as it may contain important information

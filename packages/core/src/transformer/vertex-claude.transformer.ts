@@ -61,7 +61,8 @@ export class VertexClaudeTransformer implements Transformer {
       config: {
         url: new URL(
           `/v1/projects/${projectId}/locations/${location}/publishers/anthropic/models/${request.model}:${request.stream ? "streamRawPredict" : "rawPredict"}`,
-          `https://${location}-aiplatform.googleapis.com`
+          provider.baseUrl.endsWith('/') ? provider.baseUrl : provider.baseUrl + '/' || `https://${location}-aiplatform.googleapis.com`
+
         ).toString(),
         headers: {
           "Authorization": `Bearer ${accessToken}`,
