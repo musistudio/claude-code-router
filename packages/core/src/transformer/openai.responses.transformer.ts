@@ -68,6 +68,11 @@ export class OpenAIResponsesTransformer implements Transformer {
   name = "openai-responses";
   endPoint = "/v1/responses";
 
+  private normalizeCallId(id?: string): string | undefined {
+    if (!id) return id;
+    return id.length > 64 ? id.slice(0, 64) : id;
+  }
+
   async transformRequestIn(
     request: UnifiedChatRequest
   ): Promise<UnifiedChatRequest> {
@@ -127,7 +132,7 @@ export class OpenAIResponsesTransformer implements Transformer {
       if (message.role === "tool") {
         const toolMessage: any = { ...message };
         toolMessage.type = "function_call_output";
-        toolMessage.call_id = message.tool_call_id;
+        toolMessage.call_id = this.normalizeCallId(message.tool_call_id);
         toolMessage.output = message.content;
         delete toolMessage.cache_control;
         delete toolMessage.role;
@@ -143,7 +148,7 @@ export class OpenAIResponsesTransformer implements Transformer {
             type: "function_call",
             arguments: tool.function.arguments,
             name: tool.function.name,
-            call_id: tool.id,
+            call_id: this.normalizeCallId(tool.id),
           });
         });
         return;
