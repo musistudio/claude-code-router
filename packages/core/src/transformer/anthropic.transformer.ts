@@ -314,6 +314,20 @@ export class AnthropicTransformer implements Transformer {
         const safeClose = () => {
           if (!isClosed) {
             try {
+              // If message_start was never sent, sending message_delta/message_stop without it
+              // will cause the Anthropic SDK to crash: "Cannot read properties of undefined (reading 'input_tokens')".
+              // In this case, just close the stream without sending SSE lifecycle events.
+              if (!hasStarted) {
+                this.logger.warn({
+                  reqId: context.req.id,
+                  totalChunks,
+                  type: "close_without_message_start",
+                }, "Stream closed before message_start was emitted - skipping message_delta/message_stop to avoid SDK crash");
+                controller.close();
+                isClosed = true;
+                return;
+              }
+
               // Close any remaining open content block
               if (currentContentBlockIndex >= 0) {
                 const contentBlockStop = {
@@ -425,6 +439,39 @@ export class AnthropicTransformer implements Transformer {
                   tppe: "Original Response",
                 });
                 if (chunk.error) {
+                  this.logger.error({
+                    reqId: context.req.id,
+                    error: chunk.error,
+                    hasStarted,
+                    totalChunks,
+                    type: "stream_error_chunk",
+                  }, "Provider returned error chunk in SSE stream");
+
+                  // If message_start has not been sent yet, emit it with zero usage so the
+                  // Anthropic SDK has a properly initialized message context before the error event.
+                  // Without this, the SDK crashes with "Cannot read properties of undefined (reading 'input_tokens')".
+                  if (!hasStarted && !isClosed && !hasFinished) {
+                    hasStarted = true;
+                    const messageStart = {
+                      type: "message_start",
+                      message: {
+                        id: messageId,
+                        type: "message",
+                        role: "assistant",
+                        content: [],
+                        model,
+                        stop_reason: null,
+                        stop_sequence: null,
+                        usage: { input_tokens: 0, output_tokens: 0 },
+                      },
+                    };
+                    safeEnqueue(
+                      encoder.encode(
+                        `event: message_start\ndata: ${JSON.stringify(messageStart)}\n\n`
+                      )
+                    );
+                  }
+
                   const errorMessage = {
                     type: "error",
                     message: {
@@ -919,11 +966,36 @@ export class AnthropicTransformer implements Transformer {
           }
           safeClose();
         } catch (error) {
+          this.logger.error({
+            reqId: context.req.id,
+            error: error instanceof Error ? error.message : String(error),
+            hasStarted,
+            totalChunks,
+            type: "stream_fatal_error",
+          }, "Fatal error during SSE stream processing");
           if (!isClosed) {
-            try {
-              controller.error(error);
-            } catch (controllerError) {
-              console.error(controllerError);
+            if (hasStarted) {
+              // message_start was already sent, attempt a graceful close so the SDK
+              // receives message_delta + message_stop and does not crash on missing usage.
+              try {
+                safeClose();
+              } catch (closeError) {
+                // If graceful close fails, fall back to erroring the stream.
+                try {
+                  controller.error(error);
+                } catch (controllerError) {
+                  console.error(controllerError);
+                }
+              }
+            } else {
+              // message_start was never sent; just error the stream — safeClose would
+              // emit message_delta/message_stop without a preceding message_start, which
+              // crashes the SDK.
+              try {
+                controller.error(error);
+              } catch (controllerError) {
+                console.error(controllerError);
+              }
             }
           }
         } finally {
