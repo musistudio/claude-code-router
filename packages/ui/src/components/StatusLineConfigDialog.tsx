@@ -769,7 +769,7 @@ export function StatusLineConfigDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl h-[90vh] overflow-hidden sm:max-w-5xl md:max-w-6xl lg:max-w-7xl animate-in fade-in-90 slide-in-from-bottom-10 duration-300 flex flex-col">
+      <DialogContent className="max-w-4xl sm:max-w-5xl md:max-w-6xl lg:max-w-7xl animate-in fade-in-90 duration-300 flex flex-col">
         <DialogHeader
           data-testid="statusline-config-dialog-header"
           className="border-b pb-4"
