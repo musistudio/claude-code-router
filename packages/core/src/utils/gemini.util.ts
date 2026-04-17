@@ -819,6 +819,41 @@ export async function transformResponseOut(
                 if (hasThinkingContent && textContent && !signatureSent) {
                   if (chunk.modelVersion.includes("3")) {
                     pendingContent += textContent;
+                    // If this is the last chunk (finishReason present), emit a synthetic
+                    // thinking signature to close the thinking block first, so the buffered
+                    // content gets flushed properly by the textContent handler below.
+                    if (candidate.finishReason) {
+                      const sigChunk = {
+                        choices: [
+                          {
+                            delta: {
+                              role: "assistant",
+                              content: null,
+                              thinking: {
+                                signature: `ccr_${+new Date()}`,
+                              },
+                            },
+                            finish_reason: null,
+                            index: contentIndex,
+                            logprobs: null,
+                          },
+                        ],
+                        created: parseInt(
+                          new Date().getTime() / 1000 + "",
+                          10
+                        ),
+                        id: chunk.responseId || "",
+                        model: chunk.modelVersion || "",
+                        object: "chat.completion.chunk",
+                        system_fingerprint: "fp_a49d71b8a1",
+                      };
+                      controller.enqueue(
+                        encoder.encode(
+                          `data: ${JSON.stringify(sigChunk)}\n\n`
+                        )
+                      );
+                      signatureSent = true;
+                    }
                     return;
                   } else {
                     const signatureChunk = {
