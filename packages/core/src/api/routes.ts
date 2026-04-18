@@ -210,7 +210,11 @@ async function processRequestTransformers(
   let bypass = false;
 
   // Check if transformers should be bypassed (passthrough mode)
-  bypass = shouldBypassTransformers(provider, transformer, body);
+  // Don't bypass for streaming - need response conversion
+  const isStreaming = body?.stream === true;
+  if (!isStreaming) {
+    bypass = shouldBypassTransformers(provider, transformer, body);
+  }
 
   if (bypass) {
     if (headers instanceof Headers) {
