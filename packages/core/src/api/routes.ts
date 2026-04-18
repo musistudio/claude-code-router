@@ -210,7 +210,11 @@ async function processRequestTransformers(
   let bypass = false;
 
   // Check if transformers should be bypassed (passthrough mode)
-  bypass = shouldBypassTransformers(provider, transformer, body);
+  // Don't bypass for streaming - need response conversion
+  const isStreaming = body?.stream === true;
+  if (!isStreaming) {
+    bypass = shouldBypassTransformers(provider, transformer, body);
+  }
 
   if (bypass) {
     if (headers instanceof Headers) {
@@ -264,11 +268,17 @@ async function processRequestTransformers(
       ) {
         continue;
       }
-      requestBody = await modelTransformer.transformRequestIn(
+      const transformIn = await modelTransformer.transformRequestIn(
         requestBody,
         provider,
         context
       );
+      if (transformIn.body) {
+        requestBody = transformIn.body;
+        config = { ...config, ...transformIn.config };
+      } else {
+        requestBody = transformIn;
+      }
     }
   }
 

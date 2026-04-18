@@ -18,6 +18,7 @@ import { join } from "path";
 import { parseStatusLineData, StatusLineInput } from "./utils/statusline";
 import {handlePresetCommand} from "./utils/preset";
 import { handleInstallCommand } from "./utils/installCommand";
+import { runAuthCopilot } from "./utils/auth-copilot";
 
 
 const command = process.argv[2];
@@ -36,6 +37,7 @@ const KNOWN_COMMANDS = [
   "activate",
   "env",
   "ui",
+  "auth",
   "-v",
   "version",
   "-h",
@@ -57,6 +59,7 @@ Commands:
   install       Install preset from GitHub marketplace
   activate      Output environment variables for shell integration
   ui            Open the web UI in browser
+  auth          Authenticate with providers (auth copilot)
   -v, version   Show version information
   -h, help      Show help information
 
@@ -72,6 +75,7 @@ Examples:
   ccr preset install /path/to/preset     # Install a preset from directory
   ccr preset list                        # List all presets
   ccr install my-preset                  # Install preset from marketplace
+  ccr auth copilot                       # Authenticate with GitHub Copilot
   eval "$(ccr activate)"  # Set environment variables globally
   ccr ui
 `;
@@ -304,6 +308,22 @@ async function main() {
       } else {
         const codeArgs = process.argv.slice(3);
         executeCodeCommand(codeArgs);
+      }
+      break;
+    case "auth":
+      {
+        const authProvider = process.argv[3];
+        const accountTypeIndex = process.argv.findIndex((arg) => arg === "--account-type" || arg === "-a");
+        const accountType = accountTypeIndex !== -1 && process.argv[accountTypeIndex + 1] ? process.argv[accountTypeIndex + 1] : "individual";
+        const force = process.argv.includes("--force");
+
+        if (authProvider === "copilot") {
+          await runAuthCopilot(accountType, force);
+        } else {
+          console.log("Unknown auth provider. Supported: copilot");
+          console.log("Usage: ccr auth copilot --account-type individual|business|enterprise");
+          process.exit(1);
+        }
       }
       break;
     case "ui":

@@ -275,6 +275,7 @@ export class AnthropicTransformer implements Transformer {
         let isThinkingStarted = false;
         let contentIndex = 0;
         let currentContentBlockIndex = -1; // Track the current content block index
+        let copilotAssembledText = "";
 
         // 原子性的content block index分配函数
         const assignContentBlockIndex = (): number => {
@@ -441,8 +442,342 @@ export class AnthropicTransformer implements Transformer {
                   continue;
                 }
 
-                model = chunk.model || model;
+                model = chunk.model || chunk.response?.model || model;
 
+                // Copilot: function call start
+                if (
+                  chunk.type === "response.output_item.added" &&
+                  chunk.item?.type === "function_call" &&
+                  !isClosed &&
+                  !hasFinished
+                ) {
+                  const toolCallIndex = chunk.output_index ?? toolCalls.size;
+
+                  if (!toolCallIndexToContentBlockIndex.has(toolCallIndex)) {
+                    if (currentContentBlockIndex >= 0) {
+                      const contentBlockStop = {
+                        type: "content_block_stop",
+                        index: currentContentBlockIndex,
+                      };
+                      safeEnqueue(
+                        encoder.encode(
+                          `event: content_block_stop\ndata: ${JSON.stringify(
+                            contentBlockStop
+                          )}\n\n`
+                        )
+                      );
+                      currentContentBlockIndex = -1;
+                    }
+
+                    const newContentBlockIndex = assignContentBlockIndex();
+                    toolCallIndexToContentBlockIndex.set(
+                      toolCallIndex,
+                      newContentBlockIndex
+                    );
+
+                    const toolCallId =
+                      chunk.item.call_id ||
+                      chunk.item.id ||
+                      `call_${Date.now()}_${toolCallIndex}`;
+                    const toolCallName =
+                      chunk.item.name || `tool_${toolCallIndex}`;
+
+                    const contentBlockStart = {
+                      type: "content_block_start",
+                      index: newContentBlockIndex,
+                      content_block: {
+                        type: "tool_use",
+                        id: toolCallId,
+                        name: toolCallName,
+                        input: {},
+                      },
+                    };
+
+                    safeEnqueue(
+                      encoder.encode(
+                        `event: content_block_start\ndata: ${JSON.stringify(
+                          contentBlockStart
+                        )}\n\n`
+                      )
+                    );
+
+                    currentContentBlockIndex = newContentBlockIndex;
+                    hasTextContentStarted = false;
+                    toolCalls.set(toolCallIndex, {
+                      id: toolCallId,
+                      name: toolCallName,
+                      arguments: "",
+                    });
+                    toolCallChunks++;
+                  }
+                  continue;
+                }
+
+                // Copilot: function call arguments delta
+                if (
+                  chunk.type === "response.function_call_arguments.delta" &&
+                  !isClosed &&
+                  !hasFinished
+                ) {
+                  const toolCallIndex = chunk.output_index ?? 0;
+                  const blockIndex = toolCallIndexToContentBlockIndex.get(
+                    toolCallIndex
+                  );
+                  const deltaArgs = chunk.delta || "";
+
+                  if (blockIndex !== undefined && deltaArgs) {
+                    const currentToolCall = toolCalls.get(toolCallIndex);
+                    if (currentToolCall) {
+                      currentToolCall.arguments += deltaArgs;
+                    }
+
+                    const anthropicChunk = {
+                      type: "content_block_delta",
+                      index: blockIndex,
+                      delta: {
+                        type: "input_json_delta",
+                        partial_json: deltaArgs,
+                      },
+                    };
+
+                    safeEnqueue(
+                      encoder.encode(
+                        `event: content_block_delta\ndata: ${JSON.stringify(
+                          anthropicChunk
+                        )}\n\n`
+                      )
+                    );
+                    toolCallChunks++;
+                  }
+                  continue;
+                }
+
+                // Copilot: function call done
+                if (
+                  chunk.type === "response.output_item.done" &&
+                  chunk.item?.type === "function_call" &&
+                  !isClosed &&
+                  !hasFinished
+                ) {
+                  const toolCallIndex = chunk.output_index ?? 0;
+                  const blockIndex = toolCallIndexToContentBlockIndex.get(
+                    toolCallIndex
+                  );
+                  const currentToolCall = toolCalls.get(toolCallIndex);
+                  const finalArgs = chunk.item.arguments || "";
+
+                  // If no arg deltas were streamed, emit final args once.
+                  if (
+                    blockIndex !== undefined &&
+                    finalArgs &&
+                    currentToolCall &&
+                    !currentToolCall.arguments
+                  ) {
+                    const anthropicChunk = {
+                      type: "content_block_delta",
+                      index: blockIndex,
+                      delta: {
+                        type: "input_json_delta",
+                        partial_json: finalArgs,
+                      },
+                    };
+                    safeEnqueue(
+                      encoder.encode(
+                        `event: content_block_delta\ndata: ${JSON.stringify(
+                          anthropicChunk
+                        )}\n\n`
+                      )
+                    );
+                  }
+
+                  if (blockIndex !== undefined) {
+                    const contentBlockStop = {
+                      type: "content_block_stop",
+                      index: blockIndex,
+                    };
+                    safeEnqueue(
+                      encoder.encode(
+                        `event: content_block_stop\ndata: ${JSON.stringify(
+                          contentBlockStop
+                        )}\n\n`
+                      )
+                    );
+                    currentContentBlockIndex = -1;
+                  }
+
+                  if (!stopReasonMessageDelta) {
+                    stopReasonMessageDelta = {
+                      type: "message_delta",
+                      delta: {
+                        stop_reason: "tool_use",
+                        stop_sequence: null,
+                      },
+                      usage: {
+                        input_tokens: 0,
+                        output_tokens: 0,
+                        cache_read_input_tokens: 0,
+                      },
+                    };
+                  }
+
+                  toolCallChunks++;
+                  continue;
+                }
+
+                // Copilot text events (multiple event types can carry text)
+                const isCopilotTextDelta =
+                  chunk.type === "response.output_text.delta";
+                const isCopilotTextDone =
+                  chunk.type === "response.output_text.done";
+                const isCopilotContentPartAdded =
+                  chunk.type === "response.content_part.added";
+                const isCopilotContentPartDone =
+                  chunk.type === "response.content_part.done";
+                const isCopilotMessageItemDone =
+                  chunk.type === "response.output_item.done" &&
+                  chunk.item?.type === "message";
+
+                let copilotText = "";
+                if (isCopilotTextDelta) {
+                  copilotText = chunk.delta || "";
+                } else if (isCopilotTextDone) {
+                  copilotText = chunk.text || "";
+                } else if (
+                  (isCopilotContentPartAdded || isCopilotContentPartDone) &&
+                  chunk.part?.type === "output_text"
+                ) {
+                  copilotText = chunk.part.text || "";
+                } else if (isCopilotMessageItemDone && Array.isArray(chunk.item?.content)) {
+                  const textPart = chunk.item.content.find(
+                    (part: any) => part.type === "output_text" && part.text
+                  );
+                  copilotText = textPart?.text || "";
+                }
+
+                if (copilotText && !isClosed && !hasFinished) {
+                  const isFinalCopilotTextEvent =
+                    isCopilotTextDone ||
+                    isCopilotContentPartDone ||
+                    isCopilotMessageItemDone;
+
+                  if (
+                    isFinalCopilotTextEvent &&
+                    hasTextContentStarted &&
+                    contentChunks > 0 &&
+                    copilotText.trim() === copilotAssembledText.trim()
+                  ) {
+                    continue;
+                  }
+
+                  // Ensure we are in a text content block
+                  if (!hasTextContentStarted) {
+                    if (currentContentBlockIndex >= 0) {
+                      const contentBlockStop = {
+                        type: "content_block_stop",
+                        index: currentContentBlockIndex,
+                      };
+                      safeEnqueue(
+                        encoder.encode(
+                          `event: content_block_stop\ndata: ${JSON.stringify(
+                            contentBlockStop
+                          )}\n\n`
+                        )
+                      );
+                    }
+
+                    hasTextContentStarted = true;
+                    const textBlockIndex = assignContentBlockIndex();
+                    currentContentBlockIndex = textBlockIndex;
+
+                    const contentBlockStart = {
+                      type: "content_block_start",
+                      index: textBlockIndex,
+                      content_block: {
+                        type: "text",
+                        text: "",
+                      },
+                    };
+
+                    safeEnqueue(
+                      encoder.encode(
+                        `event: content_block_start\ndata: ${JSON.stringify(
+                          contentBlockStart
+                        )}\n\n`
+                      )
+                    );
+                  }
+
+                  const textDelta = {
+                    type: "content_block_delta",
+                    index:
+                      currentContentBlockIndex >= 0 ? currentContentBlockIndex : 0,
+                    delta: {
+                      type: "text_delta",
+                      text: String(copilotText),
+                    },
+                  };
+
+                  safeEnqueue(
+                    encoder.encode(
+                      `event: content_block_delta\ndata: ${JSON.stringify(
+                        textDelta
+                      )}\n\n`
+                    )
+                  );
+                  copilotAssembledText += String(copilotText);
+                  contentChunks++;
+                  continue;
+                }
+
+                // Handle Copilot response.completed / response.incomplete
+                if (
+                  chunk.response?.type === "response.completed" ||
+                  chunk.response?.type === "response.incomplete"
+                ) {
+                  if (hasTextContentStarted && !hasFinished) {
+                    hasFinished = true;
+                    safeEnqueue(
+                      encoder.encode(
+                        `event: content_block_stop\ndata: ${JSON.stringify({
+                          type: "content_block_stop",
+                          index:
+                            currentContentBlockIndex >= 0
+                              ? currentContentBlockIndex
+                              : 0,
+                        })}\n\n`
+                      )
+                    );
+                  }
+
+                  const finalStopReason =
+                    toolCallChunks > 0
+                      ? "tool_use"
+                      : chunk.response.incomplete_details?.reason ===
+                        "max_output_tokens"
+                      ? "max_tokens"
+                      : "end_turn";
+
+                  if (!stopReasonMessageDelta) {
+                    stopReasonMessageDelta = {
+                      type: "message_delta",
+                      delta: {
+                        stop_reason: finalStopReason,
+                        stop_sequence: null,
+                      },
+                      usage: chunk.response.usage,
+                    };
+                  }
+
+                  safeEnqueue(
+                    encoder.encode(
+                      `event: message_delta\ndata: ${JSON.stringify(
+                        stopReasonMessageDelta
+                      )}\n\n`
+                    )
+                  );
+                  continue;
+                }
+                
                 if (!hasStarted && !isClosed && !hasFinished) {
                   hasStarted = true;
 
@@ -960,6 +1295,11 @@ export class AnthropicTransformer implements Transformer {
       },
       `Original OpenAI response`
     );
+    
+    if ((openaiResponse as any).output && !openaiResponse.choices) {
+      return this.convertCopilotResponseToAnthropic(openaiResponse);
+    }
+    
     try {
       const choice = openaiResponse.choices[0];
       if (!choice) {
@@ -1065,5 +1405,69 @@ export class AnthropicTransformer implements Transformer {
         "provider_error"
       );
     }
+  }
+  
+  private convertCopilotResponseToAnthropic(copilotResponse: any): any {
+    const output = copilotResponse.output || [];
+    const usage = copilotResponse.usage || {};
+    
+    const content: any[] = [];
+    let toolCalls: any[] = [];
+    
+    for (const item of output) {
+      if (item.type === "reasoning" && item.summary) {
+        for (const s of item.summary || []) {
+          if (s.text) {
+            content.push({ type: "text", text: s.text });
+          }
+        }
+      }
+      if (item.type === "message" && item.content) {
+        for (const c of item.content) {
+          if (c.type === "output_text" && c.text) {
+            content.push({ type: "text", text: c.text });
+          }
+        }
+      }
+      if (item.type === "function_call") {
+        toolCalls.push({
+          type: "tool_use",
+          id: item.call_id || `tool_${Date.now()}`,
+          name: item.name,
+          input: JSON.parse(item.arguments || "{}"),
+        });
+      }
+    }
+    
+    for (const tc of toolCalls) {
+      content.push({
+        type: "tool_use",
+        id: tc.id,
+        name: tc.name,
+        input: tc.input,
+      });
+    }
+    
+    let stopReason: string | null = null;
+    if (copilotResponse.status === "completed") {
+      stopReason = toolCalls.length > 0 ? "tool_use" : "end_turn";
+    } else if (copilotResponse.status === "incomplete") {
+      stopReason = copilotResponse.incomplete_details?.reason === "max_output_tokens" ? "max_tokens" : "end_turn";
+    }
+    
+    return {
+      id: copilotResponse.id || `msg_${Date.now()}`,
+      type: "message",
+      role: "assistant",
+      model: copilotResponse.model,
+      content: content.length > 0 ? content : [{ type: "text", text: "" }],
+      stop_reason: stopReason,
+      stop_sequence: null,
+      usage: {
+        input_tokens: usage.input_tokens || 0,
+        output_tokens: usage.output_tokens || 0,
+        cache_read_input_tokens: 0,
+      },
+    };
   }
 }

@@ -3,6 +3,17 @@ import { ConfigService } from "./config";
 import Transformers from "@/transformer";
 import Module from "node:module";
 
+/**
+ * Check if a value is a class constructor function
+ */
+function isClassConstructor(value: any): value is new (...args: any[]) => any {
+  return (
+    typeof value === 'function' &&
+    value.prototype !== undefined &&
+    typeof value.prototype.constructor === 'function'
+  );
+}
+
 interface TransformerConfig {
   transformers: Array<{
     name: string;
@@ -87,7 +98,58 @@ export class TransformerService {
       if (config.path) {
         const module = require(require.resolve(config.path));
         if (module) {
-          const instance = new module(config.options);
+          // Handle different export patterns:
+          // 1. CommonJS: module.exports = Class
+          // 2. ES module default export: module.default
+          // 3. Named export with TransformerName static property
+          // 4. Named export - use the first exported class
+          let TransformerClass: any;
+
+          // Check if module.exports is the class directly (CommonJS pattern)
+          if (isClassConstructor(module)) {
+            TransformerClass = module;
+          } else if (module.default && isClassConstructor(module.default)) {
+            // ES module default export
+            TransformerClass = module.default;
+          } else if (module.TransformerName && typeof module[module.TransformerName] === 'function') {
+            // Named export matching TransformerName
+            TransformerClass = module[module.TransformerName];
+          } else {
+            // Find the first exported class constructor
+            const exports = Object.values(module).filter(isClassConstructor);
+
+            if (exports.length === 0) {
+              throw new Error(
+                `No class constructor found in module at ${config.path}. ` +
+                `Ensure your transformer exports a class (default export or named export).`
+              );
+            }
+
+            TransformerClass = exports[0];
+          }
+
+          // Check if it's a constructor function
+          if (typeof TransformerClass !== 'function') {
+            throw new Error(
+              `Exported value from ${config.path} is not a constructor. ` +
+              `Got type: ${typeof TransformerClass}`
+            );
+          }
+
+          // Check for static TransformerName (register as constructor)
+          if (
+            "TransformerName" in TransformerClass &&
+            typeof TransformerClass.TransformerName === "string"
+          ) {
+            this.registerTransformer(
+              TransformerClass.TransformerName,
+              TransformerClass
+            );
+            return true;
+          }
+
+          // Otherwise instantiate the transformer
+          const instance = new TransformerClass(config.options);
           // Set logger for transformer instance
           if (instance && typeof instance === "object") {
             (instance as any).logger = this.logger;
