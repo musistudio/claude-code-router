@@ -15,6 +15,16 @@ import { getThinkLevel } from "@/utils/thinking";
 import { createApiError } from "@/api/middleware";
 import { formatBase64 } from "@/utils/image";
 
+// Claude Code embeds control metadata like
+// `x-anthropic-billing-header: ...; cch=<per-request-hash>;` inside the
+// system prompt. The hash changes every turn, defeating prefix caching on
+// any non-Anthropic backend. These pseudo-headers are only meaningful to
+// the real Anthropic API, so strip them once during translation.
+const ANTHROPIC_PSEUDO_HEADER_RE = /^x-anthropic-[a-z-]+:[^\n]*\n?/gim;
+function stripAnthropicPseudoHeaders(text: string): string {
+  return text.replace(ANTHROPIC_PSEUDO_HEADER_RE, "");
+}
+
 export class AnthropicTransformer implements Transformer {
   name = "Anthropic";
   endPoint = "/v1/messages";
@@ -53,14 +63,14 @@ export class AnthropicTransformer implements Transformer {
       if (typeof request.system === "string") {
         messages.push({
           role: "system",
-          content: request.system,
+          content: stripAnthropicPseudoHeaders(request.system),
         });
       } else if (Array.isArray(request.system) && request.system.length) {
         const textParts = request.system
           .filter((item: any) => item.type === "text" && item.text)
           .map((item: any) => ({
             type: "text" as const,
-            text: item.text,
+            text: stripAnthropicPseudoHeaders(item.text),
             cache_control: item.cache_control,
           }));
         messages.push({
