@@ -42,4 +42,4 @@ You should see the version number displayed.
 
 ## Next Steps
 
-Once installed, proceed to [Quick Start](/docs/quick-start) to configure and start using the router.
+Once installed, proceed to [Quick Start](/docs/cli/quick-start) to configure and start using the router.
