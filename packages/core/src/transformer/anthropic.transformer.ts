@@ -771,7 +771,13 @@ export class AnthropicTransformer implements Transformer {
                     tool_calls: "tool_use",
                     content_filter: "stop_sequence",
                   };
-                  const reason = mapping[choice.finish_reason] || "end_turn";
+                  let reason = mapping[choice.finish_reason] || "end_turn";
+                  
+                  // 关键修复：如果存在工具调用，强制将 stop_reason 设置为 tool_use
+                  // 这修复了 Qwen 模型因命中 <|im_end|> 返回 stop 而导致 Claude Code 校验失败的问题
+                  if (toolCallIndexToContentBlockIndex.size > 0 && (reason === "end_turn" || choice.finish_reason === "stop")) {
+                    reason = "tool_use";
+                  }
                   
                   if (stopReasonMessageDelta !== null) {
                     stopReasonMessageDelta.delta.stop_reason = reason;
