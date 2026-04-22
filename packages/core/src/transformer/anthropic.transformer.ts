@@ -623,7 +623,8 @@ export class AnthropicTransformer implements Transformer {
                           content_block: {
                             type: "thinking",
                             thinking: "",
-                            signature: "qwen-xml",
+                            // 为 2.1.116 提供更稳健的 signature 映射
+                            signature: choice.delta?.thinking?.signature || "qwen-think-v1",
                           },
                         })}\n\n`
                       )
@@ -641,17 +642,19 @@ export class AnthropicTransformer implements Transformer {
                       textValue = textValue.split("</think>")[1] || "";
                       
                       // 发送最后的思考增量
-                      if (thinkingDelta) {
+                      if (thinkingDelta.length > 0) {
                         safeEnqueue(encoder.encode(`event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: thinkingBlockIndex, delta: { type: "thinking_delta", thinking: thinkingDelta } })}\n\n`));
                       }
                       
                       // 强制闭合思考块
                       safeEnqueue(encoder.encode(`event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: thinkingBlockIndex })}\n\n`));
                       isThinkingStopped = true;
-                    } else {
-                      // 普通思考增量
+                    } else if (thinkingDelta.length > 0) {
+                      // 普通思考增量：确保实时性，防止 2.1.116 判定流卡死
                       safeEnqueue(encoder.encode(`event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: thinkingBlockIndex, delta: { type: "thinking_delta", thinking: thinkingDelta } })}\n\n`));
-                      textValue = ""; // 消费掉所有文本，不流入 text block
+                      textValue = ""; // 消费掉所有文本
+                    } else {
+                       textValue = ""; // 即使是空的也要消费，防止流入 text
                     }
                   }
 
