@@ -89,10 +89,15 @@ export class AnthropicTransformer implements Transformer {
           );
           if (toolParts.length) {
             toolParts.forEach((tool: any) => {
-              const content = typeof tool.content === "string"
+              let content = typeof tool.content === "string"
                 ? tool.content
                 : JSON.stringify(tool.content);
               
+              // If Anthropic explicitly marked this as an error, ensure OpenAI model knows it failed
+              if (tool.is_error && !content.trim().startsWith("Error")) {
+                content = `Error: ${content}`;
+              }
+
               const toolMessage: UnifiedMessage = {
                 role: "tool",
                 content: content,
@@ -274,8 +279,6 @@ export class AnthropicTransformer implements Transformer {
         let hasFinished = false;
         let isClosed = false;
 
-        let thinkingBlockIndex = -1;
-        let textBlockIndex = -1;
         let isThinkingStopped = false;
         let isTextStopped = false;
 
@@ -291,21 +294,28 @@ export class AnthropicTransformer implements Transformer {
         >();
 
         let contentIndex = 0;
-        let isMessageDeltaSent = false;
 
-        const stoppedIndices = new Set<number>();
+        const assignContentBlockIndex = () => contentIndex++;
 
-        const safeStop = (index: number) => {
-          if (index >= 0 && !stoppedIndices.has(index)) {
-            safeEnqueue(
-              encoder.encode(
-                `event: content_block_stop\ndata: ${JSON.stringify({
-                  type: "content_block_stop",
-                  index: index,
-                })}\n\n`
-              )
-            );
-            stoppedIndices.add(index);
+        const safeEnqueue = (data: Uint8Array) => {
+          if (!isClosed) {
+            try {
+              controller.enqueue(data);
+            } catch (error) {
+              if (
+                error instanceof TypeError &&
+                error.message.includes("Controller is already closed")
+              ) {
+                isClosed = true;
+              } else {
+                this.logger?.debug({
+                  reqId: context.req.id,
+                  error: error instanceof Error ? error.message : String(error),
+                  type: "send data error",
+                });
+                throw error;
+              }
+            }
           }
         };
 
@@ -313,32 +323,67 @@ export class AnthropicTransformer implements Transformer {
           if (!isClosed) {
             try {
               // Close any open blocks
-              if (thinkingBlockIndex >= 0) safeStop(thinkingBlockIndex);
-              if (textBlockIndex >= 0) safeStop(textBlockIndex);
-              toolCallIndexToContentBlockIndex.forEach((cbIndex) => safeStop(cbIndex));
+              if (thinkingBlockIndex >= 0 && !isThinkingStopped) {
+                safeEnqueue(
+                  encoder.encode(
+                    `event: content_block_stop\ndata: ${JSON.stringify({
+                      type: "content_block_stop",
+                      index: thinkingBlockIndex,
+                    })}\n\n`
+                  )
+                );
+                isThinkingStopped = true;
+              }
+              if (textBlockIndex >= 0 && !isTextStopped) {
+                safeEnqueue(
+                  encoder.encode(
+                    `event: content_block_stop\ndata: ${JSON.stringify({
+                      type: "content_block_stop",
+                      index: textBlockIndex,
+                    })}\n\n`
+                  )
+                );
+                isTextStopped = true;
+              }
+              toolCallIndexToContentBlockIndex.forEach((cbIndex) => {
+                safeEnqueue(
+                  encoder.encode(
+                    `event: content_block_stop\ndata: ${JSON.stringify({
+                      type: "content_block_stop",
+                      index: cbIndex,
+                    })}\n\n`
+                  )
+                );
+              });
 
-              if (!isMessageDeltaSent) {
-                const finalUsage = stopReasonMessageDelta?.usage || {
-                  input_tokens: 0,
-                  output_tokens: 0,
-                  cache_read_input_tokens: 0,
-                  cache_creation_input_tokens: 0,
-                };
+              if (stopReasonMessageDelta) {
+                safeEnqueue(
+                  encoder.encode(
+                    `event: message_delta\ndata: ${JSON.stringify(
+                      stopReasonMessageDelta
+                    )}\n\n`
+                  )
+                );
+                stopReasonMessageDelta = null;
+              } else {
                 safeEnqueue(
                   encoder.encode(
                     `event: message_delta\ndata: ${JSON.stringify({
                       type: "message_delta",
                       delta: {
-                        stop_reason: stopReasonMessageDelta?.delta?.stop_reason || "end_turn",
+                        stop_reason: "end_turn",
                         stop_sequence: null,
                       },
-                      usage: finalUsage,
+                      usage: {
+                        input_tokens: 0,
+                        output_tokens: 0,
+                        cache_read_input_tokens: 0,
+                        cache_creation_input_tokens: 0,
+                      },
                     })}\n\n`
                   )
                 );
-                isMessageDeltaSent = true;
               }
-              
               safeEnqueue(
                 encoder.encode(
                   `event: message_stop\ndata: ${JSON.stringify({
@@ -512,10 +557,20 @@ export class AnthropicTransformer implements Transformer {
                   textValue = (choice.delta.content as any).text || "";
                 }
 
-                if (textValue && !isClosed && !stoppedIndices.has(textBlockIndex)) {
+                if (textValue && !isClosed && !isTextStopped) {
                   if (textBlockIndex === -1) {
                     // Close thinking if it was open
-                    if (thinkingBlockIndex >= 0) safeStop(thinkingBlockIndex);
+                    if (thinkingBlockIndex >= 0 && !isThinkingStopped) {
+                      safeEnqueue(
+                        encoder.encode(
+                          `event: content_block_stop\ndata: ${JSON.stringify({
+                            type: "content_block_stop",
+                            index: thinkingBlockIndex,
+                          })}\n\n`
+                        )
+                      );
+                      isThinkingStopped = true;
+                    }
                     
                     textBlockIndex = assignContentBlockIndex();
                     safeEnqueue(
@@ -541,7 +596,7 @@ export class AnthropicTransformer implements Transformer {
                 }
 
                 // 3. Handle Annotations (as Text)
-                if (choice.delta?.annotations?.length && !isClosed && !stoppedIndices.has(textBlockIndex)) {
+                if (choice.delta?.annotations?.length && !isClosed && !isTextStopped) {
                   let annotationText = "\n\nSources:\n";
                   choice.delta.annotations.forEach((ann: any) => {
                     const title = ann.url_citation?.title || "Source";
@@ -550,7 +605,17 @@ export class AnthropicTransformer implements Transformer {
                   });
 
                   if (textBlockIndex === -1) {
-                    if (thinkingBlockIndex >= 0) safeStop(thinkingBlockIndex);
+                    if (thinkingBlockIndex >= 0 && !isThinkingStopped) {
+                      safeEnqueue(
+                        encoder.encode(
+                          `event: content_block_stop\ndata: ${JSON.stringify({
+                            type: "content_block_stop",
+                            index: thinkingBlockIndex,
+                          })}\n\n`
+                        )
+                      );
+                      isThinkingStopped = true;
+                    }
 
                     textBlockIndex = assignContentBlockIndex();
                     safeEnqueue(
@@ -580,9 +645,29 @@ export class AnthropicTransformer implements Transformer {
                   for (const toolCall of choice.delta.tool_calls) {
                     const tIndex = toolCall.index ?? 0;
                     if (!toolCallIndexToContentBlockIndex.has(tIndex)) {
-                      // Close text and thinking blocks if starting a tool call
-                      if (textBlockIndex >= 0) safeStop(textBlockIndex);
-                      if (thinkingBlockIndex >= 0) safeStop(thinkingBlockIndex);
+                      // Close previous blocks if starting a tool call
+                      if (textBlockIndex >= 0 && !isTextStopped) {
+                        safeEnqueue(
+                          encoder.encode(
+                            `event: content_block_stop\ndata: ${JSON.stringify({
+                              type: "content_block_stop",
+                              index: textBlockIndex,
+                            })}\n\n`
+                          )
+                        );
+                        isTextStopped = true;
+                      }
+                      if (thinkingBlockIndex >= 0 && !isThinkingStopped) {
+                        safeEnqueue(
+                          encoder.encode(
+                            `event: content_block_stop\ndata: ${JSON.stringify({
+                              type: "content_block_stop",
+                              index: thinkingBlockIndex,
+                            })}\n\n`
+                          )
+                        );
+                        isThinkingStopped = true;
+                      }
 
                       const newCBIndex = assignContentBlockIndex();
                       toolCallIndexToContentBlockIndex.set(tIndex, newCBIndex);
@@ -633,7 +718,7 @@ export class AnthropicTransformer implements Transformer {
                   }
                 }
 
-                if (choice.finish_reason && !isClosed && !isMessageDeltaSent) {
+                if (choice.finish_reason && !isClosed) {
                   const mapping: Record<string, string> = {
                     stop: "end_turn",
                     length: "max_tokens",
@@ -642,35 +727,34 @@ export class AnthropicTransformer implements Transformer {
                   };
                   const reason = mapping[choice.finish_reason] || "end_turn";
                   
-                  if (!stopReasonMessageDelta) {
-                    stopReasonMessageDelta = {
-                      type: "message_delta",
-                      delta: { stop_reason: reason, stop_sequence: null },
-                      usage: { 
-                        input_tokens: (chunk.usage?.prompt_tokens || 0), 
-                        output_tokens: (chunk.usage?.completion_tokens || 0),
-                        cache_read_input_tokens: 0,
-                        cache_creation_input_tokens: 0 
-                      },
-                    };
-                  } else {
+                  if (stopReasonMessageDelta !== null) {
                     stopReasonMessageDelta.delta.stop_reason = reason;
+                    
+                    // IMPORTANT: Stop all blocks before sending message_delta
+                    if (thinkingBlockIndex >= 0 && !isThinkingStopped) {
+                      safeEnqueue(encoder.encode(`event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: thinkingBlockIndex })}\n\n`));
+                      isThinkingStopped = true;
+                    }
+                    if (textBlockIndex >= 0 && !isTextStopped) {
+                      safeEnqueue(encoder.encode(`event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: textBlockIndex })}\n\n`));
+                      isTextStopped = true;
+                    }
+                    toolCallIndexToContentBlockIndex.forEach((cbIndex) => {
+                      // We don't have individual stop flags for tool calls yet, 
+                      // but they are usually stopped when finish_reason is tool_calls
+                      safeEnqueue(encoder.encode(`event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: cbIndex })}\n\n`));
+                    });
+
+                    // Send message_delta
+                    safeEnqueue(
+                      encoder.encode(
+                        `event: message_delta\ndata: ${JSON.stringify(
+                          stopReasonMessageDelta
+                        )}\n\n`
+                      )
+                    );
+                    stopReasonMessageDelta = null; // Mark as sent
                   }
-
-                  // IMPORTANT: Stop all blocks before sending message_delta
-                  if (thinkingBlockIndex >= 0) safeStop(thinkingBlockIndex);
-                  if (textBlockIndex >= 0) safeStop(textBlockIndex);
-                  toolCallIndexToContentBlockIndex.forEach((cbIndex) => safeStop(cbIndex));
-
-                  // Send message_delta
-                  safeEnqueue(
-                    encoder.encode(
-                      `event: message_delta\ndata: ${JSON.stringify(
-                        stopReasonMessageDelta
-                      )}\n\n`
-                    )
-                  );
-                  isMessageDeltaSent = true;
                 }
               } catch (e: any) {
                 this.logger?.error(`parseError: ${e.message} data: ${data}`);
