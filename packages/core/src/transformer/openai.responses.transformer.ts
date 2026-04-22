@@ -166,7 +166,7 @@ export class OpenAIResponsesTransformer implements Transformer {
           if (tool.function.name === "WebSearch") {
             delete tool.function.parameters.properties.allowed_domains;
           }
-          if (tool.function.name === "Edit") {
+          if (tool.function.name === "edit_file") {
             return {
               type: tool.type,
               name: tool.function.name,
@@ -177,8 +177,33 @@ export class OpenAIResponsesTransformer implements Transformer {
                   "file_path",
                   "old_string",
                   "new_string",
-                  "replace_all",
+                  "allow_multiple",
+                  "instruction"
                 ],
+              },
+              strict: true,
+            };
+          }
+          if (tool.function.name === "read_file") {
+            return {
+              type: tool.type,
+              name: tool.function.name,
+              description: tool.function.description,
+              parameters: {
+                ...tool.function.parameters,
+                required: ["file_path"],
+              },
+              strict: true,
+            };
+          }
+          if (tool.function.name === "run_bash_command") {
+            return {
+              type: tool.type,
+              name: tool.function.name,
+              description: tool.function.description,
+              parameters: {
+                ...tool.function.parameters,
+                required: ["command"],
               },
               strict: true,
             };
