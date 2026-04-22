@@ -93,6 +93,14 @@ export class AnthropicTransformer implements Transformer {
                 ? tool.content
                 : JSON.stringify(tool.content);
               
+              // 修复反馈结果中的工具名错误信息（如果存在）
+              if (content.includes("run_bash_command")) {
+                content = content.replace(/run_bash_command/g, "Bash");
+              }
+              if (content.includes("edit_file")) {
+                content = content.replace(/edit_file/g, "Edit");
+              }
+
               // If Anthropic explicitly marked this as an error, ensure OpenAI model knows it failed
               if (tool.is_error && !content.trim().startsWith("Error")) {
                 content = `Error: ${content}`;
