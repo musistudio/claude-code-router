@@ -189,6 +189,18 @@ export class AnthropicTransformer implements Transformer {
       }
     });
 
+    const result: UnifiedChatRequest = {
+      messages,
+      model: request.model,
+      max_tokens: request.max_tokens,
+      temperature: request.temperature,
+      stream: request.stream,
+      tools: request.tools?.length
+        ? this.convertAnthropicToolsToUnified(request.tools)
+        : undefined,
+      tool_choice: request.tool_choice,
+    };
+
     // 强制必需参数映射：确保模型始终输出关键参数，修复 InputValidationError
     if (result.tools?.length) {
       result.tools = result.tools.map(tool => {
