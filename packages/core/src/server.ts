@@ -88,17 +88,16 @@ class Server {
       this.configService,
       this.app.log
     );
-    this.transformerService.initialize().finally(() => {
-      this.providerService = new ProviderService(
-        this.configService,
-        this.transformerService,
-        this.app.log
-      );
-    });
-    // Initialize tokenizer service
-    this.tokenizerService.initialize().catch((error) => {
-      this.app.log.error(`Failed to initialize TokenizerService: ${error}`);
-    });
+  }
+
+  async initialize(): Promise<void> {
+    await this.transformerService.initialize();
+    this.providerService = new ProviderService(
+      this.configService,
+      this.transformerService,
+      this.app.log
+    );
+    await this.tokenizerService.initialize();
   }
 
   async register<Options extends FastifyPluginOptions = FastifyPluginOptions>(
@@ -198,6 +197,8 @@ class Server {
   async start(): Promise<void> {
     try {
       this.app._server = this;
+
+      await this.initialize();
 
       this.app.addHook("preHandler", (req, reply, done) => {
         const url = new URL(`http://127.0.0.1${req.url}`);

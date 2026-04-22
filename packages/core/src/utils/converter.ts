@@ -337,12 +337,17 @@ export function convertFromAnthropic(
         }
 
         toolResults.forEach((toolResult) => {
+          let content = typeof toolResult.content === "string"
+            ? toolResult.content
+            : JSON.stringify(toolResult.content);
+          
+          if (toolResult.is_error && !content.trim().startsWith("Error")) {
+            content = `Error: ${content}`;
+          }
+
           messages.push({
             role: "tool",
-            content:
-              typeof toolResult.content === "string"
-                ? toolResult.content
-                : JSON.stringify(toolResult.content),
+            content: content,
             tool_call_id: toolResult.tool_use_id,
           });
         });

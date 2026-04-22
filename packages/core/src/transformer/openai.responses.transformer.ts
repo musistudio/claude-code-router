@@ -662,7 +662,7 @@ export class OpenAIResponsesTransformer implements Transformer {
       });
     }
 
-    this.logger.debug({
+    this.logger?.debug({
       data: annotations,
       type: "url_citation",
     });

@@ -14,6 +14,12 @@ export class DeepseekTransformer implements Transformer {
   async transformResponseOut(response: Response): Promise<Response> {
     if (response.headers.get("Content-Type")?.includes("application/json")) {
       const jsonResponse = await response.json();
+      if (jsonResponse.choices[0]?.message.reasoning_content) {
+        if (!jsonResponse.choices[0].message.thinking) {
+          jsonResponse.choices[0].message.thinking = {};
+        }
+        jsonResponse.choices[0].message.thinking.content = jsonResponse.choices[0].message.reasoning_content;
+      }
       // Handle non-streaming response if needed
       return new Response(JSON.stringify(jsonResponse), {
         status: response.status,
