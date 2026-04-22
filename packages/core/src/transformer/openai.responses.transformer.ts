@@ -181,6 +181,9 @@ export class OpenAIResponsesTransformer implements Transformer {
           } else if (toolName === "ls") {
             toolName = "Ls";
             required = ["path"];
+          } else if (toolName === "write_file") {
+            toolName = "Write";
+            required = ["file_path", "content"];
           }
 
           if (toolName === "WebSearch") {
@@ -335,6 +338,7 @@ export class OpenAIResponsesTransformer implements Transformer {
                         else if (toolName === "Read") toolName = "read_file";
                         else if (toolName === "Glob") toolName = "glob";
                         else if (toolName === "Ls") toolName = "ls";
+                        else if (toolName === "Write") toolName = "write_file";
 
                         const functionCallChunk = {
                           id:
@@ -748,6 +752,7 @@ export class OpenAIResponsesTransformer implements Transformer {
       else if (toolName === "Read") toolName = "read_file";
       else if (toolName === "Glob") toolName = "glob";
       else if (toolName === "Ls") toolName = "ls";
+      else if (toolName === "Write") toolName = "write_file";
 
       toolCalls = [
         {

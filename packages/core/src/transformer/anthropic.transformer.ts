@@ -167,6 +167,7 @@ export class AnthropicTransformer implements Transformer {
               else if (toolName === "read_file") toolName = "Read";
               else if (toolName === "glob") toolName = "Glob";
               else if (toolName === "ls") toolName = "Ls";
+              else if (toolName === "write_file") toolName = "Write";
               
               return {
                 id: tool.id,
@@ -232,6 +233,9 @@ export class AnthropicTransformer implements Transformer {
         } else if (toolName === "ls") {
           toolName = "Ls";
           required = ["path"];
+        } else if (toolName === "write_file") {
+          toolName = "Write";
+          required = ["file_path", "content"];
         }
 
         return {
@@ -763,6 +767,7 @@ export class AnthropicTransformer implements Transformer {
                       else if (tcName === "Read") tcName = "read_file";
                       else if (tcName === "Glob") tcName = "glob";
                       else if (tcName === "Ls") tcName = "ls";
+                      else if (tcName === "Write") tcName = "write_file";
 
                       safeEnqueue(
                         encoder.encode(
@@ -965,6 +970,7 @@ export class AnthropicTransformer implements Transformer {
           else if (toolName === "Read") toolName = "read_file";
           else if (toolName === "Glob") toolName = "glob";
           else if (toolName === "Ls") toolName = "ls";
+          else if (toolName === "Write") toolName = "write_file";
 
           content.push({
             type: "tool_use",
