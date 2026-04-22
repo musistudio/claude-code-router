@@ -305,8 +305,18 @@ export class EnhanceToolTransformer implements Transformer {
                 }
               }
             }
+
+            // 关键修复：流读取循环正常结束，尝试刷新最后积攒的工具参数
+            if (currentToolCall.index !== undefined) {
+              processCompletedToolCall({}, controller, encoder);
+              currentToolCall = {};
+            }
           } catch (error) {
             console.error("Stream error:", error);
+            // 发生错误时也尝试刷新工具调用，防止前端卡死
+            if (currentToolCall.index !== undefined) {
+              try { processCompletedToolCall({}, controller, encoder); } catch(e){}
+            }
             controller.error(error);
           } finally {
             try {
