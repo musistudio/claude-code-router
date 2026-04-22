@@ -792,11 +792,12 @@ export class AnthropicTransformer implements Transformer {
                       });
                     }
 
-                    if (typeof toolCall.function?.arguments === "string") {
+                    if (typeof toolCall.function?.arguments === "string" && toolCall.function.arguments.length > 0) {
                       const cbIndex = toolCallIndexToContentBlockIndex.get(tIndex)!;
                       const tc = toolCalls.get(tIndex)!;
                       tc.arguments += toolCall.function.arguments;
 
+                      // 关键优化：只有当真正有参数内容时才发送 delta
                       safeEnqueue(
                         encoder.encode(
                           `event: content_block_delta\ndata: ${JSON.stringify({
@@ -813,14 +814,19 @@ export class AnthropicTransformer implements Transformer {
                   }
                 }
 
-                if (choice.finish_reason && !isClosed) {
+                // 强制检测：即便 finish_reason 为 null，但如果命中特定结束特征（如 Qwen 词表标记）
+                const isAbruptStop = 
+                   (choice.finish_reason === null && chunk.matched_stop === 248046) ||
+                   (choice.finish_reason === null && chunk.matched_stop === 248044);
+
+                if ((choice.finish_reason || isAbruptStop) && !isClosed) {
                   const mapping: Record<string, string> = {
                     stop: "end_turn",
                     length: "max_tokens",
                     tool_calls: "tool_use",
                     content_filter: "stop_sequence",
                   };
-                  let reason = mapping[choice.finish_reason] || "end_turn";
+                  let reason = mapping[choice.finish_reason || "stop"] || "end_turn";
                   
                   // 关键修复：如果存在工具调用，强制将 stop_reason 设置为 tool_use
                   // 这修复了 Qwen 模型因命中 <|im_end|> 返回 stop 而导致 Claude Code 校验失败的问题
