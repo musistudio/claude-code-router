@@ -595,7 +595,7 @@ export class AnthropicTransformer implements Transformer {
                   }
                 }
 
-                // 2. Handle Text Content Block
+                // 2. Handle Text Content Block (Enhanced with Qwen XML thinking detection)
                 let textValue = "";
                 if (typeof choice.delta?.content === "string") {
                   textValue = choice.delta.content;
@@ -608,41 +608,74 @@ export class AnthropicTransformer implements Transformer {
                 }
 
                 if (textValue && !isClosed && !isTextStopped) {
-                  if (textBlockIndex === -1) {
-                    // Close thinking if it was open
-                    if (thinkingBlockIndex >= 0 && !isThinkingStopped) {
-                      safeEnqueue(
-                        encoder.encode(
-                          `event: content_block_stop\ndata: ${JSON.stringify({
-                            type: "content_block_stop",
-                            index: thinkingBlockIndex,
-                          })}\n\n`
-                        )
-                      );
-                      isThinkingStopped = true;
-                    }
-                    
-                    textBlockIndex = assignContentBlockIndex();
+                  // Qwen XML 思考块检测：如果文本包含 <think> 但还没开启思考块
+                  if (textValue.includes("<think>") && thinkingBlockIndex === -1) {
+                    thinkingBlockIndex = assignContentBlockIndex();
                     safeEnqueue(
                       encoder.encode(
                         `event: content_block_start\ndata: ${JSON.stringify({
                           type: "content_block_start",
+                          index: thinkingBlockIndex,
+                          content_block: {
+                            type: "thinking",
+                            thinking: "",
+                            signature: "qwen-xml",
+                          },
+                        })}\n\n`
+                      )
+                    );
+                    // 移除标签本身，只保留内容
+                    textValue = textValue.replace("<think>", "");
+                  }
+
+                  // 如果正在思考块内
+                  if (thinkingBlockIndex >= 0 && !isThinkingStopped) {
+                    let thinkingDelta = textValue;
+                    // 检测思考结束标签
+                    if (textValue.includes("</think>")) {
+                      thinkingDelta = textValue.split("</think>")[0];
+                      textValue = textValue.split("</think>")[1] || "";
+                      
+                      // 发送最后的思考增量
+                      if (thinkingDelta) {
+                        safeEnqueue(encoder.encode(`event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: thinkingBlockIndex, delta: { type: "thinking_delta", thinking: thinkingDelta } })}\n\n`));
+                      }
+                      
+                      // 强制闭合思考块
+                      safeEnqueue(encoder.encode(`event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: thinkingBlockIndex })}\n\n`));
+                      isThinkingStopped = true;
+                    } else {
+                      // 普通思考增量
+                      safeEnqueue(encoder.encode(`event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: thinkingBlockIndex, delta: { type: "thinking_delta", thinking: thinkingDelta } })}\n\n`));
+                      textValue = ""; // 消费掉所有文本，不流入 text block
+                    }
+                  }
+
+                  // 剩余文本流向正常的 text block
+                  if (textValue && textValue.trim()) {
+                    if (textBlockIndex === -1) {
+                      textBlockIndex = assignContentBlockIndex();
+                      safeEnqueue(
+                        encoder.encode(
+                          `event: content_block_start\ndata: ${JSON.stringify({
+                            type: "content_block_start",
+                            index: textBlockIndex,
+                            content_block: { type: "text", text: "" },
+                          })}\n\n`
+                        )
+                      );
+                    }
+
+                    safeEnqueue(
+                      encoder.encode(
+                        `event: content_block_delta\ndata: ${JSON.stringify({
+                          type: "content_block_delta",
                           index: textBlockIndex,
-                          content_block: { type: "text", text: "" },
+                          delta: { type: "text_delta", text: textValue },
                         })}\n\n`
                       )
                     );
                   }
-
-                  safeEnqueue(
-                    encoder.encode(
-                      `event: content_block_delta\ndata: ${JSON.stringify({
-                        type: "content_block_delta",
-                        index: textBlockIndex,
-                        delta: { type: "text_delta", text: textValue },
-                      })}\n\n`
-                    )
-                  );
                 }
 
                 // 3. Handle Annotations (as Text)

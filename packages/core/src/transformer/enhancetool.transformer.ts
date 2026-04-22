@@ -133,6 +133,16 @@ export class EnhanceToolTransformer implements Transformer {
           ) => {
             const { controller, encoder } = context;
 
+            // 关键修复：检测 Qwen 停止词，强制结束
+            if (line.includes("<|im_end|>") || line.includes("matched_stop\":248046")) {
+              if (currentToolCall.index !== undefined) {
+                processCompletedToolCall({}, controller, encoder);
+                currentToolCall = {};
+              }
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              return true; // 表示需要终止
+            }
+
             if (line.startsWith("data: ") && line.trim() !== "data: [DONE]") {
               const jsonStr = line.slice(6);
               try {
@@ -257,7 +267,7 @@ export class EnhanceToolTransformer implements Transformer {
                 for (const line of lines) {
                   if (line.trim()) {
                     try {
-                      processLine(line, {
+                      const shouldStop = processLine(line, {
                         controller,
                         encoder,
                         hasTextContent: () => hasTextContent,
@@ -269,6 +279,10 @@ export class EnhanceToolTransformer implements Transformer {
                         setReasoningComplete: (val) =>
                           (isReasoningComplete = val),
                       });
+                      if (shouldStop) {
+                        isStreamEnded = true;
+                        break;
+                      }
                     } catch (error) {
                       console.error("Error processing line:", line, error);
                       // 如果解析失败，直接传递原始行
@@ -287,7 +301,7 @@ export class EnhanceToolTransformer implements Transformer {
                 if (!line.trim()) continue;
 
                 try {
-                  processLine(line, {
+                  const shouldStop = processLine(line, {
                     controller,
                     encoder,
                     hasTextContent: () => hasTextContent,
@@ -298,6 +312,10 @@ export class EnhanceToolTransformer implements Transformer {
                     isReasoningComplete: () => isReasoningComplete,
                     setReasoningComplete: (val) => (isReasoningComplete = val),
                   });
+                  if (shouldStop) {
+                    isStreamEnded = true;
+                    break;
+                  }
                 } catch (error) {
                   console.error("Error processing line:", line, error);
                   // 如果解析失败，直接传递原始行
