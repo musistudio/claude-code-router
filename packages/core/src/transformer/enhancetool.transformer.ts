@@ -253,9 +253,18 @@ export class EnhanceToolTransformer implements Transformer {
               if (isStreamEnded) break;
               const { done, value } = await reader.read();
               if (done) {
+                // 关键修复：物理流已结束，这是最后的收尾机会
+                if (currentToolCall.index !== undefined) {
+                  processCompletedToolCall({}, controller, encoder);
+                  currentToolCall = {};
+                }
                 // 处理缓冲区中剩余的数据
                 if (buffer.trim()) {
                   processBuffer(buffer, controller, encoder);
+                }
+                // 发送 DONE 信号并退出
+                if (!isStreamEnded) {
+                   controller.enqueue(encoder.encode("data: [DONE]\n\n"));
                 }
                 break;
               }
