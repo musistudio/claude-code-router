@@ -182,8 +182,9 @@ export class EnhanceToolTransformer implements Transformer {
                   }
                 }
 
-                // Handle finish_reason for tool_calls
-                if (data.choices?.[0]?.finish_reason === "tool_calls" && currentToolCall.index !== undefined) {
+                // Handle finish_reason for tool_calls or stop
+                const finishReason = data.choices?.[0]?.finish_reason;
+                if ((finishReason === "tool_calls" || finishReason === "stop") && currentToolCall.index !== undefined) {
                   // Process the final tool call using helper function
                   processCompletedToolCall(data, controller, encoder);
                   currentToolCall = {};
