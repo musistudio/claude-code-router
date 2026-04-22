@@ -14,21 +14,31 @@ export function parseToolArguments(argsString: string, logger?: any): string {
     return "{}";
   }
 
+  // 清理 Qwen/ChatML 特有的停止符和泄露标记，防止干扰 JSON 解析
+  // 命中 matched_stop: 248046 时，字符串末尾可能带有这些乱码
+  let cleanedArgs = argsString.trim();
+  const stopTokens = ["<|im_end|>", "<|im_start|>", "<|endoftext|>", "<|file_separator|>"];
+  for (const token of stopTokens) {
+    if (cleanedArgs.includes(token)) {
+      cleanedArgs = cleanedArgs.split(token).join("").trim();
+    }
+  }
+
   try {
     // First attempt: Standard JSON parsing
-    JSON.parse(argsString);
+    JSON.parse(cleanedArgs);
     logger?.debug(`工具调用参数标准JSON解析成功 / Tool arguments standard JSON parsing successful`);
-    return argsString;
+    return cleanedArgs;
   } catch (jsonError: any) {
     try {
       // Second attempt: JSON5 parsing for relaxed syntax
-      const args = JSON5.parse(argsString);
+      const args = JSON5.parse(cleanedArgs);
       logger?.debug(`Tool arguments JSON5 parsing successful`);
       return JSON.stringify(args);
     } catch (json5Error: any) {
       try {
         // Third attempt: Safe JSON repair without code execution
-        const repairedJson = jsonrepair(argsString);
+        const repairedJson = jsonrepair(cleanedArgs);
         logger?.debug(`Tool arguments safely repaired`);
         return repairedJson;
       } catch (repairError: any) {
@@ -37,7 +47,7 @@ export function parseToolArguments(argsString: string, logger?: any): string {
           `JSON parsing failed: ${jsonError.message}. ` +
           `JSON5 parsing failed: ${json5Error.message}. ` +
           `JSON repair failed: ${repairError.message}. ` +
-          `Input data: ${JSON.stringify(argsString)}`
+          `Input data: ${JSON.stringify(cleanedArgs)}`
         );
         
         // Return safe empty object as fallback instead of potentially malformed input
