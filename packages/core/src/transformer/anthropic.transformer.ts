@@ -159,14 +159,24 @@ export class AnthropicTransformer implements Transformer {
             (c: any) => c.type === "tool_use" && c.id
           );
           if (toolCallParts.length) {
-            assistantMessage.tool_calls = toolCallParts.map((tool: any) => ({
-              id: tool.id,
-              type: "function" as const,
-              function: {
-                name: tool.name,
-                arguments: typeof tool.input === 'string' ? tool.input : JSON.stringify(tool.input || {}),
-              },
-            }));
+            assistantMessage.tool_calls = toolCallParts.map((tool: any) => {
+              let toolName = tool.name;
+              // 影子映射：助理历史消息中的工具名也要对齐
+              if (toolName === "run_bash_command") toolName = "Bash";
+              else if (toolName === "edit_file") toolName = "Edit";
+              else if (toolName === "read_file") toolName = "Read";
+              else if (toolName === "glob") toolName = "Glob";
+              else if (toolName === "ls") toolName = "Ls";
+              
+              return {
+                id: tool.id,
+                type: "function" as const,
+                function: {
+                  name: toolName,
+                  arguments: typeof tool.input === 'string' ? tool.input : JSON.stringify(tool.input || {}),
+                },
+              };
+            });
           }
 
           // Preserve thinking content
@@ -201,70 +211,40 @@ export class AnthropicTransformer implements Transformer {
       tool_choice: request.tool_choice,
     };
 
-    // 强制必需参数映射：确保模型始终输出关键参数，修复 InputValidationError
+    // 终极影子映射：将长工具名转换为短工具名，并补全必需参数
     if (result.tools?.length) {
       result.tools = result.tools.map(tool => {
-        if (tool.function.name === "edit_file") {
-          return {
-            ...tool,
-            function: {
-              ...tool.function,
-              parameters: {
-                ...tool.function.parameters,
-                required: ["file_path", "old_string", "new_string", "allow_multiple", "instruction"]
-              }
-            }
-          };
+        let toolName = tool.function.name;
+        let required = tool.function.parameters.required || [];
+
+        if (toolName === "run_bash_command") {
+          toolName = "Bash";
+          required = ["command"];
+        } else if (toolName === "edit_file") {
+          toolName = "Edit";
+          required = ["file_path", "old_string", "new_string", "allow_multiple", "instruction"];
+        } else if (toolName === "read_file") {
+          toolName = "Read";
+          required = ["file_path"];
+        } else if (toolName === "glob") {
+          toolName = "Glob";
+          required = ["pattern"];
+        } else if (toolName === "ls") {
+          toolName = "Ls";
+          required = ["path"];
         }
-        if (tool.function.name === "read_file") {
-          return {
-            ...tool,
-            function: {
-              ...tool.function,
-              parameters: {
-                ...tool.function.parameters,
-                required: ["file_path"]
-              }
+
+        return {
+          ...tool,
+          function: {
+            ...tool.function,
+            name: toolName,
+            parameters: {
+              ...tool.function.parameters,
+              required
             }
-          };
-        }
-        if (tool.function.name === "run_bash_command") {
-          return {
-            ...tool,
-            function: {
-              ...tool.function,
-              parameters: {
-                ...tool.function.parameters,
-                required: ["command"]
-              }
-            }
-          };
-        }
-        if (tool.function.name === "write_file") {
-          return {
-            ...tool,
-            function: {
-              ...tool.function,
-              parameters: {
-                ...tool.function.parameters,
-                required: ["file_path", "content"]
-              }
-            }
-          };
-        }
-        if (tool.function.name === "glob") {
-          return {
-            ...tool,
-            function: {
-              ...tool.function,
-              parameters: {
-                ...tool.function.parameters,
-                required: ["pattern"]
-              }
-            }
-          };
-        }
-        return tool;
+          }
+        };
       });
     }
 
@@ -742,8 +722,15 @@ export class AnthropicTransformer implements Transformer {
                       const newCBIndex = assignContentBlockIndex();
                       toolCallIndexToContentBlockIndex.set(tIndex, newCBIndex);
                       const tcId = toolCall.id || `call_${Date.now()}_${tIndex}`;
-                      const tcName = toolCall.function?.name || `tool_${tIndex}`;
+                      let tcName = toolCall.function?.name || `tool_${tIndex}`;
                       
+                      // 响应还原映射：将影子短名转回原始长名，让 Claude Code 满意
+                      if (tcName === "Bash") tcName = "run_bash_command";
+                      else if (tcName === "Edit") tcName = "edit_file";
+                      else if (tcName === "Read") tcName = "read_file";
+                      else if (tcName === "Glob") tcName = "glob";
+                      else if (tcName === "Ls") tcName = "ls";
+
                       safeEnqueue(
                         encoder.encode(
                           `event: content_block_start\ndata: ${JSON.stringify({
@@ -938,10 +925,18 @@ export class AnthropicTransformer implements Transformer {
             parsedInput = { text: toolCall.function.arguments || "" };
           }
 
+          let toolName = toolCall.function.name;
+          // 响应还原映射
+          if (toolName === "Bash") toolName = "run_bash_command";
+          else if (toolName === "Edit") toolName = "edit_file";
+          else if (toolName === "Read") toolName = "read_file";
+          else if (toolName === "Glob") toolName = "glob";
+          else if (toolName === "Ls") toolName = "ls";
+
           content.push({
             type: "tool_use",
             id: toolCall.id,
-            name: toolCall.function.name,
+            name: toolName,
             input: parsedInput,
           });
         });

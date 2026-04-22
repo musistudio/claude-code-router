@@ -163,68 +163,39 @@ export class OpenAIResponsesTransformer implements Transformer {
       (request as any).tools = request.tools
         .filter((tool) => tool.function.name !== "web_search")
         .map((tool) => {
-          if (tool.function.name === "WebSearch") {
+          let toolName = tool.function.name;
+          let required = tool.function.parameters.required || [];
+
+          if (toolName === "run_bash_command") {
+            toolName = "Bash";
+            required = ["command"];
+          } else if (toolName === "edit_file") {
+            toolName = "Edit";
+            required = ["file_path", "old_string", "new_string", "allow_multiple", "instruction"];
+          } else if (toolName === "read_file") {
+            toolName = "Read";
+            required = ["file_path"];
+          } else if (toolName === "glob") {
+            toolName = "Glob";
+            required = ["pattern"];
+          } else if (toolName === "ls") {
+            toolName = "Ls";
+            required = ["path"];
+          }
+
+          if (toolName === "WebSearch") {
             delete tool.function.parameters.properties.allowed_domains;
           }
-          if (tool.function.name === "edit_file") {
-            return {
-              type: tool.type,
-              name: tool.function.name,
-              description: tool.function.description,
-              parameters: {
-                ...tool.function.parameters,
-                required: [
-                  "file_path",
-                  "old_string",
-                  "new_string",
-                  "allow_multiple",
-                  "instruction"
-                ],
-              },
-              strict: true,
-            };
-          }
-          if (tool.function.name === "read_file") {
-            return {
-              type: tool.type,
-              name: tool.function.name,
-              description: tool.function.description,
-              parameters: {
-                ...tool.function.parameters,
-                required: ["file_path"],
-              },
-              strict: true,
-            };
-          }
-          if (tool.function.name === "glob") {
-            return {
-              type: tool.type,
-              name: tool.function.name,
-              description: tool.function.description,
-              parameters: {
-                ...tool.function.parameters,
-                required: ["pattern"],
-              },
-              strict: true,
-            };
-          }
-          if (tool.function.name === "run_bash_command") {
-            return {
-              type: tool.type,
-              name: tool.function.name,
-              description: tool.function.description,
-              parameters: {
-                ...tool.function.parameters,
-                required: ["command"],
-              },
-              strict: true,
-            };
-          }
+          
           return {
             type: tool.type,
-            name: tool.function.name,
+            name: toolName,
             description: tool.function.description,
-            parameters: tool.function.parameters,
+            parameters: {
+              ...tool.function.parameters,
+              required
+            },
+            strict: true,
           };
         });
 
@@ -358,9 +329,13 @@ export class OpenAIResponsesTransformer implements Transformer {
                       ) {
                         // 处理function call开始 - 创建初始的tool call chunk
                         let toolName = data.item.name || "";
-                        if (toolName === "Edit") {
-                          toolName = "edit_file";
-                        }
+                        // 响应还原映射
+                        if (toolName === "Bash") toolName = "run_bash_command";
+                        else if (toolName === "Edit") toolName = "edit_file";
+                        else if (toolName === "Read") toolName = "read_file";
+                        else if (toolName === "Glob") toolName = "glob";
+                        else if (toolName === "Ls") toolName = "ls";
+
                         const functionCallChunk = {
                           id:
                             data.item.call_id ||
@@ -767,9 +742,13 @@ export class OpenAIResponsesTransformer implements Transformer {
     if (functionCallOutput) {
       // 处理function_call类型的输出
       let toolName = functionCallOutput.name;
-      if (toolName === "Edit") {
-        toolName = "edit_file";
-      }
+      // 响应还原映射
+      if (toolName === "Bash") toolName = "run_bash_command";
+      else if (toolName === "Edit") toolName = "edit_file";
+      else if (toolName === "Read") toolName = "read_file";
+      else if (toolName === "Glob") toolName = "glob";
+      else if (toolName === "Ls") toolName = "ls";
+
       toolCalls = [
         {
           id: functionCallOutput.call_id || functionCallOutput.id,
