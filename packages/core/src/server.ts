@@ -142,7 +142,7 @@ class Server {
         // Add router hook for main namespace
         fastify.addHook('preHandler', async (req: any, reply: any) => {
           const url = new URL(`http://127.0.0.1${req.url}`);
-          if (url.pathname.endsWith("/v1/messages")) {
+          if (url.pathname.endsWith("/v1/messages") || url.pathname.endsWith("/v1/chat/completions")) {
             await router(req, reply, {
               configService: this.configService,
               tokenizerService: this.tokenizerService,
@@ -183,7 +183,7 @@ class Server {
       // Add router hook for namespace
       fastify.addHook('preHandler', async (req: any, reply: any) => {
         const url = new URL(`http://127.0.0.1${req.url}`);
-        if (url.pathname.endsWith("/v1/messages")) {
+        if (url.pathname.endsWith("/v1/messages") || url.pathname.endsWith("/v1/chat/completions")) {
           await router(req, reply, {
             configService,
             tokenizerService,
@@ -202,7 +202,7 @@ class Server {
 
       this.app.addHook("preHandler", (req, reply, done) => {
         const url = new URL(`http://127.0.0.1${req.url}`);
-        if (url.pathname.endsWith("/v1/messages") && req.body) {
+        if ((url.pathname.endsWith("/v1/messages") || url.pathname.endsWith("/v1/chat/completions")) && req.body) {
           const body = req.body as any;
           req.log.info({ data: body, type: "request body" });
           if (!body.stream) {
@@ -218,7 +218,7 @@ class Server {
         "preHandler",
         async (req: FastifyRequest, reply: FastifyReply) => {
           const url = new URL(`http://127.0.0.1${req.url}`);
-          if (url.pathname.endsWith("/v1/messages") && req.body) {
+          if ((url.pathname.endsWith("/v1/messages") || url.pathname.endsWith("/v1/chat/completions")) && req.body) {
             try {
               const body = req.body as any;
               if (!body || !body.model) {
