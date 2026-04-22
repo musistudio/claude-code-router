@@ -45,6 +45,7 @@ export class EnhanceToolTransformer implements Transformer {
       let reasoningContent = "";
       let isReasoningComplete = false;
       let hasToolCall = false;
+      let isStreamEnded = false;
       let buffer = ""; // 用于缓冲不完整的数据
 
       const stream = new ReadableStream({
@@ -227,6 +228,7 @@ export class EnhanceToolTransformer implements Transformer {
 
           try {
             while (true) {
+              if (isStreamEnded) break;
               const { done, value } = await reader.read();
               if (done) {
                 // 处理缓冲区中剩余的数据
