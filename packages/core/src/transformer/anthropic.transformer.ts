@@ -159,14 +159,22 @@ export class AnthropicTransformer implements Transformer {
             (c: any) => c.type === "tool_use" && c.id
           );
           if (toolCallParts.length) {
-            assistantMessage.tool_calls = toolCallParts.map((tool: any) => ({
-              id: tool.id,
-              type: "function" as const,
-              function: {
-                name: tool.name,
-                arguments: typeof tool.input === 'string' ? tool.input : JSON.stringify(tool.input || {}),
-              },
-            }));
+            assistantMessage.tool_calls = toolCallParts.map((tool: any) => {
+              let toolName = tool.name;
+              if (toolName === "edit_file") {
+                toolName = "Edit";
+              } else if (toolName === "run_bash_command") {
+                toolName = "Bash";
+              }
+              return {
+                id: tool.id,
+                type: "function" as const,
+                function: {
+                  name: toolName,
+                  arguments: typeof tool.input === 'string' ? tool.input : JSON.stringify(tool.input || {}),
+                },
+              };
+            });
           }
 
           // Preserve thinking content
@@ -200,6 +208,25 @@ export class AnthropicTransformer implements Transformer {
         : undefined,
       tool_choice: request.tool_choice,
     };
+    
+    // 工具名映射：将长工具名转换为短工具名，以确保 Qwen 模型能正确匹配
+    if (result.tools?.length) {
+      result.tools = result.tools.map(tool => {
+        let toolName = tool.function.name;
+        if (toolName === "edit_file") {
+          toolName = "Edit";
+        } else if (toolName === "run_bash_command") {
+          toolName = "Bash";
+        }
+        return {
+          ...tool,
+          function: {
+            ...tool.function,
+            name: toolName
+          }
+        };
+      });
+    }
     if (request.thinking) {
       result.reasoning = {
         effort: getThinkLevel(request.thinking.budget_tokens),
