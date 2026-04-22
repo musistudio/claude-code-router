@@ -240,6 +240,18 @@ export class AnthropicTransformer implements Transformer {
             }
           };
         }
+        if (tool.function.name === "write_file") {
+          return {
+            ...tool,
+            function: {
+              ...tool.function,
+              parameters: {
+                ...tool.function.parameters,
+                required: ["file_path", "content"]
+              }
+            }
+          };
+        }
         return tool;
       });
     }
