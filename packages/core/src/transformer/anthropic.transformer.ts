@@ -252,6 +252,18 @@ export class AnthropicTransformer implements Transformer {
             }
           };
         }
+        if (tool.function.name === "glob") {
+          return {
+            ...tool,
+            function: {
+              ...tool.function,
+              parameters: {
+                ...tool.function.parameters,
+                required: ["pattern"]
+              }
+            }
+          };
+        }
         return tool;
       });
     }

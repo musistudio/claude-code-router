@@ -196,6 +196,18 @@ export class OpenAIResponsesTransformer implements Transformer {
               strict: true,
             };
           }
+          if (tool.function.name === "glob") {
+            return {
+              type: tool.type,
+              name: tool.function.name,
+              description: tool.function.description,
+              parameters: {
+                ...tool.function.parameters,
+                required: ["pattern"],
+              },
+              strict: true,
+            };
+          }
           if (tool.function.name === "run_bash_command") {
             return {
               type: tool.type,
