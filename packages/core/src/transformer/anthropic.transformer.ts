@@ -14,6 +14,12 @@ import { v4 as uuidv4 } from "uuid";
 import { getThinkLevel } from "@/utils/thinking";
 import { createApiError } from "@/api/middleware";
 import { formatBase64 } from "@/utils/image";
+import { 
+  mapToolName, 
+  unmapToolName, 
+  extractQwenThinking,
+  QWEN_THINK_TAGS
+} from "@/utils/qwen";
 
 export class AnthropicTransformer implements Transformer {
   name = "Anthropic";
@@ -160,14 +166,7 @@ export class AnthropicTransformer implements Transformer {
           );
           if (toolCallParts.length) {
             assistantMessage.tool_calls = toolCallParts.map((tool: any) => {
-              let toolName = tool.name;
-              // 影子映射：助理历史消息中的工具名也要对齐
-              if (toolName === "run_bash_command") toolName = "Bash";
-              else if (toolName === "edit_file") toolName = "Edit";
-              else if (toolName === "read_file") toolName = "Read";
-              else if (toolName === "glob") toolName = "Glob";
-              else if (toolName === "ls") toolName = "Ls";
-              else if (toolName === "write_file") toolName = "Write";
+              const toolName = mapToolName(tool.name);
               
               return {
                 id: tool.id,
@@ -215,31 +214,25 @@ export class AnthropicTransformer implements Transformer {
     // 终极影子映射：将长工具名转换为短工具名，并补全必需参数
     if (result.tools?.length) {
       result.tools = result.tools.map(tool => {
-        let toolName = tool.function.name;
+        const toolName = mapToolName(tool.function.name);
         let required = tool.function.parameters.required || [];
 
-        if (toolName === "run_bash_command") {
-          toolName = "Bash";
+        if (toolName === "Bash") {
           required = ["command"];
-        } else if (toolName === "edit_file") {
-          toolName = "Edit";
+        } else if (toolName === "Edit") {
           required = ["file_path", "old_string", "new_string", "allow_multiple", "instruction"];
-        } else if (toolName === "read_file") {
-          toolName = "Read";
+        } else if (toolName === "Read") {
           required = ["file_path"];
-        } else if (toolName === "glob") {
-          toolName = "Glob";
+        } else if (toolName === "Glob") {
           required = ["pattern"];
-        } else if (toolName === "ls") {
-          toolName = "Ls";
+        } else if (toolName === "Ls") {
           required = ["path"];
-        } else if (toolName === "write_file") {
-          toolName = "Write";
+        } else if (toolName === "Write") {
           required = ["file_path", "content"];
         }
 
         return {
-          ...tool,
+    ...tool,
           function: {
             ...tool.function,
             name: toolName,
@@ -613,7 +606,7 @@ export class AnthropicTransformer implements Transformer {
 
                 if (textValue && !isClosed && !isTextStopped) {
                   // Qwen XML 思考块检测：如果文本包含 <think> 但还没开启思考块
-                  if (textValue.includes("<think>") && thinkingBlockIndex === -1) {
+                  if (textValue.includes(QWEN_THINK_TAGS.start) && thinkingBlockIndex === -1) {
                     thinkingBlockIndex = assignContentBlockIndex();
                     safeEnqueue(
                       encoder.encode(
@@ -630,16 +623,16 @@ export class AnthropicTransformer implements Transformer {
                       )
                     );
                     // 移除标签本身，只保留内容
-                    textValue = textValue.replace("<think>", "");
+                    textValue = textValue.replace(QWEN_THINK_TAGS.start, "");
                   }
 
                   // 如果正在思考块内
                   if (thinkingBlockIndex >= 0 && !isThinkingStopped) {
                     let thinkingDelta = textValue;
                     // 检测思考结束标签
-                    if (textValue.includes("</think>")) {
-                      thinkingDelta = textValue.split("</think>")[0];
-                      textValue = textValue.split("</think>")[1] || "";
+                    if (textValue.includes(QWEN_THINK_TAGS.end)) {
+                      thinkingDelta = textValue.split(QWEN_THINK_TAGS.end)[0];
+                      textValue = textValue.split(QWEN_THINK_TAGS.end)[1] || "";
                       
                       // 发送最后的思考增量
                       if (thinkingDelta.length > 0) {
@@ -762,16 +755,8 @@ export class AnthropicTransformer implements Transformer {
                       const newCBIndex = assignContentBlockIndex();
                       toolCallIndexToContentBlockIndex.set(tIndex, newCBIndex);
                       const tcId = toolCall.id || `call_${Date.now()}_${tIndex}`;
-                      let tcName = toolCall.function?.name || `tool_${tIndex}`;
+                      const tcName = unmapToolName(toolCall.function?.name || `tool_${tIndex}`);
                       
-                      // 响应还原映射：将影子短名转回原始长名，让 Claude Code 满意
-                      if (tcName === "Bash") tcName = "run_bash_command";
-                      else if (tcName === "Edit") tcName = "edit_file";
-                      else if (tcName === "Read") tcName = "read_file";
-                      else if (tcName === "Glob") tcName = "glob";
-                      else if (tcName === "Ls") tcName = "ls";
-                      else if (tcName === "Write") tcName = "write_file";
-
                       safeEnqueue(
                         encoder.encode(
                           `event: content_block_start\ndata: ${JSON.stringify({
@@ -972,14 +957,7 @@ export class AnthropicTransformer implements Transformer {
             parsedInput = { text: toolCall.function.arguments || "" };
           }
 
-          let toolName = toolCall.function.name;
-          // 响应还原映射
-          if (toolName === "Bash") toolName = "run_bash_command";
-          else if (toolName === "Edit") toolName = "edit_file";
-          else if (toolName === "Read") toolName = "read_file";
-          else if (toolName === "Glob") toolName = "glob";
-          else if (toolName === "Ls") toolName = "ls";
-          else if (toolName === "Write") toolName = "write_file";
+          const toolName = unmapToolName(toolCall.function.name);
 
           content.push({
             type: "tool_use",
