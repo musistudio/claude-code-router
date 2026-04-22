@@ -134,20 +134,40 @@ export class EnhanceToolTransformer implements Transformer {
           ) => {
             const { controller, encoder } = context;
 
-            // 关键修复：检测 Qwen 停止词，强制结束
-            if (line.includes("<|im_end|>") || line.includes("matched_stop\":248046")) {
+            // 关键修复：全量停止信号检测（覆盖 Qwen/ChatML 及各种 Provider）
+            const lowerLine = line.toLowerCase();
+            const hasStopToken = 
+              line.includes("<|im_end|>") || 
+              line.includes("<|endoftext|>") || 
+              line.includes("matched_stop\":248046") || 
+              line.includes("matched_stop\":248044");
+            
+            // 如果收到 [DONE] 或 明确的停止 Token，或者在有工具调用时收到 finish_reason: stop
+            if (line.trim() === "data: [DONE]" || hasStopToken) {
               if (currentToolCall.index !== undefined) {
                 processCompletedToolCall({}, controller, encoder);
                 currentToolCall = {};
               }
-              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-              return true; // 表示需要终止
+              // 如果不是 [DONE]，则补发一个 [DONE] 确保下游关闭
+              if (line.trim() !== "data: [DONE]") {
+                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              }
+              return true; // 表示需要终止整个读取循环
             }
 
-            if (line.startsWith("data: ") && line.trim() !== "data: [DONE]") {
+            if (line.startsWith("data: ")) {
               const jsonStr = line.slice(6);
               try {
                 const data = JSON.parse(jsonStr);
+                
+                // 补充检测：如果在处理工具调用的同时收到了 finish_reason: stop，也应视为结束
+                const fr = data.choices?.[0]?.finish_reason;
+                if ((fr === "stop" || fr === "tool_calls") && currentToolCall.index !== undefined) {
+                   processCompletedToolCall(data, controller, encoder);
+                   currentToolCall = {};
+                   controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                   return true;
+                }
 
                 // Handle tool calls in streaming mode
                 if (data.choices?.[0]?.delta?.tool_calls?.length) {
