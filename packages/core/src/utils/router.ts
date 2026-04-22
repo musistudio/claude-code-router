@@ -192,8 +192,8 @@ const getUseModel = async (
     return { model: Router.webSearch, scenarioType: 'webSearch' };
   }
   // if exits thinking, use the think model
-  if (req.body.thinking && Router?.think) {
-    req.log.info(`Using think model for ${req.body.thinking}`);
+  if ((req.body.thinking || req.body.reasoning_effort) && Router?.think) {
+    req.log.info(`Using think model for ${req.body.thinking || req.body.reasoning_effort}`);
     return { model: Router.think, scenarioType: 'think' };
   }
   return { model: Router?.default, scenarioType: 'default' };

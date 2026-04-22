@@ -66,7 +66,7 @@ export class OpenAITransformer implements Transformer {
         };
     });
 
-    return {
+    const result: UnifiedChatRequest = {
       messages,
       model: request.model,
       stream: request.stream,
@@ -75,6 +75,16 @@ export class OpenAITransformer implements Transformer {
       max_tokens: request.max_tokens,
       tool_choice: request.tool_choice,
     };
+
+    // Support OpenAI o1/o3 reasoning_effort
+    if (request.reasoning_effort) {
+      result.reasoning = {
+        effort: request.reasoning_effort,
+        enabled: true
+      };
+    }
+
+    return result;
   }
 
   async transformResponseIn(response: Response, context: TransformerContext): Promise<Response> {
