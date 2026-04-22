@@ -22,7 +22,7 @@
 ## ✨ Features
 
 - **Model Routing**: Route requests to different models based on your needs (e.g., background tasks, thinking, long context).
-- **Multi-Provider Support**: Supports various model providers like OpenRouter, DeepSeek, Ollama, Gemini, Volcengine, and SiliconFlow.
+- **Multi-Provider Support**: Supports various model providers like OpenRouter, DeepSeek, Ollama, Gemini, Volcengine, Z.ai, and SiliconFlow.
 - **Request/Response Transformation**: Customize requests and responses for different providers using transformers.
 - **Dynamic Model Switching**: Switch models on-the-fly within Claude Code using the `/model` command.
 - **CLI Model Management**: Manage models and providers directly from the terminal with `ccr model`.
@@ -192,6 +192,15 @@ Here is a comprehensive example:
         "claude-opus-4-20250514",
         "gemini-2.5-pro"
       ]
+    },
+    {
+      "name": "zai",
+      "api_base_url": "https://api.z.ai/api/anthropic/v1/messages",
+      "api_key": "${ZAI_API_KEY}",
+      "models": ["glm-4.6"],
+      "transformer": {
+        "use": ["Anthropic"]
+      }
     }
   ],
   "Router": {

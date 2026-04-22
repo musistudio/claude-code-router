@@ -167,6 +167,15 @@ npm install -g @musistudio/claude-code-router
         "claude-opus-4-20250514",
         "gemini-2.5-pro"
       ]
+    },
+    {
+      "name": "zai",
+      "api_base_url": "https://api.z.ai/api/anthropic/v1/messages",
+      "api_key": "${ZAI_API_KEY}",
+      "models": ["glm-4.6"],
+      "transformer": {
+        "use": ["Anthropic"]
+      }
     }
   ],
   "Router": {
