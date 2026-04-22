@@ -294,6 +294,8 @@ export class AnthropicTransformer implements Transformer {
         >();
 
         let contentIndex = 0;
+        let thinkingBlockIndex = -1;
+        let textBlockIndex = -1;
 
         const assignContentBlockIndex = () => contentIndex++;
 
@@ -672,8 +674,14 @@ export class AnthropicTransformer implements Transformer {
                       const newCBIndex = assignContentBlockIndex();
                       toolCallIndexToContentBlockIndex.set(tIndex, newCBIndex);
                       const tcId = toolCall.id || `call_${Date.now()}_${tIndex}`;
-                      const tcName = toolCall.function?.name || `tool_${tIndex}`;
+                      let tcName = toolCall.function?.name || `tool_${tIndex}`;
                       
+                      if (tcName === "Edit") {
+                        tcName = "edit_file";
+                      } else if (tcName === "Bash") {
+                        tcName = "run_bash_command";
+                      }
+
                       safeEnqueue(
                         encoder.encode(
                           `event: content_block_start\ndata: ${JSON.stringify({
@@ -862,10 +870,17 @@ export class AnthropicTransformer implements Transformer {
             parsedInput = { text: toolCall.function.arguments || "" };
           }
 
+          let toolName = toolCall.function.name;
+          if (toolName === "Edit") {
+            toolName = "edit_file";
+          } else if (toolName === "Bash") {
+            toolName = "run_bash_command";
+          }
+
           content.push({
             type: "tool_use",
             id: toolCall.id,
-            name: toolCall.function.name,
+            name: toolName,
             input: parsedInput,
           });
         });

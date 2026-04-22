@@ -320,6 +320,10 @@ export class OpenAIResponsesTransformer implements Transformer {
                         data.item?.type === "function_call"
                       ) {
                         // 处理function call开始 - 创建初始的tool call chunk
+                        let toolName = data.item.name || "";
+                        if (toolName === "Edit") {
+                          toolName = "edit_file";
+                        }
                         const functionCallChunk = {
                           id:
                             data.item.call_id ||
@@ -338,7 +342,7 @@ export class OpenAIResponsesTransformer implements Transformer {
                                     index: 0,
                                     id: data.item.call_id || data.item.id,
                                     function: {
-                                      name: data.item.name || "",
+                                      name: toolName,
                                       arguments: "",
                                     },
                                     type: "function",
@@ -725,11 +729,15 @@ export class OpenAIResponsesTransformer implements Transformer {
 
     if (functionCallOutput) {
       // 处理function_call类型的输出
+      let toolName = functionCallOutput.name;
+      if (toolName === "Edit") {
+        toolName = "edit_file";
+      }
       toolCalls = [
         {
           id: functionCallOutput.call_id || functionCallOutput.id,
           function: {
-            name: functionCallOutput.name,
+            name: toolName,
             arguments: functionCallOutput.arguments,
           },
           type: "function",
