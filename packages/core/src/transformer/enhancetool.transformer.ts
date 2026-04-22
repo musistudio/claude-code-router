@@ -160,13 +160,15 @@ export class EnhanceToolTransformer implements Transformer {
               try {
                 const data = JSON.parse(jsonStr);
                 
-                // 补充检测：如果在处理工具调用的同时收到了 finish_reason: stop，也应视为结束
+                // 关键修复：不再单纯依赖 matched_stop，只要 finish_reason 存在即认为该 Choice 结束
                 const fr = data.choices?.[0]?.finish_reason;
-                if ((fr === "stop" || fr === "tool_calls") && currentToolCall.index !== undefined) {
-                   processCompletedToolCall(data, controller, encoder);
-                   currentToolCall = {};
-                   controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-                   return true;
+                if (fr === "stop" || fr === "tool_calls" || fr === "length") {
+                  if (currentToolCall.index !== undefined) {
+                    processCompletedToolCall(data, controller, encoder);
+                    currentToolCall = {};
+                    controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                    return true; // 立即终止循环
+                  }
                 }
 
                 // Handle tool calls in streaming mode
