@@ -163,20 +163,13 @@ export class OpenAIResponsesTransformer implements Transformer {
       (request as any).tools = request.tools
         .filter((tool) => tool.function.name !== "web_search")
         .map((tool) => {
-          let toolName = tool.function.name;
-          if (toolName === "edit_file") {
-            toolName = "Edit";
-          } else if (toolName === "run_bash_command") {
-            toolName = "Bash";
-          }
-
-          if (toolName === "WebSearch") {
+          if (tool.function.name === "WebSearch") {
             delete tool.function.parameters.properties.allowed_domains;
           }
-          if (toolName === "Edit") {
+          if (tool.function.name === "Edit") {
             return {
               type: tool.type,
-              name: toolName,
+              name: tool.function.name,
               description: tool.function.description,
               parameters: {
                 ...tool.function.parameters,
@@ -192,7 +185,7 @@ export class OpenAIResponsesTransformer implements Transformer {
           }
           return {
             type: tool.type,
-            name: toolName,
+            name: tool.function.name,
             description: tool.function.description,
             parameters: tool.function.parameters,
           };

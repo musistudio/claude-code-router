@@ -93,14 +93,6 @@ export class AnthropicTransformer implements Transformer {
                 ? tool.content
                 : JSON.stringify(tool.content);
               
-              // 修复反馈结果中的工具名错误信息（如果存在）
-              if (content.includes("run_bash_command")) {
-                content = content.replace(/run_bash_command/g, "Bash");
-              }
-              if (content.includes("edit_file")) {
-                content = content.replace(/edit_file/g, "Edit");
-              }
-
               // If Anthropic explicitly marked this as an error, ensure OpenAI model knows it failed
               if (tool.is_error && !content.trim().startsWith("Error")) {
                 content = `Error: ${content}`;
@@ -167,22 +159,14 @@ export class AnthropicTransformer implements Transformer {
             (c: any) => c.type === "tool_use" && c.id
           );
           if (toolCallParts.length) {
-            assistantMessage.tool_calls = toolCallParts.map((tool: any) => {
-              let toolName = tool.name;
-              if (toolName === "edit_file") {
-                toolName = "Edit";
-              } else if (toolName === "run_bash_command") {
-                toolName = "Bash";
-              }
-              return {
-                id: tool.id,
-                type: "function" as const,
-                function: {
-                  name: toolName,
-                  arguments: typeof tool.input === 'string' ? tool.input : JSON.stringify(tool.input || {}),
-                },
-              };
-            });
+            assistantMessage.tool_calls = toolCallParts.map((tool: any) => ({
+              id: tool.id,
+              type: "function" as const,
+              function: {
+                name: tool.name,
+                arguments: typeof tool.input === 'string' ? tool.input : JSON.stringify(tool.input || {}),
+              },
+            }));
           }
 
           // Preserve thinking content
@@ -217,24 +201,6 @@ export class AnthropicTransformer implements Transformer {
       tool_choice: request.tool_choice,
     };
     
-    // 工具名映射：将长工具名转换为短工具名，以确保 Qwen 模型能正确匹配
-    if (result.tools?.length) {
-      result.tools = result.tools.map(tool => {
-        let toolName = tool.function.name;
-        if (toolName === "edit_file") {
-          toolName = "Edit";
-        } else if (toolName === "run_bash_command") {
-          toolName = "Bash";
-        }
-        return {
-          ...tool,
-          function: {
-            ...tool.function,
-            name: toolName
-          }
-        };
-      });
-    }
     if (request.thinking) {
       result.reasoning = {
         effort: getThinkLevel(request.thinking.budget_tokens),
@@ -709,14 +675,8 @@ export class AnthropicTransformer implements Transformer {
                       const newCBIndex = assignContentBlockIndex();
                       toolCallIndexToContentBlockIndex.set(tIndex, newCBIndex);
                       const tcId = toolCall.id || `call_${Date.now()}_${tIndex}`;
-                      let tcName = toolCall.function?.name || `tool_${tIndex}`;
+                      const tcName = toolCall.function?.name || `tool_${tIndex}`;
                       
-                      if (tcName === "Edit") {
-                        tcName = "edit_file";
-                      } else if (tcName === "Bash") {
-                        tcName = "run_bash_command";
-                      }
-
                       safeEnqueue(
                         encoder.encode(
                           `event: content_block_start\ndata: ${JSON.stringify({
@@ -905,17 +865,10 @@ export class AnthropicTransformer implements Transformer {
             parsedInput = { text: toolCall.function.arguments || "" };
           }
 
-          let toolName = toolCall.function.name;
-          if (toolName === "Edit") {
-            toolName = "edit_file";
-          } else if (toolName === "Bash") {
-            toolName = "run_bash_command";
-          }
-
           content.push({
             type: "tool_use",
             id: toolCall.id,
-            name: toolName,
+            name: toolCall.function.name,
             input: parsedInput,
           });
         });
