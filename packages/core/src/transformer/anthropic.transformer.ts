@@ -225,6 +225,8 @@ export class AnthropicTransformer implements Transformer {
           required = ["file_path"];
         } else if (toolName === "Glob") {
           required = ["pattern"];
+        } else if (toolName === "Grep") {
+          required = ["pattern"];
         } else if (toolName === "Ls") {
           required = ["path"];
         } else if (toolName === "Write") {

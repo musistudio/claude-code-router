@@ -166,22 +166,25 @@ export class OpenAIResponsesTransformer implements Transformer {
           let toolName = tool.function.name;
           let required = tool.function.parameters.required || [];
 
-          if (toolName === "run_bash_command") {
+          if (toolName === "run_bash_command" || toolName === "Bash") {
             toolName = "Bash";
             required = ["command"];
-          } else if (toolName === "edit_file") {
+          } else if (toolName === "edit_file" || toolName === "Edit") {
             toolName = "Edit";
             required = ["file_path", "old_string", "new_string", "allow_multiple", "instruction"];
-          } else if (toolName === "read_file") {
+          } else if (toolName === "read_file" || toolName === "Read") {
             toolName = "Read";
             required = ["file_path"];
-          } else if (toolName === "glob") {
+          } else if (toolName === "glob" || toolName === "Glob") {
             toolName = "Glob";
             required = ["pattern"];
-          } else if (toolName === "ls") {
+          } else if (toolName === "grep" || toolName === "Grep") {
+            toolName = "Grep";
+            required = ["pattern"];
+          } else if (toolName === "ls" || toolName === "Ls") {
             toolName = "Ls";
             required = ["path"];
-          } else if (toolName === "write_file") {
+          } else if (toolName === "write_file" || toolName === "Write") {
             toolName = "Write";
             required = ["file_path", "content"];
           }
@@ -333,12 +336,13 @@ export class OpenAIResponsesTransformer implements Transformer {
                         // 处理function call开始 - 创建初始的tool call chunk
                         let toolName = data.item.name || "";
                         // 响应还原映射
-                        if (toolName === "Bash") toolName = "run_bash_command";
-                        else if (toolName === "Edit") toolName = "edit_file";
-                        else if (toolName === "Read") toolName = "read_file";
-                        else if (toolName === "Glob") toolName = "glob";
-                        else if (toolName === "Ls") toolName = "ls";
-                        else if (toolName === "Write") toolName = "write_file";
+                        if (toolName === "Bash") toolName = "Bash";
+                        else if (toolName === "Edit") toolName = "Edit";
+                        else if (toolName === "Read") toolName = "Read";
+                        else if (toolName === "Glob") toolName = "Glob";
+                        else if (toolName === "Grep") toolName = "Grep";
+                        else if (toolName === "Ls") toolName = "Ls";
+                        else if (toolName === "Write") toolName = "Write";
 
                         const functionCallChunk = {
                           id:
@@ -747,12 +751,13 @@ export class OpenAIResponsesTransformer implements Transformer {
       // 处理function_call类型的输出
       let toolName = functionCallOutput.name;
       // 响应还原映射
-      if (toolName === "Bash") toolName = "run_bash_command";
-      else if (toolName === "Edit") toolName = "edit_file";
-      else if (toolName === "Read") toolName = "read_file";
-      else if (toolName === "Glob") toolName = "glob";
-      else if (toolName === "Ls") toolName = "ls";
-      else if (toolName === "Write") toolName = "write_file";
+      if (toolName === "Bash") toolName = "Bash";
+      else if (toolName === "Edit") toolName = "Edit";
+      else if (toolName === "Read") toolName = "Read";
+      else if (toolName === "Glob") toolName = "Glob";
+      else if (toolName === "Grep") toolName = "Grep";
+      else if (toolName === "Ls") toolName = "Ls";
+      else if (toolName === "Write") toolName = "Write";
 
       toolCalls = [
         {

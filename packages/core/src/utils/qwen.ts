@@ -30,11 +30,19 @@ export function extractQwenThinking(text: string): { thinking: string; content: 
 
 export const TOOL_NAME_MAP: Record<string, string> = {
   "run_bash_command": "Bash",
+  "Bash": "Bash",
   "edit_file": "Edit",
+  "Edit": "Edit",
   "read_file": "Read",
+  "Read": "Read",
   "glob": "Glob",
+  "Glob": "Glob",
+  "grep": "Grep",
+  "Grep": "Grep",
   "ls": "Ls",
-  "write_file": "Write"
+  "Ls": "Ls",
+  "write_file": "Write",
+  "Write": "Write"
 };
 
 export const REVERSE_TOOL_NAME_MAP: Record<string, string> = Object.fromEntries(

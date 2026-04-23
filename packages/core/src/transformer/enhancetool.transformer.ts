@@ -101,11 +101,17 @@ export class EnhanceToolTransformer implements Transformer {
             };
 
             // Remove content field entirely to prevent extra null values
+            const choices = data.choices || [{}];
+            const choice = choices[0] || {};
             const modifiedData = {
               ...data,
+              id: data.id || "chatcmpl-" + Date.now(),
+              object: data.object || "chat.completion.chunk",
+              created: data.created || Math.floor(Date.now() / 1000),
+              model: data.model || "unknown",
               choices: [
                 {
-                  ...data.choices[0],
+                  ...choice,
                   delta,
                 },
               ],
@@ -148,10 +154,7 @@ export class EnhanceToolTransformer implements Transformer {
                 processCompletedToolCall({}, controller, encoder);
                 currentToolCall = {};
               }
-              // 如果不是 [DONE]，则补发一个 [DONE] 确保下游关闭
-              if (line.trim() !== "data: [DONE]") {
-                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-              }
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
               return true; // 表示需要终止整个读取循环
             }
 
@@ -166,8 +169,7 @@ export class EnhanceToolTransformer implements Transformer {
                   if (currentToolCall.index !== undefined) {
                     processCompletedToolCall(data, controller, encoder);
                     currentToolCall = {};
-                    controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-                    return true; // 立即终止循环
+                    return false;
                   }
                 }
 
