@@ -162,89 +162,44 @@ export class EnhanceToolTransformer implements Transformer {
               const jsonStr = line.slice(6);
               try {
                 const data = JSON.parse(jsonStr);
-                
-                // 关键修复：不再单纯依赖 matched_stop，只要 finish_reason 存在即认为该 Choice 结束
+
+                // 1. 监控流结束标识
                 const fr = data.choices?.[0]?.finish_reason;
                 if (fr === "stop" || fr === "tool_calls" || fr === "length") {
                   if (currentToolCall.index !== undefined) {
-                    processCompletedToolCall(data, controller, encoder);
+                    // 如果有残留参数没发（虽然在透明转发下不该发生），做最后一次同步
                     currentToolCall = {};
-                    return false;
                   }
                 }
 
-                // Handle tool calls in streaming mode
+                // 2. 工具调用处理：采用透明转发模式
                 if (data.choices?.[0]?.delta?.tool_calls?.length) {
                   const toolCallDelta = data.choices[0].delta.tool_calls[0];
 
-                  // Initialize currentToolCall if this is the first chunk for this tool call
-                  if (typeof currentToolCall.index === "undefined") {
+                  if (typeof currentToolCall.index === "undefined" || currentToolCall.index !== toolCallDelta.index) {
+                    // 新工具调用开始
                     currentToolCall = {
                       index: toolCallDelta.index,
                       name: toolCallDelta.function?.name || "",
                       id: toolCallDelta.id || "",
                       arguments: toolCallDelta.function?.arguments || ""
                     };
-                    if (toolCallDelta.function?.arguments) {
-                      toolCallDelta.function.arguments = ''
-                    }
-                    // Send the first chunk as-is
-                    const modifiedLine = `data: ${JSON.stringify(data)}\n\n`;
-                    controller.enqueue(encoder.encode(modifiedLine));
-                    return;
-                  }
-                  // Accumulate arguments if this is a continuation of the current tool call
-                  else if (currentToolCall.index === toolCallDelta.index) {
+                  } else {
+                    // 持续累加参数，但不拦截转发
                     if (toolCallDelta.function?.arguments) {
                       currentToolCall.arguments += toolCallDelta.function.arguments;
                     }
-                    // Don't send intermediate chunks that only contain arguments
-                    return;
-                  }
-                  // If we have a different tool call index, process the previous one and start a new one
-                  else {
-                    // Process the completed tool call using helper function
-                    processCompletedToolCall(data, controller, encoder);
-
-                    // Start tracking the new tool call
-                    currentToolCall = {
-                      index: toolCallDelta.index,
-                      name: toolCallDelta.function?.name || "",
-                      id: toolCallDelta.id || "",
-                      arguments: toolCallDelta.function?.arguments || ""
-                    };
-                    return;
                   }
                 }
 
-                // Handle finish_reason for tool_calls or stop
-                const finishReason = data.choices?.[0]?.finish_reason;
-                if ((finishReason === "tool_calls" || finishReason === "stop") && currentToolCall.index !== undefined) {
-                  // Process the final tool call using helper function
-                  processCompletedToolCall(data, controller, encoder);
-                  currentToolCall = {};
-                  return;
-                }
-
-                // Handle text content alongside tool calls
-                if (
-                  data.choices?.[0]?.delta?.tool_calls?.length &&
-                  context.hasTextContent()
-                ) {
-                  if (typeof data.choices[0].index === "number") {
-                    data.choices[0].index += 1;
-                  } else {
-                    data.choices[0].index = 1;
-                  }
-                }
-
+                // 直接转发原始数据，不再清空 arguments
                 const modifiedLine = `data: ${JSON.stringify(data)}\n\n`;
                 controller.enqueue(encoder.encode(modifiedLine));
               } catch (e) {
-                // 如果JSON解析失败，可能是数据不完整，将原始行传递下去
                 controller.enqueue(encoder.encode(line + "\n"));
               }
-            } else {
+            }
+ else {
               // Pass through non-data lines (like [DONE])
               controller.enqueue(encoder.encode(line + "\n"));
             }

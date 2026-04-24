@@ -211,35 +211,43 @@ export class AnthropicTransformer implements Transformer {
       tool_choice: request.tool_choice,
     };
 
-    // 终极影子映射：将长工具名转换为短工具名，并补全必需参数
+    // 终极影子映射：将工具名映射，并确保必需参数存在且 properties 完整
     if (result.tools?.length) {
       result.tools = result.tools.map(tool => {
         const toolName = mapToolName(tool.function.name);
-        let required = tool.function.parameters.required || [];
+        // 深度合并参数，防止 properties 丢失
+        const existingParameters = tool.function.parameters || { type: "object", properties: {} };
+        let required = existingParameters.required || [];
+
+        const ensureRequired = (param: string) => {
+          if (!required.includes(param)) {
+            required = [...required, param];
+          }
+        };
 
         if (toolName === "Bash") {
-          required = ["command"];
+          ensureRequired("command");
         } else if (toolName === "Edit") {
-          required = ["file_path", "old_string", "new_string", "allow_multiple", "instruction"];
+          ["file_path", "old_string", "new_string", "allow_multiple", "instruction"].forEach(ensureRequired);
         } else if (toolName === "Read") {
-          required = ["file_path"];
+          ensureRequired("file_path");
         } else if (toolName === "Glob") {
-          required = ["pattern"];
+          ensureRequired("pattern");
         } else if (toolName === "Grep") {
-          required = ["pattern"];
+          ensureRequired("pattern");
         } else if (toolName === "Ls") {
-          required = ["path"];
+          ensureRequired("path");
         } else if (toolName === "Write") {
-          required = ["file_path", "content"];
+          ["file_path", "content"].forEach(ensureRequired);
         }
 
         return {
-    ...tool,
+          ...tool,
           function: {
             ...tool.function,
             name: toolName,
             parameters: {
-              ...tool.function.parameters,
+              ...existingParameters,
               required
             }
           }
@@ -361,6 +369,24 @@ export class AnthropicTransformer implements Transformer {
 
         const stopCurrentBlock = () => {
           if (state.currentBlockType && state.currentBlockIndex !== -1) {
+            // If it's a tool block and the stream hasn't finished, try to fix JSON
+            if (state.currentBlockType === "tool_use" && !state.hasFinished) {
+              for (const [tIdx, toolInfo] of state.toolCallMap) {
+                if (toolInfo.blockIndex === state.currentBlockIndex && toolInfo.args) {
+                  const fix = tryFixJson(toolInfo.args);
+                  if (fix) {
+                    safeEnqueue("content_block_delta", {
+                      type: "content_block_delta",
+                      index: state.currentBlockIndex,
+                      delta: { type: "input_json_delta", partial_json: fix }
+                    });
+                  }
+                  state.toolCallMap.delete(tIdx);
+                  break;
+                }
+              }
+            }
+
             safeEnqueue("content_block_stop", {
               type: "content_block_stop",
               index: state.currentBlockIndex
@@ -371,7 +397,12 @@ export class AnthropicTransformer implements Transformer {
         };
 
         const stopAllToolBlocks = () => {
-          for (const [, toolInfo] of state.toolCallMap) {
+          // If the current block is a tool block, stop it first
+          if (state.currentBlockType === "tool_use") {
+            stopCurrentBlock();
+          }
+
+          for (const [tIdx, toolInfo] of state.toolCallMap) {
             if (!state.hasFinished && toolInfo.args) {
               const fix = tryFixJson(toolInfo.args);
               if (fix) {
@@ -706,15 +737,23 @@ export class AnthropicTransformer implements Transformer {
           let parsedInput = {};
           try {
             const argumentsStr = toolCall.function.arguments || "{}";
-            parsedInput = typeof argumentsStr === "string" ? JSON.parse(argumentsStr) : argumentsStr;
+            if (typeof argumentsStr === "object") {
+              parsedInput = argumentsStr;
+            } else {
+              parsedInput = JSON.parse(argumentsStr);
+            }
           } catch {
-            parsedInput = { text: toolCall.function.arguments || "" };
+            // 解析失败时透传原始字符串，避免破坏结构
+            parsedInput = toolCall.function.arguments;
           }
+
+          const rawName = toolCall.function.name;
+          const finalName = unmapToolName(rawName);
 
           content.push({
             type: "tool_use",
             id: toolCall.id,
-            name: unmapToolName(toolCall.function.name),
+            name: finalName,
             input: parsedInput,
           });
         });
@@ -739,7 +778,7 @@ export class AnthropicTransformer implements Transformer {
         stop_reason,
         stop_sequence: null,
         usage: {
-          input_tokens: openaiResponse.usage?.prompt_tokens || 0,
+          input_tokens: Math.max(0, (openaiResponse.usage?.prompt_tokens || 0) - (openaiResponse.usage?.prompt_tokens_details?.cached_tokens || 0)),
           output_tokens: openaiResponse.usage?.completion_tokens || 0,
           cache_read_input_tokens:
             openaiResponse.usage?.prompt_tokens_details?.cached_tokens || 0,
