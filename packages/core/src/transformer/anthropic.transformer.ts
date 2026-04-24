@@ -147,18 +147,28 @@ export class AnthropicTransformer implements Transformer {
           content: "",
         };
         
-        // Extract text content
+        // Extract content
         if (typeof msg.content === "string") {
           assistantMessage.content = msg.content;
         } else if (Array.isArray(msg.content)) {
-          const textParts = msg.content.filter(
-            (c: any) => c.type === "text" && c.text
-          );
-          if (textParts.length) {
-            assistantMessage.content = textParts
-              .map((text: any) => text.text)
-              .join("\n");
-          }
+          const contentParts: string[] = [];
+          
+          msg.content.forEach((part: any) => {
+            if (part.type === "text" && part.text) {
+              contentParts.push(part.text);
+            } else if (part.type === "thinking" && (part.thinking || part.text)) {
+              const thinkText = part.thinking || part.text;
+              // 将 thinking 内容也作为普通文本放入 content 中，保证即使模型只输出思考和工具，对话流也不断裂
+              contentParts.push(thinkText);
+              // 依然保留结构化的 thinking 字段以供支持的 Provider 使用
+              assistantMessage.thinking = {
+                content: thinkText,
+                signature: part.signature,
+              };
+            }
+          });
+
+          assistantMessage.content = contentParts.join("\n\n").trim();
 
           // Extract tool calls
           const toolCallParts = msg.content.filter(
@@ -177,17 +187,6 @@ export class AnthropicTransformer implements Transformer {
                 },
               };
             });
-          }
-
-          // Preserve thinking content
-          const thinkingPart = msg.content.find(
-            (c: any) => c.type === "thinking"
-          );
-          if (thinkingPart) {
-            assistantMessage.thinking = {
-              content: thinkingPart.thinking || thinkingPart.text || "",
-              signature: thinkingPart.signature,
-            };
           }
         }
         messages.push(assistantMessage);
