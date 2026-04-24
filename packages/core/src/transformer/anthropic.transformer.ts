@@ -78,9 +78,13 @@ export class AnthropicTransformer implements Transformer {
 
     const requestMessages = JSON.parse(JSON.stringify(request.messages || []));
 
-    requestMessages?.forEach((msg: any) => {
+    const messages: UnifiedMessage[] = [];
+    const totalMsgCount = requestMessages?.length || 0;
+
+    requestMessages?.forEach((msg: any, msgIndex: number) => {
       // Map 'developer' role to 'system' for better compatibility with models like Qwen
       const role = msg.role === "developer" ? "system" : msg.role;
+      const isDistantHistory = totalMsgCount - msgIndex > 6; // 定义 3 个对话轮次之前为旧历史
 
       if (role === "user") {
         if (typeof msg.content === "string") {
@@ -89,39 +93,41 @@ export class AnthropicTransformer implements Transformer {
             content: msg.content,
           });
         } else if (Array.isArray(msg.content)) {
-          // 核心重构：将文本与工具结果分离，并确保 tool 结果排在前面
-          // 以便紧跟在发出 tool_calls 的 assistant 消息之后
+          // 1. 核心重构：将文本与工具结果分离，并确保 tool 结果排在前面
           const toolResults = msg.content.filter((c: any) => (c.type === "tool_result" || c.role === "tool") && (c.tool_use_id || c.tool_call_id));
-            toolResults.forEach((tool: any) => {
-              let content = "";
-              
-              // 1. 处理结构化的工具返回 (例如 Bash 返回的 stdout/stderr/exitCode)
-              if (typeof tool.content === "object" && tool.content !== null) {
-                const parts: string[] = [];
-                if (tool.content.stdout) parts.push(`STDOUT:\n${tool.content.stdout}`);
-                if (tool.content.stderr) parts.push(`STDERR:\n${tool.content.stderr}`);
-                if (tool.content.exitCode !== undefined) parts.push(`Exit Code: ${tool.content.exitCode}`);
-                
-                // 如果对象结构特殊，则降级为 JSON
-                content = parts.length > 0 ? parts.join("\n\n") : JSON.stringify(tool.content);
-              } else {
-                content = String(tool.content || "");
-              }
-              
-              const toolId = tool.tool_use_id || tool.tool_call_id;
-              
-              // 2. 强化错误报告：使用统一的 [Error] 前缀引导模型识别失败
-              if (tool.is_error) {
-                const cleanContent = content.replace(/^Error:\s*/i, "");
-                content = `Error executing tool ${toolId}:\n${cleanContent}`;
-              }
+          toolResults.forEach((tool: any) => {
+            let content = "";
+            
+            // 1.1 处理结构化的工具返回 (例如 Bash 返回的 stdout/stderr/exitCode)
+            if (typeof tool.content === "object" && tool.content !== null) {
+              const parts: string[] = [];
+              if (tool.content.stdout) parts.push(`STDOUT:\n${tool.content.stdout}`);
+              if (tool.content.stderr) parts.push(`STDERR:\n${tool.content.stderr}`);
+              if (tool.content.exitCode !== undefined) parts.push(`Exit Code: ${tool.content.exitCode}`);
+              content = parts.length > 0 ? parts.join("\n\n") : JSON.stringify(tool.content);
+            } else {
+              content = String(tool.content || "");
+            }
 
-              messages.push({
-                role: "tool",
-                content: content,
-                tool_call_id: toolId
-              });
+            // 1.2 工业级优化：如果处于旧历史中且内容巨大，执行智能压缩
+            if (isDistantHistory && content.length > 2000) {
+              content = `[Previous Tool Result: Large output (${content.length} chars) truncated for efficiency]`;
+            }
+            
+            const toolId = tool.tool_use_id || tool.tool_call_id;
+            
+            // 2. 强化错误报告
+            if (tool.is_error) {
+              const cleanContent = content.replace(/^Error:\s*/i, "");
+              content = `Error executing tool ${toolId}:\n${cleanContent}`;
+            }
+
+            messages.push({
+              role: "tool",
+              content: content,
+              tool_call_id: toolId
             });
+          });
 
           const textParts = msg.content.filter((c: any) => c.type === "text" && c.text);
           if (textParts.length) {
@@ -686,11 +692,28 @@ export class AnthropicTransformer implements Transformer {
                     const toolInfo = state.toolCallMap.get(tIdx);
                     if (toolInfo) {
                       toolInfo.args += tc.function.arguments;
-                      safeEnqueue("content_block_delta", {
-                        type: "content_block_delta",
-                        index: toolInfo.blockIndex,
-                        delta: { type: "input_json_delta", partial_json: tc.function.arguments }
-                      });
+                      
+                      // 性能优化：针对超长参数 (如 Edit 工具的大段代码)，执行碎片化转发
+                      // 这样可以防止单包过大导致的缓冲区阻塞，并让 CLI 进度条更丝滑
+                      const args = tc.function.arguments;
+                      const CHUNK_SIZE = 4096; // 4KB 分片
+                      
+                      if (args.length > CHUNK_SIZE) {
+                        for (let i = 0; i < args.length; i += CHUNK_SIZE) {
+                          const subChunk = args.slice(i, i + CHUNK_SIZE);
+                          safeEnqueue("content_block_delta", {
+                            type: "content_block_delta",
+                            index: toolInfo.blockIndex,
+                            delta: { type: "input_json_delta", partial_json: subChunk }
+                          });
+                        }
+                      } else {
+                        safeEnqueue("content_block_delta", {
+                          type: "content_block_delta",
+                          index: toolInfo.blockIndex,
+                          delta: { type: "input_json_delta", partial_json: args }
+                        });
+                      }
                     }
                   }
                 }
@@ -865,39 +888,41 @@ export class AnthropicTransformer implements Transformer {
           const rawName = toolCall.function.name;
           const finalName = unmapToolName(rawName);
 
-          // 针对核心工具进行参数清洗：采用“精准打击”模式，只清理已知会引起 CLI 报错的工具
+          // 针对核心工具进行参数清洗：采用“精准打击”模式
           if (typeof parsedInput === "object" && parsedInput !== null) {
             const input = parsedInput as any;
             if (finalName === "Edit") {
-              // 容错：如果模型幻觉输出了 replace_all 而非 allow_multiple
               const am = typeof input.allow_multiple !== "undefined" ? input.allow_multiple : input.replace_all;
-              
-              // 深度清洗：移除干扰 CLI 匹配的换行符
               const scrub = (val: any) => {
-                if (typeof val !== "string") return val;
+                if (typeof val !== "string") return val || "";
                 return val.replace(/\r\n/g, "\n").trimEnd();
               };
-
+              // 自动补全缺失字段，防止 CLI 报错
               parsedInput = { 
-                file_path: input.file_path, 
+                file_path: input.file_path || "unknown", 
                 old_string: scrub(input.old_string), 
                 new_string: scrub(input.new_string), 
-                allow_multiple: am 
+                allow_multiple: typeof am === "boolean" ? am : false 
               };
             } else if (finalName === "Read") {
-              // Read 只保留功能性参数，防止模型自作聪明加 explanation
-              const { file_path, start_line, end_line } = input;
-              parsedInput = { file_path, start_line, end_line };
+              parsedInput = { 
+                file_path: input.file_path || "unknown", 
+                start_line: input.start_line, 
+                end_line: input.end_line 
+              };
             } else if (finalName === "Bash") {
-              // Bash 只保留命令，防止模型解释用途
-              const { command } = input;
-              parsedInput = { command };
+              parsedInput = { command: input.command || "" };
             } else if (finalName === "Write") {
-              // Write 只保留文件路径和内容
-              const { file_path, content } = input;
-              parsedInput = { file_path, content };
+              parsedInput = { 
+                file_path: input.file_path || "unknown", 
+                content: input.content || "" 
+              };
             }
-            // 其它工具 (如 Skill, TodoWrite, TodoRead, WebSearch 等) 直接透传所有参数，以保证未来兼容性
+          } else {
+            // 如果解析失败，对于已知工具，尝试提供一个最小可运行的空参数对象
+            if (finalName === "Edit") parsedInput = { file_path: "unknown", old_string: "", new_string: "", allow_multiple: false };
+            else if (finalName === "Bash") parsedInput = { command: "" };
+            else if (finalName === "Read") parsedInput = { file_path: "unknown" };
           }
 
           content.push({
