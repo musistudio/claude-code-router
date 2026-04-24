@@ -887,6 +887,12 @@ export class AnthropicTransformer implements Transformer {
               // 搜索工具支持 pattern 和过滤
               const { pattern, include_pattern, exclude_pattern } = input;
               parsedInput = { pattern, include_pattern, exclude_pattern };
+            } else if (finalName === "Skill") {
+              const { name } = input;
+              parsedInput = { name };
+            } else if (finalName === "EnterPlanMode" || finalName === "ExitPlanMode") {
+              // 计划模式通常带有一些描述性参数，需保留
+              parsedInput = input;
             }
           }
 
