@@ -26,6 +26,8 @@ declare module "fastify" {
   }
 }
 
+import { RequestTracker } from "@/utils/requestTracker";
+
 /**
  * Main handler for transformer endpoints
  * Coordinates the entire request processing flow: validate provider, handle request transformers,
@@ -50,6 +52,18 @@ async function handleTransformerEndpoint(
     );
   }
 
+  // 1. 注册请求追踪：使用 sessionId 或 req.id 作为唯一键
+  // 针对 Claude Code CLI，sessionId 是最稳定的追踪依据
+  const sessionId = (req.headers["x-claude-code-session-id"] as string) || (body.session_id as string) || req.id;
+  const requestController = RequestTracker.track(sessionId);
+
+  // 监听重入中止信号
+  requestController.signal.addEventListener("abort", () => {
+    if (!reply.raw.writableEnded) {
+       reply.raw.end(); 
+    }
+  });
+
   try {
     // Process request transformer chain
     const { requestBody, config, bypass } = await processRequestTransformers(
@@ -72,6 +86,7 @@ async function handleTransformerEndpoint(
       transformer,
       {
         req,
+        signal: requestController.signal // 将中止信号传递给底层 fetch
       }
     );
 
@@ -98,6 +113,9 @@ async function handleTransformerEndpoint(
       }
     }
     throw error;
+  } finally {
+    // 2. 释放请求追踪
+    RequestTracker.release(sessionId);
   }
 }
 
@@ -351,8 +369,16 @@ async function sendRequestToProvider(
   }
 
   // 强化超时控制：为发往 Provider 的请求设置 31 分钟超时，确保超大上下文加载不中断
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 1860000); // 31 分钟
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), 1860000); // 31 分钟
+
+  // 组合信号：外界传入的中止信号 (防重入) + 这里的超时信号
+  const signals = [timeoutController.signal];
+  if (context?.signal) {
+    signals.push(context.signal);
+  }
+  // Use AbortSignal.any if available (Node 20+)
+  const combinedSignal = (AbortSignal as any).any ? (AbortSignal as any).any(signals) : timeoutController.signal;
 
   try {
     const response = await sendUnifiedRequest(
@@ -362,7 +388,7 @@ async function sendRequestToProvider(
         httpsProxy: fastify.configService.getHttpsProxy(),
         ...config,
         headers: JSON.parse(JSON.stringify(requestHeaders)),
-        signal: controller.signal, // 注入信号
+        signal: combinedSignal, // 注入组合信号
       },
       context,
       fastify.log
