@@ -408,10 +408,11 @@ export class AnthropicTransformer implements Transformer {
 
     // 状态机跟踪
     let state = {
-      messageId: messageId,
+      messageId: null as string | null,
       hasStarted: false,
       hasFinished: false,
       isClosed: false,
+      hasToolCalled: false, // 记录是否触发过工具调用
       currentBlockIndex: -1,
       currentBlockType: null as "thinking" | "text" | "tool_use" | null,
       nextIndex: 0,
@@ -419,6 +420,7 @@ export class AnthropicTransformer implements Transformer {
       lastUsage: null as any,
       toolCallMap: new Map<number, { id: string; name: string; blockIndex: number; args: string }>()
     };
+
 
     const tryFixJson = (json: string): string => {
       let openBraces = 0;
@@ -662,6 +664,7 @@ export class AnthropicTransformer implements Transformer {
 
               // 4. 处理工具调用 (Tool Use)
               if (choice.delta?.tool_calls) {
+                state.hasToolCalled = true;
                 for (const tc of choice.delta.tool_calls) {
                   const tIdx = tc.index ?? 0;
                   if (tc.id) {
@@ -692,7 +695,7 @@ export class AnthropicTransformer implements Transformer {
                 stopAllToolBlocks();
                 
                 let reason = choice.finish_reason;
-                if (state.toolCallMap.size > 0 && reason === "stop") {
+                if (state.hasToolCalled && reason === "stop") {
                   reason = "tool_calls";
                 }
 
