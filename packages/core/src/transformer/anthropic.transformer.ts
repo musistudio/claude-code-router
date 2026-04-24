@@ -857,6 +857,11 @@ export class AnthropicTransformer implements Transformer {
           const rawName = toolCall.function.name;
           const finalName = unmapToolName(rawName);
 
+          // 针对 Edit 工具进行参数清洗：移除 instruction 字段 (CLI 无法识别)
+          if (finalName === "Edit" && typeof parsedInput === "object" && parsedInput !== null) {
+            delete (parsedInput as any).instruction;
+          }
+
           content.push({
             type: "tool_use",
             id: toolCall.id,
