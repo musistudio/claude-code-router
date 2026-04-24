@@ -468,6 +468,21 @@ export class AnthropicTransformer implements Transformer {
           });
           state.hasStarted = true;
 
+          // 心跳定时器：每 15 秒发送一次 SSE 注释保持连接活跃
+          // 尤其针对超大上下文，后端可能长时间不返回数据
+          const heartbeatInterval = setInterval(() => {
+            if (!state.isClosed && !state.hasFinished) {
+              try {
+                // Claude Code CLI 会忽略 SSE 注释行，但这能保持 TCP 连接活跃
+                controller.enqueue(encoder.encode(": heartbeat\n\n"));
+              } catch (e) {
+                clearInterval(heartbeatInterval);
+              }
+            } else {
+              clearInterval(heartbeatInterval);
+            }
+          }, 15000);
+
           const reader = openaiStream.getReader();
           let partialLine = new Uint8Array(0);
 
