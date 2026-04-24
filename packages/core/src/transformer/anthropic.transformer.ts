@@ -78,7 +78,6 @@ export class AnthropicTransformer implements Transformer {
 
     const requestMessages = JSON.parse(JSON.stringify(request.messages || []));
 
-    const messages: UnifiedMessage[] = [];
     const totalMsgCount = requestMessages?.length || 0;
 
     requestMessages?.forEach((msg: any, msgIndex: number) => {
