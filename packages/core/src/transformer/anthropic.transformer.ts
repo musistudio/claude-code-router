@@ -301,7 +301,9 @@ export class AnthropicTransformer implements Transformer {
         if (toolName === "Bash") {
           ensureRequired("command");
         } else if (toolName === "Edit") {
-          ["file_path", "old_string", "new_string", "allow_multiple"].forEach(ensureRequired);
+          // 仅将最核心的功能字段标记为必需
+          ["file_path", "old_string", "new_string"].forEach(ensureRequired);
+          
           // 强化 Edit 描述，强制模型必须精确匹配，减少 "String to replace not found" 报错
           tool.function.description = "Modify a file by replacing a specific string. CRITICAL: 'old_string' must be an EXACT, character-for-character match of the file content, including all whitespace, indentation, and newlines. Always Read the file first to ensure accuracy.";
           
