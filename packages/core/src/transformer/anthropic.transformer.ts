@@ -318,10 +318,11 @@ export class AnthropicTransformer implements Transformer {
   ): Promise<ReadableStream> {
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
+    const messageId = `msg_${uuidv4()}`;
 
     // 状态机跟踪
     let state = {
-      messageId: null as string | null,
+      messageId: messageId,
       hasStarted: false,
       hasFinished: false,
       isClosed: false,
@@ -393,6 +394,26 @@ export class AnthropicTransformer implements Transformer {
         };
 
         try {
+          // 1. 发送消息开始 (零延迟)
+          const initialModel = context.req.body?.model || "claude-3-5-sonnet-20241022";
+          safeEnqueue("message_start", {
+            type: "message_start",
+            message: {
+              id: messageId,
+              type: "message",
+              role: "assistant",
+              model: initialModel,
+              usage: {
+                input_tokens: 0,
+                output_tokens: 0,
+                cache_read_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+                thinking_tokens: 0
+              }
+            }
+          });
+          state.hasStarted = true;
+
           const reader = openaiStream.getReader();
           let partialLine = new Uint8Array(0);
 
@@ -412,32 +433,6 @@ export class AnthropicTransformer implements Transformer {
                   error: { type: "api_error", message: chunk.error.message }
                 });
                 return;
-              }
-
-              state.model = chunk.model || state.model;
-              if (!state.messageId) {
-                state.messageId = chunk.id?.replace("chatcmpl-", "") || `msg_${uuidv4()}`;
-              }
-
-              // 1. 发送消息开始
-              if (!state.hasStarted) {
-                state.hasStarted = true;
-                safeEnqueue("message_start", {
-                  type: "message_start",
-                  message: {
-                    id: state.messageId,
-                    type: "message",
-                    role: "assistant",
-                    model: state.model,
-                    usage: {
-                      input_tokens: chunk.usage?.prompt_tokens || 0,
-                      output_tokens: 0,
-                      cache_read_input_tokens: 0,
-                      cache_creation_input_tokens: 0,
-                      thinking_tokens: 0
-                    }
-                  }
-                });
               }
 
               // 更新 Usage 快照
