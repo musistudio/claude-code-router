@@ -594,6 +594,15 @@ export class AnthropicTransformer implements Transformer {
                   cache_creation_input_tokens: 0,
                   thinking_tokens: chunk.usage.completion_tokens_details?.reasoning_tokens || 0
                 };
+                
+                // 如果这是最后的 Usage 包且没有内容，尝试立即发送一次 delta 更新
+                if (!chunk.choices?.length && state.hasStarted) {
+                   safeEnqueue("message_delta", {
+                     type: "message_delta",
+                     delta: { stop_reason: null, stop_sequence: null },
+                     usage: state.lastUsage
+                   });
+                }
               }
 
               const choice = chunk.choices?.[0];
