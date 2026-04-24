@@ -857,9 +857,29 @@ export class AnthropicTransformer implements Transformer {
           const rawName = toolCall.function.name;
           const finalName = unmapToolName(rawName);
 
-          // 针对 Edit 工具进行参数清洗：移除 instruction 字段 (CLI 无法识别)
-          if (finalName === "Edit" && typeof parsedInput === "object" && parsedInput !== null) {
-            delete (parsedInput as any).instruction;
+          // 针对核心工具进行参数清洗：实施严格的白名单机制，剔除 CLI 无法识别的多余字段
+          if (typeof parsedInput === "object" && parsedInput !== null) {
+            const input = parsedInput as any;
+            if (finalName === "Edit") {
+              // 仅保留 Edit 必需的功能参数
+              const { file_path, old_string, new_string, allow_multiple } = input;
+              parsedInput = { file_path, old_string, new_string, allow_multiple };
+            } else if (finalName === "Write") {
+              const { file_path, content } = input;
+              parsedInput = { file_path, content };
+            } else if (finalName === "Read") {
+              const { file_path } = input;
+              parsedInput = { file_path };
+            } else if (finalName === "Bash") {
+              const { command } = input;
+              parsedInput = { command };
+            } else if (finalName === "Ls") {
+              const { path } = input;
+              parsedInput = { path };
+            } else if (finalName === "Glob" || finalName === "Grep") {
+              const { pattern } = input;
+              parsedInput = { pattern };
+            }
           }
 
           content.push({
