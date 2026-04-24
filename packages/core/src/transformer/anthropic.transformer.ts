@@ -671,8 +671,6 @@ export class AnthropicTransformer implements Transformer {
                       id: tc.id,
                       name: unmapToolName(tc.function?.name || "unknown")
                     });
-
-                    });
                     state.toolCallMap.set(tIdx, { id: tc.id, name: tc.function?.name || "unknown", blockIndex, args: "" });
                   }
                   
