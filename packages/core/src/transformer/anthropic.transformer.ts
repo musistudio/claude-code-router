@@ -867,8 +867,9 @@ export class AnthropicTransformer implements Transformer {
               const { file_path, content } = input;
               parsedInput = { file_path, content };
             } else if (finalName === "Read") {
-              const { file_path } = input;
-              parsedInput = { file_path };
+              // Read 支持分页参数
+              const { file_path, start_line, end_line } = input;
+              parsedInput = { file_path, start_line, end_line };
             } else if (finalName === "Bash") {
               const { command } = input;
               parsedInput = { command };
@@ -876,8 +877,9 @@ export class AnthropicTransformer implements Transformer {
               const { path } = input;
               parsedInput = { path };
             } else if (finalName === "Glob" || finalName === "Grep") {
-              const { pattern } = input;
-              parsedInput = { pattern };
+              // 搜索工具支持 pattern 和过滤
+              const { pattern, include_pattern, exclude_pattern } = input;
+              parsedInput = { pattern, include_pattern, exclude_pattern };
             }
           }
 
