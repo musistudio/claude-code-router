@@ -239,7 +239,9 @@ export class AnthropicTransformer implements Transformer {
       temperature: request.temperature,
       stream: request.stream,
       tools: request.tools?.length
-        ? this.convertAnthropicToolsToUnified(request.tools)
+        ? this.convertAnthropicToolsToUnified(request.tools).filter(tool => 
+            !["TaskCreate", "TaskUpdate", "TaskGet", "TaskList"].includes(tool.function.name)
+          )
         : undefined,
       tool_choice: request.tool_choice,
     };
