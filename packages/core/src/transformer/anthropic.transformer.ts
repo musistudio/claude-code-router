@@ -306,6 +306,21 @@ export class AnthropicTransformer implements Transformer {
           ensureRequired("command");
         } else if (toolName === "Edit") {
           ["file_path", "old_string", "new_string", "allow_multiple", "instruction"].forEach(ensureRequired);
+          // 强化 Edit 描述，强制模型必须精确匹配，减少 "String to replace not found" 报错
+          tool.function.description = "Modify a file by replacing a specific string. CRITICAL: 'old_string' must be an EXACT, character-for-character match of the file content, including all whitespace, indentation, and newlines. Always Read the file first to ensure accuracy. 'allow_multiple' is equivalent to 'replace_all'.";
+          
+          if (existingParameters.properties) {
+            if (existingParameters.properties.old_string) {
+              existingParameters.properties.old_string.description = "The exact, full-line(s) string to be replaced. Must match exactly.";
+            }
+            // 兼容模型可能的 replace_all 幻觉：在 schema 中定义它但不标记为必需
+            if (!existingParameters.properties.replace_all) {
+               existingParameters.properties.replace_all = {
+                 type: "boolean",
+                 description: "Alias for allow_multiple. If true, all occurrences will be replaced."
+               };
+            }
+          }
         } else if (toolName === "Read") {
           ensureRequired("file_path");
         } else if (toolName === "Glob") {
@@ -861,9 +876,11 @@ export class AnthropicTransformer implements Transformer {
           if (typeof parsedInput === "object" && parsedInput !== null) {
             const input = parsedInput as any;
             if (finalName === "Edit") {
+              // 容错：如果模型幻觉输出了 replace_all 而非 allow_multiple
+              const am = typeof input.allow_multiple !== "undefined" ? input.allow_multiple : input.replace_all;
               // 仅保留 Edit 必需的功能参数
-              const { file_path, old_string, new_string, allow_multiple } = input;
-              parsedInput = { file_path, old_string, new_string, allow_multiple };
+              const { file_path, old_string, new_string } = input;
+              parsedInput = { file_path, old_string, new_string, allow_multiple: am };
             } else if (finalName === "Write") {
               const { file_path, content } = input;
               parsedInput = { file_path, content };
