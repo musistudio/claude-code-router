@@ -878,9 +878,20 @@ export class AnthropicTransformer implements Transformer {
             if (finalName === "Edit") {
               // 容错：如果模型幻觉输出了 replace_all 而非 allow_multiple
               const am = typeof input.allow_multiple !== "undefined" ? input.allow_multiple : input.replace_all;
-              // 仅保留 Edit 必需的功能参数
-              const { file_path, old_string, new_string } = input;
-              parsedInput = { file_path, old_string, new_string, allow_multiple: am };
+              
+              // 深度清洗：模型经常在 old_string/new_string 末尾多带一个 \n，这会导致匹配失败
+              const scrub = (val: any) => {
+                if (typeof val !== "string") return val;
+                // 如果字符串末尾有换行符且前面不是空行，通常是模型生成的冗余
+                return val.replace(/\r\n/g, "\n").trimEnd();
+              };
+
+              parsedInput = { 
+                file_path: input.file_path, 
+                old_string: scrub(input.old_string), 
+                new_string: scrub(input.new_string), 
+                allow_multiple: am 
+              };
             } else if (finalName === "Write") {
               const { file_path, content } = input;
               parsedInput = { file_path, content };
