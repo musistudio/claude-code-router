@@ -863,17 +863,16 @@ export class AnthropicTransformer implements Transformer {
           const rawName = toolCall.function.name;
           const finalName = unmapToolName(rawName);
 
-          // 针对核心工具进行参数清洗：实施严格的白名单机制，剔除 CLI 无法识别的多余字段
+          // 针对核心工具进行参数清洗：采用“精准打击”模式，只清理已知会引起 CLI 报错的工具
           if (typeof parsedInput === "object" && parsedInput !== null) {
             const input = parsedInput as any;
             if (finalName === "Edit") {
               // 容错：如果模型幻觉输出了 replace_all 而非 allow_multiple
               const am = typeof input.allow_multiple !== "undefined" ? input.allow_multiple : input.replace_all;
               
-              // 深度清洗：模型经常在 old_string/new_string 末尾多带一个 \n，这会导致匹配失败
+              // 深度清洗：移除干扰 CLI 匹配的换行符
               const scrub = (val: any) => {
                 if (typeof val !== "string") return val;
-                // 如果字符串末尾有换行符且前面不是空行，通常是模型生成的冗余
                 return val.replace(/\r\n/g, "\n").trimEnd();
               };
 
@@ -883,37 +882,20 @@ export class AnthropicTransformer implements Transformer {
                 new_string: scrub(input.new_string), 
                 allow_multiple: am 
               };
-            } else if (finalName === "Write") {
-              const { file_path, content } = input;
-              parsedInput = { file_path, content };
             } else if (finalName === "Read") {
-              // Read 支持分页参数
+              // Read 只保留功能性参数，防止模型自作聪明加 explanation
               const { file_path, start_line, end_line } = input;
               parsedInput = { file_path, start_line, end_line };
             } else if (finalName === "Bash") {
+              // Bash 只保留命令，防止模型解释用途
               const { command } = input;
               parsedInput = { command };
-            } else if (finalName === "Ls") {
-              const { path } = input;
-              parsedInput = { path };
-            } else if (finalName === "Glob" || finalName === "Grep") {
-              // 搜索工具支持 pattern 和过滤
-              const { pattern, include_pattern, exclude_pattern } = input;
-              parsedInput = { pattern, include_pattern, exclude_pattern };
-            } else if (finalName === "Skill") {
-              const { name } = input;
-              parsedInput = { name };
-            } else if (finalName === "TodoWrite") {
-              // TodoWrite 包含关键的任务列表数据
-              const { todos } = input;
-              parsedInput = { todos };
-            } else if (finalName === "TodoRead") {
-              // TodoRead 通常是空参数或包含过滤条件
-              parsedInput = input;
-            } else if (finalName === "EnterPlanMode" || finalName === "ExitPlanMode") {
-              // 计划模式通常带有一些描述性参数，需保留
-              parsedInput = input;
+            } else if (finalName === "Write") {
+              // Write 只保留文件路径和内容
+              const { file_path, content } = input;
+              parsedInput = { file_path, content };
             }
+            // 其它工具 (如 Skill, TodoWrite, TodoRead, WebSearch 等) 直接透传所有参数，以保证未来兼容性
           }
 
           content.push({
