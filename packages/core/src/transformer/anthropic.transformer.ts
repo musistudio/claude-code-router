@@ -301,9 +301,9 @@ export class AnthropicTransformer implements Transformer {
         if (toolName === "Bash") {
           ensureRequired("command");
         } else if (toolName === "Edit") {
-          ["file_path", "old_string", "new_string", "allow_multiple", "instruction"].forEach(ensureRequired);
+          ["file_path", "old_string", "new_string", "allow_multiple"].forEach(ensureRequired);
           // 强化 Edit 描述，强制模型必须精确匹配，减少 "String to replace not found" 报错
-          tool.function.description = "Modify a file by replacing a specific string. CRITICAL: 'old_string' must be an EXACT, character-for-character match of the file content, including all whitespace, indentation, and newlines. Always Read the file first to ensure accuracy. 'allow_multiple' is equivalent to 'replace_all'.";
+          tool.function.description = "Modify a file by replacing a specific string. CRITICAL: 'old_string' must be an EXACT, character-for-character match of the file content, including all whitespace, indentation, and newlines. Always Read the file first to ensure accuracy.";
           
           if (existingParameters.properties) {
             if (existingParameters.properties.old_string) {
@@ -316,6 +316,8 @@ export class AnthropicTransformer implements Transformer {
                  description: "Alias for allow_multiple. If true, all occurrences will be replaced."
                };
             }
+            // 移除可能存在的冗余 instruction 属性定义，防止模型误发
+            delete existingParameters.properties.instruction;
           }
         } else if (toolName === "Read") {
           ensureRequired("file_path");
