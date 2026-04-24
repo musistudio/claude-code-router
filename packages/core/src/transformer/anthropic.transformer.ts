@@ -577,8 +577,10 @@ export class AnthropicTransformer implements Transformer {
               if (chunk.error) {
                 safeEnqueue("error", {
                   type: "error",
-                  error: { type: "api_error", message: chunk.error.message }
+                  error: { type: "api_error", message: chunk.error.message || JSON.stringify(chunk.error) }
                 });
+                state.hasFinished = true; // 终止处理
+                state.isClosed = true;
                 return;
               }
 
