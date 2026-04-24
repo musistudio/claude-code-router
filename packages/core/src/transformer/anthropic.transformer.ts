@@ -199,8 +199,42 @@ export class AnthropicTransformer implements Transformer {
       }
     });
 
+    const mergeMessages = (msgs: UnifiedMessage[]): UnifiedMessage[] => {
+      const merged: UnifiedMessage[] = [];
+      for (const msg of msgs) {
+        const last = merged[merged.length - 1];
+        if (last && last.role === msg.role && !last.tool_calls && !msg.tool_calls) {
+          // Merge content
+          const lastContent = typeof last.content === 'string' ? last.content : '';
+          const msgContent = typeof msg.content === 'string' ? msg.content : '';
+          last.content = (lastContent + "\n\n" + msgContent).trim();
+        } else {
+          merged.push({ ...msg });
+        }
+      }
+      return merged;
+    };
+
+    const mergedMessages = mergeMessages(messages);
+
+    // 4. 基础上下文截断保护：如果消息条数过多，保留头尾，丢弃中间 (针对特大对话)
+    const MAX_HISTORY_MESSAGES = 150;
+    let finalMessages = mergedMessages;
+    if (mergedMessages.length > MAX_HISTORY_MESSAGES) {
+      const head = mergedMessages.slice(0, 10); // 保留最初的设定
+      const tail = mergedMessages.slice(-80);   // 保留最近的对话
+      finalMessages = [
+        ...head,
+        { 
+          role: "user", 
+          content: "[... 系统提示：由于上下文过长，中间部分已被路由器自动截断以保持对话稳定性 ...]" 
+        },
+        ...tail
+      ];
+    }
+
     const result: UnifiedChatRequest = {
-      messages,
+      messages: finalMessages,
       model: request.model,
       max_tokens: request.max_tokens,
       temperature: request.temperature,
@@ -210,6 +244,44 @@ export class AnthropicTransformer implements Transformer {
         : undefined,
       tool_choice: request.tool_choice,
     };
+
+    // --- 工业级 Prompt Caching 优化 (借鉴 9router) ---
+    // 1. 清理所有历史消息中已有的 cache_control，防止槽位冲突
+    const stripCache = (obj: any) => {
+      if (!obj || typeof obj !== "object") return;
+      if (Array.isArray(obj)) {
+        obj.forEach(stripCache);
+      } else {
+        delete obj.cache_control;
+        Object.values(obj).forEach(stripCache);
+      }
+    };
+    stripCache(result.system);
+    stripCache(result.messages);
+
+    // 2. 在 System 消息末尾注入缓存点 (针对超长 System Prompt)
+    if (result.system && Array.isArray(result.system) && result.system.length > 0) {
+      const lastSystemBlock = result.system[result.system.length - 1];
+      if (lastSystemBlock.type === "text") {
+        lastSystemBlock.cache_control = { type: "ephemeral" };
+      }
+    }
+
+    // 3. 在对话历史末尾注入缓存点 (针对超长对话)
+    if (result.messages.length > 0) {
+      const lastUserMsg = [...result.messages].reverse().find(m => m.role === "user");
+      if (lastUserMsg && Array.isArray(lastUserMsg.content)) {
+        const lastTextBlock = [...lastUserMsg.content].reverse().find((c: any) => c.type === "text");
+        if (lastTextBlock) {
+          lastTextBlock.cache_control = { type: "ephemeral" };
+        }
+      } else if (lastUserMsg && typeof lastUserMsg.content === "string") {
+        // 如果是字符串格式，转换成数组以支持 cache_control
+        lastUserMsg.content = [
+          { type: "text", text: lastUserMsg.content, cache_control: { type: "ephemeral" } }
+        ];
+      }
+    }
 
     // 终极影子映射：将工具名映射，并确保必需参数存在且 properties 完整
     if (result.tools?.length) {

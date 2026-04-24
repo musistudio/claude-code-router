@@ -350,32 +350,41 @@ async function sendRequestToProvider(
     }
   }
 
-  const response = await sendUnifiedRequest(
-    url,
-    requestBody,
-    {
-      httpsProxy: fastify.configService.getHttpsProxy(),
-      ...config,
-      headers: JSON.parse(JSON.stringify(requestHeaders)),
-    },
-    context,
-    fastify.log
-  );
+  // 强化超时控制：为发往 Provider 的请求设置 5 分钟超时，确保超大上下文加载不中断
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 分钟
 
-  // Handle request errors
-  if (!response.ok) {
-    const errorText = await response.text();
-    fastify.log.error(
-      `[provider_response_error] Error from provider(${provider.name},${requestBody.model}: ${response.status}): ${errorText}`,
+  try {
+    const response = await sendUnifiedRequest(
+      url,
+      requestBody,
+      {
+        httpsProxy: fastify.configService.getHttpsProxy(),
+        ...config,
+        headers: JSON.parse(JSON.stringify(requestHeaders)),
+        signal: controller.signal, // 注入信号
+      },
+      context,
+      fastify.log
     );
-    throw createApiError(
-      `Error from provider(${provider.name},${requestBody.model}: ${response.status}): ${errorText}`,
-      response.status,
-      "provider_response_error"
-    );
+
+    // Handle request errors
+    if (!response.ok) {
+      const errorText = await response.text();
+      fastify.log.error(
+        `[provider_response_error] Error from provider(${provider.name},${requestBody.model}: ${response.status}): ${errorText}`,
+      );
+      throw createApiError(
+        `Error from provider(${provider.name},${requestBody.model}: ${response.status}): ${errorText}`,
+        response.status,
+        "provider_response_error"
+      );
+    }
+
+    return response;
+  } finally {
+    clearTimeout(timeoutId); // 务必清理定时器
   }
-
-  return response;
 }
 
 /**
