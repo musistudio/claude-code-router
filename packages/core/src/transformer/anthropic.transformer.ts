@@ -93,16 +93,27 @@ export class AnthropicTransformer implements Transformer {
           // 以便紧跟在发出 tool_calls 的 assistant 消息之后
           const toolResults = msg.content.filter((c: any) => (c.type === "tool_result" || c.role === "tool") && (c.tool_use_id || c.tool_call_id));
             toolResults.forEach((tool: any) => {
-              let content = typeof tool.content === "string" 
-                ? tool.content 
-                : JSON.stringify(tool.content);
+              let content = "";
+              
+              // 1. 处理结构化的工具返回 (例如 Bash 返回的 stdout/stderr/exitCode)
+              if (typeof tool.content === "object" && tool.content !== null) {
+                const parts: string[] = [];
+                if (tool.content.stdout) parts.push(`STDOUT:\n${tool.content.stdout}`);
+                if (tool.content.stderr) parts.push(`STDERR:\n${tool.content.stderr}`);
+                if (tool.content.exitCode !== undefined) parts.push(`Exit Code: ${tool.content.exitCode}`);
+                
+                // 如果对象结构特殊，则降级为 JSON
+                content = parts.length > 0 ? parts.join("\n\n") : JSON.stringify(tool.content);
+              } else {
+                content = String(tool.content || "");
+              }
               
               const toolId = tool.tool_use_id || tool.tool_call_id;
               
-              // 强化错误报告：使用统一的 [Error] 前缀引导模型识别失败
+              // 2. 强化错误报告：使用统一的 [Error] 前缀引导模型识别失败
               if (tool.is_error) {
                 const cleanContent = content.replace(/^Error:\s*/i, "");
-                content = `Error executing tool ${toolId}: ${cleanContent}`;
+                content = `Error executing tool ${toolId}:\n${cleanContent}`;
               }
 
               messages.push({
