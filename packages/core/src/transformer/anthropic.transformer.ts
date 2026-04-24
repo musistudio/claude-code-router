@@ -322,16 +322,6 @@ export class AnthropicTransformer implements Transformer {
           ensureRequired("path");
         } else if (toolName === "Write") {
           ["file_path", "content"].forEach(ensureRequired);
-        } else if (toolName === "TaskCreate") {
-          ensureRequired("description");
-          tool.function.description = "Create a new sub-task for the subagent. Provide a clear, actionable description.";
-        } else if (toolName === "TaskUpdate") {
-          ["id", "status"].forEach(ensureRequired);
-        } else if (toolName === "TaskGet" || toolName === "TaskList") {
-          // 确保这类查询工具在没有参数时也能正常转发
-          if (!existingParameters.properties) {
-            existingParameters.properties = {};
-          }
         }
 
         return {
