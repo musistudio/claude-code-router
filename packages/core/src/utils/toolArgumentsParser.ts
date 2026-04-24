@@ -1,57 +1,48 @@
 import JSON5 from "json5";
 import { jsonrepair } from "jsonrepair";
 
+// 预编译正则，提升超大字符串下的清洗性能
+const STOP_TOKENS_REGEX = /<\|im_end\|>|<\|im_start\|>|<\|endoftext\|>|<\|file_separator\|>/g;
+const MARKDOWN_CODE_BLOCK_REGEX = /^```(?:json|bash|typescript|javascript|python)?\s*([\s\S]*?)\s*```$/i;
+
 /**
  * Parse tool call arguments function
  * First try standard JSON parsing, then JSON5 parsing, finally use jsonrepair for safe repair
- *
- * @param argsString - Parameter string to parse
- * @returns Parsed parameter object or safe empty object
  */
 export function parseToolArguments(argsString: string, logger?: any): string {
-  // Handle empty or null input
   if (!argsString || argsString.trim() === "" || argsString === "{}") {
     return "{}";
   }
 
-  // 清理 Qwen/ChatML 特有的停止符和泄露标记，防止干扰 JSON 解析
-  // 命中 matched_stop: 248046 时，字符串末尾可能带有这些乱码
-  let cleanedArgs = argsString.trim();
-  const stopTokens = ["<|im_end|>", "<|im_start|>", "<|endoftext|>", "<|file_separator|>"];
-  for (const token of stopTokens) {
-    if (cleanedArgs.includes(token)) {
-      cleanedArgs = cleanedArgs.split(token).join("").trim();
-    }
+  // 1. 高性能清理停止符
+  let cleanedArgs = argsString.replace(STOP_TOKENS_REGEX, "").trim();
+
+  // 2. 深度清洗：剥离模型幻觉出的 Markdown 代码包裹
+  // 例如：```json\n{"path": "..."}\n``` -> {"path": "..."}
+  const markdownMatch = cleanedArgs.match(MARKDOWN_CODE_BLOCK_REGEX);
+  if (markdownMatch && markdownMatch[1]) {
+    cleanedArgs = markdownMatch[1].trim();
+    logger?.debug(`Stripped markdown code block wrapper from tool arguments`);
   }
 
   try {
     // First attempt: Standard JSON parsing
     JSON.parse(cleanedArgs);
-    logger?.debug(`工具调用参数标准JSON解析成功 / Tool arguments standard JSON parsing successful`);
     return cleanedArgs;
   } catch (jsonError: any) {
     try {
       // Second attempt: JSON5 parsing for relaxed syntax
       const args = JSON5.parse(cleanedArgs);
-      logger?.debug(`Tool arguments JSON5 parsing successful`);
       return JSON.stringify(args);
     } catch (json5Error: any) {
       try {
-        // Third attempt: Safe JSON repair without code execution
+        // Third attempt: Safe JSON repair
         const repairedJson = jsonrepair(cleanedArgs);
-        logger?.debug(`Tool arguments safely repaired`);
         return repairedJson;
       } catch (repairError: any) {
-        // All parsing attempts failed - log errors and return safe fallback
         logger?.error(
-          `JSON parsing failed: ${jsonError.message}. ` +
-          `JSON5 parsing failed: ${json5Error.message}. ` +
-          `JSON repair failed: ${repairError.message}. ` +
-          `Input data: ${JSON.stringify(cleanedArgs)}`
+          `JSON/JSON5/Repair all failed for tool args. Input: ${cleanedArgs.slice(0, 500)}...`
         );
-        
-        // Return safe empty object as fallback instead of potentially malformed input
-        logger?.debug(`Returning safe empty object as fallback`);
         return "{}";
       }
     }
