@@ -200,14 +200,23 @@ export class AnthropicTransformer implements Transformer {
     });
 
     const mergeMessages = (msgs: UnifiedMessage[]): UnifiedMessage[] => {
+      if (msgs.length <= 1) return msgs;
       const merged: UnifiedMessage[] = [];
+      
       for (const msg of msgs) {
         const last = merged[merged.length - 1];
-        if (last && last.role === msg.role && !last.tool_calls && !msg.tool_calls) {
-          // Merge content
-          const lastContent = typeof last.content === 'string' ? last.content : '';
-          const msgContent = typeof msg.content === 'string' ? msg.content : '';
-          last.content = (lastContent + "\n\n" + msgContent).trim();
+        
+        // 合并条件：角色相同、都没有工具调用、都没有思考过程、且内容都是字符串
+        const canMerge = 
+          last && 
+          last.role === msg.role && 
+          !last.tool_calls && !msg.tool_calls &&
+          !last.thinking && !msg.thinking &&
+          typeof last.content === 'string' &&
+          typeof msg.content === 'string';
+
+        if (canMerge) {
+          last.content = (last.content + "\n\n" + msg.content).trim();
         } else {
           merged.push({ ...msg });
         }
@@ -256,30 +265,27 @@ export class AnthropicTransformer implements Transformer {
         Object.values(obj).forEach(stripCache);
       }
     };
-    stripCache(result.system);
     stripCache(result.messages);
 
     // 2. 在 System 消息末尾注入缓存点 (针对超长 System Prompt)
-    if (result.system && Array.isArray(result.system) && result.system.length > 0) {
-      const lastSystemBlock = result.system[result.system.length - 1];
-      if (lastSystemBlock.type === "text") {
-        lastSystemBlock.cache_control = { type: "ephemeral" };
+    const firstSystemMsg = result.messages.find(m => m.role === "system");
+    if (firstSystemMsg) {
+      if (Array.isArray(firstSystemMsg.content) && firstSystemMsg.content.length > 0) {
+        const lastBlock = firstSystemMsg.content[firstSystemMsg.content.length - 1];
+        if (lastBlock.type === "text") lastBlock.cache_control = { type: "ephemeral" };
+      } else if (typeof firstSystemMsg.content === "string") {
+        firstSystemMsg.content = [{ type: "text", text: firstSystemMsg.content, cache_control: { type: "ephemeral" } }];
       }
     }
 
     // 3. 在对话历史末尾注入缓存点 (针对超长对话)
-    if (result.messages.length > 0) {
-      const lastUserMsg = [...result.messages].reverse().find(m => m.role === "user");
-      if (lastUserMsg && Array.isArray(lastUserMsg.content)) {
+    const lastUserMsg = [...result.messages].reverse().find(m => m.role === "user");
+    if (lastUserMsg) {
+      if (Array.isArray(lastUserMsg.content) && lastUserMsg.content.length > 0) {
         const lastTextBlock = [...lastUserMsg.content].reverse().find((c: any) => c.type === "text");
-        if (lastTextBlock) {
-          lastTextBlock.cache_control = { type: "ephemeral" };
-        }
-      } else if (lastUserMsg && typeof lastUserMsg.content === "string") {
-        // 如果是字符串格式，转换成数组以支持 cache_control
-        lastUserMsg.content = [
-          { type: "text", text: lastUserMsg.content, cache_control: { type: "ephemeral" } }
-        ];
+        if (lastTextBlock) lastTextBlock.cache_control = { type: "ephemeral" };
+      } else if (typeof lastUserMsg.content === "string") {
+        lastUserMsg.content = [{ type: "text", text: lastUserMsg.content, cache_control: { type: "ephemeral" } }];
       }
     }
 
