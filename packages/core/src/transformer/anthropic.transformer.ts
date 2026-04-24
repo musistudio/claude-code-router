@@ -316,574 +316,296 @@ export class AnthropicTransformer implements Transformer {
     openaiStream: ReadableStream,
     context: TransformerContext
   ): Promise<ReadableStream> {
-    const readable = new ReadableStream({
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    // 状态机跟踪
+    let state = {
+      messageId: null as string | null,
+      hasStarted: false,
+      hasFinished: false,
+      isClosed: false,
+      currentBlockIndex: -1,
+      currentBlockType: null as "thinking" | "text" | "tool_use" | null,
+      nextIndex: 0,
+      model: "unknown",
+      lastUsage: null as any,
+      toolCallMap: new Map<number, { id: string; name: string; blockIndex: number }>()
+    };
+
+    return new ReadableStream({
       start: async (controller) => {
-        const encoder = new TextEncoder();
-        const messageId = `msg_${Date.now()}`;
-        let stopReasonMessageDelta: null | Record<string, any> = null;
-        let model = "unknown";
-        let hasStarted = false;
-        let hasFinished = false;
-        let isClosed = false;
-
-        let isThinkingStopped = false;
-        let isTextStopped = false;
-
-        const toolCallIndexToContentBlockIndex = new Map<number, number>();
-        const toolCalls = new Map<
-          number,
-          {
-            id: string;
-            name: string;
-            arguments: string;
-            contentBlockIndex: number;
-          }
-        >();
-
-        let contentIndex = 0;
-        let thinkingBlockIndex = -1;
-        let textBlockIndex = -1;
-
-        const assignContentBlockIndex = () => contentIndex++;
-
-        const safeEnqueue = (data: Uint8Array) => {
-          if (!isClosed) {
-            try {
-              controller.enqueue(data);
-            } catch (error) {
-              if (
-                error instanceof TypeError &&
-                error.message.includes("Controller is already closed")
-              ) {
-                isClosed = true;
-              } else {
-                this.logger?.debug({
-                  reqId: context.req.id,
-                  error: error instanceof Error ? error.message : String(error),
-                  type: "send data error",
-                });
-                throw error;
-              }
-            }
+        const safeEnqueue = (event: string, data: any) => {
+          if (state.isClosed) return;
+          try {
+            const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+            controller.enqueue(encoder.encode(payload));
+          } catch (e) {
+            state.isClosed = true;
           }
         };
 
-        const safeClose = () => {
-          if (!isClosed) {
-            try {
-              // Close any open blocks
-              if (thinkingBlockIndex >= 0 && !isThinkingStopped) {
-                safeEnqueue(
-                  encoder.encode(
-                    `event: content_block_stop\ndata: ${JSON.stringify({
-                      type: "content_block_stop",
-                      index: thinkingBlockIndex,
-                    })}\n\n`
-                  )
-                );
-                isThinkingStopped = true;
-              }
-              if (textBlockIndex >= 0 && !isTextStopped) {
-                safeEnqueue(
-                  encoder.encode(
-                    `event: content_block_stop\ndata: ${JSON.stringify({
-                      type: "content_block_stop",
-                      index: textBlockIndex,
-                    })}\n\n`
-                  )
-                );
-                isTextStopped = true;
-              }
-              toolCallIndexToContentBlockIndex.forEach((cbIndex) => {
-                safeEnqueue(
-                  encoder.encode(
-                    `event: content_block_stop\ndata: ${JSON.stringify({
-                      type: "content_block_stop",
-                      index: cbIndex,
-                    })}\n\n`
-                  )
-                );
-              });
-
-              if (stopReasonMessageDelta) {
-                safeEnqueue(
-                  encoder.encode(
-                    `event: message_delta\ndata: ${JSON.stringify(
-                      stopReasonMessageDelta
-                    )}\n\n`
-                  )
-                );
-                stopReasonMessageDelta = null;
-              } else {
-                safeEnqueue(
-                  encoder.encode(
-                    `event: message_delta\ndata: ${JSON.stringify({
-                      type: "message_delta",
-                      delta: {
-                        stop_reason: "end_turn",
-                        stop_sequence: null,
-                      },
-                      usage: {
-                        input_tokens: 0,
-                        output_tokens: 0,
-                        cache_read_input_tokens: 0,
-                        cache_creation_input_tokens: 0,
-                      },
-                    })}\n\n`
-                  )
-                );
-              }
-              safeEnqueue(
-                encoder.encode(
-                  `event: message_stop\ndata: ${JSON.stringify({
-                    type: "message_stop",
-                  })}\n\n`
-                )
-              );
-              controller.close();
-              isClosed = true;
-            } catch (error) {
-              if (
-                error instanceof TypeError &&
-                error.message.includes("Controller is already closed")
-              ) {
-                isClosed = true;
-              } else {
-                throw error;
-              }
-            }
+        const stopCurrentBlock = () => {
+          if (state.currentBlockType && state.currentBlockIndex !== -1) {
+            safeEnqueue("content_block_stop", {
+              type: "content_block_stop",
+              index: state.currentBlockIndex
+            });
+            state.currentBlockType = null;
+            state.currentBlockIndex = -1;
           }
         };
 
-        let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+        const stopAllToolBlocks = () => {
+          for (const [, toolInfo] of state.toolCallMap) {
+            safeEnqueue("content_block_stop", {
+              type: "content_block_stop",
+              index: toolInfo.blockIndex
+            });
+          }
+          state.toolCallMap.clear();
+        };
+
+        const startBlock = (type: "thinking" | "text" | "tool_use", extra = {}) => {
+          stopCurrentBlock();
+          const index = state.nextIndex++;
+          state.currentBlockIndex = index;
+          state.currentBlockType = type;
+          
+          let contentBlock: any = { type };
+          if (type === "thinking") {
+            contentBlock.thinking = "";
+            contentBlock.signature = (extra as any).signature || "none";
+          } else if (type === "text") {
+            contentBlock.text = "";
+          } else if (type === "tool_use") {
+            contentBlock.id = (extra as any).id;
+            contentBlock.name = (extra as any).name;
+            contentBlock.input = {};
+          }
+
+          safeEnqueue("content_block_start", {
+            type: "content_block_start",
+            index,
+            content_block: contentBlock
+          });
+          return index;
+        };
 
         try {
-          reader = openaiStream.getReader();
-          const decoder = new TextDecoder();
-          let buffer = "";
+          const reader = openaiStream.getReader();
+          let partialLine = new Uint8Array(0);
 
-          while (true) {
-            if (isClosed) break;
+          const processLine = (line: string) => {
+            if (!line.startsWith("data:") || state.hasFinished) return;
+            const rawData = line.slice(5).trim();
+            if (rawData === "[DONE]") {
+              state.hasFinished = true;
+              return;
+            }
 
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() || "";
-
-            for (const line of lines) {
-              if (isClosed || hasFinished) break;
-
-              if (!line.startsWith("data:")) continue;
-              const data = line.slice(5).trim();
-              this.logger?.debug({
-                reqId: context.req.id,
-                type: "recieved data",
-                data,
-              });
-
-              if (data === "[DONE]") {
-                hasFinished = true;
-                break;
+            try {
+              const chunk = JSON.parse(rawData);
+              if (chunk.error) {
+                safeEnqueue("error", {
+                  type: "error",
+                  error: { type: "api_error", message: chunk.error.message }
+                });
+                return;
               }
 
-              try {
-                const chunk = JSON.parse(data);
-                if (chunk.error) {
-                  safeEnqueue(
-                    encoder.encode(
-                      `event: error\ndata: ${JSON.stringify({
-                        type: "error",
-                        message: {
-                          type: "api_error",
-                          message: JSON.stringify(chunk.error),
-                        },
-                      })}\n\n`
-                    )
-                  );
-                  continue;
-                }
+              state.model = chunk.model || state.model;
+              if (!state.messageId) {
+                state.messageId = chunk.id?.replace("chatcmpl-", "") || `msg_${uuidv4()}`;
+              }
 
-                model = chunk.model || model;
-
-                if (!hasStarted && !isClosed) {
-                  hasStarted = true;
-                  safeEnqueue(
-                    encoder.encode(
-                      `event: message_start\ndata: ${JSON.stringify({
-                        type: "message_start",
-                        message: {
-                          id: messageId,
-                          type: "message",
-                          role: "assistant",
-                          content: [],
-                          model: model,
-                          stop_reason: null,
-                          stop_sequence: null,
-                          usage: {
-                            input_tokens: chunk.usage?.prompt_tokens || 0,
-                            output_tokens: 0,
-                          },
-                        },
-                      })}\n\n`
-                    )
-                  );
-                }
-
-                if (chunk.usage) {
-                  const usage = {
-                    input_tokens:
-                      (chunk.usage?.prompt_tokens || 0) -
-                      (chunk.usage?.prompt_tokens_details?.cached_tokens || 0),
-                    output_tokens: chunk.usage?.completion_tokens || 0,
-                    cache_read_input_tokens:
-                      chunk.usage?.prompt_tokens_details?.cached_tokens || 0,
-                    cache_creation_input_tokens: 0,
-                  };
-
-                  if (!stopReasonMessageDelta) {
-                    stopReasonMessageDelta = {
-                      type: "message_delta",
-                      delta: {
-                        stop_reason: "end_turn",
-                        stop_sequence: null,
-                      },
-                      usage,
-                    };
-                  } else {
-                    stopReasonMessageDelta.usage = usage;
-                  }
-                }
-
-                const choice = chunk.choices?.[0];
-                if (!choice) continue;
-
-                // 1. Handle Thinking Block
-                if (choice.delta?.thinking && !isClosed && !isThinkingStopped) {
-                  if (thinkingBlockIndex === -1) {
-                    thinkingBlockIndex = assignContentBlockIndex();
-                    safeEnqueue(
-                      encoder.encode(
-                        `event: content_block_start\ndata: ${JSON.stringify({
-                          type: "content_block_start",
-                          index: thinkingBlockIndex,
-                          content_block: {
-                            type: "thinking",
-                            thinking: "",
-                            signature: choice.delta.thinking.signature || "none",
-                          },
-                        })}\n\n`
-                      )
-                    );
-                  }
-
-                  if (choice.delta.thinking.content) {
-                    safeEnqueue(
-                      encoder.encode(
-                        `event: content_block_delta\ndata: ${JSON.stringify({
-                          type: "content_block_delta",
-                          index: thinkingBlockIndex,
-                          delta: {
-                            type: "thinking_delta",
-                            thinking: choice.delta.thinking.content,
-                          },
-                        })}\n\n`
-                      )
-                    );
-                  }
-                }
-
-                // 2. Handle Text Content Block (Enhanced with Qwen XML thinking detection)
-                let textValue = "";
-                if (typeof choice.delta?.content === "string") {
-                  textValue = choice.delta.content;
-                } else if (Array.isArray(choice.delta?.content)) {
-                  textValue = choice.delta.content
-                    .map((part: any) => typeof part === 'string' ? part : (part.text || ""))
-                    .join("");
-                } else if (choice.delta?.content && typeof choice.delta.content === "object") {
-                  textValue = (choice.delta.content as any).text || "";
-                }
-
-                if (textValue && !isClosed && !isTextStopped) {
-                  // Qwen XML 思考块检测：如果文本包含 <think> 但还没开启思考块
-                  if (textValue.includes(QWEN_THINK_TAGS.start) && thinkingBlockIndex === -1) {
-                    thinkingBlockIndex = assignContentBlockIndex();
-                    safeEnqueue(
-                      encoder.encode(
-                        `event: content_block_start\ndata: ${JSON.stringify({
-                          type: "content_block_start",
-                          index: thinkingBlockIndex,
-                          content_block: {
-                            type: "thinking",
-                            thinking: "",
-                            // 为 2.1.116 提供更稳健的 signature 映射
-                            signature: choice.delta?.thinking?.signature || "qwen-think-v1",
-                          },
-                        })}\n\n`
-                      )
-                    );
-                    // 移除标签本身，只保留内容
-                    textValue = textValue.replace(QWEN_THINK_TAGS.start, "");
-                  }
-
-                  // 如果正在思考块内
-                  if (thinkingBlockIndex >= 0 && !isThinkingStopped) {
-                    let thinkingDelta = textValue;
-                    // 检测思考结束标签
-                    if (textValue.includes(QWEN_THINK_TAGS.end)) {
-                      thinkingDelta = textValue.split(QWEN_THINK_TAGS.end)[0];
-                      textValue = textValue.split(QWEN_THINK_TAGS.end)[1] || "";
-                      
-                      // 发送最后的思考增量
-                      if (thinkingDelta.length > 0) {
-                        safeEnqueue(encoder.encode(`event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: thinkingBlockIndex, delta: { type: "thinking_delta", thinking: thinkingDelta } })}\n\n`));
-                      }
-                      
-                      // 强制闭合思考块
-                      safeEnqueue(encoder.encode(`event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: thinkingBlockIndex })}\n\n`));
-                      isThinkingStopped = true;
-                    } else if (thinkingDelta.length > 0) {
-                      // 普通思考增量：确保实时性，防止 2.1.116 判定流卡死
-                      safeEnqueue(encoder.encode(`event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: thinkingBlockIndex, delta: { type: "thinking_delta", thinking: thinkingDelta } })}\n\n`));
-                      textValue = ""; // 消费掉所有文本
-                    } else {
-                       textValue = ""; // 即使是空的也要消费，防止流入 text
+              // 1. 发送消息开始
+              if (!state.hasStarted) {
+                state.hasStarted = true;
+                safeEnqueue("message_start", {
+                  type: "message_start",
+                  message: {
+                    id: state.messageId,
+                    type: "message",
+                    role: "assistant",
+                    model: state.model,
+                    usage: {
+                      input_tokens: chunk.usage?.prompt_tokens || 0,
+                      output_tokens: 0,
+                      cache_read_input_tokens: 0,
+                      cache_creation_input_tokens: 0,
+                      thinking_tokens: 0
                     }
                   }
+                });
+              }
 
-                  // 剩余文本流向正常的 text block
-                  if (textValue && textValue.trim()) {
-                    if (textBlockIndex === -1) {
-                      textBlockIndex = assignContentBlockIndex();
-                      safeEnqueue(
-                        encoder.encode(
-                          `event: content_block_start\ndata: ${JSON.stringify({
-                            type: "content_block_start",
-                            index: textBlockIndex,
-                            content_block: { type: "text", text: "" },
-                          })}\n\n`
-                        )
-                      );
-                    }
+              // 更新 Usage 快照
+              if (chunk.usage) {
+                const cachedTokens = chunk.usage.prompt_tokens_details?.cached_tokens || 0;
+                state.lastUsage = {
+                  input_tokens: Math.max(0, (chunk.usage.prompt_tokens || 0) - cachedTokens),
+                  output_tokens: chunk.usage.completion_tokens || 0,
+                  cache_read_input_tokens: cachedTokens,
+                  cache_creation_input_tokens: 0,
+                  thinking_tokens: chunk.usage.completion_tokens_details?.reasoning_tokens || 0
+                };
+              }
 
-                    safeEnqueue(
-                      encoder.encode(
-                        `event: content_block_delta\ndata: ${JSON.stringify({
-                          type: "content_block_delta",
-                          index: textBlockIndex,
-                          delta: { type: "text_delta", text: textValue },
-                        })}\n\n`
-                      )
-                    );
-                  }
+              const choice = chunk.choices?.[0];
+              if (!choice) return;
+
+              // 2. 处理推理内容 (Thinking)
+              if (choice.delta?.thinking) {
+                if (state.currentBlockType !== "thinking") {
+                  startBlock("thinking", { signature: choice.delta.thinking.signature });
                 }
-
-                // 3. Handle Annotations (as Text)
-                if (choice.delta?.annotations?.length && !isClosed && !isTextStopped) {
-                  let annotationText = "\n\nSources:\n";
-                  choice.delta.annotations.forEach((ann: any) => {
-                    const title = ann.url_citation?.title || "Source";
-                    const url = ann.url_citation?.url || "#";
-                    annotationText += `- [${title}](${url})\n`;
+                if (choice.delta.thinking.content) {
+                  safeEnqueue("content_block_delta", {
+                    type: "content_block_delta",
+                    index: state.currentBlockIndex,
+                    delta: { type: "thinking_delta", thinking: choice.delta.thinking.content }
                   });
+                }
+              }
 
-                  if (textBlockIndex === -1) {
-                    if (thinkingBlockIndex >= 0 && !isThinkingStopped) {
-                      safeEnqueue(
-                        encoder.encode(
-                          `event: content_block_stop\ndata: ${JSON.stringify({
-                            type: "content_block_stop",
-                            index: thinkingBlockIndex,
-                          })}\n\n`
-                        )
-                      );
-                      isThinkingStopped = true;
-                    }
-
-                    textBlockIndex = assignContentBlockIndex();
-                    safeEnqueue(
-                      encoder.encode(
-                        `event: content_block_start\ndata: ${JSON.stringify({
-                          type: "content_block_start",
-                          index: textBlockIndex,
-                          content_block: { type: "text", text: "" },
-                        })}\n\n`
-                      )
-                    );
-                  }
-
-                  safeEnqueue(
-                    encoder.encode(
-                      `event: content_block_delta\ndata: ${JSON.stringify({
-                        type: "content_block_delta",
-                        index: textBlockIndex,
-                        delta: { type: "text_delta", text: annotationText },
-                      })}\n\n`
-                    )
-                  );
+              // 3. 处理文本内容 (Text)
+              const text = typeof choice.delta?.content === "string" ? choice.delta.content : "";
+              if (text) {
+                if (text.includes(QWEN_THINK_TAGS.start) && state.currentBlockType !== "thinking") {
+                  startBlock("thinking", { signature: "qwen-think-v1" });
                 }
 
-                // 4. Handle Tool Calls
-                if (choice.delta?.tool_calls && !isClosed) {
-                  for (const toolCall of choice.delta.tool_calls) {
-                    const tIndex = toolCall.index ?? 0;
-                    if (!toolCallIndexToContentBlockIndex.has(tIndex)) {
-                      // Close previous blocks if starting a tool call
-                      if (textBlockIndex >= 0 && !isTextStopped) {
-                        safeEnqueue(
-                          encoder.encode(
-                            `event: content_block_stop\ndata: ${JSON.stringify({
-                              type: "content_block_stop",
-                              index: textBlockIndex,
-                            })}\n\n`
-                          )
-                        );
-                        isTextStopped = true;
-                      }
-                      if (thinkingBlockIndex >= 0 && !isThinkingStopped) {
-                        safeEnqueue(
-                          encoder.encode(
-                            `event: content_block_stop\ndata: ${JSON.stringify({
-                              type: "content_block_stop",
-                              index: thinkingBlockIndex,
-                            })}\n\n`
-                          )
-                        );
-                        isThinkingStopped = true;
-                      }
-
-                      const newCBIndex = assignContentBlockIndex();
-                      toolCallIndexToContentBlockIndex.set(tIndex, newCBIndex);
-                      const tcId = toolCall.id || `call_${Date.now()}_${tIndex}`;
-                      const tcName = unmapToolName(toolCall.function?.name || `tool_${tIndex}`);
-                      
-                      safeEnqueue(
-                        encoder.encode(
-                          `event: content_block_start\ndata: ${JSON.stringify({
-                            type: "content_block_start",
-                            index: newCBIndex,
-                            content_block: {
-                              type: "tool_use",
-                              id: tcId,
-                              name: tcName,
-                              input: {},
-                            },
-                          })}\n\n`
-                        )
-                      );
-
-                      toolCalls.set(tIndex, {
-                        id: tcId,
-                        name: tcName,
-                        arguments: "",
-                        contentBlockIndex: newCBIndex,
+                if (state.currentBlockType === "thinking") {
+                  if (text.includes(QWEN_THINK_TAGS.end)) {
+                    const [thinkPart, rest] = text.split(QWEN_THINK_TAGS.end);
+                    if (thinkPart) {
+                      safeEnqueue("content_block_delta", {
+                        type: "content_block_delta",
+                        index: state.currentBlockIndex,
+                        delta: { type: "thinking_delta", thinking: thinkPart }
                       });
                     }
-
-                    if (typeof toolCall.function?.arguments === "string" && toolCall.function.arguments.length > 0) {
-                      const cbIndex = toolCallIndexToContentBlockIndex.get(tIndex)!;
-                      const tc = toolCalls.get(tIndex)!;
-                      tc.arguments += toolCall.function.arguments;
-
-                      // 关键优化：只有当真正有参数内容时才发送 delta
-                      safeEnqueue(
-                        encoder.encode(
-                          `event: content_block_delta\ndata: ${JSON.stringify({
-                            type: "content_block_delta",
-                            index: cbIndex,
-                            delta: {
-                              type: "input_json_delta",
-                              partial_json: toolCall.function.arguments,
-                            },
-                          })}\n\n`
-                        )
-                      );
-                    }
-                  }
-                }
-
-                // 强制检测：即便 finish_reason 为 null，但如果命中特定结束特征（如 Qwen 词表标记）
-                const isAbruptStop = 
-                   (choice.finish_reason === null && chunk.matched_stop === 248046) ||
-                   (choice.finish_reason === null && chunk.matched_stop === 248044);
-
-                if ((choice.finish_reason || isAbruptStop) && !isClosed) {
-                  const mapping: Record<string, string> = {
-                    stop: "end_turn",
-                    length: "max_tokens",
-                    tool_calls: "tool_use",
-                    content_filter: "stop_sequence",
-                  };
-                  let reason = mapping[choice.finish_reason || "stop"] || "end_turn";
-                  
-                  // 关键修复：如果存在工具调用，强制将 stop_reason 设置为 tool_use
-                  // 这修复了 Qwen 模型因命中 <|im_end|> 返回 stop 而导致 Claude Code 校验失败的问题
-                  if (toolCallIndexToContentBlockIndex.size > 0 && (reason === "end_turn" || choice.finish_reason === "stop")) {
-                    reason = "tool_use";
-                  }
-                  
-                  if (stopReasonMessageDelta !== null) {
-                    stopReasonMessageDelta.delta.stop_reason = reason;
-                    
-                    // IMPORTANT: Stop all blocks before sending message_delta
-                    if (thinkingBlockIndex >= 0 && !isThinkingStopped) {
-                      safeEnqueue(encoder.encode(`event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: thinkingBlockIndex })}\n\n`));
-                      isThinkingStopped = true;
-                    }
-                    if (textBlockIndex >= 0 && !isTextStopped) {
-                      safeEnqueue(encoder.encode(`event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: textBlockIndex })}\n\n`));
-                      isTextStopped = true;
-                    }
-                    toolCallIndexToContentBlockIndex.forEach((cbIndex) => {
-                      // We don't have individual stop flags for tool calls yet, 
-                      // but they are usually stopped when finish_reason is tool_calls
-                      safeEnqueue(encoder.encode(`event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: cbIndex })}\n\n`));
+                    stopCurrentBlock();
+                    if (rest) startBlock("text");
+                  } else {
+                    safeEnqueue("content_block_delta", {
+                      type: "content_block_delta",
+                      index: state.currentBlockIndex,
+                      delta: { type: "thinking_delta", thinking: text }
                     });
+                  }
+                } else {
+                  if (state.currentBlockType !== "text") {
+                    startBlock("text");
+                  }
+                  safeEnqueue("content_block_delta", {
+                    type: "content_block_delta",
+                    index: state.currentBlockIndex,
+                    delta: { type: "text_delta", text: text }
+                  });
+                }
+              }
 
-                    // Send message_delta
-                    safeEnqueue(
-                      encoder.encode(
-                        `event: message_delta\ndata: ${JSON.stringify(
-                          stopReasonMessageDelta
-                        )}\n\n`
-                      )
-                    );
-                    stopReasonMessageDelta = null; // Mark as sent
+              // 4. 处理工具调用 (Tool Use)
+              if (choice.delta?.tool_calls) {
+                for (const tc of choice.delta.tool_calls) {
+                  const tIdx = tc.index ?? 0;
+                  if (tc.id) {
+                    const blockIndex = startBlock("tool_use", {
+                      id: tc.id,
+                      name: unmapToolName(tc.function?.name || "unknown")
+                    });
+                    state.toolCallMap.set(tIdx, { id: tc.id, name: tc.function?.name || "unknown", blockIndex });
+                  }
+                  
+                  if (tc.function?.arguments) {
+                    const toolInfo = state.toolCallMap.get(tIdx);
+                    if (toolInfo) {
+                      safeEnqueue("content_block_delta", {
+                        type: "content_block_delta",
+                        index: toolInfo.blockIndex,
+                        delta: { type: "input_json_delta", partial_json: tc.function.arguments }
+                      });
+                    }
                   }
                 }
-              } catch (e: any) {
-                this.logger?.error(`parseError: ${e.message} data: ${data}`);
               }
-            }
-            if (hasFinished) break;
-          }
-          safeClose();
-        } catch (error) {
-          if (!isClosed) {
-            try {
-              controller.error(error);
-            } catch (controllerError) {
-              console.error(controllerError);
-            }
-          }
-        } finally {
-          if (reader) {
-            try {
-              reader.releaseLock();
-            } catch (releaseError) {
-              console.error(releaseError);
-            }
-          }
-        }
-      },
-      cancel: (reason) => {
-        this.logger?.debug({ reqId: context.req.id, type: "cancel stream", reason });
-      },
-    });
 
-    return readable;
+              // 5. 结束判定
+              if (choice.finish_reason) {
+                stopCurrentBlock();
+                stopAllToolBlocks();
+                
+                let reason = choice.finish_reason;
+                if (state.toolCallMap.size > 0 && reason === "stop") {
+                  reason = "tool_calls";
+                }
+
+                const stopReasonMap: Record<string, string> = {
+                  stop: "end_turn",
+                  length: "max_tokens",
+                  tool_calls: "tool_use",
+                  content_filter: "stop_sequence"
+                };
+
+                safeEnqueue("message_delta", {
+                  type: "message_delta",
+                  delta: {
+                    stop_reason: stopReasonMap[reason] || "end_turn",
+                    stop_sequence: null
+                  },
+                  usage: state.lastUsage || {
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    cache_read_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                    thinking_tokens: 0
+                  }
+                });
+                safeEnqueue("message_stop", { type: "message_stop" });
+                state.hasFinished = true;
+              }
+            } catch (e) {
+              this.logger?.error(`Stream parse error: ${e}`);
+            }
+          };
+
+          while (true) {
+            const { done, value } = await reader.read();
+            
+            if (value) {
+              const combined = new Uint8Array(partialLine.length + value.length);
+              combined.set(partialLine);
+              combined.set(value, partialLine.length);
+              
+              let start = 0;
+              for (let i = 0; i < combined.length; i++) {
+                if (combined[i] === 10) { // Newline \n
+                  const lineBytes = combined.slice(start, i);
+                  const line = decoder.decode(lineBytes, { stream: true });
+                  if (line.trim()) processLine(line);
+                  start = i + 1;
+                }
+              }
+              partialLine = combined.slice(start);
+            }
+
+            if (done) {
+              if (partialLine.length > 0) {
+                const line = decoder.decode(partialLine);
+                if (line.trim()) processLine(line);
+              }
+              break;
+            }
+          }
+        } catch (error) {
+          controller.error(error);
+        } finally {
+          controller.close();
+        }
+      }
+    });
   }
 
   private convertOpenAIResponseToAnthropic(
@@ -904,7 +626,16 @@ export class AnthropicTransformer implements Transformer {
       }
       const content: any[] = [];
       
-      // Handle annotations by appending to text or as text blocks
+      // 1. Handle Thinking (Place at the beginning of content)
+      if ((choice.message as any)?.thinking?.content || (choice.message as any)?.reasoning_content) {
+        content.push({
+          type: "thinking",
+          thinking: (choice.message as any).thinking?.content || (choice.message as any).reasoning_content,
+          signature: (choice.message as any).thinking?.signature || "none",
+        });
+      }
+
+      // 2. Handle Annotations
       let annotationText = "";
       if (choice.message.annotations) {
         annotationText = "\n\nSources:\n";
@@ -913,6 +644,7 @@ export class AnthropicTransformer implements Transformer {
         });
       }
 
+      // 3. Handle Text Content
       if (choice.message.content) {
         if (Array.isArray(choice.message.content)) {
           choice.message.content.forEach((part: any) => {
@@ -921,7 +653,7 @@ export class AnthropicTransformer implements Transformer {
                 type: "text",
                 text: part.text + (annotationText ? annotationText : ""),
               });
-              annotationText = ""; // Only append once
+              annotationText = ""; 
             } else if (typeof part === "string") {
               content.push({
                 type: "text",
@@ -944,62 +676,51 @@ export class AnthropicTransformer implements Transformer {
         });
       }
 
+      // 4. Handle Tool Calls
       if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
         choice.message.tool_calls.forEach((toolCall) => {
           let parsedInput = {};
           try {
             const argumentsStr = toolCall.function.arguments || "{}";
-
-            if (typeof argumentsStr === "object") {
-              parsedInput = argumentsStr;
-            } else if (typeof argumentsStr === "string") {
-              parsedInput = JSON.parse(argumentsStr);
-            }
+            parsedInput = typeof argumentsStr === "string" ? JSON.parse(argumentsStr) : argumentsStr;
           } catch {
             parsedInput = { text: toolCall.function.arguments || "" };
           }
 
-          const toolName = unmapToolName(toolCall.function.name);
-
           content.push({
             type: "tool_use",
             id: toolCall.id,
-            name: toolName,
+            name: unmapToolName(toolCall.function.name),
             input: parsedInput,
           });
         });
       }
-      if ((choice.message as any)?.thinking?.content) {
-        content.push({
-          type: "thinking",
-          thinking: (choice.message as any).thinking.content,
-          signature: (choice.message as any).thinking.signature,
-        });
+
+      // 5. Finalize Stop Reason
+      let stop_reason = "end_turn";
+      if (choice.finish_reason === "tool_calls" || (choice.message.tool_calls && choice.message.tool_calls.length > 0)) {
+        stop_reason = "tool_use";
+      } else if (choice.finish_reason === "length") {
+        stop_reason = "max_tokens";
+      } else if (choice.finish_reason === "content_filter") {
+        stop_reason = "stop_sequence";
       }
+
       const result = {
         id: openaiResponse.id,
         type: "message",
         role: "assistant",
         model: openaiResponse.model,
         content: content,
-        stop_reason:
-          choice.finish_reason === "stop"
-            ? "end_turn"
-            : choice.finish_reason === "length"
-            ? "max_tokens"
-            : choice.finish_reason === "tool_calls"
-            ? "tool_use"
-            : choice.finish_reason === "content_filter"
-            ? "stop_sequence"
-            : "end_turn",
+        stop_reason,
         stop_sequence: null,
         usage: {
-          input_tokens:
-            (openaiResponse.usage?.prompt_tokens || 0) -
-            (openaiResponse.usage?.prompt_tokens_details?.cached_tokens || 0),
+          input_tokens: openaiResponse.usage?.prompt_tokens || 0,
           output_tokens: openaiResponse.usage?.completion_tokens || 0,
           cache_read_input_tokens:
             openaiResponse.usage?.prompt_tokens_details?.cached_tokens || 0,
+          cache_creation_input_tokens: 0,
+          thinking_tokens: (openaiResponse.usage as any)?.completion_tokens_details?.reasoning_tokens || 0,
         },
       };
       this.logger?.debug(

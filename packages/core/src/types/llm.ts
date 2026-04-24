@@ -118,6 +118,9 @@ export interface UnifiedChatResponse {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
+    thinking_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
   };
   tool_calls?: Array<{
     id: string;
