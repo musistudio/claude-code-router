@@ -54,10 +54,10 @@ interface ServerOptions extends FastifyServerOptions {
 function createApp(options: FastifyServerOptions = {}): FastifyInstance {
   const fastify = Fastify({
     bodyLimit: 50 * 1024 * 1024,
-    // Significantly increase timeouts for long-running AI requests with large contexts
-    keepAliveTimeout: 300000, // 5 minutes
-    headersTimeout: 305000,   // Slightly more than keepAliveTimeout
-    connectionTimeout: 300000,
+    // Significantly increase timeouts for long-running AI requests (up to 30+ minutes)
+    keepAliveTimeout: 1860000, // 31 minutes
+    headersTimeout: 1920000,   // 32 minutes
+    connectionTimeout: 1860000,
     ...options,
   });
 

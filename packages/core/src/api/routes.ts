@@ -350,9 +350,9 @@ async function sendRequestToProvider(
     }
   }
 
-  // 强化超时控制：为发往 Provider 的请求设置 5 分钟超时，确保超大上下文加载不中断
+  // 强化超时控制：为发往 Provider 的请求设置 31 分钟超时，确保超大上下文加载不中断
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 分钟
+  const timeoutId = setTimeout(() => controller.abort(), 1860000); // 31 分钟
 
   try {
     const response = await sendUnifiedRequest(
