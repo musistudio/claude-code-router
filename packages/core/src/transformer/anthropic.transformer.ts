@@ -89,55 +89,32 @@ export class AnthropicTransformer implements Transformer {
             content: msg.content,
           });
         } else if (Array.isArray(msg.content)) {
-          // 1. Handle Tool Results (Crucial for tool use working)
-          const toolParts = msg.content.filter(
-            (c: any) => c.type === "tool_result" && c.tool_use_id
-          );
-          if (toolParts.length) {
-            toolParts.forEach((tool: any) => {
-              let content = typeof tool.content === "string"
-                ? tool.content
-                : JSON.stringify(tool.content);
-              
-              // If Anthropic explicitly marked this as an error, ensure OpenAI model knows it failed
-              if (tool.is_error && !content.trim().startsWith("Error")) {
-                content = `Error: ${content}`;
-              }
+          // 核心重构：将文本与工具结果分离，并确保 tool 结果排在前面
+          // 以便紧跟在发出 tool_calls 的 assistant 消息之后
+          const toolResults = msg.content.filter((c: any) => (c.type === "tool_result" || c.role === "tool") && (c.tool_use_id || c.tool_call_id));
+          toolResults.forEach((tool: any) => {
+            let content = typeof tool.content === "string" 
+              ? tool.content 
+              : JSON.stringify(tool.content);
+            
+            const toolId = tool.tool_use_id || tool.tool_call_id;
+            
+            if (tool.is_error && !content.trim().startsWith("Error")) {
+              content = `Error: ${content}`;
+            }
 
-              const toolMessage: UnifiedMessage = {
-                role: "tool",
-                content: content,
-                tool_call_id: tool.tool_use_id,
-              };
-              messages.push(toolMessage);
-            });
-          }
-
-          // 2. Handle Text and Media
-          const textAndMediaParts = msg.content.filter(
-            (c: any) => c.type === "text" || c.type === "image"
-          );
-          if (textAndMediaParts.length) {
             messages.push({
-              role: "user",
-              content: textAndMediaParts.map((part: any) => {
-                if (part?.type === "image") {
-                  return {
-                    type: "image_url",
-                    image_url: {
-                      url:
-                        part.source?.type === "base64"
-                          ? formatBase64(
-                              part.source.data,
-                              part.source.media_type
-                            )
-                          : part.source.url,
-                    },
-                    media_type: part.source.media_type,
-                  };
-                }
-                return part;
-              }),
+              role: "tool",
+              content: content,
+              tool_call_id: toolId
+            });
+          });
+
+          const textParts = msg.content.filter((c: any) => c.type === "text" && c.text);
+          if (textParts.length) {
+            messages.push({ 
+              role: "user", 
+              content: textParts.map((p: any) => p.text).join("\n") 
             });
           }
         }
@@ -205,10 +182,11 @@ export class AnthropicTransformer implements Transformer {
       for (const msg of msgs) {
         const last = merged[merged.length - 1];
         
-        // 合并条件：角色相同、都没有工具调用、都没有思考过程、且内容都是字符串
+        // 合并条件：角色相同且不是 tool 角色、都没有工具调用、都没有思考过程、且内容都是字符串
         const canMerge = 
           last && 
           last.role === msg.role && 
+          last.role !== "tool" && 
           !last.tool_calls && !msg.tool_calls &&
           !last.thinking && !msg.thinking &&
           typeof last.content === 'string' &&
