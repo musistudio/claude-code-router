@@ -331,7 +331,20 @@ export class AnthropicTransformer implements Transformer {
       nextIndex: 0,
       model: "unknown",
       lastUsage: null as any,
-      toolCallMap: new Map<number, { id: string; name: string; blockIndex: number }>()
+      toolCallMap: new Map<number, { id: string; name: string; blockIndex: number; args: string }>()
+    };
+
+    const tryFixJson = (json: string): string => {
+      let openBraces = 0;
+      let closeBraces = 0;
+      for (const char of json) {
+        if (char === "{") openBraces++;
+        if (char === "}") closeBraces++;
+      }
+      if (openBraces > closeBraces) {
+        return "}".repeat(openBraces - closeBraces);
+      }
+      return "";
     };
 
     return new ReadableStream({
@@ -359,6 +372,16 @@ export class AnthropicTransformer implements Transformer {
 
         const stopAllToolBlocks = () => {
           for (const [, toolInfo] of state.toolCallMap) {
+            if (!state.hasFinished && toolInfo.args) {
+              const fix = tryFixJson(toolInfo.args);
+              if (fix) {
+                safeEnqueue("content_block_delta", {
+                  type: "content_block_delta",
+                  index: toolInfo.blockIndex,
+                  delta: { type: "input_json_delta", partial_json: fix }
+                });
+              }
+            }
             safeEnqueue("content_block_stop", {
               type: "content_block_stop",
               index: toolInfo.blockIndex
@@ -511,12 +534,13 @@ export class AnthropicTransformer implements Transformer {
                       id: tc.id,
                       name: unmapToolName(tc.function?.name || "unknown")
                     });
-                    state.toolCallMap.set(tIdx, { id: tc.id, name: tc.function?.name || "unknown", blockIndex });
+                    state.toolCallMap.set(tIdx, { id: tc.id, name: tc.function?.name || "unknown", blockIndex, args: "" });
                   }
                   
                   if (tc.function?.arguments) {
                     const toolInfo = state.toolCallMap.get(tIdx);
                     if (toolInfo) {
+                      toolInfo.args += tc.function.arguments;
                       safeEnqueue("content_block_delta", {
                         type: "content_block_delta",
                         index: toolInfo.blockIndex,
@@ -591,6 +615,12 @@ export class AnthropicTransformer implements Transformer {
                 const line = decoder.decode(partialLine);
                 if (line.trim()) processLine(line);
               }
+              if (!state.hasFinished) {
+                stopCurrentBlock();
+                stopAllToolBlocks();
+                safeEnqueue("message_stop", { type: "message_stop" });
+                state.hasFinished = true;
+              }
               break;
             }
           }
@@ -619,61 +649,60 @@ export class AnthropicTransformer implements Transformer {
       if (!choice) {
         throw new Error("No choices found in OpenAI response");
       }
-      const content: any[] = [];
       
-      // 1. Handle Thinking (Place at the beginning of content)
-      if ((choice.message as any)?.thinking?.content || (choice.message as any)?.reasoning_content) {
+      const content: any[] = [];
+      const message = choice.message as any;
+
+      // 1. Extract and add Thinking
+      const thinking = message.thinking?.content || message.reasoning_content;
+      const signature = message.thinking?.signature || "none";
+      if (thinking) {
         content.push({
           type: "thinking",
-          thinking: (choice.message as any).thinking?.content || (choice.message as any).reasoning_content,
-          signature: (choice.message as any).thinking?.signature || "none",
+          thinking: thinking,
+          signature: signature,
         });
       }
 
-      // 2. Handle Annotations
-      let annotationText = "";
-      if (choice.message.annotations) {
-        annotationText = "\n\nSources:\n";
-        choice.message.annotations.forEach((item: any) => {
-          annotationText += `- [${item.url_citation.title}](${item.url_citation.url})\n`;
-        });
-      }
-
-      // 3. Handle Text Content
-      if (choice.message.content) {
-        if (Array.isArray(choice.message.content)) {
-          choice.message.content.forEach((part: any) => {
-            if (part.type === "text") {
-              content.push({
-                type: "text",
-                text: part.text + (annotationText ? annotationText : ""),
-              });
-              annotationText = ""; 
-            } else if (typeof part === "string") {
-              content.push({
-                type: "text",
-                text: part + (annotationText ? annotationText : ""),
-              });
-              annotationText = "";
-            }
-          });
-        } else {
-          content.push({
-            type: "text",
-            text: choice.message.content + (annotationText ? annotationText : ""),
-          });
-          annotationText = "";
+      // 2. Extract and add Text/Annotations
+      let combinedText = "";
+      
+      // Handle Text Content (string or array)
+      if (message.content) {
+        if (typeof message.content === "string") {
+          combinedText += message.content;
+        } else if (Array.isArray(message.content)) {
+          combinedText += message.content
+            .map((part: any) => {
+              if (typeof part === "string") return part;
+              if (part.type === "text") return part.text || "";
+              return "";
+            })
+            .join("");
         }
-      } else if (annotationText) {
+      }
+
+      // Handle Annotations
+      if (message.annotations && Array.isArray(message.annotations) && message.annotations.length > 0) {
+        let annotationText = "\n\nSources:\n";
+        message.annotations.forEach((item: any) => {
+          if (item.url_citation) {
+            annotationText += `- [${item.url_citation.title}](${item.url_citation.url})\n`;
+          }
+        });
+        combinedText += annotationText;
+      }
+
+      if (combinedText.trim()) {
         content.push({
           type: "text",
-          text: annotationText,
+          text: combinedText,
         });
       }
 
-      // 4. Handle Tool Calls
-      if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
-        choice.message.tool_calls.forEach((toolCall) => {
+      // 3. Extract and add Tool Calls
+      if (message.tool_calls && message.tool_calls.length > 0) {
+        message.tool_calls.forEach((toolCall: any) => {
           let parsedInput = {};
           try {
             const argumentsStr = toolCall.function.arguments || "{}";
@@ -691,9 +720,9 @@ export class AnthropicTransformer implements Transformer {
         });
       }
 
-      // 5. Finalize Stop Reason
+      // 4. Finalize Stop Reason (force tool_use if tool calls are present)
       let stop_reason = "end_turn";
-      if (choice.finish_reason === "tool_calls" || (choice.message.tool_calls && choice.message.tool_calls.length > 0)) {
+      if (choice.finish_reason === "tool_calls" || (message.tool_calls && message.tool_calls.length > 0)) {
         stop_reason = "tool_use";
       } else if (choice.finish_reason === "length") {
         stop_reason = "max_tokens";
@@ -726,7 +755,8 @@ export class AnthropicTransformer implements Transformer {
         `Conversion complete, final Anthropic response`
       );
       return result;
-    } catch {
+    } catch (e) {
+      this.logger?.error(`Response conversion error: ${e}`);
       throw createApiError(
         `Provider error: ${JSON.stringify(openaiResponse)}`,
         500,
