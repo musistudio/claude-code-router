@@ -18,30 +18,36 @@ export function parseToolArguments(argsString: string, logger?: any): string {
   let cleanedArgs = argsString.replace(STOP_TOKENS_REGEX, "").trim();
 
   // 2. 深度清洗：剥离模型幻觉出的 Markdown 代码包裹
-  // 例如：```json\n{"path": "..."}\n``` -> {"path": "..."}
   const markdownMatch = cleanedArgs.match(MARKDOWN_CODE_BLOCK_REGEX);
+  let wasMarkdownStripped = false;
   if (markdownMatch && markdownMatch[1]) {
     cleanedArgs = markdownMatch[1].trim();
-    logger?.debug(`Stripped markdown code block wrapper from tool arguments`);
+    wasMarkdownStripped = true;
   }
 
   try {
-    // First attempt: Standard JSON parsing
+    // 首先尝试标准解析
     JSON.parse(cleanedArgs);
+    // 如果没有经过 Markdown 剥离且解析成功，直接返回原始字符串（保护格式）
+    if (!wasMarkdownStripped) {
+      return cleanedArgs;
+    }
+    // 如果剥离了 Markdown 但解析成功，则返回剥离后的干净版本
     return cleanedArgs;
   } catch (jsonError: any) {
+    // 只有在标准解析失败时，才尝试高级修复
     try {
-      // Second attempt: JSON5 parsing for relaxed syntax
       const args = JSON5.parse(cleanedArgs);
+      logger?.debug(`Tool arguments normalized via JSON5`);
       return JSON.stringify(args);
     } catch (json5Error: any) {
       try {
-        // Third attempt: Safe JSON repair
         const repairedJson = jsonrepair(cleanedArgs);
+        logger?.debug(`Tool arguments safely repaired via jsonrepair`);
         return repairedJson;
       } catch (repairError: any) {
         logger?.error(
-          `JSON/JSON5/Repair all failed for tool args. Input: ${cleanedArgs.slice(0, 500)}...`
+          `All parsing attempts failed for tool args. Falling back to empty object.`
         );
         return "{}";
       }
