@@ -903,6 +903,13 @@ export class AnthropicTransformer implements Transformer {
             } else if (finalName === "Skill") {
               const { name } = input;
               parsedInput = { name };
+            } else if (finalName === "TodoWrite") {
+              // TodoWrite 包含关键的任务列表数据
+              const { todos } = input;
+              parsedInput = { todos };
+            } else if (finalName === "TodoRead") {
+              // TodoRead 通常是空参数或包含过滤条件
+              parsedInput = input;
             } else if (finalName === "EnterPlanMode" || finalName === "ExitPlanMode") {
               // 计划模式通常带有一些描述性参数，需保留
               parsedInput = input;
