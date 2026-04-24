@@ -411,7 +411,7 @@ export class AnthropicTransformer implements Transformer {
       hasStarted: false,
       hasFinished: false,
       isClosed: false,
-      hasToolCalled: false, // 记录是否触发过工具调用
+      hasToolCallInThisStream: false, // 仅记录当前流中是否输出了工具调用
       currentBlockIndex: -1,
       currentBlockType: null as "thinking" | "text" | "tool_use" | null,
       nextIndex: 0,
@@ -663,13 +663,15 @@ export class AnthropicTransformer implements Transformer {
 
               // 4. 处理工具调用 (Tool Use)
               if (choice.delta?.tool_calls) {
-                state.hasToolCalled = true;
                 for (const tc of choice.delta.tool_calls) {
                   const tIdx = tc.index ?? 0;
                   if (tc.id) {
+                    state.hasToolCallInThisStream = true; // 标记本轮流曾触发工具调用
                     const blockIndex = startBlock("tool_use", {
                       id: tc.id,
                       name: unmapToolName(tc.function?.name || "unknown")
+                    });
+
                     });
                     state.toolCallMap.set(tIdx, { id: tc.id, name: tc.function?.name || "unknown", blockIndex, args: "" });
                   }
@@ -694,7 +696,8 @@ export class AnthropicTransformer implements Transformer {
                 stopAllToolBlocks();
                 
                 let reason = choice.finish_reason;
-                if (state.hasToolCalled && reason === "stop") {
+                // 只有当本轮流中真的产生了工具调用，才映射为 tool_calls
+                if (state.hasToolCallInThisStream && reason === "stop") {
                   reason = "tool_calls";
                 }
 
