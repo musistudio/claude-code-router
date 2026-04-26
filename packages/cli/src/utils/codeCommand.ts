@@ -83,9 +83,33 @@ export async function executeCodeCommand(
     }
   }
 
-  const settingsFile = await getSettingsPath(`${JSON.stringify(settingsFlag)}`)
-
-  args.push('--settings', settingsFile);
+  // merge --settings args if exists with settingsFlag:
+  // new settingsFlag = {...settingsFlag, ...args['--settings']}
+  const joinedSettingsArgs = args.includes('--settings') ? args.slice(args.indexOf('--settings') + 1) : [];
+  console.log(`joinedSettingsArgs : ${joinedSettingsArgs}`);
+  if (joinedSettingsArgs.length > 0) {
+    try {
+      const parsedSettingsArgs = JSON.parse(joinedSettingsArgs[0]);
+      settingsFlag = {
+        ...settingsFlag,
+        ...parsedSettingsArgs,
+        env: {
+          ...settingsFlag.env,
+          ...parsedSettingsArgs.env,
+        } as ClaudeSettingsFlag['env']
+      };
+      console.log(`Merged settingsFlag with --settings args: ${JSON.stringify(settingsFlag)}`);
+    } catch (error) {
+      console.error(`Failed to parse --settings argument: ${joinedSettingsArgs[0]}`, error);
+    }
+    const settingsFile = await getSettingsPath(`${JSON.stringify(settingsFlag)}`);
+    // overwrite the --settings arg with the new settings file path
+    const settingsIndex = args.indexOf('--settings');
+    args[settingsIndex + 1] = settingsFile;
+  } else {
+    const settingsFile = await getSettingsPath(`${JSON.stringify(settingsFlag)}`);
+    args.push('--settings', settingsFile);
+  }
 
   // Increment reference count when command starts
   incrementReferenceCount();
