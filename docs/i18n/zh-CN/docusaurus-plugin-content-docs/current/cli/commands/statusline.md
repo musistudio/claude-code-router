@@ -397,5 +397,5 @@ export COLORTERM=truecolor
 
 ## 相关命令
 
-- [ccr status](/docs/cli/commands/status) - 检查服务状态
+- [ccr status](/zh/docs/cli/commands/status) - 检查服务状态
 - [ccr preset](/docs/cli/commands/preset) - 管理带 statusline 主题的 presets
