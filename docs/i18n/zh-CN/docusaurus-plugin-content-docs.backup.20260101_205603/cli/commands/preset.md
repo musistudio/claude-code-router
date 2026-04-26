@@ -148,7 +148,7 @@ ccr preset delete my-config
   ],
 
   "Router": {
-    "default": "openai:gpt-4"
+    "default": "openai,gpt-4"
   },
 
   "schema": [
