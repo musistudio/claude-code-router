@@ -16,7 +16,7 @@ ccr start [options]
 
 | Option | Alias | Description |
 |--------|-------|-------------|
-| `--port <number>` | `-p` | Port to listen on (default: 8080) |
+| `--port <number>` | `-p` | Port to listen on (default: 3456) |
 | `--config <path>` | `-c` | Path to configuration file |
 | `--daemon` | `-d` | Run as daemon (background process) |
 | `--log-level <level>` | `-l` | Log level (fatal/error/warn/info/debug/trace) |
@@ -70,8 +70,8 @@ You can also configure the server using environment variables:
 When started successfully, you'll see:
 
 ```
-Claude Code Router is running on http://localhost:8080
-API endpoint: http://localhost:8080/v1
+Claude Code Router is running on http://localhost:3456
+API endpoint: http://localhost:3456/v1
 ```
 
 ## Related Commands
