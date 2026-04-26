@@ -22,7 +22,7 @@ When the server is running:
 Claude Code Router Status: Running
 Version: 2.0.0
 PID: 12345
-Port: 8080
+Port: 3456
 Uptime: 2h 34m
 Configuration: /home/user/.claude-code-router/config.json
 ```
@@ -51,7 +51,7 @@ $ ccr status
 Claude Code Router Status: Running
 Version: 2.0.0
 PID: 12345
-Port: 8080
+Port: 3456
 Uptime: 2h 34m
 ```
 
