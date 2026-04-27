@@ -68,7 +68,7 @@ export interface UnifiedMessage {
 
 // 统一的工具定义接口
 export interface UnifiedTool {
-  type: "function";
+  type: "function" | string;
   function: {
     name: string;
     description: string;

@@ -243,14 +243,38 @@ export class AnthropicTransformer implements Transformer {
   }
 
   private convertAnthropicToolsToUnified(tools: any[]): UnifiedTool[] {
-    return tools.map((tool) => ({
-      type: "function",
-      function: {
-        name: tool.name,
-        description: tool.description || "",
-        parameters: tool.input_schema,
-      },
-    }));
+    return tools.map((tool) => {
+      if (
+        tool.type &&
+        typeof tool.type === "string" &&
+        tool.type.startsWith("web_search_")
+      ) {
+        // Server-side tools: preserve the original type at top level
+        // so bypass/Anthropic-compatible providers receive the correct
+        // protocol-level tool type.  Also keep function for downstream
+        // compatibility (filters like tool.function.name === "web_search").
+        return {
+          type: tool.type,
+          name: tool.name,
+          description: tool.description,
+          display_name: tool.display_name,
+          cache_control: tool.cache_control,
+          function: {
+            name: tool.name,
+            description: tool.description || "",
+            parameters: undefined as any,
+          },
+        };
+      }
+      return {
+        type: "function",
+        function: {
+          name: tool.name,
+          description: tool.description || "",
+          parameters: tool.input_schema,
+        },
+      };
+    });
   }
 
   private async convertOpenAIStreamToAnthropic(
