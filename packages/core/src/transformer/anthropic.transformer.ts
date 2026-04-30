@@ -248,7 +248,10 @@ export class AnthropicTransformer implements Transformer {
       function: {
         name: tool.name,
         description: tool.description || "",
-        parameters: tool.input_schema,
+        // Some Anthropic tools (e.g. server-side tools, no-arg tools) omit
+        // input_schema. Strict OpenAI-spec providers (Together, etc.) reject
+        // tools without `parameters`, so backfill with an empty object schema.
+        parameters: tool.input_schema || { type: "object", properties: {} },
       },
     }));
   }
@@ -570,6 +573,7 @@ export class AnthropicTransformer implements Transformer {
                       )
                     );
                     currentContentBlockIndex = -1;
+                    hasTextContentStarted = false;
                   } else if (choice.delta.thinking.content) {
                     const thinkingChunk = {
                       type: "content_block_delta",
@@ -743,6 +747,15 @@ export class AnthropicTransformer implements Transformer {
                           )
                         );
                         currentContentBlockIndex = -1;
+                        // A non-text block (tool_use) is taking over. Without
+                        // this reset, a later text-content chunk would be
+                        // routed to the tool_use block as a text_delta and
+                        // crash the Anthropic client with
+                        // "Content block is not a text block". Reproduces with
+                        // OpenAI-format providers that interleave text and
+                        // tool_calls in separate stream chunks (e.g. Together
+                        // for DeepSeek).
+                        hasTextContentStarted = false;
                       }
 
                       const newContentBlockIndex = assignContentBlockIndex();
