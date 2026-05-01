@@ -8,13 +8,36 @@ export class DeepseekTransformer implements Transformer {
     if (request.max_tokens && request.max_tokens > 8192) {
       request.max_tokens = 8192; // DeepSeek has a max token limit of 8192
     }
+    for (const message of request.messages) {
+      if (message.role === "assistant" && message.thinking) {
+        if (message.thinking.content) {
+          (message as any).reasoning_content = message.thinking.content;
+        }
+        delete message.thinking;
+      }
+    }
+    if (request.reasoning) {
+      (request as any).thinking = {
+        type: "enabled",
+      };
+      if (request.reasoning.effort) {
+        (request as any).reasoning_effort = request.reasoning.effort;
+      }
+      delete request.reasoning;
+    }
     return request;
   }
 
   async transformResponseOut(response: Response): Promise<Response> {
     if (response.headers.get("Content-Type")?.includes("application/json")) {
-      const jsonResponse = await response.json();
+      const jsonResponse: any = await response.json();
       // Handle non-streaming response if needed
+      if (jsonResponse.choices?.[0]?.message?.reasoning_content) {
+        jsonResponse.choices[0].message.thinking = {
+          content: jsonResponse.choices[0].message.reasoning_content,
+        };
+        delete jsonResponse.choices[0].message.reasoning_content;
+      }
       return new Response(JSON.stringify(jsonResponse), {
         status: response.status,
         statusText: response.statusText,
