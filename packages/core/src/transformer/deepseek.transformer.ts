@@ -1,6 +1,36 @@
 import { UnifiedChatRequest } from "../types/llm";
 import { Transformer } from "../types/transformer";
 
+// Stores reasoning_content captured from past responses so it can be reinjected
+// on subsequent requests. DeepSeek V4 thinking mode requires that the
+// reasoning_content from any assistant turn that performed tool calls be sent
+// back on the assistant message in every subsequent request — otherwise the
+// API returns 400 ("The `reasoning_content` in the thinking mode must be passed
+// back to the API."). Claude Code does not preserve thinking content across
+// turns, so we capture and reinject it ourselves.
+//
+// Keyed by sorted tool_call IDs joined by "|". Tool-call IDs round-trip
+// through Claude Code because tool_result messages reference them.
+const REASONING_STORE = new Map<string, string>();
+const REASONING_STORE_LIMIT = 1000;
+
+function storeReasoning(key: string, value: string): void {
+  if (REASONING_STORE.size >= REASONING_STORE_LIMIT) {
+    const firstKey = REASONING_STORE.keys().next().value;
+    if (firstKey !== undefined) REASONING_STORE.delete(firstKey);
+  }
+  REASONING_STORE.set(key, value);
+}
+
+function keyFromToolCalls(toolCalls: any): string | null {
+  if (!Array.isArray(toolCalls) || toolCalls.length === 0) return null;
+  const ids: string[] = toolCalls
+    .map((tc: any) => tc && tc.id)
+    .filter((id: any): id is string => typeof id === "string" && id.length > 0);
+  if (ids.length === 0) return null;
+  return ids.slice().sort().join("|");
+}
+
 export class DeepseekTransformer implements Transformer {
   name = "deepseek";
 
@@ -8,6 +38,19 @@ export class DeepseekTransformer implements Transformer {
     if (request.max_tokens && request.max_tokens > 8192) {
       request.max_tokens = 8192; // DeepSeek has a max token limit of 8192
     }
+
+    // Reinject reasoning_content for assistant messages that performed tool calls.
+    if (request && Array.isArray((request as any).messages)) {
+      for (const msg of (request as any).messages) {
+        if (!msg || msg.role !== "assistant") continue;
+        if (typeof msg.reasoning_content === "string" && msg.reasoning_content) continue;
+        const key = keyFromToolCalls(msg.tool_calls);
+        if (!key) continue;
+        const stored = REASONING_STORE.get(key);
+        if (stored) msg.reasoning_content = stored;
+      }
+    }
+
     return request;
   }
 
@@ -30,6 +73,20 @@ export class DeepseekTransformer implements Transformer {
       let reasoningContent = "";
       let isReasoningComplete = false;
       let buffer = ""; // 用于缓冲不完整的数据
+
+      // Tool-call IDs emitted by the assistant in this response. Used as the
+      // key for storing reasoningContent so a future request that re-includes
+      // this assistant turn can have its reasoning_content reinjected.
+      const collectedToolCallIds: string[] = [];
+      const captureToolCallIds = (data: any) => {
+        const tcArr = data?.choices?.[0]?.delta?.tool_calls;
+        if (!Array.isArray(tcArr)) return;
+        for (const tc of tcArr) {
+          if (tc && typeof tc.id === "string" && !collectedToolCallIds.includes(tc.id)) {
+            collectedToolCallIds.push(tc.id);
+          }
+        }
+      };
 
       const stream = new ReadableStream({
         async start(controller) {
@@ -66,6 +123,8 @@ export class DeepseekTransformer implements Transformer {
             ) {
               try {
                 const data = JSON.parse(line.slice(6));
+
+                captureToolCallIds(data);
 
                 // Extract reasoning_content from delta
                 if (data.choices?.[0]?.delta?.reasoning_content) {
@@ -195,6 +254,14 @@ export class DeepseekTransformer implements Transformer {
             console.error("Stream error:", error);
             controller.error(error);
           } finally {
+            // Persist captured reasoning so future requests that re-send this
+            // assistant turn (with tool_calls) can have it reinjected by
+            // transformRequestIn. Required by DeepSeek V4 thinking mode.
+            if (reasoningContent && collectedToolCallIds.length > 0) {
+              const key = collectedToolCallIds.slice().sort().join("|");
+              storeReasoning(key, reasoningContent);
+            }
+
             try {
               reader.releaseLock();
             } catch (e) {
