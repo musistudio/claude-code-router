@@ -65,6 +65,21 @@ const confirm = async (query: string): Promise<boolean> => {
   return answer.toLowerCase() !== "n";
 };
 
+// Read config from disk without interpolating environment variables.
+// Use this when the raw config (with $VAR references intact) is needed,
+// e.g. when serving the config to the UI so that saves round-trip cleanly.
+export const readRawConfigFile = async (): Promise<any> => {
+  try {
+    const config = await fs.readFile(CONFIG_FILE, "utf-8");
+    return JSON5.parse(config);
+  } catch (readError: any) {
+    if (readError.code === "ENOENT") {
+      return { PORT: 3456, Providers: [], Router: {} };
+    }
+    throw readError;
+  }
+};
+
 export const readConfigFile = async () => {
   try {
     const config = await fs.readFile(CONFIG_FILE, "utf-8");
