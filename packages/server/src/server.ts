@@ -1,5 +1,5 @@
 import Server, { calculateTokenCount, TokenizerService } from "@musistudio/llms";
-import { readConfigFile, writeConfigFile, backupConfigFile } from "./utils";
+import { readConfigFile, readRawConfigFile, writeConfigFile, backupConfigFile } from "./utils";
 import { join } from "path";
 import fastifyStatic from "@fastify/static";
 import { readdirSync, statSync, readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, rmSync } from "fs";
@@ -82,9 +82,11 @@ export const createServer = async (config: any): Promise<any> => {
     return { "input_tokens": tokenCount }
   });
 
-  // Add endpoint to read config.json with access control
+  // Add endpoint to read config.json with access control.
+  // Returns the raw config (with $VAR references intact) so that a subsequent
+  // POST /api/config round-trips cleanly without overwriting env var placeholders.
   app.get("/api/config", async (req: any, reply: any) => {
-    return await readConfigFile();
+    return await readRawConfigFile();
   });
 
   app.get("/api/transformers", async (req: any, reply: any) => {
