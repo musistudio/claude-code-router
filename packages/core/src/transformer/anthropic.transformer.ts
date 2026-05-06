@@ -205,6 +205,39 @@ export class AnthropicTransformer implements Transformer {
         result.tool_choice = request.tool_choice.type;
       }
     }
+
+    // Structured outputs: translate Anthropic's `output_config.format` (GA, since
+    // 2025-11-14) and `output_format` (beta, with `anthropic-beta:
+    // structured-outputs-2025-11-13`) into OpenAI's `response_format` so that
+    // OpenAI-compatible providers can honor the schema.
+    // Refs:
+    //   - https://platform.claude.com/docs/en/build-with-claude/structured-outputs
+    //   - https://platform.openai.com/docs/guides/structured-outputs
+    const structuredFormat =
+      request.output_config?.format ?? request.output_format;
+    if (structuredFormat?.type) {
+      if (
+        structuredFormat.type === "json_schema" &&
+        structuredFormat.schema
+      ) {
+        result.response_format = {
+          type: "json_schema",
+          json_schema: {
+            name: structuredFormat.name || "response",
+            schema: structuredFormat.schema,
+            strict: structuredFormat.strict !== false,
+            ...(structuredFormat.description
+              ? { description: structuredFormat.description }
+              : {}),
+          },
+        };
+      } else if (structuredFormat.type === "json_object") {
+        result.response_format = { type: "json_object" };
+      } else if (structuredFormat.type === "text") {
+        result.response_format = { type: "text" };
+      }
+    }
+
     return result;
   }
 
