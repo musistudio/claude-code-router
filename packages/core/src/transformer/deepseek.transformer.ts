@@ -8,6 +8,21 @@ export class DeepseekTransformer implements Transformer {
     if (request.max_tokens && request.max_tokens > 8192) {
       request.max_tokens = 8192; // DeepSeek has a max token limit of 8192
     }
+
+    // DeepSeek V4 thinking mode requires replaying prior reasoning_content
+    // on subsequent turns. Claude-style requests carry this in message.thinking.
+    if (Array.isArray((request as any).messages)) {
+      for (const msg of (request as any).messages) {
+        if (
+          msg?.role === "assistant" &&
+          msg?.thinking?.content &&
+          !msg?.reasoning_content
+        ) {
+          msg.reasoning_content = msg.thinking.content;
+        }
+      }
+    }
+
     return request;
   }
 
