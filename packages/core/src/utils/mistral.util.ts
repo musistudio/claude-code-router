@@ -2,9 +2,6 @@ import { UnifiedChatRequest, MessageContent, TextContent } from "../types/llm";
 import { createSSEStreamReader, StreamContext, encodeSSEData, encodeSSELine } from "./stream";
 import { stripMessagesCacheControl } from "./cacheControl";
 import {
-  createReasoningAccumulator,
-  accumulateReasoning,
-  finalizeReasoning,
   buildThinkingChunk,
   extractReasoningText,
   cleanReasoningFields,
@@ -54,12 +51,16 @@ function transformMessage(msg: any): any {
     const contentArray = clonedMsg.content as MessageContent[];
 
     const hasImages = contentArray.some(
-      (part) => part.type === "image_url"
+      (part) => (part as any).type === "image_url"
     );
 
-    if (hasImages) {
+    const hasThinking = contentArray.some(
+      (part) => (part as any).type === "thinking"
+    );
+
+    if (hasImages || hasThinking) {
       clonedMsg.content = contentArray.map((part) => {
-        if (part.type === "text") {
+        if ((part as any).type === "text") {
           const { cache_control, ...rest } = part as TextContent;
           return rest;
         }
@@ -125,6 +126,12 @@ function transformReasoning(reasoning: any): string | undefined {
   return "medium";
 }
 
+const NON_REASONING = new Set([
+  "mistral-small-2506",
+  "mistral-medium-2505",
+  "mistral-medium-2508",
+]);
+
 /**
  * Transform incoming request to Mistral-compatible format
  */
@@ -166,11 +173,11 @@ export function buildRequestBody(request: UnifiedChatRequest): Record<string, an
   if (req.reasoning && req.model) {
     const modelId = req.model;
     const supportsReasoning =
-      modelId.startsWith("mistral-small-") ||
       modelId.startsWith("magistral-") ||
-      modelId.startsWith("mistral-medium-") ||
+      modelId.startsWith("labs-leanstral-") ||
       modelId === "mistral-vibe-cli-fast" ||
-      modelId.startsWith("labs-leanstral-");
+      (modelId.startsWith("mistral-small-") && !NON_REASONING.has(modelId)) ||
+      (modelId.startsWith("mistral-medium-") && !NON_REASONING.has(modelId));
 
     if (supportsReasoning) {
       req.reasoning_effort = transformReasoning(req.reasoning);
