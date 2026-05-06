@@ -10,3 +10,5 @@ tsconfig.tsbuildinfo
 # Documentation build output
 docs/build
 docs/.docusaurus
+draft.txt
+.claude

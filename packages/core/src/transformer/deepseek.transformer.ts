@@ -1,12 +1,45 @@
 import { UnifiedChatRequest } from "../types/llm";
 import { Transformer } from "../types/transformer";
 
+// Simple LRU cache for preserving reasoning_content across tool-call turns
+class ReasoningCache {
+  private cache = new Map<string, string>();
+  constructor(private capacity: number) {}
+  get(key: string): string | undefined {
+    if (!this.cache.has(key)) return undefined;
+    const value = this.cache.get(key)!;
+    this.cache.delete(key);
+    this.cache.set(key, value);
+    return value;
+  }
+  put(key: string, value: string): void {
+    if (this.cache.has(key)) {
+      this.cache.delete(key);
+    } else if (this.cache.size >= this.capacity) {
+      const lru = this.cache.keys().next().value;
+      if (lru !== undefined) this.cache.delete(lru);
+    }
+    this.cache.set(key, value);
+  }
+}
+
 export class DeepseekTransformer implements Transformer {
   name = "deepseek";
+  private reasoningCache = new ReasoningCache(200);
 
   async transformRequestIn(request: UnifiedChatRequest): Promise<UnifiedChatRequest> {
     if (request.max_tokens && request.max_tokens > 8192) {
       request.max_tokens = 8192; // DeepSeek has a max token limit of 8192
+    }
+    // Inject reasoning_content for DeepSeek V4 thinking mode compatibility
+    if (Array.isArray(request.messages)) {
+      for (const msg of request.messages) {
+        if (msg.role === 'assistant' && (msg as any).reasoning_content == null) {
+          const toolCallId = (msg as any).tool_calls?.[0]?.id;
+          const cached = toolCallId ? this.reasoningCache.get(toolCallId) : undefined;
+          (msg as any).reasoning_content = cached ?? '';
+        }
+      }
     }
     return request;
   }
@@ -14,6 +47,14 @@ export class DeepseekTransformer implements Transformer {
   async transformResponseOut(response: Response): Promise<Response> {
     if (response.headers.get("Content-Type")?.includes("application/json")) {
       const jsonResponse = await response.json();
+      // Cache reasoning content for subsequent requests
+      const reasoning = jsonResponse.choices?.[0]?.message?.reasoning_content;
+      const toolCalls = jsonResponse.choices?.[0]?.message?.tool_calls;
+      if (reasoning && toolCalls?.length) {
+        for (const tc of toolCalls) {
+          if (tc.id) this.reasoningCache.put(tc.id, reasoning);
+        }
+      }
       // Handle non-streaming response if needed
       return new Response(JSON.stringify(jsonResponse), {
         status: response.status,
@@ -27,8 +68,10 @@ export class DeepseekTransformer implements Transformer {
 
       const decoder = new TextDecoder();
       const encoder = new TextEncoder();
+      const self = this;
       let reasoningContent = "";
       let isReasoningComplete = false;
+      let toolCallIds: string[] = [];
       let buffer = ""; // 用于缓冲不完整的数据
 
       const stream = new ReadableStream({
@@ -132,6 +175,13 @@ export class DeepseekTransformer implements Transformer {
                   delete data.choices[0].delta.reasoning_content;
                 }
 
+                // Collect tool call IDs for caching
+                if (data.choices?.[0]?.delta?.tool_calls) {
+                  for (const tc of data.choices[0].delta.tool_calls) {
+                    if (tc.id) toolCallIds.push(tc.id);
+                  }
+                }
+
                 // Send the modified chunk
                 if (
                   data.choices?.[0]?.delta &&
@@ -157,6 +207,12 @@ export class DeepseekTransformer implements Transformer {
             while (true) {
               const { done, value } = await reader.read();
               if (done) {
+                // Cache reasoning content for subsequent requests
+                if (reasoningContent && toolCallIds.length) {
+                  for (const id of toolCallIds) {
+                    self.reasoningCache.put(id, reasoningContent);
+                  }
+                }
                 // 处理缓冲区中剩余的数据
                 if (buffer.trim()) {
                   processBuffer(buffer, controller, encoder);
