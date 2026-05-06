@@ -107,6 +107,18 @@ export interface UnifiedChatRequest {
 
     enabled?: boolean;
   };
+  response_format?:
+    | { type: "text" }
+    | { type: "json_object" }
+    | {
+        type: "json_schema";
+        json_schema: {
+          name: string;
+          schema: Record<string, any>;
+          strict?: boolean;
+          description?: string;
+        };
+      };
 }
 
 // 统一的响应接口
