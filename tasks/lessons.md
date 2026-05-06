@@ -24,6 +24,11 @@
 - **Nested Thinking Format**: Some Mistral models return thinking as an array of blocks within the `content` field (`delta.content = [{ type: "thinking", thinking: [...] }]`). Naive string concatenation of these objects results in `[object Object]` in the UI.
 - **Aggressive Serialization**: To prevent `[object Object]` outputs, always verify if thinking content is a string or an object. Use a fallback to `.text` property or `JSON.stringify()` when dealing with provider-specific thinking blocks.
 
+## LLM Provider Integration (DeepSeek)
+- **Reasoning Replay Is Mandatory**: When DeepSeek thinking mode remains enabled across tool-use turns, prior assistant tool-call messages must carry their original `reasoning_content` back to the API. Replaying only the tool calls and visible assistant text is not enough.
+- **Repair Source Order**: The safest replay order is: keep existing `reasoning_content` if present, otherwise derive it from `thinking.content`, otherwise restore it from a local cache keyed by conversation scope plus tool-call identity/signature.
+- **Cache Population Point**: Populate the cache from provider responses, not from user-facing display chunks alone. For streamed responses, accumulate reasoning text plus the eventual assistant content/tool calls and store the final assistant message shape on stream completion.
+
 ## Architecture
 - **Thin Transformer Pattern**: For maintainability, keep transformer classes as thin wrappers that handle high-level provider config and delegate all data transformation logic to a dedicated utility file (e.g., `gemini.util.ts`, `mistral.util.ts`).
 

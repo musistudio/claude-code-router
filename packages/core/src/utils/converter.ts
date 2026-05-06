@@ -95,6 +95,10 @@ export function convertToOpenAI(
       content: msg.content,
     };
 
+    if (typeof msg.reasoning_content === "string") {
+      message.reasoning_content = msg.reasoning_content;
+    }
+
     if (msg.tool_calls && msg.tool_calls.length > 0) {
       message.tool_calls = msg.tool_calls;
       if (message.content === null) {
@@ -230,6 +234,9 @@ export function convertFromOpenAI(
         typeof msg.content === "string"
           ? msg.content
           : JSON.stringify(msg.content),
+      ...((msg as any).reasoning_content && {
+        reasoning_content: (msg as any).reasoning_content,
+      }),
       ...((msg as any).tool_calls && { tool_calls: (msg as any).tool_calls }),
     };
   });

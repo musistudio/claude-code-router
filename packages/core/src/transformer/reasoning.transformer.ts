@@ -1,6 +1,14 @@
 import { UnifiedChatRequest } from "@/types/llm";
 import { Transformer, TransformerOptions } from "../types/transformer";
 import { createSSEStreamReader } from "../utils/stream";
+import {
+  appendAssistantResponseDelta,
+  buildAssistantResponseMessage,
+  createAssistantResponseRecorder,
+  hasDeepSeekReasoningContext,
+  prepareReasoningReplay,
+  recordReasoningResponseMessage,
+} from "../utils/deepseek.util";
 export class ReasoningTransformer implements Transformer {
   static TransformerName = "reasoning";
   enable: any;
@@ -10,7 +18,9 @@ export class ReasoningTransformer implements Transformer {
   }
 
   async transformRequestIn(
-    request: UnifiedChatRequest
+    request: UnifiedChatRequest,
+    provider?: any,
+    context?: any
   ): Promise<UnifiedChatRequest> {
     if (!this.enable) {
       request.thinking = {
@@ -27,17 +37,31 @@ export class ReasoningTransformer implements Transformer {
       };
       request.enable_thinking = true;
     }
+
+    prepareReasoningReplay(request, provider, context);
     return request;
   }
 
-  async transformResponseOut(response: Response): Promise<Response> {
+  async transformResponseOut(response: Response, context?: any): Promise<Response> {
     if (!this.enable) return response;
+    const shouldRecordDeepSeekReasoning = hasDeepSeekReasoningContext(context);
     if (response.headers.get("Content-Type")?.includes("application/json")) {
       const jsonResponse = await response.json();
       if (jsonResponse.choices[0]?.message.reasoning_content) {
         jsonResponse.thinking = {
           content: jsonResponse.choices[0]?.message.reasoning_content
         }
+      }
+      if (shouldRecordDeepSeekReasoning) {
+        recordReasoningResponseMessage(
+          {
+            role: "assistant",
+            content: jsonResponse.choices?.[0]?.message?.content ?? null,
+            tool_calls: jsonResponse.choices?.[0]?.message?.tool_calls,
+            reasoning_content: jsonResponse.choices?.[0]?.message?.reasoning_content,
+          },
+          context
+        );
       }
       // Handle non-streaming response if needed
       return new Response(JSON.stringify(jsonResponse), {
@@ -50,10 +74,12 @@ export class ReasoningTransformer implements Transformer {
         return response;
       }
 
-      const decoder = new TextDecoder();
       const encoder = new TextEncoder();
       let reasoningContent = "";
       let isReasoningComplete = false;
+      const recorder = shouldRecordDeepSeekReasoning
+        ? createAssistantResponseRecorder()
+        : null;
 
       const processLine = (
         line: string,
@@ -64,12 +90,21 @@ export class ReasoningTransformer implements Transformer {
         if (line.startsWith("data: ") && line.trim() !== "data: [DONE]") {
           try {
             const data = JSON.parse(line.slice(6));
+            const delta = data.choices?.[0]?.delta;
+
+            if (!delta) {
+              controller.enqueue(encoder.encode(line + "\n"));
+              return;
+            }
 
             // Extract reasoning_content from delta
-            if (data.choices?.[0]?.delta?.reasoning_content) {
-              reasoningContent += typeof data.choices[0].delta.reasoning_content === "string" 
-                ? data.choices[0].delta.reasoning_content 
-                : JSON.stringify(data.choices[0].delta.reasoning_content);
+            if (delta.reasoning_content) {
+              reasoningContent += typeof delta.reasoning_content === "string" 
+                ? delta.reasoning_content 
+                : JSON.stringify(delta.reasoning_content);
+              if (recorder) {
+                appendAssistantResponseDelta(recorder, delta);
+              }
                 
               const thinkingChunk = {
                 ...data,
@@ -77,9 +112,9 @@ export class ReasoningTransformer implements Transformer {
                   {
                     ...data.choices[0],
                     delta: {
-                      ...data.choices[0].delta,
+                      ...delta,
                       thinking: {
-                        content: data.choices[0].delta.reasoning_content,
+                        content: delta.reasoning_content,
                       },
                     },
                   },
@@ -93,10 +128,13 @@ export class ReasoningTransformer implements Transformer {
               return;
             }
 
+            if (recorder) {
+              appendAssistantResponseDelta(recorder, delta);
+            }
+
             // Check if reasoning is complete (when delta has content but no reasoning_content)
             if (
-              (data.choices?.[0]?.delta?.content ||
-                data.choices?.[0]?.delta?.tool_calls) &&
+              (delta.content || delta.tool_calls) &&
               reasoningContent &&
               !isReasoningComplete
             ) {
@@ -128,7 +166,7 @@ export class ReasoningTransformer implements Transformer {
               controller.enqueue(encoder.encode(thinkingLine));
             }
 
-            if (data.choices?.[0]?.delta?.reasoning_content) {
+            if (delta.reasoning_content) {
               delete data.choices[0].delta.reasoning_content;
             }
 
@@ -153,7 +191,12 @@ export class ReasoningTransformer implements Transformer {
         }
       };
 
-      return createSSEStreamReader(response, processLine);
+      return createSSEStreamReader(response, processLine, {
+        onComplete: () => {
+          if (!recorder) return;
+          recordReasoningResponseMessage(buildAssistantResponseMessage(recorder), context);
+        },
+      });
     }
 
     return response;

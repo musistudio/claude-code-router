@@ -32,6 +32,26 @@ pnpm dev:server     # Develop Server (ts-node)
 pnpm dev:ui         # Develop UI (Vite)
 ```
 
+### Build and run the proxy with Docker Compose
+```bash
+cd packages/server
+docker compose up --build -d
+```
+
+Useful follow-up commands:
+```bash
+docker compose logs -f ccr
+docker compose restart ccr
+docker compose down
+```
+
+Notes:
+- The compose file is `packages/server/docker-compose.yml`.
+- It builds from the repo root using `packages/server/Dockerfile`.
+- Runtime config is mounted from `packages/server/ccr-config` to `/root/.claude-code-router` in the container.
+- The proxy listens on `http://localhost:3456`.
+- After editing `packages/server/ccr-config/config.json`, restart the `ccr` service.
+
 ### Publish
 ```bash
 pnpm release        # Build and publish all packages

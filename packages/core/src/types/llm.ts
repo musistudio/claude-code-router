@@ -48,6 +48,7 @@ export type MessageContent = TextContent | ImageContent;
 export interface UnifiedMessage {
   role: "user" | "assistant" | "system" | "tool";
   content: string | null | MessageContent[];
+  reasoning_content?: string;
   tool_calls?: Array<{
     id: string;
     type: "function";

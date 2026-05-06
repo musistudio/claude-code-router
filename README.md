@@ -35,11 +35,14 @@ First, ensure you have [Claude Code](https://docs.anthropic.com/en/docs/claude-c
 npm install -g @anthropic-ai/claude-code
 ```
 
-Then, install Claude Code Router:
+Then start Claude Code Router with Docker Compose:
 
 ```shell
-npm install -g @musistudio/claude-code-router
+cd packages/server
+docker compose up --build -d
 ```
+
+The Compose setup builds the server and UI into the `ccr` container, exposes the proxy on `http://localhost:3456`, and mounts configuration from `packages/server/ccr-config` to `/root/.claude-code-router` inside the container.
 
 ### 2. Configuration
 

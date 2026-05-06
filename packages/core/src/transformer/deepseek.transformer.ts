@@ -10,20 +10,45 @@ import {
   extractReasoningText,
   cleanReasoningFields,
 } from "../utils/thinking";
+import {
+  appendAssistantResponseDelta,
+  buildAssistantResponseMessage,
+  createAssistantResponseRecorder,
+  hasDeepSeekReasoningContext,
+  prepareReasoningReplay,
+  recordReasoningResponseMessage,
+} from "../utils/deepseek.util";
 
 export class DeepseekTransformer implements Transformer {
   name = "deepseek";
 
-  async transformRequestIn(request: UnifiedChatRequest): Promise<UnifiedChatRequest> {
+  async transformRequestIn(
+    request: UnifiedChatRequest,
+    provider?: any,
+    context?: any
+  ): Promise<UnifiedChatRequest> {
     if (request.max_tokens && request.max_tokens > 8192) {
       request.max_tokens = 8192;
     }
+    prepareReasoningReplay(request, provider, context);
     return request;
   }
 
-  async transformResponseOut(response: Response): Promise<Response> {
+  async transformResponseOut(response: Response, context?: any): Promise<Response> {
+    const shouldRecordDeepSeekReasoning = hasDeepSeekReasoningContext(context);
     if (response.headers.get("Content-Type")?.includes("application/json")) {
       const jsonResponse = await response.json();
+      if (shouldRecordDeepSeekReasoning) {
+        recordReasoningResponseMessage(
+          {
+            role: "assistant",
+            content: jsonResponse.choices?.[0]?.message?.content ?? null,
+            tool_calls: jsonResponse.choices?.[0]?.message?.tool_calls,
+            reasoning_content: jsonResponse.choices?.[0]?.message?.reasoning_content,
+          },
+          context
+        );
+      }
       return new Response(JSON.stringify(jsonResponse), {
         status: response.status,
         statusText: response.statusText,
@@ -33,6 +58,9 @@ export class DeepseekTransformer implements Transformer {
       if (!response.body) return response;
 
       const accumulator = createReasoningAccumulator();
+      const recorder = shouldRecordDeepSeekReasoning
+        ? createAssistantResponseRecorder()
+        : null;
 
       return createSSEStreamReader(response, (line: string, ctx: StreamContext) => {
         if (!line.trim()) {
@@ -58,6 +86,9 @@ export class DeepseekTransformer implements Transformer {
           const reasoningText = extractReasoningText(delta);
 
           if (reasoningText) {
+            if (recorder) {
+              appendAssistantResponseDelta(recorder, delta);
+            }
             accumulateReasoning(accumulator, reasoningText);
             const thinkingChunk = buildThinkingChunk(data, {
               content: reasoningText,
@@ -65,6 +96,10 @@ export class DeepseekTransformer implements Transformer {
             cleanReasoningFields(thinkingChunk.choices[0].delta);
             ctx.controller.enqueue(encodeSSEData(JSON.stringify(thinkingChunk), ctx.encoder));
             return;
+          }
+
+          if (recorder) {
+            appendAssistantResponseDelta(recorder, delta);
           }
 
           if (
@@ -98,6 +133,11 @@ export class DeepseekTransformer implements Transformer {
         } catch {
           ctx.controller.enqueue(encodeSSELine(line, ctx.encoder));
         }
+      }, {
+        onComplete: () => {
+          if (!recorder) return;
+          recordReasoningResponseMessage(buildAssistantResponseMessage(recorder), context);
+        },
       });
     }
 
