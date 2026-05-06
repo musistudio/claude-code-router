@@ -1,6 +1,5 @@
 import { UnifiedChatRequest, MessageContent, TextContent } from "../types/llm";
 import { createSSEStreamReader, StreamContext, encodeSSEData, encodeSSELine } from "./stream";
-import { stripMessagesCacheControl } from "./cacheControl";
 import {
   buildThinkingChunk,
   extractReasoningText,
