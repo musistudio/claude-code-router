@@ -11,12 +11,6 @@ import {
   ConversionOptions,
 } from "../types/llm";
 
-// Simple logger function
-function log(...args: any[]) {
-  // Can be extended to use a proper logger
-  console.log(...args);
-}
-
 export function convertToolsToOpenAI(
   tools: UnifiedTool[]
 ): ChatCompletionTool[] {

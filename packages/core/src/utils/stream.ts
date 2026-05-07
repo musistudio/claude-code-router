@@ -11,6 +11,7 @@ export function createSSEStreamReader(
   options?: {
     bufferSize?: number;
     onComplete?: (context: StreamContext) => void;
+    logger?: any;
   }
 ): Response {
   const encoder = new TextEncoder();
@@ -49,20 +50,20 @@ export function createSSEStreamReader(
             try {
               processLine(line, ctx);
             } catch (error) {
-              console.error("Error processing line:", line, error);
+              (options?.logger?.error ?? console.error)("Error processing line:", line, error);
               controller.enqueue(encoder.encode(line + "\n"));
             }
           }
         }
       } catch (error) {
-        console.error("Stream error:", error);
+        (options?.logger?.error ?? console.error)("Stream error:", error);
         streamFailed = true;
         controller.error(error);
       } finally {
         try {
           options?.onComplete?.(ctx);
         } catch (error) {
-          console.error("Stream completion error:", error);
+          (options?.logger?.error ?? console.error)("Stream completion error:", error);
           if (!streamFailed) {
             streamFailed = true;
             controller.error(error);

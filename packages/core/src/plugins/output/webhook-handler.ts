@@ -8,6 +8,11 @@ export class WebhookOutputHandler implements OutputHandler {
   type = 'webhook' as const;
   private config: WebhookOutputConfig;
   private defaultTimeout = 30000; // 30 second default timeout
+  private logger: any = null;
+
+  setLogger(logger: any): void {
+    this.logger = logger;
+  }
 
   constructor(config: WebhookOutputConfig) {
     if (!config.url) {
@@ -155,7 +160,7 @@ export class WebhookOutputHandler implements OutputHandler {
         // Calculate backoff time (exponential backoff)
         const backoffTime = retry.backoffMs * Math.pow(2, attempt - 1);
 
-        console.warn(
+        (this.logger?.warn ?? console.warn)(
           `[WebhookOutputHandler] Request failed (attempt ${attempt}/${retry.maxAttempts}), ` +
           `retrying in ${backoffTime}ms...`,
           (error as Error).message
@@ -192,7 +197,7 @@ export class WebhookOutputHandler implements OutputHandler {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       if (this.config.silent) {
-        console.error(`[WebhookOutputHandler] Failed to send data: ${errorMessage}`);
+        (this.logger?.error ?? console.error)(`[WebhookOutputHandler] Failed to send data: ${errorMessage}`);
         return false;
       }
 

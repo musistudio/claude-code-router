@@ -13,7 +13,7 @@ import { getPresetDir } from './install';
  * @param name Preset name
  * @returns Preset configuration object, or null if file does not exist
  */
-export async function readPresetFile(name: string): Promise<any | null> {
+export async function readPresetFile(name: string, logger?: any): Promise<any | null> {
   try {
     const presetDir = getPresetDir(name);
     const manifestPath = path.join(presetDir, 'manifest.json');
@@ -24,7 +24,7 @@ export async function readPresetFile(name: string): Promise<any | null> {
     if (error.code === 'ENOENT') {
       return null;
     }
-    console.error(`Failed to read preset file: ${error.message}`);
+    (logger?.error ?? console.error)(`Failed to read preset file: ${error.message}`);
     return null;
   }
 }

@@ -42,5 +42,10 @@ export async function errorHandler(
     reply.headers(error.headers);
   }
 
+  // Reset Content-Type to application/json to prevent "invalid payload type" errors
+  // when the reply previously had Content-Type set to a non-JSON value (e.g., text/event-stream
+  // from a streaming response that failed before the stream was sent).
+  reply.header("Content-Type", "application/json");
+
   return reply.code(statusCode).send(response);
 }

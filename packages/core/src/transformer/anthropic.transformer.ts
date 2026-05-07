@@ -853,7 +853,7 @@ export class AnthropicTransformer implements Transformer {
                             )
                           );
                         } catch (fixError) {
-                          console.error(fixError);
+                          this.logger?.error(fixError);
                         }
                       }
                     }
@@ -862,8 +862,8 @@ export class AnthropicTransformer implements Transformer {
 
                 if (choice?.finish_reason && !isClosed && !hasFinished) {
                   if (contentChunks === 0 && toolCallChunks === 0) {
-                    console.error(
-                      "Warning: No content in the stream response!"
+                    this.logger?.warn(
+                      "No content in the stream response!"
                     );
                   }
 
@@ -930,7 +930,7 @@ export class AnthropicTransformer implements Transformer {
             try {
               controller.error(error);
             } catch (controllerError) {
-              console.error(controllerError);
+              this.logger?.error(controllerError);
             }
           }
         } finally {
@@ -938,7 +938,7 @@ export class AnthropicTransformer implements Transformer {
             try {
               reader.releaseLock();
             } catch (releaseError) {
-              console.error(releaseError);
+              this.logger?.error(releaseError);
             }
           }
         }

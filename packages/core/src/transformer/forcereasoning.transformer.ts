@@ -300,13 +300,13 @@ export class ForceReasoningTransformer implements Transformer {
               }
             }
           } catch (error) {
-            console.error("Stream error:", error);
+            this.logger?.error("Stream error:", error);
             controller.error(error);
           } finally {
             try {
               reader.releaseLock();
             } catch (e) {
-              console.error("Error releasing reader lock:", e);
+              this.logger?.error("Error releasing reader lock:", e);
             }
 
             if (fsmState === "REASONING") {

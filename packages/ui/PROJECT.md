@@ -1,23 +1,23 @@
-# 项目指南
+# Project Guide
 
-> 这是一个用于设置配置的前端项目，配置格式参考config.example.json
+> This is a frontend project for configuring settings. The configuration format follows config.example.json.
 
-## 技术栈
-1. 使用pnpm作为包管理工具
-2. 使用vite.js作为构建工具
-3. 使用react.js + tailwindcss + shadcn-ui构建前端界面
+## Tech Stack
+1. Uses pnpm as the package manager
+2. Uses Vite.js as the build tool
+3. Uses React.js + Tailwind CSS + shadcn-ui for the frontend interface
 
-## UI设计
-采用现代化的UI风格，让界面整体体现出呼吸感。整体配置应该简洁和通俗易懂，需要有必要的校验，易用的交互体验。
+## UI Design
+Adopt a modern UI style with a sense of breathing space throughout. The configuration interface should be clean and intuitive, with necessary validation and a user-friendly interactive experience.
 
-## 接口设计
-不需要实现任何接口，但你需要根据config.example.json文件的内容mock数据
+## API Design
+No real APIs need to be implemented, but you must mock data based on the config.example.json file.
 
-## 代码指引
-在使用任何库之前你都需要使用websearch工具查找最新的文档，不要使用你知识库的内容，即使是显而易见的你以为的确定性的知识。
+## Code Guidelines
+Before using any library, you must use the websearch tool to look up the latest documentation. Do not rely on your knowledge base, even for obvious or seemingly certain knowledge.
 
-## 多语言设计
-项目需要同时支持中文和英文
+## Internationalization
+The project must support both Chinese and English.
 
-## 构建发布
-最后需要构建出一个HTML文件，其中所有的js和css采用内联的方式，构建产物应该只包含一个html文件。
+## Build & Publish
+The final build must produce a single HTML file with all JS and CSS inlined. The build artifact should contain only one HTML file.

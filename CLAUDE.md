@@ -11,28 +11,26 @@ Claude Code Router is a tool that routes Claude Code requests to different LLM p
 - **shared** (`@CCR/shared`): Shared constants, utilities, and preset management
 - **ui** (`@CCR/ui`): Web management interface (React + Vite)
 
+### Core Objectives
+- **Model Versatility**: Enable Claude Code to leverage the best model for a specific task (e.g., high-reasoning models for Plan Mode vs. lightweight models for background tasks).
+- **Cost & Performance Optimization**: Route requests based on complexity, token counts, or provider performance.
+- **Provider Abstraction**: Create a unified interface that abstracts the differences between various LLM provider APIs.
+
+### Getting Started
+The fastest way to start and verify the build is using Docker Compose:
+1. **Launch with Docker**: `cd packages/server && docker compose up --build -d`
+2. **Setup configuration**: `ccr preset install <source>` or manually edit the configuration file.
+3. **Verify**: Use `ccr code` to execute a command or open the UI via `ccr ui`.
+
+*Alternative (Local Development)*: If you prefer to run locally without Docker, run `pnpm install` first, then use the `pnpm dev:*` commands.
+
+## Knowledge Base
+For critical lessons learned regarding LLM provider integrations (e.g., DeepSeek reasoning replay, Mistral thinking formats, Gemini streaming issues), refer to `tasks/lessons.md`. This file contains the "hard-won" knowledge required to avoid common provider-specific pitfalls.
+
 ## Build Commands
 
-### Build all packages
-```bash
-pnpm build
-```
-
-### Build individual packages
-```bash
-pnpm build:cli      # Build CLI
-pnpm build:server   # Build Server
-pnpm build:ui       # Build UI
-```
-
-### Development mode
-```bash
-pnpm dev:cli        # Develop CLI (ts-node)
-pnpm dev:server     # Develop Server (ts-node)
-pnpm dev:ui         # Develop UI (Vite)
-```
-
-### Build and run the proxy with Docker Compose
+### Primary: Build and run via Docker Compose (Recommended for verification)
+This is the preferred method to verify the build and deployment configuration.
 ```bash
 cd packages/server
 docker compose up --build -d
@@ -52,6 +50,28 @@ Notes:
 - The proxy listens on `http://localhost:3456`.
 - After editing `packages/server/ccr-config/config.json`, restart the `ccr` service.
 
+### Secondary: Local Build (pnpm)
+Use these commands for local development and iterative coding.
+
+#### Build all packages
+```bash
+pnpm build
+```
+
+#### Build individual packages
+```bash
+pnpm build:cli      # Build CLI
+pnpm build:server   # Build Server
+pnpm build:ui       # Build UI
+```
+
+#### Development mode
+```bash
+pnpm dev:cli        # Develop CLI (ts-node)
+pnpm dev:server     # Develop Server (ts-node)
+pnpm dev:ui         # Develop UI (Vite)
+```
+
 ### Publish
 ```bash
 pnpm release        # Build and publish all packages
@@ -59,9 +79,9 @@ pnpm release        # Build and publish all packages
 
 ## Core Architecture
 
-### 1. Routing System (packages/server/src/utils/router.ts)
+### 1. Routing System
 
-The routing logic determines which model a request should be sent to:
+The routing logic is handled by the core framework in the `@musistudio/llms` package. It determines which model a request should be sent to:
 
 - **Default routing**: Uses `Router.default` configuration
 - **Project-level routing**: Checks `~/.claude/projects/<project-id>/claude-code-router.json`
@@ -140,6 +160,9 @@ Two separate logging systems:
 
 ## CLI Commands
 
+Commands can be run locally or inside the Docker container using:
+`docker exec -it <container_id> ccr <command>`
+
 ```bash
 ccr start      # Start server
 ccr stop       # Stop server
@@ -154,6 +177,8 @@ ccr statusline # Integrated statusline (reads JSON from stdin)
 ```
 
 ### Preset Commands
+
+If running in Docker, use: `docker exec -it <container_id> ccr preset <subcommand>`
 
 ```bash
 ccr preset export <name>      # Export current configuration as a preset
@@ -194,7 +219,7 @@ Located in `packages/shared/src/preset/`:
   - Automatically sanitizes sensitive data (api_key fields become `{{field}}` placeholders)
 
 - **install.ts**: Install and manage presets
-  - `installPreset(preset, config, options)`: Install preset to config
+  - `extractPreset(sourceZip, targetDir)`: Extract preset from ZIP file to target directory
   - `loadPreset(source)`: Load preset from directory
   - `listPresets()`: List all installed presets
   - `isPresetInstalled(presetName)`: Check if preset is installed

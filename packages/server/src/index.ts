@@ -77,7 +77,7 @@ async function registerPluginsFromConfig(serverInstance: any, config: any): Prom
           break;
 
         default:
-          console.warn(`Unknown plugin: ${name}`);
+          serverInstance.app.log.warn(`Unknown plugin: ${name}`);
           break;
       }
     }
@@ -300,7 +300,7 @@ async function getServer(options: RunOptions = {}) {
                   currentToolArgs = ''
                   currentToolId = ''
                 } catch (e) {
-                  console.log(e);
+                  serverInstance.app.log.error({ err: e }, "Agent tool execution error");
                 }
                 return undefined;
               }
@@ -357,7 +357,7 @@ async function getServer(options: RunOptions = {}) {
               }
               return data
             }catch (error: any) {
-              console.error('Unexpected error in stream processing:', error);
+              serverInstance.app.log.error('Unexpected error in stream processing:', error);
 
               // Handle premature stream closure error
               if (error.code === 'ERR_STREAM_PREMATURE_CLOSE') {
@@ -391,9 +391,9 @@ async function getServer(options: RunOptions = {}) {
             }
           } catch (readError: any) {
             if (readError.name === 'AbortError' || readError.code === 'ERR_STREAM_PREMATURE_CLOSE') {
-              console.error('Background read stream closed prematurely');
+              serverInstance.app.log.error('Background read stream closed prematurely');
             } else {
-              console.error('Error in background stream reading:', readError);
+              serverInstance.app.log.error('Error in background stream reading:', readError);
             }
           } finally {
             reader.releaseLock();

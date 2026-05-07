@@ -73,7 +73,7 @@ export class EnhanceToolTransformer implements Transformer {
             try {
               finalArgs = parseToolArguments(currentToolCall.arguments || "", this.logger);
             } catch (e: any) {
-              console.error(
+              this.logger?.error(
                 `${e.message} ${
                   e.stack
                 }  Tool call argument parsing failed: ${JSON.stringify(
@@ -234,7 +234,7 @@ export class EnhanceToolTransformer implements Transformer {
               try {
                 chunk = decoder.decode(value, { stream: true });
               } catch (decodeError) {
-                console.warn("Failed to decode chunk", decodeError);
+                this.logger?.warn("Failed to decode chunk", decodeError);
                 continue;
               }
 
@@ -247,7 +247,7 @@ export class EnhanceToolTransformer implements Transformer {
               // If the buffer is too large, process it to avoid memory leaks
               if (buffer.length > 1000000) {
                 // 1MB limit
-                console.warn(
+                this.logger?.warn(
                   "Buffer size exceeds limit, processing partial data"
                 );
                 const lines = buffer.split("\n");
@@ -269,7 +269,7 @@ export class EnhanceToolTransformer implements Transformer {
                           (isReasoningComplete = val),
                       });
                     } catch (error) {
-                      console.error("Error processing line:", line, error);
+                      this.logger?.error("Error processing line:", line, error);
                       // If parsing fails, pass the original line through
                       controller.enqueue(encoder.encode(line + "\n"));
                     }
@@ -298,20 +298,20 @@ export class EnhanceToolTransformer implements Transformer {
                     setReasoningComplete: (val) => (isReasoningComplete = val),
                   });
                 } catch (error) {
-                  console.error("Error processing line:", line, error);
+                  this.logger?.error("Error processing line:", line, error);
                   // If parsing fails, pass the original line through
                   controller.enqueue(encoder.encode(line + "\n"));
                 }
               }
             }
           } catch (error) {
-            console.error("Stream error:", error);
+            this.logger?.error("Stream error:", error);
             controller.error(error);
           } finally {
             try {
               reader.releaseLock();
             } catch (e) {
-              console.error("Error releasing reader lock:", e);
+              this.logger?.error("Error releasing reader lock:", e);
             }
             controller.close();
           }

@@ -79,7 +79,10 @@ class Server {
       ...fastifyOptions,
       logger: fastifyOptions.logger ?? true,
     });
-    this.configService = new ConfigService(options);
+    this.configService = new ConfigService({
+      ...options,
+      logger: this.app.log,
+    });
     this.transformerService = new TransformerService(
       this.configService,
       this.app.log

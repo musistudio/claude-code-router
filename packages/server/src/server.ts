@@ -29,6 +29,52 @@ export const createServer = async (config: any): Promise<any> => {
   const server = new Server(config);
   const app = server.app;
 
+  // Intercept all fetch calls to log provider interactions
+  const originalFetch = global.fetch;
+  global.fetch = async (...args) => {
+    const url = args[0] instanceof Request ? args[0].url : String(args[0]);
+    const options = args[1] || {};
+
+    // Filter out localhost/internal requests to reduce noise
+    if (url.includes('localhost') || url.includes('127.0.0.1')) {
+      return originalFetch(...args);
+    }
+
+    app.log.debug({
+      url,
+      method: options.method || 'GET',
+      headers: options.headers,
+    }, 'Upstream Provider Request');
+
+    try {
+      const response = await originalFetch(...args);
+      const clonedResponse = response.clone();
+
+      app.log.debug({
+        url,
+        status: response.status,
+        headers: Object.fromEntries(clonedResponse.headers.entries()),
+      }, 'Upstream Provider Response');
+
+      if (response.status >= 400) {
+        const errorBody = await clonedResponse.text();
+        app.log.error({
+          url,
+          status: response.status,
+          body: errorBody,
+        }, 'Upstream Provider Error Body');
+      }
+
+      return response;
+    } catch (error) {
+      app.log.error({
+        url,
+        error: error instanceof Error ? error.message : String(error),
+      }, 'Upstream Provider Fetch Exception');
+      throw error;
+    }
+  };
+
   app.register(fastifyMultipart, {
     limits: {
       fileSize: 50 * 1024 * 1024, // 50MB
@@ -106,7 +152,7 @@ export const createServer = async (config: any): Promise<any> => {
     // Backup existing config file if it exists
     const backupPath = await backupConfigFile();
     if (backupPath) {
-      console.log(`Backed up existing configuration file to ${backupPath}`);
+      app.log.info(`Backed up existing configuration file to ${backupPath}`);
     }
 
     await writeConfigFile(newConfig);
@@ -154,7 +200,7 @@ export const createServer = async (config: any): Promise<any> => {
 
       return logFiles;
     } catch (error) {
-      console.error("Failed to get log files:", error);
+      app.log.error({ err: error }, "Failed to get log files");
       reply.status(500).send({ error: "Failed to get log files" });
     }
   });
@@ -182,7 +228,7 @@ export const createServer = async (config: any): Promise<any> => {
 
       return logLines;
     } catch (error) {
-      console.error("Failed to get logs:", error);
+      app.log.error({ err: error }, "Failed to get logs");
       reply.status(500).send({ error: "Failed to get logs" });
     }
   });
@@ -207,7 +253,7 @@ export const createServer = async (config: any): Promise<any> => {
 
       return { success: true, message: "Logs cleared successfully" };
     } catch (error) {
-      console.error("Failed to clear logs:", error);
+      app.log.error({ err: error }, "Failed to clear logs");
       reply.status(500).send({ error: "Failed to clear logs" });
     }
   });
@@ -253,13 +299,13 @@ export const createServer = async (config: any): Promise<any> => {
             installed: true,
           });
         } catch (error) {
-          console.error(`Failed to read preset ${dirName}:`, error);
+          app.log.error({ err: error }, `Failed to read preset ${dirName}`);
         }
       }
 
       return { presets };
     } catch (error) {
-      console.error("Failed to get presets:", error);
+      app.log.error({ err: error }, "Failed to get presets");
       reply.status(500).send({ error: "Failed to get presets" });
     }
   });
@@ -285,7 +331,7 @@ export const createServer = async (config: any): Promise<any> => {
         userValues: manifest.userValues || {},
       };
     } catch (error: any) {
-      console.error("Failed to get preset:", error);
+      app.log.error({ err: error }, "Failed to get preset");
       reply.status(500).send({ error: error.message || "Failed to get preset" });
     }
   });
@@ -322,7 +368,7 @@ export const createServer = async (config: any): Promise<any> => {
 
       return { success: true, message: "Preset applied successfully" };
     } catch (error: any) {
-      console.error("Failed to apply preset:", error);
+      app.log.error({ err: error }, "Failed to apply preset");
       reply.status(500).send({ error: error.message || "Failed to apply preset" });
     }
   });
@@ -343,7 +389,7 @@ export const createServer = async (config: any): Promise<any> => {
 
       return { success: true, message: "Preset deleted successfully" };
     } catch (error: any) {
-      console.error("Failed to delete preset:", error);
+      app.log.error({ err: error }, "Failed to delete preset");
       reply.status(500).send({ error: error.message || "Failed to delete preset" });
     }
   });
@@ -355,7 +401,7 @@ export const createServer = async (config: any): Promise<any> => {
       const marketPresets = await getMarketPresets();
       return { presets: marketPresets };
     } catch (error: any) {
-      console.error("Failed to get market presets:", error);
+      app.log.error({ err: error }, "Failed to get market presets");
       reply.status(500).send({ error: error.message || "Failed to get market presets" });
     }
   });
@@ -457,7 +503,7 @@ export const createServer = async (config: any): Promise<any> => {
         }
       };
     } catch (error: any) {
-      console.error("Failed to install preset from GitHub:", error);
+      app.log.error({ err: error }, "Failed to install preset from GitHub");
       reply.status(500).send({ error: error.message || "Failed to install preset from GitHub" });
     }
   });

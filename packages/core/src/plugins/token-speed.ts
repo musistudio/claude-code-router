@@ -97,7 +97,7 @@ export const tokenSpeedPlugin: CCRPlugin = {
           });
         } else if (reporter === 'webhook') {
           // Webhook requires explicit config, skip auto-registration
-          console.warn(`[TokenSpeedPlugin] Webhook reporter requires explicit configuration in outputHandlers`);
+          fastify.log.warn(`[TokenSpeedPlugin] Webhook reporter requires explicit configuration in outputHandlers`);
         }
       }
 
@@ -227,7 +227,7 @@ export const tokenSpeedPlugin: CCRPlugin = {
               }
             }
 
-            await outputStats(stats, reporters, opts.outputOptions, isFinal).catch(err => {
+            await outputStats(stats, reporters, opts.outputOptions, isFinal, fastify.log).catch(err => {
               fastify.log?.warn(`Failed to output streaming stats: ${err.message}`);
             });
           };
@@ -326,8 +326,7 @@ export const tokenSpeedPlugin: CCRPlugin = {
 
         // Start background processing without blocking
         processStats().catch((error) => {
-          console.log(error);
-          fastify.log?.warn(`Background stats processing failed: ${error.message}`);
+          fastify.log.error(error, `Background stats processing failed`);
         });
 
         // Return original stream to client
@@ -389,7 +388,7 @@ export const tokenSpeedPlugin: CCRPlugin = {
           tokenTimestamps: []
         };
 
-        await outputStats(stats, reporters, opts.outputOptions, true);
+        await outputStats(stats, reporters, opts.outputOptions, true, fastify.log);
       }
 
       // Return payload as-is
@@ -415,7 +414,8 @@ async function outputStats(
   stats: TokenStats,
   reporters: string[],
   options?: OutputOptions,
-  isFinal = false
+  isFinal = false,
+  logger?: any
 ) {
   const prefix = isFinal ? '[Token Speed Final]' : '[Token Speed]';
 
@@ -443,7 +443,7 @@ async function outputStats(
     try {
       await outputManager.outputToType(reporter, logData, outputOptions);
     } catch (error) {
-      console.error(`[TokenSpeedPlugin] Failed to output to ${reporter}:`, error);
+      (logger?.error ?? console.error)(`[TokenSpeedPlugin] Failed to output to ${reporter}:`, error);
     }
   }
 }

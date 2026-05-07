@@ -393,7 +393,6 @@ async function sendRequestToProvider(
     fastify.log.error(
       `[provider_response_error] Error from provider(${provider.name},${requestBody.model}: ${response.status}): ${errorText}`,
     );
-    console.error(`[provider_error] ${provider.name} (${requestBody.model}) - Status: ${response.status}, Message: ${errorText}`);
     throw createApiError(
       `Error from provider(${provider.name},${requestBody.model}: ${response.status}): ${errorText}`,
       response.status,

@@ -10,6 +10,11 @@ import { TempFileOutputHandler } from './temp-file-handler';
 class OutputManager {
   private handlers: Map<string, OutputHandler> = new Map();
   private defaultOptions: OutputOptions = {};
+  private logger: any = null;
+
+  setLogger(logger: any): void {
+    this.logger = logger;
+  }
 
   /**
    * Register output handler
@@ -35,7 +40,7 @@ class OutputManager {
         const name = config.type + '_' + Date.now();
         this.registerHandler(name, handler);
       } catch (error) {
-        console.error(`[OutputManager] Failed to register ${config.type} handler:`, error);
+        (this.logger?.error ?? console.error)(`[OutputManager] Failed to register ${config.type} handler:`, error);
       }
     }
   }
@@ -45,15 +50,20 @@ class OutputManager {
    * @param config Output handler configuration
    */
   private createHandler(config: OutputHandlerConfig): OutputHandler {
+    let handler: OutputHandler;
+
     switch (config.type) {
       case 'console':
-        return new ConsoleOutputHandler(config.config as any);
+        handler = new ConsoleOutputHandler(config.config as any);
+        break;
 
       case 'webhook':
-        return new WebhookOutputHandler(config.config as any);
+        handler = new WebhookOutputHandler(config.config as any);
+        break;
 
       case 'temp-file':
-        return new TempFileOutputHandler(config.config as any);
+        handler = new TempFileOutputHandler(config.config as any);
+        break;
 
       // Reserved for other output handler types
       // case 'websocket':
@@ -62,6 +72,11 @@ class OutputManager {
       default:
         throw new Error(`Unknown output handler type: ${config.type}`);
     }
+
+    if (this.logger && typeof (handler as any).setLogger === 'function') {
+      (handler as any).setLogger(this.logger);
+    }
+    return handler;
   }
 
   /**
@@ -133,7 +148,7 @@ class OutputManager {
             results.failed.push(name);
           }
         } catch (error) {
-          console.error(`[OutputManager] Handler ${name} failed:`, error);
+          (this.logger?.error ?? console.error)(`[OutputManager] Handler ${name} failed:`, error);
           results.failed.push(name);
         }
       }
@@ -161,7 +176,7 @@ class OutputManager {
     const promises = handlerNames.map(async name => {
       const handler = this.handlers.get(name);
       if (!handler) {
-        console.warn(`[OutputManager] Handler ${name} not found`);
+        (this.logger?.warn ?? console.warn)(`[OutputManager] Handler ${name} not found`);
         results.failed.push(name);
         return;
       }
@@ -174,7 +189,7 @@ class OutputManager {
           results.failed.push(name);
         }
       } catch (error) {
-        console.error(`[OutputManager] Handler ${name} failed:`, error);
+        (this.logger?.error ?? console.error)(`[OutputManager] Handler ${name} failed:`, error);
         results.failed.push(name);
       }
     });

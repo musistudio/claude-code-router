@@ -10,6 +10,7 @@ export interface ConfigOptions {
   useJsonFile?: boolean;
   useEnvironmentVariables?: boolean;
   initialConfig?: AppConfig;
+  logger?: any;
 }
 
 export interface AppConfig {
@@ -19,6 +20,7 @@ export interface AppConfig {
 export class ConfigService {
   private config: AppConfig = {};
   private options: ConfigOptions;
+  private logger: any;
 
   constructor(
     options: ConfigOptions = {
@@ -33,6 +35,7 @@ export class ConfigService {
       useEnvironmentVariables: options.useEnvironmentVariables !== false,
       ...options,
     };
+    this.logger = options.logger;
 
     this.loadConfig();
   }
@@ -74,12 +77,12 @@ export class ConfigService {
         const jsonContent = readFileSync(jsonPath, "utf-8");
         const jsonConfig = JSON5.parse(jsonContent);
         this.config = { ...this.config, ...jsonConfig };
-        console.log(`Loaded JSON config from: ${jsonPath}`);
+        (this.logger?.info ?? console.log)(`Loaded JSON config from: ${jsonPath}`);
       } catch (error) {
-        console.warn(`Failed to load JSON config from ${jsonPath}:`, error);
+        (this.logger?.warn ?? console.warn)(`Failed to load JSON config from ${jsonPath}:`, error);
       }
     } else {
-      console.warn(`JSON config file not found: ${jsonPath}`);
+      (this.logger?.warn ?? console.warn)(`JSON config file not found: ${jsonPath}`);
     }
   }
 
@@ -98,7 +101,7 @@ export class ConfigService {
           };
         }
       } catch (error) {
-        console.warn(`Failed to load .env config from ${envPath}:`, error);
+        (this.logger?.warn ?? console.warn)(`Failed to load .env config from ${envPath}:`, error);
       }
     }
   }

@@ -305,7 +305,8 @@ const sessionProjectCache = new LRUCache<string, string>({
 });
 
 export const searchProjectBySession = async (
-  sessionId: string
+  sessionId: string,
+  logger?: any
 ): Promise<string | null> => {
   // Check cache first
   if (sessionProjectCache.has(sessionId)) {
@@ -358,7 +359,7 @@ export const searchProjectBySession = async (
     sessionProjectCache.set(sessionId, '');
     return null; // No matching project found
   } catch (error) {
-    console.error("Error searching for project by session:", error);
+    (logger?.error ?? console.error)("Error searching for project by session:", error);
     // Cache null result on error to avoid repeated errors
     sessionProjectCache.set(sessionId, '');
     return null;

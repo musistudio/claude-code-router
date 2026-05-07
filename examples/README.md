@@ -1,114 +1,114 @@
-# Preset 示例说明
+# Preset Examples
 
-本目录包含 CCR 预设配置的示例文件。
+This directory contains example files for CCR preset configurations.
 
-## 示例文件
+## Example Files
 
-### 1. `simple-preset-example.json` - 简单示例
-适合初学者，展示了基本的动态配置功能：
-- 密码输入（API Key）
-- 单选下拉框（选择模型）
-- 确认框（是否使用代理）
-- 条件显示（只有选择使用代理时才显示代理地址输入）
+### 1. `simple-preset-example.json` - Simple Example
+Suitable for beginners, demonstrating basic dynamic configuration features:
+- Password input (API Key)
+- Single-select dropdown (model selection)
+- Confirmation checkbox (whether to use a proxy)
+- Conditional display (proxy address input shown only when proxy is enabled)
 
-**使用场景**：快速配置单个 Provider
+**Use case**: Quick configuration of a single Provider
 
-### 2. `preset-manifest-example.json` - 完整示例
-展示了所有高级功能：
-- 多种输入类型（password, select, confirm, number, multiselect）
-- 动态选项（从 Providers 配置中提取）
-- 复杂条件逻辑（when 条件）
-- 模板变量替换（{{variable}}）
-- 配置映射（configMappings）
+### 2. `preset-manifest-example.json` - Complete Example
+Demonstrates all advanced features:
+- Multiple input types (password, select, confirm, number, multiselect)
+- Dynamic options (extracted from Providers configuration)
+- Complex conditional logic (when conditions)
+- Template variable substitution ({{variable}})
+- Configuration mappings (configMappings)
 
-**使用场景**：生产环境的完整配置
+**Use case**: Production-ready complete configuration
 
-### 3. `dynamic-preset-example.json` - 多Provider示例
-展示了如何在多个 Provider 之间切换：
-- Provider 选择器
-- 根据选择的 Provider 动态显示对应的模型选项
-- 代理配置
-- 高级功能开关
+### 3. `dynamic-preset-example.json` - Multi-Provider Example
+Demonstrates switching between multiple Providers:
+- Provider selector
+- Dynamic model options based on selected Provider
+- Proxy configuration
+- Advanced feature toggles
 
-## 如何使用这些示例
+## How to Use These Examples
 
-### 方法1：直接复制到预设目录
+### Method 1: Copy directly to presets directory
 
 ```bash
-# 创建预设目录
+# Create preset directory
 mkdir -p ~/.claude-code-router/presets/my-preset
 
-# 复制示例文件
+# Copy example file
 cp simple-preset-example.json ~/.claude-code-router/presets/my-preset/manifest.json
 
-# 应用预设
+# Apply preset
 ccr my-preset
 ```
 
-### 方法2：修改后使用
+### Method 2: Modify and use
 
-1. 复制示例文件到本地
-2. 根据需要修改配置
-3. 使用 CLI 安装：
+1. Copy example file locally
+2. Modify configuration as needed
+3. Install using CLI:
 
 ```bash
 ccr preset install ./simple-preset-example.json --name my-preset
 ```
 
-## Schema 字段类型说明
+## Schema Field Types
 
-| 类型 | 说明 | 适用场景 |
-|------|------|----------|
-| `password` | 密码输入 | API Key、密钥等敏感信息 |
-| `input` | 单行文本 | Base URL、端点地址 |
-| `number` | 数字输入 | 超时时间、Token数量 |
-| `select` | 单选 | Provider选择、模型选择 |
-| `multiselect` | 多选 | 功能开关、标签选择 |
-| `confirm` | 确认框 | 是否启用某功能 |
-| `editor` | 多行文本 | 自定义配置、脚本 |
+| Type | Description | Use Case |
+|------|-------------|----------|
+| `password` | Password input | API keys, secrets, and other sensitive info |
+| `input` | Single-line text | Base URL, endpoint addresses |
+| `number` | Number input | Timeout, token count |
+| `select` | Single select | Provider selection, model selection |
+| `multiselect` | Multi-select | Feature toggles, tag selection |
+| `confirm` | Confirmation checkbox | Enable/disable a feature |
+| `editor` | Multi-line text | Custom configuration, scripts |
 
-## 条件运算符
+## Condition Operators
 
-| 运算符 | 说明 | 示例 |
-|--------|------|------|
-| `eq` | 等于 | 当 provider == "openai" 时显示 |
-| `ne` | 不等于 | 当 mode != "simple" 时显示 |
-| `exists` | 字段存在 | 当 apiKey 有值时显示 |
-| `gt/lt` | 大于/小于 | 当 timeout > 30 时显示 |
+| Operator | Description | Example |
+|----------|-------------|---------|
+| `eq` | Equals | Show when provider == "openai" |
+| `ne` | Not equals | Show when mode != "simple" |
+| `exists` | Field exists | Show when apiKey has a value |
+| `gt/lt` | Greater than / Less than | Show when timeout > 30 |
 
-## 动态选项类型
+## Dynamic Option Types
 
-### static - 静态选项
+### static - Static Options
 ```json
 "options": {
   "type": "static",
   "options": [
-    {"label": "选项1", "value": "value1"},
-    {"label": "选项2", "value": "value2"}
+    {"label": "Option 1", "value": "value1"},
+    {"label": "Option 2", "value": "value2"}
   ]
 }
 ```
 
-### providers - 从 Providers 配置提取
+### providers - Extract from Providers Configuration
 ```json
 "options": {
   "type": "providers"
 }
 ```
-自动从 `Providers` 数组中提取 name 作为选项。
+Automatically extracts `name` from the `Providers` array as options.
 
-### models - 从指定 Provider 的 models 提取
+### models - Extract from a Specific Provider's Models
 ```json
 "options": {
   "type": "models",
   "providerField": "{{selectedProvider}}"
 }
 ```
-根据用户选择的 Provider，动态显示该 Provider 的 models。
+Dynamically displays the models of the Provider selected by the user.
 
-## 模板变量
+## Template Variables
 
-使用 `{{变量名}}` 语法在 template 中引用用户输入：
+Use the `{{variableName}}` syntax in templates to reference user input:
 
 ```json
 "template": {
@@ -121,9 +121,9 @@ ccr preset install ./simple-preset-example.json --name my-preset
 }
 ```
 
-## 配置映射
+## Configuration Mappings
 
-对于复杂的配置需求，使用 `configMappings` 精确控制值的位置：
+For complex configuration requirements, use `configMappings` to precisely control where values are placed:
 
 ```json
 "configMappings": [
@@ -143,16 +143,16 @@ ccr preset install ./simple-preset-example.json --name my-preset
 ]
 ```
 
-## 最佳实践
+## Best Practices
 
-1. **提供默认值**：为非必填项设置合理的 `defaultValue`
-2. **清晰的标签**：使用用户友好的 `label` 和 `prompt`
-3. **条件显示**：使用 `when` 避免显示无关选项
-4. **输入验证**：使用 `validator` 或 `min/max` 确保输入有效
-5. **分组配置**：相关字段使用相同的前缀（如 `proxy*`）
-6. **版本管理**：在 metadata 中记录版本和变更
+1. **Provide defaults**: Set reasonable `defaultValue` for optional fields
+2. **Clear labels**: Use user-friendly `label` and `prompt`
+3. **Conditional display**: Use `when` to avoid showing irrelevant options
+4. **Input validation**: Use `validator` or `min/max` to ensure valid input
+5. **Group configuration**: Use consistent prefixes for related fields (e.g., `proxy*`)
+6. **Version management**: Record version and changes in metadata
 
-## 更多帮助
+## More Help
 
-- 查看完整文档：[Presets 配置指南](../docs/docs/server/advanced/presets.md)
-- 查看类型定义：[types.ts](../packages/shared/src/preset/types.ts)
+- Full documentation: [Presets Configuration Guide](../docs/docs/server/advanced/presets.md)
+- Type definitions: [types.ts](../packages/shared/src/preset/types.ts)

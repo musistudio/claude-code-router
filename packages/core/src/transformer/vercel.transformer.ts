@@ -258,7 +258,7 @@ export class VercelTransformer implements Transformer {
               try {
                 chunk = decoder.decode(value, { stream: true });
               } catch (decodeError) {
-                console.warn("Failed to decode chunk", decodeError);
+                this.logger?.warn("Failed to decode chunk", decodeError);
                 continue;
               }
 
@@ -271,7 +271,7 @@ export class VercelTransformer implements Transformer {
               // Process buffer if it gets too large to avoid memory leaks
               if (buffer.length > 1000000) {
                 // 1MB limit
-                console.warn(
+                this.logger?.warn(
                   "Buffer size exceeds limit, processing partial data"
                 );
                 const lines = buffer.split("\n");
@@ -293,7 +293,7 @@ export class VercelTransformer implements Transformer {
                           (isReasoningComplete = val),
                       });
                     } catch (error) {
-                      console.error("Error processing line:", line, error);
+                      this.logger?.error("Error processing line:", line, error);
                       // If parsing fails, pass through the original line
                       controller.enqueue(encoder.encode(line + "\n"));
                     }
@@ -322,20 +322,20 @@ export class VercelTransformer implements Transformer {
                     setReasoningComplete: (val) => (isReasoningComplete = val),
                   });
                 } catch (error) {
-                  console.error("Error processing line:", line, error);
+                  this.logger?.error("Error processing line:", line, error);
                   // If parsing fails, pass through the original line
                   controller.enqueue(encoder.encode(line + "\n"));
                 }
               }
             }
           } catch (error) {
-            console.error("Stream error:", error);
+            this.logger?.error("Stream error:", error);
             controller.error(error);
           } finally {
             try {
               reader.releaseLock();
             } catch (e) {
-              console.error("Error releasing reader lock:", e);
+              this.logger?.error("Error releasing reader lock:", e);
             }
             controller.close();
           }

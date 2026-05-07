@@ -6,7 +6,7 @@ import {
   transformResponseOut,
 } from "../utils/vertex-claude.util";
 
-async function getAccessToken(): Promise<string> {
+async function getAccessToken(logger?: any): Promise<string> {
   try {
     const { GoogleAuth } = await import('google-auth-library');
 
@@ -18,7 +18,7 @@ async function getAccessToken(): Promise<string> {
     const accessToken = await client.getAccessToken();
     return accessToken.token || '';
   } catch (error) {
-    console.error('Error getting access token:', error);
+    (logger?.error ?? console.error)('Error getting access token:', error);
     throw new Error('Failed to get access token for Vertex AI. Please ensure you have set up authentication using one of these methods:\n' +
       '1. Set GOOGLE_APPLICATION_CREDENTIALS to point to service account key file\n' +
       '2. Run "gcloud auth application-default login"\n' +
@@ -47,7 +47,7 @@ export class VertexClaudeTransformer implements Transformer {
           projectId = credentials.project_id;
         }
       } catch (error) {
-        console.error('Error extracting project_id from GOOGLE_APPLICATION_CREDENTIALS:', error);
+        this.logger?.error('Error extracting project_id from GOOGLE_APPLICATION_CREDENTIALS:', error);
       }
     }
 
@@ -55,7 +55,7 @@ export class VertexClaudeTransformer implements Transformer {
       throw new Error('Project ID is required for Vertex AI. Set GOOGLE_CLOUD_PROJECT environment variable or ensure project_id is in GOOGLE_APPLICATION_CREDENTIALS file.');
     }
 
-    const accessToken = await getAccessToken();
+    const accessToken = await getAccessToken(this.logger);
     return {
       body: buildRequestBody(request),
       config: {
