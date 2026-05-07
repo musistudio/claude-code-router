@@ -208,11 +208,40 @@ Here is a comprehensive example:
 
 ### 3. Running Claude Code with the Router
 
+#### Via `ccr code`
+
 Start Claude Code using the router:
 
 ```shell
 ccr code
 ```
+
+#### Via Claude Code Settings (Alternative)
+
+You can also configure Claude Code to always use the router by editing its `settings.json` file (typically at `~/.claude/settings.json`). Models are specified using the `<provider>,<model>` syntax:
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:3456",
+    "ANTHROPIC_AUTH_TOKEN": "dummy",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gemini,gemma-4-31b-it",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "opencode,minimax-m2.7",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "opencode,glm-5.1"
+  }
+}
+```
+
+| Variable | Purpose |
+|---|---|
+| `ANTHROPIC_BASE_URL` | Points Claude Code to the router's proxy address |
+| `ANTHROPIC_AUTH_TOKEN` | Must match the `APIKEY` value set in the router's `config.json` |
+| `ANTHROPIC_MODEL` | Default model (overrides per-tier defaults below) |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Fast / cost-effective model (Haiku equivalent) |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | Balanced performance model (Sonnet equivalent) |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | Maximum capability model (Opus equivalent) |
+
+This approach lets you run `claude` directly without needing `ccr code`.
 
 > **Note**: After modifying the configuration file, you need to restart the service for the changes to take effect:
 >
