@@ -65,14 +65,17 @@ const confirm = async (query: string): Promise<boolean> => {
   return answer.toLowerCase() !== "n";
 };
 
-export const readConfigFile = async () => {
+export const readConfigFile = async (interpolate = true) => {
   try {
     const config = await fs.readFile(CONFIG_FILE, "utf-8");
     try {
       // Try to parse with JSON5 first (which also supports standard JSON)
       const parsedConfig = JSON5.parse(config);
-      // Interpolate environment variables in the parsed config
-      return interpolateEnvVars(parsedConfig);
+      // Interpolate environment variables in the parsed config if requested
+      if (interpolate) {
+        return interpolateEnvVars(parsedConfig);
+      }
+      return parsedConfig;
     } catch (parseError) {
       console.error(`Failed to parse config file at ${CONFIG_FILE}`);
       console.error("Error details:", (parseError as Error).message);

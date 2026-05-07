@@ -86,7 +86,7 @@ export const createServer = async (config: any): Promise<any> => {
   await registerCodexAuthRoutes(app);
 
   app.post("/v1/messages/count_tokens", async (req: any, reply: any) => {
-    const {messages, tools, system, model} = req.body;
+    const { messages, tools, system, model } = req.body;
     const tokenizerService = (app as any)._server!.tokenizerService as TokenizerService;
 
     // If model is specified in "providerName,modelName" format, use the configured tokenizer
@@ -134,7 +134,7 @@ export const createServer = async (config: any): Promise<any> => {
 
   // Add endpoint to read config.json with access control
   app.get("/api/config", async (req: any, reply: any) => {
-    return await readConfigFile();
+    return await readConfigFile(false);
   });
 
   app.get("/api/transformers", async (req: any, reply: any) => {

@@ -26,6 +26,7 @@ This fork is based on [claude-code-router](https://github.com/musistudio/claude-
 - **Gemini Stability & Tool Use Fixes**: Corrected `thoughtSignature` placement in Gemini request bodies (must be a standalone `thought: true` part, not attached to text/function-call parts); filtered synthetic `ccr_` placeholder signatures from outgoing Gemini requests to prevent Gemini 500 errors; fixed `tool_result` content-array serialization in the Anthropic transformer so models receive plain text instead of JSON-wrapped arrays (resolves "Error editing file" in Claude Code); fixed Fastify `onSend` hook to prevent `invalid type 'object'` unhandled rejections on error responses.
 - **Codex (ChatGPT) Integration**: Added Codex transformer for the ChatGPT backend API (Responses API), supporting OAuth-based authentication (`ccr codex-auth`), SSE streaming, reasoning/thinking content, tool calls with web search, and image handling.
 - **DeepSeek Reasoning Replay**: Implemented mandatory reasoning replay for DeepSeek models (e.g., via OpenCode/ZenGo). DeepSeek requires previous assistant reasoning content to be included in subsequent requests — the `reasoning` transformer automatically replays reasoning output from prior turns.
+- **Model Discovery**: Enabled non-interactive model discovery for arbitrary API providers. Using `ccr model get <provider>`, the tool automatically fetches remote models, parses custom JSON structures using configurable paths, and appends missing models to the local configuration while preserving existing settings.
 
 ## 🚀 Getting Started
 
@@ -205,6 +206,31 @@ Here is a comprehensive example:
   }
 }
 ```
+
+#### Adding a New Provider
+
+If you want to add a new provider and automatically discover its models, follow these steps:
+
+1. **Add Minimal Config**: Add a new entry to the `Providers` array in `config.json` with just the basic details:
+   ```json
+   {
+     "name": "my-new-provider",
+     "api_base_url": "https://api.example.com/v1/chat/completions",
+     "api_key": "$MY_API_KEY",
+     "models": []
+   }
+   ```
+2. **Perform Model Discovery**: Run the discovery command to fetch available models:
+   ```shell
+   ccr model get my-new-provider
+   ```
+3. **Sync Models**: The command will list remote models and prompt you to append missing ones to your configuration.
+4. **Restart**: Restart the service to pick up the updated configuration:
+   ```shell
+   ccr restart
+   ```
+
+> **Tip**: For a more comprehensive description of model discovery options, custom JSON response formats, and interactive model management, see the [CLI Model Management](#5-cli-model-management) section.
 
 ### 3. Running Claude Code with the Router
 
