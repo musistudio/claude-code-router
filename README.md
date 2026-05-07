@@ -297,11 +297,21 @@ ccr codex-auth
 
 This command:
 1. Opens your browser to the OpenAI OAuth authorization page
-2. After you sign in, the OAuth callback is handled by the running CCR server (default port `3456`)
+2. After you sign in, the OAuth callback is handled by the running CCR server
 3. Tokens are stored in `~/.claude-code-router/codex_auth.json`
 4. The Codex transformer automatically refreshes tokens when they expire
 
 > **Note**: The server must be running for `ccr codex-auth` to work, as it hosts the OAuth callback endpoint.
+
+**Running with Docker**:
+
+The OAuth callback uses port `1455`, which is mapped to the CCR server port in `docker-compose.yml` (`"1455:3456"`). When running in Docker:
+
+```shell
+docker exec -it claude-code-router ccr codex-auth
+```
+
+The CLI prints a URL to open in your host browser. After signing in, the browser redirects to `http://localhost:1455/auth/callback`, which Docker forwards to the container. Tokens persist across container restarts via the volume-mounted `./ccr-config` directory.
 
 ### 6. Presets Management
 
