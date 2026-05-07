@@ -13,7 +13,7 @@ import {
   readPresetFile,
 } from "@CCR/shared";
 import { getServer } from "@CCR/server";
-import { writeFileSync, existsSync, readFileSync, mkdirSync } from "fs";
+import { writeFileSync, existsSync, readFileSync } from "fs";
 import { checkForUpdates, performUpdate } from "./update";
 import { version } from "../../package.json";
 import { spawn } from "child_process";
@@ -76,14 +76,11 @@ const confirm = async (query: string): Promise<boolean> => {
   return answer.toLowerCase() !== "n";
 };
 
-export const readConfigFile = async () => {
+export const readConfigFileRaw = async () => {
   try {
     const config = await fs.readFile(CONFIG_FILE, "utf-8");
     try {
-      // Try to parse with JSON5 first (which also supports standard JSON)
-      const parsedConfig = JSON5.parse(config);
-      // Interpolate environment variables in the parsed config
-      return interpolateEnvVars(parsedConfig);
+      return JSON5.parse(config);
     } catch (parseError) {
       console.error(`Failed to parse config file at ${CONFIG_FILE}`);
       console.error("Error details:", (parseError as Error).message);
@@ -92,12 +89,9 @@ export const readConfigFile = async () => {
     }
   } catch (readError: any) {
     if (readError.code === "ENOENT") {
-      // Config file doesn't exist, prompt user for initial setup
       try {
-        // Initialize directories
         await initDir();
 
-        // Backup existing config file if it exists
         const backupPath = await backupConfigFile();
         if (backupPath) {
           console.log(
@@ -109,7 +103,6 @@ export const readConfigFile = async () => {
           Providers: [],
           Router: {},
         }
-        // Create a minimal default config file
         await writeConfigFile(config);
         console.log(
             "Created minimal default configuration file at ~/.claude-code-router/config.json"
@@ -131,6 +124,11 @@ export const readConfigFile = async () => {
       process.exit(1);
     }
   }
+};
+
+export const readConfigFile = async () => {
+  const parsedConfig = await readConfigFileRaw();
+  return interpolateEnvVars(parsedConfig);
 };
 
 export const backupConfigFile = async () => {

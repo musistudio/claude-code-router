@@ -94,12 +94,21 @@ export interface RequiredInput {
   dependsOn?: string[];          // Explicitly declare dependent fields (for optimizing update order)
 }
 
+// Models response format configuration
+export interface ModelsResponseFormat {
+  listPath?: string;    // Path to the models array in the JSON response (e.g., "data" or "models")
+  idPath?: string;      // Path to the model ID within each model object (e.g., "id" or "name")
+  stripPrefix?: string; // Optional prefix to strip from the model ID (e.g., "models/")
+}
+
 // Provider configuration
 export interface ProviderConfig {
   name: string;
   api_base_url: string;
   api_key: string;
   models: string[];
+  models_api_url?: string;
+  models_response_format?: ModelsResponseFormat;
   transformer?: any;
   [key: string]: any;
 }

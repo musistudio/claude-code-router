@@ -287,6 +287,50 @@ This command provides an interactive interface to:
 
 The CLI tool validates all inputs and provides helpful prompts to guide you through the configuration process, making it easy to manage complex setups without editing JSON files manually.
 
+For non-interactive model discovery, you can also test provider access and list remote models directly:
+
+```shell
+ccr model get openai
+ccr model get gemini
+```
+
+This command:
+- Calls the provider's model-list endpoint using the configured API key
+- Prints the remote models returned by the provider
+- Prompts to append only missing models to the configured `models` array
+
+Built-in endpoint support is included for `openai` and `gemini`. For other providers, you can configure `models_api_url` and a custom `models_response_format` to handle different JSON response structures.
+
+The `models_response_format` object supports:
+- `listPath`: JSON path to the array of models (e.g., `"data"`, `"models"`, or `""` for root array)
+- `idPath`: Field name within each model object to use as ID (e.g., `"id"`, `"name"`, `"slug"`)
+- `stripPrefix`: Optional prefix to remove from model IDs (e.g., `"models/"`)
+
+Example:
+
+```json
+{
+  "name": "together.ai",
+  "api_base_url": "https://api.together.ai/v1/chat/completions",
+  "models_api_url": "https://api.together.ai/v1/models",
+  "api_key": "$TOGETHERAI_API_KEY",
+  "models": [],
+  "models_response_format": {
+    "listPath": "",
+    "idPath": "id"
+  }
+}
+```
+
+You can also override these settings via CLI flags for testing:
+```shell
+ccr model get my-provider --list-path data --id-path id --strip-prefix "v1/"
+```
+
+If the provider returns additional models, `ccr model get <provider>` can append only the missing entries while keeping existing configured models unchanged.
+
+> **Note**: After syncing models into `config.json`, restart the service with `ccr restart` so the updated provider list is picked up by the running server.
+
 #### Codex Provider Authentication
 
 The Codex provider uses OAuth to authenticate with the ChatGPT backend. Before using Codex models, you must authenticate with your OpenAI account:

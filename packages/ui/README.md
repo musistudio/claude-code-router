@@ -1,69 +1,40 @@
-# React + TypeScript + Vite
+# Claude Code Router UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The web interface for managing Claude Code Router configuration.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Provider Management**: Add, edit, and remove LLM providers (OpenAI, Gemini, Mistral, etc.)
+- **Model Discovery**: Easily discover and sync remote models from providers
+- **Router Configuration**: Define routing rules based on model tags and performance
+- **Transformer Pipeline**: Configure message transformers for different models
+- **Real-time Logs**: View server logs directly in the browser
+- **JSON Editor**: Advanced JSON editor for direct configuration tweaks
 
-## Expanding the ESLint configuration
+## Model Discovery Configuration
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+When adding or editing a provider, you can configure model discovery settings. For non-standard providers, use the following advanced options in the configuration:
 
-```js
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- **models_api_url**: The endpoint URL for listing models.
+- **models_response_format**: Custom parsing logic for the JSON response:
+  - `listPath`: Path to the models array (e.g., `data`, `models`, or `""` for root).
+  - `idPath`: Field name for the model ID (e.g., `id`, `name`, `slug`).
+  - `stripPrefix`: Prefix to remove from discovered IDs (e.g., `models/`).
 
-      // Remove tseslint.configs.recommended and replace with this
-      ...tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      ...tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      ...tseslint.configs.stylisticTypeChecked,
+## Development
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+# Install dependencies
+pnpm install
+
+# Start development server
+pnpm dev
+
+# Build for production
+pnpm build
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Environment Variables
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- `VITE_API_BASE_URL`: Base URL for the CCR API (defaults to `/api` if served by the router).
+- `VITE_API_KEY`: Optional static API key for development.

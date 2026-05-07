@@ -8,6 +8,7 @@ import {
   getServiceInfo,
 } from "./utils/processCheck";
 import { runModelSelector } from "./utils/modelSelector";
+import { runModelGet } from "./utils/modelGet";
 import { activateCommand } from "./utils/activateCommand";
 import { readConfigFile } from "./utils";
 import { version } from "../package.json";
@@ -55,6 +56,8 @@ Commands:
   statusline    Integrated statusline
   code          Execute claude command
   model         Interactive model selection and configuration
+                Use ccr model get <provider> to test API access and list models
+                Options: --list-path <path>, --id-path <path>, --strip-prefix <text>
   preset        Manage presets (export, install, list, delete)
   install       Install preset from GitHub marketplace
   activate      Output environment variables for shell integration
@@ -71,6 +74,7 @@ Examples:
   ccr code "Write a Hello World"
   ccr my-preset "Write a Hello World"    # Use preset configuration
   ccr model
+  ccr model get openai
   ccr preset export my-config            # Export current config as preset
   ccr preset install /path/to/preset     # Install a preset from directory
   ccr preset list                        # List all presets
@@ -264,10 +268,40 @@ async function main() {
         }
       });
       break;
-    // ADD THIS CASE
-    case "model":
-      await runModelSelector();
-      break;
+    case "model": {
+      const modelSubcommand = process.argv[3];
+
+      if (!modelSubcommand) {
+        await runModelSelector();
+        break;
+      }
+
+      if (modelSubcommand === "get") {
+        const providerName = process.argv[4];
+        if (!providerName) {
+          console.error("Usage: ccr model get <provider> [--list-path <path>] [--id-path <path>] [--strip-prefix <text>]");
+          process.exit(1);
+        }
+
+        const options: any = {};
+        for (let i = 5; i < process.argv.length; i++) {
+          if (process.argv[i] === "--list-path" && process.argv[i + 1]) {
+            options.listPath = process.argv[++i];
+          } else if (process.argv[i] === "--id-path" && process.argv[i + 1]) {
+            options.idPath = process.argv[++i];
+          } else if (process.argv[i] === "--strip-prefix" && process.argv[i + 1]) {
+            options.stripPrefix = process.argv[++i];
+          }
+        }
+
+        await runModelGet(providerName, options);
+        break;
+      }
+
+      console.error(`Unknown model subcommand: ${modelSubcommand}`);
+      console.error("Usage: ccr model get <provider>");
+      process.exit(1);
+    }
     case "preset":
       await handlePresetCommand(process.argv.slice(3));
       break;
