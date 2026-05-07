@@ -18,6 +18,7 @@ import { OpenAITransformer } from "./openai.transformer";
 import { CustomParamsTransformer } from "./customparams.transformer";
 import { VercelTransformer } from "./vercel.transformer";
 import { OpenAIResponsesTransformer } from "./openai.responses.transformer";
+import { CodexTransformer } from "./codex.transformer";
 import { ForceReasoningTransformer } from "./forcereasoning.transformer";
 import { MistralTransformer } from "./mistral.transformer";
 
@@ -42,6 +43,7 @@ export default {
   CustomParamsTransformer,
   VercelTransformer,
   OpenAIResponsesTransformer,
+  CodexTransformer,
   ForceReasoningTransformer,
   MistralTransformer,
 };

@@ -37,6 +37,14 @@
 - **Port Consistency**: Cross-verify `docker-compose` port mappings with the application's `config.json` (e.g., port `3456`) to ensure connectivity.
 - **Persistence**: Use volume mounts for the entire configuration root (e.g., `/root/.claude-code-router`) to preserve both settings and logs across container restarts.
 
+## LLM Provider Integration (Codex / ChatGPT Backend)
+- **API Format**: Codex uses the Responses API (`POST /responses`) with an `input` array of message/function_call/function_call_output entries, not the standard `messages` array. System messages become a top-level `instructions` string — use Claude Code's system message directly, not model-specific defaults.
+- **OAuth Authentication**: Codex authenticates via OAuth PKCE, not static API keys. Tokens are stored in `~/.claude-code-router/codex_auth.json` and automatically refreshed by the transformer. The provider config still needs a placeholder `api_key` field.
+- **Streaming Is Mandatory**: Codex requires `stream: true` and `store: false`. The transformer must propagate `stream: true` to the original request body via `context.req.body.stream = true` so the downstream `formatResponse` sends an SSE stream rather than JSON.
+- **Cloudflare Strips Content-Type**: Codex API responses are proxied through Cloudflare, which strips the `Content-Type` header from SSE responses. The `transformResponseOut` method must treat missing/empty `Content-Type` as `text/event-stream` and default to SSE parsing before attempting JSON parsing.
+- **Tool Call Conversion**: Codex emits `response.output_item.added` (function_call) for tool use start and `response.function_call_arguments.delta` for argument chunks. These must be converted to OpenAI-format tool call chunks (`choice.delta.tool_calls`) which the AnthropicTransformer then converts to Anthropic-format `content_block_start`/`content_block_delta` events.
+- **Multiple Thinking Waves**: Codex can emit reasoning in multiple waves (thinking content → signature → thinking content → signature). When the AnthropicTransformer closes a thinking block on signature, `isThinkingStarted` must be reset to `false` so each subsequent wave opens a new `content_block_start`. Without this reset, the second wave gets `content_block_delta` with index `-1`, causing Claude Code's "Content block not found" error.
+
 ## Development & Tooling
 - **Dependency Scoping**: `pino` is provided by Fastify in the server package but is not a direct dependency of the `core` package. Direct imports of `pino` in `core` will cause build failures; use the passed-in `logger` instance or native `fs` for separate log files.
 - **Response Cloning**: When implementing background logging for responses, use `response.clone()` to avoid consuming the original stream, which would otherwise prevent the transformer from processing the output.

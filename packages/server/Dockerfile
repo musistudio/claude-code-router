@@ -16,12 +16,14 @@ COPY packages/shared/package.json ./packages/shared/
 COPY packages/core/package.json ./packages/core/
 COPY packages/server/package.json ./packages/server/
 COPY packages/ui/package.json ./packages/ui/
+COPY packages/cli/package.json ./packages/cli/
 
 # Copy all source code before installing dependencies to avoid symlink conflicts
 COPY packages/shared ./packages/shared
 COPY packages/core ./packages/core
 COPY packages/server ./packages/server
 COPY packages/ui ./packages/ui
+COPY packages/cli ./packages/cli
 
 # Install all dependencies
 RUN pnpm install --frozen-lockfile && \
@@ -39,6 +41,9 @@ RUN pnpm build && \
     rm -rf node_modules/.cache
 
 WORKDIR /app/packages/ui
+RUN pnpm build
+
+WORKDIR /app/packages/cli
 RUN pnpm build
 
 # ===========================
@@ -59,6 +64,16 @@ WORKDIR /app
 
 # Copy core package (workspace dependency)
 COPY --from=builder /app/packages/core ./packages/core
+
+# Copy CLI bundle
+COPY --from=builder /app/packages/cli/dist ./packages/cli/dist
+
+# Make CLI executable and create symlink for 'ccr' command
+RUN chmod +x /app/packages/cli/dist/cli.js && \
+    ln -sf /app/packages/cli/dist/cli.js /usr/local/bin/ccr
+
+# Add CLI dist to PATH (for direct access)
+ENV PATH="/app/packages/cli/dist:$PATH"
 
 # Copy production dependencies
 COPY --from=builder /app/packages/server/node_modules ./packages/server/node_modules

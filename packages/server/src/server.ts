@@ -24,6 +24,7 @@ import {
 } from "@CCR/shared";
 import fastifyMultipart from "@fastify/multipart";
 import AdmZip from "adm-zip";
+import { registerCodexAuthRoutes } from "./routes/codex-auth";
 
 export const createServer = async (config: any): Promise<any> => {
   const server = new Server(config);
@@ -80,6 +81,9 @@ export const createServer = async (config: any): Promise<any> => {
       fileSize: 50 * 1024 * 1024, // 50MB
     },
   });
+
+  // Register Codex OAuth callback routes
+  await registerCodexAuthRoutes(app);
 
   app.post("/v1/messages/count_tokens", async (req: any, reply: any) => {
     const {messages, tools, system, model} = req.body;

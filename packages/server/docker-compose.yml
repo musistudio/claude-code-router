@@ -8,6 +8,7 @@ services:
     container_name: claude-code-router
     ports:
       - "3456:3456"
+      - "1455:3456"
     volumes:
       - ./ccr-config:/root/.claude-code-router
     restart: always

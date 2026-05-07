@@ -18,6 +18,7 @@ import { join } from "path";
 import { parseStatusLineData, StatusLineInput } from "./utils/statusline";
 import {handlePresetCommand} from "./utils/preset";
 import { handleInstallCommand } from "./utils/installCommand";
+import { runCodexAuth } from "./utils/codex-cli-auth";
 
 
 const command = process.argv[2];
@@ -36,6 +37,7 @@ const KNOWN_COMMANDS = [
   "activate",
   "env",
   "ui",
+  "codex-auth",
   "-v",
   "version",
   "-h",
@@ -57,6 +59,7 @@ Commands:
   install       Install preset from GitHub marketplace
   activate      Output environment variables for shell integration
   ui            Open the web UI in browser
+  codex-auth    Authenticate with Codex API via OAuth
   -v, version   Show version information
   -h, help      Show help information
 
@@ -271,6 +274,9 @@ async function main() {
     case "install":
       const presetName = process.argv[3];
       await handleInstallCommand(presetName);
+      break;
+    case "codex-auth":
+      await runCodexAuth();
       break;
     case "activate":
     case "env":

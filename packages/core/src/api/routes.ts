@@ -366,10 +366,10 @@ async function sendRequestToProvider(
   // Handle request errors
   if (!response.ok) {
     const errorText = await response.text();
-    
+
     let headers: Record<string, string> | undefined = undefined;
     const retryAfter = response.headers.get("retry-after");
-    
+
     if (retryAfter) {
       headers = { 'Retry-After': retryAfter };
     } else if (response.status === 429) {
@@ -390,9 +390,20 @@ async function sendRequestToProvider(
       }
     }
 
-    fastify.log.error(
-      `[provider_response_error] Error from provider(${provider.name},${requestBody.model}: ${response.status}): ${errorText}`,
-    );
+    // Log parsed error details for observability
+    try {
+      const errorJson = JSON.parse(errorText);
+      fastify.log.error(
+        { error: errorJson, status: response.status, provider: provider.name, model: requestBody.model },
+        `[provider_response_error] ${provider.name},${requestBody.model}: ${errorJson?.error?.message || errorText}`,
+      );
+    } catch {
+      fastify.log.error(
+        { errorText, status: response.status, provider: provider.name, model: requestBody.model },
+        `[provider_response_error] ${provider.name},${requestBody.model}: ${errorText}`,
+      );
+    }
+
     throw createApiError(
       `Error from provider(${provider.name},${requestBody.model}: ${response.status}): ${errorText}`,
       response.status,
