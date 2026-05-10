@@ -64,6 +64,11 @@ interface ResponsesStreamEvent {
     output?: Array<{
       type: string;
     }>;
+    usage?: {
+      input_tokens: number;
+      output_tokens: number;
+      total_tokens: number;
+    };
   };
   reasoning_summary?: string;
   annotation?: {
@@ -560,7 +565,7 @@ export class CodexTransformer implements Transformer {
         ? "tool_calls"
         : "stop";
 
-      return {
+      const chunk: any = {
         id: data.response?.id || "chatcmpl-" + Date.now(),
         object: "chat.completion.chunk",
         created: Math.floor(Date.now() / 1000),
@@ -573,6 +578,16 @@ export class CodexTransformer implements Transformer {
           },
         ],
       };
+
+      if (data.response?.usage) {
+        chunk.usage = {
+          prompt_tokens: data.response.usage.input_tokens || 0,
+          completion_tokens: data.response.usage.output_tokens || 0,
+          total_tokens: data.response.usage.total_tokens || 0,
+        };
+      }
+
+      return chunk;
     }
 
     if (data.type === "response.reasoning_summary_text.delta") {

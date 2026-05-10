@@ -280,6 +280,7 @@ export class AnthropicTransformer implements Transformer {
         let isThinkingStarted = false;
         let contentIndex = 0;
         let currentContentBlockIndex = -1; // Track the current content block index
+        let webSearchRequestCount = 0;
 
         // Atomic content block index assignment function
         const assignContentBlockIndex = (): number => {
@@ -336,6 +337,11 @@ export class AnthropicTransformer implements Transformer {
               }
 
               if (stopReasonMessageDelta) {
+                if (webSearchRequestCount > 0) {
+                  stopReasonMessageDelta.usage.server_tool_use = {
+                    web_search_requests: webSearchRequestCount,
+                  };
+                }
                 safeEnqueue(
                   encoder.encode(
                     `event: message_delta\ndata: ${JSON.stringify(
@@ -345,6 +351,16 @@ export class AnthropicTransformer implements Transformer {
                 );
                 stopReasonMessageDelta = null;
               } else {
+                const fallbackUsage: Record<string, any> = {
+                  input_tokens: 0,
+                  output_tokens: 0,
+                  cache_read_input_tokens: 0,
+                };
+                if (webSearchRequestCount > 0) {
+                  fallbackUsage.server_tool_use = {
+                    web_search_requests: webSearchRequestCount,
+                  };
+                }
                 safeEnqueue(
                   encoder.encode(
                     `event: message_delta\ndata: ${JSON.stringify({
@@ -353,11 +369,7 @@ export class AnthropicTransformer implements Transformer {
                         stop_reason: "end_turn",
                         stop_sequence: null,
                       },
-                      usage: {
-                        input_tokens: 0,
-                        output_tokens: 0,
-                        cache_read_input_tokens: 0,
-                      },
+                      usage: fallbackUsage,
                     })}\n\n`
                   )
                 );
@@ -663,6 +675,7 @@ export class AnthropicTransformer implements Transformer {
                   !isClosed &&
                   !hasFinished
                 ) {
+                  webSearchRequestCount += choice.delta.annotations.length;
                   // Close text content block if open
                   if (currentContentBlockIndex >= 0 && hasTextContentStarted) {
                     const contentBlockStop = {
@@ -1058,6 +1071,13 @@ export class AnthropicTransformer implements Transformer {
           output_tokens: openaiResponse.usage?.completion_tokens || 0,
           cache_read_input_tokens:
             openaiResponse.usage?.prompt_tokens_details?.cached_tokens || 0,
+          ...(choice.message.annotations?.length
+            ? {
+                server_tool_use: {
+                  web_search_requests: choice.message.annotations.length,
+                },
+              }
+            : {}),
         },
       };
       this.logger.debug(
