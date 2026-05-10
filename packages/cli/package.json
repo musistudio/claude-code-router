@@ -29,6 +29,7 @@
     "find-process": "^2.0.0",
     "minimist": "^1.2.8",
     "openurl": "^1.1.1",
+    "puppeteer-core": "^24.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.2"
   }

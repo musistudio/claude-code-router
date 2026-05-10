@@ -21,6 +21,7 @@ import { OpenAIResponsesTransformer } from "./openai.responses.transformer";
 import { CodexTransformer } from "./codex.transformer";
 import { ForceReasoningTransformer } from "./forcereasoning.transformer";
 import { MistralTransformer } from "./mistral.transformer";
+import { ChromeOnDeviceTransformer } from "./chrome-on-device.transformer";
 
 export default {
   AnthropicTransformer,
@@ -46,4 +47,5 @@ export default {
   CodexTransformer,
   ForceReasoningTransformer,
   MistralTransformer,
+  ChromeOnDeviceTransformer,
 };

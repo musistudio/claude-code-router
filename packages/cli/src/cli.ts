@@ -20,6 +20,7 @@ import { parseStatusLineData, StatusLineInput } from "./utils/statusline";
 import {handlePresetCommand} from "./utils/preset";
 import { handleInstallCommand } from "./utils/installCommand";
 import { runCodexAuth } from "./utils/codex-cli-auth";
+import { runChromeBridge } from "./utils/chrome-device-bridge";
 
 
 const command = process.argv[2];
@@ -39,6 +40,7 @@ const KNOWN_COMMANDS = [
   "env",
   "ui",
   "codex-auth",
+  "chrome-bridge",
   "-v",
   "version",
   "-h",
@@ -63,6 +65,7 @@ Commands:
   activate      Output environment variables for shell integration
   ui            Open the web UI in browser
   codex-auth    Authenticate with Codex API via OAuth
+  chrome-bridge Start Chrome on-device model bridge (for Gemini Nano)
   -v, version   Show version information
   -h, help      Show help information
 
@@ -312,6 +315,23 @@ async function main() {
     case "codex-auth":
       await runCodexAuth();
       break;
+    case "chrome-bridge": {
+      // Parse optional --port and --cdp flags
+      let port = 3457;
+      let cdpPort = 9222;
+      const args = process.argv.slice(3);
+      for (let i = 0; i < args.length; i++) {
+        if (args[i] === "--port" && args[i + 1]) {
+          port = parseInt(args[i + 1], 10);
+          i++;
+        } else if (args[i] === "--cdp" && args[i + 1]) {
+          cdpPort = parseInt(args[i + 1], 10);
+          i++;
+        }
+      }
+      await runChromeBridge(port, cdpPort);
+      break;
+    }
     case "activate":
     case "env":
       await activateCommand();

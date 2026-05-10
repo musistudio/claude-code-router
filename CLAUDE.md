@@ -25,7 +25,7 @@ The fastest way to start and verify the build is using Docker Compose:
 *Alternative (Local Development)*: If you prefer to run locally without Docker, run `pnpm install` first, then use the `pnpm dev:*` commands.
 
 ## Knowledge Base
-For critical lessons learned regarding LLM provider integrations (e.g., DeepSeek reasoning replay, Mistral thinking formats, Gemini streaming issues), refer to `tasks/lessons.md`. This file contains the "hard-won" knowledge required to avoid common provider-specific pitfalls.
+For critical lessons learned regarding LLM provider integrations (e.g., DeepSeek reasoning replay, Mistral thinking formats, Gemini streaming issues, Gemini Nano constraints), refer to `tasks/lessons.md`. This file contains the "hard-won" knowledge required to avoid common provider-specific pitfalls.
 
 ## Build Commands
 
@@ -164,16 +164,18 @@ Commands can be run locally or inside the Docker container using:
 `docker exec -it <container_id> ccr <command>`
 
 ```bash
-ccr start      # Start server
-ccr stop       # Stop server
-ccr restart    # Restart server
-ccr status     # Show status
-ccr code       # Execute claude command
-ccr model      # Interactive model selection and configuration
-ccr preset     # Manage presets (export, install, list, info, delete)
-ccr activate   # Output shell environment variables (for integration)
-ccr ui         # Open Web UI
-ccr statusline # Integrated statusline (reads JSON from stdin)
+ccr start         # Start server
+ccr stop          # Stop server
+ccr restart       # Restart server
+ccr status        # Show status
+ccr code          # Execute claude command
+ccr model         # Interactive model selection and configuration
+ccr preset        # Manage presets (export, install, list, info, delete)
+ccr activate      # Output shell environment variables (for integration)
+ccr ui            # Open Web UI
+ccr statusline    # Integrated statusline (reads JSON from stdin)
+ccr codex-auth    # Authenticate with Codex API via OAuth
+ccr chrome-bridge # Start Chrome on-device model bridge (Gemini Nano)
 ```
 
 ### Preset Commands
