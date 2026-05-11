@@ -92,12 +92,21 @@ export class TransformerService {
           if (instance && typeof instance === "object") {
             (instance as any).logger = this.logger;
           }
-          if (!instance.name) {
+          // Mirror the built-in convention (registerDefaultTransformersInternal):
+          // prefer the static `TransformerName` if defined, otherwise fall back
+          // to `instance.name`. This avoids silent mismatches when a custom
+          // transformer sets both (e.g. kebab-case `TransformerName` for
+          // config references and PascalCase `name` for runtime identity).
+          const name: string | undefined =
+            (typeof (module as any).TransformerName === "string"
+              ? (module as any).TransformerName
+              : undefined) || instance.name;
+          if (!name) {
             throw new Error(
-              `Transformer instance from ${config.path} does not have a name property.`
+              `Transformer from ${config.path} has no name (neither static TransformerName nor instance.name).`
             );
           }
-          this.registerTransformer(instance.name, instance);
+          this.registerTransformer(name, instance);
           return true;
         }
       }
