@@ -45,9 +45,15 @@ export class ProviderService {
               if (Array.isArray(providerConfig.transformer.use)) {
                 transformer.use = providerConfig.transformer.use.map((transformer) => {
                   if (Array.isArray(transformer) && typeof transformer[0] === 'string') {
-                    const Constructor = this.transformerService.getTransformer(transformer[0]);
-                    if (Constructor) {
-                      return new (Constructor as TransformerConstructor)(transformer[1]);
+                    const resolved = this.transformerService.getTransformer(transformer[0]);
+                    if (typeof resolved === 'function') {
+                      return new (resolved as TransformerConstructor)(transformer[1]);
+                    }
+                    if (resolved) {
+                      // Transformer was registered as an already-built instance
+                      // (no `static TransformerName`). Re-instantiate via its
+                      // constructor so the requested options take effect.
+                      return new (resolved.constructor as TransformerConstructor)(transformer[1]);
                     }
                   }
                   if (typeof transformer === 'string') {
@@ -64,9 +70,12 @@ export class ProviderService {
                 transformer[key] = {
                   use: providerConfig.transformer[key].use.map((transformer) => {
                     if (Array.isArray(transformer) && typeof transformer[0] === 'string') {
-                      const Constructor = this.transformerService.getTransformer(transformer[0]);
-                      if (Constructor) {
-                        return new (Constructor as TransformerConstructor)(transformer[1]);
+                      const resolved = this.transformerService.getTransformer(transformer[0]);
+                      if (typeof resolved === 'function') {
+                        return new (resolved as TransformerConstructor)(transformer[1]);
+                      }
+                      if (resolved) {
+                        return new (resolved.constructor as TransformerConstructor)(transformer[1]);
                       }
                     }
                     if (typeof transformer === 'string') {
