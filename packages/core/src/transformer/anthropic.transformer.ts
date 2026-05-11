@@ -187,6 +187,7 @@ export class AnthropicTransformer implements Transformer {
         ? this.convertAnthropicToolsToUnified(request.tools)
         : undefined,
       tool_choice: request.tool_choice,
+      output_config: request.output_config,
     };
     if (request.thinking) {
       result.reasoning = {
