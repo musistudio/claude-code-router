@@ -107,6 +107,13 @@ export interface UnifiedChatRequest {
 
     enabled?: boolean;
   };
+  // Optional pass-through field used by some clients (e.g. Claude Code) to
+  // carry output configuration like effort level. Preserved so downstream
+  // transformers can map it to provider-specific parameters.
+  output_config?: {
+    effort?: string;
+    [key: string]: any;
+  };
 }
 
 // 统一的响应接口
