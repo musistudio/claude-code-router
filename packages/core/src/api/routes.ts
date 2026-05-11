@@ -344,7 +344,7 @@ async function sendRequestToProvider(
       delete requestHeaders[key];
     } else if (
       ["authorization", "Authorization"].includes(key) &&
-      requestHeaders[key]?.includes("undefined")
+      (requestHeaders[key]?.includes("undefined") || requestHeaders["x-api-key"])
     ) {
       delete requestHeaders[key];
     }
