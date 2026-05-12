@@ -682,11 +682,27 @@ function extractJson(
 const SUPPORTED_COMMANDS = new Set(["Bash", "Read", "Write", "Edit"]);
 
 function stripClaudeCodeContext(text: string): string {
-  // Always remove <system-reminder> blocks — Claude Code injects these with MCP
-  // instructions, skill lists, plan files, etc. Irrelevant to the on-device model.
-  let result = text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "");
+  // Filter <system-reminder> blocks: keep/transform tool calls and results, remove others.
+  let result = text.replace(/<system-reminder>([\s\S]*?)<\/system-reminder>/g, (match, content) => {
+    const trimmed = content.trim();
+    if (trimmed.startsWith("Called the ")) {
+      // Keep tool call info as a system note
+      return `\n[System: ${trimmed}]\n`;
+    }
+    if (trimmed.startsWith("Result of calling the ")) {
+      // Transform tool result into the format the model expects
+      const toolMatch = trimmed.match(/^Result of calling the (\w+) tool:?\s*([\s\S]*)$/);
+      if (toolMatch) {
+        const toolName = toolMatch[1];
+        const toolContent = toolMatch[2];
+        return `\n<tool_result tool="${toolName}">\n${toolContent}\n</tool_result>\n`;
+      }
+    }
+    return ""; // Remove other system reminders (MCP instructions, etc.)
+  });
 
   // Filter command tag groups: keep only those whose <command-name> matches a supported tool.
+
   // A group is <command-name>X</command-name> followed by optional <command-message> and <command-args>.
   // Unsupported commands (e.g., AskUserQuestion, WebSearch) are stripped.
   result = result.replace(
@@ -744,6 +760,7 @@ function extractTextContent(content: any): string {
     return content
       .map((item: any) => {
         if (typeof item === "string") return item;
+        // tool_result items already contain the content we need
         if (item?.type === "tool_result") {
           return typeof item.content === "string"
             ? item.content
@@ -1455,14 +1472,16 @@ export class ChromeDeviceBridge {
       `\n` +
       `Guidelines:\n` +
       `- Be concise in your responses\n` +
-      `- Check if the requested file content or tool output is already present in the conversation as a "Tool Result:" before calling a tool. If it is already there, use it immediately.\n` +
+      `- Treat references like @filename as references to the file named "filename"\n` +
+      `- Do NOT use "@<FILENAME>" notation in your responses; always use the plain <FILENAME> instead\n` +
       `- Use Read to examine files instead of guessing contents\n` +
       `- Use Edit for precise changes (old_string must match file exactly)\n` +
       `- Use Write only for new files or complete rewrites\n` +
       `- When task is complete, call ExitTool with your response\n` +
       `\n` +
       `Tool Results:\n` +
-      `- When you call a tool, the result is appended to the conversation labeled as "Tool Result (ToolName):".\n` +
+      `- When you call a tool, the result is wrapped in <tool_result tool="ToolName">...</tool_result> tags.\n` +
+      `- A <tool_result tool="Read"> block is absolute proof that the file exists and contains its current content.\n` +
       `- Read: Returns the full contents of the file.\n` +
       `- Bash: Returns the output (stdout/stderr) of the command.\n` +
       `- Write/Edit: Returns a success or error message (e.g., "Successfully wrote N bytes").\n`;
@@ -1475,6 +1494,9 @@ export class ChromeDeviceBridge {
     // JSON output format (required for responseConstraint)
     systemPrompt +=
       `\nCRITICAL: Use EXACT values from the user's request. Copy file paths and commands verbatim. Never invent paths like /tmp/my_file.txt or README.md unless the user explicitly mentioned them.\n` +
+      `CRITICAL: Always check for existing <tool_result> tags. If the data is present, use it immediately. Only call a tool again if the user explicitly asks to reread, or if the file was modified by a Write/Edit call since the last Read.\n` +
+      `CRITICAL: If you see a <tool_result tool="Read"> for a file, DO NOT claim the file does not exist. The content is provided right there.\n` +
+      `CRITICAL: NEVER use the "@" symbol to refer to files in your response (e.g., do NOT write "@zipper.py"). Always use the plain filename (e.g., "zipper.py").\n` +
       `\nOutput format:\n` +
       `ONE JSON object per turn. One tool call per turn.\n` +
       `Bash: {"tool_calls":[{"name":"Bash","arguments":{"command":"[COMMAND_FROM_USER]"}}]}\n` +
@@ -1549,15 +1571,34 @@ export class ChromeDeviceBridge {
         promptText += content;
       } else if (msg.role === "tool") {
         hasToolResults = true;
-        // Pass tool result through with a label so the model knows it's the tool output
+        // Use XML markup for superior structural isolation
         const toolName = msg.name || "unknown";
         if (promptText) promptText += "\n\n";
-        promptText += `Tool Result (${toolName}):\n${content}`;
+        
+        // For Read tools, we want to make it extremely obvious that this is the file content.
+        let wrappedContent = content;
+        if (toolName === "Read") {
+          wrappedContent = `[File Content]:\n${content}`;
+        }
+        
+        promptText += `<tool_result tool="${toolName}">\n${wrappedContent}\n</tool_result>`;
       } else if (msg.role === "assistant") {
         process.stderr.write(`[bridge] skipping assistant message in prompt (session should have it in context)\n`);
       }
       // Assistant messages are skipped — the Prompt API session already has
       // the model's previous output in context.
+    }
+
+    // Also detect tool results that were transformed from <system-reminder> in user messages
+    if (promptText.includes("<tool_result tool=")) {
+      hasToolResults = true;
+    }
+
+    // Prepend a "Stop & Think" notice if data is already present.
+
+    // This breaks the reflexive "Command -> Tool Call" loop.
+    if (hasToolResults) {
+      promptText = `[NOTICE: Tool results are provided in this turn. You MUST review them before calling any tools to avoid redundant calls.]\n\n` + promptText;
     }
 
     return { promptText, hasToolResults };

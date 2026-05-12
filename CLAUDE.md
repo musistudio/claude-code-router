@@ -27,6 +27,8 @@ The fastest way to start and verify the build is using Docker Compose:
 ## Knowledge Base
 For critical lessons learned regarding LLM provider integrations (e.g., DeepSeek reasoning replay, Mistral thinking formats, Gemini streaming issues, Gemini Nano constraints), refer to `tasks/lessons.md`. This file contains the "hard-won" knowledge required to avoid common provider-specific pitfalls.
 
+For tracked improvements, planned features, and known issues (especially for the Chrome On-Device bridge), refer to `tasks/TODO.md`.
+
 ## Build Commands
 
 ### Primary: Build and run via Docker Compose (Recommended for verification)
@@ -135,15 +137,15 @@ The server uses custom Transform streams to handle Server-Sent Events:
 
 Configuration file location: `~/.claude-code-router/config.json`
 
+**Critical Rule**: When editing `config.json` (or provider configs), **never resolve environment variables**. Keep placeholders like `$OPENAI_API_KEY` or `${GEMINI_API_KEY}` exactly as they are. Do not replace them with actual secret values in the file.
+
 Key features:
 - Supports environment variable interpolation (`$VAR_NAME` or `${VAR_NAME}`)
 - JSON5 format (supports comments)
 - Automatic backups (keeps last 3 backups)
 - Hot reload requires service restart (`ccr restart`)
 
-Configuration validation:
-- If `Providers` are configured, both `HOST` and `APIKEY` must be set
-- Otherwise listens on `0.0.0.0` without authentication
+- **`HOST`** (optional): You can set the host address for the server. If `APIKEY` is not set, the host will be forced to `127.0.0.1` for security reasons. Example: `"HOST": "0.0.0.0"`.
 
 ### 6. Logging System
 
@@ -175,7 +177,7 @@ ccr activate      # Output shell environment variables (for integration)
 ccr ui            # Open Web UI
 ccr statusline    # Integrated statusline (reads JSON from stdin)
 ccr codex-auth    # Authenticate with Codex API via OAuth
-ccr chrome-bridge # Start Chrome on-device model bridge (Gemini Nano)
+ccr chrome-bridge # Start Chrome on-device model bridge (Gemini Nano) — must run on host
 ```
 
 ### Preset Commands

@@ -629,8 +629,8 @@ The bridge automatically launches Chrome with the required flags if it's not alr
 
 **How It Works:**
 
-1. The transformer replaces Claude Code's system prompt with a minimal tool-focused one listing 7 core tools (Bash, Read, Write, Edit, WebFetch, WebSearch, AskUserQuestion)
-2. The bridge maintains a persistent `LanguageModel` session across all requests — conversation history is carried forward naturally within the session, not rebuilt per turn. It calls `session.promptStreaming()` with a `responseConstraint` (JSON Schema) that forces structured output: `{"text": "...", "tool_calls": [{"name": "...", "arguments": {...}}]}`
+1. The transformer replaces Claude Code's system prompt with a minimal tool-focused one listing 5 core tools (Bash, Read, Write, Edit, ExitTool)
+2. The bridge maintains a persistent `LanguageModel` session across all requests — conversation history is carried forward naturally within the session, not rebuilt per turn. It calls `session.promptStreaming()` with a `responseConstraint` (JSON Schema) that forces structured output: `{"tool_calls": [{"name": "...", "arguments": {...}}]}`. Text responses are handled by the model calling the `ExitTool`.
 3. The bridge strips Claude Code's internal context blocks (`<system-reminder>`, `<command-*>`, `<local-command-*>`) from user messages to conserve the limited context budget
 4. The bridge parses the structured JSON response into OpenAI-format SSE chunks (`chat.completion.chunk`) or a single non-streaming response (`chat.completion`)
 5. Tool calls are detected from the parsed JSON and converted to `tool_calls` in the response; `finish_reason` is set to `"tool_calls"` or `"stop"` accordingly
@@ -643,7 +643,7 @@ The bridge automatically launches Chrome with the required flags if it's not alr
 - **Multi-turn consistency**: The small on-device model may occasionally loop on the same tool call or respond with text instead of calling a needed tool. A retry mechanism with corrected prompts mitigates this
 - **No thinking/reasoning blocks**: The Prompt API doesn't separate thinking from visible output
 - **Context window**: Limited to 9216 tokens; auto-compaction engages at 85% usage. Old interactions are evicted on context overflow
-- **Output limit**: ~1200 chars per turn — the model stalls on whitespace-heavy content (e.g., Python indentation). The bridge uses write-then-edit incremental file creation (3 lines per Write call) and whitespace stall detection with abort
+- **Output limit**: The model may stall on whitespace-heavy content (e.g., Python indentation). The bridge uses write-then-edit incremental file creation (3 lines per Write call) and whitespace stall detection with abort
 - **Cross-platform support**: Compatible with macOS, Windows, and Linux (requires Chrome installation and manual flag enablement)
 
 **Codex Provider Configuration:**
