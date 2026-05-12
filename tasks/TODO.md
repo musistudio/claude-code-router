@@ -12,9 +12,8 @@ Gemini Nano can enter deterministic loops when emitting highly structured conten
 ## 🛠 Potential Optimizations
 
 ### 1. Assistant History Management
-- [ ] Implement selective inclusion of assistant messages in `buildTurnPrompt` to preserve conversation memory.
-- **Problem**: `buildTurnPrompt` currently skips assistant messages to conserve the limited context window. While efficient for tool-use, this may cause the model to lose "memory" of its own reasoning or previous answers in long, chatty conversations.
-- **Potential Fix**: Modify the message filtering logic to selectively include previous assistant messages during session rebuilds or when a specific "conversation memory" threshold is met.
+- [x] Implement selective inclusion of assistant messages in `buildTurnPrompt` to preserve conversation memory.
+- **Done**: Assistant messages are included on the first turn (`processedMsgCount === 0`) so the model sees its own prior tool calls when a conversation starts with pre-existing history. Subsequent turns skip them since the Prompt API session already has them in context.
 
 ### 2. Time-Based Stall Detection
 - [ ] Implement hybrid stall detection (time + char count) to prevent premature aborts on indented files.

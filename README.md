@@ -405,7 +405,7 @@ The bridge:
 2. If not, launches Chrome with the required flags (`--remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug-profile`)
 3. Connects to Chrome via Puppeteer/CDP with a 5-minute protocol timeout to handle slow model inference
 4. Loads a page that accesses the Prompt API (`window.LanguageModel`) and maintains a persistent `LanguageModel` session across all requests — conversation history is carried forward naturally within the session, not rebuilt per request
-5. Replaces Claude Code's system prompt with a minimal tool-focused one (7 core tools), using `responseConstraint` (JSON Schema) to force the model to emit structured JSON with `{text, tool_calls[]}` fields
+5. Replaces Claude Code's system prompt with a minimal tool-focused one (5 core tools), using `responseConstraint` (JSON Schema) to force the model to emit structured JSON with `{text, tool_calls[]}` fields
 6. Exposes an OpenAI-compatible HTTP API on `0.0.0.0:3457`:
    - `GET /v1/models` — returns available models with live context usage
    - `GET /v1/models/{model_name}` — returns individual model info (display_name, max_input_tokens, capabilities)
@@ -630,12 +630,14 @@ The bridge automatically launches Chrome with the required flags if it's not alr
 **How It Works:**
 
 1. The transformer replaces Claude Code's system prompt with a minimal tool-focused one listing 5 core tools (Bash, Read, Write, Edit, ExitTool)
-2. The bridge maintains a persistent `LanguageModel` session across all requests — conversation history is carried forward naturally within the session, not rebuilt per turn. It calls `session.promptStreaming()` with a `responseConstraint` (JSON Schema) that forces structured output: `{"tool_calls": [{"name": "...", "arguments": {...}}]}`. Text responses are handled by the model calling the `ExitTool`.
-3. The bridge strips Claude Code's internal context blocks (`<system-reminder>`, `<command-*>`, `<local-command-*>`) from user messages to conserve the limited context budget
+2. The bridge maintains persistent `LanguageModel` sessions — one per client fingerprint (`User-Agent + IP` hash). Conversation history is carried forward naturally within each session, not rebuilt per turn. It calls `session.promptStreaming()` with a `responseConstraint` (JSON Schema) that forces structured output: `{"tool_calls": [{"name": "...", "arguments": {...}}]}`. Text responses are handled by the model calling the `ExitTool`.
+3. The bridge transforms Claude Code's internal context blocks in user messages to conserve the limited context budget: `<system-reminder>` blocks containing tool calls or results are converted into structured `<tool_result>` tags, while other `<system-reminder>` blocks and `<command-*>` / `<local-command-*>` blocks for unsupported tools are stripped
 4. The bridge parses the structured JSON response into OpenAI-format SSE chunks (`chat.completion.chunk`) or a single non-streaming response (`chat.completion`)
 5. Tool calls are detected from the parsed JSON and converted to `tool_calls` in the response; `finish_reason` is set to `"tool_calls"` or `"stop"` accordingly
 6. Multi-turn tool use is supported — consecutive requests are processed within the same persistent session
-7. Auto-compaction triggers at 85% context usage, resetting the session while preserving the system prompt
+7. **Multi-session support**: Requests are fingerprinted by `User-Agent + IP` hash into separate sessions, allowing multiple concurrent Claude Code instances without context contamination. A built-in web dashboard (served on the bridge port) shows real-time stats for all sessions, including turn count, idle time, and context usage
+8. **Idle session eviction**: Sessions idle for more than 5 minutes are automatically destroyed to free resources. The `cli` session (dashboard default) is never evicted. Sessions can also be manually evicted via the dashboard's Evict button
+9. Auto-compaction triggers at 85% context usage, resetting the session while preserving the system prompt
 
 **Limitations:**
 

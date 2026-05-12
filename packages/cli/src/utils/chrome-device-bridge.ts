@@ -108,6 +108,7 @@ function getOrCreateEntry(sessionId) {
       lastTopK: null,
       lastTemp: null,
       turnCount: 0,
+      lastActivityAt: Date.now(),
       stats: { requests: 0, lastPromptLen: 0, lastRespLen: 0, lastTimeMs: 0, lastThinkMs: 0, lastGenMs: 0, lastTokens: 0, lastTokensPerSec: 0 },
     };
   }
@@ -115,19 +116,64 @@ function getOrCreateEntry(sessionId) {
 }
 
 function updateDashboard() {
-  const cli = sessions['cli'];
-  const session = cli?.session || null;
-  const stats = cli?.stats || { requests: 0, lastPromptLen: 0, lastRespLen: 0, lastThinkMs: 0, lastGenMs: 0, lastTokens: 0, lastTokensPerSec: 0 };
-  const turnCount = cli?.turnCount || 0;
-  const ctx = session ? (session.contextUsage || 0) + ' / ' + (session.contextWindow || 0) + ' tokens' : 'no session';
-  document.getElementById('ctx').textContent = ctx;
-  document.getElementById('reqs').textContent = stats.requests;
-  document.getElementById('prompt-len').textContent = stats.lastPromptLen;
-  document.getElementById('resp-len').textContent = stats.lastRespLen;
-  document.getElementById('resp-time').textContent = stats.lastThinkMs ? 'think ' + (stats.lastThinkMs / 1000).toFixed(1) + 's / gen ' + (stats.lastGenMs / 1000).toFixed(1) + 's' : '-';
-  document.getElementById('chars-sec').textContent = stats.lastTokensPerSec ? stats.lastTokens + ' tok @ ' + stats.lastTokensPerSec + ' tok/s' : '-';
-  document.getElementById('status').textContent = session ? 'Session active (turn ' + turnCount + ')' : 'No session';
-  document.getElementById('status').style.color = session ? '#4caf50' : '#ff9800';
+  try {
+    // Find the most recently active session to display stats for
+    var latestEntry = null;
+    var latestId = 'cli';
+    for (var id in sessions) {
+      var e = sessions[id];
+      if (e && (!latestEntry || (e.lastActivityAt || 0) > (latestEntry.lastActivityAt || 0))) {
+        latestEntry = e;
+        latestId = id;
+      }
+    }
+    if (!latestEntry) latestEntry = { stats: { requests: 0, lastPromptLen: 0, lastRespLen: 0, lastTimeMs: 0, lastThinkMs: 0, lastGenMs: 0, lastTokens: 0, lastTokensPerSec: 0 }, turnCount: 0 };
+    var session = latestEntry.session || null;
+    var stats = latestEntry.stats || { requests: 0, lastPromptLen: 0, lastRespLen: 0, lastTimeMs: 0, lastThinkMs: 0, lastGenMs: 0, lastTokens: 0, lastTokensPerSec: 0 };
+    var turnCount = latestEntry.turnCount || 0;
+    var ctx = session ? (session.contextUsage || 0) + ' / ' + (session.contextWindow || 0) + ' tokens' : 'no session';
+    var el;
+    el = document.getElementById('ctx'); if (el) el.textContent = ctx;
+    el = document.getElementById('reqs'); if (el) el.textContent = stats.requests;
+    el = document.getElementById('prompt-len'); if (el) el.textContent = stats.lastPromptLen;
+    el = document.getElementById('resp-len'); if (el) el.textContent = stats.lastRespLen;
+    el = document.getElementById('resp-time'); if (el) el.textContent = stats.lastThinkMs ? 'think ' + (stats.lastThinkMs / 1000).toFixed(1) + 's / gen ' + (stats.lastGenMs / 1000).toFixed(1) + 's' : '-';
+    el = document.getElementById('chars-sec'); if (el) el.textContent = stats.lastTokensPerSec ? stats.lastTokens + ' tok @ ' + stats.lastTokensPerSec + ' tok/s' : '-';
+    el = document.getElementById('status'); if (el) { el.textContent = session ? 'Session ' + latestId.substring(0, 12) + ' active (turn ' + turnCount + ')' : 'No session'; el.style.color = session ? '#4caf50' : '#ff9800'; }
+  } catch (e) {
+    console.log('[bridge] updateDashboard error: ' + e.message);
+  }
+  updateSessionList();
+}
+
+function updateSessionList() {
+  try {
+    var tbody = document.getElementById('session-tbody');
+    if (!tbody) return;
+    var now = Date.now();
+    var ids = Object.keys(sessions);
+    var html = '';
+    for (var i = 0; i < ids.length; i++) {
+      var id = ids[i];
+      var entry = sessions[id];
+      var idleSec = entry.lastActivityAt ? Math.round((now - entry.lastActivityAt) / 1000) : -1;
+      var idleStr = idleSec >= 0 ? (idleSec < 60 ? idleSec + 's' : Math.floor(idleSec / 60) + 'm ' + (idleSec % 60) + 's') : '–';
+      var ctxPct = entry.session && entry.session.contextWindow > 0 ? Math.round((entry.session.contextUsage / entry.session.contextWindow) * 100) : 0;
+      var isCli = id === 'cli';
+      html += '<tr>' +
+        '<td style="font-family:monospace;font-size:12px;">' + (isCli ? id : id.substring(0, 12) + '...') + '</td>' +
+        '<td style="text-align:right;">' + (entry.turnCount || 0) + '</td>' +
+        '<td style="text-align:right;">' + idleStr + '</td>' +
+        '<td style="text-align:right;">' + ctxPct + '%</td>' +
+        '<td style="text-align:center;">' + (isCli ? '<span style="color:#888;font-size:11px;">protected</span>' : '<button data-sid="' + id + '" onclick="evictSession(this.dataset.sid)" style="background:#c62828;color:#fff;border:none;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:11px;">Evict</button>') + '</td>' +
+        '</tr>';
+    }
+    tbody.innerHTML = html || '<tr><td colspan="5" style="color:#888;text-align:center;">No sessions</td></tr>';
+    var countEl = document.getElementById('session-count');
+    if (countEl) countEl.textContent = ids.length;
+  } catch (e) {
+    // session list is non-critical, swallow errors
+  }
 }
 
 window.ensureSession = async function(sessionIdOrConfig, maybeConfig) {
@@ -216,11 +262,12 @@ window.ensureSession = async function(sessionIdOrConfig, maybeConfig) {
       try {
         entry.session.addEventListener('contextoverflow', function() {
           console.log('[bridge] CONTEXT OVERFLOW in session ' + sessionId + ' — oldest messages being evicted');
-          if (sessionId === 'cli') updateDashboard();
+          updateDashboard();
         });
       } catch (e) {}
       entry.turnCount = 0;
-      if (sessionId === 'cli') updateDashboard();
+      entry.lastActivityAt = Date.now();
+      updateDashboard();
       return { ready: true, contextUsage: entry.session.contextUsage || 0, contextWindow: entry.session.contextWindow || 0 };
     } catch (e) {
       console.log('[bridge] api.create failed: ' + e);
@@ -248,6 +295,7 @@ window.resetSession = async function(sessionIdOrConfig, maybeConfig) {
   entry.lastSystemPrompt = null;
   entry.lastTopK = null;
   entry.lastTemp = null;
+  entry.lastActivityAt = null;
   return window.ensureSession(sessionId, configOverride);
 };
 
@@ -266,9 +314,9 @@ window.getContextInfo = function(sessionId) {
   return { usage: entry.session.contextUsage || 0, window: entry.session.contextWindow || 0 };
 };
 
-window.updateStats = function(s) {
-  const cli = getOrCreateEntry('cli');
-  cli.stats = s;
+window.updateStats = function(s, sessionId) {
+  const entry = getOrCreateEntry(sessionId || 'cli');
+  entry.stats = s;
   updateDashboard();
 };
 
@@ -279,6 +327,25 @@ window.destroySession = function(sessionId) {
     try { entry.session.destroy(); } catch (e) {}
     delete sessions[id];
   }
+  updateDashboard();
+};
+
+window.listSessions = function() {
+  const now = Date.now();
+  const result = [];
+  for (const id in sessions) {
+    const entry = sessions[id];
+    const idleSec = entry.lastActivityAt ? Math.round((now - entry.lastActivityAt) / 1000) : -1;
+    result.push({
+      id: id,
+      active: !!entry.session,
+      turnCount: entry.turnCount || 0,
+      idleSec: idleSec,
+      contextUsage: entry.session ? (entry.session.contextUsage || 0) : 0,
+      contextWindow: entry.session ? (entry.session.contextWindow || 0) : 0,
+    });
+  }
+  return result;
 };
 
 window.promptSession = async function(sessionIdOrText, maybeText, schema, tempOverride) {
@@ -354,6 +421,7 @@ window.promptSession = async function(sessionIdOrText, maybeText, schema, tempOv
     const thinkMs = firstContentAt > 0 ? firstContentAt - t0 : elapsed;
     const genMs = firstContentAt > 0 ? Date.now() - firstContentAt : 0;
     entry.turnCount++;
+    entry.lastActivityAt = Date.now();
     entry.stats.requests++;
     entry.stats.lastPromptLen = promptText.length;
     entry.stats.lastRespLen = full.length;
@@ -362,7 +430,7 @@ window.promptSession = async function(sessionIdOrText, maybeText, schema, tempOv
     entry.stats.lastGenMs = genMs;
     entry.stats.lastTokens = Math.round(full.length / 4);
     entry.stats.lastTokensPerSec = genMs > 0 ? Math.round(full.length / 4 * 1000 / genMs) : 0;
-    if (sessionId === 'cli') updateDashboard();
+    updateDashboard();
     if (firstContentAt > 0) {
       console.log('[bridge] Session ' + sessionId + ' turn ' + entry.turnCount + ' done in ' + elapsed + 'ms (think: ' + thinkMs + 'ms, gen: ' + genMs + 'ms), ' + full.length + ' chars' + (truncated ? ' [TRUNCATED]' : ''));
     } else {
@@ -401,6 +469,7 @@ window.promptSessionNonStreaming = async function(sessionIdOrText, maybeText, sc
     const elapsed = Date.now() - t0;
     const text = (response || '').trimEnd();
     entry.turnCount++;
+    entry.lastActivityAt = Date.now();
     entry.stats.requests++;
     entry.stats.lastPromptLen = promptText.length;
     entry.stats.lastRespLen = text.length;
@@ -409,7 +478,7 @@ window.promptSessionNonStreaming = async function(sessionIdOrText, maybeText, sc
     entry.stats.lastGenMs = 0;
     entry.stats.lastTokens = Math.round(text.length / 4);
     entry.stats.lastTokensPerSec = 0;
-    if (sessionId === 'cli') updateDashboard();
+    updateDashboard();
     console.log('[bridge] Session ' + sessionId + ' turn ' + entry.turnCount + ' done in ' + elapsed + 'ms, ' + text.length + ' chars');
     return { response: text, truncated: false, elapsed: elapsed, thinkMs: elapsed, genMs: 0 };
   } catch (e) {
@@ -417,6 +486,45 @@ window.promptSessionNonStreaming = async function(sessionIdOrText, maybeText, sc
     return { error: e.message };
   }
 };
+
+// Idle session eviction: destroy sessions idle for more than 5 minutes
+// Never evict the 'cli' session (main dashboard session)
+const IDLE_EVICT_MS = 5 * 60 * 1000; // 5 minutes
+
+window.evictSession = function(sessionId) {
+  if (sessionId === 'cli') return;
+  const entry = sessions[sessionId];
+  if (entry && entry.session) {
+    try {
+      entry.session.destroy();
+      console.log('[bridge] Manually evicted session ' + sessionId);
+    } catch (e) {
+      console.log('[bridge] Failed to evict session ' + sessionId + ': ' + e.message);
+    }
+    delete sessions[sessionId];
+    updateDashboard();
+  }
+};
+setInterval(function() {
+  const now = Date.now();
+  const evicted = [];
+  for (const id in sessions) {
+    if (id === 'cli') continue; // never evict the main session
+    const entry = sessions[id];
+    if (!entry.session) continue; // no active session, skip
+    if (entry.lastActivityAt && (now - entry.lastActivityAt > IDLE_EVICT_MS)) {
+      try {
+        entry.session.destroy();
+        console.log('[bridge] Evicted idle session ' + id + ' (idle ' + Math.round((now - entry.lastActivityAt) / 1000) + 's)');
+      } catch (e) {
+        console.log('[bridge] Failed to destroy idle session ' + id + ': ' + e.message);
+      }
+      delete sessions[id];
+      evicted.push(id);
+    }
+  }
+  if (evicted.length > 0) updateDashboard();
+}, 60000); // check every 60 seconds
 
 window.addEventListener('beforeunload', function() {
   for (const id in sessions) {
@@ -459,6 +567,21 @@ const HTML_PAGE = `<!DOCTYPE html>
   <div class="card"><div class="label">Think / Gen</div><div id="resp-time" class="value">-</div></div>
   <div class="card"><div class="label">Tokens</div><div id="chars-sec" class="value">-</div></div>
 </div>
+<h2 style="font-size:15px;font-weight:600;margin-top:20px;margin-bottom:8px;">Sessions <span id="session-count" style="color:#888;font-size:12px;"></span></h2>
+<table style="width:100%;border-collapse:collapse;background:#16213e;border:1px solid #0f3460;border-radius:8px;overflow:hidden;">
+  <thead>
+    <tr style="background:#0f3460;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#888;">
+      <th style="padding:8px;text-align:left;">Session ID</th>
+      <th style="padding:8px;text-align:right;">Turns</th>
+      <th style="padding:8px;text-align:right;">Idle</th>
+      <th style="padding:8px;text-align:right;">Context</th>
+      <th style="padding:8px;text-align:center;">Action</th>
+    </tr>
+  </thead>
+  <tbody id="session-tbody">
+    <tr><td colspan="5" style="color:#888;text-align:center;padding:12px;">No sessions</td></tr>
+  </tbody>
+</table>
 <div id="log"></div>
 <script>${BRIDGE_SCRIPT}</script>
 <script>
@@ -1583,10 +1706,17 @@ export class ChromeDeviceBridge {
         
         promptText += `<tool_result tool="${toolName}">\n${wrappedContent}\n</tool_result>`;
       } else if (msg.role === "assistant") {
-        process.stderr.write(`[bridge] skipping assistant message in prompt (session should have it in context)\n`);
+        // Skip assistant messages for turns AFTER the first one — the Prompt API
+        // session already has the model's prior output in context. For the first
+        // turn (processedMsgCount === 0), include them so the model sees its own
+        // tool calls when the conversation starts with pre-existing history.
+        if (state.processedMsgCount === 0) {
+          if (promptText) promptText += "\n\n";
+          promptText += content;
+        } else {
+          process.stderr.write(`[bridge] skipping assistant message in prompt (session should have it in context)\n`);
+        }
       }
-      // Assistant messages are skipped — the Prompt API session already has
-      // the model's previous output in context.
     }
 
     // Also detect tool results that were transformed from <system-reminder> in user messages
@@ -1594,11 +1724,17 @@ export class ChromeDeviceBridge {
       hasToolResults = true;
     }
 
-    // Prepend a "Stop & Think" notice if data is already present.
-
+    // Prepend a strong notice if tool results are already present.
     // This breaks the reflexive "Command -> Tool Call" loop.
     if (hasToolResults) {
-      promptText = `[NOTICE: Tool results are provided in this turn. You MUST review them before calling any tools to avoid redundant calls.]\n\n` + promptText;
+      // Extract which tools already have results
+      const toolSet = new Set<string>();
+      const trMatch = promptText.matchAll(/<tool_result tool="(\w+)">/g);
+      for (const m of trMatch) toolSet.add(m[1]);
+      const toolNames = Array.from(toolSet).join(", ");
+      promptText = `[NOTICE: The assistant already called tool(s): ${toolNames}. The results are provided below. You MUST NOT call those tools again. Review the results and answer the user's question directly using ExitTool.]
+
+` + promptText;
     }
 
     return { promptText, hasToolResults };
