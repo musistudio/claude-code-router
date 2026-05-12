@@ -27,8 +27,6 @@ The fastest way to start and verify the build is using Docker Compose:
 ## Knowledge Base
 For critical lessons learned regarding LLM provider integrations (e.g., DeepSeek reasoning replay, Mistral thinking formats, Gemini streaming issues, Gemini Nano constraints), refer to `tasks/lessons.md`. This file contains the "hard-won" knowledge required to avoid common provider-specific pitfalls.
 
-For tracked improvements, planned features, and known issues (especially for the Chrome On-Device bridge), refer to `tasks/TODO.md`.
-
 ## Build Commands
 
 ### Primary: Build and run via Docker Compose (Recommended for verification)

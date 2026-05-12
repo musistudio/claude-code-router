@@ -1,6 +1,23 @@
 ![](blog/images/claude-code-router-img.png)
 
+[![](https://img.shields.io/badge/%F0%9F%87%A8%F0%9F%87%B3-%E4%B8%AD%E6%96%87%E7%89%88-ff0000?style=flat)](README_zh.md)
+[![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white)](https://discord.gg/rdftVMaUcS)
 [![](https://img.shields.io/github/license/musistudio/claude-code-router)](https://github.com/musistudio/claude-code-router/blob/main/LICENSE)
+
+<hr>
+
+![](blog/images/sponsors/glm-en.jpg)
+> This project is sponsored by Z.ai, supporting us with their GLM CODING PLAN.
+
+> GLM CODING PLAN is a subscription service designed for AI coding, starting at just $10/month. It provides access to their flagship GLM-4.7 & （GLM-5 Only Available  for Pro Users）model across 10+ popular AI coding tools (Claude Code, Cline, Roo Code, etc.), offering developers top-tier, fast, and stable coding experiences.
+
+> Get 10% OFF GLM CODING PLAN：https://z.ai/subscribe?ic=8JVLJQFSKB  
+
+> [Progressive Disclosure of Agent Tools from the Perspective of CLI Tool Style](/blog/en/progressive-disclosure-of-agent-tools-from-the-perspective-of-cli-tool-style.md)
+
+> A powerful tool to route Claude Code requests to different models and customize any request.
+
+![](blog/images/claude-code.png)
 
 ## ✨ Features
 
@@ -12,45 +29,21 @@
 - **GitHub Actions Integration**: Trigger Claude Code tasks in your GitHub workflows.
 - **Plugin System**: Extend functionality with custom transformers.
 
-## 🛠 Improvements in this fork
-
-This fork is based on [claude-code-router](https://github.com/musistudio/claude-code-router) and includes several enhancements:
-
-- **Improved LLM Support**: Fixed streaming for Gemini/Gemma and enhanced OpenAI API handling.
-- **Reasoning & Streaming Refactor**: Modularized streaming and reasoning logic into reusable utilities for better maintainability.
-- **Mistral Integration**: Added specific handling for Mistral's reasoning parameters and decoupled transformation logic.
-- **Build & Deployment**: Integrated the UI package into the Docker build process and added a Docker Compose configuration.
-- **Code Quality**: Localized codebase (English comments), improved error handling, and addressed Copilot review feedback.
-- **Gemini Stability & Tool Use Fixes**: Corrected `thoughtSignature` placement in Gemini request bodies (must be a standalone `thought: true` part, not attached to text/function-call parts); filtered synthetic `ccr_` placeholder signatures from outgoing Gemini requests to prevent Gemini 500 errors; fixed `tool_result` content-array serialization in the Anthropic transformer so models receive plain text instead of JSON-wrapped arrays (resolves "Error editing file" in Claude Code); fixed Fastify `onSend` hook to prevent `invalid type 'object'` unhandled rejections on error responses.
-- **Codex (ChatGPT) Integration**: Added Codex transformer for the ChatGPT backend API (Responses API), supporting OAuth-based authentication (`ccr codex-auth`), SSE streaming, reasoning/thinking content, tool calls with web search, and image handling.
-- **DeepSeek Reasoning Replay**: Implemented mandatory reasoning replay for DeepSeek models (e.g., via OpenCode/ZenGo). DeepSeek requires previous assistant reasoning content to be included in subsequent requests — the `reasoning` transformer automatically replays reasoning output from prior turns.
-- **Model Discovery**: Enabled non-interactive model discovery for arbitrary API providers. Using `ccr model get <provider>`, the tool automatically fetches remote models, parses custom JSON structures using configurable paths, and appends missing models to the local configuration while preserving existing settings.
-- **Chrome On-Device Model**: Added `chrome-on-device` transformer for Chrome's built-in Gemini Nano (~4GB local model). Communicates via a bridge process (`ccr chrome-bridge`) that connects to Chrome's Prompt API over CDP. Uses `responseConstraint` for structured JSON output (tool calls + text), supports streaming and non-streaming, exposes an OpenAI-compatible `/v1/chat/completions` endpoint, and replaces Claude Code's system prompt with a minimal tool-focused one. Zero API cost, zero latency to external providers.
-  - **Stability & Prompting**: Implemented an "OPERATIONAL OVERRIDE" in the system prompt to prevent hallucinations and force adherence to user-provided paths.
-  - **Stall Recovery**: Added a tiered retry mechanism for whitespace-heavy content: if the model stalls (emits 1000+ whitespace chars), the bridge aborts and retries without constraints and with increased temperature (Dynamic Temperature Scaling).
-  - **Contextual awareness**: Added labels ("Tool Result:") to tool outputs and instructed the model to check for existing results before calling tools again.
-
 ## 🚀 Getting Started
 
 ### 1. Installation
 
-#### Prerequisites
-
-Before you begin, ensure you have the following installed on your system:
-- **Docker & Docker Compose** (Recommended): The primary way to run the router. See [Docker Install Guide](https://docs.docker.com/get-docker/).
-- **Node.js** (Optional): Only required if you want to use the **Chrome On-Device** bridge or run the project from source. Requires v18.0.0 or higher. See [Node.js Download](https://nodejs.org/).
-- **Claude Code**: See the [official quickstart guide](https://code.claude.com/docs/en/quickstart) for installation instructions.
-
-#### Quick Start with Docker
-
-The fastest way to launch Claude Code Router is using Docker Compose:
+First, ensure you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code/quickstart) installed:
 
 ```shell
-cd packages/server
-docker compose up --build -d
+npm install -g @anthropic-ai/claude-code
 ```
 
-The Compose setup builds the server and UI into the `ccr` container, exposes the proxy on `http://localhost:3456`, and mounts configuration from `packages/server/ccr-config` to `/root/.claude-code-router` inside the container.
+Then, install Claude Code Router:
+
+```shell
+npm install -g @musistudio/claude-code-router
+```
 
 ### 2. Configuration
 
@@ -139,7 +132,7 @@ Here is a comprehensive example:
       "name": "gemini",
       "api_base_url": "https://generativelanguage.googleapis.com/v1beta/models/",
       "api_key": "sk-xxx",
-      "models": ["gemini-2.5-flash", "gemini-2.5-pro", "gemma-4-31b-it"],
+      "models": ["gemini-2.5-flash", "gemini-2.5-pro"],
       "transformer": {
         "use": ["gemini"]
       }
@@ -195,7 +188,7 @@ Here is a comprehensive example:
       "api_base_url": "https://aihubmix.com/v1/chat/completions",
       "api_key": "sk-",
       "models": [
-        "glm-4.5",
+        "Z/glm-4.5",
         "claude-opus-4-20250514",
         "gemini-2.5-pro"
       ]
@@ -212,67 +205,13 @@ Here is a comprehensive example:
 }
 ```
 
-#### Adding a New Provider
-
-If you want to add a new provider and automatically discover its models, follow these steps:
-
-1. **Add Minimal Config**: Add a new entry to the `Providers` array in `config.json` with just the basic details:
-   ```json
-   {
-     "name": "my-new-provider",
-     "api_base_url": "https://api.example.com/v1/chat/completions",
-     "api_key": "$MY_API_KEY",
-     "models": []
-   }
-   ```
-2. **Perform Model Discovery**: Run the discovery command to fetch available models:
-   ```shell
-   ccr model get my-new-provider
-   ```
-3. **Sync Models**: The command will list remote models and prompt you to append missing ones to your configuration.
-4. **Restart**: Restart the service to pick up the updated configuration:
-   ```shell
-   ccr restart
-   ```
-
-> **Tip**: For a more comprehensive description of model discovery options, custom JSON response formats, and interactive model management, see the [CLI Model Management](#5-cli-model-management) section.
-
 ### 3. Running Claude Code with the Router
-
-#### Via `ccr code`
 
 Start Claude Code using the router:
 
 ```shell
 ccr code
 ```
-
-#### Via Claude Code Settings (Alternative)
-
-You can also configure Claude Code to always use the router by editing its `settings.json` file (typically at `~/.claude/settings.json`). Models are specified using the `<provider>,<model>` syntax:
-
-```json
-{
-  "env": {
-    "ANTHROPIC_BASE_URL": "http://127.0.0.1:3456",
-    "ANTHROPIC_AUTH_TOKEN": "dummy",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gemini,gemma-4-31b-it",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "opencode,minimax-m2.7",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "opencode,glm-5.1"
-  }
-}
-```
-
-| Variable | Purpose |
-|---|---|
-| `ANTHROPIC_BASE_URL` | Points Claude Code to the router's proxy address |
-| `ANTHROPIC_AUTH_TOKEN` | Must match the `APIKEY` value set in the router's `config.json` |
-| `ANTHROPIC_MODEL` | Default model (overrides per-tier defaults below) |
-| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Fast / cost-effective model (Haiku equivalent) |
-| `ANTHROPIC_DEFAULT_SONNET_MODEL` | Balanced performance model (Sonnet equivalent) |
-| `ANTHROPIC_DEFAULT_OPUS_MODEL` | Maximum capability model (Opus equivalent) |
-
-This approach lets you run `claude` directly without needing `ccr code`.
 
 > **Note**: After modifying the configuration file, you need to restart the service for the changes to take effect:
 >
@@ -317,104 +256,6 @@ This command provides an interactive interface to:
      - Provider-specific routing (e.g., OpenRouter provider preferences)
 
 The CLI tool validates all inputs and provides helpful prompts to guide you through the configuration process, making it easy to manage complex setups without editing JSON files manually.
-
-For non-interactive model discovery, you can also test provider access and list remote models directly:
-
-```shell
-ccr model get openai
-ccr model get gemini
-```
-
-This command:
-- Calls the provider's model-list endpoint using the configured API key
-- Prints the remote models returned by the provider
-- Prompts to append only missing models to the configured `models` array
-
-Built-in endpoint support is included for `openai` and `gemini`. For other providers, you can configure `models_api_url` and a custom `models_response_format` to handle different JSON response structures.
-
-The `models_response_format` object supports:
-- `listPath`: JSON path to the array of models (e.g., `"data"`, `"models"`, or `""` for root array)
-- `idPath`: Field name within each model object to use as ID (e.g., `"id"`, `"name"`, `"slug"`)
-- `stripPrefix`: Optional prefix to remove from model IDs (e.g., `"models/"`)
-
-Example:
-
-```json
-{
-  "name": "together.ai",
-  "api_base_url": "https://api.together.ai/v1/chat/completions",
-  "models_api_url": "https://api.together.ai/v1/models",
-  "api_key": "$TOGETHERAI_API_KEY",
-  "models": [],
-  "models_response_format": {
-    "listPath": "",
-    "idPath": "id"
-  }
-}
-```
-
-You can also override these settings via CLI flags for testing:
-```shell
-ccr model get my-provider --list-path data --id-path id --strip-prefix "v1/"
-```
-
-If the provider returns additional models, `ccr model get <provider>` can append only the missing entries while keeping existing configured models unchanged.
-
-> **Note**: After syncing models into `config.json`, restart the service with `ccr restart` so the updated provider list is picked up by the running server.
-
-#### Codex Provider Authentication
-
-The Codex provider uses OAuth to authenticate with the ChatGPT backend. Before using Codex models, you must authenticate with your OpenAI account:
-
-```shell
-ccr codex-auth
-```
-
-This command:
-1. Opens your browser to the OpenAI OAuth authorization page
-2. After you sign in, the OAuth callback is handled by the running CCR server
-3. Tokens are stored in `~/.claude-code-router/codex_auth.json`
-4. The Codex transformer automatically refreshes tokens when they expire
-
-> **Note**: The server must be running for `ccr codex-auth` to work, as it hosts the OAuth callback endpoint.
-
-**Running with Docker**:
-
-The OAuth callback uses port `1455`, which is mapped to the CCR server port in `docker-compose.yml` (`"1455:3456"`). When running in Docker:
-
-```shell
-docker exec -it claude-code-router ccr codex-auth
-```
-
-The CLI prints a URL to open in your host browser. After signing in, the browser redirects to `http://localhost:1455/auth/callback`, which Docker forwards to the container. Tokens persist across container restarts via the volume-mounted `./ccr-config` directory.
-
-#### Chrome On-Device Bridge
-
-The `chrome-on-device` transformer requires a bridge process running on the host to communicate with Chrome's Gemini Nano model:
-
-```bash
-# Start the bridge (default: port 3457, CDP port 9222)
-ccr chrome-bridge
-
-# Custom ports
-ccr chrome-bridge --port 3457 --cdp 9222
-```
-
-The bridge:
-1. Checks if Chrome is running with remote debugging enabled (port 9222)
-2. If not, launches Chrome with the required flags (`--remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug-profile`)
-3. Connects to Chrome via Puppeteer/CDP with a 5-minute protocol timeout to handle slow model inference
-4. Loads a page that accesses the Prompt API (`window.LanguageModel`) and maintains a persistent `LanguageModel` session across all requests — conversation history is carried forward naturally within the session, not rebuilt per request
-5. Replaces Claude Code's system prompt with a minimal tool-focused one (5 core tools), using `responseConstraint` (JSON Schema) to force the model to emit structured JSON with `{text, tool_calls[]}` fields
-6. Exposes an OpenAI-compatible HTTP API on `0.0.0.0:3457`:
-   - `GET /v1/models` — returns available models with live context usage
-   - `GET /v1/models/{model_name}` — returns individual model info (display_name, max_input_tokens, capabilities)
-   - `POST /v1/chat/completions` — chat completions with streaming and non-streaming support
-   - `GET /health` — health check
-
-**Prerequisites**: Chrome flags must be enabled (see Chrome On-Device Provider Configuration section). The model (~4GB) must be downloaded.
-
-> **Note for Docker**: The bridge runs on the Docker **host**, not inside the container. Set the provider host to `http://host.docker.internal:3457` in your `config.json`.
 
 ### 6. Presets Management
 
@@ -548,7 +389,6 @@ Transformers allow you to modify the request and response payloads to ensure com
 - `Anthropic`:If you use only the `Anthropic` transformer, it will preserve the original request and response parameters(you can use it to connect directly to an Anthropic endpoint).
 - `deepseek`: Adapts requests/responses for DeepSeek API.
 - `gemini`: Adapts requests/responses for Gemini API.
-- `mistral`: Adapts requests/responses for Mistral API.
 - `openrouter`: Adapts requests/responses for OpenRouter API. It can also accept a `provider` routing parameter to specify which underlying providers OpenRouter should use. For more details, refer to the [OpenRouter documentation](https://openrouter.ai/docs/features/provider-routing). See an example below:
   ```json
     "transformer": {
@@ -579,116 +419,6 @@ Transformers allow you to modify the request and response payloads to ensure com
 - `chutes-glm` Unofficial support for GLM 4.5 model via Chutes [chutes-glm-transformer.js](https://gist.github.com/vitobotta/2be3f33722e05e8d4f9d2b0138b8c863).
 - `qwen-cli` (experimental): Unofficial support for qwen3-coder-plus model via Qwen CLI [qwen-cli.js](https://gist.github.com/musistudio/f5a67841ced39912fd99e42200d5ca8b).
 - `rovo-cli` (experimental): Unofficial support for gpt-5 via Atlassian Rovo Dev CLI [rovo-cli.js](https://gist.github.com/SaseQ/c2a20a38b11276537ec5332d1f7a5e53).
-- `codex`: Adapts requests/responses for the Codex (ChatGPT) Responses API. Requires OAuth authentication via `ccr codex-auth`.
-- `chrome-on-device`: Routes requests to Chrome's on-device Gemini Nano model via the Prompt API. Uses `responseConstraint` for structured JSON output. Requires a bridge process running on the host (`ccr chrome-bridge`).
-
-**Chrome On-Device Provider Configuration:**
-
-The `chrome-on-device` transformer routes requests to Chrome's built-in Gemini Nano model. This is a ~4GB on-device model that runs locally with no API costs. The model is accessed through Chrome's Prompt API (`window.LanguageModel`) via a bridge process.
-
-**Prerequisites:**
-
-1. Google Chrome installed on your system (macOS, Windows, or Linux)
-2. Enable Chrome flags (one-time):
-   - `chrome://flags/#optimization-guide-on-device-model` → **Enabled**
-   - `chrome://flags/#prompt-api-for-gemini-nano-multimodal-input` → **Enabled**
-3. Restart Chrome after enabling flags and wait for the model to download (~4GB)
-4. Start the bridge process on the host: `ccr chrome-bridge`
-
-**Provider Configuration:**
-
-```json
-{
-  "name": "chrome-nano",
-  "api_base_url": "http://127.0.0.1:3457",
-  "api_key": "placeholder",
-  "models": ["gemini-nano"],
-  "transformer": {
-    "use": ["chrome-on-device", "tooluse"]
-  }
-}
-```
-
-> **Note**: The `tooluse` transformer is required alongside `chrome-on-device` to enable the a la carte tool-calling system (including the `ExitTool` for plain text responses) and to inject the necessary system reminders that help the model transition between thinking and acting.
-
-**Starting the Bridge:**
-
-The bridge is a standalone HTTP server that runs on the host and bridges HTTP requests to Chrome's Prompt API via CDP (Chrome DevTools Protocol):
-
-```bash
-# Start the bridge (default: port 3457, CDP port 9222)
-ccr chrome-bridge
-
-# Custom ports
-ccr chrome-bridge --port 3457 --cdp 9222
-```
-
-The bridge automatically launches Chrome with the required flags if it's not already running (`--remote-debugging-port=9222 --user-data-dir=<temp_dir>`).
-
-> **Note for Docker users**: The bridge must run on the Docker **host** (not inside the container), since it needs direct access to Chrome via CDP. When CCR runs in Docker, set the provider host to `http://host.docker.internal:3457`.
-
-**How It Works:**
-
-1. The transformer replaces Claude Code's system prompt with a minimal tool-focused one listing 5 core tools (Bash, Read, Write, Edit, ExitTool)
-2. The bridge maintains persistent `LanguageModel` sessions — one per client fingerprint (`User-Agent + IP` hash). Conversation history is carried forward naturally within each session, not rebuilt per turn. It calls `session.promptStreaming()` with a `responseConstraint` (JSON Schema) that forces structured output: `{"tool_calls": [{"name": "...", "arguments": {...}}]}`. Text responses are handled by the model calling the `ExitTool`.
-3. The bridge transforms Claude Code's internal context blocks in user messages to conserve the limited context budget: `<system-reminder>` blocks containing tool calls or results are converted into structured `<tool_result>` tags, while other `<system-reminder>` blocks and `<command-*>` / `<local-command-*>` blocks for unsupported tools are stripped
-4. The bridge parses the structured JSON response into OpenAI-format SSE chunks (`chat.completion.chunk`) or a single non-streaming response (`chat.completion`)
-5. Tool calls are detected from the parsed JSON and converted to `tool_calls` in the response; `finish_reason` is set to `"tool_calls"` or `"stop"` accordingly
-6. Multi-turn tool use is supported — consecutive requests are processed within the same persistent session
-7. **Multi-session support**: Requests are fingerprinted by `User-Agent + IP` hash into separate sessions, allowing multiple concurrent Claude Code instances without context contamination. A built-in web dashboard (served on the bridge port) shows real-time stats for all sessions, including turn count, idle time, and context usage
-8. **Idle session eviction**: Sessions idle for more than 5 minutes are automatically destroyed to free resources. The `cli` session (dashboard default) is never evicted. Sessions can also be manually evicted via the dashboard's Evict button
-9. Auto-compaction triggers at 85% context usage, resetting the session while preserving the system prompt
-
-**Limitations:**
-
-- **Tool calling**: Uses `responseConstraint` (JSON Schema) for structured output rather than native function calling — this works reliably but depends on the model following the schema
-- **Multi-turn consistency**: The small on-device model may occasionally loop on the same tool call or respond with text instead of calling a needed tool. A retry mechanism with corrected prompts mitigates this
-- **No thinking/reasoning blocks**: The Prompt API doesn't separate thinking from visible output
-- **Context window**: Limited to 9216 tokens; auto-compaction engages at 85% usage. Old interactions are evicted on context overflow
-- **Output limit**: The model may stall on whitespace-heavy content (e.g., Python indentation). The bridge uses write-then-edit incremental file creation (3 lines per Write call) and whitespace stall detection with abort
-- **Cross-platform support**: Compatible with macOS, Windows, and Linux (requires Chrome installation and manual flag enablement)
-
-**Codex Provider Configuration:**
-
-The Codex transformer connects to the ChatGPT backend API, providing access to GPT-5.x models. It uses OAuth authentication instead of a static API key.
-
-```json
-{
-  "name": "codex",
-  "api_base_url": "https://chatgpt.com/backend-api/codex",
-  "api_key": "oauth_dummy_key",
-  "models": ["gpt-5.4"],
-  "transformer": {
-    "use": ["codex"]
-  }
-}
-```
-
-> **Note**: The `api_key` field is a placeholder — actual authentication is handled via OAuth tokens stored in `~/.claude-code-router/codex_auth.json`. Run `ccr codex-auth` to authenticate before using the Codex provider.
-
-**DeepSeek via OpenCode (Mandatory Reasoning Replay):**
-
-DeepSeek models require previous assistant reasoning content to be replayed in subsequent requests. When using DeepSeek models through providers like OpenCode, apply the `reasoning` transformer at the model level to handle this automatically:
-
-```json
-{
-  "name": "opencode",
-  "api_base_url": "https://opencode.ai/zen/go/v1/chat/completions",
-  "api_key": "$OPENCODE_API_KEY",
-  "models": ["deepseek-v4-pro", "deepseek-v4-flash"],
-  "transformer": {
-    "use": ["OpenAI"],
-    "deepseek-v4-pro": {
-      "use": ["reasoning"]
-    },
-    "deepseek-v4-flash": {
-      "use": ["reasoning"]
-    }
-  }
-}
-```
-
-> **Note**: The `reasoning` transformer must be applied specifically to DeepSeek models (not provider-wide). It replays the assistant's reasoning output from previous turns as required by the DeepSeek API.
 
 **Custom Transformers:**
 
@@ -844,6 +574,133 @@ This setup allows for interesting automations, like running tasks during off-pea
 
 ## 📝 Further Reading
 
-- [Codex API](https://developers.openai.com/codex/sdk) — Developer docs for the ChatGPT backend API used by the `codex` transformer (OAuth PKCE, Responses API, streaming, tool calls)
-- [Chrome Prompt API](https://developer.chrome.com/docs/ai/prompt-api) — On-device Gemini Nano API used by the `chrome-on-device` transformer and bridge
-- [Provider Integration Lessons](tasks/lessons.md) — Hard-won knowledge for LLM provider integrations (DeepSeek, Mistral, Gemini, Codex, Gemini Nano)
+- [Project Motivation and How It Works](blog/en/project-motivation-and-how-it-works.md)
+- [Maybe We Can Do More with the Router](blog/en/maybe-we-can-do-more-with-the-route.md)
+- [GLM-4.6 Supports Reasoning and Interleaved Thinking](blog/en/glm-4.6-supports-reasoning.md)
+
+## ❤️ Support & Sponsoring
+
+If you find this project helpful, please consider sponsoring its development. Your support is greatly appreciated!
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/F1F31GN2GM)
+
+[Paypal](https://paypal.me/musistudio1999)
+
+<table>
+  <tr>
+    <td><img src="/blog/images/alipay.jpg" width="200" alt="Alipay" /></td>
+    <td><img src="/blog/images/wechat.jpg" width="200" alt="WeChat Pay" /></td>
+  </tr>
+</table>
+
+### Our Sponsors
+
+A huge thank you to all our sponsors for their generous support!
+
+
+- [AIHubmix](https://aihubmix.com/)
+- [BurnCloud](https://ai.burncloud.com)
+- [302.AI](https://share.302.ai/ZGVF9w)
+- [Z智谱](https://www.bigmodel.cn/claude-code?ic=FPF9IVAGFJ)
+- @Simon Leischnig
+- [@duanshuaimin](https://github.com/duanshuaimin)
+- [@vrgitadmin](https://github.com/vrgitadmin)
+- @\*o
+- [@ceilwoo](https://github.com/ceilwoo)
+- @\*说
+- @\*更
+- @K\*g
+- @R\*R
+- [@bobleer](https://github.com/bobleer)
+- @\*苗
+- @\*划
+- [@Clarence-pan](https://github.com/Clarence-pan)
+- [@carter003](https://github.com/carter003)
+- @S\*r
+- @\*晖
+- @\*敏
+- @Z\*z
+- @\*然
+- [@cluic](https://github.com/cluic)
+- @\*苗
+- [@PromptExpert](https://github.com/PromptExpert)
+- @\*应
+- [@yusnake](https://github.com/yusnake)
+- @\*飞
+- @董\*
+- @\*汀
+- @\*涯
+- @\*:-）
+- @\*\*磊
+- @\*琢
+- @\*成
+- @Z\*o
+- @\*琨
+- [@congzhangzh](https://github.com/congzhangzh)
+- @\*\_
+- @Z\*m
+- @*鑫
+- @c\*y
+- @\*昕
+- [@witsice](https://github.com/witsice)
+- @b\*g
+- @\*亿
+- @\*辉
+- @JACK
+- @\*光
+- @W\*l
+- [@kesku](https://github.com/kesku)
+- [@biguncle](https://github.com/biguncle)
+- @二吉吉
+- @a\*g
+- @\*林
+- @\*咸
+- @\*明
+- @S\*y
+- @f\*o
+- @\*智
+- @F\*t
+- @r\*c
+- [@qierkang](http://github.com/qierkang)
+- @\*军
+- [@snrise-z](http://github.com/snrise-z)
+- @\*王
+- [@greatheart1000](http://github.com/greatheart1000)
+- @\*王
+- @zcutlip
+- [@Peng-YM](http://github.com/Peng-YM)
+- @\*更
+- @\*.
+- @F\*t
+- @\*政
+- @\*铭
+- @\*叶
+- @七\*o
+- @\*青
+- @\*\*晨
+- @\*远
+- @\*霄
+- @\*\*吉
+- @\*\*飞
+- @\*\*驰
+- @x\*g
+- @\*\*东
+- @\*落
+- @哆\*k
+- @\*涛
+- [@苗大](https://github.com/WitMiao)
+- @\*呢
+- @\d*u
+- @crizcraig
+- s\*s
+- \*火
+- \*勤
+- \*\*锟
+- \*涛
+- \*\*明
+- \*知
+- \*语
+- \*瓜
+
+
+(If your name is masked, please contact me via my homepage email to update it with your GitHub username.)
