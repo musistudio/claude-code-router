@@ -1,7 +1,5 @@
 ![](blog/images/claude-code-router-img.png)
 
-[![](https://img.shields.io/badge/%F0%9F%87%A8%F0%9F%87%B3-%E4%B8%AD%E6%96%87%E7%89%88-ff0000?style=flat)](README_zh.md)
-[![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white)](https://discord.gg/rdftVMaUcS)
 [![](https://img.shields.io/github/license/musistudio/claude-code-router)](https://github.com/musistudio/claude-code-router/blob/main/LICENSE)
 
 ## ✨ Features
@@ -603,10 +601,12 @@ The `chrome-on-device` transformer routes requests to Chrome's built-in Gemini N
   "api_key": "placeholder",
   "models": ["gemini-nano"],
   "transformer": {
-    "use": ["chrome-on-device"]
+    "use": ["chrome-on-device", "tooluse"]
   }
 }
 ```
+
+> **Note**: The `tooluse` transformer is required alongside `chrome-on-device` to enable the a la carte tool-calling system (including the `ExitTool` for plain text responses) and to inject the necessary system reminders that help the model transition between thinking and acting.
 
 **Starting the Bridge:**
 
