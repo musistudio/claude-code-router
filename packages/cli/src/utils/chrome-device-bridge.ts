@@ -10,6 +10,8 @@
 
 import http from "http";
 import { randomBytes, createHash } from "crypto";
+import os from "os";
+import path from "path";
 
 let puppeteer: any;
 try {
@@ -27,7 +29,7 @@ try {
 
 const DEFAULT_PORT = 3457;
 const DEFAULT_CDP_PORT = 9222;
-const CHROME_USER_DATA_DIR = "/tmp/chrome-debug-profile";
+const CHROME_USER_DATA_DIR = path.join(os.tmpdir(), "chrome-debug-profile");
 
 const DEFAULT_TEMP = 0.5;
 const DEFAULT_TOPK = 40;
