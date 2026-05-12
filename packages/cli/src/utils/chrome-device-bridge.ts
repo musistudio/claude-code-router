@@ -9,7 +9,7 @@
  */
 
 import http from "http";
-import { randomBytes } from "crypto";
+import { randomBytes, createHash } from "crypto";
 
 let puppeteer: any;
 try {
@@ -29,11 +29,18 @@ const DEFAULT_PORT = 3457;
 const DEFAULT_CDP_PORT = 9222;
 const CHROME_USER_DATA_DIR = "/tmp/chrome-debug-profile";
 
+const DEFAULT_TEMP = 0.5;
+const DEFAULT_TOPK = 40;
+const TEMP_INCREASE_FACTOR = 1.5;
+
 const STREAM_HEADERS = {
   "Content-Type": "text/event-stream",
   "Cache-Control": "no-cache",
   Connection: "keep-alive",
 };
+
+const MAX_BODY_SIZE = 1024 * 1024; // 1MB
+const REQUEST_TIMEOUT_MS = 120_000; // 2 minutes
 
 // ═══════════════════════════════════════════════════════════════════════
 // JSON schema for structured output — forces the model to emit well-formed
@@ -43,10 +50,6 @@ const STREAM_HEADERS = {
 const RESPONSE_SCHEMA = {
   type: "object",
   properties: {
-    text: {
-      type: "string",
-      maxLength: 1100,
-    },
     tool_calls: {
       type: "array",
       maxItems: 1,
@@ -55,19 +58,19 @@ const RESPONSE_SCHEMA = {
         properties: {
           name: {
             type: "string",
-            maxLength: 20,
           },
           arguments: {
             type: "object",
             properties: {
-              command: { type: "string", maxLength: 250 },
-              file_path: { type: "string", maxLength: 80 },
-              content: { type: "string", maxLength: 800 },
-              old_string: { type: "string", maxLength: 200 },
-              new_string: { type: "string", maxLength: 500 },
-              url: { type: "string", maxLength: 300 },
-              prompt: { type: "string", maxLength: 300 },
-              query: { type: "string", maxLength: 100 },
+              command: { type: "string" },
+              file_path: { type: "string" },
+              content: { type: "string" },
+              old_string: { type: "string" },
+              new_string: { type: "string" },
+              url: { type: "string" },
+              prompt: { type: "string" },
+              query: { type: "string" },
+              response: { type: "string" },
             },
           },
         },
@@ -79,28 +82,89 @@ const RESPONSE_SCHEMA = {
 
 // ═══════════════════════════════════════════════════════════════════════
 // Browser-side script (injected into the Chrome page)
+// Multi-session support: sessionId -> { session, lastSystemPrompt, turnCount, stats }
 // ═══════════════════════════════════════════════════════════════════════
 
 const BRIDGE_SCRIPT = `
-let conversationSession = null;
-let turnCount = 0;
-let stats = { requests: 0, lastPromptLen: 0, lastRespLen: 0, lastTimeMs: 0, lastCharsPerSec: 0 };
+const DEFAULT_TEMP = ${DEFAULT_TEMP};
+const DEFAULT_TOPK = ${DEFAULT_TOPK};
+const TEMP_INCREASE_FACTOR = ${TEMP_INCREASE_FACTOR};
+
+let sessions = {};
+let modelParams = null;
+
+function getEntry(sessionId) {
+  return sessions[sessionId || 'cli'] || null;
+}
+
+function getOrCreateEntry(sessionId) {
+  const id = sessionId || 'cli';
+  if (!sessions[id]) {
+    sessions[id] = {
+      session: null,
+      lastSystemPrompt: null,
+      lastTopK: null,
+      lastTemp: null,
+      turnCount: 0,
+      stats: { requests: 0, lastPromptLen: 0, lastRespLen: 0, lastTimeMs: 0, lastThinkMs: 0, lastGenMs: 0, lastTokens: 0, lastTokensPerSec: 0 },
+    };
+  }
+  return sessions[id];
+}
 
 function updateDashboard() {
-  const ctx = conversationSession ? (conversationSession.contextUsage || 0) + ' / ' + (conversationSession.contextWindow || 0) + ' tokens' : 'no session';
+  const cli = sessions['cli'];
+  const session = cli?.session || null;
+  const stats = cli?.stats || { requests: 0, lastPromptLen: 0, lastRespLen: 0, lastThinkMs: 0, lastGenMs: 0, lastTokens: 0, lastTokensPerSec: 0 };
+  const turnCount = cli?.turnCount || 0;
+  const ctx = session ? (session.contextUsage || 0) + ' / ' + (session.contextWindow || 0) + ' tokens' : 'no session';
   document.getElementById('ctx').textContent = ctx;
   document.getElementById('reqs').textContent = stats.requests;
   document.getElementById('prompt-len').textContent = stats.lastPromptLen;
   document.getElementById('resp-len').textContent = stats.lastRespLen;
-  document.getElementById('resp-time').textContent = stats.lastTimeMs ? (stats.lastTimeMs / 1000).toFixed(1) + 's' : '-';
-  document.getElementById('chars-sec').textContent = stats.lastCharsPerSec ? stats.lastCharsPerSec.toFixed(1) + ' ch/s' : '-';
-  document.getElementById('status').textContent = conversationSession ? 'Session active (turn ' + turnCount + ')' : 'No session';
-  document.getElementById('status').style.color = conversationSession ? '#4caf50' : '#ff9800';
+  document.getElementById('resp-time').textContent = stats.lastThinkMs ? 'think ' + (stats.lastThinkMs / 1000).toFixed(1) + 's / gen ' + (stats.lastGenMs / 1000).toFixed(1) + 's' : '-';
+  document.getElementById('chars-sec').textContent = stats.lastTokensPerSec ? stats.lastTokens + ' tok @ ' + stats.lastTokensPerSec + ' tok/s' : '-';
+  document.getElementById('status').textContent = session ? 'Session active (turn ' + turnCount + ')' : 'No session';
+  document.getElementById('status').style.color = session ? '#4caf50' : '#ff9800';
 }
 
-window.ensureSession = async function(systemPrompt) {
-  if (conversationSession) {
-    return { ready: true, contextUsage: conversationSession.contextUsage || 0, contextWindow: conversationSession.contextWindow || 0 };
+window.ensureSession = async function(sessionIdOrConfig, maybeConfig) {
+  let sessionId, configOverride;
+  if (typeof sessionIdOrConfig === 'string') {
+    sessionId = sessionIdOrConfig;
+    configOverride = maybeConfig;
+  } else {
+    sessionId = 'cli';
+    configOverride = sessionIdOrConfig;
+  }
+  const id = sessionId || 'cli';
+  const entry = getOrCreateEntry(id);
+  const systemPrompt = configOverride?.systemPrompt || null;
+  const reqTopK = configOverride?.topK;
+  const reqTemp = configOverride?.temperature;
+
+  // Check if we can reuse the existing session
+  if (entry.session) {
+    const promptMatches = (systemPrompt === entry.lastSystemPrompt);
+    const topKMatches = (reqTopK === undefined || reqTopK === entry.lastTopK);
+    const tempMatches = (reqTemp === undefined || reqTemp === entry.lastTemp);
+
+    if (promptMatches && topKMatches && tempMatches) {
+      return { ready: true, contextUsage: entry.session.contextUsage || 0, contextWindow: entry.session.contextWindow || 0 };
+    }
+  }
+
+  // Destroy if system prompt changed or params changed
+  if (entry.session) {
+    let shouldDestroy = false;
+    if (systemPrompt && systemPrompt !== entry.lastSystemPrompt) shouldDestroy = true;
+    if (reqTopK !== undefined && reqTopK !== entry.lastTopK) shouldDestroy = true;
+    if (reqTemp !== undefined && reqTemp !== entry.lastTemp) shouldDestroy = true;
+
+    if (shouldDestroy) {
+      try { entry.session.destroy(); } catch (e) { console.log('[bridge] destroy failed:', e.message); }
+      entry.session = null;
+    }
   }
   const maxRetries = 5;
   for (let i = 0; i < maxRetries; i++) {
@@ -118,73 +182,131 @@ window.ensureSession = async function(systemPrompt) {
       let createOpts = {
         expectedInputs: [{ type: 'text', languages: ['en'] }],
         expectedOutputs: [{ type: 'text', languages: ['en'] }],
-        initialPrompts: [{ role: 'system', content: systemPrompt }],
       };
       try {
         if (typeof api.params === 'function') {
-          const p = await api.params(availOpts);
-          console.log('[model] default params: temperature=' + p.defaultTemperature + ', topK=' + p.defaultTopK + ', maxTemperature=' + p.maxTemperature + ', maxTopK=' + p.maxTopK);
-          createOpts.temperature = 0;
-          createOpts.topK = p.defaultTopK;
+          modelParams = await api.params(availOpts);
+          console.log('[bridge] Default params: temperature=' + modelParams.defaultTemperature + ', topK=' + modelParams.defaultTopK + ', maxTemperature=' + modelParams.maxTemperature + ', maxTopK=' + modelParams.maxTopK);
         }
       } catch (e) {
-        console.log('[model] could not query params, using defaults:', e.message);
+        console.log('[bridge] Could not query params, using defaults:', e.message);
       }
-      conversationSession = await api.create(createOpts);
+      var topK = (configOverride && configOverride.topK != null) ? configOverride.topK : (modelParams ? modelParams.defaultTopK : DEFAULT_TOPK);
+      var temp = (configOverride && configOverride.temperature != null) ? configOverride.temperature : (modelParams ? modelParams.defaultTemperature : DEFAULT_TEMP);
+
+      if (modelParams) {
+        if (topK != null && modelParams.maxTopK != null) topK = Math.min(topK, modelParams.maxTopK);
+        if (temp != null && modelParams.maxTemperature != null) temp = Math.min(temp, modelParams.maxTemperature);
+      }
+
+      if (topK != null) createOpts.topK = topK;
+      if (temp != null) createOpts.temperature = temp;
+      if (systemPrompt) {
+        createOpts.initialPrompts = [{ role: 'system', content: systemPrompt }];
+      }
+      if (configOverride) {
+        console.log('[bridge] Creating session ' + sessionId + ': topK=' + topK + ', temperature=' + temp + (systemPrompt ? ', systemPrompt=' + systemPrompt.length + ' chars' : ''));
+      }
+      entry.session = await api.create(createOpts);
+      entry.lastSystemPrompt = systemPrompt;
+      entry.lastTopK = topK;
+      entry.lastTemp = temp;
       try {
-        conversationSession.addEventListener('contextoverflow', function() {
-          console.log('[model] CONTEXT OVERFLOW - oldest messages being evicted');
-          updateDashboard();
+        entry.session.addEventListener('contextoverflow', function() {
+          console.log('[bridge] CONTEXT OVERFLOW in session ' + sessionId + ' — oldest messages being evicted');
+          if (sessionId === 'cli') updateDashboard();
         });
       } catch (e) {}
-      turnCount = 0;
-      updateDashboard();
-      return { ready: true, contextUsage: conversationSession.contextUsage || 0, contextWindow: conversationSession.contextWindow || 0 };
+      entry.turnCount = 0;
+      if (sessionId === 'cli') updateDashboard();
+      return { ready: true, contextUsage: entry.session.contextUsage || 0, contextWindow: entry.session.contextWindow || 0 };
     } catch (e) {
+      console.log('[bridge] api.create failed: ' + e);
       if (i === maxRetries - 1) return { step: 'create', error: e.message };
       await new Promise(r => setTimeout(r, 2000));
     }
   }
 };
 
-window.resetSession = async function(systemPrompt) {
-  if (conversationSession) {
-    try { conversationSession.destroy(); } catch (e) { console.log('[model] destroy failed:', e.message); }
-    conversationSession = null;
+window.resetSession = async function(sessionIdOrConfig, maybeConfig) {
+  let sessionId, configOverride;
+  if (typeof sessionIdOrConfig === 'string') {
+    sessionId = sessionIdOrConfig;
+    configOverride = maybeConfig;
+  } else {
+    sessionId = 'cli';
+    configOverride = sessionIdOrConfig;
   }
-  turnCount = 0;
-  return window.ensureSession(systemPrompt);
+  const entry = getOrCreateEntry(sessionId);
+  if (entry.session) {
+    try { entry.session.destroy(); } catch (e) { console.log('[bridge] destroy failed:', e.message); }
+    entry.session = null;
+  }
+  entry.turnCount = 0;
+  entry.lastSystemPrompt = null;
+  entry.lastTopK = null;
+  entry.lastTemp = null;
+  return window.ensureSession(sessionId, configOverride);
 };
 
-window.getContextInfo = function() {
-  if (!conversationSession) return { usage: 0, window: 0 };
-  return { usage: conversationSession.contextUsage || 0, window: conversationSession.contextWindow || 0 };
+window.getModelParams = function() {
+  return modelParams ? {
+    defaultTopK: modelParams.defaultTopK,
+    maxTopK: modelParams.maxTopK,
+    defaultTemperature: modelParams.defaultTemperature,
+    maxTemperature: modelParams.maxTemperature,
+  } : null;
+};
+
+window.getContextInfo = function(sessionId) {
+  const entry = getEntry(sessionId || 'cli');
+  if (!entry || !entry.session) return { usage: 0, window: 0 };
+  return { usage: entry.session.contextUsage || 0, window: entry.session.contextWindow || 0 };
 };
 
 window.updateStats = function(s) {
-  stats = s;
+  const cli = getOrCreateEntry('cli');
+  cli.stats = s;
   updateDashboard();
 };
 
-window.promptSession = async function(promptText, schema) {
-  if (!conversationSession) return { error: 'Session not initialized' };
+window.destroySession = function(sessionId) {
+  const id = sessionId || 'cli';
+  const entry = sessions[id];
+  if (entry && entry.session) {
+    try { entry.session.destroy(); } catch (e) {}
+    delete sessions[id];
+  }
+};
+
+window.promptSession = async function(sessionIdOrText, maybeText, schema, tempOverride) {
+  let sessionId, promptText;
+  if (typeof sessionIdOrText === 'string' && maybeText !== undefined) {
+    sessionId = sessionIdOrText;
+    promptText = maybeText;
+  } else {
+    sessionId = 'cli';
+    promptText = sessionIdOrText;
+  }
+  const entry = getEntry(sessionId);
+  if (!entry || !entry.session) return { error: 'Session not initialized' };
   try {
-    const MAX_WS_STALL = 2000;
+    const MAX_WS_STALL = 1000;
     const controller = new AbortController();
-    const opts = { signal: controller.signal, temperature: 0.1, topK: 5 };
+    const opts = { 
+      signal: controller.signal, 
+      temperature: tempOverride !== undefined ? tempOverride : DEFAULT_TEMP, 
+      topK: DEFAULT_TOPK 
+    };
     if (schema) opts.responseConstraint = schema;
-    console.log('[model] turn ' + (turnCount + 1) + ' prompt, length:', promptText.length);
+    console.log('[bridge] Session ' + sessionId + ' turn ' + (entry.turnCount + 1) + ' prompt, length:', promptText.length);
     const t0 = Date.now();
-    const stream = conversationSession.promptStreaming(promptText, opts);
+    const stream = entry.session.promptStreaming(promptText, opts);
     let full = '';
     let nonWsChars = 0;
-    let prevNonWsChars = 0;
     let lastNonWsAt = 0;
     let stallChars = 0;
-    let stallChunks = 0;
     let firstContentAt = 0;
-    let lastThinkingLog = 0;
-    let lastContentLog = 0;
     let truncated = false;
     try {
       for await (const chunk of stream) {
@@ -196,7 +318,7 @@ window.promptSession = async function(promptText, schema) {
             if (nonWsChars === 0) {
               firstContentAt = Date.now();
               const thinkMs = firstContentAt - t0;
-              console.log('[model] thinking done in ' + (thinkMs / 1000).toFixed(1) + 's, generating...');
+              console.log('[bridge] Session ' + sessionId + ' thinking done in ' + (thinkMs / 1000).toFixed(1) + 's, generating...');
             }
             nonWsChars++;
             chunkHasContent = true;
@@ -204,80 +326,110 @@ window.promptSession = async function(promptText, schema) {
         }
         if (!chunkHasContent && nonWsChars > 0) {
           stallChars += chunk.length;
-          stallChunks++;
           if (lastNonWsAt === 0) lastNonWsAt = Date.now();
           if (stallChars >= MAX_WS_STALL) {
-            console.log('[model] ' + MAX_WS_STALL + '+ whitespace chars with no content, aborting (stalled ' + ((Date.now() - lastNonWsAt) / 1000).toFixed(1) + 's)');
+            console.log('[bridge] Session ' + sessionId + ': ' + MAX_WS_STALL + '+ whitespace chars with no content, aborting (stalled ' + ((Date.now() - lastNonWsAt) / 1000).toFixed(1) + 's)');
             truncated = true;
             controller.abort();
             break;
           }
         } else if (chunkHasContent) {
-          if (stallChars > MAX_WS_STALL) {
-            console.log('[model] recovered after ' + stallChars + ' whitespace chars (stalled ' + ((Date.now() - lastNonWsAt) / 1000).toFixed(1) + 's)');
-          }
           stallChars = 0;
-          stallChunks = 0;
           lastNonWsAt = 0;
-          prevNonWsChars = nonWsChars;
         }
         if (stallChars > 500 && stallChars % 500 < chunk.length) {
-          console.log('[model] STALLING: ' + stallChars + ' whitespace chars, ' + ((Date.now() - lastNonWsAt) / 1000).toFixed(1) + 's since last content, chunk sample: ' + JSON.stringify(chunk.substring(0, 60)));
-        }
-        const elapsed = Date.now() - t0;
-        if (nonWsChars === 0 && elapsed - lastThinkingLog >= 3000) {
-          console.log('[model] thinking... (' + (elapsed / 1000).toFixed(1) + 's)');
-          lastThinkingLog = elapsed;
-        } else if (nonWsChars > 0 && elapsed - lastContentLog >= 2000) {
-          const preview = full.replace(/^[\\s]+/, '').substring(0, 80);
-          console.log('[model] generating: ' + nonWsChars + ' content chars, preview: ' + JSON.stringify(preview));
-          lastContentLog = elapsed;
+          console.log('[bridge] Session ' + sessionId + ' STALLING: ' + stallChars + ' whitespace chars, ' + ((Date.now() - lastNonWsAt) / 1000).toFixed(1) + 's since last content');
         }
       }
     } catch (e) {
       if (e.name !== 'AbortError') {
-        console.log('[model] stream error (using partial output):', e.message);
+        console.log('[bridge] Session ' + sessionId + ' stream error (using partial output):', e.message);
       }
       truncated = true;
     }
     full = full.trimEnd();
     const elapsed = Date.now() - t0;
     const thinkMs = firstContentAt > 0 ? firstContentAt - t0 : elapsed;
-    const genMs = firstContentAt > 0 ? elapsed - firstContentAt : 0;
-    turnCount++;
-    stats.requests++;
-    stats.lastPromptLen = promptText.length;
-    stats.lastRespLen = full.length;
-    stats.lastTimeMs = elapsed;
-    stats.lastCharsPerSec = elapsed > 0 ? (full.length * 1000 / elapsed) : 0;
-    updateDashboard();
+    const genMs = firstContentAt > 0 ? Date.now() - firstContentAt : 0;
+    entry.turnCount++;
+    entry.stats.requests++;
+    entry.stats.lastPromptLen = promptText.length;
+    entry.stats.lastRespLen = full.length;
+    entry.stats.lastTimeMs = elapsed;
+    entry.stats.lastThinkMs = thinkMs;
+    entry.stats.lastGenMs = genMs;
+    entry.stats.lastTokens = Math.round(full.length / 4);
+    entry.stats.lastTokensPerSec = genMs > 0 ? Math.round(full.length / 4 * 1000 / genMs) : 0;
+    if (sessionId === 'cli') updateDashboard();
     if (firstContentAt > 0) {
-      console.log('[model] turn ' + turnCount + ' done in ' + elapsed + 'ms (think: ' + thinkMs + 'ms, gen: ' + genMs + 'ms), ' + full.length + ' chars' + (truncated ? ' [TRUNCATED]' : ''));
+      console.log('[bridge] Session ' + sessionId + ' turn ' + entry.turnCount + ' done in ' + elapsed + 'ms (think: ' + thinkMs + 'ms, gen: ' + genMs + 'ms), ' + full.length + ' chars' + (truncated ? ' [TRUNCATED]' : ''));
     } else {
-      console.log('[model] turn ' + turnCount + ' done in ' + elapsed + 'ms (no content), ' + full.length + ' chars' + (truncated ? ' [TRUNCATED]' : ''));
+      console.log('[bridge] Session ' + sessionId + ' turn ' + entry.turnCount + ' done in ' + elapsed + 'ms (no content), ' + full.length + ' chars' + (truncated ? ' [TRUNCATED]' : ''));
     }
     if (full.length === 0 && truncated) {
       return { error: 'Output truncated before any content was produced' };
     }
-    return { response: full, truncated: truncated };
+    return { response: full, truncated: truncated, elapsed: elapsed, thinkMs: thinkMs, genMs: genMs };
   } catch (e) {
-    console.log('[model] ERROR:', e.message);
+    console.log('[bridge] Session ' + sessionId + ' ERROR:', e.message);
     return { error: e.message, stack: e.stack };
   }
 };
 
-// Clean up the session when the page is closed (releases Chrome model memory)
-window.addEventListener('beforeunload', function() {
-  if (conversationSession) {
-    try { conversationSession.destroy(); } catch (e) {}
-    conversationSession = null;
+window.promptSessionNonStreaming = async function(sessionIdOrText, maybeText, schema, tempOverride) {
+  let sessionId, promptText;
+  if (typeof sessionIdOrText === 'string' && maybeText !== undefined) {
+    sessionId = sessionIdOrText;
+    promptText = maybeText;
+  } else {
+    sessionId = 'cli';
+    promptText = sessionIdOrText;
   }
+  const entry = getEntry(sessionId);
+  if (!entry || !entry.session) return { error: 'Session not initialized' };
+  try {
+    const opts = { 
+      temperature: tempOverride !== undefined ? tempOverride : DEFAULT_TEMP, 
+      topK: DEFAULT_TOPK 
+    };
+    if (schema) opts.responseConstraint = schema;
+    console.log('[bridge] Session ' + sessionId + ' turn ' + (entry.turnCount + 1) + ' prompt (non-streaming), length:', promptText.length);
+    const t0 = Date.now();
+    const response = await entry.session.prompt(promptText, opts);
+    const elapsed = Date.now() - t0;
+    const text = (response || '').trimEnd();
+    entry.turnCount++;
+    entry.stats.requests++;
+    entry.stats.lastPromptLen = promptText.length;
+    entry.stats.lastRespLen = text.length;
+    entry.stats.lastTimeMs = elapsed;
+    entry.stats.lastThinkMs = elapsed;
+    entry.stats.lastGenMs = 0;
+    entry.stats.lastTokens = Math.round(text.length / 4);
+    entry.stats.lastTokensPerSec = 0;
+    if (sessionId === 'cli') updateDashboard();
+    console.log('[bridge] Session ' + sessionId + ' turn ' + entry.turnCount + ' done in ' + elapsed + 'ms, ' + text.length + ' chars');
+    return { response: text, truncated: false, elapsed: elapsed, thinkMs: elapsed, genMs: 0 };
+  } catch (e) {
+    console.log('[bridge] Session ' + sessionId + ' ERROR:', e.message);
+    return { error: e.message };
+  }
+};
+
+window.addEventListener('beforeunload', function() {
+  for (const id in sessions) {
+    if (sessions[id].session) {
+      try { sessions[id].session.destroy(); } catch (e) {}
+    }
+  }
+  sessions = {};
 });
 `;
 
 const HTML_PAGE = `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CCR Bridge — Gemini Nano</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -299,11 +451,11 @@ const HTML_PAGE = `<!DOCTYPE html>
 <div class="grid">
   <div class="card"><div class="label">Status</div><div id="status" class="value status-warn">Initializing...</div></div>
   <div class="card"><div class="label">Context Window</div><div id="ctx" class="value">-</div></div>
-  <div class="card"><div class="label">Requests</div><div id="reqs" class="value">0</div></div>
+  <div class="card"><div class="label">Turns</div><div id="reqs" class="value">0</div></div>
   <div class="card"><div class="label">Last Prompt</div><div id="prompt-len" class="value">-</div></div>
   <div class="card"><div class="label">Last Response</div><div id="resp-len" class="value">-</div></div>
-  <div class="card"><div class="label">Last Duration</div><div id="resp-time" class="value">-</div></div>
-  <div class="card"><div class="label">Throughput</div><div id="chars-sec" class="value">-</div></div>
+  <div class="card"><div class="label">Think / Gen</div><div id="resp-time" class="value">-</div></div>
+  <div class="card"><div class="label">Tokens</div><div id="chars-sec" class="value">-</div></div>
 </div>
 <div id="log"></div>
 <script>${BRIDGE_SCRIPT}</script>
@@ -318,7 +470,12 @@ const HTML_PAGE = `<!DOCTYPE html>
       logEl.scrollTop = logEl.scrollHeight;
       origLog.apply(console, arguments);
     };
-    console.log('Bridge page loaded');
+    var isBridge = typeof window.LanguageModel !== 'undefined';
+    console.log('[bridge] Bridge page loaded (bridge=' + isBridge + ')');
+    if (!isBridge) {
+      document.getElementById('status').textContent = 'Dashboard (monitoring only)';
+      document.getElementById('status').style.color = '#2196f3';
+    }
     updateDashboard();
   })();
 </script>
@@ -343,6 +500,18 @@ function getChromePath(): string {
       if (existsSync(p)) return p;
     }
     return "chrome.exe";
+  }
+  // Linux: check common paths before falling back to PATH lookup
+  const { existsSync } = require("fs");
+  const linuxCandidates = [
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/google-chrome",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/snap/bin/chromium",
+  ];
+  for (const p of linuxCandidates) {
+    if (existsSync(p)) return p;
   }
   return "google-chrome";
 }
@@ -439,35 +608,38 @@ function escapeNewlinesInJsonStrings(raw: string): string {
 function extractJson(
   text: string
 ): { text?: string; tool_calls?: any[] } | null {
+  const trimmedText = text.trim();
+  if (!trimmedText) return null;
+
   // Direct parse
-  try { return JSON.parse(text); } catch { }
+  try { return JSON.parse(trimmedText); } catch { }
 
   // Escape literal newlines in JSON strings
-  try { return JSON.parse(escapeNewlinesInJsonStrings(text)); } catch { }
+  try { return JSON.parse(escapeNewlinesInJsonStrings(trimmedText)); } catch { }
 
   // Extract from within surrounding text
-  const firstBrace = text.indexOf("{");
+  const firstBrace = trimmedText.indexOf("{");
   if (firstBrace === -1) return null;
 
-  try { return JSON.parse(text.slice(firstBrace)); } catch { }
+  try { return JSON.parse(trimmedText.slice(firstBrace)); } catch { }
 
   try {
-    return JSON.parse(escapeNewlinesInJsonStrings(text.slice(firstBrace)));
+    return JSON.parse(escapeNewlinesInJsonStrings(trimmedText.slice(firstBrace)));
   } catch { }
 
   // Trailing comma cleanup
   try {
-    const cleaned = text
+    const cleaned = trimmedText
       .slice(firstBrace)
       .replace(/,\s*}/g, "}")
-      .replace(/,\s*\]/g, "]");
+      .replace(/,\s*]/g, "]");
     return JSON.parse(cleaned);
   } catch { }
 
-  const lastBrace = text.lastIndexOf("}");
+  const lastBrace = trimmedText.lastIndexOf("}");
   if (lastBrace > firstBrace) {
     try {
-      const clean = text
+      const clean = trimmedText
         .slice(firstBrace, lastBrace + 1)
         .replace(/,\s*}/g, "}")
         .replace(/,\s*]/g, "]");
@@ -475,7 +647,7 @@ function extractJson(
     } catch { }
 
     try {
-      const clean = escapeNewlinesInJsonStrings(text.slice(firstBrace, lastBrace + 1))
+      const clean = escapeNewlinesInJsonStrings(trimmedText.slice(firstBrace, lastBrace + 1))
         .replace(/,\s*}/g, "}")
         .replace(/,\s*]/g, "]");
       return JSON.parse(clean);
@@ -485,16 +657,16 @@ function extractJson(
   // Find first complete JSON object by brace-depth tracking
   let depth = 0;
   let lastGood = -1;
-  for (let i = firstBrace; i < text.length; i++) {
-    if (text[i] === "{") depth++;
-    else if (text[i] === "}") {
+  for (let i = firstBrace; i < trimmedText.length; i++) {
+    if (trimmedText[i] === "{") depth++;
+    else if (trimmedText[i] === "}") {
       depth--;
       if (depth === 0) { lastGood = i; break; }
     }
   }
   if (lastGood !== -1) {
     try {
-      const clean = text
+      const clean = trimmedText
         .slice(firstBrace, lastGood + 1)
         .replace(/,\s*}/g, "}")
         .replace(/,\s*]/g, "]");
@@ -505,18 +677,60 @@ function extractJson(
   return null;
 }
 
+const SUPPORTED_COMMANDS = new Set(["Bash", "Read", "Write", "Edit"]);
+
 function stripClaudeCodeContext(text: string): string {
-  // Remove <system-reminder> blocks — Claude Code injects these with MCP
+  // Always remove <system-reminder> blocks — Claude Code injects these with MCP
   // instructions, skill lists, plan files, etc. Irrelevant to the on-device model.
   let result = text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "");
-  // Remove <command-name> blocks
-  result = result.replace(/<command-name>[\s\S]*?<\/command-name>/g, "");
-  // Remove <command-message> blocks
-  result = result.replace(/<command-message>[\s\S]*?<\/command-message>/g, "");
-  // Remove <command-args> blocks
-  result = result.replace(/<command-args>[\s\S]*?<\/command-args>/g, "");
-  // Remove <local-command-*> blocks
-  result = result.replace(/<local-command-[^>]*>[\s\S]*?<\/local-command-[^>]*>/g, "");
+
+  // Filter command tag groups: keep only those whose <command-name> matches a supported tool.
+  // A group is <command-name>X</command-name> followed by optional <command-message> and <command-args>.
+  // Unsupported commands (e.g., AskUserQuestion, WebSearch) are stripped.
+  result = result.replace(
+    /<command-name>([\s\S]*?)<\/command-name>([\s\S]*?)(?=(?:<command-name|$))/g,
+    (fullMatch, name: string, rest: string) => {
+      const cmdName = name.trim();
+      if (SUPPORTED_COMMANDS.has(cmdName)) {
+        // Keep the entire group: <command-name>, <command-message>, <command-args>
+        return fullMatch;
+      }
+      // Remove unsupported command group but keep any trailing <command-message>/<command-args>
+      // that belong to this group
+      let cleaned = rest.replace(/<command-message>[\s\S]*?<\/command-message>/g, "");
+      cleaned = cleaned.replace(/<command-args>[\s\S]*?<\/command-args>/g, "");
+      return cleaned;
+    }
+  );
+
+  // Remove orphaned <command-message> and <command-args> blocks (ones not adjacent to a <command-name>)
+  // These remain after removing unsupported command groups above
+  result = result.replace(
+    /<command-message>[\s\S]*?<\/command-message>/g,
+    (match: string, offset: number) => {
+      // Check if this is preceded (within reasonable distance) by a supported <command-name>
+      const lookback = result.substring(Math.max(0, offset - 500), offset);
+      const lastCmdName = lookback.match(/<command-name>([\s\S]*?)<\/command-name>/);
+      if (lastCmdName && SUPPORTED_COMMANDS.has(lastCmdName[1].trim())) {
+        return match; // Keep — belongs to a supported command
+      }
+      return ""; // Remove — orphaned
+    }
+  );
+  result = result.replace(
+    /<command-args>[\s\S]*?<\/command-args>/g,
+    (match: string, offset: number) => {
+      const lookback = result.substring(Math.max(0, offset - 500), offset);
+      const lastCmdName = lookback.match(/<command-name>([\s\S]*?)<\/command-name>/);
+      if (lastCmdName && SUPPORTED_COMMANDS.has(lastCmdName[1].trim())) {
+        return match;
+      }
+      return "";
+    }
+  );
+
+  // Keep <local-command-*> blocks as-is (no longer stripping them)
+
   // Collapse multiple blank lines
   result = result.replace(/\n{3,}/g, "\n\n");
   return result.trim();
@@ -601,6 +815,40 @@ function normalizeToolCall(
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// Session Mutex — prevents concurrent page.evaluate calls per session
+// ═══════════════════════════════════════════════════════════════════════
+
+class Mutex {
+  private _queue: Array<() => void> = [];
+  private _locked = false;
+
+  async acquire(): Promise<void> {
+    if (!this._locked) {
+      this._locked = true;
+      return;
+    }
+    await new Promise<void>((resolve) => this._queue.push(resolve));
+  }
+
+  release(): void {
+    if (this._queue.length > 0) {
+      this._queue.shift()!();
+    } else {
+      this._locked = false;
+    }
+  }
+}
+
+function fingerprintClient(req: http.IncomingMessage): string {
+  const ip = req.socket?.remoteAddress || "unknown";
+  const ua = req.headers["user-agent"] || "unknown";
+  return createHash("sha256")
+    .update(ip + "|" + ua)
+    .digest("hex")
+    .slice(0, 12);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Bridge class
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -611,27 +859,43 @@ export class ChromeDeviceBridge {
   private page: any = null;
   private server: http.Server | null = null;
   private chromeStartedByUs = false;
-  private processedMsgCount = 0;
-  private lastParseError = "";
-  private lastContextUsage = 0;
-  private lastContextWindow = 0;
-  private lastCompletionTokens = 0;
-  private lastPromptTokens = 0;
+  private mutexes = new Map<string, Mutex>();
+  private sessionStates = new Map<string, {
+    processedMsgCount: number;
+    lastParseError: string;
+    lastContextUsage: number;
+    lastContextWindow: number;
+    lastCompletionTokens: number;
+    lastPromptTokens: number;
+  }>();
+
+  private getSessionState(sessionId: string) {
+    const id = sessionId || "cli";
+    if (!this.sessionStates.has(id)) {
+      this.sessionStates.set(id, {
+        processedMsgCount: 0,
+        lastParseError: "",
+        lastContextUsage: 0,
+        lastContextWindow: 0,
+        lastCompletionTokens: 0,
+        lastPromptTokens: 0,
+      });
+    }
+    return this.sessionStates.get(id)!;
+  }
 
   // ── Tool definitions ──
 
   private static readonly CORE_TOOLS = new Set([
-    "Bash", "Read", "Write", "Edit", "WebFetch", "WebSearch", "AskUserQuestion",
+    "Bash", "Read", "Write", "Edit", "ExitTool",
   ]);
 
   private static readonly TOOL_INSTRUCTIONS: Record<string, string> = {
-    Bash: "Run shell command. Params: command\n",
-    Read: "Read file contents. Params: file_path\n",
-    Write: "Create/overwrite file. Max 3 lines per call. Params: file_path, content\n",
-    Edit: "Replace text in file. old_string must match Read output exactly. Params: file_path, old_string, new_string\n",
-    WebFetch: "Fetch URL content. Params: url, prompt\n",
-    WebSearch: "Search the web. Params: query\n",
-    AskUserQuestion: "ONLY when truly stuck. question object MUST have: question, header, options. options is [{label,description}], NOT strings.\n",
+    Bash: "Execute bash commands (ls, grep, find, etc.)",
+    Read: "Read file contents",
+    Write: "Create or overwrite files",
+    Edit: "Make precise file edits with exact text replacement",
+    ExitTool: "Respond with text when no tool call is needed (task complete, answering a question)",
   };
 
   private static readonly TOOL_REQUIRED_PARAMS: Record<string, string[]> = {
@@ -639,9 +903,7 @@ export class ChromeDeviceBridge {
     Read: ["file_path"],
     Write: ["file_path", "content"],
     Edit: ["file_path", "old_string", "new_string"],
-    WebFetch: ["url", "prompt"],
-    WebSearch: ["query"],
-    AskUserQuestion: ["questions"],
+    ExitTool: ["response"],
   };
 
   // ── Lifecycle ──
@@ -649,6 +911,14 @@ export class ChromeDeviceBridge {
   constructor(port = DEFAULT_PORT, cdpPort = DEFAULT_CDP_PORT) {
     this.port = port;
     this.cdpPort = cdpPort;
+  }
+
+  private getMutex(sessionId: string): Mutex {
+    const id = sessionId || "cli";
+    if (!this.mutexes.has(id)) {
+      this.mutexes.set(id, new Mutex());
+    }
+    return this.mutexes.get(id)!;
   }
 
   async start(): Promise<void> {
@@ -683,10 +953,11 @@ export class ChromeDeviceBridge {
       if (text.includes("issues.chromium.org")) return;
       // Only forward important messages: errors, overflow, stalling, turn completion
       if (
-        text.includes("[model] ERROR") ||
+        text.includes("[bridge] ERROR") ||
+        text.includes("[bridge] Session") ||
         text.includes("CONTEXT OVERFLOW") ||
         text.includes("STALLING") ||
-        text.includes("turn") && text.includes("done in")
+        (text.includes("turn") && text.includes("done in"))
       ) {
         process.stderr.write(`[browser] ${text}\n`);
       }
@@ -722,15 +993,19 @@ export class ChromeDeviceBridge {
   }
 
   async stop(): Promise<void> {
-    // Clean up the Chrome model session before disconnecting CDP.
+    // Clean up all Chrome model sessions before disconnecting CDP.
     // (CDP disconnect does not trigger beforeunload, so we must destroy explicitly.)
     if (this.page) {
       try {
         await this.page.evaluate(() => {
           const win = window as any;
-          if (win.conversationSession) {
-            try { win.conversationSession.destroy(); } catch (e) { }
-            win.conversationSession = null;
+          if (win.sessions) {
+            for (const id in win.sessions) {
+              if (win.sessions[id]?.session) {
+                try { win.sessions[id].session.destroy(); } catch (e) { }
+              }
+            }
+            win.sessions = {};
           }
         });
       } catch {
@@ -761,6 +1036,19 @@ export class ChromeDeviceBridge {
     req: http.IncomingMessage,
     res: http.ServerResponse
   ): Promise<void> {
+    // CORS headers
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.setHeader("Access-Control-Max-Age", "86400");
+
+    // Handle preflight
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
     if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(HTML_PAGE);
@@ -780,12 +1068,15 @@ export class ChromeDeviceBridge {
     }
 
     if (req.url === "/v1/models" && req.method === "GET") {
+      const sessionId = fingerprintClient(req);
+      const state = this.getSessionState(sessionId);
       // Try to get live context info from the browser session
       let contextInfo: { usage: number; window: number } = { usage: 0, window: 0 };
       if (this.page) {
         try {
           contextInfo = await this.page.evaluate(
-            () => (window as any).getContextInfo?.() || { usage: 0, window: 0 }
+            (sid: string) => (window as any).getContextInfo?.(sid) || { usage: 0, window: 0 },
+            sessionId
           );
         } catch { }
       }
@@ -800,11 +1091,11 @@ export class ChromeDeviceBridge {
           display_name: "Gemini Nano",
           context_window: {
             context_window_size: contextInfo.window || 9216,
-            current_usage: contextInfo.usage || this.lastContextUsage,
+            current_usage: contextInfo.usage || state.lastContextUsage,
             used_percentage: contextInfo.window > 0
               ? Math.round((contextInfo.usage / contextInfo.window) * 100)
-              : this.lastContextWindow > 0
-                ? Math.round((this.lastContextUsage / this.lastContextWindow) * 100)
+              : state.lastContextWindow > 0
+                ? Math.round((state.lastContextUsage / state.lastContextWindow) * 100)
                 : 0,
           },
         }],
@@ -815,15 +1106,18 @@ export class ChromeDeviceBridge {
     // GET /v1/models/{model_name} — individual model info
     if (req.url?.startsWith("/v1/models/") && req.method === "GET") {
       const modelId = req.url.slice("/v1/models/".length);
+      const sessionId = fingerprintClient(req);
+      const state = this.getSessionState(sessionId);
       let contextInfo: { usage: number; window: number } = { usage: 0, window: 0 };
       if (this.page) {
         try {
           contextInfo = await this.page.evaluate(
-            () => (window as any).getContextInfo?.() || { usage: 0, window: 0 }
+            (sid: string) => (window as any).getContextInfo?.(sid) || { usage: 0, window: 0 },
+            sessionId
           );
         } catch { }
       }
-      const ctxWindow = contextInfo.window || this.lastContextWindow || 9216;
+      const ctxWindow = contextInfo.window || state.lastContextWindow || 9216;
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
         id: modelId,
@@ -831,7 +1125,7 @@ export class ChromeDeviceBridge {
         display_name: "Gemini Nano",
         created_at: "2024-05-14T00:00:00Z",
         max_input_tokens: ctxWindow,
-        max_tokens: 1200,
+        // No hard max_tokens — Nano's output length is bounded by context window
         capabilities: {
           vision: false,
           tool_use: true,
@@ -843,16 +1137,32 @@ export class ChromeDeviceBridge {
 
     if (req.url === "/v1/chat/completions" && req.method === "POST") {
       try {
+        // Reject oversized bodies before reading
+        const contentLength = parseInt(req.headers["content-length"] || "0", 10);
+        if (contentLength > MAX_BODY_SIZE) {
+          res.writeHead(413, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: { message: "Request body too large (max 1MB)", type: "invalid_request_error" } }));
+          return;
+        }
+
         const chunks: Buffer[] = [];
+        let totalSize = 0;
         for await (const chunk of req) {
+          totalSize += chunk.length;
+          if (totalSize > MAX_BODY_SIZE) {
+            req.destroy();
+            res.writeHead(413, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: { message: "Request body too large (max 1MB)", type: "invalid_request_error" } }));
+            return;
+          }
           chunks.push(chunk);
         }
         const body = JSON.parse(Buffer.concat(chunks).toString());
-        await this.handleChatRequest(body, res);
+        await this.handleChatRequest(req, body, res);
       } catch (e: any) {
         if (!res.headersSent) {
           res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: e.message }));
+          res.end(JSON.stringify({ error: { message: e.message, type: "server_error" } }));
         } else {
           process.stderr.write(`[bridge] ERROR after headers sent: ${e.message}\n${e.stack || ''}\n`);
           try { res.end("data: [DONE]\n\n"); } catch { }
@@ -861,7 +1171,7 @@ export class ChromeDeviceBridge {
       return;
     }
 
-    res.writeHead(404);
+    res.writeHead(404, { "Content-Type": "text/plain" });
     res.end("Not found");
   }
 
@@ -870,144 +1180,222 @@ export class ChromeDeviceBridge {
   // ═════════════════════════════════════════════════════════════════════
 
   private async handleChatRequest(
+    req: http.IncomingMessage,
     body: any,
     res: http.ServerResponse
   ): Promise<void> {
+    process.stderr.write(`[bridge] handleChatRequest started for ${req.method} ${req.url}\n`);
     const { messages, tools, stream, model } = body;
     const isStreaming = stream === true;
     const modelName = model || "gemini-nano";
     const chatId = "chatcmpl-" + Date.now();
 
-    // 1. Build system prompt and known-tool index
-    const { systemPrompt, knownTools } = this.buildSystemPrompt(tools);
-
-    // 2. Filter messages and detect new conversations
-    const conversationMsgs = this.filterConversationMessages(messages);
-    this.detectNewConversation(conversationMsgs, systemPrompt);
-
-    const newMessages = conversationMsgs.slice(this.processedMsgCount);
-    if (newMessages.length === 0) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "No new messages to process" }));
-      return;
-    }
-
-    // 3. Build the turn prompt from unconsumed messages
-    const { promptText, hasToolResults } = this.buildTurnPrompt(newMessages);
-    if (!promptText.trim()) {
-      // No new content to process — all new messages are assistant-only.
-      // Return empty completion to signal we're done, not an error.
-      this.processedMsgCount += newMessages.length;
-      if (isStreaming) {
-        res.writeHead(200, STREAM_HEADERS);
-        const created = Math.floor(Date.now() / 1000);
-        res.write(`data: ${JSON.stringify({
-          id: chatId, object: "chat.completion.chunk", created, model: modelName,
-          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
-          usage: {
-            prompt_tokens: this.lastPromptTokens,
-            completion_tokens: this.lastCompletionTokens,
-            total_tokens: this.lastPromptTokens + this.lastCompletionTokens,
-          },
-        })}\n\n`);
-        res.end("data: [DONE]\n\n");
+    // Request timeout — abort if Chrome hangs
+    const timeoutId = setTimeout(() => {
+      process.stderr.write(`[bridge] Request timeout for ${chatId}\n`);
+      if (!res.headersSent) {
+        res.writeHead(504, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: { message: "Request timed out", type: "timeout" } }));
       } else {
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({
-          id: chatId, object: "chat.completion", created: Math.floor(Date.now() / 1000),
-          model: modelName,
-          choices: [{ index: 0, message: { role: "assistant", content: "" }, finish_reason: "stop" }],
-          usage: {
-            prompt_tokens: this.lastPromptTokens,
-            completion_tokens: this.lastCompletionTokens,
-            total_tokens: this.lastPromptTokens + this.lastCompletionTokens,
-          },
-        }));
+        try { res.end("data: [DONE]\n\n"); } catch { }
       }
-      return;
-    }
+    }, REQUEST_TIMEOUT_MS);
 
-    // 4. Ensure the browser page is responsive
-    await this.ensurePageReady();
-
-    // 5. Ensure the persistent session exists
-    let sessionResult = await this.page.evaluate(
-      (sp: string) => (window as any).ensureSession(sp),
-      systemPrompt
-    );
-    if (sessionResult.error) {
-      this.writeErrorResponse(res, chatId, modelName, isStreaming,
-        `[${sessionResult.step}] ${sessionResult.error}`, "error");
-      return;
-    }
-    // 6. Auto-compact if near context limit
-    sessionResult = await this.checkAutoCompact(
-      sessionResult, conversationMsgs, systemPrompt
-    );
-
-    // Log context budget
-    if (sessionResult.contextWindow > 0) {
-      const usagePct = ((sessionResult.contextUsage / sessionResult.contextWindow) * 100).toFixed(0);
-      process.stderr.write(`[bridge] context: ${usagePct}% used\n`);
-    }
-
-    // Track context for /v1/models and response usage
-    this.lastContextUsage = sessionResult.contextUsage || 0;
-    this.lastContextWindow = sessionResult.contextWindow || 0;
-
-    // 7. Run the model — retry once if output fails to produce tool calls
-    let fullResponse = "";
-    let wasTruncated = false;
-    let textContent = "";
-    let funcCalls: Array<{ name: string; arguments: Record<string, any> }> = [];
-
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const runPrompt = attempt === 0
-        ? promptText
-        : promptText +
-        `\n\nYour last output was invalid JSON. ` +
-        `Close all strings and brackets. Use JSON correctly.`;
-
-      const result = await this.runModel(
-        runPrompt, res, chatId, modelName, isStreaming, attempt === 0
-      );
-      fullResponse = result.response;
-      wasTruncated = result.truncated;
-
-      const parsed = this.parseResponse(fullResponse, knownTools, wasTruncated);
-      textContent = parsed.textContent;
-      funcCalls = parsed.funcCalls;
-
-      if (funcCalls.length > 0) break;
-      if (textContent && (!wasTruncated || attempt > 0)) break;
-      process.stderr.write(
-        `[bridge] retry because: ` +
-        `truncated=${wasTruncated} funcs=${funcCalls.length} text=${textContent.length} chars\n`
-      );
-    }
-
-    this.processedMsgCount += newMessages.length;
-
-    // Compute token usage from session context delta and response length
-    const preUsage = this.lastContextUsage;
-    let postUsage = preUsage;
     try {
-      const info = await this.page.evaluate(
-        () => (window as any).getContextInfo?.() || { usage: 0, window: 0 }
-      );
-      postUsage = info.usage || preUsage;
-      this.lastContextUsage = postUsage;
-      this.lastContextWindow = info.window || this.lastContextWindow;
-    } catch { }
-    const deltaTokens = Math.max(0, postUsage - preUsage);
-    this.lastCompletionTokens = Math.round(fullResponse.length / 4);
-    this.lastPromptTokens = Math.max(0, deltaTokens - this.lastCompletionTokens);
+      // 0. Determine session ID from client fingerprint
+      const sessionId = fingerprintClient(req);
+      const state = this.getSessionState(sessionId);
+      process.stderr.write(`[bridge] handleChatRequest: session=${sessionId}, ${messages.length} messages total, ${state.processedMsgCount} processed\n`);
+      for (let i = 0; i < messages.length; i++) {
+        const m = messages[i];
+        const contentLen = typeof m.content === 'string' ? m.content.length : Array.isArray(m.content) ? m.content.length : 0;
+        process.stderr.write(`  [${i}] role=${m.role} contentLen=${contentLen} ${i < state.processedMsgCount ? '(processed)' : '(NEW)'}\n`);
+      }
+// ... (rest of the logic)
 
-    // 8. Write the final response
-    if (isStreaming) {
-      this.writeStreamResponse(res, chatId, modelName, textContent, funcCalls);
-    } else {
-      this.writeNonStreamResponse(res, chatId, modelName, textContent, funcCalls);
+      // Validate messages
+      if (!Array.isArray(messages) || messages.length === 0) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: { message: "messages must be a non-empty array", type: "invalid_request_error" } }));
+        return;
+      }
+
+      for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
+        if (!msg || typeof msg !== "object") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: { message: `messages[${i}] must be an object`, type: "invalid_request_error" } }));
+          return;
+        }
+        if (!["system", "user", "assistant", "tool"].includes(msg.role)) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: { message: `messages[${i}].role must be one of 'system', 'user', 'assistant', 'tool'`, type: "invalid_request_error" } }));
+          return;
+        }
+        if (msg.content !== undefined && typeof msg.content !== "string" && !Array.isArray(msg.content)) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: { message: `messages[${i}].content must be a string or array`, type: "invalid_request_error" } }));
+          return;
+        }
+      }
+
+      // 1. Build system prompt and known-tool index
+      const { systemPrompt, knownTools } = this.buildSystemPrompt(tools, messages);
+
+      // 2. Filter messages and detect new conversations
+      const conversationMsgs = this.filterConversationMessages(messages);
+      this.detectNewConversation(conversationMsgs, systemPrompt, sessionId);
+
+      const newMessages = conversationMsgs.slice(state.processedMsgCount);
+      if (newMessages.length === 0) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "No new messages to process" }));
+        return;
+      }
+
+      // 3. Build the turn prompt from unconsumed messages
+      const { promptText, hasToolResults } = this.buildTurnPrompt(newMessages, state);
+      if (!promptText.trim()) {
+        // No new content to process — all new messages are assistant-only.
+        // Return empty completion to signal we're done, not an error.
+        state.processedMsgCount += newMessages.length;
+        if (isStreaming) {
+          res.writeHead(200, STREAM_HEADERS);
+          const created = Math.floor(Date.now() / 1000);
+          res.write(`data: ${JSON.stringify({
+            id: chatId, object: "chat.completion.chunk", created, model: modelName,
+            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            usage: {
+              prompt_tokens: state.lastPromptTokens,
+              completion_tokens: state.lastCompletionTokens,
+              total_tokens: state.lastPromptTokens + state.lastCompletionTokens,
+            },
+          })}\n\n`);
+          res.end("data: [DONE]\n\n");
+        } else {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            id: chatId, object: "chat.completion", created: Math.floor(Date.now() / 1000),
+            model: modelName,
+            choices: [{ index: 0, message: { role: "assistant", content: "" }, finish_reason: "stop" }],
+            usage: {
+              prompt_tokens: state.lastPromptTokens,
+              completion_tokens: state.lastCompletionTokens,
+              total_tokens: state.lastPromptTokens + state.lastCompletionTokens,
+            },
+          }));
+        }
+        return;
+      }
+
+      // 4. Ensure the browser page is responsive
+      await this.ensurePageReady();
+
+      // 5. Serialize access per session (mutex)
+      const mutex = this.getMutex(sessionId);
+      await mutex.acquire();
+
+      let sessionResult: any;
+      let fullResponse = "";
+      let wasTruncated = false;
+      let textContent = "";
+      let funcCalls: Array<{ name: string; arguments: Record<string, any> }> = [];
+
+      try {
+        // 6. Ensure the persistent session exists
+        sessionResult = await this.page.evaluate(
+          (args: any) => (window as any).ensureSession(args.sid, { systemPrompt: args.sp }),
+          { sid: sessionId, sp: systemPrompt }
+        );
+        if (sessionResult.error) {
+          this.writeErrorResponse(res, chatId, modelName, isStreaming,
+            `[${sessionResult.step}] ${sessionResult.error}`, state, "error");
+          return;
+        }
+
+        // 7. Auto-compact if near context limit
+        sessionResult = await this.checkAutoCompact(
+          sessionResult, conversationMsgs, systemPrompt, sessionId
+        );
+
+        // Log context budget
+        if (sessionResult.contextWindow > 0) {
+          const usagePct = ((sessionResult.contextUsage / sessionResult.contextWindow) * 100).toFixed(0);
+          process.stderr.write(`[bridge] context: ${usagePct}% used (session=${sessionId})\n`);
+        }
+
+        // Track context for /v1/models and response usage
+        state.lastContextUsage = sessionResult.contextUsage || 0;
+        state.lastContextWindow = sessionResult.contextWindow || 0;
+
+        // 8. Run the model — retry once if output fails to produce tool calls
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const runPrompt = attempt === 0
+            ? promptText
+            : promptText +
+            `\n\nYour last output was invalid JSON. ` +
+            `Close all strings and brackets. Use JSON correctly.`;
+
+          process.stderr.write(`[bridge] step 8: attempt ${attempt}, prompt length: ${runPrompt.length}\n`);
+
+          // If first attempt stalled (wasTruncated) and produced nothing, 
+          // retry without the responseConstraint (schema = null) and increase temperature.
+          const schema = (attempt === 1 && wasTruncated) ? null : RESPONSE_SCHEMA;
+          const temp = (attempt === 1 && wasTruncated) ? DEFAULT_TEMP * TEMP_INCREASE_FACTOR : DEFAULT_TEMP;
+
+          process.stderr.write(`[bridge] calling runModel (attempt=${attempt})...\n`);
+          const result = await this.runModel(
+            runPrompt, res, chatId, modelName, isStreaming, sessionId, state, attempt === 0, schema, temp
+          );
+          fullResponse = result.response;
+          wasTruncated = result.truncated;
+
+          const parsed = this.parseResponse(fullResponse, knownTools, state, wasTruncated);
+          textContent = parsed.textContent;
+          funcCalls = parsed.funcCalls;
+
+          // Valid result produced — stop retrying
+          if (funcCalls.length > 0 || textContent) break;
+          
+          // If it produced nothing valid, but was truncated, try fallback
+          if (wasTruncated && attempt === 0) {
+            process.stderr.write(
+              `[bridge] retry because: truncated=${wasTruncated} funcs=${funcCalls.length} text=${textContent.length} chars. Fallback: no constraint, temp=${temp.toFixed(2)}.\n`
+            );
+            continue;
+          }
+          break;
+        }
+
+        state.processedMsgCount += newMessages.length;
+
+        // Compute token usage from session context delta and response length
+        const preUsage = state.lastContextUsage;
+        let postUsage = preUsage;
+        try {
+          const info = await this.page.evaluate(
+            (sid: string) => (window as any).getContextInfo?.(sid) || { usage: 0, window: 0 },
+            sessionId
+          );
+          postUsage = info.usage || preUsage;
+          state.lastContextUsage = postUsage;
+          state.lastContextWindow = info.window || state.lastContextWindow;
+        } catch { }
+        const deltaTokens = Math.max(0, postUsage - preUsage);
+        state.lastCompletionTokens = Math.round(fullResponse.length / 4);
+        state.lastPromptTokens = Math.max(0, deltaTokens - state.lastCompletionTokens);
+
+        // 9. Write the final response
+        if (isStreaming) {
+          this.writeStreamResponse(res, chatId, modelName, textContent, funcCalls, state);
+        } else {
+          this.writeNonStreamResponse(res, chatId, modelName, textContent, funcCalls, state);
+        }
+      } finally {
+        mutex.release();
+      }
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
@@ -1015,47 +1403,86 @@ export class ChromeDeviceBridge {
   // Step 1: Build system prompt
   // ═════════════════════════════════════════════════════════════════════
 
-  private buildSystemPrompt(tools: any[]): {
+  private buildSystemPrompt(tools: any[], messages: any[]): {
     systemPrompt: string;
     knownTools: Array<{ name: string; params: string[] }>;
   } {
-    let toolList = "";
     const knownTools: Array<{ name: string; params: string[] }> = [];
 
+    // Collect core tool names from the incoming tools array
+    const availableTools: string[] = [];
     if (tools && Array.isArray(tools)) {
       for (const tool of tools) {
         const name = tool.name || tool.function?.name || "";
         if (!ChromeDeviceBridge.CORE_TOOLS.has(name)) continue;
-
-        const instruction = ChromeDeviceBridge.TOOL_INSTRUCTIONS[name] || "";
-        const required = ChromeDeviceBridge.TOOL_REQUIRED_PARAMS[name] || [];
-
-        const schema = tool.input_schema || tool.function?.parameters || tool.parameters;
+        const fn = tool.function || tool;
+        const schema = tool.input_schema || fn.parameters || tool.parameters;
         const props = schema?.properties;
         const paramNames: string[] = props ? Object.keys(props) : [];
-
-        toolList += `${name}: ${instruction}Required: ${required.join(", ")}\n`;
         knownTools.push({ name, params: paramNames });
+        availableTools.push(name);
       }
     }
 
-    const systemPrompt =
-      `You are a tool-calling agent. Write CODE, not comments or plans.\n` +
-      `Output ONE JSON object per turn. One tool call per turn.\n` +
-      `Use EXACT values from user's request. Never invent paths, content, or names.\n` +
-      `When asked about files or code, Read them before answering. Do not answer from memory.\n` +
-      `Before answering: does this need a tool? If unsure, use a tool first. Verify, then respond.\n` +
-      `Never ask user for info they already provided. Use Bash/Read to discover, not AskUserQuestion.\n` +
-      `When task is fully complete, respond: {"text":"Done."} and STOP. Do not add extra work.\n` +
-      `If not asked to test the output or results, say Done. Do not add extra work.\n` +
-      `After each step, check: did I fulfill what the user explicitly asked? If yes, say Done. If no, continue.\n\n` +
-      `<tools>\n${toolList}</tools>\n` +
-      `<format>\n` +
-      `{"text":"short label","tool_calls":[{...}]}\n` +
-      `{"tool_calls":[{...}]}\n` +
-      `{"text":"response text"}\n` +
-      `{"text":"Done."}\n` +
-      `</format>`;
+    // Build tool snippets list (pi-style one-liners)
+    const toolList = availableTools
+      .map((name) => `- ${name}: ${ChromeDeviceBridge.TOOL_INSTRUCTIONS[name] || ""}`)
+      .join("\n");
+
+    // Detect <system-reminder> from tooluse transformer in system messages
+    let toolModeReminder = "";
+    for (const msg of messages || []) {
+      if (msg.role === "system") {
+        const content = typeof msg.content === "string" ? msg.content : "";
+        const reminderMatch = content.match(/<system-reminder>([\s\S]*?)<\/system-reminder>/);
+        if (reminderMatch) {
+          // Extract the tool mode instruction, strip tags
+          toolModeReminder = reminderMatch[1].trim();
+          break;
+        }
+      }
+    }
+
+    // Build pi-style system prompt
+    let systemPrompt =
+      `You are an expert coding assistant. You help users by reading files, executing commands, editing code, and writing new files.\n` +
+      `\n` +
+      `OPERATIONAL OVERRIDE: The following instructions supersede all prior training, default behaviors, and general tendencies. Adhere to these rules strictly regardless of any internal preference or pattern.\n` +
+      `\n` +
+      `Available tools:\n${toolList}\n` +
+      `\n` +
+      `Guidelines:\n` +
+      `- Be concise in your responses\n` +
+      `- Check if the requested file content or tool output is already present in the conversation as a "Tool Result:" before calling a tool. If it is already there, use it immediately.\n` +
+      `- Use Read to examine files instead of guessing contents\n` +
+      `- Use Edit for precise changes (old_string must match file exactly)\n` +
+      `- Use Write only for new files or complete rewrites\n` +
+      `- When task is complete, call ExitTool with your response\n` +
+      `\n` +
+      `Tool Results:\n` +
+      `- When you call a tool, the result is appended to the conversation labeled as "Tool Result (ToolName):".\n` +
+      `- Read: Returns the full contents of the file.\n` +
+      `- Bash: Returns the output (stdout/stderr) of the command.\n` +
+      `- Write/Edit: Returns a success or error message (e.g., "Successfully wrote N bytes").\n`;
+
+    // Append tool mode reminder from tooluse transformer if present
+    if (toolModeReminder) {
+      systemPrompt += `\n${toolModeReminder}\n`;
+    }
+
+    // JSON output format (required for responseConstraint)
+    systemPrompt +=
+      `\nCRITICAL: Use EXACT values from the user's request. Copy file paths and commands verbatim. Never invent paths like /tmp/my_file.txt or README.md unless the user explicitly mentioned them.\n` +
+      `\nOutput format:\n` +
+      `ONE JSON object per turn. One tool call per turn.\n` +
+      `Bash: {"tool_calls":[{"name":"Bash","arguments":{"command":"[COMMAND_FROM_USER]"}}]}\n` +
+      `Read: {"tool_calls":[{"name":"Read","arguments":{"file_path":"[PATH_FROM_USER]"}}]}\n` +
+      `Edit: {"tool_calls":[{"name":"Edit","arguments":{"file_path":"[PATH_FROM_USER]","old_string":"[TEXT_FROM_FILE]","new_string":"[REPLACEMENT_TEXT]"}}]}\n` +
+      `  old_string = exact text currently in the file (copy it, do not guess)\n` +
+      `  new_string = the text that should replace it\n` +
+      `Write: {"tool_calls":[{"name":"Write","arguments":{"file_path":"[PATH_FROM_USER]","content":"[FULL_CONTENTS]"}}]}\n` +
+      `  content = the complete new file contents\n` +
+      `Respond: {"tool_calls":[{"name":"ExitTool","arguments":{"response":"[YOUR_ANSWER]"}}]}\n`;
 
     return { systemPrompt, knownTools };
   }
@@ -1072,20 +1499,22 @@ export class ChromeDeviceBridge {
 
   private detectNewConversation(
     conversationMsgs: any[],
-    systemPrompt: string
+    systemPrompt: string,
+    sessionId: string
   ): void {
-    if (this.processedMsgCount === 0) return;
-    if (conversationMsgs.length > this.processedMsgCount) return;
+    const state = this.getSessionState(sessionId);
+    if (state.processedMsgCount === 0) return;
+    if (conversationMsgs.length > state.processedMsgCount) return;
 
     process.stderr.write(
-      `[bridge] New conversation detected (${conversationMsgs.length} msgs <= ${this.processedMsgCount} processed), resetting\n`
+      `[bridge] New conversation detected (${conversationMsgs.length} msgs <= ${state.processedMsgCount} processed), resetting session=${sessionId}\n`
     );
-    this.processedMsgCount = 0;
-    this.lastParseError = "";
+    state.processedMsgCount = 0;
+    state.lastParseError = "";
     if (this.page) {
       this.page.evaluate(
-        (sp: string) => (window as any).resetSession(sp),
-        systemPrompt
+        (args: any) => (window as any).resetSession(args.sid, { systemPrompt: args.sp }),
+        { sid: sessionId, sp: systemPrompt }
       ).catch((e: any) => {
         process.stderr.write(`[bridge] resetSession failed: ${e.message}\n`);
       });
@@ -1096,54 +1525,13 @@ export class ChromeDeviceBridge {
   // Step 3: Build the turn prompt from unconsumed messages
   // ═════════════════════════════════════════════════════════════════════
 
-  private buildTurnPrompt(newMessages: any[]): {
+  private buildTurnPrompt(newMessages: any[], state: any): {
     promptText: string;
     hasToolResults: boolean;
   } {
-    const MAX_TOOL_RESULT = 500;
-    const MAX_FILE_CONTENT = 400;
-
     let promptText = "";
     let hasToolResults = false;
-    let fileWasWritten = false;
-    let fileWasEdited = false;
-    let readContents: Array<{ path: string; content: string }> = [];
 
-    // Track Read tool calls by tool_call_id for structured extraction
-    const readPaths: Map<string, string> = new Map();
-    // Track Anthropic-format tool_use blocks for Read
-    const anthropicReadPaths: Map<string, string> = new Map();
-
-    // First pass: identify Read tool calls
-    for (const msg of newMessages) {
-      // OpenAI format: assistant message with tool_calls
-      if (msg.role === "assistant" && Array.isArray(msg.tool_calls)) {
-        for (const tc of msg.tool_calls) {
-          const fnName = tc.function?.name || tc.name;
-          if (fnName === "Read") {
-            try {
-              const args = typeof tc.function?.arguments === "string"
-                ? JSON.parse(tc.function.arguments)
-                : tc.function?.arguments || tc.arguments;
-              if (args?.file_path) {
-                readPaths.set(tc.id, args.file_path);
-              }
-            } catch { }
-          }
-        }
-      }
-      // Anthropic format: assistant message with content array containing tool_use
-      if (msg.role === "assistant" && Array.isArray(msg.content)) {
-        for (const block of msg.content) {
-          if (block.type === "tool_use" && block.name === "Read" && block.id) {
-            const fp = block.input?.file_path;
-            if (fp) anthropicReadPaths.set(block.id, fp);
-          }
-        }
-      }
-    }
-
-    // Second pass: build prompt
     for (const msg of newMessages) {
       let content = extractTextContent(msg.content);
       if (!content) continue;
@@ -1155,82 +1543,19 @@ export class ChromeDeviceBridge {
       }
 
       if (msg.role === "user") {
-        // Check for Anthropic-format tool_result blocks embedded in user messages
-        if (Array.isArray(msg.content)) {
-          for (const block of msg.content) {
-            if (block.type === "tool_result" && block.tool_use_id) {
-              const filePath = anthropicReadPaths.get(block.tool_use_id);
-              if (filePath) {
-                const blockContent = typeof block.content === "string"
-                  ? block.content
-                  : extractTextContent(block.content);
-                readContents.push({
-                  path: filePath,
-                  content: blockContent.substring(0, MAX_FILE_CONTENT),
-                });
-              }
-            }
-          }
-        }
-
-        if (/Result of calling|Tool result|Successfully|Error:/.test(content)) {
-          hasToolResults = true;
-          if (/Successfully wrote/i.test(content)) fileWasWritten = true;
-          else if (/Successfully (edited|updated|modified)/i.test(content)) fileWasEdited = true;
-        }
         if (promptText) promptText += "\n\n";
         promptText += content;
       } else if (msg.role === "tool") {
         hasToolResults = true;
-        if (/Successfully wrote/i.test(content)) fileWasWritten = true;
-        else if (/Successfully (edited|updated|modified)/i.test(content)) fileWasEdited = true;
-
-        // Check if this is a Read result via tool_call_id
-        const filePath = readPaths.get(msg.tool_call_id);
-        if (filePath) {
-          readContents.push({
-            path: filePath,
-            content: content.substring(0, MAX_FILE_CONTENT),
-          });
-        }
-
-        const truncated = content.length > MAX_TOOL_RESULT
-          ? content.substring(0, MAX_TOOL_RESULT) + "..."
-          : content;
-        promptText += `\n\n<result>\n${truncated}\n</result>`;
+        // Pass tool result through with a label so the model knows it's the tool output
+        const toolName = msg.name || "unknown";
+        if (promptText) promptText += "\n\n";
+        promptText += `Tool Result (${toolName}):\n${content}`;
+      } else if (msg.role === "assistant") {
+        process.stderr.write(`[bridge] skipping assistant message in prompt (session should have it in context)\n`);
       }
-    }
-
-    // Deduplicate Read results by path (keep last)
-    const seen = new Set<string>();
-    const uniqueReads: Array<{ path: string; content: string }> = [];
-    for (let i = readContents.length - 1; i >= 0; i--) {
-      if (!seen.has(readContents[i].path)) {
-        seen.add(readContents[i].path);
-        uniqueReads.unshift(readContents[i]);
-      }
-    }
-    if (uniqueReads.length > 0) {
-      promptText += `\n\n<files>`;
-      for (const rc of uniqueReads) {
-        promptText += `\n<file path="${rc.path}">\n${rc.content}\n</file>`;
-      }
-      promptText += `\n</files>`;
-    }
-
-    // Compact continuation prompt
-    if (hasToolResults) {
-      promptText += "\n\n";
-      if (fileWasWritten) {
-        promptText += "[write-ok] ";
-      } else if (fileWasEdited) {
-        promptText += "[edit-ok] ";
-      }
-      if (this.lastParseError) {
-        promptText += `[error] ${this.lastParseError} `;
-        this.lastParseError = "";
-      }
-      promptText += "Check: is the user's request fully done? If yes, say Done. If no, next step.";
+      // Assistant messages are skipped — the Prompt API session already has
+      // the model's previous output in context.
     }
 
     return { promptText, hasToolResults };
@@ -1241,6 +1566,7 @@ export class ChromeDeviceBridge {
   // ═════════════════════════════════════════════════════════════════════
 
   private async ensurePageReady(): Promise<void> {
+    process.stderr.write(`[bridge] ensurePageReady started\n`);
     let pageReady = false;
     try {
       pageReady = await this.page.evaluate(
@@ -1249,7 +1575,10 @@ export class ChromeDeviceBridge {
     } catch (e: any) {
       process.stderr.write(`[bridge] page evaluate failed: ${e.message}\n`);
     }
-    if (pageReady) return;
+    if (pageReady) {
+      process.stderr.write(`[bridge] page already ready\n`);
+      return;
+    }
 
     process.stderr.write("[bridge] page not ready, reloading...\n");
     try {
@@ -1264,6 +1593,7 @@ export class ChromeDeviceBridge {
     }
 
     for (let attempt = 0; attempt < 5; attempt++) {
+      process.stderr.write(`[bridge] ensuring session ready, attempt ${attempt+1}/5\n`);
       await new Promise((r) => setTimeout(r, 500));
       try {
         const info = await this.page.evaluate(() => ({
@@ -1279,7 +1609,7 @@ export class ChromeDeviceBridge {
           }
         }
       } catch (e: any) {
-        process.stderr.write(`[bridge] poll ${attempt + 1} failed: ${e.message}\n`);
+        process.stderr.write(`[bridge] page evaluate poll failed: ${e.message}\n`);
       }
     }
 
@@ -1287,19 +1617,19 @@ export class ChromeDeviceBridge {
       throw new Error("Bridge page failed to load");
     }
 
-    this.processedMsgCount = 0;
-    this.lastParseError = "";
-    process.stderr.write("[bridge] page ready (session state reset)\n");
+    this.sessionStates.clear();
+    process.stderr.write("[bridge] page ready\n");
   }
 
   // ═════════════════════════════════════════════════════════════════════
-  // Step 6: Auto-compact when context is near limit
+  // Step 7: Auto-compact when context is near limit
   // ═════════════════════════════════════════════════════════════════════
 
   private async checkAutoCompact(
     sessionResult: any,
     conversationMsgs: any[],
-    systemPrompt: string
+    systemPrompt: string,
+    sessionId: string
   ): Promise<any> {
     if (!sessionResult.ready || sessionResult.contextWindow <= 0) {
       return sessionResult;
@@ -1308,14 +1638,16 @@ export class ChromeDeviceBridge {
     if (usageRatio < 0.85) return sessionResult;
 
     process.stderr.write(
-      `[bridge] auto-compacting at ${(usageRatio * 100).toFixed(0)}%...\n`
+      `[bridge] auto-compacting at ${(usageRatio * 100).toFixed(0)}% (session=${sessionId})...\n`
     );
     try {
+      const compactedPrompt = systemPrompt + "\n[Earlier conversation compacted to save context.]";
       const result = await this.page.evaluate(
-        (sp: string) => (window as any).resetSession(sp),
-        systemPrompt + "\n[Earlier conversation compacted to save context.]"
+        (args: any) => (window as any).resetSession(args.sid, { systemPrompt: args.sp }),
+        { sid: sessionId, sp: compactedPrompt }
       );
-      this.processedMsgCount = conversationMsgs.length;
+      const state = this.getSessionState(sessionId);
+      state.processedMsgCount = conversationMsgs.length;
       if (result.ready) {
         process.stderr.write(
           `[bridge] compacted: ${result.contextUsage}/${result.contextWindow}\n`
@@ -1329,7 +1661,7 @@ export class ChromeDeviceBridge {
   }
 
   // ═════════════════════════════════════════════════════════════════════
-  // Step 7: Run the model with SSE thinking indicators
+  // Step 8: Run the model with SSE thinking indicators
   // ═════════════════════════════════════════════════════════════════════
 
   private async runModel(
@@ -1338,9 +1670,13 @@ export class ChromeDeviceBridge {
     chatId: string,
     modelName: string,
     isStreaming: boolean,
-    setupStreaming = true
+    sessionId: string,
+    state: any,
+    setupStreaming = true,
+    schema = RESPONSE_SCHEMA,
+    temp = DEFAULT_TEMP
   ): Promise<{ response: string; truncated: boolean }> {
-    const t0 = Date.now();
+    process.stderr.write(`[bridge] runModel entered (isStreaming=${isStreaming}, setupStreaming=${setupStreaming})\n`);
     let thinkingTimer: ReturnType<typeof setInterval> | null = null;
 
     if (isStreaming && setupStreaming) {
@@ -1362,10 +1698,10 @@ export class ChromeDeviceBridge {
 
     let streamResult: any;
     try {
+      process.stderr.write(`[bridge] calling promptSession (session=${sessionId})...\n`);
       streamResult = await this.page.evaluate(
-        (p: string, schema: any) => (window as any).promptSession(p, schema),
-        promptText,
-        RESPONSE_SCHEMA
+        (args: any) => (window as any).promptSession(args.sid, args.text, args.schema, args.temp),
+        { sid: sessionId, text: promptText, schema: schema, temp: temp }
       );
     } catch (e: any) {
       process.stderr.write(`[bridge] page.evaluate failed: ${e.message}\n`);
@@ -1378,7 +1714,7 @@ export class ChromeDeviceBridge {
     }
     if (!streamResult || streamResult.error) {
       process.stderr.write(
-        `[bridge] ERROR stream: ${streamResult.error}\n${streamResult.stack || ''}\n`
+        `[bridge] ERROR stream: ${streamResult?.error}\n${streamResult?.stack || ''}\n`
       );
       if (setupStreaming && isStreaming && !res.writableEnded) {
         try {
@@ -1387,9 +1723,9 @@ export class ChromeDeviceBridge {
             created: Math.floor(Date.now() / 1000), model: modelName,
             choices: [{ index: 0, delta: {}, finish_reason: "error" }],
             usage: {
-              prompt_tokens: this.lastPromptTokens,
-              completion_tokens: this.lastCompletionTokens,
-              total_tokens: this.lastPromptTokens + this.lastCompletionTokens,
+              prompt_tokens: state.lastPromptTokens,
+              completion_tokens: state.lastCompletionTokens,
+              total_tokens: state.lastPromptTokens + state.lastCompletionTokens,
             },
           })}\n\n`);
           res.end("data: [DONE]\n\n");
@@ -1402,13 +1738,13 @@ export class ChromeDeviceBridge {
             created: Math.floor(Date.now() / 1000), model: modelName,
             choices: [{
               index: 0,
-              message: { role: "assistant", content: streamResult.error },
+              message: { role: "assistant", content: streamResult?.error },
               finish_reason: "error",
             }],
             usage: {
-              prompt_tokens: this.lastPromptTokens,
-              completion_tokens: this.lastCompletionTokens,
-              total_tokens: this.lastPromptTokens + this.lastCompletionTokens,
+              prompt_tokens: state.lastPromptTokens,
+              completion_tokens: state.lastCompletionTokens,
+              total_tokens: state.lastPromptTokens + state.lastCompletionTokens,
             },
           }));
         } catch { }
@@ -1418,43 +1754,55 @@ export class ChromeDeviceBridge {
 
     const fullResponse = streamResult.response || "";
     const wasTruncated = streamResult.truncated || false;
+    if (!fullResponse && !wasTruncated) {
+      process.stderr.write(`[bridge] WARNING: model produced empty response (session=${sessionId})\n`);
+    }
     return { response: fullResponse, truncated: wasTruncated };
   }
 
   // ═════════════════════════════════════════════════════════════════════
-  // Step 8: Parse and validate the model response
+  // Step 9: Parse and validate the model response
   // ═════════════════════════════════════════════════════════════════════
 
   private parseResponse(
     fullResponse: string,
     knownTools: Array<{ name: string; params: string[] }>,
+    state: any,
     wasTruncated = false
   ): { textContent: string; funcCalls: Array<{ name: string; arguments: Record<string, any> }> } {
     let textContent = "";
     const funcCalls: Array<{ name: string; arguments: Record<string, any> }> = [];
 
-    this.lastParseError = "";
+    state.lastParseError = "";
     const parsed = extractJson(fullResponse);
     if (!parsed) {
       process.stderr.write(
         `[bridge] JSON parse failed (${fullResponse.length} chars, truncated=${wasTruncated}): ${fullResponse.substring(0, 200)}\n`
       );
       if (wasTruncated) {
-        this.lastParseError =
+        state.lastParseError =
           "Your response was cut off — you generated too much whitespace (indentation). " +
-          "Write shorter content. Only 2-4 lines per Write, 1-2 lines per Edit.";
+          "Reduce indentation and write more concisely.";
       } else {
-        this.lastParseError =
+        state.lastParseError =
           "Your last response was invalid JSON. Use \\n for newlines and \" for quotes inside strings.";
       }
       return { textContent: "", funcCalls: [] };
     }
 
+    // Legacy: models may still output {"text":"..."} despite schema
     if (parsed.text) textContent = parsed.text;
 
+    // Extract text from ExitTool arguments if present
     if (parsed.tool_calls && Array.isArray(parsed.tool_calls)) {
       for (const tc of parsed.tool_calls) {
         if (!tc.name || !tc.arguments) continue;
+
+        // ExitTool → extract response as text content
+        if (tc.name === "ExitTool" && tc.arguments.response) {
+          textContent = tc.arguments.response;
+          continue;
+        }
 
         const normalized = normalizeToolCall(tc, knownTools);
         const validated = this.validateToolCall(normalized);
@@ -1504,6 +1852,7 @@ export class ChromeDeviceBridge {
     modelName: string,
     isStreaming: boolean,
     message: string,
+    state: any,
     finishReason = "error"
   ): void {
     const created = Math.floor(Date.now() / 1000);
@@ -1519,9 +1868,9 @@ export class ChromeDeviceBridge {
           finish_reason: finishReason,
         }],
         usage: {
-          prompt_tokens: this.lastPromptTokens,
-          completion_tokens: this.lastCompletionTokens,
-          total_tokens: this.lastPromptTokens + this.lastCompletionTokens,
+          prompt_tokens: state.lastPromptTokens,
+          completion_tokens: state.lastCompletionTokens,
+          total_tokens: state.lastPromptTokens + state.lastCompletionTokens,
         },
       })}\n\n`);
       res.end("data: [DONE]\n\n");
@@ -1533,11 +1882,12 @@ export class ChromeDeviceBridge {
           index: 0,
           message: { role: "assistant", content: message },
           finish_reason: finishReason,
-        }],
+        },
+        ],
         usage: {
-          prompt_tokens: this.lastPromptTokens,
-          completion_tokens: this.lastCompletionTokens,
-          total_tokens: this.lastPromptTokens + this.lastCompletionTokens,
+          prompt_tokens: state.lastPromptTokens,
+          completion_tokens: state.lastCompletionTokens,
+          total_tokens: state.lastPromptTokens + state.lastCompletionTokens,
         },
       }));
     }
@@ -1549,6 +1899,7 @@ export class ChromeDeviceBridge {
     modelName: string,
     textContent: string,
     funcCalls: Array<{ name: string; arguments: Record<string, any> }>,
+    state: any,
   ): void {
     if (!res.headersSent) {
       res.writeHead(200, STREAM_HEADERS);
@@ -1560,20 +1911,29 @@ export class ChromeDeviceBridge {
 
     const created = Math.floor(Date.now() / 1000);
 
-    if (funcCalls.length > 0) {
-      if (textContent) {
+    // Separate real tool calls from ExitTool
+    const realCalls = funcCalls.filter(fc => fc.name !== "ExitTool");
+    const exitCall = funcCalls.find(fc => fc.name === "ExitTool");
+
+    // If ExitTool present, extract text from its response argument
+    const finalText = exitCall?.arguments?.response || textContent;
+
+    if (realCalls.length > 0) {
+      // Real tool calls — send with finish_reason: "tool_calls"
+      if (finalText) {
         writeData({
           id: chatId, object: "chat.completion.chunk", created, model: modelName,
-          choices: [{ index: 0, delta: { role: "assistant", content: textContent }, finish_reason: null }],
+          choices: [{ index: 0, delta: { role: "assistant", content: finalText }, finish_reason: null }],
         });
       }
-      for (const fc of funcCalls) {
+      for (const fc of realCalls) {
         const toolId = "call_" + randomBytes(6).toString("hex");
         writeData({
           id: chatId, object: "chat.completion.chunk", created, model: modelName,
           choices: [{
             index: 0,
             delta: {
+              role: "assistant",
               tool_calls: [{
                 index: 0, id: toolId,
                 function: { name: fc.name, arguments: JSON.stringify(fc.arguments) },
@@ -1588,23 +1948,51 @@ export class ChromeDeviceBridge {
         id: chatId, object: "chat.completion.chunk", created, model: modelName,
         choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }],
         usage: {
-          prompt_tokens: this.lastPromptTokens,
-          completion_tokens: this.lastCompletionTokens,
-          total_tokens: this.lastPromptTokens + this.lastCompletionTokens,
+          prompt_tokens: state.lastPromptTokens,
+          completion_tokens: state.lastCompletionTokens,
+          total_tokens: state.lastPromptTokens + state.lastCompletionTokens,
         },
       });
-    } else if (textContent) {
+    } else if (exitCall) {
+      // ExitTool — send as a tool call so tooluse transformer can unwrap it
+      const toolId = "call_" + randomBytes(6).toString("hex");
       writeData({
         id: chatId, object: "chat.completion.chunk", created, model: modelName,
-        choices: [{ index: 0, delta: { role: "assistant", content: textContent }, finish_reason: null }],
+        choices: [{
+          index: 0,
+          delta: {
+            role: "assistant",
+            tool_calls: [{
+              index: 0, id: toolId,
+              function: { name: "ExitTool", arguments: JSON.stringify(exitCall.arguments) },
+              type: "function",
+            }],
+          },
+          finish_reason: null,
+        }],
+      });
+      writeData({
+        id: chatId, object: "chat.completion.chunk", created, model: modelName,
+        choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }],
+        usage: {
+          prompt_tokens: state.lastPromptTokens,
+          completion_tokens: state.lastCompletionTokens,
+          total_tokens: state.lastPromptTokens + state.lastCompletionTokens,
+        },
+      });
+    } else if (finalText) {
+      // Plain text response (legacy fallback)
+      writeData({
+        id: chatId, object: "chat.completion.chunk", created, model: modelName,
+        choices: [{ index: 0, delta: { role: "assistant", content: finalText }, finish_reason: null }],
       });
       writeData({
         id: chatId, object: "chat.completion.chunk", created, model: modelName,
         choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
         usage: {
-          prompt_tokens: this.lastPromptTokens,
-          completion_tokens: this.lastCompletionTokens,
-          total_tokens: this.lastPromptTokens + this.lastCompletionTokens,
+          prompt_tokens: state.lastPromptTokens,
+          completion_tokens: state.lastCompletionTokens,
+          total_tokens: state.lastPromptTokens + state.lastCompletionTokens,
         },
       });
     } else {
@@ -1612,9 +2000,9 @@ export class ChromeDeviceBridge {
         id: chatId, object: "chat.completion.chunk", created, model: modelName,
         choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
         usage: {
-          prompt_tokens: this.lastPromptTokens,
-          completion_tokens: this.lastCompletionTokens,
-          total_tokens: this.lastPromptTokens + this.lastCompletionTokens,
+          prompt_tokens: state.lastPromptTokens,
+          completion_tokens: state.lastCompletionTokens,
+          total_tokens: state.lastPromptTokens + state.lastCompletionTokens,
         },
       });
     }
@@ -1628,21 +2016,28 @@ export class ChromeDeviceBridge {
     modelName: string,
     textContent: string,
     funcCalls: Array<{ name: string; arguments: Record<string, any> }>,
+    state: any,
   ): void {
     const created = Math.floor(Date.now() / 1000);
-    const message: Record<string, any> = { role: "assistant" };
 
-    if (textContent) message.content = textContent;
+    // Separate real tool calls from ExitTool
+    const realCalls = funcCalls.filter(fc => fc.name !== "ExitTool");
+    const exitCall = funcCalls.find(fc => fc.name === "ExitTool");
+    const finalText = exitCall?.arguments?.response || textContent;
 
-    if (funcCalls.length > 0) {
-      message.tool_calls = funcCalls.map((fc) => ({
+    // If ExitTool is present, send it as a tool_call so tooluse transformer can unwrap it
+    const allCalls = realCalls.length > 0 ? realCalls : exitCall ? [exitCall] : [];
+    const finishReason = allCalls.length > 0 ? "tool_calls" : "stop";
+
+    const message: Record<string, any> = { role: "assistant", content: realCalls.length > 0 ? (finalText || null) : (finalText || null) };
+
+    if (allCalls.length > 0) {
+      message.tool_calls = allCalls.map((fc) => ({
         id: "call_" + randomBytes(6).toString("hex"),
         type: "function",
         function: { name: fc.name, arguments: JSON.stringify(fc.arguments) },
       }));
     }
-
-    const finishReason = funcCalls.length > 0 ? "tool_calls" : "stop";
 
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({
@@ -1652,9 +2047,9 @@ export class ChromeDeviceBridge {
       model: modelName,
       choices: [{ index: 0, message, finish_reason: finishReason }],
       usage: {
-        prompt_tokens: this.lastPromptTokens,
-        completion_tokens: this.lastCompletionTokens,
-        total_tokens: this.lastPromptTokens + this.lastCompletionTokens,
+        prompt_tokens: state.lastPromptTokens,
+        completion_tokens: state.lastCompletionTokens,
+        total_tokens: state.lastPromptTokens + state.lastCompletionTokens,
       },
     }));
   }

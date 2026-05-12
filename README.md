@@ -28,6 +28,9 @@ This fork is based on [claude-code-router](https://github.com/musistudio/claude-
 - **DeepSeek Reasoning Replay**: Implemented mandatory reasoning replay for DeepSeek models (e.g., via OpenCode/ZenGo). DeepSeek requires previous assistant reasoning content to be included in subsequent requests — the `reasoning` transformer automatically replays reasoning output from prior turns.
 - **Model Discovery**: Enabled non-interactive model discovery for arbitrary API providers. Using `ccr model get <provider>`, the tool automatically fetches remote models, parses custom JSON structures using configurable paths, and appends missing models to the local configuration while preserving existing settings.
 - **Chrome On-Device Model**: Added `chrome-on-device` transformer for Chrome's built-in Gemini Nano (~4GB local model). Communicates via a bridge process (`ccr chrome-bridge`) that connects to Chrome's Prompt API over CDP. Uses `responseConstraint` for structured JSON output (tool calls + text), supports streaming and non-streaming, exposes an OpenAI-compatible `/v1/chat/completions` endpoint, and replaces Claude Code's system prompt with a minimal tool-focused one. Zero API cost, zero latency to external providers.
+  - **Stability & Prompting**: Implemented an "OPERATIONAL OVERRIDE" in the system prompt to prevent hallucinations and force adherence to user-provided paths.
+  - **Stall Recovery**: Added a tiered retry mechanism for whitespace-heavy content: if the model stalls (emits 1000+ whitespace chars), the bridge aborts and retries without constraints and with increased temperature (Dynamic Temperature Scaling).
+  - **Contextual awareness**: Added labels ("Tool Result:") to tool outputs and instructed the model to check for existing results before calling tools again.
 
 ## 🚀 Getting Started
 
