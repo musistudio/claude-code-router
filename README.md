@@ -34,13 +34,16 @@ This fork is based on [claude-code-router](https://github.com/musistudio/claude-
 
 ### 1. Installation
 
-First, ensure you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code/quickstart) installed:
+#### Prerequisites
 
-```shell
-npm install -g @anthropic-ai/claude-code
-```
+Before you begin, ensure you have the following installed on your system:
+- **Docker & Docker Compose** (Recommended): The primary way to run the router. See [Docker Install Guide](https://docs.docker.com/get-docker/).
+- **Node.js** (Optional): Only required if you want to use the **Chrome On-Device** bridge or run the project from source. Requires v18.0.0 or higher. See [Node.js Download](https://nodejs.org/).
+- **Claude Code**: See the [official quickstart guide](https://code.claude.com/docs/en/quickstart) for installation instructions.
 
-Then start Claude Code Router with Docker Compose:
+#### Quick Start with Docker
+
+The fastest way to launch Claude Code Router is using Docker Compose:
 
 ```shell
 cd packages/server
@@ -585,7 +588,7 @@ The `chrome-on-device` transformer routes requests to Chrome's built-in Gemini N
 
 **Prerequisites:**
 
-1. macOS with Google Chrome installed at `/Applications/Google Chrome.app`
+1. Google Chrome installed on your system (macOS, Windows, or Linux)
 2. Enable Chrome flags (one-time):
    - `chrome://flags/#optimization-guide-on-device-model` → **Enabled**
    - `chrome://flags/#prompt-api-for-gemini-nano-multimodal-input` → **Enabled**
@@ -620,7 +623,7 @@ ccr chrome-bridge
 ccr chrome-bridge --port 3457 --cdp 9222
 ```
 
-The bridge automatically launches Chrome with the required flags if it's not already running (`--remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug-profile`).
+The bridge automatically launches Chrome with the required flags if it's not already running (`--remote-debugging-port=9222 --user-data-dir=<temp_dir>`).
 
 > **Note for Docker users**: The bridge must run on the Docker **host** (not inside the container), since it needs direct access to Chrome via CDP. When CCR runs in Docker, set the provider host to `http://host.docker.internal:3457`.
 
@@ -641,7 +644,7 @@ The bridge automatically launches Chrome with the required flags if it's not alr
 - **No thinking/reasoning blocks**: The Prompt API doesn't separate thinking from visible output
 - **Context window**: Limited to 9216 tokens; auto-compaction engages at 85% usage. Old interactions are evicted on context overflow
 - **Output limit**: ~1200 chars per turn — the model stalls on whitespace-heavy content (e.g., Python indentation). The bridge uses write-then-edit incremental file creation (3 lines per Write call) and whitespace stall detection with abort
-- **macOS only** (Chrome path detection currently macOS-specific)
+- **Cross-platform support**: Compatible with macOS, Windows, and Linux (requires Chrome installation and manual flag enablement)
 
 **Codex Provider Configuration:**
 
