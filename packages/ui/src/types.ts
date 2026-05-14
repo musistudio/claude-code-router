@@ -22,6 +22,17 @@ export interface RouterConfig {
     custom?: any;
 }
 
+export type FallbackScenario =
+  | 'default'
+  | 'background'
+  | 'think'
+  | 'longContext'
+  | 'webSearch';
+
+export type FallbackConfig = {
+  [K in FallbackScenario]?: string[];
+};
+
 export interface Transformer {
     name?: string;
     path: string;
@@ -55,6 +66,9 @@ export interface Config {
   transformers: Transformer[];
   StatusLine?: StatusLineConfig;
   forceUseImageAgent?: boolean;
+  // Per-scenario fallback model lists, applied when the primary model fails.
+  // Each entry is a "provider,model" string, tried in order until one succeeds.
+  fallback?: FallbackConfig;
   // Top-level settings
   LOG: boolean;
   LOG_LEVEL: string;

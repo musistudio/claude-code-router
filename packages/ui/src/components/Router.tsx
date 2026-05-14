@@ -4,6 +4,16 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useConfig } from "./ConfigProvider";
 import { Combobox } from "./ui/combobox";
+import { MultiCombobox } from "./ui/multi-combobox";
+import type { FallbackConfig, FallbackScenario } from "@/types";
+
+const FALLBACK_SCENARIOS: FallbackScenario[] = [
+  "default",
+  "background",
+  "think",
+  "longContext",
+  "webSearch",
+];
 
 export function Router() {
   const { t } = useTranslation();
@@ -43,6 +53,20 @@ export function Router() {
 
   const handleForceUseImageAgentChange = (value: boolean) => {
     setConfig({ ...config, forceUseImageAgent: value });
+  };
+
+  const fallbackConfig: FallbackConfig = config.fallback || {};
+
+  const handleFallbackChange = (scenario: FallbackScenario, models: string[]) => {
+    const nextFallback: FallbackConfig = { ...fallbackConfig };
+    if (models.length > 0) {
+      nextFallback[scenario] = models;
+    } else {
+      // Drop empty arrays so we don't write noise back to config.json.
+      delete nextFallback[scenario];
+    }
+    const hasAny = Object.keys(nextFallback).length > 0;
+    setConfig({ ...config, fallback: hasAny ? nextFallback : undefined });
   };
 
   // Handle case where config.Providers might be null or undefined
@@ -164,6 +188,30 @@ export function Router() {
               </select>
             </div>
           </div>
+        </div>
+        <div className="space-y-3 border-t pt-4">
+          <div>
+            <Label className="text-base">{t("router.fallback.title")}</Label>
+            <p className="text-xs text-muted-foreground mt-1">
+              {t("router.fallback.description")}
+            </p>
+          </div>
+          {FALLBACK_SCENARIOS.map((scenario) => (
+            <div key={scenario} className="space-y-1">
+              <Label className="text-sm">
+                {t(`router.${scenario}`)}
+              </Label>
+              <MultiCombobox
+                options={modelOptions}
+                value={fallbackConfig[scenario] || []}
+                onChange={(value) => handleFallbackChange(scenario, value)}
+                placeholder={t("router.fallback.selectModels")}
+                searchPlaceholder={t("router.searchModel")}
+                emptyPlaceholder={t("router.noModelFound")}
+                reorderable
+              />
+            </div>
+          ))}
         </div>
       </CardContent>
     </Card>
