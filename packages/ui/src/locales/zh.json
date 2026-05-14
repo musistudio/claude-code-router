@@ -120,7 +120,12 @@
     "forceUseImageAgent": "强制使用图像代理",
     "selectModel": "选择一个模型...",
     "searchModel": "搜索模型...",
-    "noModelFound": "未找到模型."
+    "noModelFound": "未找到模型.",
+    "fallback": {
+      "title": "兜底模型",
+      "description": "当某个场景的主模型请求失败时，按顺序依次尝试下方备用模型，直到有模型成功响应。可拖动模型标签调整顺序。",
+      "selectModels": "选择兜底模型..."
+    }
   },
   "json_editor": {
     "title": "JSON 编辑器",

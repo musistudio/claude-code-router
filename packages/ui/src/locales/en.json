@@ -120,7 +120,12 @@
     "forceUseImageAgent": "Force Use Image Agent",
     "selectModel": "Select a model...",
     "searchModel": "Search model...",
-    "noModelFound": "No model found."
+    "noModelFound": "No model found.",
+    "fallback": {
+      "title": "Fallback Models",
+      "description": "If the primary model for a scenario fails, the listed backup models are tried in order until one responds successfully. Drag a chip to reorder.",
+      "selectModels": "Select fallback models..."
+    }
   },
   "json_editor": {
     "title": "JSON Editor",

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Check, ChevronsUpDown, X } from "lucide-react"
+import { Check, ChevronsUpDown, GripVertical, X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -27,6 +27,10 @@ interface MultiComboboxProps {
   placeholder?: string;
   searchPlaceholder?: string;
   emptyPlaceholder?: string;
+  // When true, selected badges can be reordered via drag-and-drop. The new
+  // ordering is passed to onChange. Useful when order is semantically meaningful
+  // (e.g. fallback model priority lists).
+  reorderable?: boolean;
 }
 
 export function MultiCombobox({
@@ -36,9 +40,12 @@ export function MultiCombobox({
   placeholder = "Select options...",
   searchPlaceholder = "Search...",
   emptyPlaceholder = "No options found.",
+  reorderable = false,
 }: MultiComboboxProps) {
   const [open, setOpen] = React.useState(false)
-  
+  const [dragIndex, setDragIndex] = React.useState<number | null>(null)
+  const [overIndex, setOverIndex] = React.useState<number | null>(null)
+
   const handleSelect = (currentValue: string) => {
     if (value.includes(currentValue)) {
       onChange(value.filter(v => v !== currentValue))
@@ -46,27 +53,85 @@ export function MultiCombobox({
       onChange([...value, currentValue])
     }
   }
-  
+
   const removeValue = (val: string, e: React.MouseEvent) => {
     e.stopPropagation()
     onChange(value.filter(v => v !== val))
   }
 
+  const handleDragStart = (index: number) => (e: React.DragEvent<HTMLDivElement>) => {
+    setDragIndex(index)
+    e.dataTransfer.effectAllowed = "move"
+    // Firefox requires data to be set for drag to initiate.
+    e.dataTransfer.setData("text/plain", String(index))
+  }
+
+  const handleDragOver = (index: number) => (e: React.DragEvent<HTMLDivElement>) => {
+    if (dragIndex === null) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = "move"
+    if (overIndex !== index) {
+      setOverIndex(index)
+    }
+  }
+
+  const handleDrop = (index: number) => (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    if (dragIndex === null || dragIndex === index) {
+      setDragIndex(null)
+      setOverIndex(null)
+      return
+    }
+    const next = [...value]
+    const [moved] = next.splice(dragIndex, 1)
+    next.splice(index, 0, moved)
+    setDragIndex(null)
+    setOverIndex(null)
+    onChange(next)
+  }
+
+  const handleDragEnd = () => {
+    setDragIndex(null)
+    setOverIndex(null)
+  }
+
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-1">
-        {value.map((val) => {
+        {value.map((val, index) => {
           const option = options.find(opt => opt.value === val)
+          const isDragging = reorderable && dragIndex === index
+          const isOver = reorderable && overIndex === index && dragIndex !== null && dragIndex !== index
           return (
-            <Badge key={val} variant="outline" className="font-normal">
-              {option?.label || val}
-              <button
-                onClick={(e) => removeValue(val, e)}
-                className="ml-1 rounded-full hover:bg-gray-200"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
+            <div
+              key={val}
+              draggable={reorderable}
+              onDragStart={reorderable ? handleDragStart(index) : undefined}
+              onDragOver={reorderable ? handleDragOver(index) : undefined}
+              onDrop={reorderable ? handleDrop(index) : undefined}
+              onDragEnd={reorderable ? handleDragEnd : undefined}
+              className={cn(
+                "transition-opacity",
+                isDragging && "opacity-50",
+                isOver && "ring-2 ring-primary rounded-md",
+              )}
+            >
+              <Badge variant="outline" className="font-normal">
+                {reorderable && (
+                  <GripVertical
+                    className="mr-1 h-3 w-3 cursor-grab text-muted-foreground active:cursor-grabbing"
+                    aria-hidden
+                  />
+                )}
+                {option?.label || val}
+                <button
+                  onClick={(e) => removeValue(val, e)}
+                  className="ml-1 rounded-full hover:bg-gray-200"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            </div>
           )
         })}
       </div>

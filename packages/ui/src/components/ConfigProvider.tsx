@@ -1,7 +1,35 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode, Dispatch, SetStateAction } from 'react';
 import { api } from '@/lib/api';
-import type { Config, StatusLineConfig } from '@/types';
+import type { Config, FallbackConfig, FallbackScenario, StatusLineConfig } from '@/types';
+
+const FALLBACK_SCENARIOS: FallbackScenario[] = [
+  'default',
+  'background',
+  'think',
+  'longContext',
+  'webSearch',
+];
+
+// Coerce arbitrary input from config.json into a strict FallbackConfig: keep
+// only known scenarios, only string entries, and drop empty/invalid shapes
+// instead of forwarding garbage values to the backend.
+function sanitizeFallback(raw: unknown): FallbackConfig | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return undefined;
+  }
+  const out: FallbackConfig = {};
+  for (const scenario of FALLBACK_SCENARIOS) {
+    const list = (raw as Record<string, unknown>)[scenario];
+    if (Array.isArray(list)) {
+      const cleaned = list.filter((v): v is string => typeof v === 'string' && v.length > 0);
+      if (cleaned.length > 0) {
+        out[scenario] = cleaned;
+      }
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
 
 interface ConfigContextType {
   config: Config | null;
@@ -65,9 +93,12 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
       try {
         // Try to fetch config regardless of API key presence
         const data = await api.getConfig();
-        
-        // Validate the received data to ensure it has the expected structure
-        const validConfig = {
+
+        // Spread the raw config first so unknown keys (e.g. fallback, or any
+        // future backend additions) are preserved on save round-trips, then
+        // overlay UI-known fields with validated defaults.
+        const validConfig: Config = {
+          ...(data as Record<string, any>),
           LOG: typeof data.LOG === 'boolean' ? data.LOG : false,
           LOG_LEVEL: typeof data.LOG_LEVEL === 'string' ? data.LOG_LEVEL : 'debug',
           CLAUDE_PATH: typeof data.CLAUDE_PATH === 'string' ? data.CLAUDE_PATH : '',
@@ -83,7 +114,7 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
             currentStyle: typeof data.StatusLine.currentStyle === 'string' ? data.StatusLine.currentStyle : 'default',
             default: data.StatusLine.default && typeof data.StatusLine.default === 'object' && Array.isArray(data.StatusLine.default.modules) ? data.StatusLine.default : { modules: [] },
             powerline: data.StatusLine.powerline && typeof data.StatusLine.powerline === 'object' && Array.isArray(data.StatusLine.powerline.modules) ? data.StatusLine.powerline : { modules: [] }
-          } : { 
+          } : {
             enabled: false,
             currentStyle: 'default',
             default: { modules: [] },
@@ -106,9 +137,10 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
             webSearch: '',
             image: ''
           },
+          fallback: sanitizeFallback((data as Record<string, any>).fallback),
           CUSTOM_ROUTER_PATH: typeof data.CUSTOM_ROUTER_PATH === 'string' ? data.CUSTOM_ROUTER_PATH : ''
         };
-        
+
         setConfig(validConfig);
       } catch (err) {
         console.error('Failed to fetch config:', err);
