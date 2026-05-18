@@ -17,6 +17,74 @@ function log(...args: any[]) {
   console.log(...args);
 }
 
+/**
+ * Recursively sanitize JSON Schema for Moonshot/Kimi compatibility.
+ * Moonshot does not allow `type` at the parent level when `anyOf`/`oneOf`/`allOf`
+ * is present; `type` must be defined inside each sub-schema instead.
+ */
+function sanitizeJsonSchemaForMoonshot(schema: any): any {
+  if (schema === null || typeof schema !== "object") {
+    return schema;
+  }
+
+  if (Array.isArray(schema)) {
+    return schema.map((item) => sanitizeJsonSchemaForMoonshot(item));
+  }
+
+  const result: any = {};
+  for (const key of Object.keys(schema)) {
+    result[key] = sanitizeJsonSchemaForMoonshot(schema[key]);
+  }
+
+  const compositeKeys = ["anyOf", "oneOf", "allOf"];
+  for (const compositeKey of compositeKeys) {
+    if (Array.isArray(result[compositeKey]) && result.type !== undefined) {
+      const parentType = result.type;
+      delete result.type;
+      for (const item of result[compositeKey]) {
+        if (item && typeof item === "object" && item.type === undefined) {
+          item.type = parentType;
+        }
+      }
+    }
+  }
+
+  // Moonshot requires $ref to start with #/$defs/
+  // Replace #/definitions/ and #/components/schemas/ with #/$defs/
+  if (result.$ref && typeof result.$ref === "string") {
+    if (result.$ref.startsWith("#/definitions/")) {
+      result.$ref = result.$ref.replace("#/definitions/", "#/$defs/");
+    } else if (result.$ref.startsWith("#/components/schemas/")) {
+      result.$ref = result.$ref.replace("#/components/schemas/", "#/$defs/");
+    } else if (!result.$ref.startsWith("#/")) {
+      // Handle relative references (e.g. "CompletedSubtitle" -> "#/$defs/CompletedSubtitle")
+      result.$ref = "#/$defs/" + result.$ref;
+    }
+  }
+
+  // Ensure definitions key is renamed to $defs for consistency
+  if (result.definitions) {
+    result.$defs = result.$defs || {};
+    Object.assign(result.$defs, result.definitions);
+    delete result.definitions;
+  }
+
+  return result;
+}
+
+export function sanitizeToolsForMoonshot(tools: ChatCompletionTool[]): ChatCompletionTool[] {
+  return tools.map((tool) => ({
+    type: "function" as const,
+    function: {
+      name: tool.function.name,
+      description: tool.function.description,
+      parameters: tool.function.parameters
+        ? sanitizeJsonSchemaForMoonshot(tool.function.parameters)
+        : tool.function.parameters,
+    },
+  }));
+}
+
 export function convertToolsToOpenAI(
   tools: UnifiedTool[]
 ): ChatCompletionTool[] {
