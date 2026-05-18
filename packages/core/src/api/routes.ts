@@ -6,6 +6,7 @@ import {
 } from "fastify";
 import { RegisterProviderRequest, LLMProvider } from "@/types/llm";
 import { sendUnifiedRequest } from "@/utils/request";
+import { sanitizeToolsForMoonshot } from "@/utils/converter";
 import { createApiError } from "./middleware";
 import { version } from "../../package.json";
 import { ConfigService } from "@/services/config";
@@ -38,13 +39,26 @@ async function handleTransformerEndpoint(
   transformer: any
 ) {
   const body = req.body as any;
-  const providerName = req.provider!;
-  const provider = fastify.providerService.getProvider(providerName);
+  let providerName = req.provider;
+  let provider = providerName
+    ? fastify.providerService.getProvider(providerName)
+    : undefined;
+
+  // Fallback: if req.provider is invalid, try to parse provider from body.model
+  if (!provider && body.model && body.model.includes(",")) {
+    const [fallbackProvider] = body.model.split(",");
+    if (fallbackProvider) {
+      provider = fastify.providerService.getProvider(fallbackProvider);
+      if (provider) {
+        providerName = fallbackProvider;
+      }
+    }
+  }
 
   // Validate provider exists
   if (!provider) {
     throw createApiError(
-      `Provider '${providerName}' not found`,
+      `Provider '${providerName || body.model}' not found`,
       404,
       "provider_not_found"
     );
@@ -332,10 +346,37 @@ async function sendRequestToProvider(
     }
   }
 
+  // Moonshot/Kimi does not accept `type` at the parent level when `anyOf`/`oneOf`/`allOf`
+  // is present. Move `type` into each sub-schema item.
+  const isMoonshotProvider =
+    provider.name === "kimi" ||
+    provider.baseUrl?.includes("kimi") ||
+    provider.baseUrl?.includes("moonshot");
+  if (isMoonshotProvider && requestBody.tools && requestBody.tools.length > 0) {
+    requestBody = {
+      ...requestBody,
+      tools: sanitizeToolsForMoonshot(requestBody.tools),
+    };
+  }
+
+  // Moonshot/Kimi requires reasoning_content on assistant messages when thinking is enabled
+  if (isMoonshotProvider && Array.isArray(requestBody.messages)) {
+    requestBody = {
+      ...requestBody,
+      messages: requestBody.messages.map((msg: any) => {
+        if (msg.role === "assistant" && msg.reasoning_content === undefined) {
+          return { ...msg, reasoning_content: "" };
+        }
+        return msg;
+      }),
+    };
+  }
+
   // Send HTTP request
   // Prepare headers
   const requestHeaders: Record<string, string> = {
     Authorization: `Bearer ${provider.apiKey}`,
+    "User-Agent": "claude-code/0.1.0",
     ...(config?.headers || {}),
   };
 
@@ -440,6 +481,52 @@ async function processResponseTransformers(
 }
 
 /**
+ * Normalize SSE stream lines to OpenAI-compatible format.
+ * Some providers (e.g. Kimi/Moonshot) emit `data:{...}` without a space
+ * after the colon. Standard OpenAI SSE uses `data: {...}`.
+ */
+function normalizeSseStream(readableStream: ReadableStream): ReadableStream {
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffer = "";
+
+  return new ReadableStream({
+    async start(controller) {
+      const reader = readableStream.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            if (buffer) {
+              controller.enqueue(encoder.encode(fixSseLine(buffer)));
+            }
+            break;
+          }
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          for (const line of lines) {
+            controller.enqueue(encoder.encode(fixSseLine(line) + "\n"));
+          }
+        }
+      } catch (error) {
+        controller.error(error);
+      } finally {
+        reader.releaseLock();
+        controller.close();
+      }
+    },
+  });
+}
+
+function fixSseLine(line: string): string {
+  if (line.startsWith("data:") && !line.startsWith("data: ")) {
+    return "data: " + line.slice(5);
+  }
+  return line;
+}
+
+/**
  * Format and return response
  * Handle HTTP status codes, format streaming and regular responses
  */
@@ -455,10 +542,19 @@ function formatResponse(response: any, reply: FastifyReply, body: any) {
     reply.header("Content-Type", "text/event-stream");
     reply.header("Cache-Control", "no-cache");
     reply.header("Connection", "keep-alive");
-    return reply.send(response.body);
+    return reply.send(normalizeSseStream(response.body));
   } else {
     // Handle regular JSON response
-    return response.json();
+    return response.json().then((data: any) => {
+      if (data.choices) {
+        for (const choice of data.choices) {
+          if (choice.message && choice.message.reasoning_content) {
+            delete choice.message.reasoning_content;
+          }
+        }
+      }
+      return data;
+    });
   }
 }
 
@@ -472,6 +568,28 @@ export const registerApiRoutes = async (
 
   fastify.get("/health", async () => {
     return { status: "ok", timestamp: new Date().toISOString() };
+  });
+
+  fastify.get("/v1/models", async () => {
+    const providers = fastify.providerService.getProviders();
+    const models: Array<{ id: string; object: string; created: number; owned_by: string }> = [];
+    const now = Math.floor(Date.now() / 1000);
+    for (const provider of providers) {
+      for (const model of provider.models || []) {
+        models.push({
+          id: model,
+          object: "model",
+          created: now,
+          owned_by: provider.name,
+        });
+      }
+    }
+    return { object: "list", data: models };
+  });
+
+  fastify.post("/v1/models", async (req: any, reply: any) => {
+    reply.code(400);
+    return { error: { message: "Invalid request", type: "invalid_request_error" } };
   });
 
   const transformersWithEndpoint =

@@ -20,7 +20,10 @@
     "dev": "nodemon",
     "start": "node dist/cjs/server.cjs",
     "start:esm": "node dist/esm/server.mjs",
-    "lint": "eslint src --ext .ts,.tsx"
+    "lint": "eslint src --ext .ts,.tsx",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [
     "llm",
@@ -52,8 +55,10 @@
   "devDependencies": {
     "@CCR/shared": "workspace:*",
     "@types/node": "^24.0.15",
+    "@vitest/coverage-v8": "^4.1.6",
     "esbuild": "^0.25.1",
     "tsx": "^4.20.3",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "vitest": "^4.1.6"
   }
 }
