@@ -163,7 +163,15 @@ export const backupConfigFile = async () => {
 export const writeConfigFile = async (config: any) => {
   await ensureDir(HOME_DIR);
   const configWithComment = `${JSON.stringify(config, null, 2)}`;
-  await fs.writeFile(CONFIG_FILE, configWithComment);
+  await fs.writeFile(CONFIG_FILE, configWithComment, { mode: 0o600 });
+  // Belt-and-suspenders: ensure 0o600 even if the file pre-existed at 0o644.
+  // writeFile's mode option only applies when the file is created, not on
+  // overwrite of an existing file, so chmod the final result explicitly.
+  try {
+    await fs.chmod(CONFIG_FILE, 0o600);
+  } catch {
+    // Ignore — Windows does not support POSIX chmod.
+  }
 };
 
 export const initConfig = async () => {

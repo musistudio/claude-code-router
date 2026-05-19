@@ -85,7 +85,13 @@ function loadConfig(): Config {
 
 function saveConfig(config: Config): void {
   const configPath = getConfigPath();
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), { mode: 0o600, encoding: 'utf-8' });
+  // Belt-and-suspenders: chmod after write to handle the pre-existing-file case.
+  try {
+    fs.chmodSync(configPath, 0o600);
+  } catch {
+    // Ignore — Windows does not support POSIX chmod.
+  }
   console.log(`${GREEN}✓ config.json updated successfully${RESET}\n`);
 }
 
