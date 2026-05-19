@@ -168,6 +168,7 @@ export class AnthropicTransformer implements Transformer {
                 content: thinkingPart.thinking,
                 signature: thinkingPart.signature,
               };
+              assistantMessage.reasoning_content = thinkingPart.thinking;
             }
 
             messages.push(assistantMessage);
