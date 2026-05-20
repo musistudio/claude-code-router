@@ -350,6 +350,35 @@ async function sendRequestToProvider(
     }
   }
 
+  const applicableTransformers: Transformer[] = [];
+  if (!bypass && provider.transformer?.use?.length) {
+    applicableTransformers.push(...provider.transformer.use);
+  }
+  if (!bypass && provider.transformer?.[requestBody.model]?.use?.length) {
+    applicableTransformers.push(...provider.transformer[requestBody.model].use);
+  }
+
+  const customRequestTransformer = [...applicableTransformers]
+    .reverse()
+    .find(
+      (providerTransformer) =>
+        providerTransformer
+        && typeof providerTransformer.sendRequest === "function"
+    );
+
+  if (customRequestTransformer?.sendRequest) {
+    return customRequestTransformer.sendRequest(
+      requestBody,
+      provider,
+      {
+        httpsProxy: fastify.configService.getHttpsProxy(),
+        ...config,
+        headers: JSON.parse(JSON.stringify(requestHeaders)),
+      },
+      context,
+    );
+  }
+
   const response = await sendUnifiedRequest(
     url,
     requestBody,

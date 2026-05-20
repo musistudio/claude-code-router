@@ -362,6 +362,7 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
 -   `Anthropic`: 如果你只使用这一个转换器，则会直接透传请求和响应(你可以用它来接入其他支持Anthropic端点的服务商)。
 -   `deepseek`: 适配 DeepSeek API 的请求/响应。
 -   `gemini`: 适配 Gemini API 的请求/响应。
+-   `kimi`: 适配 Moonshot Kimi 的联网搜索，将 Claude Code 的 `web_search` 工具映射到 Kimi 的内置 `$web_search` 流程。
 -   `openrouter`: 适配 OpenRouter API 的请求/响应。它还可以接受一个 `provider` 路由参数，以指定 OpenRouter 应使用哪些底层提供商。有关更多详细信息，请参阅 [OpenRouter 文档](https://openrouter.ai/docs/features/provider-routing)。请参阅下面的示例：
     ```json
       "transformer": {
@@ -419,6 +420,7 @@ Transformers 允许您修改请求和响应负载，以确保与不同提供商 
 -   `longContext`: 用于处理长上下文（例如，> 60K 令牌）的模型。
 -   `longContextThreshold` (可选): 触发长上下文模型的令牌数阈值。如果未指定，默认为 60000。
 -   `webSearch`: 用于处理网络搜索任务，需要模型本身支持。如果使用`openrouter`需要在模型后面加上`:online`后缀。
+-   如果直接使用 Moonshot Kimi 作为 `webSearch`，请给该 provider 配置 `"transformer": { "use": ["kimi"] }`。
 -   `image`(测试版): 用于处理图片类任务（采用CCR内置的agent支持），如果该模型不支持工具调用，需要将`config.forceUseImageAgent`属性设置为`true`。
 
 您还可以使用 `/model` 命令在 Claude Code 中动态切换模型：

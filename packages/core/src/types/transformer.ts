@@ -27,6 +27,12 @@ export type Transformer = {
     provider: LLMProvider,
     context: TransformerContext,
   ) => Promise<Record<string, any>>;
+  sendRequest?: (
+    request: Record<string, any>,
+    provider: LLMProvider,
+    config: Record<string, any>,
+    context: TransformerContext,
+  ) => Promise<Response>;
   transformResponseIn?: (response: Response, context?: TransformerContext) => Promise<Response>;
 
   // 将请求格式转换为通用的格式
