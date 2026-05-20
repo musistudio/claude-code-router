@@ -966,7 +966,7 @@ export class AnthropicTransformer implements Transformer {
         throw new Error("No choices found in OpenAI response");
       }
       const content: any[] = [];
-      if (choice.message.annotations) {
+      if (choice.message.annotations?.length) {
         const id = `srvtoolu_${uuidv4()}`;
         content.push({
           type: "server_tool_use",
