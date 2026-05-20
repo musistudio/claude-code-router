@@ -38,7 +38,12 @@
       "api_key": "sk-",
       "models": [
         "kimi-k2-0711-preview"
-      ]
+      ],
+      "transformer": {
+        "use": [
+          "kimi"
+        ]
+      }
     },
     {
       "name": "groq",
