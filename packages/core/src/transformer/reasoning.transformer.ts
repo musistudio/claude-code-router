@@ -12,6 +12,16 @@ export class ReasoningTransformer implements Transformer {
   async transformRequestIn(
     request: UnifiedChatRequest
   ): Promise<UnifiedChatRequest> {
+    request.messages.forEach((message) => {
+      if (
+        message.role === "assistant" &&
+        message.thinking?.content &&
+        !message.reasoning_content
+      ) {
+        message.reasoning_content = message.thinking.content;
+      }
+    });
+
     if (!this.enable) {
       request.thinking = {
         type: "disabled",
