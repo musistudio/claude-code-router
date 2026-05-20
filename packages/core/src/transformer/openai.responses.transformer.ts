@@ -46,6 +46,7 @@ interface ResponsesStreamEvent {
     type?: string;
     call_id?: string;
     name?: string;
+    arguments?: string;
     content?: Array<{
       type: string;
       text?: string;
@@ -60,7 +61,13 @@ interface ResponsesStreamEvent {
     output?: Array<{
       type: string;
     }>;
+    usage?: {
+      input_tokens?: number;
+      output_tokens?: number;
+      total_tokens?: number;
+    };
   };
+  arguments?: string;
   reasoning_summary?: string; // 添加推理摘要支持
 }
 
@@ -76,10 +83,20 @@ export class OpenAIResponsesTransformer implements Transformer {
 
     // 处理 reasoning 参数
     if (request.reasoning) {
-      (request as any).reasoning = {
-        effort: request.reasoning.effort,
-        summary: "detailed",
-      };
+      const reasoning = request.reasoning as Record<string, unknown>;
+      const openAIReasoning: Record<string, unknown> = {};
+      if (reasoning.effort) {
+        openAIReasoning.effort = reasoning.effort;
+      }
+      if (reasoning.summary) {
+        openAIReasoning.summary = reasoning.summary;
+      }
+
+      if (Object.keys(openAIReasoning).length > 0) {
+        (request as any).reasoning = openAIReasoning;
+      } else {
+        delete (request as any).reasoning;
+      }
     }
 
     const input: any[] = [];
@@ -147,6 +164,10 @@ export class OpenAIResponsesTransformer implements Transformer {
           });
         });
         return;
+      }
+
+      if (message.role === "assistant" && (message as any).thinking) {
+        delete (message as any).thinking;
       }
 
       input.push(message);
@@ -244,6 +265,59 @@ export class OpenAIResponsesTransformer implements Transformer {
           // 索引跟踪变量，只有在事件类型切换时才增加索引
           let currentIndex = -1;
           let lastEventType = "";
+          const functionCallArguments = new Map<string, string>();
+
+          // Responses delta/done events may omit or change item_id, while
+          // output_index stays stable for a single function call.
+          const getFunctionCallKey = (data: ResponsesStreamEvent) =>
+            String(data.output_index ?? data.item_id ?? 0);
+
+          const emitFunctionCallArguments = (
+            data: ResponsesStreamEvent,
+            args: string,
+            replaceIfMissing: boolean = false
+          ) => {
+            if (!args) return;
+
+            const key = getFunctionCallKey(data);
+            const previous = functionCallArguments.get(key) || "";
+            let delta = args;
+
+            if (replaceIfMissing && previous) {
+              if (!args.startsWith(previous)) return;
+              delta = args.slice(previous.length);
+              if (!delta) return;
+            }
+
+            functionCallArguments.set(key, previous + delta);
+
+            const functionCallChunk = {
+              id: data.item_id || "chatcmpl-" + Date.now(),
+              object: "chat.completion.chunk",
+              created: Math.floor(Date.now() / 1000),
+              model: data.response?.model || "gpt-5-codex-",
+              choices: [
+                {
+                  index: getCurrentIndex("response.function_call_arguments"),
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: data.output_index ?? 0,
+                        function: {
+                          arguments: delta,
+                        },
+                      },
+                    ],
+                  },
+                  finish_reason: null,
+                },
+              ],
+            };
+
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify(functionCallChunk)}\n\n`)
+            );
+          };
 
           // 获取当前应该使用的索引的函数
           const getCurrentIndex = (eventType: string) => {
@@ -335,7 +409,7 @@ export class OpenAIResponsesTransformer implements Transformer {
                                 role: "assistant",
                                 tool_calls: [
                                   {
-                                    index: 0,
+                                    index: data.output_index ?? 0,
                                     id: data.item.call_id || data.item.id,
                                     function: {
                                       name: data.item.name || "",
@@ -440,34 +514,26 @@ export class OpenAIResponsesTransformer implements Transformer {
                       } else if (
                         data.type === "response.function_call_arguments.delta"
                       ) {
-                        // 处理function call参数增量
-                        const functionCallChunk = {
-                          id: data.item_id || "chatcmpl-" + Date.now(),
-                          object: "chat.completion.chunk",
-                          created: Math.floor(Date.now() / 1000),
-                          model: data.response?.model || "gpt-5-codex-",
-                          choices: [
-                            {
-                              index: getCurrentIndex(data.type),
-                              delta: {
-                                tool_calls: [
-                                  {
-                                    index: 0,
-                                    function: {
-                                      arguments: data.delta || "",
-                                    },
-                                  },
-                                ],
-                              },
-                              finish_reason: null,
-                            },
-                          ],
-                        };
-
-                        controller.enqueue(
-                          encoder.encode(
-                            `data: ${JSON.stringify(functionCallChunk)}\n\n`
-                          )
+                        emitFunctionCallArguments(
+                          data,
+                          typeof data.delta === "string" ? data.delta : ""
+                        );
+                      } else if (
+                        data.type === "response.function_call_arguments.done"
+                      ) {
+                        emitFunctionCallArguments(
+                          data,
+                          data.arguments || "",
+                          true
+                        );
+                      } else if (
+                        data.type === "response.output_item.done" &&
+                        data.item?.type === "function_call"
+                      ) {
+                        emitFunctionCallArguments(
+                          data,
+                          data.item.arguments || "",
+                          true
                         );
                       } else if (data.type === "response.completed") {
                         // 发送结束标记 - 检查是否是tool_calls完成
@@ -489,6 +555,16 @@ export class OpenAIResponsesTransformer implements Transformer {
                               finish_reason: finishReason,
                             },
                           ],
+                          usage: data.response?.usage
+                            ? {
+                                prompt_tokens:
+                                  data.response.usage.input_tokens || 0,
+                                completion_tokens:
+                                  data.response.usage.output_tokens || 0,
+                                total_tokens:
+                                  data.response.usage.total_tokens || 0,
+                              }
+                            : undefined,
                         };
 
                         controller.enqueue(
@@ -500,57 +576,16 @@ export class OpenAIResponsesTransformer implements Transformer {
                       } else if (
                         data.type === "response.reasoning_summary_text.delta"
                       ) {
-                        // 处理推理文本，将其转换为 thinking delta 格式
-                        const thinkingChunk = {
-                          id: data.item_id || "chatcmpl-" + Date.now(),
-                          object: "chat.completion.chunk",
-                          created: Math.floor(Date.now() / 1000),
-                          model: data.response?.model,
-                          choices: [
-                            {
-                              index: getCurrentIndex(data.type),
-                              delta: {
-                                thinking: {
-                                  content: data.delta || "",
-                                },
-                              },
-                              finish_reason: null,
-                            },
-                          ],
-                        };
-
-                        controller.enqueue(
-                          encoder.encode(
-                            `data: ${JSON.stringify(thinkingChunk)}\n\n`
-                          )
-                        );
+                        // OpenAI reasoning summaries are not Anthropic thinking
+                        // blocks. Forwarding them as thinking makes Claude Code
+                        // persist thinking-only messages that can break later
+                        // content block handling, so keep them internal.
+                        continue;
                       } else if (
                         data.type === "response.reasoning_summary_part.done" &&
                         data.part
                       ) {
-                        const thinkingChunk = {
-                          id: data.item_id || "chatcmpl-" + Date.now(),
-                          object: "chat.completion.chunk",
-                          created: Math.floor(Date.now() / 1000),
-                          model: data.response?.model,
-                          choices: [
-                            {
-                              index: currentIndex,
-                              delta: {
-                                thinking: {
-                                  signature: data.item_id,
-                                },
-                              },
-                              finish_reason: null,
-                            },
-                          ],
-                        };
-
-                        controller.enqueue(
-                          encoder.encode(
-                            `data: ${JSON.stringify(thinkingChunk)}\n\n`
-                          )
-                        );
+                        continue;
                       }
                     } catch (e) {
                       // 如果JSON解析失败，传递原始行
@@ -669,15 +704,6 @@ export class OpenAIResponsesTransformer implements Transformer {
 
     let messageContent: string | MessageContent[] | null = null;
     let toolCalls = null;
-    let thinking = null;
-
-    // 处理推理内容
-    if (messageOutput && messageOutput.reasoning) {
-      thinking = {
-        content: messageOutput.reasoning,
-      };
-    }
-
     if (messageOutput && messageOutput.content) {
       // 分离文本和图片内容
       const textParts: string[] = [];
@@ -750,7 +776,6 @@ export class OpenAIResponsesTransformer implements Transformer {
             role: "assistant",
             content: messageContent || null,
             tool_calls: toolCalls,
-            thinking: thinking,
             annotations: annotations,
           },
           logprobs: null,

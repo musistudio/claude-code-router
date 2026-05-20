@@ -59,15 +59,17 @@ export async function executeCodeCommand(
     }
   }
 
-  // Merge claudeCodeSettings from preset into settingsFlag
-  if (presetConfig?.claudeCodeSettings) {
+  const claudeCodeSettings = presetConfig?.claudeCodeSettings || config?.claudeCodeSettings;
+
+  // Merge claudeCodeSettings from preset/global config into settingsFlag
+  if (claudeCodeSettings) {
     settingsFlag = {
       ...settingsFlag,
-      ...presetConfig.claudeCodeSettings,
+      ...claudeCodeSettings,
       // Deep merge env
       env: {
         ...settingsFlag.env,
-        ...presetConfig.claudeCodeSettings.env,
+        ...claudeCodeSettings.env,
       } as ClaudeSettingsFlag['env']
     };
   }
