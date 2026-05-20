@@ -7,6 +7,7 @@ import {
 import { RegisterProviderRequest, LLMProvider } from "@/types/llm";
 import { sendUnifiedRequest } from "@/utils/request";
 import { createApiError } from "./middleware";
+import { classifyProviderError } from "./providerError";
 import { version } from "../../package.json";
 import { ConfigService } from "@/services/config";
 import { ProviderService } from "@/services/provider";
@@ -91,7 +92,7 @@ async function handleTransformerEndpoint(
     return formatResponse(finalResponse, reply, body);
   } catch (error: any) {
     // Handle fallback if error occurs
-    if (error.code === 'provider_response_error') {
+    if (error.code === 'provider_response_error' || error.code === 'context_length_exceeded') {
       const fallbackResult = await handleFallback(req, reply, fastify, transformer, error);
       if (fallbackResult) {
         return fallbackResult;
@@ -365,13 +366,17 @@ async function sendRequestToProvider(
   // Handle request errors
   if (!response.ok) {
     const errorText = await response.text();
-    fastify.log.error(
-      `[provider_response_error] Error from provider(${provider.name},${requestBody.model}: ${response.status}): ${errorText}`,
-    );
-    throw createApiError(
-      `Error from provider(${provider.name},${requestBody.model}: ${response.status}): ${errorText}`,
+    const providerError = classifyProviderError(
+      provider.name,
+      requestBody.model,
       response.status,
-      "provider_response_error"
+      errorText
+    );
+    fastify.log.error(`[${providerError.code}] ${providerError.message}`);
+    throw createApiError(
+      providerError.message,
+      providerError.statusCode,
+      providerError.code
     );
   }
 
