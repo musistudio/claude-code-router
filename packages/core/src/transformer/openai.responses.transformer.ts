@@ -61,6 +61,11 @@ interface ResponsesStreamEvent {
     output?: Array<{
       type: string;
     }>;
+    usage?: {
+      input_tokens?: number;
+      output_tokens?: number;
+      total_tokens?: number;
+    };
   };
   arguments?: string;
   reasoning_summary?: string; // 添加推理摘要支持
@@ -550,6 +555,16 @@ export class OpenAIResponsesTransformer implements Transformer {
                               finish_reason: finishReason,
                             },
                           ],
+                          usage: data.response?.usage
+                            ? {
+                                prompt_tokens:
+                                  data.response.usage.input_tokens || 0,
+                                completion_tokens:
+                                  data.response.usage.output_tokens || 0,
+                                total_tokens:
+                                  data.response.usage.total_tokens || 0,
+                              }
+                            : undefined,
                         };
 
                         controller.enqueue(
