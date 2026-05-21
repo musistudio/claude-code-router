@@ -31,6 +31,7 @@ import { registerApiRoutes } from "./api/routes";
 import { ProviderService } from "./services/provider";
 import { TransformerService } from "./services/transformer";
 import { TokenizerService } from "./services/tokenizer";
+import { NetworkDetector } from "./services/networkDetector";
 import { router, calculateTokenCount, searchProjectBySession } from "./utils/router";
 import { sessionUsageCache } from "./utils/cache";
 
@@ -72,6 +73,7 @@ class Server {
   providerService!: ProviderService;
   transformerService: TransformerService;
   tokenizerService: TokenizerService;
+  networkDetector?: NetworkDetector;
 
   constructor(options: ServerOptions = {}) {
     const { initialConfig, ...fastifyOptions } = options;
@@ -99,6 +101,9 @@ class Server {
     this.tokenizerService.initialize().catch((error) => {
       this.app.log.error(`Failed to initialize TokenizerService: ${error}`);
     });
+
+    // Initialize network-aware router
+    this.networkDetector = new NetworkDetector(this.configService, this.app.log);
   }
 
   async register<Options extends FastifyPluginOptions = FastifyPluginOptions>(
@@ -213,6 +218,11 @@ class Server {
 
       await this.registerNamespace('/')
 
+      // Start network-aware router detection
+      if (this.networkDetector) {
+        await this.networkDetector.start();
+      }
+
       this.app.addHook(
         "preHandler",
         async (req: FastifyRequest, reply: FastifyReply) => {
@@ -248,6 +258,7 @@ class Server {
 
       const shutdown = async (signal: string) => {
         this.app.log.info(`Received ${signal}, shutting down gracefully...`);
+        this.networkDetector?.stop();
         await this.app.close();
         process.exit(0);
       };
@@ -274,3 +285,5 @@ export { TransformerService } from "./services/transformer";
 export { TokenizerService } from "./services/tokenizer";
 export { pluginManager, tokenSpeedPlugin, getTokenSpeedStats, getGlobalTokenSpeedStats, CCRPlugin, CCRPluginOptions, PluginMetadata } from "./plugins";
 export { SSEParserTransform, SSESerializerTransform, rewriteStream } from "./utils/sse";
+export { NetworkDetector } from "./services/networkDetector";
+export type { NetworkState, NetworkRouterConfig } from "./services/networkDetector";

@@ -36,15 +36,18 @@
     "@types/node": "^24.0.15",
     "esbuild": "^0.25.1",
     "shx": "^0.4.0",
-    "typescript": "^5.8.2"
-  },
-  "pnpm": {
-    "overrides": {
-      "@types/react": "18"
-    }
+    "typescript": "^5.8.2",
+    "vitest": "^4.1.7"
   },
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=8.0.0"
-  }
+  },
+  "overrides": {
+    "@types/react": "18"
+  },
+  "workspaces": [
+    "packages/*",
+    "docs"
+  ]
 }

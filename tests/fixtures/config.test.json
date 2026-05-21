@@ -1,0 +1,42 @@
+{
+  "PORT": 23456,
+  "HOST": "127.0.0.1",
+  "LOG": true,
+  "LOG_LEVEL": "debug",
+  "API_TIMEOUT_MS": 10000,
+  "Providers": [
+    {
+      "name": "test-provider",
+      "api_base_url": "http://127.0.0.1:19999/v1/chat/completions",
+      "api_key": "test-key",
+      "models": ["test-model"]
+    }
+  ],
+  "Router": {
+    "default": "test-provider,test-model",
+    "background": "test-provider,test-model",
+    "think": "test-provider,test-model"
+  },
+  "NetworkRouter": {
+    "enabled": true,
+    "checkInterval": 5,
+    "hostname": "w3.huawei.com",
+    "intranetPattern": "^10\\.",
+    "states": {
+      "intranet": {
+        "Router": {
+          "default": "test-provider,test-model",
+          "background": "test-provider,test-model",
+          "think": "test-provider,test-model"
+        }
+      },
+      "external": {
+        "Router": {
+          "default": "test-provider,test-model",
+          "background": "test-provider,test-model",
+          "think": "test-provider,test-model"
+        }
+      }
+    }
+  }
+}
