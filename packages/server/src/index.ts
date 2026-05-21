@@ -433,6 +433,9 @@ async function getServer(options: RunOptions = {}) {
     serverInstance.app.log.error("Unhandled rejection at:", promise, "reason:", reason);
   });
 
+  // Expose server instance for API access (network-state, reload)
+  (globalThis as any).__CCR_SERVER = serverInstance;
+
   return serverInstance;
 }
 

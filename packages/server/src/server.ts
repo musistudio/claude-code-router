@@ -113,6 +113,41 @@ export const createServer = async (config: any): Promise<any> => {
     return { success: true, message: "Config saved successfully" };
   });
 
+  // Network state API
+  app.get("/api/network-state", async (req: any, reply: any) => {
+    const server = (globalThis as any).__CCR_SERVER;
+    const networkDetector = server?.networkDetector;
+    return {
+      state: networkDetector?.getState() ?? 'unknown',
+      enabled: !!networkDetector,
+    };
+  });
+
+  // Hot reload API
+  app.post("/api/reload", async (req: any, reply: any) => {
+    const server = (globalThis as any).__CCR_SERVER;
+    if (!server) {
+      return { success: false, message: 'Server instance not available' };
+    }
+    try {
+      server.configService.reload();
+
+      // Reload providers
+      const providers = server.configService.get('Providers') || [];
+      if (server.providerService?.loadProviders) {
+        server.providerService.loadProviders(providers);
+      }
+
+      // Restart network detector
+      server.networkDetector?.stop();
+      await server.networkDetector?.start();
+
+      return { success: true, message: 'Config reloaded successfully' };
+    } catch (error: any) {
+      return { success: false, message: error.message };
+    }
+  });
+
   // Register static file serving with caching
   app.register(fastifyStatic, {
     root: join(__dirname, "..", "dist"),
