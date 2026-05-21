@@ -30,7 +30,10 @@
     "log_viewer": "Log Viewer",
     "presets": "Presets",
     "language": "Language",
-    "check_updates": "Check for Updates"
+    "check_updates": "Check for Updates",
+    "reload": "Hot Reload",
+    "reload_success": "Config reloaded successfully",
+    "reload_failed": "Config reload failed"
   },
   "login": {
     "title": "Sign in to your account",
@@ -118,6 +121,22 @@
     "webSearch": "Web Search",
     "image": "Image",
     "forceUseImageAgent": "Force Use Image Agent",
+    "selectModel": "Select a model...",
+    "searchModel": "Search model...",
+    "noModelFound": "No model found."
+  },
+  "network_router": {
+    "title": "Network-Aware Router",
+    "enabled": "Enabled",
+    "current_state": "Current State",
+    "intranet": "Intranet (xgate connected)",
+    "external": "External (xgate disconnected)",
+    "unknown": "Unknown",
+    "hostname": "Detection Hostname",
+    "check_interval": "Check Interval (seconds)",
+    "intranet_router": "Intranet Router",
+    "external_router": "External Router",
+    "not_configured": "Not configured, will use default router",
     "selectModel": "Select a model...",
     "searchModel": "Search model...",
     "noModelFound": "No model found."

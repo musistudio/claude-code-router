@@ -63,8 +63,25 @@ export interface Config {
   PORT: number;
   APIKEY: string;
   API_TIMEOUT_MS: string;
+  NetworkRouter?: NetworkRouterConfig;
   PROXY_URL: string;
   CUSTOM_ROUTER_PATH?: string;
+}
+
+export interface NetworkRouterState {
+  Router?: Record<string, string>;
+  fallback?: Record<string, string[]>;
+}
+
+export interface NetworkRouterConfig {
+  enabled?: boolean;
+  checkInterval?: number;
+  hostname?: string;
+  intranetPattern?: string;
+  states?: {
+    intranet?: NetworkRouterState;
+    external?: NetworkRouterState;
+  };
 }
 
 export type AccessLevel = 'restricted' | 'full';

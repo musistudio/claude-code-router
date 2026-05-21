@@ -323,6 +323,14 @@ class ApiClient {
   async installPresetFromGitHub(repo: string, name?: string): Promise<any> {
     return this.post<any>('/presets/install/github', { repo, name });
   }
+
+  async getNetworkState(): Promise<{ state: string; enabled: boolean }> {
+    return this.get('/network-state');
+  }
+
+  async reloadConfig(): Promise<{ success: boolean; message: string }> {
+    return this.post('/reload', {});
+  }
 }
 
 // Create a default instance of the API client

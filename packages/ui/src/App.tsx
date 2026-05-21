@@ -5,12 +5,13 @@ import { SettingsDialog } from "@/components/SettingsDialog";
 import { Transformers } from "@/components/Transformers";
 import { Providers } from "@/components/Providers";
 import { Router } from "@/components/Router";
+import { NetworkRouter } from "@/components/NetworkRouter";
 import { JsonEditor } from "@/components/JsonEditor";
 import { LogViewer } from "@/components/LogViewer";
 import { Button } from "@/components/ui/button";
 import { useConfig } from "@/components/ConfigProvider";
 import { api } from "@/lib/api";
-import { Settings, Languages, Save, RefreshCw, FileJson, CircleArrowUp, FileText, FileCog } from "lucide-react";
+import { Settings, Languages, Save, RefreshCw, FileJson, CircleArrowUp, FileText, FileCog, Zap } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -125,6 +126,19 @@ function App() {
     }
   };
   
+  const reloadConfig = async () => {
+    try {
+      const response = await api.reloadConfig();
+      if (response.success) {
+        setToast({ message: t('app.reload_success'), type: 'success' });
+      } else {
+        setToast({ message: response.message || t('app.reload_failed'), type: 'error' });
+      }
+    } catch (error) {
+      setToast({ message: t('app.reload_failed') + ': ' + (error as Error).message, type: 'error' });
+    }
+  };
+
   // 检查更新函数
   const checkForUpdates = useCallback(async (showDialog: boolean = true) => {
     // 如果已经检查过且有新版本，根据参数决定是否显示对话框
@@ -370,6 +384,10 @@ function App() {
               </TooltipContent>
             </Tooltip>
           )}
+          <Button onClick={reloadConfig} variant="outline" className="transition-all-ease hover:scale-[1.02] active:scale-[0.98]">
+            <Zap className="mr-2 h-4 w-4" />
+            {t('app.reload')}
+          </Button>
           <Button onClick={saveConfig} variant="outline" className="transition-all-ease hover:scale-[1.02] active:scale-[0.98]">
             <Save className="mr-2 h-4 w-4" />
             {t('app.save')}
@@ -385,10 +403,13 @@ function App() {
           <Providers />
         </div>
         <div className="flex w-2/5 flex-col gap-4">
-          <div className="h-3/5">
+          <div className="h-1/3">
             <Router />
           </div>
-          <div className="flex-1 overflow-hidden">
+          <div className="h-1/3">
+            <NetworkRouter />
+          </div>
+          <div className="h-1/3 overflow-hidden">
             <Transformers />
           </div>
         </div>

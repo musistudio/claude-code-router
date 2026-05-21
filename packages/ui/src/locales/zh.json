@@ -30,7 +30,10 @@
     "log_viewer": "日志查看器",
     "presets": "预设",
     "language": "语言",
-    "check_updates": "检查更新"
+    "check_updates": "检查更新",
+    "reload": "热重载",
+    "reload_success": "配置热重载成功",
+    "reload_failed": "配置热重载失败"
   },
   "login": {
     "title": "登录到您的账户",
@@ -118,6 +121,22 @@
     "webSearch": "网络搜索",
     "image": "图像",
     "forceUseImageAgent": "强制使用图像代理",
+    "selectModel": "选择一个模型...",
+    "searchModel": "搜索模型...",
+    "noModelFound": "未找到模型."
+  },
+  "network_router": {
+    "title": "网络感知路由",
+    "enabled": "启用",
+    "current_state": "当前状态",
+    "intranet": "内网 (xgate 已连接)",
+    "external": "外网 (xgate 未连接)",
+    "unknown": "未知",
+    "hostname": "检测域名",
+    "check_interval": "检测间隔（秒）",
+    "intranet_router": "内网路由",
+    "external_router": "外网路由",
+    "not_configured": "未配置，将使用默认路由",
     "selectModel": "选择一个模型...",
     "searchModel": "搜索模型...",
     "noModelFound": "未找到模型."
