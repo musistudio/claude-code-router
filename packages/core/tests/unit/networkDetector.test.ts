@@ -4,10 +4,10 @@ import { ConfigService } from '../../src/services/config';
 
 // Mock dns/promises
 vi.mock('dns/promises', () => ({
-  resolve4: vi.fn(),
+  lookup: vi.fn(),
 }));
 
-import { resolve4 } from 'dns/promises';
+import { lookup } from 'dns/promises';
 
 function createMockConfigService(config: Record<string, any>) {
   return {
@@ -68,7 +68,7 @@ describe('NetworkDetector', () => {
     });
 
     it('should detect intranet on start when DNS resolves to 10.x', async () => {
-      (resolve4 as any).mockResolvedValue(['10.3.42.43']);
+      (lookup as any).mockResolvedValue({ address: '10.3.42.43', family: 4 });
       configService = createMockConfigService({
         NetworkRouter: {
           enabled: true,
@@ -97,7 +97,7 @@ describe('NetworkDetector', () => {
     });
 
     it('should detect external on start when DNS resolution fails', async () => {
-      (resolve4 as any).mockRejectedValue(new Error('ENOTFOUND'));
+      (lookup as any).mockRejectedValue(new Error('ENOTFOUND'));
       configService = createMockConfigService({
         NetworkRouter: {
           enabled: true,
@@ -128,7 +128,7 @@ describe('NetworkDetector', () => {
 
   describe('detect() - periodic checks', () => {
     it('should switch to external when DNS starts failing after intranet', async () => {
-      (resolve4 as any).mockResolvedValue(['10.3.42.43']);
+      (lookup as any).mockResolvedValue({ address: '10.3.42.43', family: 4 });
       configService = createMockConfigService({
         NetworkRouter: {
           enabled: true,
@@ -151,7 +151,7 @@ describe('NetworkDetector', () => {
       expect(detector.getState()).toBe('intranet');
 
       // DNS starts failing (xgate disconnected)
-      (resolve4 as any).mockRejectedValue(new Error('ENOTFOUND'));
+      (lookup as any).mockRejectedValue(new Error('ENOTFOUND'));
 
       // Advance timer by checkInterval
       await vi.advanceTimersByTimeAsync(10000);
@@ -163,7 +163,7 @@ describe('NetworkDetector', () => {
     });
 
     it('should switch to intranet when DNS resolves to 10.x after external', async () => {
-      (resolve4 as any).mockRejectedValue(new Error('ENOTFOUND'));
+      (lookup as any).mockRejectedValue(new Error('ENOTFOUND'));
       configService = createMockConfigService({
         NetworkRouter: {
           enabled: true,
@@ -186,7 +186,7 @@ describe('NetworkDetector', () => {
       expect(detector.getState()).toBe('external');
 
       // DNS starts resolving to intranet (xgate connected)
-      (resolve4 as any).mockResolvedValue(['10.3.42.43']);
+      (lookup as any).mockResolvedValue({ address: '10.3.42.43', family: 4 });
 
       await vi.advanceTimersByTimeAsync(10000);
 
@@ -194,7 +194,7 @@ describe('NetworkDetector', () => {
     });
 
     it('should not call set when state does not change', async () => {
-      (resolve4 as any).mockResolvedValue(['10.3.42.43']);
+      (lookup as any).mockResolvedValue({ address: '10.3.42.43', family: 4 });
       configService = createMockConfigService({
         NetworkRouter: {
           enabled: true,
@@ -222,7 +222,7 @@ describe('NetworkDetector', () => {
 
   describe('stop()', () => {
     it('should restore original Router config on stop', async () => {
-      (resolve4 as any).mockResolvedValue(['10.3.42.43']);
+      (lookup as any).mockResolvedValue({ address: '10.3.42.43', family: 4 });
       const originalRouter = { default: 'original,default' };
       configService = createMockConfigService({
         NetworkRouter: {
@@ -246,7 +246,7 @@ describe('NetworkDetector', () => {
     });
 
     it('should stop periodic checks', async () => {
-      (resolve4 as any).mockResolvedValue(['10.3.42.43']);
+      (lookup as any).mockResolvedValue({ address: '10.3.42.43', family: 4 });
       configService = createMockConfigService({
         NetworkRouter: {
           enabled: true,
@@ -264,18 +264,18 @@ describe('NetworkDetector', () => {
       await detector.start();
       detector.stop();
 
-      const resolveCallCount = (resolve4 as any).mock.calls.length;
+      const lookupCallCount = (lookup as any).mock.calls.length;;
 
       await vi.advanceTimersByTimeAsync(30000);
 
       // No additional DNS calls after stop
-      expect((resolve4 as any).mock.calls.length).toBe(resolveCallCount);
+      expect((lookup as any).mock.calls.length).toBe(lookupCallCount);
     });
   });
 
   describe('defaults', () => {
     it('should use default hostname w3.huawei.com when not specified', async () => {
-      (resolve4 as any).mockResolvedValue(['10.3.42.43']);
+      (lookup as any).mockResolvedValue({ address: '10.3.42.43', family: 4 });
       configService = createMockConfigService({
         NetworkRouter: {
           enabled: true,
@@ -291,11 +291,11 @@ describe('NetworkDetector', () => {
 
       await detector.start();
 
-      expect(resolve4).toHaveBeenCalledWith('w3.huawei.com');
+      expect(lookup).toHaveBeenCalledWith('w3.huawei.com');
     });
 
     it('should use default checkInterval 30s when not specified', async () => {
-      (resolve4 as any).mockResolvedValue(['10.3.42.43']);
+      (lookup as any).mockResolvedValue({ address: '10.3.42.43', family: 4 });
       configService = createMockConfigService({
         NetworkRouter: {
           enabled: true,
@@ -313,15 +313,15 @@ describe('NetworkDetector', () => {
 
       // Advance less than 30s - should not trigger another check
       await vi.advanceTimersByTimeAsync(29000);
-      expect((resolve4 as any).mock.calls.length).toBe(1);
+      expect((lookup as any).mock.calls.length).toBe(1);
 
       // Advance to 30s - should trigger another check
       await vi.advanceTimersByTimeAsync(2000);
-      expect((resolve4 as any).mock.calls.length).toBe(2);
+      expect((lookup as any).mock.calls.length).toBe(2);
     });
 
     it('should use custom hostname and intranetPattern', async () => {
-      (resolve4 as any).mockResolvedValue(['172.16.0.1']);
+      (lookup as any).mockResolvedValue({ address: '172.16.0.1', family: 4 });
       configService = createMockConfigService({
         NetworkRouter: {
           enabled: true,
@@ -339,7 +339,7 @@ describe('NetworkDetector', () => {
 
       await detector.start();
 
-      expect(resolve4).toHaveBeenCalledWith('internal.company.com');
+      expect(lookup).toHaveBeenCalledWith('internal.company.com');
       expect(detector.getState()).toBe('intranet');
     });
   });

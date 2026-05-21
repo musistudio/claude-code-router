@@ -217,3 +217,107 @@ pnpm build:server
 # 发布
 pnpm release
 ```
+
+## 7. 部署-观测循环
+
+**核心原则：改了代码必须部署才能验证。**
+
+### 7.1 本地部署流程
+
+```bash
+# 1. 构建变更的 package
+pnpm build:core      # 如果改了 core
+pnpm build:server    # 如果改了 server
+pnpm build:ui        # 如果改了 UI（需要 vite build）
+
+# 2. 构建 CLI（打包所有依赖）
+npx esbuild packages/cli/src/cli.ts --bundle --platform=node --minify --outfile=packages/cli/dist/cli.js
+
+# 3. 复制依赖文件
+Copy-Item "packages/server/dist/tiktoken_bg.wasm" "packages/cli/dist/" -Force
+Copy-Item "packages/ui/dist/index.html" "packages/cli/dist/" -Force
+
+# 4. 复制到根目录 dist
+Copy-Item "packages/cli/dist" "dist" -Recurse -Force
+
+# 5. 重启服务
+node dist/cli.js stop
+Start-Sleep 2
+Start-Process -FilePath "node" -ArgumentList "dist/cli.js","start" -WindowStyle Hidden
+Start-Sleep 8
+node dist/cli.js status
+```
+
+### 7.2 观测验证
+
+```bash
+# 查看日志（确认 LOG: true）
+$logDir = Join-Path $env:USERPROFILE ".claude-code-router\logs"
+$latestLog = Get-ChildItem $logDir -Filter "*.log" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+Get-Content $latestLog.FullName -Tail 30
+
+# 测试 API
+Invoke-WebRequest -Uri "http://127.0.0.1:3456/api/network-state" -UseBasicParsing
+
+# 打开 UI
+Start-Process "http://127.0.0.1:3456/ui/"
+```
+
+### 7.3 快速部署脚本
+
+项目根目录新增 `scripts/deploy-local.ps1`：
+
+```powershell
+# 快速本地部署脚本
+param([string]$Package = "all")
+
+$ErrorActionPreference = "Stop"
+
+Write-Host "=== Building ===" -ForegroundColor Cyan
+if ($Package -eq "all" -or $Package -eq "core") { pnpm build:core }
+if ($Package -eq "all" -or $Package -eq "server") { pnpm build:server }
+if ($Package -eq "all" -or $Package -eq "ui") { 
+    cd packages/ui; npx vite build; cd .. 
+}
+
+Write-Host "=== Building CLI ===" -ForegroundColor Cyan
+npx esbuild packages/cli/src/cli.ts --bundle --platform=node --minify --outfile=packages/cli/dist/cli.js
+
+Write-Host "=== Copying assets ===" -ForegroundColor Cyan
+Copy-Item "packages/server/dist/tiktoken_bg.wasm" "packages/cli/dist/" -Force
+Copy-Item "packages/ui/dist/index.html" "packages/cli/dist/" -Force
+if (Test-Path "dist") { Remove-Item "dist" -Recurse -Force }
+Copy-Item "packages/cli/dist" "dist" -Recurse -Force
+
+Write-Host "=== Restarting service ===" -ForegroundColor Cyan
+node dist/cli.js stop
+Start-Sleep 2
+Start-Process -FilePath "node" -ArgumentList "dist/cli.js","start" -WindowStyle Hidden
+Start-Sleep 8
+node dist/cli.js status
+
+Write-Host "=== Done ===" -ForegroundColor Green
+```
+
+使用方式：
+```powershell
+# 全量部署
+.\scripts\deploy-local.ps1
+
+# 只部署 core
+.\scripts\deploy-local.ps1 -Package core
+```
+
+### 7.4 问题定位原则
+
+1. **加日志定位**：遇到问题先加详细日志，部署后再观测
+2. **不要删日志**：调试日志保留在代码中，方便后续排查
+3. **分层测试覆盖**：如果问题漏到部署阶段才发现，说明测试覆盖不足，需补充测试
+
+### 7.5 已知的部署发现问题
+
+| 问题 | 发现方式 | 根因 | 解决 |
+|------|----------|------|------|
+| DNS 切换后不检测 | 部署观测 | `dns.resolve4` 使用 c-ares resolver，进程启动时绑定 DNS 服务器，网络切换后不感知 | 改用 `dns.lookup`（调用系统 `getaddrinfo`） |
+
+**教训**：单元测试 mock 了 DNS，绕过了真实 resolver 的行为。对于依赖系统行为的模块，集成测试应尽量用真实依赖而非 mock。

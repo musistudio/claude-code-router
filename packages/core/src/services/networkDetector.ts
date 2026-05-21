@@ -1,4 +1,4 @@
-import { resolve4 } from 'dns/promises';
+import { lookup } from 'dns/promises';
 
 export type NetworkState = 'intranet' | 'external' | 'unknown';
 
@@ -88,9 +88,12 @@ export class NetworkDetector {
     const hostname = this.networkConfig.hostname || 'w3.huawei.com';
     const pattern = new RegExp(this.networkConfig.intranetPattern || '^10\\.');
     try {
-      const addresses = await resolve4(hostname);
-      return addresses.some(addr => pattern.test(addr)) ? 'intranet' : 'external';
-    } catch {
+      const result = await lookup(hostname);
+      const isIntranet = pattern.test(result.address);
+      this.logger.info(`NetworkDetector detect: hostname=${hostname}, address=${result.address}, pattern=${pattern}, isIntranet=${isIntranet}`);
+      return isIntranet ? 'intranet' : 'external';
+    } catch (e: any) {
+      this.logger.info(`NetworkDetector detect: hostname=${hostname}, error=${e.message}`);
       return 'external';
     }
   }
