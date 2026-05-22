@@ -123,6 +123,13 @@ Here is a comprehensive example:
       }
     },
     {
+      "name": "tuningengines",
+      "api_base_url": "https://api.tuningengines.com/v1/chat/completions",
+      "api_key": "sk-te-your-api-key",
+      "models": ["llama-3.3-70b-fp8", "qwen-2.5-coder-32b"],
+      "transformer": { "use": ["anthropic"] }
+    },
+    {
       "name": "ollama",
       "api_base_url": "http://localhost:11434/v1/chat/completions",
       "api_key": "ollama",
