@@ -20,7 +20,9 @@
     "dev": "nodemon",
     "start": "node dist/cjs/server.cjs",
     "start:esm": "node dist/esm/server.mjs",
-    "lint": "eslint src --ext .ts,.tsx"
+    "lint": "eslint src --ext .ts,.tsx",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "llm",
@@ -54,6 +56,8 @@
     "@types/node": "^24.0.15",
     "esbuild": "^0.25.1",
     "tsx": "^4.20.3",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^3.0.0"
   }
 }

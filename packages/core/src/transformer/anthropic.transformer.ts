@@ -14,21 +14,165 @@ import { v4 as uuidv4 } from "uuid";
 import { getThinkLevel } from "@/utils/thinking";
 import { createApiError } from "@/api/middleware";
 import { formatBase64 } from "@/utils/image";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+// Whitelist of top-level fields accepted by the Anthropic /v1/messages API (OAuth mode)
+const ALLOWED_FIELDS = new Set([
+  "model", "messages", "system", "max_tokens",
+  "metadata", "stop_sequences", "stream",
+  "temperature", "top_p", "top_k",
+  "tools", "tool_choice",
+  "thinking",
+]);
+
+// Whitelist of keys allowed inside cache_control objects (OAuth mode)
+const ALLOWED_CACHE_CONTROL_KEYS = new Set(["type"]);
 
 export class AnthropicTransformer implements Transformer {
   name = "Anthropic";
   endPoint = "/v1/messages";
   private useBearer: boolean;
+  private oauth: boolean;
+  private _tokenCache: string | null = null;
+  private _tokenCacheExpiry = 0;
   logger?: any;
 
   constructor(private readonly options?: TransformerOptions) {
     this.useBearer = this.options?.UseBearer ?? false;
+    this.oauth = this.options?.OAuth ?? false;
   }
 
-  async auth(request: any, provider: LLMProvider): Promise<any> {
+  // ---------------------------------------------------------------------------
+  // OAuth token resolution
+  // ---------------------------------------------------------------------------
+
+  private _readTokenFromObject(stringObject: string): string | null {
+    try {
+      const object = JSON.parse(stringObject);
+      return object?.claudeAiOauth?.accessToken || null;
+    } catch {
+      return null;
+    }
+  }
+
+  private _readTokenFromFile(): string | null {
+    const credPath = join(
+      process.env.HOME || "/root",
+      ".claude",
+      ".credentials.json"
+    );
+    try {
+      const raw = readFileSync(credPath, "utf-8");
+      const data = JSON.parse(raw);
+      return data?.claudeAiOauth?.accessToken || null;
+    } catch {
+      return null;
+    }
+  }
+
+  private _readTokenFromKeychain(): string | null {
+    try {
+      const hex = execFileSync(
+        "security",
+        ["find-generic-password", "-s", "Claude Code-credentials", "-w"],
+        { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }
+      ).trim();
+      return this._readTokenFromObject(hex);
+    } catch {
+      return null;
+    }
+  }
+
+  private _resolveOAuthToken(provider: LLMProvider): string | null {
+    const now = Date.now();
+    if (this._tokenCache && now < this._tokenCacheExpiry) {
+      return this._tokenCache;
+    }
+
+    let token: string | null = null;
+
+    // 1. Explicit env var
+    if (process.env.CCR_OAUTH_TOKEN) {
+      token = process.env.CCR_OAUTH_TOKEN;
+    }
+    // 2. Linux credentials file
+    if (!token) {
+      token = this._readTokenFromFile();
+    }
+    // 3. macOS Keychain
+    if (!token) {
+      token = this._readTokenFromKeychain();
+    }
+    // 4. api_key from config
+    if (!token) {
+      token = provider.apiKey;
+    }
+
+    if (token) {
+      this._tokenCache = token;
+      this._tokenCacheExpiry = now + 60_000;
+    }
+    return token;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Request sanitization (OAuth mode)
+  // ---------------------------------------------------------------------------
+
+  private _sanitizeRequest(request: Record<string, any>): void {
+    for (const key of Object.keys(request)) {
+      if (!ALLOWED_FIELDS.has(key)) {
+        delete request[key];
+      }
+    }
+    this._sanitizeCacheControl(request);
+  }
+
+  private _sanitizeCacheControl(obj: any): void {
+    if (Array.isArray(obj)) {
+      obj.forEach((item) => this._sanitizeCacheControl(item));
+    } else if (obj && typeof obj === "object") {
+      if (obj.cache_control && typeof obj.cache_control === "object") {
+        for (const key of Object.keys(obj.cache_control)) {
+          if (!ALLOWED_CACHE_CONTROL_KEYS.has(key)) {
+            delete obj.cache_control[key];
+          }
+        }
+      }
+      for (const val of Object.values(obj)) {
+        this._sanitizeCacheControl(val);
+      }
+    }
+  }
+
+  async auth(
+    request: any,
+    provider: LLMProvider,
+    context?: TransformerContext
+  ): Promise<any> {
     const headers: Record<string, string | undefined> = {};
 
-    if (this.useBearer) {
+    if (this.oauth) {
+      this._sanitizeRequest(request);
+      const token = this._resolveOAuthToken(provider);
+
+      // Preserve existing anthropic-beta values and append oauth flag
+      const existingBeta =
+        (context?.headers?.["anthropic-beta"] as string) || "";
+      const betaSet = new Set(
+        existingBeta
+          .split(",")
+          .map((s: string) => s.trim())
+          .filter(Boolean)
+      );
+      betaSet.add("oauth-2025-04-20");
+
+      headers["authorization"] = `Bearer ${token}`;
+      headers["x-api-key"] = undefined;
+      headers["anthropic-beta"] = [...betaSet].join(",");
+    } else if (this.useBearer) {
       headers["authorization"] = `Bearer ${provider.apiKey}`;
       headers["x-api-key"] = undefined;
     } else {
