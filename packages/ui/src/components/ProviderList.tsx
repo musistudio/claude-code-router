@@ -33,10 +33,10 @@ export function ProviderList({ providers, onEdit, onRemove }: ProviderListProps)
                 <p className="text-sm text-gray-500">Provider data is missing</p>
               </div>
               <div className="ml-4 flex flex-shrink-0 items-center gap-2">
-                <Button variant="ghost" size="icon" onClick={() => onEdit(index)} className="transition-all-ease hover:scale-110" disabled>
+                <Button variant="ghost" size="icon" onClick={() => onEdit(index)} className="transition-all-ease" disabled>
                   <Pencil className="h-4 w-4" />
                 </Button>
-                <Button variant="destructive" size="icon" onClick={() => onRemove(index)} className="transition-all duration-200 hover:scale-110">
+                <Button variant="destructive" size="icon" onClick={() => onRemove(index)} className="transition-all duration-200">
                   <Trash2 className="h-4 w-4 text-current transition-colors duration-200" />
                 </Button>
               </div>
@@ -68,10 +68,10 @@ export function ProviderList({ providers, onEdit, onRemove }: ProviderListProps)
               </div>
             </div>
             <div className="ml-4 flex flex-shrink-0 items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={() => onEdit(index)} className="transition-all-ease hover:scale-110">
+              <Button variant="ghost" size="icon" onClick={() => onEdit(index)} className="transition-all-ease">
                 <Pencil className="h-4 w-4" />
               </Button>
-              <Button variant="destructive" size="icon" onClick={() => onRemove(index)} className="transition-all duration-200 hover:scale-110">
+              <Button variant="destructive" size="icon" onClick={() => onRemove(index)} className="transition-all duration-200">
                 <Trash2 className="h-4 w-4 text-current transition-colors duration-200" />
               </Button>
             </div>

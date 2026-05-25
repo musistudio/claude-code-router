@@ -68,7 +68,7 @@ export function ColorPicker({
           <Button
             variant="outline"
             className={cn(
-              "w-full justify-start text-left font-normal h-10 transition-all hover:scale-[1.02] active:scale-[0.98]",
+              "w-full justify-start text-left font-normal h-10 transition-all",
               !value && "text-muted-foreground"
             )}
           >

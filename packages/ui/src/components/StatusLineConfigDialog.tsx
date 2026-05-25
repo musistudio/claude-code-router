@@ -1235,14 +1235,14 @@ export function StatusLineConfigDialog({
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
-            className="transition-all hover:scale-105"
+            className="transition-all"
           >
             {t("app.cancel")}
           </Button>
           <Button
             onClick={handleSave}
             data-testid="save-statusline-config"
-            className="transition-all hover:scale-105"
+            className="transition-all"
           >
             {t("app.save")}
           </Button>
