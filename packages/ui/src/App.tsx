@@ -278,7 +278,7 @@ function App() {
         <div className="flex items-center gap-2">
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={() => setIsSettingsOpen(true)} className="transition-all-ease hover:scale-110">
+              <Button variant="ghost" size="icon" onClick={() => setIsSettingsOpen(true)} className="transition-all-ease">
                 <Settings className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
@@ -288,7 +288,7 @@ function App() {
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={() => setIsJsonEditorOpen(true)} className="transition-all-ease hover:scale-110">
+              <Button variant="ghost" size="icon" onClick={() => setIsJsonEditorOpen(true)} className="transition-all-ease">
                 <FileJson className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
@@ -298,7 +298,7 @@ function App() {
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={() => setIsLogViewerOpen(true)} className="transition-all-ease hover:scale-110">
+              <Button variant="ghost" size="icon" onClick={() => setIsLogViewerOpen(true)} className="transition-all-ease">
                 <FileText className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
@@ -308,7 +308,7 @@ function App() {
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={() => navigate('/presets')} className="transition-all-ease hover:scale-110">
+              <Button variant="ghost" size="icon" onClick={() => navigate('/presets')} className="transition-all-ease">
                 <FileCog className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
@@ -318,7 +318,7 @@ function App() {
           </Tooltip>
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" className="transition-all-ease hover:scale-110">
+              <Button variant="ghost" size="icon" className="transition-all-ease">
                 <Languages className="h-5 w-5" />
               </Button>
             </PopoverTrigger>
@@ -326,14 +326,14 @@ function App() {
               <div className="space-y-1">
                 <Button
                   variant={i18n.language.startsWith('en') ? 'default' : 'ghost'}
-                  className="w-full justify-start transition-all-ease hover:scale-[1.02]"
+                  className="w-full justify-start transition-all-ease"
                   onClick={() => i18n.changeLanguage('en')}
                 >
                   English
                 </Button>
                 <Button
                   variant={i18n.language.startsWith('zh') ? 'default' : 'ghost'}
-                  className="w-full justify-start transition-all-ease hover:scale-[1.02]"
+                  className="w-full justify-start transition-all-ease"
                   onClick={() => i18n.changeLanguage('zh')}
                 >
                   中文
@@ -350,7 +350,7 @@ function App() {
                   size="icon"
                   onClick={() => checkForUpdates(true)}
                   disabled={isCheckingUpdate}
-                  className="transition-all-ease hover:scale-110 relative"
+                  className="transition-all-ease relative"
                 >
                   <div className="relative">
                     <CircleArrowUp className="h-5 w-5" />
@@ -370,11 +370,11 @@ function App() {
               </TooltipContent>
             </Tooltip>
           )}
-          <Button onClick={saveConfig} variant="outline" className="transition-all-ease hover:scale-[1.02] active:scale-[0.98]">
+          <Button onClick={saveConfig} variant="outline" className="transition-all-ease">
             <Save className="mr-2 h-4 w-4" />
             {t('app.save')}
           </Button>
-          <Button onClick={saveConfigAndRestart} className="transition-all-ease hover:scale-[1.02] active:scale-[0.98]">
+          <Button onClick={saveConfigAndRestart} className="transition-all-ease">
             <RefreshCw className="mr-2 h-4 w-4" />
             {t('app.save_and_restart')}
           </Button>

@@ -72,7 +72,7 @@ export function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogProps) {
             />
             <Label
               htmlFor="log"
-              className="transition-all-ease hover:scale-[1.02] cursor-pointer"
+              className="transition-all-ease cursor-pointer"
             >
               {t("toplevel.log")}
             </Label>
@@ -88,7 +88,7 @@ export function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogProps) {
                 />
                 <Label
                   htmlFor="statusline"
-                  className="transition-all-ease hover:scale-[1.02] cursor-pointer"
+                  className="transition-all-ease cursor-pointer"
                 >
                   {t("statusline.title")}
                 </Label>
@@ -97,7 +97,7 @@ export function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogProps) {
                 variant="outline"
                 size="sm"
                 onClick={openStatusLineConfig}
-                className="transition-all-ease hover:scale-[1.02] active:scale-[0.98]"
+                className="transition-all-ease"
                 data-testid="statusline-config-button"
               >
                 {t("app.settings")}
@@ -105,7 +105,7 @@ export function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogProps) {
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="log-level" className="transition-all-ease hover:scale-[1.01] cursor-pointer">{t("toplevel.log_level")}</Label>
+            <Label htmlFor="log-level" className="transition-all-ease cursor-pointer">{t("toplevel.log_level")}</Label>
             <Combobox
               options={[
                 { label: "fatal", value: "fatal" },
@@ -122,7 +122,7 @@ export function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogProps) {
           <div className="space-y-2">
             <Label
               htmlFor="claude-path"
-              className="transition-all-ease hover:scale-[1.01] cursor-pointer"
+              className="transition-all-ease cursor-pointer"
             >
               {t("toplevel.claude_path")}
             </Label>
@@ -136,7 +136,7 @@ export function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogProps) {
           <div className="space-y-2">
             <Label
               htmlFor="host"
-              className="transition-all-ease hover:scale-[1.01] cursor-pointer"
+              className="transition-all-ease cursor-pointer"
             >
               {t("toplevel.host")}
             </Label>
@@ -150,7 +150,7 @@ export function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogProps) {
           <div className="space-y-2">
             <Label
               htmlFor="port"
-              className="transition-all-ease hover:scale-[1.01] cursor-pointer"
+              className="transition-all-ease cursor-pointer"
             >
               {t("toplevel.port")}
             </Label>
@@ -167,7 +167,7 @@ export function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogProps) {
           <div className="space-y-2">
             <Label
               htmlFor="timeout"
-              className="transition-all-ease hover:scale-[1.01] cursor-pointer"
+              className="transition-all-ease cursor-pointer"
             >
               {t("toplevel.timeout")}
             </Label>
@@ -183,7 +183,7 @@ export function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogProps) {
           <div className="space-y-2">
             <Label
               htmlFor="proxy-url"
-              className="transition-all-ease hover:scale-[1.01] cursor-pointer"
+              className="transition-all-ease cursor-pointer"
             >
               {t("toplevel.proxy_url")}
             </Label>
@@ -200,7 +200,7 @@ export function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogProps) {
           <div className="space-y-2">
             <Label
               htmlFor="apikey"
-              className="transition-all-ease hover:scale-[1.01] cursor-pointer"
+              className="transition-all-ease cursor-pointer"
             >
               {t("toplevel.apikey")}
             </Label>
@@ -215,7 +215,7 @@ export function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogProps) {
           <div className="space-y-2">
             <Label
               htmlFor="custom-router-path"
-              className="transition-all-ease hover:scale-[1.01] cursor-pointer"
+              className="transition-all-ease cursor-pointer"
             >
               {t("toplevel.custom_router_path")}
             </Label>
@@ -231,7 +231,7 @@ export function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogProps) {
         <DialogFooter className="p-4 pt-0">
           <Button
             onClick={() => onOpenChange(false)}
-            className="transition-all-ease hover:scale-[1.02] active:scale-[0.98]"
+            className="transition-all-ease"
           >
             {t("app.save")}
           </Button>
