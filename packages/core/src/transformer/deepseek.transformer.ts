@@ -1,20 +1,75 @@
 import { UnifiedChatRequest } from "../types/llm";
 import { Transformer } from "../types/transformer";
 
+const V4_MODELS = ["deepseek-v4-pro", "deepseek-v4-flash"];
+const V4_MAX_TOKENS = 384000;
+
 export class DeepseekTransformer implements Transformer {
   name = "deepseek";
 
   async transformRequestIn(request: UnifiedChatRequest): Promise<UnifiedChatRequest> {
-    if (request.max_tokens && request.max_tokens > 8192) {
-      request.max_tokens = 8192; // DeepSeek has a max token limit of 8192
+    const modelId = request.model || "";
+    const isV4 = V4_MODELS.some((m) => modelId.includes(m));
+
+    if (isV4) {
+      if (request.max_tokens && request.max_tokens > V4_MAX_TOKENS) {
+        request.max_tokens = V4_MAX_TOKENS;
+      }
+      if (request.reasoning) {
+        if (request.reasoning.effort && request.reasoning.effort !== "none") {
+          const effortMap: Record<string, string> = { low: "low", medium: "medium", high: "high" };
+          (request as any).reasoning_effort = effortMap[request.reasoning.effort] || "high";
+        }
+      }
+    } else {
+      if (request.max_tokens && request.max_tokens > 8192) {
+        request.max_tokens = 8192;
+      }
     }
+
+    // Extract reasoning_content from thinking fields on assistant messages
+    for (const msg of request.messages) {
+      if (msg.role === "assistant") {
+        if ((msg as any).thinking?.content && !(msg as any).reasoning_content) {
+          (msg as any).reasoning_content = (msg as any).thinking.content;
+        }
+        if (!(msg as any).reasoning_content && Array.isArray(msg.content)) {
+          const thinkingBlocks = (msg.content as any[]).filter(
+              (c: any) => c.type === "thinking" && c.thinking
+          );
+          if (thinkingBlocks.length > 0) {
+            (msg as any).reasoning_content = thinkingBlocks.map((b: any) => b.thinking).join("\n");
+          }
+        }
+        delete (msg as any).thinking;
+      }
+    }
+
+    // When thinking mode is active, all assistant messages must have reasoning_content
+    const hasThinking = (request as any).reasoning_effort || request.reasoning?.effort || request.reasoning?.enabled;
+    if (hasThinking) {
+      for (const msg of request.messages) {
+        if (msg.role === "assistant" && (msg as any).reasoning_content === undefined) {
+          (msg as any).reasoning_content = null;
+        }
+      }
+    }
+
+    delete (request as any).thinking;
+    delete (request as any).reasoning;
     return request;
   }
 
   async transformResponseOut(response: Response): Promise<Response> {
     if (response.headers.get("Content-Type")?.includes("application/json")) {
       const jsonResponse = await response.json();
-      // Handle non-streaming response if needed
+      if (jsonResponse.choices?.[0]?.message?.reasoning_content) {
+        jsonResponse.choices[0].message.thinking = {
+          content: jsonResponse.choices[0].message.reasoning_content,
+          signature: Date.now().toString(),
+        };
+        delete jsonResponse.choices[0].message.reasoning_content;
+      }
       return new Response(JSON.stringify(jsonResponse), {
         status: response.status,
         statusText: response.statusText,
