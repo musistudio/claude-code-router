@@ -28,6 +28,8 @@ import AdmZip from "adm-zip";
 export const createServer = async (config: any): Promise<any> => {
   const server = new Server(config);
   const app = server.app;
+  // Attach server to app early so API routes can access services
+  (app as any)._server = server;
 
   app.register(fastifyMultipart, {
     limits: {
