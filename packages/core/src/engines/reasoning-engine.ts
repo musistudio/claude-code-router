@@ -134,42 +134,90 @@ export function analyzeReasoning(reqBody: any, tokenCount: number): {
 /**
  * Check response for hallucination indicators.
  * Called AFTER receiving response from upstream.
+ * 
+ * Distinguishes between:
+ *   - Provider errors (XFYun EngineInternalError, HTTP 500, timeouts) → risk=0
+ *   - Actual hallucinations (fabricated APIs, output >> input) → risk>0
  */
 export function checkHallucination(
   inputTokens: number,
   outputTokens: number,
-  responseContent: any
+  responseContent: any,
+  httpStatus?: number,
+  providerName?: string
 ): ReasoningContext {
   const flags: string[] = [];
   let risk = 0.0;
 
-  // Rule 1: Output far exceeds input → suspicious
+  // ====================================================================
+  // Layer 0: Detect upstream provider errors (NOT hallucinations)
+  // ====================================================================
+  if (httpStatus && httpStatus >= 500) {
+    flags.push(`provider_error_http_${httpStatus}`);
+    // Provider error → NOT a hallucination, inform only
+    return { contextInjectedTokens: 0, contextInjected: false,
+      outputTokens, inputTokens, hallucinationRisk: 0, flags };
+  }
+
+  const contentText = extractText(responseContent);
+  const isError = checkProviderError(contentText, providerName);
+  if (isError) {
+    flags.push(`provider_error:${isError}`);
+    return { contextInjectedTokens: 0, contextInjected: false,
+      outputTokens, inputTokens, hallucinationRisk: 0, flags };
+  }
+
+  // ====================================================================
+  // Layer 1: Empty or malformed response
+  // ====================================================================
+  if (outputTokens === 0 || !contentText || contentText.trim().length === 0) {
+    flags.push('empty_response');
+    return { contextInjectedTokens: 0, contextInjected: false,
+      outputTokens, inputTokens, hallucinationRisk: 0, flags };
+  }
+
+  // ====================================================================
+  // Layer 2: Context ratio checks
+  // ====================================================================
+  // Rule 2a: Output far exceeds input → suspicious
   if (inputTokens > 0 && outputTokens > inputTokens * 3) {
     flags.push(`output_ratio_high(${outputTokens}/${inputTokens}=${(outputTokens/inputTokens).toFixed(1)}x)`);
     risk = Math.min(1.0, risk + 0.4);
   }
 
-  // Rule 1b: Very low input, high output → high hallucination risk
+  // Rule 2b: Very low input, high output → high hallucination risk
   if (inputTokens < 500 && outputTokens > 3000) {
     flags.push(`low_context_high_output(in=${inputTokens},out=${outputTokens})`);
     risk = Math.min(1.0, risk + 0.5);
   }
 
-  // Rule 2: Response contains fabricated API patterns
-  const contentText = extractText(responseContent);
-  if (contentText) {
-    const fabricationPatterns = [
-      /import\s+['"]@anthropic-ai\/sdk['"]/,
-      /from\s+['"]claude-code['"]/,
-      /MCP server.*not found/i,
-      /function\s+doesNotExist/,
-    ];
-    for (const pattern of fabricationPatterns) {
-      if (pattern.test(contentText)) {
-        flags.push('fabricated_import_detected');
-        risk = Math.min(1.0, risk + 0.3);
-        break;
-      }
+  // ====================================================================
+  // Layer 3: Content-based hallucination detection
+  // ====================================================================
+  // Rule 3a: Fabricated API imports
+  const fabricationPatterns = [
+    /import\s+['"]@anthropic-ai\/sdk['"]/,
+    /from\s+['"]claude-code['"]/,
+  ];
+  for (const pattern of fabricationPatterns) {
+    if (pattern.test(contentText)) {
+      flags.push('fabricated_import_detected');
+      risk = Math.min(1.0, risk + 0.3);
+      break;
+    }
+  }
+
+  // Rule 3b: Self-contradiction (CLAIM vs REALITY patterns)
+  const contradictions = [
+    /I can (access|use|call) the (Claude Code|MCP) API/i,
+    /Sure, I'll create that file[.].*(?:already exists|permission denied)/is,
+    /This (code|solution|fix) works[.].*(?:error|exception|failed)/is,
+  ];
+  for (const pattern of contradictions) {
+    if (pattern.test(contentText)) {
+      flags.push('self_contradiction');
+      risk = Math.min(1.0, risk + 0.25);
+      break;
     }
   }
 
@@ -181,6 +229,49 @@ export function checkHallucination(
     hallucinationRisk: risk,
     flags,
   };
+}
+
+/**
+ * Check if response is actually an upstream provider error (not hallucination).
+ */
+function checkProviderError(text: string, provider?: string): string | null {
+  if (!text) return null;
+
+  const errorPatterns: Record<string, RegExp[]> = {
+    xfyun: [
+      /EngineInternalError/i,
+      /code.*10012/i,
+      /内部引擎错误/,
+      /服务暂时不可用/,
+    ],
+    deepseek: [
+      /rate.?limit/i,
+      /quota.?exceeded/i,
+      /暂不可用/,
+      /service.?unavailable/i,
+    ],
+  };
+
+  // Check provider-specific errors
+  if (provider) {
+    const patterns = errorPatterns[provider.toLowerCase()] || errorPatterns.xfyun || [];
+    for (const pattern of patterns) {
+      if (pattern.test(text)) return `${provider}_engine_error`;
+    }
+  }
+
+  // Universal error patterns
+  const universalErrors = [
+    /5\d\d\s+(Internal Server Error|Service Unavailable|Gateway Timeout)/i,
+    /4\d\d\s+(Bad Request|Unauthorized|Forbidden|Not Found)/i,
+    /\{"error":\s*\{/,
+    /An error occurred/i,
+  ];
+  for (const pattern of universalErrors) {
+    if (pattern.test(text)) return 'api_error';
+  }
+
+  return null;
 }
 
 /**

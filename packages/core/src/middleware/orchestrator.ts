@@ -290,7 +290,9 @@ export class MiddlewareOrchestrator {
       const reasoningCtx = checkHallucination(
         usage.input_tokens || 0,
         usage.output_tokens || 0,
-        responseBody
+        responseBody,
+        (req as any)._httpStatus || 200,
+        (req as any).provider
       );
       this.contextCapture.capture({
         sessionId: context.sessionId,

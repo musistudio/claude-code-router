@@ -8,6 +8,15 @@ import { LRUCache } from "lru-cache";
 import { ConfigService } from "../services/config";
 import { TokenizerService } from "../services/tokenizer";
 import { resolveModelAlias } from "./model-alias";
+import { analyzeReasoning, buildContextInjection } from "../engines/reasoning-engine";
+
+// ==========================================================================
+// Provider fallback map: when a provider is down, which fallback to use
+// ==========================================================================
+const PROVIDER_FALLBACK: Record<string, string> = {
+  xfyun: "deepseek,deepseek-v4-flash",
+  deepseek: "xfyun,astron-code-latest",
+};
 
 // Types from @anthropic-ai/sdk
 interface Tool {
@@ -311,6 +320,65 @@ export const router = async (req: any, _res: any, context: RouterContext) => {
       const result = await getUseModel(req, tokenCount, configService, lastMessageUsage);
       model = result.model;
       req.scenarioType = result.scenarioType;
+
+      // ====================================================================
+      // REASONING-AWARE ROUTING: analyze MCP tools and adjust tier
+      // ====================================================================
+      try {
+        const reasoning = analyzeReasoning(req.body, tokenCount);
+        if (reasoning.recommendation === 'flash' && reasoning.reason) {
+          // Route simple/relay MCP tool tasks to DeepSeek Flash (cheap, fast)
+          const flashProvider = configService.get('Router')?.reasoningFlash || 'deepseek,deepseek-v4-flash';
+          req.log.info(`Reasoning: ${reasoning.reason} → routing to flash (${flashProvider})`);
+          model = flashProvider;
+          req.scenarioType = 'reasoning_flash';
+        } else if (reasoning.recommendation === 'pro_max' && reasoning.reason) {
+          // Route deep reasoning with sufficient context to DeepSeek Pro
+          const proMaxProvider = configService.get('Router')?.reasoningProMax || 'deepseek,deepseek-v4-pro';
+          req.log.info(`Reasoning: ${reasoning.reason} → routing to pro max (${proMaxProvider})`);
+          model = proMaxProvider;
+          req.scenarioType = 'reasoning_pro_max';
+        } else if (reasoning.recommendation === 'pro' && reasoning.needsDeepReasoning) {
+          // Deep reasoning task with too little context → inject project knowledge
+          const enrichment = buildContextInjection(
+            configService.get('PROJECT_ROOT') || process.cwd(),
+            req.gatewayAgentName || 'default'
+          );
+          if (enrichment && req.body.system) {
+            if (typeof req.body.system === 'string') {
+              req.body.system = enrichment + '\n' + req.body.system;
+            } else if (Array.isArray(req.body.system)) {
+              req.body.system.unshift({ type: 'text', text: enrichment });
+            }
+            req.log.info(`Reasoning: ${reasoning.reason} → injected context (${enrichment.length} chars)`);
+            (req as any)._ragInjected = true;
+          }
+        }
+      } catch (e: any) {
+        // Reasoning engine failure → fall through to default routing
+        req.log.debug(`Reasoning engine skipped: ${e.message}`);
+      }
+
+      // ====================================================================
+      // HEALTH-BASED FALLBACK: check if target provider is healthy
+      // ====================================================================
+      try {
+        const [targetProvider] = model.split(",");
+        const healthMonitor = configService.get("_healthMonitor");
+        if (healthMonitor && targetProvider) {
+          const isHealthy = await healthMonitor.checkBeforeRoute(targetProvider);
+          if (!isHealthy) {
+            const fallback = PROVIDER_FALLBACK[targetProvider] || PROVIDER_FALLBACK['xfyun'];
+            req.log.warn(
+              `Provider ${targetProvider} is UNHEALTHY → falling back to ${fallback}`
+            );
+            model = fallback;
+            req.scenarioType = 'health_fallback';
+          }
+        }
+      } catch {
+        // Health check failure → proceed with original model
+      }
     } else {
       req.scenarioType = req.gatewayScenario || req.scenarioType || 'default';
     }
