@@ -7,6 +7,7 @@ import { CLAUDE_PROJECTS_DIR, HOME_DIR } from "@CCR/shared";
 import { LRUCache } from "lru-cache";
 import { ConfigService } from "../services/config";
 import { TokenizerService } from "../services/tokenizer";
+import { resolveModelAlias } from "./model-alias";
 
 // Types from @anthropic-ai/sdk
 interface Tool {
@@ -131,6 +132,16 @@ const getUseModel = async (
   const providers = configService.get<any[]>("providers") || [];
   const Router = projectSpecificRouter || configService.get("Router");
 
+  // Try model alias resolution first (e.g. "claude-opus-4" → "deepseek,deepseek-v4-pro")
+  // This is config-driven via ModelMapping section — no hardcoded mappings
+  if (!req.body.model.includes(",")) {
+    const aliasTarget = resolveModelAlias(req.body.model, configService);
+    if (aliasTarget) {
+      req.log.info(`Model alias resolved: ${req.body.model} → ${aliasTarget}`);
+      req.body.model = aliasTarget;
+    }
+  }
+
   if (req.body.model.includes(",")) {
     const [provider, model] = req.body.model.split(",");
     const finalProvider = providers.find(
@@ -158,20 +169,9 @@ const getUseModel = async (
     );
     return { model: Router.longContext, scenarioType: 'longContext' };
   }
-  if (
-    req.body?.system?.length > 1 &&
-    req.body?.system[1]?.text?.startsWith("<CCR-SUBAGENT-MODEL>")
-  ) {
-    const model = req.body?.system[1].text.match(
-      /<CCR-SUBAGENT-MODEL>(.*?)<\/CCR-SUBAGENT-MODEL>/s
-    );
-    if (model) {
-      req.body.system[1].text = req.body.system[1].text.replace(
-        `<CCR-SUBAGENT-MODEL>${model[1]}</CCR-SUBAGENT-MODEL>`,
-        ""
-      );
-      return { model: model[1], scenarioType: 'default' };
-    }
+  const subagentModel = extractSubagentModel(req);
+  if (subagentModel) {
+    return { model: subagentModel, scenarioType: 'default' };
   }
   // Use the background model for any Claude Haiku variant
   const globalRouter = configService.get("Router");
@@ -199,13 +199,41 @@ const getUseModel = async (
   return { model: Router?.default, scenarioType: 'default' };
 };
 
+const extractSubagentModel = (req: any): string | undefined => {
+  if (
+    !Array.isArray(req.body?.system) ||
+    req.body.system.length <= 1 ||
+    typeof req.body.system[1]?.text !== "string" ||
+    !req.body.system[1].text.startsWith("<CCR-SUBAGENT-MODEL>")
+  ) {
+    return undefined;
+  }
+
+  const model = req.body.system[1].text.match(
+    /<CCR-SUBAGENT-MODEL>(.*?)<\/CCR-SUBAGENT-MODEL>/s
+  );
+  if (!model) return undefined;
+
+  req.body.system[1].text = req.body.system[1].text.replace(
+    `<CCR-SUBAGENT-MODEL>${model[1]}</CCR-SUBAGENT-MODEL>`,
+    ""
+  );
+  return model[1];
+};
+
 export interface RouterContext {
   configService: ConfigService;
   tokenizerService?: TokenizerService;
   event?: any;
 }
 
-export type RouterScenarioType = 'default' | 'background' | 'think' | 'longContext' | 'webSearch';
+export type RouterScenarioType =
+  | 'default'
+  | 'background'
+  | 'think'
+  | 'longContext'
+  | 'webSearch'
+  | string;
 
 export interface RouterFallbackConfig {
   default?: string[];
@@ -266,9 +294,9 @@ export const router = async (req: any, _res: any, context: RouterContext) => {
       );
     }
 
-    let model;
+    let model = extractSubagentModel(req);
     const customRouterPath = configService.get("CUSTOM_ROUTER_PATH");
-    if (customRouterPath) {
+    if (!model && customRouterPath) {
       try {
         const customRouter = require(customRouterPath);
         req.tokenCount = tokenCount; // Pass token count to custom router
@@ -284,8 +312,7 @@ export const router = async (req: any, _res: any, context: RouterContext) => {
       model = result.model;
       req.scenarioType = result.scenarioType;
     } else {
-      // Custom router doesn't provide scenario type, default to 'default'
-      req.scenarioType = 'default';
+      req.scenarioType = req.gatewayScenario || req.scenarioType || 'default';
     }
     req.body.model = model;
   } catch (error: any) {

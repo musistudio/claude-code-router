@@ -1,6 +1,12 @@
 import { ProxyAgent } from "undici";
 import { UnifiedChatRequest } from "../types/llm";
 
+// Headers that are Anthropic-specific and must be stripped for non-Anthropic providers
+const ANTHROPIC_ONLY_HEADERS = [
+  "anthropic-beta",
+  "anthropic-version",
+];
+
 export function sendUnifiedRequest(
   url: URL | string,
   request: UnifiedChatRequest,
@@ -17,6 +23,19 @@ export function sendUnifiedRequest(
         headers.set(key, value as string);
       }
     });
+  }
+
+  // Strip Anthropic-specific headers when forwarding to non-Anthropic providers
+  if (config.stripAnthropicHeaders) {
+    for (const headerName of ANTHROPIC_ONLY_HEADERS) {
+      headers.delete(headerName);
+    }
+    // Also clean up any lowercase variants
+    for (const key of headers.keys()) {
+      if (ANTHROPIC_ONLY_HEADERS.includes(key.toLowerCase())) {
+        headers.delete(key);
+      }
+    }
   }
   let combinedSignal: AbortSignal;
   const timeoutSignal = AbortSignal.timeout(config.TIMEOUT ?? 60 * 1000 * 60);

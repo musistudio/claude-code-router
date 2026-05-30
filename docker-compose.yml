@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: proxy-local-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: proxy_local
+      POSTGRES_USER: proxy
+      POSTGRES_PASSWORD: proxy
+    ports:
+      - "55432:5432"
+    volumes:
+      - proxy_local_pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U proxy -d proxy_local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  proxy_local_pgdata:

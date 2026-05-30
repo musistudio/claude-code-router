@@ -119,6 +119,18 @@ declare module "@musistudio/llms" {
     dispose(): void;
   }
 
+  // Semantic store service for vector storage
+  export class SemanticStoreService {
+    constructor(configService: any, logger: any);
+    connect(): Promise<boolean>;
+    disconnect(): Promise<void>;
+    isConnected(): boolean;
+    upsert(doc: { scope: string; topic: string; content: string; depth?: string; trust?: string; source?: string; metadata?: Record<string, any> }): Promise<{ id: number } | null>;
+    search(query: string, options?: { scope?: string; topic?: string; limit?: number; threshold?: number }): Promise<Array<{ id: number; scope: string; topic: string; depth: string; trust: string; source: string; content: string; metadata: Record<string, any>; similarity: number }>>;
+    delete(scope: string, topic: string): Promise<number>;
+    healthCheck(): Promise<{ connected: boolean; documentCount?: number; error?: string }>;
+  }
+
   // Token speed statistics types
   export interface TokenStats {
     requestId: string;

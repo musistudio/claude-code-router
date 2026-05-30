@@ -6,6 +6,7 @@ dist
 .DS_Store
 .vscode
 tsconfig.tsbuildinfo
+local/run-logs/
 
 # Documentation build output
 docs/build

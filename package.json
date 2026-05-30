@@ -38,11 +38,6 @@
     "shx": "^0.4.0",
     "typescript": "^5.8.2"
   },
-  "pnpm": {
-    "overrides": {
-      "@types/react": "18"
-    }
-  },
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=8.0.0"

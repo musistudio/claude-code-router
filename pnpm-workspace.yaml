@@ -1,3 +1,9 @@
 packages:
   - 'packages/*'
   - 'docs'
+overrides:
+  '@types/react': '18'
+allowBuilds:
+  core-js: true
+  core-js-pure: true
+  esbuild: true
