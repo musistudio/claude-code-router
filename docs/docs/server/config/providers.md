@@ -56,6 +56,18 @@ Detailed guide for configuring LLM providers.
 }
 ```
 
+### Tuning Engines
+
+```json
+{
+  "NAME": "tuningengines",
+  "HOST": "https://api.tuningengines.com/v1",
+  "APIKEY": "sk-te-your-api-key",
+  "MODELS": ["llama-3.3-70b-fp8", "qwen-2.5-coder-32b"],
+  "transformers": ["anthropic"]
+}
+```
+
 ## Provider Configuration Options
 
 | Field | Type | Required | Description |
