@@ -206,6 +206,9 @@ async function getServer(options: RunOptions = {}) {
     if (req.pathname.endsWith("/v1/messages") && req.pathname !== "/v1/messages") {
       req.preset = req.pathname.replace("/v1/messages", "").replace("/", "");
     }
+    if (req.body?.model && req.pathname.endsWith("/v1/messages")) {
+      req._originalModel = req.body.model;
+    }
   })
 
   serverInstance.addHook("preHandler", async (req: any, reply: any) => {
@@ -240,6 +243,41 @@ async function getServer(options: RunOptions = {}) {
         req.agents = useAgents;
       }
     }
+  });
+  serverInstance.addHook("onSend", (req: any, reply: any, payload: any, done: any) => {
+    if (req._originalModel && req.pathname?.endsWith("/v1/messages")) {
+      if (typeof payload === "string") {
+        try {
+          const data = JSON.parse(payload);
+          if (data.model && data.model !== req._originalModel) {
+            data.model = req._originalModel;
+            return done(null, JSON.stringify(data));
+          }
+        } catch {}
+      } else if (payload instanceof ReadableStream && req._originalModel) {
+        const originalModel = req._originalModel;
+        let replaced = false;
+        const transform = new TransformStream({
+          transform(chunk, controller) {
+            if (replaced) {
+              controller.enqueue(chunk);
+              return;
+            }
+            const text = typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+            const modelPattern = /"model"\s*:\s*"[^"]*"/;
+            if (modelPattern.test(text) && text.includes("message_start")) {
+              const replacedText = text.replace(modelPattern, `"model":"${originalModel}"`);
+              controller.enqueue(typeof chunk === "string" ? replacedText : new TextEncoder().encode(replacedText));
+              replaced = true;
+            } else {
+              controller.enqueue(chunk);
+            }
+          }
+        });
+        return done(null, payload.pipeThrough(transform));
+      }
+    }
+    done(null, payload);
   });
   serverInstance.addHook("onError", async (request: any, reply: any, error: any) => {
     event.emit('onError', request, reply, error);
