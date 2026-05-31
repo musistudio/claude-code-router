@@ -25,17 +25,23 @@ export class DeepseekTransformer implements Transformer {
         });
       }
       
-      // Map DeepSeek's reasoning_content to content for non-streaming responses.
-      // DeepSeek v4-flash returns empty content with reasoning_content as the actual
-      // response text. The AnthropicTransformer expects either message.content or
-      // message.thinking.content, and does not know about reasoning_content.
-      if (msg?.reasoning_content && (!msg.content || msg.content === "")) {
-        console.log(`[DeepseekTransformer] Remapping reasoning_content (${msg.reasoning_content.length} chars) -> content`);
-        msg.content = msg.reasoning_content;
+      // Map DeepSeek's reasoning_content to thinking block for non-streaming responses.
+      // When reasoning_content is present alongside content, reasoning_content goes to thinking
+      // and content stays as the actual response text.
+      if (msg?.reasoning_content) {
+        if (!msg.thinking) {
+          msg.thinking = { content: msg.reasoning_content };
+        }
         delete msg.reasoning_content;
-      } else {
-        console.log(`[DeepseekTransformer] Non-streaming: content="${String(msg?.content).substring(0, 50)}", model=${jsonResponse?.model}`);
+
+        // If content is empty after moving reasoning_content to thinking, this was a
+        // reasoning-only response (v4-flash sometimes does this) — keep content empty
+        // and let downstream AnthropicTransformer handle it.
+        if (!msg.content || msg.content === "") {
+          console.log(`[DeepseekTransformer] Non-streaming: reasoning_content (${msg.thinking.content.length} chars) -> thinking block`);
+        }
       }
+      console.log(`[DeepseekTransformer] Non-streaming: content="${String(msg?.content).substring(0, 50)}", hasThinking=${!!msg?.thinking}, model=${jsonResponse?.model}`);
 
       return new Response(JSON.stringify(jsonResponse), {
         status: response.status,

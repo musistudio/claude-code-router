@@ -94,9 +94,25 @@ export class ContextCaptureEngine {
   private config: CaptureConfig;
   private batch: CaptureEntry[] = [];
   private sessionTurnCounters: Map<string, number> = new Map();
+  private flushing = false;
+  private pool: any = null;
 
   constructor(config: Partial<CaptureConfig> = {}, private logger?: any) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+  }
+
+  private getPool(): any {
+    if (!this.pool && this.config.postgresConnectionString) {
+      try {
+        const { Pool }: any = require('pg');
+        this.pool = new Pool({
+          connectionString: this.config.postgresConnectionString,
+          max: 5,
+          idleTimeoutMillis: 30000,
+        });
+      } catch {}
+    }
+    return this.pool;
   }
 
   /**
@@ -165,8 +181,10 @@ export class ContextCaptureEngine {
       // Batch for Postgres if enabled
       if (this.config.storageMode === 'postgres' || this.config.storageMode === 'both') {
         this.batch.push(entry);
-        if (this.batch.length >= this.config.batchSize) {
-          await this.flushPostgres();
+        if (this.batch.length >= this.config.batchSize && !this.flushing) {
+          this.flushPostgres().catch((err: any) => {
+            this.logger?.error(`ContextCapture background flush failed: ${err.message}`);
+          });
         }
       }
     } catch (error: any) {
@@ -200,9 +218,8 @@ export class ContextCaptureEngine {
 
     // Postgres semantic search via pgvector
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { Pool }: any = require('pg');
-      const pool = new Pool({ connectionString: this.config.postgresConnectionString });
+      const pool = this.getPool();
+      if (!pool) return [];
       const result = await pool.query(
         `SELECT capture_id, session_id, agent_type, request_summary, input_tokens, output_tokens, latency_ms
          FROM gateway_requests
@@ -213,7 +230,6 @@ export class ContextCaptureEngine {
          LIMIT $4`,
         [params.sessionId || null, params.agentType || null, params.sinceMs || null, params.limit || 20]
       );
-      await pool.end();
       return result.rows;
     } catch (error: any) {
       this.logger?.error(`ContextCapture query error: ${error.message}`);
@@ -358,14 +374,15 @@ export class ContextCaptureEngine {
   }
 
   private async flushPostgres(): Promise<void> {
-    if (this.batch.length === 0 || !this.config.postgresConnectionString) return;
+    if (this.flushing) return;
+    this.flushing = true;
 
     const batch = [...this.batch];
     this.batch = [];
 
     try {
-      const { Pool }: any = require('pg');
-      const pool = new Pool({ connectionString: this.config.postgresConnectionString });
+      const pool = this.getPool();
+      if (!pool) return;
 
       for (const entry of batch) {
         await pool.query(
@@ -392,12 +409,12 @@ export class ContextCaptureEngine {
         );
       }
 
-      await pool.end();
       this.logger?.debug(`ContextCapture: flushed ${batch.length} entries to Postgres`);
     } catch (error: any) {
       this.logger?.error(`ContextCapture Postgres flush failed: ${error.message}`);
-      // Re-queue failed batch to retry on next flush (append failed items first, then any new items)
       this.batch = [...batch, ...this.batch].slice(0, 1000);
+    } finally {
+      this.flushing = false;
     }
   }
 }

@@ -232,18 +232,34 @@ export class SemanticCache extends EventEmitter {
   }
 
   private sanitizeResponse(response: any): any {
-    // Deep clone and remove any sensitive/temporary data
     try {
       return JSON.parse(JSON.stringify(response));
     } catch (e: any) {
       this.logger?.debug(`SemanticCache sanitizeResponse failed: ${e?.message}`);
       return response;
     }
-    // Skip if any skip pattern matches the request
+  }
+
+  private shouldSkip(body: any): boolean {
+    if (!body) return true;
     const bodyStr = JSON.stringify(body).toLowerCase();
     return this.config.skipPatterns.some((pattern) =>
       bodyStr.includes(pattern.toLowerCase())
     );
+  }
+
+  private cleanup(): void {
+    const now = Date.now();
+    let removed = 0;
+    for (const [key, entry] of this.cache.entries()) {
+      if (entry.expiresAt <= now) {
+        this.cache.delete(key);
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      this.logger?.debug(`SemanticCache: cleaned up ${removed} expired entries`);
+    }
   }
 
   private async checkGPTCache(body: any): Promise<any | null> {
@@ -276,17 +292,6 @@ export class SemanticCache extends EventEmitter {
     } catch (e: any) {
       this.logger?.warn(`SemanticCache GPTCache query failed: ${e?.message}`);
       return null;
-    }
-    const now = Date.now();
-    let removed = 0;
-    for (const [key, entry] of this.cache.entries()) {
-      if (entry.expiresAt <= now) {
-        this.cache.delete(key);
-        removed++;
-      }
-    }
-    if (removed > 0) {
-      this.logger?.debug(`SemanticCache: cleaned up ${removed} expired entries`);
     }
   }
 }

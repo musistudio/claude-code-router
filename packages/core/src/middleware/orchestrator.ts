@@ -29,6 +29,18 @@ import { ContextCaptureEngine, CaptureConfig } from "./context-capture";
 import { checkHallucination, analyzeReasoning } from "../engines/reasoning-engine";
 import type { ReasoningContext } from "../engines/reasoning-engine";
 
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T, label: string, logger?: any): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) =>
+      setTimeout(() => {
+        logger?.warn(`MiddlewareOrchestrator: ${label} timed out after ${ms}ms`);
+        resolve(fallback);
+      }, ms)
+    ),
+  ]);
+}
+
 export interface MiddlewareConfig {
   semanticCache: Partial<CacheConfig>;
   memoryBridge: Partial<MemoryConfig>;
@@ -186,11 +198,14 @@ export class MiddlewareOrchestrator {
         return hookResult;
       }
 
-      // Check semantic cache
+      // Check semantic cache (100ms budget)
       const context = this.extractContext(req);
-      const cachedResponse = await this.semanticCache.lookup(
-        req.body,
-        context
+      const cachedResponse = await withTimeout(
+        this.semanticCache.lookup(req.body, context),
+        100,
+        null,
+        "semanticCache.lookup",
+        this.logger
       );
 
       if (cachedResponse) {
@@ -236,10 +251,13 @@ export class MiddlewareOrchestrator {
         (context.agentName && !['_default', 'unknown', 'Explore'].includes(context.agentName));
 
       if (shouldEnrich) {
-        // Enrich system prompt with RAG context
-        const enrichmentResult = await this.ragEnricher.enrich(
-          req.body.system,
-          context
+        // Enrich system prompt with RAG context (100ms budget)
+        const enrichmentResult = await withTimeout(
+          this.ragEnricher.enrich(req.body.system, context),
+          100,
+          { enrichments: [], system: req.body.system, totalTokens: 0 },
+          "ragEnricher.enrich",
+          this.logger
         );
 
         if (enrichmentResult.enrichments.length > 0) {
@@ -248,8 +266,14 @@ export class MiddlewareOrchestrator {
         }
       }
 
-      // Retrieve and inject memory context
-      const memories = await this.memoryBridge.retrieve(context);
+      // Retrieve and inject memory context (100ms budget)
+      const memories = await withTimeout(
+        this.memoryBridge.retrieve(context),
+        100,
+        [],
+        "memoryBridge.retrieve",
+        this.logger
+      );
       if (memories.length > 0) {
         // Append memory hints to system prompt
         const memoryHint = [

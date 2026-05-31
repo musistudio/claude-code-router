@@ -34,6 +34,7 @@ import { TokenizerService } from "./services/tokenizer";
 import { router, calculateTokenCount, searchProjectBySession } from "./utils/router";
 import { sessionUsageCache } from "./utils/cache";
 import { MiddlewareOrchestrator } from "./middleware/orchestrator";
+import { acquireConcurrencySlots, releaseWhenResponseCompletes } from "./utils/concurrency";
 
 // Extend FastifyRequest to include custom properties
 declare module "fastify" {
@@ -55,6 +56,10 @@ interface ServerOptions extends FastifyServerOptions {
 function createApp(options: FastifyServerOptions = {}): FastifyInstance {
   const fastify = Fastify({
     bodyLimit: 50 * 1024 * 1024,
+    requestTimeout: 300000,
+    keepAliveTimeout: 72000,
+    connectionTimeout: 60000,
+    maxRequestsPerSocket: 1000,
     ...options,
   });
 
@@ -241,6 +246,23 @@ class Server {
               body.model = model.join(",");
               req.provider = provider;
               req.model = model;
+
+              const concurrencyConfig = this.configService.get('Concurrency');
+              if (concurrencyConfig && provider) {
+                try {
+                  const release = await acquireConcurrencySlots(provider, concurrencyConfig);
+                  (req as any)._releaseConcurrency = release;
+                } catch (err: any) {
+                  req.log.warn(`Concurrency limit reached for ${provider}: ${err.message}`);
+                  return reply.code(429).send({
+                    type: "error",
+                    error: {
+                      type: "rate_limit_error",
+                      message: `Too many concurrent requests to ${provider}. Please retry later.`
+                    }
+                  });
+                }
+              }
               return;
             } catch (err) {
               req.log.error({error: err}, "Error in modelProviderMiddleware:");
@@ -281,6 +303,13 @@ class Server {
       this.app.addHook("onRequest", async (req: any) => {
         if (req.url?.includes("/v1/messages")) {
           req._startTime = Date.now();
+        }
+      });
+
+      this.app.addHook("onResponse", async (req: any) => {
+        if (req._releaseConcurrency) {
+          req._releaseConcurrency();
+          delete req._releaseConcurrency;
         }
       });
 
