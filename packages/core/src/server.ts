@@ -248,7 +248,7 @@ class Server {
               req.model = model;
 
               if (body.thinking?.type === "enabled" && provider === "deepseek") {
-                body.output_config = { effort: "max" };
+                body.output_config = { effort: this.classifyThinkingEffort(body) };
               }
 
               const concurrencyConfig = this.configService.get('Concurrency');
@@ -338,6 +338,33 @@ class Server {
       this.app.log.error(`Error starting server: ${error}`);
       process.exit(1);
     }
+  }
+
+  private classifyThinkingEffort(body: any): string {
+    const messages = body.messages || [];
+    const system = body.system;
+    const tools = body.tools || [];
+
+    const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
+    const userContent = typeof lastUserMsg?.content === "string"
+      ? lastUserMsg.content
+      : Array.isArray(lastUserMsg?.content)
+        ? lastUserMsg.content.filter((c: any) => c.type === "text").map((c: any) => c.text || "").join(" ")
+        : "";
+
+    const systemText = typeof system === "string" ? system
+      : Array.isArray(system) ? system.filter((s: any) => s.type === "text").map((s: any) => s.text || "").join(" ")
+      : "";
+
+    const hasTools = tools.length > 0;
+    const hasLongContext = messages.length > 10 || userContent.length > 2000;
+    const hasAgentPattern = systemText.includes("<CCR-SUBAGENT") || systemText.includes("agent");
+    const hasComplexQuery = userContent.length > 500 || /analyz|design|architect|implement|debug|refactor|explain/i.test(userContent);
+
+    if (hasAgentPattern || hasTools || hasLongContext || hasComplexQuery) {
+      return "max";
+    }
+    return "high";
   }
 }
 
