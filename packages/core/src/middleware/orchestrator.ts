@@ -27,6 +27,7 @@ import { RAGEnricher, RAGConfig } from "./rag-enricher";
 import { HookManager } from "./hooks";
 import { ContextCaptureEngine, CaptureConfig } from "./context-capture";
 import { checkHallucination, analyzeReasoning } from "../engines/reasoning-engine";
+import type { ReasoningContext } from "../engines/reasoning-engine";
 
 export interface MiddlewareConfig {
   semanticCache: Partial<CacheConfig>;
@@ -144,6 +145,7 @@ export class MiddlewareOrchestrator {
     // Start health monitoring
     if (this.healthMonitor) {
       this.healthMonitor.start();
+      this.configService.set("_healthMonitor", this.healthMonitor);
       this.logger.info("  HealthMonitor: started");
     }
 
@@ -201,7 +203,7 @@ export class MiddlewareOrchestrator {
         return cachedResponse;
       }
     } catch (error: any) {
-      this.logger.debug(`MiddlewareOrchestrator onPreRoute error: ${error.message}`);
+      this.logger.warn(`MiddlewareOrchestrator onPreRoute error: ${error.message}`);
     }
 
     return null; // Cache miss, continue normal flow
@@ -224,7 +226,8 @@ export class MiddlewareOrchestrator {
       const modelId = Array.isArray((req as any).model) 
         ? (req as any).model.join(',') 
         : ((req as any).model || req.body?.model || '');
-      const isProModel = modelId.includes('pro');
+      const routeTier = (req as any).routeTier || '';
+      const isProModel = modelId.includes('pro') || modelId.includes('opus') || routeTier === 'pro' || routeTier === 'pro_max';
       const shouldEnrich = tokenCount >= 500 || 
         scenarioType === 'think' || 
         scenarioType === 'reasoning_pro_max' ||
@@ -270,7 +273,7 @@ export class MiddlewareOrchestrator {
       await this.hookManager.execute("onRouteDecision", hookCtx);
 
     } catch (error: any) {
-      this.logger.debug(`MiddlewareOrchestrator onPostRoute error: ${error.message}`);
+      this.logger.warn(`MiddlewareOrchestrator onPostRoute error: ${error.message}`);
     }
   }
 
@@ -304,13 +307,26 @@ export class MiddlewareOrchestrator {
 
       // Capture full context for HSE/SkillClaw (fire-and-forget)
       const usage = responseBody?.usage || {};
-      const reasoningCtx = checkHallucination(
-        usage.input_tokens || 0,
-        usage.output_tokens || 0,
-        responseBody,
-        (req as any)._httpStatus || 200,
-        (req as any).provider
-      );
+      let reasoningCtx: ReasoningContext;
+      try {
+        reasoningCtx = checkHallucination(
+          usage.input_tokens || 0,
+          usage.output_tokens || 0,
+          responseBody,
+          (req as any)._httpStatus || 200,
+          (req as any).provider
+        );
+      } catch (e: any) {
+        this.logger?.warn(`checkHallucination failed: ${e?.message}`);
+        reasoningCtx = {
+          contextInjectedTokens: 0,
+          contextInjected: false,
+          outputTokens: usage.output_tokens || 0,
+          inputTokens: usage.input_tokens || 0,
+          hallucinationRisk: 0,
+          flags: ['check_hallucination_exception'],
+        };
+      }
       this.contextCapture.capture({
         sessionId: context.sessionId,
         agentType: (req as any).gatewayAgentName || detectAgentFromReq(req),
@@ -327,7 +343,9 @@ export class MiddlewareOrchestrator {
         hallucinationRisk: reasoningCtx.hallucinationRisk,
         cacheHit: !!(req as any)._cacheHit,
         ragEnriched: !!(req as any)._ragEnriched,
-      }).catch(() => {});
+      }).catch((err) => {
+        this.logger?.warn(`Context capture failed: ${err?.message}`);
+      });
 
       // Log hallucination warnings
       if (reasoningCtx.hallucinationRisk > 0.5) {
@@ -349,7 +367,7 @@ export class MiddlewareOrchestrator {
       }
 
     } catch (error: any) {
-      this.logger.debug(`MiddlewareOrchestrator onPostResponse error: ${error.message}`);
+      this.logger.warn(`MiddlewareOrchestrator onPostResponse error: ${error.message}`);
     }
   }
 
@@ -363,7 +381,9 @@ export class MiddlewareOrchestrator {
       const hookCtx = this.hookManager.createContext(req);
       hookCtx.metadata.error = error.message;
       await this.hookManager.execute("onError", hookCtx);
-    } catch {}
+    } catch (e: any) {
+      this.logger?.error(`MiddlewareOrchestrator onError hook failed: ${e?.message}`);
+    }
   }
 
   /**
@@ -381,7 +401,9 @@ export class MiddlewareOrchestrator {
         metadata: {},
       } as any;
       await this.hookManager.execute("onSessionEnd", hookCtx);
-    } catch {}
+    } catch (e: any) {
+      this.logger?.error(`MiddlewareOrchestrator onSessionEnd failed: ${e?.message}`);
+    }
   }
 
   /**
@@ -480,7 +502,7 @@ function detectAgentFromReq(req: any): string {
       if (lower.includes(pattern)) return agent;
     }
     return '_default';
-  } catch {
+  } catch (e: any) {
     return 'unknown';
   }
 }

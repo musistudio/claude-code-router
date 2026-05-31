@@ -15,6 +15,15 @@ export class DeepseekTransformer implements Transformer {
     if (response.headers.get("Content-Type")?.includes("application/json")) {
       const jsonResponse = await response.json();
       const msg = jsonResponse?.choices?.[0]?.message;
+
+      if (!response.ok) {
+        // Upstream error — pass through as-is so error handler can process it
+        return new Response(JSON.stringify(jsonResponse), {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers,
+        });
+      }
       
       // Map DeepSeek's reasoning_content to content for non-streaming responses.
       // DeepSeek v4-flash returns empty content with reasoning_content as the actual
@@ -81,7 +90,10 @@ export class DeepseekTransformer implements Transformer {
                 const data = JSON.parse(line.slice(6));
 
                 // Extract reasoning_content from delta
-                if (data.choices?.[0]?.delta?.reasoning_content) {
+                const hasReasoning = !!data.choices?.[0]?.delta?.reasoning_content;
+                const hasContent = !!data.choices?.[0]?.delta?.content;
+
+                if (hasReasoning) {
                   context.appendReasoningContent(
                     data.choices[0].delta.reasoning_content
                   );
@@ -104,6 +116,24 @@ export class DeepseekTransformer implements Transformer {
                     thinkingChunk
                   )}\n\n`;
                   controller.enqueue(encoder.encode(thinkingLine));
+
+                  // If chunk also has content, send it as a separate content chunk
+                  // (was previously lost because of early return)
+                  if (hasContent) {
+                    const contentChunk = {
+                      ...data,
+                      choices: [
+                        {
+                          ...data.choices[0],
+                          delta: {
+                            content: data.choices[0].delta.content,
+                          },
+                        },
+                      ],
+                    };
+                    const contentLine = `data: ${JSON.stringify(contentChunk)}\n\n`;
+                    controller.enqueue(encoder.encode(contentLine));
+                  }
                   return;
                 }
 
@@ -139,10 +169,6 @@ export class DeepseekTransformer implements Transformer {
                     thinkingChunk
                   )}\n\n`;
                   controller.enqueue(encoder.encode(thinkingLine));
-                }
-
-                if (data.choices[0]?.delta?.reasoning_content) {
-                  delete data.choices[0].delta.reasoning_content;
                 }
 
                 // Send the modified chunk

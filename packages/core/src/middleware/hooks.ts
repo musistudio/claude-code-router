@@ -197,8 +197,8 @@ export class HookManager extends EventEmitter {
               failedStage: stage,
             },
           });
-        } catch {
-          // onError hooks can fail too, just log
+        } catch (e: any) {
+          this.logger?.error(`HookManager onError hook failed: ${e?.message}`);
         }
         // Don't rethrow - continue with next hook
       }

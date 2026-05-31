@@ -170,7 +170,7 @@ export class ContextCaptureEngine {
         }
       }
     } catch (error: any) {
-      this.logger?.debug(`ContextCapture error: ${error.message}`);
+      this.logger?.error(`ContextCapture capture failed: ${error.message}`);
     }
   }
 
@@ -216,7 +216,7 @@ export class ContextCaptureEngine {
       await pool.end();
       return result.rows;
     } catch (error: any) {
-      this.logger?.debug(`ContextCapture query error: ${error.message}`);
+      this.logger?.error(`ContextCapture query error: ${error.message}`);
       return [];
     }
   }
@@ -395,8 +395,8 @@ export class ContextCaptureEngine {
       await pool.end();
       this.logger?.debug(`ContextCapture: flushed ${batch.length} entries to Postgres`);
     } catch (error: any) {
-      this.logger?.debug(`ContextCapture Postgres flush error: ${error.message}`);
-      // Re-queue on failure
+      this.logger?.error(`ContextCapture Postgres flush failed: ${error.message}`);
+      // Re-queue failed batch to retry on next flush (append failed items first, then any new items)
       this.batch = [...batch, ...this.batch].slice(0, 1000);
     }
   }

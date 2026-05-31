@@ -104,7 +104,7 @@ export class MemoryBridge extends EventEmitter {
 
       return memories;
     } catch (error: any) {
-      this.logger?.debug(`MemoryBridge retrieve error: ${error.message}`);
+      this.logger?.warn(`MemoryBridge retrieve error: ${error.message}`);
       return [];
     }
   }
@@ -182,7 +182,7 @@ export class MemoryBridge extends EventEmitter {
         });
       }
     } catch (error: any) {
-      this.logger?.debug(`MemoryBridge extract error: ${error.message}`);
+      this.logger?.warn(`MemoryBridge extract error: ${error.message}`);
     }
   }
 
@@ -282,7 +282,7 @@ export class MemoryBridge extends EventEmitter {
         this.emit("memory:flushed", { count: batch.length });
       }
     } catch (error: any) {
-      this.logger?.debug(`MemoryBridge flush error: ${error.message}`);
+      this.logger?.warn(`MemoryBridge flush error: ${error.message}`);
       // Re-queue on failure
       this.pendingMemories = [...batch, ...this.pendingMemories].slice(0, 100);
     }

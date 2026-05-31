@@ -108,7 +108,7 @@ export class SemanticCache extends EventEmitter {
       this.emit("cache:miss", { key: cacheKey });
       return null; // Cache miss
     } catch (error: any) {
-      this.logger?.debug(`SemanticCache lookup error: ${error.message}`);
+      this.logger?.warn(`SemanticCache lookup error: ${error.message}`);
       return null; // Graceful degradation: fall through to live API
     }
   }
@@ -147,12 +147,10 @@ export class SemanticCache extends EventEmitter {
 
     this.cache.set(cacheKey, entry);
 
-    // Evict oldest if over max
+    // Evict oldest if over max (LRU via insertion-order Map)
     if (this.cache.size > this.config.maxEntries) {
-      const oldest = Array.from(this.cache.entries()).sort(
-        (a, b) => a[1].createdAt - b[1].createdAt
-      )[0];
-      if (oldest) this.cache.delete(oldest[0]);
+      const oldestKey = this.cache.keys().next().value;
+      if (oldestKey) this.cache.delete(oldestKey);
     }
 
     this.logger?.debug(
@@ -206,7 +204,7 @@ export class SemanticCache extends EventEmitter {
               .join(" ")
           : "";
 
-    const keyBasis = `${context.agentName || ""}:${context.taskType || ""}:${userContent.slice(0, 200)}`;
+    const keyBasis = `${context.agentName || ""}:${context.taskType || ""}:${context.model || ""}:${userContent}`;
     return createHash("md5").update(keyBasis).digest("hex").slice(0, 16);
   }
 
@@ -237,12 +235,10 @@ export class SemanticCache extends EventEmitter {
     // Deep clone and remove any sensitive/temporary data
     try {
       return JSON.parse(JSON.stringify(response));
-    } catch {
+    } catch (e: any) {
+      this.logger?.debug(`SemanticCache sanitizeResponse failed: ${e?.message}`);
       return response;
     }
-  }
-
-  private shouldSkip(body: any): boolean {
     // Skip if any skip pattern matches the request
     const bodyStr = JSON.stringify(body).toLowerCase();
     return this.config.skipPatterns.some((pattern) =>
@@ -277,12 +273,10 @@ export class SemanticCache extends EventEmitter {
         return data.results[0].response;
       }
       return null;
-    } catch {
+    } catch (e: any) {
+      this.logger?.warn(`SemanticCache GPTCache query failed: ${e?.message}`);
       return null;
     }
-  }
-
-  private cleanup(): void {
     const now = Date.now();
     let removed = 0;
     for (const [key, entry] of this.cache.entries()) {

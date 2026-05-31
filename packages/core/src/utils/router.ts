@@ -376,8 +376,8 @@ export const router = async (req: any, _res: any, context: RouterContext) => {
             req.scenarioType = 'health_fallback';
           }
         }
-      } catch {
-        // Health check failure → proceed with original model
+      } catch (e: any) {
+        req.log.debug(`Health check skipped: ${e?.message}`);
       }
     } else {
       req.scenarioType = req.gatewayScenario || req.scenarioType || 'default';

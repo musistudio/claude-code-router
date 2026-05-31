@@ -228,7 +228,8 @@ export class RAGEnricher extends EventEmitter {
           .join("\n");
       }
       return null;
-    } catch {
+    } catch (e: any) {
+      this.logger?.warn(`RAGEnricher memory MCP query failed: ${e?.message}`);
       return null;
     }
   }
@@ -257,7 +258,8 @@ export class RAGEnricher extends EventEmitter {
 
       const data = await response.json();
       return data.results?.join("\n") || null;
-    } catch {
+    } catch (e: any) {
+      this.logger?.warn(`RAGEnricher ClawMem query failed: ${e?.message}`);
       return null;
     }
   }
