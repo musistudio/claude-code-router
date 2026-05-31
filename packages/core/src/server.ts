@@ -247,6 +247,10 @@ class Server {
               req.provider = provider;
               req.model = model;
 
+              if (body.thinking?.type === "enabled" && provider === "deepseek") {
+                body.output_config = { effort: "max" };
+              }
+
               const concurrencyConfig = this.configService.get('Concurrency');
               if (concurrencyConfig && provider) {
                 try {
