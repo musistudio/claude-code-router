@@ -33,6 +33,7 @@ import { TransformerService } from "./services/transformer";
 import { TokenizerService } from "./services/tokenizer";
 import { router, calculateTokenCount, searchProjectBySession } from "./utils/router";
 import { sessionUsageCache } from "./utils/cache";
+import { MiddlewareOrchestrator } from "./middleware/orchestrator";
 
 // Extend FastifyRequest to include custom properties
 declare module "fastify" {
@@ -72,6 +73,7 @@ class Server {
   providerService!: ProviderService;
   transformerService: TransformerService;
   tokenizerService: TokenizerService;
+  orchestrator: MiddlewareOrchestrator;
 
   constructor(options: ServerOptions = {}) {
     const { initialConfig, ...fastifyOptions } = options;
@@ -86,6 +88,11 @@ class Server {
     );
     this.tokenizerService = new TokenizerService(
       this.configService,
+      this.app.log
+    );
+    this.orchestrator = new MiddlewareOrchestrator(
+      this.configService,
+      undefined, // ProviderRegistry created later in providerService
       this.app.log
     );
     this.transformerService.initialize().finally(() => {
@@ -199,6 +206,11 @@ class Server {
     try {
       this.app._server = this;
 
+      // Initialize middleware orchestrator
+      await this.orchestrator.initialize().catch((e: any) => {
+        this.app.log.warn(`MiddlewareOrchestrator init skipped: ${e.message}`);
+      });
+
       this.app.addHook("preHandler", (req, reply, done) => {
         const url = new URL(`http://127.0.0.1${req.url}`);
         if (url.pathname.endsWith("/v1/messages") && req.body) {
@@ -238,6 +250,25 @@ class Server {
         }
       );
 
+      // Orchestrator post-route hook (RAG enrichment + memory injection)
+      this.app.addHook("preHandler", async (req: any) => {
+        if (req.provider && req.scenarioType) {
+          await this.orchestrator.onPostRoute(req).catch(() => {});
+        }
+      });
+
+      // Orchestrator post-response hook (cache store + context capture + memory extraction)
+      this.app.addHook("onSend", async (req: any, reply: any, payload: any) => {
+        if (req.pathname?.endsWith("/v1/messages") && typeof payload === "object" && !payload.error) {
+          await this.orchestrator.onPostResponse(req, payload).catch(() => {});
+        }
+      });
+
+      // Orchestrator error hook
+      this.app.addHook("onError", async (req: any, reply: any, error: Error) => {
+        await this.orchestrator.onError(req, error).catch(() => {});
+      });
+
 
       const address = await this.app.listen({
         port: parseInt(this.configService.get("PORT") || "3000", 10),
@@ -248,6 +279,7 @@ class Server {
 
       const shutdown = async (signal: string) => {
         this.app.log.info(`Received ${signal}, shutting down gracefully...`);
+        await this.orchestrator.shutdown().catch(() => {});
         await this.app.close();
         process.exit(0);
       };
@@ -273,5 +305,6 @@ export { ProviderService } from "./services/provider";
 export { TransformerService } from "./services/transformer";
 export { TokenizerService } from "./services/tokenizer";
 export { SemanticStoreService } from "./services/semantic-store";
+export { MiddlewareOrchestrator } from "./middleware/orchestrator";
 export { pluginManager, tokenSpeedPlugin, getTokenSpeedStats, getGlobalTokenSpeedStats, CCRPlugin, CCRPluginOptions, PluginMetadata } from "./plugins";
 export { SSEParserTransform, SSESerializerTransform, rewriteStream } from "./utils/sse";
