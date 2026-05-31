@@ -216,16 +216,33 @@ export class MiddlewareOrchestrator {
 
     try {
       const context = this.extractContext(req);
+      const tokenCount = (req as any).tokenCount || 0;
+      const scenarioType = (req as any).scenarioType || '';
 
-      // Enrich system prompt with RAG context
-      const enrichmentResult = await this.ragEnricher.enrich(
-        req.body.system,
-        context
-      );
+      // Gate RAG injection: skip trivial/simple flash queries only
+      // Always inject for: pro models, thinking/reasoning, named agents, or large context
+      const modelId = Array.isArray((req as any).model) 
+        ? (req as any).model.join(',') 
+        : ((req as any).model || req.body?.model || '');
+      const isProModel = modelId.includes('pro');
+      const shouldEnrich = tokenCount >= 500 || 
+        scenarioType === 'think' || 
+        scenarioType === 'reasoning_pro_max' ||
+        scenarioType === 'reasoning_flash' ||
+        isProModel ||
+        (context.agentName && !['_default', 'unknown', 'Explore'].includes(context.agentName));
 
-      if (enrichmentResult.enrichments.length > 0) {
-        req.body.system = enrichmentResult.system;
-        (req as any)._ragEnriched = true;
+      if (shouldEnrich) {
+        // Enrich system prompt with RAG context
+        const enrichmentResult = await this.ragEnricher.enrich(
+          req.body.system,
+          context
+        );
+
+        if (enrichmentResult.enrichments.length > 0) {
+          req.body.system = enrichmentResult.system;
+          (req as any)._ragEnriched = true;
+        }
       }
 
       // Retrieve and inject memory context

@@ -259,14 +259,29 @@ class Server {
 
       // Orchestrator post-response hook (cache store + context capture + memory extraction)
       this.app.addHook("onSend", async (req: any, reply: any, payload: any) => {
-        if (req.pathname?.endsWith("/v1/messages") && typeof payload === "object" && !payload.error) {
-          await this.orchestrator.onPostResponse(req, payload).catch(() => {});
+        if (req.pathname?.endsWith("/v1/messages") && payload) {
+          try {
+            // For non-streaming JSON responses, pass the payload directly
+            if (typeof payload === "string") {
+              payload = JSON.parse(payload);
+            }
+            if (payload && !payload.error && payload.content) {
+              await this.orchestrator.onPostResponse(req, payload).catch(() => {});
+            }
+          } catch {}
         }
       });
 
       // Orchestrator error hook
       this.app.addHook("onError", async (req: any, reply: any, error: Error) => {
         await this.orchestrator.onError(req, error).catch(() => {});
+      });
+
+      // Orchestrator session start/end tracking
+      this.app.addHook("onRequest", async (req: any) => {
+        if (req.url?.includes("/v1/messages")) {
+          req._startTime = Date.now();
+        }
       });
 
 
