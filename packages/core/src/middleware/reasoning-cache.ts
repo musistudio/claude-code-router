@@ -69,7 +69,6 @@ export class ReasoningCache {
           reasoning_content TEXT NOT NULL,
           model TEXT NOT NULL,
           output_tokens INTEGER DEFAULT 0,
-          query_embedding vector(1536),
           created_at TIMESTAMPTZ DEFAULT NOW(),
           expires_at TIMESTAMPTZ NOT NULL
         )
@@ -79,6 +78,16 @@ export class ReasoningCache {
         CREATE INDEX IF NOT EXISTS idx_reasoning_chains_expires
         ON reasoning_chains (expires_at)
       `);
+
+      try {
+        await this.pool.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
+        await this.pool.query(`
+          CREATE INDEX IF NOT EXISTS idx_reasoning_chains_query_trgm
+          ON reasoning_chains USING GIN (query gin_trgm_ops)
+        `);
+      } catch {
+        this.logger?.debug("pg_trgm extension not available, falling back to word overlap");
+      }
 
       this.initialized = true;
       this.logger?.info("ReasoningCache: initialized with pgvector");
@@ -153,11 +162,12 @@ export class ReasoningCache {
       try {
         const now = new Date().toISOString();
         const result = await this.pool.query(
-          `SELECT query, reasoning_content, model
+          `SELECT query, reasoning_content, model,
+                  similarity(query, $2) AS sim_score
            FROM reasoning_chains
            WHERE expires_at > $1
              AND similarity(query, $2) > $3
-           ORDER BY similarity(query, $2) DESC
+           ORDER BY sim_score DESC
            LIMIT $4`,
           [now, query.slice(0, 500), this.config.similarityThreshold, maxResults]
         );
@@ -170,9 +180,8 @@ export class ReasoningCache {
     const results: string[] = [];
     const queryLower = query.toLowerCase();
     for (const chain of this.memoryStore.values()) {
-      const chainQueryLower = chain.query.toLowerCase();
-      const overlap = this.computeWordOverlap(queryLower, chainQueryLower);
-      if (overlap > this.config.similarityThreshold) {
+      const sim = this.computeTrigramSimilarity(queryLower, chain.query.toLowerCase());
+      if (sim > this.config.similarityThreshold) {
         results.push(chain.reasoningContent);
         if (results.length >= maxResults) break;
       }
@@ -218,13 +227,33 @@ export class ReasoningCache {
   }
 
   private computeWordOverlap(a: string, b: string): number {
-    const wordsA = new Set(a.split(/\s+/).filter((w) => w.length > 3));
-    const wordsB = new Set(b.split(/\s+/).filter((w) => w.length > 3));
+    const wordsA = new Set(a.split(/\s+/).filter((w) => w.length > 2));
+    const wordsB = new Set(b.split(/\s+/).filter((w) => w.length > 2));
     if (wordsA.size === 0 || wordsB.size === 0) return 0;
     let overlap = 0;
     for (const w of wordsA) {
       if (wordsB.has(w)) overlap++;
     }
     return overlap / Math.min(wordsA.size, wordsB.size);
+  }
+
+  private computeTrigramSimilarity(a: string, b: string): number {
+    const trigramsA = this.getTrigrams(a.toLowerCase());
+    const trigramsB = this.getTrigrams(b.toLowerCase());
+    if (trigramsA.size === 0 || trigramsB.size === 0) return 0;
+    let overlap = 0;
+    for (const t of trigramsA) {
+      if (trigramsB.has(t)) overlap++;
+    }
+    return overlap / (trigramsA.size + trigramsB.size - overlap);
+  }
+
+  private getTrigrams(text: string): Set<string> {
+    const trigrams = new Set<string>();
+    const padded = `  ${text} `;
+    for (let i = 0; i < padded.length - 2; i++) {
+      trigrams.add(padded.slice(i, i + 3));
+    }
+    return trigrams;
   }
 }
