@@ -590,6 +590,57 @@ export const createServer = async (config: any): Promise<any> => {
     };
   });
 
+  // --- Anthropic-compatible /v1/models endpoint ---
+  // Claude Code v2.x calls this to validate available models.
+  // Without this, Claude Code shows "model may not exist" errors.
+  app.get("/v1/models", async (req: any, reply: any) => {
+    const srv = getServer(app);
+    const providerService = srv?.providerService;
+    const configService = srv?.configService;
+    
+    let modelIds: string[] = [];
+    
+    // Get models from providers
+    if (providerService) {
+      try {
+        const providers = providerService.getProviders();
+        for (const p of providers) {
+          if (p.models && Array.isArray(p.models)) {
+            modelIds.push(...p.models);
+          }
+        }
+      } catch {}
+    }
+    
+    // Also include ModelMapping keys (the Claude model names we accept)
+    if (configService) {
+      try {
+        const mapping = configService.get("ModelMapping");
+        if (mapping && typeof mapping === 'object') {
+          for (const key of Object.keys(mapping)) {
+            if (!modelIds.includes(key)) {
+              modelIds.push(key);
+            }
+          }
+        }
+      } catch {}
+    }
+    
+    // Deduplicate
+    modelIds = [...new Set(modelIds)];
+    
+    return {
+      object: "list",
+      data: modelIds.map((id) => ({
+        id,
+        object: "model",
+        type: "model",
+        created: 1711497600,
+        owned_by: "ccr-gateway",
+      })),
+    };
+  });
+
   // Diagnostic: test AnthropicTransformer conversion
   app.post("/api/debug/convert", async (req: any, reply: any) => {
     try {
