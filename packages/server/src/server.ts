@@ -628,16 +628,20 @@ export const createServer = async (config: any): Promise<any> => {
     
     // Deduplicate
     modelIds = [...new Set(modelIds)];
-    
+
+    const sorted = modelIds.sort();
     return {
       object: "list",
-      data: modelIds.map((id) => ({
+      data: sorted.map((id) => ({
         id,
         object: "model",
         type: "model",
-        created: 1711497600,
-        owned_by: "ccr-gateway",
+        display_name: id,
+        created_at: "2025-01-01T00:00:00Z",
       })),
+      has_more: false,
+      first_id: sorted[0] || null,
+      last_id: sorted[sorted.length - 1] || null,
     };
   });
 
