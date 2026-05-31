@@ -26,6 +26,7 @@ import { MemoryBridge, MemoryConfig } from "./memory-bridge";
 import { RAGEnricher, RAGConfig } from "./rag-enricher";
 import { HookManager } from "./hooks";
 import { ContextCaptureEngine, CaptureConfig } from "./context-capture";
+import { ReasoningCache, ReasoningCacheConfig } from "./reasoning-cache";
 import { checkHallucination, analyzeReasoning } from "../engines/reasoning-engine";
 import type { ReasoningContext } from "../engines/reasoning-engine";
 
@@ -46,6 +47,7 @@ export interface MiddlewareConfig {
   memoryBridge: Partial<MemoryConfig>;
   ragEnricher: Partial<RAGConfig>;
   contextCapture: Partial<CaptureConfig>;
+  reasoningCache: Partial<ReasoningCacheConfig>;
 }
 
 export class MiddlewareOrchestrator {
@@ -54,6 +56,7 @@ export class MiddlewareOrchestrator {
   public memoryBridge: MemoryBridge;
   public ragEnricher: RAGEnricher;
   public contextCapture: ContextCaptureEngine;
+  public reasoningCache: ReasoningCache;
   public healthMonitor: HealthMonitor | null = null;
 
   private configService: ConfigService;
@@ -87,6 +90,10 @@ export class MiddlewareOrchestrator {
     );
     this.contextCapture = new ContextCaptureEngine(
       middlewareConfig.contextCapture || {},
+      this.logger
+    );
+    this.reasoningCache = new ReasoningCache(
+      middlewareConfig.reasoningCache || {},
       this.logger
     );
 
@@ -143,6 +150,14 @@ export class MiddlewareOrchestrator {
         postgresConnectionString: this.configService.get("PG_CONNECTION_STRING"),
         jsonlPath: this.configService.get("CONTEXT_CAPTURE_JSONL_PATH") || "./dev/captures.jsonl",
       },
+      reasoningCache: {
+        enabled: this.configService.get("REASONING_CACHE_ENABLED") !== false,
+        postgresConnectionString: this.configService.get("PG_CONNECTION_STRING"),
+        maxChainLength: this.configService.get("REASONING_CACHE_MAX_CHAIN_LENGTH") || 8000,
+        maxResults: this.configService.get("REASONING_CACHE_MAX_RESULTS") || 3,
+        similarityThreshold: this.configService.get("REASONING_CACHE_THRESHOLD") || 0.7,
+        ttlMs: this.configService.get("REASONING_CACHE_TTL_MS") || 3600000,
+      },
     };
   }
 
@@ -161,6 +176,9 @@ export class MiddlewareOrchestrator {
       this.logger.info("  HealthMonitor: started");
     }
 
+    // Initialize reasoning cache
+    await this.reasoningCache.initialize();
+
     // Register built-in hooks
     this.registerBuiltInHooks();
 
@@ -175,6 +193,7 @@ export class MiddlewareOrchestrator {
     if (this.healthMonitor) {
       this.healthMonitor.stop();
     }
+    await this.reasoningCache.cleanup();
     this.initialized = false;
     this.logger.info("MiddlewareOrchestrator: shutdown");
   }
@@ -290,6 +309,27 @@ export class MiddlewareOrchestrator {
         (req as any)._memoryEnriched = true;
       }
 
+      // Retrieve reasoning hints for think/reasoning scenarios
+      if (scenarioType === 'think' || scenarioType === 'reasoning_pro_max' || isProModel) {
+        const query = this.extractQuerySummary(req.body);
+        const chains = await withTimeout(
+          this.reasoningCache.retrieve(query),
+          50,
+          [],
+          "reasoningCache.retrieve",
+          this.logger
+        );
+        const hint = this.reasoningCache.buildReasoningHint(chains);
+        if (hint) {
+          if (typeof req.body.system === "string") {
+            req.body.system += hint;
+          } else if (Array.isArray(req.body.system)) {
+            req.body.system.push({ type: "text", text: hint });
+          }
+          (req as any)._reasoningHintEnriched = true;
+        }
+      }
+
       // Execute onRouteDecision hooks
       const hookCtx = this.hookManager.createContext(req);
       hookCtx.tokenCount = (req as any).tokenCount;
@@ -370,6 +410,20 @@ export class MiddlewareOrchestrator {
       }).catch((err) => {
         this.logger?.warn(`Context capture failed: ${err?.message}`);
       });
+
+      // Store reasoning chain for future hint retrieval
+      const thinkingContent = this.extractThinkingContent(responseBody);
+      if (thinkingContent) {
+        const query = this.extractQuerySummary(req.body);
+        this.reasoningCache.store({
+          query,
+          reasoningContent: thinkingContent,
+          model: (req as any).model || 'unknown',
+          outputTokens: usage.output_tokens || 0,
+        }).catch((err: any) => {
+          this.logger?.debug(`ReasoningCache store failed: ${err?.message}`);
+        });
+      }
 
       // Log hallucination warnings
       if (reasoningCtx.hallucinationRisk > 0.5) {
@@ -465,6 +519,33 @@ export class MiddlewareOrchestrator {
       agentName: (req as any).gatewayAgentName,
       taskType: (req as any).gatewayTaskType,
     };
+  }
+
+  private extractThinkingContent(responseBody: any): string | null {
+    if (!responseBody?.content || !Array.isArray(responseBody.content)) return null;
+    const thinkingBlocks = responseBody.content
+      .filter((c: any) => c.type === "thinking")
+      .map((c: any) => c.thinking || "");
+    return thinkingBlocks.length > 0 ? thinkingBlocks.join("\n") : null;
+  }
+
+  private extractQuerySummary(body: any): string {
+    if (!body?.messages) return "";
+    const messages = body.messages as any[];
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.role === "user") {
+        const content = messages[i].content;
+        if (typeof content === "string") return content.slice(0, 500);
+        if (Array.isArray(content)) {
+          return content
+            .filter((c: any) => c.type === "text")
+            .map((c: any) => c.text || "")
+            .join(" ")
+            .slice(0, 500);
+        }
+      }
+    }
+    return "";
   }
 
   private registerBuiltInHooks(): void {
