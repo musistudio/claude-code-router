@@ -24,6 +24,7 @@
     "dotenv": "^16.4.7",
     "json5": "^2.2.3",
     "lru-cache": "^11.2.2",
+    "pg": "^8.21.0",
     "rotating-file-stream": "^3.2.7",
     "shell-quote": "^1.8.3",
     "tiktoken": "^1.0.21",
