@@ -30,7 +30,6 @@ export function sendUnifiedRequest(
     for (const headerName of ANTHROPIC_ONLY_HEADERS) {
       headers.delete(headerName);
     }
-    // Also clean up any lowercase variants
     for (const key of headers.keys()) {
       if (ANTHROPIC_ONLY_HEADERS.includes(key.toLowerCase())) {
         headers.delete(key);

@@ -11,10 +11,23 @@ export class DeepseekTransformer implements Transformer {
     return request;
   }
 
-  async transformResponseOut(response: Response): Promise<Response> {
+  async transformResponseOut(response: Response, context?: any): Promise<Response> {
     if (response.headers.get("Content-Type")?.includes("application/json")) {
       const jsonResponse = await response.json();
-      // Handle non-streaming response if needed
+      const msg = jsonResponse?.choices?.[0]?.message;
+      
+      // Map DeepSeek's reasoning_content to content for non-streaming responses.
+      // DeepSeek v4-flash returns empty content with reasoning_content as the actual
+      // response text. The AnthropicTransformer expects either message.content or
+      // message.thinking.content, and does not know about reasoning_content.
+      if (msg?.reasoning_content && (!msg.content || msg.content === "")) {
+        console.log(`[DeepseekTransformer] Remapping reasoning_content (${msg.reasoning_content.length} chars) -> content`);
+        msg.content = msg.reasoning_content;
+        delete msg.reasoning_content;
+      } else {
+        console.log(`[DeepseekTransformer] Non-streaming: content="${String(msg?.content).substring(0, 50)}", model=${jsonResponse?.model}`);
+      }
+
       return new Response(JSON.stringify(jsonResponse), {
         status: response.status,
         statusText: response.statusText,

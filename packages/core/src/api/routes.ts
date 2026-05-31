@@ -407,6 +407,16 @@ async function processResponseTransformers(
         finalResponse,
         context
       );
+      // Debug: log after provider transformer
+      try {
+        const clone = finalResponse.clone();
+        const txt = await clone.text();
+        const parsed = JSON.parse(txt);
+        context.req?.log?.debug({ 
+          stage: `after_provider_${providerTransformer.name}`,
+          content: parsed?.choices?.[0]?.message?.content?.substring(0, 100)
+        });
+      } catch {}
     }
   }
 
@@ -425,6 +435,16 @@ async function processResponseTransformers(
         finalResponse,
         context
       );
+      // Debug: log after model transformer
+      try {
+        const clone = finalResponse.clone();
+        const txt = await clone.text();
+        const parsed = JSON.parse(txt);
+        context.req?.log?.debug({ 
+          stage: `after_model_${modelTransformer.name}`,
+          content: parsed?.choices?.[0]?.message?.content?.substring(0, 100)
+        });
+      } catch {}
     }
   }
 
@@ -434,6 +454,18 @@ async function processResponseTransformers(
       finalResponse,
       context
     );
+    // Debug: log after main transformer
+    try {
+      const clone = finalResponse.clone();
+      const txt = await clone.text();
+      const parsed = JSON.parse(txt);
+      context.req?.log?.debug({ 
+        stage: `after_main_${transformer.name}`,
+        contentTypes: parsed?.content?.map((c:any) => c.type),
+        contentTexts: parsed?.content?.map((c:any) => c.text?.substring(0, 50)),
+        stop_reason: parsed?.stop_reason,
+      });
+    } catch {}
   }
 
   return finalResponse;

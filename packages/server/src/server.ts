@@ -582,5 +582,43 @@ export const createServer = async (config: any): Promise<any> => {
     };
   });
 
+  // Diagnostic: test AnthropicTransformer conversion
+  app.post("/api/debug/convert", async (req: any, reply: any) => {
+    try {
+      const { provider: pName } = req.body;
+      const prov = (app as any)._server!.providerService.getProvider(pName);
+      if (!prov) return reply.code(404).send({ error: "Provider not found" });
+      const url = new URL(prov.baseUrl);
+      const rawBody = {
+        model: "deepseek-chat",
+        messages: [{ role: "user", content: "Say hi in one word" }],
+        max_tokens: 10,
+        stream: false,
+      };
+      const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${prov.apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify(rawBody),
+      });
+      const rawJson = await res.json();
+      
+      // Now test the Anthropic conversion
+      const anthropicTransformer = (app as any)._server!.transformerService.getTransformer("Anthropic");
+      const converted = anthropicTransformer.convertOpenAIResponseToAnthropic(rawJson, { req: { id: "test" } });
+      
+      return {
+        raw: { model: rawJson.model, content: rawJson.choices?.[0]?.message?.content },
+        converted: { 
+          model: converted.model, 
+          contentTypes: converted.content?.map((c:any) => c.type),
+          contentTexts: converted.content?.map((c:any) => c.text?.substring(0,50)),
+          contentLength: converted.content?.length
+        },
+      };
+    } catch (e: any) {
+      return { error: e.message, stack: e.stack?.split('\n').slice(0,3) };
+    }
+  });
+
   return server;
 };
