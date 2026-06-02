@@ -20,22 +20,32 @@ function log(...args: any[]) {
 export function convertToolsToOpenAI(
   tools: UnifiedTool[]
 ): ChatCompletionTool[] {
-  return tools.map((tool) => ({
-    type: "function" as const,
-    function: {
-      name: tool.function.name,
-      description: tool.function.description,
-      parameters: tool.function.parameters,
-    },
-  }));
+  return tools
+    .filter((tool) => !tool.anthropic_server_tool_type)
+    .map((tool) => ({
+      type: "function" as const,
+      function: {
+        name: tool.function.name,
+        description: tool.function.description,
+        parameters: tool.function.parameters,
+      },
+    }));
 }
 
 export function convertToolsToAnthropic(tools: UnifiedTool[]): AnthropicTool[] {
-  return tools.map((tool) => ({
-    name: tool.function.name,
-    description: tool.function.description,
-    input_schema: tool.function.parameters,
-  }));
+  return tools.map((tool) => {
+    if (tool.anthropic_server_tool_type) {
+      return {
+        type: tool.anthropic_server_tool_type,
+        name: tool.function.name,
+      } as any;
+    }
+    return {
+      name: tool.function.name,
+      description: tool.function.description,
+      input_schema: tool.function.parameters,
+    };
+  }) as any;
 }
 
 export function convertToolsFromOpenAI(
@@ -54,14 +64,23 @@ export function convertToolsFromOpenAI(
 export function convertToolsFromAnthropic(
   tools: AnthropicTool[]
 ): UnifiedTool[] {
-  return tools.map((tool) => ({
-    type: "function" as const,
-    function: {
-      name: tool.name,
-      description: tool.description || "",
-      parameters: tool.input_schema as any,
-    },
-  }));
+  return tools.map((tool) => {
+    const isServerTool =
+      (tool as any).type?.startsWith("web_search_") ||
+      (tool as any).type?.startsWith("code_execution_");
+    return {
+      type: "function" as const,
+      function: {
+        name: tool.name,
+        description: tool.description || "",
+        parameters:
+          (tool as any).input_schema || { type: "object", properties: {} },
+      },
+      ...(isServerTool && {
+        anthropic_server_tool_type: (tool as any).type,
+      }),
+    };
+  });
 }
 
 export function convertToOpenAI(

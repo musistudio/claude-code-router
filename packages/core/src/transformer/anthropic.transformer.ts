@@ -243,14 +243,20 @@ export class AnthropicTransformer implements Transformer {
   }
 
   private convertAnthropicToolsToUnified(tools: any[]): UnifiedTool[] {
-    return tools.map((tool) => ({
-      type: "function",
-      function: {
-        name: tool.name,
-        description: tool.description || "",
-        parameters: tool.input_schema,
-      },
-    }));
+    return tools.map((tool) => {
+      const isServerTool =
+        tool.type?.startsWith("web_search_") ||
+        tool.type?.startsWith("code_execution_");
+      return {
+        type: "function",
+        function: {
+          name: tool.name,
+          description: tool.description || "",
+          parameters: tool.input_schema || { type: "object", properties: {} },
+        },
+        ...(isServerTool && { anthropic_server_tool_type: tool.type }),
+      };
+    });
   }
 
   private async convertOpenAIStreamToAnthropic(
