@@ -80,6 +80,10 @@ export interface UnifiedTool {
       $schema?: string;
     };
   };
+  /** Preserved Anthropic server-tool type (e.g. "web_search_20250305") so the
+   *  tool can be faithfully reconstructed when sent to an Anthropic-compatible
+   *  endpoint.  Absent for ordinary custom tools. */
+  anthropic_server_tool_type?: string;
 }
 
 export type ThinkLevel = "none" | "low" | "medium" | "high";

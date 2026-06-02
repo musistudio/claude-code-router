@@ -64,10 +64,41 @@ Route web search tasks:
 ```json
 {
   "Router": {
-    "webSearch": "deepseek,deepseek-chat"
+    "webSearch": "gemini,gemini-2.5-flash"
   }
 }
 ```
+
+:::tip DeepSeek + Web Search
+
+DeepSeek's Anthropic-compatible endpoint (`https://api.deepseek.com/anthropic`) **natively supports** `server_tool_use` and `web_search_tool_result` content blocks (see [DeepSeek Anthropic API docs](https://api-docs.deepseek.com/guides/anthropic_api)). 
+
+To use web search with DeepSeek, configure a dedicated provider pointing to the Anthropic endpoint. The `"Anthropic"` transformer name triggers CCR's bypass mechanism, passing requests through unmodified in native Anthropic format:
+
+```json
+{
+  "Providers": [
+    {
+      "name": "deepseek-anthropic",
+      "api_base_url": "https://api.deepseek.com/anthropic/v1/messages",
+      "api_key": "$DEEPSEEK_API_KEY",
+      "models": ["deepseek-v4-pro"],
+      "transformer": {
+        "use": ["Anthropic"]
+      }
+    }
+  ],
+  "Router": {
+    "webSearch": "deepseek-anthropic,deepseek-v4-pro"
+  }
+}
+```
+
+**Why this works**: When the provider's `transformer.use` contains exactly one transformer whose name matches the endpoint transformer (`"Anthropic"`), CCR's `shouldBypassTransformers()` skips all request/response conversion. The Anthropic-format request — including the `web_search_20250305` tool definition — reaches DeepSeek's Anthropic endpoint unmodified, and DeepSeek executes the search natively.
+
+This bypass pattern also works for other Anthropic server tools routed to Anthropic-compatible endpoints.
+
+:::
 
 ### Image Tasks
 
