@@ -20,7 +20,9 @@ try {
 
   // Build the server application
   console.log('Building server application...');
-  execSync('esbuild src/index.ts --bundle --platform=node --minify --tree-shaking=true --outfile=dist/index.js', {
+  const esbuildPath = path.join(serverDir, 'node_modules/.bin/esbuild');
+  const esbuildCmd = fs.existsSync(esbuildPath) ? esbuildPath : 'esbuild';
+  execSync(`"${esbuildCmd}" src/index.ts --bundle --platform=node --minify --tree-shaking=true --outfile=dist/index.js`, {
     stdio: 'inherit',
     cwd: serverDir
   });

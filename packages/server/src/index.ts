@@ -550,8 +550,9 @@ export { initDir, initConfig, readConfigFile, writeConfigFile, backupConfigFile 
 export { pluginManager, tokenSpeedPlugin } from "@musistudio/llms";
 export { getMetrics, getCircuitBreaker, getAllCircuitBreakers, CircuitState, getRateLimiter, withRetry, redactString, redactObject, getBudgetManager, getIdempotencyGuard, getPermissionGuard, getMockServer, getStructuredOutputProcessor, getPromptTemplateEngine, getMultiModelVoter, getSelfReflector, getReplayManager, getRedisCache, getVectorStore, getTaskQueue, getWsPush, getCacheWarmer, getABTester, getTaskSplitter, getTenantManager, getKeyRotator, getQualityScorer, getAuditLogger, getSlidingWindow, getDocLoader, getCascadeChain, getTaskScheduler, getFeedbackStore, getMultimodalProcessor, getComplianceDisclaimer, getCacheReportAggregator, getOllamaFallback, getProxyDiffTracker, getCodeExtractor, getIntentRouter } from "@musistudio/llms";
 
-// Start service if this file is run directly
-if (require.main === module) {
+// Start service if this file is run directly (or as esbuild bundle)
+const isMain = require.main === module || !require.main;
+if (isMain) {
   run().catch((error) => {
     console.error('Failed to start server:', error);
     process.exit(1);

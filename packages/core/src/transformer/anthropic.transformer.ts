@@ -297,7 +297,6 @@ export class AnthropicTransformer implements Transformer {
         let currentContentBlockIndex = -1;
         let currentContentBlockType: 'thinking' | 'text' | 'tool' | null = null;
 
-        const assignContentBlockIndex
         const assignContentBlockIndex = (): number => {
           const currentIndex = contentIndex;
           contentIndex++;

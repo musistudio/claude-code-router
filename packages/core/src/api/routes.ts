@@ -1625,37 +1625,6 @@ export const registerApiRoutes = async (
     });
   });
 
-  fastify.post("/v1/messages/count_tokens", async (req: FastifyRequest, reply: FastifyReply) => {
-    const body = req.body as any;
-    const messages = body.messages || [];
-    const system = body.system || '';
-    const tools = body.tools || [];
-
-    let totalChars = 0;
-    if (typeof system === 'string') totalChars += system.length;
-    else if (Array.isArray(system)) totalChars += system.reduce((acc: number, s: any) => acc + (s.text?.length || 0), 0);
-
-    for (const msg of messages) {
-      if (typeof msg.content === 'string') totalChars += msg.content.length;
-      else if (Array.isArray(msg.content)) {
-        for (const block of msg.content) {
-          totalChars += (block.text?.length || 0) + (block.thinking?.length || 0) + (block.input?.length || 0);
-        }
-      }
-    }
-    for (const tool of tools) {
-      totalChars += (tool.name?.length || 0) + (tool.description?.length || 0) + JSON.stringify(tool.input_schema || {}).length;
-    }
-
-    const estimatedTokens = Math.ceil(totalChars / 4) + 1;
-
-    return {
-      input_tokens: estimatedTokens,
-      cache_creation_input_tokens: 0,
-      cache_read_input_tokens: 0,
-    };
-  });
-
   const transformersWithEndpoint =
     fastify.transformerService.getTransformersWithEndpoint();
 

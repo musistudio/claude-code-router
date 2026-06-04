@@ -6,7 +6,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "node ../../scripts/build-server.js",
-    "dev": "ts-node src/index.ts"
+    "dev": "tsx src/index.ts"
   },
   "keywords": [
     "claude",
