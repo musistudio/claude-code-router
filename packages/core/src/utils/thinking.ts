@@ -44,6 +44,7 @@ export function parseThinkingConfig(thinking: any): {
 
 export function thinkingToOpenAI(config: ReturnType<typeof parseThinkingConfig>): {
   reasoning?: { effort: string };
+  thinking?: { type: string };
 } | {} {
   if (!config.enabled) return {};
   const effortMap: Record<ThinkLevel, string> = {
@@ -53,6 +54,13 @@ export function thinkingToOpenAI(config: ReturnType<typeof parseThinkingConfig>)
     high: "high",
   };
   return { reasoning: { effort: effortMap[config.level] || "medium" } };
+}
+
+export function thinkingToGlm(config: ReturnType<typeof parseThinkingConfig>): {
+  thinking?: { type: "enabled" };
+} | {} {
+  if (!config.enabled) return {};
+  return { thinking: { type: "enabled" } } as any;
 }
 
 export function thinkingToAnthropic(config: ReturnType<typeof parseThinkingConfig>): {

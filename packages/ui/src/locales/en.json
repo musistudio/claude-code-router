@@ -239,6 +239,20 @@
     "grouping_not_supported": "Log grouping not supported by server",
     "back": "Back"
   },
+  "quick_add": {
+    "title": "Quick Add",
+    "description": "Choose a preset or add a custom provider",
+    "api_key": "API Key",
+    "api_key_placeholder": "Enter your API key",
+    "api_key_required": "API Key is required",
+    "name": "Provider Name",
+    "name_required": "Provider name is required",
+    "add": "Add Provider",
+    "custom": "Custom Provider",
+    "presets": "Provider Presets",
+    "models": "Models",
+    "transformer_auto": "Transformer will be auto-configured"
+  },
   "presets": {
     "title": "Presets",
     "market_title": "Preset Market",

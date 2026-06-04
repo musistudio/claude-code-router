@@ -23,6 +23,10 @@ export const MODEL_COST_TABLE: Record<string, { input: number; output: number }>
   'deepseek-reasoner':        { input: 0.55,  output: 2.19 },
   'deepseek-v4-pro':          { input: 0.55,  output: 2.19 },
   'deepseek-v4-flash':        { input: 0.14,  output: 0.28 },
+  // GLM (Zhipu AI)
+  'glm-5.1':                  { input: 5.0,   output: 5.0 },
+  'glm-4.7':                  { input: 5.0,   output: 5.0 },
+  'glm-4':                    { input: 1.0,   output: 1.0 },
   // OpenAI
   'gpt-4o':                   { input: 2.5,   output: 10.0 },
   'gpt-4o-mini':              { input: 0.15,  output: 0.6 },

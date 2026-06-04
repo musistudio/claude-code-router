@@ -19,6 +19,9 @@ export const MODEL_LIMITS: Record<string, ModelLimits> = {
   'qwen-plus': { maxOutputTokens: 8192, contextWindow: 131072 },
   'deepseek-v4-pro': { maxOutputTokens: 64000, contextWindow: 128000 },
   'deepseek-v4-flash': { maxOutputTokens: 64000, contextWindow: 128000 },
+  'glm-5.1': { maxOutputTokens: 128000, contextWindow: 200000 },
+  'glm-4.7': { maxOutputTokens: 64000, contextWindow: 128000 },
+  'glm-4': { maxOutputTokens: 4096, contextWindow: 128000 },
 };
 
 export function getModelLimits(model: string): ModelLimits {

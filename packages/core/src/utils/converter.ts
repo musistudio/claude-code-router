@@ -200,7 +200,10 @@ export function convertToOpenAI(
   }
 
   if (targetModel) {
-    sanitizeReasoningModelParams(result, targetModel);
+    const isGlmModel = targetModel.toLowerCase().startsWith('glm');
+    if (!isGlmModel) {
+      sanitizeReasoningModelParams(result, targetModel);
+    }
   }
 
   return result;

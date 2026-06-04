@@ -239,6 +239,20 @@
     "grouping_not_supported": "服务器不支持日志分组",
     "back": "返回"
   },
+  "quick_add": {
+    "title": "快速添加",
+    "description": "选择预设模板或添加自定义供应商",
+    "api_key": "API 密钥",
+    "api_key_placeholder": "输入您的 API 密钥",
+    "api_key_required": "API 密钥为必填项",
+    "name": "供应商名称",
+    "name_required": "供应商名称为必填项",
+    "add": "添加供应商",
+    "custom": "自定义供应商",
+    "presets": "供应商预设",
+    "models": "模型",
+    "transformer_auto": "转换器将自动配置"
+  },
   "presets": {
     "title": "预设",
     "market_title": "预设市场",

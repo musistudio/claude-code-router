@@ -14,7 +14,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { X, Trash2, Plus, Eye, EyeOff, Search, XCircle } from "lucide-react";
+import { X, Trash2, Plus, Eye, EyeOff, Search, XCircle, Zap } from "lucide-react";
+import { QuickAddProvider } from './QuickAddProvider';
 import { Badge } from "@/components/ui/badge";
 import { Combobox } from "@/components/ui/combobox";
 import { ComboInput } from "@/components/ui/combo-input";
@@ -39,6 +40,7 @@ export function Providers() {
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
   const comboInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -103,6 +105,11 @@ export function Providers() {
     }));
     setApiKeyError(null);
     setNameError(null);
+  };
+
+  const handleQuickAddProvider = (provider: Provider) => {
+    const newProviders = [...config.Providers, provider];
+    setConfig({ ...config, Providers: newProviders });
   };
 
   const handleEditProvider = (index: number) => {
@@ -523,7 +530,13 @@ export function Providers() {
       <CardHeader className="flex flex-col border-b p-4 gap-3">
         <div className="flex flex-row items-center justify-between">
           <CardTitle className="text-lg">{t("providers.title")} <span className="text-sm font-normal text-gray-500">({filteredProviders.length}/{validProviders.length})</span></CardTitle>
-          <Button onClick={handleAddProvider}>{t("providers.add")}</Button>
+          <div className="flex gap-2">
+            <Button onClick={() => setShowQuickAdd(true)} variant="outline" size="sm">
+              <Zap className="h-4 w-4 mr-2" />
+              {t("quick_add.title")}
+            </Button>
+            <Button onClick={handleAddProvider}>{t("providers.add")}</Button>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
@@ -1054,6 +1067,17 @@ export function Providers() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {showQuickAdd && (
+        <QuickAddProvider
+          onClose={() => setShowQuickAdd(false)}
+          onAdd={(provider) => {
+            handleQuickAddProvider(provider);
+            setShowQuickAdd(false);
+          }}
+          transformers={availableTransformers}
+        />
+      )}
     </Card>
   );
 }

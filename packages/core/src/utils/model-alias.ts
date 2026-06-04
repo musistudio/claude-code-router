@@ -23,6 +23,10 @@ const BUILTIN_ALIASES: Record<string, string> = {
   'grok': 'grok-3',
   'grok-mini': 'grok-3-mini',
   'kimi': 'kimi-k2.5',
+  'glm': 'glm-5.1',
+  'glm-5': 'glm-5.1',
+  'glm-4': 'glm-4.7',
+  'chatglm': 'glm-5.1',
 };
 
 /**
