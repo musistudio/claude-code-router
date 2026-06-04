@@ -294,9 +294,10 @@ export class AnthropicTransformer implements Transformer {
         let isClosed = false;
         let isThinkingStarted = false;
         let contentIndex = 0;
-        let currentContentBlockIndex = -1; // Track the current content block index
+        let currentContentBlockIndex = -1;
+        let currentContentBlockType: 'thinking' | 'text' | 'tool' | null = null;
 
-        // 原子性的content block index分配函数
+        const assignContentBlockIndex
         const assignContentBlockIndex = (): number => {
           const currentIndex = contentIndex;
           contentIndex++;
@@ -348,6 +349,7 @@ export class AnthropicTransformer implements Transformer {
                   )
                 );
                 currentContentBlockIndex = -1;
+                currentContentBlockType = null;
               }
 
               if (stopReasonMessageDelta) {
@@ -557,6 +559,7 @@ export class AnthropicTransformer implements Transformer {
                       )
                     );
                     currentContentBlockIndex = -1;
+                    currentContentBlockType = null;
                   } else {
                     if (!isThinkingStarted) {
                       const thinkingBlockIndex = assignContentBlockIndex();
@@ -573,6 +576,7 @@ export class AnthropicTransformer implements Transformer {
                         )
                       );
                       currentContentBlockIndex = thinkingBlockIndex;
+                      currentContentBlockType = 'thinking';
                       isThinkingStarted = true;
                     }
                     if (choice.delta.thinking.signature) {
@@ -603,6 +607,7 @@ export class AnthropicTransformer implements Transformer {
                         )
                       );
                       currentContentBlockIndex = -1;
+                      currentContentBlockType = null;
                     } else if (choice.delta.thinking.content) {
                       const thinkingChunk = {
                         type: "content_block_delta",
@@ -626,24 +631,20 @@ export class AnthropicTransformer implements Transformer {
                 if (choice?.delta?.content && !isClosed && !hasFinished) {
                   contentChunks++;
 
-                  // Close any previous content block if open and it's not a text content block
-                  if (currentContentBlockIndex >= 0) {
-                    // Check if current content block is text type
-                    const isCurrentTextBlock = hasTextContentStarted;
-                    if (!isCurrentTextBlock) {
-                      const contentBlockStop = {
-                        type: "content_block_stop",
-                        index: currentContentBlockIndex,
-                      };
-                      safeEnqueue(
-                        encoder.encode(
-                          `event: content_block_stop\ndata: ${JSON.stringify(
-                            contentBlockStop
-                          )}\n\n`
-                        )
-                      );
-                      currentContentBlockIndex = -1;
-                    }
+                  if (currentContentBlockIndex >= 0 && currentContentBlockType !== 'text') {
+                    const contentBlockStop = {
+                      type: "content_block_stop",
+                      index: currentContentBlockIndex,
+                    };
+                    safeEnqueue(
+                      encoder.encode(
+                        `event: content_block_stop\ndata: ${JSON.stringify(
+                          contentBlockStop
+                        )}\n\n`
+                      )
+                    );
+                    currentContentBlockIndex = -1;
+                    currentContentBlockType = null;
                   }
 
                   if (!hasTextContentStarted && !hasFinished) {
@@ -665,6 +666,7 @@ export class AnthropicTransformer implements Transformer {
                       )
                     );
                     currentContentBlockIndex = textBlockIndex;
+                    currentContentBlockType = 'text';
                   }
 
                   if (!isClosed && !hasFinished) {
@@ -705,6 +707,7 @@ export class AnthropicTransformer implements Transformer {
                       )
                     );
                     currentContentBlockIndex = -1;
+                    currentContentBlockType = null;
                     hasTextContentStarted = false;
                   }
 
@@ -777,6 +780,7 @@ export class AnthropicTransformer implements Transformer {
                           )
                         );
                         currentContentBlockIndex = -1;
+                        currentContentBlockType = null;
                       }
 
                       const newContentBlockIndex = assignContentBlockIndex();
@@ -807,6 +811,7 @@ export class AnthropicTransformer implements Transformer {
                         )
                       );
                       currentContentBlockIndex = newContentBlockIndex;
+                      currentContentBlockType = 'tool';
 
                       const toolCallInfo = {
                         id: toolCallId,
@@ -860,30 +865,8 @@ export class AnthropicTransformer implements Transformer {
                           )
                         );
                       } catch {
-                        try {
-                          const fixedArgument = toolCall.function.arguments
-                            .replace(/[\x00-\x1F\x7F-\x9F]/g, "")
-                            .replace(/\\/g, "\\\\")
-                            .replace(/"/g, '\\"');
-
-                          const fixedChunk = {
-                            type: "content_block_delta",
-                            index: blockIndex, // Use the correct content block index
-                            delta: {
-                              type: "input_json_delta",
-                              partial_json: fixedArgument,
-                            },
-                          };
-                          safeEnqueue(
-                            encoder.encode(
-                              `event: content_block_delta\ndata: ${JSON.stringify(
-                                fixedChunk
-                              )}\n\n`
-                            )
-                          );
-                        } catch (fixError) {
-                          console.error(fixError);
-                        }
+                        // Skip this chunk - controller is likely already closed
+                        // or the arguments contain unfixable encoding issues
                       }
                     }
                   }
@@ -910,6 +893,7 @@ export class AnthropicTransformer implements Transformer {
                       )
                     );
                     currentContentBlockIndex = -1;
+                    currentContentBlockType = null;
                   }
 
                   if (!isClosed) {

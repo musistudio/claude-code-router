@@ -38,7 +38,7 @@ export interface RAGConfig {
 
 const DEFAULT_CONFIG: RAGConfig = {
   enabled: true,
-  maxEnrichmentTokens: 2000,
+  maxEnrichmentTokens: 4000,
   sources: {
     projectDocs: true,
     memoryMCP: false,
@@ -198,7 +198,7 @@ export class RAGEnricher extends EventEmitter {
         if (existsSync(path)) {
           const content = await readFile(path, "utf-8");
           // Extract key sections (first 200 lines per doc)
-          const lines = content.split("\n").slice(0, 200);
+          const lines = content.split("\n").slice(0, 500);
           contents.push(`## ${file}\n${lines.join("\n")}`);
         }
       }

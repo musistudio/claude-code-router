@@ -845,6 +845,20 @@ function formatResponse(response: any, reply: FastifyReply, body: any, req?: any
 export const registerApiRoutes = async (
   fastify: FastifyInstance
 ) => {
+  fastify.addHook('onRequest', async (req: any, reply: any) => {
+    if (!req.url?.startsWith('/api/')) return;
+    if (req.url === '/api/health') return;
+    if (req.url === '/api/config' && req.method === 'GET') return;
+    const configuredApiKey = fastify.configService?.get('APIKEY');
+    if (!configuredApiKey) return;
+    const providedKey = req.headers['x-api-key'] ||
+                        (req.headers['authorization']?.startsWith('Bearer ') ? req.headers['authorization'].slice(7) : null);
+    if (providedKey !== configuredApiKey) {
+      reply.code(401).send({ error: 'Unauthorized', message: 'Valid API key required' });
+      return reply;
+    }
+  });
+
   // Health and info endpoints
   fastify.get("/", async () => {
     return { message: "LLMs API", version };
@@ -1793,6 +1807,12 @@ function isValidUrl(url: string): boolean {
 }
 
 function isPrivateIP(hostname: string): boolean {
+  if (/^0[0-7]+(\.[0-7]+){0,3}$/.test(hostname)) {
+    try {
+      const parts = hostname.split('.').map(p => parseInt(p, 8));
+      hostname = parts.join('.');
+    } catch {}
+  }
   if (/^\d{8,10}$/.test(hostname)) {
     const n = parseInt(hostname, 10);
     const a = (n >>> 24) & 0xff;

@@ -20,6 +20,42 @@ import {
   RegisterProviderRequest,
 } from "../types/llm";
 
+function isPrivateIP(hostname: string): boolean {
+  if (/^0[0-7]+(\.[0-7]+){0,3}$/.test(hostname)) {
+    try {
+      const parts = hostname.split('.').map(p => parseInt(p, 8));
+      hostname = parts.join('.');
+    } catch {}
+  }
+  if (/^\d{8,10}$/.test(hostname)) {
+    const n = parseInt(hostname, 10);
+    const a = (n >>> 24) & 0xff;
+    const b = (n >>> 16) & 0xff;
+    const c = (n >>> 8) & 0xff;
+    const d = n & 0xff;
+    hostname = `${a}.${b}.${c}.${d}`;
+  }
+  const hexMatch = hostname.match(/^0x([0-9a-f]+)$/i);
+  if (hexMatch) {
+    const n = parseInt(hexMatch[1], 16);
+    if (n > 0) {
+      const a = (n >>> 24) & 0xff;
+      const b = (n >>> 16) & 0xff;
+      const c = (n >>> 8) & 0xff;
+      const d = n & 0xff;
+      hostname = `${a}.${b}.${c}.${d}`;
+    }
+  }
+  if (hostname.includes(':')) {
+    const v6 = hostname.toLowerCase();
+    if (v6 === '::1' || v6.startsWith('fc') || v6.startsWith('fd') ||
+        v6.startsWith('fe80') || v6.startsWith('fe90') || v6.startsWith('fea') || v6.startsWith('feb') ||
+        v6 === '::' || v6 === '0:0:0:0:0:0:0:0' ||
+        /^::ffff:/.test(v6)) return true;
+  }
+  return /^(127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.|localhost)/i.test(hostname);
+}
+
 export interface ProviderMetadata {
   provider_type?: string;
   region?: string;
@@ -125,6 +161,15 @@ export class ProviderRegistry extends EventEmitter {
         metadata: p.metadata || {},
       });
       this.healthStates.set(p.name, this.createInitialHealth(p.name));
+      try {
+        const base = p.api_base_url || p.baseUrl;
+        if (base) {
+          const parsed = new URL(base);
+          if (isPrivateIP(parsed.hostname)) {
+            this.logger.warn(`ProviderRegistry: provider '${p.name}' has private IP baseUrl (${parsed.hostname}) - potential SSRF risk`);
+          }
+        }
+      } catch {}
     }
     this.logger.info(
       `ProviderRegistry: loaded ${this.providerConfigs.size} providers from config`

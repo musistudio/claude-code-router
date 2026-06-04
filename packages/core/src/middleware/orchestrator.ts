@@ -605,6 +605,8 @@ export class MiddlewareOrchestrator {
           taskType: context.taskType,
           model: (req as any).body?.model || "unknown",
           tokenCount: (req as any).tokenCount,
+        }).catch((err) => {
+          this.logger?.debug(`SemanticCache store failed: ${err?.message}`);
         });
 
         // L2 Redis cache store (fire-and-forget)

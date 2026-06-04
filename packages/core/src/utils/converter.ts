@@ -173,11 +173,8 @@ export function convertToOpenAI(
   }
 
   if (toolResponsesQueue.size > 0) {
-    for (const [id, responses] of toolResponsesQueue.entries()) {
-      responses.forEach((response) => {
-        messages.push(response);
-      });
-    }
+    console.warn(`Discarding ${toolResponsesQueue.size} orphan tool responses at end of message list`);
+    toolResponsesQueue.clear();
   }
 
   const result: any = {
@@ -191,7 +188,7 @@ export function convertToOpenAI(
   if (request.tools && request.tools.length > 0) {
     result.tools = convertToolsToOpenAI(request.tools);
     if (request.tool_choice) {
-      if (request.tool_choice === "auto" || request.tool_choice === "none") {
+      if (request.tool_choice === "auto" || request.tool_choice === "none" || request.tool_choice === "required") {
         result.tool_choice = request.tool_choice;
       } else {
         result.tool_choice = {
@@ -512,6 +509,8 @@ export function convertFromAnthropic(
     if (request.tool_choice) {
       if (request.tool_choice.type === "auto") {
         result.tool_choice = "auto";
+      } else if (request.tool_choice.type === "any") {
+        result.tool_choice = "required";
       } else if (request.tool_choice.type === "tool") {
         result.tool_choice = request.tool_choice.name;
       }
@@ -596,12 +595,14 @@ export function convertToAnthropic(
 
   if (system) result.system = system;
   if (request.temperature != null) result.temperature = request.temperature;
-  if (request.tools && request.tools.length > 0) {
+  if (request.tools && request.tools.length > 0 && request.tool_choice !== "none") {
     result.tools = convertToolsToAnthropic(request.tools);
   }
   if (request.tool_choice) {
     if (request.tool_choice === "auto") {
       result.tool_choice = { type: "auto" };
+    } else if (request.tool_choice === "required") {
+      result.tool_choice = { type: "any" };
     } else if (typeof request.tool_choice === "string") {
       result.tool_choice = { type: "tool", name: request.tool_choice };
     } else if (typeof request.tool_choice === "object") {
