@@ -138,8 +138,28 @@ const getUseModel = async (
   const providers = configService.get<any[]>("providers") || [];
   const Router = projectSpecificRouter || configService.get("Router");
 
-  // Try model alias resolution first (e.g. "claude-opus-4" → "deepseek,deepseek-v4-pro")
-  // This is config-driven via ModelMapping section — no hardcoded mappings
+  // Slash-prefix routing: "openai/gpt-4.1" → "openai,gpt-4.1"
+  if (req.body.model?.includes('/') && !req.body.model.includes(',')) {
+    const [prefix, ...rest] = req.body.model.split('/');
+    const actualModel = rest.join('/');
+    const providerMap: Record<string, string> = {
+      'openai': 'openai',
+      'xai': 'xai',
+      'qwen': 'dashscope',
+      'kimi': 'dashscope',
+      'deepseek': 'deepseek',
+      'anthropic': 'anthropic',
+      'google': 'google',
+      'groq': 'groq',
+    };
+    const resolvedProvider = providerMap[prefix.toLowerCase()];
+    if (resolvedProvider) {
+      req.log.info(`Slash-prefix routing: ${req.body.model} → ${resolvedProvider},${actualModel}`);
+      req.body.model = `${resolvedProvider},${actualModel}`;
+    }
+  }
+
+  // Try model alias resolution (e.g. "opus" → "claude-opus-4-6", then config overrides)
   if (!req.body.model.includes(",")) {
     const aliasTarget = resolveModelAlias(req.body.model, configService);
     if (aliasTarget) {

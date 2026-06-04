@@ -17,6 +17,25 @@ function log(...args: any[]) {
   console.log(...args);
 }
 
+function sanitizeReasoningModelParams(body: any, targetModel: string): void {
+  const isReasoningModel = /^(o1-|o3-|o4-|grok-3-mini|qwen-qwq)/.test(targetModel);
+  const isGPT5 = /^gpt-5/.test(targetModel);
+
+  if (isReasoningModel) {
+    delete body.temperature;
+    delete body.top_p;
+    delete body.frequency_penalty;
+    delete body.presence_penalty;
+  }
+
+  if (isGPT5) {
+    if (body.max_tokens) {
+      body.max_completion_tokens = body.max_tokens;
+      delete body.max_tokens;
+    }
+  }
+}
+
 export function convertToolsToOpenAI(
   tools: UnifiedTool[]
 ): ChatCompletionTool[] {
@@ -65,21 +84,41 @@ export function convertToolsFromAnthropic(
 }
 
 export function convertToOpenAI(
-  request: UnifiedChatRequest
+  request: UnifiedChatRequest,
+  targetModel?: string
 ): OpenAIChatRequest {
   const messages: OpenAIMessage[] = [];
-  const toolResponsesQueue: Map<string, any> = new Map(); // For storing tool responses
+  const toolResponsesQueue: Map<string, any> = new Map();
+  const knownToolUseIds: Set<string> = new Set();
+
+  for (const msg of request.messages) {
+    if (msg.role === "assistant" && msg.tool_calls) {
+      for (const tc of msg.tool_calls) {
+        if (tc.id) knownToolUseIds.add(tc.id);
+      }
+    }
+  }
+
+  const isKimiModel = targetModel?.toLowerCase().includes("kimi");
 
   request.messages.forEach((msg) => {
     if (msg.role === "tool" && msg.tool_call_id) {
+      if (!knownToolUseIds.has(msg.tool_call_id)) {
+        log(`[converter] Skipping orphan tool result for tool_call_id=${msg.tool_call_id} (no matching tool_use)`);
+        return;
+      }
       if (!toolResponsesQueue.has(msg.tool_call_id)) {
         toolResponsesQueue.set(msg.tool_call_id, []);
       }
-      toolResponsesQueue.get(msg.tool_call_id).push({
+      const entry: any = {
         role: "tool",
         content: msg.content,
         tool_call_id: msg.tool_call_id,
-      });
+      };
+      if (!isKimiModel && (msg as any).is_error !== undefined) {
+        entry.is_error = (msg as any).is_error;
+      }
+      toolResponsesQueue.get(msg.tool_call_id).push(entry);
     }
   });
 
@@ -161,6 +200,10 @@ export function convertToOpenAI(
         };
       }
     }
+  }
+
+  if (targetModel) {
+    sanitizeReasoningModelParams(result, targetModel);
   }
 
   return result;
@@ -258,7 +301,8 @@ export function convertFromOpenAI(
 }
 
 export function convertFromAnthropic(
-  request: AnthropicChatRequest
+  request: AnthropicChatRequest,
+  targetModel?: string
 ): UnifiedChatRequest {
   const messages: UnifiedMessage[] = [];
 
@@ -270,7 +314,20 @@ export function convertFromAnthropic(
   }
   const pendingToolCalls: any[] = [];
   const pendingTextContent: string[] = [];
+  const knownToolUseIds: Set<string> = new Set();
   let lastRole: string | null = null;
+
+  for (const msg of request.messages) {
+    if (Array.isArray(msg.content)) {
+      msg.content.forEach((block) => {
+        if (block.type === "tool_use" && block.id) {
+          knownToolUseIds.add(block.id);
+        }
+      });
+    }
+  }
+
+  const isKimiModel = targetModel?.toLowerCase().includes("kimi");
 
   for (let i = 0; i < request.messages.length; i++) {
     const msg = request.messages[i];
@@ -337,14 +394,22 @@ export function convertFromAnthropic(
         }
 
         toolResults.forEach((toolResult) => {
-          messages.push({
+          if (!knownToolUseIds.has(toolResult.tool_use_id)) {
+            log(`[converter] Skipping orphan tool_result for tool_use_id=${toolResult.tool_use_id} (no matching tool_use)`);
+            return;
+          }
+          const toolMsg: UnifiedMessage = {
             role: "tool",
             content:
               typeof toolResult.content === "string"
                 ? toolResult.content
                 : JSON.stringify(toolResult.content),
             tool_call_id: toolResult.tool_use_id,
-          });
+          };
+          if (!isKimiModel && toolResult.is_error !== undefined) {
+            (toolMsg as any).is_error = toolResult.is_error;
+          }
+          messages.push(toolMsg);
         });
       } else if (msg.role === "assistant") {
         if (lastRole === "assistant") {
@@ -451,6 +516,10 @@ export function convertFromAnthropic(
         result.tool_choice = request.tool_choice.name;
       }
     }
+  }
+
+  if (targetModel) {
+    sanitizeReasoningModelParams(result, targetModel);
   }
 
   return result;

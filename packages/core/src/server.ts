@@ -33,6 +33,7 @@ import { TransformerService } from "./services/transformer";
 import { TokenizerService } from "./services/tokenizer";
 import { router, calculateTokenCount, searchProjectBySession } from "./utils/router";
 import { sessionUsageCache } from "./utils/cache";
+import { resolveReasoningEffort } from "./utils/thinking";
 import { MiddlewareOrchestrator } from "./middleware/orchestrator";
 import { acquireConcurrencySlots, releaseWhenResponseCompletes } from "./utils/concurrency";
 
@@ -262,8 +263,13 @@ class Server {
               req.provider = provider;
               req.model = model.join(",");
 
-              if (body.thinking?.type === "enabled" && provider === "deepseek") {
-                body.output_config = { effort: this.classifyThinkingEffort(body) };
+              if (provider === "deepseek") {
+                const reasoning = resolveReasoningEffort(body);
+                if (reasoning.effort) {
+                  body.output_config = { effort: reasoning.effort };
+                } else {
+                  body.output_config = { effort: this.classifyThinkingEffort(body) };
+                }
               }
 
               const concurrencyConfig = this.configService.get('Concurrency');
@@ -303,6 +309,8 @@ class Server {
         if (req.url?.includes("/v1/messages") && payload) {
           try {
             if (typeof payload !== "string") return payload;
+            const isSSE = payload.startsWith('event:') || payload.startsWith('data:');
+            if (isSSE) return payload;
             const parsed = JSON.parse(payload);
             if (parsed && !parsed.error && parsed.content) {
               await this.orchestrator.onPostResponse(req, parsed).catch(() => {});

@@ -2,8 +2,11 @@ import { ConfigService } from '../services/config';
 
 /**
  * Model alias resolution system.
- * Reads the ModelMapping config from the ConfigService and
- * resolves model names (e.g. "claude-opus-4" → "deepseek,deepseek-v4-pro").
+ * Uses builtin aliases first, then falls back to the ModelMapping config.
+ *
+ * Resolution order:
+ * 1. BUILTIN_ALIASES (hardcoded, ships with the proxy)
+ * 2. ModelMapping config (user-defined, overrides builtins on conflict)
  *
  * The ModelMapping config section is a simple key→value map:
  * {
@@ -11,33 +14,53 @@ import { ConfigService } from '../services/config';
  *   "opus": "deepseek,deepseek-v4-pro",
  *   ...
  * }
- *
- * This lets users remap any model name to a provider,model pair.
- * The config is 100% data-driven; adding a new model mapping only requires
- * editing config.json, *not* code changes.
  */
+
+const BUILTIN_ALIASES: Record<string, string> = {
+  'opus': 'claude-opus-4-6',
+  'sonnet': 'claude-sonnet-4-6',
+  'haiku': 'claude-haiku-4-5-20251213',
+  'grok': 'grok-3',
+  'grok-mini': 'grok-3-mini',
+  'kimi': 'kimi-k2.5',
+};
 
 /**
- * Attempt to resolve a model name through the ModelMapping.
- * Returns the mapped "provider,model" string if a mapping exists,
- * or null if no mapping is found.
+ * Attempt to resolve a model name through builtin aliases first,
+ * then through the ModelMapping config.
+ * Returns the mapped string if a mapping exists, or null if not found.
  *
  * Resolution strategy:
- * 1. Exact match (e.g. "claude-opus-4-20250514")
- * 2. Progressive prefix stripping (e.g. "claude-opus-4-20250514" → "claude-opus-4")
- * 3. Case-insensitive fallback
+ * 1. BUILTIN_ALIASES exact match (case-insensitive)
+ * 2. Config ModelMapping exact match
+ * 3. Config ModelMapping progressive prefix stripping
+ * 4. Config ModelMapping case-insensitive fallback
  */
 export function resolveModelAlias(model: string, configService: ConfigService): string | null {
+  // 0. Builtin aliases (checked first, config overrides on conflict below)
+  const lowerModel = model.toLowerCase();
+  const builtinMatch = BUILTIN_ALIASES[lowerModel];
+
   const mapping = configService.get<Record<string, string>>('ModelMapping') || {};
 
-  // 1. Exact match
+  // 1. Config exact match (overrides builtin)
   if (mapping[model]) {
     return mapping[model];
   }
 
-  // 2. Try stripping version date suffixes progressively
-  // e.g. "claude-opus-4-20250514" → try "claude-opus-4-20250514", "claude-opus-4-202505", "claude-opus-4-20250", etc.
-  // More practically: split on '-' and try progressively shorter prefixes
+  // 2. Config case-insensitive match (overrides builtin)
+  for (const [key, value] of Object.entries(mapping)) {
+    if (key.toLowerCase() === lowerModel) {
+      return value;
+    }
+  }
+
+  // 3. Return builtin match if no config override found
+  if (builtinMatch) {
+    return builtinMatch;
+  }
+
+  // 4. Try stripping version date suffixes progressively
   const parts = model.split('-');
   if (parts.length > 2) {
     for (let i = parts.length - 1; i > 1; i--) {
@@ -45,14 +68,6 @@ export function resolveModelAlias(model: string, configService: ConfigService): 
       if (mapping[prefix]) {
         return mapping[prefix];
       }
-    }
-  }
-
-  // 3. Case-insensitive lookup
-  const lowerModel = model.toLowerCase();
-  for (const [key, value] of Object.entries(mapping)) {
-    if (key.toLowerCase() === lowerModel) {
-      return value;
     }
   }
 

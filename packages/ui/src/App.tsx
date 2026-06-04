@@ -10,7 +10,7 @@ import { LogViewer } from "@/components/LogViewer";
 import { Button } from "@/components/ui/button";
 import { useConfig } from "@/components/ConfigProvider";
 import { api } from "@/lib/api";
-import { Settings, Languages, Save, RefreshCw, FileJson, CircleArrowUp, FileText, FileCog } from "lucide-react";
+import { Settings, Languages, Save, RefreshCw, FileJson, CircleArrowUp, FileText, FileCog, Activity, Database, DollarSign, GitBranch, Server } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -316,6 +316,56 @@ function App() {
               <p>{t('app.presets')}</p>
             </TooltipContent>
           </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" onClick={() => navigate('/monitoring')} className="transition-all-ease hover:scale-110">
+                <Activity className="h-5 w-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{t('app.monitoring', 'Monitoring')}</p>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" onClick={() => navigate('/cache')} className="transition-all-ease hover:scale-110">
+                <Database className="h-5 w-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{t('app.cache', 'Cache')}</p>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" onClick={() => navigate('/budget')} className="transition-all-ease hover:scale-110">
+                <DollarSign className="h-5 w-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{t('app.budget', 'Budget')}</p>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+             <TooltipTrigger asChild>
+               <Button variant="ghost" size="icon" onClick={() => navigate('/pipeline')} className="transition-all-ease hover:scale-110">
+                 <GitBranch className="h-5 w-5" />
+               </Button>
+             </TooltipTrigger>
+             <TooltipContent>
+               <p>{t('app.pipeline', 'Pipeline')}</p>
+             </TooltipContent>
+           </Tooltip>
+           <Tooltip>
+             <TooltipTrigger asChild>
+               <Button variant="ghost" size="icon" onClick={() => navigate('/providers-monitor')} className="transition-all-ease hover:scale-110">
+                 <Server className="h-5 w-5" />
+               </Button>
+             </TooltipTrigger>
+             <TooltipContent>
+               <p>{t('app.providers', 'Providers')}</p>
+             </TooltipContent>
+           </Tooltip>
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="ghost" size="icon" className="transition-all-ease hover:scale-110">

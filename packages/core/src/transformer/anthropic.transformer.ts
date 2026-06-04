@@ -47,6 +47,26 @@ export class AnthropicTransformer implements Transformer {
   async transformRequestOut(
     request: Record<string, any>
   ): Promise<UnifiedChatRequest> {
+    if (request.system) {
+      if (typeof request.system === "string") {
+        request.system = [
+          { type: "text", text: request.system, cache_control: { type: "ephemeral" } },
+        ];
+      } else if (Array.isArray(request.system)) {
+        const lastBlock = request.system[request.system.length - 1];
+        if (lastBlock) {
+          lastBlock.cache_control = { type: "ephemeral" };
+        }
+      }
+    }
+
+    if (request.tools && Array.isArray(request.tools) && request.tools.length > 0) {
+      const lastTool = request.tools[request.tools.length - 1];
+      if (lastTool) {
+        lastTool.cache_control = { type: "ephemeral" };
+      }
+    }
+
     const messages: UnifiedMessage[] = [];
 
     if (request.system) {
@@ -509,28 +529,14 @@ export class AnthropicTransformer implements Transformer {
                 }
 
                 if (choice?.delta?.thinking && !isClosed && !hasFinished) {
-                  // Close any previous content block if open
-                  // if (currentContentBlockIndex >= 0) {
-                  //   const contentBlockStop = {
-                  //     type: "content_block_stop",
-                  //     index: currentContentBlockIndex,
-                  //   };
-                  //   safeEnqueue(
-                  //     encoder.encode(
-                  //       `event: content_block_stop\ndata: ${JSON.stringify(
-                  //         contentBlockStop
-                  //       )}\n\n`
-                  //     )
-                  //   );
-                  //   currentContentBlockIndex = -1;
-                  // }
+                  const isRedacted = !!choice.delta.thinking.redacted;
 
-                  if (!isThinkingStarted) {
-                    const thinkingBlockIndex = assignContentBlockIndex();
+                  if (isRedacted) {
+                    const redactedBlockIndex = assignContentBlockIndex();
                     const contentBlockStart = {
                       type: "content_block_start",
-                      index: thinkingBlockIndex,
-                      content_block: { type: "thinking", thinking: "" },
+                      index: redactedBlockIndex,
+                      content_block: { type: "redacted_thinking", data: choice.delta.thinking.data || "" },
                     };
                     safeEnqueue(
                       encoder.encode(
@@ -539,28 +545,9 @@ export class AnthropicTransformer implements Transformer {
                         )}\n\n`
                       )
                     );
-                    currentContentBlockIndex = thinkingBlockIndex;
-                    isThinkingStarted = true;
-                  }
-                  if (choice.delta.thinking.signature) {
-                    const thinkingSignature = {
-                      type: "content_block_delta",
-                      index: currentContentBlockIndex,
-                      delta: {
-                        type: "signature_delta",
-                        signature: choice.delta.thinking.signature,
-                      },
-                    };
-                    safeEnqueue(
-                      encoder.encode(
-                        `event: content_block_delta\ndata: ${JSON.stringify(
-                          thinkingSignature
-                        )}\n\n`
-                      )
-                    );
                     const contentBlockStop = {
                       type: "content_block_stop",
-                      index: currentContentBlockIndex,
+                      index: redactedBlockIndex,
                     };
                     safeEnqueue(
                       encoder.encode(
@@ -570,22 +557,69 @@ export class AnthropicTransformer implements Transformer {
                       )
                     );
                     currentContentBlockIndex = -1;
-                  } else if (choice.delta.thinking.content) {
-                    const thinkingChunk = {
-                      type: "content_block_delta",
-                      index: currentContentBlockIndex,
-                      delta: {
-                        type: "thinking_delta",
-                        thinking: choice.delta.thinking.content || "",
-                      },
-                    };
-                    safeEnqueue(
-                      encoder.encode(
-                        `event: content_block_delta\ndata: ${JSON.stringify(
-                          thinkingChunk
-                        )}\n\n`
-                      )
-                    );
+                  } else {
+                    if (!isThinkingStarted) {
+                      const thinkingBlockIndex = assignContentBlockIndex();
+                      const contentBlockStart = {
+                        type: "content_block_start",
+                        index: thinkingBlockIndex,
+                        content_block: { type: "thinking", thinking: "" },
+                      };
+                      safeEnqueue(
+                        encoder.encode(
+                          `event: content_block_start\ndata: ${JSON.stringify(
+                            contentBlockStart
+                          )}\n\n`
+                        )
+                      );
+                      currentContentBlockIndex = thinkingBlockIndex;
+                      isThinkingStarted = true;
+                    }
+                    if (choice.delta.thinking.signature) {
+                      const thinkingSignature = {
+                        type: "content_block_delta",
+                        index: currentContentBlockIndex,
+                        delta: {
+                          type: "signature_delta",
+                          signature: choice.delta.thinking.signature,
+                        },
+                      };
+                      safeEnqueue(
+                        encoder.encode(
+                          `event: content_block_delta\ndata: ${JSON.stringify(
+                            thinkingSignature
+                          )}\n\n`
+                        )
+                      );
+                      const contentBlockStop = {
+                        type: "content_block_stop",
+                        index: currentContentBlockIndex,
+                      };
+                      safeEnqueue(
+                        encoder.encode(
+                          `event: content_block_stop\ndata: ${JSON.stringify(
+                            contentBlockStop
+                          )}\n\n`
+                        )
+                      );
+                      currentContentBlockIndex = -1;
+                    } else if (choice.delta.thinking.content) {
+                      const thinkingChunk = {
+                        type: "content_block_delta",
+                        index: currentContentBlockIndex,
+                        delta: {
+                          type: "thinking_delta",
+                          thinking: choice.delta.thinking.content || "",
+                        },
+                      };
+                      safeEnqueue(
+                        encoder.encode(
+                          `event: content_block_delta\ndata: ${JSON.stringify(
+                            thinkingChunk
+                          )}\n\n`
+                        )
+                      );
+                    }
                   }
                 }
 
@@ -1018,11 +1052,19 @@ export class AnthropicTransformer implements Transformer {
         });
       }
       if ((choice.message as any)?.thinking?.content) {
-        content.push({
-          type: "thinking",
-          thinking: (choice.message as any).thinking.content,
-          signature: (choice.message as any).thinking.signature,
-        });
+        const thinkingData = (choice.message as any).thinking;
+        if (thinkingData.redacted) {
+          content.push({
+            type: "redacted_thinking",
+            data: thinkingData.data || "",
+          });
+        } else {
+          content.push({
+            type: "thinking",
+            thinking: thinkingData.content,
+            signature: thinkingData.signature,
+          });
+        }
       }
       const result = {
         id: openaiResponse.id,

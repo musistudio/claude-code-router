@@ -104,13 +104,20 @@ export class MetricsRegistry {
   private costTimeline: Array<{ timestamp: number; costUsd: number }> = [];
   private readonly timelineMaxPoints = 1440; // 24 hours at 1/min
 
+  // Snapshot ring buffer for /api/metrics/history
+  private snapshotBuffer: Array<Record<string, any>> = [];
+  private readonly snapshotMaxSize = 100;
+
   private logger?: any;
 
   constructor(logger?: any) {
     this.logger = logger;
 
     // Record timeline data point every minute
-    setInterval(() => this.recordTimelinePoint(), 60000);
+    setInterval(() => {
+      this.recordTimelinePoint();
+      this.pushSnapshot();
+    }, 60000);
   }
 
   // =========================================================================
@@ -504,6 +511,21 @@ export class MetricsRegistry {
     if (this.costTimeline.length > this.timelineMaxPoints) {
       this.costTimeline.shift();
     }
+  }
+
+  pushSnapshot(): void {
+    const stats = this.getStats();
+    this.snapshotBuffer.push({
+      timestamp: new Date().toISOString(),
+      ...stats,
+    });
+    if (this.snapshotBuffer.length > this.snapshotMaxSize) {
+      this.snapshotBuffer.shift();
+    }
+  }
+
+  getHistory(): Array<Record<string, any>> {
+    return this.snapshotBuffer;
   }
 }
 

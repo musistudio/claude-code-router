@@ -198,22 +198,60 @@ export class SessionBridge {
     if (!body?.messages) return false;
 
     const messages = body.messages as any[];
-    if (messages.length < 2 || messages.length > 6) return false;
+
+    const allText = this.extractAllText(messages);
+    const hasCompactionPreamble =
+      allText.includes("This session is being continued from a previous conversation") ||
+      allText.includes("continued from a previous conversation that ran out of context");
+    const hasSummaryTag =
+      allText.includes("<summary>") ||
+      allText.includes("</summary>");
+    const hasCompactedMarker =
+      allText.includes("[compacted]") ||
+      allText.includes("<compacted>") ||
+      allText.includes("<compaction>") ||
+      allText.includes("Context window compacted");
 
     const prevCount = session.turnCount;
     const window = this.config.compactionDetectionWindow;
+
+    const isCompacted = hasCompactionPreamble || hasSummaryTag || hasCompactedMarker;
+
+    if (prevCount > window * 2 && isCompacted) {
+      this.extractSummaryContext(session, messages, allText);
+
+      const event: CompactionEvent = {
+        sessionId: session.sessionId,
+        turn: session.turnCount,
+        messagesBefore: prevCount,
+        messagesAfter: messages.length,
+        tokensPreserved: session.preservedContext.length,
+        detectedAt: Date.now(),
+      };
+      this.compactionEvents.push(event);
+      session.lastCompactionTurn = session.turnCount;
+      this.logger?.info(`SessionBridge: compaction detected for ${session.sessionId} at turn ${session.turnCount}`);
+      return true;
+    }
+
+    if (messages.length < 2 || messages.length > 6) return false;
 
     if (prevCount > window * 2) {
       const hasSystem = messages[0]?.role === "system";
       const systemText = typeof messages[0]?.content === "string"
         ? messages[0].content : "";
-      const hasCompactionMarker = systemText.includes("[compacted]") ||
+      const hasOldMarker = systemText.includes("[compacted]") ||
         systemText.includes("<compaction>") ||
-        systemText.includes("Context window compacted");
+        systemText.includes("<compacted>") ||
+        systemText.includes("Context window compacted") ||
+        systemText.includes("<summary>") ||
+        systemText.includes("This session is being continued from a previous conversation");
       const assistantMsgs = messages.filter((m: any) => m.role === "assistant").length;
       const userMsgs = messages.filter((m: any) => m.role === "user").length;
 
-      if (hasSystem && (hasCompactionMarker || (userMsgs <= 2 && assistantMsgs === 0))) {
+      if (hasSystem && (hasOldMarker || (userMsgs <= 2 && assistantMsgs === 0))) {
+        this.extractSummaryContext(session, messages, systemText);
+
         const event: CompactionEvent = {
           sessionId: session.sessionId,
           turn: session.turnCount,
@@ -229,6 +267,113 @@ export class SessionBridge {
       }
     }
     return false;
+  }
+
+  private extractAllText(messages: any[]): string {
+    const parts: string[] = [];
+    for (const msg of messages) {
+      if (typeof msg.content === "string") {
+        parts.push(msg.content);
+      } else if (Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          if (typeof block === "string") {
+            parts.push(block);
+          } else if (block?.text) {
+            parts.push(block.text);
+          } else if (block?.content && typeof block.content === "string") {
+            parts.push(block.content);
+          }
+        }
+      }
+      if (msg.role === "system" && typeof msg.content === "string") {
+        parts.push(msg.content);
+      }
+    }
+    return parts.join("\n");
+  }
+
+  private extractSummaryContext(session: SessionState, messages: any[], fullText: string): void {
+    const summaryMatch = fullText.match(/<summary>([\s\S]*?)<\/summary>/);
+    const summaryText = summaryMatch ? summaryMatch[1] : fullText;
+
+    const extractionPatterns: Array<{ regex: RegExp; key: string; priority: number }> = [
+      { regex: /(?:goal|objective|task|target)\s*[:：]\s*(.{10,300})/gi, key: "summary-goal", priority: 10 },
+      { regex: /(?:constraint|requirement|must|shall)\s*[:：]\s*(.{10,300})/gi, key: "summary-constraint", priority: 9 },
+      { regex: /(?:pending work|pending|todo|remaining)\s*[:：]\s*(.{10,300})/gi, key: "summary-pending", priority: 8 },
+      { regex: /(?:key files|files|modified)\s*[:：]\s*(.{10,300})/gi, key: "summary-files", priority: 7 },
+      { regex: /(?:tool results?|tool output|results?)\s*[:：]\s*(.{10,300})/gi, key: "summary-tool-result", priority: 6 },
+      { regex: /(?:recent|latest|last)\s*[:：]\s*(.{10,300})/gi, key: "summary-recent", priority: 5 },
+    ];
+
+    for (const { regex, key, priority } of extractionPatterns) {
+      let match: RegExpExecArray | null;
+      regex.lastIndex = 0;
+      while ((match = regex.exec(summaryText)) !== null) {
+        const value = match[1].trim();
+        if (value.length >= 10) {
+          this.addPreservedContext(session, {
+            key: `${key}-${Date.now()}-${session.preservedContext.length}`,
+            value,
+            priority,
+            preservedAt: Date.now(),
+            source: "system",
+          });
+        }
+      }
+    }
+
+    const scopeMatch = fullText.match(/scope\s*[:：]\s*(.{5,200})/i);
+    if (scopeMatch) {
+      this.addPreservedContext(session, {
+        key: `summary-scope-${Date.now()}`,
+        value: scopeMatch[1].trim(),
+        priority: 9,
+        preservedAt: Date.now(),
+        source: "system",
+      });
+    }
+  }
+
+  injectPreservedContext(requestBody: any, sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.preservedContext.length === 0) return;
+
+    const lastCompactionAge = session.turnCount - session.lastCompactionTurn;
+    if (lastCompactionAge > 10) return;
+
+    const contextItems = session.preservedContext
+      .slice(0, 10)
+      .map(ctx => `    <item priority="${ctx.priority}" source="${ctx.source}">\n      <key>${ctx.key}</key>\n      <value>${ctx.value}</value>\n    </item>`)
+      .join("\n");
+
+    const preservedBlock = `\n<preserved_context>\n  <compaction_recovery>\n${contextItems}\n  </compaction_recovery>\n</preserved_context>`;
+
+    if (requestBody.messages && Array.isArray(requestBody.messages)) {
+      const systemMsg = requestBody.messages.find((m: any) => m.role === "system");
+      if (systemMsg) {
+        if (typeof systemMsg.content === "string") {
+          systemMsg.content += preservedBlock;
+        } else if (Array.isArray(systemMsg.content)) {
+          const lastTextBlock = systemMsg.content.filter((b: any) => b.type === "text").pop();
+          if (lastTextBlock) {
+            lastTextBlock.text += preservedBlock;
+          } else {
+            systemMsg.content.push({ type: "text", text: preservedBlock });
+          }
+        }
+      } else if (requestBody.system) {
+        if (typeof requestBody.system === "string") {
+          requestBody.system += preservedBlock;
+        } else if (Array.isArray(requestBody.system)) {
+          const lastTextBlock = requestBody.system.filter((b: any) => b.type === "text").pop();
+          if (lastTextBlock) {
+            lastTextBlock.text += preservedBlock;
+          } else {
+            requestBody.system.push({ type: "text", text: preservedBlock });
+          }
+        }
+      }
+    }
   }
 
   private extractPreservedContext(session: SessionState, body: any): void {
