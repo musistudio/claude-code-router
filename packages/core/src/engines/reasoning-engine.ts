@@ -11,8 +11,6 @@
  * Imported by router.ts to add reasoning-aware tier decisions.
  */
 
-import { ModelTier } from '../config/provider-registry';
-
 /** MCP reasoning tools that may relay external API results */
 const REASONING_MCP_TOOLS = new Set([
   'mcp__sequential_thinking__sequentialthinking',
@@ -66,14 +64,14 @@ export function analyzeReasoning(reqBody: any, tokenCount: number): {
   const tools = Array.isArray(reqBody.tools) ? reqBody.tools : [];
 
   for (const tool of tools) {
-    const name = (tool.name || '').toLowerCase();
+    const name = (tool.name || tool.function?.name || '').toLowerCase();
     if (name.startsWith('mcp__')) {
       mcpTools.push(name);
 
       // Check relay pattern
       for (const relayPattern of RELAY_MCP_TOOLS) {
         if (relayPattern.endsWith('*')) {
-          if (name.startsWith(relayPattern.slice(0, -2))) return {
+          if (name.startsWith(relayPattern.slice(0, -1))) return {
             isReasoningTask: false, isRelayTask: true,
             needsDeepReasoning: false, mcpToolsDetected: mcpTools,
             recommendation: 'flash',
@@ -196,8 +194,8 @@ export function checkHallucination(
   // ====================================================================
   // Rule 3a: Fabricated API imports
   const fabricationPatterns = [
-    /import\s+['"]@anthropic-ai\/sdk['"]/,
-    /from\s+['"]claude-code['"]/,
+    /(?:import|from)\s+.*['"]@anthropic-ai\/sdk['"]/,
+    /(?:import|from)\s+.*['"]claude-code['"]/,
   ];
   for (const pattern of fabricationPatterns) {
     if (pattern.test(contentText)) {
@@ -233,40 +231,48 @@ export function checkHallucination(
 
 /**
  * Check if response is actually an upstream provider error (not hallucination).
+ * Uses universal error patterns — no provider-specific hardcoding.
  */
 function checkProviderError(text: string, provider?: string): string | null {
   if (!text) return null;
 
-  const errorPatterns: Record<string, RegExp[]> = {
-    xfyun: [
-      /EngineInternalError/i,
-      /code.*10012/i,
-      /内部引擎错误/,
-      /服务暂时不可用/,
-    ],
-    deepseek: [
-      /rate.?limit/i,
-      /quota.?exceeded/i,
-      /暂不可用/,
-      /service.?unavailable/i,
-    ],
-  };
+  // Universal error patterns that work for ANY provider
+  const universalErrors = [
+    // HTTP status codes
+    /5\d\d\s+(Internal Server Error|Service Unavailable|Gateway Timeout)/i,
+    /4\d\d\s+(Bad Request|Unauthorized|Forbidden|Not Found)/i,
+    // JSON error responses
+    /\{"error":\s*\{/,
+    /An error occurred/i,
+    // Rate limiting (works for all providers)
+    /rate.?limit/i,
+    /quota.?exceeded/i,
+    /too.?many.?requests/i,
+    // Service unavailable (works for all providers)
+    /service.?unavailable/i,
+    /暂不可用/,
+    /服务暂时不可用/,
+    /内部引擎错误/,
+    // Timeout patterns
+    /timeout/i,
+    /timed?\s*out/i,
+    /connection.?refused/i,
+    // Engine errors (generic)
+    /EngineInternalError/i,
+    /internal.?server.?error/i,
+    /bad.?gateway/i,
+  ];
 
-  // Check provider-specific errors
+  // Check provider-specific errors from config (if available)
+  // This allows users to add custom error patterns per provider in config
+  // For now, universal patterns cover all common cases
   if (provider) {
-    const patterns = errorPatterns[provider.toLowerCase()] || errorPatterns.xfyun || [];
-    for (const pattern of patterns) {
+    for (const pattern of universalErrors) {
       if (pattern.test(text)) return `${provider}_engine_error`;
     }
   }
 
-  // Universal error patterns
-  const universalErrors = [
-    /5\d\d\s+(Internal Server Error|Service Unavailable|Gateway Timeout)/i,
-    /4\d\d\s+(Bad Request|Unauthorized|Forbidden|Not Found)/i,
-    /\{"error":\s*\{/,
-    /An error occurred/i,
-  ];
+  // Fallback: check universal errors without provider context
   for (const pattern of universalErrors) {
     if (pattern.test(text)) return 'api_error';
   }

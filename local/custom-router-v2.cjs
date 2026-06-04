@@ -52,9 +52,9 @@ function classifyTask(req, policy) {
 
 function router(req, config) {
   const tierMap = config.TierRouting || {
-    opus: 'deepseek,deepseek-v4-pro',
-    sonnet: 'xfyun,astron-code-latest',
-    haiku: 'deepseek,deepseek-v4-flash'
+    opus: config.Router?.think || 'deepseek,deepseek-reasoner',
+    sonnet: config.Router?.default || 'openai,gpt-4o',
+    haiku: config.Router?.background || 'openai,gpt-4o-mini'
   };
   
   const result = classifyTask(req, config.GatewayPolicy || {});

@@ -5,97 +5,85 @@
   "LOG": true,
   "LOG_LEVEL": "info",
   "API_TIMEOUT_MS": 600000,
-  "_comment_providers": "xfyun uses Anthropic wire protocol, deepseek uses OpenAI wire protocol",
+
+  "_comment": "Pluggable provider architecture: add any OpenAI/Anthropic/Gemini compatible provider below. No provider-specific hardcoding.",
+
   "Providers": [
     {
-      "name": "xfyun",
-      "api_base_url": "https://maas-coding-api.cn-huabei-1.xfyun.cn/v1/messages",
-      "api_key": "$XFYUN_API_KEY",
-      "models": [
-        "astron-code-latest"
-      ],
+      "name": "openai",
+      "api_base_url": "https://api.openai.com/v1/chat/completions",
+      "api_key": "${OPENAI_API_KEY}",
+      "models": ["gpt-4o", "gpt-4o-mini", "o1", "o3-mini"],
       "transformer": {
-        "use": [
-          "Anthropic"
-        ]
+        "use": ["openai"],
+        "o1": { "use": ["openai", "reasoning"] },
+        "o3-mini": { "use": ["openai", "reasoning"] }
       }
     },
     {
       "name": "deepseek",
       "api_base_url": "https://api.deepseek.com/chat/completions",
-      "api_key": "$DEEPSEEK_API_KEY",
-      "models": [
-        "deepseek-v4-flash",
-        "deepseek-v4-pro"
-      ],
+      "api_key": "${DEEPSEEK_API_KEY}",
+      "models": ["deepseek-chat", "deepseek-reasoner"],
       "transformer": {
-        "use": [
-          "deepseek"
-        ],
-        "deepseek-v4-flash": {
-          "use": [
-            "tooluse"
-          ]
-        },
-        "deepseek-v4-pro": {
-          "use": [
-            "reasoning",
-            "tooluse"
-          ]
-        }
+        "use": ["deepseek"],
+        "deepseek-reasoner": { "use": ["deepseek", "reasoning"] }
       }
+    },
+    {
+      "name": "gemini",
+      "api_base_url": "https://generativelanguage.googleapis.com/v1beta",
+      "api_key": "${GEMINI_API_KEY}",
+      "models": ["gemini-2.5-pro", "gemini-2.5-flash"],
+      "transformer": { "use": ["gemini"] }
+    },
+    {
+      "name": "ollama",
+      "api_base_url": "http://localhost:11434/v1/chat/completions",
+      "api_key": "ollama",
+      "models": ["qwen2.5-coder:7b", "deepseek-coder-v2:16b"],
+      "transformer": { "use": ["openai"] }
     }
   ],
-  "_comment_router": "Claude Code sends model names like claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5. CCR routes these to our actual providers.",
+
   "Router": {
-    "default": "xfyun,astron-code-latest",
-    "background": "deepseek,deepseek-v4-flash",
-    "think": "deepseek,deepseek-v4-pro",
-    "longContext": "xfyun,astron-code-latest",
-    "longContextThreshold": 60000
+    "default": "openai,gpt-4o",
+    "background": "openai,gpt-4o-mini",
+    "think": "deepseek,deepseek-reasoner",
+    "longContext": "openai,gpt-4o",
+    "longContextThreshold": 60000,
+    "reasoningFlash": "openai,gpt-4o-mini",
+    "reasoningProMax": "deepseek,deepseek-reasoner"
   },
-  "_comment_model_mapping": "KEY INNOVATION: Maps Claude Code native model names to CCR provider,model pairs. This is how Claude Code thinks it is talking to real Claude models while CCR transparently routes to xfyun/deepseek.",
+
   "ModelMapping": {
-    "claude-opus-4-6": "deepseek,deepseek-v4-pro",
-    "claude-opus-4-20250514": "deepseek,deepseek-v4-pro",
-    "claude-opus-4": "deepseek,deepseek-v4-pro",
-    "opus": "deepseek,deepseek-v4-pro",
-    "claude-sonnet-4-6": "xfyun,astron-code-latest",
-    "claude-sonnet-4-20250514": "xfyun,astron-code-latest",
-    "claude-sonnet-4": "xfyun,astron-code-latest",
-    "sonnet": "xfyun,astron-code-latest",
-    "claude-haiku-4-5-20251213": "deepseek,deepseek-v4-flash",
-    "claude-haiku-4-5": "deepseek,deepseek-v4-flash",
-    "haiku": "deepseek,deepseek-v4-flash",
-    "astron-code-latest": "xfyun,astron-code-latest"
+    "claude-opus-4-6": "deepseek,deepseek-reasoner",
+    "claude-opus-4-20250514": "deepseek,deepseek-reasoner",
+    "claude-opus-4": "deepseek,deepseek-reasoner",
+    "opus": "deepseek,deepseek-reasoner",
+    "claude-sonnet-4-6": "openai,gpt-4o",
+    "claude-sonnet-4-20250514": "openai,gpt-4o",
+    "claude-sonnet-4": "openai,gpt-4o",
+    "sonnet": "openai,gpt-4o",
+    "claude-haiku-4-5-20251213": "openai,gpt-4o-mini",
+    "claude-haiku-4-5": "openai,gpt-4o-mini",
+    "haiku": "openai,gpt-4o-mini"
   },
+
   "Concurrency": {
-    "global": 8,
+    "global": 10,
     "providers": {
-      "xfyun": 2,
-      "deepseek": 4
+      "openai": 5,
+      "deepseek": 5,
+      "gemini": 3,
+      "ollama": 2
     },
     "queueTimeoutMs": 120000
   },
-  "Storage": {
-    "postgresUrl": "postgres://proxy:proxy@127.0.0.1:55432/proxy_local",
-    "semanticStore": {
-      "enabled": true,
-      "embeddingModel": "nomic-embed-text",
-      "embeddingEndpoint": "http://127.0.0.1:11434/api/embed",
-      "dimension": 1536
-    }
-  },
-  "_comment_fallback": "If xfyun fails, try deepseek. If deepseek fails, try xfyun. Never leave Claude Code hanging.",
+
   "fallback": {
-    "default": [
-      "deepseek,deepseek-v4-flash"
-    ],
-    "think": [
-      "xfyun,astron-code-latest"
-    ],
-    "longContext": [
-      "deepseek,deepseek-v4-pro"
-    ]
+    "default": ["deepseek,deepseek-chat"],
+    "think": ["openai,gpt-4o"],
+    "longContext": ["deepseek,deepseek-reasoner"]
   }
 }

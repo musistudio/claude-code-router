@@ -20,6 +20,7 @@ const baseConfig: esbuild.BuildOptions = {
   sourcemap: true,
   platform: "node",
   target: "node18",
+  allowOverwrite: true,
   plugins: [
     // Add path alias plugin to resolve @/ imports
     pathAliasPlugin({

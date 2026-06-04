@@ -14,25 +14,28 @@ export function sendUnifiedRequest(
   context: any,
   logger?: any
 ): Promise<Response> {
-  const headers = new Headers({
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
-  });
+  };
   if (config.headers) {
     Object.entries(config.headers).forEach(([key, value]) => {
-      if (value) {
-        headers.set(key, value as string);
+      if (value && typeof value === 'string') {
+        headers[key] = value as string;
       }
     });
   }
+  // Remove Expect header to prevent undici issues
+  delete headers["expect"];
+  delete headers["Expect"];
 
   // Strip Anthropic-specific headers when forwarding to non-Anthropic providers
   if (config.stripAnthropicHeaders) {
     for (const headerName of ANTHROPIC_ONLY_HEADERS) {
-      headers.delete(headerName);
+      delete headers[headerName];
     }
-    for (const key of headers.keys()) {
+    for (const key of Object.keys(headers)) {
       if (ANTHROPIC_ONLY_HEADERS.includes(key.toLowerCase())) {
-        headers.delete(key);
+        delete headers[key];
       }
     }
   }
@@ -65,7 +68,7 @@ export function sendUnifiedRequest(
     {
       reqId: context.req.id,
       request: fetchOptions,
-      headers: Object.fromEntries(headers.entries()),
+      headers: headers,
       requestUrl: typeof url === "string" ? url : url.toString(),
       useProxy: config.httpsProxy,
     },

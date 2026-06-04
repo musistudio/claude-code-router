@@ -491,7 +491,7 @@ async function route(req, config, context) {
 
     // Always return something - never leave Claude Code hanging
     const router = config.Router || {};
-    return router.default || "xfyun,astron-code-latest";
+    return router.default || "openai,gpt-4o";
   }
 }
 

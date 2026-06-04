@@ -1,27 +1,20 @@
 /**
  * Tests for SemanticCache middleware.
- *
- * Run: pnpm vitest run
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-
-// We test the cache logic in isolation — no Fastify or Express needed.
-// The SemanticCache module uses a local Map, making it fully testable.
+import { SemanticCache } from './semantic-cache';
 
 describe('SemanticCache', () => {
-  let cache: any;
+  let cache: SemanticCache;
   let mockLogger: any;
 
-  beforeEach(async () => {
+  beforeEach(() => {
     mockLogger = {
       info: vi.fn(),
       warn: vi.fn(),
       debug: vi.fn(),
       error: vi.fn(),
     };
-    // Dynamic import to avoid module hoisting issues
-    const mod = await import('./semantic-cache');
-    const { SemanticCache } = mod;
     cache = new SemanticCache(
       {
         enabled: true,
@@ -62,17 +55,17 @@ describe('SemanticCache', () => {
       usage: { input_tokens: 10, output_tokens: 3 },
     };
 
-    cache.store(requestBody, responseBody, {
+    const context = {
       agentName: 'core-implementer',
       taskType: 'coding',
       model: 'claude-sonnet-4-6',
-    });
+    };
 
-    const result = await cache.lookup(requestBody, {
-      agentName: 'core-implementer',
-      taskType: 'coding',
-    });
-    expect(result).toBeDefined();
+    cache.store(requestBody, responseBody, context);
+    expect(cache.getStats().totalEntries).toBe(1);
+
+    const result = await cache.lookup(requestBody, context);
+    expect(result).not.toBeNull();
     expect(result.content[0].text).toBe('Hello World!');
   });
 
@@ -87,30 +80,29 @@ describe('SemanticCache', () => {
     expect(cache.getStats().totalEntries).toBe(0);
   });
 
-  it('should skip requests matching skip patterns', () => {
-    // Load with skipPattern
-    cache = new (require('./semantic-cache').SemanticCache)(
+  it('should skip requests matching skip patterns', async () => {
+    const skipCache = new SemanticCache(
       {
         enabled: true,
         ttlMs: 60000,
         maxEntries: 100,
-        similarityThreshold: 0.92,
-        skipPatterns: ['/api/health', 'ping'],
+        temperatureThreshold: 0.5,
       },
       mockLogger
     );
 
+    // High temperature request should be skipped
     const requestBody = {
-      messages: [{ role: 'user', content: 'ping' }],
+      messages: [{ role: 'user', content: 'creative writing' }],
+      temperature: 0.9,
     };
 
-    cache.store(requestBody, { ok: true }, {});
-    expect(cache.getStats().totalEntries).toBe(0);
+    skipCache.store(requestBody, { ok: true }, {});
+    expect(skipCache.getStats().totalEntries).toBe(0);
   });
 
   it('should evict oldest entry when over maxEntries', async () => {
-    // Create a cache with max 2 entries
-    const smallCache = new (require('./semantic-cache').SemanticCache)(
+    const smallCache = new SemanticCache(
       {
         enabled: true,
         ttlMs: 60000,
@@ -129,8 +121,7 @@ describe('SemanticCache', () => {
   });
 
   it('should expire entries after TTL', async () => {
-    // Use a very short TTL
-    const shortCache = new (require('./semantic-cache').SemanticCache)(
+    const shortCache = new SemanticCache(
       {
         enabled: true,
         ttlMs: 1,
@@ -150,10 +141,64 @@ describe('SemanticCache', () => {
     expect(result).toBeNull();
   });
 
-  it('should handle JSON parse errors gracefully', async () => {
-    // sanitizeResponse should not throw on circular references
+  it('should handle JSON parse errors gracefully', () => {
     const badResponse: any = {};
     badResponse.self = badResponse;
-    expect(() => cache.sanitizeResponse?.(badResponse)).not.toThrow();
+    // sanitizeResponse should not throw on circular references
+    expect(() => cache['sanitizeResponse']?.(badResponse)).not.toThrow();
+  });
+
+  it('should return null when disabled', async () => {
+    const disabledCache = new SemanticCache({ enabled: false }, mockLogger);
+    const body = { messages: [{ role: 'user', content: 'test' }] };
+    disabledCache.store(body, { content: 'stored' }, { model: 'test' });
+    const result = await disabledCache.lookup(body, {});
+    expect(result).toBeNull();
+  });
+
+  it('should track hit count', async () => {
+    const body = { messages: [{ role: 'user', content: 'repeat' }] };
+    const response = { content: 'cached' };
+    const context = { agentName: 'test', taskType: 'test', model: 'test' };
+
+    cache.store(body, response, context);
+
+    await cache.lookup(body, context);
+    await cache.lookup(body, context);
+    await cache.lookup(body, context);
+
+    const stats = cache.getStats();
+    expect(stats.totalHits).toBe(3);
+  });
+
+  it('should clear all entries', () => {
+    const body = { messages: [{ role: 'user', content: 'test' }] };
+    cache.store(body, { content: 'data' }, { model: 'test' });
+    expect(cache.getStats().totalEntries).toBe(1);
+
+    cache.clear();
+    expect(cache.getStats().totalEntries).toBe(0);
+  });
+
+  it('should skip high temperature requests in both store and lookup', async () => {
+    const body = {
+      messages: [{ role: 'user', content: 'creative' }],
+      temperature: 0.9,
+    };
+    // shouldSkip now checks temperature, so store also skips
+    cache.store(body, { content: 'result' }, { model: 'test' });
+    expect(cache.getStats().totalEntries).toBe(0);
+
+    // lookup should also skip
+    const result = await cache.lookup(body, {});
+    expect(result).toBeNull();
+  });
+
+  it('should generate different cache keys for different agents', async () => {
+    const body = { messages: [{ role: 'user', content: 'same query' }] };
+    cache.store(body, { content: 'response1' }, { agentName: 'agent-a', model: 'test' });
+
+    const result = await cache.lookup(body, { agentName: 'agent-b' });
+    expect(result).toBeNull();
   });
 });

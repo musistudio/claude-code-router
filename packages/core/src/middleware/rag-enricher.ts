@@ -16,6 +16,8 @@ import { EventEmitter } from "events";
 import { readFile } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
+import { getVectorStore } from "../utils/vector-store";
+import { getRedisCache } from "../utils/redis-cache";
 
 export interface RAGConfig {
   enabled: boolean;
@@ -27,9 +29,11 @@ export interface RAGConfig {
     clawMem: boolean; // Query ClawMem
     recentSessions: boolean; // Load recent session summaries
     codeGraph: boolean; // Query code graph context
+    vectorStore: boolean; // Query Qdrant vector store for semantic search
   };
   memoryEndpoint?: string; // Memory MCP endpoint
   clawMemEndpoint?: string; // ClawMem endpoint
+  vectorStoreCollection?: string; // Qdrant collection name for RAG
 }
 
 const DEFAULT_CONFIG: RAGConfig = {
@@ -41,6 +45,7 @@ const DEFAULT_CONFIG: RAGConfig = {
     clawMem: false,
     recentSessions: false,
     codeGraph: false,
+    vectorStore: false,
   },
 };
 
@@ -123,6 +128,21 @@ export class RAGEnricher extends EventEmitter {
           source: "clawmem",
           content: truncated,
           relevance: 0.5,
+          tokenCount: this.estimateTokens(truncated),
+        });
+        tokenBudget -= this.estimateTokens(truncated);
+      }
+    }
+
+    // 4. Query Qdrant vector store for semantic search
+    if (this.config.sources.vectorStore && tokenBudget > 100) {
+      const vectorResults = await this.queryVectorStore(context);
+      if (vectorResults && tokenBudget > 0) {
+        const truncated = this.truncateToTokens(vectorResults, tokenBudget);
+        enrichments.push({
+          source: "vector_store",
+          content: truncated,
+          relevance: 0.7,
           tokenCount: this.estimateTokens(truncated),
         });
         tokenBudget -= this.estimateTokens(truncated);
@@ -260,6 +280,35 @@ export class RAGEnricher extends EventEmitter {
       return data.results?.join("\n") || null;
     } catch (e: any) {
       this.logger?.warn(`RAGEnricher ClawMem query failed: ${e?.message}`);
+      return null;
+    }
+  }
+
+  // ==========================================================================
+  // Source: Qdrant Vector Store
+  // ==========================================================================
+
+  private async queryVectorStore(context: any): Promise<string | null> {
+    try {
+      const vectorStore = getVectorStore();
+      if (!vectorStore) return null;
+
+      const query = context.query || context.taskType || context.agentName || "";
+      if (!query || query.length < 3) return null;
+
+      const collection = this.config.vectorStoreCollection || "rag_documents";
+      const results = await vectorStore.search(collection, query, {
+        limit: 5,
+        scoreThreshold: 0.6,
+      });
+
+      if (!results || results.length === 0) return null;
+
+      return results
+        .map((r: any, i: number) => `[${i + 1}] ${r.text || r.content || JSON.stringify(r.payload || r)}`)
+        .join("\n");
+    } catch (e: any) {
+      this.logger?.debug(`RAGEnricher vector store query failed: ${e?.message}`);
       return null;
     }
   }

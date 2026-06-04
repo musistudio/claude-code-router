@@ -67,7 +67,22 @@ function createApp(options: FastifyServerOptions = {}): FastifyInstance {
   fastify.setErrorHandler(errorHandler);
 
   // Register CORS
-  fastify.register(cors);
+  fastify.register(cors, {
+    origin: (origin: string, callback: (err: Error | null, allow?: boolean) => void) => {
+      if (!origin) return callback(null, true);
+      try {
+        const parsed = new URL(origin);
+        const allowed = ['127.0.0.1', 'localhost'];
+        if (allowed.includes(parsed.hostname)) {
+          callback(null, true);
+        } else {
+          callback(null, false);
+        }
+      } catch {
+        callback(null, false);
+      }
+    },
+  });
   return fastify;
 }
 
@@ -79,6 +94,7 @@ class Server {
   transformerService: TransformerService;
   tokenizerService: TokenizerService;
   orchestrator: MiddlewareOrchestrator;
+  private _initPromise: Promise<void>;
 
   constructor(options: ServerOptions = {}) {
     const { initialConfig, ...fastifyOptions } = options;
@@ -100,16 +116,17 @@ class Server {
       undefined, // ProviderRegistry created later in providerService
       this.app.log
     );
-    this.transformerService.initialize().finally(() => {
+    this._initPromise = Promise.all([
+      this.transformerService.initialize(),
+      this.tokenizerService.initialize().catch((error) => {
+        this.app.log.error(`Failed to initialize TokenizerService: ${error}`);
+      }),
+    ]).then(() => {
       this.providerService = new ProviderService(
         this.configService,
         this.transformerService,
         this.app.log
       );
-    });
-    // Initialize tokenizer service
-    this.tokenizerService.initialize().catch((error) => {
-      this.app.log.error(`Failed to initialize TokenizerService: ${error}`);
     });
   }
 
@@ -152,16 +169,6 @@ class Server {
         fastify.decorate('transformerService', this.transformerService);
         fastify.decorate('providerService', this.providerService);
         fastify.decorate('tokenizerService', this.tokenizerService);
-        // Add router hook for main namespace
-        fastify.addHook('preHandler', async (req: any, reply: any) => {
-          const url = new URL(`http://127.0.0.1${req.url}`);
-          if (url.pathname.endsWith("/v1/messages")) {
-            await router(req, reply, {
-              configService: this.configService,
-              tokenizerService: this.tokenizerService,
-            });
-          }
-        });
         await registerApiRoutes(fastify);
       });
       return
@@ -218,7 +225,7 @@ class Server {
 
       this.app.addHook("preHandler", (req, reply, done) => {
         const url = new URL(`http://127.0.0.1${req.url}`);
-        if (url.pathname.endsWith("/v1/messages") && req.body) {
+        if (url.pathname === "/v1/messages" && req.body) {
           const body = req.body as any;
           req.log.info({ data: body, type: "request body" });
           if (!body.stream) {
@@ -228,15 +235,23 @@ class Server {
         done();
       });
 
+      await this._initPromise;
       await this.registerNamespace('/')
 
       this.app.addHook(
         "preHandler",
         async (req: FastifyRequest, reply: FastifyReply) => {
           const url = new URL(`http://127.0.0.1${req.url}`);
-          if (url.pathname.endsWith("/v1/messages") && req.body) {
+          if (url.pathname === "/v1/messages" && req.body) {
             try {
               const body = req.body as any;
+
+              await router(req as any, reply, {
+                configService: this.configService,
+                tokenizerService: this.tokenizerService,
+              });
+
+              if (reply.sent) return;
               if (!body || !body.model) {
                 return reply
                   .code(400)
@@ -245,7 +260,7 @@ class Server {
               const [provider, ...model] = body.model.split(",");
               body.model = model.join(",");
               req.provider = provider;
-              req.model = model;
+              req.model = model.join(",");
 
               if (body.thinking?.type === "enabled" && provider === "deepseek") {
                 body.output_config = { effort: this.classifyThinkingEffort(body) };
@@ -285,17 +300,16 @@ class Server {
 
       // Orchestrator post-response hook (cache store + context capture + memory extraction)
       this.app.addHook("onSend", async (req: any, reply: any, payload: any) => {
-        if (req.pathname?.endsWith("/v1/messages") && payload) {
+        if (req.url?.includes("/v1/messages") && payload) {
           try {
-            // For non-streaming JSON responses, pass the payload directly
-            if (typeof payload === "string") {
-              payload = JSON.parse(payload);
-            }
-            if (payload && !payload.error && payload.content) {
-              await this.orchestrator.onPostResponse(req, payload).catch(() => {});
+            if (typeof payload !== "string") return payload;
+            const parsed = JSON.parse(payload);
+            if (parsed && !parsed.error && parsed.content) {
+              await this.orchestrator.onPostResponse(req, parsed).catch(() => {});
             }
           } catch {}
         }
+        return payload;
       });
 
       // Orchestrator error hook
@@ -305,15 +319,21 @@ class Server {
 
       // Orchestrator session start/end tracking
       this.app.addHook("onRequest", async (req: any) => {
-        if (req.url?.includes("/v1/messages")) {
+        if (req.url?.startsWith("/v1/messages")) {
           req._startTime = Date.now();
         }
       });
 
-      this.app.addHook("onResponse", async (req: any) => {
-        if (req._releaseConcurrency) {
-          req._releaseConcurrency();
-          delete req._releaseConcurrency;
+      this.app.addHook("onResponse", async (req: any, reply: any) => {
+        if (!req._releaseConcurrency) return;
+        const release = req._releaseConcurrency;
+        delete req._releaseConcurrency;
+        const raw = reply.raw;
+        if (raw && !raw.writableEnded && !raw.finished) {
+          raw.once("close", () => release());
+          raw.once("error", () => release());
+        } else {
+          release();
         }
       });
 
@@ -384,3 +404,42 @@ export { MiddlewareOrchestrator } from "./middleware/orchestrator";
 export { ReasoningCache } from "./middleware/reasoning-cache";
 export { pluginManager, tokenSpeedPlugin, getTokenSpeedStats, getGlobalTokenSpeedStats, CCRPlugin, CCRPluginOptions, PluginMetadata } from "./plugins";
 export { SSEParserTransform, SSESerializerTransform, rewriteStream } from "./utils/sse";
+export { getCircuitBreaker, getAllCircuitBreakers, CircuitState, CircuitBreaker } from "./utils/circuit-breaker";
+export { withRetry, getRetryConfig, RetryConfig, RetryContext } from "./utils/retry";
+export { getMetrics, MetricsRegistry, MODEL_COST_TABLE } from "./utils/metrics";
+export { getRateLimiter, RateLimiter, RateLimiterConfig } from "./utils/rate-limiter";
+export { redactString, redactObject, containsSensitiveInfo, RedactorConfig } from "./utils/redactor";
+export { getBudgetManager, BudgetManager, BudgetConfig, BudgetAlert } from "./utils/budget";
+export { getIdempotencyGuard, IdempotencyGuard, IdempotencyConfig } from "./utils/idempotency";
+export { getStructuredOutputProcessor, StructuredOutputProcessor, StructuredOutputConfig } from "./utils/structured-output";
+export { getPermissionGuard, PermissionGuard, PermissionGuardConfig } from "./utils/permission-guard";
+export { getPromptTemplateEngine, PromptTemplateEngine, PromptTemplateConfig } from "./utils/prompt-template";
+export { getMockServer, MockServer, MockConfig } from "./utils/mock-server";
+export { getMultiModelVoter, MultiModelVoter, VoteConfig } from "./utils/multi-model-vote";
+export { getSelfReflector, SelfReflector, ReflectionConfig } from "./utils/self-reflect";
+export { getReplayManager, ReplayManager, ReplayConfig } from "./utils/replay";
+export { getRedisCache, RedisCache, RedisCacheConfig } from "./utils/redis-cache";
+export { getVectorStore, VectorStore, VectorStoreConfig } from "./utils/vector-store";
+export { getTaskQueue, TaskQueue, TaskQueueConfig } from "./utils/task-queue";
+export { getWsPush, WsPush, WsPushConfig } from "./utils/ws-push";
+export { getCacheWarmer, CacheWarmer, CacheWarmerConfig } from "./utils/cache-warmer";
+export { getABTester, ABTester, ABTestConfig } from "./utils/ab-test";
+export { getTaskSplitter, TaskSplitter, TaskSplitterConfig } from "./utils/task-splitter";
+export { getTenantManager, TenantManager, TenantConfig } from "./utils/tenant-isolation";
+export { getKeyRotator, KeyRotator, KeyRotatorConfig } from "./utils/key-rotator";
+export { getQualityScorer, QualityScorer, QualityScoreConfig } from "./utils/quality-scorer";
+export { getAuditLogger, AuditLogger, AuditLogConfig } from "./utils/audit-logger";
+export { getSlidingWindow, SlidingWindowManager, SlidingWindowConfig } from "./utils/sliding-window";
+export { getDocLoader, DocLoader, DocLoaderConfig } from "./utils/doc-loader";
+export { getCascadeChain, CascadeChain, CascadeChainConfig } from "./utils/cascade-chain";
+export { getTaskScheduler, TaskScheduler, TaskSchedulerConfig } from "./utils/task-scheduler";
+export { getFeedbackStore, FeedbackStore, FeedbackStoreConfig } from "./utils/feedback-store";
+export { getMultimodalProcessor, MultimodalProcessor, MultimodalConfig } from "./utils/multimodal-processor";
+export { getComplianceDisclaimer, ComplianceDisclaimer, DisclaimerConfig } from "./utils/compliance-disclaimer";
+export { getCacheReportAggregator, CacheReportAggregator, CacheReportConfig } from "./utils/cache-report";
+export { getOllamaFallback, OllamaFallback, OllamaFallbackConfig } from "./utils/ollama-fallback";
+export { getProxyDiffTracker, ProxyDiffTracker, ProxyDiffConfig } from "./utils/proxy-diff";
+export { getCodeExtractor, CodeExtractor, CodeExtractorConfig } from "./utils/code-extractor";
+export { getIntentRouter, IntentRouter, IntentRouterConfig } from "./utils/intent-router";
+export { getEmbeddingService, EmbeddingService, EmbeddingConfig } from "./utils/embedding";
+export { getFinancialDataService, FinancialDataService, FinancialDataConfig } from "./utils/financial-data";
