@@ -456,6 +456,93 @@ export function convertFromAnthropic(
   return result;
 }
 
+export function convertToAnthropic(
+  request: UnifiedChatRequest
+): AnthropicChatRequest {
+  const messages: AnthropicMessage[] = [];
+  let system: string | AnthropicMessage[] | undefined;
+
+  for (const msg of request.messages) {
+    if (msg.role === "system") {
+      system = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+      continue;
+    }
+
+    if (msg.role === "tool" && msg.tool_call_id) {
+      messages.push({
+        role: "user",
+        content: [{
+          type: "tool_result",
+          tool_use_id: msg.tool_call_id,
+          content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+        }],
+      } as any);
+      continue;
+    }
+
+    if (msg.role === "assistant" && msg.tool_calls && msg.tool_calls.length > 0) {
+      const content: any[] = [];
+      const textContent = typeof msg.content === "string" ? msg.content : null;
+      if (textContent) {
+        content.push({ type: "text", text: textContent });
+      }
+      for (const tc of msg.tool_calls) {
+        let input = {};
+        try {
+          input = typeof tc.function?.arguments === "string"
+            ? JSON.parse(tc.function.arguments)
+            : tc.function?.arguments || {};
+        } catch {}
+        content.push({
+          type: "tool_use",
+          id: tc.id || `tool_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          name: tc.function?.name || "unknown",
+          input,
+        });
+      }
+      messages.push({ role: "assistant", content });
+      continue;
+    }
+
+    if (msg.role === "assistant" || msg.role === "user") {
+      messages.push({
+        role: msg.role,
+        content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+      });
+      continue;
+    }
+
+    messages.push({
+      role: "user",
+      content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+    } as any);
+  }
+
+  const result: any = {
+    model: request.model,
+    max_tokens: request.max_tokens,
+    messages,
+    stream: request.stream,
+  };
+
+  if (system) result.system = system;
+  if (request.temperature != null) result.temperature = request.temperature;
+  if (request.tools && request.tools.length > 0) {
+    result.tools = convertToolsToAnthropic(request.tools);
+  }
+  if (request.tool_choice) {
+    if (request.tool_choice === "auto") {
+      result.tool_choice = { type: "auto" };
+    } else if (typeof request.tool_choice === "string") {
+      result.tool_choice = { type: "tool", name: request.tool_choice };
+    } else if (typeof request.tool_choice === "object") {
+      result.tool_choice = request.tool_choice;
+    }
+  }
+
+  return result;
+}
+
 export function convertRequest(
   request: OpenAIChatRequest | AnthropicChatRequest | UnifiedChatRequest,
   options: ConversionOptions
@@ -472,7 +559,6 @@ export function convertRequest(
   if (options.targetProvider === "openai") {
     return convertToOpenAI(unifiedRequest);
   } else {
-    // For now, return unified request since Anthropic format is similar
-    return unifiedRequest as any;
+    return convertToAnthropic(unifiedRequest);
   }
 }

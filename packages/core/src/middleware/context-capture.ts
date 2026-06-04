@@ -12,7 +12,8 @@
  * capture. Never blocks the request pipeline (> 3s timeout).
  */
 import { createHash } from 'crypto';
-import { writeFile, appendFile, mkdir } from 'fs/promises';
+import { writeFile, appendFile, mkdir, readFile } from 'fs/promises';
+import { existsSync } from 'fs';
 import { join, dirname } from 'path';
 
 export interface CaptureEntry {
@@ -212,8 +213,7 @@ export class ContextCaptureEngine {
     sinceMs?: number;
   }): Promise<CaptureEntry[]> {
     if (this.config.storageMode === 'jsonl') {
-      // JSONL fallback: return recent entries (no semantic search)
-      return []; // TODO: implement JSONL grep
+      return this.queryJSONL(params);
     }
 
     // Postgres semantic search via pgvector
@@ -339,6 +339,80 @@ export class ContextCaptureEngine {
     }
 
     return Array.from(files).slice(0, 20);
+  }
+
+  private async queryJSONL(params: {
+    query?: string;
+    limit?: number;
+    sessionId?: string;
+    agentType?: string;
+    sinceMs?: number;
+  }): Promise<CaptureEntry[]> {
+    try {
+      if (!existsSync(this.config.jsonlPath)) return [];
+
+      const raw = await readFile(this.config.jsonlPath, 'utf-8');
+      const lines = raw.split('\n').filter(l => l.trim().length > 0);
+
+      const entries: CaptureEntry[] = [];
+      const queryTerms = (params.query || '').toLowerCase().split(/\s+/).filter(t => t.length > 1);
+      const limit = params.limit || 20;
+      const sinceTime = params.sinceMs ? Date.now() - params.sinceMs : 0;
+
+      for (let i = lines.length - 1; i >= 0 && entries.length < limit; i--) {
+        try {
+          const record = JSON.parse(lines[i]);
+
+          if (params.sessionId && record.sessionId !== params.sessionId) continue;
+          if (params.agentType && record.agentType !== params.agentType) continue;
+          if (sinceTime > 0 && new Date(record.capturedAt).getTime() < sinceTime) continue;
+
+          if (queryTerms.length > 0) {
+            const searchable = `${record.requestSummary || ''} ${(record.toolCalls || []).join(' ')} ${(record.referencedFiles || []).join(' ')}`.toLowerCase();
+            const matchesAll = queryTerms.every(t => searchable.includes(t));
+            if (!matchesAll) continue;
+          }
+
+          entries.push({
+            captureId: record.captureId,
+            sessionId: record.sessionId,
+            agentType: record.agentType,
+            modelTier: record.modelTier || 'unknown',
+            provider: record.provider,
+            modelId: record.modelId,
+            turnNumber: record.turnNumber,
+            inputTokens: record.inputTokens,
+            outputTokens: record.outputTokens,
+            cacheCreateInputTokens: 0,
+            cacheReadInputTokens: 0,
+            requestSummary: record.requestSummary,
+            requestBody: null,
+            responseBody: null,
+            toolCalls: (record.toolCalls || []).map((t: any) => ({
+              toolName: typeof t === 'string' ? t : t.toolName,
+              toolId: '',
+              input: {},
+            })),
+            referencedFiles: record.referencedFiles || [],
+            startTime: 0,
+            endTime: 0,
+            latencyMs: record.latencyMs || 0,
+            routeReason: '',
+            scenarioType: record.scenarioType || '',
+            hallucinationRisk: record.hallucinationRisk || 0,
+            cacheHit: record.cacheHit || false,
+            ragEnriched: record.ragEnriched || false,
+            error: record.error,
+            capturedAt: record.capturedAt,
+          });
+        } catch {}
+      }
+
+      return entries;
+    } catch (e: any) {
+      this.logger?.debug(`ContextCapture JSONL query error: ${e.message}`);
+      return [];
+    }
   }
 
   private async writeToJSONL(entry: CaptureEntry): Promise<void> {

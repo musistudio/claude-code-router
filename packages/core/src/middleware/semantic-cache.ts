@@ -16,24 +16,26 @@
  */
 import { EventEmitter } from "events";
 import { createHash } from "crypto";
-
+import { getEmbeddingService, EmbeddingService } from "../utils/embedding";
 export interface CacheConfig {
   enabled: boolean;
-  endpoint?: string; // GPTCache endpoint (optional)
-  ttlMs: number; // Time-to-live for cache entries (default: 600000 = 10min)
-  similarityThreshold: number; // Embedding similarity threshold (default: 0.92)
-  maxEntries: number; // Maximum cache entries (default: 1000)
-  skipPatterns: string[]; // Patterns to skip caching (e.g., streaming requests)
-  temperatureThreshold: number; // Skip caching if temperature > threshold (default: 0.5)
+  endpoint?: string;
+  ttlMs: number;
+  similarityThreshold: number;
+  maxEntries: number;
+  skipPatterns: string[];
+  temperatureThreshold: number;
+  useEmbedding?: boolean;
 }
 
 const DEFAULT_CONFIG: CacheConfig = {
   enabled: true,
-  ttlMs: 600000, // 10 minutes
+  ttlMs: 600000,
   similarityThreshold: 0.92,
   maxEntries: 1000,
   skipPatterns: ["stream"],
   temperatureThreshold: 0.5,
+  useEmbedding: true,
 };
 
 interface CacheEntry {
@@ -46,17 +48,20 @@ interface CacheEntry {
   createdAt: number;
   expiresAt: number;
   hitCount: number;
+  embedding?: number[];
 }
 
 export class SemanticCache extends EventEmitter {
   private config: CacheConfig;
   private cache: Map<string, CacheEntry> = new Map();
   private enabled = false;
+  private embeddingService: EmbeddingService;
 
   constructor(config: Partial<CacheConfig> = {}, private logger?: any) {
     super();
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.enabled = this.config.enabled;
+    this.embeddingService = getEmbeddingService(undefined, logger);
 
     // Periodic cleanup of expired entries
     setInterval(() => this.cleanup(), 60000);
@@ -74,39 +79,69 @@ export class SemanticCache extends EventEmitter {
     if (!this.enabled) return null;
 
     try {
-      // Skip caching for certain patterns
+      // Skip caching for certain patterns (streaming, high temperature)
       if (this.shouldSkip(requestBody)) return null;
-
-      // Skip if temperature is too high (non-deterministic)
-      if (requestBody.temperature > this.config.temperatureThreshold) return null;
 
       // Generate cache key
       const requestHash = this.generateRequestHash(requestBody);
       const cacheKey = this.generateCacheKey(requestBody, context);
 
-      // Check local cache first
       const localEntry = this.cache.get(cacheKey);
       if (localEntry && localEntry.expiresAt > Date.now()) {
         localEntry.hitCount++;
         this.logger?.info(
-          `SemanticCache: HIT (hits=${localEntry.hitCount}, model=${localEntry.model})`
+          `SemanticCache: EXACT HIT (hits=${localEntry.hitCount}, model=${localEntry.model})`
         );
         this.emit("cache:hit", {
           key: cacheKey,
           model: localEntry.model,
           hitCount: localEntry.hitCount,
+          matchType: "exact",
         });
         return localEntry.response;
       }
 
-      // Try GPTCache if configured
+      if (this.config.useEmbedding && this.embeddingService.isAvailable()) {
+        const queryEmbedding = await this.embeddingService.embed(
+          this.extractRequestSummary(requestBody)
+        );
+        if (queryEmbedding) {
+          let bestEntry: CacheEntry | null = null;
+          let bestScore = 0;
+          for (const entry of this.cache.values()) {
+            if (entry.expiresAt <= Date.now()) continue;
+            if (entry.model !== (context.model || requestBody.model)) continue;
+            if (!entry.embedding) continue;
+            const score = EmbeddingService.cosineSimilarity(queryEmbedding, entry.embedding);
+            if (score > bestScore) {
+              bestScore = score;
+              bestEntry = entry;
+            }
+          }
+          if (bestEntry && bestScore >= this.config.similarityThreshold) {
+            bestEntry.hitCount++;
+            this.logger?.info(
+              `SemanticCache: EMBEDDING HIT (score=${bestScore.toFixed(3)}, model=${bestEntry.model})`
+            );
+            this.emit("cache:hit", {
+              key: bestEntry.key,
+              model: bestEntry.model,
+              hitCount: bestEntry.hitCount,
+              matchType: "semantic",
+              similarity: bestScore,
+            });
+            return bestEntry.response;
+          }
+        }
+      }
+
       if (this.config.endpoint) {
         const gptCacheResult = await this.checkGPTCache(requestBody);
         if (gptCacheResult) return gptCacheResult;
       }
 
       this.emit("cache:miss", { key: cacheKey });
-      return null; // Cache miss
+      return null;
     } catch (error: any) {
       this.logger?.warn(`SemanticCache lookup error: ${error.message}`);
       return null; // Graceful degradation: fall through to live API
@@ -144,6 +179,12 @@ export class SemanticCache extends EventEmitter {
       expiresAt: Date.now() + this.config.ttlMs,
       hitCount: 0,
     };
+
+    if (this.config.useEmbedding && this.embeddingService.isAvailable()) {
+      this.embeddingService.embed(entry.requestSummary).then(emb => {
+        if (emb) entry.embedding = emb;
+      }).catch(() => {});
+    }
 
     this.cache.set(cacheKey, entry);
 
@@ -210,10 +251,12 @@ export class SemanticCache extends EventEmitter {
 
   private generateRequestHash(body: any): string {
     const normalized = JSON.stringify({
-      messages: (body.messages || []).slice(-5), // Last 5 messages only
+      messages: (body.messages || []).slice(-5),
       system: typeof body.system === "string"
         ? body.system.slice(0, 500)
-        : JSON.stringify(body.system).slice(0, 500),
+        : body.system
+          ? JSON.stringify(body.system).slice(0, 500)
+          : "",
       tools: (body.tools || []).map((t: any) => t.name).sort(),
     });
     return createHash("sha256").update(normalized).digest("hex").slice(0, 24);
@@ -242,10 +285,11 @@ export class SemanticCache extends EventEmitter {
 
   private shouldSkip(body: any): boolean {
     if (!body) return true;
-    const bodyStr = JSON.stringify(body).toLowerCase();
-    return this.config.skipPatterns.some((pattern) =>
-      bodyStr.includes(pattern.toLowerCase())
-    );
+    // Skip streaming requests
+    if (body.stream === true) return true;
+    // Skip high temperature requests (non-deterministic)
+    if (body.temperature > this.config.temperatureThreshold) return true;
+    return false;
   }
 
   private cleanup(): void {

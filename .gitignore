@@ -7,6 +7,9 @@ dist
 .vscode
 tsconfig.tsbuildinfo
 local/run-logs/
+dev/captures.jsonl
+dev/evolution_traces.jsonl
+dev/rag_store/
 
 # Documentation build output
 docs/build

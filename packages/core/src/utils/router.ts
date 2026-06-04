@@ -11,12 +11,9 @@ import { resolveModelAlias } from "./model-alias";
 import { analyzeReasoning, buildContextInjection } from "../engines/reasoning-engine";
 
 // ==========================================================================
-// Provider fallback map: when a provider is down, which fallback to use
+// Provider fallback: config-driven via "fallback" section in config.json
+// No hardcoded provider names — all fallback logic reads from config
 // ==========================================================================
-const PROVIDER_FALLBACK: Record<string, string> = {
-  xfyun: "deepseek,deepseek-v4-flash",
-  deepseek: "xfyun,astron-code-latest",
-};
 
 // Types from @anthropic-ai/sdk
 interface Tool {
@@ -153,11 +150,13 @@ const getUseModel = async (
 
   if (req.body.model.includes(",")) {
     const [provider, model] = req.body.model.split(",");
+    const providerLower = provider.toLowerCase();
+    const modelLower = model.toLowerCase();
     const finalProvider = providers.find(
-      (p: any) => p.name.toLowerCase() === provider
+      (p: any) => p.name.toLowerCase() === providerLower
     );
     const finalModel = finalProvider?.models?.find(
-      (m: any) => m.toLowerCase() === model
+      (m: any) => m.toLowerCase() === modelLower
     );
     if (finalProvider && finalModel) {
       return { model: `${finalProvider.name},${finalModel}`, scenarioType: 'default' };
@@ -307,11 +306,22 @@ export const router = async (req: any, _res: any, context: RouterContext) => {
     const customRouterPath = configService.get("CUSTOM_ROUTER_PATH");
     if (!model && customRouterPath) {
       try {
-        const customRouter = require(customRouterPath);
-        req.tokenCount = tokenCount; // Pass token count to custom router
-        model = await customRouter(req, configService.getAll(), {
-          event,
-        });
+        const resolved = require.resolve(customRouterPath);
+        const fs = require('fs');
+        const path = require('path');
+        const os = require('os');
+        const realResolved = fs.realpathSync(resolved);
+        const allowed = [process.cwd(), os.homedir(), path.join(os.homedir(), '.claude-code-router')];
+        const isAllowed = allowed.some(dir => realResolved.startsWith(path.resolve(dir)));
+        if (!isAllowed) {
+          req.log.error(`Custom router path outside allowed directories: ${realResolved}`);
+        } else {
+          const customRouter = require(realResolved);
+          req.tokenCount = tokenCount;
+          model = await customRouter(req, configService.getAll(), {
+            event,
+          });
+        }
       } catch (e: any) {
         req.log.error(`failed to load custom router: ${e.message}`);
       }
@@ -361,6 +371,7 @@ export const router = async (req: any, _res: any, context: RouterContext) => {
 
       // ====================================================================
       // HEALTH-BASED FALLBACK: check if target provider is healthy
+      // Falls back to config-driven fallback[scenarioType] or fallback.default
       // ====================================================================
       try {
         const [targetProvider] = model.split(",");
@@ -368,12 +379,22 @@ export const router = async (req: any, _res: any, context: RouterContext) => {
         if (healthMonitor && targetProvider) {
           const isHealthy = await healthMonitor.checkBeforeRoute(targetProvider);
           if (!isHealthy) {
-            const fallback = PROVIDER_FALLBACK[targetProvider] || PROVIDER_FALLBACK['xfyun'];
-            req.log.warn(
-              `Provider ${targetProvider} is UNHEALTHY → falling back to ${fallback}`
-            );
-            model = fallback;
-            req.scenarioType = 'health_fallback';
+            // Use config-driven fallback chain
+            const fallbackConfig = configService.get<any>('fallback');
+            const scenarioType = req.scenarioType || 'default';
+            const fallbackList = fallbackConfig?.[scenarioType] || fallbackConfig?.default || [];
+            const fallback = Array.isArray(fallbackList) ? fallbackList[0] : fallbackList;
+            if (fallback) {
+              req.log.warn(
+                `Provider ${targetProvider} is UNHEALTHY → falling back to ${fallback}`
+              );
+              model = fallback;
+              req.scenarioType = 'health_fallback';
+            } else {
+              req.log.warn(
+                `Provider ${targetProvider} is UNHEALTHY and no fallback configured`
+              );
+            }
           }
         }
       } catch (e: any) {

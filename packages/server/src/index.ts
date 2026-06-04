@@ -16,6 +16,10 @@ import { IAgent, ITool } from "./agents/type";
 import agentsManager from "./agents";
 import { EventEmitter } from "node:events";
 import { pluginManager, tokenSpeedPlugin } from "@musistudio/llms";
+import { getMetrics } from "@musistudio/llms";
+import { getCircuitBreaker, CircuitState } from "@musistudio/llms";
+import { getRateLimiter } from "@musistudio/llms";
+import { getKeyRotator } from "@musistudio/llms";
 
 const event = new EventEmitter()
 
@@ -471,6 +475,59 @@ async function getServer(options: RunOptions = {}) {
     serverInstance.app.log.error("Unhandled rejection at:", promise, "reason:", reason);
   });
 
+  // Enable config hot-reload (watch config file for changes)
+  try {
+    serverInstance.configService.startWatching();
+    serverInstance.configService.on('config:changed', ({ oldConfig, newConfig }: any) => {
+      serverInstance.app.log.info('Config hot-reloaded, updating rate limiter and circuit breakers...');
+      // Update rate limiter with new config
+      const rateLimiter = getRateLimiter();
+      rateLimiter.updateConfig({
+        requestsPerWindow: newConfig.RATE_LIMIT_REQUESTS_PER_WINDOW,
+        windowMs: newConfig.RATE_LIMIT_WINDOW_MS,
+        tokensPerWindow: newConfig.RATE_LIMIT_TOKENS_PER_WINDOW,
+        globalRequestsPerWindow: newConfig.RATE_LIMIT_GLOBAL_REQUESTS,
+        perIp: newConfig.RATE_LIMIT_PER_IP !== false,
+        perApiKey: newConfig.RATE_LIMIT_PER_API_KEY !== false,
+      });
+    });
+  } catch (err: any) {
+    serverInstance.app.log.warn(`Config watcher setup failed: ${err.message}`);
+  }
+
+  // Initialize metrics with provider health tracking
+  const metrics = getMetrics(serverInstance.app.log);
+  const providerList = config.Providers || config.providers || [];
+  for (const provider of providerList) {
+    metrics.setProviderHealth(provider.name, true);
+    // Track circuit breaker state changes
+    getCircuitBreaker(provider.name, {}, serverInstance.app.log,
+      (name: string, from: CircuitState, to: CircuitState) => {
+        metrics.setCircuitState(name, to);
+        serverInstance.app.log.warn(`Circuit breaker [${name}]: ${from} → ${to}`);
+      }
+    );
+  }
+
+  // Initialize key rotator with provider keys (supports apiKey as string or string[])
+  try {
+    const keyRotator = getKeyRotator({
+      enabled: true,
+      strategy: 'round_robin',
+      cooldownMs: 60000,
+      maxFailures: 3,
+    }, serverInstance.app.log);
+    for (const provider of providerList) {
+      const keys = provider.api_key || provider.apiKey;
+      if (keys) {
+        keyRotator.registerKeys(provider.name, Array.isArray(keys) ? keys : [keys]);
+      }
+    }
+    serverInstance.app.log.info('KeyRotator: initialized for providers');
+  } catch (err: any) {
+    serverInstance.app.log.warn(`KeyRotator setup failed: ${err.message}`);
+  }
+
   return serverInstance;
 }
 
@@ -491,6 +548,7 @@ export type { RunOptions };
 export type { IAgent, ITool } from "./agents/type";
 export { initDir, initConfig, readConfigFile, writeConfigFile, backupConfigFile } from "./utils";
 export { pluginManager, tokenSpeedPlugin } from "@musistudio/llms";
+export { getMetrics, getCircuitBreaker, getAllCircuitBreakers, CircuitState, getRateLimiter, withRetry, redactString, redactObject, getBudgetManager, getIdempotencyGuard, getPermissionGuard, getMockServer, getStructuredOutputProcessor, getPromptTemplateEngine, getMultiModelVoter, getSelfReflector, getReplayManager, getRedisCache, getVectorStore, getTaskQueue, getWsPush, getCacheWarmer, getABTester, getTaskSplitter, getTenantManager, getKeyRotator, getQualityScorer, getAuditLogger, getSlidingWindow, getDocLoader, getCascadeChain, getTaskScheduler, getFeedbackStore, getMultimodalProcessor, getComplianceDisclaimer, getCacheReportAggregator, getOllamaFallback, getProxyDiffTracker, getCodeExtractor, getIntentRouter } from "@musistudio/llms";
 
 // Start service if this file is run directly
 if (require.main === module) {
