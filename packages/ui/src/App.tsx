@@ -168,7 +168,15 @@ function App() {
 
   useEffect(() => {
     const checkAuth = async () => {
-      // If we already have a config, we're authenticated
+      try {
+        const resp = await fetch('/api/setup/status');
+        const status = await resp.json();
+        if (status.needsSetup) {
+          navigate('/setup');
+          return;
+        }
+      } catch {}
+
       if (config) {
         setIsCheckingAuth(false);
         // 自动检查更新，但不显示对话框

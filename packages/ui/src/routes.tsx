@@ -8,6 +8,7 @@ import { CacheManager } from '@/components/CacheManager';
 import { BudgetTracker } from '@/components/BudgetTracker';
 import { Pipeline } from '@/components/Pipeline';
 import { ProviderMonitor } from '@/components/ProviderMonitor';
+import { SetupWizard } from '@/components/SetupWizard';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import PublicRoute from '@/components/PublicRoute';
 
@@ -15,6 +16,10 @@ export const router = createMemoryRouter([
   {
     path: '/',
     element: <Navigate to="/dashboard" replace />,
+  },
+  {
+    path: '/setup',
+    element: <SetupWizard />,
   },
   {
     path: '/login',

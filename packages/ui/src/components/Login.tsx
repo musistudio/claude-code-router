@@ -17,15 +17,22 @@ export function Login() {
   // Check if user is already authenticated
   useEffect(() => {
     const checkAuth = async () => {
+      try {
+        const status = await fetch('/api/setup/status');
+        const setupStatus = await status.json();
+        if (setupStatus.needsSetup) {
+          navigate('/setup');
+          return;
+        }
+      } catch {}
+
       const apiKey = localStorage.getItem('apiKey');
       if (apiKey) {
         setIsLoading(true);
-        // Verify the API key is still valid
         try {
           await api.getConfig();
           navigate('/dashboard');
         } catch {
-          // If verification fails, remove the API key
           localStorage.removeItem('apiKey');
         } finally {
           setIsLoading(false);

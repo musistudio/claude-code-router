@@ -40,6 +40,12 @@ import { getCodeExtractor } from "@/utils/code-extractor";
 import { getIntentRouter } from "@/utils/intent-router";
 import { getEmbeddingService, EmbeddingService } from "@/utils/embedding";
 import { getFinancialDataService } from "@/utils/financial-data";
+import { writeFile, mkdir } from "fs/promises";
+import { join } from "path";
+import { homedir } from "os";
+
+const SETUP_CONFIG_DIR = join(homedir(), ".claude-code-router");
+const SETUP_CONFIG_FILE = join(SETUP_CONFIG_DIR, "config.json");
 
 // Extend FastifyInstance to include custom services
 declare module "fastify" {
@@ -849,6 +855,8 @@ export const registerApiRoutes = async (
     if (!req.url?.startsWith('/api/')) return;
     if (req.url === '/api/health') return;
     if (req.url === '/api/config' && req.method === 'GET') return;
+    if (req.url === '/api/setup/status' && req.method === 'GET') return;
+    if (req.url === '/api/setup' && req.method === 'POST') return;
     const configuredApiKey = fastify.configService?.get('APIKEY');
     if (!configuredApiKey) return;
     const providedKey = req.headers['x-api-key'] ||
@@ -866,6 +874,80 @@ export const registerApiRoutes = async (
 
   fastify.get("/health", async () => {
     return { status: "ok", timestamp: new Date().toISOString() };
+  });
+
+  fastify.get("/api/setup/status", async () => {
+    const providers = fastify.configService.get('Providers') || fastify.configService.get('providers') || [];
+    return {
+      needsSetup: providers.length === 0,
+      hasProviders: providers.length > 0,
+      providerCount: providers.length,
+      apiKey: fastify.configService.get('APIKEY') || '',
+    };
+  });
+
+  fastify.post("/api/setup", async (request: any, reply: any) => {
+    try {
+      const body = request.body;
+      if (!body.providers || !Array.isArray(body.providers) || body.providers.length === 0) {
+        return reply.code(400).send({ error: 'At least one provider is required' });
+      }
+
+      for (const p of body.providers) {
+        if (!p.name || !p.api_base_url || !p.api_key) {
+          return reply.code(400).send({ error: `Provider "${p.name || 'unnamed'}" missing required fields (name, api_base_url, api_key)` });
+        }
+      }
+
+      const defaultProvider = body.providers[0];
+      const defaultModel = defaultProvider.models?.[0] || '';
+      const defaultRoute = defaultModel ? `${defaultProvider.name},${defaultModel}` : '';
+
+      const config = {
+        HOST: "127.0.0.1",
+        PORT: 3456,
+        APIKEY: "local-dev-key",
+        LOG: true,
+        LOG_LEVEL: "info",
+        API_TIMEOUT_MS: 600000,
+        Providers: body.providers.map((p: any) => ({
+          name: p.name,
+          api_base_url: p.api_base_url,
+          api_key: p.api_key,
+          models: p.models || [],
+          ...(p.transformer ? { transformer: p.transformer } : {}),
+          ...(p.priority ? { priority: p.priority } : {}),
+          ...(p.cost_tier ? { cost_tier: p.cost_tier } : {}),
+          ...(p.concurrency_limit ? { concurrency_limit: p.concurrency_limit } : {}),
+        })),
+        Router: body.router || {
+          default: defaultRoute,
+          background: defaultRoute,
+          think: defaultRoute,
+          longContext: defaultRoute,
+          longContextThreshold: 60000,
+          reasoningFlash: defaultRoute,
+          reasoningProMax: defaultRoute,
+        },
+        ModelMapping: body.modelMapping || {},
+        Concurrency: {
+          global: 10,
+          providers: body.providers.reduce((acc: any, p: any) => {
+            acc[p.name] = p.concurrency_limit || 5;
+            return acc;
+          }, {}),
+          queueTimeoutMs: 120000,
+        },
+        fallback: {},
+      };
+
+      await mkdir(SETUP_CONFIG_DIR, { recursive: true });
+      await writeFile(SETUP_CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
+
+      return { success: true, message: 'Configuration saved. The service will reload automatically.' };
+    } catch (error: any) {
+      return reply.code(500).send({ error: error.message });
+    }
   });
 
   // Prometheus metrics endpoint

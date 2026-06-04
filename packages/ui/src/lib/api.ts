@@ -383,6 +383,14 @@ class ApiClient {
   async getSlidingWindowStatus(): Promise<any> {
     return this.get<any>('/sliding-window');
   }
+
+  async getSetupStatus(): Promise<{ needsSetup: boolean; hasProviders: boolean; providerCount: number; apiKey: string }> {
+    return this.get<{ needsSetup: boolean; hasProviders: boolean; providerCount: number; apiKey: string }>('/setup/status');
+  }
+
+  async saveSetup(data: { providers: any[]; router?: any; modelMapping?: any }): Promise<{ success: boolean; message: string }> {
+    return this.post<{ success: boolean; message: string }>('/setup', data);
+  }
 }
 
 // Create a default instance of the API client

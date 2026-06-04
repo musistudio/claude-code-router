@@ -312,5 +312,27 @@
       "apply": "Apply",
       "cancel": "Cancel"
     }
+  },
+  "setup": {
+    "title": "Setup Wizard",
+    "welcome": "Welcome to Claude Code Router",
+    "description": "Configure your LLM providers to get started",
+    "step1": "Select Providers",
+    "step2": "Configure API Keys",
+    "step3": "Review & Save",
+    "selectProviders": "Select one or more providers",
+    "apiKey": "API Key",
+    "apiKeyPlaceholder": "Enter your API key",
+    "baseUrl": "API Base URL",
+    "models": "Models",
+    "save": "Save & Start",
+    "saving": "Saving configuration...",
+    "success": "Configuration saved! Reloading...",
+    "redirecting": "Redirecting to dashboard...",
+    "addProvider": "Add another provider",
+    "removeProvider": "Remove",
+    "customProvider": "Custom Provider",
+    "review": "Review your configuration",
+    "providerCount": "{{count}} providers configured"
   }
 }
