@@ -352,6 +352,9 @@ class Server {
       });
 
       this.app.log.info(`🚀 LLMs API server listening on ${address}`);
+      console.log(`\n  🚀 Claude Code Router running at ${address}`);
+      console.log(`  📊 Dashboard: ${address}/api/health`);
+      console.log(`  ⚙️  Setup:    ${address}/ (first time)\n`);
 
       const shutdown = async (signal: string) => {
         this.app.log.info(`Received ${signal}, shutting down gracefully...`);
