@@ -255,7 +255,8 @@ async function handleTransformerEndpoint(
     );
 
     // Format and return response
-    const finalResult = await formatResponse(finalResponse, reply, body);
+    const orchestrator = (fastify as any)._server?.orchestrator;
+    const finalResult = await formatResponse(finalResponse, reply, body, req, orchestrator);
 
     // Cache response for idempotency
     if (idempotencyResult.fingerprint) {
@@ -379,7 +380,8 @@ async function handleFallback(
       req.log.info(`Fallback model ${fallbackModel} succeeded`);
 
       // Format and return response
-      return formatResponse(finalResponse, reply, newBody);
+      const orchestrator = (fastify as any)._server?.orchestrator;
+      return formatResponse(finalResponse, reply, newBody, req, orchestrator);
     } catch (fallbackError: any) {
       req.log.warn(`Fallback model ${fallbackModel} failed: ${fallbackError.message}`);
       continue;
@@ -520,6 +522,10 @@ async function sendRequestToProvider(
   }
 
   const url = config.url || new URL(provider.baseUrl);
+
+  if (requestBody.stream === true && provider.name?.toLowerCase().includes('openai')) {
+    requestBody.stream_options = { include_usage: true };
+  }
 
   // Handle authentication in passthrough mode
   if (bypass && typeof transformer.auth === "function") {
@@ -749,7 +755,38 @@ async function processResponseTransformers(
  * Format and return response
  * Handle HTTP status codes, format streaming and regular responses
  */
-function formatResponse(response: any, reply: FastifyReply, body: any) {
+function parseSSEToMessage(fullPayload: string): any | null {
+  const lines = fullPayload.split('\n');
+  let finalMessage: any = null;
+
+  for (const line of lines) {
+    if (line.startsWith('data: ')) {
+      const data = line.slice(6).trim();
+      if (data === '[DONE]') continue;
+      try {
+        const parsed = JSON.parse(data);
+        if (parsed.type === 'message_start') {
+          finalMessage = { ...parsed.message, content: [] };
+        } else if (parsed.type === 'content_block_start' && finalMessage) {
+          finalMessage.content.push(parsed.content_block);
+        } else if (parsed.type === 'content_block_delta' && finalMessage?.content) {
+          const block = finalMessage.content[parsed.index];
+          if (block) {
+            if (parsed.delta?.type === 'text_delta') block.text = (block.text || '') + parsed.delta.text;
+            else if (parsed.delta?.type === 'thinking_delta') block.thinking = (block.thinking || '') + parsed.delta.thinking;
+            else if (parsed.delta?.type === 'input_json_delta') block.input = (block.input || '') + parsed.delta.partial_json;
+          }
+        } else if (parsed.type === 'message_delta' && finalMessage) {
+          Object.assign(finalMessage, parsed.delta);
+          if (parsed.usage) finalMessage.usage = parsed.usage;
+        }
+      } catch {}
+    }
+  }
+  return finalMessage;
+}
+
+function formatResponse(response: any, reply: FastifyReply, body: any, req?: any, orchestrator?: any) {
   // Set HTTP status code
   if (!response.ok) {
     reply.code(response.status);
@@ -761,6 +798,43 @@ function formatResponse(response: any, reply: FastifyReply, body: any) {
     reply.header("Content-Type", "text/event-stream");
     reply.header("Cache-Control", "no-cache");
     reply.header("Connection", "keep-alive");
+
+    if (req && orchestrator && response.body) {
+      const originalStream = response.body;
+      const collectedChunks: string[] = [];
+      const decoder = new TextDecoder();
+
+      const wrappedStream = new ReadableStream({
+        start(controller) {
+          const reader = originalStream.getReader();
+          const pump = async () => {
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) {
+                  try {
+                    const fullPayload = collectedChunks.join('');
+                    const finalMessage = parseSSEToMessage(fullPayload);
+                    if (finalMessage && !finalMessage.error) {
+                      orchestrator.onPostResponse(req, finalMessage).catch(() => {});
+                    }
+                  } catch {}
+                  controller.close();
+                  return;
+                }
+                collectedChunks.push(decoder.decode(value, { stream: true }));
+                controller.enqueue(value);
+              }
+            } catch (err) {
+              controller.error(err);
+            }
+          };
+          pump();
+        }
+      });
+      return reply.send(wrappedStream);
+    }
+
     return reply.send(response.body);
   } else {
     // Handle regular JSON response
@@ -1026,6 +1100,313 @@ export const registerApiRoutes = async (
     };
   });
 
+  // UNIFIED dashboard-full endpoint - all subsystems in one call
+  fastify.get("/api/dashboard-full", async () => {
+    const startTime = Date.now();
+    const result: Record<string, any> = {
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+    };
+
+    // 1. Metrics
+    try {
+      const metrics = getMetrics(fastify.log);
+      result.metrics = metrics.getStats();
+    } catch (e: any) {
+      result.metrics = { error: e.message };
+    }
+
+    // 2. Budget
+    try {
+      const budget = getBudgetManager();
+      result.budget = budget.getStatus();
+    } catch (e: any) {
+      result.budget = { error: e.message };
+    }
+
+    // 3. Circuit Breakers
+    try {
+      const { getAllCircuitBreakers } = await import("@/utils/circuit-breaker");
+      const breakers = getAllCircuitBreakers();
+      const cbResult: Record<string, any> = {};
+      for (const [name, breaker] of breakers) {
+        cbResult[name] = breaker.getState();
+      }
+      result.circuitBreakers = cbResult;
+    } catch (e: any) {
+      result.circuitBreakers = { error: e.message };
+    }
+
+    // 4. Rate Limiter
+    try {
+      const rateLimiter = getRateLimiter();
+      result.rateLimiter = rateLimiter.getStats();
+    } catch (e: any) {
+      result.rateLimiter = { error: e.message };
+    }
+
+    // 5. Cache Report
+    try {
+      const cacheReportAgg = getCacheReportAggregator();
+      const metrics = getMetrics(fastify.log);
+      const stats = metrics.getStats();
+      const report = cacheReportAgg.generateReport({
+        l1: { hits: stats.cache?.hits || 0, misses: stats.cache?.misses || 0, entries: stats.cache?.size || 0 },
+        l2: { hits: stats.redis?.hits || 0, misses: stats.redis?.misses || 0, connected: !!stats.redis?.connected },
+      });
+      result.cacheReport = {
+        layers: report.layers,
+        total: report.total,
+        savings: report.savings,
+      };
+    } catch (e: any) {
+      result.cacheReport = { error: e.message };
+    }
+
+    // 6. Quality Scorer
+    try {
+      const scorer = getQualityScorer();
+      result.quality = { enabled: true };
+    } catch (e: any) {
+      result.quality = { error: e.message };
+    }
+
+    // 7. Providers (from health monitor)
+    try {
+      const orchestrator = (fastify as any)._server?.orchestrator;
+      if (orchestrator?.healthMonitor) {
+        result.providers = orchestrator.healthMonitor.getSummary();
+      } else {
+        const providers = fastify.providerService.getProviders();
+        result.providers = providers.map((p: any) => ({
+          name: p.name,
+          enabled: p.enabled !== false,
+          models: p.models?.length || 0,
+        }));
+      }
+    } catch (e: any) {
+      result.providers = { error: e.message };
+    }
+
+    // 8. Audit Logger
+    try {
+      const auditLogger = getAuditLogger();
+      result.audit = auditLogger.getStats();
+    } catch (e: any) {
+      result.audit = { error: e.message };
+    }
+
+    // 9. Feedback
+    try {
+      const feedbackStore = getFeedbackStore();
+      result.feedback = feedbackStore.getStats();
+    } catch (e: any) {
+      result.feedback = { error: e.message };
+    }
+
+    // 10. Embedding Service
+    try {
+      const embeddingService = getEmbeddingService();
+      result.embedding = embeddingService.getStats();
+    } catch (e: any) {
+      result.embedding = { error: e.message };
+    }
+
+    // 11. Ollama Fallback
+    try {
+      const fallback = getOllamaFallback();
+      result.ollamaFallback = { enabled: true };
+    } catch (e: any) {
+      result.ollamaFallback = { error: e.message };
+    }
+
+    // 12. Task Scheduler
+    try {
+      const scheduler = getTaskScheduler();
+      result.tasks = scheduler.getStats();
+    } catch (e: any) {
+      result.tasks = { error: e.message };
+    }
+
+    // 13. Tenant Manager
+    try {
+      const tenantManager = getTenantManager();
+      result.tenants = tenantManager ? tenantManager.getStats() : { enabled: false };
+    } catch (e: any) {
+      result.tenants = { error: e.message };
+    }
+
+    // 14. Key Rotator
+    try {
+      const keyRotator = getKeyRotator();
+      result.keyRotator = keyRotator.getStats();
+    } catch (e: any) {
+      result.keyRotator = { error: e.message };
+    }
+
+    // 15. Proxy Diff
+    try {
+      const diffTracker = getProxyDiffTracker();
+      result.proxyDiff = diffTracker.getStats();
+    } catch (e: any) {
+      result.proxyDiff = { error: e.message };
+    }
+
+    result.responseTimeMs = Date.now() - startTime;
+    return result;
+  });
+
+  // Metrics history endpoint - ring buffer of last 100 snapshots
+  fastify.get("/api/metrics/history", async () => {
+    const metrics = getMetrics(fastify.log);
+    return {
+      snapshots: metrics.getHistory(),
+      count: metrics.getHistory().length,
+    };
+  });
+
+  // Cache clear endpoint - clears L1 semantic + L2 Redis
+  fastify.post("/api/cache/clear", async () => {
+    const results: Record<string, any> = {};
+
+    try {
+      const orchestrator = (fastify as any)._server?.orchestrator;
+      if (orchestrator?.semanticCache) {
+        orchestrator.semanticCache.clear();
+        results.l1Semantic = { cleared: true };
+      } else {
+        results.l1Semantic = { cleared: false, reason: "not_available" };
+      }
+    } catch (e: any) {
+      results.l1Semantic = { cleared: false, error: e.message };
+    }
+
+    try {
+      const { getRedisCache } = await import("@/utils/redis-cache");
+      const redisCache = getRedisCache();
+      if (redisCache && (redisCache as any).connected && (redisCache as any).client) {
+        const prefix = (redisCache as any).config?.keyPrefix || 'ccr:';
+        const stream = (redisCache as any).client.scanStream({ match: `${prefix}*`, count: 100 });
+        let deletedCount = 0;
+        await new Promise<void>((resolve, reject) => {
+          stream.on('data', (keys: string[]) => {
+            if (keys.length > 0) {
+              deletedCount += keys.length;
+              (redisCache as any).client.del(...keys);
+            }
+          });
+          stream.on('end', () => resolve());
+          stream.on('error', () => resolve());
+          setTimeout(() => resolve(), 5000);
+        });
+        results.l2Redis = { cleared: true, deletedKeys: deletedCount };
+      } else {
+        results.l2Redis = { cleared: false, reason: "not_connected" };
+      }
+    } catch (e: any) {
+      results.l2Redis = { cleared: false, error: e.message };
+    }
+
+    try {
+      const embeddingService = getEmbeddingService();
+      results.embeddingCache = { cleared: true, previousSize: embeddingService.getStats().cacheSize };
+    } catch (e: any) {
+      results.embeddingCache = { cleared: false, error: e.message };
+    }
+
+    return { timestamp: new Date().toISOString(), results };
+  });
+
+  // Pipeline status endpoint - which middleware are active
+  fastify.get("/api/pipeline/status", async () => {
+    const orchestrator = (fastify as any)._server?.orchestrator;
+    if (!orchestrator) {
+      return { error: "orchestrator not available", middleware: [] };
+    }
+
+    const middleware: Array<{ name: string; enabled: boolean; details?: any }> = [];
+
+    const getEnabled = (obj: any): boolean => {
+      if (!obj) return false;
+      if (typeof obj.isEnabled === 'function') return obj.isEnabled();
+      if (obj.config?.enabled !== undefined) return obj.config.enabled;
+      return !!obj;
+    };
+
+    try {
+      middleware.push({
+        name: "SemanticCache",
+        enabled: getEnabled(orchestrator.semanticCache),
+        details: orchestrator.semanticCache?.getStats?.(),
+      });
+    } catch {}
+
+    try {
+      middleware.push({
+        name: "MemoryBridge",
+        enabled: getEnabled(orchestrator.memoryBridge),
+      });
+    } catch {}
+
+    try {
+      middleware.push({
+        name: "RAGEnricher",
+        enabled: getEnabled(orchestrator.ragEnricher),
+      });
+    } catch {}
+
+    try {
+      middleware.push({
+        name: "ContextCapture",
+        enabled: getEnabled(orchestrator.contextCapture),
+      });
+    } catch {}
+
+    try {
+      middleware.push({
+        name: "ReasoningCache",
+        enabled: getEnabled(orchestrator.reasoningCache),
+      });
+    } catch {}
+
+    try {
+      middleware.push({
+        name: "SessionBridge",
+        enabled: !!orchestrator.sessionBridge,
+      });
+    } catch {}
+
+    try {
+      middleware.push({
+        name: "EvolutionBridge",
+        enabled: getEnabled(orchestrator.evolutionBridge),
+      });
+    } catch {}
+
+    try {
+      middleware.push({
+        name: "HealthMonitor",
+        enabled: orchestrator.healthMonitor !== null,
+      });
+    } catch {}
+
+    try {
+      const summary = orchestrator.hookManager?.getSummary?.() ?? {};
+      middleware.push({
+        name: "HookManager",
+        enabled: !!orchestrator.hookManager,
+        details: summary,
+      });
+    } catch {}
+
+    const activeCount = middleware.filter(m => m.enabled).length;
+    return {
+      totalMiddleware: middleware.length,
+      activeCount,
+      middleware,
+    };
+  });
+
   // Embedding service API
   fastify.get("/api/embedding", async () => {
     const service = getEmbeddingService();
@@ -1146,6 +1527,37 @@ export const registerApiRoutes = async (
       symbol, position: Number(position), direction,
       entryPrice: Number(entryPrice), currentPrice: Number(currentPrice),
     });
+  });
+
+  fastify.post("/v1/messages/count_tokens", async (req: FastifyRequest, reply: FastifyReply) => {
+    const body = req.body as any;
+    const messages = body.messages || [];
+    const system = body.system || '';
+    const tools = body.tools || [];
+
+    let totalChars = 0;
+    if (typeof system === 'string') totalChars += system.length;
+    else if (Array.isArray(system)) totalChars += system.reduce((acc: number, s: any) => acc + (s.text?.length || 0), 0);
+
+    for (const msg of messages) {
+      if (typeof msg.content === 'string') totalChars += msg.content.length;
+      else if (Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          totalChars += (block.text?.length || 0) + (block.thinking?.length || 0) + (block.input?.length || 0);
+        }
+      }
+    }
+    for (const tool of tools) {
+      totalChars += (tool.name?.length || 0) + (tool.description?.length || 0) + JSON.stringify(tool.input_schema || {}).length;
+    }
+
+    const estimatedTokens = Math.ceil(totalChars / 4) + 1;
+
+    return {
+      input_tokens: estimatedTokens,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+    };
   });
 
   const transformersWithEndpoint =

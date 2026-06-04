@@ -66,3 +66,26 @@ export function thinkingToAnthropic(config: ReturnType<typeof parseThinkingConfi
     },
   };
 }
+
+const EFFORT_TO_BUDGET: Record<string, number> = {
+  low: 1024,
+  medium: 8192,
+  high: 32000,
+};
+
+export function resolveReasoningEffort(body: any): { effort?: string; budgetTokens?: number } {
+  if (body.reasoning_effort) {
+    return {
+      effort: body.reasoning_effort,
+      budgetTokens: EFFORT_TO_BUDGET[body.reasoning_effort] || 8192,
+    };
+  }
+  if (body.thinking?.type === 'enabled') {
+    const budget = body.thinking.budget_tokens || 8192;
+    return {
+      effort: budget <= 1024 ? 'low' : budget <= 8192 ? 'medium' : 'high',
+      budgetTokens: budget,
+    };
+  }
+  return {};
+}
