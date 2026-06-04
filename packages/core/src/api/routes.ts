@@ -1166,6 +1166,49 @@ export const registerApiRoutes = async (
     return { enabled: true };
   });
 
+  fastify.get("/api/langfuse", async () => {
+    if (orchestrator?.langfuseTracer) {
+      return { enabled: orchestrator.langfuseTracer.isInitialized() };
+    }
+    return { enabled: false };
+  });
+
+  fastify.get("/api/tool-compressor", async () => {
+    if (orchestrator?.toolCompressor) {
+      return { enabled: true, stats: orchestrator.toolCompressor.getStats() };
+    }
+    return { enabled: false };
+  });
+
+  fastify.get("/api/idempotency", async () => {
+    if (orchestrator?.idempotencyGuard) {
+      return { enabled: true, stats: orchestrator.idempotencyGuard.getStats() };
+    }
+    return { enabled: false };
+  });
+
+  fastify.get("/api/key-manager", async () => {
+    if (orchestrator?.keyManager) {
+      return orchestrator.keyManager.getStats();
+    }
+    return { enabled: false, providers: 0, totalKeys: 0 };
+  });
+
+  fastify.get("/api/qdrant-cache", async () => {
+    if (orchestrator?.qdrantCache) {
+      return orchestrator.qdrantCache.getStats();
+    }
+    return { enabled: false, available: false };
+  });
+
+  fastify.post("/api/qdrant-cache/clear", async () => {
+    if (orchestrator?.qdrantCache) {
+      await orchestrator.qdrantCache.clear();
+      return { success: true };
+    }
+    return { success: false, message: "QdrantCache not available" };
+  });
+
   // Comprehensive dashboard endpoint
   fastify.get("/api/dashboard", async () => {
     const metrics = getMetrics(fastify.log);

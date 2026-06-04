@@ -29,6 +29,15 @@ import { ContextCaptureEngine, CaptureConfig } from "./context-capture";
 import { ReasoningCache, ReasoningCacheConfig } from "./reasoning-cache";
 import { SessionBridge } from "./session-bridge";
 import { EvolutionBridge, EvolutionConfig } from "./evolution-bridge";
+import { LangfuseTracer, LangfuseConfig } from "./langfuse-tracer";
+import { ToolCompressor, ToolCompressorConfig } from "./tool-compressor";
+import { IdempotencyGuard, IdempotencyConfig } from "./idempotency-guard";
+import { KeyManager, KeyConfig } from "./key-manager";
+import { QdrantCache, QdrantCacheConfig } from "./qdrant-cache";
+import { PromptCaching, PromptCachingConfig } from "./prompt-caching";
+import { SummaryInjector, SummaryInjectorConfig } from "./summary-injector";
+import { MultiModelVoter, MultiVoterConfig } from "./multi-voter";
+import { RequestReplay, ReplayConfig } from "./request-replay";
 import { checkHallucination, analyzeReasoning } from "../engines/reasoning-engine";
 import type { ReasoningContext } from "../engines/reasoning-engine";
 import { getRedisCache } from "../utils/redis-cache";
@@ -77,6 +86,15 @@ export interface MiddlewareConfig {
   complianceDisclaimer: { enabled: boolean };
   cacheReport: { enabled: boolean };
   ollamaFallback: { enabled: boolean };
+  langfuse: Partial<LangfuseConfig>;
+  toolCompressor: Partial<ToolCompressorConfig>;
+  idempotencyGuard: Partial<IdempotencyConfig>;
+  keyManager: { enabled: boolean; providers: Record<string, KeyConfig> };
+  qdrantCache: Partial<QdrantCacheConfig>;
+  promptCaching: Partial<PromptCachingConfig>;
+  summaryInjector: Partial<SummaryInjectorConfig>;
+  multiVoter: Partial<MultiVoterConfig>;
+  requestReplay: Partial<ReplayConfig>;
 }
 
 export class MiddlewareOrchestrator {
@@ -88,6 +106,15 @@ export class MiddlewareOrchestrator {
   public reasoningCache: ReasoningCache;
   public sessionBridge: SessionBridge;
   public evolutionBridge: EvolutionBridge;
+  public langfuseTracer: LangfuseTracer;
+  public toolCompressor: ToolCompressor;
+  public idempotencyGuard: IdempotencyGuard;
+  public keyManager: KeyManager;
+  public qdrantCache: QdrantCache;
+  public promptCaching: PromptCaching;
+  public summaryInjector: SummaryInjector;
+  public multiVoter: MultiModelVoter;
+  public requestReplay: RequestReplay;
   public healthMonitor: HealthMonitor | null = null;
 
   private configService: ConfigService;
@@ -130,7 +157,16 @@ export class MiddlewareOrchestrator {
     this.sessionBridge = new SessionBridge({}, this.logger);
     this.evolutionBridge = new EvolutionBridge({}, this.logger);
 
-    // If provider registry is available, set up health monitor
+    this.langfuseTracer = new LangfuseTracer(middlewareConfig.langfuse || {}, this.logger);
+    this.toolCompressor = new ToolCompressor(middlewareConfig.toolCompressor || {}, this.logger);
+    this.idempotencyGuard = new IdempotencyGuard(middlewareConfig.idempotencyGuard || {}, this.logger);
+    this.keyManager = new KeyManager(middlewareConfig.keyManager || { enabled: false, providers: {} }, this.logger);
+    this.qdrantCache = new QdrantCache(middlewareConfig.qdrantCache || {}, this.logger);
+    this.promptCaching = new PromptCaching(middlewareConfig.promptCaching || {}, this.logger);
+    this.summaryInjector = new SummaryInjector(middlewareConfig.summaryInjector || {}, this.logger);
+    this.multiVoter = new MultiModelVoter(middlewareConfig.multiVoter || {}, this.logger);
+    this.requestReplay = new RequestReplay(middlewareConfig.requestReplay || {}, this.logger);
+
     if (providerRegistry) {
       this.healthMonitor = new HealthMonitor(
         providerRegistry,
@@ -225,6 +261,50 @@ export class MiddlewareOrchestrator {
       ollamaFallback: {
         enabled: this.configService.get("OLLAMA_FALLBACK_ENABLED") === true,
       },
+      langfuse: {
+        enabled: this.configService.get("LANGFUSE_ENABLED") === true,
+        publicKey: this.configService.get("LANGFUSE_PUBLIC_KEY") || "",
+        secretKey: this.configService.get("LANGFUSE_SECRET_KEY") || "",
+        baseUrl: this.configService.get("LANGFUSE_BASE_URL") || "https://cloud.langfuse.com",
+      },
+      toolCompressor: {
+        enabled: this.configService.get("TOOL_COMPRESSOR_ENABLED") !== false,
+        maxToolResultLength: this.configService.get("TOOL_COMPRESSOR_MAX_LENGTH") || 2000,
+        truncateTo: this.configService.get("TOOL_COMPRESSOR_TRUNCATE_TO") || 1500,
+      },
+      idempotencyGuard: {
+        enabled: this.configService.get("IDEMPOTENCY_GUARD_ENABLED") === true,
+        maxEntries: this.configService.get("IDEMPOTENCY_MAX_ENTRIES") || 1000,
+        ttlMs: this.configService.get("IDEMPOTENCY_TTL_MS") || 300000,
+      },
+      keyManager: {
+        enabled: this.configService.get("KEY_MANAGER_ENABLED") === true,
+        providers: this.configService.get("KEY_MANAGER_PROVIDERS") || {},
+      },
+      qdrantCache: {
+        enabled: this.configService.get("QDRANT_CACHE_ENABLED") === true,
+        url: this.configService.get("QDRANT_URL") || "http://localhost:6333",
+        collection: this.configService.get("QDRANT_CACHE_COLLECTION") || "ccr_semantic_cache",
+        similarityThreshold: this.configService.get("QDRANT_CACHE_THRESHOLD") || 0.92,
+      },
+      promptCaching: {
+        enabled: this.configService.get("PROMPT_CACHING_ENABLED") !== false,
+        maxCachedSystemLength: this.configService.get("PROMPT_CACHING_MAX_LENGTH") || 50000,
+      },
+      summaryInjector: {
+        enabled: this.configService.get("SUMMARY_INJECTOR_ENABLED") === true,
+        maxTokens: this.configService.get("SUMMARY_INJECTOR_MAX_TOKENS") || 100000,
+        preserveRecentMessages: this.configService.get("SUMMARY_INJECTOR_PRESERVE") || 4,
+      },
+      multiVoter: {
+        enabled: this.configService.get("MULTI_VOTER_ENABLED") === true,
+        models: this.configService.get("MULTI_VOTER_MODELS") || [],
+        strategy: this.configService.get("MULTI_VOTER_STRATEGY") || "majority",
+      },
+      requestReplay: {
+        enabled: this.configService.get("REQUEST_REPLAY_ENABLED") === true,
+        storagePath: this.configService.get("REQUEST_REPLAY_PATH") || "./dev/replay-snapshots.jsonl",
+      },
     };
   }
 
@@ -292,6 +372,27 @@ export class MiddlewareOrchestrator {
     // Initialize evolution bridge
     this.evolutionBridge.initialize();
 
+    this.langfuseTracer.initialize();
+    this.logger.info(`  LangfuseTracer: ${this.langfuseTracer['config']?.enabled ? 'enabled' : 'disabled'}`);
+
+    if ((this.toolCompressor as any).config?.enabled !== false) {
+      this.logger.info("  ToolCompressor: enabled");
+    }
+
+    this.idempotencyGuard.initialize();
+    this.logger.info(`  IdempotencyGuard: ${this.idempotencyGuard['config']?.enabled ? 'enabled' : 'disabled'}`);
+
+    this.keyManager.initialize();
+    this.logger.info(`  KeyManager: ${this.keyManager['config']?.enabled ? 'enabled' : 'disabled'}`);
+
+    await this.qdrantCache.initialize();
+    this.logger.info(`  QdrantCache: ${this.qdrantCache['config']?.enabled ? 'enabled' : 'disabled'}`);
+
+    this.logger.info(`  PromptCaching: ${this.promptCaching['config']?.enabled ? 'enabled' : 'disabled'}`);
+    this.logger.info(`  SummaryInjector: ${this.summaryInjector['config']?.enabled ? 'enabled' : 'disabled'}`);
+    this.logger.info(`  MultiModelVoter: ${this.multiVoter.isEnabled() ? 'enabled' : 'disabled'}`);
+    this.logger.info(`  RequestReplay: ${this.requestReplay.getStats().enabled ? 'enabled' : 'disabled'}`);
+
     this.initialized = true;
     this.logger.info("MiddlewareOrchestrator: initialized");
   }
@@ -307,6 +408,9 @@ export class MiddlewareOrchestrator {
 
     this.sessionBridge.cleanup();
     this.evolutionBridge.shutdown();
+    this.langfuseTracer.shutdown();
+    this.idempotencyGuard.shutdown();
+    this.qdrantCache.shutdown();
 
     // Shutdown Redis cache
     try {
@@ -347,7 +451,6 @@ export class MiddlewareOrchestrator {
     if (!this.initialized) return null;
 
     try {
-      // Execute onRequest hooks
       const hookCtx = this.hookManager.createContext(req);
       const hookResult = await this.hookManager.execute("onRequest", hookCtx);
 
@@ -355,7 +458,24 @@ export class MiddlewareOrchestrator {
         return hookResult;
       }
 
-      // Check semantic cache (100ms budget)
+      if (this.idempotencyGuard['config']?.enabled) {
+        const idempResult = this.idempotencyGuard.checkRequest(req.body);
+        if (idempResult.isDuplicate) {
+          (req as any)._idempotentHit = true;
+          this.logger.debug(`IdempotencyGuard: duplicate detected`);
+          return idempResult.response || { status: 'processing' };
+        }
+      }
+
+      if (this.toolCompressor['config']?.enabled !== false) {
+        req.body = this.toolCompressor.compressRequest(req.body);
+        (req as any)._toolCompressed = true;
+      }
+
+      if (this.langfuseTracer['config']?.enabled) {
+        this.langfuseTracer.onPreRoute(req);
+      }
+
       const context = this.extractContext(req);
       const cachedResponse = await withTimeout(
         this.semanticCache.lookup(req.body, context),
@@ -398,6 +518,28 @@ export class MiddlewareOrchestrator {
         }
       } catch (e: any) {
         this.logger.debug(`Redis L2 lookup failed: ${e?.message}`);
+      }
+
+      if (this.qdrantCache['config']?.enabled) {
+        try {
+          const queryText = this.extractQuerySummary(req.body);
+          const qdrantResult = await withTimeout(
+            this.qdrantCache.lookup(queryText, []),
+            150,
+            null,
+            "qdrantCache.lookup",
+            this.logger
+          );
+          if (qdrantResult) {
+            (req as any)._cacheHit = true;
+            (req as any)._cachedResponse = qdrantResult;
+            (req as any)._cacheSource = 'qdrant';
+            this.logger.debug(`Qdrant L3 cache HIT for session ${context.sessionId}`);
+            return qdrantResult;
+          }
+        } catch (e: any) {
+          this.logger.debug(`Qdrant L3 lookup failed: ${e?.message}`);
+        }
       }
     } catch (error: any) {
       this.logger.warn(`MiddlewareOrchestrator onPreRoute error: ${error.message}`);
@@ -535,6 +677,19 @@ export class MiddlewareOrchestrator {
         this.logger.debug(`ComplianceDisclaimer failed: ${e?.message}`);
       }
 
+      if (this.promptCaching['config']?.enabled !== false) {
+        req.body = this.promptCaching.injectCacheControl(req.body);
+      }
+
+      if (this.summaryInjector['config']?.enabled && this.summaryInjector.shouldCompact(req.body)) {
+        const result = this.summaryInjector.buildCompactionPayload(req.body);
+        if (result.summaryAdded) {
+          req.body.messages = result.messages;
+          (req as any)._compactionInjected = true;
+          this.logger.info(`SummaryInjector: injected compacted messages`);
+        }
+      }
+
       // SessionBridge: process request for compaction detection and context preservation
       try {
         const sessionResult = this.sessionBridge.processRequest(
@@ -621,6 +776,36 @@ export class MiddlewareOrchestrator {
           }
         } catch (e: any) {
           this.logger.debug(`Redis L2 store error: ${e?.message}`);
+        }
+
+        if (this.qdrantCache['config']?.enabled) {
+          const queryText = this.extractQuerySummary(req.body);
+          this.qdrantCache.store(queryText, [], responseBody, {
+            model: (req as any).model || 'unknown',
+            provider: (req as any).provider || 'unknown',
+            sessionId: context.sessionId,
+          }).catch((e: any) => this.logger.debug(`Qdrant L3 store failed: ${e?.message}`));
+        }
+      }
+
+      if (this.idempotencyGuard['config']?.enabled) {
+        this.idempotencyGuard.markCompleted(req.body, responseBody);
+      }
+
+      if (this.langfuseTracer['config']?.enabled) {
+        this.langfuseTracer.onPostResponse(req, responseBody);
+      }
+
+      if (this.keyManager['config']?.enabled) {
+        const provider = (req as any).provider;
+        const statusCode = (req as any)._httpStatus || 200;
+        const usedKey = (req as any)._usedApiKey;
+        if (usedKey) {
+          if (statusCode >= 400) {
+            this.keyManager.reportError(provider, usedKey, statusCode);
+          } else {
+            this.keyManager.reportSuccess(provider, usedKey);
+          }
         }
       }
 
@@ -922,6 +1107,11 @@ export class MiddlewareOrchestrator {
       hooks: this.hookManager.getSummary(),
       health: this.healthMonitor?.getSummary() || [],
       redis: redisStats,
+      langfuse: { enabled: this.langfuseTracer['config']?.enabled || false },
+      toolCompressor: { enabled: this.toolCompressor['config']?.enabled !== false },
+      idempotency: this.idempotencyGuard.getStats(),
+      keyManager: this.keyManager.getStats(),
+      qdrantCache: this.qdrantCache.getStats(),
       cacheReport: (() => {
         try {
           const reportAgg = getCacheReportAggregator();
