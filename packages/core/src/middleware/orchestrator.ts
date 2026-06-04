@@ -152,8 +152,7 @@ export class MiddlewareOrchestrator {
       },
       memoryBridge: {
         enabled: this.configService.get("MEMORY_BRIDGE_ENABLED") !== false,
-        endpoint: this.configService.get("MEM0_ENDPOINT"),
-        apiKey: this.configService.get("MEM0_API_KEY"),
+        storagePath: this.configService.get("MEMORY_STORAGE_PATH") || "./dev/memories.jsonl",
         extractionEnabled:
           this.configService.get("MEMORY_EXTRACTION_ENABLED") !== false,
       },

@@ -1,0 +1,105 @@
+# providers.yaml — Human-friendly provider configuration for Claude Code Router
+# Convert to CCR config: ccr generate --yaml providers.yaml
+# Convert with explicit output: ccr generate --yaml providers.yaml --output ~/.claude-code-router/config.json
+
+server:
+  host: 127.0.0.1
+  port: 3456
+  api_key: ${CCR_API_KEY}
+  log: true
+  log_level: info
+  timeout_ms: 600000
+
+providers:
+  - name: openai
+    api_base_url: https://api.openai.com/v1/chat/completions
+    api_key: ${OPENAI_API_KEY}
+    models: [gpt-4.1, gpt-4.1-mini, gpt-4.1-nano, o3, o4-mini]
+    transformer: [openai]
+    priority: 10
+    cost_tier: medium
+    concurrency: 5
+    model_transformers:
+      o3: [openai, reasoning]
+      o4-mini: [openai, reasoning]
+
+  - name: deepseek
+    api_base_url: https://api.deepseek.com/v1/chat/completions
+    api_key: ${DEEPSEEK_API_KEY}
+    models: [deepseek-v4-pro, deepseek-v4-flash, deepseek-reasoner]
+    transformer: [deepseek]
+    priority: 20
+    cost_tier: low
+    concurrency: 5
+    model_transformers:
+      deepseek-reasoner: [deepseek, reasoning]
+
+  - name: glm
+    api_base_url: https://open.bigmodel.cn/api/paas/v1/chat/completions
+    api_key: ${GLM_API_KEY}
+    models: [glm-5.1, glm-4.7, glm-4]
+    transformer: [glm]
+    priority: 30
+    cost_tier: low
+    concurrency: 3
+    model_transformers:
+      glm-5.1: [glm, reasoning]
+
+  - name: ollama
+    api_base_url: http://localhost:11434/v1/chat/completions
+    api_key: ollama
+    models: [qwen3:8b, deepseek-r1:8b, llama3.1:8b]
+    priority: 90
+    cost_tier: free
+    concurrency: 2
+
+  - name: kimi
+    api_base_url: https://api.moonshot.cn/v1/chat/completions
+    api_key: ${MOONSHOT_API_KEY}
+    models: [kimi-k2.5, kimi-k1.5]
+    priority: 40
+    cost_tier: low
+    concurrency: 3
+
+  - name: qwen
+    api_base_url: https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+    api_key: ${DASHSCOPE_API_KEY}
+    models: [qwen-max, qwen-plus, qwen-turbo]
+    priority: 50
+    cost_tier: low
+    concurrency: 3
+
+routing:
+  default: openai,gpt-4.1
+  background: openai,gpt-4.1-mini
+  think: deepseek,deepseek-reasoner
+  longContext: openai,gpt-4.1
+  longContextThreshold: 60000
+  webSearch: glm,glm-5.1
+  image: openai,gpt-4.1
+  reasoningFlash: deepseek,deepseek-v4-flash
+  reasoningProMax: deepseek,deepseek-reasoner
+
+model_mapping:
+  claude-opus-4-6: deepseek,deepseek-reasoner
+  claude-opus-4: deepseek,deepseek-reasoner
+  opus: deepseek,deepseek-reasoner
+  claude-sonnet-4-6: openai,gpt-4.1
+  sonnet: openai,gpt-4.1
+  claude-haiku-4-5: openai,gpt-4.1-mini
+  haiku: openai,gpt-4.1-mini
+
+fallback:
+  default:
+    - "deepseek,deepseek-v4-flash"
+  think:
+    - "openai,gpt-4.1"
+
+concurrency:
+  global: 10
+  providers:
+    openai: 5
+    deepseek: 5
+    glm: 3
+    ollama: 2
+  queue_timeout_ms: 120000

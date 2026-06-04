@@ -18,6 +18,7 @@ import { join } from "path";
 import { parseStatusLineData, StatusLineInput } from "./utils/statusline";
 import {handlePresetCommand} from "./utils/preset";
 import { handleInstallCommand } from "./utils/installCommand";
+import { handleGenerateCommand } from "./utils/generateCommand";
 
 
 const command = process.argv[2];
@@ -35,6 +36,7 @@ const KNOWN_COMMANDS = [
   "install",
   "activate",
   "env",
+  "generate",
   "ui",
   "-v",
   "version",
@@ -56,6 +58,7 @@ Commands:
   preset        Manage presets (export, install, list, delete)
   install       Install preset from GitHub marketplace
   activate      Output environment variables for shell integration
+  generate      Generate CCR config from YAML file
   ui            Open the web UI in browser
   -v, version   Show version information
   -h, help      Show help information
@@ -275,6 +278,9 @@ async function main() {
     case "activate":
     case "env":
       await activateCommand();
+      break;
+    case "generate":
+      await handleGenerateCommand(process.argv.slice(3));
       break;
     case "code":
       if (!isRunning) {

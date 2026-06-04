@@ -1,31 +1,35 @@
 /**
- * MemoryBridge - Mem0 记忆桥接中间件
+ * MemoryBridge - Local JSONL 记忆桥接中间件
  *
- * Bridges proxy_local (CCR) request/response data with Mem0 persistent memory.
+ * Bridges proxy_local (CCR) request/response data with local JSONL persistent memory.
  * Enables cross-session memory for Claude Code agents.
  *
  * Architecture:
- *   onResponse hook: Extract decisions, patterns, errors → write to Mem0
+ *   onResponse hook: Extract decisions, patterns, errors → write to JSONL
  *   onRequest hook: Retrieve relevant memories → inject into system prompt
  *   onSessionEnd hook: Consolidate session memories
  *
- * Graceful degradation: All Mem0 operations are fire-and-forget.
- * Mem0 unavailability never blocks the request pipeline.
+ * Graceful degradation: All file operations are fire-and-forget.
+ * File I/O errors never block the request pipeline.
  */
 import { EventEmitter } from "events";
+import { readFile, appendFile, mkdir } from "fs/promises";
+import { dirname } from "path";
 
 export interface MemoryConfig {
   enabled: boolean;
-  endpoint?: string; // Mem0 API endpoint (http://127.0.0.1:8000)
-  apiKey?: string; // Mem0 API key
-  userPrefix: string; // Prefix for Mem0 user_id (default: "pineapple")
-  maxMemoriesPerRequest: number; // Max memories to retrieve per request
-  extractionEnabled: boolean; // Auto-extract memories from conversations
-  consolidationInterval: number; // Consolidate sessions every N requests
+  storagePath?: string;
+  maxFileSize?: number;
+  userPrefix: string;
+  maxMemoriesPerRequest: number;
+  extractionEnabled: boolean;
+  consolidationInterval: number;
 }
 
 const DEFAULT_CONFIG: MemoryConfig = {
   enabled: false,
+  storagePath: "./dev/memories.jsonl",
+  maxFileSize: 10 * 1024 * 1024,
   userPrefix: "pineapple",
   maxMemoriesPerRequest: 5,
   extractionEnabled: true,
@@ -44,80 +48,74 @@ export class MemoryBridge extends EventEmitter {
   private enabled = false;
   private requestCount = 0;
   private pendingMemories: any[] = [];
+  private storagePath: string;
+  private cachedMemories: any[] = [];
+  private lastReadTime = 0;
+  private readonly CACHE_TTL = 5000;
 
   constructor(config: Partial<MemoryConfig> = {}, private logger?: any) {
     super();
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.enabled = this.config.enabled;
+    this.storagePath = this.config.storagePath || "./dev/memories.jsonl";
   }
 
-  /**
-   * Retrieve relevant memories for the current request context.
-   * Returns array of memory entries, or empty array if Mem0 is unavailable.
-   */
   async retrieve(context: {
     sessionId?: string;
     agentName?: string;
     taskType?: string;
     query?: string;
   }): Promise<MemoryEntry[]> {
-    if (!this.enabled || !this.config.endpoint) return [];
+    if (!this.enabled) return [];
 
     try {
+      const now = Date.now();
+      if (now - this.lastReadTime > this.CACHE_TTL) {
+        const content = await readFile(this.storagePath, "utf-8").catch(() => "");
+        this.cachedMemories = content.trim().split("\n").filter(l => l.trim()).map(l => JSON.parse(l));
+        this.lastReadTime = now;
+      }
+
       const userId = this.buildUserId(context.sessionId);
-      const query = context.query || this.buildQuery(context);
+      const query = context.query || [context.agentName, context.taskType].filter(Boolean).join(" ");
+      const keywords = query.toLowerCase().split(/\s+/).filter(Boolean);
 
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3000);
+      if (keywords.length === 0) return this.cachedMemories.slice(0, this.config.maxMemoriesPerRequest);
 
-      const response = await fetch(`${this.config.endpoint}/v2/memories/search`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(this.config.apiKey
-            ? { Authorization: `Bearer ${this.config.apiKey}` }
-            : {}),
-        },
-        body: JSON.stringify({
-          user_id: userId,
-          query,
-          limit: this.config.maxMemoriesPerRequest,
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
+      const scored = this.cachedMemories
+        .filter(m => m.user_id === userId || (m.user_id && m.user_id.startsWith("pineapple_")))
+        .map(m => {
+          const text = (m.content || "").toLowerCase();
+          const score = keywords.reduce((s, kw) => s + (text.includes(kw) ? 1 : 0), 0);
+          return { ...m, score };
+        })
+        .filter(m => m.score > 0)
+        .sort((a, b) => b.score - a.score || new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-      if (!response.ok) return [];
+      const results = scored.slice(0, this.config.maxMemoriesPerRequest);
 
-      const data = await response.json();
-      const memories = data.results || data.memories || [];
-
-      if (memories.length > 0) {
+      if (results.length > 0) {
         this.logger?.info(
-          `MemoryBridge: retrieved ${memories.length} memories for user=${userId}`
+          `MemoryBridge: retrieved ${results.length} memories for user=${userId}`
         );
         this.emit("memory:retrieved", {
           userId,
-          count: memories.length,
+          count: results.length,
         });
       }
 
-      return memories;
+      return results;
     } catch (error: any) {
       this.logger?.warn(`MemoryBridge retrieve error: ${error.message}`);
       return [];
     }
   }
 
-  /**
-   * Store a memory from the current conversation.
-   * Fire-and-forget - never blocks the request.
-   */
   async store(memory: {
     sessionId?: string;
     agentName?: string;
     content: string;
-    category?: string; // decision, pattern, error, insight, etc.
+    category?: string;
     metadata?: Record<string, any>;
   }): Promise<void> {
     if (!this.enabled) return;
@@ -127,16 +125,11 @@ export class MemoryBridge extends EventEmitter {
       timestamp: new Date().toISOString(),
     });
 
-    // Batch write every N memories
     if (this.pendingMemories.length >= 5) {
       await this.flushPending();
     }
   }
 
-  /**
-   * Extract key memories from a completed request/response cycle.
-   * Called from onResponse hook in the CCR.
-   */
   async extractFromConversation(requestBody: any, responseBody: any, context: {
     sessionId?: string;
     agentName?: string;
@@ -147,19 +140,16 @@ export class MemoryBridge extends EventEmitter {
     try {
       const extractions: any[] = [];
 
-      // Extract user decisions (from assistant responses with tool calls)
       if (responseBody?.content) {
         const content = Array.isArray(responseBody.content)
           ? responseBody.content.map((c: any) => c.text || "").join("\n")
           : responseBody.content;
 
-        // Simple pattern extraction
         extractions.push(
           ...this.extractPatterns(content, context)
         );
       }
 
-      // Extract tool usage patterns
       if (requestBody?.messages) {
         const toolCalls = this.extractToolCalls(requestBody.messages);
         if (toolCalls.length > 0) {
@@ -171,7 +161,6 @@ export class MemoryBridge extends EventEmitter {
         }
       }
 
-      // Store each extraction
       for (const extraction of extractions) {
         await this.store({
           sessionId: context.sessionId,
@@ -186,9 +175,6 @@ export class MemoryBridge extends EventEmitter {
     }
   }
 
-  /**
-   * Called when a session ends to consolidate memories.
-   */
   async onSessionEnd(sessionId: string): Promise<void> {
     if (!this.enabled) return;
 
@@ -198,9 +184,6 @@ export class MemoryBridge extends EventEmitter {
     this.emit("session:ended", { sessionId });
   }
 
-  /**
-   * Build enriched system prompt with relevant memories.
-   */
   async enrichSystemPrompt(system: any, context: {
     sessionId?: string;
     agentName?: string;
@@ -219,7 +202,6 @@ export class MemoryBridge extends EventEmitter {
       "</relevant_memories>",
     ].join("\n");
 
-    // Inject into system prompt
     if (typeof system === "string") {
       return system + memorySection;
     }
@@ -240,51 +222,31 @@ export class MemoryBridge extends EventEmitter {
     return sessionId ? `${base}_${sessionId}` : base;
   }
 
-  private buildQuery(context: any): string {
-    const parts: string[] = [];
-    if (context.agentName) parts.push(context.agentName);
-    if (context.taskType) parts.push(context.taskType);
-    return parts.join(" ") || "recent activity";
-  }
-
   private async flushPending(): Promise<void> {
-    if (this.pendingMemories.length === 0 || !this.config.endpoint) return;
+    if (this.pendingMemories.length === 0) return;
 
-    const batch = [...this.pendingMemories];
-    this.pendingMemories = [];
+    const batch = this.pendingMemories.splice(0, this.pendingMemories.length);
 
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
+      const dir = dirname(this.storagePath);
+      await mkdir(dir, { recursive: true });
+      const lines = batch.map(m => JSON.stringify({
+        id: `mem_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        user_id: m.user_id || this.buildUserId(m.sessionId),
+        content: m.content,
+        category: m.category,
+        metadata: m.metadata || {},
+        created_at: new Date().toISOString(),
+      })).join("\n") + "\n";
+      await appendFile(this.storagePath, lines, "utf-8");
 
-      const response = await fetch(`${this.config.endpoint}/v2/memories`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(this.config.apiKey
-            ? { Authorization: `Bearer ${this.config.apiKey}` }
-            : {}),
-        },
-        body: JSON.stringify({
-          messages: batch.map((m) => ({
-            role: "user",
-            content: `[${m.category || "general"}] ${m.content}`,
-          })),
-          user_id: this.buildUserId(batch[0]?.sessionId),
-          metadata: batch[0]?.metadata || {},
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-
-      if (response.ok) {
-        this.logger?.info(`MemoryBridge: flushed ${batch.length} memories`);
-        this.emit("memory:flushed", { count: batch.length });
-      }
+      this.logger?.info(`MemoryBridge: flushed ${batch.length} memories`);
+      this.emit("memory:flushed", { count: batch.length });
     } catch (error: any) {
       this.logger?.warn(`MemoryBridge flush error: ${error.message}`);
-      // Re-queue on failure
-      this.pendingMemories = [...batch, ...this.pendingMemories].slice(0, 100);
+      if (this.pendingMemories.length < 200) {
+        this.pendingMemories.unshift(...batch);
+      }
     }
   }
 
@@ -294,7 +256,6 @@ export class MemoryBridge extends EventEmitter {
   ): Array<{ content: string; category: string; metadata: any }> {
     const patterns: Array<{ content: string; category: string; metadata: any }> = [];
 
-    // Decision patterns
     const decisionMatches = text.match(/(?:decided|chose|selected|opted)\s+(?:to\s+)?([\w\s]+?)(?:\.|$)/gi);
     if (decisionMatches) {
       for (const match of decisionMatches.slice(0, 3)) {
@@ -306,7 +267,6 @@ export class MemoryBridge extends EventEmitter {
       }
     }
 
-    // Error patterns
     const errorMatches = text.match(/(?:error|failed|exception|cannot|unable)\s+(?:to\s+)?([\w\s]+?)(?:\.|$)/gi);
     if (errorMatches) {
       for (const match of errorMatches.slice(0, 2)) {
