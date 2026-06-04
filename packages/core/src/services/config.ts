@@ -81,7 +81,9 @@ export class ConfigService extends EventEmitter {
         this.config = { ...this.config, ...jsonConfig };
         console.log(`Loaded JSON config from: ${jsonPath}`);
       } catch (error) {
-        console.warn(`Failed to load JSON config from ${jsonPath}:`, error);
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`Failed to parse config file ${jsonPath}: ${message}`);
+        throw new Error(`Invalid config file: ${message}`);
       }
     } else {
       console.warn(`JSON config file not found: ${jsonPath}`);
@@ -163,10 +165,51 @@ export class ConfigService extends EventEmitter {
   }
 
   public reload(): void {
-    const oldConfig = { ...this.config };
-    this.config = {};
-    this.loadConfig();
-    this.emit('config:changed', { oldConfig, newConfig: { ...this.config } });
+    try {
+      const oldConfig = { ...this.config };
+      const newConfig: AppConfig = {};
+
+      if (this.options.useJsonFile && this.options.jsonPath) {
+        const jsonPath = this.isAbsolutePath(this.options.jsonPath)
+          ? this.options.jsonPath
+          : join(process.cwd(), this.options.jsonPath);
+
+        if (existsSync(jsonPath)) {
+          const jsonContent = readFileSync(jsonPath, "utf-8");
+          const jsonConfig = JSON5.parse(jsonContent);
+          Object.assign(newConfig, jsonConfig);
+        }
+      }
+
+      if (this.options.initialConfig) {
+        Object.assign(newConfig, this.options.initialConfig);
+      }
+
+      if (this.options.useEnvFile) {
+        const envPath = this.isAbsolutePath(this.options.envPath!)
+          ? this.options.envPath!
+          : join(process.cwd(), this.options.envPath!);
+
+        if (existsSync(envPath)) {
+          const result = config({ path: envPath });
+          if (result.parsed) {
+            Object.assign(newConfig, this.parseEnvConfig(result.parsed));
+          }
+        }
+      }
+
+      if (newConfig.LOG_FILE) {
+        process.env.LOG_FILE = newConfig.LOG_FILE;
+      }
+      if (newConfig.LOG) {
+        process.env.LOG = newConfig.LOG;
+      }
+
+      this.config = newConfig;
+      this.emit('config:changed', { oldConfig, newConfig: { ...this.config } });
+    } catch (err) {
+      console.error(`Config reload failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /**

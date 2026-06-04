@@ -56,7 +56,7 @@ interface ServerOptions extends FastifyServerOptions {
 // Application factory
 function createApp(options: FastifyServerOptions = {}): FastifyInstance {
   const fastify = Fastify({
-    bodyLimit: 50 * 1024 * 1024,
+    bodyLimit: 10 * 1024 * 1024,
     requestTimeout: 300000,
     keepAliveTimeout: 72000,
     connectionTimeout: 60000,

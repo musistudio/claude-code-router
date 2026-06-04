@@ -5,8 +5,8 @@ export class DeepseekTransformer implements Transformer {
   name = "deepseek";
 
   async transformRequestIn(request: UnifiedChatRequest): Promise<UnifiedChatRequest> {
-    if (request.max_tokens && request.max_tokens > 8192) {
-      request.max_tokens = 8192; // DeepSeek has a max token limit of 8192
+    if (request.max_tokens && request.max_tokens > 64000) {
+      request.max_tokens = 64000;
     }
     return request;
   }
@@ -162,7 +162,7 @@ export class DeepseekTransformer implements Transformer {
             } catch (e) {
               console.error("Error releasing reader lock:", e);
             }
-            controller.close();
+            try { controller.close(); } catch {}
           }
         },
       });
