@@ -45,3 +45,12 @@ export type { MultiVoterConfig } from "./multi-voter";
 
 export { RequestReplay } from "./request-replay";
 export type { ReplayConfig } from "./request-replay";
+
+export { StructuredOutputEnforcer } from "./structured-output";
+export type { StructuredOutputConfig } from "./structured-output";
+
+export { ABTestingFramework } from "./ab-testing";
+export type { ABTestConfig } from "./ab-testing";
+
+export { FinancialPIIMasker } from "./financial-pii-masker";
+export type { FinancialPIIMaskerConfig } from "./financial-pii-masker";

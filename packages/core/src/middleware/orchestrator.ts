@@ -38,6 +38,9 @@ import { PromptCaching, PromptCachingConfig } from "./prompt-caching";
 import { SummaryInjector, SummaryInjectorConfig } from "./summary-injector";
 import { MultiModelVoter, MultiVoterConfig } from "./multi-voter";
 import { RequestReplay, ReplayConfig } from "./request-replay";
+import { StructuredOutputEnforcer, StructuredOutputConfig } from "./structured-output";
+import { ABTestingFramework, ABTestConfig } from "./ab-testing";
+import { FinancialPIIMasker, FinancialPIIMaskerConfig } from "./financial-pii-masker";
 import { checkHallucination, analyzeReasoning } from "../engines/reasoning-engine";
 import type { ReasoningContext } from "../engines/reasoning-engine";
 import { getRedisCache } from "../utils/redis-cache";
@@ -95,6 +98,9 @@ export interface MiddlewareConfig {
   summaryInjector: Partial<SummaryInjectorConfig>;
   multiVoter: Partial<MultiVoterConfig>;
   requestReplay: Partial<ReplayConfig>;
+  structuredOutput: Partial<StructuredOutputConfig>;
+  abTesting: Partial<ABTestConfig>;
+  financialPIIMasker: Partial<FinancialPIIMaskerConfig>;
 }
 
 export class MiddlewareOrchestrator {
@@ -115,6 +121,9 @@ export class MiddlewareOrchestrator {
   public summaryInjector: SummaryInjector;
   public multiVoter: MultiModelVoter;
   public requestReplay: RequestReplay;
+  public structuredOutput: StructuredOutputEnforcer;
+  public abTesting: ABTestingFramework;
+  public financialPIIMasker: FinancialPIIMasker;
   public healthMonitor: HealthMonitor | null = null;
 
   private configService: ConfigService;
@@ -166,6 +175,9 @@ export class MiddlewareOrchestrator {
     this.summaryInjector = new SummaryInjector(middlewareConfig.summaryInjector || {}, this.logger);
     this.multiVoter = new MultiModelVoter(middlewareConfig.multiVoter || {}, this.logger);
     this.requestReplay = new RequestReplay(middlewareConfig.requestReplay || {}, this.logger);
+    this.structuredOutput = new StructuredOutputEnforcer(middlewareConfig.structuredOutput || {}, this.logger);
+    this.abTesting = new ABTestingFramework(middlewareConfig.abTesting || {}, this.logger);
+    this.financialPIIMasker = new FinancialPIIMasker(middlewareConfig.financialPIIMasker || {}, this.logger);
 
     if (providerRegistry) {
       this.healthMonitor = new HealthMonitor(
@@ -305,6 +317,16 @@ export class MiddlewareOrchestrator {
         enabled: this.configService.get("REQUEST_REPLAY_ENABLED") === true,
         storagePath: this.configService.get("REQUEST_REPLAY_PATH") || "./dev/replay-snapshots.jsonl",
       },
+      structuredOutput: {
+        enabled: this.configService.get("STRUCTURED_OUTPUT_ENABLED") !== false,
+      },
+      abTesting: {
+        enabled: this.configService.get("AB_TESTING_ENABLED") === true,
+        experiments: this.configService.get("AB_TESTING_EXPERIMENTS") || {},
+      },
+      financialPIIMasker: {
+        enabled: this.configService.get("FINANCIAL_PII_MASKER_ENABLED") !== false,
+      },
     };
   }
 
@@ -392,6 +414,9 @@ export class MiddlewareOrchestrator {
     this.logger.info(`  SummaryInjector: ${this.summaryInjector['config']?.enabled ? 'enabled' : 'disabled'}`);
     this.logger.info(`  MultiModelVoter: ${this.multiVoter.isEnabled() ? 'enabled' : 'disabled'}`);
     this.logger.info(`  RequestReplay: ${this.requestReplay.getStats().enabled ? 'enabled' : 'disabled'}`);
+    this.logger.info(`  StructuredOutput: ${this.structuredOutput.getStats().enabled ? 'enabled' : 'disabled'}`);
+    this.logger.info(`  ABTesting: ${this.abTesting.getStats().enabled ? 'enabled' : 'disabled'}`);
+    this.logger.info(`  FinancialPIIMasker: ${this.financialPIIMasker.getStats().enabled ? 'enabled' : 'disabled'}`);
 
     this.initialized = true;
     this.logger.info("MiddlewareOrchestrator: initialized");
@@ -681,6 +706,22 @@ export class MiddlewareOrchestrator {
         req.body = this.promptCaching.injectCacheControl(req.body);
       }
 
+      if (this.financialPIIMasker.getStats().enabled) {
+        const maskResult = this.financialPIIMasker.maskBody(req.body);
+        if (maskResult.masked) {
+          req.body = maskResult.body;
+          (req as any)._piiMasked = maskResult.maskedCount;
+        }
+      }
+
+      if (this.abTesting.getStats().enabled) {
+        const sessionId = context.sessionId || "default";
+        const abVariant = this.abTesting.assignVariant(sessionId, "default");
+        if (abVariant) {
+          (req as any)._abVariant = abVariant;
+        }
+      }
+
       if (this.summaryInjector['config']?.enabled && this.summaryInjector.shouldCompact(req.body)) {
         const result = this.summaryInjector.buildCompactionPayload(req.body);
         if (result.summaryAdded) {
@@ -794,6 +835,13 @@ export class MiddlewareOrchestrator {
 
       if (this.langfuseTracer['config']?.enabled) {
         this.langfuseTracer.onPostResponse(req, responseBody);
+      }
+
+      if (this.structuredOutput.getStats().enabled) {
+        const enforced = this.structuredOutput.enforce(req.body, responseBody);
+        if (enforced !== responseBody) {
+          (req as any)._structuredOutputFixed = true;
+        }
       }
 
       if (this.keyManager['config']?.enabled) {
