@@ -1956,3 +1956,149 @@ function sanitizeProviders(providers: any[]): any[] {
   if (!Array.isArray(providers)) return providers;
   return providers.map(sanitizeProvider);
 }
+
+  // =========================================================================
+  // NEW V2 ROUTES: Vault, AdaptiveRouter, MultiLevelCache, Prometheus, Chain, Mirror, Context
+  // =========================================================================
+
+  fastify.get('/api/vault/status', async (req: any, reply: any) => {
+    try {
+      const { getVaultManager } = require('../services/vault');
+      const vault = getVaultManager(undefined, req.log);
+      reply.send(vault.getStats());
+    } catch (e: any) {
+      reply.code(503).send({ error: 'Vault not initialized', message: e.message });
+    }
+  });
+
+  fastify.get('/api/router/adaptive', async (req: any, reply: any) => {
+    try {
+      const { getAdaptiveRouter } = require('../utils/adaptive-router');
+      const router = getAdaptiveRouter(undefined, undefined, req.log);
+      reply.send(router.getAllMetrics());
+    } catch (e: any) {
+      reply.code(503).send({ error: 'AdaptiveRouter not available', message: e.message });
+    }
+  });
+
+  fastify.get('/api/cache/multilevel', async (req: any, reply: any) => {
+    try {
+      const { getMultiLevelCache } = require('../utils/multi-level-cache');
+      const cache = getMultiLevelCache(undefined, req.log);
+      reply.send(cache.getAllStats());
+    } catch (e: any) {
+      reply.code(503).send({ error: 'MultiLevelCache not available', message: e.message });
+    }
+  });
+
+  fastify.post('/api/cache/multilevel/invalidate', async (req: any, reply: any) => {
+    try {
+      const { getMultiLevelCache } = require('../utils/multi-level-cache');
+      const cache = getMultiLevelCache(undefined, req.log);
+      const { pattern } = req.body || {};
+      const result = pattern
+        ? await cache.invalidate(pattern)
+        : { l1: cache.l1.invalidate(''), l2: 0 };
+      if (!pattern) cache.l1.clear();
+      reply.send({ success: true, ...result });
+    } catch (e: any) {
+      reply.code(500).send({ error: e.message });
+    }
+  });
+
+  fastify.get('/metrics', async (req: any, reply: any) => {
+    try {
+      const { getPrometheusExporter } = require('../utils/prometheus');
+      const exporter = getPrometheusExporter(req.log);
+      reply
+        .header('Content-Type', exporter.getContentType())
+        .send(exporter.export());
+    } catch (e: any) {
+      reply.code(503).send('# Prometheus exporter not available\n');
+    }
+  });
+
+  fastify.get('/api/chain/templates', async (req: any, reply: any) => {
+    try {
+      const { getReasoningChainEngine } = require('../engines/reasoning-chain');
+      reply.send({ templates: [] });
+    } catch (e: any) {
+      reply.code(503).send({ error: e.message });
+    }
+  });
+
+  fastify.get('/api/mirror/stats', async (req: any, reply: any) => {
+    try {
+      const { getTrafficMirror } = require('../utils/traffic-mirror');
+      const mirror = getTrafficMirror(undefined, req.log);
+      reply.send(mirror.getComparisonStats());
+    } catch (e: any) {
+      reply.code(503).send({ error: e.message });
+    }
+  });
+
+  fastify.get('/api/mirror/results', async (req: any, reply: any) => {
+    try {
+      const { getTrafficMirror } = require('../utils/traffic-mirror');
+      const mirror = getTrafficMirror(undefined, req.log);
+      const limit = parseInt(req.query?.limit || '50', 10);
+      reply.send(mirror.getResults(limit));
+    } catch (e: any) {
+      reply.code(503).send({ error: e.message });
+    }
+  });
+
+  fastify.get('/api/context/stats', async (req: any, reply: any) => {
+    try {
+      const { getContextStore } = require('../services/context-store');
+      const store = getContextStore(undefined, req.log);
+      reply.send(store.getStats());
+    } catch (e: any) {
+      reply.code(503).send({ error: e.message });
+    }
+  });
+
+  fastify.post('/api/context/store', async (req: any, reply: any) => {
+    try {
+      const { getContextStore } = require('../services/context-store');
+      const store = getContextStore(undefined, req.log);
+      const { content, tags, source, expiresAt } = req.body;
+      if (!content || !source) {
+        return reply.code(400).send({ error: 'content and source are required' });
+      }
+      const id = await store.store({ content, tags: tags || [], source, expiresAt });
+      reply.send({ id, success: true });
+    } catch (e: any) {
+      reply.code(500).send({ error: e.message });
+    }
+  });
+
+  fastify.post('/api/context/query', async (req: any, reply: any) => {
+    try {
+      const { getContextStore } = require('../services/context-store');
+      const store = getContextStore(undefined, req.log);
+      const { text, tags, topK, minSimilarity, since, until } = req.body;
+      if (!text) {
+        return reply.code(400).send({ error: 'text is required' });
+      }
+      const results = await store.query({ text, tags, topK, minSimilarity, since, until });
+      reply.send({ results, count: results.length });
+    } catch (e: any) {
+      reply.code(500).send({ error: e.message });
+    }
+  });
+
+  fastify.get('/api/security/scan', async (req: any, reply: any) => {
+    try {
+      const { getSecurityHardener } = require('../utils/security-hardener');
+      const hardener = getSecurityHardener(undefined, req.log);
+      const { content, context: scanContext } = req.query;
+      if (!content) {
+        return reply.code(400).send({ error: 'content query param required' });
+      }
+      const result = hardener.scanForLeaks(content, scanContext || 'api-scan');
+      reply.send(result);
+    } catch (e: any) {
+      reply.code(500).send({ error: e.message });
+    }
+  });

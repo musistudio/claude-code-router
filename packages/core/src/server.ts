@@ -454,3 +454,11 @@ export { getCodeExtractor, CodeExtractor, CodeExtractorConfig } from "./utils/co
 export { getIntentRouter, IntentRouter, IntentRouterConfig } from "./utils/intent-router";
 export { getEmbeddingService, EmbeddingService, EmbeddingConfig } from "./utils/embedding";
 export { getFinancialDataService, FinancialDataService, FinancialDataConfig } from "./utils/financial-data";
+export { VaultManager, getVaultManager, VaultConfig } from "./services/vault";
+export { AdaptiveRouter, getAdaptiveRouter, AdaptiveRouterConfig, AdaptiveRouteResult } from "./utils/adaptive-router";
+export { MultiLevelCache, getMultiLevelCache, L1MemoryCache, L2RedisCache, MultiLevelCacheConfig, CacheKey, CacheEntry, CacheStats } from "./utils/multi-level-cache";
+export { SecurityHardener, getSecurityHardener, SecurityConfig } from "./utils/security-hardener";
+export { PrometheusExporter, getPrometheusExporter, PrometheusMetric } from "./utils/prometheus";
+export { ReasoningChainEngine, getReasoningChainEngine, ChainStep, ChainOutput, ChainTemplate } from "./engines/reasoning-chain";
+export { TrafficMirror, getTrafficMirror, TrafficMirrorConfig } from "./utils/traffic-mirror";
+export { ContextStore, getContextStore, ContextEntry, ContextQuery, ContextStoreConfig } from "./services/context-store";
