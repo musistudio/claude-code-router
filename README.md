@@ -503,6 +503,45 @@ For routing within subagents, you must specify a particular provider and model b
 Please help me analyze this code snippet for potential optimizations...
 ```
 
+## v2.0 Architecture
+
+v2.0 adds enterprise-grade infrastructure on top of the existing routing core:
+
+- **36 modules** across 4 implementation phases
+- **287 tests** passing, 20 test files
+- **25+ API endpoints** for management and monitoring
+
+### New Modules (v2)
+
+| Category | Modules |
+|----------|---------|
+| **Security** | VaultManager (AES-256-GCM), SecurityHardener, timingSafeEqual auth |
+| **Routing** | AdaptiveRouter (WRR), FallbackChainExecutor, RateLimiterQueue |
+| **Caching** | MultiLevelCache (L1 memory + L2 Redis + L3 Qdrant), RAGPipeline |
+| **Observability** | PrometheusExporter, TrafficMirror, ContextStore |
+| **Reasoning** | ReasoningChainEngine (3 templates: generate-review-revise, plan-execute-verify, multi-perspective), AdaptiveParameterTuner |
+
+### API Endpoints (v2)
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/vault/status` | Vault manager status |
+| `GET /api/router/adaptive` | Adaptive router metrics |
+| `GET /api/cache/multilevel` | Multi-level cache stats |
+| `POST /api/cache/multilevel/invalidate` | Invalidate cache |
+| `GET /metrics` | Prometheus exposition format |
+| `GET /api/chain/templates` | List reasoning chain templates |
+| `POST /api/chain/execute` | Execute reasoning chain |
+| `GET /api/mirror/stats` | Traffic mirror stats |
+| `GET /api/context/stats` | Context store stats |
+| `POST /api/context/query` | Semantic context query |
+| `GET /api/fallback/stats` | Fallback chain status |
+| `GET /api/rag/status` | RAG pipeline status |
+| `POST /api/rag/ingest` | Ingest document into RAG |
+| `GET /api/params/status` | Adaptive parameter tuner |
+| `GET /api/rate-limiter/stats` | Rate limiter queue stats |
+| `GET /api/security/scan` | Scan content for leaked secrets |
+
 ## Status Line (Beta)
 To better monitor the status of claude-code-router at runtime, version v1.0.40 includes a built-in statusline tool, which you can enable in the UI.
 ![statusline-config.png](/blog/images/statusline-config.png)
