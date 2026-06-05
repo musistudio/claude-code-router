@@ -9,6 +9,8 @@ import { ConfigService } from "../services/config";
 import { TokenizerService } from "../services/tokenizer";
 import { resolveModelAlias } from "./model-alias";
 import { analyzeReasoning, buildContextInjection } from "../engines/reasoning-engine";
+import { getAdaptiveRouter } from "./adaptive-router";
+import { getAdaptiveParameterTuner } from "./adaptive-params";
 
 // ==========================================================================
 // Provider fallback: config-driven via "fallback" section in config.json
@@ -419,6 +421,52 @@ export const router = async (req: any, _res: any, context: RouterContext) => {
         }
       } catch (e: any) {
         req.log.debug(`Health check skipped: ${e?.message}`);
+      }
+
+      // ====================================================================
+      // ADAPTIVE ROUTER SCORING: use real-time health/latency data to
+      // potentially override the model choice with a better-scoring provider
+      // ====================================================================
+      try {
+        const adaptiveR = getAdaptiveRouter();
+        if (adaptiveR) {
+          const [targetProvider] = model.split(",");
+          const candidates = (configService.get<any[]>("providers") || [])
+            .filter((p: any) => p.models && p.models.length > 0)
+            .map((p: any) => p.name);
+          if (candidates.length > 1 && targetProvider) {
+            const routeResult = adaptiveR.route(targetProvider, candidates);
+            if (routeResult.provider !== targetProvider && routeResult.provider) {
+              const targetProviderObj = (configService.get<any[]>("providers") || [])
+                .find((p: any) => p.name.toLowerCase() === routeResult.provider!.toLowerCase());
+              if (targetProviderObj?.models?.[0]) {
+                req.log.info(
+                  `AdaptiveRouter: overriding ${targetProvider} → ${routeResult.provider} (score=${routeResult.score.toFixed(2)})`
+                );
+                model = `${routeResult.provider},${targetProviderObj.models[0]}`;
+                req.scenarioType = req.scenarioType || 'adaptive';
+              }
+            }
+          }
+        }
+      } catch (e: any) {
+        req.log.debug(`AdaptiveRouter scoring skipped: ${e.message}`);
+      }
+
+      // ====================================================================
+      // ADAPTIVE PARAMETER TUNING: auto-tune max_tokens/temperature based
+      // on request complexity signals and target model characteristics
+      // ====================================================================
+      try {
+        const tuner = getAdaptiveParameterTuner();
+        const [provider, ...modelParts] = model.split(",");
+        const modelId = modelParts.join(",");
+        const params = tuner.tune(req.body, tokenCount, provider, modelId);
+        const tuned = tuner.applyTuning(req.body, params);
+        req.body = tuned;
+        (req as any)._adaptiveParams = params;
+      } catch (e: any) {
+        req.log.debug(`AdaptiveParameterTuning skipped: ${e.message}`);
       }
     } else {
       req.scenarioType = req.gatewayScenario || req.scenarioType || 'default';

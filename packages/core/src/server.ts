@@ -462,3 +462,7 @@ export { PrometheusExporter, getPrometheusExporter, PrometheusMetric } from "./u
 export { ReasoningChainEngine, getReasoningChainEngine, ChainStep, ChainOutput, ChainTemplate } from "./engines/reasoning-chain";
 export { TrafficMirror, getTrafficMirror, TrafficMirrorConfig } from "./utils/traffic-mirror";
 export { ContextStore, getContextStore, ContextEntry, ContextQuery, ContextStoreConfig } from "./services/context-store";
+export { FallbackChainExecutor, getFallbackChainExecutor, FallbackResult, FallbackChainConfig } from "./utils/fallback-chain";
+export { RAGPipeline, getRAGPipeline, RAGDocument, RAGQueryResult, RAGPipelineConfig } from "./utils/rag-pipeline";
+export { AdaptiveParameterTuner, getAdaptiveParameterTuner, AdaptiveParams } from "./utils/adaptive-params";
+export { RateLimiterQueue, getRateLimiterQueue, RateLimiterQueueConfig } from "./utils/rate-limiter-queue";

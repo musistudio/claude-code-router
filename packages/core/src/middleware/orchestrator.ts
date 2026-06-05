@@ -64,6 +64,10 @@ import { getComplianceDisclaimer } from "../utils/compliance-disclaimer";
 import { getCacheReportAggregator } from "../utils/cache-report";
 import { getOllamaFallback } from "../utils/ollama-fallback";
 import { getProxyDiffTracker } from "../utils/proxy-diff";
+import { getFallbackChainExecutor, FallbackChainExecutor } from "../utils/fallback-chain";
+import { getRAGPipeline, RAGPipeline } from "../utils/rag-pipeline";
+import { getAdaptiveParameterTuner, AdaptiveParameterTuner } from "../utils/adaptive-params";
+import { getRateLimiterQueue, RateLimiterQueue } from "../utils/rate-limiter-queue";
 
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T, label: string, logger?: any): Promise<T> {
   return new Promise<T>((resolve) => {
@@ -111,6 +115,10 @@ export interface MiddlewareConfig {
   prometheus: { enabled: boolean };
   trafficMirror: { enabled: boolean; targets: any[] };
   adaptiveRouter: { enabled: boolean };
+  fallbackChain: { enabled: boolean; maxAttempts: number };
+  ragPipeline: { enabled: boolean; ollamaEndpoint: string; qdrantUrl: string };
+  adaptiveParams: { enabled: boolean };
+  rateLimiterQueue: { enabled: boolean; maxConcurrent: number; maxQueueSize: number };
 }
 
 export class MiddlewareOrchestrator {
@@ -140,6 +148,10 @@ export class MiddlewareOrchestrator {
   public prometheusExporter: PrometheusExporter | null = null;
   public trafficMirror: TrafficMirror | null = null;
   public adaptiveRouter: AdaptiveRouter | null = null;
+  public fallbackChainExecutor: FallbackChainExecutor | null = null;
+  public ragPipeline: RAGPipeline | null = null;
+  public adaptiveParameterTuner: AdaptiveParameterTuner | null = null;
+  public rateLimiterQueue: RateLimiterQueue | null = null;
 
   private configService: ConfigService;
   private logger: any;
@@ -342,6 +354,23 @@ export class MiddlewareOrchestrator {
       financialPIIMasker: {
         enabled: this.configService.get("FINANCIAL_PII_MASKER_ENABLED") !== false,
       },
+      fallbackChain: {
+        enabled: this.configService.get("FALLBACK_CHAIN_ENABLED") !== false,
+        maxAttempts: this.configService.get("FALLBACK_CHAIN_MAX_ATTEMPTS") || 3,
+      },
+      ragPipeline: {
+        enabled: this.configService.get("RAG_PIPELINE_ENABLED") === true,
+        ollamaEndpoint: this.configService.get("OLLAMA_ENDPOINT") || "http://localhost:11434",
+        qdrantUrl: this.configService.get("QDRANT_URL") || "http://127.0.0.1:16333",
+      },
+      adaptiveParams: {
+        enabled: this.configService.get("ADAPTIVE_PARAMS_ENABLED") !== false,
+      },
+      rateLimiterQueue: {
+        enabled: this.configService.get("RATE_LIMITER_QUEUE_ENABLED") === true,
+        maxConcurrent: this.configService.get("RATE_LIMITER_QUEUE_MAX_CONCURRENT") || 5,
+        maxQueueSize: this.configService.get("RATE_LIMITER_QUEUE_MAX_SIZE") || 100,
+      },
     };
   }
 
@@ -485,6 +514,59 @@ export class MiddlewareOrchestrator {
       }
     } catch (e: any) {
       this.logger.debug(`  AdaptiveRouter: skipped (${e?.message})`);
+    }
+
+    // Phase 3: Fallback chain executor
+    try {
+      const fbConfig = middlewareConfig.fallbackChain || { enabled: true, maxAttempts: 3 };
+      if (fbConfig.enabled) {
+        this.fallbackChainExecutor = getFallbackChainExecutor({
+          maxAttempts: fbConfig.maxAttempts || 3,
+        }, this.logger);
+        this.logger.info(`  FallbackChainExecutor: enabled (maxAttempts=${fbConfig.maxAttempts || 3})`);
+      }
+    } catch (e: any) {
+      this.logger.debug(`  FallbackChainExecutor: skipped (${e?.message})`);
+    }
+
+    // Phase 3: RAG pipeline (Ollama + Qdrant)
+    try {
+      const ragConfig = middlewareConfig.ragPipeline || { enabled: false, ollamaEndpoint: 'http://localhost:11434', qdrantUrl: 'http://127.0.0.1:16333' };
+      if (ragConfig.enabled) {
+        this.ragPipeline = getRAGPipeline({
+          ollamaEndpoint: ragConfig.ollamaEndpoint,
+          qdrantUrl: ragConfig.qdrantUrl,
+        }, this.logger);
+        await this.ragPipeline.initialize();
+        this.logger.info(`  RAGPipeline: enabled (ollama+qdrant)`);
+      }
+    } catch (e: any) {
+      this.logger.debug(`  RAGPipeline: skipped (${e?.message})`);
+    }
+
+    // Phase 3: Adaptive parameter tuner
+    try {
+      const apConfig = middlewareConfig.adaptiveParams || { enabled: true };
+      if (apConfig.enabled) {
+        this.adaptiveParameterTuner = getAdaptiveParameterTuner(this.logger);
+        this.logger.info(`  AdaptiveParameterTuner: enabled`);
+      }
+    } catch (e: any) {
+      this.logger.debug(`  AdaptiveParameterTuner: skipped (${e?.message})`);
+    }
+
+    // Phase 3: Rate limiter queue
+    try {
+      const rlConfig = middlewareConfig.rateLimiterQueue || { enabled: false, maxConcurrent: 5, maxQueueSize: 100 };
+      if (rlConfig.enabled) {
+        this.rateLimiterQueue = getRateLimiterQueue({
+          maxConcurrent: rlConfig.maxConcurrent || 5,
+          maxQueueSize: rlConfig.maxQueueSize || 100,
+        }, this.logger);
+        this.logger.info(`  RateLimiterQueue: enabled (maxConcurrent=${rlConfig.maxConcurrent || 5})`);
+      }
+    } catch (e: any) {
+      this.logger.debug(`  RateLimiterQueue: skipped (${e?.message})`);
     }
 
     this.initialized = true;
@@ -1324,6 +1406,10 @@ export class MiddlewareOrchestrator {
         prometheus: this.prometheusExporter ? { enabled: true } : null,
         trafficMirror: this.trafficMirror?.getComparisonStats() || null,
         adaptiveRouter: this.adaptiveRouter?.getAllMetrics() || null,
+        fallbackChain: this.fallbackChainExecutor ? { enabled: true } : null,
+        ragPipeline: this.ragPipeline?.getStats() || null,
+        adaptiveParams: this.adaptiveParameterTuner ? { enabled: true } : null,
+        rateLimiterQueue: this.rateLimiterQueue?.getStats() || null,
       },
     };
   }

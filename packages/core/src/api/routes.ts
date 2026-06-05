@@ -2102,3 +2102,112 @@ function sanitizeProviders(providers: any[]): any[] {
       reply.code(500).send({ error: e.message });
     }
   });
+
+  // =========================================================================
+  // PHASE 3 ROUTES: FallbackChain, RAG Pipeline, AdaptiveParams, RateLimiter
+  // =========================================================================
+
+  fastify.get('/api/fallback/stats', async (req: any, reply: any) => {
+    try {
+      const orchestrator = (req.server as any)?._server?.orchestrator;
+      if (orchestrator?.fallbackChainExecutor) {
+        reply.send({ enabled: true, executor: 'active' });
+      } else {
+        reply.send({ enabled: false });
+      }
+    } catch (e: any) {
+      reply.code(503).send({ error: e.message });
+    }
+  });
+
+  fastify.post('/api/fallback/execute', async (req: any, reply: any) => {
+    try {
+      const { getFallbackChainExecutor } = require('../utils/fallback-chain');
+      const { primaryProvider, primaryModel, fallbackChain, callFn } = req.body;
+      if (!primaryProvider || !primaryModel) {
+        return reply.code(400).send({ error: 'primaryProvider and primaryModel are required' });
+      }
+      reply.send({ note: 'FallbackChain execution is triggered automatically during request failures. Use this endpoint for testing only.', executor: 'ready' });
+    } catch (e: any) {
+      reply.code(500).send({ error: e.message });
+    }
+  });
+
+  fastify.get('/api/rag/status', async (req: any, reply: any) => {
+    try {
+      const { getRAGPipeline } = require('../utils/rag-pipeline');
+      const pipeline = getRAGPipeline(undefined, req.log);
+      reply.send(pipeline.getStats());
+    } catch (e: any) {
+      reply.code(503).send({ error: e.message });
+    }
+  });
+
+  fastify.post('/api/rag/ingest', async (req: any, reply: any) => {
+    try {
+      const { getRAGPipeline } = require('../utils/rag-pipeline');
+      const pipeline = getRAGPipeline(undefined, req.log);
+      const { content, source, tags } = req.body;
+      if (!content || !source) {
+        return reply.code(400).send({ error: 'content and source are required' });
+      }
+      const ids = await pipeline.ingestDocument({ content, source, tags: tags || [] });
+      reply.send({ success: true, chunks: ids.length, ids });
+    } catch (e: any) {
+      reply.code(500).send({ error: e.message });
+    }
+  });
+
+  fastify.post('/api/rag/query', async (req: any, reply: any) => {
+    try {
+      const { getRAGPipeline } = require('../utils/rag-pipeline');
+      const pipeline = getRAGPipeline(undefined, req.log);
+      const { text, tags, source } = req.body;
+      if (!text) {
+        return reply.code(400).send({ error: 'text is required' });
+      }
+      const results = await pipeline.query(text, { tags, source });
+      reply.send({ results, count: results.length });
+    } catch (e: any) {
+      reply.code(500).send({ error: e.message });
+    }
+  });
+
+  fastify.get('/api/params/status', async (req: any, reply: any) => {
+    try {
+      const { getAdaptiveParameterTuner } = require('../utils/adaptive-params');
+      const tuner = getAdaptiveParameterTuner(req.log);
+      reply.send({ enabled: true, description: 'Auto-tunes max_tokens, temperature, top_p based on request complexity' });
+    } catch (e: any) {
+      reply.code(503).send({ error: e.message });
+    }
+  });
+
+  fastify.post('/api/params/tune', async (req: any, reply: any) => {
+    try {
+      const { getAdaptiveParameterTuner } = require('../utils/adaptive-params');
+      const tuner = getAdaptiveParameterTuner(req.log);
+      const { body, tokenCount, provider, model } = req.body;
+      if (!body) {
+        return reply.code(400).send({ error: 'body is required' });
+      }
+      const params = tuner.tune(body, tokenCount || 1000, provider || 'unknown', model || 'unknown');
+      const tuned = tuner.applyTuning(body, params);
+      reply.send({ params, tuned });
+    } catch (e: any) {
+      reply.code(500).send({ error: e.message });
+    }
+  });
+
+  fastify.get('/api/rate-limiter/stats', async (req: any, reply: any) => {
+    try {
+      const orchestrator = (req.server as any)?._server?.orchestrator;
+      if (orchestrator?.rateLimiterQueue) {
+        reply.send(orchestrator.rateLimiterQueue.getStats());
+      } else {
+        reply.send({ enabled: false });
+      }
+    } catch (e: any) {
+      reply.code(503).send({ error: e.message });
+    }
+  });
