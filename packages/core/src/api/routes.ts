@@ -2222,3 +2222,71 @@ function sanitizeProviders(providers: any[]): any[] {
       reply.code(503).send({ error: e.message });
     }
   });
+
+  // =========================================================================
+  // REASONING CHAIN: list templates and execute chains
+  // =========================================================================
+
+  fastify.get('/api/chain/templates', async (req: any, reply: any) => {
+    try {
+      const { getReasoningChainEngine } = require('../engines/reasoning-chain');
+      const dummyUpstream = async () => ({ content: '', inputTokens: 0, outputTokens: 0 });
+      const engine = getReasoningChainEngine(dummyUpstream, req.log);
+      reply.send({ templates: engine.listTemplates() });
+    } catch (e: any) {
+      reply.code(503).send({ error: e.message });
+    }
+  });
+
+  fastify.post('/api/chain/execute', async (req: any, reply: any) => {
+    try {
+      const { template, request, metadata } = req.body || {};
+      if (!template) {
+        return reply.code(400).send({ error: 'template name is required' });
+      }
+      if (!request) {
+        return reply.code(400).send({ error: 'request body is required' });
+      }
+
+      const orchestrator = (req.server as any)?._server?.orchestrator;
+      const configService = (req.server as any)?.configService;
+
+      const callUpstream = async (provider: string, model: string, upstreamReq: any) => {
+        const providers = configService?.get<any[]>('providers') || [];
+        const providerConfig = providers.find((p: any) => p.name.toLowerCase() === provider.toLowerCase());
+        if (!providerConfig) {
+          throw new Error(`Provider ${provider} not found`);
+        }
+
+        const { sendUnifiedRequest } = require('@/utils/request');
+        const transformerService = (req.server as any)?.transformerService;
+        const transformer = transformerService?.getTransformer(provider);
+
+        const result = await sendUnifiedRequest({
+          provider: providerConfig,
+          model,
+          requestBody: upstreamReq,
+          transformer,
+        });
+
+        const content = result?.content
+          ? (Array.isArray(result.content)
+            ? result.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n')
+            : String(result.content))
+          : '';
+
+        return {
+          content,
+          inputTokens: result?.usage?.input_tokens || 0,
+          outputTokens: result?.usage?.output_tokens || 0,
+        };
+      };
+
+      const { getReasoningChainEngine } = require('../engines/reasoning-chain');
+      const engine = getReasoningChainEngine(callUpstream, req.log);
+      const output = await engine.executeChain(template, request, metadata || {});
+      reply.send(output);
+    } catch (e: any) {
+      reply.code(500).send({ error: e.message });
+    }
+  });
