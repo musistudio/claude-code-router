@@ -596,6 +596,78 @@ export function Dashboard() {
                 </Card>
               )}
 
+              {(data as any)?.v2?.fallbackChain && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Fallback Chain</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="default">Active</Badge>
+                      <span className="text-xs text-muted-foreground">Auto-degrade on failure</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {(data as any)?.v2?.ragPipeline && (data as any).v2.ragPipeline.initialized && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">RAG Pipeline</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-1 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Collection</span>
+                        <span>{(data as any).v2.ragPipeline.collection}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Embedding</span>
+                        <span>{(data as any).v2.ragPipeline.ollamaModel}</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {(data as any)?.v2?.adaptiveParams && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Adaptive Params</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="default">Active</Badge>
+                      <span className="text-xs text-muted-foreground">Auto-tune tokens/temp</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {(data as any)?.v2?.rateLimiterQueue && (data as any).v2.rateLimiterQueue.processedCount > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Rate Limiter Queue</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-1 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Active</span>
+                        <span>{(data as any).v2.rateLimiterQueue.activeCount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Processed</span>
+                        <span>{(data as any).v2.rateLimiterQueue.processedCount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Avg Wait</span>
+                        <span>{(data as any).v2.rateLimiterQueue.avgWaitTimeMs.toFixed(0)}ms</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {!(data as any)?.v2 && (
                 <div className="col-span-full text-sm text-muted-foreground py-4">
                   v2 infrastructure modules not yet initialized. Start the server to activate.

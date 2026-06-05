@@ -1391,6 +1391,17 @@ export const registerApiRoutes = async (
       result.proxyDiff = { error: e.message };
     }
 
+    // 16. v2 Infrastructure (Phase 2-3)
+    try {
+      const orchestrator = (fastify as any)._server?.orchestrator;
+      if (orchestrator) {
+        const stats = orchestrator.getStats();
+        result.v2 = stats.v2;
+      }
+    } catch (e: any) {
+      result.v2 = { error: e.message };
+    }
+
     result.responseTimeMs = Date.now() - startTime;
     return result;
   });
