@@ -323,6 +323,74 @@ class ApiClient {
   async installPresetFromGitHub(repo: string, name?: string): Promise<any> {
     return this.post<any>('/presets/install/github', { repo, name });
   }
+
+  async getDashboardFull(): Promise<any> {
+    return this.get<any>('/dashboard-full');
+  }
+
+  async getMetricsHistory(): Promise<any> {
+    return this.get<any>('/metrics/history');
+  }
+
+  async clearCache(): Promise<any> {
+    return this.post<any>('/cache/clear', {});
+  }
+
+  async getPipelineStatus(): Promise<any> {
+    return this.get<any>('/pipeline/status');
+  }
+
+  async getCircuitBreakers(): Promise<any> {
+    return this.get<any>('/circuit-breakers');
+  }
+
+  async getKeyRotatorStatus(): Promise<any> {
+    return this.get<any>('/key-rotator');
+  }
+
+  async getRateLimiterStatus(): Promise<any> {
+    return this.get<any>('/rate-limiter');
+  }
+
+  async getCacheReport(): Promise<any> {
+    return this.get<any>('/cache-report');
+  }
+
+  async getCumulativeCacheStats(): Promise<any> {
+    return this.get<any>('/cache-report/cumulative');
+  }
+
+  async getEmbeddingStatus(): Promise<any> {
+    return this.get<any>('/embedding');
+  }
+
+  async getRedisCacheStatus(): Promise<any> {
+    return this.get<any>('/redis-cache');
+  }
+
+  async getBudgetStatus(): Promise<any> {
+    return this.get<any>('/budget');
+  }
+
+  async getAuditStats(): Promise<any> {
+    return this.get<any>('/audit/stats');
+  }
+
+  async getFeedbackStats(): Promise<any> {
+    return this.get<any>('/feedback/stats');
+  }
+
+  async getSlidingWindowStatus(): Promise<any> {
+    return this.get<any>('/sliding-window');
+  }
+
+  async getSetupStatus(): Promise<{ needsSetup: boolean; hasProviders: boolean; providerCount: number; apiKey: string }> {
+    return this.get<{ needsSetup: boolean; hasProviders: boolean; providerCount: number; apiKey: string }>('/setup/status');
+  }
+
+  async saveSetup(data: { providers: any[]; router?: any; modelMapping?: any }): Promise<{ success: boolean; message: string }> {
+    return this.post<{ success: boolean; message: string }>('/setup', data);
+  }
 }
 
 // Create a default instance of the API client

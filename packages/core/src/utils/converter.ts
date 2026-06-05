@@ -17,6 +17,25 @@ function log(...args: any[]) {
   console.log(...args);
 }
 
+function sanitizeReasoningModelParams(body: any, targetModel: string): void {
+  const isReasoningModel = /^(o1-|o3-|o4-|grok-3-mini|qwen-qwq)/.test(targetModel);
+  const isGPT5 = /^gpt-5/.test(targetModel);
+
+  if (isReasoningModel) {
+    delete body.temperature;
+    delete body.top_p;
+    delete body.frequency_penalty;
+    delete body.presence_penalty;
+  }
+
+  if (isGPT5) {
+    if (body.max_tokens) {
+      body.max_completion_tokens = body.max_tokens;
+      delete body.max_tokens;
+    }
+  }
+}
+
 export function convertToolsToOpenAI(
   tools: UnifiedTool[]
 ): ChatCompletionTool[] {
@@ -65,21 +84,41 @@ export function convertToolsFromAnthropic(
 }
 
 export function convertToOpenAI(
-  request: UnifiedChatRequest
+  request: UnifiedChatRequest,
+  targetModel?: string
 ): OpenAIChatRequest {
   const messages: OpenAIMessage[] = [];
-  const toolResponsesQueue: Map<string, any> = new Map(); // For storing tool responses
+  const toolResponsesQueue: Map<string, any> = new Map();
+  const knownToolUseIds: Set<string> = new Set();
+
+  for (const msg of request.messages) {
+    if (msg.role === "assistant" && msg.tool_calls) {
+      for (const tc of msg.tool_calls) {
+        if (tc.id) knownToolUseIds.add(tc.id);
+      }
+    }
+  }
+
+  const isKimiModel = targetModel?.toLowerCase().includes("kimi");
 
   request.messages.forEach((msg) => {
     if (msg.role === "tool" && msg.tool_call_id) {
+      if (!knownToolUseIds.has(msg.tool_call_id)) {
+        log(`[converter] Skipping orphan tool result for tool_call_id=${msg.tool_call_id} (no matching tool_use)`);
+        return;
+      }
       if (!toolResponsesQueue.has(msg.tool_call_id)) {
         toolResponsesQueue.set(msg.tool_call_id, []);
       }
-      toolResponsesQueue.get(msg.tool_call_id).push({
+      const entry: any = {
         role: "tool",
         content: msg.content,
         tool_call_id: msg.tool_call_id,
-      });
+      };
+      if (!isKimiModel && (msg as any).is_error !== undefined) {
+        entry.is_error = (msg as any).is_error;
+      }
+      toolResponsesQueue.get(msg.tool_call_id).push(entry);
     }
   });
 
@@ -134,11 +173,8 @@ export function convertToOpenAI(
   }
 
   if (toolResponsesQueue.size > 0) {
-    for (const [id, responses] of toolResponsesQueue.entries()) {
-      responses.forEach((response) => {
-        messages.push(response);
-      });
-    }
+    console.warn(`Discarding ${toolResponsesQueue.size} orphan tool responses at end of message list`);
+    toolResponsesQueue.clear();
   }
 
   const result: any = {
@@ -152,7 +188,7 @@ export function convertToOpenAI(
   if (request.tools && request.tools.length > 0) {
     result.tools = convertToolsToOpenAI(request.tools);
     if (request.tool_choice) {
-      if (request.tool_choice === "auto" || request.tool_choice === "none") {
+      if (request.tool_choice === "auto" || request.tool_choice === "none" || request.tool_choice === "required") {
         result.tool_choice = request.tool_choice;
       } else {
         result.tool_choice = {
@@ -160,6 +196,13 @@ export function convertToOpenAI(
           function: { name: request.tool_choice },
         };
       }
+    }
+  }
+
+  if (targetModel) {
+    const isGlmModel = targetModel.toLowerCase().startsWith('glm');
+    if (!isGlmModel) {
+      sanitizeReasoningModelParams(result, targetModel);
     }
   }
 
@@ -258,7 +301,8 @@ export function convertFromOpenAI(
 }
 
 export function convertFromAnthropic(
-  request: AnthropicChatRequest
+  request: AnthropicChatRequest,
+  targetModel?: string
 ): UnifiedChatRequest {
   const messages: UnifiedMessage[] = [];
 
@@ -270,7 +314,20 @@ export function convertFromAnthropic(
   }
   const pendingToolCalls: any[] = [];
   const pendingTextContent: string[] = [];
+  const knownToolUseIds: Set<string> = new Set();
   let lastRole: string | null = null;
+
+  for (const msg of request.messages) {
+    if (Array.isArray(msg.content)) {
+      msg.content.forEach((block) => {
+        if (block.type === "tool_use" && block.id) {
+          knownToolUseIds.add(block.id);
+        }
+      });
+    }
+  }
+
+  const isKimiModel = targetModel?.toLowerCase().includes("kimi");
 
   for (let i = 0; i < request.messages.length; i++) {
     const msg = request.messages[i];
@@ -337,14 +394,22 @@ export function convertFromAnthropic(
         }
 
         toolResults.forEach((toolResult) => {
-          messages.push({
+          if (!knownToolUseIds.has(toolResult.tool_use_id)) {
+            log(`[converter] Skipping orphan tool_result for tool_use_id=${toolResult.tool_use_id} (no matching tool_use)`);
+            return;
+          }
+          const toolMsg: UnifiedMessage = {
             role: "tool",
             content:
               typeof toolResult.content === "string"
                 ? toolResult.content
                 : JSON.stringify(toolResult.content),
             tool_call_id: toolResult.tool_use_id,
-          });
+          };
+          if (!isKimiModel && toolResult.is_error !== undefined) {
+            (toolMsg as any).is_error = toolResult.is_error;
+          }
+          messages.push(toolMsg);
         });
       } else if (msg.role === "assistant") {
         if (lastRole === "assistant") {
@@ -447,9 +512,104 @@ export function convertFromAnthropic(
     if (request.tool_choice) {
       if (request.tool_choice.type === "auto") {
         result.tool_choice = "auto";
+      } else if (request.tool_choice.type === "any") {
+        result.tool_choice = "required";
       } else if (request.tool_choice.type === "tool") {
         result.tool_choice = request.tool_choice.name;
       }
+    }
+  }
+
+  if (targetModel) {
+    sanitizeReasoningModelParams(result, targetModel);
+  }
+
+  return result;
+}
+
+export function convertToAnthropic(
+  request: UnifiedChatRequest
+): AnthropicChatRequest {
+  const messages: AnthropicMessage[] = [];
+  let system: string | AnthropicMessage[] | undefined;
+
+  for (const msg of request.messages) {
+    if (msg.role === "system") {
+      system = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+      continue;
+    }
+
+    if (msg.role === "tool" && msg.tool_call_id) {
+      messages.push({
+        role: "user",
+        content: [{
+          type: "tool_result",
+          tool_use_id: msg.tool_call_id,
+          content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+        }],
+      } as any);
+      continue;
+    }
+
+    if (msg.role === "assistant" && msg.tool_calls && msg.tool_calls.length > 0) {
+      const content: any[] = [];
+      const textContent = typeof msg.content === "string" ? msg.content : null;
+      if (textContent) {
+        content.push({ type: "text", text: textContent });
+      }
+      for (const tc of msg.tool_calls) {
+        let input = {};
+        try {
+          input = typeof tc.function?.arguments === "string"
+            ? JSON.parse(tc.function.arguments)
+            : tc.function?.arguments || {};
+        } catch {}
+        content.push({
+          type: "tool_use",
+          id: tc.id || `tool_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          name: tc.function?.name || "unknown",
+          input,
+        });
+      }
+      messages.push({ role: "assistant", content });
+      continue;
+    }
+
+    if (msg.role === "assistant" || msg.role === "user") {
+      messages.push({
+        role: msg.role,
+        content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+      });
+      continue;
+    }
+
+    messages.push({
+      role: "user",
+      content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+    } as any);
+  }
+
+  const result: any = {
+    model: request.model,
+    max_tokens: request.max_tokens,
+    messages,
+    stream: request.stream,
+  };
+
+  if (system) result.system = system;
+  if (request.temperature != null) result.temperature = request.temperature;
+  if (request.tools && request.tools.length > 0 && request.tool_choice !== "none") {
+    result.tools = convertToolsToAnthropic(request.tools);
+  }
+  if (request.tool_choice) {
+    if (request.tool_choice === "auto") {
+      result.tool_choice = { type: "auto" };
+    } else if (request.tool_choice === "required") {
+      result.tool_choice = { type: "any" };
+    } else if (typeof request.tool_choice === "string") {
+      result.tool_choice = { type: "tool", name: request.tool_choice };
+    } else if (typeof request.tool_choice === "object") {
+      result.tool_choice = request.tool_choice;
     }
   }
 
@@ -472,7 +632,6 @@ export function convertRequest(
   if (options.targetProvider === "openai") {
     return convertToOpenAI(unifiedRequest);
   } else {
-    // For now, return unified request since Anthropic format is similar
-    return unifiedRequest as any;
+    return convertToAnthropic(unifiedRequest);
   }
 }

@@ -239,6 +239,20 @@
     "grouping_not_supported": "服务器不支持日志分组",
     "back": "返回"
   },
+  "quick_add": {
+    "title": "快速添加",
+    "description": "选择预设模板或添加自定义供应商",
+    "api_key": "API 密钥",
+    "api_key_placeholder": "输入您的 API 密钥",
+    "api_key_required": "API 密钥为必填项",
+    "name": "供应商名称",
+    "name_required": "供应商名称为必填项",
+    "add": "添加供应商",
+    "custom": "自定义供应商",
+    "presets": "供应商预设",
+    "models": "模型",
+    "transformer_auto": "转换器将自动配置"
+  },
   "presets": {
     "title": "预设",
     "market_title": "预设市场",
@@ -297,5 +311,27 @@
       "apply": "应用",
       "cancel": "取消"
     }
+  },
+  "setup": {
+    "title": "设置向导",
+    "welcome": "欢迎使用 Claude Code Router",
+    "description": "配置你的 LLM 提供商以开始使用",
+    "step1": "选择提供商",
+    "step2": "配置 API Key",
+    "step3": "确认并保存",
+    "selectProviders": "选择一个或多个提供商",
+    "apiKey": "API 密钥",
+    "apiKeyPlaceholder": "输入你的 API Key",
+    "baseUrl": "API 基础地址",
+    "models": "模型列表",
+    "save": "保存并启动",
+    "saving": "正在保存配置...",
+    "success": "配置已保存！正在重新加载...",
+    "redirecting": "正在跳转到控制面板...",
+    "addProvider": "添加其他提供商",
+    "removeProvider": "移除",
+    "customProvider": "自定义提供商",
+    "review": "确认你的配置",
+    "providerCount": "已配置 {{count}} 个提供商"
   }
 }

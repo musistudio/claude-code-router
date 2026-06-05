@@ -7,6 +7,15 @@ import { CLAUDE_PROJECTS_DIR, HOME_DIR } from "@CCR/shared";
 import { LRUCache } from "lru-cache";
 import { ConfigService } from "../services/config";
 import { TokenizerService } from "../services/tokenizer";
+import { resolveModelAlias } from "./model-alias";
+import { analyzeReasoning, buildContextInjection } from "../engines/reasoning-engine";
+import { getAdaptiveRouter } from "./adaptive-router";
+import { getAdaptiveParameterTuner } from "./adaptive-params";
+
+// ==========================================================================
+// Provider fallback: config-driven via "fallback" section in config.json
+// No hardcoded provider names — all fallback logic reads from config
+// ==========================================================================
 
 // Types from @anthropic-ai/sdk
 interface Tool {
@@ -131,13 +140,45 @@ const getUseModel = async (
   const providers = configService.get<any[]>("providers") || [];
   const Router = projectSpecificRouter || configService.get("Router");
 
+  // Slash-prefix routing: "openai/gpt-4.1" → "openai,gpt-4.1"
+  if (req.body.model?.includes('/') && !req.body.model.includes(',')) {
+    const [prefix, ...rest] = req.body.model.split('/');
+    const actualModel = rest.join('/');
+    const providerMap: Record<string, string> = {
+      'openai': 'openai',
+      'xai': 'xai',
+      'qwen': 'dashscope',
+      'kimi': 'dashscope',
+      'deepseek': 'deepseek',
+      'anthropic': 'anthropic',
+      'google': 'google',
+      'groq': 'groq',
+    };
+    const resolvedProvider = providerMap[prefix.toLowerCase()];
+    if (resolvedProvider) {
+      req.log.info(`Slash-prefix routing: ${req.body.model} → ${resolvedProvider},${actualModel}`);
+      req.body.model = `${resolvedProvider},${actualModel}`;
+    }
+  }
+
+  // Try model alias resolution (e.g. "opus" → "claude-opus-4-6", then config overrides)
+  if (!req.body.model.includes(",")) {
+    const aliasTarget = resolveModelAlias(req.body.model, configService);
+    if (aliasTarget) {
+      req.log.info(`Model alias resolved: ${req.body.model} → ${aliasTarget}`);
+      req.body.model = aliasTarget;
+    }
+  }
+
   if (req.body.model.includes(",")) {
     const [provider, model] = req.body.model.split(",");
+    const providerLower = provider.toLowerCase();
+    const modelLower = model.toLowerCase();
     const finalProvider = providers.find(
-      (p: any) => p.name.toLowerCase() === provider
+      (p: any) => p.name.toLowerCase() === providerLower
     );
     const finalModel = finalProvider?.models?.find(
-      (m: any) => m.toLowerCase() === model
+      (m: any) => m.toLowerCase() === modelLower
     );
     if (finalProvider && finalModel) {
       return { model: `${finalProvider.name},${finalModel}`, scenarioType: 'default' };
@@ -158,20 +199,9 @@ const getUseModel = async (
     );
     return { model: Router.longContext, scenarioType: 'longContext' };
   }
-  if (
-    req.body?.system?.length > 1 &&
-    req.body?.system[1]?.text?.startsWith("<CCR-SUBAGENT-MODEL>")
-  ) {
-    const model = req.body?.system[1].text.match(
-      /<CCR-SUBAGENT-MODEL>(.*?)<\/CCR-SUBAGENT-MODEL>/s
-    );
-    if (model) {
-      req.body.system[1].text = req.body.system[1].text.replace(
-        `<CCR-SUBAGENT-MODEL>${model[1]}</CCR-SUBAGENT-MODEL>`,
-        ""
-      );
-      return { model: model[1], scenarioType: 'default' };
-    }
+  const subagentModel = extractSubagentModel(req);
+  if (subagentModel) {
+    return { model: subagentModel, scenarioType: 'default' };
   }
   // Use the background model for any Claude Haiku variant
   const globalRouter = configService.get("Router");
@@ -199,13 +229,41 @@ const getUseModel = async (
   return { model: Router?.default, scenarioType: 'default' };
 };
 
+const extractSubagentModel = (req: any): string | undefined => {
+  if (
+    !Array.isArray(req.body?.system) ||
+    req.body.system.length <= 1 ||
+    typeof req.body.system[1]?.text !== "string" ||
+    !req.body.system[1].text.startsWith("<CCR-SUBAGENT-MODEL>")
+  ) {
+    return undefined;
+  }
+
+  const model = req.body.system[1].text.match(
+    /<CCR-SUBAGENT-MODEL>(.*?)<\/CCR-SUBAGENT-MODEL>/s
+  );
+  if (!model) return undefined;
+
+  req.body.system[1].text = req.body.system[1].text.replace(
+    `<CCR-SUBAGENT-MODEL>${model[1]}</CCR-SUBAGENT-MODEL>`,
+    ""
+  );
+  return model[1];
+};
+
 export interface RouterContext {
   configService: ConfigService;
   tokenizerService?: TokenizerService;
   event?: any;
 }
 
-export type RouterScenarioType = 'default' | 'background' | 'think' | 'longContext' | 'webSearch';
+export type RouterScenarioType =
+  | 'default'
+  | 'background'
+  | 'think'
+  | 'longContext'
+  | 'webSearch'
+  | string;
 
 export interface RouterFallbackConfig {
   default?: string[];
@@ -266,15 +324,26 @@ export const router = async (req: any, _res: any, context: RouterContext) => {
       );
     }
 
-    let model;
+    let model = extractSubagentModel(req);
     const customRouterPath = configService.get("CUSTOM_ROUTER_PATH");
-    if (customRouterPath) {
+    if (!model && customRouterPath) {
       try {
-        const customRouter = require(customRouterPath);
-        req.tokenCount = tokenCount; // Pass token count to custom router
-        model = await customRouter(req, configService.getAll(), {
-          event,
-        });
+        const resolved = require.resolve(customRouterPath);
+        const fs = require('fs');
+        const path = require('path');
+        const os = require('os');
+        const realResolved = fs.realpathSync(resolved);
+        const allowed = [process.cwd(), os.homedir(), path.join(os.homedir(), '.claude-code-router')];
+        const isAllowed = allowed.some(dir => realResolved.startsWith(path.resolve(dir)));
+        if (!isAllowed) {
+          req.log.error(`Custom router path outside allowed directories: ${realResolved}`);
+        } else {
+          const customRouter = require(realResolved);
+          req.tokenCount = tokenCount;
+          model = await customRouter(req, configService.getAll(), {
+            event,
+          });
+        }
       } catch (e: any) {
         req.log.error(`failed to load custom router: ${e.message}`);
       }
@@ -283,9 +352,124 @@ export const router = async (req: any, _res: any, context: RouterContext) => {
       const result = await getUseModel(req, tokenCount, configService, lastMessageUsage);
       model = result.model;
       req.scenarioType = result.scenarioType;
+
+      // ====================================================================
+      // REASONING-AWARE ROUTING: analyze MCP tools and adjust tier
+      // ====================================================================
+      try {
+        const reasoning = analyzeReasoning(req.body, tokenCount);
+        if (reasoning.recommendation === 'flash' && reasoning.reason) {
+          // Route simple/relay MCP tool tasks to DeepSeek Flash (cheap, fast)
+          const flashProvider = configService.get('Router')?.reasoningFlash || 'deepseek,deepseek-v4-flash';
+          req.log.info(`Reasoning: ${reasoning.reason} → routing to flash (${flashProvider})`);
+          model = flashProvider;
+          req.scenarioType = 'reasoning_flash';
+        } else if (reasoning.recommendation === 'pro_max' && reasoning.reason) {
+          // Route deep reasoning with sufficient context to DeepSeek Pro
+          const proMaxProvider = configService.get('Router')?.reasoningProMax || 'deepseek,deepseek-v4-pro';
+          req.log.info(`Reasoning: ${reasoning.reason} → routing to pro max (${proMaxProvider})`);
+          model = proMaxProvider;
+          req.scenarioType = 'reasoning_pro_max';
+        } else if (reasoning.recommendation === 'pro' && reasoning.needsDeepReasoning) {
+          // Deep reasoning task with too little context → inject project knowledge
+          const enrichment = buildContextInjection(
+            configService.get('PROJECT_ROOT') || process.cwd(),
+            req.gatewayAgentName || 'default'
+          );
+          if (enrichment && req.body.system) {
+            if (typeof req.body.system === 'string') {
+              req.body.system = enrichment + '\n' + req.body.system;
+            } else if (Array.isArray(req.body.system)) {
+              req.body.system.unshift({ type: 'text', text: enrichment });
+            }
+            req.log.info(`Reasoning: ${reasoning.reason} → injected context (${enrichment.length} chars)`);
+            (req as any)._ragInjected = true;
+          }
+        }
+      } catch (e: any) {
+        // Reasoning engine failure → fall through to default routing
+        req.log.debug(`Reasoning engine skipped: ${e.message}`);
+      }
+
+      // ====================================================================
+      // HEALTH-BASED FALLBACK: check if target provider is healthy
+      // Falls back to config-driven fallback[scenarioType] or fallback.default
+      // ====================================================================
+      try {
+        const [targetProvider] = model.split(",");
+        const healthMonitor = configService.get("_healthMonitor");
+        if (healthMonitor && targetProvider) {
+          const isHealthy = await healthMonitor.checkBeforeRoute(targetProvider);
+          if (!isHealthy) {
+            // Use config-driven fallback chain
+            const fallbackConfig = configService.get<any>('fallback');
+            const scenarioType = req.scenarioType || 'default';
+            const fallbackList = fallbackConfig?.[scenarioType] || fallbackConfig?.default || [];
+            const fallback = Array.isArray(fallbackList) ? fallbackList[0] : fallbackList;
+            if (fallback) {
+              req.log.warn(
+                `Provider ${targetProvider} is UNHEALTHY → falling back to ${fallback}`
+              );
+              model = fallback;
+              req.scenarioType = 'health_fallback';
+            } else {
+              req.log.warn(
+                `Provider ${targetProvider} is UNHEALTHY and no fallback configured`
+              );
+            }
+          }
+        }
+      } catch (e: any) {
+        req.log.debug(`Health check skipped: ${e?.message}`);
+      }
+
+      // ====================================================================
+      // ADAPTIVE ROUTER SCORING: use real-time health/latency data to
+      // potentially override the model choice with a better-scoring provider
+      // ====================================================================
+      try {
+        const adaptiveR = getAdaptiveRouter();
+        if (adaptiveR) {
+          const [targetProvider] = model.split(",");
+          const candidates = (configService.get<any[]>("providers") || [])
+            .filter((p: any) => p.models && p.models.length > 0)
+            .map((p: any) => p.name);
+          if (candidates.length > 1 && targetProvider) {
+            const routeResult = adaptiveR.route(targetProvider, candidates);
+            if (routeResult.provider !== targetProvider && routeResult.provider) {
+              const targetProviderObj = (configService.get<any[]>("providers") || [])
+                .find((p: any) => p.name.toLowerCase() === routeResult.provider!.toLowerCase());
+              if (targetProviderObj?.models?.[0]) {
+                req.log.info(
+                  `AdaptiveRouter: overriding ${targetProvider} → ${routeResult.provider} (score=${routeResult.score.toFixed(2)})`
+                );
+                model = `${routeResult.provider},${targetProviderObj.models[0]}`;
+                req.scenarioType = req.scenarioType || 'adaptive';
+              }
+            }
+          }
+        }
+      } catch (e: any) {
+        req.log.debug(`AdaptiveRouter scoring skipped: ${e.message}`);
+      }
+
+      // ====================================================================
+      // ADAPTIVE PARAMETER TUNING: auto-tune max_tokens/temperature based
+      // on request complexity signals and target model characteristics
+      // ====================================================================
+      try {
+        const tuner = getAdaptiveParameterTuner();
+        const [provider, ...modelParts] = model.split(",");
+        const modelId = modelParts.join(",");
+        const params = tuner.tune(req.body, tokenCount, provider, modelId);
+        const tuned = tuner.applyTuning(req.body, params);
+        req.body = tuned;
+        (req as any)._adaptiveParams = params;
+      } catch (e: any) {
+        req.log.debug(`AdaptiveParameterTuning skipped: ${e.message}`);
+      }
     } else {
-      // Custom router doesn't provide scenario type, default to 'default'
-      req.scenarioType = 'default';
+      req.scenarioType = req.gatewayScenario || req.scenarioType || 'default';
     }
     req.body.model = model;
   } catch (error: any) {

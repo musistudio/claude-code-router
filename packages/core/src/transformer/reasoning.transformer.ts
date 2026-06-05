@@ -21,9 +21,16 @@ export class ReasoningTransformer implements Transformer {
       return request;
     }
     if (request.reasoning) {
+      let budgetTokens = request.reasoning.max_tokens;
+      if (!budgetTokens || budgetTokens <= 0) {
+        if (request.reasoning.effort === "high") budgetTokens = 32768;
+        else if (request.reasoning.effort === "medium") budgetTokens = 8192;
+        else if (request.reasoning.effort === "low") budgetTokens = 1024;
+        else budgetTokens = 32768;
+      }
       request.thinking = {
         type: "enabled",
-        budget_tokens: request.reasoning.max_tokens,
+        budget_tokens: budgetTokens,
       };
       request.enable_thinking = true;
     }

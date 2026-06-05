@@ -1,7 +1,8 @@
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, watchFile, unwatchFile } from "fs";
 import { join } from "path";
 import { config } from "dotenv";
 import JSON5 from 'json5';
+import { EventEmitter } from "events";
 
 export interface ConfigOptions {
   envPath?: string;
@@ -16,15 +17,19 @@ export interface AppConfig {
   [key: string]: any;
 }
 
-export class ConfigService {
+export class ConfigService extends EventEmitter {
   private config: AppConfig = {};
   private options: ConfigOptions;
+  private _watching: boolean = false;
+  private _watchedPath: string | null = null;
+  private watchDebounce: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     options: ConfigOptions = {
       jsonPath: "./config.json",
     }
   ) {
+    super();
     this.options = {
       envPath: options.envPath || ".env",
       jsonPath: options.jsonPath,
@@ -76,7 +81,9 @@ export class ConfigService {
         this.config = { ...this.config, ...jsonConfig };
         console.log(`Loaded JSON config from: ${jsonPath}`);
       } catch (error) {
-        console.warn(`Failed to load JSON config from ${jsonPath}:`, error);
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`Failed to parse config file ${jsonPath}: ${message}`);
+        throw new Error(`Invalid config file: ${message}`);
       }
     } else {
       console.warn(`JSON config file not found: ${jsonPath}`);
@@ -112,9 +119,16 @@ export class ConfigService {
     env: Record<string, string | undefined>
   ): Partial<AppConfig> {
     const parsed: Partial<AppConfig> = {};
-
-    Object.assign(parsed, env);
-
+    const allowedKeys: (keyof AppConfig)[] = [
+      'PORT', 'HOST', 'LOG', 'LOG_FILE', 'NODE_ENV',
+      'DEFAULT_MODEL', 'DEFAULT_PROVIDER', 'API_KEY',
+      'CUSTOM_ROUTER_PATH', 'CONCURRENCY_LIMIT',
+    ];
+    for (const key of allowedKeys) {
+      if (env[key] !== undefined) {
+        (parsed as any)[key] = env[key];
+      }
+    }
     return parsed;
   }
 
@@ -151,8 +165,94 @@ export class ConfigService {
   }
 
   public reload(): void {
-    this.config = {};
-    this.loadConfig();
+    try {
+      const oldConfig = { ...this.config };
+      const newConfig: AppConfig = {};
+
+      if (this.options.useJsonFile && this.options.jsonPath) {
+        const jsonPath = this.isAbsolutePath(this.options.jsonPath)
+          ? this.options.jsonPath
+          : join(process.cwd(), this.options.jsonPath);
+
+        if (existsSync(jsonPath)) {
+          const jsonContent = readFileSync(jsonPath, "utf-8");
+          const jsonConfig = JSON5.parse(jsonContent);
+          Object.assign(newConfig, jsonConfig);
+        }
+      }
+
+      if (this.options.initialConfig) {
+        Object.assign(newConfig, this.options.initialConfig);
+      }
+
+      if (this.options.useEnvFile) {
+        const envPath = this.isAbsolutePath(this.options.envPath!)
+          ? this.options.envPath!
+          : join(process.cwd(), this.options.envPath!);
+
+        if (existsSync(envPath)) {
+          const result = config({ path: envPath });
+          if (result.parsed) {
+            Object.assign(newConfig, this.parseEnvConfig(result.parsed));
+          }
+        }
+      }
+
+      if (newConfig.LOG_FILE) {
+        process.env.LOG_FILE = newConfig.LOG_FILE;
+      }
+      if (newConfig.LOG) {
+        process.env.LOG = newConfig.LOG;
+      }
+
+      this.config = newConfig;
+      this.emit('config:changed', { oldConfig, newConfig: { ...this.config } });
+    } catch (err) {
+      console.error(`Config reload failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
+   * Watch config file for changes and auto-reload.
+   * Emits 'config:changed' event when config is updated.
+   * Uses debounce to avoid rapid reloads.
+   */
+  public startWatching(): void {
+    if (this._watching) return;
+    if (!this.options.jsonPath) return;
+
+    const jsonPath = this.isAbsolutePath(this.options.jsonPath)
+      ? this.options.jsonPath
+      : join(process.cwd(), this.options.jsonPath);
+
+    if (!existsSync(jsonPath)) return;
+
+    const onChange = (curr: any, prev: any) => {
+      if (curr.mtimeMs === prev.mtimeMs) return;
+      if (this.watchDebounce) clearTimeout(this.watchDebounce);
+      this.watchDebounce = setTimeout(() => {
+        console.log(`Config file changed: ${jsonPath}, reloading...`);
+        this.reload();
+      }, 500);
+    };
+
+    watchFile(jsonPath, { interval: 2000 }, onChange);
+    this._watching = true;
+    this._watchedPath = jsonPath;
+    this.emit('watch:started', { path: jsonPath });
+  }
+
+  public stopWatching(): void {
+    if (this._watching && this._watchedPath) {
+      unwatchFile(this._watchedPath);
+      this._watching = false;
+      this._watchedPath = null;
+    }
+    if (this.watchDebounce) {
+      clearTimeout(this.watchDebounce);
+      this.watchDebounce = null;
+    }
+    this.emit('watch:stopped');
   }
 
   public getConfigSummary(): string {

@@ -191,7 +191,9 @@ export class ProviderService {
     if (!provider) {
       return false;
     }
-    return true;
+    // TODO: Add 'enabled' field to LLMProvider interface
+    this.logger?.warn(`toggleProvider("${name}", ${enabled}): not implemented, needs LLMProvider.enabled field`);
+    return false;
   }
 
   resolveModelRoute(modelName: string): RequestRouteInfo | null {

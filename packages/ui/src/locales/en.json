@@ -239,6 +239,20 @@
     "grouping_not_supported": "Log grouping not supported by server",
     "back": "Back"
   },
+  "quick_add": {
+    "title": "Quick Add",
+    "description": "Choose a preset or add a custom provider",
+    "api_key": "API Key",
+    "api_key_placeholder": "Enter your API key",
+    "api_key_required": "API Key is required",
+    "name": "Provider Name",
+    "name_required": "Provider name is required",
+    "add": "Add Provider",
+    "custom": "Custom Provider",
+    "presets": "Provider Presets",
+    "models": "Models",
+    "transformer_auto": "Transformer will be auto-configured"
+  },
   "presets": {
     "title": "Presets",
     "market_title": "Preset Market",
@@ -298,5 +312,27 @@
       "apply": "Apply",
       "cancel": "Cancel"
     }
+  },
+  "setup": {
+    "title": "Setup Wizard",
+    "welcome": "Welcome to Claude Code Router",
+    "description": "Configure your LLM providers to get started",
+    "step1": "Select Providers",
+    "step2": "Configure API Keys",
+    "step3": "Review & Save",
+    "selectProviders": "Select one or more providers",
+    "apiKey": "API Key",
+    "apiKeyPlaceholder": "Enter your API key",
+    "baseUrl": "API Base URL",
+    "models": "Models",
+    "save": "Save & Start",
+    "saving": "Saving configuration...",
+    "success": "Configuration saved! Reloading...",
+    "redirecting": "Redirecting to dashboard...",
+    "addProvider": "Add another provider",
+    "removeProvider": "Remove",
+    "customProvider": "Custom Provider",
+    "review": "Review your configuration",
+    "providerCount": "{{count}} providers configured"
   }
 }

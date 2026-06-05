@@ -1,4 +1,4 @@
-import Server, { calculateTokenCount, TokenizerService } from "@musistudio/llms";
+import Server, { calculateTokenCount, TokenizerService, SemanticStoreService } from "@musistudio/llms";
 import { readConfigFile, writeConfigFile, backupConfigFile } from "./utils";
 import { join } from "path";
 import fastifyStatic from "@fastify/static";
@@ -25,9 +25,15 @@ import {
 import fastifyMultipart from "@fastify/multipart";
 import AdmZip from "adm-zip";
 
+const getServer = (app: any): any => {
+  return (app as any)._server || null;
+};
+
 export const createServer = async (config: any): Promise<any> => {
   const server = new Server(config);
   const app = server.app;
+  // Attach server to app early so API routes can access services
+  (app as any)._server = server;
 
   app.register(fastifyMultipart, {
     limits: {
@@ -37,7 +43,8 @@ export const createServer = async (config: any): Promise<any> => {
 
   app.post("/v1/messages/count_tokens", async (req: any, reply: any) => {
     const {messages, tools, system, model} = req.body;
-    const tokenizerService = (app as any)._server!.tokenizerService as TokenizerService;
+    const srv = getServer(app);
+    const tokenizerService = srv?.tokenizerService as TokenizerService | undefined;
 
     // If model is specified in "providerName,modelName" format, use the configured tokenizer
     if (model && model.includes(",") && tokenizerService) {
@@ -88,8 +95,9 @@ export const createServer = async (config: any): Promise<any> => {
   });
 
   app.get("/api/transformers", async (req: any, reply: any) => {
+    const srv = getServer(app);
     const transformers =
-      (app as any)._server!.transformerService.getAllTransformers();
+      srv?.transformerService.getAllTransformers() || new Map();
     const transformerList = Array.from(transformers.entries()).map(
       ([name, transformer]: any) => ({
         name,
@@ -483,6 +491,201 @@ export const createServer = async (config: any): Promise<any> => {
     const manifest = JSON.parse(entry.getData().toString('utf-8')) as ManifestFile;
     return manifestToPresetFile(manifest);
   }
+
+  // --- Semantic Store API ---
+  // Lightweight vector storage backed by Postgres+pgvector.
+  // Graceful degradation: if Postgres is unavailable, returns empty results.
+  const srv = getServer(app);
+  const semanticStore = new SemanticStoreService(
+    srv?.configService || {},
+    app.log
+  );
+
+  // Semantic store health check
+  app.get("/api/semantic/status", async (req: any, reply: any) => {
+    try {
+      const health = await semanticStore.healthCheck();
+      return health;
+    } catch (error: any) {
+      return { connected: false, error: error.message };
+    }
+  });
+
+  // Upsert document into semantic store
+  app.post("/api/semantic/upsert", async (req: any, reply: any) => {
+    try {
+      const { scope, topic, content, depth, trust, source, metadata } = req.body;
+      if (!scope || !topic || !content) {
+        reply.status(400).send({ error: "scope, topic, and content are required" });
+        return;
+      }
+      const validScopes = ['session', 'project', 'reference'];
+      if (!validScopes.includes(scope)) {
+        reply.status(400).send({ error: `scope must be one of: ${validScopes.join(', ')}` });
+        return;
+      }
+      const result = await semanticStore.upsert({
+        scope,
+        topic,
+        content,
+        depth,
+        trust,
+        source,
+        metadata,
+      });
+      if (!result) {
+        reply.status(503).send({ error: "Semantic store unavailable" });
+        return;
+      }
+      return { success: true, id: result.id };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message || "Failed to upsert document" });
+    }
+  });
+
+  // Search semantic store
+  app.post("/api/semantic/search", async (req: any, reply: any) => {
+    try {
+      const { query, scope, topic, limit, threshold } = req.body;
+      if (!query) {
+        reply.status(400).send({ error: "query is required" });
+        return;
+      }
+      const results = await semanticStore.search(query, {
+        scope,
+        topic,
+        limit,
+        threshold,
+      });
+      return { results };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message || "Failed to search" });
+    }
+  });
+
+  // Delete documents by scope and topic
+  app.delete("/api/semantic/:scope/:topic", async (req: any, reply: any) => {
+    try {
+      const { scope, topic } = req.params;
+      const deleted = await semanticStore.delete(scope, topic);
+      return { success: true, deleted };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message || "Failed to delete" });
+    }
+  });
+
+  // --- Gateway Health API ---
+  app.get("/api/health", async (req: any, reply: any) => {
+    const srv = getServer(app);
+    const providers = srv?.providerService.getProviders() || [];
+    const semanticHealth = await semanticStore.healthCheck();
+    return {
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      providers: providers.map((p: any) => ({
+        name: p.name,
+        models: p.models,
+      })),
+      semanticStore: semanticHealth,
+    };
+  });
+
+  // --- Anthropic-compatible /v1/models endpoint ---
+  // Claude Code v2.x calls this to validate available models.
+  // Without this, Claude Code shows "model may not exist" errors.
+  app.get("/v1/models", async (req: any, reply: any) => {
+    const srv = getServer(app);
+    const providerService = srv?.providerService;
+    const configService = srv?.configService;
+    
+    let modelIds: string[] = [];
+    
+    // Get models from providers
+    if (providerService) {
+      try {
+        const providers = providerService.getProviders();
+        for (const p of providers) {
+          if (p.models && Array.isArray(p.models)) {
+            modelIds.push(...p.models);
+          }
+        }
+      } catch {}
+    }
+    
+    // Also include ModelMapping keys (the Claude model names we accept)
+    if (configService) {
+      try {
+        const mapping = configService.get("ModelMapping");
+        if (mapping && typeof mapping === 'object') {
+          for (const key of Object.keys(mapping)) {
+            if (!modelIds.includes(key)) {
+              modelIds.push(key);
+            }
+          }
+        }
+      } catch {}
+    }
+    
+    // Deduplicate
+    modelIds = [...new Set(modelIds)];
+
+    const sorted = modelIds.sort();
+    return {
+      object: "list",
+      data: sorted.map((id) => ({
+        id,
+        object: "model",
+        type: "model",
+        display_name: id,
+        created_at: "2025-01-01T00:00:00Z",
+      })),
+      has_more: false,
+      first_id: sorted[0] || null,
+      last_id: sorted[sorted.length - 1] || null,
+    };
+  });
+
+  // Diagnostic: test AnthropicTransformer conversion
+  app.post("/api/debug/convert", async (req: any, reply: any) => {
+    try {
+      const { provider: pName } = req.body;
+      const srv = getServer(app);
+      const prov = srv?.providerService.getProvider(pName);
+      if (!prov) return reply.code(404).send({ error: "Provider not found" });
+      const url = new URL(prov.baseUrl);
+      const rawBody = {
+        model: "deepseek-chat",
+        messages: [{ role: "user", content: "Say hi in one word" }],
+        max_tokens: 10,
+        stream: false,
+      };
+      const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${prov.apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify(rawBody),
+      });
+      const rawJson = await res.json();
+      
+      // Now test the Anthropic conversion
+      const anthropicTransformer = srv?.transformerService.getTransformer("Anthropic");
+      if (!anthropicTransformer) {
+        return reply.code(500).send({ error: "AnthropicTransformer not initialized" });
+      }
+      const converted = anthropicTransformer.convertOpenAIResponseToAnthropic(rawJson, { req: { id: "test" } });
+      
+      return {
+        raw: { model: rawJson.model, content: rawJson.choices?.[0]?.message?.content },
+        converted: { 
+          model: converted.model, 
+          contentTypes: converted.content?.map((c:any) => c.type),
+          contentTexts: converted.content?.map((c:any) => c.text?.substring(0,50)),
+          contentLength: converted.content?.length
+        },
+      };
+    } catch (e: any) {
+      return { error: e.message, stack: e.stack?.split('\n').slice(0,3) };
+    }
+  });
 
   return server;
 };

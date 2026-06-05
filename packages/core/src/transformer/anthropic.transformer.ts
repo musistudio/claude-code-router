@@ -47,6 +47,26 @@ export class AnthropicTransformer implements Transformer {
   async transformRequestOut(
     request: Record<string, any>
   ): Promise<UnifiedChatRequest> {
+    if (request.system) {
+      if (typeof request.system === "string") {
+        request.system = [
+          { type: "text", text: request.system, cache_control: { type: "ephemeral" } },
+        ];
+      } else if (Array.isArray(request.system)) {
+        const lastBlock = request.system[request.system.length - 1];
+        if (lastBlock) {
+          lastBlock.cache_control = { type: "ephemeral" };
+        }
+      }
+    }
+
+    if (request.tools && Array.isArray(request.tools) && request.tools.length > 0) {
+      const lastTool = request.tools[request.tools.length - 1];
+      if (lastTool) {
+        lastTool.cache_control = { type: "ephemeral" };
+      }
+    }
+
     const messages: UnifiedMessage[] = [];
 
     if (request.system) {
@@ -191,7 +211,7 @@ export class AnthropicTransformer implements Transformer {
     if (request.thinking) {
       result.reasoning = {
         effort: getThinkLevel(request.thinking.budget_tokens),
-        // max_tokens: request.thinking.budget_tokens,
+        max_tokens: request.thinking.budget_tokens,
         enabled: request.thinking.type === "enabled",
       };
     }
@@ -274,9 +294,9 @@ export class AnthropicTransformer implements Transformer {
         let isClosed = false;
         let isThinkingStarted = false;
         let contentIndex = 0;
-        let currentContentBlockIndex = -1; // Track the current content block index
+        let currentContentBlockIndex = -1;
+        let currentContentBlockType: 'thinking' | 'text' | 'tool' | null = null;
 
-        // 原子性的content block index分配函数
         const assignContentBlockIndex = (): number => {
           const currentIndex = contentIndex;
           contentIndex++;
@@ -328,6 +348,7 @@ export class AnthropicTransformer implements Transformer {
                   )
                 );
                 currentContentBlockIndex = -1;
+                currentContentBlockType = null;
               }
 
               if (stopReasonMessageDelta) {
@@ -509,28 +530,14 @@ export class AnthropicTransformer implements Transformer {
                 }
 
                 if (choice?.delta?.thinking && !isClosed && !hasFinished) {
-                  // Close any previous content block if open
-                  // if (currentContentBlockIndex >= 0) {
-                  //   const contentBlockStop = {
-                  //     type: "content_block_stop",
-                  //     index: currentContentBlockIndex,
-                  //   };
-                  //   safeEnqueue(
-                  //     encoder.encode(
-                  //       `event: content_block_stop\ndata: ${JSON.stringify(
-                  //         contentBlockStop
-                  //       )}\n\n`
-                  //     )
-                  //   );
-                  //   currentContentBlockIndex = -1;
-                  // }
+                  const isRedacted = !!choice.delta.thinking.redacted;
 
-                  if (!isThinkingStarted) {
-                    const thinkingBlockIndex = assignContentBlockIndex();
+                  if (isRedacted) {
+                    const redactedBlockIndex = assignContentBlockIndex();
                     const contentBlockStart = {
                       type: "content_block_start",
-                      index: thinkingBlockIndex,
-                      content_block: { type: "thinking", thinking: "" },
+                      index: redactedBlockIndex,
+                      content_block: { type: "redacted_thinking", data: choice.delta.thinking.data || "" },
                     };
                     safeEnqueue(
                       encoder.encode(
@@ -539,28 +546,9 @@ export class AnthropicTransformer implements Transformer {
                         )}\n\n`
                       )
                     );
-                    currentContentBlockIndex = thinkingBlockIndex;
-                    isThinkingStarted = true;
-                  }
-                  if (choice.delta.thinking.signature) {
-                    const thinkingSignature = {
-                      type: "content_block_delta",
-                      index: currentContentBlockIndex,
-                      delta: {
-                        type: "signature_delta",
-                        signature: choice.delta.thinking.signature,
-                      },
-                    };
-                    safeEnqueue(
-                      encoder.encode(
-                        `event: content_block_delta\ndata: ${JSON.stringify(
-                          thinkingSignature
-                        )}\n\n`
-                      )
-                    );
                     const contentBlockStop = {
                       type: "content_block_stop",
-                      index: currentContentBlockIndex,
+                      index: redactedBlockIndex,
                     };
                     safeEnqueue(
                       encoder.encode(
@@ -570,33 +558,42 @@ export class AnthropicTransformer implements Transformer {
                       )
                     );
                     currentContentBlockIndex = -1;
-                  } else if (choice.delta.thinking.content) {
-                    const thinkingChunk = {
-                      type: "content_block_delta",
-                      index: currentContentBlockIndex,
-                      delta: {
-                        type: "thinking_delta",
-                        thinking: choice.delta.thinking.content || "",
-                      },
-                    };
-                    safeEnqueue(
-                      encoder.encode(
-                        `event: content_block_delta\ndata: ${JSON.stringify(
-                          thinkingChunk
-                        )}\n\n`
-                      )
-                    );
-                  }
-                }
-
-                if (choice?.delta?.content && !isClosed && !hasFinished) {
-                  contentChunks++;
-
-                  // Close any previous content block if open and it's not a text content block
-                  if (currentContentBlockIndex >= 0) {
-                    // Check if current content block is text type
-                    const isCurrentTextBlock = hasTextContentStarted;
-                    if (!isCurrentTextBlock) {
+                    currentContentBlockType = null;
+                  } else {
+                    if (!isThinkingStarted) {
+                      const thinkingBlockIndex = assignContentBlockIndex();
+                      const contentBlockStart = {
+                        type: "content_block_start",
+                        index: thinkingBlockIndex,
+                        content_block: { type: "thinking", thinking: "" },
+                      };
+                      safeEnqueue(
+                        encoder.encode(
+                          `event: content_block_start\ndata: ${JSON.stringify(
+                            contentBlockStart
+                          )}\n\n`
+                        )
+                      );
+                      currentContentBlockIndex = thinkingBlockIndex;
+                      currentContentBlockType = 'thinking';
+                      isThinkingStarted = true;
+                    }
+                    if (choice.delta.thinking.signature) {
+                      const thinkingSignature = {
+                        type: "content_block_delta",
+                        index: currentContentBlockIndex,
+                        delta: {
+                          type: "signature_delta",
+                          signature: choice.delta.thinking.signature,
+                        },
+                      };
+                      safeEnqueue(
+                        encoder.encode(
+                          `event: content_block_delta\ndata: ${JSON.stringify(
+                            thinkingSignature
+                          )}\n\n`
+                        )
+                      );
                       const contentBlockStop = {
                         type: "content_block_stop",
                         index: currentContentBlockIndex,
@@ -609,7 +606,44 @@ export class AnthropicTransformer implements Transformer {
                         )
                       );
                       currentContentBlockIndex = -1;
+                      currentContentBlockType = null;
+                    } else if (choice.delta.thinking.content) {
+                      const thinkingChunk = {
+                        type: "content_block_delta",
+                        index: currentContentBlockIndex,
+                        delta: {
+                          type: "thinking_delta",
+                          thinking: choice.delta.thinking.content || "",
+                        },
+                      };
+                      safeEnqueue(
+                        encoder.encode(
+                          `event: content_block_delta\ndata: ${JSON.stringify(
+                            thinkingChunk
+                          )}\n\n`
+                        )
+                      );
                     }
+                  }
+                }
+
+                if (choice?.delta?.content && !isClosed && !hasFinished) {
+                  contentChunks++;
+
+                  if (currentContentBlockIndex >= 0 && currentContentBlockType !== 'text') {
+                    const contentBlockStop = {
+                      type: "content_block_stop",
+                      index: currentContentBlockIndex,
+                    };
+                    safeEnqueue(
+                      encoder.encode(
+                        `event: content_block_stop\ndata: ${JSON.stringify(
+                          contentBlockStop
+                        )}\n\n`
+                      )
+                    );
+                    currentContentBlockIndex = -1;
+                    currentContentBlockType = null;
                   }
 
                   if (!hasTextContentStarted && !hasFinished) {
@@ -631,6 +665,7 @@ export class AnthropicTransformer implements Transformer {
                       )
                     );
                     currentContentBlockIndex = textBlockIndex;
+                    currentContentBlockType = 'text';
                   }
 
                   if (!isClosed && !hasFinished) {
@@ -671,6 +706,7 @@ export class AnthropicTransformer implements Transformer {
                       )
                     );
                     currentContentBlockIndex = -1;
+                    currentContentBlockType = null;
                     hasTextContentStarted = false;
                   }
 
@@ -743,6 +779,7 @@ export class AnthropicTransformer implements Transformer {
                           )
                         );
                         currentContentBlockIndex = -1;
+                        currentContentBlockType = null;
                       }
 
                       const newContentBlockIndex = assignContentBlockIndex();
@@ -773,6 +810,7 @@ export class AnthropicTransformer implements Transformer {
                         )
                       );
                       currentContentBlockIndex = newContentBlockIndex;
+                      currentContentBlockType = 'tool';
 
                       const toolCallInfo = {
                         id: toolCallId,
@@ -826,30 +864,8 @@ export class AnthropicTransformer implements Transformer {
                           )
                         );
                       } catch {
-                        try {
-                          const fixedArgument = toolCall.function.arguments
-                            .replace(/[\x00-\x1F\x7F-\x9F]/g, "")
-                            .replace(/\\/g, "\\\\")
-                            .replace(/"/g, '\\"');
-
-                          const fixedChunk = {
-                            type: "content_block_delta",
-                            index: blockIndex, // Use the correct content block index
-                            delta: {
-                              type: "input_json_delta",
-                              partial_json: fixedArgument,
-                            },
-                          };
-                          safeEnqueue(
-                            encoder.encode(
-                              `event: content_block_delta\ndata: ${JSON.stringify(
-                                fixedChunk
-                              )}\n\n`
-                            )
-                          );
-                        } catch (fixError) {
-                          console.error(fixError);
-                        }
+                        // Skip this chunk - controller is likely already closed
+                        // or the arguments contain unfixable encoding issues
                       }
                     }
                   }
@@ -876,6 +892,7 @@ export class AnthropicTransformer implements Transformer {
                       )
                     );
                     currentContentBlockIndex = -1;
+                    currentContentBlockType = null;
                   }
 
                   if (!isClosed) {
@@ -1018,11 +1035,19 @@ export class AnthropicTransformer implements Transformer {
         });
       }
       if ((choice.message as any)?.thinking?.content) {
-        content.push({
-          type: "thinking",
-          thinking: (choice.message as any).thinking.content,
-          signature: (choice.message as any).thinking.signature,
-        });
+        const thinkingData = (choice.message as any).thinking;
+        if (thinkingData.redacted) {
+          content.push({
+            type: "redacted_thinking",
+            data: thinkingData.data || "",
+          });
+        } else {
+          content.push({
+            type: "thinking",
+            thinking: thinkingData.content,
+            signature: thinkingData.signature,
+          });
+        }
       }
       const result = {
         id: openaiResponse.id,

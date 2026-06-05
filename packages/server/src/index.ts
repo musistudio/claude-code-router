@@ -16,6 +16,10 @@ import { IAgent, ITool } from "./agents/type";
 import agentsManager from "./agents";
 import { EventEmitter } from "node:events";
 import { pluginManager, tokenSpeedPlugin } from "@musistudio/llms";
+import { getMetrics } from "@musistudio/llms";
+import { getCircuitBreaker, CircuitState } from "@musistudio/llms";
+import { getRateLimiter } from "@musistudio/llms";
+import { getKeyRotator } from "@musistudio/llms";
 
 const event = new EventEmitter()
 
@@ -169,7 +173,7 @@ async function getServer(options: RunOptions = {}) {
   const serverInstance = await createServer({
     jsonPath: CONFIG_FILE,
     initialConfig: {
-      // ...config,
+      ...config,
       providers: config.Providers || config.providers,
       HOST: HOST,
       PORT: servicePort,
@@ -206,6 +210,9 @@ async function getServer(options: RunOptions = {}) {
     if (req.pathname.endsWith("/v1/messages") && req.pathname !== "/v1/messages") {
       req.preset = req.pathname.replace("/v1/messages", "").replace("/", "");
     }
+    if (req.body?.model && req.pathname.endsWith("/v1/messages")) {
+      req._originalModel = req.body.model;
+    }
   })
 
   serverInstance.addHook("preHandler", async (req: any, reply: any) => {
@@ -240,6 +247,41 @@ async function getServer(options: RunOptions = {}) {
         req.agents = useAgents;
       }
     }
+  });
+  serverInstance.addHook("onSend", (req: any, reply: any, payload: any, done: any) => {
+    if (req._originalModel && req.pathname?.endsWith("/v1/messages")) {
+      if (typeof payload === "string") {
+        try {
+          const data = JSON.parse(payload);
+          if (data.model && data.model !== req._originalModel) {
+            data.model = req._originalModel;
+            return done(null, JSON.stringify(data));
+          }
+        } catch {}
+      } else if (payload instanceof ReadableStream && req._originalModel) {
+        const originalModel = req._originalModel;
+        let replaced = false;
+        const transform = new TransformStream({
+          transform(chunk, controller) {
+            if (replaced) {
+              controller.enqueue(chunk);
+              return;
+            }
+            const text = typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+            const modelPattern = /"model"\s*:\s*"[^"]*"/;
+            if (modelPattern.test(text) && text.includes("message_start")) {
+              const replacedText = text.replace(modelPattern, `"model":"${originalModel}"`);
+              controller.enqueue(typeof chunk === "string" ? replacedText : new TextEncoder().encode(replacedText));
+              replaced = true;
+            } else {
+              controller.enqueue(chunk);
+            }
+          }
+        });
+        return done(null, payload.pipeThrough(transform));
+      }
+    }
+    done(null, payload);
   });
   serverInstance.addHook("onError", async (request: any, reply: any, error: any) => {
     event.emit('onError', request, reply, error);
@@ -433,6 +475,76 @@ async function getServer(options: RunOptions = {}) {
     serverInstance.app.log.error("Unhandled rejection at:", promise, "reason:", reason);
   });
 
+  // Enable config hot-reload (watch config file for changes)
+  try {
+    serverInstance.configService.startWatching();
+    serverInstance.configService.on('config:changed', ({ oldConfig, newConfig }: any) => {
+      serverInstance.app.log.info('Config hot-reloaded, updating rate limiter and circuit breakers...');
+      // Update rate limiter with new config
+      const rateLimiter = getRateLimiter();
+      rateLimiter.updateConfig({
+        requestsPerWindow: newConfig.RATE_LIMIT_REQUESTS_PER_WINDOW,
+        windowMs: newConfig.RATE_LIMIT_WINDOW_MS,
+        tokensPerWindow: newConfig.RATE_LIMIT_TOKENS_PER_WINDOW,
+        globalRequestsPerWindow: newConfig.RATE_LIMIT_GLOBAL_REQUESTS,
+        perIp: newConfig.RATE_LIMIT_PER_IP !== false,
+        perApiKey: newConfig.RATE_LIMIT_PER_API_KEY !== false,
+      });
+    });
+  } catch (err: any) {
+    serverInstance.app.log.warn(`Config watcher setup failed: ${err.message}`);
+  }
+
+  // Initialize metrics with provider health tracking
+  const metrics = getMetrics(serverInstance.app.log);
+  const providerList = config.Providers || config.providers || [];
+  for (const provider of providerList) {
+    metrics.setProviderHealth(provider.name, true);
+    // Track circuit breaker state changes
+    getCircuitBreaker(provider.name, {}, serverInstance.app.log,
+      (name: string, from: CircuitState, to: CircuitState) => {
+        metrics.setCircuitState(name, to);
+        serverInstance.app.log.warn(`Circuit breaker [${name}]: ${from} → ${to}`);
+      }
+    );
+  }
+
+  // Initialize key rotator with provider keys (supports apiKey as string or string[])
+  try {
+    const keyRotator = getKeyRotator({
+      enabled: true,
+      strategy: 'round_robin',
+      cooldownMs: 60000,
+      maxFailures: 3,
+    }, serverInstance.app.log);
+    for (const provider of providerList) {
+      const keys = provider.api_key || provider.apiKey;
+      if (keys) {
+        keyRotator.registerKeys(provider.name, Array.isArray(keys) ? keys : [keys]);
+      }
+    }
+    serverInstance.app.log.info('KeyRotator: initialized for providers');
+  } catch (err: any) {
+    serverInstance.app.log.warn(`KeyRotator setup failed: ${err.message}`);
+  }
+
+  // Initialize v2 infrastructure modules
+  try {
+    const { getPrometheusExporter } = await import('@musistudio/llms');
+    const prometheus = getPrometheusExporter(serverInstance.app.log);
+    serverInstance.app.log.info('PrometheusExporter: initialized (/metrics endpoint)');
+  } catch (err: any) {
+    serverInstance.app.log.debug(`PrometheusExporter: skipped (${err?.message})`);
+  }
+
+  try {
+    const { getSecurityHardener } = await import('@musistudio/llms');
+    const hardener = getSecurityHardener(undefined, serverInstance.app.log);
+    serverInstance.app.log.info('SecurityHardener: initialized (auto-redact + audit)');
+  } catch (err: any) {
+    serverInstance.app.log.debug(`SecurityHardener: skipped (${err?.message})`);
+  }
+
   return serverInstance;
 }
 
@@ -453,9 +565,11 @@ export type { RunOptions };
 export type { IAgent, ITool } from "./agents/type";
 export { initDir, initConfig, readConfigFile, writeConfigFile, backupConfigFile } from "./utils";
 export { pluginManager, tokenSpeedPlugin } from "@musistudio/llms";
+export { getMetrics, getCircuitBreaker, getAllCircuitBreakers, CircuitState, getRateLimiter, withRetry, redactString, redactObject, getBudgetManager, getIdempotencyGuard, getPermissionGuard, getMockServer, getStructuredOutputProcessor, getPromptTemplateEngine, getMultiModelVoter, getSelfReflector, getReplayManager, getRedisCache, getVectorStore, getTaskQueue, getWsPush, getCacheWarmer, getABTester, getTaskSplitter, getTenantManager, getKeyRotator, getQualityScorer, getAuditLogger, getSlidingWindow, getDocLoader, getCascadeChain, getTaskScheduler, getFeedbackStore, getMultimodalProcessor, getComplianceDisclaimer, getCacheReportAggregator, getOllamaFallback, getProxyDiffTracker, getCodeExtractor, getIntentRouter } from "@musistudio/llms";
 
-// Start service if this file is run directly
-if (require.main === module) {
+// Start service if this file is run directly (or as esbuild bundle)
+const isMain = require.main === module || !require.main;
+if (isMain) {
   run().catch((error) => {
     console.error('Failed to start server:', error);
     process.exit(1);

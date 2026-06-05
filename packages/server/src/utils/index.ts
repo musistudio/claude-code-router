@@ -94,18 +94,33 @@ export const readConfigFile = async () => {
           );
         }
         const config = {
+          HOST: "127.0.0.1",
           PORT: 3456,
+          APIKEY: "local-dev-key",
+          LOG: true,
+          LOG_LEVEL: "info",
+          API_TIMEOUT_MS: 600000,
           Providers: [],
-          Router: {},
+          Router: {
+            default: "",
+            background: "",
+            think: "",
+            longContext: "",
+            longContextThreshold: 60000,
+            reasoningFlash: "",
+            reasoningProMax: "",
+          },
+          ModelMapping: {},
+          Concurrency: {
+            global: 10,
+            providers: {},
+            queueTimeoutMs: 120000,
+          },
+          fallback: {},
         }
-        // Create a minimal default config file
         await writeConfigFile(config);
-        console.log(
-            "Created minimal default configuration file at ~/.claude-code-router/config.json"
-        );
-        console.log(
-            "Please edit this file with your actual configuration."
-        );
+        console.log("Created default config at ~/.claude-code-router/config.json");
+        console.log("Open http://127.0.0.1:3456 to configure providers via the web UI");
         return config
       } catch (error: any) {
         console.error(
