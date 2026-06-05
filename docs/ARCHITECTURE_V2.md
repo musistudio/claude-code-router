@@ -261,26 +261,48 @@ Response:      No provider headers leaked
 
 ## 6. Implementation Phases
 
-### Phase 1 (PR #1): Core Infrastructure + Security
+### Phase 1 (DONE): Core Infrastructure + Security
+Commit: `de5ede0` — 8 new modules, 32 tests
 - VaultManager (AES-256-GCM encrypted vault)
 - AdaptiveRouter (weighted routing with health feedback)
 - Multi-level cache integration (L1 memory + L2 Redis + L3 Qdrant)
 - Security hardening (auto-redact, vault-only keys, audit trail)
 - Prometheus metrics endpoint
-- Full integration test suite
+- ReasoningChainEngine (multi-step chain with 3 templates)
+- TrafficMirror (async request mirroring for A/B evaluation)
+- ContextStore (tagged context with semantic query)
+- 12 new API routes (/api/vault/*, /api/router/adaptive, /metrics, etc.)
 
-### Phase 2 (PR #2): Semantic + Reasoning
-- Enhanced RAG pipeline (Qdrant + Ollama embeddings)
-- Context store API
-- Reasoning chain engine
-- Chain templates (code-review, plan-generate)
+### Phase 2 (DONE): Orchestrator + Server + Dashboard Integration
+Commit: `799c08b` — orchestrator lifecycle + server startup + dashboard UI
+- All v2 modules wired into orchestrator lifecycle hooks
+- PrometheusExporter + SecurityHardener initialized at server startup
+- Dashboard.tsx: "v2 Infrastructure" section with Multi-Level Cache rates,
+  Security Hardener, Prometheus Exporter, Traffic Mirror stats
+- 258/258 tests passing, 0 regressions
 
-### Phase 3 (PR #3): Advanced Features
-- Traffic mirroring
-- Request replay regression
-- Adaptive parameter tuning
-- Multi-model voting (enhanced)
-- Dashboard UI updates
+### Phase 3 (DONE): Advanced Routing + Fallback + RAG + Adaptive Params
+Commit: `6e92f48` — 4 new modules, 29 tests, router integration
+- FallbackChainExecutor: config-driven cascade degradation with error
+  classification, circuit breaker integration, per-attempt timeout
+- RAGPipeline: Ollama embedding (nomic-embed-text) + Qdrant full integration,
+  document ingestion with chunking, semantic query
+- AdaptiveParameterTuner: auto-tune max_tokens/temperature/top_p based on
+  request complexity (code/agent/tools/reasoning/web search signals)
+- RateLimiterQueue: priority-based concurrent request queueing
+- Router integration: AdaptiveRouter scoring + AdaptiveParameterTuning
+- 8 new API routes (/api/fallback/*, /api/rag/*, /api/params/*, /api/rate-limiter/*)
+- 287/287 tests passing
+
+### Phase 4 (DONE): Reasoning Chain Execution + UI + Observability
+Commits: `bdae713`, `0b4eaef`
+- Dashboard UI: Phase 3 module cards (Fallback Chain, RAG Pipeline,
+  Adaptive Params, Rate Limiter Queue)
+- dashboard-full API: v2 infrastructure stats from orchestrator
+- POST /api/chain/execute: real upstream LLM call chain execution
+  via sendUnifiedRequest with context isolation between steps
+- GET /api/chain/templates: lists available chain templates
+- Ollama API compatibility: /api/embed (new) + /api/embeddings (legacy)
 
 ## 7. Performance Targets
 
@@ -293,3 +315,50 @@ Response:      No provider headers leaked
 | Routing decision | < 5ms | p99 |
 | Vault decrypt | < 10ms | per access |
 | Total memory | < 512MB | RSS under load |
+
+## 8. Final Module Inventory (36 modules)
+
+| # | Module | Location | Phase |
+|---|--------|----------|-------|
+| 1 | SemanticCache | middleware/semantic-cache.ts | P0 |
+| 2 | MemoryBridge | middleware/memory-bridge.ts | P0 |
+| 3 | RAGEnricher | middleware/rag-enricher.ts | P0 |
+| 4 | HookManager | middleware/hooks.ts | P0 |
+| 5 | ContextCapture | middleware/context-capture.ts | P0 |
+| 6 | ReasoningCache | middleware/reasoning-cache.ts | P0 |
+| 7 | SessionBridge | middleware/session-bridge.ts | P0 |
+| 8 | EvolutionBridge | middleware/evolution-bridge.ts | P0 |
+| 9 | LangfuseTracer | middleware/langfuse-tracer.ts | P1 |
+| 10 | ToolCompressor | middleware/tool-compressor.ts | P1 |
+| 11 | IdempotencyGuard | middleware/idempotency-guard.ts | P1 |
+| 12 | KeyManager | middleware/key-manager.ts | P1 |
+| 13 | QdrantCache | middleware/qdrant-cache.ts | P1 |
+| 14 | PromptCaching | middleware/prompt-caching.ts | P2 |
+| 15 | SummaryInjector | middleware/summary-injector.ts | P2 |
+| 16 | MultiModelVoter | middleware/multi-voter.ts | P2 |
+| 17 | RequestReplay | middleware/request-replay.ts | P2 |
+| 18 | StructuredOutputEnforcer | middleware/structured-output.ts | P3 |
+| 19 | ABTestingFramework | middleware/ab-testing.ts | P3 |
+| 20 | FinancialPIIMasker | middleware/financial-pii-masker.ts | P3 |
+| 21 | VaultManager | services/vault.ts | P2-v2 |
+| 22 | AdaptiveRouter | utils/adaptive-router.ts | P2-v2 |
+| 23 | MultiLevelCache | utils/multi-level-cache.ts | P2-v2 |
+| 24 | SecurityHardener | utils/security-hardener.ts | P2-v2 |
+| 25 | PrometheusExporter | utils/prometheus.ts | P2-v2 |
+| 26 | ReasoningChainEngine | engines/reasoning-chain.ts | P2-v2 |
+| 27 | TrafficMirror | utils/traffic-mirror.ts | P2-v2 |
+| 28 | ContextStore | services/context-store.ts | P2-v2 |
+| 29 | FallbackChainExecutor | utils/fallback-chain.ts | P3 |
+| 30 | RAGPipeline | utils/rag-pipeline.ts | P3 |
+| 31 | AdaptiveParameterTuner | utils/adaptive-params.ts | P3 |
+| 32 | RateLimiterQueue | utils/rate-limiter-queue.ts | P3 |
+| 33 | Router (enhanced) | utils/router.ts | P3 |
+| 34 | CircuitBreaker | utils/circuit-breaker.ts | P0 |
+| 35 | HealthMonitor | services/health-monitor.ts | P0 |
+| 36 | ProviderRegistry | services/provider-registry.ts | P0 |
+
+## 9. Test Coverage
+
+- 20 test files
+- 287 tests passing
+- 0 regressions across all phases
