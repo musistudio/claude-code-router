@@ -1,6 +1,6 @@
+import { timingSafeEqual } from 'crypto';
 import {
   FastifyInstance,
-  FastifyPluginAsync,
   FastifyRequest,
   FastifyReply,
 } from "fastify";
@@ -12,7 +12,7 @@ import { ConfigService } from "@/services/config";
 import { ProviderService } from "@/services/provider";
 import { TransformerService } from "@/services/transformer";
 import { Transformer } from "@/types/transformer";
-import { getCircuitBreaker, CircuitState } from "@/utils/circuit-breaker";
+import { getCircuitBreaker } from "@/utils/circuit-breaker";
 import { withRetry, getRetryConfig } from "@/utils/retry";
 import { getMetrics, MODEL_COST_TABLE } from "@/utils/metrics";
 import { getRateLimiter } from "@/utils/rate-limiter";
@@ -20,7 +20,6 @@ import { getIdempotencyGuard } from "@/utils/idempotency";
 import { getBudgetManager } from "@/utils/budget";
 import { getPermissionGuard } from "@/utils/permission-guard";
 import { getMockServer } from "@/utils/mock-server";
-import { getStructuredOutputProcessor } from "@/utils/structured-output";
 import { getWsPush } from "@/utils/ws-push";
 import { getTenantManager } from "@/utils/tenant-isolation";
 import { getKeyRotator } from "@/utils/key-rotator";
@@ -783,7 +782,8 @@ function parseSSEToMessage(fullPayload: string): any | null {
             else if (parsed.delta?.type === 'input_json_delta') block.input = (block.input || '') + parsed.delta.partial_json;
           }
         } else if (parsed.type === 'message_delta' && finalMessage) {
-          Object.assign(finalMessage, parsed.delta);
+          if (parsed.delta?.stop_reason) finalMessage.stop_reason = parsed.delta.stop_reason;
+          if (parsed.delta?.stop_sequence) finalMessage.stop_sequence = parsed.delta.stop_sequence;
           if (parsed.usage) finalMessage.usage = parsed.usage;
         }
       } catch {}
@@ -861,7 +861,13 @@ export const registerApiRoutes = async (
     if (!configuredApiKey) return;
     const providedKey = req.headers['x-api-key'] ||
                         (req.headers['authorization']?.startsWith('Bearer ') ? req.headers['authorization'].slice(7) : null);
-    if (providedKey !== configuredApiKey) {
+    if (providedKey == null || configuredApiKey == null) {
+      reply.code(401).send({ error: 'Unauthorized', message: 'Valid API key required' });
+      return reply;
+    }
+    const provided = Buffer.from(String(providedKey));
+    const configured = Buffer.from(String(configuredApiKey));
+    if (provided.length !== configured.length || !timingSafeEqual(provided, configured)) {
       reply.code(401).send({ error: 'Unauthorized', message: 'Valid API key required' });
       return reply;
     }
@@ -877,12 +883,16 @@ export const registerApiRoutes = async (
   });
 
   fastify.get("/api/setup/status", async () => {
-    const providers = fastify.configService.get('Providers') || fastify.configService.get('providers') || [];
+    const providers = fastify.configService.get('Providers') || [];
+    const apiKey = fastify.configService.get('APIKEY') || '';
     return {
       needsSetup: providers.length === 0,
       hasProviders: providers.length > 0,
       providerCount: providers.length,
-      apiKey: fastify.configService.get('APIKEY') || '',
+      hasApiKey: apiKey.length > 0,
+      apiKeyHint: apiKey.length > 8
+        ? apiKey.slice(0, 4) + '***' + apiKey.slice(-4)
+        : (apiKey ? '***' : ''),
     };
   });
 
@@ -1166,44 +1176,50 @@ export const registerApiRoutes = async (
     return { enabled: true };
   });
 
-  fastify.get("/api/langfuse", async () => {
-    if (orchestrator?.langfuseTracer) {
-      return { enabled: orchestrator.langfuseTracer.isInitialized() };
+  fastify.get("/api/langfuse", async (req: any) => {
+    const orch = (req.server as any)?._server?.orchestrator;
+    if (orch?.langfuseTracer) {
+      return { enabled: orch.langfuseTracer.isInitialized() };
     }
     return { enabled: false };
   });
 
-  fastify.get("/api/tool-compressor", async () => {
-    if (orchestrator?.toolCompressor) {
-      return { enabled: true, stats: orchestrator.toolCompressor.getStats() };
+  fastify.get("/api/tool-compressor", async (req: any) => {
+    const orch = (req.server as any)?._server?.orchestrator;
+    if (orch?.toolCompressor) {
+      return { enabled: true, stats: orch.toolCompressor.getStats() };
     }
     return { enabled: false };
   });
 
-  fastify.get("/api/idempotency", async () => {
-    if (orchestrator?.idempotencyGuard) {
-      return { enabled: true, stats: orchestrator.idempotencyGuard.getStats() };
+  fastify.get("/api/idempotency", async (req: any) => {
+    const orch = (req.server as any)?._server?.orchestrator;
+    if (orch?.idempotencyGuard) {
+      return { enabled: true, stats: orch.idempotencyGuard.getStats() };
     }
     return { enabled: false };
   });
 
-  fastify.get("/api/key-manager", async () => {
-    if (orchestrator?.keyManager) {
-      return orchestrator.keyManager.getStats();
+  fastify.get("/api/key-manager", async (req: any) => {
+    const orch = (req.server as any)?._server?.orchestrator;
+    if (orch?.keyManager) {
+      return orch.keyManager.getStats();
     }
     return { enabled: false, providers: 0, totalKeys: 0 };
   });
 
-  fastify.get("/api/qdrant-cache", async () => {
-    if (orchestrator?.qdrantCache) {
-      return orchestrator.qdrantCache.getStats();
+  fastify.get("/api/qdrant-cache", async (req: any) => {
+    const orch = (req.server as any)?._server?.orchestrator;
+    if (orch?.qdrantCache) {
+      return orch.qdrantCache.getStats();
     }
     return { enabled: false, available: false };
   });
 
-  fastify.post("/api/qdrant-cache/clear", async () => {
-    if (orchestrator?.qdrantCache) {
-      await orchestrator.qdrantCache.clear();
+  fastify.post("/api/qdrant-cache/clear", async (req: any) => {
+    const orch = (req.server as any)?._server?.orchestrator;
+    if (orch?.qdrantCache) {
+      await orch.qdrantCache.clear();
       return { success: true };
     }
     return { success: false, message: "QdrantCache not available" };
@@ -1899,77 +1915,9 @@ export const registerApiRoutes = async (
       };
     }
   );
-};
-
-// Helper function
-function isValidUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
-function isPrivateIP(hostname: string): boolean {
-  if (/^0[0-7]+(\.[0-7]+){0,3}$/.test(hostname)) {
-    try {
-      const parts = hostname.split('.').map(p => parseInt(p, 8));
-      hostname = parts.join('.');
-    } catch {}
-  }
-  if (/^\d{8,10}$/.test(hostname)) {
-    const n = parseInt(hostname, 10);
-    const a = (n >>> 24) & 0xff;
-    const b = (n >>> 16) & 0xff;
-    const c = (n >>> 8) & 0xff;
-    const d = n & 0xff;
-    hostname = `${a}.${b}.${c}.${d}`;
-  }
-  const hexMatch = hostname.match(/^0x([0-9a-f]+)$/i);
-  if (hexMatch) {
-    const n = parseInt(hexMatch[1], 16);
-    if (n > 0) {
-      const a = (n >>> 24) & 0xff;
-      const b = (n >>> 16) & 0xff;
-      const c = (n >>> 8) & 0xff;
-      const d = n & 0xff;
-      hostname = `${a}.${b}.${c}.${d}`;
-    }
-  }
-  if (hostname.includes(':')) {
-    const v6 = hostname.toLowerCase();
-    if (v6 === '::1' || v6.startsWith('fc') || v6.startsWith('fd') ||
-        v6.startsWith('fe80') || v6.startsWith('fe90') || v6.startsWith('fea') || v6.startsWith('feb') ||
-        v6 === '::' || v6 === '0:0:0:0:0:0:0:0' ||
-        /^::ffff:/.test(v6)) return true;
-  }
-  return /^(127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.|localhost)/i.test(hostname);
-}
-
-function sanitizeProvider(provider: any): any {
-  if (!provider) return provider;
-  const sanitized = { ...provider };
-  if (sanitized.apiKey) {
-    sanitized.apiKey = sanitized.apiKey.length > 8
-      ? sanitized.apiKey.slice(0, 4) + '***' + sanitized.apiKey.slice(-4)
-      : '***';
-  }
-  if (sanitized.api_key) {
-    sanitized.api_key = sanitized.api_key.length > 8
-      ? sanitized.api_key.slice(0, 4) + '***' + sanitized.api_key.slice(-4)
-      : '***';
-  }
-  return sanitized;
-}
-
-function sanitizeProviders(providers: any[]): any[] {
-  if (!Array.isArray(providers)) return providers;
-  return providers.map(sanitizeProvider);
-}
 
   // =========================================================================
-  // NEW V2 ROUTES: Vault, AdaptiveRouter, MultiLevelCache, Prometheus, Chain, Mirror, Context
+  // V2 ROUTES: Vault, AdaptiveRouter, MultiLevelCache, Prometheus, Chain, Mirror, Context
   // =========================================================================
 
   fastify.get('/api/vault/status', async (req: any, reply: any) => {
@@ -2032,7 +1980,9 @@ function sanitizeProviders(providers: any[]): any[] {
   fastify.get('/api/chain/templates', async (req: any, reply: any) => {
     try {
       const { getReasoningChainEngine } = require('../engines/reasoning-chain');
-      reply.send({ templates: [] });
+      const dummyUpstream = async () => ({ content: '', inputTokens: 0, outputTokens: 0 });
+      const engine = getReasoningChainEngine(dummyUpstream, req.log);
+      reply.send({ templates: engine.listTemplates() });
     } catch (e: any) {
       reply.code(503).send({ error: e.message });
     }
@@ -2120,8 +2070,8 @@ function sanitizeProviders(providers: any[]): any[] {
 
   fastify.get('/api/fallback/stats', async (req: any, reply: any) => {
     try {
-      const orchestrator = (req.server as any)?._server?.orchestrator;
-      if (orchestrator?.fallbackChainExecutor) {
+      const orch = (req.server as any)?._server?.orchestrator;
+      if (orch?.fallbackChainExecutor) {
         reply.send({ enabled: true, executor: 'active' });
       } else {
         reply.send({ enabled: false });
@@ -2133,8 +2083,7 @@ function sanitizeProviders(providers: any[]): any[] {
 
   fastify.post('/api/fallback/execute', async (req: any, reply: any) => {
     try {
-      const { getFallbackChainExecutor } = require('../utils/fallback-chain');
-      const { primaryProvider, primaryModel, fallbackChain, callFn } = req.body;
+      const { primaryProvider, primaryModel } = req.body;
       if (!primaryProvider || !primaryModel) {
         return reply.code(400).send({ error: 'primaryProvider and primaryModel are required' });
       }
@@ -2187,7 +2136,7 @@ function sanitizeProviders(providers: any[]): any[] {
   fastify.get('/api/params/status', async (req: any, reply: any) => {
     try {
       const { getAdaptiveParameterTuner } = require('../utils/adaptive-params');
-      const tuner = getAdaptiveParameterTuner(req.log);
+      getAdaptiveParameterTuner(req.log);
       reply.send({ enabled: true, description: 'Auto-tunes max_tokens, temperature, top_p based on request complexity' });
     } catch (e: any) {
       reply.code(503).send({ error: e.message });
@@ -2212,9 +2161,9 @@ function sanitizeProviders(providers: any[]): any[] {
 
   fastify.get('/api/rate-limiter/stats', async (req: any, reply: any) => {
     try {
-      const orchestrator = (req.server as any)?._server?.orchestrator;
-      if (orchestrator?.rateLimiterQueue) {
-        reply.send(orchestrator.rateLimiterQueue.getStats());
+      const orch = (req.server as any)?._server?.orchestrator;
+      if (orch?.rateLimiterQueue) {
+        reply.send(orch.rateLimiterQueue.getStats());
       } else {
         reply.send({ enabled: false });
       }
@@ -2224,19 +2173,8 @@ function sanitizeProviders(providers: any[]): any[] {
   });
 
   // =========================================================================
-  // REASONING CHAIN: list templates and execute chains
+  // REASONING CHAIN: execute chains via real upstream calls
   // =========================================================================
-
-  fastify.get('/api/chain/templates', async (req: any, reply: any) => {
-    try {
-      const { getReasoningChainEngine } = require('../engines/reasoning-chain');
-      const dummyUpstream = async () => ({ content: '', inputTokens: 0, outputTokens: 0 });
-      const engine = getReasoningChainEngine(dummyUpstream, req.log);
-      reply.send({ templates: engine.listTemplates() });
-    } catch (e: any) {
-      reply.code(503).send({ error: e.message });
-    }
-  });
 
   fastify.post('/api/chain/execute', async (req: any, reply: any) => {
     try {
@@ -2248,7 +2186,6 @@ function sanitizeProviders(providers: any[]): any[] {
         return reply.code(400).send({ error: 'request body is required' });
       }
 
-      const orchestrator = (req.server as any)?._server?.orchestrator;
       const configService = (req.server as any)?.configService;
 
       const callUpstream = async (provider: string, model: string, upstreamReq: any) => {
@@ -2290,3 +2227,29 @@ function sanitizeProviders(providers: any[]): any[] {
       reply.code(500).send({ error: e.message });
     }
   });
+};
+
+function isValidUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function sanitizeProvider(provider: any): any {
+  if (!provider) return provider;
+  const sanitized = { ...provider };
+  if (sanitized.apiKey) {
+    sanitized.apiKey = sanitized.apiKey.length > 8
+      ? sanitized.apiKey.slice(0, 4) + '***' + sanitized.apiKey.slice(-4)
+      : '***';
+  }
+  if (sanitized.api_key) {
+    sanitized.api_key = sanitized.api_key.length > 8
+      ? sanitized.api_key.slice(0, 4) + '***' + sanitized.api_key.slice(-4)
+      : '***';
+  }
+  return sanitized;
+}

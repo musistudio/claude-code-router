@@ -223,7 +223,7 @@ export class ContextStore {
 
   private evictExpired(): void {
     const now = Date.now();
-    for (const [id, entry] of this.store) {
+    for (const [id, entry] of this.entries) {
       if (entry.expiresAt && now > entry.expiresAt) {
         this.delete(id);
       }

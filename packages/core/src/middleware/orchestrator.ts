@@ -155,6 +155,7 @@ export class MiddlewareOrchestrator {
 
   private configService: ConfigService;
   private logger: any;
+  private middlewareConfig: any;
   private initialized = false;
 
   constructor(
@@ -166,45 +167,45 @@ export class MiddlewareOrchestrator {
     this.logger = logger || console;
 
     // Initialize from config
-    const middlewareConfig = this.loadConfig();
+    this.middlewareConfig = this.loadConfig();
 
     // Create middleware instances
     this.hookManager = new HookManager(this.logger);
     this.semanticCache = new SemanticCache(
-      middlewareConfig.semanticCache,
+      this.middlewareConfig.semanticCache,
       this.logger
     );
     this.memoryBridge = new MemoryBridge(
-      middlewareConfig.memoryBridge,
+      this.middlewareConfig.memoryBridge,
       this.logger
     );
     this.ragEnricher = new RAGEnricher(
-      middlewareConfig.ragEnricher,
+      this.middlewareConfig.ragEnricher,
       this.logger
     );
     this.contextCapture = new ContextCaptureEngine(
-      middlewareConfig.contextCapture || {},
+      this.middlewareConfig.contextCapture || {},
       this.logger
     );
     this.reasoningCache = new ReasoningCache(
-      middlewareConfig.reasoningCache || {},
+      this.middlewareConfig.reasoningCache || {},
       this.logger
     );
     this.sessionBridge = new SessionBridge({}, this.logger);
     this.evolutionBridge = new EvolutionBridge({}, this.logger);
 
-    this.langfuseTracer = new LangfuseTracer(middlewareConfig.langfuse || {}, this.logger);
-    this.toolCompressor = new ToolCompressor(middlewareConfig.toolCompressor || {}, this.logger);
-    this.idempotencyGuard = new IdempotencyGuard(middlewareConfig.idempotencyGuard || {}, this.logger);
-    this.keyManager = new KeyManager(middlewareConfig.keyManager || { enabled: false, providers: {} }, this.logger);
-    this.qdrantCache = new QdrantCache(middlewareConfig.qdrantCache || {}, this.logger);
-    this.promptCaching = new PromptCaching(middlewareConfig.promptCaching || {}, this.logger);
-    this.summaryInjector = new SummaryInjector(middlewareConfig.summaryInjector || {}, this.logger);
-    this.multiVoter = new MultiModelVoter(middlewareConfig.multiVoter || {}, this.logger);
-    this.requestReplay = new RequestReplay(middlewareConfig.requestReplay || {}, this.logger);
-    this.structuredOutput = new StructuredOutputEnforcer(middlewareConfig.structuredOutput || {}, this.logger);
-    this.abTesting = new ABTestingFramework(middlewareConfig.abTesting || {}, this.logger);
-    this.financialPIIMasker = new FinancialPIIMasker(middlewareConfig.financialPIIMasker || {}, this.logger);
+    this.langfuseTracer = new LangfuseTracer(this.middlewareConfig.langfuse || {}, this.logger);
+    this.toolCompressor = new ToolCompressor(this.middlewareConfig.toolCompressor || {}, this.logger);
+    this.idempotencyGuard = new IdempotencyGuard(this.middlewareConfig.idempotencyGuard || {}, this.logger);
+    this.keyManager = new KeyManager(this.middlewareConfig.keyManager || { enabled: false, providers: {} }, this.logger);
+    this.qdrantCache = new QdrantCache(this.middlewareConfig.qdrantCache || {}, this.logger);
+    this.promptCaching = new PromptCaching(this.middlewareConfig.promptCaching || {}, this.logger);
+    this.summaryInjector = new SummaryInjector(this.middlewareConfig.summaryInjector || {}, this.logger);
+    this.multiVoter = new MultiModelVoter(this.middlewareConfig.multiVoter || {}, this.logger);
+    this.requestReplay = new RequestReplay(this.middlewareConfig.requestReplay || {}, this.logger);
+    this.structuredOutput = new StructuredOutputEnforcer(this.middlewareConfig.structuredOutput || {}, this.logger);
+    this.abTesting = new ABTestingFramework(this.middlewareConfig.abTesting || {}, this.logger);
+    this.financialPIIMasker = new FinancialPIIMasker(this.middlewareConfig.financialPIIMasker || {}, this.logger);
 
     if (providerRegistry) {
       this.healthMonitor = new HealthMonitor(
@@ -464,7 +465,7 @@ export class MiddlewareOrchestrator {
 
     // Initialize v2 infrastructure modules
     try {
-      const mlcConfig = middlewareConfig.multiLevelCache || { enabled: true, l1MaxSize: 1000, l2Enabled: true, l3Enabled: false };
+      const mlcConfig = this.middlewareConfig.multiLevelCache || { enabled: true, l1MaxSize: 1000, l2Enabled: true, l3Enabled: false };
       if (mlcConfig.enabled) {
         this.multiLevelCache = getMultiLevelCache({
           l1: { maxSize: mlcConfig.l1MaxSize },
@@ -479,7 +480,7 @@ export class MiddlewareOrchestrator {
     }
 
     try {
-      if (middlewareConfig.securityHardener?.enabled !== false) {
+      if (this.middlewareConfig.securityHardener?.enabled !== false) {
         this.securityHardener = getSecurityHardener(undefined, this.logger);
         this.logger.info(`  SecurityHardener: enabled (auto-redact + audit)`);
       }
@@ -488,7 +489,7 @@ export class MiddlewareOrchestrator {
     }
 
     try {
-      if (middlewareConfig.prometheus?.enabled !== false) {
+      if (this.middlewareConfig.prometheus?.enabled !== false) {
         this.prometheusExporter = getPrometheusExporter(this.logger);
         this.logger.info(`  PrometheusExporter: enabled (/metrics endpoint)`);
       }
@@ -497,7 +498,7 @@ export class MiddlewareOrchestrator {
     }
 
     try {
-      const mirrorConfig = middlewareConfig.trafficMirror || { enabled: false, targets: [] };
+      const mirrorConfig = this.middlewareConfig.trafficMirror || { enabled: false, targets: [] };
       if (mirrorConfig.enabled) {
         this.trafficMirror = getTrafficMirror(mirrorConfig, this.logger);
         this.logger.info(`  TrafficMirror: enabled (${mirrorConfig.targets.length} targets)`);
@@ -507,7 +508,7 @@ export class MiddlewareOrchestrator {
     }
 
     try {
-      if (middlewareConfig.adaptiveRouter?.enabled) {
+      if (this.middlewareConfig.adaptiveRouter?.enabled) {
         const fallbackConfig = this.configService.get<any>('fallback') || {};
         this.adaptiveRouter = getAdaptiveRouter(undefined, fallbackConfig, this.logger);
         this.logger.info(`  AdaptiveRouter: enabled`);
@@ -516,9 +517,8 @@ export class MiddlewareOrchestrator {
       this.logger.debug(`  AdaptiveRouter: skipped (${e?.message})`);
     }
 
-    // Phase 3: Fallback chain executor
     try {
-      const fbConfig = middlewareConfig.fallbackChain || { enabled: true, maxAttempts: 3 };
+      const fbConfig = this.middlewareConfig.fallbackChain || { enabled: true, maxAttempts: 3 };
       if (fbConfig.enabled) {
         this.fallbackChainExecutor = getFallbackChainExecutor({
           maxAttempts: fbConfig.maxAttempts || 3,
@@ -529,9 +529,8 @@ export class MiddlewareOrchestrator {
       this.logger.debug(`  FallbackChainExecutor: skipped (${e?.message})`);
     }
 
-    // Phase 3: RAG pipeline (Ollama + Qdrant)
     try {
-      const ragConfig = middlewareConfig.ragPipeline || { enabled: false, ollamaEndpoint: 'http://localhost:11434', qdrantUrl: 'http://127.0.0.1:16333' };
+      const ragConfig = this.middlewareConfig.ragPipeline || { enabled: false, ollamaEndpoint: 'http://localhost:11434', qdrantUrl: 'http://127.0.0.1:16333' };
       if (ragConfig.enabled) {
         this.ragPipeline = getRAGPipeline({
           ollamaEndpoint: ragConfig.ollamaEndpoint,
@@ -544,9 +543,8 @@ export class MiddlewareOrchestrator {
       this.logger.debug(`  RAGPipeline: skipped (${e?.message})`);
     }
 
-    // Phase 3: Adaptive parameter tuner
     try {
-      const apConfig = middlewareConfig.adaptiveParams || { enabled: true };
+      const apConfig = this.middlewareConfig.adaptiveParams || { enabled: true };
       if (apConfig.enabled) {
         this.adaptiveParameterTuner = getAdaptiveParameterTuner(this.logger);
         this.logger.info(`  AdaptiveParameterTuner: enabled`);
@@ -555,9 +553,8 @@ export class MiddlewareOrchestrator {
       this.logger.debug(`  AdaptiveParameterTuner: skipped (${e?.message})`);
     }
 
-    // Phase 3: Rate limiter queue
     try {
-      const rlConfig = middlewareConfig.rateLimiterQueue || { enabled: false, maxConcurrent: 5, maxQueueSize: 100 };
+      const rlConfig = this.middlewareConfig.rateLimiterQueue || { enabled: false, maxConcurrent: 5, maxQueueSize: 100 };
       if (rlConfig.enabled) {
         this.rateLimiterQueue = getRateLimiterQueue({
           maxConcurrent: rlConfig.maxConcurrent || 5,

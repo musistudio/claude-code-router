@@ -97,12 +97,18 @@ export class TrafficMirror {
       const start = Date.now();
 
       try {
-        const result = await Promise.race([
-          this.callUpstream!(item.targetProvider, item.targetModel, item.request),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Mirror timeout')), 30000)
-          ),
-        ]);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Mirror timeout')), 30000);
+        });
+        try {
+          var result = await Promise.race([
+            this.callUpstream!(item.targetProvider, item.targetModel, item.request),
+            timeoutPromise,
+          ]);
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
 
         item.mirroredResponse = this.truncateResponse(result);
         item.status = 'completed';

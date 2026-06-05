@@ -1,5 +1,4 @@
-import { LRUCache } from 'lru-cache';
-import { createHash, randomBytes } from 'crypto';
+import { createHash } from 'crypto';
 
 export interface AdaptiveRouterConfig {
   strategy: 'wrr' | 'least-connections' | 'least-latency' | 'cost-priority';

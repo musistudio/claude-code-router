@@ -1,5 +1,3 @@
-import { createHash } from 'crypto';
-
 export interface FallbackStep {
   provider: string;
   model: string;
@@ -94,12 +92,18 @@ export class FallbackChainExecutor {
       const attemptStart = Date.now();
 
       try {
-        const result = await Promise.race([
-          callFn(candidate.provider, candidate.model),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Attempt timeout')), this.config.timeoutPerAttemptMs)
-          ),
-        ]);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Attempt timeout')), this.config.timeoutPerAttemptMs);
+        });
+        try {
+          var result = await Promise.race([
+            callFn(candidate.provider, candidate.model),
+            timeoutPromise,
+          ]);
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
 
         const latencyMs = Date.now() - attemptStart;
         attempts.push({ provider: candidate.provider, model: candidate.model, success: true, latencyMs });

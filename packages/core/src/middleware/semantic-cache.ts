@@ -246,7 +246,7 @@ export class SemanticCache extends EventEmitter {
           : "";
 
     const keyBasis = `${context.agentName || ""}:${context.taskType || ""}:${context.model || ""}:${userContent}`;
-    return createHash("md5").update(keyBasis).digest("hex").slice(0, 16);
+    return createHash("sha256").update(keyBasis).digest("hex").slice(0, 16);
   }
 
   private generateRequestHash(body: any): string {
