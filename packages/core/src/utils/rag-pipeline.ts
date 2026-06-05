@@ -241,15 +241,21 @@ export class RAGPipeline {
   private async getEmbedding(text: string): Promise<number[]> {
     try {
       const truncated = text.substring(0, 2000);
-      const response = await fetch(`${this.config.ollamaEndpoint}/api/embeddings`, {
+      let response = await fetch(`${this.config.ollamaEndpoint}/api/embed`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: this.config.ollamaModel, prompt: truncated }),
+        body: JSON.stringify({ model: this.config.ollamaModel, input: truncated }),
       });
-
+      if (!response.ok) {
+        response = await fetch(`${this.config.ollamaEndpoint}/api/embeddings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: this.config.ollamaModel, prompt: truncated }),
+        });
+      }
       if (!response.ok) return [];
       const data = await response.json();
-      return data.embedding || [];
+      return data.embeddings?.[0] || data.embedding || [];
     } catch {
       return [];
     }
