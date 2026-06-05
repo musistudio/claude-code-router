@@ -251,10 +251,10 @@ export function ProviderMonitor() {
     }
   };
 
-  const rlCurrentRate = rateLimiter?.currentRate ?? rateLimiter?.current_rate ?? 0;
-  const rlLimit = rateLimiter?.limit ?? rateLimiter?.max_rate ?? 1;
-  const rlRejected = rateLimiter?.totalRejected ?? rateLimiter?.total_rejected ?? 0;
-  const rlTopIps = rateLimiter?.topIps ?? rateLimiter?.top_ips ?? [];
+  const rlCurrentRate = (rateLimiter as any)?.currentRate ?? (rateLimiter as any)?.current_rate ?? 0;
+  const rlLimit = (rateLimiter as any)?.limit ?? (rateLimiter as any)?.max_rate ?? 1;
+  const rlRejected = (rateLimiter as any)?.totalRejected ?? (rateLimiter as any)?.total_rejected ?? 0;
+  const rlTopIps = (rateLimiter as any)?.topIps ?? (rateLimiter as any)?.top_ips ?? [];
   const rlPercent = rlLimit > 0 ? Math.min((rlCurrentRate / rlLimit) * 100, 100) : 0;
 
   return (
@@ -551,7 +551,7 @@ export function ProviderMonitor() {
                         </tr>
                       </thead>
                       <tbody>
-                        {rlTopIps.slice(0, 10).map((entry, i) => (
+                        {rlTopIps.slice(0, 10).map((entry: any, i: number) => (
                           <tr key={i} className="border-b last:border-0">
                             <td className="px-4 py-2 font-mono text-xs">{entry.ip}</td>
                             <td className="px-4 py-2">{entry.requestCount?.toLocaleString()}</td>

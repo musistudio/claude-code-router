@@ -820,7 +820,7 @@ export function Pipeline() {
                 {t('pipeline.middleware_details', 'Middleware Details')}
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {uniqueMiddlewares.map((mw) => (
+                {(uniqueMiddlewares || []).map((mw: any) => (
                   <DetailCard key={mw.name} mw={mw} dashboardData={dashboardData} />
                 ))}
               </div>
