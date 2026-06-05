@@ -514,6 +514,95 @@ export function Dashboard() {
               </CardContent>
             </Card>
           </div>
+
+          <div className="mt-4">
+            <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
+              v2 Infrastructure
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {(data as any)?.v2?.multiLevelCache && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Multi-Level Cache</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-1 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">L1 (Memory)</span>
+                        <span>{((data as any).v2.multiLevelCache.l1?.hitRate * 100).toFixed(1)}% hit</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">L1 Size</span>
+                        <span>{(data as any).v2.multiLevelCache.l1?.size || 0}/{(data as any).v2.multiLevelCache.l1?.maxSize || 0}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">L2 (Redis)</span>
+                        <span>{((data as any).v2.multiLevelCache.l2?.hitRate * 100).toFixed(1)}% hit</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {(data as any)?.v2?.securityHardener && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Security Hardener</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="default">Active</Badge>
+                      <span className="text-xs text-muted-foreground">Auto-redact + Audit</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {(data as any)?.v2?.prometheus && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Prometheus Exporter</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="default">Active</Badge>
+                      <span className="text-xs text-muted-foreground">/metrics endpoint</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {(data as any)?.v2?.trafficMirror && (data as any).v2.trafficMirror.totalMirrored > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Traffic Mirror</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-1 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Total Mirrored</span>
+                        <span>{(data as any).v2.trafficMirror.totalMirrored}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Success Rate</span>
+                        <span>
+                          {(data as any).v2.trafficMirror.totalMirrored > 0
+                            ? ((data as any).v2.trafficMirror.completed / (data as any).v2.trafficMirror.totalMirrored * 100).toFixed(1)
+                            : 0}%
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {!(data as any)?.v2 && (
+                <div className="col-span-full text-sm text-muted-foreground py-4">
+                  v2 infrastructure modules not yet initialized. Start the server to activate.
+                </div>
+              )}
+            </div>
+          </div>
         </main>
       </div>
     </TooltipProvider>

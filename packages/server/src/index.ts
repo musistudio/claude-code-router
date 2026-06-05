@@ -528,6 +528,23 @@ async function getServer(options: RunOptions = {}) {
     serverInstance.app.log.warn(`KeyRotator setup failed: ${err.message}`);
   }
 
+  // Initialize v2 infrastructure modules
+  try {
+    const { getPrometheusExporter } = await import('@musistudio/llms');
+    const prometheus = getPrometheusExporter(serverInstance.app.log);
+    serverInstance.app.log.info('PrometheusExporter: initialized (/metrics endpoint)');
+  } catch (err: any) {
+    serverInstance.app.log.debug(`PrometheusExporter: skipped (${err?.message})`);
+  }
+
+  try {
+    const { getSecurityHardener } = await import('@musistudio/llms');
+    const hardener = getSecurityHardener(undefined, serverInstance.app.log);
+    serverInstance.app.log.info('SecurityHardener: initialized (auto-redact + audit)');
+  } catch (err: any) {
+    serverInstance.app.log.debug(`SecurityHardener: skipped (${err?.message})`);
+  }
+
   return serverInstance;
 }
 

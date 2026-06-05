@@ -43,6 +43,11 @@ import { ABTestingFramework, ABTestConfig } from "./ab-testing";
 import { FinancialPIIMasker, FinancialPIIMaskerConfig } from "./financial-pii-masker";
 import { checkHallucination, analyzeReasoning } from "../engines/reasoning-engine";
 import type { ReasoningContext } from "../engines/reasoning-engine";
+import { MultiLevelCache, getMultiLevelCache, type CacheKey } from "../utils/multi-level-cache";
+import { SecurityHardener, getSecurityHardener } from "../utils/security-hardener";
+import { PrometheusExporter, getPrometheusExporter } from "../utils/prometheus";
+import { TrafficMirror, getTrafficMirror } from "../utils/traffic-mirror";
+import { AdaptiveRouter, getAdaptiveRouter } from "../utils/adaptive-router";
 import { getRedisCache } from "../utils/redis-cache";
 import { redactObject } from "../utils/redactor";
 import { getPromptTemplateEngine } from "../utils/prompt-template";
@@ -101,6 +106,11 @@ export interface MiddlewareConfig {
   structuredOutput: Partial<StructuredOutputConfig>;
   abTesting: Partial<ABTestConfig>;
   financialPIIMasker: Partial<FinancialPIIMaskerConfig>;
+  multiLevelCache: { enabled: boolean; l1MaxSize: number; l2Enabled: boolean; l3Enabled: boolean };
+  securityHardener: { enabled: boolean };
+  prometheus: { enabled: boolean };
+  trafficMirror: { enabled: boolean; targets: any[] };
+  adaptiveRouter: { enabled: boolean };
 }
 
 export class MiddlewareOrchestrator {
@@ -125,6 +135,11 @@ export class MiddlewareOrchestrator {
   public abTesting: ABTestingFramework;
   public financialPIIMasker: FinancialPIIMasker;
   public healthMonitor: HealthMonitor | null = null;
+  public multiLevelCache: MultiLevelCache | null = null;
+  public securityHardener: SecurityHardener | null = null;
+  public prometheusExporter: PrometheusExporter | null = null;
+  public trafficMirror: TrafficMirror | null = null;
+  public adaptiveRouter: AdaptiveRouter | null = null;
 
   private configService: ConfigService;
   private logger: any;
@@ -418,8 +433,62 @@ export class MiddlewareOrchestrator {
     this.logger.info(`  ABTesting: ${this.abTesting.getStats().enabled ? 'enabled' : 'disabled'}`);
     this.logger.info(`  FinancialPIIMasker: ${this.financialPIIMasker.getStats().enabled ? 'enabled' : 'disabled'}`);
 
+    // Initialize v2 infrastructure modules
+    try {
+      const mlcConfig = middlewareConfig.multiLevelCache || { enabled: true, l1MaxSize: 1000, l2Enabled: true, l3Enabled: false };
+      if (mlcConfig.enabled) {
+        this.multiLevelCache = getMultiLevelCache({
+          l1: { maxSize: mlcConfig.l1MaxSize },
+          l2: { maxSize: 10000 },
+          l3Enabled: mlcConfig.l3Enabled,
+        }, this.logger);
+        await this.multiLevelCache.initialize();
+        this.logger.info(`  MultiLevelCache: L1(memory) + L2(redis:${this.multiLevelCache.l2.isConnected()}) + L3(qdrant:${mlcConfig.l3Enabled})`);
+      }
+    } catch (e: any) {
+      this.logger.debug(`  MultiLevelCache: skipped (${e?.message})`);
+    }
+
+    try {
+      if (middlewareConfig.securityHardener?.enabled !== false) {
+        this.securityHardener = getSecurityHardener(undefined, this.logger);
+        this.logger.info(`  SecurityHardener: enabled (auto-redact + audit)`);
+      }
+    } catch (e: any) {
+      this.logger.debug(`  SecurityHardener: skipped (${e?.message})`);
+    }
+
+    try {
+      if (middlewareConfig.prometheus?.enabled !== false) {
+        this.prometheusExporter = getPrometheusExporter(this.logger);
+        this.logger.info(`  PrometheusExporter: enabled (/metrics endpoint)`);
+      }
+    } catch (e: any) {
+      this.logger.debug(`  PrometheusExporter: skipped (${e?.message})`);
+    }
+
+    try {
+      const mirrorConfig = middlewareConfig.trafficMirror || { enabled: false, targets: [] };
+      if (mirrorConfig.enabled) {
+        this.trafficMirror = getTrafficMirror(mirrorConfig, this.logger);
+        this.logger.info(`  TrafficMirror: enabled (${mirrorConfig.targets.length} targets)`);
+      }
+    } catch (e: any) {
+      this.logger.debug(`  TrafficMirror: skipped (${e?.message})`);
+    }
+
+    try {
+      if (middlewareConfig.adaptiveRouter?.enabled) {
+        const fallbackConfig = this.configService.get<any>('fallback') || {};
+        this.adaptiveRouter = getAdaptiveRouter(undefined, fallbackConfig, this.logger);
+        this.logger.info(`  AdaptiveRouter: enabled`);
+      }
+    } catch (e: any) {
+      this.logger.debug(`  AdaptiveRouter: skipped (${e?.message})`);
+    }
+
     this.initialized = true;
-    this.logger.info("MiddlewareOrchestrator: initialized");
+    this.logger.info("MiddlewareOrchestrator: initialized (v2)");
   }
 
   /**
@@ -462,7 +531,20 @@ export class MiddlewareOrchestrator {
     } catch {}
 
     this.initialized = false;
-    this.logger.info("MiddlewareOrchestrator: shutdown");
+
+    if (this.trafficMirror) {
+      this.trafficMirror.updateConfig({ enabled: false });
+    }
+
+    if (this.adaptiveRouter) {
+      this.adaptiveRouter.stopHealthChecks();
+    }
+
+    if (this.securityHardener) {
+      this.securityHardener.destroy();
+    }
+
+    this.logger.info("MiddlewareOrchestrator: shutdown (v2)");
   }
 
   /**
@@ -476,6 +558,10 @@ export class MiddlewareOrchestrator {
     if (!this.initialized) return null;
 
     try {
+      if (this.securityHardener) {
+        (req as any)._traceId = this.securityHardener.generateTraceId();
+      }
+
       const hookCtx = this.hookManager.createContext(req);
       const hookResult = await this.hookManager.execute("onRequest", hookCtx);
 
@@ -1074,6 +1160,66 @@ export class MiddlewareOrchestrator {
         this.healthMonitor.checkProvider((req as any).provider);
       }
 
+      // v2: Prometheus metrics recording
+      if (this.prometheusExporter) {
+        const usage = responseBody?.usage || {};
+        const latencyMs = Date.now() - ((req as any)._startTime || Date.now());
+        this.prometheusExporter.recordRequest({
+          provider: (req as any).provider || 'unknown',
+          model: (req as any).model || 'unknown',
+          scenario: (req as any).scenarioType || 'default',
+          status: (req as any)._httpStatus === 200 ? 'success' : 'error',
+          durationMs: latencyMs,
+          inputTokens: usage.input_tokens || 0,
+          outputTokens: usage.output_tokens || 0,
+          cost: 0,
+          cacheHit: !!(req as any)._cacheHit,
+          cacheLevel: (req as any)._cacheSource || undefined,
+        });
+      }
+
+      // v2: AdaptiveRouter health feedback
+      if (this.adaptiveRouter && (req as any).provider) {
+        const latencyMs = Date.now() - ((req as any)._startTime || Date.now());
+        const statusCode = (req as any)._httpStatus || 200;
+        if (statusCode >= 200 && statusCode < 400) {
+          this.adaptiveRouter.reportSuccess((req as any).provider, latencyMs);
+        } else {
+          this.adaptiveRouter.reportFailure((req as any).provider, statusCode >= 500 ? 'server_error' : 'unknown');
+        }
+      }
+
+      // v2: TrafficMirror (async, fire-and-forget)
+      if (this.trafficMirror) {
+        this.trafficMirror.mirrorRequest(
+          req.body,
+          (req as any).provider || 'unknown',
+          (req as any).model || 'unknown',
+          responseBody
+        ).catch(() => {});
+      }
+
+      // v2: Security audit entry
+      if (this.securityHardener) {
+        const usage = responseBody?.usage || {};
+        const latencyMs = Date.now() - ((req as any)._startTime || Date.now());
+        this.securityHardener.addAuditEntry({
+          traceId: (req as any)._traceId || 'unknown',
+          sessionId: context.sessionId,
+          provider: (req as any).provider || 'unknown',
+          model: (req as any).model || 'unknown',
+          inputTokens: usage.input_tokens || 0,
+          outputTokens: usage.output_tokens || 0,
+          latencyMs,
+          cacheHit: !!(req as any)._cacheHit,
+          cacheLevel: (req as any)._cacheSource,
+          success: !((req as any)._httpStatus >= 400),
+          estimatedCost: 0,
+          redactedAuth: '(redacted)',
+          sourceIp: req.ip || '127.0.0.1',
+        });
+      }
+
     } catch (error: any) {
       this.logger.warn(`MiddlewareOrchestrator onPostResponse error: ${error.message}`);
     }
@@ -1172,6 +1318,13 @@ export class MiddlewareOrchestrator {
         } catch {}
         return null;
       })(),
+      v2: {
+        multiLevelCache: this.multiLevelCache?.getAllStats() || null,
+        securityHardener: this.securityHardener ? { enabled: true } : null,
+        prometheus: this.prometheusExporter ? { enabled: true } : null,
+        trafficMirror: this.trafficMirror?.getComparisonStats() || null,
+        adaptiveRouter: this.adaptiveRouter?.getAllMetrics() || null,
+      },
     };
   }
 
