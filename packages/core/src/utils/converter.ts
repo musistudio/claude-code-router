@@ -10,6 +10,8 @@ import {
   AnthropicChatRequest,
   ConversionOptions,
 } from "../types/llm";
+import { normalizeToolInputSchema } from "./tool-schema";
+import { sanitizeToolInput } from "./tool-sanitizer";
 
 // Simple logger function
 function log(...args: any[]) {
@@ -34,7 +36,10 @@ export function convertToolsToAnthropic(tools: UnifiedTool[]): AnthropicTool[] {
   return tools.map((tool) => ({
     name: tool.function.name,
     description: tool.function.description,
-    input_schema: tool.function.parameters,
+    input_schema: normalizeToolInputSchema(
+      tool.function.name,
+      tool.function.parameters
+    ),
   }));
 }
 
@@ -59,7 +64,7 @@ export function convertToolsFromAnthropic(
     function: {
       name: tool.name,
       description: tool.description || "",
-      parameters: tool.input_schema as any,
+      parameters: normalizeToolInputSchema(tool.name, tool.input_schema),
     },
   }));
 }
@@ -196,7 +201,7 @@ export function convertFromOpenAI(
           type: "function" as const,
           function: {
             name: call.name,
-            arguments: JSON.stringify(call.input || {}),
+            arguments: JSON.stringify(sanitizeToolInput(call.name, call.input || {})),
           },
         }));
 
@@ -313,7 +318,9 @@ export function convertFromAnthropic(
             type: "function" as const,
             function: {
               name: block.name,
-              arguments: JSON.stringify(block.input || {}),
+              arguments: JSON.stringify(
+                sanitizeToolInput(block.name, block.input || {})
+              ),
             },
           });
         } else if (block.type === "tool_result") {

@@ -14,6 +14,8 @@ import { v4 as uuidv4 } from "uuid";
 import { getThinkLevel } from "@/utils/thinking";
 import { createApiError } from "@/api/middleware";
 import { formatBase64 } from "@/utils/image";
+import { normalizeToolInputSchema } from "@/utils/tool-schema";
+import { sanitizeToolInput } from "@/utils/tool-sanitizer";
 
 export class AnthropicTransformer implements Transformer {
   name = "Anthropic";
@@ -248,7 +250,7 @@ export class AnthropicTransformer implements Transformer {
       function: {
         name: tool.name,
         description: tool.description || "",
-        parameters: tool.input_schema,
+        parameters: normalizeToolInputSchema(tool.name, tool.input_schema),
       },
     }));
   }
@@ -996,9 +998,10 @@ export class AnthropicTransformer implements Transformer {
       }
       if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
         choice.message.tool_calls.forEach((toolCall) => {
+          const toolFunction = (toolCall as any).function || {};
           let parsedInput = {};
           try {
-            const argumentsStr = toolCall.function.arguments || "{}";
+            const argumentsStr = toolFunction.arguments || "{}";
 
             if (typeof argumentsStr === "object") {
               parsedInput = argumentsStr;
@@ -1006,14 +1009,14 @@ export class AnthropicTransformer implements Transformer {
               parsedInput = JSON.parse(argumentsStr);
             }
           } catch {
-            parsedInput = { text: toolCall.function.arguments || "" };
+            parsedInput = { text: toolFunction.arguments || "" };
           }
 
           content.push({
             type: "tool_use",
             id: toolCall.id,
-            name: toolCall.function.name,
-            input: parsedInput,
+            name: toolFunction.name,
+            input: sanitizeToolInput(toolFunction.name, parsedInput),
           });
         });
       }

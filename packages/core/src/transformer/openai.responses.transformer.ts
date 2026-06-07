@@ -1,18 +1,22 @@
 import { UnifiedChatRequest, MessageContent } from "@/types/llm";
 import { Transformer } from "@/types/transformer";
+import { normalizeToolInputSchema } from "@/utils/tool-schema";
+import { sanitizeToolInput } from "@/utils/tool-sanitizer";
 
 interface ResponsesAPIOutputItem {
   type: string;
   id?: string;
   call_id?: string;
+  tool_call_id?: string;
   name?: string;
-  arguments?: string;
+  arguments?: unknown;
   content?: Array<{
     type: string;
-    text?: string;
+    text?: unknown;
     image_url?: string;
     mime_type?: string;
     image_base64?: string;
+    annotations?: Array<Record<string, any>>;
   }>;
   reasoning?: string;
 }
@@ -31,6 +35,7 @@ interface ResponsesAPIPayload {
 }
 
 interface ResponsesStreamEvent {
+  [key: string]: any;
   type: string;
   item_id?: string;
   output_index?: number;
@@ -45,10 +50,12 @@ interface ResponsesStreamEvent {
     id?: string;
     type?: string;
     call_id?: string;
+    tool_call_id?: string;
     name?: string;
+    arguments?: unknown;
     content?: Array<{
       type: string;
-      text?: string;
+      text?: unknown;
       image_url?: string;
       mime_type?: string;
     }>;
@@ -59,6 +66,7 @@ interface ResponsesStreamEvent {
     model?: string;
     output?: Array<{
       type: string;
+      [key: string]: any;
     }>;
   };
   reasoning_summary?: string; // 添加推理摘要支持
@@ -67,6 +75,7 @@ interface ResponsesStreamEvent {
 export class OpenAIResponsesTransformer implements Transformer {
   name = "openai-responses";
   endPoint = "/v1/responses";
+  logger?: any;
 
   async transformRequestIn(
     request: UnifiedChatRequest
@@ -163,8 +172,16 @@ export class OpenAIResponsesTransformer implements Transformer {
       (request as any).tools = request.tools
         .filter((tool) => tool.function.name !== "web_search")
         .map((tool) => {
+          let parameters = normalizeToolInputSchema(
+            tool.function.name,
+            tool.function.parameters
+          );
           if (tool.function.name === "WebSearch") {
-            delete tool.function.parameters.properties.allowed_domains;
+            parameters = {
+              ...parameters,
+              properties: { ...parameters.properties },
+            };
+            delete parameters.properties.allowed_domains;
           }
           if (tool.function.name === "Edit") {
             return {
@@ -172,7 +189,7 @@ export class OpenAIResponsesTransformer implements Transformer {
               name: tool.function.name,
               description: tool.function.description,
               parameters: {
-                ...tool.function.parameters,
+                ...parameters,
                 required: [
                   "file_path",
                   "old_string",
@@ -187,7 +204,7 @@ export class OpenAIResponsesTransformer implements Transformer {
             type: tool.type,
             name: tool.function.name,
             description: tool.function.description,
-            parameters: tool.function.parameters,
+            parameters,
           };
         });
 
@@ -198,7 +215,7 @@ export class OpenAIResponsesTransformer implements Transformer {
       }
     }
 
-    request.parallel_tool_calls = false;
+    (request as any).parallel_tool_calls = false;
 
     return request;
   }
@@ -253,6 +270,84 @@ export class OpenAIResponsesTransformer implements Transformer {
             }
             return currentIndex;
           };
+          const pendingToolCalls = new Map<string, any>();
+          const completedToolCallIds = new Set<string>();
+          let hasToolCall = false;
+          let pendingEventType = "";
+
+          const dataModel = (item: any) =>
+            item?.response?.model || item?.model || "gpt-5-codex";
+
+          const enqueueChatChunk = (chunk: Record<string, any>) => {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`)
+            );
+          };
+
+          const enqueueToolCallChunk = (
+            item: any,
+            index: number,
+            argumentsOverride?: unknown
+          ) => {
+            const toolCall = transformer.buildToolCallFromOutputItem(
+              item,
+              argumentsOverride
+            );
+            if (!toolCall) {
+              return;
+            }
+
+            hasToolCall = true;
+            completedToolCallIds.add(toolCall.id);
+            enqueueChatChunk({
+              id:
+                item?.call_id ||
+                item?.id ||
+                item?.tool_call_id ||
+                "chatcmpl-" + Date.now(),
+              object: "chat.completion.chunk",
+              created: Math.floor(Date.now() / 1000),
+              model: dataModel(item),
+              choices: [
+                {
+                  index,
+                  delta: {
+                    role: "assistant",
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: toolCall.id,
+                        function: {
+                          name: toolCall.function.name,
+                          arguments: toolCall.function.arguments,
+                        },
+                        type: "function",
+                      },
+                    ],
+                  },
+                  finish_reason: null,
+                },
+              ],
+            });
+          };
+
+          const rememberPendingToolCall = (item: any) => {
+            const pending = {
+              ...item,
+              arguments:
+                typeof item?.arguments === "string" ? item.arguments : "",
+            };
+            for (const id of [
+              item?.call_id,
+              item?.id,
+              item?.tool_call_id,
+              item?.item_id,
+            ]) {
+              if (typeof id === "string" && id.length > 0) {
+                pendingToolCalls.set(id, pending);
+              }
+            }
+          };
 
           try {
             while (true) {
@@ -279,6 +374,7 @@ export class OpenAIResponsesTransformer implements Transformer {
                 try {
                   if (line.startsWith("event: ")) {
                     // 处理事件行，暂存以便与下一行数据配对
+                    pendingEventType = line.slice(7).trim();
                     continue;
                   } else if (line.startsWith("data: ")) {
                     const dataStr = line.slice(5).trim(); // 移除 "data: " 前缀
@@ -290,6 +386,9 @@ export class OpenAIResponsesTransformer implements Transformer {
 
                     try {
                       const data: ResponsesStreamEvent = JSON.parse(dataStr);
+                      if (!data.type && pendingEventType) {
+                        data.type = pendingEventType;
+                      }
 
                       // 根据不同的事件类型转换为chat格式
                       if (data.type === "response.output_text.delta") {
@@ -319,42 +418,18 @@ export class OpenAIResponsesTransformer implements Transformer {
                         data.type === "response.output_item.added" &&
                         data.item?.type === "function_call"
                       ) {
-                        // 处理function call开始 - 创建初始的tool call chunk
-                        const functionCallChunk = {
-                          id:
-                            data.item.call_id ||
-                            data.item.id ||
-                            "chatcmpl-" + Date.now(),
-                          object: "chat.completion.chunk",
-                          created: Math.floor(Date.now() / 1000),
-                          model: data.response?.model || "gpt-5-codex-",
-                          choices: [
-                            {
-                              index: getCurrentIndex(data.type),
-                              delta: {
-                                role: "assistant",
-                                tool_calls: [
-                                  {
-                                    index: 0,
-                                    id: data.item.call_id || data.item.id,
-                                    function: {
-                                      name: data.item.name || "",
-                                      arguments: "",
-                                    },
-                                    type: "function",
-                                  },
-                                ],
-                              },
-                              finish_reason: null,
-                            },
-                          ],
-                        };
-
-                        controller.enqueue(
-                          encoder.encode(
-                            `data: ${JSON.stringify(functionCallChunk)}\n\n`
-                          )
-                        );
+                        const id =
+                          data.item.call_id ||
+                          data.item.id ||
+                          data.item.tool_call_id ||
+                          data.item_id ||
+                          `call_${Date.now()}`;
+                        rememberPendingToolCall({
+                          ...data.item,
+                          call_id: data.item.call_id || id,
+                          response: data.response,
+                        });
+                        getCurrentIndex(data.type);
                       } else if (
                         data.type === "response.output_item.added" &&
                         data.item?.type === "message"
@@ -440,39 +515,86 @@ export class OpenAIResponsesTransformer implements Transformer {
                       } else if (
                         data.type === "response.function_call_arguments.delta"
                       ) {
-                        // 处理function call参数增量
-                        const functionCallChunk = {
-                          id: data.item_id || "chatcmpl-" + Date.now(),
-                          object: "chat.completion.chunk",
-                          created: Math.floor(Date.now() / 1000),
-                          model: data.response?.model || "gpt-5-codex-",
-                          choices: [
-                            {
-                              index: getCurrentIndex(data.type),
-                              delta: {
-                                tool_calls: [
-                                  {
-                                    index: 0,
-                                    function: {
-                                      arguments: data.delta || "",
-                                    },
-                                  },
-                                ],
-                              },
-                              finish_reason: null,
-                            },
-                          ],
+                        const id = data.item_id || data.output_index?.toString() || "call_unknown";
+                        const existing = pendingToolCalls.get(id) || {
+                          call_id: id,
+                          arguments: "",
+                          response: data.response,
                         };
-
-                        controller.enqueue(
-                          encoder.encode(
-                            `data: ${JSON.stringify(functionCallChunk)}\n\n`
-                          )
+                        existing.arguments = `${existing.arguments || ""}${
+                          typeof data.delta === "string" ? data.delta : ""
+                        }`;
+                        existing.response = existing.response || data.response;
+                        pendingToolCalls.set(id, existing);
+                        getCurrentIndex(data.type);
+                      } else if (
+                        data.type === "response.output_item.done" &&
+                        (data.item?.type === "function_call" ||
+                          data.item?.type === "tool_call" ||
+                          data.item?.type === "custom_tool_call")
+                      ) {
+                        const id =
+                          data.item.call_id ||
+                          data.item.id ||
+                          data.item.tool_call_id ||
+                          data.item_id ||
+                          `call_${Date.now()}`;
+                        const pending = pendingToolCalls.get(id);
+                        const item = {
+                          ...pending,
+                          ...data.item,
+                          response: data.response || pending?.response,
+                        };
+                        enqueueToolCallChunk(
+                          item,
+                          getCurrentIndex("response.output_item.done"),
+                          item.arguments
                         );
+                        pendingToolCalls.delete(id);
                       } else if (data.type === "response.completed") {
+                        const responseOutput = data.response?.output || [];
+                        responseOutput
+                          .filter((item: any) =>
+                            transformer.isFunctionCallOutputItem(item)
+                          )
+                          .forEach((item: any) => {
+                            const id =
+                              item.call_id ||
+                              item.id ||
+                              item.tool_call_id ||
+                              `call_${Date.now()}`;
+                            if (!completedToolCallIds.has(id)) {
+                              enqueueToolCallChunk(
+                                { ...item, response: data.response },
+                                getCurrentIndex("response.output_item.done"),
+                                item.arguments
+                              );
+                            }
+                          });
+
+                        const uniquePendingToolCalls = new Set(
+                          pendingToolCalls.values()
+                        );
+                        for (const item of uniquePendingToolCalls) {
+                          const id =
+                            item.call_id ||
+                            item.id ||
+                            item.tool_call_id ||
+                            `call_${Date.now()}`;
+                          if (!completedToolCallIds.has(id)) {
+                            enqueueToolCallChunk(
+                              item,
+                              getCurrentIndex("response.output_item.done"),
+                              item.arguments
+                            );
+                          }
+                        }
+                        pendingToolCalls.clear();
+
                         // 发送结束标记 - 检查是否是tool_calls完成
-                        const finishReason = data.response?.output?.some(
-                          (item: any) => item.type === "function_call"
+                        const finishReason = hasToolCall ||
+                        responseOutput.some((item: any) =>
+                          transformer.isFunctionCallOutputItem(item)
                         )
                           ? "tool_calls"
                           : "stop";
@@ -640,9 +762,6 @@ export class OpenAIResponsesTransformer implements Transformer {
     const messageOutput = responseData.output?.find(
       (item) => item.type === "message"
     );
-    const functionCallOutput = responseData.output?.find(
-      (item) => item.type === "function_call"
-    );
     let annotations;
     if (
       messageOutput?.content?.length &&
@@ -684,8 +803,8 @@ export class OpenAIResponsesTransformer implements Transformer {
       const imageParts: MessageContent[] = [];
 
       messageOutput.content.forEach((item: any) => {
-        if (item.type === "output_text") {
-          textParts.push(item.text || "");
+        if (item.type === "output_text" || item.type === "text") {
+          textParts.push(this.extractTextValue(item.text));
         } else if (item.type === "output_image") {
           const imageContent = this.buildImageContent({
             url: item.image_url,
@@ -723,19 +842,10 @@ export class OpenAIResponsesTransformer implements Transformer {
       }
     }
 
-    if (functionCallOutput) {
-      // 处理function_call类型的输出
-      toolCalls = [
-        {
-          id: functionCallOutput.call_id || functionCallOutput.id,
-          function: {
-            name: functionCallOutput.name,
-            arguments: functionCallOutput.arguments,
-          },
-          type: "function",
-        },
-      ];
-    }
+    toolCalls = (responseData.output || [])
+      .filter((item) => this.isFunctionCallOutputItem(item))
+      .map((item) => this.buildToolCallFromOutputItem(item))
+      .filter((toolCall): toolCall is Record<string, any> => Boolean(toolCall));
 
     // 构建chat格式的响应
     const chatResponse = {
@@ -788,5 +898,77 @@ export class OpenAIResponsesTransformer implements Transformer {
     }
 
     return null;
+  }
+
+  private isFunctionCallOutputItem(item: any): boolean {
+    return (
+      item?.type === "function_call" ||
+      item?.type === "tool_call" ||
+      item?.type === "custom_tool_call"
+    );
+  }
+
+  private buildToolCallFromOutputItem(
+    item: any,
+    argumentsOverride?: unknown
+  ): Record<string, any> | null {
+    if (!this.isFunctionCallOutputItem(item)) {
+      return null;
+    }
+
+    const name = typeof item.name === "string" ? item.name : "";
+    const id =
+      item.call_id ||
+      item.id ||
+      item.tool_call_id ||
+      `call_${Date.now()}`;
+    const rawArguments =
+      argumentsOverride !== undefined ? argumentsOverride : item.arguments;
+    const parsedInput = this.parseToolArguments(rawArguments);
+    const sanitizedInput = sanitizeToolInput(name, parsedInput);
+
+    return {
+      id,
+      function: {
+        name,
+        arguments: JSON.stringify(sanitizedInput || {}),
+      },
+      type: "function",
+    };
+  }
+
+  private parseToolArguments(rawArguments: unknown): unknown {
+    if (rawArguments === undefined || rawArguments === null) {
+      return {};
+    }
+
+    if (typeof rawArguments === "object") {
+      return rawArguments;
+    }
+
+    if (typeof rawArguments !== "string") {
+      return {};
+    }
+
+    const trimmed = rawArguments.trim();
+    if (!trimmed) {
+      return {};
+    }
+
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return {};
+    }
+  }
+
+  private extractTextValue(text: unknown): string {
+    if (typeof text === "string") {
+      return text;
+    }
+    if (text && typeof text === "object" && typeof (text as any).value === "string") {
+      return (text as any).value;
+    }
+    return "";
   }
 }
