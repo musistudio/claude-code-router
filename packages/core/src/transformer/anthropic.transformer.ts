@@ -14,6 +14,8 @@ import { v4 as uuidv4 } from "uuid";
 import { getThinkLevel } from "@/utils/thinking";
 import { createApiError } from "@/api/middleware";
 import { formatBase64 } from "@/utils/image";
+import { normalizeToolInputSchema } from "@/utils/tool-schema";
+import { sanitizeToolInput } from "@/utils/tool-sanitizer";
 
 export class AnthropicTransformer implements Transformer {
   name = "Anthropic";
@@ -248,7 +250,7 @@ export class AnthropicTransformer implements Transformer {
       function: {
         name: tool.name,
         description: tool.description || "",
-        parameters: tool.input_schema,
+        parameters: normalizeToolInputSchema(tool.name, tool.input_schema),
       },
     }));
   }
@@ -268,6 +270,7 @@ export class AnthropicTransformer implements Transformer {
         let hasFinished = false;
         const toolCalls = new Map<number, any>();
         const toolCallIndexToContentBlockIndex = new Map<number, number>();
+        const flushedToolCallInputs = new Set<number>();
         let totalChunks = 0;
         let contentChunks = 0;
         let toolCallChunks = 0;
@@ -316,6 +319,7 @@ export class AnthropicTransformer implements Transformer {
             try {
               // Close any remaining open content block
               if (currentContentBlockIndex >= 0) {
+                flushToolInputForBlock(currentContentBlockIndex);
                 const contentBlockStop = {
                   type: "content_block_stop",
                   index: currentContentBlockIndex,
@@ -378,6 +382,58 @@ export class AnthropicTransformer implements Transformer {
               } else {
                 throw error;
               }
+            }
+          }
+        };
+
+        const parseToolInput = (argumentsValue: string) => {
+          try {
+            return argumentsValue ? JSON.parse(argumentsValue) : {};
+          } catch {
+            return {};
+          }
+        };
+
+        const flushToolInputForIndex = (toolCallIndex: number) => {
+          if (flushedToolCallInputs.has(toolCallIndex)) {
+            return;
+          }
+
+          const toolCall = toolCalls.get(toolCallIndex);
+          const blockIndex = toolCallIndexToContentBlockIndex.get(toolCallIndex);
+          if (!toolCall || blockIndex === undefined) {
+            return;
+          }
+
+          const input = sanitizeToolInput(
+            toolCall.name,
+            parseToolInput(toolCall.arguments || "")
+          );
+          const anthropicChunk = {
+            type: "content_block_delta",
+            index: blockIndex,
+            delta: {
+              type: "input_json_delta",
+              partial_json: JSON.stringify(input || {}),
+            },
+          };
+          safeEnqueue(
+            encoder.encode(
+              `event: content_block_delta\ndata: ${JSON.stringify(
+                anthropicChunk
+              )}\n\n`
+            )
+          );
+          flushedToolCallInputs.add(toolCallIndex);
+        };
+
+        const flushToolInputForBlock = (blockIndex: number) => {
+          for (const [
+            toolCallIndex,
+            toolBlockIndex,
+          ] of toolCallIndexToContentBlockIndex.entries()) {
+            if (toolBlockIndex === blockIndex) {
+              flushToolInputForIndex(toolCallIndex);
             }
           }
         };
@@ -731,6 +787,7 @@ export class AnthropicTransformer implements Transformer {
                     if (isUnknownIndex) {
                       // Close any previous content block if open
                       if (currentContentBlockIndex >= 0) {
+                        flushToolInputForBlock(currentContentBlockIndex);
                         const contentBlockStop = {
                           type: "content_block_stop",
                           index: currentContentBlockIndex,
@@ -798,58 +855,10 @@ export class AnthropicTransformer implements Transformer {
                       !isClosed &&
                       !hasFinished
                     ) {
-                      const blockIndex =
-                        toolCallIndexToContentBlockIndex.get(toolCallIndex);
-                      if (blockIndex === undefined) {
-                        continue;
-                      }
                       const currentToolCall = toolCalls.get(toolCallIndex);
                       if (currentToolCall) {
                         currentToolCall.arguments +=
                           toolCall.function.arguments;
-                      }
-
-                      try {
-                        const anthropicChunk = {
-                          type: "content_block_delta",
-                          index: blockIndex,
-                          delta: {
-                            type: "input_json_delta",
-                            partial_json: toolCall.function.arguments,
-                          },
-                        };
-                        safeEnqueue(
-                          encoder.encode(
-                            `event: content_block_delta\ndata: ${JSON.stringify(
-                              anthropicChunk
-                            )}\n\n`
-                          )
-                        );
-                      } catch {
-                        try {
-                          const fixedArgument = toolCall.function.arguments
-                            .replace(/[\x00-\x1F\x7F-\x9F]/g, "")
-                            .replace(/\\/g, "\\\\")
-                            .replace(/"/g, '\\"');
-
-                          const fixedChunk = {
-                            type: "content_block_delta",
-                            index: blockIndex, // Use the correct content block index
-                            delta: {
-                              type: "input_json_delta",
-                              partial_json: fixedArgument,
-                            },
-                          };
-                          safeEnqueue(
-                            encoder.encode(
-                              `event: content_block_delta\ndata: ${JSON.stringify(
-                                fixedChunk
-                              )}\n\n`
-                            )
-                          );
-                        } catch (fixError) {
-                          console.error(fixError);
-                        }
                       }
                     }
                   }
@@ -864,6 +873,7 @@ export class AnthropicTransformer implements Transformer {
 
                   // Close any remaining open content block
                   if (currentContentBlockIndex >= 0) {
+                    flushToolInputForBlock(currentContentBlockIndex);
                     const contentBlockStop = {
                       type: "content_block_stop",
                       index: currentContentBlockIndex,
@@ -996,9 +1006,10 @@ export class AnthropicTransformer implements Transformer {
       }
       if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
         choice.message.tool_calls.forEach((toolCall) => {
+          const toolFunction = (toolCall as any).function || {};
           let parsedInput = {};
           try {
-            const argumentsStr = toolCall.function.arguments || "{}";
+            const argumentsStr = toolFunction.arguments || "{}";
 
             if (typeof argumentsStr === "object") {
               parsedInput = argumentsStr;
@@ -1006,14 +1017,14 @@ export class AnthropicTransformer implements Transformer {
               parsedInput = JSON.parse(argumentsStr);
             }
           } catch {
-            parsedInput = { text: toolCall.function.arguments || "" };
+            parsedInput = { text: toolFunction.arguments || "" };
           }
 
           content.push({
             type: "tool_use",
             id: toolCall.id,
-            name: toolCall.function.name,
-            input: parsedInput,
+            name: toolFunction.name,
+            input: sanitizeToolInput(toolFunction.name, parsedInput),
           });
         });
       }
