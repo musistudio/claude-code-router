@@ -91,7 +91,7 @@ async function handleTransformerEndpoint(
     return formatResponse(finalResponse, reply, body);
   } catch (error: any) {
     // Handle fallback if error occurs
-    if (error.code === 'provider_response_error') {
+    if (isProviderRequestError(error)) {
       const fallbackResult = await handleFallback(req, reply, fastify, transformer, error);
       if (fallbackResult) {
         return fallbackResult;
@@ -350,32 +350,102 @@ async function sendRequestToProvider(
     }
   }
 
-  const response = await sendUnifiedRequest(
-    url,
-    requestBody,
-    {
-      httpsProxy: fastify.configService.getHttpsProxy(),
-      ...config,
-      headers: JSON.parse(JSON.stringify(requestHeaders)),
-    },
-    context,
-    fastify.log
-  );
+  const requestUrl = url instanceof URL ? url.toString() : String(url);
+  const model = requestBody?.model || context?.model || "unknown";
+  let response: Response;
+  try {
+    response = await sendUnifiedRequest(
+      url,
+      requestBody,
+      {
+        httpsProxy: fastify.configService.getHttpsProxy(),
+        ...config,
+        headers: JSON.parse(JSON.stringify(requestHeaders)),
+      },
+      context,
+      fastify.log
+    );
+  } catch (error: any) {
+    const providerErrorType = classifyProviderRequestFailure(error);
+    const statusCode = providerErrorType === "provider_timeout" ? 504 : 502;
+    const errorMessage =
+      error instanceof Error ? error.message : String(error || "unknown");
+    fastify.log.error(
+      {
+        errorType: providerErrorType,
+        provider: provider.name,
+        model,
+        requestUrl,
+        errorName: error?.name,
+        errorMessage,
+      },
+      `[provider_request_error] ${providerErrorType}: provider(${provider.name}, ${model}) request failed at ${requestUrl}`,
+    );
+    throw createApiError(
+      `${providerErrorType}: provider(${provider.name}, model=${model}) request failed at ${requestUrl}: ${errorMessage}`,
+      statusCode,
+      providerErrorType
+    );
+  }
 
   // Handle request errors
   if (!response.ok) {
     const errorText = await response.text();
+    const providerErrorType = classifyProviderHttpStatus(response.status);
     fastify.log.error(
-      `[provider_response_error] Error from provider(${provider.name},${requestBody.model}: ${response.status}): ${errorText}`,
+      {
+        errorType: providerErrorType,
+        provider: provider.name,
+        model,
+        status: response.status,
+        requestUrl,
+        responseBody: errorText,
+      },
+      `[provider_response_error] ${providerErrorType}: provider(${provider.name}, ${model}) HTTP ${response.status} at ${requestUrl}`,
     );
     throw createApiError(
-      `Error from provider(${provider.name},${requestBody.model}: ${response.status}): ${errorText}`,
+      `${providerErrorType}: provider(${provider.name}, model=${model}) returned HTTP ${response.status} at ${requestUrl}: ${errorText}`,
       response.status,
-      "provider_response_error"
+      providerErrorType
     );
   }
 
   return response;
+}
+
+function isProviderRequestError(error: any): boolean {
+  return (
+    error?.code === "provider_response_error" ||
+    typeof error?.code === "string" && error.code.startsWith("provider_")
+  );
+}
+
+function classifyProviderHttpStatus(status: number): string {
+  if (status === 400) {
+    return "provider_bad_request";
+  }
+  if (status === 422) {
+    return "provider_unprocessable_entity";
+  }
+  if (status >= 500 && status <= 599) {
+    return "provider_5xx";
+  }
+  return "provider_http_error";
+}
+
+function classifyProviderRequestFailure(error: any): string {
+  const name = String(error?.name || "").toLowerCase();
+  const message = String(error?.message || error || "").toLowerCase();
+  if (
+    name.includes("abort") ||
+    name.includes("timeout") ||
+    message.includes("timeout") ||
+    message.includes("timed out") ||
+    message.includes("aborted")
+  ) {
+    return "provider_timeout";
+  }
+  return "provider_request_failed";
 }
 
 /**
