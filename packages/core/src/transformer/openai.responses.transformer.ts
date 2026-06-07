@@ -115,13 +115,14 @@ export class OpenAIResponsesTransformer implements Transformer {
     delete request.temperature;
     delete request.max_tokens;
 
-    // 处理 reasoning 参数
-    if (request.reasoning) {
-      (request as any).reasoning = {
-        effort: request.reasoning.effort,
-        summary: "detailed",
-      };
-    }
+    // Align with CC-Adapter defaults so Responses backends keep producing visible text
+    (request as any).reasoning = {
+      effort: request.reasoning?.effort || "medium",
+      summary: "auto",
+    };
+    (request as any).text = {
+      verbosity: "medium",
+    };
 
     const input: any[] = [];
 
