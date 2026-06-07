@@ -321,6 +321,8 @@ export class OpenAIResponsesTransformer implements Transformer {
           };
           const pendingToolCalls = new Map<string, any>();
           const completedToolCallIds = new Set<string>();
+          const textDeltaKeys = new Set<string>();
+          const textDoneKeys = new Set<string>();
           let hasContent = false;
           let hasToolCall = false;
           let pendingEventType = "";
@@ -359,6 +361,33 @@ export class OpenAIResponsesTransformer implements Transformer {
                 },
               ],
             });
+          };
+
+          const textEventKey = (data: ResponsesStreamEvent) =>
+            [
+              data.item_id,
+              data.output_index,
+              data.content_index,
+            ]
+              .filter((value) => value !== undefined && value !== null)
+              .join(":") || data.type;
+
+          const enqueueFinalTextIfNeeded = (
+            data: ResponsesStreamEvent,
+            text: string,
+            eventType: string
+          ) => {
+            const key = textEventKey(data);
+            if (textDeltaKeys.has(key) || textDoneKeys.has(key)) {
+              return;
+            }
+            textDoneKeys.add(key);
+            enqueueTextChunk(
+              text,
+              eventType,
+              data.item_id,
+              data.response?.model
+            );
           };
 
           const enqueueToolCallChunk = (
@@ -469,6 +498,7 @@ export class OpenAIResponsesTransformer implements Transformer {
 
                       // 根据不同的事件类型转换为chat格式
                       if (data.type === "response.output_text.delta") {
+                        textDeltaKeys.add(textEventKey(data));
                         enqueueTextChunk(
                           transformer.extractTextValue(data.delta),
                           data.type,
@@ -476,21 +506,19 @@ export class OpenAIResponsesTransformer implements Transformer {
                           data.response?.model
                         );
                       } else if (data.type === "response.output_text.done") {
-                        enqueueTextChunk(
+                        enqueueFinalTextIfNeeded(
+                          data,
                           transformer.extractTextValue(data.text),
-                          data.type,
-                          data.item_id,
-                          data.response?.model
+                          data.type
                         );
                       } else if (
                         data.type === "response.content_part.done" &&
                         data.part
                       ) {
-                        enqueueTextChunk(
+                        enqueueFinalTextIfNeeded(
+                          data,
                           transformer.extractTextFromContentPart(data.part),
-                          data.type,
-                          data.item_id,
-                          data.response?.model
+                          data.type
                         );
                       } else if (
                         data.type === "response.output_item.added" &&
