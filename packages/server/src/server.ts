@@ -1,6 +1,6 @@
 import Server, { calculateTokenCount, TokenizerService } from "@musistudio/llms";
 import { readConfigFile, writeConfigFile, backupConfigFile } from "./utils";
-import { join } from "path";
+import { join, resolve } from "path";
 import fastifyStatic from "@fastify/static";
 import { readdirSync, statSync, readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, rmSync } from "fs";
 import { homedir } from "os";
@@ -28,6 +28,8 @@ import AdmZip from "adm-zip";
 export const createServer = async (config: any): Promise<any> => {
   const server = new Server(config);
   const app = server.app;
+
+  const LOG_DIR = join(homedir(), ".claude-code-router", "logs");
 
   app.register(fastifyMultipart, {
     limits: {
@@ -128,7 +130,7 @@ export const createServer = async (config: any): Promise<any> => {
   // Get log file list endpoint
   app.get("/api/logs/files", async (req: any, reply: any) => {
     try {
-      const logDir = join(homedir(), ".claude-code-router", "logs");
+      const logDir = LOG_DIR;
       const logFiles: Array<{ name: string; path: string; size: number; lastModified: string }> = [];
 
       if (existsSync(logDir)) {
@@ -166,11 +168,15 @@ export const createServer = async (config: any): Promise<any> => {
       let logFilePath: string;
 
       if (filePath) {
-        // If file path is specified, use the specified path
-        logFilePath = filePath;
+        // Resolve to absolute path and verify it stays within the log directory
+        logFilePath = resolve(LOG_DIR, filePath);
+        if (!logFilePath.startsWith(resolve(LOG_DIR) + "/") && logFilePath !== resolve(LOG_DIR)) {
+          reply.status(403).send({ error: "Access denied: path outside log directory" });
+          return;
+        }
       } else {
         // If file path is not specified, use default log file path
-        logFilePath = join(homedir(), ".claude-code-router", "logs", "app.log");
+        logFilePath = join(LOG_DIR, "app.log");
       }
 
       if (!existsSync(logFilePath)) {
@@ -194,11 +200,15 @@ export const createServer = async (config: any): Promise<any> => {
       let logFilePath: string;
 
       if (filePath) {
-        // If file path is specified, use the specified path
-        logFilePath = filePath;
+        // Resolve to absolute path and verify it stays within the log directory
+        logFilePath = resolve(LOG_DIR, filePath);
+        if (!logFilePath.startsWith(resolve(LOG_DIR) + "/") && logFilePath !== resolve(LOG_DIR)) {
+          reply.status(403).send({ error: "Access denied: path outside log directory" });
+          return;
+        }
       } else {
         // If file path is not specified, use default log file path
-        logFilePath = join(homedir(), ".claude-code-router", "logs", "app.log");
+        logFilePath = join(LOG_DIR, "app.log");
       }
 
       if (existsSync(logFilePath)) {
