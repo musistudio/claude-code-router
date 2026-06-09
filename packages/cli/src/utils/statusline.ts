@@ -1,8 +1,14 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execSync } from "child_process";
-import { tmpdir } from "node:os";
-import { CONFIG_FILE, HOME_DIR, readPresetFile, getPresetDir, loadConfigFromManifest } from "@CCR/shared";
+import {
+    CONFIG_FILE,
+    HOME_DIR,
+    readPresetFile,
+    getPresetDir,
+    loadConfigFromManifest,
+    getCcrTempDir,
+} from "@CCR/shared";
 import JSON5 from "json5";
 
 export interface StatusLineModuleConfig {
@@ -431,8 +437,8 @@ async function getTokenSpeedStats(sessionId: string): Promise<{
     timeToFirstToken?: number;
 } | null> {
     try {
-        // Use system temp directory
-        const tempDir = path.join(tmpdir(), 'claude-code-router');
+        // Use per-user system temp directory
+        const tempDir = getCcrTempDir();
 
         // Check if temp directory exists
         try {

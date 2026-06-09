@@ -30,3 +30,16 @@ export const DEFAULT_CONFIG: DefaultConfig = {
   OPENAI_BASE_URL: "",
   OPENAI_MODEL: "",
 };
+
+const sanitizeTempPathSegment = (value: string): string => {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_");
+};
+
+export const getCcrTempDir = (): string => {
+  const userSuffix =
+    typeof process.getuid === "function"
+      ? String(process.getuid())
+      : sanitizeTempPathSegment(os.userInfo().username);
+
+  return path.join(os.tmpdir(), `claude-code-router-${userSuffix}`);
+};

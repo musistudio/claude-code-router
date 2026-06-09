@@ -3,10 +3,10 @@ import readline from "node:readline";
 import JSON5 from "json5";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import os from "node:os";
 import {
   CONFIG_FILE,
   HOME_DIR, PID_FILE,
+  getCcrTempDir,
   PLUGINS_DIR,
   PRESETS_DIR,
   REFERENCE_COUNT_FILE,
@@ -265,8 +265,8 @@ export const getSettingsPath = async (content: string): Promise<string> => {
   // Hash the content using SHA256 algorithm
   const hash = createHash('sha256').update(content, 'utf-8').digest('hex');
 
-  // Create claude-code-router directory in system temp folder
-  const tempDir = path.join(os.tmpdir(), 'claude-code-router');
+  // Create per-user claude-code-router directory in system temp folder
+  const tempDir = getCcrTempDir();
   const fileName = `ccr-settings-${hash}.json`;
   const tempFilePath = path.join(tempDir, fileName);
 
@@ -274,7 +274,7 @@ export const getSettingsPath = async (content: string): Promise<string> => {
   try {
     await fs.access(tempDir);
   } catch {
-    await fs.mkdir(tempDir, { recursive: true });
+    await fs.mkdir(tempDir, { recursive: true, mode: 0o700 });
   }
 
   // Check if the file already exists
