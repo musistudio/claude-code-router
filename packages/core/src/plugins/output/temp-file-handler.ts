@@ -1,14 +1,15 @@
 import { OutputHandler, OutputOptions } from './types';
 import { writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { isAbsolute, join } from 'path';
 import { tmpdir } from 'os';
+import { getCcrTempDir } from '@CCR/shared';
 
 /**
  * Temp file output handler configuration
  */
 export interface TempFileOutputConfig {
   /**
-   * Subdirectory under system temp directory (default: 'claude-code-router')
+   * Subdirectory under system temp directory (default: per-user claude-code-router directory)
    */
   subdirectory?: string;
 
@@ -39,16 +40,19 @@ export class TempFileOutputHandler implements OutputHandler {
 
   constructor(config: TempFileOutputConfig = {}) {
     this.config = {
-      subdirectory: 'claude-code-router',
+      subdirectory: getCcrTempDir(),
       extension: 'json',
       includeTimestamp: false,
       prefix: 'session',
       ...config
     };
+    const subdirectory = this.config.subdirectory ?? getCcrTempDir();
 
-    // Use system temp directory
+    // Use system temp directory unless an absolute temp path is provided
     const systemTempDir = tmpdir();
-    this.baseDir = join(systemTempDir, this.config.subdirectory!);
+    this.baseDir = isAbsolute(subdirectory)
+      ? subdirectory
+      : join(systemTempDir, subdirectory);
 
     // Ensure directory exists
     this.ensureDir();
@@ -60,7 +64,7 @@ export class TempFileOutputHandler implements OutputHandler {
   private ensureDir(): void {
     try {
       if (!existsSync(this.baseDir)) {
-        mkdirSync(this.baseDir, { recursive: true });
+        mkdirSync(this.baseDir, { recursive: true, mode: 0o700 });
       }
     } catch (error) {
       // Silently fail

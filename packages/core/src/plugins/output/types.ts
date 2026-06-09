@@ -140,7 +140,7 @@ export interface WebSocketOutputConfig {
  */
 export interface TempFileOutputConfig {
   /**
-   * Subdirectory under system temp directory (default: 'claude-code-router')
+   * Subdirectory under system temp directory (default: per-user claude-code-router directory)
    */
   subdirectory?: string;
 
