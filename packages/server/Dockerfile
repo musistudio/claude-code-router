@@ -1,12 +1,12 @@
 # ===========================
 # 构建阶段
 # ===========================
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
 # 安装 pnpm
-RUN npm install -g pnpm@latest && \
+RUN npm install -g pnpm@9 && \
     rm -rf /root/.npm
 
 # 复制工作区配置文件
@@ -17,7 +17,7 @@ COPY packages/core/package.json ./packages/core/
 COPY packages/server/package.json ./packages/server/
 
 # 安装所有依赖（包括开发依赖）并清理
-RUN pnpm install --frozen-lockfile && \
+RUN pnpm install --no-frozen-lockfile && \
     pnpm store prune
 
 # 复制源代码并构建
@@ -39,7 +39,7 @@ RUN pnpm build && \
 # ===========================
 # 生产阶段
 # ===========================
-FROM node:20-alpine AS production
+FROM node:22-alpine AS production
 
 # 安装 PM2、curl 和 pm2-logrotate
 RUN apk add --no-cache curl && \
