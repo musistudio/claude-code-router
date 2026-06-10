@@ -2,9 +2,12 @@ import fs from "node:fs/promises";
 import readline from "node:readline";
 import JSON5 from "json5";
 import path from "node:path";
+import os from "node:os";
+import { existsSync, readFileSync } from "node:fs";
 import {
   CONFIG_FILE,
   DEFAULT_CONFIG,
+  ENV_FILE,
   HOME_DIR,
   PLUGINS_DIR,
 } from "@CCR/shared";
@@ -27,6 +30,60 @@ const interpolateEnvVars = (obj: any): any => {
     return result;
   }
   return obj;
+};
+
+// Expand a leading ~ to the user's home directory.
+const expandHome = (p: string): string =>
+  p.startsWith("~/") || p === "~" ? path.join(os.homedir(), p.slice(1)) : p;
+
+// Parse a dotenv-style / shell-style file into key/value pairs. Tolerates a
+// leading `export `, surrounding single or double quotes, blank lines, and
+// `#` comments — so an existing shell `~/.secrets` (export KEY='val') works.
+const parseEnvContent = (content: string): Record<string, string> => {
+  const out: Record<string, string> = {};
+  for (const rawLine of content.split("\n")) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!match) continue;
+    let value = match[2].trim();
+    const quote = value[0];
+    if ((quote === '"' || quote === "'") && value[value.length - 1] === quote) {
+      value = value.slice(1, -1);
+    }
+    out[match[1]] = value;
+  }
+  return out;
+};
+
+// Load one or more env files into process.env before config interpolation.
+// Existing process.env values win, so a var exported in the shell overrides
+// the file (preserving prior behavior for users who already export keys).
+const loadEnvFiles = (envFileSetting?: string | string[]): void => {
+  const fromSetting = Array.isArray(envFileSetting)
+    ? envFileSetting
+    : envFileSetting
+    ? [envFileSetting]
+    : [];
+  const fromEnv = process.env.CCR_ENV_FILE ? [process.env.CCR_ENV_FILE] : [];
+  // Setting/env override the default; the default ~/.claude-code-router/.env is
+  // only used when nothing else is specified.
+  const files = fromSetting.length || fromEnv.length
+    ? [...fromSetting, ...fromEnv]
+    : [ENV_FILE];
+
+  for (const file of files) {
+    const resolved = expandHome(file);
+    if (!existsSync(resolved)) continue;
+    try {
+      const parsed = parseEnvContent(readFileSync(resolved, "utf-8"));
+      for (const [key, value] of Object.entries(parsed)) {
+        if (!(key in process.env)) process.env[key] = value;
+      }
+    } catch (error) {
+      console.warn(`Failed to load env file ${resolved}:`, (error as Error).message);
+    }
+  }
 };
 
 const ensureDir = async (dir_path: string) => {
@@ -71,6 +128,10 @@ export const readConfigFile = async () => {
     try {
       // Try to parse with JSON5 first (which also supports standard JSON)
       const parsedConfig = JSON5.parse(config);
+      // Load env file(s) into process.env before interpolation so ${VAR}
+      // placeholders can resolve from a secrets file instead of requiring the
+      // user to export every key into the shell first.
+      loadEnvFiles(parsedConfig.ENV_FILE);
       // Interpolate environment variables in the parsed config
       return interpolateEnvVars(parsedConfig);
     } catch (parseError) {
