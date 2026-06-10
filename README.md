@@ -86,6 +86,34 @@ Claude Code Router supports environment variable interpolation for secure API ke
 
 This allows you to keep sensitive API keys in environment variables instead of hardcoding them in configuration files. The interpolation works recursively through nested objects and arrays.
 
+##### Loading variables from an env file
+
+By default the variables referenced above must already be present in the process
+environment (e.g. exported in your shell). To avoid exporting every key, Claude
+Code Router can load an env file into the environment **before** interpolation:
+
+- It automatically loads `~/.claude-code-router/.env` if it exists.
+- Override the location with the `ENV_FILE` config key, which accepts a single
+  path or a list of paths (loaded in order):
+
+  ```json
+  {
+    "ENV_FILE": ["~/.secrets", "~/.claude-code-router/.env"],
+    "Providers": [
+      { "name": "openai", "api_key": "${OPENAI_API_KEY}", "...": "..." }
+    ]
+  }
+  ```
+
+- Or set the `CCR_ENV_FILE` environment variable to a path.
+
+The file uses standard `KEY=value` lines. A leading `export `, surrounding
+single/double quotes, blank lines, and `#` comments are all tolerated, so an
+existing shell secrets file (`export KEY='value'`) can be reused directly.
+Variables already present in the process environment take precedence over the
+file, so anything exported in your shell still wins. A `~` prefix expands to your
+home directory. See [`.env.example`](.env.example).
+
 Here is a comprehensive example:
 
 ```json
