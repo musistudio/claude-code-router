@@ -5,6 +5,10 @@ export const HOME_DIR = path.join(os.homedir(), ".claude-code-router");
 
 export const CONFIG_FILE = path.join(HOME_DIR, "config.json");
 
+// Default env file loaded into process.env before config interpolation.
+// Override with the `ENV_FILE` config key (string or string[]) or $CCR_ENV_FILE.
+export const ENV_FILE = path.join(HOME_DIR, ".env");
+
 export const PLUGINS_DIR = path.join(HOME_DIR, "plugins");
 
 export const PRESETS_DIR = path.join(HOME_DIR, "presets");
