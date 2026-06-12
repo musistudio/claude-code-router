@@ -144,5 +144,5 @@ tail -f ~/.claude-code-router/claude-code-router.log
 
 ## 下一步
 
-- [Agent](/zh/docs/advanced/agents) - 使用 Agent 扩展功能
-- [预设](/zh/docs/advanced/presets) - 使用预定义配置
+- [路由](/docs/server/config/routing) - 配置内置路由规则
+- [预设](/docs/presets/intro) - 使用预定义配置

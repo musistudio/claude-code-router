@@ -492,6 +492,16 @@ module.exports = async function router(req, config) {
 };
 ```
 
+For a complete BYO-key custom router that asks Morph Model Router to choose the
+best provider/model for each eligible prompt, see
+[`examples/morph-router.cjs`](examples/morph-router.cjs) and the
+[Morph Model Router docs](docs/docs/server/advanced/morph-model-router.md).
+You can run `node examples/morph-router-smoke-test.cjs` to smoke-test it locally
+with mock Morph and provider services, or run
+`node examples/morph-router-claude-code-smoke-test.cjs` after `pnpm build` to
+verify routing through a real Claude Code request pointed at the branch-built
+CCR server.
+
 ##### Subagent Routing
 
 For routing within subagents, you must specify a particular provider and model by including `<CCR-SUBAGENT-MODEL>provider,model</CCR-SUBAGENT-MODEL>` at the **beginning** of the subagent's prompt. This allows you to direct specific subagent tasks to designated models.

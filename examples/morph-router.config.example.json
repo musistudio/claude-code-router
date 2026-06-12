@@ -1,0 +1,64 @@
+{
+  "CUSTOM_ROUTER_PATH": "/Users/you/.claude-code-router/morph-router.cjs",
+  "MORPH_ROUTER": {
+    "enabled": true,
+    "api_key": "$MORPH_API_KEY",
+    "policy": "balanced",
+    "allowed_models": [
+      "gpt-5.5",
+      "claude-haiku-4-5-20251001",
+      "claude-sonnet-4-6",
+      "claude-opus-4-8"
+    ],
+    "allowed_providers": [],
+    "default_model": "claude-sonnet-4-6",
+    "fallback": "openai,gpt-4.1",
+    "timeout_ms": 750,
+    "provider_map": {
+      "openai": "openai",
+      "anthropic": "anthropic",
+      "gemini": "gemini",
+      "deepseek": "deepseek"
+    },
+    "model_map": {
+      "gpt-5.5": "gpt-5.5",
+      "claude-haiku-4-5-20251001": "claude-haiku-4-5-20251001",
+      "claude-sonnet-4-6": "claude-sonnet-4-6",
+      "claude-opus-4-8": "claude-opus-4-8"
+    }
+  },
+  "Providers": [
+    {
+      "name": "openai",
+      "api_base_url": "https://api.openai.com/v1/chat/completions",
+      "api_key": "$OPENAI_API_KEY",
+      "models": [
+        "gpt-5.5",
+        "gpt-4.1"
+      ]
+    },
+    {
+      "name": "anthropic",
+      "api_base_url": "https://api.anthropic.com/v1/messages",
+      "api_key": "$ANTHROPIC_API_KEY",
+      "models": [
+        "claude-haiku-4-5-20251001",
+        "claude-sonnet-4-6",
+        "claude-opus-4-8"
+      ],
+      "transformer": {
+        "use": [
+          "Anthropic"
+        ]
+      }
+    }
+  ],
+  "Router": {
+    "default": "openai,gpt-4.1",
+    "background": "openai,gpt-4.1",
+    "think": "openai,gpt-4.1",
+    "longContext": "openai,gpt-4.1",
+    "webSearch": "openai,gpt-4.1",
+    "longContextThreshold": 60000
+  }
+}

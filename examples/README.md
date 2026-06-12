@@ -4,6 +4,20 @@
 
 ## 示例文件
 
+### 0. `morph-router.cjs` - Morph Model Router custom router
+
+Optional BYO-key custom router that calls Morph's `/v1/router/multimodel`
+endpoint, maps the returned `{ provider, model }` decision to a CCR route, and
+falls back to CCR's normal router when disabled or unavailable.
+
+Pair it with `morph-router.config.example.json` and set `MORPH_API_KEY` in the
+shell that starts CCR. Run `node examples/morph-router-smoke-test.cjs` from the
+repository root for a local end-to-end smoke test that uses mock Morph and
+provider services. After `pnpm build`, run
+`node examples/morph-router-claude-code-smoke-test.cjs` to verify the same
+router through a real Claude Code `--print` request pointed at the branch-built
+CCR server.
+
 ### 1. `simple-preset-example.json` - 简单示例
 适合初学者，展示了基本的动态配置功能：
 - 密码输入（API Key）

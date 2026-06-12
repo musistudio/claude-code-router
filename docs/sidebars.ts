@@ -106,6 +106,7 @@ const sidebars: SidebarsConfig = {
           },
           items: [
             'server/advanced/custom-router',
+            'server/advanced/morph-model-router',
           ],
         },
       ],
