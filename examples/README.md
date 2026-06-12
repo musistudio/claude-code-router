@@ -4,6 +4,15 @@
 
 ## 示例文件
 
+### 0. `morph-router.cjs` - Morph Model Router custom router
+
+Optional BYO-key custom router that calls Morph's `/v1/router/multimodel`
+endpoint, maps the returned `{ provider, model }` decision to a CCR route, and
+falls back to CCR's normal router when disabled or unavailable.
+
+Pair it with `morph-router.config.example.json` and set `MORPH_API_KEY` in the
+shell that starts CCR.
+
 ### 1. `simple-preset-example.json` - 简单示例
 适合初学者，展示了基本的动态配置功能：
 - 密码输入（API Key）

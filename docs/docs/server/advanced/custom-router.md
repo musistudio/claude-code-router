@@ -120,7 +120,12 @@ tail -f ~/.claude-code-router/claude-code-router.log
 
 Look for routing decisions to see which model is being selected.
 
+## Morph Model Router Example
+
+For an example that delegates prompt classification to Morph and returns a CCR
+route dynamically, see [Morph Model Router](/docs/server/advanced/morph-model-router).
+
 ## Next Steps
 
-- [Agents](/docs/advanced/agents) - Extend functionality with agents
-- [Presets](/docs/advanced/presets) - Use predefined configurations
+- [Routing](/docs/server/config/routing) - Configure built-in routing rules
+- [Presets](/docs/presets/intro) - Use predefined configurations
