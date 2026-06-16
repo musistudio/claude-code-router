@@ -30,6 +30,7 @@ const KNOWN_COMMANDS = [
   "status",
   "statusline",
   "code",
+  "agents",
   "model",
   "preset",
   "install",
@@ -277,6 +278,7 @@ async function main() {
       await activateCommand();
       break;
     case "code":
+    case "agents":
       if (!isRunning) {
         console.log("Service not running, starting service...");
         const cliPath = join(__dirname, "cli.js");
@@ -293,7 +295,7 @@ async function main() {
         startProcess.unref();
 
         if (await waitForService()) {
-          const codeArgs = process.argv.slice(3);
+          const codeArgs = command === "agents" ? [command, ...process.argv.slice(3)] : process.argv.slice(3);
           executeCodeCommand(codeArgs);
         } else {
           console.error(
@@ -302,7 +304,7 @@ async function main() {
           process.exit(1);
         }
       } else {
-        const codeArgs = process.argv.slice(3);
+        const codeArgs = command === "agents" ? [command, ...process.argv.slice(3)] : process.argv.slice(3);
         executeCodeCommand(codeArgs);
       }
       break;
