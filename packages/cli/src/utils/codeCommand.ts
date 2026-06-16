@@ -100,7 +100,7 @@ export async function executeCodeCommand(
     : "inherit"; // Default inherited behavior
 
   const argsObj = minimist(args)
-  const argsArr = []
+  const argsArr = [...argsObj['_']]
   for (const [argsObjKey, argsObjValue] of Object.entries(argsObj)) {
     if (argsObjKey !== '_' && argsObj[argsObjKey]) {
       const prefix = argsObjKey.length === 1 ? '-' : '--';
