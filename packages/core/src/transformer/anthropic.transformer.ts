@@ -174,6 +174,44 @@ export class AnthropicTransformer implements Transformer {
           }
           return;
         }
+      } else if (msg.role === "system") {
+        // Inline role:system messages are silently dropped by this forEach because only
+        // "user" and "assistant" roles are handled. These inline system messages carry
+        // additional context injected by UserPromptSubmit hooks in Claude Code (e.g. tool
+        // hints, session context) and are distinct from the top-level request.system field
+        // (already handled above). Non-Anthropic providers do not recognize inline system
+        // messages, so we re-merge their text into the last user message to ensure the
+        // context reaches the model. If no user message exists yet, we create a synthetic one.
+        const sysText =
+          typeof msg.content === "string"
+            ? msg.content
+            : Array.isArray(msg.content)
+            ? msg.content
+                .filter((c: any) => c.type === "text" && c.text)
+                .map((c: any) => c.text)
+                .join("\n")
+            : "";
+        if (sysText && sysText.trim()) {
+          let lastUser: any = null;
+          for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i].role === "user") {
+              lastUser = messages[i];
+              break;
+            }
+          }
+          const wrapped = `\n\n<injected-system-context>\n${sysText}\n</injected-system-context>`;
+          if (lastUser) {
+            if (typeof lastUser.content === "string") {
+              lastUser.content += wrapped;
+            } else if (Array.isArray(lastUser.content)) {
+              lastUser.content.push({ type: "text", text: wrapped });
+            } else {
+              lastUser.content = wrapped;
+            }
+          } else {
+            messages.push({ role: "user", content: wrapped });
+          }
+        }
       }
     });
 
@@ -570,6 +608,11 @@ export class AnthropicTransformer implements Transformer {
                       )
                     );
                     currentContentBlockIndex = -1;
+                    // I summary di reasoning di gpt-5.5 arrivano in piu' part: dopo la
+                    // signature il blocco e' chiuso, quindi va riaperto un nuovo
+                    // content_block_start per i thinking_delta del part successivo
+                    // (altrimenti puntano a index -1 -> "Content block not found").
+                    isThinkingStarted = false;
                   } else if (choice.delta.thinking.content) {
                     const thinkingChunk = {
                       type: "content_block_delta",
