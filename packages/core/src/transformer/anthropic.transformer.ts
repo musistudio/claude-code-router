@@ -175,12 +175,13 @@ export class AnthropicTransformer implements Transformer {
           return;
         }
       } else if (msg.role === "system") {
-        // PATCH Trinity: rifondi i role:system INLINE nell'ultimo messaggio user
-        // invece di scartarli. Il forEach originale gestiva solo user/assistant, quindi
-        // i system inline (additionalContext degli hook UserPromptSubmit: skill, Hindsight)
-        // venivano persi nella conversione. I modelli non-Anthropic non vedono i system
-        // inline; spostarli nel canale user li rende efficaci. Il system prompt top-level
-        // (request.system) e' gestito sopra e non passa di qui.
+        // Inline role:system messages are silently dropped by this forEach because only
+        // "user" and "assistant" roles are handled. These inline system messages carry
+        // additional context injected by UserPromptSubmit hooks in Claude Code (e.g. tool
+        // hints, session context) and are distinct from the top-level request.system field
+        // (already handled above). Non-Anthropic providers do not recognize inline system
+        // messages, so we re-merge their text into the last user message to ensure the
+        // context reaches the model. If no user message exists yet, we create a synthetic one.
         const sysText =
           typeof msg.content === "string"
             ? msg.content
