@@ -1,675 +1,279 @@
-# Claude Code Router
+# Claude Code Router Desktop
 
-![](blog/images/claude-code-router-img.png)
+Electron desktop wrapper for Claude Code Router. The core gateway runtime is provided by the local `next-ai/gateway` project and installed as:
 
-[![](https://img.shields.io/badge/%F0%9F%87%A8%F0%9F%87%B3-%E4%B8%AD%E6%96%87%E7%89%88-ff0000?style=flat)](README_zh.md)
-[![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white)](https://discord.gg/rdftVMaUcS)
-[![](https://img.shields.io/github/license/musistudio/claude-code-router)](https://github.com/musistudio/claude-code-router/blob/main/LICENSE)
-
-## 📦 Monorepo Structure
-
-This project has been restructured as a pnpm monorepo with two main packages:
-
-### @musistudio/claude-code-router-core
-Core library package providing the fundamental functionality of Claude Code Router.
-
-- **Location**: `packages/core`
-- **Purpose**: Provides core APIs and server functionality for third-party integration
-- **Exports**: Server creation, configuration management, routing logic, and other core features
-
-### @musistudio/claude-code-router
-CLI package built on top of the core package, providing the command-line interface.
-
-- **Location**: `packages/cli`
-- **Purpose**: Provides the `ccr` command-line tool
-- **Dependencies**: Depends on `@musistudio/claude-code-router-core`
-
-## 🚀 Development
-
-### Install Dependencies
-```bash
-pnpm install
+```json
+"gateway": "file:../../next-ai/gateway"
 ```
 
-### Build All Packages
-```bash
-pnpm build
+At runtime this app starts two local services:
+
+- CCR wrapper: `http://127.0.0.1:3456`
+- next-ai core gateway: `http://127.0.0.1:3457`
+
+The wrapper also owns an internal backend service for local HTTP backend lifecycles and scoped SQLite stores.
+
+The wrapper reads `~/.claude-code-router/config.json`, preserves the old CCR `Providers` / `Router` format, generates `~/.claude-code-router/gateway.config.json`, and routes Claude Code `POST /v1/messages` requests into the core gateway.
+
+## Provider Deeplink
+
+Supplier websites can open CCR and import a model provider with a custom protocol link:
+
+```text
+ccr://provider?name=Example%20AI&base_url=https%3A%2F%2Fapi.example.com%2Fv1&api_key=sk-example&models=example-chat%2Cexample-coder&protocol=openai_chat_completions&set_default=1
 ```
 
-### Build Specific Package
-```bash
-# Build core package
-pnpm --filter @musistudio/claude-code-router-core build
+Supported query parameters:
 
-# Build cli package
-pnpm --filter @musistudio/claude-code-router build
-```
+- `name`: display name for the provider.
+- `base_url`: provider API base URL. Aliases: `baseUrl`, `api_base_url`, `url`, `endpoint`.
+- `api_key`: optional provider API key. Aliases: `apiKey`, `apikey`, `key`, `token`.
+- `models`: comma-separated or newline-separated model list. You can also repeat `model=...`.
+- `protocol`: one of `openai_chat_completions`, `openai_responses`, `anthropic_messages`, or `gemini_generate_content`. Aliases such as `openai`, `responses`, `anthropic`, and `gemini` are accepted.
+- `set_default=1`: make the imported provider the preferred provider.
+- `replace=1`: replace an existing provider with the same name or normalized base URL.
 
-### Publish
-```bash
-pnpm release
-```
-
-## 📖 Usage
-
-### 1. CLI Usage (Unchanged)
-```bash
-# Install CLI package
-npm install -g @musistudio/claude-code-router
-
-# Use commands
-ccr start
-ccr code "Write a Hello World"
-```
-
-### 2. Library Usage (New Feature)
-```bash
-# Install core package
-npm install @musistudio/claude-code-router-core
-```
-
-```javascript
-import { getServer, run } from '@musistudio/claude-code-router-core';
-
-// Create server instance
-const server = await getServer({ port: 3456 });
-
-// Start server
-server.start();
-
-// Or run directly
-await run({ port: 3456 });
-```
-
-## 🔄 Migration Notes
-
-This refactoring maintains backward compatibility:
-- CLI usage remains completely unchanged
-- Added library usage capability
-- Core logic separated into independent package for third-party integration
-
-<hr>
-
-> I am currently seeking **Agent development related job opportunities**, either **based in Hangzhou** or **remote**. If you are interested in my projects or have suitable opportunities, feel free to reach out! 📧 Email: m@musiiot.top
-
-> A powerful tool to route Claude Code requests to different models and customize any request.
-
-> Now you can use models such as `GLM-4.5`, `Kimi-K2`, `Qwen3-Coder-480B-A35B`, and `DeepSeek v3.1` for free through the [iFlow Platform](https://platform.iflow.cn/docs/api-mode).     
-> You can use the `ccr ui` command to directly import the `iflow` template in the UI. It’s worth noting that iFlow limits each user to a concurrency of 1, which means you’ll need to route background requests to other models.      
-> If you’d like a better experience, you can try [iFlow CLI](https://cli.iflow.cn).
-
-![](blog/images/claude-code.png)
-
-![](blog/images/roadmap.svg)
-
-## ✨ Features
-
-- **Model Routing**: Route requests to different models based on your needs (e.g., background tasks, thinking, long context).
-- **Multi-Provider Support**: Supports various model providers like OpenRouter, DeepSeek, Ollama, Gemini, Volcengine, and SiliconFlow.
-- **Request/Response Transformation**: Customize requests and responses for different providers using transformers.
-- **Dynamic Model Switching**: Switch models on-the-fly within Claude Code using the `/model` command.
-- **GitHub Actions Integration**: Trigger Claude Code tasks in your GitHub workflows.
-- **Plugin System**: Extend functionality with custom transformers.
-
-## 🚀 Getting Started
-
-### 1. Installation
-
-First, ensure you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code/quickstart) installed:
-
-```shell
-npm install -g @anthropic-ai/claude-code
-```
-
-Then, install Claude Code Router:
-
-```shell
-npm install -g @musistudio/claude-code-router
-```
-
-### 2. Configuration
-
-Create and configure your `~/.claude-code-router/config.json` file. For more details, you can refer to `config.example.json`.
-
-The `config.json` file has several key sections:
-
-- **`PROXY_URL`** (optional): You can set a proxy for API requests, for example: `"PROXY_URL": "http://127.0.0.1:7890"`.
-- **`LOG`** (optional): You can enable logging by setting it to `true`. When set to `false`, no log files will be created. Default is `true`.
-- **`LOG_LEVEL`** (optional): Set the logging level. Available options are: `"fatal"`, `"error"`, `"warn"`, `"info"`, `"debug"`, `"trace"`. Default is `"debug"`.
-- **Logging Systems**: The Claude Code Router uses two separate logging systems:
-  - **Server-level logs**: HTTP requests, API calls, and server events are logged using pino in the `~/.claude-code-router/logs/` directory with filenames like `ccr-*.log`
-  - **Application-level logs**: Routing decisions and business logic events are logged in `~/.claude-code-router/claude-code-router.log`
-- **`APIKEY`** (optional): You can set a secret key to authenticate requests. When set, clients must provide this key in the `Authorization` header (e.g., `Bearer your-secret-key`) or the `x-api-key` header. Example: `"APIKEY": "your-secret-key"`.
-- **`HOST`** (optional): You can set the host address for the server. If `APIKEY` is not set, the host will be forced to `127.0.0.1` for security reasons to prevent unauthorized access. Example: `"HOST": "0.0.0.0"`.
-- **`NON_INTERACTIVE_MODE`** (optional): When set to `true`, enables compatibility with non-interactive environments like GitHub Actions, Docker containers, or other CI/CD systems. This sets appropriate environment variables (`CI=true`, `FORCE_COLOR=0`, etc.) and configures stdin handling to prevent the process from hanging in automated environments. Example: `"NON_INTERACTIVE_MODE": true`.
-
-- **`Providers`**: Used to configure different model providers.
-- **`Router`**: Used to set up routing rules. `default` specifies the default model, which will be used for all requests if no other route is configured.
-- **`API_TIMEOUT_MS`**: Specifies the timeout for API calls in milliseconds.
-
-#### Environment Variable Interpolation
-
-Claude Code Router supports environment variable interpolation for secure API key management. You can reference environment variables in your `config.json` using either `$VAR_NAME` or `${VAR_NAME}` syntax:
+For larger payloads, pass `payload` as URL-encoded JSON or base64url JSON with the same fields:
 
 ```json
 {
-  "OPENAI_API_KEY": "$OPENAI_API_KEY",
-  "GEMINI_API_KEY": "${GEMINI_API_KEY}",
-  "Providers": [
+  "name": "Example AI",
+  "baseUrl": "https://api.example.com/v1",
+  "apiKey": "sk-example",
+  "models": ["example-chat", "example-coder"],
+  "protocol": "openai_chat_completions",
+  "setDefault": true
+}
+```
+
+CCR always opens a confirmation dialog before writing a provider imported from an external link.
+
+## Plugin Architecture
+
+CCR now has two plugin layers:
+
+- Core gateway plugins: keep using `providerPlugins` and `virtualModelProfiles`. They are passed through to `next-ai/gateway`.
+- Wrapper plugins: use top-level `plugins` to extend the Electron wrapper, register local HTTP backends, add gateway routes, and route proxy-mode traffic to plugin backends.
+
+SQLite-backed local backend resources are managed by the wrapper's base backend service. They are not installed as a separate marketplace plugin.
+
+Declarative proxy route to an existing backend:
+
+```json
+{
+  "plugins": [
     {
-      "name": "openai",
-      "api_base_url": "https://api.openai.com/v1/chat/completions",
-      "api_key": "$OPENAI_API_KEY",
-      "models": ["gpt-5", "gpt-5-mini"]
+      "id": "local-admin-api",
+      "enabled": true,
+      "proxy": {
+        "routes": [
+          {
+            "id": "admin-api",
+            "host": "api.example.com",
+            "paths": ["/v1/admin"],
+            "upstream": "http://127.0.0.1:4510",
+            "stripPathPrefix": false
+          }
+        ]
+      }
     }
   ]
 }
 ```
 
-This allows you to keep sensitive API keys in environment variables instead of hardcoding them in configuration files. The interpolation works recursively through nested objects and arrays.
+Executable plugin module paths are resolved from `~/.claude-code-router`; absolute paths and package names are also supported.
 
-Here is a comprehensive example:
+Claude Design plugin routing:
+
+The marketplace Claude Design plugin adapts Claude Design chat RPCs into CCR `/v1/messages` calls. Configure upstream APIs through CCR `Providers` as usual, then set Claude Design model routing from the Extensions page with the plugin's configure button. Routes created by the plugin are also shown on the Routing page as plugin-owned rows; they are read-only there and must be edited from the extension configuration dialog.
 
 ```json
 {
-  "APIKEY": "your-secret-key",
-  "PROXY_URL": "http://127.0.0.1:7890",
-  "LOG": true,
-  "API_TIMEOUT_MS": 600000,
-  "NON_INTERACTIVE_MODE": false,
+  "Providers": [
+    {
+      "name": "anthropic-main",
+      "type": "anthropic_messages",
+      "baseUrl": "https://api.anthropic.com",
+      "apiKey": "sk-ant-...",
+      "models": ["claude-sonnet-4-20250514"]
+    }
+  ],
+  "plugins": [
+    {
+      "id": "claude-design",
+      "enabled": true,
+      "module": "./plugins/claude-design-plugin.cjs",
+      "config": {
+        "routing": {
+          "enabled": true,
+          "default": "anthropic-main,claude-sonnet-4-20250514",
+          "rules": [
+            {
+              "id": "design-opus",
+              "name": "Claude Design Opus",
+              "type": "model",
+              "model": "claude-opus-4-8",
+              "target": "anthropic-main,claude-sonnet-4-20250514",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+Cursor proxy plugin:
+
+The marketplace Cursor Proxy plugin registers proxy-mode routes for all paths on `api*.cursor.sh`, forwards OpenAI/Anthropic/Gemini-compatible JSON LLM requests to the local CCR gateway, and uses the configured CCR API key automatically. For Cursor Agent traffic, it bridges the private protobuf `BidiAppend` + `AgentService/RunSSE` flow into CCR's `/v1/chat/completions` gateway and streams the gateway response back as Cursor `AgentServerMessage` events. It also attempts to decode Cursor native Connect JSON/protobuf LLM RPCs under `aiserver.v1.*` and `agent.v1.*`, preserving decoded system prompts, tools, tool choices, tool calls, and tool results when those fields are present in the native payload.
+
+Cursor often sends Agent requests with `model: "default"` or another Cursor-local model name. Configure Cursor Proxy model routing from the Extensions page with the plugin's configure button, or set `config.routing` manually. Route targets use the same provider/model selector format as Claude Design plugin routing. The plugin rewrites Cursor's source model to the selected CCR target model before forwarding it to the gateway, so the core gateway does not need a model literally named `default`.
+
+```json
+{
   "Providers": [
     {
       "name": "openrouter",
-      "api_base_url": "https://openrouter.ai/api/v1/chat/completions",
-      "api_key": "sk-xxx",
-      "models": [
-        "google/gemini-2.5-pro-preview",
-        "anthropic/claude-sonnet-4",
-        "anthropic/claude-3.5-sonnet",
-        "anthropic/claude-3.7-sonnet:thinking"
-      ],
-      "transformer": {
-        "use": ["openrouter"]
-      }
-    },
-    {
-      "name": "deepseek",
-      "api_base_url": "https://api.deepseek.com/chat/completions",
-      "api_key": "sk-xxx",
-      "models": ["deepseek-chat", "deepseek-reasoner"],
-      "transformer": {
-        "use": ["deepseek"],
-        "deepseek-chat": {
-          "use": ["tooluse"]
-        }
-      }
-    },
-    {
-      "name": "ollama",
-      "api_base_url": "http://localhost:11434/v1/chat/completions",
-      "api_key": "ollama",
-      "models": ["qwen2.5-coder:latest"]
-    },
-    {
-      "name": "gemini",
-      "api_base_url": "https://generativelanguage.googleapis.com/v1beta/models/",
-      "api_key": "sk-xxx",
-      "models": ["gemini-2.5-flash", "gemini-2.5-pro"],
-      "transformer": {
-        "use": ["gemini"]
-      }
-    },
-    {
-      "name": "volcengine",
-      "api_base_url": "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
-      "api_key": "sk-xxx",
-      "models": ["deepseek-v3-250324", "deepseek-r1-250528"],
-      "transformer": {
-        "use": ["deepseek"]
-      }
-    },
-    {
-      "name": "modelscope",
-      "api_base_url": "https://api-inference.modelscope.cn/v1/chat/completions",
-      "api_key": "",
-      "models": ["Qwen/Qwen3-Coder-480B-A35B-Instruct", "Qwen/Qwen3-235B-A22B-Thinking-2507"],
-      "transformer": {
-        "use": [
-          [
-            "maxtoken",
-            {
-              "max_tokens": 65536
-            }
-          ],
-          "enhancetool"
-        ],
-        "Qwen/Qwen3-235B-A22B-Thinking-2507": {
-          "use": ["reasoning"]
-        }
-      }
-    },
-    {
-      "name": "dashscope",
-      "api_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-      "api_key": "",
-      "models": ["qwen3-coder-plus"],
-      "transformer": {
-        "use": [
-          [
-            "maxtoken",
-            {
-              "max_tokens": 65536
-            }
-          ],
-          "enhancetool"
-        ]
-      }
-    },
-    {
-      "name": "aihubmix",
-      "api_base_url": "https://aihubmix.com/v1/chat/completions",
-      "api_key": "sk-",
-      "models": [
-        "Z/glm-4.5",
-        "claude-opus-4-20250514",
-        "gemini-2.5-pro"
-      ]
+      "type": "openai_chat_completions",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "apiKey": "sk-or-...",
+      "models": ["anthropic/claude-sonnet-4.5", "google/gemini-3-pro-preview"]
     }
   ],
-  "Router": {
-    "default": "deepseek,deepseek-chat",
-    "background": "ollama,qwen2.5-coder:latest",
-    "think": "deepseek,deepseek-reasoner",
-    "longContext": "openrouter,google/gemini-2.5-pro-preview",
-    "longContextThreshold": 60000,
-    "webSearch": "gemini,gemini-2.5-flash"
-  }
-}
-```
-
-### 3. Running Claude Code with the Router
-
-Start Claude Code using the router:
-
-```shell
-ccr code
-```
-
-> **Note**: After modifying the configuration file, you need to restart the service for the changes to take effect:
->
-> ```shell
-> ccr restart
-> ```
-
-### 4. UI Mode
-
-For a more intuitive experience, you can use the UI mode to manage your configuration:
-
-```shell
-ccr ui
-```
-
-This will open a web-based interface where you can easily view and edit your `config.json` file.
-
-![UI](/blog/images/ui.png)
-
-#### Providers
-
-The `Providers` array is where you define the different model providers you want to use. Each provider object requires:
-
-- `name`: A unique name for the provider.
-- `api_base_url`: The full API endpoint for chat completions.
-- `api_key`: Your API key for the provider.
-- `models`: A list of model names available from this provider.
-- `transformer` (optional): Specifies transformers to process requests and responses.
-
-#### Transformers
-
-Transformers allow you to modify the request and response payloads to ensure compatibility with different provider APIs.
-
-- **Global Transformer**: Apply a transformer to all models from a provider. In this example, the `openrouter` transformer is applied to all models under the `openrouter` provider.
-  ```json
-  {
-    "name": "openrouter",
-    "api_base_url": "https://openrouter.ai/api/v1/chat/completions",
-    "api_key": "sk-xxx",
-    "models": [
-      "google/gemini-2.5-pro-preview",
-      "anthropic/claude-sonnet-4",
-      "anthropic/claude-3.5-sonnet"
-    ],
-    "transformer": { "use": ["openrouter"] }
-  }
-  ```
-- **Model-Specific Transformer**: Apply a transformer to a specific model. In this example, the `deepseek` transformer is applied to all models, and an additional `tooluse` transformer is applied only to the `deepseek-chat` model.
-
-  ```json
-  {
-    "name": "deepseek",
-    "api_base_url": "https://api.deepseek.com/chat/completions",
-    "api_key": "sk-xxx",
-    "models": ["deepseek-chat", "deepseek-reasoner"],
-    "transformer": {
-      "use": ["deepseek"],
-      "deepseek-chat": { "use": ["tooluse"] }
-    }
-  }
-  ```
-
-- **Passing Options to a Transformer**: Some transformers, like `maxtoken`, accept options. To pass options, use a nested array where the first element is the transformer name and the second is an options object.
-  ```json
-  {
-    "name": "siliconflow",
-    "api_base_url": "https://api.siliconflow.cn/v1/chat/completions",
-    "api_key": "sk-xxx",
-    "models": ["moonshotai/Kimi-K2-Instruct"],
-    "transformer": {
-      "use": [
-        [
-          "maxtoken",
-          {
-            "max_tokens": 16384
-          }
-        ]
-      ]
-    }
-  }
-  ```
-
-**Available Built-in Transformers:**
-
-- `Anthropic`:If you use only the `Anthropic` transformer, it will preserve the original request and response parameters(you can use it to connect directly to an Anthropic endpoint).
-- `deepseek`: Adapts requests/responses for DeepSeek API.
-- `gemini`: Adapts requests/responses for Gemini API.
-- `openrouter`: Adapts requests/responses for OpenRouter API. It can also accept a `provider` routing parameter to specify which underlying providers OpenRouter should use. For more details, refer to the [OpenRouter documentation](https://openrouter.ai/docs/features/provider-routing). See an example below:
-  ```json
-    "transformer": {
-      "use": ["openrouter"],
-      "moonshotai/kimi-k2": {
-        "use": [
-          [
-            "openrouter",
+  "proxy": {
+    "enabled": true,
+    "mode": "gateway"
+  },
+  "plugins": [
+    {
+      "id": "cursor-proxy",
+      "enabled": true,
+      "module": "./plugins/cursor-proxy-plugin.cjs",
+      "config": {
+        "routing": {
+          "enabled": true,
+          "default": "openrouter,anthropic/claude-sonnet-4.5",
+          "rules": [
             {
-              "provider": {
-                "only": ["moonshotai/fp8"]
-              }
+              "id": "cursor-default",
+              "name": "Cursor default",
+              "type": "model",
+              "model": "default",
+              "target": "openrouter,anthropic/claude-sonnet-4.5",
+              "enabled": true
             }
           ]
-        ]
-      }
-    }
-  ```
-- `groq`: Adapts requests/responses for groq API.
-- `maxtoken`: Sets a specific `max_tokens` value.
-- `tooluse`: Optimizes tool usage for certain models via `tool_choice`.
-- `gemini-cli` (experimental): Unofficial support for Gemini via Gemini CLI [gemini-cli.js](https://gist.github.com/musistudio/1c13a65f35916a7ab690649d3df8d1cd).
-- `reasoning`: Used to process the `reasoning_content` field.
-- `sampling`: Used to process sampling information fields such as `temperature`, `top_p`, `top_k`, and `repetition_penalty`.
-- `enhancetool`: Adds a layer of error tolerance to the tool call parameters returned by the LLM (this will cause the tool call information to no longer be streamed).
-- `cleancache`: Clears the `cache_control` field from requests.
-- `vertex-gemini`: Handles the Gemini API using Vertex authentication.
-- `chutes-glm` Unofficial support for GLM 4.5 model via Chutes [chutes-glm-transformer.js](https://gist.github.com/vitobotta/2be3f33722e05e8d4f9d2b0138b8c863).
-- `qwen-cli` (experimental): Unofficial support for qwen3-coder-plus model via Qwen CLI [qwen-cli.js](https://gist.github.com/musistudio/f5a67841ced39912fd99e42200d5ca8b).
-- `rovo-cli` (experimental): Unofficial support for gpt-5 via Atlassian Rovo Dev CLI [rovo-cli.js](https://gist.github.com/SaseQ/c2a20a38b11276537ec5332d1f7a5e53).
-
-**Custom Transformers:**
-
-You can also create your own transformers and load them via the `transformers` field in `config.json`.
-
-```json
-{
-  "transformers": [
-    {
-      "path": "/User/xxx/.claude-code-router/plugins/gemini-cli.js",
-      "options": {
-        "project": "xxx"
+        }
       }
     }
   ]
 }
 ```
 
-#### Router
+Other unsupported native Cursor RPC traffic is passed through to Cursor by default; set `"fallbackToCursor": false` to fail unsupported requests instead. Set `paths` only if you intentionally want to restrict which Cursor paths the plugin captures.
 
-The `Router` object defines which model to use for different scenarios:
+`cursorBidiProto`, `cursorConnectJson`, and `cursorNativeProto` are enabled by default. Set them to `false` only when you want Cursor's private Agent protobuf, Connect JSON, or generic native LLM RPC traffic to pass through untouched. `bidiWaitMs`, `bidiSessionTtlMs`, and `gatewayTimeoutMs` can be tuned for slow clients or slow upstream providers.
+Generic native RPC decoding is intentionally limited to Cursor methods that look like generation or streaming LLM calls. Metadata and status calls such as model pickers, repository sync, analytics, dashboards, and file sync are passed through to Cursor. If a new Cursor LLM method is not detected yet, add its method name or full RPC path to `cursorNativeLlmMethods`.
 
-- `default`: The default model for general tasks.
-- `background`: A model for background tasks. This can be a smaller, local model to save costs.
-- `think`: A model for reasoning-heavy tasks, like Plan Mode.
-- `longContext`: A model for handling long contexts (e.g., > 60K tokens).
-- `longContextThreshold` (optional): The token count threshold for triggering the long context model. Defaults to 60000 if not specified.
-- `webSearch`: Used for handling web search tasks and this requires the model itself to support the feature. If you're using openrouter, you need to add the `:online` suffix after the model name.
-- `image` (beta): Used for handling image-related tasks (supported by CCR’s built-in agent). If the model does not support tool calling, you need to set the `config.forceUseImageAgent` property to `true`.
-
-- You can also switch models dynamically in Claude Code with the `/model` command:
-`/model provider_name,model_name`
-Example: `/model openrouter,anthropic/claude-3.5-sonnet`
-
-#### Custom Router
-
-For more advanced routing logic, you can specify a custom router script via the `CUSTOM_ROUTER_PATH` in your `config.json`. This allows you to implement complex routing rules beyond the default scenarios.
-
-In your `config.json`:
+If Cursor sends an OpenAI-compatible `*/chat/completions` request that already includes `system` messages or `tools`, Cursor Proxy and the CCR gateway preserve them. Some Cursor custom-provider flows send only user messages; the proxy cannot recover system/tool context that is not present in the incoming request. For those flows, configure fallback context explicitly:
 
 ```json
 {
-  "CUSTOM_ROUTER_PATH": "/User/xxx/.claude-code-router/custom-router.js"
+  "plugins": [
+    {
+      "id": "cursor-proxy",
+      "config": {
+        "systemPrompt": "You are Cursor in agent mode.",
+        "tools": [
+          {
+            "name": "read_file",
+            "description": "Read a file from the workspace.",
+            "input_schema": {
+              "type": "object",
+              "properties": {
+                "path": { "type": "string" }
+              },
+              "required": ["path"]
+            }
+          }
+        ],
+        "toolChoice": "auto"
+      }
+    }
+  ]
 }
 ```
 
-The custom router file must be a JavaScript module that exports an `async` function. This function receives the request object and the config object as arguments and should return the provider and model name as a string (e.g., `"provider_name,model_name"`), or `null` to fall back to the default router.
+The plugin does not define a separate provider format. Configure upstream APIs through CCR's existing `Providers`, `Router`, `providerPlugins`, and `virtualModelProfiles`; Cursor Proxy only adapts Cursor-compatible request paths and forwards them to the local CCR gateway. Legacy `targetProvider`, `targetProviders`, and `targetModel` are still accepted and converted into a routing target when `routing.default` is not set, but `config.routing` is preferred:
 
-Here is an example of a `custom-router.js` based on `custom-router.example.js`:
-
-```javascript
-// /User/xxx/.claude-code-router/custom-router.js
-
-/**
- * A custom router function to determine which model to use based on the request.
- *
- * @param {object} req - The request object from Claude Code, containing the request body.
- * @param {object} config - The application's config object.
- * @returns {Promise<string|null>} - A promise that resolves to the "provider,model_name" string, or null to use the default router.
- */
-module.exports = async function router(req, config) {
-  const userMessage = req.body.messages.find((m) => m.role === "user")?.content;
-
-  if (userMessage && userMessage.includes("explain this code")) {
-    // Use a powerful model for code explanation
-    return "openrouter,anthropic/claude-3.5-sonnet";
-  }
-
-  // Fallback to the default router configuration
-  return null;
-};
+```json
+{
+  "Providers": [
+    {
+      "name": "anthropic-main",
+      "type": "anthropic_messages",
+      "baseUrl": "https://api.anthropic.com",
+      "apiKey": "sk-ant-...",
+      "models": ["claude-sonnet-4-20250514"]
+    }
+  ],
+  "Router": {
+    "default": "anthropic-main,claude-sonnet-4-20250514"
+  },
+  "plugins": [
+    {
+      "id": "cursor-proxy",
+      "module": "./plugins/cursor-proxy-plugin.cjs",
+      "config": {
+        "routing": {
+          "enabled": true,
+          "default": "anthropic-main,claude-sonnet-4-20250514"
+        }
+      }
+    }
+  ]
+}
 ```
 
-##### Subagent Routing
+Local plugin directories can declare dependencies in `plugin.json`, `ccr-plugin.json`, `.ccr-plugin/plugin.json`, `.codex-plugin/plugin.json`, or under `ccr.dependencies` / `ccrPlugin.dependencies` in `package.json`:
 
-For routing within subagents, you must specify a particular provider and model by including `<CCR-SUBAGENT-MODEL>provider,model</CCR-SUBAGENT-MODEL>` at the **beginning** of the subagent's prompt. This allows you to direct specific subagent tasks to designated models.
-
-**Example:**
-
-```
-<CCR-SUBAGENT-MODEL>openrouter,anthropic/claude-3.5-sonnet</CCR-SUBAGENT-MODEL>
-Please help me analyze this code snippet for potential optimizations...
-```
-
-## Status Line (Beta)
-To better monitor the status of claude-code-router at runtime, version v1.0.40 includes a built-in statusline tool, which you can enable in the UI.
-![statusline-config.png](/blog/images/statusline-config.png)
-
-The effect is as follows:
-![statusline](/blog/images/statusline.png)
-
-## 🤖 GitHub Actions
-
-Integrate Claude Code Router into your CI/CD pipeline. After setting up [Claude Code Actions](https://docs.anthropic.com/en/docs/claude-code/github-actions), modify your `.github/workflows/claude.yaml` to use the router:
-
-```yaml
-name: Claude Code
-
-on:
-  issue_comment:
-    types: [created]
-  # ... other triggers
-
-jobs:
-  claude:
-    if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      # ... other conditions
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
-      issues: read
-      id-token: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - name: Prepare Environment
-        run: |
-          curl -fsSL https://bun.sh/install | bash
-          mkdir -p $HOME/.claude-code-router
-          cat << 'EOF' > $HOME/.claude-code-router/config.json
-          {
-            "log": true,
-            "NON_INTERACTIVE_MODE": true,
-            "OPENAI_API_KEY": "${{ secrets.OPENAI_API_KEY }}",
-            "OPENAI_BASE_URL": "https://api.deepseek.com",
-            "OPENAI_MODEL": "deepseek-chat"
-          }
-          EOF
-        shell: bash
-
-      - name: Start Claude Code Router
-        run: |
-          nohup ~/.bun/bin/bunx @musistudio/claude-code-router@1.0.8 start &
-        shell: bash
-
-      - name: Run Claude Code
-        id: claude
-        uses: anthropics/claude-code-action@beta
-        env:
-          ANTHROPIC_BASE_URL: http://localhost:3456
-        with:
-          anthropic_api_key: "any-string-is-ok"
+```json
+{
+  "id": "my-plugin",
+  "module": "./index.cjs",
+  "dependencies": [
+    "claude-design",
+    { "id": "local-helper", "module": "../local-helper/index.cjs" }
+  ]
+}
 ```
 
-> **Note**: When running in GitHub Actions or other automation environments, make sure to set `"NON_INTERACTIVE_MODE": true` in your configuration to prevent the process from hanging due to stdin handling issues.
+Dependencies declared by ID are resolved from the marketplace; dependencies with `module`, `path`, or `modulePath` are installed from that local path.
 
-This setup allows for interesting automations, like running tasks during off-peak hours to reduce API costs.
+Plugin modules export a function or object with `setup(ctx)`. The context supports:
 
-## 📝 Further Reading
+- `ctx.registerGatewayRoute({ method, path, auth, handler })`
+- `ctx.registerHttpBackend({ id, host, port, handler })`
+- `ctx.registerProxyRoute({ host, paths, upstream, stripPathPrefix, rewritePathPrefix, headers })`
+- `ctx.openSqliteStore({ filename, migrate })`
+- `ctx.registerCoreGatewayProviderPlugin(plugin)`
+- `ctx.registerCoreGatewayVirtualModelProfile(profile)`
 
-- [Project Motivation and How It Works](blog/en/project-motivation-and-how-it-works.md)
-- [Maybe We Can Do More with the Router](blog/en/maybe-we-can-do-more-with-the-route.md)
+`ctx.registerHttpBackend` and `ctx.openSqliteStore` are backed by the wrapper's base backend service, so plugin modules do not need to ship or install a SQLite backend plugin.
 
-## ❤️ Support & Sponsoring
+## Scripts
 
-If you find this project helpful, please consider sponsoring its development. Your support is greatly appreciated!
+```bash
+npm install
+npm run dev
+npm run typecheck
+npm run build:assets
+npm run build:app
+```
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/F1F31GN2GM)
+`npm run build:assets` compiles the Electron main process and renderer assets into `dist/`.
 
-[Paypal](https://paypal.me/musistudio1999)
+`npm run build` packages the app for the current platform and writes installer artifacts to `release/`.
 
-<table>
-  <tr>
-    <td><img src="/blog/images/alipay.jpg" width="200" alt="Alipay" /></td>
-    <td><img src="/blog/images/wechat.jpg" width="200" alt="WeChat Pay" /></td>
-  </tr>
-</table>
-
-### Our Sponsors
-
-A huge thank you to all our sponsors for their generous support!
-
-
-- [AIHubmix](https://aihubmix.com/)
-- [BurnCloud](https://ai.burncloud.com)
-- @Simon Leischnig
-- [@duanshuaimin](https://github.com/duanshuaimin)
-- [@vrgitadmin](https://github.com/vrgitadmin)
-- @\*o
-- [@ceilwoo](https://github.com/ceilwoo)
-- @\*说
-- @\*更
-- @K\*g
-- @R\*R
-- [@bobleer](https://github.com/bobleer)
-- @\*苗
-- @\*划
-- [@Clarence-pan](https://github.com/Clarence-pan)
-- [@carter003](https://github.com/carter003)
-- @S\*r
-- @\*晖
-- @\*敏
-- @Z\*z
-- @\*然
-- [@cluic](https://github.com/cluic)
-- @\*苗
-- [@PromptExpert](https://github.com/PromptExpert)
-- @\*应
-- [@yusnake](https://github.com/yusnake)
-- @\*飞
-- @董\*
-- @\*汀
-- @\*涯
-- @\*:-）
-- @\*\*磊
-- @\*琢
-- @\*成
-- @Z\*o
-- @\*琨
-- [@congzhangzh](https://github.com/congzhangzh)
-- @\*\_
-- @Z\*m
-- @*鑫
-- @c\*y
-- @\*昕
-- [@witsice](https://github.com/witsice)
-- @b\*g
-- @\*亿
-- @\*辉
-- @JACK
-- @\*光
-- @W\*l
-- [@kesku](https://github.com/kesku)
-- [@biguncle](https://github.com/biguncle)
-- @二吉吉
-- @a\*g
-- @\*林
-- @\*咸
-- @\*明
-- @S\*y
-- @f\*o
-- @\*智
-- @F\*t
-- @r\*c
-- [@qierkang](http://github.com/qierkang)
-- @\*军
-- [@snrise-z](http://github.com/snrise-z)
-- @\*王
-- [@greatheart1000](http://github.com/greatheart1000)
-- @\*王
-- @zcutlip
-- [@Peng-YM](http://github.com/Peng-YM)
-- @\*更
-- @\*.
-- @F\*t
-- @\*政
-- @\*铭
-- @\*叶
-- @七\*o
-- @\*青
-- @\*\*晨
-- @\*远
-- @\*霄
-- @\*\*吉
-- @\*\*飞
-
-(If your name is masked, please contact me via my homepage email to update it with your GitHub username.)
+`npm run build:app` packages both macOS and Windows artifacts with `electron-builder --mac --win`. You can also run `npm run build:app:mac` or `npm run build:app:win` for a single platform. Cross-building Windows installers from macOS may require Wine; otherwise run the Windows build command on Windows.

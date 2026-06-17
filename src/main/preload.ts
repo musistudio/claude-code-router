@@ -1,0 +1,68 @@
+import { contextBridge, ipcRenderer } from "electron";
+import { IPC_CHANNELS } from "../shared/ipc-channels";
+import type {
+  AgentAnalysisFilter,
+  AgentAnalysisSnapshot,
+  AppConfig,
+  AppInfo,
+  ApiKeyConfig,
+  GatewayProviderProbeRequest,
+  GatewayProviderProbeResult,
+  GatewayStatus,
+  PluginDirectorySelection,
+  PluginMarketplaceEntry,
+  ProviderDeepLinkRequest,
+  ProfileApplyResult,
+  ProxyCertificateInstallResult,
+  ProxyCertificateStatus,
+  ProxyNetworkSnapshot,
+  ProxyStatus,
+  RequestLogListFilter,
+  RequestLogPage,
+  UsageStatsFilter,
+  UsageStatsRange,
+  UsageStatsSnapshot
+} from "../shared/app";
+
+contextBridge.exposeInMainWorld("ccr", {
+  applyProfile: () => ipcRenderer.invoke(IPC_CHANNELS.appApplyProfile) as Promise<ProfileApplyResult>,
+  clearProxyNetworkCaptures: () => ipcRenderer.invoke(IPC_CHANNELS.appClearProxyNetworkCaptures) as Promise<ProxyNetworkSnapshot>,
+  closeTray: () => ipcRenderer.invoke(IPC_CHANNELS.appCloseTray) as Promise<void>,
+  getAgentAnalysis: (filter?: AgentAnalysisFilter) => ipcRenderer.invoke(IPC_CHANNELS.appGetAgentAnalysis, filter) as Promise<AgentAnalysisSnapshot>,
+  getAppInfo: () => ipcRenderer.invoke(IPC_CHANNELS.appGetInfo) as Promise<AppInfo>,
+  getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.appGetConfig) as Promise<AppConfig>,
+  getGatewayStatus: () => ipcRenderer.invoke(IPC_CHANNELS.appGetGatewayStatus) as Promise<GatewayStatus>,
+  getPendingProviderDeepLinks: () => ipcRenderer.invoke(IPC_CHANNELS.appGetPendingProviderDeepLinks) as Promise<ProviderDeepLinkRequest[]>,
+  getPluginMarketplace: () => ipcRenderer.invoke(IPC_CHANNELS.appGetPluginMarketplace) as Promise<PluginMarketplaceEntry[]>,
+  getProxyCertificateStatus: () => ipcRenderer.invoke(IPC_CHANNELS.appGetProxyCertificateStatus) as Promise<ProxyCertificateStatus>,
+  getProxyNetworkCaptures: () => ipcRenderer.invoke(IPC_CHANNELS.appGetProxyNetworkCaptures) as Promise<ProxyNetworkSnapshot>,
+  getProxyStatus: () => ipcRenderer.invoke(IPC_CHANNELS.appGetProxyStatus) as Promise<ProxyStatus>,
+  getRequestLogs: (filter?: RequestLogListFilter) => ipcRenderer.invoke(IPC_CHANNELS.appGetRequestLogs, filter) as Promise<RequestLogPage>,
+  getUsageStats: (range?: UsageStatsRange, filter?: UsageStatsFilter) => ipcRenderer.invoke(IPC_CHANNELS.appGetUsageStats, range, filter) as Promise<UsageStatsSnapshot>,
+  installProxyCertificate: () => ipcRenderer.invoke(IPC_CHANNELS.appInstallProxyCertificate) as Promise<ProxyCertificateInstallResult>,
+  openBuiltInBrowser: () => ipcRenderer.invoke(IPC_CHANNELS.appOpenBuiltInBrowser) as Promise<void>,
+  openExternal: (url: string) => ipcRenderer.invoke(IPC_CHANNELS.appOpenExternal, url) as Promise<void>,
+  probeProvider: (request: GatewayProviderProbeRequest) => ipcRenderer.invoke(IPC_CHANNELS.appProbeProvider, request) as Promise<GatewayProviderProbeResult>,
+  quitApp: () => ipcRenderer.invoke(IPC_CHANNELS.appQuit) as Promise<void>,
+  revealProxyCertificate: () => ipcRenderer.invoke(IPC_CHANNELS.appRevealProxyCertificate) as Promise<void>,
+  restartGateway: () => ipcRenderer.invoke(IPC_CHANNELS.appRestartGateway) as Promise<GatewayStatus>,
+  restartProxy: () => ipcRenderer.invoke(IPC_CHANNELS.appRestartProxy) as Promise<ProxyStatus>,
+  saveApiKeys: (apiKeys: ApiKeyConfig[]) => ipcRenderer.invoke(IPC_CHANNELS.appSaveApiKeys, apiKeys) as Promise<AppConfig>,
+  saveConfig: (config: AppConfig) => ipcRenderer.invoke(IPC_CHANNELS.appSaveConfig, config) as Promise<AppConfig>,
+  selectPluginDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.appSelectPluginDirectory) as Promise<PluginDirectorySelection | undefined>,
+  setProxyNetworkCaptureEnabled: (enabled: boolean) => ipcRenderer.invoke(IPC_CHANNELS.appSetProxyNetworkCaptureEnabled, enabled) as Promise<ProxyNetworkSnapshot>,
+  setTrayDetailOpen: (open: boolean, provider?: string) => ipcRenderer.invoke(IPC_CHANNELS.appSetTrayDetailOpen, open, provider) as Promise<void>,
+  showMainWindow: () => ipcRenderer.invoke(IPC_CHANNELS.appShowMainWindow) as Promise<void>,
+  startGateway: () => ipcRenderer.invoke(IPC_CHANNELS.appStartGateway) as Promise<GatewayStatus>,
+  stopGateway: () => ipcRenderer.invoke(IPC_CHANNELS.appStopGateway) as Promise<GatewayStatus>,
+  onBeforeQuit: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on(IPC_CHANNELS.appBeforeQuit, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.appBeforeQuit, handler);
+  },
+  onProviderDeepLink: (callback: (request: ProviderDeepLinkRequest) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, request: ProviderDeepLinkRequest) => callback(request);
+    ipcRenderer.on(IPC_CHANNELS.appProviderDeepLink, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.appProviderDeepLink, handler);
+  }
+});

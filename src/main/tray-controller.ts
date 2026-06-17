@@ -1,0 +1,653 @@
+import { BrowserWindow, Menu, Tray, app, nativeImage, screen } from "electron";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { deflateSync } from "node:zlib";
+import { loadAppConfig } from "./config";
+import { APP_NAME } from "./constants";
+import { getTodayUsageTotals, onUsageRecorded } from "./usage-store";
+import type { AppConfig, TrayIconPreference } from "../shared/app";
+
+const popoverMenuWidth = 420;
+const popoverPreferredHeight = 740;
+const popoverDetailGap = 12;
+const popoverDetailTopOffset = 0;
+const popoverDetailWidth = 420;
+const popoverMargin = 8;
+const trayTokenFallbackTitle = "0 tokens";
+const trayIconFallbackPath = path.join(__dirname, "../assets/tray.png");
+const trayMascotIconIds = ["violet", "orange", "cyan"] as const;
+
+type TrayMascotIconId = (typeof trayMascotIconIds)[number];
+
+const trayMascotIconPaths: Record<TrayMascotIconId, string> = {
+  cyan: path.join(__dirname, "../assets/tray-cyan.png"),
+  orange: path.join(__dirname, "../assets/tray-orange.png"),
+  violet: path.join(__dirname, "../assets/tray-violet.png")
+};
+
+class TrayController {
+  private activeDetailProvider?: string;
+  private detailCloseTimer?: NodeJS.Timeout;
+  private detailOpen = false;
+  private detailPopover?: BrowserWindow;
+  private ignorePopoverBlurUntil = 0;
+  private popover?: BrowserWindow;
+  private randomTrayIconDateKey?: string;
+  private resolvedRandomTrayIcon?: TrayMascotIconId;
+  private refreshTimer?: NodeJS.Timeout;
+  private tray?: Tray;
+  private trayIconPreference: TrayIconPreference = "random";
+  private trayProgressTargetTokens = 100000;
+  private trayTotalTokens = 0;
+  private unsubscribeUsageUpdates?: () => void;
+
+  start(): void {
+    if (process.platform !== "darwin" || this.tray) {
+      return;
+    }
+
+    const icon = createTrayIcon(this.resolveTrayIconId("random"));
+    this.tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
+    this.tray.setTitle(trayTokenFallbackTitle);
+    this.tray.setToolTip(`${APP_NAME} Usage`);
+    this.tray.on("click", () => this.togglePopover());
+    this.tray.on("right-click", () => this.showContextMenu());
+    void this.refreshIconFromConfig();
+
+    this.unsubscribeUsageUpdates = onUsageRecorded(() => {
+      this.refreshUsageTitle();
+    });
+    this.refreshUsageTitle();
+    this.refreshTimer = setInterval(() => {
+      this.refreshUsageTitle();
+    }, 15_000);
+  }
+
+  hidePopover(): void {
+    this.clearDetailCloseTimer();
+    this.detailOpen = false;
+    this.activeDetailProvider = undefined;
+    this.hideDetailPopover();
+    if (this.popover && !this.popover.isDestroyed()) {
+      this.popover.hide();
+    }
+  }
+
+  destroy(): void {
+    this.clearDetailCloseTimer();
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+      this.refreshTimer = undefined;
+    }
+    this.unsubscribeUsageUpdates?.();
+    this.unsubscribeUsageUpdates = undefined;
+    if (this.detailPopover && !this.detailPopover.isDestroyed()) {
+      this.detailPopover.destroy();
+      this.detailPopover = undefined;
+    }
+    if (this.popover && !this.popover.isDestroyed()) {
+      this.popover.destroy();
+      this.popover = undefined;
+    }
+    if (this.tray) {
+      this.tray.destroy();
+      this.tray = undefined;
+    }
+  }
+
+  refreshUsageTitle(): void {
+    this.refreshRandomTrayIconForCurrentDay();
+    void this.refreshTrayTitle();
+  }
+
+  async refreshIconFromConfig(config?: AppConfig): Promise<void> {
+    if (process.platform !== "darwin" || !this.tray) {
+      return;
+    }
+
+    const nextConfig = config ?? await loadAppConfig();
+    const nextPreference = normalizeTrayIconPreference(nextConfig.trayIcon);
+    if (nextPreference === "random" && this.trayIconPreference !== "random") {
+      this.randomTrayIconDateKey = undefined;
+      this.resolvedRandomTrayIcon = undefined;
+    }
+    this.trayIconPreference = nextPreference;
+    this.trayProgressTargetTokens = normalizeTrayProgressTarget(nextConfig.trayProgressTargetTokens);
+    if (nextPreference === "progress") {
+      this.applyProgressTrayIcon(this.trayTotalTokens);
+      return;
+    }
+    this.applyTrayIcon(this.resolveTrayIconId(nextPreference));
+  }
+
+  setDetailOpen(open: boolean, provider?: string): void {
+    if (open) {
+      this.showDetailPopover(provider);
+      return;
+    }
+    this.scheduleDetailClose();
+  }
+
+  private togglePopover(): void {
+    if (this.popover?.isVisible()) {
+      this.hidePopover();
+      return;
+    }
+    this.showPopover();
+  }
+
+  private showPopover(): void {
+    const popover = this.ensurePopover();
+    this.clearDetailCloseTimer();
+    this.detailOpen = false;
+    this.activeDetailProvider = undefined;
+    this.hideDetailPopover();
+    const { menu } = resolvePopoverLayout(this.tray?.getBounds(), false);
+
+    popover.setBounds(menu, false);
+    this.ignorePopoverBlurUntil = Date.now() + 120;
+    popover.show();
+    popover.focus();
+    popover.moveTop();
+  }
+
+  private ensurePopover(): BrowserWindow {
+    if (this.popover && !this.popover.isDestroyed()) {
+      return this.popover;
+    }
+
+    this.popover = new BrowserWindow({
+      acceptFirstMouse: true,
+      alwaysOnTop: true,
+      backgroundColor: "#00000000",
+      frame: false,
+      fullscreenable: false,
+      hasShadow: true,
+      height: popoverPreferredHeight,
+      maximizable: false,
+      minimizable: false,
+      movable: false,
+      roundedCorners: true,
+      resizable: false,
+      show: false,
+      skipTaskbar: true,
+      title: `${APP_NAME} Usage`,
+      transparent: true,
+      vibrancy: "hud",
+      visualEffectState: "active",
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        preload: path.join(__dirname, "preload.js"),
+        sandbox: true,
+        webSecurity: true
+      },
+      width: popoverMenuWidth
+    });
+
+    this.popover.setAlwaysOnTop(true, "pop-up-menu");
+    this.popover.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    this.popover.on("blur", () => this.handlePopoverBlur());
+    this.popover.on("closed", () => {
+      this.popover = undefined;
+    });
+
+    void this.popover.loadURL(createTrayPageUrl("menu"));
+    return this.popover;
+  }
+
+  private ensureDetailPopover(provider?: string): BrowserWindow {
+    if (this.detailPopover && !this.detailPopover.isDestroyed()) {
+      return this.detailPopover;
+    }
+
+    this.detailPopover = new BrowserWindow({
+      acceptFirstMouse: true,
+      alwaysOnTop: true,
+      backgroundColor: "#00000000",
+      frame: false,
+      fullscreenable: false,
+      hasShadow: true,
+      height: popoverPreferredHeight - popoverDetailTopOffset,
+      maximizable: false,
+      minimizable: false,
+      movable: false,
+      roundedCorners: true,
+      resizable: false,
+      show: false,
+      skipTaskbar: true,
+      title: `${APP_NAME} Usage Detail`,
+      transparent: true,
+      vibrancy: "hud",
+      visualEffectState: "active",
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        preload: path.join(__dirname, "preload.js"),
+        sandbox: true,
+        webSecurity: true
+      },
+      width: popoverDetailWidth
+    });
+
+    this.detailPopover.setAlwaysOnTop(true, "pop-up-menu");
+    this.detailPopover.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    this.detailPopover.on("blur", () => this.handlePopoverBlur());
+    this.detailPopover.on("closed", () => {
+      this.detailPopover = undefined;
+    });
+
+    this.activeDetailProvider = normalizeDetailProvider(provider);
+    void this.detailPopover.loadURL(createTrayPageUrl("detail", this.activeDetailProvider));
+    return this.detailPopover;
+  }
+
+  private showContextMenu(): void {
+    const menu = Menu.buildFromTemplate([
+      {
+        click: () => this.showPopover(),
+        label: "Show Usage"
+      },
+      { type: "separator" },
+      {
+        click: () => app.quit(),
+        label: `Quit ${APP_NAME}`
+      }
+    ]);
+
+    this.tray?.popUpContextMenu(menu);
+  }
+
+  private showDetailPopover(provider?: string): void {
+    if (!this.popover || this.popover.isDestroyed() || !this.popover.isVisible()) {
+      return;
+    }
+
+    this.clearDetailCloseTimer();
+    this.detailOpen = true;
+
+    const { detail, menu } = resolvePopoverLayout(this.tray?.getBounds(), true);
+    if (detail.width < 320) {
+      this.detailOpen = false;
+      return;
+    }
+
+    this.popover.setBounds(menu, false);
+
+    const detailPopover = this.ensureDetailPopover(provider);
+    const nextProvider = normalizeDetailProvider(provider);
+    if (this.activeDetailProvider !== nextProvider) {
+      this.activeDetailProvider = nextProvider;
+      void detailPopover.loadURL(createTrayPageUrl("detail", nextProvider));
+    }
+
+    detailPopover.setBounds(detail, false);
+    this.ignorePopoverBlurUntil = Date.now() + 120;
+    detailPopover.showInactive();
+    detailPopover.moveTop();
+  }
+
+  private scheduleDetailClose(): void {
+    this.clearDetailCloseTimer();
+    this.detailCloseTimer = setTimeout(() => {
+      this.detailCloseTimer = undefined;
+      this.detailOpen = false;
+      this.hideDetailPopover();
+      this.repositionMenu(false);
+    }, 140);
+  }
+
+  private clearDetailCloseTimer(): void {
+    if (this.detailCloseTimer) {
+      clearTimeout(this.detailCloseTimer);
+      this.detailCloseTimer = undefined;
+    }
+  }
+
+  private hideDetailPopover(): void {
+    if (this.detailPopover && !this.detailPopover.isDestroyed()) {
+      this.detailPopover.hide();
+    }
+  }
+
+  private repositionMenu(detailOpen = this.detailOpen): void {
+    if (!this.popover || this.popover.isDestroyed() || !this.popover.isVisible()) {
+      return;
+    }
+    const { menu } = resolvePopoverLayout(this.tray?.getBounds(), detailOpen);
+    this.popover.setBounds(menu, false);
+  }
+
+  private handlePopoverBlur(): void {
+    setTimeout(() => {
+      if (Date.now() < this.ignorePopoverBlurUntil) {
+        return;
+      }
+      const focused = BrowserWindow.getFocusedWindow();
+      if (focused && (focused === this.popover || focused === this.detailPopover)) {
+        return;
+      }
+      this.hidePopover();
+    }, 30);
+  }
+
+  private async refreshTrayTitle(): Promise<void> {
+    if (!this.tray) {
+      return;
+    }
+
+    try {
+      const totals = await getTodayUsageTotals(undefined, { includeProxy: true });
+      this.trayTotalTokens = Math.max(0, totals.totalTokens);
+      if (this.trayIconPreference === "progress") {
+        this.applyProgressTrayIcon(this.trayTotalTokens);
+      }
+      this.tray.setTitle(formatTokenTitle(totals.totalTokens));
+    } catch {
+      this.tray.setTitle(trayTokenFallbackTitle);
+    }
+  }
+
+  private applyTrayIcon(iconId: TrayMascotIconId): void {
+    if (!this.tray) {
+      return;
+    }
+    const icon = createTrayIcon(iconId);
+    this.tray.setImage(icon.isEmpty() ? nativeImage.createEmpty() : icon);
+  }
+
+  private applyProgressTrayIcon(totalTokens: number): void {
+    if (!this.tray) {
+      return;
+    }
+    const progress = calculateTrayProgress(totalTokens, this.trayProgressTargetTokens);
+    const icon = createTrayProgressIcon(progress);
+    this.tray.setImage(icon.isEmpty() ? nativeImage.createEmpty() : icon);
+  }
+
+  private refreshRandomTrayIconForCurrentDay(): void {
+    if (this.trayIconPreference !== "random") {
+      return;
+    }
+    const previousDateKey = this.randomTrayIconDateKey;
+    const previousIconId = this.resolvedRandomTrayIcon;
+    const iconId = this.resolveTrayIconId("random");
+    if (previousDateKey !== this.randomTrayIconDateKey || previousIconId !== iconId) {
+      this.applyTrayIcon(iconId);
+    }
+  }
+
+  private resolveTrayIconId(preference: TrayIconPreference): TrayMascotIconId {
+    if (preference === "violet" || preference === "orange" || preference === "cyan") {
+      return preference;
+    }
+
+    const dateKey = formatLocalDateKey(new Date());
+    if (this.resolvedRandomTrayIcon && this.randomTrayIconDateKey === dateKey) {
+      return this.resolvedRandomTrayIcon;
+    }
+
+    this.randomTrayIconDateKey = dateKey;
+    this.resolvedRandomTrayIcon = trayMascotIconIds[Math.floor(Math.random() * trayMascotIconIds.length)];
+    return this.resolvedRandomTrayIcon;
+  }
+}
+
+const trayController = new TrayController();
+
+export default trayController;
+
+function resolvePopoverLayout(
+  trayBounds: Electron.Rectangle | undefined,
+  detailOpen: boolean
+): { detail: Electron.Rectangle; menu: Electron.Rectangle } {
+  const anchor = trayBounds
+    ? { x: trayBounds.x + trayBounds.width / 2, y: trayBounds.y + trayBounds.height }
+    : screen.getCursorScreenPoint();
+  const display = screen.getDisplayNearestPoint(anchor);
+  const workArea = display.workArea;
+  const availableWidth = Math.max(360, workArea.width - popoverMargin * 2);
+  const menuWidth = Math.min(popoverMenuWidth, availableWidth);
+  const preferredGroupWidth = detailOpen ? menuWidth + popoverDetailGap + popoverDetailWidth : menuWidth;
+  const groupWidth = Math.min(preferredGroupWidth, availableWidth);
+  const detailWidth = detailOpen ? Math.max(0, groupWidth - menuWidth - popoverDetailGap) : 0;
+  const height = Math.min(popoverPreferredHeight, Math.max(460, workArea.height - popoverMargin * 2));
+  const menuX = Math.round(anchor.x - menuWidth / 2);
+  const x = clamp(menuX, workArea.x + popoverMargin, workArea.x + workArea.width - groupWidth - popoverMargin);
+  const y = clamp(
+    Math.round(Math.max(workArea.y + popoverMargin, anchor.y + popoverMargin)),
+    workArea.y + popoverMargin,
+    workArea.y + workArea.height - height - popoverMargin
+  );
+
+  return {
+    detail: {
+      height: Math.max(260, height - popoverDetailTopOffset),
+      width: detailWidth,
+      x: x + menuWidth + popoverDetailGap,
+      y: y + popoverDetailTopOffset
+    },
+    menu: {
+      height,
+      width: menuWidth,
+      x,
+      y
+    }
+  };
+}
+
+function createTrayPageUrl(mode: "detail" | "menu", provider?: string): string {
+  const url = new URL(pathToFileURL(path.join(__dirname, "../renderer/pages/tray/index.html")).toString());
+  url.searchParams.set("mode", mode);
+  if (provider) {
+    url.searchParams.set("provider", provider);
+  }
+  return url.toString();
+}
+
+function normalizeDetailProvider(provider?: string): string | undefined {
+  const trimmed = provider?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function createTrayIcon(iconId: TrayMascotIconId): Electron.NativeImage {
+  const image = nativeImage.createFromPath(trayMascotIconPaths[iconId]);
+  if (image.isEmpty()) {
+    const fallback = nativeImage.createFromPath(trayIconFallbackPath);
+    if (fallback.isEmpty()) {
+      return nativeImage.createEmpty();
+    }
+    const fallbackIcon = fallback.resize({ height: 18, width: 18 });
+    fallbackIcon.setTemplateImage(true);
+    return fallbackIcon;
+  }
+  const resized = image.resize({ height: 18, width: 18 });
+  resized.setTemplateImage(false);
+  return resized;
+}
+
+function createTrayProgressIcon(progress: number): Electron.NativeImage {
+  const clamped = Math.max(0, Math.min(1, progress));
+  const image = nativeImage.createFromBuffer(createProgressRingPng(clamped));
+  if (image.isEmpty()) {
+    return nativeImage.createEmpty();
+  }
+  const resized = image.resize({ height: 18, width: 18 });
+  resized.setTemplateImage(false);
+  return resized;
+}
+
+function normalizeTrayIconPreference(value: unknown): TrayIconPreference {
+  return value === "violet" || value === "orange" || value === "cyan" || value === "progress" || value === "random"
+    ? value
+    : "random";
+}
+
+function normalizeTrayProgressTarget(value: unknown): number {
+  const target = Number(value);
+  if (!Number.isFinite(target) || target <= 0) {
+    return 100000;
+  }
+  return Math.min(1_000_000_000, Math.max(1000, Math.trunc(target)));
+}
+
+function calculateTrayProgress(totalTokens: number, targetTokens: number): number {
+  if (targetTokens <= 0) {
+    return 0;
+  }
+  return Math.max(0, Math.min(1, totalTokens / targetTokens));
+}
+
+function createProgressRingPng(progress: number): Buffer {
+  const size = 36;
+  const center = (size - 1) / 2;
+  const outerRadius = 15.2;
+  const ringRadius = 12.2;
+  const ringWidth = 4.2;
+  const rgba = Buffer.alloc(size * size * 4);
+  const track = { a: 0.55, b: 184, g: 163, r: 148 };
+  const fill = progress >= 0.99
+    ? { a: 1, b: 153, g: 211, r: 52 }
+    : { a: 1, b: 250, g: 250, r: 248 };
+  const background = { a: 0.92, b: 42, g: 23, r: 15 };
+
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const px = x + 0.5;
+      const py = y + 0.5;
+      const dx = px - center;
+      const dy = py - center;
+      const distance = Math.hypot(dx, dy);
+      const index = (y * size + x) * 4;
+      blendPngPixel(rgba, index, background, edgeAlpha(outerRadius - distance));
+      blendPngPixel(rgba, index, track, strokeAlpha(distance, ringRadius, ringWidth));
+      if (progress > 0 && isProgressArcPoint(dx, dy, progress)) {
+        blendPngPixel(rgba, index, fill, strokeAlpha(distance, ringRadius, ringWidth));
+      }
+      blendPngPixel(rgba, index, background, edgeAlpha(4.4 - distance));
+    }
+  }
+
+  return encodePngRgba(rgba, size, size);
+}
+
+function isProgressArcPoint(dx: number, dy: number, progress: number): boolean {
+  if (progress >= 1) {
+    return true;
+  }
+  let angle = Math.atan2(dy, dx) + Math.PI / 2;
+  if (angle < 0) {
+    angle += Math.PI * 2;
+  }
+  return angle <= progress * Math.PI * 2;
+}
+
+function edgeAlpha(distance: number): number {
+  return Math.max(0, Math.min(1, distance + 0.5));
+}
+
+function strokeAlpha(distance: number, radius: number, width: number): number {
+  return Math.max(0, Math.min(1, width / 2 + 0.5 - Math.abs(distance - radius)));
+}
+
+function blendPngPixel(
+  rgba: Buffer,
+  index: number,
+  color: { a: number; b: number; g: number; r: number },
+  alpha: number
+): void {
+  const sourceAlpha = Math.max(0, Math.min(1, alpha * color.a));
+  if (sourceAlpha <= 0) {
+    return;
+  }
+  const targetAlpha = rgba[index + 3] / 255;
+  const outAlpha = sourceAlpha + targetAlpha * (1 - sourceAlpha);
+  rgba[index] = Math.round((color.r * sourceAlpha + rgba[index] * targetAlpha * (1 - sourceAlpha)) / outAlpha);
+  rgba[index + 1] = Math.round((color.g * sourceAlpha + rgba[index + 1] * targetAlpha * (1 - sourceAlpha)) / outAlpha);
+  rgba[index + 2] = Math.round((color.b * sourceAlpha + rgba[index + 2] * targetAlpha * (1 - sourceAlpha)) / outAlpha);
+  rgba[index + 3] = Math.round(outAlpha * 255);
+}
+
+function encodePngRgba(rgba: Buffer, width: number, height: number): Buffer {
+  const header = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 6;
+  const raw = Buffer.alloc((width * 4 + 1) * height);
+  for (let y = 0; y < height; y += 1) {
+    const sourceOffset = y * width * 4;
+    const targetOffset = y * (width * 4 + 1);
+    raw[targetOffset] = 0;
+    rgba.copy(raw, targetOffset + 1, sourceOffset, sourceOffset + width * 4);
+  }
+  return Buffer.concat([
+    header,
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", deflateSync(raw, { level: 9 })),
+    pngChunk("IEND", Buffer.alloc(0))
+  ]);
+}
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const typeBuffer = Buffer.from(type, "ascii");
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length, 0);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(pngCrc32(Buffer.concat([typeBuffer, data])), 0);
+  return Buffer.concat([length, typeBuffer, data, crc]);
+}
+
+function pngCrc32(buffer: Buffer): number {
+  const table = pngCrcTable();
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc = table[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+let cachedPngCrcTable: Uint32Array | undefined;
+
+function pngCrcTable(): Uint32Array {
+  if (cachedPngCrcTable) {
+    return cachedPngCrcTable;
+  }
+  const table = new Uint32Array(256);
+  for (let index = 0; index < 256; index += 1) {
+    let value = index;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+    }
+    table[index] = value >>> 0;
+  }
+  cachedPngCrcTable = table;
+  return table;
+}
+
+function formatLocalDateKey(date: Date): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
+function clamp(value: number, min: number, max: number): number {
+  if (max < min) {
+    return min;
+  }
+  return Math.min(max, Math.max(min, value));
+}
+
+function formatCompactNumber(value: number): string {
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: value >= 1000 ? 1 : 0,
+    notation: value >= 10000 ? "compact" : "standard"
+  }).format(value);
+}
+
+function formatTokenTitle(value: number): string {
+  return `${formatCompactNumber(Math.max(0, value))} tokens`;
+}

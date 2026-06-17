@@ -1,0 +1,1386 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { loadPersistedApiKeys, replacePersistedApiKeys } from "./api-key-store";
+import { CONFIGDIR, CONFIG_FILE, GATEWAY_CONFIG_FILE } from "./constants";
+import { DEFAULT_TRAY_WINDOW_MODULES, TRAY_WINDOW_MODULE_IDS } from "../shared/app";
+import type {
+  AppConfig,
+  ApiKeyConfig,
+  ApiKeyLimitConfig,
+  ClaudeCodeProfileConfig,
+  CodexProfileConfig,
+  GatewayAgentConfig,
+  GatewayMcpServerConfig,
+  GatewayMcpServerTransport,
+  GatewayPluginConfig,
+  GatewayPluginAppConfig,
+  GatewayPluginProxyRouteConfig,
+  GatewayProviderCapability,
+  GatewayProviderConfig,
+  GatewayProviderProtocol,
+  ProfileConfig,
+  ProfileRuntimeConfig,
+  ProxyRouteTarget,
+  ProxyRuntimeConfig,
+  RouterConfig,
+  RouterFallbackConfig,
+  RouterFallbackMode,
+  RouterRule,
+  RouterRuleType,
+  TrayIconPreference,
+  TrayWindowModuleId
+} from "../shared/app";
+
+type LoadedProfileConfig = Partial<Omit<ProfileRuntimeConfig, "claudeCode" | "codex" | "profiles">> & {
+  claudeCode?: Partial<ClaudeCodeProfileConfig>;
+  codex?: Partial<CodexProfileConfig>;
+  profiles?: ProfileConfig[];
+};
+
+type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "gateway" | "profile" | "proxy">> & {
+  Router?: Partial<RouterConfig>;
+  agent?: Partial<GatewayAgentConfig>;
+  gateway?: Partial<AppConfig["gateway"]>;
+  profile?: LoadedProfileConfig;
+  proxy?: Partial<ProxyRuntimeConfig>;
+};
+
+const DEFAULT_PROXY_TARGETS: ProxyRouteTarget[] = [
+  { host: "api.anthropic.com", paths: ["/v1/messages", "/v1/messages/count_tokens"] },
+  { host: "api.openai.com", paths: ["/v1/chat/completions", "/v1/responses", "/v1/models"] },
+  { host: "generativelanguage.googleapis.com", paths: ["/v1beta/models", "/v1/models"] },
+  { host: "openrouter.ai", paths: ["/api/v1/chat/completions", "/api/v1/responses", "/api/v1/models"] },
+  { host: "api.deepseek.com", paths: ["/chat/completions", "/v1/chat/completions"] },
+  { host: "api.mistral.ai", paths: ["/v1/chat/completions", "/v1/models"] }
+];
+
+const REMOVED_LEGACY_ROUTER_RULE_IDS = new Set([
+  "legacy-subagent",
+  "legacy-background",
+  "legacy-thinking",
+  "legacy-web-search",
+  "legacy-image"
+]);
+
+const DEFAULT_CONFIG: AppConfig = {
+  APIKEY: "",
+  APIKEYS: [],
+  API_TIMEOUT_MS: 600000,
+  CUSTOM_ROUTER_PATH: "",
+  HOST: "127.0.0.1",
+  PORT: 3456,
+  Providers: [],
+  Router: {
+    fallback: {
+      mode: "off",
+      models: [],
+      retryCount: 1
+    },
+    longContextThreshold: 200000,
+    rules: []
+  },
+  agent: {
+    mcpServers: []
+  },
+  autoStart: false,
+  gateway: {
+    coreHost: "127.0.0.1",
+    corePort: 3457,
+    enabled: true,
+    generatedConfigFile: GATEWAY_CONFIG_FILE,
+    host: "127.0.0.1",
+    port: 3456
+  },
+  preferredProvider: "",
+  plugins: [],
+  profile: {
+    claudeCode: {
+      enabled: true,
+      model: "",
+      settingsFile: "~/.claude/settings.json",
+      smallFastModel: ""
+    },
+    codex: {
+      cliMiddleware: false,
+      codexCliPath: "",
+      codexHome: "",
+      configFormat: "legacy",
+      configFile: "~/.codex/config.toml",
+      enabled: true,
+      model: "",
+      providerId: "claude-code-router",
+      providerName: "Claude Code Router",
+      remoteFrontendMode: "app"
+    },
+    enabled: true,
+    profiles: [
+      {
+        agent: "claude-code",
+        enabled: true,
+        id: "default-claude-code",
+        model: "",
+        name: "Claude Code",
+        settingsFile: "~/.claude/settings.json",
+        smallFastModel: ""
+      },
+      {
+        agent: "codex",
+        cliMiddleware: false,
+        codexCliPath: "",
+        codexHome: "",
+        configFormat: "legacy",
+        configFile: "~/.codex/config.toml",
+        enabled: true,
+        id: "default-codex",
+        model: "",
+        name: "Codex",
+        providerId: "claude-code-router",
+        providerName: "Claude Code Router",
+        remoteFrontendMode: "app"
+      }
+    ]
+  },
+  proxy: {
+    browserMode: true,
+    captureNetwork: false,
+    enabled: false,
+    host: "127.0.0.1",
+    mode: "gateway",
+    port: 7890,
+    systemProxy: false,
+    targets: DEFAULT_PROXY_TARGETS
+  },
+  routerEndpoint: "http://127.0.0.1:3456",
+  theme: "system",
+  trayIcon: "random",
+  trayProgressTargetTokens: 100000,
+  trayWindowModules: DEFAULT_TRAY_WINDOW_MODULES
+};
+
+export async function loadAppConfig(): Promise<AppConfig> {
+  ensureConfigFile();
+
+  try {
+    const rawValue = JSON.parse(readFileSync(CONFIG_FILE, "utf8")) as Partial<AppConfig>;
+    const value = interpolateEnvVars(rawValue) as Partial<AppConfig>;
+    const picked = pickConfig(value);
+    const providers = picked.Providers ?? DEFAULT_CONFIG.Providers;
+    const port = picked.PORT ?? endpointPort(picked.routerEndpoint) ?? DEFAULT_CONFIG.PORT;
+    const host = picked.HOST ?? DEFAULT_CONFIG.HOST;
+    const endpoint = picked.routerEndpoint ?? `http://${normalizeEndpointHost(host)}:${port}`;
+    const gatewayConfig = picked.gateway ?? {};
+    const corePort = gatewayConfig.corePort ?? nextPort(port);
+    const configFileApiKeys = normalizeApiKeys(picked.APIKEYS, picked.APIKEY).filter((apiKey) => !isDefaultSeedApiKey(apiKey));
+    const persistedApiKeys = await loadPersistedApiKeys();
+    const apiKeys = uniqueApiKeyConfigs([...persistedApiKeys, ...configFileApiKeys]);
+    const config: AppConfig = {
+      ...DEFAULT_CONFIG,
+      ...picked,
+      APIKEY: apiKeys[0]?.key ?? "",
+      APIKEYS: apiKeys,
+      HOST: host,
+      PORT: port,
+      Providers: providers,
+      Router: {
+        ...DEFAULT_CONFIG.Router,
+        ...picked.Router
+      },
+      agent: {
+        ...DEFAULT_CONFIG.agent,
+        ...(picked.agent ?? {}),
+        mcpServers: picked.agent?.mcpServers ?? DEFAULT_CONFIG.agent.mcpServers
+      },
+      gateway: {
+        ...DEFAULT_CONFIG.gateway,
+        ...gatewayConfig,
+        corePort,
+        generatedConfigFile: GATEWAY_CONFIG_FILE,
+        host: gatewayConfig.host ?? host,
+        port: gatewayConfig.port ?? port
+      },
+      preferredProvider:
+        picked.preferredProvider || providers[0]?.name || DEFAULT_CONFIG.preferredProvider,
+      profile: {
+        ...DEFAULT_CONFIG.profile,
+        ...(picked.profile ?? {}),
+        claudeCode: {
+          ...DEFAULT_CONFIG.profile.claudeCode,
+          ...(picked.profile?.claudeCode ?? {})
+        },
+        codex: {
+          ...DEFAULT_CONFIG.profile.codex,
+          ...(picked.profile?.codex ?? {})
+        },
+        profiles: picked.profile?.profiles ?? DEFAULT_CONFIG.profile.profiles
+      },
+      proxy: {
+        ...DEFAULT_CONFIG.proxy,
+        ...(picked.proxy ?? {}),
+        targets: picked.proxy?.targets?.length ? picked.proxy.targets : DEFAULT_CONFIG.proxy.targets
+      },
+      routerEndpoint: endpoint
+    };
+    if (hasConfigFileApiKeys(rawValue) || configFileApiKeys.length > 0) {
+      await replacePersistedApiKeys(apiKeys);
+      writeSanitizedConfig(config);
+    }
+    return config;
+  } catch (error) {
+    console.warn(`[config] Failed to load config: ${formatError(error)}`);
+    const persistedApiKeys = await loadPersistedApiKeys().catch((storeError) => {
+      console.warn(`[config] Failed to load API keys: ${formatError(storeError)}`);
+      return [] as ApiKeyConfig[];
+    });
+    return {
+      ...DEFAULT_CONFIG,
+      APIKEY: persistedApiKeys[0]?.key ?? "",
+      APIKEYS: persistedApiKeys
+    };
+  }
+}
+
+export async function saveAppConfig(config: AppConfig): Promise<AppConfig> {
+  mkdirSync(CONFIGDIR, { recursive: true });
+  const apiKeys = normalizeApiKeys(config.APIKEYS, config.APIKEY).filter((apiKey) => !isDefaultSeedApiKey(apiKey));
+  await replacePersistedApiKeys(apiKeys);
+  writeSanitizedConfig({
+    ...config,
+    APIKEY: apiKeys[0]?.key ?? "",
+    APIKEYS: apiKeys
+  });
+  return loadAppConfig();
+}
+
+export async function saveApiKeysConfig(apiKeys: ApiKeyConfig[]): Promise<AppConfig> {
+  const normalized = normalizeApiKeys(apiKeys, undefined).filter((apiKey) => !isDefaultSeedApiKey(apiKey));
+  await replacePersistedApiKeys(normalized);
+  return loadAppConfig();
+}
+
+function ensureConfigFile() {
+  mkdirSync(CONFIGDIR, { recursive: true });
+  if (!existsSync(CONFIG_FILE)) {
+    writeFileSync(CONFIG_FILE, `${JSON.stringify(DEFAULT_CONFIG, null, 2)}\n`, "utf8");
+  }
+}
+
+function writeSanitizedConfig(config: AppConfig) {
+  writeFileSync(CONFIG_FILE, `${JSON.stringify(sanitizeConfigForDisk(config), null, 2)}\n`, "utf8");
+}
+
+function sanitizeConfigForDisk(config: AppConfig): AppConfig {
+  return {
+    ...config,
+    APIKEY: "",
+    APIKEYS: []
+  };
+}
+
+function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
+  const config: LoadedAppConfig = {};
+
+  const port = readPort((value as Record<string, unknown>).PORT);
+  if (port) {
+    config.PORT = port;
+  }
+  if (typeof value.HOST === "string" && value.HOST.trim()) {
+    config.HOST = value.HOST.trim();
+  }
+  if (typeof value.APIKEY === "string") {
+    config.APIKEY = value.APIKEY;
+  }
+  const apiKeys = parseApiKeys((value as Record<string, unknown>).APIKEYS ?? (value as Record<string, unknown>).apiKeys);
+  if (apiKeys) {
+    config.APIKEYS = apiKeys;
+  }
+  if (typeof value.API_TIMEOUT_MS === "string" || typeof value.API_TIMEOUT_MS === "number") {
+    config.API_TIMEOUT_MS = value.API_TIMEOUT_MS;
+  }
+  if (typeof value.CUSTOM_ROUTER_PATH === "string") {
+    config.CUSTOM_ROUTER_PATH = value.CUSTOM_ROUTER_PATH.trim();
+  }
+  const providers = parseProviders((value as Record<string, unknown>).Providers ?? (value as Record<string, unknown>).providers);
+  if (providers) {
+    config.Providers = providers;
+  }
+  if (Array.isArray((value as Record<string, unknown>).providerPlugins)) {
+    config.providerPlugins = (value as Record<string, unknown>).providerPlugins as unknown[];
+  }
+  if (Array.isArray((value as Record<string, unknown>).virtualModelProfiles)) {
+    config.virtualModelProfiles = (value as Record<string, unknown>).virtualModelProfiles as AppConfig["virtualModelProfiles"];
+  }
+  const plugins = parseGatewayPlugins((value as Record<string, unknown>).plugins ?? (value as Record<string, unknown>).gatewayPlugins);
+  if (plugins) {
+    config.plugins = plugins;
+  }
+  const router = parseRouter((value as Record<string, unknown>).Router);
+  if (router) {
+    config.Router = router;
+  }
+  const agent = parseAgent((value as Record<string, unknown>).agent ?? (value as Record<string, unknown>).Agent, (value as Record<string, unknown>).mcpServers);
+  if (agent) {
+    config.agent = agent;
+  }
+  if (typeof value.autoStart === "boolean") {
+    config.autoStart = value.autoStart;
+  }
+  if (isObject(value.gateway)) {
+    const gateway = value.gateway as Record<string, unknown>;
+    const gatewayConfig: Partial<AppConfig["gateway"]> = {};
+    if (typeof gateway.enabled === "boolean") {
+      gatewayConfig.enabled = gateway.enabled;
+    }
+    if (typeof gateway.host === "string" && gateway.host.trim()) {
+      gatewayConfig.host = gateway.host.trim();
+    }
+    const gatewayPort = readPort(gateway.port);
+    if (gatewayPort) {
+      gatewayConfig.port = gatewayPort;
+    }
+    if (typeof gateway.coreHost === "string" && gateway.coreHost.trim()) {
+      gatewayConfig.coreHost = gateway.coreHost.trim();
+    }
+    const gatewayCorePort = readPort(gateway.corePort);
+    if (gatewayCorePort) {
+      gatewayConfig.corePort = gatewayCorePort;
+    }
+    config.gateway = gatewayConfig;
+  }
+  const profile = parseProfile((value as Record<string, unknown>).profile);
+  if (profile) {
+    config.profile = profile;
+  }
+  const proxy = parseProxy((value as Record<string, unknown>).proxy);
+  if (proxy) {
+    config.proxy = proxy;
+  }
+  if (typeof value.preferredProvider === "string" && value.preferredProvider.trim()) {
+    config.preferredProvider = value.preferredProvider.trim();
+  }
+  if (typeof value.routerEndpoint === "string" && value.routerEndpoint.trim()) {
+    config.routerEndpoint = value.routerEndpoint.trim();
+  }
+  if (value.theme === "system" || value.theme === "light" || value.theme === "dark") {
+    config.theme = value.theme;
+  }
+  const trayIcon = parseTrayIconPreference((value as Record<string, unknown>).trayIcon);
+  if (trayIcon) {
+    config.trayIcon = trayIcon;
+  }
+  const trayProgressTargetTokens = readNumber((value as Record<string, unknown>).trayProgressTargetTokens);
+  if (trayProgressTargetTokens && trayProgressTargetTokens > 0) {
+    config.trayProgressTargetTokens = clampNumber(trayProgressTargetTokens, 1000, 1_000_000_000);
+  }
+  const trayWindowModules = parseTrayWindowModules((value as Record<string, unknown>).trayWindowModules);
+  if (trayWindowModules !== undefined) {
+    config.trayWindowModules = trayWindowModules;
+  }
+
+  return config;
+}
+
+function parseTrayIconPreference(value: unknown): TrayIconPreference | undefined {
+  if (value === "random" || value === "violet" || value === "orange" || value === "cyan" || value === "progress") {
+    return value;
+  }
+  return undefined;
+}
+
+function parseTrayWindowModules(value: unknown): TrayWindowModuleId[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const allowed = new Set<string>(TRAY_WINDOW_MODULE_IDS);
+  return uniqueStrings(value.map((item) => readString(item)).filter((item): item is string => Boolean(item)))
+    .filter((item): item is TrayWindowModuleId => allowed.has(item));
+}
+
+function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const providers = value
+    .map((item): GatewayProviderConfig | undefined => {
+      if (!isObject(item)) {
+        return undefined;
+      }
+      const name = readString(item.name);
+      const models = Array.isArray(item.models)
+        ? item.models.map((model) => readString(model)).filter((model): model is string => Boolean(model))
+        : [];
+
+      if (!name) {
+        return undefined;
+      }
+
+      const provider: GatewayProviderConfig = {
+        api_base_url: readString(item.api_base_url),
+        api_key: readString(item.api_key),
+        apiKey: readString(item.apiKey),
+        apikey: readString(item.apikey),
+        baseUrl: readString(item.baseUrl),
+        baseurl: readString(item.baseurl),
+        billing: item.billing,
+        capabilities: parseProviderCapabilities(item.capabilities),
+        extraBody: item.extraBody,
+        extraHeaders: item.extraHeaders,
+        models,
+        name,
+        provider: readString(item.provider),
+        transformer: item.transformer,
+        type: readString(item.type)
+      };
+      return provider;
+    })
+    .filter((item): item is GatewayProviderConfig => Boolean(item));
+
+  return providers;
+}
+
+function parseProviderCapabilities(value: unknown): GatewayProviderCapability[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const capabilities = value
+    .map((item): GatewayProviderCapability | undefined => {
+      if (!isObject(item)) {
+        return undefined;
+      }
+      const type = parseProviderCapabilityProtocol(readString(item.type) || readString(item.protocol));
+      const baseUrl = readString(item.baseUrl) || readString(item.baseurl) || readString(item.api_base_url);
+      if (!type || !baseUrl) {
+        return undefined;
+      }
+      const source = readString(item.source);
+      return {
+        baseUrl,
+        endpoint: readString(item.endpoint),
+        source: source === "preset" || source === "detected" ? source : undefined,
+        type
+      };
+    })
+    .filter((item): item is GatewayProviderCapability => Boolean(item));
+
+  return capabilities.length > 0 ? capabilities : undefined;
+}
+
+function parseProviderCapabilityProtocol(value: string | undefined): GatewayProviderProtocol | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "openai_responses" || normalized === "openai") {
+    return "openai_responses";
+  }
+  if (normalized === "openai_chat" || normalized === "openai_chat_completions") {
+    return "openai_chat_completions";
+  }
+  if (normalized === "anthropic" || normalized === "anthropic_messages") {
+    return "anthropic_messages";
+  }
+  if (normalized === "gemini" || normalized === "gemini_generate_content") {
+    return "gemini_generate_content";
+  }
+  return undefined;
+}
+
+function parseRouter(value: unknown): Partial<RouterConfig> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const router: Partial<RouterConfig> = {};
+  for (const key of ["background", "default", "image", "longContext", "think", "webSearch"] as const) {
+    const route = readString(value[key]);
+    if (route) {
+      router[key] = route;
+    }
+  }
+  const threshold = readNumber(value.longContextThreshold);
+  if (threshold !== undefined && threshold > 0) {
+    router.longContextThreshold = threshold;
+  }
+  const rules = parseRouterRules(value.rules);
+  if (rules) {
+    router.rules = rules;
+  } else {
+    router.rules = [];
+  }
+  const fallback = parseRouterFallback(value.fallback ?? value.failureFallback ?? value.fallbackStrategy);
+  if (fallback) {
+    router.fallback = fallback;
+  }
+  return router;
+}
+
+function parseRouterFallback(value: unknown): RouterFallbackConfig | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const mode =
+    parseRouterFallbackMode(value.mode) ??
+    parseRouterFallbackMode(value.strategy) ??
+    inferRouterFallbackMode(value);
+  const retryCount = clampNumber(readNumber(value.retryCount ?? value.retries ?? value.maxRetries) ?? 1, 0, 5);
+  const models = parseStringList(value.models ?? value.chain ?? value.fallbackModels)
+    .map((model) => model.trim())
+    .filter(Boolean);
+
+  return {
+    mode,
+    models: uniqueStrings(models),
+    retryCount
+  };
+}
+
+function inferRouterFallbackMode(value: Record<string, unknown>): RouterFallbackMode {
+  if (value.enabled === false) {
+    return "off";
+  }
+  if (parseStringList(value.models ?? value.chain ?? value.fallbackModels).length > 0) {
+    return "model-chain";
+  }
+  if (value.enabled === true) {
+    return "retry";
+  }
+  return "off";
+}
+
+function parseRouterFallbackMode(value: unknown): RouterFallbackMode | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "off" || normalized === "disabled" || normalized === "none") {
+    return "off";
+  }
+  if (normalized === "retry" || normalized === "retries") {
+    return "retry";
+  }
+  if (
+    normalized === "model-chain" ||
+    normalized === "chain" ||
+    normalized === "fallback-chain" ||
+    normalized === "switch-model" ||
+    normalized === "switch"
+  ) {
+    return "model-chain";
+  }
+  return undefined;
+}
+
+function parseStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => readString(item)).filter((item): item is string => Boolean(item));
+  }
+  if (typeof value === "string") {
+    return value
+      .split(/\r?\n|,/g)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function parseRouterRules(value: unknown): RouterRule[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  return value
+    .map((item, index): RouterRule | undefined => {
+      if (!isObject(item)) {
+        return undefined;
+      }
+      const type = parseRouterRuleType(item.type);
+      if (!type) {
+        return undefined;
+      }
+      const id = readString(item.id) || `rule-${index + 1}`;
+      if (REMOVED_LEGACY_ROUTER_RULE_IDS.has(id)) {
+        return undefined;
+      }
+      const name = readString(item.name) || routerRuleTypeLabel(type);
+      const target = readString(item.target);
+      const pattern = readString(item.pattern);
+      const threshold = readNumber(item.threshold);
+      const fallback = parseRouterFallback(item.fallback ?? item.failureFallback ?? item.fallbackStrategy);
+
+      return {
+        enabled: typeof item.enabled === "boolean" ? item.enabled : true,
+        ...(fallback ? { fallback } : {}),
+        id,
+        name,
+        ...(pattern ? { pattern } : {}),
+        ...(target ? { target } : {}),
+        ...(threshold !== undefined && threshold > 0 ? { threshold } : {}),
+        type
+      };
+    })
+    .filter((item): item is RouterRule => Boolean(item));
+}
+
+function parseRouterRuleType(value: unknown): RouterRuleType | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized === "always" ||
+    normalized === "image" ||
+    normalized === "long-context" ||
+    normalized === "model-prefix" ||
+    normalized === "subagent" ||
+    normalized === "thinking" ||
+    normalized === "web-search"
+  ) {
+    return normalized;
+  }
+  return undefined;
+}
+
+function routerRuleTypeLabel(type: RouterRuleType): string {
+  if (type === "long-context") return "Long context";
+  if (type === "model-prefix") return "Model prefix";
+  if (type === "subagent") return "Subagent model";
+  if (type === "thinking") return "Thinking";
+  if (type === "web-search") return "Web search";
+  if (type === "image") return "Image";
+  return "Always";
+}
+
+function parseAgent(value: unknown, legacyMcpServers?: unknown): Partial<GatewayAgentConfig> | undefined {
+  const raw = isObject(value) ? value : {};
+  const mcpServers = parseMcpServers(raw.mcpServers ?? legacyMcpServers);
+  if (!mcpServers) {
+    return undefined;
+  }
+  return { mcpServers };
+}
+
+function parseMcpServers(value: unknown): GatewayMcpServerConfig[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const servers = value
+    .map((item, index): GatewayMcpServerConfig | undefined => {
+      if (!isObject(item)) {
+        return undefined;
+      }
+
+      const transport = parseMcpServerTransport(item.transport);
+      const name = readString(item.name) || (transport !== "stdio" ? readString(item.url) : readString(item.command)) || `mcp-${index + 1}`;
+      const protocolVersion = readString(item.protocolVersion) || "2024-11-05";
+      const startupTimeoutMs = clampNumber(readNumber(item.startupTimeoutMs) ?? 600000, 100, 600000);
+      const requestTimeoutMs = clampNumber(readNumber(item.requestTimeoutMs) ?? 30000, 100, 600000);
+
+      if (transport !== "stdio") {
+        const url = readString(item.url);
+        if (!url) {
+          return undefined;
+        }
+        return {
+          ...(readString(item.apiKey) ? { apiKey: readString(item.apiKey) } : {}),
+          ...(readString(item.apiKeyEnv) ? { apiKeyEnv: readString(item.apiKeyEnv) } : {}),
+          headers: parseStringRecord(item.headers) ?? {},
+          name,
+          protocolVersion,
+          requestTimeoutMs,
+          startupTimeoutMs,
+          transport,
+          url
+        };
+      }
+
+      const command = readString(item.command);
+      if (!command) {
+        return undefined;
+      }
+      const stdioMessageMode = readString(item.stdioMessageMode) === "newline-json" ? "newline-json" : "content-length";
+      return {
+        args: parseStringList(item.args),
+        command,
+        ...(readString(item.cwd) ? { cwd: readString(item.cwd) } : {}),
+        env: parseStringRecord(item.env) ?? {},
+        name,
+        protocolVersion,
+        requestTimeoutMs,
+        startupTimeoutMs,
+        stdioMessageMode,
+        transport
+      };
+    })
+    .filter((item): item is GatewayMcpServerConfig => Boolean(item));
+
+  return servers.length ? servers : undefined;
+}
+
+function parseMcpServerTransport(value: unknown): GatewayMcpServerTransport {
+  const normalized = readString(value)
+    ?.toLowerCase()
+    .replace(/_/g, "-")
+    .replace(/\s+/g, "-");
+  if (normalized === "sse") {
+    return "sse";
+  }
+  if (normalized === "streamable-http" || normalized === "streamble-http" || normalized === "websocket") {
+    return "streamable-http";
+  }
+  return "stdio";
+}
+
+function parseProxy(value: unknown): Partial<ProxyRuntimeConfig> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const proxy: Partial<ProxyRuntimeConfig> = {};
+  const captureNetwork = typeof value.captureNetwork === "boolean"
+    ? value.captureNetwork
+    : typeof value.networkCaptureEnabled === "boolean"
+      ? value.networkCaptureEnabled
+      : undefined;
+  if (captureNetwork !== undefined) {
+    proxy.captureNetwork = captureNetwork;
+  }
+  const browserMode = typeof value.browserMode === "boolean"
+    ? value.browserMode
+    : typeof value.builtInBrowser === "boolean"
+      ? value.builtInBrowser
+      : typeof value.builtInBrowserMode === "boolean"
+        ? value.builtInBrowserMode
+        : undefined;
+  if (browserMode !== undefined) {
+    proxy.browserMode = browserMode;
+  }
+  if (typeof value.enabled === "boolean") {
+    proxy.enabled = value.enabled;
+  }
+  if (typeof value.host === "string" && value.host.trim()) {
+    proxy.host = value.host.trim();
+  }
+  const proxyPort = readPort(value.port);
+  if (proxyPort) {
+    proxy.port = proxyPort;
+  }
+  if (value.mode === "gateway" || value.mode === "transparent") {
+    proxy.mode = value.mode;
+  }
+  if (typeof value.systemProxy === "boolean") {
+    proxy.systemProxy = value.systemProxy;
+  } else if (typeof value.systemProxyEnabled === "boolean") {
+    proxy.systemProxy = value.systemProxyEnabled;
+  }
+  const targets = parseProxyTargets(value.targets);
+  if (targets) {
+    proxy.targets = targets;
+  }
+  return proxy;
+}
+
+function parseProxyTargets(value: unknown): ProxyRouteTarget[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const targets = value
+    .map((item): ProxyRouteTarget | undefined => {
+      if (typeof item === "string" && item.trim()) {
+        return { host: item.trim().toLowerCase() };
+      }
+      if (!isObject(item)) {
+        return undefined;
+      }
+      const host = readString(item.host)?.toLowerCase();
+      if (!host) {
+        return undefined;
+      }
+      const paths = Array.isArray(item.paths)
+        ? item.paths.map((path) => readString(path)).filter((path): path is string => Boolean(path))
+        : undefined;
+      return {
+        host,
+        paths: paths?.length ? paths : undefined
+      };
+    })
+    .filter((item): item is ProxyRouteTarget => Boolean(item));
+
+  return targets.length ? targets : undefined;
+}
+
+function parseGatewayPlugins(value: unknown): GatewayPluginConfig[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const plugins = value
+    .map((item, index): GatewayPluginConfig | undefined => {
+      if (!isObject(item)) {
+        return undefined;
+      }
+
+      const id = readString(item.id) || readString(item.key) || `plugin-${index + 1}`;
+      const modulePath = readString(item.module) || readString(item.path);
+      const apps = parseGatewayPluginApps(item.apps);
+      const proxyRoutes = parseGatewayPluginProxyRoutes(isObject(item.proxy) ? item.proxy.routes : undefined);
+      const coreGateway = parseGatewayPluginCoreGateway(item.coreGateway);
+
+      return {
+        ...(apps ? { apps } : {}),
+        ...(item.config !== undefined ? { config: item.config } : {}),
+        ...(coreGateway ? { coreGateway } : {}),
+        enabled: typeof item.enabled === "boolean" ? item.enabled : true,
+        id,
+        ...(modulePath ? { module: modulePath } : {}),
+        ...(proxyRoutes ? { proxy: { routes: proxyRoutes } } : {})
+      };
+    })
+    .filter((item): item is GatewayPluginConfig => Boolean(item));
+
+  return plugins.length ? plugins : undefined;
+}
+
+function parseGatewayPluginApps(value: unknown): GatewayPluginAppConfig[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const apps = value
+    .map((item, index): GatewayPluginAppConfig | undefined => {
+      if (!isObject(item)) {
+        return undefined;
+      }
+      const name = readString(item.name) || readString(item.title);
+      const url = readString(item.url) || readString(item.href) || readString(item.target);
+      if (!name || !url) {
+        return undefined;
+      }
+      return {
+        ...(readString(item.description) ? { description: readString(item.description) } : {}),
+        ...(readString(item.icon) ? { icon: readString(item.icon) } : {}),
+        id: readString(item.id) || `app-${index + 1}`,
+        name,
+        url
+      };
+    })
+    .filter((item): item is GatewayPluginAppConfig => Boolean(item));
+
+  return apps.length ? apps : undefined;
+}
+
+function parseGatewayPluginProxyRoutes(value: unknown): GatewayPluginProxyRouteConfig[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const routes = value
+    .map((item, index): GatewayPluginProxyRouteConfig | undefined => {
+      if (!isObject(item)) {
+        return undefined;
+      }
+      const host = readString(item.host)?.toLowerCase();
+      const upstream = readString(item.upstream) || readString(item.target) || readString(item.backend);
+      if (!host || !upstream) {
+        return undefined;
+      }
+      const paths = Array.isArray(item.paths)
+        ? item.paths.map((path) => readString(path)).filter((path): path is string => Boolean(path))
+        : undefined;
+      const headers = parseStringRecord(item.headers);
+      const stripPathPrefix =
+        typeof item.stripPathPrefix === "boolean" || typeof item.stripPathPrefix === "string"
+          ? item.stripPathPrefix
+          : undefined;
+      const rewritePathPrefix = readString(item.rewritePathPrefix);
+
+      return {
+        ...(headers ? { headers } : {}),
+        host,
+        id: readString(item.id) || `route-${index + 1}`,
+        ...(paths?.length ? { paths } : {}),
+        ...(typeof item.preserveHost === "boolean" ? { preserveHost: item.preserveHost } : {}),
+        ...(rewritePathPrefix ? { rewritePathPrefix } : {}),
+        ...(stripPathPrefix !== undefined ? { stripPathPrefix } : {}),
+        upstream
+      };
+    })
+    .filter((item): item is GatewayPluginProxyRouteConfig => Boolean(item));
+
+  return routes.length ? routes : undefined;
+}
+
+function parseGatewayPluginCoreGateway(value: unknown): GatewayPluginConfig["coreGateway"] | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const providerPlugins = Array.isArray(value.providerPlugins) ? value.providerPlugins : undefined;
+  const virtualModelProfiles = Array.isArray(value.virtualModelProfiles)
+    ? value.virtualModelProfiles as NonNullable<GatewayPluginConfig["coreGateway"]>["virtualModelProfiles"]
+    : undefined;
+  const config = isObject(value.config) ? { ...(value.config as Record<string, unknown>) } : undefined;
+
+  if (!providerPlugins && !virtualModelProfiles && !config) {
+    return undefined;
+  }
+
+  return {
+    ...(config ? { config } : {}),
+    ...(providerPlugins ? { providerPlugins } : {}),
+    ...(virtualModelProfiles ? { virtualModelProfiles } : {})
+  };
+}
+
+function parseProfile(value: unknown): LoadedProfileConfig | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const profile: LoadedProfileConfig = {};
+  if (typeof value.enabled === "boolean") {
+    profile.enabled = value.enabled;
+  }
+
+  const claudeCode = isObject(value.claudeCode) ? value.claudeCode : isObject(value.claude) ? value.claude : undefined;
+  if (claudeCode) {
+    profile.claudeCode = {};
+    if (typeof claudeCode.enabled === "boolean") {
+      profile.claudeCode.enabled = claudeCode.enabled;
+    }
+    const settingsFile = readString(claudeCode.settingsFile) || readString(claudeCode.configFile) || readString(claudeCode.path);
+    if (settingsFile) {
+      profile.claudeCode.settingsFile = settingsFile;
+    }
+    const model = readString(claudeCode.model);
+    if (model !== undefined) {
+      profile.claudeCode.model = model;
+    }
+    const smallFastModel = readString(claudeCode.smallFastModel) || readString(claudeCode.smallModel);
+    if (smallFastModel !== undefined) {
+      profile.claudeCode.smallFastModel = smallFastModel;
+    }
+  }
+
+  const codex = isObject(value.codex) ? value.codex : undefined;
+  if (codex) {
+    profile.codex = {};
+    if (typeof codex.enabled === "boolean") {
+      profile.codex.enabled = codex.enabled;
+    }
+    if (typeof codex.cliMiddleware === "boolean") {
+      profile.codex.cliMiddleware = codex.cliMiddleware;
+    }
+    const codexCliPath = readString(codex.codexCliPath) || readString(codex.cliPath) || readString(codex.codexPath);
+    if (codexCliPath) {
+      profile.codex.codexCliPath = codexCliPath;
+    }
+    const codexHome = readString(codex.codexHome) || readString(codex.home);
+    if (codexHome) {
+      profile.codex.codexHome = codexHome;
+    }
+    const configFormat = parseCodexProfileConfigFormat(readString(codex.configFormat) || readString(codex.profileConfigFormat));
+    if (configFormat) {
+      profile.codex.configFormat = configFormat;
+    }
+    const remoteFrontendMode = parseCodexRemoteFrontendMode(
+      readString(codex.remoteFrontendMode) || readString(codex.frontendMode) || readString(codex.coreMode)
+    );
+    if (remoteFrontendMode) {
+      profile.codex.remoteFrontendMode = remoteFrontendMode;
+    }
+    const configFile = readString(codex.configFile) || readString(codex.settingsFile) || readString(codex.path);
+    if (configFile) {
+      profile.codex.configFile = configFile;
+    }
+    const model = readString(codex.model);
+    if (model !== undefined) {
+      profile.codex.model = model;
+    }
+    const providerId = readString(codex.providerId) || readString(codex.provider);
+    if (providerId) {
+      profile.codex.providerId = providerId;
+    }
+    const providerName = readString(codex.providerName) || readString(codex.name);
+    if (providerName) {
+      profile.codex.providerName = providerName;
+    }
+  }
+
+  const profiles = parseProfiles(value.profiles);
+  if (profiles) {
+    profile.profiles = profiles;
+  } else {
+    const legacyProfiles: ProfileConfig[] = [];
+    if (profile.claudeCode) {
+      legacyProfiles.push(profileFromClaudeCodeConfig({
+        ...DEFAULT_CONFIG.profile.claudeCode,
+        ...profile.claudeCode
+      }));
+    }
+    if (profile.codex) {
+      legacyProfiles.push(profileFromCodexConfig({
+        ...DEFAULT_CONFIG.profile.codex,
+        ...profile.codex
+      }));
+    }
+    if (legacyProfiles.length) {
+      profile.profiles = legacyProfiles;
+    }
+  }
+
+  return profile;
+}
+
+function parseProfiles(value: unknown): ProfileConfig[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  return value
+    .map((item, index): ProfileConfig | undefined => {
+      if (!isObject(item)) {
+        return undefined;
+      }
+      const agent = parseProfileAgent(item.agent);
+      if (!agent) {
+        return undefined;
+      }
+      const enabled = typeof item.enabled === "boolean" ? item.enabled : true;
+      const id = readString(item.id) || `profile-${index + 1}`;
+      const name = readString(item.name) || (agent === "claude-code" ? "Claude Code" : "Codex");
+      const model = readString(item.model) ?? "";
+
+      if (agent === "claude-code") {
+        return {
+          agent,
+          enabled,
+          id,
+          model,
+          name,
+          settingsFile: readString(item.settingsFile) || readString(item.configFile) || "~/.claude/settings.json",
+          smallFastModel: readString(item.smallFastModel) || readString(item.smallModel) || ""
+        };
+      }
+
+      return {
+        agent,
+        cliMiddleware: typeof item.cliMiddleware === "boolean" ? item.cliMiddleware : false,
+        codexCliPath: readString(item.codexCliPath) || readString(item.cliPath) || readString(item.codexPath) || "",
+        codexHome: readString(item.codexHome) || readString(item.home) || "",
+        configFormat: parseCodexProfileConfigFormat(readString(item.configFormat) || readString(item.profileConfigFormat)) || "legacy",
+        configFile: readString(item.configFile) || readString(item.settingsFile) || "~/.codex/config.toml",
+        enabled,
+        id,
+        model,
+        name,
+        providerId: readString(item.providerId) || readString(item.provider) || "claude-code-router",
+        providerName: readString(item.providerName) || "Claude Code Router",
+        remoteFrontendMode: parseCodexRemoteFrontendMode(readString(item.remoteFrontendMode) || readString(item.frontendMode) || readString(item.coreMode)) || "app"
+      };
+    })
+    .filter((item): item is ProfileConfig => Boolean(item));
+}
+
+function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "claude" || normalized === "claude-code" || normalized === "claude code") {
+    return "claude-code";
+  }
+  if (normalized === "codex") {
+    return "codex";
+  }
+  return undefined;
+}
+
+function profileFromClaudeCodeConfig(config: ClaudeCodeProfileConfig): ProfileConfig {
+  return {
+    agent: "claude-code",
+    enabled: config.enabled,
+    id: "default-claude-code",
+    model: config.model,
+    name: "Claude Code",
+    settingsFile: config.settingsFile,
+    smallFastModel: config.smallFastModel
+  };
+}
+
+function profileFromCodexConfig(config: CodexProfileConfig): ProfileConfig {
+  return {
+    agent: "codex",
+    cliMiddleware: config.cliMiddleware,
+    codexCliPath: config.codexCliPath,
+    codexHome: config.codexHome,
+    configFormat: config.configFormat,
+    configFile: config.configFile,
+    enabled: config.enabled,
+    id: "default-codex",
+    model: config.model,
+    name: "Codex",
+    providerId: config.providerId,
+    providerName: config.providerName,
+    remoteFrontendMode: config.remoteFrontendMode
+  };
+}
+
+function parseCodexProfileConfigFormat(value: string | undefined): "legacy" | "separate_profile_files" | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/-/g, "_").replace(/\s+/g, "_");
+  if (normalized === "legacy" || normalized === "profiles" || normalized === "profile_table" || normalized === "profiles_table") {
+    return "legacy";
+  }
+  if (normalized === "separate" || normalized === "separate_profile_files" || normalized === "profile_files" || normalized === "profile_file" || normalized === "new") {
+    return "separate_profile_files";
+  }
+  return undefined;
+}
+
+function parseCodexRemoteFrontendMode(value: string | undefined): "app" | "cli" | "claude-code" | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/_/g, "-").replace(/\s+/g, "-");
+  if (normalized === "app" || normalized === "codex-app") {
+    return "app";
+  }
+  if (normalized === "cli" || normalized === "codex-cli") {
+    return "cli";
+  }
+  if (normalized === "claude-code" || normalized === "claude") {
+    return "claude-code";
+  }
+  return undefined;
+}
+
+function parseStringRecord(value: unknown): Record<string, string> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const result: Record<string, string> = {};
+  for (const [key, rawValue] of Object.entries(value)) {
+    const normalizedKey = key.trim();
+    const normalizedValue = readString(rawValue);
+    if (normalizedKey && normalizedValue) {
+      result[normalizedKey] = normalizedValue;
+    }
+  }
+  return Object.keys(result).length ? result : undefined;
+}
+
+function parseApiKeys(value: unknown): ApiKeyConfig[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const keys = value
+    .map((item, index) => parseApiKeyConfig(item, index))
+    .filter((item): item is ApiKeyConfig => Boolean(item));
+  return uniqueApiKeyConfigs(keys);
+}
+
+function parseApiKeyConfig(value: unknown, index: number): ApiKeyConfig | undefined {
+  if (typeof value === "string") {
+    const key = readString(value);
+    return key ? createApiKeyConfig(key, index) : undefined;
+  }
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const key = readString(value.key) || readString(value.value) || readString(value.APIKEY);
+  if (!key) {
+    return undefined;
+  }
+
+  const createdAt = readString(value.createdAt) || new Date(0).toISOString();
+  const expiresAt = readString(value.expiresAt);
+  const limits = parseApiKeyLimits(value.limits);
+  const name = readString(value.name);
+  return {
+    createdAt,
+    ...(expiresAt ? { expiresAt } : {}),
+    id: readString(value.id) || `key-${index + 1}`,
+    key,
+    ...(limits ? { limits } : {}),
+    ...(name ? { name } : {})
+  };
+}
+
+function parseApiKeyLimits(value: unknown): ApiKeyLimitConfig | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const limits: ApiKeyLimitConfig = {};
+  for (const key of ["ipd", "iph", "ipm", "maxRequests", "maxTokens", "quotaWindowMs", "rpd", "rph", "rpm", "tpd", "tph", "tpm", "windowMs"] as const) {
+    const limit = readNumber(value[key]);
+    if (limit !== undefined && limit > 0) {
+      limits[key] = limit;
+    }
+  }
+  return Object.keys(limits).length ? limits : undefined;
+}
+
+function normalizeApiKeys(value: ApiKeyConfig[] | undefined, legacyKey: string | undefined): ApiKeyConfig[] {
+  return uniqueApiKeyConfigs([...(value ?? []), ...(legacyKey ? [createApiKeyConfig(legacyKey, value?.length ?? 0)] : [])]);
+}
+
+function createApiKeyConfig(key: string, index: number): ApiKeyConfig {
+  return {
+    createdAt: new Date(0).toISOString(),
+    id: `key-${index + 1}`,
+    key: key.trim(),
+    name: `API Key ${index + 1}`
+  };
+}
+
+function uniqueApiKeyConfigs(values: Array<ApiKeyConfig | undefined>): ApiKeyConfig[] {
+  const seen = new Set<string>();
+  const result: ApiKeyConfig[] = [];
+  for (const value of values) {
+    const trimmed = value?.key.trim();
+    if (!value || !trimmed || seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    result.push({
+      createdAt: value.createdAt,
+      ...(value.expiresAt ? { expiresAt: value.expiresAt } : {}),
+      id: value.id,
+      key: trimmed,
+      ...(value.limits ? { limits: value.limits } : {}),
+      ...(value.name ? { name: value.name } : {})
+    });
+  }
+  return result;
+}
+
+function hasConfigFileApiKeys(value: Partial<AppConfig>): boolean {
+  const record = value as Record<string, unknown>;
+  if (typeof record.APIKEY === "string" && record.APIKEY.trim()) {
+    return true;
+  }
+
+  const values = record.APIKEYS ?? record.apiKeys;
+  if (!Array.isArray(values)) {
+    return false;
+  }
+
+  return values.some((item) => {
+    if (typeof item === "string") {
+      return Boolean(item.trim());
+    }
+    if (!isObject(item)) {
+      return false;
+    }
+    return Boolean(readString(item.key) || readString(item.value) || readString(item.APIKEY));
+  });
+}
+
+function isDefaultSeedApiKey(apiKey: ApiKeyConfig): boolean {
+  return (
+    apiKey.key === "sk-123" &&
+    apiKey.createdAt === new Date(0).toISOString() &&
+    (apiKey.id === "key-1" || apiKey.id === "legacy") &&
+    (!apiKey.name || apiKey.name === "API Key 1")
+  );
+}
+
+function interpolateEnvVars(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value.replace(/\$\{([^}]+)\}|\$([A-Z_][A-Z0-9_]*)/g, (match, braced, unbraced) => {
+      const envName = braced || unbraced;
+      return process.env[envName] ?? match;
+    });
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(interpolateEnvVars);
+  }
+
+  if (isObject(value)) {
+    const mapped: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) {
+      mapped[key] = interpolateEnvVars(item);
+    }
+    return mapped;
+  }
+
+  return value;
+}
+
+function endpointPort(endpoint: string | undefined): number | undefined {
+  if (!endpoint) {
+    return undefined;
+  }
+  try {
+    return readPort(new URL(endpoint).port);
+  } catch {
+    return undefined;
+  }
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function nextPort(port: number) {
+  return port >= 65535 ? port - 1 : port + 1;
+}
+
+function normalizeEndpointHost(host: string) {
+  return host === "0.0.0.0" ? "127.0.0.1" : host;
+}
+
+function readNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value !== "string" || !value.trim()) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+}
+
+function readPort(value: unknown): number | undefined {
+  const parsed = readNumber(value);
+  if (!parsed || parsed < 1 || parsed > 65535) {
+    return undefined;
+  }
+  return Math.trunc(parsed);
+}
+
+function uniqueStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const key = value.trim();
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(key);
+  }
+  return result;
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

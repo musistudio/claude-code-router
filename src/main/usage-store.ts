@@ -1,0 +1,871 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { EventEmitter } from "node:events";
+import { createRequire } from "node:module";
+import { dirname } from "node:path";
+import initSqlJs from "sql.js";
+import { USAGE_DB_FILE } from "./constants";
+import { normalizeUsageInputTokens } from "./usage-normalization";
+import type {
+  GatewayProviderProtocol,
+  UsageComparisonRow,
+  UsageStatsFilter,
+  UsageSeriesPoint,
+  UsageStatsRange,
+  UsageStatsSnapshot,
+  UsageTotals
+} from "../shared/app";
+
+type SqlDatabase = InstanceType<Awaited<ReturnType<typeof initSqlJs>>["Database"]>;
+type SqlValue = number | string | Uint8Array | null;
+type QueryExecResult = {
+  columns: string[];
+  values: SqlValue[][];
+};
+
+type UsageNumbers = {
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  inputIncludesCacheTokens?: boolean;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+};
+
+type UsageEventInput = {
+  client?: string;
+  createdAt?: string;
+  durationMs: number;
+  method: string;
+  model?: string;
+  path: string;
+  provider?: string;
+  requestId?: string;
+  statusCode: number;
+  usage?: UsageNumbers;
+};
+
+type UsageCaptureInput = {
+  bodyText: string;
+  client?: string;
+  durationMs: number;
+  fallbackModel?: string;
+  method: string;
+  path: string;
+  providerProtocol?: GatewayProviderProtocol;
+  requestId?: string;
+  responseHeaders: Headers;
+  statusCode: number;
+};
+
+type UsageStatsQueryOptions = {
+  includeProxy?: boolean;
+};
+
+type StoredUsageEvent = {
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  client: string;
+  createdAt: string;
+  durationMs: number;
+  id: number;
+  inputTokens: number;
+  method: string;
+  model: string;
+  outputTokens: number;
+  path: string;
+  provider: string;
+  requestId: string;
+  statusCode: number;
+  totalTokens: number;
+};
+
+type UsageSnapshot = UsageNumbers & {
+  model?: string;
+};
+
+const requireFromHere = createRequire(__filename);
+const usageEvents = new EventEmitter();
+const emptyTotals: UsageTotals = {
+  avgDurationMs: 0,
+  cacheRatio: 0,
+  cacheTokens: 0,
+  errorCount: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  requestCount: 0,
+  successRate: 0,
+  totalTokens: 0
+};
+
+class UsageStore {
+  private database?: SqlDatabase;
+  private initPromise?: Promise<SqlDatabase>;
+
+  constructor(private readonly dbFile: string) {}
+
+  async record(event: UsageEventInput): Promise<void> {
+    const database = await this.getDatabase();
+    const usage = event.usage ?? {};
+    const inputTokens = normalizeCount(usage.inputTokens);
+    const outputTokens = normalizeCount(usage.outputTokens);
+    const cacheReadTokens = normalizeCount(usage.cacheReadTokens);
+    const cacheWriteTokens = normalizeCount(usage.cacheWriteTokens);
+    const cacheTokens = cacheReadTokens + cacheWriteTokens;
+    const totalTokens = normalizeCount(usage.totalTokens) || inputTokens + outputTokens + cacheTokens;
+    const route = splitRouteSelector(event.model);
+
+    const statement = database.prepare(`
+      INSERT INTO usage_events (
+        created_at,
+        request_id,
+        client,
+        method,
+        path,
+        model,
+        provider,
+        status_code,
+        duration_ms,
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
+        cache_write_tokens,
+        total_tokens
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    try {
+      statement.run([
+        event.createdAt ?? new Date().toISOString(),
+        event.requestId ?? "",
+        normalizeLabel(event.client, "unknown"),
+        event.method,
+        event.path,
+        normalizeLabel(route.model ?? event.model, "unknown"),
+        normalizeLabel(event.provider ?? route.provider, "unknown"),
+        normalizeCount(event.statusCode),
+        normalizeCount(event.durationMs),
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        cacheWriteTokens,
+        totalTokens
+      ]);
+      this.persist();
+      usageEvents.emit("recorded");
+    } finally {
+      statement.free();
+    }
+  }
+
+  async getStats(range: UsageStatsRange = "7d", filter: UsageStatsFilter = {}): Promise<UsageStatsSnapshot> {
+    const database = await this.getDatabase();
+    const now = new Date();
+    const since = getRangeSince(range, now);
+    const query = buildUsageStatsQuery(since, filter);
+    const events = readRows(
+      database.exec(query.sql, query.params)[0]
+    ).map(toStoredUsageEvent);
+
+    return {
+      clientModels: buildClientModelRows(events),
+      generatedAt: now.toISOString(),
+      models: buildModelRows(events),
+      providerModels: buildProviderModelRows(events),
+      range,
+      recentRequests: buildRecentRequestRows(events),
+      series: buildSeries(range, now, events),
+      totals: buildTotals(events)
+    };
+  }
+
+  async getTotalsSince(since: Date, filter: UsageStatsFilter = {}, options: UsageStatsQueryOptions = {}): Promise<UsageTotals> {
+    const database = await this.getDatabase();
+    const query = buildUsageStatsQuery(since, filter, options);
+    const events = readRows(
+      database.exec(query.sql, query.params)[0]
+    ).map(toStoredUsageEvent);
+
+    return buildTotals(events);
+  }
+
+  private async getDatabase(): Promise<SqlDatabase> {
+    if (this.database) {
+      return this.database;
+    }
+
+    this.initPromise ??= this.open();
+    return this.initPromise;
+  }
+
+  private async open(): Promise<SqlDatabase> {
+    mkdirSync(dirname(this.dbFile), { recursive: true });
+    const wasmFile = requireFromHere.resolve("sql.js/dist/sql-wasm.wasm");
+    const SQL = await initSqlJs({ locateFile: () => wasmFile });
+    const database = existsSync(this.dbFile)
+      ? new SQL.Database(readFileSync(this.dbFile))
+      : new SQL.Database();
+
+    database.run(`
+      CREATE TABLE IF NOT EXISTS usage_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at TEXT NOT NULL,
+        request_id TEXT NOT NULL DEFAULT '',
+        client TEXT NOT NULL DEFAULT 'unknown',
+        method TEXT NOT NULL,
+        path TEXT NOT NULL,
+        model TEXT NOT NULL DEFAULT 'unknown',
+        provider TEXT NOT NULL DEFAULT 'unknown',
+        status_code INTEGER NOT NULL DEFAULT 0,
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+        total_tokens INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS usage_events_created_at_idx ON usage_events(created_at);
+      CREATE INDEX IF NOT EXISTS usage_events_model_idx ON usage_events(model);
+      CREATE INDEX IF NOT EXISTS usage_events_path_idx ON usage_events(path);
+    `);
+    ensureUsageSchema(database);
+
+    this.database = database;
+    this.persist();
+    return database;
+  }
+
+  private persist(): void {
+    if (!this.database) {
+      return;
+    }
+    writeFileSync(this.dbFile, Buffer.from(this.database.export()));
+  }
+}
+
+export const usageStore = new UsageStore(USAGE_DB_FILE);
+
+export function onUsageRecorded(listener: () => void): () => void {
+  usageEvents.on("recorded", listener);
+  return () => {
+    usageEvents.off("recorded", listener);
+  };
+}
+
+function ensureUsageSchema(database: SqlDatabase): void {
+  const columns = new Set(
+    readRows(database.exec("PRAGMA table_info(usage_events)")[0])
+      .map((row) => String(row.name ?? ""))
+      .filter(Boolean)
+  );
+
+  if (!columns.has("client")) {
+    database.run("ALTER TABLE usage_events ADD COLUMN client TEXT NOT NULL DEFAULT 'unknown'");
+  }
+
+  database.run("CREATE INDEX IF NOT EXISTS usage_events_client_idx ON usage_events(client)");
+}
+
+export async function getUsageStats(range?: UsageStatsRange, filter?: UsageStatsFilter): Promise<UsageStatsSnapshot> {
+  try {
+    return await usageStore.getStats(range, filter);
+  } catch (error) {
+    console.warn(`[usage] Failed to read usage stats: ${formatError(error)}`);
+    return emptySnapshot(range ?? "7d");
+  }
+}
+
+export async function getTodayUsageTotals(filter?: UsageStatsFilter, options?: UsageStatsQueryOptions): Promise<UsageTotals> {
+  try {
+    return await usageStore.getTotalsSince(floorDay(new Date()), filter, options);
+  } catch (error) {
+    console.warn(`[usage] Failed to read today's usage totals: ${formatError(error)}`);
+    return { ...emptyTotals };
+  }
+}
+
+export async function recordGatewayUsageCapture(input: UsageCaptureInput): Promise<void> {
+  try {
+    const headersUsage = extractUsageFromBillingHeaders(input.responseHeaders);
+    const bodyUsage = extractUsageFromBody(input.bodyText);
+    const usage = normalizeUsageInputTokens(headersUsage ?? bodyUsage, {
+      path: input.path,
+      providerProtocol: input.providerProtocol,
+      usageHint: bodyUsage
+    });
+    const route = splitRouteSelector(input.fallbackModel);
+    const provider =
+      readHeader(input.responseHeaders, "x-gateway-target-provider-name") ??
+      readHeader(input.responseHeaders, "x-gateway-target-provider") ??
+      route.provider;
+
+    await usageStore.record({
+      durationMs: input.durationMs,
+      method: input.method,
+      model: bodyUsage?.model ?? route.model ?? input.fallbackModel,
+      path: input.path,
+      client: input.client,
+      provider,
+      requestId: input.requestId,
+      statusCode: input.statusCode,
+      usage
+    });
+  } catch (error) {
+    console.warn(`[usage] Failed to record usage: ${formatError(error)}`);
+  }
+}
+
+function buildUsageStatsQuery(
+  since: Date,
+  filter: UsageStatsFilter,
+  options: UsageStatsQueryOptions = {}
+): { params: SqlValue[]; sql: string } {
+  const where = ["created_at >= ?"];
+  const params: SqlValue[] = [since.toISOString()];
+  const provider = normalizeFilterValue(filter.provider);
+  const model = normalizeFilterValue(filter.model);
+
+  if (provider) {
+    where.push("provider = ?");
+    params.push(provider);
+  } else if (!options.includeProxy && filter.includeProxy !== true) {
+    where.push("provider <> ?");
+    params.push("proxy");
+  }
+  if (model) {
+    where.push("model = ?");
+    params.push(model);
+  }
+
+  return {
+    params,
+    sql: `
+          SELECT
+            id,
+            created_at,
+            request_id,
+            client,
+            method,
+            path,
+            model,
+            provider,
+            status_code,
+            duration_ms,
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            cache_write_tokens,
+            total_tokens
+          FROM usage_events
+          WHERE ${where.join(" AND ")}
+          ORDER BY created_at ASC
+        `
+  };
+}
+
+function readRows(result: QueryExecResult | undefined): Record<string, SqlValue>[] {
+  if (!result) {
+    return [];
+  }
+  return result.values.map((values) =>
+    Object.fromEntries(result.columns.map((column, index) => [column, values[index] ?? null]))
+  );
+}
+
+function toStoredUsageEvent(row: Record<string, SqlValue>): StoredUsageEvent {
+  return {
+    cacheReadTokens: normalizeCount(row.cache_read_tokens),
+    cacheWriteTokens: normalizeCount(row.cache_write_tokens),
+    client: normalizeLabel(String(row.client ?? ""), "unknown"),
+    createdAt: String(row.created_at ?? ""),
+    durationMs: normalizeCount(row.duration_ms),
+    id: normalizeCount(row.id),
+    inputTokens: normalizeCount(row.input_tokens),
+    method: String(row.method ?? ""),
+    model: normalizeLabel(String(row.model ?? ""), "unknown"),
+    outputTokens: normalizeCount(row.output_tokens),
+    path: normalizeLabel(String(row.path ?? ""), "/"),
+    provider: normalizeLabel(String(row.provider ?? ""), "unknown"),
+    requestId: String(row.request_id ?? ""),
+    statusCode: normalizeCount(row.status_code),
+    totalTokens: normalizeCount(row.total_tokens)
+  };
+}
+
+function buildSeries(range: UsageStatsRange, now: Date, events: StoredUsageEvent[]): UsageSeriesPoint[] {
+  const buckets = buildBuckets(range, now);
+  const grouped = new Map<string, StoredUsageEvent[]>();
+  for (const event of events) {
+    const key = formatBucketKey(new Date(event.createdAt), range === "today" || range === "24h" ? "hour" : "day");
+    const bucket = grouped.get(key) ?? [];
+    bucket.push(event);
+    grouped.set(key, bucket);
+  }
+
+  return buckets.map(({ key, label }) => ({
+    ...buildTotals(grouped.get(key) ?? []),
+    bucket: key,
+    label
+  }));
+}
+
+function buildBuckets(
+  range: UsageStatsRange,
+  now: Date
+): Array<{ key: string; label: string }> {
+  if (range === "today" || range === "24h") {
+    const start = range === "today" ? floorDay(now) : floorHour(now);
+    if (range === "24h") {
+      start.setHours(start.getHours() - 23);
+    }
+    const count = range === "today" ? floorHour(now).getHours() + 1 : 24;
+    return Array.from({ length: count }, (_, index) => {
+      const date = new Date(start);
+      date.setHours(start.getHours() + index);
+      return {
+        key: formatBucketKey(date, "hour"),
+        label: `${String(date.getHours()).padStart(2, "0")}:00`
+      };
+    });
+  }
+
+  const count = range === "7d" ? 7 : 30;
+  const start = floorDay(now);
+  start.setDate(start.getDate() - (count - 1));
+  return Array.from({ length: count }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return {
+      key: formatBucketKey(date, "day"),
+      label: `${date.getMonth() + 1}/${date.getDate()}`
+    };
+  });
+}
+
+function buildModelRows(events: StoredUsageEvent[]): UsageComparisonRow[] {
+  const grouped = new Map<string, StoredUsageEvent[]>();
+  for (const event of events) {
+    const key = `${event.provider}::${event.model}`;
+    const bucket = grouped.get(key) ?? [];
+    bucket.push(event);
+    grouped.set(key, bucket);
+  }
+
+  const rows = Array.from(grouped.entries())
+    .map(([key, groupedEvents]) => {
+      const latest = groupedEvents.at(-1);
+      return {
+        ...buildTotals(groupedEvents),
+        caption: latest?.provider || "unknown",
+        key,
+        label: latest?.model || "unknown",
+        maxShare: 0,
+        model: latest?.model,
+        provider: latest?.provider
+      };
+    })
+    .sort((a, b) => b.totalTokens - a.totalTokens || b.requestCount - a.requestCount)
+    .slice(0, 8);
+
+  return applyMaxShare(rows, (row) => row.totalTokens || row.requestCount);
+}
+
+function buildClientModelRows(events: StoredUsageEvent[]): UsageComparisonRow[] {
+  const grouped = new Map<string, StoredUsageEvent[]>();
+  for (const event of events) {
+    const key = `${event.client}::${event.provider}::${event.model}`;
+    const bucket = grouped.get(key) ?? [];
+    bucket.push(event);
+    grouped.set(key, bucket);
+  }
+
+  const rows = Array.from(grouped.entries())
+    .map(([key, groupedEvents]) => {
+      const latest = groupedEvents.at(-1);
+      const model = latest?.model || "unknown";
+      const provider = latest?.provider || "unknown";
+      return {
+        ...buildTotals(groupedEvents),
+        caption: `${provider} / ${model}`,
+        client: latest?.client,
+        key,
+        label: latest?.client || "unknown",
+        maxShare: 0,
+        model,
+        provider
+      };
+    })
+    .sort(compareUsageRows)
+    .slice(0, 25);
+
+  return applyMaxShare(rows, (row) => row.totalTokens || row.requestCount);
+}
+
+function buildProviderModelRows(events: StoredUsageEvent[]): UsageComparisonRow[] {
+  const grouped = new Map<string, StoredUsageEvent[]>();
+  for (const event of events) {
+    const key = `${event.provider}::${event.model}`;
+    const bucket = grouped.get(key) ?? [];
+    bucket.push(event);
+    grouped.set(key, bucket);
+  }
+
+  const rows = Array.from(grouped.entries())
+    .map(([key, groupedEvents]) => {
+      const latest = groupedEvents.at(-1);
+      const model = latest?.model || "unknown";
+      const provider = latest?.provider || "unknown";
+      return {
+        ...buildTotals(groupedEvents),
+        caption: model,
+        key,
+        label: provider,
+        maxShare: 0,
+        model,
+        provider
+      };
+    })
+    .sort(compareUsageRows)
+    .slice(0, 25);
+
+  return applyMaxShare(rows, (row) => row.totalTokens || row.requestCount);
+}
+
+function buildRecentRequestRows(events: StoredUsageEvent[]): UsageComparisonRow[] {
+  const recent = events.slice(-10).reverse();
+  const rows = recent.map((event) => ({
+    ...buildTotals([event]),
+    caption: `${formatRequestTime(event.createdAt)} · ${event.client} · ${event.path} · ${event.statusCode}`,
+    client: event.client,
+    key: String(event.id),
+    label: event.model || "unknown",
+    maxShare: 0,
+    model: event.model,
+    provider: event.provider
+  }));
+
+  return applyMaxShare(rows, (row) => row.totalTokens || row.avgDurationMs || 1);
+}
+
+function compareUsageRows(a: UsageComparisonRow, b: UsageComparisonRow): number {
+  return b.totalTokens - a.totalTokens || b.requestCount - a.requestCount || a.label.localeCompare(b.label);
+}
+
+function applyMaxShare<T extends UsageComparisonRow>(
+  rows: T[],
+  readValue: (row: T) => number
+): T[] {
+  const max = Math.max(...rows.map(readValue), 0);
+  return rows.map((row) => ({
+    ...row,
+    maxShare: max > 0 ? readValue(row) / max : 0
+  }));
+}
+
+function buildTotals(events: StoredUsageEvent[]): UsageTotals {
+  if (events.length === 0) {
+    return { ...emptyTotals };
+  }
+
+  const requestCount = events.length;
+  const inputTokens = sum(events, (event) => event.inputTokens);
+  const outputTokens = sum(events, (event) => event.outputTokens);
+  const cacheTokens = sum(events, (event) => event.cacheReadTokens);
+  const totalTokens = sum(events, (event) => event.totalTokens || event.inputTokens + event.outputTokens + event.cacheReadTokens + event.cacheWriteTokens);
+  const promptTokens = sum(events, promptTokenCount);
+  const successfulRequests = events.filter((event) => event.statusCode >= 200 && event.statusCode < 400).length;
+  const errorCount = requestCount - successfulRequests;
+
+  return {
+    avgDurationMs: Math.round(sum(events, (event) => event.durationMs) / requestCount),
+    cacheRatio: ratio(cacheTokens, promptTokens),
+    cacheTokens,
+    errorCount,
+    inputTokens,
+    outputTokens,
+    requestCount,
+    successRate: successfulRequests / requestCount,
+    totalTokens
+  };
+}
+
+function promptTokenCount(event: StoredUsageEvent): number {
+  const cacheTokens = event.cacheReadTokens + event.cacheWriteTokens;
+  const promptTokensFromTotal = event.totalTokens - event.outputTokens;
+  if (promptTokensFromTotal > 0) {
+    return Math.max(event.inputTokens, promptTokensFromTotal);
+  }
+  return event.inputTokens + cacheTokens;
+}
+
+function extractUsageFromBillingHeaders(headers: Headers): UsageNumbers | undefined {
+  const inputTokens = readNumberHeader(headers, "x-gateway-billing-input-tokens");
+  const outputTokens = readNumberHeader(headers, "x-gateway-billing-output-tokens");
+  const cacheReadTokens = readNumberHeader(headers, "x-gateway-billing-cache-read-tokens");
+  const cacheWriteTokens = readNumberHeader(headers, "x-gateway-billing-cache-write-tokens");
+  const totalTokens = readNumberHeader(headers, "x-gateway-billing-total-tokens");
+
+  if ([inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens].every((value) => value === undefined)) {
+    return undefined;
+  }
+
+  return {
+    cacheReadTokens,
+    cacheWriteTokens,
+    inputTokens,
+    outputTokens,
+    totalTokens
+  };
+}
+
+function extractUsageFromBody(text: string): UsageSnapshot | undefined {
+  const snapshots: UsageSnapshot[] = [];
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const parsed = parseJson(trimmed);
+  if (parsed !== undefined) {
+    const snapshot = extractUsageSnapshot(parsed);
+    return snapshot && hasUsageNumbers(snapshot) ? snapshot : undefined;
+  }
+
+  for (const payload of parseStreamPayloads(trimmed)) {
+    const snapshot = extractUsageSnapshot(payload);
+    if (snapshot && hasUsageNumbers(snapshot)) {
+      snapshots.push(snapshot);
+    }
+  }
+
+  return snapshots.at(-1);
+}
+
+function parseStreamPayloads(text: string): unknown[] {
+  const payloads: unknown[] = [];
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    const payload = line.startsWith("data:") ? line.slice(5).trim() : line.startsWith("{") ? line : "";
+    if (!payload || payload === "[DONE]") {
+      continue;
+    }
+    const parsed = parseJson(payload);
+    if (parsed !== undefined) {
+      payloads.push(parsed);
+    }
+  }
+  return payloads;
+}
+
+function extractUsageSnapshot(payload: unknown): UsageSnapshot | undefined {
+  if (!isRecord(payload)) {
+    return undefined;
+  }
+
+  const response = isRecord(payload.response) ? payload.response : payload;
+  const usage = isRecord(response.usage)
+    ? response.usage
+    : isRecord(payload.usage)
+      ? payload.usage
+      : undefined;
+  const usageMetadata = isRecord(response.usageMetadata)
+    ? response.usageMetadata
+    : isRecord(payload.usageMetadata)
+      ? payload.usageMetadata
+      : undefined;
+
+  if (usageMetadata) {
+    return {
+      cacheReadTokens: asNumber(usageMetadata.cachedContentTokenCount),
+      inputIncludesCacheTokens: true,
+      inputTokens: asNumber(usageMetadata.promptTokenCount),
+      model: asString(response.modelVersion) ?? asString(payload.modelVersion),
+      outputTokens: asNumber(usageMetadata.candidatesTokenCount),
+      totalTokens: asNumber(usageMetadata.totalTokenCount)
+    };
+  }
+
+  if (!usage) {
+    return undefined;
+  }
+
+  const inputDetails = isRecord(usage.input_tokens_details)
+    ? usage.input_tokens_details
+    : isRecord(usage.prompt_tokens_details)
+      ? usage.prompt_tokens_details
+      : undefined;
+  const hasAnthropicCacheFields =
+    usage.cache_read_input_tokens !== undefined ||
+    usage.cache_creation_input_tokens !== undefined;
+  const hasOpenAiCacheFields =
+    inputDetails?.cached_tokens !== undefined ||
+    inputDetails?.cache_creation_tokens !== undefined ||
+    usage.cached_tokens !== undefined ||
+    usage.prompt_tokens !== undefined;
+
+  return {
+    cacheReadTokens:
+      asNumber(usage.cache_read_tokens) ??
+      asNumber(usage.cache_read_input_tokens) ??
+      asNumber(usage.cached_tokens) ??
+      asNumber(inputDetails?.cached_tokens),
+    cacheWriteTokens:
+      asNumber(usage.cache_write_tokens) ??
+      asNumber(usage.cache_creation_tokens) ??
+      asNumber(usage.cache_creation_input_tokens) ??
+      asNumber(inputDetails?.cache_creation_tokens),
+    inputIncludesCacheTokens: hasAnthropicCacheFields ? false : hasOpenAiCacheFields ? true : undefined,
+    inputTokens: asNumber(usage.input_tokens) ?? asNumber(usage.prompt_tokens),
+    model:
+      asString(response.model) ??
+      asString(payload.model) ??
+      asString(response.modelVersion) ??
+      asString(payload.modelVersion),
+    outputTokens: asNumber(usage.output_tokens) ?? asNumber(usage.completion_tokens),
+    totalTokens: asNumber(usage.total_tokens)
+  };
+}
+
+function hasUsageNumbers(snapshot: UsageNumbers): boolean {
+  return [
+    snapshot.cacheReadTokens,
+    snapshot.cacheWriteTokens,
+    snapshot.inputTokens,
+    snapshot.outputTokens,
+    snapshot.totalTokens
+  ].some((value) => value !== undefined);
+}
+
+function readHeader(headers: Headers, name: string): string | undefined {
+  const value = headers.get(name)?.trim();
+  return value || undefined;
+}
+
+function readNumberHeader(headers: Headers, name: string): number | undefined {
+  return asNumber(readHeader(headers, name));
+}
+
+function asNumber(value: unknown): number | undefined {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : undefined;
+}
+
+function normalizeCount(value: unknown): number {
+  return asNumber(value) ?? 0;
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseJson(value: string): unknown | undefined {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+function splitRouteSelector(value: string | undefined): { model?: string; provider?: string } {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return {};
+  }
+
+  const separator = trimmed.indexOf("/");
+  if (separator <= 0 || separator >= trimmed.length - 1) {
+    return { model: trimmed };
+  }
+
+  return {
+    model: trimmed.slice(separator + 1).trim(),
+    provider: trimmed.slice(0, separator).trim()
+  };
+}
+
+function normalizeLabel(value: string | undefined, fallback: string): string {
+  const trimmed = value?.trim();
+  return trimmed || fallback;
+}
+
+function normalizeFilterValue(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+}
+
+function getRangeSince(range: UsageStatsRange, now: Date): Date {
+  const date = new Date(now);
+  if (range === "today") {
+    return floorDay(date);
+  }
+  if (range === "24h") {
+    date.setHours(date.getHours() - 24);
+  } else if (range === "7d") {
+    date.setDate(date.getDate() - 7);
+  } else {
+    date.setDate(date.getDate() - 30);
+  }
+  return date;
+}
+
+function floorHour(date: Date): Date {
+  const next = new Date(date);
+  next.setMinutes(0, 0, 0);
+  return next;
+}
+
+function floorDay(date: Date): Date {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function formatBucketKey(date: Date, unit: "day" | "hour"): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  if (unit === "day") {
+    return `${year}-${month}-${day}`;
+  }
+  const hour = String(date.getHours()).padStart(2, "0");
+  return `${year}-${month}-${day} ${hour}:00`;
+}
+
+function formatRequestTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "--:--";
+  }
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function ratio(numerator: number, denominator: number): number {
+  if (numerator <= 0 || denominator <= 0) {
+    return 0;
+  }
+  return Math.min(1, numerator / denominator);
+}
+
+function sum<T>(items: T[], read: (item: T) => number): number {
+  return items.reduce((total, item) => total + read(item), 0);
+}
+
+function emptySnapshot(range: UsageStatsRange): UsageStatsSnapshot {
+  return {
+    clientModels: [],
+    generatedAt: new Date().toISOString(),
+    models: [],
+    providerModels: [],
+    range,
+    recentRequests: [],
+    series: buildSeries(range, new Date(), []),
+    totals: { ...emptyTotals }
+  };
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

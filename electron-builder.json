@@ -1,0 +1,49 @@
+{
+  "appId": "com.claudecoderouter.desktop",
+  "productName": "Claude Code Router",
+  "asar": true,
+  "npmRebuild": false,
+  "directories": {
+    "output": "release/${version}"
+  },
+  "protocols": [
+    {
+      "name": "Claude Code Router Provider Import",
+      "schemes": ["ccr"]
+    }
+  ],
+  "files": [
+    "dist",
+    "package.json"
+  ],
+  "mac": {
+    "icon": "build/icon.icns",
+    "target": ["dmg"],
+    "artifactName": "${productName}_${version}.${ext}"
+  },
+  "win": {
+    "icon": "build/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "artifactName": "${productName}_${version}.${ext}"
+  },
+  "linux": {
+    "target": ["AppImage"],
+    "artifactName": "${productName}_${version}.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowElevation": true,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "runAfterFinish": true,
+    "shortcutName": "Claude Code Router"
+  }
+}

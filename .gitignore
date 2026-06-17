@@ -1,7 +1,8 @@
-node_modules
-.env
-log.txt
-.idea
-dist
 .DS_Store
-.vscode
+node_modules
+dist
+release
+*.log
+.env
+.env.*
+!.env.example
