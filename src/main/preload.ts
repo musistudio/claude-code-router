@@ -6,6 +6,7 @@ import type {
   AppConfig,
   AppInfo,
   ApiKeyConfig,
+  ClaudeAppGatewayApplyResult,
   GatewayProviderProbeRequest,
   GatewayProviderProbeResult,
   GatewayStatus,
@@ -28,6 +29,7 @@ import type {
 } from "../shared/app";
 
 contextBridge.exposeInMainWorld("ccr", {
+  applyClaudeAppGateway: (config?: AppConfig) => ipcRenderer.invoke(IPC_CHANNELS.appApplyClaudeAppGateway, config) as Promise<ClaudeAppGatewayApplyResult>,
   applyProfile: () => ipcRenderer.invoke(IPC_CHANNELS.appApplyProfile) as Promise<ProfileApplyResult>,
   clearProxyNetworkCaptures: () => ipcRenderer.invoke(IPC_CHANNELS.appClearProxyNetworkCaptures) as Promise<ProxyNetworkSnapshot>,
   closeTray: () => ipcRenderer.invoke(IPC_CHANNELS.appCloseTray) as Promise<void>,

@@ -598,6 +598,17 @@ export type AppConfig = {
   virtualModelProfiles?: VirtualModelProfileConfig[];
 };
 
+export type ClaudeAppGatewayApplyResult = {
+  apiKeyGenerated: boolean;
+  configFile: string;
+  configLibraryFile: string;
+  dataDir: string;
+  endpoint: string;
+  message: string;
+  model: string;
+  requiresRestart: boolean;
+};
+
 export type GatewayStatus = {
   coreEndpoint: string;
   coreManagedExternally?: boolean;

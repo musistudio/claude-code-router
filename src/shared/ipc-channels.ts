@@ -17,6 +17,7 @@ export const IPC_CHANNELS = {
   appInstallProxyCertificate: "ccr:app:install-proxy-certificate",
   appOpenBuiltInBrowser: "ccr:app:open-built-in-browser",
   appOpenExternal: "ccr:app:open-external",
+  appApplyClaudeAppGateway: "ccr:app:apply-claude-app-gateway",
   appApplyProfile: "ccr:app:apply-profile",
   appProbeProvider: "ccr:app:probe-provider",
   appProviderDeepLink: "ccr:app:provider-deep-link",

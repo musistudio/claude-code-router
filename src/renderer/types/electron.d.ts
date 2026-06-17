@@ -6,6 +6,7 @@ import type {
   AppConfig,
   AppInfo,
   ApiKeyConfig,
+  ClaudeAppGatewayApplyResult,
   GatewayProviderProbeRequest,
   GatewayProviderProbeResult,
   GatewayStatus,
@@ -30,6 +31,7 @@ import type {
 declare global {
   interface Window {
     ccr?: {
+      applyClaudeAppGateway: (config?: AppConfig) => Promise<ClaudeAppGatewayApplyResult>;
       applyProfile: () => Promise<ProfileApplyResult>;
       clearProxyNetworkCaptures: () => Promise<ProxyNetworkSnapshot>;
       closeTray: () => Promise<void>;

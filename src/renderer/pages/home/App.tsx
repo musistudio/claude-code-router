@@ -453,7 +453,9 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Claude Design": "Claude Design",
       "Claude Design model": "Claude Design 模型",
       "Claude Design routes": "Claude Design 路由",
+      "Claude App Gateway": "Claude App 网关",
       "Configure": "配置",
+      "Configure Claude App": "配置 Claude App",
       "Configure provider": "配置供应商",
       "Configure Extension": "配置扩展",
       "Configure extension": "配置扩展",
@@ -1693,6 +1695,8 @@ type AppToast = {
   message: string;
 };
 
+type ServerActionBusy = "" | "browser" | "cert" | "proxy" | "claude-app";
+
 function App() {
   const [activeView, setActiveView] = useState<ViewId>("onboarding");
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStepId>(() => getDefaultOnboardingStep(fallbackConfig));
@@ -1704,7 +1708,7 @@ function App() {
   const [proxyCertificateStatus, setProxyCertificateStatus] = useState<ProxyCertificateStatus>(fallbackProxyCertificateStatus);
   const [proxyNetworkSnapshot, setProxyNetworkSnapshot] = useState<ProxyNetworkSnapshot>(fallbackProxyNetworkSnapshot);
   const [proxyStatus, setProxyStatus] = useState<ProxyStatus>(fallbackProxyStatus);
-  const [actionBusy, setActionBusy] = useState<"" | "browser" | "cert" | "proxy">("");
+  const [actionBusy, setActionBusy] = useState<ServerActionBusy>("");
   const [gatewayActionBusy, setGatewayActionBusy] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
   const [actionError, setActionError] = useState("");
@@ -3215,6 +3219,34 @@ function App() {
     }
   }
 
+  async function applyClaudeAppGateway() {
+    if (!window.ccr?.applyClaudeAppGateway) {
+      setActionError("Claude App setup is available in the Electron app.");
+      return;
+    }
+
+    autoSaveRequestId.current += 1;
+    setActionBusy("claude-app");
+    setActionError("");
+    setActionMessage("");
+    try {
+      const result = await window.ccr.applyClaudeAppGateway(draftConfig);
+      const [saved, status, nextProxyStatus] = await Promise.all([
+        window.ccr.getConfig(),
+        window.ccr.getGatewayStatus(),
+        window.ccr.getProxyStatus()
+      ]);
+      syncConfigState(saved);
+      setGatewayStatus(status);
+      setProxyStatus(nextProxyStatus);
+      setActionMessage(result.message);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setActionBusy("");
+    }
+  }
+
   async function completeOnboarding() {
     if (window.ccr) {
       try {
@@ -3747,6 +3779,7 @@ function App() {
                   actionBusy={actionBusy}
                   actionError={actionError}
                   actionMessage={actionMessage}
+                  applyClaudeAppGateway={() => void applyClaudeAppGateway()}
                   config={draftConfig}
                   installProxyCertificate={installProxyCertificate}
                   onProxyEnabledChange={(checked) => void setProxyEnabled(checked)}
@@ -6313,6 +6346,7 @@ function ServerView({
   actionBusy,
   actionError,
   actionMessage,
+  applyClaudeAppGateway,
   config,
   installProxyCertificate,
   onProxyEnabledChange,
@@ -6325,9 +6359,10 @@ function ServerView({
   restartProxy,
   updateConfig
 }: {
-  actionBusy: "" | "browser" | "cert" | "proxy";
+  actionBusy: ServerActionBusy;
   actionError: string;
   actionMessage: string;
+  applyClaudeAppGateway: () => void;
   config: AppConfig;
   installProxyCertificate: () => void;
   onProxyEnabledChange: (checked: boolean) => void;
@@ -6342,6 +6377,7 @@ function ServerView({
 }) {
   const t = useAppText();
   const trustSteps = proxyCertificateTrustSteps(proxyCertificateStatus);
+  const claudeAppEndpoint = endpointFromHostPort(config.gateway.host || config.HOST, config.gateway.port || config.PORT);
 
   return (
     <motion.div
@@ -6415,6 +6451,17 @@ function ServerView({
             ) : null}
           </div>
 
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/20 p-3">
+            <div className="min-w-0">
+              <div className="text-[12px] font-medium">{t("Claude App Gateway")}</div>
+              <div className="break-all font-mono text-[11px] text-muted-foreground">{claudeAppEndpoint}</div>
+            </div>
+            <Button disabled={Boolean(actionBusy)} onClick={applyClaudeAppGateway} size="sm" type="button" variant="outline">
+              {actionBusy === "claude-app" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Route className="h-3.5 w-3.5" />}
+              {t("Configure Claude App")}
+            </Button>
+          </div>
+
           {config.proxy.enabled || !proxyCertificateStatus.trusted ? (
             <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
               <div className="flex items-center justify-between gap-3">
@@ -6459,14 +6506,15 @@ function ServerView({
                   </Button>
                 ) : null}
               </div>
-              {actionError || actionMessage ? (
-                <div className={cn(
-                  "whitespace-pre-wrap rounded-lg border px-3 py-2 text-[12px]",
-                  actionError ? "border-destructive/30 bg-destructive/5 text-destructive" : "border-border/60 bg-background/80 text-muted-foreground"
-                )}>
-                  {actionError || actionMessage}
-                </div>
-              ) : null}
+            </div>
+          ) : null}
+
+          {actionError || actionMessage ? (
+            <div className={cn(
+              "whitespace-pre-wrap rounded-lg border px-3 py-2 text-[12px]",
+              actionError ? "border-destructive/30 bg-destructive/5 text-destructive" : "border-border/60 bg-background/80 text-muted-foreground"
+            )}>
+              {actionError || actionMessage}
             </div>
           ) : null}
         </CardContent>

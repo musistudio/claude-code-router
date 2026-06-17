@@ -1,5 +1,6 @@
 import { app } from "electron";
 import { loadAppConfig } from "./config";
+import { restoreClaudeAppGatewayConfig, syncClaudeAppGatewayConfig } from "./claude-app-gateway-service";
 import { deepLinkService } from "./deep-link";
 import { gatewayService } from "./gateway/service";
 import "./ipc";
@@ -99,6 +100,11 @@ function stopServicesForQuit(): Promise<void> {
         console.error(`Failed to stop services before quit: ${formatError(error)}`);
       })
       .finally(() => {
+        try {
+          restoreClaudeAppGatewayConfig();
+        } catch (error) {
+          console.error(`Failed to restore Claude App gateway config before quit: ${formatError(error)}`);
+        }
         trayController.destroy();
       });
   }
@@ -109,6 +115,11 @@ function startConfiguredServices(reason: string): Promise<void> {
   if (!startServicesPromise) {
     startServicesPromise = loadAppConfig()
       .then(async (config) => {
+        try {
+          config = (await syncClaudeAppGatewayConfig(config)).config;
+        } catch (error) {
+          console.error(`Failed to sync Claude App gateway config during ${reason}: ${formatError(error)}`);
+        }
         const status = await gatewayService.start(config);
         if (status.state === "error") {
           console.error(`Failed to start gateway during ${reason}: ${status.lastError}`);
