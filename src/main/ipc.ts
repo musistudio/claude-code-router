@@ -1,10 +1,10 @@
 import { app, BrowserWindow, dialog, ipcMain, shell, type OpenDialogOptions } from "electron";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { builtInBrowserService } from "./built-in-browser";
 import { loadAppConfig, saveApiKeysConfig, saveAppConfig } from "./config";
-import { API_KEYS_DB_FILE, APP_NAME, CONFIGDIR, CONFIG_FILE, DATADIR, GATEWAY_CONFIG_FILE, IPC_CHANNELS, PROXY_CA_CERT_FILE, REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "./constants";
+import { API_KEYS_DB_FILE, APP_NAME, CONFIGDIR, CONFIG_FILE, DATADIR, GATEWAY_CONFIG_FILE, IPC_CHANNELS, ONBOARDING_FINISHED_FILE, PROXY_CA_CERT_FILE, REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "./constants";
 import { deepLinkService } from "./deep-link";
 import { gatewayService } from "./gateway/service";
 import { probeGatewayProvider } from "./provider-probe";
@@ -60,6 +60,7 @@ ipcMain.handle(IPC_CHANNELS.appGetInfo, () => {
 });
 
 ipcMain.handle(IPC_CHANNELS.appGetConfig, () => loadAppConfig());
+ipcMain.handle(IPC_CHANNELS.appGetOnboardingFinished, () => existsSync(ONBOARDING_FINISHED_FILE));
 ipcMain.handle(IPC_CHANNELS.appGetPendingProviderDeepLinks, () => deepLinkService.consumePendingProviderRequests());
 ipcMain.handle(IPC_CHANNELS.appGetAgentAnalysis, (_event, filter?: AgentAnalysisFilter) => getAgentAnalysis(filter));
 ipcMain.handle(IPC_CHANNELS.appGetGatewayStatus, () => gatewayService.getStatus());
@@ -141,6 +142,11 @@ ipcMain.handle(IPC_CHANNELS.appSaveApiKeys, async (_event, apiKeys: ApiKeyConfig
   gatewayService.updateConfig(savedConfig);
   await applyProfileIfServiceRunning(savedConfig, gatewayService.getStatus());
   return savedConfig;
+});
+ipcMain.handle(IPC_CHANNELS.appSetOnboardingFinished, () => {
+  mkdirSync(CONFIGDIR, { recursive: true });
+  writeFileSync(ONBOARDING_FINISHED_FILE, `${new Date().toISOString()}\n`, "utf8");
+  return true;
 });
 ipcMain.handle(IPC_CHANNELS.appRestartGateway, async () => {
   const config = await loadAppConfig();

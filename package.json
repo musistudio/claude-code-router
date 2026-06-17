@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@the-next-ai/ai-gateway": "file:../../next-ai/gateway",
+    "@the-next-ai/ai-gateway": "file:../next-ai/ai-gateway",
     "node-forge": "^1.4.0",
     "sql.js": "^1.14.1",
     "undici": "^7.27.2"

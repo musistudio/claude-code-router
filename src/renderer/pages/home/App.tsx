@@ -188,7 +188,6 @@ type AppCopy = {
 };
 
 const languagePreferenceStorageKey = "ccr.ui.language";
-const onboardingCompletionStorageKey = "ccr.onboarding.completed";
 
 const appCopy: Record<ResolvedLanguage, AppCopy> = {
   en: {
@@ -839,7 +838,7 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "System Proxy": "系统代理",
       "This action is applied immediately to the draft config and will auto-save with other changes.": "此操作会立即应用到草稿配置，并随其他变更自动保存。",
       "This provider link came from an external website. Review details before importing.": "这个供应商链接来自外部网站。导入前请确认下面的内容。",
-      "Three steps to connect a provider to your agent.": "三步把供应商接入你的 Agent。",
+      "Welcome to CCR": "欢迎使用CCR",
       "Trusted": "已信任",
       "Small fast model": "小模型",
       "Unknown": "未知",
@@ -1013,6 +1012,34 @@ const navigation: Array<{ icon: LucideIcon; id: NavigationId }> = [
 ];
 
 const onboardingStepOrder: OnboardingStepId[] = ["provider", "profile", "enter"];
+
+function isOnboardingProviderReady(config: AppConfig): boolean {
+  return config.Providers.length > 0;
+}
+
+function isOnboardingProfileReady(config: AppConfig): boolean {
+  return config.profile.enabled && config.profile.profiles.some((profile) => profile.enabled);
+}
+
+function getDefaultOnboardingStep(config: AppConfig): OnboardingStepId {
+  if (!isOnboardingProviderReady(config)) {
+    return "provider";
+  }
+  if (!isOnboardingProfileReady(config)) {
+    return "profile";
+  }
+  return "enter";
+}
+
+function getNextOnboardingStep(activeStep: OnboardingStepId, config: AppConfig): OnboardingStepId | undefined {
+  const activeIndex = onboardingStepOrder.indexOf(activeStep);
+  for (const step of onboardingStepOrder.slice(activeIndex + 1)) {
+    if (step === "enter" || step === getDefaultOnboardingStep(config)) {
+      return step;
+    }
+  }
+  return undefined;
+}
 
 const motionEase = [0.22, 1, 0.36, 1] as const;
 const reducedMotionTransition = { duration: 0.12, ease: "easeOut" } as const;
@@ -1536,10 +1563,12 @@ type AppToast = {
 };
 
 function App() {
-  const [activeView, setActiveView] = useState<ViewId>(() => readOnboardingCompleted() ? "overview" : "onboarding");
-  const [onboardingStep, setOnboardingStep] = useState<OnboardingStepId>("provider");
+  const [activeView, setActiveView] = useState<ViewId>("onboarding");
+  const [onboardingStep, setOnboardingStep] = useState<OnboardingStepId>(() => getDefaultOnboardingStep(fallbackConfig));
   const [appInfo, setAppInfo] = useState<AppInfo>(fallbackInfo);
   const [draftConfig, setDraftConfig] = useState<AppConfig>(fallbackConfig);
+  const [configLoaded, setConfigLoaded] = useState(() => !window.ccr);
+  const [onboardingStatusLoaded, setOnboardingStatusLoaded] = useState(() => !window.ccr);
   const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus>(fallbackGatewayStatus);
   const [proxyCertificateStatus, setProxyCertificateStatus] = useState<ProxyCertificateStatus>(fallbackProxyCertificateStatus);
   const [proxyNetworkSnapshot, setProxyNetworkSnapshot] = useState<ProxyNetworkSnapshot>(fallbackProxyNetworkSnapshot);
@@ -1661,7 +1690,16 @@ function App() {
     }
 
     void window.ccr.getAppInfo().then(setAppInfo);
-    void window.ccr.getConfig().then(syncConfigState);
+    void window.ccr.getConfig()
+      .then(syncConfigState)
+      .catch(() => {
+        // Fall back to the bundled defaults; the rest of the UI can still render.
+      })
+      .finally(() => setConfigLoaded(true));
+    void window.ccr.getOnboardingFinished()
+      .then((finished) => setActiveView(finished ? "overview" : "onboarding"))
+      .catch(() => setActiveView("onboarding"))
+      .finally(() => setOnboardingStatusLoaded(true));
     void window.ccr.getPluginMarketplace().then(setPluginMarketplace).catch(() => setPluginMarketplace([]));
     void window.ccr.getProxyCertificateStatus().then(setProxyCertificateStatus);
     const refreshRuntimeStatus = () => {
@@ -1906,6 +1944,18 @@ function App() {
       setActiveView("server");
     }
   }, [activeView, networkCaptureEnabled]);
+
+  useEffect(() => {
+    if (activeView !== "onboarding" || !configLoaded || !onboardingStatusLoaded) {
+      return;
+    }
+    const defaultStep = getDefaultOnboardingStep(draftConfig);
+    const defaultIndex = onboardingStepOrder.indexOf(defaultStep);
+    setOnboardingStep((current) => {
+      const currentIndex = onboardingStepOrder.indexOf(current);
+      return defaultIndex > currentIndex ? defaultStep : current;
+    });
+  }, [activeView, configLoaded, onboardingStatusLoaded, draftConfig]);
 
   useEffect(() => () => {
     if (toastTimer.current !== undefined) {
@@ -2237,7 +2287,7 @@ function App() {
       setProviderEditIndex(undefined);
       setProviderAddOpen(false);
       if (activeView === "onboarding") {
-        setOnboardingStep("profile");
+        setOnboardingStep(getDefaultOnboardingStep(next));
       }
     }
   }
@@ -2277,7 +2327,7 @@ function App() {
         setProviderDeepLinkRequest(undefined);
         showToast(`${copy.text["Imported provider"] ?? "Imported provider"} ${importedProviderName}`.trim());
         if (activeView === "onboarding") {
-          setOnboardingStep("profile");
+          setOnboardingStep(getDefaultOnboardingStep(next));
         }
       }
     } catch (error) {
@@ -2909,8 +2959,15 @@ function App() {
     }
   }
 
-  function completeOnboarding() {
-    persistOnboardingCompleted();
+  async function completeOnboarding() {
+    if (window.ccr) {
+      try {
+        await window.ccr.setOnboardingFinished();
+      } catch (error) {
+        setActionError(error instanceof Error ? error.message : String(error));
+        return;
+      }
+    }
     setActiveView("overview");
   }
 
@@ -3183,18 +3240,20 @@ function App() {
       {activeView === "onboarding" ? (
         <main className="relative flex min-h-0 min-w-0 flex-1 overflow-auto bg-background px-5 pb-5 pt-12 max-[720px]:px-3 max-[720px]:pb-3">
           <div className="app-drag absolute inset-x-0 top-0 z-10 h-10" />
-          <OnboardingView
-            activeStep={onboardingStep}
-            config={draftConfig}
-            endpoint={gatewayEndpoint}
-            gatewayStatus={gatewayStatus}
-            onAddProfile={openAddProfileDialog}
-            onAddProvider={openAddProviderDialog}
-            onComplete={completeOnboarding}
-            onOpenProfiles={() => setActiveView("profile")}
-            onOpenProviders={() => setActiveView("providers")}
-            onSelectStep={setOnboardingStep}
-          />
+          {configLoaded && onboardingStatusLoaded ? (
+            <OnboardingView
+              activeStep={onboardingStep}
+              config={draftConfig}
+              endpoint={gatewayEndpoint}
+              gatewayStatus={gatewayStatus}
+              onAddProfile={openAddProfileDialog}
+              onAddProvider={openAddProviderDialog}
+              onComplete={completeOnboarding}
+              onOpenProfiles={() => setActiveView("profile")}
+              onOpenProviders={() => setActiveView("providers")}
+              onSelectStep={setOnboardingStep}
+            />
+          ) : null}
         </main>
       ) : (
       <>
@@ -3748,13 +3807,13 @@ function OnboardingView({
   const t = useAppText();
   const shouldReduceMotion = useReducedMotion();
   const [selectedAgent, setSelectedAgent] = useState<ProfileConfig["agent"]>("claude-code");
-  const providerReady = config.Providers.length > 0;
-  const profileReady = config.profile.enabled && config.profile.profiles.some((profile) => profile.enabled);
+  const providerReady = isOnboardingProviderReady(config);
+  const profileReady = isOnboardingProfileReady(config);
   const routeReady = providerReady && profileReady;
   const activeIndex = Math.max(0, onboardingStepOrder.indexOf(activeStep));
   const activeDetails = onboardingStepDetails[activeStep];
   const previousStep = onboardingStepOrder[activeIndex - 1];
-  const nextStep = onboardingStepOrder[activeIndex + 1];
+  const nextStep = getNextOnboardingStep(activeStep, config);
   const firstProvider = config.Providers[0];
   const providerNames = config.Providers.map((provider) => provider.name).filter(Boolean).slice(0, 3).join(", ");
   const selectedAgentProfiles = config.profile.profiles.filter((profile) => profile.agent === selectedAgent);
@@ -3791,7 +3850,7 @@ function OnboardingView({
       transition={{ duration: 0.16 }}
     >
       <div className="flex min-w-0 flex-col items-center gap-3 text-center">
-        <h1 className="max-w-[720px] text-[24px] font-semibold tracking-normal text-foreground">{t("Three steps to connect a provider to your agent.")}</h1>
+        <h1 className="max-w-[720px] text-[24px] font-semibold tracking-normal text-foreground">{t("Welcome to CCR")}</h1>
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col gap-3">
@@ -10587,22 +10646,6 @@ function readLanguagePreference(): AppLanguagePreference {
     return normalizeLanguagePreference(window.localStorage.getItem(languagePreferenceStorageKey));
   } catch {
     return "system";
-  }
-}
-
-function readOnboardingCompleted(): boolean {
-  try {
-    return window.localStorage.getItem(onboardingCompletionStorageKey) === "true";
-  } catch {
-    return false;
-  }
-}
-
-function persistOnboardingCompleted() {
-  try {
-    window.localStorage.setItem(onboardingCompletionStorageKey, "true");
-  } catch {
-    // If storage is unavailable, onboarding can reappear on the next launch.
   }
 }
 

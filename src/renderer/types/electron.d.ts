@@ -34,6 +34,7 @@ declare global {
       getAppInfo: () => Promise<AppInfo>;
       getConfig: () => Promise<AppConfig>;
       getGatewayStatus: () => Promise<GatewayStatus>;
+      getOnboardingFinished: () => Promise<boolean>;
       getPendingProviderDeepLinks: () => Promise<ProviderDeepLinkRequest[]>;
       getPluginMarketplace: () => Promise<PluginMarketplaceEntry[]>;
       getProxyCertificateStatus: () => Promise<ProxyCertificateStatus>;
@@ -52,6 +53,7 @@ declare global {
       saveApiKeys: (apiKeys: ApiKeyConfig[]) => Promise<AppConfig>;
       saveConfig: (config: AppConfig) => Promise<AppConfig>;
       selectPluginDirectory: () => Promise<PluginDirectorySelection | undefined>;
+      setOnboardingFinished: () => Promise<boolean>;
       setProxyNetworkCaptureEnabled: (enabled: boolean) => Promise<ProxyNetworkSnapshot>;
       setTrayDetailOpen: (open: boolean, provider?: string) => Promise<void>;
       showMainWindow: () => Promise<void>;

@@ -5,6 +5,7 @@ export { IPC_CHANNELS } from "../shared/ipc-channels";
 export const APP_NAME = "Claude Code Router";
 export const CONFIGDIR = path.join(app.getPath("home"), ".claude-code-router");
 export const CONFIG_FILE = path.join(CONFIGDIR, "config.json");
+export const ONBOARDING_FINISHED_FILE = path.join(CONFIGDIR, ".onboard_finished");
 export const DATADIR = app.getPath("userData");
 export const API_KEYS_DB_FILE = path.join(DATADIR, "api-keys.sqlite");
 export const CERTDIR = path.join(DATADIR, "certs");
