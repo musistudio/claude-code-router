@@ -8,8 +8,9 @@ import { loadAppConfig, saveApiKeysConfig, saveAppConfig } from "./config";
 import { API_KEYS_DB_FILE, APP_NAME, CONFIGDIR, CONFIG_FILE, DATADIR, GATEWAY_CONFIG_FILE, IPC_CHANNELS, ONBOARDING_FINISHED_FILE, PROXY_CA_CERT_FILE, REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "./constants";
 import { deepLinkService } from "./deep-link";
 import { gatewayService } from "./gateway/service";
-import { getProviderAccountSnapshots } from "./provider-account-service";
+import { getProviderAccountSnapshots, testProviderAccountConnector } from "./provider-account-service";
 import { detectProviderIcon } from "./provider-icons";
+import { fetchProviderManifest } from "./provider-manifest-service";
 import { probeGatewayProvider } from "./provider-probe";
 import { applyProfileConfig } from "./profile-service";
 import { ensureProxyCertificateAuthority } from "./proxy/certificates";
@@ -18,7 +19,7 @@ import { getAgentAnalysis, getRequestLogs } from "./request-log-store";
 import trayController from "./tray-controller";
 import { getUsageStats } from "./usage-store";
 import windowsManager from "./windows";
-import type { AgentAnalysisFilter, ApiKeyConfig, AppConfig, AppInfo, GatewayPluginAppConfig, GatewayProviderProbeRequest, GatewayStatus, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProviderIconDetectionRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
+import type { AgentAnalysisFilter, ApiKeyConfig, AppConfig, AppInfo, GatewayPluginAppConfig, GatewayProviderProbeRequest, GatewayStatus, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProviderAccountTestRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
 
 const pluginMarketplace: PluginMarketplaceEntry[] = [
   {
@@ -74,6 +75,7 @@ ipcMain.handle(IPC_CHANNELS.appGetProxyStatus, () => proxyService.getStatus());
 ipcMain.handle(IPC_CHANNELS.appGetPluginMarketplace, () => pluginMarketplace);
 ipcMain.handle(IPC_CHANNELS.appGetRequestLogs, (_event, filter?: RequestLogListFilter) => getRequestLogs(filter));
 ipcMain.handle(IPC_CHANNELS.appGetUsageStats, (_event, range?: UsageStatsRange, filter?: UsageStatsFilter) => getUsageStats(range, filter));
+ipcMain.handle(IPC_CHANNELS.appFetchProviderManifest, (_event, request: ProviderManifestFetchRequest) => fetchProviderManifest(request));
 ipcMain.handle(IPC_CHANNELS.appInstallProxyCertificate, () => proxyService.installCertificate());
 ipcMain.handle(IPC_CHANNELS.appOpenBuiltInBrowser, async () => {
   const config = await loadAppConfig();
@@ -141,6 +143,9 @@ ipcMain.handle(IPC_CHANNELS.appApplyProfile, async () => {
 });
 ipcMain.handle(IPC_CHANNELS.appProbeProvider, (_event, request: GatewayProviderProbeRequest) => {
   return probeGatewayProvider(request);
+});
+ipcMain.handle(IPC_CHANNELS.appTestProviderAccountConnector, (_event, request: ProviderAccountTestRequest) => {
+  return testProviderAccountConnector(request);
 });
 ipcMain.handle(IPC_CHANNELS.appQuit, () => {
   app.quit();

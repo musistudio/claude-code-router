@@ -11,6 +11,11 @@ export type AppInfo = {
   version: string;
 };
 
+export const BUILTIN_UNIMCP_PACKAGE = "@musistudio/unimcp";
+export const BUILTIN_UNIMCP_SERVER_NAME = "unimcp";
+export const BUILTIN_UNIMCP_VISION_TOOL_NAME = "vision_understand";
+export const BUILTIN_UNIMCP_WEB_SEARCH_TOOL_NAME = "web_search";
+
 export type GatewayProviderProtocol =
   | "openai_responses"
   | "openai_chat_completions"
@@ -37,10 +42,10 @@ export type GatewayProviderConfig = {
   type?: GatewayProviderProtocol | string;
 };
 
-export type ProviderAccountAuthMode = "provider-api-key" | "none";
+export type ProviderAccountAuthMode = "provider-api-key" | "provider-api-key-raw" | "none";
 export type ProviderAccountConnectorSource = "standard" | "http-json" | "plugin" | "local-estimate" | "merged" | "unsupported";
 export type ProviderAccountStatus = "ok" | "warning" | "critical" | "error" | "unsupported";
-export type ProviderAccountMeterKind = "balance" | "quota" | "time_window" | "tokens" | "requests";
+export type ProviderAccountMeterKind = "balance" | "subscription" | "quota" | "time_window" | "tokens" | "requests";
 export type ProviderAccountMeterUnit = "USD" | "CNY" | "hours" | "minutes" | "tokens" | "requests" | string;
 export type ProviderAccountMeterWindow = "5h" | "daily" | "weekly" | "monthly" | string;
 
@@ -148,8 +153,10 @@ export type ProviderAccountSnapshot = {
 };
 
 export type ProviderDeepLinkPayload = {
+  account?: ProviderAccountConfig;
   apiKey?: string;
   baseUrl: string;
+  icon?: string;
   models: string[];
   name?: string;
   protocol?: GatewayProviderProtocol;
@@ -158,9 +165,45 @@ export type ProviderDeepLinkPayload = {
   source?: string;
 };
 
+export type ProviderManifestDeepLinkPayload = {
+  url: string;
+};
+
+export type ProviderManifestFetchRequest = {
+  url: string;
+};
+
+export type ProviderManifestFetchResult = {
+  fetchedAt: string;
+  provider: ProviderDeepLinkPayload;
+  url: string;
+};
+
+export type ProviderAccountTestRequest = {
+  apiKey?: string;
+  baseUrl: string;
+  connector: ProviderAccountHttpJsonConnectorConfig;
+  providerName?: string;
+};
+
+export type ProviderAccountTestPath = {
+  path: string;
+  preview: string;
+  type: "array" | "boolean" | "null" | "number" | "object" | "string";
+};
+
+export type ProviderAccountTestResult = {
+  message?: string;
+  meters: ProviderAccountMeter[];
+  paths: ProviderAccountTestPath[];
+  payload: unknown;
+  status?: ProviderAccountStatus;
+};
+
 export type ProviderDeepLinkRequest = {
   error?: string;
   id: string;
+  manifest?: ProviderManifestDeepLinkPayload;
   provider?: ProviderDeepLinkPayload;
   rawUrl: string;
   receivedAt: string;
@@ -444,6 +487,93 @@ export type ProxyRuntimeConfig = {
 
 export type TrayIconPreference = "random" | "violet" | "orange" | "cyan" | "progress";
 
+export type TrayAccountComponentVariant = "bar" | "compact" | "ring" | "arc" | "stacked";
+export type TrayFlowComponentVariant = "line" | "area" | "bar" | "sparkline";
+export type TrayStatsComponentVariant = "cards" | "compact" | "pills";
+export type TrayTokenMixComponentVariant = "bars" | "stacked" | "donut" | "pie";
+export type TrayRingsComponentVariant = "rings" | "arcs" | "gauges";
+export type TrayModelShareComponentVariant = "bars" | "list" | "donut" | "pie";
+
+export type TrayComponentVariants = {
+  account: TrayAccountComponentVariant;
+  modelShare: TrayModelShareComponentVariant;
+  rings: TrayRingsComponentVariant;
+  stats: TrayStatsComponentVariant;
+  tokenFlow: TrayFlowComponentVariant;
+  tokenMix: TrayTokenMixComponentVariant;
+};
+
+export const DEFAULT_TRAY_COMPONENT_VARIANTS: TrayComponentVariants = {
+  account: "bar",
+  modelShare: "bars",
+  rings: "rings",
+  stats: "cards",
+  tokenFlow: "line",
+  tokenMix: "bars"
+};
+
+export type OverviewWidgetType =
+  | "account-balance"
+  | "client-analysis"
+  | "metric"
+  | "provider-analysis"
+  | "system-status"
+  | "token-mix"
+  | "usage-trend";
+
+export type OverviewWidgetSize = "small" | "medium" | "large" | "wide" | "full";
+export type OverviewWidgetVariant =
+  | "area"
+  | "bar"
+  | "bars"
+  | "card"
+  | "cards"
+  | "compact"
+  | "composed"
+  | "donut"
+  | "line"
+  | "pie"
+  | "ring"
+  | "stacked"
+  | "table"
+  | "timeline";
+
+export type OverviewMetricKind =
+  | "avg-latency"
+  | "cache-ratio"
+  | "cache-tokens"
+  | "errors"
+  | "estimated-cost"
+  | "input-tokens"
+  | "output-tokens"
+  | "requests"
+  | "success-rate"
+  | "total-tokens";
+
+export type OverviewWidgetConfig = {
+  enabled: boolean;
+  id: string;
+  metric?: OverviewMetricKind;
+  size: OverviewWidgetSize;
+  type: OverviewWidgetType;
+  variant: OverviewWidgetVariant;
+};
+
+export const DEFAULT_OVERVIEW_WIDGETS: OverviewWidgetConfig[] = [
+  { enabled: true, id: "system-status", size: "full", type: "system-status", variant: "timeline" },
+  { enabled: true, id: "account-balance", size: "full", type: "account-balance", variant: "cards" },
+  { enabled: true, id: "metric-requests", metric: "requests", size: "small", type: "metric", variant: "card" },
+  { enabled: true, id: "metric-input-tokens", metric: "input-tokens", size: "small", type: "metric", variant: "card" },
+  { enabled: true, id: "metric-output-tokens", metric: "output-tokens", size: "small", type: "metric", variant: "card" },
+  { enabled: true, id: "metric-cache-tokens", metric: "cache-tokens", size: "small", type: "metric", variant: "card" },
+  { enabled: true, id: "metric-cache-ratio", metric: "cache-ratio", size: "small", type: "metric", variant: "card" },
+  { enabled: true, id: "metric-estimated-cost", metric: "estimated-cost", size: "small", type: "metric", variant: "card" },
+  { enabled: true, id: "usage-trend", size: "wide", type: "usage-trend", variant: "composed" },
+  { enabled: true, id: "token-mix", size: "medium", type: "token-mix", variant: "bars" },
+  { enabled: true, id: "client-analysis", size: "large", type: "client-analysis", variant: "table" },
+  { enabled: true, id: "provider-analysis", size: "large", type: "provider-analysis", variant: "table" }
+];
+
 export const TRAY_WINDOW_MODULE_IDS = [
   "source-tabs",
   "header",
@@ -483,7 +613,8 @@ export type CodexProfileConfig = {
   model: string;
   providerId: string;
   providerName: string;
-  remoteFrontendMode: CodexRemoteFrontendMode;
+  remoteFrontendMode?: CodexRemoteFrontendMode;
+  showAllSessions: boolean;
 };
 
 export type ProfileConfig = {
@@ -502,6 +633,7 @@ export type ProfileConfig = {
   providerName?: string;
   remoteFrontendMode?: CodexRemoteFrontendMode;
   scope?: ProfileScope;
+  showAllSessions?: boolean;
   settingsFile?: string;
   smallFastModel?: string;
   surface?: ProfileSurface;
@@ -590,9 +722,11 @@ export type AppConfig = {
   profile: ProfileRuntimeConfig;
   proxy: ProxyRuntimeConfig;
   providerPlugins?: unknown[];
+  overviewWidgets: OverviewWidgetConfig[];
   routerEndpoint: string;
   theme: "system" | "light" | "dark";
   trayProgressTargetTokens: number;
+  trayComponentVariants: TrayComponentVariants;
   trayIcon: TrayIconPreference;
   trayWindowModules: TrayWindowModuleId[];
   virtualModelProfiles?: VirtualModelProfileConfig[];
@@ -765,6 +899,7 @@ export type UsageTotals = {
   avgDurationMs: number;
   cacheRatio: number;
   cacheTokens: number;
+  costUsd: number;
   errorCount: number;
   inputTokens: number;
   outputTokens: number;
@@ -840,6 +975,7 @@ export type AgentAnalysisRequestRow = {
   cacheWriteTokens: number;
   client: string;
   concurrentRequests: number;
+  costUsd?: number;
   createdAt: string;
   durationMs: number;
   error?: string;

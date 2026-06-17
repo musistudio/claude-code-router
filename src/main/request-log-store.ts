@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import initSqlJs from "sql.js";
 import { REQUEST_LOGS_DB_FILE } from "./constants";
+import { estimateUsageCostUsd } from "./model-pricing-service";
 import { normalizeUsageInputTokens } from "./usage-normalization";
 import type {
   AgentAnalysisAgentRow,
@@ -139,6 +140,7 @@ const emptyAgentAnalysisTotals: AgentAnalysisTotals = {
   cacheReadTokens: 0,
   cacheTokens: 0,
   cacheWriteTokens: 0,
+  costUsd: 0,
   errorCount: 0,
   inputTokens: 0,
   maxConcurrentRequests: 0,
@@ -196,6 +198,16 @@ class RequestLogStore {
     const totalTokens =
       normalizeCount(usage.totalTokens) ||
       inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens;
+    const model = normalizeLabel(usage.model ?? route.model ?? requestModel ?? input.fallbackModel, "unknown");
+    const providerName = normalizeLabel(provider, "unknown");
+    const cost = await estimateUsageCostUsd({
+      cacheReadTokens,
+      cacheWriteTokens,
+      inputTokens,
+      model,
+      outputTokens,
+      provider: providerName
+    });
     const requestBody = bodyFromBuffer(
       input.requestBody,
       headerValue(requestHeaders, "content-type")
@@ -251,8 +263,8 @@ class RequestLogStore {
         input.method,
         input.path,
         input.url,
-        normalizeLabel(provider, "unknown"),
-        normalizeLabel(usage.model ?? route.model ?? requestModel ?? input.fallbackModel, "unknown"),
+        providerName,
+        model,
         normalizeCount(input.statusCode),
         isSuccessStatus(input.statusCode, input.error) ? 1 : 0,
         normalizeCount(input.durationMs),
@@ -261,7 +273,7 @@ class RequestLogStore {
         cacheReadTokens,
         cacheWriteTokens,
         totalTokens,
-        null,
+        cost?.amountUsd ?? null,
         JSON.stringify(requestHeaders),
         JSON.stringify(responseHeaders),
         requestBody.text,
@@ -659,6 +671,7 @@ function toAnalyzedAgentRequest(entry: StoredRequestLogEntry): AnalyzedAgentRequ
     client: entry.client,
     completedAt: entry.completedAt,
     concurrentRequests: 1,
+    costUsd: entry.costUsd,
     createdAt: entry.createdAt,
     durationMs: entry.durationMs,
     endedAtMs,
@@ -1294,6 +1307,7 @@ function buildAgentAnalysisTotals(requests: AnalyzedAgentRequest[]): AgentAnalys
   const cacheReadTokens = sum(requests, (request) => request.cacheReadTokens);
   const cacheWriteTokens = sum(requests, (request) => request.cacheWriteTokens);
   const cacheTokens = cacheReadTokens;
+  const costUsd = sum(requests, (request) => request.costUsd ?? 0);
   const totalTokens = sum(requests, (request) => request.totalTokens || request.inputTokens + request.outputTokens + request.cacheReadTokens + request.cacheWriteTokens);
   const promptTokens = sum(requests, (request) => {
     const promptTokensFromTotal = request.totalTokens - request.outputTokens;
@@ -1311,6 +1325,7 @@ function buildAgentAnalysisTotals(requests: AnalyzedAgentRequest[]): AgentAnalys
     cacheReadTokens,
     cacheTokens,
     cacheWriteTokens,
+    costUsd,
     errorCount: requests.length - successfulRequests,
     inputTokens,
     maxConcurrentRequests: maxConcurrentRequests(requests),

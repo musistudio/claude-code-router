@@ -1,6 +1,7 @@
 import { loadAppConfig } from "./config";
 import { pluginService } from "./plugins/service";
 import { getUsageTotalsSince } from "./usage-store";
+import { findProviderPresetByBaseUrl, providerEndpointCanReceiveProviderApiKey } from "../shared/provider-presets";
 import { normalizeProviderBaseUrl, providerUrlWithDefaultScheme } from "../shared/provider-url";
 import type {
   AppConfig,
@@ -9,6 +10,7 @@ import type {
   ProviderAccountConnectorConfig,
   ProviderAccountConnectorError,
   ProviderAccountConnectorSource,
+  ProviderAccountAuthMode,
   ProviderAccountHttpJsonConnectorConfig,
   ProviderAccountLocalEstimateConnectorConfig,
   ProviderAccountLocalWindowConfig,
@@ -18,6 +20,9 @@ import type {
   ProviderAccountMeterUnit,
   ProviderAccountPluginConnectorConfig,
   ProviderAccountSnapshot,
+  ProviderAccountTestPath,
+  ProviderAccountTestRequest,
+  ProviderAccountTestResult,
   ProviderAccountStandardConnectorConfig,
   ProviderAccountStatus
 } from "../shared/app";
@@ -54,8 +59,35 @@ export async function getProviderAccountSnapshots(providerName?: string): Promis
   return snapshots.filter((snapshot): snapshot is ProviderAccountSnapshot => Boolean(snapshot));
 }
 
+export async function testProviderAccountConnector(request: ProviderAccountTestRequest): Promise<ProviderAccountTestResult> {
+  const provider: GatewayProviderConfig = {
+    api_base_url: request.baseUrl,
+    api_key: request.apiKey ?? "",
+    models: [],
+    name: request.providerName?.trim() || "Provider"
+  };
+  const connector: ProviderAccountHttpJsonConnectorConfig = {
+    ...request.connector,
+    auth: request.connector.auth ?? "provider-api-key",
+    method: request.connector.method ?? "GET",
+    type: "http-json"
+  };
+  const payload = await fetchJson(connector.endpoint, provider, connector.auth, connector.headers, connector.method, connector.body);
+  const meters = connector.mapping.meters
+    .map((meter) => mappedMeterFromPayload(meter, payload))
+    .filter((meter): meter is ProviderAccountMeter => Boolean(meter));
+
+  return {
+    meters,
+    message: readMappedString(connector.mapping.message, payload),
+    paths: flattenJsonPaths(payload),
+    payload,
+    status: normalizeStatus(readMappedString(connector.mapping.status, payload))
+  };
+}
+
 async function resolveProviderAccountSnapshot(config: AppConfig, provider: GatewayProviderConfig): Promise<ProviderAccountSnapshot | undefined> {
-  const account = provider.account;
+  const account = effectiveProviderAccount(provider);
   if (!account?.enabled) {
     return undefined;
   }
@@ -84,8 +116,42 @@ async function resolveProviderAccountSnapshot(config: AppConfig, provider: Gatew
   return snapshot;
 }
 
+function effectiveProviderAccount(provider: GatewayProviderConfig): ProviderAccountConfig | undefined {
+  const account = provider.account;
+  if (!account?.enabled) {
+    return undefined;
+  }
+
+  if (!providerAccountConnectorsAreDefaultStandard(account.connectors ?? [])) {
+    return account;
+  }
+
+  const presetAccount = findProviderPresetByBaseUrl(providerBaseUrl(provider))?.account;
+  if (!presetAccount?.enabled) {
+    return undefined;
+  }
+  return {
+    ...presetAccount,
+    refreshIntervalMs: account.refreshIntervalMs ?? presetAccount.refreshIntervalMs
+  };
+}
+
 function normalizeConnectors(account: ProviderAccountConfig): ProviderAccountConnectorConfig[] {
   return Array.isArray(account.connectors) ? account.connectors : [];
+}
+
+function providerAccountConnectorsAreDefaultStandard(connectors: ProviderAccountConnectorConfig[]): boolean {
+  if (connectors.length !== 1 || connectors[0]?.type !== "standard") {
+    return false;
+  }
+  const connector = connectors[0] as ProviderAccountStandardConnectorConfig;
+  return (
+    (connector.auth ?? "provider-api-key") === "provider-api-key" &&
+    !connector.endpoint?.trim() &&
+    !connector.endpoints?.length &&
+    !connector.headers &&
+    !connector.id
+  );
 }
 
 async function resolveConnector(
@@ -339,15 +405,22 @@ function mappedMeterFromPayload(config: ProviderAccountMappedMeterConfig, payloa
   if (!id || !label) {
     return undefined;
   }
+  const unit = config.unit ? readMappedString(config.unit, payload) : undefined;
+  const limit = readMappedNumber(config.limit, payload);
+  const remaining = readMappedNumber(config.remaining, payload);
+  const used = readMappedNumber(config.used, payload);
+  if (limit === undefined && remaining === undefined && used === undefined) {
+    return undefined;
+  }
   return normalizeMeter({
     id,
     kind: config.kind,
     label,
-    limit: readMappedNumber(config.limit, payload),
-    remaining: readMappedNumber(config.remaining, payload),
-    resetAt: readMappedString(config.resetAt, payload),
-    unit: config.unit,
-    used: readMappedNumber(config.used, payload),
+    limit,
+    remaining,
+    resetAt: readMappedDateString(config.resetAt, payload),
+    unit,
+    used,
     window: config.window
   }, "http-json");
 }
@@ -379,7 +452,7 @@ function normalizeMeter(value: unknown, source: ProviderAccountConnectorSource):
 async function fetchJson(
   endpoint: string,
   provider: GatewayProviderConfig,
-  auth: "provider-api-key" | "none" = "provider-api-key",
+  auth: ProviderAccountAuthMode = "provider-api-key",
   headers: Record<string, string> | undefined = undefined,
   method: "GET" | "POST" = "GET",
   body?: unknown
@@ -389,8 +462,17 @@ async function fetchJson(
     accept: "application/json",
     ...(headers ?? {})
   };
-  if (auth === "provider-api-key" && apiKey) {
-    requestHeaders.authorization = requestHeaders.authorization ?? `Bearer ${apiKey}`;
+  if ((auth === "provider-api-key" || auth === "provider-api-key-raw") && apiKey) {
+    const safetyIssue = providerEndpointCanReceiveProviderApiKey({
+      apiKey,
+      endpoint,
+      providerName: provider.name,
+      providerPresetId: findProviderPresetByBaseUrl(providerBaseUrl(provider))?.id
+    });
+    if (safetyIssue) {
+      throw new Error(safetyIssue.message);
+    }
+    requestHeaders.authorization = requestHeaders.authorization ?? (auth === "provider-api-key-raw" ? apiKey : `Bearer ${apiKey}`);
   }
   if (method === "POST") {
     requestHeaders["content-type"] = requestHeaders["content-type"] ?? "application/json";
@@ -401,10 +483,62 @@ async function fetchJson(
     headers: requestHeaders,
     method
   });
+  return await readJsonResponse(response);
+}
+
+async function readJsonResponse(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type") ?? "";
+  const text = await response.text();
   if (!response.ok) {
-    throw new Error(`Account endpoint returned HTTP ${response.status}.`);
+    const errorMessage = jsonErrorMessage(text) || readableResponseSnippet(text) || response.statusText;
+    throw new Error(`Account endpoint returned HTTP ${response.status}${errorMessage ? `: ${errorMessage}` : ""}.`);
   }
-  return await response.json() as unknown;
+  if (!responseLooksJson(contentType, text)) {
+    throw new Error(`Account endpoint returned non-JSON response${contentType ? ` (${contentType.split(";")[0]})` : ""}.`);
+  }
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new Error("Account endpoint returned malformed JSON.");
+  }
+}
+
+function responseLooksJson(contentType: string, text: string): boolean {
+  const normalizedContentType = contentType.toLowerCase();
+  if (normalizedContentType.includes("json")) {
+    return true;
+  }
+  return /^[\s]*[\[{]/.test(text);
+}
+
+function jsonErrorMessage(text: string): string | undefined {
+  if (!responseLooksJson("", text)) {
+    return undefined;
+  }
+  try {
+    const payload = JSON.parse(text) as unknown;
+    if (!isRecord(payload)) {
+      return undefined;
+    }
+    const directMessage = readString(payload.message) || readString(payload.detail);
+    if (directMessage) {
+      return directMessage;
+    }
+    if (isRecord(payload.error)) {
+      return readString(payload.error.message) || readString(payload.error.type);
+    }
+    return readString(payload.error);
+  } catch {
+    return undefined;
+  }
+}
+
+function readableResponseSnippet(text: string): string | undefined {
+  const compact = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  if (!compact) {
+    return undefined;
+  }
+  return compact.length > 160 ? `${compact.slice(0, 157)}...` : compact;
 }
 
 function standardConnectorEndpoints(provider: GatewayProviderConfig, connector: ProviderAccountStandardConnectorConfig): string[] {
@@ -556,6 +690,17 @@ function readConnectorType(connector: ProviderAccountConnectorConfig): string {
   return readString((connector as { type?: unknown }).type) || "unknown";
 }
 
+type JsonPathBracketSelection = {
+  filter?: JsonPathFilterCondition[];
+  key?: number | string;
+  nextIndex: number;
+};
+
+type JsonPathFilterCondition = {
+  expected: number | string;
+  path: string[];
+};
+
 function readMappedNumber(value: number | string | undefined, payload: unknown): number | undefined {
   if (typeof value === "number") {
     return normalizeNumber(value);
@@ -563,8 +708,34 @@ function readMappedNumber(value: number | string | undefined, payload: unknown):
   if (!value) {
     return undefined;
   }
-  const resolved = value.trim().startsWith("$") ? readJsonPath(payload, value) : value;
+  const resolved = resolveMappedNumberExpression(value, payload);
   return normalizeNumber(resolved);
+}
+
+function resolveMappedNumberExpression(expression: string, payload: unknown): unknown {
+  const subtraction = splitMappedSubtractionExpression(expression);
+  if (subtraction) {
+    const left = normalizeNumber(resolveMappedNumberTerm(subtraction.left, payload));
+    const right = normalizeNumber(resolveMappedNumberTerm(subtraction.right, payload));
+    return left === undefined || right === undefined ? undefined : left - right;
+  }
+  return resolveMappedNumberTerm(expression, payload);
+}
+
+function splitMappedSubtractionExpression(expression: string): { left: string; right: string } | undefined {
+  const match = expression.match(/^(.+?)\s+-\s+(.+)$/);
+  if (!match) {
+    return undefined;
+  }
+  return {
+    left: match[1]?.trim() ?? "",
+    right: match[2]?.trim() ?? ""
+  };
+}
+
+function resolveMappedNumberTerm(term: string, payload: unknown): unknown {
+  const trimmed = term.trim();
+  return trimmed.startsWith("$") ? readJsonPath(payload, trimmed) : trimmed;
 }
 
 function readMappedString(value: string | undefined, payload: unknown): string | undefined {
@@ -575,37 +746,188 @@ function readMappedString(value: string | undefined, payload: unknown): string |
   return readString(resolved);
 }
 
+function readMappedDateString(value: string | undefined, payload: unknown): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const resolved = value.trim().startsWith("$") ? readJsonPath(payload, value) : value;
+  const numericTimestamp = typeof resolved === "number"
+    ? resolved
+    : typeof resolved === "string" && /^\d+$/.test(resolved.trim())
+      ? Number(resolved)
+      : undefined;
+  if (numericTimestamp !== undefined && Number.isFinite(numericTimestamp)) {
+    const milliseconds = numericTimestamp < 1_000_000_000_000 ? numericTimestamp * 1000 : numericTimestamp;
+    const date = new Date(milliseconds);
+    return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+  }
+  return readString(resolved);
+}
+
 function readJsonPath(payload: unknown, path: string): unknown {
   const trimmed = path.trim();
   if (trimmed === "$") {
     return payload;
   }
-  if (!trimmed.startsWith("$.")) {
+  if (!trimmed.startsWith("$")) {
     return undefined;
   }
 
   let current = payload;
-  for (const segment of trimmed.slice(2).split(".")) {
-    if (!segment) {
-      return undefined;
-    }
-    const match = /^([^\[]+)(?:\[(\d+)])?$/.exec(segment);
-    if (!match || !isRecord(current)) {
-      return undefined;
-    }
-    current = current[match[1]];
-    if (match[2] !== undefined) {
-      if (!Array.isArray(current)) {
+  let index = 1;
+  while (index < trimmed.length) {
+    if (trimmed[index] === ".") {
+      const nextIndex = nextJsonPathBoundary(trimmed, index + 1);
+      const key = trimmed.slice(index + 1, nextIndex);
+      if (!key || !isRecord(current)) {
         return undefined;
       }
-      current = current[Number(match[2])];
+      current = current[key];
+      index = nextIndex;
+      continue;
     }
+
+    if (trimmed[index] === "[") {
+      const parsed = readJsonPathBracket(trimmed, index);
+      if (!parsed) {
+        return undefined;
+      }
+      if (parsed.filter) {
+        if (!Array.isArray(current)) {
+          return undefined;
+        }
+        current = current.find((item) => jsonPathFilterMatches(item, parsed.filter ?? []));
+      } else if (typeof parsed.key === "number") {
+        if (!Array.isArray(current)) {
+          return undefined;
+        }
+        current = current[parsed.key];
+      } else if (typeof parsed.key === "string") {
+        if (!isRecord(current)) {
+          return undefined;
+        }
+        current = current[parsed.key];
+      } else {
+        return undefined;
+      }
+      index = parsed.nextIndex;
+      continue;
+    }
+
+    return undefined;
   }
   return current;
 }
 
+function nextJsonPathBoundary(path: string, startIndex: number): number {
+  let index = startIndex;
+  while (index < path.length && path[index] !== "." && path[index] !== "[") {
+    index += 1;
+  }
+  return index;
+}
+
+function readJsonPathBracket(path: string, startIndex: number): JsonPathBracketSelection | undefined {
+  if (path[startIndex] !== "[") {
+    return undefined;
+  }
+  const quote = path[startIndex + 1];
+  if (quote === "\"" || quote === "'") {
+    let index = startIndex + 2;
+    let escaped = false;
+    while (index < path.length) {
+      const char = path[index];
+      if (!escaped && char === quote) {
+        const raw = path.slice(startIndex + 1, index + 1);
+        if (path[index + 1] !== "]") {
+          return undefined;
+        }
+        try {
+          return {
+            key: JSON.parse(quote === "'" ? `"${raw.slice(1, -1).replace(/"/g, "\\\"")}"` : raw),
+            nextIndex: index + 2
+          };
+        } catch {
+          return undefined;
+        }
+      }
+      escaped = !escaped && char === "\\";
+      if (char !== "\\") {
+        escaped = false;
+      }
+      index += 1;
+    }
+    return undefined;
+  }
+
+  const endIndex = path.indexOf("]", startIndex + 1);
+  if (endIndex < 0) {
+    return undefined;
+  }
+  const rawIndex = path.slice(startIndex + 1, endIndex).trim();
+  if (/^\d+$/.test(rawIndex)) {
+    return {
+      key: Number(rawIndex),
+      nextIndex: endIndex + 1
+    };
+  }
+  const filter = parseJsonPathFilter(rawIndex);
+  return filter
+    ? {
+      filter,
+      nextIndex: endIndex + 1
+    }
+    : undefined;
+}
+
+function parseJsonPathFilter(raw: string): JsonPathFilterCondition[] | undefined {
+  const match = raw.match(/^\?\((.*)\)$/);
+  if (!match) {
+    return undefined;
+  }
+  const conditions = match[1]
+    .split(/\s+&&\s+/)
+    .map((condition) => parseJsonPathFilterCondition(condition.trim()));
+  if (conditions.some((condition) => !condition)) {
+    return undefined;
+  }
+  return conditions as JsonPathFilterCondition[];
+}
+
+function parseJsonPathFilterCondition(condition: string): JsonPathFilterCondition | undefined {
+  const match = condition.match(/^@((?:\.[A-Za-z_$][A-Za-z0-9_$]*)+)\s*==\s*(?:"([^"]*)"|'([^']*)'|(-?\d+(?:\.\d+)?))$/);
+  if (!match) {
+    return undefined;
+  }
+  const path = match[1]
+    ?.slice(1)
+    .split(".")
+    .filter(Boolean);
+  if (!path?.length) {
+    return undefined;
+  }
+  const expected = match[2] ?? match[3] ?? match[4];
+  if (expected === undefined) {
+    return undefined;
+  }
+  return {
+    expected: match[4] !== undefined ? Number(expected) : expected,
+    path
+  };
+}
+
+function jsonPathFilterMatches(value: unknown, conditions: JsonPathFilterCondition[]): boolean {
+  return conditions.every((condition) => {
+    const actual = condition.path.reduce<unknown>((current, key) => isRecord(current) ? current[key] : undefined, value);
+    if (typeof condition.expected === "number") {
+      return normalizeNumber(actual) === condition.expected;
+    }
+    return actual === condition.expected;
+  });
+}
+
 function normalizeMeterKind(value: string | undefined): ProviderAccountMeterKind | undefined {
-  if (value === "balance" || value === "quota" || value === "time_window" || value === "tokens" || value === "requests") {
+  if (value === "balance" || value === "subscription" || value === "quota" || value === "time_window" || value === "tokens" || value === "requests") {
     return value;
   }
   return undefined;
@@ -666,4 +988,55 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function flattenJsonPaths(value: unknown, path = "$", depth = 0): ProviderAccountTestPath[] {
+  if (depth > 12) {
+    return [{ path, preview: previewJsonValue(value), type: jsonValueType(value) }];
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return [{ path, preview: "[]", type: "array" }];
+    }
+    return value.flatMap((item, index) => flattenJsonPaths(item, `${path}[${index}]`, depth + 1));
+  }
+  if (isRecord(value)) {
+    const entries = Object.entries(value);
+    if (entries.length === 0) {
+      return [{ path, preview: "{}", type: "object" }];
+    }
+    return entries.flatMap(([key, item]) => flattenJsonPaths(item, `${path}${escapeJsonPathSegment(key)}`, depth + 1));
+  }
+  return [{ path, preview: previewJsonValue(value), type: jsonValueType(value) }];
+}
+
+function escapeJsonPathSegment(value: string): string {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value) ? `.${value}` : `[${JSON.stringify(value)}]`;
+}
+
+function previewJsonValue(value: unknown): string {
+  const preview = typeof value === "string" ? value : JSON.stringify(value);
+  if (preview === undefined) {
+    return String(value);
+  }
+  return preview.length > 140 ? `${preview.slice(0, 137)}...` : preview;
+}
+
+function jsonValueType(value: unknown): ProviderAccountTestPath["type"] {
+  if (Array.isArray(value)) {
+    return "array";
+  }
+  if (value === null) {
+    return "null";
+  }
+  if (typeof value === "object") {
+    return "object";
+  }
+  if (typeof value === "number") {
+    return "number";
+  }
+  if (typeof value === "boolean") {
+    return "boolean";
+  }
+  return "string";
 }

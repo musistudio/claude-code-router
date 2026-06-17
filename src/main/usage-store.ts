@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import initSqlJs from "sql.js";
 import { USAGE_DB_FILE } from "./constants";
+import { estimateUsageCostUsd } from "./model-pricing-service";
 import { normalizeUsageInputTokens } from "./usage-normalization";
 import type {
   GatewayProviderProtocol,
@@ -65,6 +66,8 @@ type StoredUsageEvent = {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   client: string;
+  costSource: string;
+  costUsd: number;
   createdAt: string;
   durationMs: number;
   id: number;
@@ -89,6 +92,7 @@ const emptyTotals: UsageTotals = {
   avgDurationMs: 0,
   cacheRatio: 0,
   cacheTokens: 0,
+  costUsd: 0,
   errorCount: 0,
   inputTokens: 0,
   outputTokens: 0,
@@ -113,6 +117,16 @@ class UsageStore {
     const cacheTokens = cacheReadTokens + cacheWriteTokens;
     const totalTokens = normalizeCount(usage.totalTokens) || inputTokens + outputTokens + cacheTokens;
     const route = splitRouteSelector(event.model);
+    const model = normalizeLabel(route.model ?? event.model, "unknown");
+    const provider = normalizeLabel(event.provider ?? route.provider, "unknown");
+    const cost = await estimateUsageCostUsd({
+      cacheReadTokens,
+      cacheWriteTokens,
+      inputTokens,
+      model,
+      outputTokens,
+      provider
+    });
 
     const statement = database.prepare(`
       INSERT INTO usage_events (
@@ -129,8 +143,10 @@ class UsageStore {
         output_tokens,
         cache_read_tokens,
         cache_write_tokens,
-        total_tokens
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        total_tokens,
+        cost_usd,
+        cost_source
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     try {
@@ -140,15 +156,17 @@ class UsageStore {
         normalizeLabel(event.client, "unknown"),
         event.method,
         event.path,
-        normalizeLabel(route.model ?? event.model, "unknown"),
-        normalizeLabel(event.provider ?? route.provider, "unknown"),
+        model,
+        provider,
         normalizeCount(event.statusCode),
         normalizeCount(event.durationMs),
         inputTokens,
         outputTokens,
         cacheReadTokens,
         cacheWriteTokens,
-        totalTokens
+        totalTokens,
+        cost?.amountUsd ?? null,
+        cost?.source ?? ""
       ]);
       this.persist();
       usageEvents.emit("recorded");
@@ -221,7 +239,9 @@ class UsageStore {
         output_tokens INTEGER NOT NULL DEFAULT 0,
         cache_read_tokens INTEGER NOT NULL DEFAULT 0,
         cache_write_tokens INTEGER NOT NULL DEFAULT 0,
-        total_tokens INTEGER NOT NULL DEFAULT 0
+        total_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_usd REAL,
+        cost_source TEXT NOT NULL DEFAULT ''
       );
       CREATE INDEX IF NOT EXISTS usage_events_created_at_idx ON usage_events(created_at);
       CREATE INDEX IF NOT EXISTS usage_events_model_idx ON usage_events(model);
@@ -260,6 +280,12 @@ function ensureUsageSchema(database: SqlDatabase): void {
 
   if (!columns.has("client")) {
     database.run("ALTER TABLE usage_events ADD COLUMN client TEXT NOT NULL DEFAULT 'unknown'");
+  }
+  if (!columns.has("cost_usd")) {
+    database.run("ALTER TABLE usage_events ADD COLUMN cost_usd REAL");
+  }
+  if (!columns.has("cost_source")) {
+    database.run("ALTER TABLE usage_events ADD COLUMN cost_source TEXT NOT NULL DEFAULT ''");
   }
 
   database.run("CREATE INDEX IF NOT EXISTS usage_events_client_idx ON usage_events(client)");
@@ -363,7 +389,9 @@ function buildUsageStatsQuery(
             output_tokens,
             cache_read_tokens,
             cache_write_tokens,
-            total_tokens
+            total_tokens,
+            cost_usd,
+            cost_source
           FROM usage_events
           WHERE ${where.join(" AND ")}
           ORDER BY created_at ASC
@@ -385,6 +413,8 @@ function toStoredUsageEvent(row: Record<string, SqlValue>): StoredUsageEvent {
     cacheReadTokens: normalizeCount(row.cache_read_tokens),
     cacheWriteTokens: normalizeCount(row.cache_write_tokens),
     client: normalizeLabel(String(row.client ?? ""), "unknown"),
+    costSource: String(row.cost_source ?? ""),
+    costUsd: normalizeCost(row.cost_usd),
     createdAt: String(row.created_at ?? ""),
     durationMs: normalizeCount(row.duration_ms),
     id: normalizeCount(row.id),
@@ -579,6 +609,7 @@ function buildTotals(events: StoredUsageEvent[]): UsageTotals {
   const inputTokens = sum(events, (event) => event.inputTokens);
   const outputTokens = sum(events, (event) => event.outputTokens);
   const cacheTokens = sum(events, (event) => event.cacheReadTokens);
+  const costUsd = sum(events, (event) => event.costUsd);
   const totalTokens = sum(events, (event) => event.totalTokens || event.inputTokens + event.outputTokens + event.cacheReadTokens + event.cacheWriteTokens);
   const promptTokens = sum(events, promptTokenCount);
   const successfulRequests = events.filter((event) => event.statusCode >= 200 && event.statusCode < 400).length;
@@ -588,6 +619,7 @@ function buildTotals(events: StoredUsageEvent[]): UsageTotals {
     avgDurationMs: Math.round(sum(events, (event) => event.durationMs) / requestCount),
     cacheRatio: ratio(cacheTokens, promptTokens),
     cacheTokens,
+    costUsd,
     errorCount,
     inputTokens,
     outputTokens,
@@ -760,6 +792,11 @@ function asNumber(value: unknown): number | undefined {
 
 function normalizeCount(value: unknown): number {
   return asNumber(value) ?? 0;
+}
+
+function normalizeCost(value: unknown): number {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
 function asString(value: unknown): string | undefined {

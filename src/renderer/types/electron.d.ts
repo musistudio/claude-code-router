@@ -12,10 +12,14 @@ import type {
   GatewayStatus,
   PluginDirectorySelection,
   PluginMarketplaceEntry,
+  ProviderAccountTestRequest,
+  ProviderAccountTestResult,
   ProviderIconDetectionRequest,
   ProviderIconDetectionResult,
   ProviderAccountSnapshot,
   ProviderDeepLinkRequest,
+  ProviderManifestFetchRequest,
+  ProviderManifestFetchResult,
   ProfileApplyResult,
   ProxyCertificateInstallResult,
   ProxyCertificateStatus,
@@ -36,6 +40,7 @@ declare global {
       clearProxyNetworkCaptures: () => Promise<ProxyNetworkSnapshot>;
       closeTray: () => Promise<void>;
       detectProviderIcon: (request: ProviderIconDetectionRequest) => Promise<ProviderIconDetectionResult>;
+      fetchProviderManifest: (request: ProviderManifestFetchRequest) => Promise<ProviderManifestFetchResult>;
       getAgentAnalysis: (filter?: AgentAnalysisFilter) => Promise<AgentAnalysisSnapshot>;
       getAppInfo: () => Promise<AppInfo>;
       getConfig: () => Promise<AppConfig>;
@@ -66,6 +71,7 @@ declare global {
       showMainWindow: () => Promise<void>;
       startGateway: () => Promise<GatewayStatus>;
       stopGateway: () => Promise<GatewayStatus>;
+      testProviderAccountConnector: (request: ProviderAccountTestRequest) => Promise<ProviderAccountTestResult>;
       onBeforeQuit: (callback: () => void) => () => void;
       onProviderDeepLink: (callback: (request: ProviderDeepLinkRequest) => void) => () => void;
     };

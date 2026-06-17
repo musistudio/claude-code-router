@@ -12,10 +12,14 @@ import type {
   GatewayStatus,
   PluginDirectorySelection,
   PluginMarketplaceEntry,
+  ProviderAccountTestRequest,
+  ProviderAccountTestResult,
   ProviderIconDetectionRequest,
   ProviderIconDetectionResult,
   ProviderAccountSnapshot,
   ProviderDeepLinkRequest,
+  ProviderManifestFetchRequest,
+  ProviderManifestFetchResult,
   ProfileApplyResult,
   ProxyCertificateInstallResult,
   ProxyCertificateStatus,
@@ -34,6 +38,7 @@ contextBridge.exposeInMainWorld("ccr", {
   clearProxyNetworkCaptures: () => ipcRenderer.invoke(IPC_CHANNELS.appClearProxyNetworkCaptures) as Promise<ProxyNetworkSnapshot>,
   closeTray: () => ipcRenderer.invoke(IPC_CHANNELS.appCloseTray) as Promise<void>,
   detectProviderIcon: (request: ProviderIconDetectionRequest) => ipcRenderer.invoke(IPC_CHANNELS.appDetectProviderIcon, request) as Promise<ProviderIconDetectionResult>,
+  fetchProviderManifest: (request: ProviderManifestFetchRequest) => ipcRenderer.invoke(IPC_CHANNELS.appFetchProviderManifest, request) as Promise<ProviderManifestFetchResult>,
   getAgentAnalysis: (filter?: AgentAnalysisFilter) => ipcRenderer.invoke(IPC_CHANNELS.appGetAgentAnalysis, filter) as Promise<AgentAnalysisSnapshot>,
   getAppInfo: () => ipcRenderer.invoke(IPC_CHANNELS.appGetInfo) as Promise<AppInfo>,
   getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.appGetConfig) as Promise<AppConfig>,
@@ -64,6 +69,7 @@ contextBridge.exposeInMainWorld("ccr", {
   showMainWindow: () => ipcRenderer.invoke(IPC_CHANNELS.appShowMainWindow) as Promise<void>,
   startGateway: () => ipcRenderer.invoke(IPC_CHANNELS.appStartGateway) as Promise<GatewayStatus>,
   stopGateway: () => ipcRenderer.invoke(IPC_CHANNELS.appStopGateway) as Promise<GatewayStatus>,
+  testProviderAccountConnector: (request: ProviderAccountTestRequest) => ipcRenderer.invoke(IPC_CHANNELS.appTestProviderAccountConnector, request) as Promise<ProviderAccountTestResult>,
   onBeforeQuit: (callback: () => void) => {
     const handler = () => callback();
     ipcRenderer.on(IPC_CHANNELS.appBeforeQuit, handler);

@@ -1,10 +1,30 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import {
+  closestCenter,
+  DndContext,
+  DragOverlay,
+  getFirstCollision,
+  KeyboardSensor,
+  MeasuringStrategy,
+  pointerWithin,
+  PointerSensor,
+  rectIntersection,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent
+} from "@dnd-kit/core";
+import { arrayMove, rectSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import {
   Activity,
   ArrowDown,
   ArrowUp,
   Box,
+  Boxes,
   Braces,
   Check,
   ChevronDown,
@@ -12,7 +32,6 @@ import {
   ChevronRight,
   CircleAlert,
   Copy,
-  Cpu,
   Database,
   FolderOpen,
   Gauge,
@@ -46,9 +65,12 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   ComposedChart,
   LabelList,
   Line,
+  Pie,
+  PieChart,
   Tooltip,
   XAxis,
   YAxis
@@ -91,7 +113,16 @@ import zhipuCnGeneralProviderIconUrl from "@/assets/provider-icons/zhipu-cn-gene
 import trayCyanIconUrl from "../../../../assets/tray-cyan.png";
 import trayOrangeIconUrl from "../../../../assets/tray-orange.png";
 import trayVioletIconUrl from "../../../../assets/tray-violet.png";
-import { DEFAULT_TRAY_WINDOW_MODULES, TRAY_WINDOW_MODULE_IDS } from "../../../shared/app";
+import {
+  BUILTIN_UNIMCP_PACKAGE,
+  BUILTIN_UNIMCP_SERVER_NAME,
+  BUILTIN_UNIMCP_VISION_TOOL_NAME,
+  BUILTIN_UNIMCP_WEB_SEARCH_TOOL_NAME,
+  DEFAULT_OVERVIEW_WIDGETS,
+  DEFAULT_TRAY_COMPONENT_VARIANTS,
+  DEFAULT_TRAY_WINDOW_MODULES,
+  TRAY_WINDOW_MODULE_IDS
+} from "../../../shared/app";
 import type {
   AgentAnalysisFilter,
   AgentAnalysisSnapshot,
@@ -109,17 +140,26 @@ import type {
   GatewayMcpServerTransport,
   GatewayMcpStdioMessageMode,
   GatewayStatus,
+  OverviewMetricKind,
+  OverviewWidgetConfig,
+  OverviewWidgetSize,
+  OverviewWidgetType,
+  OverviewWidgetVariant,
   PluginDependency,
   PluginDirectorySelection,
   PluginMarketplaceEntry,
+  ProviderAccountConfig,
   ProviderAccountConnectorConfig,
+  ProviderAccountHttpJsonConnectorConfig,
   ProviderAccountMeter,
+  ProviderAccountStandardConnectorConfig,
   ProviderAccountSnapshot,
+  ProviderAccountTestPath,
+  ProviderAccountTestResult,
   ProviderDeepLinkPayload,
   ProviderDeepLinkRequest,
   ProfileConfig,
   CodexProfileConfigFormat,
-  CodexRemoteFrontendMode,
   ProfileScope,
   ProfileSurface,
   ProxyCertificateInstallResult,
@@ -138,6 +178,7 @@ import type {
   RouterFallbackMode,
   RouterRule,
   RouterRuleType,
+  TrayComponentVariants,
   TrayWindowModuleId,
   UsageComparisonRow,
   UsageSeriesPoint,
@@ -152,10 +193,16 @@ import type {
 } from "../../../shared/app";
 import {
   customProviderPresetId,
+  defaultProviderAccountConfig,
   findProviderPreset,
   findProviderPresetByBaseUrl,
   primaryProviderPresetEndpoint,
+  providerApiKeySafetyIssue,
+  providerEndpointCanReceiveProviderApiKey,
+  providerIdentitySafetyIssue,
   providerPresets,
+  standardProviderAccountConfig,
+  type ProviderIdentitySafetyIssue,
   type ProviderPreset,
   type ProviderPresetEndpoint
 } from "../../../shared/provider-presets";
@@ -168,6 +215,18 @@ type AppLanguagePreference = "system" | "en" | "zh";
 type ResolvedLanguage = "en" | "zh";
 type ResolvedTheme = "light" | "dark";
 type SettingsPageId = "appearance" | "tray";
+type TrayEditableModuleId = Exclude<TrayWindowModuleId, "footer">;
+type TrayComponentOptionGroup = {
+  key: keyof TrayComponentVariants;
+  label: string;
+  options: Array<{ label: string; value: string }>;
+};
+type TrayModuleOption = {
+  icon: LucideIcon;
+  label: string;
+  styleKey?: keyof TrayComponentVariants;
+  value: TrayEditableModuleId;
+};
 
 type AppCopy = {
   navigation: Record<NavigationId, string>;
@@ -191,6 +250,32 @@ type AppCopy = {
     trayIconProgress: string;
     trayIconRandom: string;
     trayIconViolet: string;
+    trayComponentAccount: string;
+    trayComponentArc: string;
+    trayComponentArea: string;
+    trayComponentBar: string;
+    trayComponentBars: string;
+    trayComponentCards: string;
+    trayComponentCompact: string;
+    trayComponentDonut: string;
+    trayComponentFlow: string;
+    trayComponentGauges: string;
+    trayComponentLine: string;
+    trayComponentList: string;
+    trayComponentModelShare: string;
+    trayComponentPie: string;
+    trayComponentPills: string;
+    trayComponentRing: string;
+    trayComponentRings: string;
+    trayComponentSparkline: string;
+    trayComponentStacked: string;
+    trayComponentStats: string;
+    trayComponentStyles: string;
+    trayComponentEnabled: string;
+    trayComponentProperties: string;
+    trayComponentStyle: string;
+    trayComponents: string;
+    trayComponentTokenMix: string;
     trayModuleAccount: string;
     trayModuleFooter: string;
     trayModuleHeader: string;
@@ -232,7 +317,7 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       models: "Models",
       routing: "Routing",
       server: "Server",
-      "virtual-models": "Virtual Models"
+      "virtual-models": "Fusion"
     },
     settings: {
       appearance: "Appearance",
@@ -254,6 +339,32 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       trayIconProgress: "Progress ring",
       trayIconRandom: "Random",
       trayIconViolet: "Violet",
+      trayComponentAccount: "Account meter",
+      trayComponentArc: "Arc",
+      trayComponentArea: "Area",
+      trayComponentBar: "Bar",
+      trayComponentBars: "Bars",
+      trayComponentCards: "Cards",
+      trayComponentCompact: "Compact",
+      trayComponentDonut: "Donut",
+      trayComponentFlow: "Flow chart",
+      trayComponentGauges: "Gauges",
+      trayComponentLine: "Line",
+      trayComponentList: "List",
+      trayComponentModelShare: "Model share",
+      trayComponentPie: "Pie",
+      trayComponentPills: "Pills",
+      trayComponentRing: "Ring",
+      trayComponentRings: "Rings",
+      trayComponentSparkline: "Sparkline",
+      trayComponentStacked: "Stacked",
+      trayComponentStats: "Stats",
+      trayComponentStyles: "Component styles",
+      trayComponentEnabled: "Enabled",
+      trayComponentProperties: "Component properties",
+      trayComponentStyle: "Style",
+      trayComponents: "Components",
+      trayComponentTokenMix: "Token mix",
       trayModuleAccount: "Account balance",
       trayModuleFooter: "Footer actions",
       trayModuleHeader: "Title and status",
@@ -315,6 +426,68 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Connection verified": "Connection verified",
       "Press Enter to add": "Press Enter to add",
       "Service": "Service",
+      "Account Balance": "Account Balance",
+      "Add widget": "Add widget",
+      "Area": "Area",
+      "Average latency": "Average latency",
+      "Bar": "Bar",
+      "Bars": "Bars",
+      "Cards": "Cards",
+      "Change widget type": "Change widget type",
+      "Client Analysis": "Client Analysis",
+      "Compact": "Compact",
+      "Composed": "Composed",
+      "Done": "Done",
+      "Donut": "Donut",
+      "Drag cards to arrange": "Drag cards to arrange",
+      "Drag to move": "Drag to move",
+      "Edit widgets": "Edit widgets",
+      "Full": "Full",
+      "Large": "Large",
+      "Line": "Line",
+      "Medium": "Medium",
+      "Metric": "Metric",
+      "Move down": "Move down",
+      "Move up": "Move up",
+      "No widgets configured": "No widgets configured",
+      "Overview layout": "Overview layout",
+      "Overview": "Overview",
+      "Pie": "Pie",
+      "Provider Analysis": "Provider Analysis",
+      "Remove widget": "Remove widget",
+      "Reset layout": "Reset layout",
+      "Ring": "Ring",
+      "Small": "Small",
+      "Stacked": "Stacked",
+      "Style": "Style",
+      "Table": "Table",
+      "Timeline": "Timeline",
+      "Widget": "Widget",
+      "Widget size": "Widget size",
+      "Wide": "Wide",
+      "Virtual model": "Fusion",
+      "Virtual Models": "Fusion",
+      "Add Virtual Model": "Add Fusion",
+      "Add virtual model": "Add Fusion",
+      "Edit Virtual Model": "Edit Fusion",
+      "Edit virtual model": "Edit Fusion",
+      "Fusion combines a model with another model or tools into a new model.": "Fusion combines a model with another model or tools into a new model.",
+      "Fusion example": "Example: GLM 5.2 + GLM 5V Turbo = GLM 5.2V",
+      "Image recognition": "Image recognition",
+      "Image recognition and Web Search": "Image recognition and Web Search",
+      "Generic image understanding tool for OCR, screenshot analysis, chart reading, UI comparison, error diagnosis, and other multi-image tasks.": "Generic image understanding tool for OCR, screenshot analysis, chart reading, UI comparison, error diagnosis, and other multi-image tasks.",
+      "Generic web search tool supporting Brave, Bing, Google CSE, Serper, SerpAPI, Tavily, and Exa.": "Generic web search tool supporting Brave, Bing, Google CSE, Serper, SerpAPI, Tavily, and Exa.",
+      "Web Search": "Web Search",
+      "New model": "New model",
+      "New model is required.": "New model is required.",
+      "Base model is required.": "Base model is required.",
+      "Tool is required.": "Tool is required.",
+      "No matching virtual models": "No matching Fusion profiles",
+      "No virtual models configured": "No Fusion profiles configured",
+      "Remove virtual model": "Remove Fusion",
+      "Search virtual models": "Search Fusion",
+      "Virtual": "Fusion",
+      "Virtual models": "Fusion",
       "Header中未收到Authorization参数，无法进行身份验证。": "Missing Authorization header, so authentication could not be performed."
     }
   },
@@ -326,14 +499,14 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       extensions: "扩展",
       logs: "日志",
       networking: "网络",
-      observability: "可观测",
+      observability: "观测",
       overview: "概览",
-      profile: "Profile",
+      profile: "配置",
       providers: "供应商",
       models: "模型",
       routing: "路由",
       server: "服务",
-      "virtual-models": "虚拟模型"
+      "virtual-models": "Fusion"
     },
     settings: {
       appearance: "外观",
@@ -355,6 +528,32 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       trayIconProgress: "圆形进度条",
       trayIconRandom: "随机",
       trayIconViolet: "紫色小精灵",
+      trayComponentAccount: "账户指标",
+      trayComponentArc: "弧形",
+      trayComponentArea: "面积图",
+      trayComponentBar: "柱状图",
+      trayComponentBars: "横条",
+      trayComponentCards: "卡片",
+      trayComponentCompact: "紧凑",
+      trayComponentDonut: "环形图",
+      trayComponentFlow: "趋势图",
+      trayComponentGauges: "仪表盘",
+      trayComponentLine: "折线图",
+      trayComponentList: "列表",
+      trayComponentModelShare: "模型占比",
+      trayComponentPie: "饼图",
+      trayComponentPills: "胶囊",
+      trayComponentRing: "圆环",
+      trayComponentRings: "圆环",
+      trayComponentSparkline: "迷你折线",
+      trayComponentStacked: "堆叠",
+      trayComponentStats: "指标",
+      trayComponentStyles: "组件样式",
+      trayComponentEnabled: "启用组件",
+      trayComponentProperties: "组件属性",
+      trayComponentStyle: "样式",
+      trayComponents: "组件区",
+      trayComponentTokenMix: "Token 构成",
       trayModuleAccount: "账户余额",
       trayModuleFooter: "底部操作",
       trayModuleHeader: "标题和状态",
@@ -380,24 +579,25 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "7d": "7 天",
       "30d": "30 天",
       "Agent": "Agent",
-      "A provider is required before profiles can route traffic.": "需要先配置供应商，Profile 才能路由请求。",
+      "A provider is required before profiles can route traffic.": "需要先配置供应商，配置档案才能路由请求。",
       "Add or verify a model provider.": "添加或确认模型供应商。",
       "Agent Analysis": "Agent 分析",
       "Agent access": "Agent 接入",
       "Agent Mix": "Agent 分布",
-      "Agent profiles": "Agent Profile",
+      "Agent profiles": "Agent 配置档案",
       "All agents": "全部 Agent",
       "All providers": "全部供应商",
       "API key": "API 密钥",
       "API keys database": "API 密钥数据库",
+      "Only enter an API key issued for this endpoint. Official provider keys must only be used with official endpoints.": "只输入由当前端点签发的 API 密钥。官方供应商密钥只能用于官方端点。",
       "Add": "添加",
       "Add env variable": "添加环境变量",
       "Add header": "添加请求头",
       "Add API Key": "添加 API 密钥",
       "Add API key": "添加 API 密钥",
       "Add limit": "添加限制",
-      "Add Profile": "添加 Profile",
-      "Add profile": "添加 Profile",
+      "Add Profile": "添加配置档案",
+      "Add profile": "添加配置档案",
       "Add Provider": "添加供应商",
       "Add provider": "添加供应商",
       "Add Routing Rule": "添加路由规则",
@@ -425,11 +625,9 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Cancel": "取消",
       "Check": "检查",
       "Capture network": "捕获网络",
-      "CCR manages an isolated Claude Code settings file for this profile.": "CCR 会为这个 Profile 管理一份隔离的 Claude Code 设置文件。",
-      "CCR manages an isolated Codex config file for this profile.": "CCR 会为这个 Profile 管理一份隔离的 Codex 配置文件。",
       "Connection verified": "连通性已验证",
       "Check trust": "检查信任",
-      "Choose where each agent uses CCR. Keep advanced paths hidden unless you need global or custom installs.": "选择每个 Agent 在哪里使用 CCR。除非需要系统默认或自定义安装，否则高级路径会保持收起。",
+      "Choose where each agent uses CCR.": "选择每个 Agent 在哪里使用 CCR。",
       "Click Add to create one": "点击添加创建一项",
       "Click Install to add one": "点击安装添加一项",
       "Client": "客户端",
@@ -440,36 +638,27 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Close dialog": "关闭弹窗",
       "Code": "代码",
       "Codex": "Codex",
-      "Codex App": "Codex App",
-      "Codex CLI": "Codex CLI",
-      "Codex CLI path": "Codex CLI 路径",
-      "Codex home": "Codex Home",
       "Codex model": "Codex 模型",
-      "Claude Code through Codex App": "Claude Code 经 Codex App",
-      "CLI middleware": "CLI middleware",
       "CLI only": "仅 CLI",
       "Concurrency": "并发",
       "Condition": "条件",
       "Claude Design": "Claude Design",
       "Claude Design model": "Claude Design 模型",
       "Claude Design routes": "Claude Design 路由",
-      "Claude App Gateway": "Claude App 网关",
       "Configure": "配置",
-      "Configure Claude App": "配置 Claude App",
       "Configure provider": "配置供应商",
       "Configure Extension": "配置扩展",
       "Configure extension": "配置扩展",
       "Configure plugin": "配置插件",
       "Configure plugin route": "配置插件路由",
       "Configure Routing": "配置路由",
-      "Config file": "配置文件",
-      "Config format": "配置格式",
       "Continue": "继续",
       "Custom config path": "自定义配置路径",
       "Core gateway": "核心网关",
       "Cost": "成本",
+      "Estimated cost": "估算成本",
       "Connect agent": "接入 Agent",
-      "Create a profile for your agent.": "为你的 Agent 创建 Profile。",
+      "Create a profile for your agent.": "为你的 Agent 创建配置档案。",
       "Cursor model": "Cursor 模型",
       "Cursor Proxy routes": "Cursor Proxy 路由",
       "Custom": "自定义",
@@ -489,7 +678,7 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Edit": "编辑",
       "Edit API Key": "编辑 API 密钥",
       "Edit API key": "编辑 API 密钥",
-      "Edit Profile": "编辑 Profile",
+      "Edit Profile": "编辑配置档案",
       "Edit Provider": "编辑供应商",
       "Edit provider": "编辑供应商",
       "Edit Routing Rule": "编辑路由规则",
@@ -517,11 +706,15 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Generated path": "生成路径",
       "Headers": "请求头",
       "Header rows require keys.": "请求头行必须填写 Key。",
+      "Fetch usage": "获取用量",
+      "Fetch manifest": "拉取 manifest",
       "Hide advanced settings": "收起高级设置",
+      "HTTP JSON request": "HTTP JSON 请求",
       "Host": "主机",
       "ID": "ID",
       "Import": "导入",
       "Import Provider": "导入供应商",
+      "Import Provider Manifest": "导入供应商 Manifest",
       "Imported provider": "已导入供应商",
       "Invalid JSON.": "JSON 无效。",
       "Image content": "图像内容",
@@ -538,7 +731,7 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Last apply": "上次应用",
       "Last request": "最近请求",
       "Last seen": "最近活跃",
-      "Legacy profile table": "旧版 profile 表",
+      "Legacy profile table": "旧版配置档案表",
       "Limit": "限制",
       "Limits": "限制",
       "Local": "本地",
@@ -572,7 +765,7 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Not running": "未运行",
       "Open CA": "打开 CA",
       "Only opened from CCR": "仅从 CCR 打开",
-      "Open profiles": "查看 Profile",
+      "Open profiles": "查看配置档案",
       "Open providers": "查看供应商",
       "Output": "输出",
       "Output tokens": "输出令牌",
@@ -600,22 +793,24 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Provider Analysis": "供应商分析",
       "Provider ID": "供应商 ID",
       "Provider link failed": "供应商链接失败",
+      "Provider links cannot include API keys. Add the key manually after verifying the endpoint.": "供应商链接不能包含 API 密钥。请核验端点后手动添加密钥。",
       "Provider middleware": "供应商中间件",
       "Provider name": "供应商名称",
+      "Provider name and Base URL are required.": "供应商名称和基础 URL 不能为空。",
       "Provider name already exists.": "供应商名称已存在。",
       "Provider ready": "供应商已就绪",
       "Provider plugin": "供应商插件",
       "Provider website": "供应商网站",
       "Providers": "供应商",
       "Proxy": "代理",
-      "Remote frontend": "远程前端",
       "Proxy mode": "代理模式",
       "Preset provider": "预设供应商",
-      "Profile": "Profile",
-      "Profile name": "Profile 名称",
-      "Profile name and required target settings are missing.": "请填写 Profile 名称和必需的接入目标设置。",
-      "Profile name, required target settings, and environment variable keys are required.": "请填写 Profile 名称、必需的接入目标设置和环境变量 Key。",
-      "Profile ready": "Profile 已就绪",
+      "Profile": "配置",
+      "Profile name": "配置档案名称",
+      "Profile name and required target settings are missing.": "请填写配置档案名称和必需的接入目标设置。",
+      "Profile name, required target settings, and environment variable keys are required.": "请填写配置档案名称、必需的接入目标设置和环境变量 Key。",
+      "Profile no longer exists.": "配置档案已不存在。",
+      "Profile ready": "配置档案已就绪",
       "Recent Errors": "最近错误",
       "Recent Requests": "最近请求",
       "Refresh": "刷新",
@@ -627,7 +822,7 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Remove extension": "移除扩展",
       "Remove limit": "移除限制",
       "Remove provider": "移除供应商",
-      "Remove profile": "移除 Profile",
+      "Remove profile": "移除配置档案",
       "Remove rule": "移除规则",
       "Replace existing provider": "替换已有供应商",
       "Request": "请求",
@@ -650,12 +845,43 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Search providers or models": "搜索供应商或模型",
       "Search request logs": "搜索请求日志",
       "Search routing rules": "搜索路由规则",
-      "Separate profile files": "独立 profile 文件",
       "Server": "服务",
+      "Add widget": "添加组件",
+      "Area": "面积图",
+      "Average latency": "平均延迟",
+      "Bar": "柱状图",
+      "Bars": "横条",
+      "Cards": "卡片",
+      "Change widget type": "切换组件类型",
+      "Compact": "紧凑",
+      "Composed": "组合图",
+      "Done": "完成",
+      "Donut": "环形图",
+      "Edit widgets": "编辑组件",
+      "Full": "整行",
+      "Large": "大",
+      "Line": "折线图",
+      "Medium": "中",
+      "Metric": "指标",
+      "No widgets configured": "未配置组件",
+      "Overview layout": "概览布局",
+      "Overview": "概览",
+      "Pie": "饼图",
+      "Remove widget": "移除组件",
+      "Reset layout": "重置布局",
+      "Ring": "圆环",
+      "Small": "小",
+      "Stacked": "堆叠",
+      "Style": "样式",
+      "Table": "表格",
+      "Timeline": "时间线",
+      "Widget": "组件",
+      "Widget size": "组件大小",
+      "Wide": "宽",
       "Set as default provider": "设为默认供应商",
-      "Settings file": "设置文件",
       "Session": "会话",
       "Sessions": "会话",
+      "Show all sessions": "显示所有会话",
       "Status": "状态",
       "Status codes": "状态码",
       "Subagent": "子代理",
@@ -675,6 +901,7 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Today": "今天",
       "Token threshold": "令牌阈值",
       "Tokens": "令牌",
+      "tokens": "令牌",
       "Tool": "工具",
       "Tool Usage": "工具使用",
       "Tool calls": "工具调用",
@@ -686,14 +913,19 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Unset": "未设置",
       "URL": "URL",
       "URL is required.": "URL 不能为空。",
+      "Usage mode": "用量模式",
+      "Usage request URL": "用量请求 URL",
+      "Usage request URL is required.": "用量请求 URL 不能为空。",
+      "Usage request URL must use http or https.": "用量请求 URL 必须使用 http 或 https。",
       "Usage database": "用量数据库",
       "Usage Trend": "用量趋势",
-      "Virtual model": "虚拟模型",
-      "Virtual Models": "虚拟模型",
+      "Insert example": "插入示例",
+      "Virtual model": "Fusion",
+      "Virtual Models": "Fusion",
       "Add MCP Server": "添加 MCP 服务",
       "Add MCP server": "添加 MCP 服务",
-      "Add Virtual Model": "添加虚拟模型",
-      "Add virtual model": "添加虚拟模型",
+      "Add Virtual Model": "添加 Fusion",
+      "Add virtual model": "添加 Fusion",
       "Append instructions": "追加指令",
       "At least one match alias, prefix, or suffix is required.": "至少需要一个匹配别名、前缀或后缀。",
       "Allow client tools": "允许客户端工具",
@@ -709,8 +941,8 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Display name template": "显示名称模板",
       "Edit MCP Server": "编辑 MCP 服务",
       "Edit MCP server": "编辑 MCP 服务",
-      "Edit Virtual Model": "编辑虚拟模型",
-      "Edit virtual model": "编辑虚拟模型",
+      "Edit Virtual Model": "编辑 Fusion",
+      "Edit virtual model": "编辑 Fusion",
       "Exact aliases": "精确别名",
       "Exact aliases require a fixed model or original request model.": "精确别名需要固定模型或原始请求模型。",
       "Execution mode": "执行模式",
@@ -728,7 +960,6 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Materialize": "物化",
       "MCP servers": "MCP 服务",
       "MCP tools": "MCP 工具",
-      "MCP service tools": "MCP 服务工具",
       "Match": "匹配",
       "Match type": "匹配方式",
       "Match multimodal": "匹配多模态",
@@ -737,11 +968,21 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Max tool calls must be greater than zero.": "最大工具调用必须大于 0。",
       "Max turns": "最大轮次",
       "Max turns must be greater than zero.": "最大轮次必须大于 0。",
-      "No matching virtual models": "没有匹配的虚拟模型",
+      "Fusion combines a model with another model or tools into a new model.": "将模型和模型/工具组合起来成为一个新的模型。",
+      "Fusion example": "例如：GLM 5.2 + GLM 5V Turbo = GLM 5.2V",
+      "Image recognition": "图片识别",
+      "Image recognition and Web Search": "图片识别和 Web Search",
+      "Generic image understanding tool for OCR, screenshot analysis, chart reading, UI comparison, error diagnosis, and other multi-image tasks.": "通用图片理解工具，支持 OCR、截图分析、图表解读、UI 对比、错误诊断等多图任务。",
+      "Generic web search tool supporting Brave, Bing, Google CSE, Serper, SerpAPI, Tavily, and Exa.": "通用网络搜索工具，支持 Brave、Bing、Google CSE、Serper、SerpAPI、Tavily、Exa。",
+      "Web Search": "网页搜索",
+      "New model": "新模型",
+      "New model is required.": "新模型不能为空。",
+      "Base model is required.": "基础模型不能为空。",
+      "Tool is required.": "必须选择工具。",
+      "No matching virtual models": "没有匹配的 Fusion",
       "No MCP servers configured": "未配置 MCP 服务",
-      "No MCP services available": "暂无 MCP 服务可选",
       "No tools configured": "未配置工具",
-      "No virtual models configured": "未配置虚拟模型",
+      "No virtual models configured": "尚未配置 Fusion",
       "Original request model": "原始请求模型",
       "Adapt image requests": "适配图像请求",
       "Adapt web search": "适配网页搜索",
@@ -753,11 +994,11 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Remove MCP server": "移除 MCP 服务",
       "Remove tool": "移除工具",
       "Remove model": "移除模型",
-      "Remove virtual model": "移除虚拟模型",
+      "Remove virtual model": "移除 Fusion",
       "Replace instructions": "替换指令",
       "Request timeout": "请求超时",
       "Request timeout must be at least 100 ms.": "请求超时至少为 100 ms。",
-      "Search virtual models": "搜索虚拟模型",
+      "Search virtual models": "搜索 Fusion",
       "Startup timeout": "启动超时",
       "Startup timeout must be at least 100 ms.": "启动超时至少为 100 ms。",
       "Stdio message mode": "Stdio 消息模式",
@@ -782,16 +1023,40 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Value": "值",
       "Web search": "网页搜索",
       "Browser apps JSON": "浏览器 App JSON",
+      "Account": "账户",
+      "Account Balance": "账户余额",
+      "Account balance connectors": "账户余额连接器",
+      "Add at least one account connector or disable account balance.": "请至少添加一个账户连接器，或关闭账户余额。",
+      "Balance": "余额",
+      "Balance field": "余额字段",
+      "Balance unit": "余额单位",
+      "Body": "请求体",
+      "Cash balance": "现金余额",
+      "Charge balance": "充值余额",
+      "Connectors JSON": "连接器 JSON",
+      "Copy provider plugin link": "复制供应商插件链接",
+      "Credit balance": "信用余额",
+      "CCR will fetch this HTTPS manifest with strict safety checks before showing provider details.": "CCR 会在严格安全检查后拉取这个 HTTPS manifest，再展示供应商详情。",
+      "Current balance": "当前余额",
       "Each plugin app requires name and url.": "每个插件 App 都需要 name 和 url。",
       "Wrapper": "包装服务",
       "Wrapper runtime": "包装运行时",
       "Wrapper plugin": "包装插件",
+      "5h quota": "5 小时额度",
+      "Granted balance": "赠送余额",
+      "Monthly budget": "月度预算",
+      "Topped-up balance": "充值余额",
+      "Total credits": "总额度",
+      "Total usage": "总用量",
+      "Voucher balance": "代金券余额",
+      "Weekly quota": "周额度",
       "All": "全部",
       "API endpoint": "API 地址",
       "Available": "可用",
       "CA certificate": "CA 证书",
       "Capability": "能力",
       "Checking CA certificate...": "正在检查 CA 证书...",
+      "Check Trust": "检查信任",
       "Choose folder": "选择目录",
       "Clear": "清除",
       "Clear network captures": "清除网络捕获",
@@ -818,19 +1083,24 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Filter request log status": "筛选请求日志状态",
       "Invalid": "无效",
       "Manual install": "手动安装",
+      "Manual install command": "手动安装命令",
+      "Manifest URL": "Manifest URL",
       "Marketplace": "市场",
       "Model name": "模型名称",
       "Models are required. Ask the provider to include models=... in the link.": "需要模型列表。请让供应商在链接中加入 models=...。",
       "Models will be detected automatically.": "模型会自动探测。",
+      "More": "更多",
       "Provider models": "供应商模型",
       "Runtime provider": "运行时供应商",
       "Read only": "只读",
       "Search all models": "搜索全部模型",
       "Source": "来源",
-      "Virtual": "虚拟",
-      "Virtual models": "虚拟模型",
+      "Virtual": "Fusion",
+      "Virtual models": "Fusion",
       "No models available": "暂无可用模型",
       "Direct": "直连",
+      "Drag cards to arrange": "拖动卡片排序",
+      "Drag to move": "拖动排序",
       "Move": "移动",
       "Move down": "下移",
       "Move up": "上移",
@@ -845,7 +1115,9 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "No matching models": "没有匹配的模型",
       "No matching providers": "没有匹配的供应商",
       "No matching routing rules": "没有匹配的路由规则",
+      "No account balance connectors configured": "未配置账户余额连接器",
       "No protocol detection yet": "尚未检测协议",
+      "No response fields": "没有响应字段",
       "OpenAI Chat": "OpenAI Chat",
       "OpenAI Responses": "OpenAI Responses",
       "Anthropic Messages": "Anthropic Messages",
@@ -853,10 +1125,29 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Model required before protocol verification.": "需要先填写模型，才能验证协议。",
       "No endpoint candidates available.": "没有可用的端点候选。",
       "Request failed.": "请求失败。",
+      "Raw connector JSON": "原始连接器 JSON",
+      "Remote provider manifest": "远程供应商 Manifest",
+      "Refresh interval ms": "刷新间隔（毫秒）",
+      "Response fields": "响应字段",
+      "Reset": "重置时间",
+      "Select at least one usage response field.": "请至少选择一个用量响应字段。",
+      "Showing first response fields only.": "仅显示前面的响应字段。",
+      "Standard usage endpoint": "标准用量端点",
+      "Standard usage endpoint will try provider-hosted CCR account endpoints.": "标准用量端点会尝试供应商托管的 CCR 账户端点。",
+      "Sub limit": "订阅上限",
+      "Sub rem": "订阅剩余",
+      "Subscription limit field": "订阅上限字段",
+      "Subscription remaining field": "订阅剩余字段",
+      "Subscription reset field": "订阅重置字段",
+      "Subscription unit": "订阅单位",
+      "Supports standard, http-json, plugin, and local-estimate connectors.": "支持 standard、http-json、plugin 和 local-estimate 连接器。",
+      "Switch to HTTP JSON request to configure method, URL, headers, body, and response fields.": "切换到 HTTP JSON 请求即可配置 method、URL、header、body 和响应字段。",
+      "Test usage request": "测试用量请求",
       "No marketplace extensions": "市场暂无扩展",
       "No fallback models configured": "未配置回退模型",
       "No models configured": "未配置模型",
       "Other / custom API endpoint": "其他 / 自定义 API 地址",
+      "Pending": "等待中",
       "Select preset provider": "选择预设供应商",
       "Zhipu AI (China)": "智谱 AI (国内)",
       "Zhipu AI (China) - Coding Plan": "智谱 AI (国内) - Coding Plan",
@@ -868,8 +1159,8 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Enter a model manually if automatic detection does not return a model list.": "如果自动检测没有返回模型列表，可以手动输入模型名称。",
       "No network captures": "暂无网络捕获",
       "No plugin routes configured": "未配置插件路由",
-      "No profiles for this agent": "当前 Agent 未配置 Profile",
-      "No profiles configured": "未配置 Profile",
+      "No profiles for this agent": "当前 Agent 未配置档案",
+      "No profiles configured": "尚未配置档案",
       "No providers configured": "未配置供应商",
       "No query parameters": "无查询参数",
       "No request headers": "无请求头",
@@ -889,6 +1180,37 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Previous step": "上一步",
       "Proxy not running": "代理未运行",
       "Proxy status": "代理状态",
+      "Proxy CA certificate is trusted.": "Proxy CA 证书已信任。",
+      "Proxy CA certificate is not trusted.": "Proxy CA 证书未被信任。",
+      "Proxy CA certificate is not trusted:": "Proxy CA 证书未被信任：",
+      "Proxy CA certificate is not installed. Install the CA certificate before enabling proxy mode.": "Proxy CA 证书尚未安装。启用代理模式前请先安装 CA 证书。",
+      "Proxy CA certificate and private key do not match. Recreate the proxy CA certificate, trust the new CA, then restart proxy mode.": "Proxy CA 证书和私钥不匹配。请重新创建 Proxy CA 证书，信任新的 CA，然后重启代理模式。",
+      "Proxy CA certificate is installed in the macOS System keychain.": "Proxy CA 证书已安装到 macOS 系统钥匙串。",
+      "Proxy CA certificate is installed only in the login keychain. Install it into the macOS System keychain so Chrome can trust HTTPS proxy certificates.": "Proxy CA 证书只安装在登录钥匙串中。请安装到 macOS 系统钥匙串，Chrome 才能信任 HTTPS 代理证书。",
+      "Proxy CA certificate is not installed in the macOS System keychain. Install and trust this exact CA certificate before enabling HTTPS proxying.": "Proxy CA 证书尚未安装到 macOS 系统钥匙串。启用 HTTPS 代理前，请安装并信任这份 CA 证书。",
+      "Proxy CA certificate could not be read. Reinstall the CA certificate.": "无法读取 Proxy CA 证书。请重新安装 CA 证书。",
+      "Proxy CA certificate is trusted by the system trust store.": "Proxy CA 证书已被系统信任存储信任。",
+      "Certificate detection is available in the Electron app.": "证书检测仅在 Electron App 中可用。",
+      "Certificate install is available in the Electron app.": "证书安装仅在 Electron App 中可用。",
+      "Proxy certificate detection is available in the Electron app.": "代理证书检测仅在 Electron App 中可用。",
+      "Install and trust the proxy CA certificate before enabling proxy mode.": "启用代理模式前，请先安装并信任 Proxy CA 证书。",
+      "Certificate installed and trusted. Proxy mode enabled.": "证书已安装并信任，代理模式已启用。",
+      "Certificate installed into the macOS System keychain.": "证书已安装到 macOS 系统钥匙串。",
+      "Certificate installed into the current user's Root store.": "证书已安装到当前用户的根证书存储。",
+      "Automatic certificate install is not supported on this platform. Import the CA file into the system trust store manually.": "当前平台不支持自动安装证书。请手动将 CA 文件导入系统信任存储。",
+      "Certificate installation was cancelled. Install the CA into the macOS System keychain to use HTTPS proxying.": "证书安装已取消。要使用 HTTPS 代理，请将 CA 安装到 macOS 系统钥匙串。",
+      "macOS did not allow CCR to request administrator authorization:": "macOS 未允许 CCR 请求管理员授权：",
+      "Opened Terminal installer:": "已打开终端安装器：",
+      "Could not open Terminal installer:": "无法打开终端安装器：",
+      "Click Install CA and approve the administrator prompt to install it into the System keychain.": "点击“安装 CA”，并在管理员提示中批准安装到系统钥匙串。",
+      "If trust is still not detected, open Keychain Access > System and find the CCR MITM Proxy certificate.": "如果仍未检测到信任，请打开“钥匙串访问”>“系统”，找到 CCR MITM Proxy 证书。",
+      "Open Trust, set When using this certificate to Always Trust, then restart the browser or client.": "展开“信任”，将“使用此证书时”设为“始终信任”，然后重启浏览器或客户端。",
+      "Return here and click Check Trust.": "返回这里并点击“检查信任”。",
+      "Click Install CA, or open the CA file and import it manually.": "点击“安装 CA”，或打开 CA 文件并手动导入。",
+      "Place it under Current User > Trusted Root Certification Authorities > Certificates.": "将它放到“当前用户”>“受信任的根证书颁发机构”>“证书”下。",
+      "Restart the browser or client.": "重启浏览器或客户端。",
+      "Open the CA file and import it into your OS or browser trust store.": "打开 CA 文件，并将它导入操作系统或浏览器的信任存储。",
+      "For Firefox, Java, Python, Node, or other clients with a private CA store, import the CA there as well.": "对于 Firefox、Java、Python、Node 或其他使用独立 CA 存储的客户端，也需要在那里导入这份 CA。",
       "Resume capture": "继续捕获",
       "Resume network capture": "继续网络捕获",
       "Resize list/detail": "调整列表/详情",
@@ -936,7 +1258,9 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "header": "标头",
       "inactive": "未启用",
       "models": "模型",
+      "meters": "指标",
       "not running": "未运行",
+      "ok": "正常",
       "paused": "已暂停",
       "provider": "供应商",
       "query": "查询",
@@ -979,6 +1303,17 @@ const providerProtocolOptions: Array<{ label: string; value: GatewayProviderProt
   { label: "OpenAI Responses", value: "openai_responses" },
   { label: "Anthropic Messages", value: "anthropic_messages" },
   { label: "Gemini Generate", value: "gemini_generate_content" }
+];
+
+const providerAccountModeOptions: Array<{ label: string; value: ProviderAccountDraftMode }> = [
+  { label: "Standard usage endpoint", value: "standard" },
+  { label: "HTTP JSON request", value: "http-json" },
+  { label: "Raw connector JSON", value: "raw" }
+];
+
+const providerUsageMethodOptions: Array<{ label: string; value: "GET" | "POST" }> = [
+  { label: "GET", value: "GET" },
+  { label: "POST", value: "POST" }
 ];
 
 const apiKeyExpirationOptions: Array<{ label: string; value: ApiKeyExpirationPreset }> = [
@@ -1058,6 +1393,19 @@ const virtualModelToolVisibilityOptions: Array<{ label: string; value: VirtualMo
   { label: "Client-visible", value: "client" }
 ];
 
+const fusionToolOptions: Array<{ description: string; label: string; value: string }> = [
+  {
+    description: "Generic image understanding tool for OCR, screenshot analysis, chart reading, UI comparison, error diagnosis, and other multi-image tasks.",
+    label: `${BUILTIN_UNIMCP_SERVER_NAME} / ${BUILTIN_UNIMCP_VISION_TOOL_NAME}`,
+    value: BUILTIN_UNIMCP_VISION_TOOL_NAME
+  },
+  {
+    description: "Generic web search tool supporting Brave, Bing, Google CSE, Serper, SerpAPI, Tavily, and Exa.",
+    label: `${BUILTIN_UNIMCP_SERVER_NAME} / ${BUILTIN_UNIMCP_WEB_SEARCH_TOOL_NAME}`,
+    value: BUILTIN_UNIMCP_WEB_SEARCH_TOOL_NAME
+  }
+];
+
 const virtualModelClientToolsPolicyOptions: Array<{ label: string; value: VirtualModelClientToolsPolicy }> = [
   { label: "Allow client tools", value: "allow" },
   { label: "Deny client tools", value: "deny" }
@@ -1110,7 +1458,7 @@ const navigation: Array<{ icon: LucideIcon; id: NavigationId }> = [
   { icon: Layers3, id: "providers" },
   { icon: Box, id: "models" },
   { icon: Route, id: "routing" },
-  { icon: Cpu, id: "virtual-models" },
+  { icon: Boxes, id: "virtual-models" },
   { icon: Braces, id: "extensions" }
 ];
 
@@ -1274,7 +1622,7 @@ const fallbackConfig: AppConfig = {
       smallFastModel: ""
     },
     codex: {
-      cliMiddleware: false,
+      cliMiddleware: true,
       codexCliPath: "",
       codexHome: "",
       configFormat: "legacy",
@@ -1283,7 +1631,7 @@ const fallbackConfig: AppConfig = {
       model: "",
       providerId: "claude-code-router",
       providerName: "Claude Code Router",
-      remoteFrontendMode: "app"
+      showAllSessions: false
     },
     enabled: true,
     profiles: [
@@ -1301,7 +1649,7 @@ const fallbackConfig: AppConfig = {
       },
       {
         agent: "codex",
-        cliMiddleware: false,
+        cliMiddleware: true,
         codexCliPath: "",
         codexHome: "",
         configFormat: "legacy",
@@ -1313,7 +1661,7 @@ const fallbackConfig: AppConfig = {
         name: "Codex",
         providerId: "claude-code-router",
         providerName: "Claude Code Router",
-        remoteFrontendMode: "app",
+        showAllSessions: false,
         scope: "global",
         surface: "auto"
       }
@@ -1337,8 +1685,10 @@ const fallbackConfig: AppConfig = {
     ]
   },
   providerPlugins: [],
+  overviewWidgets: DEFAULT_OVERVIEW_WIDGETS,
   routerEndpoint: "http://127.0.0.1:3456",
   theme: "system",
+  trayComponentVariants: DEFAULT_TRAY_COMPONENT_VARIANTS,
   trayIcon: "random",
   trayProgressTargetTokens: 100000,
   trayWindowModules: DEFAULT_TRAY_WINDOW_MODULES,
@@ -1388,6 +1738,43 @@ const usageRangeOptions: Array<{ label: string; value: UsageStatsRange }> = [
   { label: "30d", value: "30d" }
 ];
 
+const overviewWidgetSizeOptions: Array<{ label: string; value: OverviewWidgetSize }> = [
+  { label: "Small", value: "small" },
+  { label: "Medium", value: "medium" },
+  { label: "Large", value: "large" },
+  { label: "Wide", value: "wide" },
+  { label: "Full", value: "full" }
+];
+
+const overviewMetricOptions: Array<{ label: string; value: OverviewMetricKind }> = [
+  { label: "Requests", value: "requests" },
+  { label: "Total tokens", value: "total-tokens" },
+  { label: "Input tokens", value: "input-tokens" },
+  { label: "Output tokens", value: "output-tokens" },
+  { label: "Cache tokens", value: "cache-tokens" },
+  { label: "Cache ratio", value: "cache-ratio" },
+  { label: "Estimated cost", value: "estimated-cost" },
+  { label: "Success rate", value: "success-rate" },
+  { label: "Errors", value: "errors" },
+  { label: "Average latency", value: "avg-latency" }
+];
+
+const overviewWidgetCollisionDetection: CollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args);
+  const pointerCollision = getFirstCollision(pointerCollisions, "id");
+  if (pointerCollision) {
+    return pointerCollisions;
+  }
+
+  const rectCollisions = rectIntersection(args);
+  const rectCollision = getFirstCollision(rectCollisions, "id");
+  if (rectCollision) {
+    return rectCollisions;
+  }
+
+  return closestCenter(args);
+};
+
 const agentAnalysisRangeOptions: Array<{ label: string; value: UsageStatsRange }> = [
   { label: "24h", value: "24h" },
   { label: "7d", value: "7d" },
@@ -1416,25 +1803,13 @@ const profileAgentOptions: Array<{ label: string; value: ProfileConfig["agent"] 
 
 const profileScopeOptions: Array<{ label: string; value: ProfileScope }> = [
   { label: "Only opened from CCR", value: "ccr" },
-  { label: "System default", value: "global" },
-  { label: "Custom config path", value: "custom" }
+  { label: "System default", value: "global" }
 ];
 
 const profileSurfaceOptions: Array<{ label: string; value: ProfileSurface }> = [
   { label: "Auto", value: "auto" },
   { label: "CLI only", value: "cli" },
   { label: "App only", value: "app" }
-];
-
-const codexConfigFormatOptions: Array<{ label: string; value: CodexProfileConfigFormat }> = [
-  { label: "Legacy profile table", value: "legacy" },
-  { label: "Separate profile files", value: "separate_profile_files" }
-];
-
-const codexRemoteFrontendModeOptions: Array<{ label: string; value: CodexRemoteFrontendMode }> = [
-  { label: "Codex App", value: "app" },
-  { label: "Codex CLI", value: "cli" },
-  { label: "Claude Code through Codex App", value: "claude-code" }
 ];
 
 const requestLogStatusOptions: Array<{ label: string; value: RequestLogStatusFilter }> = [
@@ -1453,6 +1828,7 @@ const requestLogPageSizeOptions = [
 type AddProviderDraft = {
   accountConnectorsText: string;
   accountEnabled: boolean;
+  accountMode: ProviderAccountDraftMode;
   accountRefreshIntervalMs: string;
   apiKey: string;
   baseUrl: string;
@@ -1463,7 +1839,28 @@ type AddProviderDraft = {
   presetId: string;
   protocol: GatewayProviderProtocol;
   selectedModels: string[];
+  usageBalanceRemainingPath: string;
+  usageBalanceUnit: string;
+  usageMessagePath: string;
+  usageRequestBodyText: string;
+  usageRequestHeaders: KeyValueDraftRow[];
+  usageRequestMethod: "GET" | "POST";
+  usageRequestUrl: string;
+  usageStatusPath: string;
+  usageSubscriptionLimitPath: string;
+  usageSubscriptionRemainingPath: string;
+  usageSubscriptionResetPath: string;
+  usageSubscriptionUnit: string;
 };
+
+type ProviderAccountDraftMode = "standard" | "http-json" | "raw";
+type ProviderUsageFieldTarget =
+  | "balance"
+  | "message"
+  | "status"
+  | "subscriptionLimit"
+  | "subscriptionRemaining"
+  | "subscriptionReset";
 
 type ProviderProbeCandidate = ProviderPresetEndpoint & {
   source: "custom" | "preset";
@@ -1483,19 +1880,15 @@ type AddApiKeyDraft = {
 
 type AddProfileDraft = {
   agent: ProfileConfig["agent"];
-  cliMiddleware: boolean;
-  codexCliPath: string;
-  codexHome: string;
-  configFormat: CodexProfileConfigFormat;
   configFile: string;
   envRows: KeyValueDraftRow[];
   model: string;
   name: string;
   providerId: string;
   providerName: string;
-  remoteFrontendMode: CodexRemoteFrontendMode;
   scope: ProfileScope;
   settingsFile: string;
+  showAllSessions: boolean;
   smallFastModel: string;
   surface: ProfileSurface;
 };
@@ -1695,7 +2088,7 @@ type AppToast = {
   message: string;
 };
 
-type ServerActionBusy = "" | "browser" | "cert" | "proxy" | "claude-app";
+type ServerActionBusy = "" | "browser" | "cert" | "proxy";
 
 function App() {
   const [activeView, setActiveView] = useState<ViewId>("onboarding");
@@ -1749,10 +2142,6 @@ function App() {
   const [virtualModelDraft, setVirtualModelDraft] = useState<VirtualModelDraft>(() => createVirtualModelDraft(fallbackConfig));
   const [virtualModelEditIndex, setVirtualModelEditIndex] = useState<number>();
   const [virtualModelError, setVirtualModelError] = useState("");
-  const [mcpServerDialogOpen, setMcpServerDialogOpen] = useState(false);
-  const [mcpServerDraft, setMcpServerDraft] = useState<McpServerDraft>(() => createMcpServerDraft(fallbackConfig.agent.mcpServers));
-  const [mcpServerEditIndex, setMcpServerEditIndex] = useState<number>();
-  const [mcpServerError, setMcpServerError] = useState("");
   const [pluginMarketplace, setPluginMarketplace] = useState<PluginMarketplaceEntry[]>([]);
   const [routingAddOpen, setRoutingAddOpen] = useState(false);
   const [routingDeleteIndex, setRoutingDeleteIndex] = useState<number>();
@@ -1784,6 +2173,7 @@ function App() {
   const [providerAccountSnapshots, setProviderAccountSnapshots] = useState<ProviderAccountSnapshot[]>([]);
   const resolvedLanguage = languagePreference === "system" ? systemLanguage : languagePreference;
   const copy = appCopy[resolvedLanguage];
+  const t = useMemo(() => (value: string) => translateText(copy, value), [copy]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(max-width: 720px)");
@@ -2160,6 +2550,13 @@ function App() {
     const apiKey = providerDraft.apiKey.trim();
     const models = splitLines(providerDraft.modelsText);
     const inputKey = providerProbeInputKey(candidates, apiKey, models);
+    const safetyIssue = providerProbeCandidatesApiKeySafetyIssue(candidates, apiKey, providerDraft.name, providerDraft.presetId);
+    if (safetyIssue) {
+      setProviderProbeLoading(false);
+      setProviderProbeError(safetyIssue.message);
+      return;
+    }
+
     setProviderProbeLoading(true);
     const timer = window.setTimeout(() => {
       void probeProviderCandidates(candidates, apiKey, models)
@@ -2194,7 +2591,7 @@ function App() {
       window.clearTimeout(timer);
       setProviderProbeLoading(false);
     };
-  }, [providerFormActive, providerDraft.apiKey, providerDraft.baseUrl, providerDraft.modelsText, providerDraft.presetId]);
+  }, [providerFormActive, providerDraft.apiKey, providerDraft.baseUrl, providerDraft.modelsText, providerDraft.name, providerDraft.presetId]);
 
   useEffect(() => {
     if (!window.ccr || !dirty) {
@@ -2444,6 +2841,16 @@ function App() {
       setProviderProbeError("Select or enter at least one model.");
       return;
     }
+    const safetyIssue = providerApiKeySafetyIssue({
+      apiKey,
+      baseUrl,
+      name: providerDraft.name,
+      presetId: providerDraft.presetId
+    });
+    if (safetyIssue) {
+      setProviderProbeError(safetyIssue.message);
+      return;
+    }
 
     setProviderProbeLoading(true);
     try {
@@ -2513,6 +2920,37 @@ function App() {
 
     const protocol = probe?.detectedProtocol ?? providerDraft.protocol;
     const baseUrl = probe?.normalizedBaseUrl || providerDraft.baseUrl;
+    const keySafetyIssue = providerApiKeySafetyIssue({
+      apiKey: providerDraft.apiKey,
+      baseUrl,
+      name: providerName,
+      presetId: providerDraft.presetId
+    });
+    if (keySafetyIssue) {
+      setProviderProbeError(keySafetyIssue.message);
+      return false;
+    }
+    const identityIssue = providerIdentitySafetyIssue({
+      baseUrl,
+      name: providerName,
+      presetId: providerDraft.presetId
+    });
+    if (identityIssue) {
+      setProviderProbeError(identityIssue.message);
+      return false;
+    }
+
+    const accountKeySafetyIssue = providerAccountApiKeySafetyIssue(accountConfig, {
+      apiKey: providerDraft.apiKey,
+      baseUrl,
+      providerName,
+      providerPresetId: providerDraft.presetId
+    });
+    if (accountKeySafetyIssue) {
+      setProviderProbeError(accountKeySafetyIssue.message);
+      return false;
+    }
+
     const capabilities = mergeProviderCapabilities(
       presetCapabilitiesFromDraft(providerDraft),
       probe?.capabilities ?? [],
@@ -2554,14 +2992,41 @@ function App() {
 
   async function confirmProviderDeepLinkImport() {
     const request = providerDeepLinkRequest;
-    const payload = request?.provider;
-    if (!payload || providerDeepLinkBusy) {
+    if (!request || providerDeepLinkBusy) {
       return;
     }
 
     setProviderDeepLinkBusy(true);
     setProviderDeepLinkError("");
     try {
+      if (!request.provider && request.manifest) {
+        if (!window.ccr?.fetchProviderManifest) {
+          throw new Error("Request failed.");
+        }
+        const result = await window.ccr.fetchProviderManifest({ url: request.manifest.url });
+        setProviderDeepLinkRequest({
+          ...request,
+          provider: result.provider
+        });
+        setProviderDeepLinkBusy(false);
+        return;
+      }
+
+      const payload = request.provider;
+      if (!payload) {
+        setProviderDeepLinkBusy(false);
+        return;
+      }
+      if (payload.apiKey?.trim()) {
+        throw new Error("Provider links cannot include API keys. Add the key manually after verifying the endpoint.");
+      }
+      const identityIssue = providerIdentitySafetyIssue({
+        baseUrl: payload.baseUrl,
+        name: payload.name
+      });
+      if (identityIssue) {
+        throw new Error(identityIssue.message);
+      }
       const probe = await probeProviderDeepLinkPayload(payload);
       let importedProviderName = payload.name?.trim() || "";
       const next = buildConfigUpdate((config) => {
@@ -2766,62 +3231,6 @@ function App() {
   function removeVirtualModel(index: number) {
     updateConfig((config) => {
       config.virtualModelProfiles = (config.virtualModelProfiles ?? []).filter((_, itemIndex) => itemIndex !== index);
-      return config;
-    });
-  }
-
-  function openAddMcpServerDialog() {
-    setMcpServerEditIndex(undefined);
-    setMcpServerDraft(createMcpServerDraft(draftConfig.agent.mcpServers));
-    setMcpServerError("");
-    setMcpServerDialogOpen(true);
-  }
-
-  function openEditMcpServerDialog(index: number) {
-    const server = draftConfig.agent.mcpServers[index];
-    if (!server) {
-      return;
-    }
-    setMcpServerEditIndex(index);
-    setMcpServerDraft(createMcpServerDraftFromConfig(server));
-    setMcpServerError("");
-    setMcpServerDialogOpen(true);
-  }
-
-  function updateMcpServerDraft(patch: Partial<McpServerDraft>) {
-    setMcpServerDraft((current) => ({ ...current, ...patch }));
-    setMcpServerError("");
-  }
-
-  function submitMcpServerDraft() {
-    const validationError = validateMcpServerDraft(mcpServerDraft);
-    if (validationError) {
-      setMcpServerError(validationError);
-      return;
-    }
-
-    updateConfig((config) => {
-      const values = [...config.agent.mcpServers];
-      const server = mcpServerConfigFromDraft(mcpServerDraft, values, mcpServerEditIndex);
-      if (mcpServerEditIndex === undefined) {
-        values.push(server);
-      } else {
-        values[mcpServerEditIndex] = server;
-      }
-      config.agent = { ...config.agent, mcpServers: values };
-      return config;
-    });
-    setMcpServerEditIndex(undefined);
-    setMcpServerDialogOpen(false);
-    setMcpServerError("");
-  }
-
-  function removeMcpServer(index: number) {
-    updateConfig((config) => {
-      config.agent = {
-        ...config.agent,
-        mcpServers: config.agent.mcpServers.filter((_, itemIndex) => itemIndex !== index)
-      };
       return config;
     });
   }
@@ -3157,6 +3566,16 @@ function App() {
     }));
   }
 
+  function changeTrayComponentVariant(key: keyof TrayComponentVariants, value: string) {
+    updateConfig((config) => ({
+      ...config,
+      trayComponentVariants: normalizeTrayComponentVariants({
+        ...normalizeTrayComponentVariants(config.trayComponentVariants),
+        [key]: value
+      })
+    }));
+  }
+
   function setTrayWindowModuleEnabled(moduleId: TrayWindowModuleId, enabled: boolean) {
     updateConfig((config) => {
       const modules = normalizeTrayWindowModules(config.trayWindowModules);
@@ -3168,6 +3587,13 @@ function App() {
         trayWindowModules: normalizeTrayWindowModules(nextModules)
       };
     });
+  }
+
+  function changeOverviewWidgets(widgets: OverviewWidgetConfig[]) {
+    updateConfig((config) => ({
+      ...config,
+      overviewWidgets: normalizeOverviewWidgets(widgets)
+    }));
   }
 
   function changeLanguagePreference(value: string) {
@@ -3219,34 +3645,6 @@ function App() {
     }
   }
 
-  async function applyClaudeAppGateway() {
-    if (!window.ccr?.applyClaudeAppGateway) {
-      setActionError("Claude App setup is available in the Electron app.");
-      return;
-    }
-
-    autoSaveRequestId.current += 1;
-    setActionBusy("claude-app");
-    setActionError("");
-    setActionMessage("");
-    try {
-      const result = await window.ccr.applyClaudeAppGateway(draftConfig);
-      const [saved, status, nextProxyStatus] = await Promise.all([
-        window.ccr.getConfig(),
-        window.ccr.getGatewayStatus(),
-        window.ccr.getProxyStatus()
-      ]);
-      syncConfigState(saved);
-      setGatewayStatus(status);
-      setProxyStatus(nextProxyStatus);
-      setActionMessage(result.message);
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setActionBusy("");
-    }
-  }
-
   async function completeOnboarding() {
     if (window.ccr) {
       try {
@@ -3283,7 +3681,7 @@ function App() {
     setActionMessage("");
     try {
       const status = await refreshProxyCertificateStatus();
-      setActionMessage(status?.trusted ? "Proxy CA certificate is trusted." : status?.message || "Proxy CA certificate is not trusted.");
+      setActionMessage(status?.trusted ? t("Proxy CA certificate is trusted.") : translateProxyCertificateMessage(status?.message, t) || t("Proxy CA certificate is not trusted."));
     } catch (error) {
       setActionError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -3300,7 +3698,7 @@ function App() {
       return;
     }
     if (!window.ccr) {
-      setActionError("Proxy certificate detection is available in the Electron app.");
+      setActionError(t("Proxy certificate detection is available in the Electron app."));
       return;
     }
 
@@ -3313,7 +3711,7 @@ function App() {
         return;
       }
       setProxyEnablePending(true);
-      setActionMessage(status?.message || "Install and trust the proxy CA certificate before enabling proxy mode.");
+      setActionMessage(translateProxyCertificateMessage(status?.message, t) || t("Install and trust the proxy CA certificate before enabling proxy mode."));
     } catch (error) {
       setActionError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -3346,7 +3744,7 @@ function App() {
 
   async function installProxyCertificate() {
     if (!window.ccr) {
-      setActionError("Certificate install is available in the Electron app.");
+      setActionError(t("Certificate install is available in the Electron app."));
       return;
     }
 
@@ -3360,10 +3758,10 @@ function App() {
       if (proxyEnablePending && status?.trusted) {
         updateConfig((next) => ({ ...next, proxy: { ...next.proxy, enabled: true } }));
         setProxyEnablePending(false);
-        setActionMessage("Certificate installed and trusted. Proxy mode enabled.");
+        setActionMessage(t("Certificate installed and trusted. Proxy mode enabled."));
         return;
       }
-      setActionMessage(formatProxyCertificateInstallMessage(result, status));
+      setActionMessage(formatProxyCertificateInstallMessage(result, status, t));
     } catch (error) {
       setActionError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -3624,7 +4022,7 @@ function App() {
         </main>
       ) : (
       <>
-      <div className={cn("app-no-drag absolute top-2 z-[70] flex items-center gap-1", isMac ? "left-[76px]" : "left-3")}>
+      <div className={cn("app-no-drag pointer-events-auto absolute top-2 z-[70] flex items-center gap-1", isMac ? "left-[76px]" : "left-3")}>
         <Button
           aria-controls="primary-sidebar"
           aria-expanded={sidebarOpen}
@@ -3746,6 +4144,8 @@ function App() {
             <ViewMotionShell key={activeView} view={activeView}>
               {activeView === "overview" ? (
                 <OverviewView
+                  onWidgetsChange={changeOverviewWidgets}
+                  overviewWidgets={normalizeOverviewWidgets(draftConfig.overviewWidgets)}
                   providerAccounts={providerAccountSnapshots}
                   setUsageRange={setUsageRange}
                   usageRange={usageRange}
@@ -3779,7 +4179,6 @@ function App() {
                   actionBusy={actionBusy}
                   actionError={actionError}
                   actionMessage={actionMessage}
-                  applyClaudeAppGateway={() => void applyClaudeAppGateway()}
                   config={draftConfig}
                   installProxyCertificate={installProxyCertificate}
                   onProxyEnabledChange={(checked) => void setProxyEnabled(checked)}
@@ -3854,13 +4253,9 @@ function App() {
               ) : null}
               {activeView === "virtual-models" ? (
                 <VirtualModelsView
-                  addMcpServer={openAddMcpServerDialog}
                   addVirtualModel={openAddVirtualModelDialog}
-                  editMcpServer={openEditMcpServerDialog}
                   editVirtualModel={openEditVirtualModelDialog}
-                  mcpServers={draftConfig.agent.mcpServers}
                   profiles={draftConfig.virtualModelProfiles ?? []}
-                  removeMcpServer={removeMcpServer}
                   removeVirtualModel={removeVirtualModel}
                   setVirtualModelEnabled={setVirtualModelEnabled}
                 />
@@ -4002,7 +4397,6 @@ function App() {
           canSubmit={canSubmitVirtualModel}
           draft={virtualModelDraft}
           error={virtualModelError || virtualModelValidationError}
-          mcpServers={draftConfig.agent.mcpServers}
           mode={virtualModelEditIndex === undefined ? "add" : "edit"}
           onChange={updateVirtualModelDraft}
           onClose={() => {
@@ -4012,22 +4406,6 @@ function App() {
           onSubmit={submitVirtualModelDraft}
           providers={draftConfig.Providers}
           key="virtual-model-upsert"
-        />
-      ) : null}
-      {mcpServerDialogOpen ? (
-        <McpServerDialog
-          canSubmit
-          draft={mcpServerDraft}
-          error={mcpServerError}
-          mode={mcpServerEditIndex === undefined ? "add" : "edit"}
-          onChange={updateMcpServerDraft}
-          onClose={() => {
-            setMcpServerDialogOpen(false);
-            setMcpServerEditIndex(undefined);
-            setMcpServerError("");
-          }}
-          onSubmit={submitMcpServerDraft}
-          key="mcp-server-upsert"
         />
       ) : null}
       {extensionInstallOpen ? (
@@ -4104,6 +4482,7 @@ function App() {
           onChangeLanguage={changeLanguagePreference}
           onChangeTheme={changeThemePreference}
           onChangeTrayIcon={changeTrayIconPreference}
+          onChangeTrayComponentVariant={changeTrayComponentVariant}
           onChangeTrayProgressTarget={changeTrayProgressTargetTokens}
           onSetTrayModuleEnabled={setTrayWindowModuleEnabled}
           onClose={() => setSettingsOpen(false)}
@@ -4111,6 +4490,7 @@ function App() {
           systemTheme={systemTheme}
           themePreference={draftConfig.theme || "system"}
           trayIconPreference={draftConfig.trayIcon || "random"}
+          trayComponentVariants={normalizeTrayComponentVariants(draftConfig.trayComponentVariants)}
           trayProgressTargetTokens={draftConfig.trayProgressTargetTokens || 100000}
           trayWindowModules={draftConfig.trayWindowModules || DEFAULT_TRAY_WINDOW_MODULES}
           key="settings"
@@ -4474,6 +4854,7 @@ function AppSettingsDialog({
   languagePreference,
   onChangeLanguage,
   onChangeTheme,
+  onChangeTrayComponentVariant,
   onChangeTrayIcon,
   onChangeTrayProgressTarget,
   onSetTrayModuleEnabled,
@@ -4482,6 +4863,7 @@ function AppSettingsDialog({
   systemTheme,
   themePreference,
   trayIconPreference,
+  trayComponentVariants,
   trayProgressTargetTokens,
   trayWindowModules
 }: {
@@ -4490,6 +4872,7 @@ function AppSettingsDialog({
   languagePreference: AppLanguagePreference;
   onChangeLanguage: (value: string) => void;
   onChangeTheme: (value: string) => void;
+  onChangeTrayComponentVariant: (key: keyof TrayComponentVariants, value: string) => void;
   onChangeTrayIcon: (value: string) => void;
   onChangeTrayProgressTarget: (value: string) => void;
   onSetTrayModuleEnabled: (moduleId: TrayWindowModuleId, enabled: boolean) => void;
@@ -4498,10 +4881,12 @@ function AppSettingsDialog({
   systemTheme: ResolvedTheme;
   themePreference: AppConfig["theme"];
   trayIconPreference: AppConfig["trayIcon"];
+  trayComponentVariants: TrayComponentVariants;
   trayProgressTargetTokens: number;
   trayWindowModules: TrayWindowModuleId[];
 }) {
   const [activePage, setActivePage] = useState<SettingsPageId>("appearance");
+  const [selectedTrayModule, setSelectedTrayModule] = useState<TrayEditableModuleId>("source-tabs");
   const trayWindowModuleSet = useMemo(() => new Set(trayWindowModules), [trayWindowModules]);
   const themeOptions = [
     { label: formatSystemOption(copy.settings.themeSystem, themeDisplayName(systemTheme, copy)), value: "system" },
@@ -4520,20 +4905,86 @@ function AppSettingsDialog({
     { label: copy.settings.trayIconCyan, value: "cyan" },
     { label: copy.settings.trayIconProgress, value: "progress" }
   ];
-  const trayModuleOptions: Array<{ label: string; value: TrayWindowModuleId }> = [
-    { label: copy.settings.trayModuleSourceTabs, value: "source-tabs" },
-    { label: copy.settings.trayModuleHeader, value: "header" },
-    { label: copy.settings.trayModuleAccount, value: "account" },
-    { label: copy.settings.trayModuleTokenFlow, value: "token-flow" },
-    { label: copy.settings.trayModuleStats, value: "stats" },
-    { label: copy.settings.trayModuleTokenMix, value: "token-mix" },
-    { label: copy.settings.trayModuleRings, value: "rings" },
-    { label: copy.settings.trayModuleModelShare, value: "model-share" }
+  const trayModuleOptions: TrayModuleOption[] = [
+    { icon: Layers3, label: copy.settings.trayModuleSourceTabs, value: "source-tabs" },
+    { icon: PanelLeftOpen, label: copy.settings.trayModuleHeader, value: "header" },
+    { icon: Database, label: copy.settings.trayModuleAccount, styleKey: "account", value: "account" },
+    { icon: Activity, label: copy.settings.trayModuleTokenFlow, styleKey: "tokenFlow", value: "token-flow" },
+    { icon: Gauge, label: copy.settings.trayModuleStats, styleKey: "stats", value: "stats" },
+    { icon: Boxes, label: copy.settings.trayModuleTokenMix, styleKey: "tokenMix", value: "token-mix" },
+    { icon: CircleAlert, label: copy.settings.trayModuleRings, styleKey: "rings", value: "rings" },
+    { icon: Network, label: copy.settings.trayModuleModelShare, styleKey: "modelShare", value: "model-share" }
   ];
+  const trayComponentOptionGroups: TrayComponentOptionGroup[] = [
+    {
+      key: "account" as const,
+      label: copy.settings.trayComponentAccount,
+      options: [
+        { label: copy.settings.trayComponentBars, value: "bar" },
+        { label: copy.settings.trayComponentCompact, value: "compact" },
+        { label: copy.settings.trayComponentRing, value: "ring" },
+        { label: copy.settings.trayComponentArc, value: "arc" },
+        { label: copy.settings.trayComponentStacked, value: "stacked" }
+      ]
+    },
+    {
+      key: "tokenFlow" as const,
+      label: copy.settings.trayComponentFlow,
+      options: [
+        { label: copy.settings.trayComponentLine, value: "line" },
+        { label: copy.settings.trayComponentArea, value: "area" },
+        { label: copy.settings.trayComponentBar, value: "bar" },
+        { label: copy.settings.trayComponentSparkline, value: "sparkline" }
+      ]
+    },
+    {
+      key: "stats" as const,
+      label: copy.settings.trayComponentStats,
+      options: [
+        { label: copy.settings.trayComponentCards, value: "cards" },
+        { label: copy.settings.trayComponentCompact, value: "compact" },
+        { label: copy.settings.trayComponentPills, value: "pills" }
+      ]
+    },
+    {
+      key: "tokenMix" as const,
+      label: copy.settings.trayComponentTokenMix,
+      options: [
+        { label: copy.settings.trayComponentBars, value: "bars" },
+        { label: copy.settings.trayComponentStacked, value: "stacked" },
+        { label: copy.settings.trayComponentDonut, value: "donut" },
+        { label: copy.settings.trayComponentPie, value: "pie" }
+      ]
+    },
+    {
+      key: "rings" as const,
+      label: copy.settings.trayModuleRings,
+      options: [
+        { label: copy.settings.trayComponentRings, value: "rings" },
+        { label: copy.settings.trayComponentArc, value: "arcs" },
+        { label: copy.settings.trayComponentGauges, value: "gauges" }
+      ]
+    },
+    {
+      key: "modelShare" as const,
+      label: copy.settings.trayComponentModelShare,
+      options: [
+        { label: copy.settings.trayComponentBars, value: "bars" },
+        { label: copy.settings.trayComponentList, value: "list" },
+        { label: copy.settings.trayComponentDonut, value: "donut" },
+        { label: copy.settings.trayComponentPie, value: "pie" }
+      ]
+    }
+  ];
+  const selectedTrayModuleOption = trayModuleOptions.find((option) => option.value === selectedTrayModule) ?? trayModuleOptions[0];
+  const selectedTrayStyleGroup = selectedTrayModuleOption.styleKey
+    ? trayComponentOptionGroups.find((group) => group.key === selectedTrayModuleOption.styleKey)
+    : undefined;
+  const SelectedTrayModuleIcon = selectedTrayModuleOption.icon;
 
   return (
     <Dialog onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="h-[min(660px,calc(100dvh-2rem))] max-w-[960px]">
+      <DialogContent className="h-[min(700px,calc(100dvh-2rem))] max-w-[1160px]">
         <DialogHeader>
           <div className="min-w-0">
             <DialogTitle>{copy.settings.title}</DialogTitle>
@@ -4602,45 +5053,118 @@ function AppSettingsDialog({
               </div>
             ) : null}
             {isMac && activePage === "tray" ? (
-              <div className="mx-auto grid max-w-[720px] grid-cols-1 gap-5">
+              <div className="grid min-h-[520px] grid-rows-[auto_minmax(0,1fr)] gap-4">
                 <h3 className="text-[15px] font-semibold text-foreground">{copy.settings.tray}</h3>
-                <div className="grid grid-cols-1 gap-5 md:grid-cols-[minmax(0,280px)_minmax(0,1fr)]">
-                  <div className="grid min-w-0 grid-cols-1 gap-4">
-                    <Field label={copy.settings.trayIcon}>
-                      <TrayIconSelect onChange={onChangeTrayIcon} options={trayIconOptions} value={trayIconPreference} />
-                    </Field>
-                    {trayIconPreference === "progress" ? (
-                      <Field label={copy.settings.trayProgressTarget}>
-                        <Input
-                          min={1000}
-                          step={1000}
-                          type="number"
-                          value={String(trayProgressTargetTokens)}
-                          onChange={(event) => onChangeTrayProgressTarget(event.target.value)}
-                        />
-                      </Field>
-                    ) : null}
-                    <div className="min-w-0 space-y-2">
-                      <div className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{copy.settings.trayWindowModules}</div>
-                      <div className="grid grid-cols-1 gap-2">
-                        {trayModuleOptions.map((option) => (
-                          <Label
-                            className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-[12px] font-medium text-foreground"
-                            key={option.value}
-                          >
-                            <Checkbox
-                              checked={trayWindowModuleSet.has(option.value)}
-                              onCheckedChange={(checked) => onSetTrayModuleEnabled(option.value, checked)}
-                            />
-                            <span className="min-w-0 truncate">{option.label}</span>
-                          </Label>
-                        ))}
+                <div className="grid min-h-0 grid-cols-[220px_minmax(320px,1fr)_260px] gap-4 max-[1100px]:grid-cols-1">
+                  <div className="flex min-h-0 flex-col overflow-hidden rounded-md border border-border bg-background">
+                    <div className="shrink-0 border-b border-border/70 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {copy.settings.trayComponents}
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-auto p-2">
+                      <div className="grid grid-cols-1 gap-1.5">
+                        {trayModuleOptions.map((option) => {
+                          const Icon = option.icon;
+                          const enabled = trayWindowModuleSet.has(option.value);
+                          const selected = selectedTrayModule === option.value;
+
+                          return (
+                            <Button
+                              aria-pressed={selected}
+                              className={cn(
+                                "flex h-10 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-[12px] font-medium transition-colors",
+                                selected
+                                  ? "bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.18)]"
+                                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                                !enabled && "opacity-70"
+                              )}
+                              key={option.value}
+                              onClick={() => setSelectedTrayModule(option.value)}
+                              type="button"
+                              unstyled
+                            >
+                              <span
+                                className={cn(
+                                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-md",
+                                  selected ? "bg-primary/12 text-primary" : "bg-muted text-muted-foreground"
+                                )}
+                              >
+                                <Icon className="h-3.5 w-3.5" />
+                              </span>
+                              <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                              <span
+                                aria-hidden="true"
+                                className={cn("h-2 w-2 shrink-0 rounded-full", enabled ? "bg-emerald-500" : "bg-muted-foreground/30")}
+                              />
+                            </Button>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
-                  <div className="min-w-0 space-y-2">
-                    <div className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{copy.settings.trayPreview}</div>
-                    <TrayWindowPreview copy={copy} iconPreference={trayIconPreference} modules={trayWindowModuleSet} />
+
+                  <div className="flex min-h-0 flex-col overflow-hidden rounded-md border border-border bg-muted/15">
+                    <div className="shrink-0 border-b border-border/70 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {copy.settings.trayPreview}
+                    </div>
+                    <div className="flex min-h-0 flex-1 justify-center overflow-auto p-3">
+                      <div className="w-full max-w-[360px]">
+                        <TrayWindowPreview copy={copy} componentVariants={trayComponentVariants} iconPreference={trayIconPreference} modules={trayWindowModuleSet} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex min-h-0 flex-col overflow-hidden rounded-md border border-border bg-background">
+                    <div className="shrink-0 border-b border-border/70 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {copy.settings.trayComponentProperties}
+                    </div>
+                    <div className="min-h-0 flex-1 space-y-4 overflow-auto p-3">
+                      <div className="space-y-3 border-b border-border/70 pb-4">
+                        <Field label={copy.settings.trayIcon}>
+                          <TrayIconSelect onChange={onChangeTrayIcon} options={trayIconOptions} value={trayIconPreference} />
+                        </Field>
+                        {trayIconPreference === "progress" ? (
+                          <Field label={copy.settings.trayProgressTarget}>
+                            <Input
+                              min={1000}
+                              step={1000}
+                              type="number"
+                              value={String(trayProgressTargetTokens)}
+                              onChange={(event) => onChangeTrayProgressTarget(event.target.value)}
+                            />
+                          </Field>
+                        ) : null}
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                            <SelectedTrayModuleIcon className="h-4 w-4" />
+                          </span>
+                          <div className="min-w-0">
+                            <div className="truncate text-[13px] font-semibold text-foreground">{selectedTrayModuleOption.label}</div>
+                            <div className="truncate text-[11px] text-muted-foreground">{copy.settings.trayComponentProperties}</div>
+                          </div>
+                        </div>
+
+                        <Label className="flex min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
+                          <span className="min-w-0 truncate text-[12px] font-medium text-foreground">{copy.settings.trayComponentEnabled}</span>
+                          <Switch
+                            checked={trayWindowModuleSet.has(selectedTrayModuleOption.value)}
+                            onCheckedChange={(checked) => onSetTrayModuleEnabled(selectedTrayModuleOption.value, checked)}
+                          />
+                        </Label>
+
+                        {selectedTrayStyleGroup ? (
+                          <Field label={copy.settings.trayComponentStyle}>
+                            <SelectControl
+                              onChange={(value) => onChangeTrayComponentVariant(selectedTrayStyleGroup.key, value)}
+                              options={selectedTrayStyleGroup.options}
+                              value={trayComponentVariants[selectedTrayStyleGroup.key]}
+                            />
+                          </Field>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -4741,10 +5265,12 @@ function TrayProgressPreview() {
 }
 
 function TrayWindowPreview({
+  componentVariants,
   copy,
   iconPreference,
   modules
 }: {
+  componentVariants: TrayComponentVariants;
   copy: AppCopy;
   iconPreference: AppConfig["trayIcon"];
   modules: ReadonlySet<TrayWindowModuleId>;
@@ -4754,12 +5280,12 @@ function TrayWindowPreview({
   const showRings = modules.has("rings");
 
   return (
-    <div className="min-h-[360px] min-w-0 overflow-hidden rounded-[14px] border border-slate-950/15 bg-slate-950 p-3 text-slate-50 shadow-[0_18px_42px_rgba(15,23,42,.28)]">
+    <div className="h-[360px] min-w-0 overflow-y-auto overflow-x-hidden rounded-[14px] border border-slate-950/15 bg-slate-950 p-3 text-slate-50 shadow-[0_18px_42px_rgba(15,23,42,.28)]">
       <div className="mb-3 flex min-w-0 items-center justify-between gap-3 border-b border-white/10 pb-2">
         <div className="flex min-w-0 items-center gap-2">
           <TrayIconPreview className="h-7 w-7 border-white/15 bg-white/10" preference={iconPreference} />
           <div className="min-w-0">
-            <div className="truncate text-[12px] font-semibold text-slate-50">88.4k tokens</div>
+            <div className="truncate text-[12px] font-semibold text-slate-50">88.4k {trayPreviewText(copy, "tokens", "tokens")}</div>
             <div className="truncate text-[10px] font-medium text-slate-400">CCR</div>
           </div>
         </div>
@@ -4768,18 +5294,18 @@ function TrayWindowPreview({
         </span>
       </div>
 
-      {modules.has("source-tabs") ? <TrayPreviewSourceTabs /> : null}
+      {modules.has("source-tabs") ? <TrayPreviewSourceTabs copy={copy} /> : null}
       {modules.has("header") ? <TrayPreviewHeader copy={copy} /> : null}
-      {modules.has("account") ? <TrayPreviewAccount title={copy.settings.trayModuleAccount} /> : null}
-      {modules.has("token-flow") ? <TrayPreviewTokenFlow copy={copy} title={copy.settings.trayModuleTokenFlow} /> : null}
-      {modules.has("stats") ? <TrayPreviewStats copy={copy} /> : null}
+      {modules.has("account") ? <TrayPreviewAccount copy={copy} title={copy.settings.trayModuleAccount} variant={componentVariants.account} /> : null}
+      {modules.has("token-flow") ? <TrayPreviewTokenFlow copy={copy} title={copy.settings.trayModuleTokenFlow} variant={componentVariants.tokenFlow} /> : null}
+      {modules.has("stats") ? <TrayPreviewStats copy={copy} variant={componentVariants.stats} /> : null}
       {showTokenMix || showRings ? (
         <div className={cn("mb-2 grid gap-2", showTokenMix && showRings ? "grid-cols-2" : "grid-cols-1")}>
-          {showTokenMix ? <TrayPreviewTokenMix copy={copy} /> : null}
-          {showRings ? <TrayPreviewRings title={copy.settings.trayModuleRings} /> : null}
+          {showTokenMix ? <TrayPreviewTokenMix copy={copy} variant={componentVariants.tokenMix} /> : null}
+          {showRings ? <TrayPreviewRings title={copy.settings.trayModuleRings} variant={componentVariants.rings} /> : null}
         </div>
       ) : null}
-      {modules.has("model-share") ? <TrayPreviewModelShare title={copy.settings.trayModuleModelShare} /> : null}
+      {modules.has("model-share") ? <TrayPreviewModelShare title={copy.settings.trayModuleModelShare} variant={componentVariants.modelShare} /> : null}
       {!hasModules ? (
         <div className="flex min-h-[260px] items-center justify-center rounded-[10px] border border-white/10 bg-white/[.03] px-4 text-center text-[12px] font-medium text-slate-400">
           {copy.settings.trayPreviewEmpty}
@@ -4789,7 +5315,7 @@ function TrayWindowPreview({
   );
 }
 
-function TrayPreviewSourceTabs() {
+function TrayPreviewSourceTabs({ copy }: { copy: AppCopy }) {
   return (
     <div className="mb-2 grid min-w-0 grid-cols-4 gap-1.5">
       {["All", "OpenAI", "Claude", "More"].map((label, index) => (
@@ -4800,7 +5326,7 @@ function TrayPreviewSourceTabs() {
           )}
           key={label}
         >
-          {label}
+          {trayPreviewText(copy, label, label)}
         </div>
       ))}
     </div>
@@ -4816,30 +5342,91 @@ function TrayPreviewHeader({ copy }: { copy: AppCopy }) {
           {trayPreviewText(copy, "Today", "Today")} - {trayPreviewText(copy, "All providers", "All providers", "全部供应商")}
         </div>
       </div>
-      <div className="shrink-0 rounded-md border border-white/10 bg-slate-900/70 px-2 py-0.5 text-[10px] font-semibold text-slate-200">7d</div>
+      <div className="shrink-0 rounded-md border border-white/10 bg-slate-900/70 px-2 py-0.5 text-[10px] font-semibold text-slate-200">{trayPreviewText(copy, "7d", "7d")}</div>
     </div>
   );
 }
 
-function TrayPreviewAccount({ title }: { title: string }) {
+function TrayPreviewAccount({
+  copy,
+  title,
+  variant
+}: {
+  copy: AppCopy;
+  title: string;
+  variant: TrayComponentVariants["account"];
+}) {
+  const meters = [
+    { label: trayPreviewText(copy, "Weekly quota", "Weekly quota"), value: "7.8h", progress: 0.62, color: "rgb(45,212,191)" },
+    { label: trayPreviewText(copy, "5h quota", "5h quota"), value: "3.4h", progress: 0.74, color: "rgb(129,140,248)" }
+  ];
+
   return (
     <div className="mb-2 rounded-[8px] border border-white/10 bg-white/[.04] p-2">
       <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
         <div className="truncate text-[11px] font-bold text-slate-100">{title}</div>
-        <span className="shrink-0 rounded-full bg-teal-300/15 px-1.5 py-0.5 text-[9px] font-bold text-teal-100">ok</span>
+        <span className="shrink-0 rounded-full bg-teal-300/15 px-1.5 py-0.5 text-[9px] font-bold text-teal-100">{trayPreviewText(copy, "ok", "ok")}</span>
       </div>
-      <div className="flex min-w-0 items-end justify-between gap-2">
-        <div className="min-w-0 truncate text-[10px] font-medium text-slate-400">Weekly quota</div>
-        <div className="shrink-0 text-[13px] font-bold text-slate-50">7.8h</div>
-      </div>
-      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
-        <div className="h-full w-[62%] rounded-full bg-teal-300" />
-      </div>
+      {variant === "compact" ? (
+        <div className="grid grid-cols-2 gap-1.5">
+          {meters.map((meter) => (
+            <div className="min-w-0 rounded-md bg-white/[.04] px-2 py-1" key={meter.label}>
+              <div className="truncate text-[9px] font-medium text-slate-400">{meter.label}</div>
+              <div className="truncate text-[12px] font-bold text-slate-50">{meter.value}</div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {variant === "ring" || variant === "arc" ? (
+        <div className="grid grid-cols-2 gap-2">
+          {meters.map((meter) => (
+            <PreviewRadialMetric color={meter.color} key={meter.label} label={meter.value} value={meter.progress} variant={variant} />
+          ))}
+        </div>
+      ) : null}
+      {variant === "stacked" ? (
+        <div className="space-y-1.5">
+          {meters.map((meter) => (
+            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_48px] items-center gap-2" key={meter.label}>
+              <div className="min-w-0">
+                <div className="truncate text-[10px] font-medium text-slate-400">{meter.label}</div>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
+                  <div className="h-full rounded-full" style={{ backgroundColor: meter.color, width: `${meter.progress * 100}%` }} />
+                </div>
+              </div>
+              <div className="truncate text-right text-[12px] font-bold text-slate-50">{meter.value}</div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {variant === "bar" ? (
+        <>
+          <div className="flex min-w-0 items-end justify-between gap-2">
+            <div className="min-w-0 truncate text-[10px] font-medium text-slate-400">{meters[0].label}</div>
+            <div className="shrink-0 text-[13px] font-bold text-slate-50">{meters[0].value}</div>
+          </div>
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
+            <div className="h-full rounded-full bg-teal-300" style={{ width: `${meters[0].progress * 100}%` }} />
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
 
-function TrayPreviewTokenFlow({ copy, title }: { copy: AppCopy; title: string }) {
+function TrayPreviewTokenFlow({
+  copy,
+  title,
+  variant
+}: {
+  copy: AppCopy;
+  title: string;
+  variant: TrayComponentVariants["tokenFlow"];
+}) {
+  const bars = [24, 52, 38, 66, 46, 58, 72, 44, 64, 50];
+  const linePath = "M0 58 C 34 42, 48 50, 74 35 S 119 15, 146 28 S 189 54, 219 22 S 247 18, 260 11";
+  const cachePath = "M0 62 C 31 55, 55 60, 79 50 S 120 30, 153 38 S 197 65, 260 42";
+
   return (
     <div className="mb-2 rounded-[8px] border border-white/10 bg-white/[.04] p-2">
       <div className="flex items-center justify-between gap-2">
@@ -4847,23 +5434,72 @@ function TrayPreviewTokenFlow({ copy, title }: { copy: AppCopy; title: string })
         <div className="shrink-0 text-[10px] font-medium text-slate-400">42 {trayPreviewText(copy, "Requests", "req")}</div>
       </div>
       <svg aria-hidden="true" className="mt-2 h-16 w-full overflow-visible" preserveAspectRatio="none" viewBox="0 0 260 72">
-        <path d="M0 58 C 34 42, 48 50, 74 35 S 119 15, 146 28 S 189 54, 219 22 S 247 18, 260 11" fill="none" stroke="rgba(45,212,191,.95)" strokeLinecap="round" strokeWidth="4" />
-        <path d="M0 62 C 31 55, 55 60, 79 50 S 120 30, 153 38 S 197 65, 260 42" fill="none" stroke="rgba(167,139,250,.72)" strokeLinecap="round" strokeWidth="2.5" />
         {[20, 68, 116, 164, 212].map((x) => (
           <line key={x} stroke="rgba(148,163,184,.12)" strokeWidth="1" x1={x} x2={x} y1="0" y2="72" />
         ))}
+        {variant === "bar" ? (
+          bars.map((value, index) => {
+            const width = 14;
+            const x = index * 26 + 4;
+            const height = Math.max(4, value * 0.74);
+            return <rect fill={index % 2 === 0 ? "rgba(45,212,191,.9)" : "rgba(167,139,250,.72)"} height={height} key={index} rx="4" width={width} x={x} y={64 - height} />;
+          })
+        ) : null}
+        {variant === "area" ? (
+          <>
+            <path d={`${linePath} L 260 68 L 0 68 Z`} fill="rgba(45,212,191,.18)" />
+            <path d={`${cachePath} L 260 68 L 0 68 Z`} fill="rgba(167,139,250,.12)" />
+          </>
+        ) : null}
+        {variant !== "bar" ? (
+          <>
+            <path d={linePath} fill="none" stroke="rgba(45,212,191,.95)" strokeLinecap="round" strokeWidth={variant === "sparkline" ? 3 : 4} />
+            {variant === "sparkline" ? null : <path d={cachePath} fill="none" stroke="rgba(167,139,250,.72)" strokeLinecap="round" strokeWidth="2.5" />}
+          </>
+        ) : null}
       </svg>
     </div>
   );
 }
 
-function TrayPreviewStats({ copy }: { copy: AppCopy }) {
+function TrayPreviewStats({
+  copy,
+  variant
+}: {
+  copy: AppCopy;
+  variant: TrayComponentVariants["stats"];
+}) {
   const stats = [
     { label: trayPreviewText(copy, "Input", "Input", "输入"), value: "41k" },
     { label: trayPreviewText(copy, "Output", "Output", "输出"), value: "19k" },
     { label: trayPreviewText(copy, "Cache read", "Cache read", "缓存读取"), value: "28k" },
     { label: trayPreviewText(copy, "Success", "Success", "成功"), value: "99%" }
   ];
+
+  if (variant === "compact") {
+    return (
+      <div className="mb-2 rounded-[8px] border border-white/10 bg-white/[.04] p-2">
+        {stats.map((stat) => (
+          <div className="flex min-w-0 items-center justify-between gap-2 py-0.5 text-[10px]" key={stat.label}>
+            <span className="truncate font-medium text-slate-400">{stat.label}</span>
+            <span className="shrink-0 font-bold text-slate-50">{stat.value}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (variant === "pills") {
+    return (
+      <div className="mb-2 flex flex-wrap gap-1.5">
+        {stats.map((stat) => (
+          <div className="rounded-full border border-white/10 bg-white/[.05] px-2 py-1 text-[10px] font-bold text-slate-100" key={stat.label}>
+            <span className="text-slate-400">{stat.label}</span> {stat.value}
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="mb-2 grid grid-cols-2 gap-1.5">
@@ -4877,56 +5513,71 @@ function TrayPreviewStats({ copy }: { copy: AppCopy }) {
   );
 }
 
-function TrayPreviewTokenMix({ copy }: { copy: AppCopy }) {
+function TrayPreviewTokenMix({
+  copy,
+  variant
+}: {
+  copy: AppCopy;
+  variant: TrayComponentVariants["tokenMix"];
+}) {
   const bars = [
-    { label: trayPreviewText(copy, "Input", "Input", "输入"), value: "72%", className: "bg-blue-400" },
-    { label: trayPreviewText(copy, "Output", "Output", "输出"), value: "42%", className: "bg-amber-300" },
-    { label: trayPreviewText(copy, "Cache read", "Cache read", "缓存读取"), value: "58%", className: "bg-rose-300" }
+    { label: trayPreviewText(copy, "Input", "Input", "输入"), percent: 0.46, value: "46%", className: "bg-blue-400", color: "rgb(96,165,250)" },
+    { label: trayPreviewText(copy, "Output", "Output", "输出"), percent: 0.28, value: "28%", className: "bg-amber-300", color: "rgb(252,211,77)" },
+    { label: trayPreviewText(copy, "Cache read", "Cache read", "缓存读取"), percent: 0.26, value: "26%", className: "bg-rose-300", color: "rgb(253,164,175)" }
   ];
 
   return (
     <div className="min-w-0 rounded-[8px] border border-white/10 bg-white/[.04] p-2">
       <div className="mb-2 truncate text-[11px] font-bold text-slate-100">{copy.settings.trayModuleTokenMix}</div>
-      <div className="space-y-1.5">
-        {bars.map((bar) => (
-          <div className="min-w-0" key={bar.label}>
-            <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-medium text-slate-400">
-              <span className="truncate">{bar.label}</span>
-              <span className="shrink-0">{bar.value}</span>
-            </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-              <div className={cn("h-full rounded-full", bar.className)} style={{ width: bar.value }} />
-            </div>
+      {variant === "donut" || variant === "pie" ? (
+        <div className="grid grid-cols-[54px_minmax(0,1fr)] items-center gap-2">
+          <PreviewShareChart rows={bars} variant={variant} />
+          <PreviewShareLegend rows={bars} />
+        </div>
+      ) : null}
+      {variant === "stacked" ? (
+        <div className="space-y-1.5">
+          <div className="flex h-2 overflow-hidden rounded-full bg-white/10">
+            {bars.map((bar) => (
+              <div className={bar.className} key={bar.label} style={{ width: bar.value }} />
+            ))}
           </div>
-        ))}
-      </div>
+          <PreviewShareLegend rows={bars} />
+        </div>
+      ) : null}
+      {variant === "bars" ? (
+        <div className="space-y-1.5">
+          {bars.map((bar) => (
+            <div className="min-w-0" key={bar.label}>
+              <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-medium text-slate-400">
+                <span className="truncate">{bar.label}</span>
+                <span className="shrink-0">{bar.value}</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div className={cn("h-full rounded-full", bar.className)} style={{ width: bar.value }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function TrayPreviewRings({ title }: { title: string }) {
+function TrayPreviewRings({
+  title,
+  variant
+}: {
+  title: string;
+  variant: TrayComponentVariants["rings"];
+}) {
   return (
     <div className="min-w-0 rounded-[8px] border border-white/10 bg-white/[.04] p-2">
       <div className="mb-2 truncate text-[11px] font-bold text-slate-100">{title}</div>
       <div className="grid grid-cols-2 gap-2">
         {[74, 91].map((value) => (
           <div className="relative aspect-square min-w-0" key={value}>
-            <svg aria-hidden="true" className="h-full w-full" viewBox="0 0 40 40">
-              <circle cx="20" cy="20" fill="none" r="15" stroke="rgba(148,163,184,.22)" strokeWidth="4" />
-              <circle
-                cx="20"
-                cy="20"
-                fill="none"
-                r="15"
-                stroke={value > 80 ? "rgb(45,212,191)" : "rgb(129,140,248)"}
-                strokeDasharray={2 * Math.PI * 15}
-                strokeDashoffset={2 * Math.PI * 15 * (1 - value / 100)}
-                strokeLinecap="round"
-                strokeWidth="4"
-                transform="rotate(-90 20 20)"
-              />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-slate-100">{value}%</div>
+            <PreviewRadialMetric color={value > 80 ? "rgb(45,212,191)" : "rgb(129,140,248)"} label={`${value}%`} value={value / 100} variant={variant === "rings" ? "ring" : variant === "arcs" ? "arc" : "gauge"} />
           </div>
         ))}
       </div>
@@ -4934,21 +5585,151 @@ function TrayPreviewRings({ title }: { title: string }) {
   );
 }
 
-function TrayPreviewModelShare({ title }: { title: string }) {
+function TrayPreviewModelShare({
+  title,
+  variant
+}: {
+  title: string;
+  variant: TrayComponentVariants["modelShare"];
+}) {
+  const rows = [
+    { label: "claude-sonnet", percent: 0.48, value: "48%", color: "rgb(45,212,191)", className: "bg-teal-300" },
+    { label: "gpt-4.1", percent: 0.31, value: "31%", color: "rgb(129,140,248)", className: "bg-indigo-400" },
+    { label: "deepseek-chat", percent: 0.21, value: "21%", color: "rgb(251,191,36)", className: "bg-amber-300" }
+  ];
+
   return (
     <div className="mb-2 min-w-0 rounded-[8px] border border-white/10 bg-white/[.04] p-2">
       <div className="mb-2 truncate text-[11px] font-bold text-slate-100">{title}</div>
-      {[
-        ["claude-sonnet", "48%"],
-        ["gpt-4.1", "31%"],
-        ["deepseek-chat", "21%"]
-      ].map(([model, value]) => (
-        <div className="mb-1.5 flex min-w-0 items-center gap-2 last:mb-0" key={model}>
-          <div className="min-w-0 flex-1 truncate text-[10px] font-medium text-slate-300">{model}</div>
-          <div className="h-1.5 w-14 overflow-hidden rounded-full bg-white/10">
-            <div className="h-full rounded-full bg-teal-300" style={{ width: value }} />
+      {variant === "donut" || variant === "pie" ? (
+        <div className="grid grid-cols-[54px_minmax(0,1fr)] items-center gap-2">
+          <PreviewShareChart rows={rows} variant={variant} />
+          <PreviewShareLegend rows={rows} />
+        </div>
+      ) : null}
+      {variant === "list" ? (
+        <div className="space-y-1">
+          {rows.map((row, index) => (
+            <div className="flex min-w-0 items-center justify-between gap-2 text-[10px]" key={row.label}>
+              <span className="min-w-0 truncate font-medium text-slate-300">{index + 1}. {row.label}</span>
+              <span className="shrink-0 font-semibold text-slate-400">{row.value}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {variant === "bars" ? (
+        rows.map((row) => (
+          <div className="mb-1.5 flex min-w-0 items-center gap-2 last:mb-0" key={row.label}>
+            <div className="min-w-0 flex-1 truncate text-[10px] font-medium text-slate-300">{row.label}</div>
+            <div className="h-1.5 w-14 overflow-hidden rounded-full bg-white/10">
+              <div className={cn("h-full rounded-full", row.className)} style={{ width: row.value }} />
+            </div>
+            <div className="w-7 shrink-0 text-right text-[10px] font-semibold text-slate-400">{row.value}</div>
           </div>
-          <div className="w-7 shrink-0 text-right text-[10px] font-semibold text-slate-400">{value}</div>
+        ))
+      ) : null}
+    </div>
+  );
+}
+
+function PreviewRadialMetric({
+  color,
+  label,
+  value,
+  variant
+}: {
+  color: string;
+  label: string;
+  value: number;
+  variant: "arc" | "gauge" | "ring";
+}) {
+  const radius = 15;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.max(0, Math.min(1, value));
+  const span = variant === "ring" ? 1 : variant === "arc" ? 0.78 : 0.55;
+  const dash = circumference * span;
+  const rotation = variant === "ring" ? -90 : variant === "arc" ? 130 : 160;
+
+  return (
+    <div className="relative aspect-square min-w-0">
+      <svg aria-hidden="true" className="h-full w-full" viewBox="0 0 40 40">
+        <circle
+          cx="20"
+          cy="20"
+          fill="none"
+          r={radius}
+          stroke="rgba(148,163,184,.22)"
+          strokeDasharray={`${dash} ${circumference - dash}`}
+          strokeLinecap="round"
+          strokeWidth="4"
+          transform={`rotate(${rotation} 20 20)`}
+        />
+        <circle
+          cx="20"
+          cy="20"
+          fill="none"
+          r={radius}
+          stroke={color}
+          strokeDasharray={`${dash * clamped} ${circumference - dash * clamped}`}
+          strokeLinecap="round"
+          strokeWidth="4"
+          transform={`rotate(${rotation} 20 20)`}
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-slate-100">{label}</div>
+    </div>
+  );
+}
+
+function PreviewShareChart({
+  rows,
+  variant
+}: {
+  rows: Array<{ color: string; percent: number }>;
+  variant: "donut" | "pie";
+}) {
+  const radius = variant === "pie" ? 10 : 13;
+  const strokeWidth = variant === "pie" ? 20 : 7;
+  const circumference = 2 * Math.PI * radius;
+  const total = rows.reduce((sum, row) => sum + Math.max(0, row.percent), 0) || 1;
+  let cursor = 0;
+  const segments = rows.map((row) => {
+    const length = circumference * (Math.max(0, row.percent) / total);
+    const segment = { ...row, length, offset: cursor };
+    cursor += length;
+    return segment;
+  });
+
+  return (
+    <svg aria-hidden="true" className="h-[54px] w-[54px]" viewBox="0 0 40 40">
+      <circle cx="20" cy="20" fill="none" r={radius} stroke="rgba(148,163,184,.16)" strokeWidth={strokeWidth} />
+      {segments.map((segment) => (
+        <circle
+          cx="20"
+          cy="20"
+          fill="none"
+          key={`${segment.color}-${segment.offset}`}
+          r={radius}
+          stroke={segment.color}
+          strokeDasharray={`${segment.length} ${circumference - segment.length}`}
+          strokeDashoffset={-segment.offset}
+          strokeWidth={strokeWidth}
+          transform="rotate(-90 20 20)"
+        />
+      ))}
+      {variant === "donut" ? <circle cx="20" cy="20" fill="rgb(15,23,42)" r="8" /> : null}
+    </svg>
+  );
+}
+
+function PreviewShareLegend({ rows }: { rows: Array<{ color: string; label: string; value: string }> }) {
+  return (
+    <div className="min-w-0 space-y-1">
+      {rows.map((row) => (
+        <div className="flex min-w-0 items-center gap-1.5 text-[9px] font-medium text-slate-400" key={row.label}>
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: row.color }} />
+          <span className="min-w-0 flex-1 truncate">{row.label}</span>
+          <span className="shrink-0 text-slate-300">{row.value}</span>
         </div>
       ))}
     </div>
@@ -4964,131 +5745,1020 @@ function trayPreviewText(copy: AppCopy, key: string, fallback: string, alternate
 }
 
 function OverviewView({
+  onWidgetsChange,
+  overviewWidgets,
   providerAccounts,
   setUsageRange,
   usageRange,
   usageStats
 }: {
+  onWidgetsChange: (widgets: OverviewWidgetConfig[]) => void;
+  overviewWidgets: OverviewWidgetConfig[];
   providerAccounts: ProviderAccountSnapshot[];
   setUsageRange: (range: UsageStatsRange) => void;
   usageRange: UsageStatsRange;
   usageStats: UsageStatsSnapshot;
 }) {
   const t = useAppText();
-  const totals = usageStats.totals;
-  const tokenMix = [
-    { name: t("Input"), value: totals.inputTokens },
-    { name: t("Output"), value: totals.outputTokens },
-    { name: t("Cache"), value: totals.cacheTokens }
-  ];
+  const viewRef = useRef<HTMLDivElement>(null);
+  const [activeWidgetId, setActiveWidgetId] = useState<string>();
+  const [selectedWidgetId, setSelectedWidgetId] = useState<string>();
+  const [dragPreviewWidgets, setDragPreviewWidgets] = useState<OverviewWidgetConfig[]>();
+  const [editing, setEditing] = useState(false);
+  const [showAddPanel, setShowAddPanel] = useState(false);
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8
+      }
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates
+    })
+  );
+  const widgets = useMemo(() => normalizeOverviewWidgets(overviewWidgets), [overviewWidgets]);
+  const displayWidgets = dragPreviewWidgets ?? widgets;
+  const visibleWidgets = displayWidgets.filter((widget) => widget.enabled);
+  const activeWidget = visibleWidgets.find((widget) => widget.id === activeWidgetId);
+
+  useEffect(() => {
+    if (!editing) {
+      setActiveWidgetId(undefined);
+      setSelectedWidgetId(undefined);
+      setDragPreviewWidgets(undefined);
+    }
+  }, [editing]);
+
+  useEffect(() => {
+    if (selectedWidgetId && !widgets.some((widget) => widget.id === selectedWidgetId)) {
+      setSelectedWidgetId(undefined);
+    }
+  }, [selectedWidgetId, widgets]);
+
+  function updateWidget(id: string, patch: Partial<OverviewWidgetConfig>) {
+    onWidgetsChange(widgets.map((widget) => widget.id === id ? normalizeOverviewWidget({ ...widget, ...patch }) ?? widget : widget));
+  }
+
+  function startWidgetSort(event: DragStartEvent) {
+    const id = String(event.active.id);
+    setActiveWidgetId(id);
+    setSelectedWidgetId(id);
+    setDragPreviewWidgets(widgets);
+  }
+
+  function previewWidgetSort(event: DragOverEvent) {
+    const activeId = String(event.active.id);
+    const overId = event.over ? String(event.over.id) : "";
+    if (!overId || activeId === overId) {
+      return;
+    }
+    setDragPreviewWidgets((current) => {
+      const source = current ?? widgets;
+      const activeIndex = source.findIndex((widget) => widget.id === activeId);
+      const overIndex = source.findIndex((widget) => widget.id === overId);
+      if (activeIndex < 0 || overIndex < 0 || activeIndex === overIndex) {
+        return source;
+      }
+      return arrayMove(source, activeIndex, overIndex);
+    });
+  }
+
+  function finishWidgetSort(event: DragEndEvent) {
+    const overId = event.over ? String(event.over.id) : "";
+    const sortedWidgets = dragPreviewWidgets ?? widgets;
+    setActiveWidgetId(undefined);
+    setDragPreviewWidgets(undefined);
+    if (!overId && sameOverviewWidgetOrder(sortedWidgets, widgets)) {
+      return;
+    }
+    onWidgetsChange(sortedWidgets);
+  }
+
+  function cancelWidgetSort() {
+    setActiveWidgetId(undefined);
+    setDragPreviewWidgets(undefined);
+  }
+
+  function removeWidget(id: string) {
+    onWidgetsChange(widgets.filter((widget) => widget.id !== id));
+    setSelectedWidgetId((current) => current === id ? undefined : current);
+  }
+
+  useEffect(() => {
+    if (!editing || !selectedWidgetId || activeWidgetId) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || (event.key !== "Delete" && event.key !== "Backspace")) {
+        return;
+      }
+      const target = event.target instanceof Element ? event.target : undefined;
+      if (isEditableKeyboardTarget(target)) {
+        return;
+      }
+      if (target && target !== document.body && !viewRef.current?.contains(target)) {
+        return;
+      }
+      event.preventDefault();
+      removeWidget(selectedWidgetId);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeWidgetId, editing, selectedWidgetId, widgets]);
+
+  function addWidget(template: OverviewWidgetConfig) {
+    const id = uniqueOverviewWidgetId(widgets, template.id);
+    const widget = normalizeOverviewWidget({ ...template, enabled: true, id });
+    if (!widget) {
+      return;
+    }
+    onWidgetsChange([...widgets, widget]);
+    setSelectedWidgetId(id);
+    setShowAddPanel(false);
+    setEditing(true);
+  }
+
+  function resetLayout() {
+    onWidgetsChange(DEFAULT_OVERVIEW_WIDGETS.map((widget) => ({ ...widget })));
+    setSelectedWidgetId(undefined);
+    setShowAddPanel(false);
+  }
 
   return (
     <motion.div
       animate={{ opacity: 1 }}
       className="space-y-4"
       initial={{ opacity: 0 }}
+      ref={viewRef}
       transition={{ duration: 0.15 }}
     >
-      <SystemStatusBar
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="truncate text-[18px] font-semibold tracking-tight">{t("Overview layout")}</h2>
+          <p className="mt-0.5 truncate text-[12px] text-muted-foreground">{editing ? t("Drag cards to arrange") : t("Overview")}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {editing ? (
+            <Button onClick={() => setShowAddPanel((value) => !value)} size="sm" type="button" variant="outline">
+              <Plus className="h-3.5 w-3.5" />
+              {t("Add widget")}
+            </Button>
+          ) : null}
+          {editing ? (
+            <Button onClick={resetLayout} size="sm" type="button" variant="outline">
+              <RefreshCw className="h-3.5 w-3.5" />
+              {t("Reset layout")}
+            </Button>
+          ) : null}
+          <Button onClick={() => setEditing((value) => !value)} size="sm" type="button" variant={editing ? "default" : "outline"}>
+            <Pencil className="h-3.5 w-3.5" />
+            {editing ? t("Done") : t("Edit widgets")}
+          </Button>
+        </div>
+      </div>
+
+      <AnimatePresence initial={false}>
+        {editing && showAddPanel ? (
+          <motion.div
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-lg border border-border bg-card p-3"
+            exit={{ opacity: 0, y: -6 }}
+            initial={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.14 }}
+          >
+            <OverviewWidgetPalette widgets={widgets} onAdd={addWidget} />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <DndContext
+        collisionDetection={overviewWidgetCollisionDetection}
+        measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+        sensors={sensors}
+        onDragCancel={cancelWidgetSort}
+        onDragEnd={finishWidgetSort}
+        onDragOver={previewWidgetSort}
+        onDragStart={startWidgetSort}
+      >
+        <SortableContext items={visibleWidgets.map((widget) => widget.id)} strategy={rectSortingStrategy}>
+          <LayoutGroup>
+            <section className="grid grid-cols-12 gap-4" data-overview-widget-grid>
+              {visibleWidgets.map((widget) => (
+                <SortableOverviewWidget editing={editing} key={widget.id} widget={widget} onSelect={() => setSelectedWidgetId(widget.id)}>
+                  <OverviewWidgetFrame
+                    editing={editing}
+                    selected={selectedWidgetId === widget.id}
+                    widget={widget}
+                    onChangeMetric={(metric) => updateWidget(widget.id, { metric })}
+                    onChangeSize={(size) => updateWidget(widget.id, { size })}
+                    onChangeVariant={(variant) => updateWidget(widget.id, { variant })}
+                    onRemove={() => removeWidget(widget.id)}
+                    onSelect={() => setSelectedWidgetId(widget.id)}
+                  >
+                    <OverviewWidgetRenderer
+                      providerAccounts={providerAccounts}
+                      setUsageRange={setUsageRange}
+                      usageRange={usageRange}
+                      usageStats={usageStats}
+                      widget={widget}
+                    />
+                  </OverviewWidgetFrame>
+                </SortableOverviewWidget>
+              ))}
+              {visibleWidgets.length === 0 ? (
+                <div className="col-span-12 rounded-lg border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-[12px] text-muted-foreground">
+                  {t("No widgets configured")}
+                </div>
+              ) : null}
+            </section>
+          </LayoutGroup>
+        </SortableContext>
+        <DragOverlay adjustScale={false}>
+          {activeWidget ? (
+            <OverviewWidgetDragOverlay
+              providerAccounts={providerAccounts}
+              setUsageRange={setUsageRange}
+              usageRange={usageRange}
+              usageStats={usageStats}
+              widget={activeWidget}
+            />
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+    </motion.div>
+  );
+}
+
+function isEditableKeyboardTarget(target: Element | undefined): boolean {
+  return Boolean(target?.closest("input, textarea, select, [contenteditable='true'], [contenteditable='plaintext-only'], [role='textbox']"));
+}
+
+function OverviewWidgetPalette({
+  widgets,
+  onAdd
+}: {
+  widgets: OverviewWidgetConfig[];
+  onAdd: (widget: OverviewWidgetConfig) => void;
+}) {
+  const t = useAppText();
+  const existingKeys = new Set(widgets.map(overviewWidgetTemplateKey));
+  const templates = overviewWidgetTemplates();
+
+  return (
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      {templates.map((template) => {
+        const exists = existingKeys.has(overviewWidgetTemplateKey(template));
+        return (
+          <Button
+            className="h-auto justify-start rounded-md border border-border bg-background px-3 py-2 text-left"
+            disabled={exists}
+            key={overviewWidgetTemplateKey(template)}
+            onClick={() => onAdd(template)}
+            type="button"
+            unstyled
+          >
+            <div className="min-w-0">
+              <div className="truncate text-[12px] font-semibold text-foreground">{overviewWidgetTitle(template, t)}</div>
+              <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{t(overviewWidgetTypeLabel(template.type))}</div>
+            </div>
+          </Button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SortableOverviewWidget({
+  children,
+  editing,
+  onSelect,
+  widget
+}: {
+  children: ReactNode;
+  editing: boolean;
+  onSelect: () => void;
+  widget: OverviewWidgetConfig;
+}) {
+  const {
+    attributes,
+    isDragging,
+    listeners,
+    setNodeRef,
+    transform,
+    transition
+  } = useSortable({
+    disabled: !editing,
+    id: widget.id
+  });
+
+  return (
+    <motion.div
+      className={cn(
+        "min-w-0",
+        overviewWidgetSizeClass(widget.size),
+        editing && "cursor-grab touch-none",
+        isDragging && "relative z-20 cursor-grabbing opacity-70"
+      )}
+      layout
+      onFocus={editing ? onSelect : undefined}
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition
+      }}
+      {...attributes}
+      {...listeners}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+function OverviewWidgetDragOverlay({
+  providerAccounts,
+  setUsageRange,
+  usageRange,
+  usageStats,
+  widget
+}: {
+  providerAccounts: ProviderAccountSnapshot[];
+  setUsageRange: (range: UsageStatsRange) => void;
+  usageRange: UsageStatsRange;
+  usageStats: UsageStatsSnapshot;
+  widget: OverviewWidgetConfig;
+}) {
+  return (
+    <div className={cn("pointer-events-none opacity-95 shadow-2xl", overviewWidgetOverlaySizeClass(widget.size))}>
+      <OverviewWidgetRenderer
+        providerAccounts={providerAccounts}
+        setUsageRange={setUsageRange}
         usageRange={usageRange}
         usageStats={usageStats}
+        widget={widget}
       />
+    </div>
+  );
+}
 
-      <ProviderAccountsOverview accounts={providerAccounts} />
+function OverviewWidgetFrame({
+  children,
+  editing,
+  selected,
+  widget,
+  onChangeMetric,
+  onChangeSize,
+  onChangeVariant,
+  onRemove,
+  onSelect
+}: {
+  children: ReactNode;
+  editing: boolean;
+  selected: boolean;
+  widget: OverviewWidgetConfig;
+  onChangeMetric: (metric: OverviewMetricKind) => void;
+  onChangeSize: (size: OverviewWidgetSize) => void;
+  onChangeVariant: (variant: OverviewWidgetVariant) => void;
+  onRemove: () => void;
+  onSelect: () => void;
+}) {
+  const t = useAppText();
+  const frameRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [toolbarPlacement, setToolbarPlacement] = useState<OverviewToolbarPlacement>("right");
+  const variantOptions = overviewWidgetVariantOptions(widget.type);
+  const isHorizontalToolbar = toolbarPlacement === "top" || toolbarPlacement === "bottom";
+  const toolbarFieldClass = cn("space-y-0.5", isHorizontalToolbar && "w-[112px] shrink-0");
+  const toolbarSelectClass = cn(
+    "h-7 min-w-0 bg-[length:12px] text-[10px]",
+    isHorizontalToolbar ? "w-[112px] px-2 pr-6" : "px-1.5 pr-5"
+  );
+  const updateToolbarPlacement = () => {
+    setToolbarPlacement(resolveOverviewToolbarPlacement(frameRef.current, toolbarRef.current));
+  };
+  const selectFrame = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!editing) {
+      return;
+    }
+    if (event.target instanceof Node && toolbarRef.current?.contains(event.target)) {
+      return;
+    }
+    onSelect();
+  };
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <MetricCard label={t("Requests")} tone="teal" value={formatCompactNumber(totals.requestCount)} />
-        <MetricCard label={t("Input tokens")} tone="blue" value={formatCompactNumber(totals.inputTokens)} />
-        <MetricCard label={t("Output tokens")} tone="amber" value={formatCompactNumber(totals.outputTokens)} />
-        <MetricCard label={t("Cache tokens")} tone="rose" value={formatCompactNumber(totals.cacheTokens)} />
-        <MetricCard label={t("Cache ratio")} tone="indigo" value={formatPercent(totals.cacheRatio)} />
-      </section>
+  useEffect(() => {
+    if (!editing) {
+      return;
+    }
+    updateToolbarPlacement();
+    window.addEventListener("resize", updateToolbarPlacement);
+    return () => window.removeEventListener("resize", updateToolbarPlacement);
+  }, [editing, widget.type]);
 
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,.65fr)]">
-        <Card className="min-w-0">
-          <CardHeader className="flex-row items-center justify-between">
-            <CardTitle>{t("Usage Trend")}</CardTitle>
-            <div className="flex rounded-md border border-border bg-background p-0.5">
-              {usageRangeOptions.map((option) => (
-                <Button
-                  className={cn(
-                    "h-7 rounded px-2.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground",
-                    usageRange === option.value && "bg-card text-foreground shadow-sm"
-                  )}
-                  key={option.value}
-                  onClick={() => setUsageRange(option.value)}
-                  type="button"
-                  unstyled
-                >
-                  {option.label}
-                </Button>
-              ))}
-            </div>
-          </CardHeader>
-          <CardContent>
-            <ChartFrame>
-              {({ height, width }) => (
-                <ComposedChart data={usageStats.series} height={height} margin={{ bottom: 4, left: 0, right: 8, top: 28 }} width={width}>
-                  <CartesianGrid stroke="#dfe3e8" strokeDasharray="3 3" vertical={false} />
-                  <XAxis axisLine={false} dataKey="label" tick={{ fill: "#5f6b7a", fontSize: 11 }} tickLine={false} />
-                  <YAxis axisLine={false} tick={{ fill: "#5f6b7a", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} yAxisId="tokens" />
-                  <YAxis axisLine={false} hide orientation="right" yAxisId="requests" />
-                  <Tooltip content={<UsageTooltip />} />
+  return (
+    <div
+      aria-selected={editing ? selected : undefined}
+      className={cn(
+        "group/overview-widget relative min-w-0 transition-opacity",
+        editing && (selected
+          ? "rounded-xl outline outline-2 outline-primary outline-offset-2 ring-2 ring-primary/20"
+          : "rounded-xl outline outline-2 outline-primary/35 outline-offset-2")
+      )}
+      ref={frameRef}
+      role={editing ? "group" : undefined}
+      onFocus={editing ? () => {
+        onSelect();
+        updateToolbarPlacement();
+      } : undefined}
+      onMouseEnter={editing ? updateToolbarPlacement : undefined}
+      onPointerDownCapture={selectFrame}
+    >
+      {editing ? (
+        <div
+          className={cn(
+            "pointer-events-none absolute z-40 opacity-0 transition-opacity duration-150 group-hover/overview-widget:pointer-events-auto group-hover/overview-widget:opacity-100 group-focus-within/overview-widget:pointer-events-auto group-focus-within/overview-widget:opacity-100",
+            isHorizontalToolbar ? "w-max max-w-[min(520px,calc(100vw-2rem))]" : toolbarPlacement === "inside" ? "w-[84px]" : "w-[88px]",
+            toolbarPlacement === "right" && "left-full top-2 pl-1.5",
+            toolbarPlacement === "left" && "right-full top-2 pr-1.5",
+            toolbarPlacement === "top" && "bottom-full left-1/2 -translate-x-1/2 pb-1.5",
+            toolbarPlacement === "bottom" && "left-1/2 top-full -translate-x-1/2 pt-1.5",
+            toolbarPlacement === "inside" && "right-2 top-2"
+          )}
+          data-overview-toolbar-layout={isHorizontalToolbar ? "horizontal" : "vertical"}
+          onPointerDownCapture={(event) => event.stopPropagation()}
+          ref={toolbarRef}
+        >
+          <div className={cn(
+            "cursor-default gap-1.5 rounded-md border border-border bg-card/98 p-1.5 shadow-xl backdrop-blur supports-[backdrop-filter]:bg-card/90",
+            isHorizontalToolbar ? "flex max-w-[min(520px,calc(100vw-2rem))] flex-wrap items-end" : "grid grid-cols-1"
+          )}>
+            {widget.type === "metric" ? (
+              <Field className={toolbarFieldClass} label={t("Metric")}>
+                <SelectControl className={toolbarSelectClass} onChange={(value) => onChangeMetric(value as OverviewMetricKind)} options={translateOptions(overviewMetricOptions, t)} value={widget.metric ?? "requests"} />
+              </Field>
+            ) : null}
+            <Field className={toolbarFieldClass} label={t("Widget size")}>
+              <SelectControl className={toolbarSelectClass} onChange={(value) => onChangeSize(value as OverviewWidgetSize)} options={translateOptions(overviewWidgetSizeOptions, t)} value={widget.size} />
+            </Field>
+            <Field className={toolbarFieldClass} label={t("Style")}>
+              <SelectControl className={toolbarSelectClass} onChange={(value) => onChangeVariant(value as OverviewWidgetVariant)} options={translateOptions(variantOptions, t)} value={widget.variant} />
+            </Field>
+            <Button aria-label={t("Remove widget")} className={cn("h-7 justify-center px-0", isHorizontalToolbar ? "w-7 shrink-0" : "w-full")} onClick={onRemove} size="sm" title={t("Remove widget")} type="button" variant="outline">
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      {children}
+    </div>
+  );
+}
+
+function OverviewWidgetRenderer({
+  providerAccounts,
+  setUsageRange,
+  usageRange,
+  usageStats,
+  widget
+}: {
+  providerAccounts: ProviderAccountSnapshot[];
+  setUsageRange: (range: UsageStatsRange) => void;
+  usageRange: UsageStatsRange;
+  usageStats: UsageStatsSnapshot;
+  widget: OverviewWidgetConfig;
+}) {
+  if (widget.type === "system-status") {
+    return <SystemStatusBar usageRange={usageRange} usageStats={usageStats} variant={widget.variant === "compact" ? "compact" : "timeline"} />;
+  }
+  if (widget.type === "account-balance") {
+    return <ProviderAccountsOverview accounts={providerAccounts} variant={overviewAccountVariant(widget.variant)} />;
+  }
+  if (widget.type === "metric") {
+    return <OverviewMetricWidget metric={widget.metric ?? "requests"} totals={usageStats.totals} variant={overviewMetricVariant(widget.variant)} />;
+  }
+  if (widget.type === "usage-trend") {
+    return <UsageTrendWidget setUsageRange={setUsageRange} usageRange={usageRange} usageStats={usageStats} variant={overviewTrendVariant(widget.variant)} />;
+  }
+  if (widget.type === "token-mix") {
+    return <TokenMixOverviewWidget totals={usageStats.totals} variant={overviewTokenMixVariant(widget.variant)} />;
+  }
+  if (widget.type === "client-analysis") {
+    return <OverviewAnalysisWidget kind="client" rows={usageStats.clientModels} variant={widget.variant === "compact" ? "compact" : "table"} />;
+  }
+  return <OverviewAnalysisWidget kind="provider" rows={usageStats.providerModels} variant={widget.variant === "compact" ? "compact" : "table"} />;
+}
+
+function OverviewMetricWidget({
+  metric,
+  totals,
+  variant
+}: {
+  metric: OverviewMetricKind;
+  totals: UsageTotals;
+  variant: "bar" | "card" | "compact" | "ring";
+}) {
+  const t = useAppText();
+  const item = overviewMetricDatum(metric, totals, t);
+
+  if (variant === "compact") {
+    return (
+      <Card className="min-w-0">
+        <CardContent className="flex items-center justify-between gap-3 p-3">
+          <div className="min-w-0 truncate text-[12px] font-medium text-muted-foreground">{item.label}</div>
+          <div className="shrink-0 text-[18px] font-semibold tracking-tight">{item.value}</div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (variant === "bar") {
+    return (
+      <Card className="min-w-0">
+        <CardContent className="p-3">
+          <div className="flex items-end justify-between gap-3">
+            <div className="min-w-0 truncate text-[12px] font-medium text-muted-foreground">{item.label}</div>
+            <div className="shrink-0 text-[18px] font-semibold tracking-tight">{item.value}</div>
+          </div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+            <div className={cn("h-full rounded-full", metricToneBar(item.tone))} style={{ width: `${Math.max(3, Math.round(item.ratio * 100))}%` }} />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (variant === "ring") {
+    return (
+      <Card className="min-w-0">
+        <CardContent className="grid grid-cols-[58px_minmax(0,1fr)] items-center gap-3 p-3">
+          <OverviewRingMetric ratio={item.ratio} tone={item.tone} />
+          <div className="min-w-0">
+            <div className="truncate text-[12px] font-medium text-muted-foreground">{item.label}</div>
+            <div className="truncate text-[18px] font-semibold tracking-tight">{item.value}</div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return <MetricCard label={item.label} tone={item.tone} value={item.value} />;
+}
+
+function OverviewRingMetric({ ratio, tone }: { ratio: number; tone: MetricTone }) {
+  const radius = 17;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.max(0, Math.min(1, ratio));
+
+  return (
+    <svg aria-hidden="true" className="h-[58px] w-[58px]" viewBox="0 0 48 48">
+      <circle cx="24" cy="24" fill="none" r={radius} stroke="hsl(var(--muted))" strokeWidth="6" />
+      <circle
+        cx="24"
+        cy="24"
+        fill="none"
+        r={radius}
+        stroke={metricToneStroke(tone)}
+        strokeDasharray={circumference}
+        strokeDashoffset={circumference * (1 - clamped)}
+        strokeLinecap="round"
+        strokeWidth="6"
+        transform="rotate(-90 24 24)"
+      />
+    </svg>
+  );
+}
+
+function UsageTrendWidget({
+  setUsageRange,
+  usageRange,
+  usageStats,
+  variant
+}: {
+  setUsageRange: (range: UsageStatsRange) => void;
+  usageRange: UsageStatsRange;
+  usageStats: UsageStatsSnapshot;
+  variant: "area" | "bar" | "composed" | "line";
+}) {
+  const t = useAppText();
+
+  return (
+    <Card className="min-w-0">
+      <CardHeader className="flex-row items-center justify-between">
+        <CardTitle>{t("Usage Trend")}</CardTitle>
+        <div className="flex rounded-md border border-border bg-background p-0.5">
+          {usageRangeOptions.map((option) => (
+            <Button
+              className={cn(
+                "h-7 rounded px-2.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground",
+                usageRange === option.value && "bg-card text-foreground shadow-sm"
+              )}
+              key={option.value}
+              onClick={() => setUsageRange(option.value)}
+              type="button"
+              unstyled
+            >
+              {t(option.label)}
+            </Button>
+          ))}
+        </div>
+      </CardHeader>
+      <CardContent>
+        <ChartFrame>
+          {({ height, width }) => (
+            <ComposedChart data={usageStats.series} height={height} margin={{ bottom: 4, left: 0, right: 8, top: 28 }} width={width}>
+              <CartesianGrid stroke="#dfe3e8" strokeDasharray="3 3" vertical={false} />
+              <XAxis axisLine={false} dataKey="label" tick={{ fill: "#5f6b7a", fontSize: 11 }} tickLine={false} />
+              <YAxis axisLine={false} tick={{ fill: "#5f6b7a", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} yAxisId="tokens" />
+              <YAxis axisLine={false} hide orientation="right" yAxisId="requests" />
+              <Tooltip content={<UsageTooltip />} />
+              {variant === "composed" ? (
+                <>
                   <Area dataKey="totalTokens" fill="#0f766e" fillOpacity={0.14} name={t("Total tokens")} stroke="#0f766e" strokeWidth={2} type="monotone" yAxisId="tokens" />
                   <Bar barSize={12} dataKey="requestCount" fill="#2563eb" name={t("Requests")} radius={[3, 3, 0, 0]} yAxisId="requests">
                     <LabelList content={<RequestHealthBarLabel />} dataKey="requestCount" />
                   </Bar>
                   <Line dataKey="cacheTokens" dot={false} name={t("Cache tokens")} stroke="#be123c" strokeWidth={2} type="monotone" yAxisId="tokens" />
-                </ComposedChart>
-              )}
-            </ChartFrame>
-          </CardContent>
-        </Card>
-
-        <Card className="min-w-0">
-          <CardHeader className="flex-row items-center justify-between">
-            <CardTitle>{t("Token Mix")}</CardTitle>
-            <Badge variant="outline">{formatCompactNumber(totals.totalTokens)}</Badge>
-          </CardHeader>
-          <CardContent>
-            <ChartFrame>
-              {({ height, width }) => (
-                <BarChart data={tokenMix} height={height} layout="vertical" margin={{ bottom: 8, left: 8, right: 12, top: 8 }} width={width}>
-                  <CartesianGrid stroke="#dfe3e8" strokeDasharray="3 3" horizontal={false} />
-                  <XAxis axisLine={false} tick={{ fill: "#5f6b7a", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} type="number" />
-                  <YAxis axisLine={false} dataKey="name" tick={{ fill: "#5f6b7a", fontSize: 11 }} tickLine={false} type="category" width={52} />
-                  <Tooltip content={<TokenTooltip />} />
-                  <Bar dataKey="value" fill="#d97706" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              )}
-            </ChartFrame>
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <UsageAnalysisCard
-          columns={[
-            { key: "client", label: t("Client") },
-            { key: "model", label: t("Model") },
-            { key: "provider", label: t("Provider") }
-          ]}
-          emptyLabel={t("No client usage yet")}
-          rows={usageStats.clientModels}
-          title={t("Client Analysis")}
-        />
-        <UsageAnalysisCard
-          columns={[
-            { key: "provider", label: t("Provider") },
-            { key: "model", label: t("Model") }
-          ]}
-          emptyLabel={t("No provider usage yet")}
-          rows={usageStats.providerModels}
-          title={t("Provider Analysis")}
-        />
-      </section>
-    </motion.div>
+                </>
+              ) : null}
+              {variant === "area" ? (
+                <>
+                  <Area dataKey="totalTokens" fill="#0f766e" fillOpacity={0.18} name={t("Total tokens")} stroke="#0f766e" strokeWidth={2} type="monotone" yAxisId="tokens" />
+                  <Area dataKey="cacheTokens" fill="#be123c" fillOpacity={0.12} name={t("Cache tokens")} stroke="#be123c" strokeWidth={2} type="monotone" yAxisId="tokens" />
+                </>
+              ) : null}
+              {variant === "line" ? (
+                <>
+                  <Line dataKey="totalTokens" dot={false} name={t("Total tokens")} stroke="#0f766e" strokeWidth={2.5} type="monotone" yAxisId="tokens" />
+                  <Line dataKey="cacheTokens" dot={false} name={t("Cache tokens")} stroke="#be123c" strokeWidth={2} type="monotone" yAxisId="tokens" />
+                </>
+              ) : null}
+              {variant === "bar" ? (
+                <>
+                  <Bar barSize={14} dataKey="totalTokens" fill="#0f766e" name={t("Total tokens")} radius={[4, 4, 0, 0]} yAxisId="tokens" />
+                  <Line dataKey="requestCount" dot={false} name={t("Requests")} stroke="#2563eb" strokeWidth={2} type="monotone" yAxisId="requests" />
+                </>
+              ) : null}
+            </ComposedChart>
+          )}
+        </ChartFrame>
+      </CardContent>
+    </Card>
   );
+}
+
+function TokenMixOverviewWidget({
+  totals,
+  variant
+}: {
+  totals: UsageTotals;
+  variant: "bars" | "donut" | "pie" | "stacked";
+}) {
+  const t = useAppText();
+  const tokenMix = [
+    { color: "#2563eb", name: t("Input"), value: totals.inputTokens },
+    { color: "#d97706", name: t("Output"), value: totals.outputTokens },
+    { color: "#be123c", name: t("Cache"), value: totals.cacheTokens }
+  ];
+  const total = tokenMix.reduce((sum, item) => sum + item.value, 0);
+
+  return (
+    <Card className="min-w-0">
+      <CardHeader className="flex-row items-center justify-between">
+        <CardTitle>{t("Token Mix")}</CardTitle>
+        <Badge variant="outline">{formatCompactNumber(totals.totalTokens)}</Badge>
+      </CardHeader>
+      <CardContent>
+        {variant === "stacked" ? (
+          <div className="space-y-3">
+            <div className="flex h-3 overflow-hidden rounded-full bg-muted">
+              {tokenMix.map((item) => (
+                <div key={item.name} style={{ backgroundColor: item.color, width: `${total > 0 ? Math.max(2, (item.value / total) * 100) : 100 / tokenMix.length}%` }} />
+              ))}
+            </div>
+            <OverviewTokenLegend rows={tokenMix} />
+          </div>
+        ) : null}
+        {variant === "donut" || variant === "pie" ? (
+          <ChartFrame>
+            {({ height, width }) => (
+              <PieChart height={height} width={width}>
+                <Tooltip content={<TokenTooltip />} />
+                <Pie
+                  cx="50%"
+                  cy="50%"
+                  data={tokenMix}
+                  dataKey="value"
+                  innerRadius={variant === "donut" ? Math.min(height, width) * 0.22 : 0}
+                  nameKey="name"
+                  outerRadius={Math.min(height, width) * 0.34}
+                  paddingAngle={variant === "donut" ? 2 : 0}
+                >
+                  {tokenMix.map((item) => (
+                    <Cell fill={item.color} key={item.name} />
+                  ))}
+                </Pie>
+              </PieChart>
+            )}
+          </ChartFrame>
+        ) : null}
+        {variant === "bars" ? (
+          <ChartFrame>
+            {({ height, width }) => (
+              <BarChart data={tokenMix} height={height} layout="vertical" margin={{ bottom: 8, left: 8, right: 12, top: 8 }} width={width}>
+                <CartesianGrid stroke="#dfe3e8" strokeDasharray="3 3" horizontal={false} />
+                <XAxis axisLine={false} tick={{ fill: "#5f6b7a", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} type="number" />
+                <YAxis axisLine={false} dataKey="name" tick={{ fill: "#5f6b7a", fontSize: 11 }} tickLine={false} type="category" width={52} />
+                <Tooltip content={<TokenTooltip />} />
+                <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                  {tokenMix.map((item) => (
+                    <Cell fill={item.color} key={item.name} />
+                  ))}
+                </Bar>
+              </BarChart>
+            )}
+          </ChartFrame>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function OverviewTokenLegend({ rows }: { rows: Array<{ color: string; name: string; value: number }> }) {
+  return (
+    <div className="grid grid-cols-1 gap-2">
+      {rows.map((row) => (
+        <div className="flex min-w-0 items-center gap-2 text-[12px]" key={row.name}>
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: row.color }} />
+          <span className="min-w-0 flex-1 truncate text-muted-foreground">{row.name}</span>
+          <span className="shrink-0 font-semibold">{formatCompactNumber(row.value)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OverviewAnalysisWidget({
+  kind,
+  rows,
+  variant
+}: {
+  kind: "client" | "provider";
+  rows: UsageComparisonRow[];
+  variant: "compact" | "table";
+}) {
+  const t = useAppText();
+  const title = kind === "client" ? t("Client Analysis") : t("Provider Analysis");
+  const emptyLabel = kind === "client" ? t("No client usage yet") : t("No provider usage yet");
+  const columns: UsageAnalysisColumn[] = kind === "client"
+    ? [
+      { key: "client", label: t("Client") },
+      { key: "model", label: t("Model") },
+      { key: "provider", label: t("Provider") }
+    ]
+    : [
+      { key: "provider", label: t("Provider") },
+      { key: "model", label: t("Model") }
+    ];
+
+  if (variant === "compact") {
+    return (
+      <Card className="min-w-0">
+        <CardHeader className="flex-row items-center justify-between">
+          <CardTitle>{title}</CardTitle>
+          <Badge variant="outline">{rows.length}</Badge>
+        </CardHeader>
+        <CardContent>
+          {rows.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-7 text-center text-[12px] text-muted-foreground">{emptyLabel}</div>
+          ) : (
+            <div className="space-y-2">
+              {rows.slice(0, 5).map((row) => (
+                <div className="flex min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2" key={row.key}>
+                  <span className="min-w-0 truncate text-[12px] font-medium">{row.label}</span>
+                  <span className="shrink-0 text-[12px] font-semibold">{formatCompactNumber(row.totalTokens)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return <UsageAnalysisCard columns={columns} emptyLabel={emptyLabel} rows={rows} title={title} />;
+}
+
+function overviewWidgetTemplates(): OverviewWidgetConfig[] {
+  const baseWidgets: OverviewWidgetConfig[] = [
+    { enabled: true, id: "system-status", size: "full", type: "system-status", variant: "timeline" },
+    { enabled: true, id: "account-balance", size: "full", type: "account-balance", variant: "cards" },
+    { enabled: true, id: "usage-trend", size: "wide", type: "usage-trend", variant: "composed" },
+    { enabled: true, id: "token-mix", size: "medium", type: "token-mix", variant: "bars" },
+    { enabled: true, id: "client-analysis", size: "large", type: "client-analysis", variant: "table" },
+    { enabled: true, id: "provider-analysis", size: "large", type: "provider-analysis", variant: "table" }
+  ];
+  return [
+    ...baseWidgets,
+    ...overviewMetricOptions.map((option) => ({
+      enabled: true,
+      id: `metric-${option.value}`,
+      metric: option.value,
+      size: "small" as const,
+      type: "metric" as const,
+      variant: "card" as const
+    }))
+  ];
+}
+
+function overviewWidgetTemplateKey(widget: OverviewWidgetConfig): string {
+  return widget.type === "metric" ? `metric:${widget.metric ?? "requests"}` : widget.type;
+}
+
+function overviewWidgetTitle(widget: OverviewWidgetConfig, translate: (value: string) => string): string {
+  if (widget.type === "metric") {
+    return translate(overviewMetricLabel(widget.metric ?? "requests"));
+  }
+  return translate(overviewWidgetTypeLabel(widget.type));
+}
+
+function overviewWidgetTypeLabel(type: OverviewWidgetType): string {
+  if (type === "account-balance") return "Account Balance";
+  if (type === "client-analysis") return "Client Analysis";
+  if (type === "metric") return "Metric";
+  if (type === "provider-analysis") return "Provider Analysis";
+  if (type === "system-status") return "System status";
+  if (type === "token-mix") return "Token Mix";
+  return "Usage Trend";
+}
+
+function overviewWidgetVariantOptions(type: OverviewWidgetType): Array<{ label: string; value: OverviewWidgetVariant }> {
+  if (type === "account-balance") {
+    return [
+      { label: "Cards", value: "cards" },
+      { label: "Compact", value: "compact" },
+      { label: "Bars", value: "bars" }
+    ];
+  }
+  if (type === "metric") {
+    return [
+      { label: "Cards", value: "card" },
+      { label: "Compact", value: "compact" },
+      { label: "Bar", value: "bar" },
+      { label: "Ring", value: "ring" }
+    ];
+  }
+  if (type === "usage-trend") {
+    return [
+      { label: "Composed", value: "composed" },
+      { label: "Area", value: "area" },
+      { label: "Line", value: "line" },
+      { label: "Bar", value: "bar" }
+    ];
+  }
+  if (type === "token-mix") {
+    return [
+      { label: "Bars", value: "bars" },
+      { label: "Stacked", value: "stacked" },
+      { label: "Donut", value: "donut" },
+      { label: "Pie", value: "pie" }
+    ];
+  }
+  if (type === "system-status") {
+    return [
+      { label: "Timeline", value: "timeline" },
+      { label: "Compact", value: "compact" }
+    ];
+  }
+  return [
+    { label: "Table", value: "table" },
+    { label: "Compact", value: "compact" }
+  ];
+}
+
+function overviewWidgetSizeClass(size: OverviewWidgetSize): string {
+  if (size === "small") return "col-span-12 sm:col-span-6 xl:col-span-2";
+  if (size === "medium") return "col-span-12 md:col-span-6 xl:col-span-4";
+  if (size === "large") return "col-span-12 lg:col-span-6";
+  if (size === "wide") return "col-span-12 lg:col-span-8";
+  return "col-span-12";
+}
+
+function overviewWidgetOverlaySizeClass(size: OverviewWidgetSize): string {
+  if (size === "small") return "w-[min(320px,calc(100vw-2rem))]";
+  if (size === "medium") return "w-[min(460px,calc(100vw-2rem))]";
+  if (size === "large") return "w-[min(640px,calc(100vw-2rem))]";
+  if (size === "wide") return "w-[min(860px,calc(100vw-2rem))]";
+  return "w-[min(960px,calc(100vw-2rem))]";
+}
+
+type OverviewToolbarPlacement = "bottom" | "inside" | "left" | "right" | "top";
+
+function resolveOverviewToolbarPlacement(element: HTMLElement | null, toolbar: HTMLElement | null): OverviewToolbarPlacement {
+  if (!element || typeof window === "undefined") {
+    return "right";
+  }
+  const rect = element.getBoundingClientRect();
+  const toolbarWidth = 96;
+  const gutter = 12;
+  const boundary = element.closest<HTMLElement>("[data-overview-widget-grid]")?.getBoundingClientRect();
+  const boundaryLeft = boundary?.left ?? 0;
+  const boundaryRight = boundary?.right ?? window.innerWidth;
+  const boundaryWidth = boundaryRight - boundaryLeft;
+  const horizontalToolbarWidth = Math.min(520, Math.max(toolbarWidth, boundaryWidth - gutter * 2));
+  const horizontalToolbarHeight = toolbar?.dataset.overviewToolbarLayout === "horizontal"
+    ? toolbar.getBoundingClientRect().height || 56
+    : 56;
+  const leftSpace = rect.left - boundaryLeft;
+  const rightSpace = boundaryRight - rect.right;
+  const topSpace = rect.top;
+  const bottomSpace = window.innerHeight - rect.bottom;
+  const centerX = rect.left + rect.width / 2;
+  const hasCenteredHorizontalSpace = centerX >= boundaryLeft + horizontalToolbarWidth / 2 + gutter && boundaryRight - centerX >= horizontalToolbarWidth / 2 + gutter;
+
+  if (rightSpace >= toolbarWidth + gutter) {
+    return "right";
+  }
+  if (leftSpace >= toolbarWidth + gutter) {
+    return "left";
+  }
+  if (hasCenteredHorizontalSpace && topSpace >= horizontalToolbarHeight + gutter) {
+    return "top";
+  }
+  if (hasCenteredHorizontalSpace && bottomSpace >= horizontalToolbarHeight + gutter) {
+    return "bottom";
+  }
+  if (hasCenteredHorizontalSpace && Math.max(topSpace, bottomSpace) >= horizontalToolbarHeight * 0.6) {
+    return bottomSpace >= topSpace ? "bottom" : "top";
+  }
+  return "inside";
+}
+
+function sameOverviewWidgetOrder(a: OverviewWidgetConfig[], b: OverviewWidgetConfig[]): boolean {
+  return a.length === b.length && a.every((widget, index) => widget.id === b[index]?.id);
+}
+
+function uniqueOverviewWidgetId(widgets: OverviewWidgetConfig[], baseId: string): string {
+  const ids = new Set(widgets.map((widget) => widget.id));
+  if (!ids.has(baseId)) {
+    return baseId;
+  }
+  let index = 2;
+  while (ids.has(`${baseId}-${index}`)) {
+    index += 1;
+  }
+  return `${baseId}-${index}`;
+}
+
+function overviewAccountVariant(value: OverviewWidgetVariant): "bars" | "cards" | "compact" {
+  return value === "bars" || value === "compact" ? value : "cards";
+}
+
+function overviewMetricVariant(value: OverviewWidgetVariant): "bar" | "card" | "compact" | "ring" {
+  return value === "bar" || value === "compact" || value === "ring" ? value : "card";
+}
+
+function overviewTrendVariant(value: OverviewWidgetVariant): "area" | "bar" | "composed" | "line" {
+  return value === "area" || value === "bar" || value === "line" ? value : "composed";
+}
+
+function overviewTokenMixVariant(value: OverviewWidgetVariant): "bars" | "donut" | "pie" | "stacked" {
+  return value === "donut" || value === "pie" || value === "stacked" ? value : "bars";
+}
+
+function overviewMetricDatum(metric: OverviewMetricKind, totals: UsageTotals, translate: (value: string) => string): { label: string; ratio: number; tone: MetricTone; value: string } {
+  if (metric === "total-tokens") {
+    return { label: translate("Total tokens"), ratio: totals.totalTokens > 0 ? 1 : 0, tone: "teal", value: formatCompactNumber(totals.totalTokens) };
+  }
+  if (metric === "input-tokens") {
+    return { label: translate("Input tokens"), ratio: totals.totalTokens > 0 ? totals.inputTokens / totals.totalTokens : 0, tone: "blue", value: formatCompactNumber(totals.inputTokens) };
+  }
+  if (metric === "output-tokens") {
+    return { label: translate("Output tokens"), ratio: totals.totalTokens > 0 ? totals.outputTokens / totals.totalTokens : 0, tone: "amber", value: formatCompactNumber(totals.outputTokens) };
+  }
+  if (metric === "cache-tokens") {
+    return { label: translate("Cache tokens"), ratio: totals.totalTokens > 0 ? totals.cacheTokens / totals.totalTokens : 0, tone: "rose", value: formatCompactNumber(totals.cacheTokens) };
+  }
+  if (metric === "cache-ratio") {
+    return { label: translate("Cache ratio"), ratio: totals.cacheRatio, tone: "indigo", value: formatPercent(totals.cacheRatio) };
+  }
+  if (metric === "estimated-cost") {
+    return { label: translate("Estimated cost"), ratio: Math.min(1, Math.max(0, (totals.costUsd ?? 0) / 1)), tone: "slate", value: formatUsdCost(totals.costUsd) };
+  }
+  if (metric === "success-rate") {
+    return { label: translate("Success rate"), ratio: totals.successRate, tone: "teal", value: formatPercent(totals.successRate) };
+  }
+  if (metric === "errors") {
+    return { label: translate("Errors"), ratio: totals.requestCount > 0 ? totals.errorCount / totals.requestCount : 0, tone: "rose", value: formatCompactNumber(totals.errorCount) };
+  }
+  if (metric === "avg-latency") {
+    return { label: translate("Average latency"), ratio: Math.min(1, Math.max(0, totals.avgDurationMs / 10_000)), tone: "amber", value: formatDuration(totals.avgDurationMs) };
+  }
+  return { label: translate("Requests"), ratio: totals.requestCount > 0 ? 1 : 0, tone: "teal", value: formatCompactNumber(totals.requestCount) };
+}
+
+function overviewMetricLabel(metric: OverviewMetricKind): string {
+  return overviewMetricOptions.find((option) => option.value === metric)?.label ?? "Requests";
 }
 
 type SystemStatusTone = "error" | "idle" | "ok" | "warn";
@@ -5100,9 +6770,11 @@ type SystemStatusPoint = {
 };
 
 function SystemStatusBar({
+  variant = "timeline",
   usageRange,
   usageStats
 }: {
+  variant?: "compact" | "timeline";
   usageRange: UsageStatsRange;
   usageStats: UsageStatsSnapshot;
 }) {
@@ -5116,6 +6788,27 @@ function SystemStatusBar({
   const overallTone = usageStatusTone(usageStats.totals);
   const StatusIcon = overallTone === "ok" ? Check : CircleAlert;
   const rangeLabel = formatSystemStatusRange(segments, usageRange);
+
+  if (variant === "compact") {
+    return (
+      <Card className="min-w-0 border-border/70 bg-card">
+        <CardContent className="flex min-w-0 items-center justify-between gap-3 p-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full", systemStatusIconClass(overallTone))}>
+              <StatusIcon className="h-3.5 w-3.5" />
+            </span>
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-semibold">{t("API Service")}</div>
+              <div className="truncate text-[11px] text-muted-foreground">{rangeLabel}</div>
+            </div>
+          </div>
+          <Badge variant={overallTone === "ok" ? "success" : overallTone === "warn" ? "warning" : overallTone === "error" ? "danger" : "outline"}>
+            {formatPercent(availability)}
+          </Badge>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="min-w-0 overflow-visible border-border/70 bg-card">
@@ -5185,7 +6878,13 @@ function SystemStatusBar({
   );
 }
 
-function ProviderAccountsOverview({ accounts }: { accounts: ProviderAccountSnapshot[] }) {
+function ProviderAccountsOverview({
+  accounts,
+  variant = "cards"
+}: {
+  accounts: ProviderAccountSnapshot[];
+  variant?: "bars" | "cards" | "compact";
+}) {
   const t = useAppText();
   const visibleAccounts = accounts
     .filter((account) => account.meters.length > 0 || account.status === "error")
@@ -5203,10 +6902,51 @@ function ProviderAccountsOverview({ accounts }: { accounts: ProviderAccountSnaps
           <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-7 text-center text-[12px] text-muted-foreground">
             {t("No account balance connectors configured")}
           </div>
+        ) : variant === "compact" ? (
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+            {visibleAccounts.map((account) => {
+              const meter = primaryProviderAccountMeter(account);
+              return (
+                <div className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 px-3 py-2" key={account.provider}>
+                  <div className="min-w-0">
+                    <div className="truncate text-[12px] font-semibold">{account.provider}</div>
+                    <div className="truncate text-[11px] text-muted-foreground">{meter ? t(meter.label) : account.source}</div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <Badge variant={providerAccountBadgeVariant(account.status)}>{account.status}</Badge>
+                    {meter ? <div className="mt-1 text-[12px] font-semibold">{formatProviderAccountMeterValue(meter)}</div> : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : variant === "bars" ? (
+          <div className="space-y-3">
+            {visibleAccounts.map((account) => {
+              const meter = primaryProviderAccountMeter(account);
+              const progress = meter ? providerAccountMeterProgress(meter) : undefined;
+              return (
+                <div className="min-w-0" key={account.provider}>
+                  <div className="flex min-w-0 items-end justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-[12px] font-semibold">{account.provider}</div>
+                      <div className="truncate text-[11px] text-muted-foreground">{meter ? t(meter.label) : account.source}</div>
+                    </div>
+                    <div className="shrink-0 text-[12px] font-semibold">{meter ? formatProviderAccountMeterValue(meter) : account.status}</div>
+                  </div>
+                  {progress !== undefined ? (
+                    <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
+                      <div className={cn("h-full rounded-full", providerAccountProgressClass(account.status))} style={{ width: `${progress}%` }} />
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
             {visibleAccounts.map((account) => {
-              const meter = primaryProviderAccountMeter(account);
+              const meters = providerAccountMetersForDisplay(account, 3);
               return (
                 <div className="min-w-0 rounded-lg border border-border bg-muted/20 p-3" key={account.provider}>
                   <div className="flex min-w-0 items-start justify-between gap-3">
@@ -5216,18 +6956,28 @@ function ProviderAccountsOverview({ accounts }: { accounts: ProviderAccountSnaps
                     </div>
                     <Badge variant={providerAccountBadgeVariant(account.status)}>{account.status}</Badge>
                   </div>
-                  {meter ? (
-                    <div className="mt-3 min-w-0">
-                      <div className="flex min-w-0 items-end justify-between gap-3">
-                        <div className="min-w-0 truncate text-[12px] font-medium text-muted-foreground">{meter.label}</div>
-                        <div className="shrink-0 text-[18px] font-semibold tracking-tight">{formatProviderAccountMeterValue(meter)}</div>
-                      </div>
-                      {providerAccountMeterProgress(meter) !== undefined ? (
-                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-background">
-                          <div className={cn("h-full rounded-full", providerAccountProgressClass(account.status))} style={{ width: `${providerAccountMeterProgress(meter)}%` }} />
-                        </div>
+                  {meters.length > 0 ? (
+                    <div className="mt-3 space-y-2.5">
+                      {meters.map((meter) => {
+                        const progress = providerAccountMeterProgress(meter);
+                        return (
+                          <div className="min-w-0" key={meter.id}>
+                            <div className="flex min-w-0 items-end justify-between gap-3">
+                              <div className="min-w-0 truncate text-[12px] font-medium text-muted-foreground">{t(meter.label)}</div>
+                              <div className="shrink-0 text-[15px] font-semibold tracking-tight">{formatProviderAccountMeterValue(meter)}</div>
+                            </div>
+                            {progress !== undefined ? (
+                              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-background">
+                                <div className={cn("h-full rounded-full", providerAccountProgressClass(account.status))} style={{ width: `${progress}%` }} />
+                              </div>
+                            ) : null}
+                            {meter.resetAt ? <div className="mt-1 truncate text-[10px] text-muted-foreground">{t("Resets")} {formatProviderAccountReset(meter.resetAt)}</div> : null}
+                          </div>
+                        );
+                      })}
+                      {account.meters.length > meters.length ? (
+                        <div className="truncate text-[10px] text-muted-foreground">+{account.meters.length - meters.length}</div>
                       ) : null}
-                      {meter.resetAt ? <div className="mt-2 truncate text-[11px] text-muted-foreground">{t("Resets")} {formatProviderAccountReset(meter.resetAt)}</div> : null}
                     </div>
                   ) : (
                     <div className="mt-3 truncate text-[12px] text-muted-foreground">{account.message || account.errors?.[0]?.message || t("Unavailable")}</div>
@@ -5818,13 +7568,14 @@ function UsageAnalysisCard({
           <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-[12px] text-muted-foreground">{emptyLabel}</div>
         ) : (
           <div className="max-h-[420px] overflow-auto rounded-lg border border-border/60">
-            <table className="min-w-[760px] w-full border-collapse text-left text-[11px]">
+            <table className="min-w-[840px] w-full border-collapse text-left text-[11px]">
               <thead className="sticky top-0 z-10 bg-muted text-muted-foreground">
                 <tr>
                   {columns.map((column) => (
                     <th className="px-3 py-2 font-semibold" key={column.key}>{column.label}</th>
                   ))}
                   <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
+                  <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th>
                   <th className="px-3 py-2 text-right font-semibold">{t("Requests")}</th>
                   <th className="px-3 py-2 text-right font-semibold">{t("Input")}</th>
                   <th className="px-3 py-2 text-right font-semibold">{t("Output")}</th>
@@ -5841,6 +7592,7 @@ function UsageAnalysisCard({
                       </td>
                     ))}
                     <td className="px-3 py-2 text-right font-semibold">{formatCompactNumber(row.totalTokens)}</td>
+                    <td className="px-3 py-2 text-right font-semibold">{formatUsdCost(row.costUsd)}</td>
                     <td className="px-3 py-2 text-right">{formatCompactNumber(row.requestCount)}</td>
                     <td className="px-3 py-2 text-right">{formatCompactNumber(row.inputTokens)}</td>
                     <td className="px-3 py-2 text-right">{formatCompactNumber(row.outputTokens)}</td>
@@ -5934,6 +7686,10 @@ function UsageTooltip({
             <div className="flex min-w-[150px] items-center justify-between gap-4">
               <span className="text-muted-foreground">{t("Failed requests")}</span>
               <span className="font-medium">{formatCompactNumber(point.errorCount)}</span>
+            </div>
+            <div className="flex min-w-[150px] items-center justify-between gap-4">
+              <span className="text-muted-foreground">{t("Cost")}</span>
+              <span className="font-medium">{formatUsdCost(point.costUsd)}</span>
             </div>
           </>
         ) : null}
@@ -6087,10 +7843,10 @@ function ApiKeysView({
                         <div className="truncate text-[12px] font-semibold" title={apiKey.name}>{apiKey.name}</div>
                       </div>
                       <div className="min-w-0">
-                        <div className="break-all text-[12px] font-semibold leading-5" title={apiKey.keyValue}>
-                          <span className="font-mono">{apiKey.keyValue}</span>
+                        <div className="flex min-w-0 items-center gap-1.5 text-[12px] font-semibold leading-5" title={apiKey.masked}>
+                          <span className="min-w-0 truncate font-mono">{apiKey.masked}</span>
                           <Button
-                            className="ml-1.5 align-[-6px]"
+                            className="shrink-0"
                             aria-label={t("Copy API key")}
                             onClick={() => void copyApiKey(apiKey)}
                             size="iconSm"
@@ -6346,7 +8102,6 @@ function ServerView({
   actionBusy,
   actionError,
   actionMessage,
-  applyClaudeAppGateway,
   config,
   installProxyCertificate,
   onProxyEnabledChange,
@@ -6362,7 +8117,6 @@ function ServerView({
   actionBusy: ServerActionBusy;
   actionError: string;
   actionMessage: string;
-  applyClaudeAppGateway: () => void;
   config: AppConfig;
   installProxyCertificate: () => void;
   onProxyEnabledChange: (checked: boolean) => void;
@@ -6377,7 +8131,7 @@ function ServerView({
 }) {
   const t = useAppText();
   const trustSteps = proxyCertificateTrustSteps(proxyCertificateStatus);
-  const claudeAppEndpoint = endpointFromHostPort(config.gateway.host || config.HOST, config.gateway.port || config.PORT);
+  const certificateMessage = translateProxyCertificateMessage(proxyCertificateStatus.message, t);
 
   return (
     <motion.div
@@ -6451,17 +8205,6 @@ function ServerView({
             ) : null}
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/20 p-3">
-            <div className="min-w-0">
-              <div className="text-[12px] font-medium">{t("Claude App Gateway")}</div>
-              <div className="break-all font-mono text-[11px] text-muted-foreground">{claudeAppEndpoint}</div>
-            </div>
-            <Button disabled={Boolean(actionBusy)} onClick={applyClaudeAppGateway} size="sm" type="button" variant="outline">
-              {actionBusy === "claude-app" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Route className="h-3.5 w-3.5" />}
-              {t("Configure Claude App")}
-            </Button>
-          </div>
-
           {config.proxy.enabled || !proxyCertificateStatus.trusted ? (
             <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
               <div className="flex items-center justify-between gap-3">
@@ -6472,12 +8215,12 @@ function ServerView({
               </div>
               {!proxyCertificateStatus.trusted ? (
                 <div className="space-y-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
-                  <div className="font-medium">{proxyCertificateStatus.message}</div>
+                  <div className="font-medium">{certificateMessage}</div>
                   <div className="grid gap-1.5">
                     {trustSteps.map((step, index) => (
                       <div className="flex gap-2" key={step}>
                         <span className="shrink-0 font-semibold">{index + 1}.</span>
-                        <span className="min-w-0">{step}</span>
+                        <span className="min-w-0">{t(step)}</span>
                       </div>
                     ))}
                   </div>
@@ -6554,7 +8297,7 @@ function ProfileView({
             <div className="min-w-0">
               <CardTitle>{t("Agent access")}</CardTitle>
               <p className="mt-1 text-[12px] text-muted-foreground">
-                {t("Choose where each agent uses CCR. Keep advanced paths hidden unless you need global or custom installs.")}
+                {t("Choose where each agent uses CCR.")}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -6621,7 +8364,7 @@ function ProfileView({
 
           {applyError ? (
             <div className="whitespace-pre-wrap rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
-              {applyError}
+              {t(applyError)}
             </div>
           ) : null}
         </CardContent>
@@ -7102,15 +8845,6 @@ function AddProfileForm({
         </Field>
         {draft.agent === "claude-code" ? (
           <>
-            {!profileScopeUsesGeneratedPath(draft.scope) ? (
-              <Field className="sm:col-span-2" label={t("Settings file")}>
-                <Input value={draft.settingsFile} onChange={(event) => onChange({ settingsFile: event.target.value })} />
-              </Field>
-            ) : (
-              <div className="sm:col-span-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[12px] text-muted-foreground">
-                {t("CCR manages an isolated Claude Code settings file for this profile.")}
-              </div>
-            )}
             <Field label={t("Model override")}>
               <ProfileModelSelector
                 placeholder={t("Keep Claude Code default")}
@@ -7130,46 +8864,16 @@ function AddProfileForm({
           </>
         ) : (
           <>
-            {!profileScopeUsesGeneratedPath(draft.scope) ? (
-              <Field className="sm:col-span-2" label={t("Config file")}>
-                <Input value={draft.configFile} onChange={(event) => onChange({ configFile: event.target.value })} />
-              </Field>
-            ) : (
-              <div className="sm:col-span-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[12px] text-muted-foreground">
-                {t("CCR manages an isolated Codex config file for this profile.")}
-              </div>
-            )}
-            <Field label={t("Config format")}>
-              <SelectControl
-                onChange={(configFormat) => onChange({ configFormat: normalizeCodexConfigFormat(configFormat) })}
-                options={translateOptions(codexConfigFormatOptions, t)}
-                value={draft.configFormat}
-              />
-            </Field>
-            <Field label={t("Codex home")}>
-              <Input value={draft.codexHome} onChange={(event) => onChange({ codexHome: event.target.value })} />
-            </Field>
             <Field label={t("Provider ID")}>
               <Input value={draft.providerId} onChange={(event) => onChange({ providerId: event.target.value })} />
             </Field>
             <Field label={t("Provider name")}>
               <Input value={draft.providerName} onChange={(event) => onChange({ providerName: event.target.value })} />
             </Field>
-            <Field label={t("Remote frontend")}>
-              <SelectControl
-                onChange={(remoteFrontendMode) => onChange({ remoteFrontendMode: normalizeCodexRemoteFrontendMode(remoteFrontendMode) })}
-                options={translateOptions(codexRemoteFrontendModeOptions, t)}
-                value={draft.remoteFrontendMode}
-              />
-            </Field>
-            <Field label={t("CLI middleware")}>
-              <div className="flex h-10 items-center justify-between gap-3 rounded-md border border-input bg-background px-3">
-                <span className="truncate text-[12px] font-medium text-foreground">
-                  {draft.cliMiddleware ? t("Enabled") : t("Disabled")}
-                </span>
-                <Toggle checked={draft.cliMiddleware} onChange={(cliMiddleware) => onChange({ cliMiddleware })} />
-              </div>
-            </Field>
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
+              <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
+              <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
+            </div>
             <Field className="sm:col-span-2" label={t("Codex model")}>
               <ProfileModelSelector
                 placeholder={providers[0]?.models[0] && providers[0]?.name ? `${providers[0].name}/${providers[0].models[0]}` : ""}
@@ -7177,9 +8881,6 @@ function AddProfileForm({
                 value={draft.model}
                 onChange={(model) => onChange({ model })}
               />
-            </Field>
-            <Field className="sm:col-span-2" label={t("Codex CLI path")}>
-              <Input value={draft.codexCliPath} onChange={(event) => onChange({ codexCliPath: event.target.value })} />
             </Field>
           </>
         )}
@@ -7193,7 +8894,7 @@ function AddProfileForm({
       </div>
       {error ? (
         <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
-          {error}
+          {t(error)}
         </div>
       ) : null}
     </>
@@ -7690,6 +9391,7 @@ function LogExpandedDetails({ entry }: { entry: RequestLogEntry }) {
         <LogMetric label={t("缓存读取")} value={formatCompactNumber(entry.cacheReadTokens)} />
         <LogMetric label={t("缓存写入")} value={formatCompactNumber(entry.cacheWriteTokens)} />
         <LogMetric label={t("总计")} value={formatCompactNumber(entry.totalTokens)} />
+        <LogMetric label={t("Cost")} value={formatUsdCost(entry.costUsd ?? 0)} />
       </div>
       <div className="network-detail-panes grid h-[440px] min-h-0 grid-cols-1 lg:grid-cols-2">
         <LogJsonPanel body={entry.requestBody} headerEmptyLabel="No request headers" headers={entry.requestHeaders} title={t("请求")} />
@@ -8622,6 +10324,7 @@ function ProviderDeepLinkDialog({
 }) {
   const t = useAppText();
   const provider = request.provider;
+  const manifest = request.manifest;
   const displayName = provider ? provider.name?.trim() || inferProviderNameFromBaseUrl(provider.baseUrl) : "";
   const modelPreview = provider?.models.slice(0, 8) ?? [];
 
@@ -8630,7 +10333,7 @@ function ProviderDeepLinkDialog({
       <DialogContent className="max-w-[580px]">
         <DialogHeader>
           <div className="min-w-0">
-            <DialogTitle>{provider ? t("Import Provider") : t("Provider link failed")}</DialogTitle>
+            <DialogTitle>{provider ? t("Import Provider") : manifest ? t("Import Provider Manifest") : t("Provider link failed")}</DialogTitle>
           </div>
           <Button aria-label={t("Close dialog")} disabled={busy} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
             <X className="h-4 w-4" />
@@ -8649,17 +10352,28 @@ function ProviderDeepLinkDialog({
                   {t("This provider link came from an external website. Review details before importing.")}
                 </div>
               </div>
+              <div className="flex items-start gap-2 rounded-md border border-border bg-background px-3 py-2 text-[11px] leading-4 text-muted-foreground">
+                <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>{t("Only enter an API key issued for this endpoint. Official provider keys must only be used with official endpoints.")}</span>
+              </div>
 
               <div className="grid grid-cols-1 gap-2 text-[12px] sm:grid-cols-2">
                 <ProviderDeepLinkDetail label={t("Name")} value={displayName} />
                 <ProviderDeepLinkDetail label={t("Protocol")} value={provider.protocol ? translatedProviderProtocolLabel(provider.protocol, t) : t("Detected automatically")} />
                 <ProviderDeepLinkDetail className="sm:col-span-2" label={t("Base URL")} value={provider.baseUrl} mono />
+                {manifest ? (
+                  <ProviderDeepLinkDetail className="sm:col-span-2" label={t("Manifest URL")} value={manifest.url} mono />
+                ) : null}
                 {provider.source ? (
                   <ProviderDeepLinkDetail className="sm:col-span-2" label={t("Provider website")} value={provider.source} mono />
                 ) : null}
                 <ProviderDeepLinkDetail
                   label={t("API key")}
                   value={provider.apiKey ? t("API key included") : t("API key not included")}
+                />
+                <ProviderDeepLinkDetail
+                  label={t("Fetch usage")}
+                  value={provider.account?.enabled === false ? t("Disabled") : t("Enabled")}
                 />
                 <ProviderDeepLinkDetail
                   label={t("Models")}
@@ -8687,6 +10401,19 @@ function ProviderDeepLinkDialog({
                 </div>
               ) : null}
             </div>
+          ) : manifest ? (
+            <div className="space-y-3">
+              <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5">
+                <div className="flex items-start gap-2 text-[12px] font-medium text-foreground">
+                  <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>{t("Remote provider manifest")}</span>
+                </div>
+                <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                  {t("CCR will fetch this HTTPS manifest with strict safety checks before showing provider details.")}
+                </div>
+              </div>
+              <ProviderDeepLinkDetail label={t("Manifest URL")} value={manifest.url} mono />
+            </div>
           ) : (
             <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5">
               <div className="flex items-start gap-2 text-[12px] font-medium text-destructive">
@@ -8708,10 +10435,10 @@ function ProviderDeepLinkDialog({
           <Button disabled={busy} onClick={onClose} type="button" variant="outline">
             {t("Cancel")}
           </Button>
-          {provider ? (
+          {provider || manifest ? (
             <Button disabled={busy} onClick={() => void onSubmit()} type="button">
               {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              {t("Import")}
+              {provider ? t("Import") : t("Fetch manifest")}
             </Button>
           ) : null}
         </DialogFooter>
@@ -8966,6 +10693,7 @@ function AddProviderForm({
   const showBaseUrl = customEndpoint || mode === "edit";
   const detectedProtocol = probe?.detectedProtocol ?? draft.protocol;
   const detectedBaseUrl = probe?.normalizedBaseUrl || draft.baseUrl;
+  const safetyIssue = providerDraftSafetyIssue(draft, detectedBaseUrl);
   const providerPresetOptions = [
     { label: t("Select preset provider"), value: "" },
     ...providerPresets.map((preset) => ({ label: t(preset.name), preset, value: preset.id })),
@@ -9011,6 +10739,7 @@ function AddProviderForm({
   function updatePreset(presetId: string) {
     if (!presetId) {
       onChange({
+        ...createDefaultProviderAccountDraft(),
         baseUrl: "",
         icon: "",
         modelSearch: "",
@@ -9022,6 +10751,7 @@ function AddProviderForm({
 
     if (presetId === customProviderPresetId) {
       onChange({
+        ...createDefaultProviderAccountDraft(),
         baseUrl: "",
         icon: "",
         modelSearch: "",
@@ -9034,7 +10764,9 @@ function AddProviderForm({
     const preset = findProviderPreset(presetId);
     const endpoint = preset ? primaryProviderPresetEndpoint(preset) : undefined;
     const generatedName = !draft.name.trim() || /^provider-\d+$/i.test(draft.name.trim());
+    const accountDraft = createProviderAccountDraftFromConfig(defaultProviderAccountConfigForPreset(presetId));
     onChange({
+      ...accountDraft,
       baseUrl: endpoint?.baseUrl ?? "",
       icon: "",
       modelSearch: "",
@@ -9076,7 +10808,17 @@ function AddProviderForm({
         ) : null}
         <Field className="sm:col-span-2" label={t("API key")}>
           <Input type="password" value={draft.apiKey} onChange={(event) => onChange({ apiKey: event.target.value }, true)} />
+          <div className="flex items-start gap-1.5 text-[11px] leading-4 text-muted-foreground">
+            <CircleAlert className="mt-0.5 h-3 w-3 shrink-0" />
+            <span>{t("Only enter an API key issued for this endpoint. Official provider keys must only be used with official endpoints.")}</span>
+          </div>
         </Field>
+        {safetyIssue ? (
+          <div className="sm:col-span-2 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] leading-5 text-amber-900 dark:text-amber-100">
+            <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>{safetyIssue.message}</span>
+          </div>
+        ) : null}
         {selectedPreset && !showBaseUrl ? (
           <div className="sm:col-span-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[12px] text-muted-foreground">
             <div className="flex min-w-0 items-center gap-2">
@@ -9185,45 +10927,12 @@ function AddProviderForm({
                 <Field label={t("Detected endpoint")}>
                   <Input readOnly value={detectedBaseUrl} />
                 </Field>
-                <div className="sm:col-span-2 space-y-2 rounded-md border border-border bg-background/60 p-3">
-                  <Label className="flex min-w-0 items-center gap-2 text-[12px] font-semibold">
-                    <Checkbox
-                      checked={draft.accountEnabled}
-                      onCheckedChange={(checked) => onChange({ accountEnabled: checked })}
-                    />
-                    <span className="min-w-0 truncate">{t("Account balance connectors")}</span>
-                  </Label>
-                  {draft.accountEnabled ? (
-                    <div className="grid grid-cols-1 gap-3">
-                      <Field label={t("Refresh interval ms")}>
-                        <Input
-                          min={30000}
-                          placeholder="300000"
-                          type="number"
-                          value={draft.accountRefreshIntervalMs}
-                          onChange={(event) => onChange({ accountRefreshIntervalMs: event.target.value })}
-                        />
-                      </Field>
-                      <Field label={t("Connectors JSON")}>
-                        <Textarea
-                          className="min-h-[180px] font-mono text-[11px]"
-                          value={draft.accountConnectorsText}
-                          onChange={(event) => onChange({ accountConnectorsText: event.target.value })}
-                        />
-                        <div className="flex min-w-0 items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                          <span className="min-w-0 truncate">{t("Supports standard, http-json, plugin, and local-estimate connectors.")}</span>
-                          <button
-                            className="shrink-0 text-primary hover:underline"
-                            type="button"
-                            onClick={() => onChange({ accountConnectorsText: providerAccountConnectorExample() })}
-                          >
-                            {t("Insert example")}
-                          </button>
-                        </div>
-                      </Field>
-                    </div>
-                  ) : null}
-                </div>
+                <ProviderUsageSettings
+                  customEndpoint={customEndpoint}
+                  draft={draft}
+                  onChange={onChange}
+                  probe={probe}
+                />
                 <Field className="sm:col-span-2" label={t("Protocol details")}>
                   <div className="max-h-[128px] overflow-auto rounded-md border border-border bg-background p-2">
                     {probe?.protocols.length ? (
@@ -9251,6 +10960,298 @@ function AddProviderForm({
 
       {error ? <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive"><CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>{error}</span></div> : null}
     </>
+  );
+}
+
+function ProviderUsageSettings({
+  customEndpoint,
+  draft,
+  onChange,
+  probe
+}: {
+  customEndpoint: boolean;
+  draft: AddProviderDraft;
+  onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
+  probe?: GatewayProviderProbeResult;
+}) {
+  const t = useAppText();
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResult, setTestResult] = useState<ProviderAccountTestResult>();
+  const [testError, setTestError] = useState("");
+  const [copiedLink, setCopiedLink] = useState(false);
+  const modeOptions = translateOptions(providerAccountModeOptions, t);
+
+  useEffect(() => {
+    setTestResult(undefined);
+    setTestError("");
+  }, [draft.accountMode, draft.usageRequestUrl, draft.usageRequestMethod]);
+
+  useEffect(() => {
+    if (!copiedLink) {
+      return;
+    }
+    const timer = window.setTimeout(() => setCopiedLink(false), 1300);
+    return () => window.clearTimeout(timer);
+  }, [copiedLink]);
+
+  async function testUsageRequest() {
+    if (!window.ccr?.testProviderAccountConnector) {
+      setTestError("Request failed.");
+      return;
+    }
+    const connector = providerHttpJsonConnectorFromDraft(draft, { requireMeters: false });
+    if (typeof connector === "string") {
+      setTestError(connector);
+      return;
+    }
+    const safetyIssue = providerAccountConnectorApiKeySafetyIssue(connector, {
+      apiKey: draft.apiKey,
+      baseUrl: (probe?.normalizedBaseUrl || draft.baseUrl).trim(),
+      providerName: draft.name.trim(),
+      providerPresetId: draft.presetId
+    });
+    if (safetyIssue) {
+      setTestError(safetyIssue.message);
+      return;
+    }
+
+    setTestLoading(true);
+    setTestError("");
+    try {
+      const result = await window.ccr.testProviderAccountConnector({
+        apiKey: draft.apiKey.trim(),
+        baseUrl: draft.baseUrl.trim(),
+        connector,
+        providerName: draft.name.trim()
+      });
+      setTestResult(result);
+    } catch (error) {
+      setTestResult(undefined);
+      setTestError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTestLoading(false);
+    }
+  }
+
+  async function copyProviderPluginLink() {
+    const link = createProviderInstallLinkFromDraft(draft, probe);
+    if (typeof link === "string" && link.startsWith("ccr://")) {
+      await copyTextToClipboard(link);
+      setCopiedLink(true);
+      setTestError("");
+      return;
+    }
+    setTestError(link);
+  }
+
+  function selectPath(target: ProviderUsageFieldTarget, path: string) {
+    onChange(providerUsageFieldPatch(target, path));
+  }
+
+  return (
+    <div className="sm:col-span-2 space-y-3 rounded-md border border-border bg-background/60 p-3">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+        <Label className="flex min-w-0 items-center gap-2 text-[12px] font-semibold">
+          <Checkbox
+            checked={draft.accountEnabled}
+            onCheckedChange={(checked) => onChange({ accountEnabled: checked })}
+          />
+          <span className="min-w-0 truncate">{t("Fetch usage")}</span>
+        </Label>
+        <Button className="h-8 shrink-0 px-2" onClick={() => void copyProviderPluginLink()} type="button" variant="outline">
+          {copiedLink ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          {copiedLink ? t("Copied") : t("Copy provider plugin link")}
+        </Button>
+      </div>
+
+      {draft.accountEnabled ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label={t("Usage mode")}>
+            <SelectControl
+              onChange={(accountMode) => onChange({ accountMode: accountMode as ProviderAccountDraftMode })}
+              options={modeOptions}
+              value={draft.accountMode}
+            />
+          </Field>
+          <Field label={t("Refresh interval ms")}>
+            <Input
+              min={30000}
+              placeholder="300000"
+              type="number"
+              value={draft.accountRefreshIntervalMs}
+              onChange={(event) => onChange({ accountRefreshIntervalMs: event.target.value })}
+            />
+          </Field>
+
+          {draft.accountMode === "standard" ? (
+            <div className="sm:col-span-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[11px] leading-4 text-muted-foreground">
+              {t("Standard usage endpoint will try provider-hosted CCR account endpoints.")}
+              {customEndpoint ? <span> {t("Switch to HTTP JSON request to configure method, URL, headers, body, and response fields.")}</span> : null}
+            </div>
+          ) : null}
+
+          {draft.accountMode === "http-json" ? (
+            <div className="sm:col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label={t("Method")}>
+                <SelectControl
+                  onChange={(usageRequestMethod) => onChange({ usageRequestMethod: usageRequestMethod as "GET" | "POST" })}
+                  options={providerUsageMethodOptions}
+                  value={draft.usageRequestMethod}
+                />
+              </Field>
+              <Field label={t("Usage request URL")}>
+                <Input
+                  placeholder="https://api.vendor.com/account"
+                  value={draft.usageRequestUrl}
+                  onChange={(event) => onChange({ usageRequestUrl: event.target.value })}
+                />
+              </Field>
+              <Field className="sm:col-span-2" label={t("Headers")}>
+                <KeyValueRowsControl
+                  addLabel={t("Add header")}
+                  rows={draft.usageRequestHeaders}
+                  onChange={(usageRequestHeaders) => onChange({ usageRequestHeaders })}
+                />
+              </Field>
+              <Field className="sm:col-span-2" label={t("Body")}>
+                <Textarea
+                  className="min-h-[92px] font-mono text-[11px]"
+                  placeholder={`{\n  "query": "usage"\n}`}
+                  value={draft.usageRequestBodyText}
+                  onChange={(event) => onChange({ usageRequestBodyText: event.target.value })}
+                />
+              </Field>
+
+              <Field label={t("Balance field")}>
+                <Input placeholder="$.balance.remaining" value={draft.usageBalanceRemainingPath} onChange={(event) => onChange({ usageBalanceRemainingPath: event.target.value })} />
+              </Field>
+              <Field label={t("Balance unit")}>
+                <Input placeholder="USD" value={draft.usageBalanceUnit} onChange={(event) => onChange({ usageBalanceUnit: event.target.value })} />
+              </Field>
+              <Field label={t("Subscription remaining field")}>
+                <Input placeholder="$.subscription.remaining" value={draft.usageSubscriptionRemainingPath} onChange={(event) => onChange({ usageSubscriptionRemainingPath: event.target.value })} />
+              </Field>
+              <Field label={t("Subscription limit field")}>
+                <Input placeholder="$.subscription.limit" value={draft.usageSubscriptionLimitPath} onChange={(event) => onChange({ usageSubscriptionLimitPath: event.target.value })} />
+              </Field>
+              <Field label={t("Subscription reset field")}>
+                <Input placeholder="$.subscription.resetAt" value={draft.usageSubscriptionResetPath} onChange={(event) => onChange({ usageSubscriptionResetPath: event.target.value })} />
+              </Field>
+              <Field label={t("Subscription unit")}>
+                <Input placeholder="tokens" value={draft.usageSubscriptionUnit} onChange={(event) => onChange({ usageSubscriptionUnit: event.target.value })} />
+              </Field>
+              <Field label={t("Status field")}>
+                <Input placeholder="$.status" value={draft.usageStatusPath} onChange={(event) => onChange({ usageStatusPath: event.target.value })} />
+              </Field>
+              <Field label={t("Message field")}>
+                <Input placeholder="$.message" value={draft.usageMessagePath} onChange={(event) => onChange({ usageMessagePath: event.target.value })} />
+              </Field>
+
+              <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
+                <Button disabled={testLoading} onClick={() => void testUsageRequest()} size="sm" type="button" variant="outline">
+                  {testLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                  {t("Test usage request")}
+                </Button>
+                {testResult ? <Badge variant={testResult.meters.length > 0 ? "success" : "outline"}>{testResult.meters.length} {t("meters")}</Badge> : null}
+              </div>
+
+              {testResult ? (
+                <ProviderUsageTestResultPanel result={testResult} onSelectPath={selectPath} />
+              ) : null}
+            </div>
+          ) : null}
+
+          {draft.accountMode === "raw" ? (
+            <Field className="sm:col-span-2" label={t("Connectors JSON")}>
+              <Textarea
+                className="min-h-[180px] font-mono text-[11px]"
+                value={draft.accountConnectorsText}
+                onChange={(event) => onChange({ accountConnectorsText: event.target.value })}
+              />
+              <div className="flex min-w-0 items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                <span className="min-w-0 truncate">{t("Supports standard, http-json, plugin, and local-estimate connectors.")}</span>
+                <button
+                  className="shrink-0 text-primary hover:underline"
+                  type="button"
+                  onClick={() => onChange({ accountConnectorsText: providerAccountConnectorExample() })}
+                >
+                  {t("Insert example")}
+                </button>
+              </div>
+            </Field>
+          ) : null}
+        </div>
+      ) : null}
+
+      {testError ? (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
+          <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{t(testError)}</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ProviderUsageTestResultPanel({
+  onSelectPath,
+  result
+}: {
+  onSelectPath: (target: ProviderUsageFieldTarget, path: string) => void;
+  result: ProviderAccountTestResult;
+}) {
+  const t = useAppText();
+  const visiblePaths = result.paths.slice(0, 120);
+
+  return (
+    <div className="sm:col-span-2 rounded-md border border-border bg-muted/20">
+      <div className="flex min-w-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
+        <div className="min-w-0 truncate text-[12px] font-semibold">{t("Response fields")}</div>
+        <Badge variant="outline">{result.paths.length}</Badge>
+      </div>
+      {visiblePaths.length === 0 ? (
+        <div className="px-3 py-6 text-center text-[12px] text-muted-foreground">{t("No response fields")}</div>
+      ) : (
+        <div className="max-h-[260px] overflow-auto p-2">
+          <div className="space-y-1.5">
+            {visiblePaths.map((item) => (
+              <ProviderUsagePathRow item={item} key={item.path} onSelectPath={onSelectPath} />
+            ))}
+          </div>
+          {result.paths.length > visiblePaths.length ? (
+            <div className="px-1 py-2 text-[11px] text-muted-foreground">
+              {t("Showing first response fields only.")}
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProviderUsagePathRow({
+  item,
+  onSelectPath
+}: {
+  item: ProviderAccountTestPath;
+  onSelectPath: (target: ProviderUsageFieldTarget, path: string) => void;
+}) {
+  const t = useAppText();
+
+  return (
+    <div className="grid min-w-0 grid-cols-[minmax(180px,1fr)_minmax(120px,0.6fr)_auto] items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5 text-[11px]">
+      <div className="min-w-0">
+        <div className="truncate font-mono font-semibold" title={item.path}>{item.path}</div>
+        <div className="truncate text-muted-foreground" title={item.preview}>{item.preview}</div>
+      </div>
+      <Badge className="justify-self-start" variant="outline">{item.type}</Badge>
+      <div className="flex flex-wrap justify-end gap-1">
+        <Button className="h-6 px-1.5 text-[10px]" onClick={() => onSelectPath("balance", item.path)} type="button" variant="outline">{t("Balance")}</Button>
+        <Button className="h-6 px-1.5 text-[10px]" onClick={() => onSelectPath("subscriptionRemaining", item.path)} type="button" variant="outline">{t("Sub rem")}</Button>
+        <Button className="h-6 px-1.5 text-[10px]" onClick={() => onSelectPath("subscriptionLimit", item.path)} type="button" variant="outline">{t("Sub limit")}</Button>
+        <Button className="h-6 px-1.5 text-[10px]" onClick={() => onSelectPath("subscriptionReset", item.path)} type="button" variant="outline">{t("Reset")}</Button>
+      </div>
+    </div>
   );
 }
 
@@ -10281,28 +12282,19 @@ function ConfigureClaudeDesignDialog({
 }
 
 function VirtualModelsView({
-  addMcpServer,
   addVirtualModel,
-  editMcpServer,
   editVirtualModel,
-  mcpServers,
   profiles,
-  removeMcpServer,
   removeVirtualModel,
   setVirtualModelEnabled
 }: {
-  addMcpServer: () => void;
   addVirtualModel: () => void;
-  editMcpServer: (index: number) => void;
   editVirtualModel: (index: number) => void;
-  mcpServers: GatewayMcpServerConfig[];
   profiles: VirtualModelProfileConfig[];
-  removeMcpServer: (index: number) => void;
   removeVirtualModel: (index: number) => void;
   setVirtualModelEnabled: (index: number, enabled: boolean) => void;
 }) {
   const t = useAppText();
-  const [activeTab, setActiveTab] = useState<"virtual-models" | "mcp-services">("virtual-models");
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
   const visibleProfiles = useMemo(
@@ -10319,98 +12311,9 @@ function VirtualModelsView({
       initial={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
     >
-      <div className="flex shrink-0 items-center gap-1 rounded-lg border border-border bg-muted/40 p-1" role="tablist">
-        <button
-          aria-selected={activeTab === "virtual-models"}
-          className={cn(
-            "inline-flex h-8 min-w-[150px] flex-1 items-center justify-center gap-1.5 rounded-md border px-3 text-[12px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
-            activeTab === "virtual-models"
-              ? "border-border bg-card text-foreground shadow-[0_1px_3px_rgba(15,23,42,0.12)]"
-              : "border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground"
-          )}
-          onClick={() => setActiveTab("virtual-models")}
-          role="tab"
-          type="button"
-        >
-          <Cpu className="h-3.5 w-3.5" />
-          {t("Virtual Models")}
-        </button>
-        <button
-          aria-selected={activeTab === "mcp-services"}
-          className={cn(
-            "inline-flex h-8 min-w-[150px] flex-1 items-center justify-center gap-1.5 rounded-md border px-3 text-[12px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
-            activeTab === "mcp-services"
-              ? "border-border bg-card text-foreground shadow-[0_1px_3px_rgba(15,23,42,0.12)]"
-              : "border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground"
-          )}
-          onClick={() => setActiveTab("mcp-services")}
-          role="tab"
-          type="button"
-        >
-          <Server className="h-3.5 w-3.5" />
-          {t("MCP servers")}
-        </button>
-      </div>
-
-      {activeTab === "mcp-services" ? (
       <Card className="flex h-full min-h-0 min-w-0 flex-col">
         <CardHeader className="flex-row items-center gap-2">
-          <CardTitle className="min-w-0 flex-1 truncate">{t("MCP servers")}</CardTitle>
-          <Button aria-label={t("Add MCP server")} onClick={addMcpServer} title={t("Add MCP server")} type="button" variant="outline">
-            <Plus className="h-4 w-4" />
-            {t("Add")}
-          </Button>
-        </CardHeader>
-        <CardContent className="p-0">
-          {mcpServers.length === 0 ? (
-            <div className="m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-6 text-center text-[12px] text-muted-foreground">{t("No MCP servers configured")}</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <div className="min-w-[760px]">
-                <div className="grid h-9 grid-cols-[minmax(180px,0.9fr)_120px_minmax(220px,1.1fr)_minmax(150px,0.75fr)_84px] items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                  <div className="truncate">{t("Name")}</div>
-                  <div className="truncate">{t("Transport")}</div>
-                  <div className="truncate">{t("Endpoint")}</div>
-                  <div className="truncate">{t("Timeout")}</div>
-                  <div aria-hidden="true" />
-                </div>
-                <div className="divide-y divide-border/60">
-                  {mcpServers.map((server, index) => (
-                    <div className="grid min-h-[52px] grid-cols-[minmax(180px,0.9fr)_120px_minmax(220px,1.1fr)_minmax(150px,0.75fr)_84px] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35" key={`${server.name}-${index}`}>
-                      <div className="min-w-0">
-                        <div className="truncate text-[12px] font-semibold" title={server.name}>{server.name}</div>
-                        <div className="truncate text-[10px] text-muted-foreground/70" title={server.protocolVersion}>{server.protocolVersion}</div>
-                      </div>
-                      <div className="min-w-0">
-                        <Badge variant="outline">{server.transport}</Badge>
-                      </div>
-                      <div className="min-w-0 truncate text-[11px] text-muted-foreground" title={mcpServerEndpointSummary(server)}>
-                        {mcpServerEndpointSummary(server)}
-                      </div>
-                      <div className="min-w-0 truncate text-[11px] text-muted-foreground">
-                        {server.startupTimeoutMs} / {server.requestTimeoutMs} ms
-                      </div>
-                      <div className="flex items-center justify-end gap-1">
-                        <Button aria-label={`${t("Edit MCP server")} ${server.name}`} onClick={() => editMcpServer(index)} size="iconSm" title={t("Edit MCP server")} type="button" variant="ghost">
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button aria-label={`${t("Remove MCP server")} ${server.name}`} onClick={() => removeMcpServer(index)} size="iconSm" title={t("Remove MCP server")} type="button" variant="ghost">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      ) : null}
-
-      {activeTab === "virtual-models" ? (
-      <Card className="flex h-full min-h-0 min-w-0 flex-col">
-        <CardHeader className="flex-row items-center gap-2">
+          <CardTitle className="min-w-0 shrink-0 truncate">{t("Virtual Models")}</CardTitle>
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 z-[1] h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -10429,9 +12332,10 @@ function VirtualModelsView({
         <CardContent className="min-h-0 flex-1 overflow-auto p-0">
           {profiles.length === 0 ? (
             <div className="m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center">
-              <Cpu className="mx-auto mb-2 h-7 w-7 text-muted-foreground/40" />
-              <div className="text-[12px] text-muted-foreground">{t("No virtual models configured")}</div>
-              <div className="mt-1 text-[11px] text-muted-foreground/60">{t("Click Add to create one")}</div>
+              <Boxes className="mx-auto mb-2 h-7 w-7 text-muted-foreground/40" />
+              <div className="text-[13px] font-semibold text-foreground">{t("No virtual models configured")}</div>
+              <div className="mx-auto mt-1 max-w-[480px] text-[12px] leading-5 text-muted-foreground">{t("Fusion combines a model with another model or tools into a new model.")}</div>
+              <div className="mt-2 font-mono text-[11px] text-muted-foreground/70">{t("Fusion example")}</div>
             </div>
           ) : null}
           {profiles.length > 0 && visibleProfiles.length === 0 ? (
@@ -10442,9 +12346,9 @@ function VirtualModelsView({
               <div className="min-w-[780px]">
                 <div className="sticky top-0 z-10 grid h-10 grid-cols-[minmax(180px,0.9fr)_minmax(220px,1.1fr)_minmax(220px,1.1fr)_minmax(170px,0.85fr)_112px_96px] items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   <div className="truncate">{t("Name")}</div>
-                  <div className="truncate">{t("Alias")}</div>
-                  <div className="truncate">{t("Target model")}</div>
-                  <div className="truncate">{t("Injected tools")}</div>
+                  <div className="truncate">{t("New model")}</div>
+                  <div className="truncate">{t("Base model")}</div>
+                  <div className="truncate">{t("Tools")}</div>
                   <div className="truncate">{t("Status")}</div>
                   <div aria-hidden="true" />
                 </div>
@@ -10490,7 +12394,6 @@ function VirtualModelsView({
           ) : null}
         </CardContent>
       </Card>
-      ) : null}
     </motion.div>
   );
 }
@@ -10499,7 +12402,6 @@ function VirtualModelDialog({
   canSubmit,
   draft,
   error,
-  mcpServers,
   mode,
   onChange,
   onClose,
@@ -10509,7 +12411,6 @@ function VirtualModelDialog({
   canSubmit: boolean;
   draft: VirtualModelDraft;
   error: string;
-  mcpServers: GatewayMcpServerConfig[];
   mode: "add" | "edit";
   onChange: (patch: Partial<VirtualModelDraft>) => void;
   onClose: () => void;
@@ -10518,23 +12419,20 @@ function VirtualModelDialog({
 }) {
   const t = useAppText();
   const modelOptions = useMemo(() => createRouteModelOptions(providers), [providers]);
-  const mcpToolOptions = useMemo(() => createMcpToolOptions(mcpServers, draft.toolsText), [mcpServers, draft.toolsText]);
-  const selectedTools = parseVirtualModelTextList(draft.toolsText);
-  const matchModeOptions = translateOptions(virtualModelMatchModeOptions, t);
+  const selectedTool = selectedFusionToolName(draft.toolsText);
 
-  function toggleMcpTool(name: string, checked: boolean) {
-    const nextTools = checked
-      ? uniqueStrings([...selectedTools, name])
-      : selectedTools.filter((tool) => tool !== name);
+  function updateFusionTool(toolName: string) {
+    const nextTool = normalizeFusionToolName(toolName);
     onChange({
-      toolsText: nextTools.join("\n"),
-      ...(nextTools.length === 0 ? { matchMultimodal: false, matchWebSearch: false } : {})
+      toolsText: nextTool,
+      matchMultimodal: nextTool === BUILTIN_UNIMCP_VISION_TOOL_NAME,
+      matchWebSearch: nextTool === BUILTIN_UNIMCP_WEB_SEARCH_TOOL_NAME
     });
   }
 
   return (
     <Dialog onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-[720px]">
+      <DialogContent className="max-w-[640px]">
         <DialogHeader>
           <div className="min-w-0">
             <DialogTitle>{mode === "edit" ? t("Edit Virtual Model") : t("Add Virtual Model")}</DialogTitle>
@@ -10546,65 +12444,21 @@ function VirtualModelDialog({
 
         <DialogBody>
           <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label={t("Match type")}>
-                <SelectControl
-                  onChange={(matchMode) => onChange({ matchMode: matchMode as VirtualModelMatchMode })}
-                  options={matchModeOptions}
-                  value={draft.matchMode}
-                />
-              </Field>
-              <Field label={t(virtualModelMatchModeLabel(draft.matchMode))}>
+            <div className="grid grid-cols-1 gap-3">
+              <Field label={t("New model")}>
                 <Input value={draft.exactAliasesText} onChange={(event) => onChange({ exactAliasesText: event.target.value })} />
               </Field>
-              <Field label={t("Enabled")}>
-                <Toggle checked={draft.enabled} onChange={(enabled) => onChange({ enabled })} />
+              <div className="flex h-5 items-center justify-center font-mono text-[13px] font-semibold text-muted-foreground">=</div>
+              <Field label={t("Base model")}>
+                <RouteTargetControl modelOptions={modelOptions} onChange={(fixedModel) => onChange({ fixedModel })} value={draft.fixedModel} />
               </Field>
-              {draft.matchMode === "alias" ? (
-                <Field label={t("Target model")}>
-                  <RouteTargetControl modelOptions={modelOptions} onChange={(fixedModel) => onChange({ fixedModel })} value={draft.fixedModel} />
-                </Field>
-              ) : null}
-              <div className="space-y-3 sm:col-span-2">
-                <Field label={t("MCP service tools")}>
-                  <div className="max-h-[220px] overflow-auto rounded-md border border-border bg-card">
-                    {mcpToolOptions.length === 0 ? (
-                      <div className="px-3 py-6 text-center text-[12px] text-muted-foreground">{t("No MCP services available")}</div>
-                    ) : (
-                      <div className="divide-y divide-border/60">
-                        {mcpToolOptions.map((option) => (
-                          <label className="flex min-w-0 cursor-pointer items-start gap-2 px-3 py-2.5 transition-colors hover:bg-muted/35" key={option.value}>
-                            <Checkbox
-                              checked={selectedTools.includes(option.value)}
-                              onCheckedChange={(checked) => toggleMcpTool(option.value, checked)}
-                            />
-                            <span className="min-w-0 flex-1">
-                              <span className="flex min-w-0 items-center gap-2">
-                                <span className="truncate text-[12px] font-medium">{option.label}</span>
-                                {!option.available ? <Badge variant="outline">{t("Unavailable")}</Badge> : null}
-                              </span>
-                              <span className="mt-0.5 block truncate text-[11px] text-muted-foreground" title={option.description}>
-                                {option.description}
-                              </span>
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </Field>
-
-                {selectedTools.length > 0 ? (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <Field label={t("Adapt image requests")}>
-                      <Toggle checked={draft.matchMultimodal} onChange={(matchMultimodal) => onChange({ matchMultimodal })} />
-                    </Field>
-                    <Field label={t("Adapt web search")}>
-                      <Toggle checked={draft.matchWebSearch} onChange={(matchWebSearch) => onChange({ matchWebSearch })} />
-                    </Field>
-                  </div>
-                ) : null}
-              </div>
+              <div className="flex h-5 items-center justify-center font-mono text-[13px] font-semibold text-muted-foreground">+</div>
+              <Field label={t("Tools")}>
+                <FusionToolSelectControl
+                  onChange={updateFusionTool}
+                  value={selectedTool}
+                />
+              </Field>
             </div>
 
             {error ? (
@@ -10627,123 +12481,170 @@ function VirtualModelDialog({
   );
 }
 
-function McpServerDialog({
-  canSubmit,
-  draft,
-  error,
-  mode,
+function FusionToolSelectControl({
   onChange,
-  onClose,
-  onSubmit
+  value
 }: {
-  canSubmit: boolean;
-  draft: McpServerDraft;
-  error: string;
-  mode: "add" | "edit";
-  onChange: (patch: Partial<McpServerDraft>) => void;
-  onClose: () => void;
-  onSubmit: () => void;
+  onChange: (value: string) => void;
+  value: string;
 }) {
   const t = useAppText();
-  const transportOptions = translateOptions(mcpServerTransportOptions, t);
-  const messageModeOptions = translateOptions(mcpStdioMessageModeOptions, t);
+  const [open, setOpen] = useState(false);
+  const [popoverLayout, setPopoverLayout] = useState<{
+    left: number;
+    maxHeight: number;
+    offset: number;
+    placement: "above" | "below";
+    width: number;
+  }>();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const selected = fusionToolOptions.find((option) => option.value === normalizeFusionToolName(value)) ?? fusionToolOptions[0];
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPopoverLayout(undefined);
+      return;
+    }
+
+    function updatePopoverLayout() {
+      const root = rootRef.current;
+      if (!root) {
+        return;
+      }
+      const anchor = root.getBoundingClientRect();
+      const margin = 12;
+      const gap = 6;
+      const desiredHeight = 136;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const availableWidth = Math.max(240, viewportWidth - margin * 2);
+      const width = Math.min(Math.max(anchor.width, 280), availableWidth);
+      const left = Math.min(Math.max(margin, anchor.left), viewportWidth - margin - width);
+      const below = Math.max(0, viewportHeight - anchor.bottom - margin - gap);
+      const above = Math.max(0, anchor.top - margin - gap);
+      const placement = below < desiredHeight && above > below ? "above" : "below";
+      const availableHeight = Math.max(96, placement === "above" ? above : below);
+      setPopoverLayout({
+        left,
+        maxHeight: Math.min(220, availableHeight),
+        offset: placement === "above" ? viewportHeight - anchor.top + gap : anchor.bottom + gap,
+        placement,
+        width
+      });
+    }
+
+    updatePopoverLayout();
+    window.addEventListener("resize", updatePopoverLayout);
+    window.addEventListener("scroll", updatePopoverLayout, true);
+    return () => {
+      window.removeEventListener("resize", updatePopoverLayout);
+      window.removeEventListener("scroll", updatePopoverLayout, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
 
   return (
-    <Dialog onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-[760px]">
-        <DialogHeader>
-          <div className="min-w-0">
-            <DialogTitle>{mode === "edit" ? t("Edit MCP Server") : t("Add MCP Server")}</DialogTitle>
-          </div>
-          <Button aria-label={t("Close dialog")} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
-            <X className="h-4 w-4" />
-          </Button>
-        </DialogHeader>
+    <div className="relative min-w-0" ref={rootRef}>
+      <button
+        aria-controls="fusion-tool-select-options"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        className={cn(
+          "flex h-8 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-[12px] font-medium shadow-[inset_0_1px_1px_rgba(0,0,0,0.03)] outline-none transition-[background-color,border-color,box-shadow,color] hover:border-muted-foreground/45 focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-ring/25",
+          open && "border-ring/35 bg-muted/40"
+        )}
+        onClick={() => setOpen((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+        type="button"
+      >
+        <span className="min-w-0 flex-1 truncate">{selected?.label}</span>
+        <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+      </button>
 
-        <DialogBody>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label={t("Name")}>
-              <Input value={draft.name} onChange={(event) => onChange({ name: event.target.value })} />
-            </Field>
-            <Field label={t("Transport")}>
-              <SelectControl
-                onChange={(transport) => onChange({ transport: transport as GatewayMcpServerTransport })}
-                options={transportOptions}
-                value={draft.transport}
-              />
-            </Field>
-
-            {draft.transport === "stdio" ? (
-              <>
-                <Field label={t("Command")}>
-                  <Input value={draft.command} onChange={(event) => onChange({ command: event.target.value })} />
-                </Field>
-                <Field label={t("Args")}>
-                  <Input value={draft.argsText} onChange={(event) => onChange({ argsText: event.target.value })} />
-                </Field>
-                <Field label={t("Stdio message mode")}>
-                  <SelectControl
-                    onChange={(stdioMessageMode) => onChange({ stdioMessageMode: stdioMessageMode as GatewayMcpStdioMessageMode })}
-                    options={messageModeOptions}
-                    value={draft.stdioMessageMode}
-                  />
-                </Field>
-                <Field label={t("Path")}>
-                  <Input value={draft.cwd} onChange={(event) => onChange({ cwd: event.target.value })} />
-                </Field>
-                <Field className="sm:col-span-2" label="Env">
-                  <KeyValueRowsControl
-                    addLabel={t("Add env variable")}
-                    rows={draft.envRows}
-                    onChange={(envRows) => onChange({ envRows })}
-                  />
-                </Field>
-              </>
-            ) : (
-              <>
-                <Field className="sm:col-span-2" label={t("URL")}>
-                  <Input value={draft.url} onChange={(event) => onChange({ url: event.target.value })} />
-                </Field>
-                <Field label="API Key">
-                  <Input value={draft.apiKey} onChange={(event) => onChange({ apiKey: event.target.value })} />
-                </Field>
-                <Field label="API Key Env">
-                  <Input value={draft.apiKeyEnv} onChange={(event) => onChange({ apiKeyEnv: event.target.value })} />
-                </Field>
-                <Field className="sm:col-span-2" label={t("Headers")}>
-                  <KeyValueRowsControl
-                    addLabel={t("Add header")}
-                    rows={draft.headerRows}
-                    onChange={(headerRows) => onChange({ headerRows })}
-                  />
-                </Field>
-              </>
-            )}
-
-            <Field label={t("Protocol version")}>
-              <Input value={draft.protocolVersion} onChange={(event) => onChange({ protocolVersion: event.target.value })} />
-            </Field>
-            <Field label={t("Request timeout")}>
-              <Input type="number" value={draft.requestTimeoutMs} onChange={(event) => onChange({ requestTimeoutMs: event.target.value })} />
-            </Field>
-
-            {error ? (
-              <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive sm:col-span-2">{t(error)}</div>
-            ) : null}
-          </div>
-        </DialogBody>
-
-        <DialogFooter>
-          <Button onClick={onClose} type="button" variant="outline">
-            {t("Cancel")}
-          </Button>
-          <Button disabled={!canSubmit} onClick={onSubmit} type="button">
-            {mode === "edit" ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-            {mode === "edit" ? t("Save") : t("Add")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="fixed z-[70]"
+            exit={{ opacity: 0, scale: 0.98, y: popoverLayout?.placement === "above" ? 4 : -4 }}
+            initial={{ opacity: 0, scale: 0.98, y: popoverLayout?.placement === "above" ? 4 : -4 }}
+            style={popoverLayout
+              ? {
+                left: `${popoverLayout.left}px`,
+                width: `${popoverLayout.width}px`,
+                ...(popoverLayout.placement === "above"
+                  ? { bottom: `${popoverLayout.offset}px` }
+                  : { top: `${popoverLayout.offset}px` })
+              }
+              : undefined}
+            transition={{ duration: 0.12, ease: "easeOut" }}
+          >
+            <PopoverContent
+              className="w-full overflow-y-auto p-1"
+              id="fusion-tool-select-options"
+              role="listbox"
+              style={{ maxHeight: `${popoverLayout?.maxHeight ?? 220}px` }}
+            >
+              {fusionToolOptions.map((option) => {
+                const selectedOption = option.value === selected?.value;
+                return (
+                  <button
+                    aria-selected={selectedOption}
+                    className={cn(
+                      "flex min-h-[58px] w-full min-w-0 items-start gap-2 rounded-[5px] px-2 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
+                      selectedOption ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
+                    )}
+                    key={option.value}
+                    onClick={() => {
+                      onChange(option.value);
+                      setOpen(false);
+                    }}
+                    role="option"
+                    type="button"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[12px] font-semibold">{option.label}</span>
+                      <span className={cn("mt-0.5 block text-[11px] leading-4", selectedOption ? "text-primary/80" : "text-muted-foreground")}>
+                        {t(option.description)}
+                      </span>
+                    </span>
+                    {selectedOption ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : null}
+                  </button>
+                );
+              })}
+            </PopoverContent>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
   );
 }
 
@@ -10867,15 +12768,17 @@ function AgentLogo({ agent, className }: { agent: ProfileConfig["agent"]; classN
 }
 
 function SelectControl({
+  className,
   onChange,
   options,
   value
 }: {
+  className?: string;
   onChange: (value: string) => void;
   options: Array<{ label: string; value: string }>;
   value: string;
 }) {
-  return <Select onValueChange={onChange} options={options} value={value} />;
+  return <Select className={className} onValueChange={onChange} options={options} value={value} />;
 }
 
 function RouteTargetControl({
@@ -10997,7 +12900,9 @@ function Toggle({ checked, disabled = false, onChange }: { checked: boolean; dis
   return <Switch checked={checked} disabled={disabled} onCheckedChange={onChange} />;
 }
 
-function MetricCard({ label, tone, value }: { label: string; tone: "amber" | "blue" | "indigo" | "rose" | "teal"; value: string }) {
+type MetricTone = "amber" | "blue" | "indigo" | "rose" | "slate" | "teal";
+
+function MetricCard({ label, tone, value }: { label: string; tone: MetricTone; value: string }) {
   return (
     <Card className="h-full min-w-0 overflow-hidden">
       <div className={cn("h-1", metricToneBar(tone))} />
@@ -11099,10 +13004,11 @@ function ServiceControlButton({
     <Button
       aria-label={title}
       className={cn(
-        "app-no-drag inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25",
+        "app-no-drag app-service-control inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25",
         active && "text-emerald-700 hover:text-emerald-800"
       )}
       disabled={busy}
+      onMouseDown={(event) => event.stopPropagation()}
       onClick={onClick}
       title={title}
       type="button"
@@ -11373,19 +13279,15 @@ function profileModelMatchesQuery(providerName: string, model: string, query: st
 function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code", name?: string): AddProfileDraft {
   return {
     agent,
-    cliMiddleware: false,
-    codexCliPath: "",
-    codexHome: "",
-    configFormat: "legacy",
     configFile: "~/.codex/config.toml",
     envRows: [],
     model: "",
     name: name ?? profileAgentLabel(agent),
     providerId: "claude-code-router",
     providerName: "Claude Code Router",
-    remoteFrontendMode: "app",
     scope: "global",
     settingsFile: "~/.claude/settings.json",
+    showAllSessions: false,
     smallFastModel: "",
     surface: "auto"
   };
@@ -11397,7 +13299,7 @@ function createProfileDraftFromProfile(profile: ProfileConfig): AddProfileDraft 
       ...createProfileDraft("claude-code", profile.name),
       envRows: keyValueRowsFromRecord(profile.env ?? {}),
       model: profile.model,
-      scope: normalizeProfileScope(profile.scope),
+      scope: normalizeProfileFormScope(profile.scope),
       settingsFile: profile.settingsFile ?? "~/.claude/settings.json",
       smallFastModel: profile.smallFastModel ?? "",
       surface: normalizeProfileSurface(profile.surface)
@@ -11405,17 +13307,13 @@ function createProfileDraftFromProfile(profile: ProfileConfig): AddProfileDraft 
   }
   return {
     ...createProfileDraft("codex", profile.name),
-    cliMiddleware: Boolean(profile.cliMiddleware),
-    codexCliPath: profile.codexCliPath ?? "",
-    codexHome: profile.codexHome ?? "",
     configFile: profile.configFile ?? "~/.codex/config.toml",
-    configFormat: normalizeCodexConfigFormat(profile.configFormat),
     envRows: keyValueRowsFromRecord(profile.env ?? {}),
     model: profile.model,
     providerId: profile.providerId ?? "claude-code-router",
     providerName: profile.providerName ?? "Claude Code Router",
-    remoteFrontendMode: normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode),
-    scope: normalizeProfileScope(profile.scope),
+    scope: normalizeProfileFormScope(profile.scope),
+    showAllSessions: Boolean(profile.showAllSessions),
     surface: normalizeProfileSurface(profile.surface)
   };
 }
@@ -11428,10 +13326,9 @@ function isProfileDraftSubmittable(draft: AddProfileDraft): boolean {
     return false;
   }
   if (draft.agent === "claude-code") {
-    return profileScopeUsesGeneratedPath(draft.scope) || Boolean(draft.settingsFile.trim());
+    return true;
   }
   return (
-    (profileScopeUsesGeneratedPath(draft.scope) || Boolean(draft.configFile.trim())) &&
     Boolean(draft.providerId.trim()) &&
     Boolean(draft.providerName.trim())
   );
@@ -11445,10 +13342,6 @@ function profileConfigFromDraft(
   const id = existingProfile?.id ?? uniqueProfileId(existingProfiles, draft.name || draft.agent);
   return normalizeProfileItem({
     agent: draft.agent,
-    cliMiddleware: draft.cliMiddleware,
-    codexCliPath: draft.codexCliPath,
-    codexHome: draft.codexHome,
-    configFormat: draft.configFormat,
     configFile: draft.configFile,
     enabled: existingProfile?.enabled ?? true,
     env: recordFromKeyValueRows(draft.envRows),
@@ -11457,9 +13350,9 @@ function profileConfigFromDraft(
     name: draft.name,
     providerId: draft.providerId,
     providerName: draft.providerName,
-    remoteFrontendMode: draft.remoteFrontendMode,
     scope: draft.scope,
     settingsFile: draft.settingsFile,
+    showAllSessions: draft.showAllSessions,
     smallFastModel: draft.smallFastModel,
     surface: draft.surface
   }, existingProfiles.length);
@@ -11469,20 +13362,17 @@ function normalizeCodexConfigFormat(value: unknown): CodexProfileConfigFormat {
   return value === "separate_profile_files" ? "separate_profile_files" : "legacy";
 }
 
-function normalizeCodexRemoteFrontendMode(value: unknown): CodexRemoteFrontendMode {
-  return value === "cli" || value === "claude-code" ? value : "app";
-}
-
 function normalizeProfileScope(value: unknown): ProfileScope {
   return value === "ccr" || value === "custom" ? value : "global";
 }
 
-function normalizeProfileSurface(value: unknown): ProfileSurface {
-  return value === "cli" || value === "app" ? value : "auto";
+function normalizeProfileFormScope(value: unknown): ProfileScope {
+  const scope = normalizeProfileScope(value);
+  return scope === "custom" ? "ccr" : scope;
 }
 
-function profileScopeUsesGeneratedPath(scope: ProfileScope): boolean {
-  return scope === "ccr" || scope === "custom";
+function normalizeProfileSurface(value: unknown): ProfileSurface {
+  return value === "cli" || value === "app" ? value : "auto";
 }
 
 function profileSummaryItems(
@@ -11490,8 +13380,6 @@ function profileSummaryItems(
   config: AppConfig,
   t: (value: string) => string
 ): Array<{ label: string; value: string }> {
-  const scope = normalizeProfileScope(profile.scope);
-  const generatedPath = profileScopeUsesGeneratedPath(scope);
   const envCount = Object.keys(profile.env ?? {}).length;
   const envSummaryItems = envCount > 0
     ? [{ label: t("Environment variables"), value: String(envCount) }]
@@ -11522,10 +13410,6 @@ function profileSummaryItems(
           )
           : t("Keep Claude Code default")
       },
-      {
-        label: t("Settings file"),
-        value: generatedPath ? t("Generated path") : (profile.settingsFile ?? "~/.claude/settings.json")
-      },
       ...envSummaryItems
     ];
   }
@@ -11533,14 +13417,7 @@ function profileSummaryItems(
   return [
     { label: t("Model"), value: modelValue },
     { label: t("Provider ID"), value: profile.providerId ?? "claude-code-router" },
-    {
-      label: t("Config file"),
-      value: generatedPath ? t("Generated path") : (profile.configFile ?? "~/.codex/config.toml")
-    },
-    {
-      label: t("Remote frontend"),
-      value: t(codexRemoteFrontendModeLabel(normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode)))
-    },
+    { label: t("Show all sessions"), value: profile.showAllSessions ? t("Enabled") : t("Disabled") },
     ...envSummaryItems
   ];
 }
@@ -11567,10 +13444,10 @@ function normalizeProfileItem(profile: ProfileConfig, index: number): ProfileCon
   }
   return {
     agent: "codex",
-    cliMiddleware: Boolean(profile.cliMiddleware),
-    codexCliPath: profile.codexCliPath?.trim() || "",
-    codexHome: profile.codexHome?.trim() || "",
-    configFormat: normalizeCodexConfigFormat(profile.configFormat),
+    cliMiddleware: true,
+    codexCliPath: "",
+    codexHome: "",
+    configFormat: "legacy",
     configFile: profile.configFile?.trim() || "~/.codex/config.toml",
     enabled: profile.enabled,
     env,
@@ -11579,8 +13456,8 @@ function normalizeProfileItem(profile: ProfileConfig, index: number): ProfileCon
     name,
     providerId: profile.providerId?.trim() || "claude-code-router",
     providerName: profile.providerName?.trim() || "Claude Code Router",
-    remoteFrontendMode: normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode),
     scope,
+    showAllSessions: Boolean(profile.showAllSessions),
     surface
   };
 }
@@ -11622,8 +13499,8 @@ function legacyProfileItemsFromProfileConfig(profile: AppConfig["profile"]): Pro
       name: "Codex",
       providerId: profile.codex.providerId,
       providerName: profile.codex.providerName,
-      remoteFrontendMode: profile.codex.remoteFrontendMode,
       scope: "global",
+      showAllSessions: profile.codex.showAllSessions,
       surface: "auto"
     }, 1)
   ];
@@ -11653,15 +13530,13 @@ function normalizeUnknownProfileItem(value: Record<string, unknown>, index: numb
     name: typeof value.name === "string" ? value.name : profileAgentLabel(agent),
     providerId: typeof value.providerId === "string" ? value.providerId : undefined,
     providerName: typeof value.providerName === "string" ? value.providerName : undefined,
-    remoteFrontendMode: typeof value.remoteFrontendMode === "string"
-      ? normalizeCodexRemoteFrontendMode(value.remoteFrontendMode)
-      : typeof value.frontendMode === "string"
-        ? normalizeCodexRemoteFrontendMode(value.frontendMode)
-        : typeof value.coreMode === "string"
-          ? normalizeCodexRemoteFrontendMode(value.coreMode)
-          : undefined,
     scope: typeof value.scope === "string" ? normalizeProfileScope(value.scope) : "global",
     settingsFile: typeof value.settingsFile === "string" ? value.settingsFile : undefined,
+    showAllSessions: typeof value.showAllSessions === "boolean"
+      ? value.showAllSessions
+      : typeof value.show_all_sessions === "boolean"
+        ? value.show_all_sessions
+        : undefined,
     smallFastModel: typeof value.smallFastModel === "string" ? value.smallFastModel : undefined,
     surface: typeof value.surface === "string" ? normalizeProfileSurface(value.surface) : "auto"
   }, index);
@@ -11707,10 +13582,6 @@ function profileSurfaceLabel(surface: ProfileSurface): string {
     return "App only";
   }
   return "Auto";
-}
-
-function codexRemoteFrontendModeLabel(mode: CodexRemoteFrontendMode): string {
-  return codexRemoteFrontendModeOptions.find((option) => option.value === mode)?.label ?? "Codex App";
 }
 
 function profileAgentLogoUrl(agent: ProfileConfig["agent"]): string {
@@ -11796,21 +13667,50 @@ function certificateStatusVariant(status: ProxyCertificateStatus): "danger" | "o
   return "warning";
 }
 
-function formatProxyCertificateInstallMessage(result: ProxyCertificateInstallResult, status: ProxyCertificateStatus | undefined): string {
+function formatProxyCertificateInstallMessage(
+  result: ProxyCertificateInstallResult,
+  status: ProxyCertificateStatus | undefined,
+  translate: (value: string) => string
+): string {
+  const resultMessage = translateProxyCertificateMessage(result.message, translate) || translate(result.message);
   if (status?.trusted) {
-    return result.message;
+    return resultMessage;
   }
 
-  const parts = [result.message];
+  const parts = [resultMessage];
   if (status?.message && status.message !== result.message) {
-    parts.push(`Status: ${status.message}`);
+    parts.push(`${translate("Status")}: ${translateProxyCertificateMessage(status.message, translate)}`);
   }
   const message = parts.join("\n\n");
   if (!result.manualCommand) {
     return message;
   }
 
-  return `${message}\n\nManual install command:\n${result.manualCommand}`;
+  return `${message}\n\n${translate("Manual install command")}:\n${result.manualCommand}`;
+}
+
+function translateProxyCertificateMessage(message: string | undefined, translate: (value: string) => string): string {
+  if (!message) {
+    return "";
+  }
+
+  const notTrustedPrefix = "Proxy CA certificate is not trusted: ";
+  if (message.startsWith(notTrustedPrefix)) {
+    return `${translate("Proxy CA certificate is not trusted:")} ${message.slice(notTrustedPrefix.length)}`;
+  }
+
+  const macosAuthorizationPrefix = "macOS did not allow CCR to request administrator authorization: ";
+  if (message.startsWith(macosAuthorizationPrefix)) {
+    return `${translate("macOS did not allow CCR to request administrator authorization:")} ${translateMacosAuthorizationDetail(message.slice(macosAuthorizationPrefix.length), translate)}`;
+  }
+
+  return translate(message);
+}
+
+function translateMacosAuthorizationDetail(detail: string, translate: (value: string) => string): string {
+  return detail
+    .replace(" Opened Terminal installer:", ` ${translate("Opened Terminal installer:")}`)
+    .replace(" Could not open Terminal installer:", ` ${translate("Could not open Terminal installer:")}`);
 }
 
 function proxyCertificateTrustSteps(status: ProxyCertificateStatus): string[] {
@@ -12152,6 +14052,7 @@ function emptyUsageTotals(): UsageTotals {
     avgDurationMs: 0,
     cacheRatio: 0,
     cacheTokens: 0,
+    costUsd: 0,
     errorCount: 0,
     inputTokens: 0,
     outputTokens: 0,
@@ -12166,6 +14067,22 @@ function formatCompactNumber(value: number): string {
     maximumFractionDigits: value >= 1000 ? 1 : 0,
     notation: value >= 10000 ? "compact" : "standard"
   }).format(value);
+}
+
+function formatUsdCost(value: number | undefined): string {
+  const normalized = Number.isFinite(value) && value && value > 0 ? value : 0;
+  if (normalized === 0) {
+    return "$0.00";
+  }
+  if (normalized < 0.01) {
+    return `$${normalized.toFixed(6)}`;
+  }
+  return new Intl.NumberFormat(undefined, {
+    currency: "USD",
+    maximumFractionDigits: normalized >= 100 ? 0 : 2,
+    minimumFractionDigits: 2,
+    style: "currency"
+  }).format(normalized);
 }
 
 function compareProviderAccountSnapshots(a: ProviderAccountSnapshot, b: ProviderAccountSnapshot): number {
@@ -12186,6 +14103,10 @@ function primaryProviderAccountMeter(account: ProviderAccountSnapshot): Provider
     const bRatio = providerAccountMeterRemainingRatio(b) ?? 1;
     return aRatio - bRatio;
   })[0];
+}
+
+function providerAccountMetersForDisplay(account: ProviderAccountSnapshot, maxCount: number): ProviderAccountMeter[] {
+  return account.meters.slice(0, maxCount);
 }
 
 function providerAccountMeterRemainingRatio(meter: ProviderAccountMeter): number | undefined {
@@ -12233,6 +14154,12 @@ function formatProviderAccountMeterValue(meter: ProviderAccountMeter): string {
   }
   if (meter.unit === "CNY") {
     return `¥${formatProviderAccountNumber(value)}`;
+  }
+  if (meter.unit === "EUR") {
+    return `€${formatProviderAccountNumber(value)}`;
+  }
+  if (meter.unit === "%") {
+    return `${formatProviderAccountNumber(value)}%`;
   }
   if (meter.unit === "hours") {
     return `${formatProviderAccountNumber(value)}h`;
@@ -12588,6 +14515,98 @@ function normalizeTrayProgressTargetTokens(value: unknown): number {
   return Math.min(1_000_000_000, Math.max(1000, positiveInteger(value) ?? 100000));
 }
 
+function normalizeTrayComponentVariants(value: unknown): TrayComponentVariants {
+  const record = isPlainRecord(value) ? value : {};
+  return {
+    account: normalizeEnumValue(record.account, ["bar", "compact", "ring", "arc", "stacked"], DEFAULT_TRAY_COMPONENT_VARIANTS.account),
+    modelShare: normalizeEnumValue(record.modelShare, ["bars", "list", "donut", "pie"], DEFAULT_TRAY_COMPONENT_VARIANTS.modelShare),
+    rings: normalizeEnumValue(record.rings, ["rings", "arcs", "gauges"], DEFAULT_TRAY_COMPONENT_VARIANTS.rings),
+    stats: normalizeEnumValue(record.stats, ["cards", "compact", "pills"], DEFAULT_TRAY_COMPONENT_VARIANTS.stats),
+    tokenFlow: normalizeEnumValue(record.tokenFlow, ["line", "area", "bar", "sparkline"], DEFAULT_TRAY_COMPONENT_VARIANTS.tokenFlow),
+    tokenMix: normalizeEnumValue(record.tokenMix, ["bars", "stacked", "donut", "pie"], DEFAULT_TRAY_COMPONENT_VARIANTS.tokenMix)
+  };
+}
+
+function normalizeEnumValue<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof value === "string" && (allowed as readonly string[]).includes(value) ? value as T : fallback;
+}
+
+function normalizeOverviewWidgets(value: unknown): OverviewWidgetConfig[] {
+  if (!Array.isArray(value)) {
+    return DEFAULT_OVERVIEW_WIDGETS.map((widget) => ({ ...widget }));
+  }
+  const widgets = value
+    .map(normalizeOverviewWidget)
+    .filter((widget): widget is OverviewWidgetConfig => Boolean(widget));
+  return widgets;
+}
+
+function normalizeOverviewWidget(value: unknown): OverviewWidgetConfig | undefined {
+  if (!isPlainRecord(value)) {
+    return undefined;
+  }
+  const type = normalizeOverviewWidgetType(value.type);
+  if (!type) {
+    return undefined;
+  }
+  const metric = type === "metric" ? normalizeOverviewMetricKind(value.metric) ?? "requests" : undefined;
+  const variant = normalizeOverviewWidgetVariant(type, value.variant);
+  return {
+    enabled: typeof value.enabled === "boolean" ? value.enabled : true,
+    id: stringValue(value.id) || overviewWidgetId(type, metric),
+    ...(metric ? { metric } : {}),
+    size: normalizeOverviewWidgetSize(value.size) ?? defaultOverviewWidgetSize(type),
+    type,
+    variant
+  };
+}
+
+function normalizeOverviewWidgetType(value: unknown): OverviewWidgetType | undefined {
+  return typeof value === "string" && ["account-balance", "client-analysis", "metric", "provider-analysis", "system-status", "token-mix", "usage-trend"].includes(value)
+    ? value as OverviewWidgetType
+    : undefined;
+}
+
+function normalizeOverviewWidgetSize(value: unknown): OverviewWidgetSize | undefined {
+  return typeof value === "string" && ["small", "medium", "large", "wide", "full"].includes(value)
+    ? value as OverviewWidgetSize
+    : undefined;
+}
+
+function normalizeOverviewMetricKind(value: unknown): OverviewMetricKind | undefined {
+  return typeof value === "string" && ["avg-latency", "cache-ratio", "cache-tokens", "errors", "estimated-cost", "input-tokens", "output-tokens", "requests", "success-rate", "total-tokens"].includes(value)
+    ? value as OverviewMetricKind
+    : undefined;
+}
+
+function normalizeOverviewWidgetVariant(type: OverviewWidgetType, value: unknown): OverviewWidgetVariant {
+  const variants = overviewWidgetVariantOptions(type).map((option) => option.value);
+  return typeof value === "string" && (variants as readonly string[]).includes(value)
+    ? value as OverviewWidgetVariant
+    : defaultOverviewWidgetVariant(type);
+}
+
+function defaultOverviewWidgetSize(type: OverviewWidgetType): OverviewWidgetSize {
+  if (type === "metric") return "small";
+  if (type === "token-mix") return "medium";
+  if (type === "client-analysis" || type === "provider-analysis") return "large";
+  if (type === "usage-trend") return "wide";
+  return "full";
+}
+
+function defaultOverviewWidgetVariant(type: OverviewWidgetType): OverviewWidgetVariant {
+  if (type === "account-balance") return "cards";
+  if (type === "metric") return "card";
+  if (type === "token-mix") return "bars";
+  if (type === "usage-trend") return "composed";
+  if (type === "system-status") return "timeline";
+  return "table";
+}
+
+function overviewWidgetId(type: OverviewWidgetType, metric?: OverviewMetricKind): string {
+  return type === "metric" ? `metric-${metric ?? "requests"}` : type;
+}
+
 function normalizeTrayWindowModules(value: unknown): TrayWindowModuleId[] {
   if (!Array.isArray(value)) {
     return DEFAULT_TRAY_WINDOW_MODULES;
@@ -12618,12 +14637,22 @@ function languageDisplayName(language: ResolvedLanguage, copy: AppCopy): string 
   return language === "zh" ? copy.settings.languageChinese : copy.settings.languageEnglish;
 }
 
-function metricToneBar(tone: "amber" | "blue" | "indigo" | "rose" | "teal") {
+function metricToneBar(tone: MetricTone) {
   if (tone === "teal") return "bg-teal-500";
   if (tone === "blue") return "bg-blue-500";
   if (tone === "indigo") return "bg-indigo-500";
   if (tone === "amber") return "bg-amber-500";
+  if (tone === "slate") return "bg-slate-500";
   return "bg-rose-500";
+}
+
+function metricToneStroke(tone: MetricTone): string {
+  if (tone === "teal") return "rgb(20,184,166)";
+  if (tone === "blue") return "rgb(59,130,246)";
+  if (tone === "indigo") return "rgb(99,102,241)";
+  if (tone === "amber") return "rgb(245,158,11)";
+  if (tone === "slate") return "rgb(100,116,139)";
+  return "rgb(244,63,94)";
 }
 
 function normalizeConfig(config: AppConfig): AppConfig {
@@ -12665,14 +14694,17 @@ function normalizeConfig(config: AppConfig): AppConfig {
       codex: {
         ...fallbackConfig.profile.codex,
         ...(profileConfig.codex || {}),
+        cliMiddleware: true,
         configFormat: normalizeCodexConfigFormat(profileConfig.codex?.configFormat),
-        remoteFrontendMode: normalizeCodexRemoteFrontendMode(profileConfig.codex?.remoteFrontendMode)
+        showAllSessions: Boolean(profileConfig.codex?.showAllSessions)
       },
       profiles
     },
+    overviewWidgets: normalizeOverviewWidgets(config.overviewWidgets),
     plugins: Array.isArray(config.plugins) ? config.plugins : [],
     providerPlugins: Array.isArray(config.providerPlugins) ? config.providerPlugins : [],
     theme: normalizeThemePreference(config.theme),
+    trayComponentVariants: normalizeTrayComponentVariants(config.trayComponentVariants),
     trayIcon: normalizeTrayIconPreference(config.trayIcon),
     trayProgressTargetTokens: normalizeTrayProgressTargetTokens(config.trayProgressTargetTokens),
     trayWindowModules: normalizeTrayWindowModules(config.trayWindowModules),
@@ -13013,10 +15045,11 @@ function generateApiKeyId(): string {
 }
 
 function maskApiKey(value: string): string {
-  if (value.length <= 8) {
+  const trimmed = value.trim();
+  if (trimmed.length <= 8) {
     return "****";
   }
-  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+  return `${trimmed.slice(0, Math.min(18, trimmed.length - 4))}***`;
 }
 
 function generateApiKeyValue(): string {
@@ -13358,7 +15391,7 @@ function createVirtualModelDraft(config: AppConfig): VirtualModelDraft {
     clientToolsPolicy: "deny",
     description: "",
     descriptionTemplate: "",
-    displayName: "Virtual Model",
+    displayName: "Fusion",
     displayNameTemplate: "{profileDisplayName}",
     enabled: true,
     exactAliasesText: key,
@@ -13370,7 +15403,7 @@ function createVirtualModelDraft(config: AppConfig): VirtualModelDraft {
     instructionsReplace: "",
     key,
     materializationEnabled: true,
-    matchMultimodal: false,
+    matchMultimodal: true,
     matchMode: "alias",
     matchWebSearch: false,
     maxToolCalls: "8",
@@ -13379,7 +15412,7 @@ function createVirtualModelDraft(config: AppConfig): VirtualModelDraft {
     suffixesText: "",
     toolChoiceText: "",
     tools: [],
-    toolsText: "",
+    toolsText: BUILTIN_UNIMCP_VISION_TOOL_NAME,
     executionMode: "tool_loop"
   };
 }
@@ -13391,9 +15424,11 @@ function createVirtualModelDraftFromProfile(profile: VirtualModelProfileConfig):
   const matchMode = virtualModelMatchModeFromProfile(profile);
   const matchValues = matchMode === "prefix" ? prefixes : matchMode === "suffix" ? suffixes : exactAliases;
   const toolDrafts = (profile.tools ?? []).map((tool, index) => createVirtualModelToolDraft(tool, index));
+  const selectedToolName = selectedFusionToolNameFromProfile(toolDrafts, profile);
+  const flags = fusionToolExecutionFlags(selectedToolName);
   return {
-    baseModelMode: profile.baseModel?.mode ?? (profile.baseModel?.fixedModel ? "fixed" : "request"),
-    clientToolsPolicy: profile.execution?.clientToolsPolicy === "deny" ? "deny" : "allow",
+    baseModelMode: "fixed",
+    clientToolsPolicy: "deny",
     description: profile.description ?? "",
     descriptionTemplate: profile.materialization?.descriptionTemplate ?? "",
     displayName: profile.displayName ?? profile.key,
@@ -13408,17 +15443,17 @@ function createVirtualModelDraftFromProfile(profile: VirtualModelProfileConfig):
     instructionsReplace: profile.instructions?.replace ?? "",
     key: profile.key,
     materializationEnabled: profile.materialization?.enabled !== false,
-    matchMultimodal: Boolean(profile.execution?.matchMultimodal),
-    matchMode,
-    matchWebSearch: Boolean(profile.execution?.matchWebSearch),
+    matchMultimodal: flags.matchMultimodal,
+    matchMode: "alias",
+    matchWebSearch: flags.matchWebSearch,
     maxToolCalls: String(profile.execution?.maxToolCalls ?? 8),
     maxTurns: String(profile.execution?.maxTurns ?? 6),
     prefixesText: (profile.match?.prefixes ?? []).join(", "),
     suffixesText: (profile.match?.suffixes ?? []).join(", "),
     toolChoiceText: formatVirtualModelToolChoice(profile.toolChoice),
     tools: toolDrafts,
-    toolsText: toolDrafts.map((tool) => tool.name).join("\n"),
-    executionMode: profile.execution?.mode === "decorate_only" ? "decorate_only" : "tool_loop"
+    toolsText: selectedToolName,
+    executionMode: "tool_loop"
   };
 }
 
@@ -13468,7 +15503,7 @@ function normalizeVirtualModelDraftPatch(current: VirtualModelDraft, patch: Part
       next.displayName = titleFromConfigKey(matchValue) || matchValue;
     }
   }
-  if (patch.key !== undefined && (!current.displayName.trim() || current.displayName === "Virtual Model")) {
+  if (patch.key !== undefined && (!current.displayName.trim() || current.displayName === "Virtual Model" || current.displayName === "Fusion")) {
     next.displayName = titleFromConfigKey(patch.key) || current.displayName;
   }
   if (patch.key !== undefined && current.exactAliasesText.trim() === current.key) {
@@ -13483,24 +15518,13 @@ function normalizeVirtualModelDraftPatch(current: VirtualModelDraft, patch: Part
 function validateVirtualModelDraft(draft: VirtualModelDraft): string {
   const matchValues = parseVirtualModelTextList(draft.exactAliasesText);
   if (matchValues.length === 0) {
-    if (draft.matchMode === "prefix") {
-      return "Prefix is required.";
-    }
-    if (draft.matchMode === "suffix") {
-      return "Suffix is required.";
-    }
-    return "Alias is required.";
+    return "New model is required.";
   }
-  if (draft.matchMode === "alias" && !draft.fixedModel.trim()) {
-    return "Target model is required.";
+  if (!draft.fixedModel.trim()) {
+    return "Base model is required.";
   }
-
-  const toolNames = new Set<string>();
-  for (const name of parseVirtualModelTextList(draft.toolsText)) {
-    if (toolNames.has(name)) {
-      return "Tool names must be unique.";
-    }
-    toolNames.add(name);
+  if (!isFusionToolName(selectedFusionToolName(draft.toolsText))) {
+    return "Tool is required.";
   }
 
   return "";
@@ -13519,24 +15543,29 @@ function virtualModelProfileFromDraft(
   const tools = virtualModelToolsFromDraft(draft);
   const maxToolCalls = numberValue(draft.maxToolCalls);
   const maxTurns = numberValue(draft.maxTurns);
+  const selectedTool = selectedFusionToolName(draft.toolsText);
+  const flags = fusionToolExecutionFlags(selectedTool);
   return {
     baseModel: virtualModelBaseModelFromDraft(draft),
     displayName,
     enabled: draft.enabled,
     execution: {
-      clientToolsPolicy: draft.clientToolsPolicy,
-      ...(tools.length > 0 && draft.matchMultimodal ? { matchMultimodal: true } : {}),
-      ...(tools.length > 0 && draft.matchWebSearch ? { matchWebSearch: true } : {}),
+      clientToolsPolicy: "deny",
+      ...flags,
       maxToolCalls: clampNumber(maxToolCalls || Math.max(tools.length, 1), 1, 50),
       maxTurns: clampNumber(maxTurns || 6, 1, 50),
-      mode: draft.executionMode,
+      mode: "tool_loop",
       streamMode: "buffered"
     },
     id,
     key,
-    match: virtualModelMatchFromDraft(draft, matchValues),
+    match: {
+      exactAliases: matchValues,
+      prefixes: [],
+      suffixes: []
+    },
     materialization: {
-      displayNameTemplate: draft.matchMode === "alias" ? "{profileDisplayName}" : "{alias}",
+      displayNameTemplate: "{profileDisplayName}",
       enabled: true,
       includeInGatewayModels: true
     },
@@ -13545,12 +15574,6 @@ function virtualModelProfileFromDraft(
 }
 
 function virtualModelBaseModelFromDraft(draft: VirtualModelDraft): VirtualModelProfileConfig["baseModel"] {
-  if (draft.matchMode === "prefix") {
-    return { mode: "strip_prefix" };
-  }
-  if (draft.matchMode === "suffix") {
-    return { mode: "strip_suffix" };
-  }
   return {
     fixedModel: normalizeCoreModelSelector(draft.fixedModel),
     mode: "fixed"
@@ -13585,20 +15608,23 @@ function virtualModelMatchFromDraft(
 function virtualModelToolsFromDraft(draft: VirtualModelDraft): VirtualModelProfileConfig["tools"] {
   const existingTools = new Map(
     draft.tools
-      .map((tool) => [tool.name.trim(), tool] as const)
+      .map((tool) => [normalizeFusionToolName(tool.name.trim()), tool] as const)
       .filter(([name]) => Boolean(name))
   );
 
-  return parseVirtualModelTextList(draft.toolsText).map((name) => {
-    const existingTool = existingTools.get(name);
-    const inputSchema = existingTool ? parseVirtualModelJsonObject(existingTool.inputSchemaText) : undefined;
-    return {
-      ...(existingTool?.description.trim() ? { description: existingTool.description.trim() } : {}),
-      ...(inputSchema?.ok && inputSchema.value ? { inputSchema: inputSchema.value } : {}),
-      name,
-      visibility: "internal" as const
-    };
-  });
+  return uniqueStrings([selectedFusionToolName(draft.toolsText)])
+    .filter(isFusionToolName)
+    .map((name) => {
+      const existingTool = existingTools.get(name);
+      const inputSchema = existingTool ? parseVirtualModelJsonObject(existingTool.inputSchemaText) : undefined;
+      const description = existingTool?.description.trim() || fusionToolDescription(name);
+      return {
+        ...(description ? { description } : {}),
+        ...(inputSchema?.ok && inputSchema.value ? { inputSchema: inputSchema.value } : {}),
+        name,
+        visibility: "internal" as const
+      };
+    });
 }
 
 function parseVirtualModelJsonObject(value: string): { ok: true; value?: Record<string, unknown> } | { ok: false } {
@@ -13647,16 +15673,16 @@ function normalizeCoreModelSelector(value: string): string {
 function uniqueVirtualModelKey(profiles: VirtualModelProfileConfig[]): string {
   const existing = new Set(profiles.map((profile) => profile.key));
   for (let index = profiles.length + 1; index < 1000; index += 1) {
-    const candidate = `virtual-${index}`;
+    const candidate = `fusion-${index}`;
     if (!existing.has(candidate)) {
       return candidate;
     }
   }
-  return `virtual-${Date.now()}`;
+  return `fusion-${Date.now()}`;
 }
 
 function uniqueVirtualModelId(profiles: VirtualModelProfileConfig[], key: string, editIndex?: number): string {
-  const base = sanitizeConfigId(key) || "virtual-model";
+  const base = sanitizeConfigId(key) || "fusion";
   const existing = new Set(profiles.filter((_, index) => index !== editIndex).map((profile) => profile.id));
   if (!existing.has(base)) {
     return base;
@@ -13727,7 +15753,51 @@ function virtualModelToolSummary(profile: VirtualModelProfileConfig): string {
   if (!profile.tools?.length) {
     return "-";
   }
-  return profile.tools.map((tool) => tool.name).join(", ");
+  return profile.tools.map((tool) => fusionToolDisplayName(tool.name)).join(", ");
+}
+
+function normalizeFusionToolName(name: string): string {
+  if (name === BUILTIN_UNIMCP_PACKAGE || name === BUILTIN_UNIMCP_SERVER_NAME) {
+    return BUILTIN_UNIMCP_VISION_TOOL_NAME;
+  }
+  return name;
+}
+
+function isFusionToolName(name: string): boolean {
+  return name === BUILTIN_UNIMCP_VISION_TOOL_NAME || name === BUILTIN_UNIMCP_WEB_SEARCH_TOOL_NAME;
+}
+
+function selectedFusionToolName(toolsText: string): string {
+  return parseVirtualModelTextList(toolsText).map(normalizeFusionToolName).find(isFusionToolName) ?? BUILTIN_UNIMCP_VISION_TOOL_NAME;
+}
+
+function selectedFusionToolNameFromProfile(toolDrafts: VirtualModelToolDraft[], profile: VirtualModelProfileConfig): string {
+  const directTool = toolDrafts.map((tool) => normalizeFusionToolName(tool.name)).find(isFusionToolName);
+  if (directTool) {
+    return directTool;
+  }
+  if (profile.execution?.matchWebSearch && !profile.execution?.matchMultimodal) {
+    return BUILTIN_UNIMCP_WEB_SEARCH_TOOL_NAME;
+  }
+  return BUILTIN_UNIMCP_VISION_TOOL_NAME;
+}
+
+function fusionToolExecutionFlags(name: string): Pick<VirtualModelDraft, "matchMultimodal" | "matchWebSearch"> {
+  const normalized = normalizeFusionToolName(name);
+  return {
+    matchMultimodal: normalized === BUILTIN_UNIMCP_VISION_TOOL_NAME,
+    matchWebSearch: normalized === BUILTIN_UNIMCP_WEB_SEARCH_TOOL_NAME
+  };
+}
+
+function fusionToolDescription(name: string): string {
+  const option = fusionToolOptions.find((item) => item.value === normalizeFusionToolName(name));
+  return option?.description ?? "";
+}
+
+function fusionToolDisplayName(name: string): string {
+  const normalized = normalizeFusionToolName(name);
+  return isFusionToolName(normalized) ? `${BUILTIN_UNIMCP_SERVER_NAME} / ${normalized}` : name;
 }
 
 function createMcpToolOptions(mcpServers: GatewayMcpServerConfig[], selectedToolsText: string): Array<{ available: boolean; description: string; label: string; value: string }> {
@@ -14364,7 +16434,7 @@ function extensionListItem(source: ExtensionSource, item: unknown, index: number
     capability: virtualModelCapability(item),
     enabled,
     index,
-    name: stringValue(item.displayName) || stringValue(item.key) || stringValue(item.id) || `virtual-model-${index + 1}`,
+    name: stringValue(item.displayName) || stringValue(item.key) || stringValue(item.id) || `fusion-${index + 1}`,
     source,
     status: enabled ? "enabled" : "disabled",
     target: virtualModelTarget(item)
@@ -14445,7 +16515,7 @@ function providerPluginCapability(item: Record<string, unknown>): string {
 function virtualModelCapability(item: Record<string, unknown>): string {
   const tools = Array.isArray(item.tools) ? item.tools.length : 0;
   const execution = isPlainRecord(item.execution) ? stringValue(item.execution.mode) : undefined;
-  return ["Virtual model", execution || "decorate_only", `${tools} tools`].join(", ");
+  return ["Fusion", execution || "decorate_only", `${tools} tools`].join(", ");
 }
 
 function virtualModelTarget(item: Record<string, unknown>): string {
@@ -14682,7 +16752,7 @@ async function probeProviderDeepLinkPayload(payload: ProviderDeepLinkPayload): P
 
   try {
     return await window.ccr.probeProvider({
-      apiKey: payload.apiKey,
+      apiKey: undefined,
       baseUrl: payload.baseUrl,
       models: payload.models,
       protocols: payload.protocol ? [payload.protocol] : providerProtocolOptions.map((option) => option.value)
@@ -14710,15 +16780,34 @@ function createProviderConfigFromDeepLink(
   const existingName = replaceIndex >= 0 ? providers[replaceIndex]?.name : undefined;
   const baseName = payload.name?.trim() || existingName || inferProviderNameFromBaseUrl(baseUrl);
   const name = replaceIndex >= 0 ? baseName : uniqueProviderName(providers, baseName);
+  const keySafetyIssue = providerApiKeySafetyIssue({ apiKey: payload.apiKey, baseUrl, name });
+  if (keySafetyIssue) {
+    throw new Error(keySafetyIssue.message);
+  }
+  const identityIssue = providerIdentitySafetyIssue({ baseUrl, name });
+  if (identityIssue) {
+    throw new Error(identityIssue.message);
+  }
+  const accountKeySafetyIssue = providerAccountApiKeySafetyIssue(payload.account, {
+    apiKey: payload.apiKey,
+    baseUrl,
+    providerName: name
+  });
+  if (accountKeySafetyIssue) {
+    throw new Error(accountKeySafetyIssue.message);
+  }
+
   const capabilities = mergeProviderCapabilities(
     probe?.capabilities ?? [],
     protocol && baseUrl ? [{ baseUrl, source: probe?.detectedProtocol ? "detected" : "preset", type: protocol }] : []
   );
 
   return {
+    account: payload.account ? cloneProviderAccountConfig(payload.account) : defaultProviderAccountConfigForBaseUrl(baseUrl),
     api_base_url: normalizeProviderBaseUrl(baseUrl, protocol),
-    api_key: payload.apiKey?.trim() ?? "",
+    api_key: "",
     capabilities: capabilities.length > 0 ? capabilities : undefined,
+    icon: payload.icon?.trim() || undefined,
     models,
     name,
     type: protocol
@@ -14753,10 +16842,9 @@ function inferProviderNameFromBaseUrl(baseUrl: string): string {
 }
 
 function createProviderDraft(providers: GatewayProviderConfig[]): AddProviderDraft {
+  const accountDraft = createDefaultProviderAccountDraft();
   return {
-    accountConnectorsText: "[]",
-    accountEnabled: false,
-    accountRefreshIntervalMs: "",
+    ...accountDraft,
     apiKey: "",
     baseUrl: "",
     icon: "",
@@ -14772,10 +16860,9 @@ function createProviderDraft(providers: GatewayProviderConfig[]): AddProviderDra
 function createProviderDraftFromProvider(provider: GatewayProviderConfig): AddProviderDraft {
   const baseUrl = providerBaseUrl(provider);
   const preset = findProviderPresetByBaseUrl(baseUrl);
+  const accountDraft = createProviderAccountDraftFromConfig(provider.account);
   return {
-    accountConnectorsText: JSON.stringify(provider.account?.connectors ?? [], null, 2),
-    accountEnabled: provider.account?.enabled === true,
-    accountRefreshIntervalMs: provider.account?.refreshIntervalMs ? String(provider.account.refreshIntervalMs) : "",
+    ...accountDraft,
     apiKey: providerApiKey(provider),
     baseUrl,
     icon: provider.icon ?? "",
@@ -14792,6 +16879,26 @@ function parseProviderAccountDraft(draft: AddProviderDraft): GatewayProviderConf
   const refreshIntervalMs = positiveInteger(draft.accountRefreshIntervalMs);
   if (!draft.accountEnabled) {
     return undefined;
+  }
+
+  if (draft.accountMode === "standard") {
+    return {
+      connectors: cloneProviderAccountConnectors(standardProviderAccountConfig.connectors ?? []),
+      enabled: true,
+      refreshIntervalMs: refreshIntervalMs && refreshIntervalMs > 0 ? refreshIntervalMs : undefined
+    };
+  }
+
+  if (draft.accountMode === "http-json" || draft.usageRequestUrl.trim()) {
+    const connector = providerHttpJsonConnectorFromDraft(draft);
+    if (typeof connector === "string") {
+      return connector;
+    }
+    return {
+      connectors: [connector],
+      enabled: true,
+      refreshIntervalMs: refreshIntervalMs && refreshIntervalMs > 0 ? refreshIntervalMs : undefined
+    };
   }
 
   let connectors: unknown;
@@ -14813,6 +16920,350 @@ function parseProviderAccountDraft(draft: AddProviderDraft): GatewayProviderConf
     enabled: true,
     refreshIntervalMs: refreshIntervalMs && refreshIntervalMs > 0 ? refreshIntervalMs : undefined
   };
+}
+
+function createDefaultProviderAccountDraft(): Pick<
+  AddProviderDraft,
+  | "accountConnectorsText"
+  | "accountEnabled"
+  | "accountMode"
+  | "accountRefreshIntervalMs"
+  | "usageBalanceRemainingPath"
+  | "usageBalanceUnit"
+  | "usageMessagePath"
+  | "usageRequestBodyText"
+  | "usageRequestHeaders"
+  | "usageRequestMethod"
+  | "usageRequestUrl"
+  | "usageStatusPath"
+  | "usageSubscriptionLimitPath"
+  | "usageSubscriptionRemainingPath"
+  | "usageSubscriptionResetPath"
+  | "usageSubscriptionUnit"
+> {
+  return {
+    accountConnectorsText: JSON.stringify(defaultProviderAccountConfig.connectors ?? [], null, 2),
+    accountEnabled: defaultProviderAccountConfig.enabled !== false,
+    accountMode: "standard",
+    accountRefreshIntervalMs: "",
+    usageBalanceRemainingPath: "",
+    usageBalanceUnit: "USD",
+    usageMessagePath: "",
+    usageRequestBodyText: "",
+    usageRequestHeaders: [],
+    usageRequestMethod: "GET",
+    usageRequestUrl: "",
+    usageStatusPath: "",
+    usageSubscriptionLimitPath: "",
+    usageSubscriptionRemainingPath: "",
+    usageSubscriptionResetPath: "",
+    usageSubscriptionUnit: "tokens"
+  };
+}
+
+function createProviderAccountDraftFromConfig(account: ProviderAccountConfig | undefined): ReturnType<typeof createDefaultProviderAccountDraft> {
+  const base = createDefaultProviderAccountDraft();
+  if (!account) {
+    return base;
+  }
+
+  const connectors = account.connectors ?? [];
+  const httpJsonConnector = connectors.length === 1 && connectors[0]?.type === "http-json"
+    ? connectors[0] as ProviderAccountHttpJsonConnectorConfig
+    : undefined;
+  if (!httpJsonConnector) {
+    return {
+      ...base,
+      accountConnectorsText: JSON.stringify(connectors, null, 2),
+      accountEnabled: account.enabled === true,
+      accountMode: connectors.length > 0 && !providerAccountConnectorsAreDefaultStandard(connectors) ? "raw" : "standard",
+      accountRefreshIntervalMs: account.refreshIntervalMs ? String(account.refreshIntervalMs) : ""
+    };
+  }
+
+  const balanceMeter = httpJsonConnector.mapping.meters.find((meter) => meter.kind === "balance" || meter.id === "balance");
+  const subscriptionMeter = httpJsonConnector.mapping.meters.find((meter) =>
+    meter.kind === "subscription" || meter.id === "subscription" || meter.kind === "quota" || meter.kind === "tokens" || meter.kind === "time_window"
+  );
+
+  return {
+    ...base,
+    accountConnectorsText: JSON.stringify(connectors, null, 2),
+    accountEnabled: account.enabled === true,
+    accountMode: "http-json",
+    accountRefreshIntervalMs: account.refreshIntervalMs ? String(account.refreshIntervalMs) : "",
+    usageBalanceRemainingPath: stringValue(balanceMeter?.remaining) || "",
+    usageBalanceUnit: stringValue(balanceMeter?.unit) || "USD",
+    usageMessagePath: httpJsonConnector.mapping.message ?? "",
+    usageRequestBodyText: httpJsonConnector.body === undefined ? "" : formatEditableJson(httpJsonConnector.body),
+    usageRequestHeaders: keyValueRowsFromRecord(httpJsonConnector.headers ?? {}),
+    usageRequestMethod: httpJsonConnector.method === "POST" ? "POST" : "GET",
+    usageRequestUrl: httpJsonConnector.endpoint,
+    usageStatusPath: httpJsonConnector.mapping.status ?? "",
+    usageSubscriptionLimitPath: stringValue(subscriptionMeter?.limit) || "",
+    usageSubscriptionRemainingPath: stringValue(subscriptionMeter?.remaining) || "",
+    usageSubscriptionResetPath: subscriptionMeter?.resetAt ?? "",
+    usageSubscriptionUnit: stringValue(subscriptionMeter?.unit) || "tokens"
+  };
+}
+
+function providerHttpJsonConnectorFromDraft(draft: AddProviderDraft, options: { requireMeters?: boolean } = { requireMeters: true }): ProviderAccountHttpJsonConnectorConfig | string {
+  const endpoint = draft.usageRequestUrl.trim();
+  if (!endpoint) {
+    return "Usage request URL is required.";
+  }
+  if (!/^https?:\/\//i.test(endpoint)) {
+    return "Usage request URL must use http or https.";
+  }
+  if (!validateKeyValueRows(draft.usageRequestHeaders)) {
+    return "Header rows require keys.";
+  }
+
+  let body: unknown;
+  if (draft.usageRequestBodyText.trim()) {
+    try {
+      body = JSON.parse(draft.usageRequestBodyText);
+    } catch (error) {
+      return `Usage request body JSON is invalid: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
+  const meters: ProviderAccountHttpJsonConnectorConfig["mapping"]["meters"] = [];
+  if (draft.usageBalanceRemainingPath.trim()) {
+    meters.push({
+      id: "balance",
+      kind: "balance",
+      label: "Balance",
+      remaining: draft.usageBalanceRemainingPath.trim(),
+      unit: draft.usageBalanceUnit.trim() || "USD"
+    });
+  }
+  if (draft.usageSubscriptionRemainingPath.trim() || draft.usageSubscriptionLimitPath.trim()) {
+    meters.push({
+      id: "subscription",
+      kind: "subscription",
+      label: "Subscription",
+      limit: draft.usageSubscriptionLimitPath.trim() || undefined,
+      remaining: draft.usageSubscriptionRemainingPath.trim() || undefined,
+      resetAt: draft.usageSubscriptionResetPath.trim() || undefined,
+      unit: draft.usageSubscriptionUnit.trim() || "tokens",
+      window: "monthly"
+    });
+  }
+
+  if (options.requireMeters !== false && meters.length === 0) {
+    return "Select at least one usage response field.";
+  }
+
+  return {
+    auth: "provider-api-key",
+    ...(body !== undefined ? { body } : {}),
+    endpoint,
+    headers: recordFromKeyValueRows(draft.usageRequestHeaders),
+    mapping: {
+      ...(draft.usageMessagePath.trim() ? { message: draft.usageMessagePath.trim() } : {}),
+      meters,
+      ...(draft.usageStatusPath.trim() ? { status: draft.usageStatusPath.trim() } : {})
+    },
+    method: draft.usageRequestMethod,
+    type: "http-json"
+  };
+}
+
+type ProviderApiKeyTargetSafetyInput = {
+  apiKey?: string;
+  baseUrl: string;
+  providerName?: string;
+  providerPresetId?: string;
+};
+
+function providerAccountApiKeySafetyIssue(
+  account: ProviderAccountConfig | undefined,
+  input: ProviderApiKeyTargetSafetyInput
+): ProviderIdentitySafetyIssue | undefined {
+  for (const connector of account?.connectors ?? []) {
+    const issue = providerAccountConnectorApiKeySafetyIssue(connector, input);
+    if (issue) {
+      return issue;
+    }
+  }
+  return undefined;
+}
+
+function providerAccountConnectorApiKeySafetyIssue(
+  connector: ProviderAccountConnectorConfig,
+  input: ProviderApiKeyTargetSafetyInput
+): ProviderIdentitySafetyIssue | undefined {
+  if (connector.type === "http-json") {
+    const httpJsonConnector = connector as ProviderAccountHttpJsonConnectorConfig;
+    if ((httpJsonConnector.auth ?? "provider-api-key") === "none") {
+      return undefined;
+    }
+    return providerAccountEndpointApiKeySafetyIssue(httpJsonConnector.endpoint, input);
+  }
+
+  if (connector.type === "standard") {
+    const standardConnector = connector as ProviderAccountStandardConnectorConfig;
+    if ((standardConnector.auth ?? "provider-api-key") === "none") {
+      return undefined;
+    }
+    const endpoints = [
+      standardConnector.endpoint,
+      ...(standardConnector.endpoints ?? [])
+    ].filter((endpoint): endpoint is string => Boolean(endpoint?.trim()));
+    for (const endpoint of endpoints) {
+      const issue = providerAccountEndpointApiKeySafetyIssue(endpoint, input);
+      if (issue) {
+        return issue;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function providerAccountEndpointApiKeySafetyIssue(
+  endpoint: string,
+  input: ProviderApiKeyTargetSafetyInput
+): ProviderIdentitySafetyIssue | undefined {
+  return providerEndpointCanReceiveProviderApiKey({
+    apiKey: input.apiKey?.trim() || "provider-api-key",
+    endpoint: absoluteProviderAccountEndpoint(input.baseUrl, endpoint),
+    providerName: input.providerName,
+    providerPresetId: findProviderPreset(input.providerPresetId)?.id ?? findProviderPresetByBaseUrl(input.baseUrl)?.id
+  });
+}
+
+function absoluteProviderAccountEndpoint(baseUrl: string, endpoint: string): string {
+  const trimmedEndpoint = endpoint.trim();
+  if (/^https?:\/\//i.test(trimmedEndpoint)) {
+    return trimmedEndpoint;
+  }
+  if (!baseUrl.trim()) {
+    return trimmedEndpoint;
+  }
+  try {
+    const url = new URL(providerUrlWithDefaultScheme(normalizeProviderBaseUrl(baseUrl)));
+    url.pathname = trimmedEndpoint.startsWith("/") ? trimmedEndpoint : joinProviderAccountPath(url.pathname, trimmedEndpoint);
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return trimmedEndpoint;
+  }
+}
+
+function joinProviderAccountPath(basePath: string, suffix: string): string {
+  const left = basePath.replace(/\/+$/, "");
+  const right = suffix.replace(/^\/+/, "");
+  if (!left) {
+    return `/${right}`;
+  }
+  return `${left}/${right}`;
+}
+
+function providerUsageFieldPatch(target: ProviderUsageFieldTarget, path: string): Partial<AddProviderDraft> {
+  if (target === "balance") {
+    return { usageBalanceRemainingPath: path };
+  }
+  if (target === "message") {
+    return { usageMessagePath: path };
+  }
+  if (target === "status") {
+    return { usageStatusPath: path };
+  }
+  if (target === "subscriptionLimit") {
+    return { usageSubscriptionLimitPath: path };
+  }
+  if (target === "subscriptionRemaining") {
+    return { usageSubscriptionRemainingPath: path };
+  }
+  return { usageSubscriptionResetPath: path };
+}
+
+function createProviderInstallLinkFromDraft(draft: AddProviderDraft, probe: GatewayProviderProbeResult | undefined): string {
+  const providerName = draft.name.trim();
+  const baseUrl = (probe?.normalizedBaseUrl || draft.baseUrl).trim();
+  const protocol = probe?.detectedProtocol ?? draft.protocol;
+  const models = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
+  if (!providerName || !baseUrl) {
+    return "Provider name and Base URL are required.";
+  }
+  if (models.length === 0) {
+    return "Select or enter at least one model.";
+  }
+  const keySafetyIssue = providerApiKeySafetyIssue({
+    apiKey: draft.apiKey,
+    baseUrl,
+    name: providerName,
+    presetId: draft.presetId
+  });
+  if (keySafetyIssue) {
+    return keySafetyIssue.message;
+  }
+  const identityIssue = providerIdentitySafetyIssue({
+    baseUrl,
+    name: providerName,
+    presetId: draft.presetId
+  });
+  if (identityIssue) {
+    return identityIssue.message;
+  }
+
+  const account = parseProviderAccountDraft(draft);
+  if (typeof account === "string") {
+    return account;
+  }
+  const accountKeySafetyIssue = providerAccountApiKeySafetyIssue(account, {
+    apiKey: draft.apiKey,
+    baseUrl,
+    providerName,
+    providerPresetId: draft.presetId
+  });
+  if (accountKeySafetyIssue) {
+    return accountKeySafetyIssue.message;
+  }
+
+  const payload: ProviderDeepLinkPayload = {
+    ...(account ? { account } : {}),
+    baseUrl,
+    ...(draft.icon.trim() ? { icon: draft.icon.trim() } : {}),
+    models,
+    name: providerName,
+    protocol,
+    replaceExisting: false,
+    setDefault: false
+  };
+  return `ccr://provider?payload=${base64UrlEncodeText(JSON.stringify(payload))}`;
+}
+
+function base64UrlEncodeText(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function providerAccountConnectorsAreDefaultStandard(connectors: ProviderAccountConnectorConfig[]): boolean {
+  return connectors.length === 1 && connectors[0]?.type === "standard";
+}
+
+function cloneProviderAccountConfig(account: ProviderAccountConfig | undefined): ProviderAccountConfig | undefined {
+  return account ? JSON.parse(JSON.stringify(account)) as ProviderAccountConfig : undefined;
+}
+
+function cloneProviderAccountConnectors(connectors: ProviderAccountConnectorConfig[]): ProviderAccountConnectorConfig[] {
+  return JSON.parse(JSON.stringify(connectors)) as ProviderAccountConnectorConfig[];
+}
+
+function defaultProviderAccountConfigForPreset(presetId: string | undefined): ProviderAccountConfig | undefined {
+  return cloneProviderAccountConfig(findProviderPreset(presetId)?.account ?? defaultProviderAccountConfig);
+}
+
+function defaultProviderAccountConfigForBaseUrl(baseUrl: string): ProviderAccountConfig | undefined {
+  return cloneProviderAccountConfig(findProviderPresetByBaseUrl(baseUrl)?.account ?? defaultProviderAccountConfig);
 }
 
 function providerAccountConnectorExample(): string {
@@ -14876,6 +17327,33 @@ function shouldAutoProbeProviderBaseUrl(value: string): boolean {
   }
 }
 
+function providerDraftSafetyIssue(draft: AddProviderDraft, baseUrl = draft.baseUrl): ProviderIdentitySafetyIssue | undefined {
+  const targetBaseUrl = baseUrl.trim();
+  if (!targetBaseUrl) {
+    return undefined;
+  }
+  const issue = providerApiKeySafetyIssue({
+    apiKey: draft.apiKey,
+    baseUrl: targetBaseUrl,
+    name: draft.name,
+    presetId: draft.presetId
+  });
+  if (issue) {
+    return issue;
+  }
+
+  const account = parseProviderAccountDraft(draft);
+  if (typeof account === "string") {
+    return undefined;
+  }
+  return providerAccountApiKeySafetyIssue(account, {
+    apiKey: draft.apiKey,
+    baseUrl: targetBaseUrl,
+    providerName: draft.name,
+    providerPresetId: draft.presetId
+  });
+}
+
 function providerProbeCandidates(draft: AddProviderDraft): ProviderProbeCandidate[] {
   const preset = findProviderPreset(draft.presetId);
   if (preset) {
@@ -14896,6 +17374,26 @@ function providerProbeCandidates(draft: AddProviderDraft): ProviderProbeCandidat
 
 function isProviderProbeCandidateReady(candidate: ProviderProbeCandidate): boolean {
   return shouldAutoProbeProviderBaseUrl(candidate.baseUrl);
+}
+
+function providerProbeCandidatesApiKeySafetyIssue(
+  candidates: ProviderProbeCandidate[],
+  apiKey: string,
+  providerName: string,
+  presetId: string
+): ProviderIdentitySafetyIssue | undefined {
+  for (const candidate of candidates) {
+    const issue = providerApiKeySafetyIssue({
+      apiKey,
+      baseUrl: candidate.baseUrl,
+      name: providerName,
+      presetId
+    });
+    if (issue) {
+      return issue;
+    }
+  }
+  return undefined;
 }
 
 function providerProbeInputKey(candidates: ProviderProbeCandidate[], apiKey: string, models: string[]): string {

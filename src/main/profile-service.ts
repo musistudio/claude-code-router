@@ -112,13 +112,15 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
       model,
       providerId,
       providerName,
+      showAllSessions: Boolean(profile.showAllSessions),
       token
     });
     const writeResult = writeFileWithBackup(configFile, nextConfig);
     const separateProfileResult = maybeWriteSeparateCodexProfileFile(configFile, source, {
       configFormat,
       model,
-      providerId
+      providerId,
+      showAllSessions: Boolean(profile.showAllSessions)
     });
     const middlewareResult = profile.cliMiddleware
       ? writeCodexCliMiddleware(profile, {
@@ -255,6 +257,7 @@ function buildCodexConfigToml(
     model: string;
     providerId: string;
     providerName: string;
+    showAllSessions: boolean;
     token: string;
   }
 ): string {
@@ -268,11 +271,12 @@ function buildCodexConfigToml(
   const firstTableIndex = firstTomlTableIndex(content);
   const rootSource = firstTableIndex === -1 ? content : content.slice(0, firstTableIndex);
   const restSource = firstTableIndex === -1 ? "" : content.slice(firstTableIndex);
-  const cleanedRoot = removeRootTomlKeys(rootSource, ["model", "model_provider", "profile"]);
+  const cleanedRoot = removeRootTomlKeys(rootSource, ["model", "model_provider", "profile", "show_all_sessions"]);
   const rootBlock = [
     managedRootStart,
     `model_provider = ${tomlString(values.providerId)}`,
     `model = ${tomlString(values.model)}`,
+    ...(values.showAllSessions ? ["show_all_sessions = true"] : []),
     managedRootEnd,
     ""
   ].join("\n");
@@ -298,6 +302,7 @@ function maybeWriteSeparateCodexProfileFile(
     configFormat: "legacy" | "separate_profile_files";
     model: string;
     providerId: string;
+    showAllSessions: boolean;
   }
 ): { changed: boolean; file: string } | undefined {
   if (values.configFormat !== "separate_profile_files") {
@@ -320,16 +325,18 @@ function buildSeparateCodexProfileToml(
   values: {
     model: string;
     providerId: string;
+    showAllSessions: boolean;
   }
 ): string {
   const firstTableIndex = firstTomlTableIndex(source);
   const rootSource = firstTableIndex === -1 ? source : source.slice(0, firstTableIndex);
   const restSource = firstTableIndex === -1 ? "" : source.slice(firstTableIndex);
-  const cleanedRoot = removeRootTomlKeys(rootSource, ["model", "model_provider", "model_reasoning_effort"]);
+  const cleanedRoot = removeRootTomlKeys(rootSource, ["model", "model_provider", "model_reasoning_effort", "show_all_sessions"]);
   const rootBlock = [
     `model_provider = ${tomlString(values.providerId)}`,
     `model = ${tomlString(values.model)}`,
     `model_reasoning_effort = "xhigh"`,
+    ...(values.showAllSessions ? ["show_all_sessions = true"] : []),
     ""
   ].join("\n");
   return ensureTrailingNewline(`${rootBlock}${trimLeadingBlankLines(cleanedRoot)}${restSource}`.replace(/\n{4,}/g, "\n\n\n"));

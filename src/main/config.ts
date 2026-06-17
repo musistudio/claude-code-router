@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { loadPersistedApiKeys, replacePersistedApiKeys } from "./api-key-store";
 import { CONFIGDIR, CONFIG_FILE, GATEWAY_CONFIG_FILE } from "./constants";
-import { DEFAULT_TRAY_WINDOW_MODULES, TRAY_WINDOW_MODULE_IDS } from "../shared/app";
+import { DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_WINDOW_MODULE_IDS } from "../shared/app";
+import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "../shared/provider-presets";
 import type {
   AppConfig,
   ApiKeyConfig,
@@ -17,6 +18,11 @@ import type {
   GatewayProviderCapability,
   GatewayProviderConfig,
   GatewayProviderProtocol,
+  OverviewMetricKind,
+  OverviewWidgetConfig,
+  OverviewWidgetSize,
+  OverviewWidgetType,
+  OverviewWidgetVariant,
   ProviderAccountConfig,
   ProviderAccountConnectorConfig,
   ProfileConfig,
@@ -28,6 +34,7 @@ import type {
   RouterFallbackMode,
   RouterRule,
   RouterRuleType,
+  TrayComponentVariants,
   TrayIconPreference,
   TrayWindowModuleId
 } from "../shared/app";
@@ -94,6 +101,7 @@ const DEFAULT_CONFIG: AppConfig = {
   },
   preferredProvider: "",
   plugins: [],
+  overviewWidgets: DEFAULT_OVERVIEW_WIDGETS,
   profile: {
     claudeCode: {
       enabled: true,
@@ -102,7 +110,7 @@ const DEFAULT_CONFIG: AppConfig = {
       smallFastModel: ""
     },
     codex: {
-      cliMiddleware: false,
+      cliMiddleware: true,
       codexCliPath: "",
       codexHome: "",
       configFormat: "legacy",
@@ -111,7 +119,7 @@ const DEFAULT_CONFIG: AppConfig = {
       model: "",
       providerId: "claude-code-router",
       providerName: "Claude Code Router",
-      remoteFrontendMode: "app"
+      showAllSessions: false
     },
     enabled: true,
     profiles: [
@@ -129,7 +137,7 @@ const DEFAULT_CONFIG: AppConfig = {
       },
       {
         agent: "codex",
-        cliMiddleware: false,
+        cliMiddleware: true,
         codexCliPath: "",
         codexHome: "",
         configFormat: "legacy",
@@ -141,7 +149,7 @@ const DEFAULT_CONFIG: AppConfig = {
         name: "Codex",
         providerId: "claude-code-router",
         providerName: "Claude Code Router",
-        remoteFrontendMode: "app",
+        showAllSessions: false,
         scope: "global",
         surface: "auto"
       }
@@ -159,6 +167,7 @@ const DEFAULT_CONFIG: AppConfig = {
   },
   routerEndpoint: "http://127.0.0.1:3456",
   theme: "system",
+  trayComponentVariants: DEFAULT_TRAY_COMPONENT_VARIANTS,
   trayIcon: "random",
   trayProgressTargetTokens: 100000,
   trayWindowModules: DEFAULT_TRAY_WINDOW_MODULES
@@ -216,7 +225,8 @@ export async function loadAppConfig(): Promise<AppConfig> {
         },
         codex: {
           ...DEFAULT_CONFIG.profile.codex,
-          ...(picked.profile?.codex ?? {})
+          ...(picked.profile?.codex ?? {}),
+          cliMiddleware: true
         },
         profiles: picked.profile?.profiles ?? DEFAULT_CONFIG.profile.profiles
       },
@@ -247,6 +257,7 @@ export async function loadAppConfig(): Promise<AppConfig> {
 }
 
 export async function saveAppConfig(config: AppConfig): Promise<AppConfig> {
+  assertProviderApiKeysAreSafe(config);
   mkdirSync(CONFIGDIR, { recursive: true });
   const apiKeys = normalizeApiKeys(config.APIKEYS, config.APIKEY).filter((apiKey) => !isDefaultSeedApiKey(apiKey));
   await replacePersistedApiKeys(apiKeys);
@@ -256,6 +267,68 @@ export async function saveAppConfig(config: AppConfig): Promise<AppConfig> {
     APIKEYS: apiKeys
   });
   return loadAppConfig();
+}
+
+function assertProviderApiKeysAreSafe(config: AppConfig): void {
+  for (const provider of config.Providers ?? []) {
+    const apiKey = providerApiKey(provider);
+    const baseUrl = providerBaseUrl(provider);
+    const issue = providerApiKeySafetyIssue({
+      apiKey,
+      baseUrl,
+      name: provider.name
+    });
+    if (issue) {
+      throw new Error(issue.message);
+    }
+    assertProviderAccountApiKeyTargetsAreSafe(provider, apiKey, baseUrl);
+  }
+}
+
+function assertProviderAccountApiKeyTargetsAreSafe(provider: GatewayProviderConfig, apiKey: string, baseUrl: string): void {
+  if (!apiKey || provider.account?.enabled === false) {
+    return;
+  }
+
+  const presetId = findProviderPresetByBaseUrl(baseUrl)?.id;
+  for (const connector of provider.account?.connectors ?? []) {
+    const endpoints = providerAccountConnectorApiKeyEndpoints(connector);
+    for (const endpoint of endpoints) {
+      const issue = providerEndpointCanReceiveProviderApiKey({
+        apiKey,
+        endpoint,
+        providerName: provider.name,
+        providerPresetId: presetId
+      });
+      if (issue) {
+        throw new Error(issue.message);
+      }
+    }
+  }
+}
+
+function providerAccountConnectorApiKeyEndpoints(connector: ProviderAccountConnectorConfig): string[] {
+  if ("auth" in connector && connector.auth === "none") {
+    return [];
+  }
+  if (connector.type === "http-json") {
+    return connector.endpoint ? [connector.endpoint] : [];
+  }
+  if (connector.type === "standard") {
+    return [
+      connector.endpoint,
+      ...(connector.endpoints ?? [])
+    ].filter((endpoint): endpoint is string => Boolean(endpoint?.trim() && /^https?:\/\//i.test(endpoint)));
+  }
+  return [];
+}
+
+function providerBaseUrl(provider: GatewayProviderConfig): string {
+  return provider.api_base_url || provider.baseUrl || provider.baseurl || "";
+}
+
+function providerApiKey(provider: GatewayProviderConfig): string {
+  return provider.api_key || provider.apiKey || provider.apikey || "";
 }
 
 export async function saveApiKeysConfig(apiKeys: ApiKeyConfig[]): Promise<AppConfig> {
@@ -279,7 +352,34 @@ function sanitizeConfigForDisk(config: AppConfig): AppConfig {
   return {
     ...config,
     APIKEY: "",
-    APIKEYS: []
+    APIKEYS: [],
+    profile: sanitizeProfileConfigForDisk(config.profile)
+  };
+}
+
+function sanitizeProfileConfigForDisk(profile: AppConfig["profile"]): AppConfig["profile"] {
+  const { remoteFrontendMode: _remoteFrontendMode, ...codex } = profile.codex as AppConfig["profile"]["codex"] & {
+    remoteFrontendMode?: unknown;
+  };
+  return {
+    ...profile,
+    codex,
+    profiles: profile.profiles.map((profileItem) => {
+      if (profileItem.agent !== "codex") {
+        return profileItem;
+      }
+      const {
+        coreMode: _coreMode,
+        frontendMode: _frontendMode,
+        remoteFrontendMode: _itemRemoteFrontendMode,
+        ...cleanedProfile
+      } = profileItem as ProfileConfig & {
+        coreMode?: unknown;
+        frontendMode?: unknown;
+        remoteFrontendMode?: unknown;
+      };
+      return cleanedProfile;
+    })
   };
 }
 
@@ -378,12 +478,104 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   if (trayProgressTargetTokens && trayProgressTargetTokens > 0) {
     config.trayProgressTargetTokens = clampNumber(trayProgressTargetTokens, 1000, 1_000_000_000);
   }
+  const trayComponentVariants = parseTrayComponentVariants((value as Record<string, unknown>).trayComponentVariants);
+  if (trayComponentVariants) {
+    config.trayComponentVariants = trayComponentVariants;
+  }
   const trayWindowModules = parseTrayWindowModules((value as Record<string, unknown>).trayWindowModules);
   if (trayWindowModules !== undefined) {
     config.trayWindowModules = trayWindowModules;
   }
+  const overviewWidgets = parseOverviewWidgets((value as Record<string, unknown>).overviewWidgets);
+  if (overviewWidgets !== undefined) {
+    config.overviewWidgets = overviewWidgets;
+  }
 
   return config;
+}
+
+function parseOverviewWidgets(value: unknown): OverviewWidgetConfig[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const widgets = value
+    .map(parseOverviewWidget)
+    .filter((widget): widget is OverviewWidgetConfig => Boolean(widget));
+  return widgets;
+}
+
+function parseOverviewWidget(value: unknown): OverviewWidgetConfig | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const type = parseOverviewWidgetType(value.type);
+  if (!type) {
+    return undefined;
+  }
+  const metric = type === "metric" ? parseOverviewMetricKind(value.metric) ?? "requests" : undefined;
+  return {
+    enabled: typeof value.enabled === "boolean" ? value.enabled : true,
+    id: readString(value.id) || overviewWidgetId(type, metric),
+    ...(metric ? { metric } : {}),
+    size: parseOverviewWidgetSize(value.size) ?? defaultOverviewWidgetSize(type),
+    type,
+    variant: parseOverviewWidgetVariant(value.variant) ?? defaultOverviewWidgetVariant(type)
+  };
+}
+
+function parseOverviewWidgetType(value: unknown): OverviewWidgetType | undefined {
+  return parseEnumValue(value, ["account-balance", "client-analysis", "metric", "provider-analysis", "system-status", "token-mix", "usage-trend"], undefined);
+}
+
+function parseOverviewWidgetSize(value: unknown): OverviewWidgetSize | undefined {
+  return parseEnumValue(value, ["small", "medium", "large", "wide", "full"], undefined);
+}
+
+function parseOverviewWidgetVariant(value: unknown): OverviewWidgetVariant | undefined {
+  return parseEnumValue(value, ["area", "bar", "bars", "card", "cards", "compact", "composed", "donut", "line", "pie", "ring", "stacked", "table", "timeline"], undefined);
+}
+
+function parseOverviewMetricKind(value: unknown): OverviewMetricKind | undefined {
+  return parseEnumValue(value, ["avg-latency", "cache-ratio", "cache-tokens", "errors", "estimated-cost", "input-tokens", "output-tokens", "requests", "success-rate", "total-tokens"], undefined);
+}
+
+function defaultOverviewWidgetSize(type: OverviewWidgetType): OverviewWidgetSize {
+  if (type === "metric") {
+    return "small";
+  }
+  if (type === "token-mix") {
+    return "medium";
+  }
+  if (type === "client-analysis" || type === "provider-analysis") {
+    return "large";
+  }
+  if (type === "usage-trend") {
+    return "wide";
+  }
+  return "full";
+}
+
+function defaultOverviewWidgetVariant(type: OverviewWidgetType): OverviewWidgetVariant {
+  if (type === "account-balance") {
+    return "cards";
+  }
+  if (type === "metric") {
+    return "card";
+  }
+  if (type === "token-mix") {
+    return "bars";
+  }
+  if (type === "usage-trend") {
+    return "composed";
+  }
+  if (type === "system-status") {
+    return "timeline";
+  }
+  return "table";
+}
+
+function overviewWidgetId(type: OverviewWidgetType, metric?: OverviewMetricKind): string {
+  return type === "metric" ? `metric-${metric ?? "requests"}` : type;
 }
 
 function parseTrayIconPreference(value: unknown): TrayIconPreference | undefined {
@@ -400,6 +592,26 @@ function parseTrayWindowModules(value: unknown): TrayWindowModuleId[] | undefine
   const allowed = new Set<string>(TRAY_WINDOW_MODULE_IDS);
   return uniqueStrings(value.map((item) => readString(item)).filter((item): item is string => Boolean(item)))
     .filter((item): item is TrayWindowModuleId => allowed.has(item));
+}
+
+function parseTrayComponentVariants(value: unknown): TrayComponentVariants | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  return {
+    account: parseEnumValue(value.account, ["bar", "compact", "ring", "arc", "stacked"], DEFAULT_TRAY_COMPONENT_VARIANTS.account),
+    modelShare: parseEnumValue(value.modelShare, ["bars", "list", "donut", "pie"], DEFAULT_TRAY_COMPONENT_VARIANTS.modelShare),
+    rings: parseEnumValue(value.rings, ["rings", "arcs", "gauges"], DEFAULT_TRAY_COMPONENT_VARIANTS.rings),
+    stats: parseEnumValue(value.stats, ["cards", "compact", "pills"], DEFAULT_TRAY_COMPONENT_VARIANTS.stats),
+    tokenFlow: parseEnumValue(value.tokenFlow, ["line", "area", "bar", "sparkline"], DEFAULT_TRAY_COMPONENT_VARIANTS.tokenFlow),
+    tokenMix: parseEnumValue(value.tokenMix, ["bars", "stacked", "donut", "pie"], DEFAULT_TRAY_COMPONENT_VARIANTS.tokenMix)
+  };
+}
+
+function parseEnumValue<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T;
+function parseEnumValue<T extends string>(value: unknown, allowed: readonly T[], fallback: undefined): T | undefined;
+function parseEnumValue<T extends string>(value: unknown, allowed: readonly T[], fallback: T | undefined): T | undefined {
+  return typeof value === "string" && (allowed as readonly string[]).includes(value) ? value as T : fallback;
 }
 
 function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
@@ -1041,6 +1253,14 @@ function parseProfile(value: unknown): LoadedProfileConfig | undefined {
     if (providerName) {
       profile.codex.providerName = providerName;
     }
+    const showAllSessions = typeof codex.showAllSessions === "boolean"
+      ? codex.showAllSessions
+      : typeof codex.show_all_sessions === "boolean"
+        ? codex.show_all_sessions
+        : undefined;
+    if (showAllSessions !== undefined) {
+      profile.codex.showAllSessions = showAllSessions;
+    }
   }
 
   const profiles = parseProfiles(value.profiles);
@@ -1105,7 +1325,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
 
       return {
         agent,
-        cliMiddleware: typeof item.cliMiddleware === "boolean" ? item.cliMiddleware : false,
+        cliMiddleware: true,
         codexCliPath: readString(item.codexCliPath) || readString(item.cliPath) || readString(item.codexPath) || "",
         codexHome: readString(item.codexHome) || readString(item.home) || "",
         configFormat: parseCodexProfileConfigFormat(readString(item.configFormat) || readString(item.profileConfigFormat)) || "legacy",
@@ -1119,6 +1339,11 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         providerName: readString(item.providerName) || "Claude Code Router",
         remoteFrontendMode: parseCodexRemoteFrontendMode(readString(item.remoteFrontendMode) || readString(item.frontendMode) || readString(item.coreMode)) || "app",
         scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
+        showAllSessions: typeof item.showAllSessions === "boolean"
+          ? item.showAllSessions
+          : typeof item.show_all_sessions === "boolean"
+            ? item.show_all_sessions
+            : false,
         surface: parseProfileSurface(readString(item.surface) || readString(item.entry) || readString(item.frontend)) || "auto"
       };
     })
@@ -1157,7 +1382,7 @@ function profileFromClaudeCodeConfig(config: ClaudeCodeProfileConfig): ProfileCo
 function profileFromCodexConfig(config: CodexProfileConfig): ProfileConfig {
   return {
     agent: "codex",
-    cliMiddleware: config.cliMiddleware,
+    cliMiddleware: true,
     codexCliPath: config.codexCliPath,
     codexHome: config.codexHome,
     configFormat: config.configFormat,
@@ -1171,6 +1396,7 @@ function profileFromCodexConfig(config: CodexProfileConfig): ProfileConfig {
     providerName: config.providerName,
     remoteFrontendMode: config.remoteFrontendMode,
     scope: "global",
+    showAllSessions: config.showAllSessions,
     surface: "auto"
   };
 }

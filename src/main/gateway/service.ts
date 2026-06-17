@@ -8,6 +8,7 @@ import { dirname, join as pathJoin, resolve as pathResolve, sep as pathSep } fro
 import type {
   ApiKeyConfig,
   AppConfig,
+  GatewayMcpServerConfig,
   GatewayProviderCapability,
   GatewayProviderConfig,
   GatewayProviderProtocol,
@@ -15,6 +16,8 @@ import type {
   RouterFallbackConfig,
   RouterFallbackMode
 } from "../../shared/app";
+import { BUILTIN_UNIMCP_SERVER_NAME } from "../../shared/app";
+import { providerApiKeySafetyIssue } from "../../shared/provider-presets";
 import { normalizeProviderBaseUrl as normalizeProviderBaseUrlInput } from "../../shared/provider-url";
 import { backendService } from "../backend-service";
 import { RAW_TRACE_SPOOL_DIR } from "../constants";
@@ -732,6 +735,10 @@ function writeCoreGatewayConfig(config: AppConfig, rawTraceSyncToken: string): v
   ];
   const pluginAgentConfig = isRecord(pluginCoreGatewayConfig.agent) ? pluginCoreGatewayConfig.agent : {};
   const pluginMcpServers = Array.isArray(pluginAgentConfig.mcpServers) ? pluginAgentConfig.mcpServers : [];
+  const mcpServers = withBuiltInUnimcpMcpServer([
+    ...pluginMcpServers,
+    ...(config.agent?.mcpServers ?? [])
+  ]);
   const payload = {
     auth: {
       enabled: false
@@ -755,10 +762,7 @@ function writeCoreGatewayConfig(config: AppConfig, rawTraceSyncToken: string): v
     ...pluginCoreGatewayConfig,
     agent: {
       ...pluginAgentConfig,
-      mcpServers: [
-        ...pluginMcpServers,
-        ...(config.agent?.mcpServers ?? [])
-      ]
+      mcpServers
     },
     rawTrace: buildRawTraceConfig(config, rawTraceSyncToken),
     providerPlugins,
@@ -767,6 +771,34 @@ function writeCoreGatewayConfig(config: AppConfig, rawTraceSyncToken: string): v
   };
 
   writeFileSync(config.gateway.generatedConfigFile, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+}
+
+function withBuiltInUnimcpMcpServer(servers: unknown[]): unknown[] {
+  if (servers.some((server) => isRecord(server) && server.name === BUILTIN_UNIMCP_SERVER_NAME)) {
+    return servers;
+  }
+  return [builtInUnimcpMcpServer(), ...servers];
+}
+
+function builtInUnimcpMcpServer(): GatewayMcpServerConfig {
+  const entry = bundledUnimcpEntryPath();
+  return {
+    args: [entry],
+    command: process.execPath,
+    env: {
+      ELECTRON_RUN_AS_NODE: "1"
+    },
+    name: BUILTIN_UNIMCP_SERVER_NAME,
+    protocolVersion: "2024-11-05",
+    requestTimeoutMs: 600000,
+    startupTimeoutMs: 600000,
+    stdioMessageMode: "content-length",
+    transport: "stdio"
+  };
+}
+
+function bundledUnimcpEntryPath(): string {
+  return pathJoin(__dirname, "..", "vendor", "unimcp", "dist", "index.js");
 }
 
 function buildRawTraceConfig(config: AppConfig, rawTraceSyncToken: string): Record<string, unknown> {
@@ -1408,6 +1440,14 @@ function toCoreGatewayProvider(
 
   if (!provider.name || provider.models.length === 0) {
     return undefined;
+  }
+  const safetyIssue = providerApiKeySafetyIssue({
+    apiKey: apikey,
+    baseUrl: baseurl ?? "",
+    name: provider.name
+  });
+  if (safetyIssue) {
+    throw new Error(safetyIssue.message);
   }
 
   return {

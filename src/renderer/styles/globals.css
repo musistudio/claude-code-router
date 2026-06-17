@@ -311,7 +311,9 @@
   }
 
   .app-sidebar-toggle,
-  .app-sidebar-toggle * {
+  .app-sidebar-toggle *,
+  .app-service-control,
+  .app-service-control * {
     -webkit-app-region: no-drag;
   }
 

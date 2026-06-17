@@ -5,6 +5,7 @@ import type {
   GatewayProviderProbeResult,
   GatewayProviderProtocol
 } from "../shared/app";
+import { providerApiKeySafetyIssue } from "../shared/provider-presets";
 import {
   compactProviderUrl,
   parseProviderBaseUrl,
@@ -51,6 +52,14 @@ const modelSourceOrder: ModelSource[] = ["openai", "anthropic", "gemini"];
 const probeTimeoutMs = 10000;
 
 export async function probeGatewayProvider(request: GatewayProviderProbeRequest): Promise<GatewayProviderProbeResult> {
+  const safetyIssue = providerApiKeySafetyIssue({
+    apiKey: request.apiKey,
+    baseUrl: request.baseUrl
+  });
+  if (safetyIssue) {
+    throw new Error(safetyIssue.message);
+  }
+
   const parsed = parseProviderUrl(request.baseUrl);
   const protocols = uniqueProtocols(request.protocols ?? []);
   const typedModels = uniqueStrings(request.models ?? []);
