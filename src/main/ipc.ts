@@ -7,6 +7,8 @@ import { loadAppConfig, saveApiKeysConfig, saveAppConfig } from "./config";
 import { API_KEYS_DB_FILE, APP_NAME, CONFIGDIR, CONFIG_FILE, DATADIR, GATEWAY_CONFIG_FILE, IPC_CHANNELS, ONBOARDING_FINISHED_FILE, PROXY_CA_CERT_FILE, REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "./constants";
 import { deepLinkService } from "./deep-link";
 import { gatewayService } from "./gateway/service";
+import { getProviderAccountSnapshots } from "./provider-account-service";
+import { detectProviderIcon } from "./provider-icons";
 import { probeGatewayProvider } from "./provider-probe";
 import { applyProfileConfig } from "./profile-service";
 import { ensureProxyCertificateAuthority } from "./proxy/certificates";
@@ -15,7 +17,7 @@ import { getAgentAnalysis, getRequestLogs } from "./request-log-store";
 import trayController from "./tray-controller";
 import { getUsageStats } from "./usage-store";
 import windowsManager from "./windows";
-import type { AgentAnalysisFilter, ApiKeyConfig, AppConfig, AppInfo, GatewayPluginAppConfig, GatewayProviderProbeRequest, GatewayStatus, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
+import type { AgentAnalysisFilter, ApiKeyConfig, AppConfig, AppInfo, GatewayPluginAppConfig, GatewayProviderProbeRequest, GatewayStatus, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProviderIconDetectionRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
 
 const pluginMarketplace: PluginMarketplaceEntry[] = [
   {
@@ -62,6 +64,7 @@ ipcMain.handle(IPC_CHANNELS.appGetInfo, () => {
 ipcMain.handle(IPC_CHANNELS.appGetConfig, () => loadAppConfig());
 ipcMain.handle(IPC_CHANNELS.appGetOnboardingFinished, () => existsSync(ONBOARDING_FINISHED_FILE));
 ipcMain.handle(IPC_CHANNELS.appGetPendingProviderDeepLinks, () => deepLinkService.consumePendingProviderRequests());
+ipcMain.handle(IPC_CHANNELS.appGetProviderAccountSnapshots, (_event, provider?: string) => getProviderAccountSnapshots(provider));
 ipcMain.handle(IPC_CHANNELS.appGetAgentAnalysis, (_event, filter?: AgentAnalysisFilter) => getAgentAnalysis(filter));
 ipcMain.handle(IPC_CHANNELS.appGetGatewayStatus, () => gatewayService.getStatus());
 ipcMain.handle(IPC_CHANNELS.appGetProxyCertificateStatus, () => proxyService.getCertificateStatus());
@@ -78,6 +81,9 @@ ipcMain.handle(IPC_CHANNELS.appOpenBuiltInBrowser, async () => {
 });
 ipcMain.handle(IPC_CHANNELS.appCloseTray, () => {
   trayController.hidePopover();
+});
+ipcMain.handle(IPC_CHANNELS.appDetectProviderIcon, (_event, request: ProviderIconDetectionRequest) => {
+  return detectProviderIcon(request);
 });
 ipcMain.handle(IPC_CHANNELS.appClearProxyNetworkCaptures, () => proxyService.clearNetworkCaptures());
 ipcMain.handle(IPC_CHANNELS.appSetProxyNetworkCaptureEnabled, (_event, enabled: boolean) => {
@@ -140,7 +146,7 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig) => 
 ipcMain.handle(IPC_CHANNELS.appSaveApiKeys, async (_event, apiKeys: ApiKeyConfig[]) => {
   const savedConfig = await saveApiKeysConfig(apiKeys);
   gatewayService.updateConfig(savedConfig);
-  await applyProfileIfServiceRunning(savedConfig, gatewayService.getStatus());
+  logProfileApplyResult(await applyProfileConfig(savedConfig));
   return savedConfig;
 });
 ipcMain.handle(IPC_CHANNELS.appSetOnboardingFinished, () => {

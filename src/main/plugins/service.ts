@@ -4,7 +4,17 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import type { AppConfig, GatewayPluginAppConfig, GatewayPluginConfig, GatewayPluginProxyRouteConfig, InstalledBrowserApp } from "../../shared/app";
+import type {
+  AppConfig,
+  GatewayPluginAppConfig,
+  GatewayPluginConfig,
+  GatewayPluginProxyRouteConfig,
+  GatewayProviderConfig,
+  InstalledBrowserApp,
+  ProviderAccountMeter,
+  ProviderAccountPluginConnectorConfig,
+  ProviderAccountSnapshot
+} from "../../shared/app";
 import { backendService, type RegisteredHttpBackend, type SqliteStore, type SqliteStoreOptions } from "../backend-service";
 import { CONFIGDIR, DATADIR } from "../constants";
 
@@ -43,6 +53,18 @@ export type GatewayPluginHttpBackendRegistration = {
   port?: number;
 };
 
+export type GatewayPluginProviderAccountRequest = {
+  config: AppConfig;
+  connector: ProviderAccountPluginConnectorConfig;
+  now: string;
+  provider: GatewayProviderConfig;
+};
+
+export type GatewayPluginProviderAccountConnector = {
+  id: string;
+  resolve: (request: GatewayPluginProviderAccountRequest) => MaybePromise<ProviderAccountMeter[] | ProviderAccountSnapshot | undefined>;
+};
+
 export type GatewayPluginRegistration = {
   apps?: GatewayPluginAppConfig[];
   coreGateway?: {
@@ -52,6 +74,7 @@ export type GatewayPluginRegistration = {
   };
   gatewayRoutes?: GatewayPluginRouteRegistration[];
   onStop?: () => MaybePromise<void>;
+  providerAccountConnectors?: GatewayPluginProviderAccountConnector[];
   proxyRoutes?: GatewayPluginProxyRouteRegistration[];
   stop?: () => MaybePromise<void>;
   virtualModelProfiles?: unknown[];
@@ -73,6 +96,7 @@ export type GatewayPluginContext = {
   registerApp: (app: GatewayPluginAppConfig) => void;
   registerGatewayRoute: (route: GatewayPluginRouteRegistration) => void;
   registerHttpBackend: (backend: GatewayPluginHttpBackendRegistration) => Promise<RegisteredHttpBackend>;
+  registerProviderAccountConnector: (connector: GatewayPluginProviderAccountConnector) => void;
   registerProxyRoute: (route: GatewayPluginProxyRouteRegistration) => void;
 };
 
@@ -133,6 +157,7 @@ class GatewayPluginService {
   private apps: InstalledBrowserApp[] = [];
   private gatewayRoutes: RegisteredGatewayRoute[] = [];
   private proxyRoutes: RegisteredProxyRoute[] = [];
+  private providerAccountConnectors = new Map<string, GatewayPluginProviderAccountConnector>();
   private resourceOwnerIds = new Set<string>();
   private running = false;
   private stopHooks: Array<() => MaybePromise<void>> = [];
@@ -176,6 +201,7 @@ class GatewayPluginService {
     this.coreProviderPlugins = [];
     this.gatewayRoutes = [];
     this.proxyRoutes = [];
+    this.providerAccountConnectors.clear();
     this.running = false;
     this.virtualModelProfiles = [];
   }
@@ -198,6 +224,10 @@ class GatewayPluginService {
 
   getApps(): InstalledBrowserApp[] {
     return this.apps.map((app) => ({ ...app }));
+  }
+
+  getProviderAccountConnector(pluginId: string, connectorId: string): GatewayPluginProviderAccountConnector | undefined {
+    return this.providerAccountConnectors.get(providerAccountConnectorKey(pluginId, connectorId));
   }
 
   getProxyRouteHosts(): string[] {
@@ -298,6 +328,9 @@ class GatewayPluginService {
     }
     for (const route of registration.proxyRoutes ?? []) {
       this.registerProxyRoute(pluginId, route);
+    }
+    for (const connector of registration.providerAccountConnectors ?? []) {
+      this.registerProviderAccountConnector(pluginId, connector);
     }
     for (const providerPlugin of registration.coreGateway?.providerPlugins ?? []) {
       this.coreProviderPlugins.push(providerPlugin);
@@ -408,8 +441,20 @@ class GatewayPluginService {
       registerApp: (app) => this.registerApp(pluginConfig.id, app),
       registerGatewayRoute: (route) => this.registerGatewayRoute(pluginConfig.id, route),
       registerHttpBackend: (backend) => this.registerHttpBackend(pluginConfig.id, pluginDataDir, logger, backend),
+      registerProviderAccountConnector: (connector) => this.registerProviderAccountConnector(pluginConfig.id, connector),
       registerProxyRoute: (route) => this.registerProxyRoute(pluginConfig.id, route)
     };
+  }
+
+  private registerProviderAccountConnector(pluginId: string, connector: GatewayPluginProviderAccountConnector): void {
+    const id = connector.id.trim();
+    if (!id || typeof connector.resolve !== "function") {
+      throw new Error(`Plugin ${pluginId} registered an invalid provider account connector.`);
+    }
+    this.providerAccountConnectors.set(providerAccountConnectorKey(pluginId, id), {
+      ...connector,
+      id
+    });
   }
 
   private createRouteContext(pluginId: string): GatewayPluginRouteContext {
@@ -656,6 +701,10 @@ function expandHome(value: string): string {
 
 function sanitizeFileSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "plugin";
+}
+
+function providerAccountConnectorKey(pluginId: string, connectorId: string): string {
+  return `${pluginId.trim()}:${connectorId.trim()}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

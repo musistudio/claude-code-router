@@ -1,7 +1,9 @@
+import { randomBytes } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { AppConfig, ProfileApplyResult, ProfileClientApplyStatus, ProfileConfig } from "../shared/app";
+import type { ApiKeyConfig, AppConfig, ProfileApplyResult, ProfileClientApplyStatus, ProfileConfig } from "../shared/app";
+import { replacePersistedApiKeys } from "./api-key-store";
 import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
 import { CONFIGDIR } from "./constants";
 import { normalizeRouteSelector } from "./gateway/claude-code-router-plugin";
@@ -15,43 +17,42 @@ const fallbackClientToken = "ccr-local";
 export async function applyProfileConfig(config: AppConfig): Promise<ProfileApplyResult> {
   const appliedAt = new Date().toISOString();
   const profiles = profileEntries(config);
+  const profileApiKeys = await ensureProfileApiKeys(config, profiles);
   const result: ProfileApplyResult = {
     appliedAt,
     clients: [],
-    enabled: Boolean(config.profile.enabled)
+    enabled: profiles.some((profile) => profile.enabled)
   };
 
-  if (!config.profile.enabled) {
-    result.clients.push(...profiles.map((profile) => disabledStatus(profile.agent, profilePath(profile), "Profile takeover is disabled.")));
-    return result;
-  }
-
   for (const profile of profiles) {
+    const token = profileApiKeys.get(profile.id) ?? fallbackClientToken;
     result.clients.push(
       profile.agent === "claude-code"
-        ? applyClaudeCodeProfile(config, profile, appliedAt)
-        : applyCodexProfile(config, profile, appliedAt)
+        ? applyClaudeCodeProfile(config, profile, token, appliedAt)
+        : applyCodexProfile(config, profile, token, appliedAt)
     );
   }
   return result;
 }
 
-function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, appliedAt: string): ProfileClientApplyStatus {
-  const settingsFile = resolveUserPath(profile.settingsFile || "~/.claude/settings.json");
+function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
+  const settingsFile = resolveClaudeCodeSettingsFile(profile);
   if (!profile.enabled) {
-    return disabledStatus("claude-code", settingsFile, "Claude Code takeover is disabled.");
+    return disabledStatus("claude-code", settingsFile, "Claude Code profile is disabled.");
   }
 
   try {
     const endpoint = gatewayEndpoint(config);
-    const token = clientToken(config);
     const settings = readJsonObject(settingsFile);
-    const env = isRecord(settings.env) ? { ...settings.env } : {};
+    const env = {
+      ...Object.fromEntries(stringRecord(settings.env)),
+      ...profileEnv(profile)
+    };
     env.ANTHROPIC_BASE_URL = endpoint;
     env.ANTHROPIC_API_BASE_URL = endpoint;
     env.CLAUDE_AGENT_API_BASE_URL = endpoint;
-    env.ANTHROPIC_AUTH_TOKEN = token;
-    env.ANTHROPIC_API_KEY = token;
+    delete env.ANTHROPIC_AUTH_TOKEN;
+    delete env.ANTHROPIC_API_KEY;
     if (profile.model.trim()) {
       env.ANTHROPIC_MODEL = normalizeClientModel(profile.model);
     } else {
@@ -63,17 +64,21 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, appli
       delete env.ANTHROPIC_SMALL_FAST_MODEL;
     }
 
+    const helperResult = writeClaudeCodeApiKeyHelper(profile, token);
     const nextSettings = {
       ...settings,
+      apiKeyHelper: helperResult.file,
       env
     };
     const writeResult = writeFileWithBackup(settingsFile, `${JSON.stringify(nextSettings, null, 2)}\n`);
     return {
       appliedAt,
-      backupFile: writeResult.backupFile,
+      backupFile: writeResult.backupFile ?? helperResult.backupFile,
       client: "claude-code",
       enabled: true,
-      message: writeResult.changed ? "Claude Code settings are managed by CCR." : "Claude Code settings already match CCR.",
+      message: writeResult.changed || helperResult.changed
+        ? "Claude Code settings are managed by CCR."
+        : "Claude Code settings already match CCR.",
       ok: true,
       path: settingsFile
     };
@@ -88,10 +93,10 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, appli
   }
 }
 
-function applyCodexProfile(config: AppConfig, profile: ProfileConfig, appliedAt: string): ProfileClientApplyStatus {
+function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
   const configFile = resolveCodexConfigFile(profile);
   if (!profile.enabled) {
-    return disabledStatus("codex", configFile, "Codex takeover is disabled.");
+    return disabledStatus("codex", configFile, "Codex profile is disabled.");
   }
 
   try {
@@ -99,7 +104,6 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, appliedAt:
     const providerId = sanitizeCodexProviderId(profile.providerId || "") || "claude-code-router";
     const providerName = profile.providerName?.trim() || "Claude Code Router";
     const model = normalizeClientModel(profile.model) || defaultClientModel(config);
-    const token = clientToken(config);
     const source = existsSync(configFile) ? readFileSync(configFile, "utf8") : "";
     const configFormat = normalizeCodexConfigFormat(profile.configFormat);
     const nextConfig = buildCodexConfigToml(source, {
@@ -155,18 +159,92 @@ function profileEntries(config: AppConfig): ProfileConfig[] {
   return config.profile.profiles;
 }
 
+async function ensureProfileApiKeys(config: AppConfig, profiles: ProfileConfig[]): Promise<Map<string, string>> {
+  const apiKeys = [...(Array.isArray(config.APIKEYS) ? config.APIKEYS : [])];
+  const byId = new Map(apiKeys.map((apiKey, index) => [apiKey.id || `key-${index + 1}`, { apiKey, index }]));
+  const tokens = new Map<string, string>();
+  let changed = false;
+
+  for (const profile of profiles) {
+    const id = profileApiKeyId(profile);
+    const name = profileApiKeyName(profile);
+    const existing = byId.get(id);
+    if (existing?.apiKey.key.trim()) {
+      tokens.set(profile.id, existing.apiKey.key.trim());
+      if (existing.apiKey.name !== name) {
+        apiKeys[existing.index] = {
+          ...existing.apiKey,
+          name
+        };
+        changed = true;
+      }
+      continue;
+    }
+
+    const apiKey: ApiKeyConfig = {
+      createdAt: new Date().toISOString(),
+      id,
+      key: generateProfileApiKey(),
+      name
+    };
+    apiKeys.push(apiKey);
+    byId.set(id, { apiKey, index: apiKeys.length - 1 });
+    tokens.set(profile.id, apiKey.key);
+    changed = true;
+  }
+
+  if (changed) {
+    config.APIKEYS = await replacePersistedApiKeys(apiKeys);
+    config.APIKEY = config.APIKEYS[0]?.key ?? "";
+  }
+
+  return tokens;
+}
+
+function profileApiKeyId(profile: ProfileConfig): string {
+  return `profile:${sanitizeProfilePathSegment(profile.id || profile.name || profile.agent) || "profile"}`;
+}
+
+function profileApiKeyName(profile: ProfileConfig): string {
+  return `Profile: ${profile.name?.trim() || profile.id || profile.agent}`;
+}
+
+function generateProfileApiKey(): string {
+  return `ccr-profile-${randomBase64Url(24)}`;
+}
+
+function randomBase64Url(byteLength: number): string {
+  return randomBytes(byteLength).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
 function profilePath(profile: ProfileConfig): string {
   return profile.agent === "claude-code"
-    ? profile.settingsFile || "~/.claude/settings.json"
+    ? resolveClaudeCodeSettingsFile(profile)
     : resolveCodexConfigFile(profile);
 }
 
+function resolveClaudeCodeSettingsFile(profile: ProfileConfig): string {
+  if (isGeneratedProfileScope(profile.scope)) {
+    return path.join(ccrManagedProfileDir(profile), "claude", "settings.json");
+  }
+  return resolveUserPath(profile.settingsFile || "~/.claude/settings.json");
+}
+
 function resolveCodexConfigFile(profile: ProfileConfig): string {
+  if (isGeneratedProfileScope(profile.scope)) {
+    return path.join(ccrManagedProfileDir(profile), "codex", "config.toml");
+  }
   const codexHome = profile.codexHome?.trim();
   if (codexHome) {
     return path.join(resolveUserPath(codexHome), "config.toml");
   }
   return resolveUserPath(profile.configFile || "~/.codex/config.toml");
+}
+
+function ccrManagedProfileDir(profile: ProfileConfig): string {
+  const slug = sanitizeProfilePathSegment(profile.id || profile.name || profile.agent);
+  const baseDir = path.join(CONFIGDIR, "profiles", slug || "profile");
+  return profile.scope === "custom" ? path.join(baseDir, "custom") : baseDir;
 }
 
 function buildCodexConfigToml(
@@ -257,6 +335,47 @@ function buildSeparateCodexProfileToml(
   return ensureTrailingNewline(`${rootBlock}${trimLeadingBlankLines(cleanedRoot)}${restSource}`.replace(/\n{4,}/g, "\n\n\n"));
 }
 
+function writeClaudeCodeApiKeyHelper(profile: ProfileConfig, token: string): { backupFile?: string; changed: boolean; file: string } {
+  const binDir = path.join(CONFIGDIR, "bin");
+  mkdirSync(binDir, { recursive: true });
+  const file = path.join(binDir, claudeCodeApiKeyHelperFilename(profile));
+  const content = process.platform === "win32"
+    ? claudeCodeApiKeyHelperCmdScript(token)
+    : claudeCodeApiKeyHelperShellScript(token);
+  const writeResult = writeFileWithBackup(file, content);
+  if (process.platform !== "win32") {
+    chmodSync(file, 0o755);
+  }
+  return {
+    backupFile: writeResult.backupFile,
+    changed: writeResult.changed,
+    file
+  };
+}
+
+function claudeCodeApiKeyHelperFilename(profile: ProfileConfig): string {
+  const slug = sanitizeProfilePathSegment(profile.id || profile.name || profile.agent) || "claude-code";
+  return process.platform === "win32"
+    ? `ccr-claude-code-api-key-${slug}.cmd`
+    : `ccr-claude-code-api-key-${slug}`;
+}
+
+function claudeCodeApiKeyHelperShellScript(token: string): string {
+  return [
+    "#!/bin/sh",
+    `printf '%s\\n' ${shellQuote(token)}`,
+    ""
+  ].join("\n");
+}
+
+function claudeCodeApiKeyHelperCmdScript(token: string): string {
+  return [
+    "@echo off",
+    `echo ${token.replace(/"/g, '\\"')}`,
+    ""
+  ].join("\r\n");
+}
+
 function writeCodexCliMiddleware(
   profile: ProfileConfig,
   values: {
@@ -311,8 +430,11 @@ function codexMiddlewareShellScript(
   const codexCli = profile.codexCliPath?.trim() || "codex";
   const codexHome = profile.codexHome?.trim() || path.dirname(values.configFile);
   const remoteFrontendMode = normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode);
+  const surface = normalizeProfileSurface(profile.surface);
+  const envExports = Object.entries(profileEnv(profile)).map(([key, value]) => `export ${key}=${shellQuote(value)}`);
   return [
     "#!/bin/sh",
+    ...envExports,
     `export CODEX_HOME=${shellQuote(resolveUserPath(codexHome))}`,
     `export CCR_REAL_CODEX_CLI_PATH=${shellQuote(codexCli)}`,
     `export CCR_CODEX_PROFILE=${shellQuote(values.providerId)}`,
@@ -320,6 +442,8 @@ function codexMiddlewareShellScript(
     `export CCR_CODEX_MODEL_PROVIDER=${shellQuote(values.providerId)}`,
     `export CCR_CODEX_REMOTE_FRONTEND_MODE=${shellQuote(remoteFrontendMode)}`,
     `export CCR_CODEX_PROFILE_CONFIG_FORMAT=${shellQuote(values.configFormat)}`,
+    `export CCR_PROFILE_SCOPE=${shellQuote(normalizeProfileScope(profile.scope))}`,
+    `export CCR_PROFILE_SURFACE=${shellQuote(surface)}`,
     `export CODEXL_REAL_CODEX_CLI_PATH=${shellQuote(codexCli)}`,
     `export CODEXL_CODEX_PROFILE=${shellQuote(values.providerId)}`,
     `export CODEXL_CODEX_MODEL_PROVIDER=${shellQuote(values.providerId)}`,
@@ -345,10 +469,13 @@ function codexMiddlewareCmdScript(
   const codexCli = profile.codexCliPath?.trim() || "codex";
   const codexHome = profile.codexHome?.trim() || path.dirname(values.configFile);
   const remoteFrontendMode = normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode);
+  const surface = normalizeProfileSurface(profile.surface);
   const providerId = values.providerId.replace(/"/g, '\\"');
   const workspaceName = (profile.name || values.providerId).replace(/"/g, '\\"');
+  const envExports = Object.entries(profileEnv(profile)).map(([key, value]) => `set "${key}=${value.replace(/"/g, '\\"')}"`);
   return [
     "@echo off",
+    ...envExports,
     `set "CODEX_HOME=${resolveUserPath(codexHome).replace(/"/g, '\\"')}"`,
     `set "CCR_REAL_CODEX_CLI_PATH=${codexCli.replace(/"/g, '\\"')}"`,
     `set "CCR_CODEX_PROFILE=${providerId}"`,
@@ -356,6 +483,8 @@ function codexMiddlewareCmdScript(
     `set "CCR_CODEX_MODEL_PROVIDER=${providerId}"`,
     `set "CCR_CODEX_REMOTE_FRONTEND_MODE=${remoteFrontendMode}"`,
     `set "CCR_CODEX_PROFILE_CONFIG_FORMAT=${values.configFormat}"`,
+    `set "CCR_PROFILE_SCOPE=${normalizeProfileScope(profile.scope)}"`,
+    `set "CCR_PROFILE_SURFACE=${surface}"`,
     `set "CODEXL_REAL_CODEX_CLI_PATH=${codexCli.replace(/"/g, '\\"')}"`,
     `set "CODEXL_CODEX_PROFILE=${providerId}"`,
     `set "CODEXL_CODEX_MODEL_PROVIDER=${providerId}"`,
@@ -490,11 +619,6 @@ function gatewayEndpoint(config: AppConfig): string {
   return `http://${formattedHost}:${config.gateway.port}`;
 }
 
-function clientToken(config: AppConfig): string {
-  const key = config.APIKEYS.find((item) => item.key.trim())?.key.trim() || config.APIKEY.trim();
-  return key || fallbackClientToken;
-}
-
 function defaultClientModel(config: AppConfig): string {
   const configuredDefault = normalizeClientModel(config.Router.default);
   if (configuredDefault) {
@@ -526,12 +650,48 @@ function sanitizeCodexProviderId(value: string): string {
   return value.trim().replace(/[^a-zA-Z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
+function sanitizeProfilePathSegment(value: string): string {
+  return value.trim().replace(/[^a-zA-Z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
 function normalizeCodexConfigFormat(value: ProfileConfig["configFormat"]): "legacy" | "separate_profile_files" {
   return value === "separate_profile_files" ? "separate_profile_files" : "legacy";
 }
 
 function normalizeCodexRemoteFrontendMode(value: ProfileConfig["remoteFrontendMode"]): "app" | "cli" | "claude-code" {
   return value === "cli" || value === "claude-code" ? value : "app";
+}
+
+function normalizeProfileScope(value: ProfileConfig["scope"]): "ccr" | "global" | "custom" {
+  return value === "ccr" || value === "custom" ? value : "global";
+}
+
+function isGeneratedProfileScope(value: ProfileConfig["scope"]): boolean {
+  return value === "ccr" || value === "custom";
+}
+
+function normalizeProfileSurface(value: ProfileConfig["surface"]): "auto" | "cli" | "app" {
+  return value === "cli" || value === "app" ? value : "auto";
+}
+
+function profileEnv(profile: ProfileConfig): Record<string, string> {
+  return stringRecord(profile.env).filter(([key]) => isEnvName(key)).reduce<Record<string, string>>((result, [key, value]) => {
+    result[key] = value;
+    return result;
+  }, {});
+}
+
+function stringRecord(value: unknown): Array<[string, string]> {
+  if (!isRecord(value)) {
+    return [];
+  }
+  return Object.entries(value)
+    .map(([key, itemValue]) => [key.trim(), itemValue] as const)
+    .filter((entry): entry is [string, string] => Boolean(entry[0]) && typeof entry[1] === "string");
+}
+
+function isEnvName(value: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
 }
 
 function tomlKey(value: string): string {

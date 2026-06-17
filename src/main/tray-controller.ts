@@ -13,6 +13,7 @@ const popoverDetailGap = 12;
 const popoverDetailTopOffset = 0;
 const popoverDetailWidth = 420;
 const popoverMargin = 8;
+const trayMenuBarIconSize = 20;
 const trayTokenFallbackTitle = "0 tokens";
 const trayIconFallbackPath = path.join(__dirname, "../assets/tray.png");
 const trayMascotIconIds = ["violet", "orange", "cyan"] as const;
@@ -120,9 +121,11 @@ class TrayController {
     this.applyTrayIcon(this.resolveTrayIconId(nextPreference));
   }
 
-  setDetailOpen(open: boolean, provider?: string): void {
+  setDetailOpen(open: boolean, _provider?: string): void {
     if (open) {
-      this.showDetailPopover(provider);
+      this.detailOpen = false;
+      this.hideDetailPopover();
+      this.repositionMenu(false);
       return;
     }
     this.scheduleDetailClose();
@@ -457,11 +460,11 @@ function createTrayIcon(iconId: TrayMascotIconId): Electron.NativeImage {
     if (fallback.isEmpty()) {
       return nativeImage.createEmpty();
     }
-    const fallbackIcon = fallback.resize({ height: 18, width: 18 });
+    const fallbackIcon = fallback.resize({ height: trayMenuBarIconSize, width: trayMenuBarIconSize });
     fallbackIcon.setTemplateImage(true);
     return fallbackIcon;
   }
-  const resized = image.resize({ height: 18, width: 18 });
+  const resized = image.resize({ height: trayMenuBarIconSize, width: trayMenuBarIconSize });
   resized.setTemplateImage(false);
   return resized;
 }
@@ -472,7 +475,7 @@ function createTrayProgressIcon(progress: number): Electron.NativeImage {
   if (image.isEmpty()) {
     return nativeImage.createEmpty();
   }
-  const resized = image.resize({ height: 18, width: 18 });
+  const resized = image.resize({ height: trayMenuBarIconSize, width: trayMenuBarIconSize });
   resized.setTemplateImage(false);
   return resized;
 }

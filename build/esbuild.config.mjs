@@ -129,6 +129,7 @@ export function createRendererBuildOptions({ mode = "production", plugins = [] }
     legalComments: "none",
     loader: {
       ".gif": "file",
+      ".ico": "file",
       ".jpg": "file",
       ".jpeg": "file",
       ".png": "file",

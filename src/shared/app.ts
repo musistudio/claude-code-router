@@ -18,6 +18,7 @@ export type GatewayProviderProtocol =
   | "gemini_generate_content";
 
 export type GatewayProviderConfig = {
+  account?: ProviderAccountConfig;
   api_base_url?: string;
   api_key?: string;
   apiKey?: string;
@@ -28,11 +29,122 @@ export type GatewayProviderConfig = {
   capabilities?: GatewayProviderCapability[];
   extraBody?: unknown;
   extraHeaders?: unknown;
+  icon?: string;
   models: string[];
   name: string;
   provider?: string;
   transformer?: unknown;
   type?: GatewayProviderProtocol | string;
+};
+
+export type ProviderAccountAuthMode = "provider-api-key" | "none";
+export type ProviderAccountConnectorSource = "standard" | "http-json" | "plugin" | "local-estimate" | "merged" | "unsupported";
+export type ProviderAccountStatus = "ok" | "warning" | "critical" | "error" | "unsupported";
+export type ProviderAccountMeterKind = "balance" | "quota" | "time_window" | "tokens" | "requests";
+export type ProviderAccountMeterUnit = "USD" | "CNY" | "hours" | "minutes" | "tokens" | "requests" | string;
+export type ProviderAccountMeterWindow = "5h" | "daily" | "weekly" | "monthly" | string;
+
+export type ProviderAccountConfig = {
+  connectors?: ProviderAccountConnectorConfig[];
+  enabled?: boolean;
+  refreshIntervalMs?: number;
+};
+
+export type ProviderAccountConnectorConfig =
+  | ProviderAccountStandardConnectorConfig
+  | ProviderAccountHttpJsonConnectorConfig
+  | ProviderAccountPluginConnectorConfig
+  | ProviderAccountLocalEstimateConnectorConfig;
+
+export type ProviderAccountConnectorBaseConfig = {
+  id?: string;
+  type: ProviderAccountConnectorSource;
+};
+
+export type ProviderAccountStandardConnectorConfig = ProviderAccountConnectorBaseConfig & {
+  auth?: ProviderAccountAuthMode;
+  endpoint?: string;
+  endpoints?: string[];
+  headers?: Record<string, string>;
+  type: "standard";
+};
+
+export type ProviderAccountHttpJsonConnectorConfig = ProviderAccountConnectorBaseConfig & {
+  auth?: ProviderAccountAuthMode;
+  body?: unknown;
+  endpoint: string;
+  headers?: Record<string, string>;
+  mapping: ProviderAccountMappingConfig;
+  method?: "GET" | "POST";
+  type: "http-json";
+};
+
+export type ProviderAccountPluginConnectorConfig = ProviderAccountConnectorBaseConfig & {
+  connectorId: string;
+  options?: unknown;
+  pluginId: string;
+  type: "plugin";
+};
+
+export type ProviderAccountLocalEstimateConnectorConfig = ProviderAccountConnectorBaseConfig & {
+  type: "local-estimate";
+  windows: ProviderAccountLocalWindowConfig[];
+};
+
+export type ProviderAccountLocalWindowConfig = {
+  id: string;
+  label: string;
+  limit: number;
+  unit: "hours" | "tokens" | "requests";
+  window: ProviderAccountMeterWindow;
+};
+
+export type ProviderAccountMappingConfig = {
+  meters: ProviderAccountMappedMeterConfig[];
+  message?: string;
+  status?: string;
+};
+
+export type ProviderAccountMappedMeterConfig = {
+  id: string;
+  kind?: ProviderAccountMeterKind;
+  label: string;
+  limit?: number | string;
+  remaining?: number | string;
+  resetAt?: string;
+  unit?: ProviderAccountMeterUnit;
+  used?: number | string;
+  window?: ProviderAccountMeterWindow;
+};
+
+export type ProviderAccountMeter = {
+  id: string;
+  kind: ProviderAccountMeterKind;
+  label: string;
+  limit?: number;
+  remaining?: number;
+  resetAt?: string;
+  source?: ProviderAccountConnectorSource;
+  unit: ProviderAccountMeterUnit;
+  used?: number;
+  window?: ProviderAccountMeterWindow;
+};
+
+export type ProviderAccountConnectorError = {
+  connectorId?: string;
+  message: string;
+  source: ProviderAccountConnectorSource;
+};
+
+export type ProviderAccountSnapshot = {
+  errors?: ProviderAccountConnectorError[];
+  message?: string;
+  meters: ProviderAccountMeter[];
+  nextRefreshAt?: string;
+  provider: string;
+  source: ProviderAccountConnectorSource;
+  status: ProviderAccountStatus;
+  updatedAt: string;
 };
 
 export type ProviderDeepLinkPayload = {
@@ -66,6 +178,19 @@ export type GatewayProviderProbeRequest = {
   baseUrl: string;
   models?: string[];
   protocols?: GatewayProviderProtocol[];
+  skipModelDiscovery?: boolean;
+};
+
+export type ProviderIconDetectionRequest = {
+  baseUrl: string;
+  force?: boolean;
+  sourceUrls?: string[];
+};
+
+export type ProviderIconDetectionResult = {
+  cachedFile?: string;
+  icon?: string;
+  sourceUrl?: string;
 };
 
 export type GatewayProviderProbeProtocolResult = {
@@ -322,6 +447,7 @@ export type TrayIconPreference = "random" | "violet" | "orange" | "cyan" | "prog
 export const TRAY_WINDOW_MODULE_IDS = [
   "source-tabs",
   "header",
+  "account",
   "token-flow",
   "stats",
   "token-mix",
@@ -337,6 +463,8 @@ export const DEFAULT_TRAY_WINDOW_MODULES: TrayWindowModuleId[] = [...TRAY_WINDOW
 export type ProfileClientKind = "claude-code" | "codex";
 export type CodexProfileConfigFormat = "legacy" | "separate_profile_files";
 export type CodexRemoteFrontendMode = "app" | "cli" | "claude-code";
+export type ProfileScope = "ccr" | "global" | "custom";
+export type ProfileSurface = "auto" | "cli" | "app";
 
 export type ClaudeCodeProfileConfig = {
   enabled: boolean;
@@ -366,14 +494,17 @@ export type ProfileConfig = {
   codexHome?: string;
   configFormat?: CodexProfileConfigFormat;
   enabled: boolean;
+  env?: Record<string, string>;
   id: string;
   model: string;
   name: string;
   providerId?: string;
   providerName?: string;
   remoteFrontendMode?: CodexRemoteFrontendMode;
+  scope?: ProfileScope;
   settingsFile?: string;
   smallFastModel?: string;
+  surface?: ProfileSurface;
 };
 
 export type ProfileRuntimeConfig = {

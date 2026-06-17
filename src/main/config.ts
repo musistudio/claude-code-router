@@ -17,6 +17,8 @@ import type {
   GatewayProviderCapability,
   GatewayProviderConfig,
   GatewayProviderProtocol,
+  ProviderAccountConfig,
+  ProviderAccountConnectorConfig,
   ProfileConfig,
   ProfileRuntimeConfig,
   ProxyRouteTarget,
@@ -116,11 +118,14 @@ const DEFAULT_CONFIG: AppConfig = {
       {
         agent: "claude-code",
         enabled: true,
+        env: {},
         id: "default-claude-code",
         model: "",
         name: "Claude Code",
+        scope: "global",
         settingsFile: "~/.claude/settings.json",
-        smallFastModel: ""
+        smallFastModel: "",
+        surface: "auto"
       },
       {
         agent: "codex",
@@ -130,12 +135,15 @@ const DEFAULT_CONFIG: AppConfig = {
         configFormat: "legacy",
         configFile: "~/.codex/config.toml",
         enabled: true,
+        env: {},
         id: "default-codex",
         model: "",
         name: "Codex",
         providerId: "claude-code-router",
         providerName: "Claude Code Router",
-        remoteFrontendMode: "app"
+        remoteFrontendMode: "app",
+        scope: "global",
+        surface: "auto"
       }
     ]
   },
@@ -414,6 +422,7 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
       }
 
       const provider: GatewayProviderConfig = {
+        account: parseProviderAccount(item.account),
         api_base_url: readString(item.api_base_url),
         api_key: readString(item.api_key),
         apiKey: readString(item.apiKey),
@@ -424,6 +433,7 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         capabilities: parseProviderCapabilities(item.capabilities),
         extraBody: item.extraBody,
         extraHeaders: item.extraHeaders,
+        icon: readString(item.icon),
         models,
         name,
         provider: readString(item.provider),
@@ -435,6 +445,29 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
     .filter((item): item is GatewayProviderConfig => Boolean(item));
 
   return providers;
+}
+
+function parseProviderAccount(value: unknown): ProviderAccountConfig | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const refreshIntervalMs = readNumber(value.refreshIntervalMs);
+  const connectors = Array.isArray(value.connectors)
+    ? value.connectors
+      .filter((connector): connector is Record<string, unknown> => isObject(connector))
+      .map((connector) => ({ ...connector }) as ProviderAccountConnectorConfig)
+    : undefined;
+
+  if (typeof value.enabled !== "boolean" && !refreshIntervalMs && !connectors?.length) {
+    return undefined;
+  }
+
+  return {
+    connectors,
+    enabled: typeof value.enabled === "boolean" ? value.enabled : undefined,
+    refreshIntervalMs: refreshIntervalMs && refreshIntervalMs > 0 ? refreshIntervalMs : undefined
+  };
 }
 
 function parseProviderCapabilities(value: unknown): GatewayProviderCapability[] | undefined {
@@ -1053,16 +1086,20 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       const id = readString(item.id) || `profile-${index + 1}`;
       const name = readString(item.name) || (agent === "claude-code" ? "Claude Code" : "Codex");
       const model = readString(item.model) ?? "";
+      const env = parseStringRecord(item.env) ?? {};
 
       if (agent === "claude-code") {
         return {
           agent,
           enabled,
+          env,
           id,
           model,
           name,
+          scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
           settingsFile: readString(item.settingsFile) || readString(item.configFile) || "~/.claude/settings.json",
-          smallFastModel: readString(item.smallFastModel) || readString(item.smallModel) || ""
+          smallFastModel: readString(item.smallFastModel) || readString(item.smallModel) || "",
+          surface: parseProfileSurface(readString(item.surface) || readString(item.entry) || readString(item.frontend)) || "auto"
         };
       }
 
@@ -1074,12 +1111,15 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         configFormat: parseCodexProfileConfigFormat(readString(item.configFormat) || readString(item.profileConfigFormat)) || "legacy",
         configFile: readString(item.configFile) || readString(item.settingsFile) || "~/.codex/config.toml",
         enabled,
+        env,
         id,
         model,
         name,
         providerId: readString(item.providerId) || readString(item.provider) || "claude-code-router",
         providerName: readString(item.providerName) || "Claude Code Router",
-        remoteFrontendMode: parseCodexRemoteFrontendMode(readString(item.remoteFrontendMode) || readString(item.frontendMode) || readString(item.coreMode)) || "app"
+        remoteFrontendMode: parseCodexRemoteFrontendMode(readString(item.remoteFrontendMode) || readString(item.frontendMode) || readString(item.coreMode)) || "app",
+        scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
+        surface: parseProfileSurface(readString(item.surface) || readString(item.entry) || readString(item.frontend)) || "auto"
       };
     })
     .filter((item): item is ProfileConfig => Boolean(item));
@@ -1103,11 +1143,14 @@ function profileFromClaudeCodeConfig(config: ClaudeCodeProfileConfig): ProfileCo
   return {
     agent: "claude-code",
     enabled: config.enabled,
+    env: {},
     id: "default-claude-code",
     model: config.model,
     name: "Claude Code",
+    scope: "global",
     settingsFile: config.settingsFile,
-    smallFastModel: config.smallFastModel
+    smallFastModel: config.smallFastModel,
+    surface: "auto"
   };
 }
 
@@ -1120,13 +1163,50 @@ function profileFromCodexConfig(config: CodexProfileConfig): ProfileConfig {
     configFormat: config.configFormat,
     configFile: config.configFile,
     enabled: config.enabled,
+    env: {},
     id: "default-codex",
     model: config.model,
     name: "Codex",
     providerId: config.providerId,
     providerName: config.providerName,
-    remoteFrontendMode: config.remoteFrontendMode
+    remoteFrontendMode: config.remoteFrontendMode,
+    scope: "global",
+    surface: "auto"
   };
+}
+
+function parseProfileScope(value: string | undefined): ProfileConfig["scope"] | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/_/g, "-").replace(/\s+/g, "-");
+  if (normalized === "ccr" || normalized === "managed" || normalized === "local" || normalized === "ccr-only" || normalized === "only-ccr") {
+    return "ccr";
+  }
+  if (normalized === "global" || normalized === "system" || normalized === "system-default" || normalized === "default") {
+    return "global";
+  }
+  if (normalized === "custom" || normalized === "custom-path" || normalized === "custom-config") {
+    return "custom";
+  }
+  return undefined;
+}
+
+function parseProfileSurface(value: string | undefined): ProfileConfig["surface"] | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/_/g, "-").replace(/\s+/g, "-");
+  if (normalized === "auto" || normalized === "automatic") {
+    return "auto";
+  }
+  if (normalized === "cli" || normalized === "command-line") {
+    return "cli";
+  }
+  if (normalized === "app" || normalized === "desktop" || normalized === "desktop-app") {
+    return "app";
+  }
+  return undefined;
 }
 
 function parseCodexProfileConfigFormat(value: string | undefined): "legacy" | "separate_profile_files" | undefined {

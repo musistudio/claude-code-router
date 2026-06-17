@@ -283,6 +283,15 @@ export async function getTodayUsageTotals(filter?: UsageStatsFilter, options?: U
   }
 }
 
+export async function getUsageTotalsSince(since: Date, filter?: UsageStatsFilter, options?: UsageStatsQueryOptions): Promise<UsageTotals> {
+  try {
+    return await usageStore.getTotalsSince(since, filter, options);
+  } catch (error) {
+    console.warn(`[usage] Failed to read usage totals: ${formatError(error)}`);
+    return { ...emptyTotals };
+  }
+}
+
 export async function recordGatewayUsageCapture(input: UsageCaptureInput): Promise<void> {
   try {
     const headersUsage = extractUsageFromBillingHeaders(input.responseHeaders);

@@ -175,17 +175,6 @@ export const providerPresets: ProviderPreset[] = [
     ],
     id: "siliconflow",
     name: "SiliconFlow"
-  },
-  {
-    aliases: ["github models"],
-    endpoints: [
-      {
-        baseUrl: "https://models.github.ai/inference",
-        protocols: ["openai_chat_completions"]
-      }
-    ],
-    id: "github-models",
-    name: "GitHub Models"
   }
 ];
 

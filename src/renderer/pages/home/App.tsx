@@ -1,9 +1,10 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import {
   Activity,
   ArrowDown,
   ArrowUp,
+  Box,
   Braces,
   Check,
   ChevronDown,
@@ -28,6 +29,7 @@ import {
   Pencil,
   Play,
   Plus,
+  Power,
   RefreshCw,
   Route,
   Search,
@@ -73,6 +75,22 @@ import { cn } from "@/lib/utils";
 import claudeCodeLogoUrl from "@/assets/agent-logos/claude-code.png";
 import codexLogoUrl from "@/assets/agent-logos/codex.png";
 import onboardingMascotSpriteUrl from "@/assets/onboarding/mascot-transition.svg";
+import anthropicProviderIconUrl from "@/assets/provider-icons/anthropic.png";
+import bailianProviderIconUrl from "@/assets/provider-icons/bailian.ico";
+import deepseekProviderIconUrl from "@/assets/provider-icons/deepseek.ico";
+import geminiProviderIconUrl from "@/assets/provider-icons/gemini.svg";
+import mistralProviderIconUrl from "@/assets/provider-icons/mistral.webp";
+import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
+import openaiProviderIconUrl from "@/assets/provider-icons/openai.png";
+import openrouterProviderIconUrl from "@/assets/provider-icons/openrouter.ico";
+import siliconflowProviderIconUrl from "@/assets/provider-icons/siliconflow.png";
+import zaiGlobalCodingProviderIconUrl from "@/assets/provider-icons/zai-global-coding.svg";
+import zaiGlobalGeneralProviderIconUrl from "@/assets/provider-icons/zai-global-general.svg";
+import zhipuCnCodingProviderIconUrl from "@/assets/provider-icons/zhipu-cn-coding.png";
+import zhipuCnGeneralProviderIconUrl from "@/assets/provider-icons/zhipu-cn-general.png";
+import trayCyanIconUrl from "../../../../assets/tray-cyan.png";
+import trayOrangeIconUrl from "../../../../assets/tray-orange.png";
+import trayVioletIconUrl from "../../../../assets/tray-violet.png";
 import { DEFAULT_TRAY_WINDOW_MODULES, TRAY_WINDOW_MODULE_IDS } from "../../../shared/app";
 import type {
   AgentAnalysisFilter,
@@ -94,11 +112,16 @@ import type {
   PluginDependency,
   PluginDirectorySelection,
   PluginMarketplaceEntry,
+  ProviderAccountConnectorConfig,
+  ProviderAccountMeter,
+  ProviderAccountSnapshot,
   ProviderDeepLinkPayload,
   ProviderDeepLinkRequest,
   ProfileConfig,
   CodexProfileConfigFormat,
   CodexRemoteFrontendMode,
+  ProfileScope,
+  ProfileSurface,
   ProxyCertificateInstallResult,
   ProxyCertificateStatus,
   ProxyNetworkBody,
@@ -133,11 +156,12 @@ import {
   findProviderPresetByBaseUrl,
   primaryProviderPresetEndpoint,
   providerPresets,
+  type ProviderPreset,
   type ProviderPresetEndpoint
 } from "../../../shared/provider-presets";
 import { normalizeProviderBaseUrl, providerUrlWithDefaultScheme } from "../../../shared/provider-url";
 
-type ViewId = "onboarding" | "overview" | "observability" | "api-keys" | "server" | "profile" | "networking" | "logs" | "providers" | "routing" | "virtual-models" | "extensions";
+type ViewId = "onboarding" | "overview" | "observability" | "api-keys" | "server" | "profile" | "networking" | "logs" | "providers" | "models" | "routing" | "virtual-models" | "extensions";
 type NavigationId = ViewId | "browser";
 type OnboardingStepId = "provider" | "profile" | "enter";
 type AppLanguagePreference = "system" | "en" | "zh";
@@ -167,6 +191,7 @@ type AppCopy = {
     trayIconProgress: string;
     trayIconRandom: string;
     trayIconViolet: string;
+    trayModuleAccount: string;
     trayModuleFooter: string;
     trayModuleHeader: string;
     trayModuleModelShare: string;
@@ -175,6 +200,8 @@ type AppCopy = {
     trayModuleStats: string;
     trayModuleTokenFlow: string;
     trayModuleTokenMix: string;
+    trayPreview: string;
+    trayPreviewEmpty: string;
     trayProgressTarget: string;
     trayWindowModules: string;
     title: string;
@@ -202,6 +229,7 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       overview: "Overview",
       profile: "Profile",
       providers: "Providers",
+      models: "Models",
       routing: "Routing",
       server: "Server",
       "virtual-models": "Virtual Models"
@@ -226,6 +254,7 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       trayIconProgress: "Progress ring",
       trayIconRandom: "Random",
       trayIconViolet: "Violet",
+      trayModuleAccount: "Account balance",
       trayModuleFooter: "Footer actions",
       trayModuleHeader: "Title and status",
       trayModuleModelShare: "Model share",
@@ -234,6 +263,8 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       trayModuleStats: "Token stats",
       trayModuleTokenFlow: "Token flow chart",
       trayModuleTokenMix: "Token mix",
+      trayPreview: "Preview",
+      trayPreviewEmpty: "No tray modules enabled",
       trayProgressTarget: "Progress target",
       trayWindowModules: "Tray window modules",
       title: "Settings"
@@ -277,7 +308,13 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "header": "Headers",
       "入": "in",
       "出": "out",
+      "No provider presets found": "No provider presets found",
       "After you enter the API endpoint and key, the system will automatically detect supported protocols and available models.": "After you enter the API endpoint and key, the system will automatically detect supported protocols and available models.",
+      "Back": "Back",
+      "Check": "Check",
+      "Connection verified": "Connection verified",
+      "Press Enter to add": "Press Enter to add",
+      "Service": "Service",
       "Header中未收到Authorization参数，无法进行身份验证。": "Missing Authorization header, so authentication could not be performed."
     }
   },
@@ -293,6 +330,7 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       overview: "概览",
       profile: "Profile",
       providers: "供应商",
+      models: "模型",
       routing: "路由",
       server: "服务",
       "virtual-models": "虚拟模型"
@@ -317,6 +355,7 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       trayIconProgress: "圆形进度条",
       trayIconRandom: "随机",
       trayIconViolet: "紫色小精灵",
+      trayModuleAccount: "账户余额",
       trayModuleFooter: "底部操作",
       trayModuleHeader: "标题和状态",
       trayModuleModelShare: "模型占比",
@@ -325,6 +364,8 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       trayModuleStats: "Token 指标",
       trayModuleTokenFlow: "Token 趋势图",
       trayModuleTokenMix: "Token 构成",
+      trayPreview: "预览",
+      trayPreviewEmpty: "未启用 Tray 模块",
       trayProgressTarget: "进度目标",
       trayWindowModules: "Tray 窗口模块",
       title: "设置"
@@ -342,9 +383,11 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "A provider is required before profiles can route traffic.": "需要先配置供应商，Profile 才能路由请求。",
       "Add or verify a model provider.": "添加或确认模型供应商。",
       "Agent Analysis": "Agent 分析",
+      "Agent access": "Agent 接入",
       "Agent Mix": "Agent 分布",
       "Agent profiles": "Agent Profile",
       "All agents": "全部 Agent",
+      "All providers": "全部供应商",
       "API key": "API 密钥",
       "API keys database": "API 密钥数据库",
       "Add": "添加",
@@ -365,11 +408,14 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Alias": "别名",
       "Alias is required.": "别名不能为空。",
       "Applied": "已应用",
+      "App only": "仅 App",
       "Args": "参数",
       "API Keys": "API 密钥",
       "API key included": "已包含 API 密钥",
       "API key not included": "未包含 API 密钥",
       "Base URL": "基础 URL",
+      "Auto": "自动",
+      "Back": "返回",
       "Backup": "备份",
       "Cache": "缓存",
       "Cache rate": "缓存率",
@@ -377,8 +423,13 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Cache tokens": "缓存令牌",
       "Cache write": "缓存写入",
       "Cancel": "取消",
+      "Check": "检查",
       "Capture network": "捕获网络",
+      "CCR manages an isolated Claude Code settings file for this profile.": "CCR 会为这个 Profile 管理一份隔离的 Claude Code 设置文件。",
+      "CCR manages an isolated Codex config file for this profile.": "CCR 会为这个 Profile 管理一份隔离的 Codex 配置文件。",
+      "Connection verified": "连通性已验证",
       "Check trust": "检查信任",
+      "Choose where each agent uses CCR. Keep advanced paths hidden unless you need global or custom installs.": "选择每个 Agent 在哪里使用 CCR。除非需要系统默认或自定义安装，否则高级路径会保持收起。",
       "Click Add to create one": "点击添加创建一项",
       "Click Install to add one": "点击安装添加一项",
       "Client": "客户端",
@@ -396,6 +447,7 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Codex model": "Codex 模型",
       "Claude Code through Codex App": "Claude Code 经 Codex App",
       "CLI middleware": "CLI middleware",
+      "CLI only": "仅 CLI",
       "Concurrency": "并发",
       "Condition": "条件",
       "Claude Design": "Claude Design",
@@ -411,6 +463,7 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Config file": "配置文件",
       "Config format": "配置格式",
       "Continue": "继续",
+      "Custom config path": "自定义配置路径",
       "Core gateway": "核心网关",
       "Cost": "成本",
       "Connect agent": "接入 Agent",
@@ -431,17 +484,22 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Description": "描述",
       "Display name": "显示名称",
       "Double click to copy": "双击复制",
+      "Edit": "编辑",
       "Edit API Key": "编辑 API 密钥",
       "Edit API key": "编辑 API 密钥",
+      "Edit Profile": "编辑 Profile",
       "Edit Provider": "编辑供应商",
       "Edit provider": "编辑供应商",
       "Edit Routing Rule": "编辑路由规则",
       "Edit rule": "编辑规则",
+      "Effect scope": "作用范围",
       "Enabled": "启用",
       "Endpoint": "端点",
+      "Entry mode": "入口模式",
+      "Environment variables": "环境变量",
       "Endpoint Health": "端点健康",
       "Endpoint information": "端点信息",
-      "Enter app": "进入应用",
+      "Let's start": "开始吧",
       "Errors": "错误数",
       "Failed requests": "失败请求",
       "Expiration": "过期时间",
@@ -454,8 +512,10 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Failure handling": "故障处理",
       "First enabled": "首个启用规则",
       "Generated config": "生成配置",
+      "Generated path": "生成路径",
       "Headers": "请求头",
       "Header rows require keys.": "请求头行必须填写 Key。",
+      "Hide advanced settings": "收起高级设置",
       "Host": "主机",
       "ID": "ID",
       "Import": "导入",
@@ -472,6 +532,7 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Install CA": "安装 CA",
       "Key": "键",
       "Keep Claude Code default": "保持 Claude Code 默认值",
+      "Keep default": "保持默认值",
       "Last apply": "上次应用",
       "Last request": "最近请求",
       "Last seen": "最近活跃",
@@ -500,6 +561,7 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "No client usage yet": "暂无客户端用量",
       "No endpoint activity": "暂无端点活动",
       "No errors": "暂无错误",
+      "No provider presets found": "没有匹配的预设供应商",
       "No provider usage yet": "暂无供应商用量",
       "No provider yet": "还没有供应商",
       "No requests captured yet": "暂无请求记录",
@@ -507,6 +569,7 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Not configured": "未配置",
       "Not running": "未运行",
       "Open CA": "打开 CA",
+      "Only opened from CCR": "仅从 CCR 打开",
       "Open profiles": "查看 Profile",
       "Open providers": "查看供应商",
       "Output": "输出",
@@ -548,6 +611,8 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Preset provider": "预设供应商",
       "Profile": "Profile",
       "Profile name": "Profile 名称",
+      "Profile name and required target settings are missing.": "请填写 Profile 名称和必需的接入目标设置。",
+      "Profile name, required target settings, and environment variable keys are required.": "请填写 Profile 名称、必需的接入目标设置和环境变量 Key。",
       "Profile ready": "Profile 已就绪",
       "Recent Errors": "最近错误",
       "Recent Requests": "最近请求",
@@ -580,6 +645,7 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Search models": "搜索模型",
       "Search network captures": "搜索网络捕获",
       "Search providers": "搜索供应商",
+      "Search providers or models": "搜索供应商或模型",
       "Search request logs": "搜索请求日志",
       "Search routing rules": "搜索路由规则",
       "Separate profile files": "独立 profile 文件",
@@ -597,10 +663,10 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Success": "成功",
       "Success rate": "成功率",
       "System proxy": "系统代理",
+      "System default": "系统默认",
       "Target": "目标",
       "Target model": "目标模型",
       "Target model is required.": "目标模型不能为空。",
-      "Takeover": "接管",
       "Thinking": "思考",
       "Token Mix": "令牌构成",
       "Total tokens": "总令牌",
@@ -733,9 +799,11 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Copied API key": "已复制 API 密钥",
       "Copy API key": "复制 API 密钥",
       "Custom models": "自定义模型",
+      "Press Enter to add": "按下回车进行添加",
       "Detected automatically": "已自动检测",
       "Detected compatibility": "检测到的兼容方式",
       "Detected endpoint": "检测到的地址",
+      "Detecting icon": "正在检测图标",
       "Detecting provider": "正在检测供应商",
       "Disabled": "已禁用",
       "Expand": "展开",
@@ -752,6 +820,15 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Model name": "模型名称",
       "Models are required. Ask the provider to include models=... in the link.": "需要模型列表。请让供应商在链接中加入 models=...。",
       "Models will be detected automatically.": "模型会自动探测。",
+      "Provider models": "供应商模型",
+      "Runtime provider": "运行时供应商",
+      "Read only": "只读",
+      "Search all models": "搜索全部模型",
+      "Source": "来源",
+      "Virtual": "虚拟",
+      "Virtual models": "虚拟模型",
+      "No models available": "暂无可用模型",
+      "Direct": "直连",
       "Move": "移动",
       "Move down": "下移",
       "Move up": "上移",
@@ -820,6 +897,7 @@ const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Restart Proxy": "重启代理",
       "Select provider": "选择供应商",
       "Selected": "已选择",
+      "Service": "服务",
       "Service status": "服务状态",
       "Step": "步骤",
       "Start service": "启动服务",
@@ -994,6 +1072,28 @@ const mcpStdioMessageModeOptions: Array<{ label: string; value: GatewayMcpStdioM
   { label: "newline-json", value: "newline-json" }
 ];
 
+const providerPresetIconUrls: Record<string, string> = {
+  anthropic: anthropicProviderIconUrl,
+  bailian: bailianProviderIconUrl,
+  deepseek: deepseekProviderIconUrl,
+  gemini: geminiProviderIconUrl,
+  mistral: mistralProviderIconUrl,
+  moonshot: moonshotProviderIconUrl,
+  openai: openaiProviderIconUrl,
+  openrouter: openrouterProviderIconUrl,
+  siliconflow: siliconflowProviderIconUrl,
+  "zai-global-coding": zaiGlobalCodingProviderIconUrl,
+  "zai-global-general": zaiGlobalGeneralProviderIconUrl,
+  "zhipu-cn-coding": zhipuCnCodingProviderIconUrl,
+  "zhipu-cn-general": zhipuCnGeneralProviderIconUrl
+};
+
+const trayMascotIconUrls: Record<"cyan" | "orange" | "violet", string> = {
+  cyan: trayCyanIconUrl,
+  orange: trayOrangeIconUrl,
+  violet: trayVioletIconUrl
+};
+
 const mcpServerStartupTimeoutMs = 600000;
 
 const navigation: Array<{ icon: LucideIcon; id: NavigationId }> = [
@@ -1006,6 +1106,7 @@ const navigation: Array<{ icon: LucideIcon; id: NavigationId }> = [
   { icon: Network, id: "networking" },
   { icon: Database, id: "logs" },
   { icon: Layers3, id: "providers" },
+  { icon: Box, id: "models" },
   { icon: Route, id: "routing" },
   { icon: Cpu, id: "virtual-models" },
   { icon: Braces, id: "extensions" }
@@ -1018,7 +1119,7 @@ function isOnboardingProviderReady(config: AppConfig): boolean {
 }
 
 function isOnboardingProfileReady(config: AppConfig): boolean {
-  return config.profile.enabled && config.profile.profiles.some((profile) => profile.enabled);
+  return config.profile.profiles.some((profile) => profile.enabled);
 }
 
 function getDefaultOnboardingStep(config: AppConfig): OnboardingStepId {
@@ -1187,11 +1288,14 @@ const fallbackConfig: AppConfig = {
       {
         agent: "claude-code",
         enabled: true,
+        env: {},
         id: "default-claude-code",
         model: "",
         name: "Claude Code",
+        scope: "global",
         settingsFile: "~/.claude/settings.json",
-        smallFastModel: ""
+        smallFastModel: "",
+        surface: "auto"
       },
       {
         agent: "codex",
@@ -1201,12 +1305,15 @@ const fallbackConfig: AppConfig = {
         configFormat: "legacy",
         configFile: "~/.codex/config.toml",
         enabled: true,
+        env: {},
         id: "default-codex",
         model: "",
         name: "Codex",
         providerId: "claude-code-router",
         providerName: "Claude Code Router",
-        remoteFrontendMode: "app"
+        remoteFrontendMode: "app",
+        scope: "global",
+        surface: "auto"
       }
     ]
   },
@@ -1305,6 +1412,18 @@ const profileAgentOptions: Array<{ label: string; value: ProfileConfig["agent"] 
   { label: "Codex", value: "codex" }
 ];
 
+const profileScopeOptions: Array<{ label: string; value: ProfileScope }> = [
+  { label: "Only opened from CCR", value: "ccr" },
+  { label: "System default", value: "global" },
+  { label: "Custom config path", value: "custom" }
+];
+
+const profileSurfaceOptions: Array<{ label: string; value: ProfileSurface }> = [
+  { label: "Auto", value: "auto" },
+  { label: "CLI only", value: "cli" },
+  { label: "App only", value: "app" }
+];
+
 const codexConfigFormatOptions: Array<{ label: string; value: CodexProfileConfigFormat }> = [
   { label: "Legacy profile table", value: "legacy" },
   { label: "Separate profile files", value: "separate_profile_files" }
@@ -1330,8 +1449,12 @@ const requestLogPageSizeOptions = [
 ];
 
 type AddProviderDraft = {
+  accountConnectorsText: string;
+  accountEnabled: boolean;
+  accountRefreshIntervalMs: string;
   apiKey: string;
   baseUrl: string;
+  icon: string;
   modelSearch: string;
   modelsText: string;
   name: string;
@@ -1363,13 +1486,16 @@ type AddProfileDraft = {
   codexHome: string;
   configFormat: CodexProfileConfigFormat;
   configFile: string;
+  envRows: KeyValueDraftRow[];
   model: string;
   name: string;
   providerId: string;
   providerName: string;
   remoteFrontendMode: CodexRemoteFrontendMode;
+  scope: ProfileScope;
   settingsFile: string;
   smallFastModel: string;
+  surface: ProfileSurface;
 };
 
 type ApiKeyLimitDraftRow = {
@@ -1522,6 +1648,11 @@ type ExtensionListItem = {
   target: string;
 };
 
+type ModelCatalogItem = {
+  key: string;
+  model: string;
+};
+
 type PluginInstallCandidate = {
   apps?: PluginMarketplaceEntry["apps"];
   dependencies: PluginDependency[];
@@ -1581,6 +1712,8 @@ function App() {
   const [profileAddOpen, setProfileAddOpen] = useState(false);
   const [profileAgentTab, setProfileAgentTab] = useState<ProfileConfig["agent"]>("claude-code");
   const [profileDraft, setProfileDraft] = useState<AddProfileDraft>(() => createProfileDraft());
+  const [profileEditDraft, setProfileEditDraft] = useState<AddProfileDraft>(() => createProfileDraft());
+  const [profileEditIndex, setProfileEditIndex] = useState<number>();
   const [apiKeyAddOpen, setApiKeyAddOpen] = useState(false);
   const [apiKeyDraft, setApiKeyDraft] = useState<AddApiKeyDraft>(() => createApiKeyDraft());
   const [apiKeyEditDraft, setApiKeyEditDraft] = useState<AddApiKeyDraft>(() => createApiKeyDraft());
@@ -1644,6 +1777,7 @@ function App() {
   const [agentAnalysisRange, setAgentAnalysisRange] = useState<UsageStatsRange>("7d");
   const [usageRange, setUsageRange] = useState<UsageStatsRange>("7d");
   const [usageStats, setUsageStats] = useState<UsageStatsSnapshot>(fallbackUsageStats);
+  const [providerAccountSnapshots, setProviderAccountSnapshots] = useState<ProviderAccountSnapshot[]>([]);
   const resolvedLanguage = languagePreference === "system" ? systemLanguage : languagePreference;
   const copy = appCopy[resolvedLanguage];
 
@@ -1764,6 +1898,34 @@ function App() {
       window.clearInterval(timer);
     };
   }, [usageRange]);
+
+  useEffect(() => {
+    if (!window.ccr) {
+      setProviderAccountSnapshots([]);
+      return;
+    }
+
+    let cancelled = false;
+    const refreshProviderAccounts = () => {
+      void window.ccr?.getProviderAccountSnapshots()
+        .then((snapshots) => {
+          if (!cancelled) {
+            setProviderAccountSnapshots(snapshots);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setProviderAccountSnapshots([]);
+          }
+        });
+    };
+    refreshProviderAccounts();
+    const timer = window.setInterval(refreshProviderAccounts, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [draftConfig.Providers]);
 
   const agentAnalysisFilterKey = JSON.stringify({ agent: agentAnalysisAgent, range: agentAnalysisRange });
 
@@ -1919,14 +2081,12 @@ function App() {
   const needsTrafficLightSafeArea = isMac && !sidebarOpen;
   const providerTypedModels = splitLines(providerDraft.modelsText);
   const providerDialogModels = mergeProviderModelLists(providerDraft.selectedModels, providerTypedModels);
+  const providerFormActive = providerAddOpen || (activeView === "onboarding" && onboardingStep === "provider");
   const canSubmitProvider =
     Boolean(providerDraft.name.trim() && providerDraft.baseUrl.trim()) &&
     providerDialogModels.length > 0;
-  const canSubmitProfile =
-    Boolean(profileDraft.name.trim()) &&
-    (profileDraft.agent === "claude-code"
-      ? Boolean(profileDraft.settingsFile.trim())
-      : Boolean(profileDraft.configFile.trim() && profileDraft.providerId.trim() && profileDraft.providerName.trim()));
+  const canSubmitProfile = isProfileDraftSubmittable(profileDraft);
+  const canSubmitProfileEdit = profileEditIndex !== undefined && isProfileDraftSubmittable(profileEditDraft);
   const canSubmitApiKey = Boolean(apiKeyDraft.name.trim()) && (apiKeyDraft.expirationPreset !== "custom" || Boolean(apiKeyDraft.expiresAt.trim()));
   const canSubmitApiKeyEdit = apiKeyEditDraft.expirationPreset !== "custom" || Boolean(apiKeyEditDraft.expiresAt.trim());
   const canSubmitRoutingRule =
@@ -1957,6 +2117,26 @@ function App() {
     });
   }, [activeView, configLoaded, onboardingStatusLoaded, draftConfig]);
 
+  useEffect(() => {
+    if (activeView !== "onboarding" || !configLoaded || !onboardingStatusLoaded || providerAddOpen) {
+      return;
+    }
+
+    const providerIndex = draftConfig.Providers.findIndex((provider) => provider.name === draftConfig.preferredProvider);
+    const resolvedIndex = providerIndex >= 0 ? providerIndex : draftConfig.Providers.length > 0 ? 0 : -1;
+    const provider = resolvedIndex >= 0 ? draftConfig.Providers[resolvedIndex] : undefined;
+    if (!provider) {
+      setProviderEditIndex(undefined);
+      return;
+    }
+
+    setProviderEditIndex(resolvedIndex);
+    setProviderDraft(createProviderDraftFromProvider(provider));
+    setProviderProbe(undefined);
+    setProviderProbeError("");
+    setProviderProbeLoading(false);
+  }, [activeView, configLoaded, onboardingStatusLoaded, draftConfig.Providers, draftConfig.preferredProvider, providerAddOpen]);
+
   useEffect(() => () => {
     if (toastTimer.current !== undefined) {
       window.clearTimeout(toastTimer.current);
@@ -1968,7 +2148,7 @@ function App() {
     const requestId = providerProbeRequestId.current;
     const candidates = providerProbeCandidates(providerDraft).filter(isProviderProbeCandidateReady);
 
-    if (!providerAddOpen || !window.ccr || candidates.length === 0) {
+    if (!providerFormActive || !window.ccr || candidates.length === 0) {
       setProviderProbeLoading(false);
       return;
     }
@@ -2010,7 +2190,7 @@ function App() {
       window.clearTimeout(timer);
       setProviderProbeLoading(false);
     };
-  }, [providerAddOpen, providerDraft.apiKey, providerDraft.baseUrl, providerDraft.modelsText, providerDraft.presetId]);
+  }, [providerFormActive, providerDraft.apiKey, providerDraft.baseUrl, providerDraft.modelsText, providerDraft.presetId]);
 
   useEffect(() => {
     if (!window.ccr || !dirty) {
@@ -2238,7 +2418,73 @@ function App() {
     }
   }
 
-  async function submitProviderDraft() {
+  async function checkProviderDraft(): Promise<void> {
+    providerProbeRequestId.current += 1;
+    const requestId = providerProbeRequestId.current;
+    const baseUrl = providerDraft.baseUrl.trim();
+    const protocol = providerDraft.protocol;
+    const apiKey = providerDraft.apiKey.trim();
+    const model = firstProviderConnectivityModel(providerDraft);
+    const inputKey = JSON.stringify([baseUrl, protocol, apiKey, model]);
+
+    setProviderProbeError("");
+    if (!window.ccr) {
+      setProviderProbeError("Request failed.");
+      return;
+    }
+    if (!shouldAutoProbeProviderBaseUrl(baseUrl)) {
+      setProviderProbeError("No endpoint candidates available.");
+      return;
+    }
+    if (!model) {
+      setProviderProbeError("Select or enter at least one model.");
+      return;
+    }
+
+    setProviderProbeLoading(true);
+    try {
+      const probe = await window.ccr.probeProvider({
+        apiKey,
+        baseUrl,
+        models: [model],
+        protocols: [protocol],
+        skipModelDiscovery: true
+      });
+      if (providerProbeRequestId.current !== requestId) {
+        return;
+      }
+
+      setProviderProbe(probe);
+      setProviderDraft((current) => {
+        const currentKey = JSON.stringify([
+          current.baseUrl.trim(),
+          current.protocol,
+          current.apiKey.trim(),
+          firstProviderConnectivityModel(current)
+        ]);
+        if (currentKey !== inputKey) {
+          return current;
+        }
+        return applyProviderProbeResult(current, probe);
+      });
+
+      if (!providerProbeHasSupportedProtocol(probe, protocol)) {
+        const message = probe.protocols.find((item) => item.protocol === protocol)?.message || "Request failed.";
+        setProviderProbeError(message);
+      }
+    } catch (error) {
+      if (providerProbeRequestId.current === requestId) {
+        setProviderProbe(undefined);
+        setProviderProbeError(error instanceof Error ? error.message : String(error));
+      }
+    } finally {
+      if (providerProbeRequestId.current === requestId) {
+        setProviderProbeLoading(false);
+      }
+    }
+  }
+
+  async function submitProviderDraft(): Promise<boolean> {
     const probe = providerProbe;
 
     const usesCatalog = Boolean(probe?.models.length);
@@ -2246,13 +2492,19 @@ function App() {
     const models = mergeProviderModelLists(providerDraft.selectedModels, typedModels);
     if (models.length === 0) {
       setProviderProbeError(usesCatalog ? "Select or enter at least one model." : "Enter at least one model.");
-      return;
+      return false;
     }
 
     const providerName = providerDraft.name.trim();
     if (isProviderNameDuplicate(draftConfig.Providers, providerName, providerEditIndex)) {
       setProviderProbeError("Provider name already exists.");
-      return;
+      return false;
+    }
+
+    const accountConfig = parseProviderAccountDraft(providerDraft);
+    if (typeof accountConfig === "string") {
+      setProviderProbeError(accountConfig);
+      return false;
     }
 
     const protocol = probe?.detectedProtocol ?? providerDraft.protocol;
@@ -2266,6 +2518,8 @@ function App() {
       api_base_url: normalizeProviderBaseUrl(baseUrl, protocol),
       api_key: providerDraft.apiKey.trim(),
       capabilities: capabilities.length > 0 ? capabilities : undefined,
+      account: accountConfig,
+      icon: providerDraft.icon.trim() || undefined,
       models,
       name: providerName,
       type: protocol
@@ -2289,7 +2543,9 @@ function App() {
       if (activeView === "onboarding") {
         setOnboardingStep(getDefaultOnboardingStep(next));
       }
+      return true;
     }
+    return false;
   }
 
   async function confirmProviderDeepLinkImport() {
@@ -3171,38 +3427,108 @@ function App() {
     setProfileAddOpen(true);
   }
 
+  function openEditProfileDialog(index: number) {
+    const profile = draftConfig.profile.profiles[index];
+    if (!profile) {
+      return;
+    }
+    setProfileEditIndex(index);
+    setProfileEditDraft(createProfileDraftFromProfile(profile));
+    setProfileActionError("");
+  }
+
   function updateProfileDraft(patch: Partial<AddProfileDraft>) {
     setProfileDraft((current) => {
       const next = { ...current, ...patch };
       if (patch.agent && patch.agent !== current.agent) {
         const name = current.name === profileAgentLabel(current.agent) ? undefined : next.name;
-        return createProfileDraft(patch.agent, name);
+        return {
+          ...createProfileDraft(patch.agent, name),
+          envRows: current.envRows
+        };
       }
       return next;
     });
     setProfileActionError("");
   }
 
-  function submitProfileDraft() {
+  function updateProfileEditDraft(patch: Partial<AddProfileDraft>) {
+    setProfileEditDraft((current) => {
+      const next = { ...current, ...patch };
+      if (patch.agent && patch.agent !== current.agent) {
+        const name = current.name === profileAgentLabel(current.agent) ? undefined : next.name;
+        return {
+          ...createProfileDraft(patch.agent, name),
+          envRows: current.envRows
+        };
+      }
+      return next;
+    });
+    setProfileActionError("");
+  }
+
+  async function submitProfileDraft(): Promise<boolean> {
     if (!canSubmitProfile) {
-      setProfileActionError("Profile name and config path are required.");
-      return;
+      setProfileActionError("Profile name, required target settings, and environment variable keys are required.");
+      return false;
     }
     const profile = profileConfigFromDraft(profileDraft, draftConfig.profile.profiles);
     setProfileAgentTab(profile.agent);
-    updateConfig((next) => ({
-      ...next,
+    const next = buildConfigUpdate((config) => ({
+      ...config,
       profile: {
-        ...next.profile,
-        profiles: [...next.profile.profiles, profile]
+        ...config.profile,
+        enabled: true,
+        profiles: [...config.profile.profiles, profile]
       }
     }));
+    setConfigDraft(next);
+    if (!(await persistConfig(next, setProfileActionError))) {
+      return false;
+    }
     setProfileAddOpen(false);
     setProfileDraft(createProfileDraft());
     setProfileActionError("");
     if (activeView === "onboarding") {
       setOnboardingStep("enter");
     }
+    return true;
+  }
+
+  async function submitProfileEditDraft(): Promise<boolean> {
+    if (profileEditIndex === undefined) {
+      return false;
+    }
+    if (!canSubmitProfileEdit) {
+      setProfileActionError("Profile name, required target settings, and environment variable keys are required.");
+      return false;
+    }
+    const currentProfile = draftConfig.profile.profiles[profileEditIndex];
+    if (!currentProfile) {
+      setProfileActionError("Profile no longer exists.");
+      return false;
+    }
+    const nextProfile = profileConfigFromDraft(profileEditDraft, draftConfig.profile.profiles, currentProfile);
+    setProfileAgentTab(nextProfile.agent);
+    const next = buildConfigUpdate((config) => {
+      const profiles = [...config.profile.profiles];
+      profiles[profileEditIndex] = nextProfile;
+      return {
+        ...config,
+        profile: {
+          ...config.profile,
+          profiles
+        }
+      };
+    });
+    setConfigDraft(next);
+    if (!(await persistConfig(next, setProfileActionError))) {
+      return false;
+    }
+    setProfileEditIndex(undefined);
+    setProfileEditDraft(createProfileDraft());
+    setProfileActionError("");
+    return true;
   }
 
   function updateProfileItem(index: number, patch: Partial<ProfileConfig>) {
@@ -3238,20 +3564,29 @@ function App() {
       <LayoutGroup id="home-shell">
       <div className="relative flex h-full min-h-0 w-full min-w-0 overflow-hidden bg-background text-foreground max-[720px]:flex-col">
       {activeView === "onboarding" ? (
-        <main className="relative flex min-h-0 min-w-0 flex-1 overflow-auto bg-background px-5 pb-5 pt-12 max-[720px]:px-3 max-[720px]:pb-3">
+        <main className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
           <div className="app-drag absolute inset-x-0 top-0 z-10 h-10" />
           {configLoaded && onboardingStatusLoaded ? (
             <OnboardingView
               activeStep={onboardingStep}
+              canSubmitProfile={canSubmitProfile}
+              canSubmitProvider={canSubmitProvider}
               config={draftConfig}
               endpoint={gatewayEndpoint}
               gatewayStatus={gatewayStatus}
-              onAddProfile={openAddProfileDialog}
-              onAddProvider={openAddProviderDialog}
+              onCheckProvider={checkProviderDraft}
               onComplete={completeOnboarding}
-              onOpenProfiles={() => setActiveView("profile")}
-              onOpenProviders={() => setActiveView("providers")}
+              onChangeProfile={updateProfileDraft}
+              onChangeProvider={updateProviderDraft}
               onSelectStep={setOnboardingStep}
+              onSubmitProfile={submitProfileDraft}
+              onSubmitProvider={submitProviderDraft}
+              profileDraft={profileDraft}
+              profileError={profileActionError}
+              providerDraft={providerDraft}
+              providerError={providerProbeError}
+              providerProbe={providerProbe}
+              providerProbeLoading={providerProbeLoading}
             />
           ) : null}
         </main>
@@ -3379,6 +3714,7 @@ function App() {
             <ViewMotionShell key={activeView} view={activeView}>
               {activeView === "overview" ? (
                 <OverviewView
+                  providerAccounts={providerAccountSnapshots}
                   setUsageRange={setUsageRange}
                   usageRange={usageRange}
                   usageStats={usageStats}
@@ -3428,12 +3764,10 @@ function App() {
                 <ProfileView
                   addProfile={openAddProfileDialog}
                   applyError={profileActionError}
-                  activeAgent={profileAgentTab}
                   config={draftConfig}
+                  editProfile={openEditProfileDialog}
                   removeProfile={removeProfile}
-                  setActiveAgent={setProfileAgentTab}
                   updateProfileItem={updateProfileItem}
-                  updateConfig={updateConfig}
                 />
               ) : null}
               {activeView === "networking" && networkCaptureEnabled ? (
@@ -3460,8 +3794,14 @@ function App() {
                   addProvider={openAddProviderDialog}
                   editProvider={openEditProviderDialog}
                   notify={showToast}
+                  accountSnapshots={providerAccountSnapshots}
                   providers={providers}
                   removeProvider={setProviderDeleteIndex}
+                />
+              ) : null}
+              {activeView === "models" ? (
+                <ModelsView
+                  config={draftConfig}
                 />
               ) : null}
               {activeView === "routing" ? (
@@ -3525,10 +3865,28 @@ function App() {
           canSubmit={canSubmitProfile}
           draft={profileDraft}
           error={profileActionError}
+          mode="add"
           onChange={updateProfileDraft}
           onClose={() => setProfileAddOpen(false)}
+          providers={draftConfig.Providers}
           onSubmit={submitProfileDraft}
           key="profile-add"
+        />
+      ) : null}
+      {profileEditIndex !== undefined ? (
+        <AddProfileDialog
+          canSubmit={canSubmitProfileEdit}
+          draft={profileEditDraft}
+          error={profileActionError}
+          mode="edit"
+          onChange={updateProfileEditDraft}
+          onClose={() => {
+            setProfileEditIndex(undefined);
+            setProfileActionError("");
+          }}
+          providers={draftConfig.Providers}
+          onSubmit={submitProfileEditDraft}
+          key="profile-edit"
         />
       ) : null}
       {apiKeyEditItem ? (
@@ -3567,6 +3925,7 @@ function App() {
             setProviderAddOpen(false);
             setProviderEditIndex(undefined);
           }}
+          onCheck={checkProviderDraft}
           onSubmit={submitProviderDraft}
           probe={providerProbe}
           probeLoading={providerProbeLoading}
@@ -3755,7 +4114,7 @@ const onboardingStepDetails: Record<OnboardingStepId, {
   enter: {
     description: "Start using CCR.",
     icon: Gauge,
-    title: "Enter app",
+    title: "Let's start",
     tone: "cyan"
   }
 };
@@ -3783,45 +4142,59 @@ const onboardingMascotPalettes: Record<OnboardingMascotTone, { accent: string; g
 
 function OnboardingView({
   activeStep,
+  canSubmitProfile,
+  canSubmitProvider,
   config,
   endpoint,
   gatewayStatus,
-  onAddProfile,
-  onAddProvider,
+  onCheckProvider,
+  onChangeProfile,
+  onChangeProvider,
   onComplete,
-  onOpenProfiles,
-  onOpenProviders,
-  onSelectStep
+  onSelectStep,
+  onSubmitProfile,
+  onSubmitProvider,
+  profileDraft,
+  profileError,
+  providerDraft,
+  providerError,
+  providerProbe,
+  providerProbeLoading
 }: {
   activeStep: OnboardingStepId;
+  canSubmitProfile: boolean;
+  canSubmitProvider: boolean;
   config: AppConfig;
   endpoint: string;
   gatewayStatus: GatewayStatus;
-  onAddProfile: (agent: ProfileConfig["agent"]) => void;
-  onAddProvider: () => void;
-  onComplete: () => void;
-  onOpenProfiles: () => void;
-  onOpenProviders: () => void;
+  onCheckProvider: () => Promise<void>;
+  onChangeProfile: (patch: Partial<AddProfileDraft>) => void;
+  onChangeProvider: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
+  onComplete: () => void | Promise<void>;
   onSelectStep: (step: OnboardingStepId) => void;
+  onSubmitProfile: () => Promise<boolean>;
+  onSubmitProvider: () => Promise<boolean>;
+  profileDraft: AddProfileDraft;
+  profileError: string;
+  providerDraft: AddProviderDraft;
+  providerError: string;
+  providerProbe?: GatewayProviderProbeResult;
+  providerProbeLoading: boolean;
 }) {
   const t = useAppText();
   const shouldReduceMotion = useReducedMotion();
-  const [selectedAgent, setSelectedAgent] = useState<ProfileConfig["agent"]>("claude-code");
   const providerReady = isOnboardingProviderReady(config);
   const profileReady = isOnboardingProfileReady(config);
+  const serviceReady = gatewayStatus.state === "running";
   const routeReady = providerReady && profileReady;
   const activeIndex = Math.max(0, onboardingStepOrder.indexOf(activeStep));
   const activeDetails = onboardingStepDetails[activeStep];
   const previousStep = onboardingStepOrder[activeIndex - 1];
   const nextStep = getNextOnboardingStep(activeStep, config);
-  const firstProvider = config.Providers[0];
-  const providerNames = config.Providers.map((provider) => provider.name).filter(Boolean).slice(0, 3).join(", ");
-  const selectedAgentProfiles = config.profile.profiles.filter((profile) => profile.agent === selectedAgent);
-  const defaultModel = defaultProfileClientModel(config);
   const nextDisabled = activeStep === "provider"
-    ? !providerReady
+    ? !(providerReady || canSubmitProvider)
     : activeStep === "profile"
-      ? !profileReady
+      ? !(profileReady || (providerReady && canSubmitProfile))
       : !routeReady;
 
   function goToPreviousStep() {
@@ -3830,13 +4203,32 @@ function OnboardingView({
     }
   }
 
-  function goToNextStep() {
+  async function goToNextStep() {
     if (activeStep === "enter") {
       if (routeReady) {
-        onComplete();
+        await onComplete();
       }
       return;
     }
+
+    if (activeStep === "provider") {
+      if (canSubmitProvider) {
+        const saved = await onSubmitProvider();
+        if (saved) {
+          return;
+        }
+      }
+      if (providerReady && nextStep) {
+        onSelectStep(nextStep);
+      }
+      return;
+    }
+
+    if (activeStep === "profile" && !profileReady) {
+      await onSubmitProfile();
+      return;
+    }
+
     if (nextStep) {
       onSelectStep(nextStep);
     }
@@ -3845,24 +4237,35 @@ function OnboardingView({
   return (
     <motion.div
       animate={{ opacity: 1 }}
-      className="mx-auto flex min-h-full w-full max-w-5xl flex-col gap-4"
+      className="flex h-full min-h-0 w-full flex-col"
       initial={{ opacity: 0 }}
       transition={{ duration: 0.16 }}
     >
-      <div className="flex min-w-0 flex-col items-center gap-3 text-center">
-        <h1 className="max-w-[720px] text-[24px] font-semibold tracking-normal text-foreground">{t("Welcome to CCR")}</h1>
-      </div>
-
-      <div className="flex min-w-0 flex-1 flex-col gap-3">
-        <div className="relative overflow-hidden rounded-lg border border-border bg-card shadow-card">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="relative flex min-h-0 flex-1 overflow-hidden bg-card">
           <motion.div
-            className="relative z-10 flex min-h-[390px] flex-col gap-4 p-4 sm:p-5"
+            className="relative z-10 flex h-full min-h-0 flex-1 flex-col overflow-hidden"
             layout
             style={{ transformPerspective: 900 }}
             transition={shouldReduceMotion ? reducedMotionTransition : { duration: 0.28, ease: motionEase }}
           >
-            <div className="flex min-w-0 flex-col">
-              <div className="flex min-w-0 flex-col items-center gap-2 text-center">
+            <OnboardingProgress activeIndex={activeIndex} />
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col p-4 sm:p-5">
+              <div className="flex h-8 shrink-0 items-center">
+                {previousStep ? (
+                  <Button
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md px-1 text-[13px] font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
+                    onClick={goToPreviousStep}
+                    type="button"
+                    unstyled
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    {t("Back")}
+                  </Button>
+                ) : null}
+              </div>
+
+              <div className="flex min-w-0 shrink-0 flex-col items-center gap-2 text-center">
                 <OnboardingMascotSprite activeStep={activeStep} />
                 <div className="min-w-0">
                   <h2 className="text-[20px] font-semibold tracking-normal">{t(activeDetails.title)}</h2>
@@ -3870,31 +4273,22 @@ function OnboardingView({
                 </div>
               </div>
 
-              <div className="onboarding-step-panels mt-5">
+              <div className="onboarding-step-panels mt-5 min-h-0 flex-1 overflow-hidden">
                 <div
                   aria-hidden={activeStep !== "provider"}
                   className={cn("onboarding-step-panel flex min-w-0 flex-1 flex-col gap-3", activeStep === "provider" && "onboarding-step-panel-active")}
                 >
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <OnboardingMetric label={t("Providers")} value={providerReady ? `${config.Providers.length}` : t("No provider yet")} />
-                    <OnboardingMetric label={t("Current model")} value={providerReady ? defaultModel : t("Not set")} />
-                  </div>
-                  <div className="min-w-0 rounded-lg border border-border bg-muted/25 p-3">
-                    <div className="truncate text-[12px] font-semibold">{providerReady ? providerNames : t("Add Provider")}</div>
-                    <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground" title={firstProvider ? providerBaseUrl(firstProvider) : undefined}>
-                      {firstProvider ? providerBaseUrl(firstProvider) || t("Not set") : t("Select preset provider")}
-                    </div>
-                  </div>
-                  <div className="mt-auto flex flex-wrap items-center justify-center gap-2">
-                    <Button onClick={onAddProvider} type="button">
-                      <Plus className="h-4 w-4" />
-                      {t("Add provider")}
-                    </Button>
-                    {providerReady ? (
-                      <Button onClick={onOpenProviders} type="button" variant="ghost">
-                        {t("Open providers")}
-                      </Button>
-                    ) : null}
+                  <div className="mx-auto w-full max-w-[780px]">
+                    <AddProviderForm
+                      draft={providerDraft}
+                      error={providerError}
+                      mode={providerReady ? "edit" : "add"}
+                      onCheck={onCheckProvider}
+                      onChange={onChangeProvider}
+                      probe={providerProbe}
+                      probeLoading={providerProbeLoading}
+                      providers={config.Providers}
+                    />
                   </div>
                 </div>
 
@@ -3902,30 +4296,13 @@ function OnboardingView({
                   aria-hidden={activeStep !== "profile"}
                   className={cn("onboarding-step-panel flex min-w-0 flex-1 flex-col gap-3", activeStep === "profile" && "onboarding-step-panel-active")}
                 >
-                  <ProfileAgentTabs
-                    activeAgent={selectedAgent}
-                    profiles={config.profile.profiles}
-                    setActiveAgent={setSelectedAgent}
-                  />
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <OnboardingMetric label={t("Profile")} value={`${selectedAgentProfiles.length}`} />
-                    <OnboardingMetric label={t("Takeover")} value={config.profile.enabled ? t("Enabled") : t("Disabled")} />
-                  </div>
-                  {!providerReady ? (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
-                      {t("A provider is required before profiles can route traffic.")}
-                    </div>
-                  ) : null}
-                  <div className="mt-auto flex flex-wrap items-center justify-center gap-2">
-                    <Button disabled={!providerReady} onClick={() => onAddProfile(selectedAgent)} type="button">
-                      <Plus className="h-4 w-4" />
-                      {t("Add profile")}
-                    </Button>
-                    {profileReady ? (
-                      <Button onClick={onOpenProfiles} type="button" variant="ghost">
-                        {t("Open profiles")}
-                      </Button>
-                    ) : null}
+                  <div className="mx-auto w-full max-w-[720px]">
+                    <AddProfileForm
+                      draft={profileDraft}
+                      error={profileError}
+                      onChange={onChangeProfile}
+                      providers={config.Providers}
+                    />
                   </div>
                 </div>
 
@@ -3933,14 +4310,11 @@ function OnboardingView({
                   aria-hidden={activeStep !== "enter"}
                   className={cn("onboarding-step-panel flex min-w-0 flex-1 flex-col gap-3", activeStep === "enter" && "onboarding-step-panel-active")}
                 >
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <OnboardingMetric label={t("Provider")} value={providerReady ? t("Provider ready") : t("No provider yet")} />
-                    <OnboardingMetric label={t("Profile")} value={profileReady ? t("Profile ready") : t("No profiles configured")} />
-                    <OnboardingMetric label={t("Gateway")} value={t(gatewayStatus.state)} />
-                  </div>
-                  <div className="min-w-0 rounded-lg border border-border bg-muted/25 p-3">
-                    <div className="text-[11px] font-medium uppercase text-muted-foreground">{t("Endpoint")}</div>
-                    <div className="mt-1 truncate font-mono text-[12px] text-foreground" title={endpoint}>{endpoint}</div>
+                  <div className="mx-auto flex w-full max-w-[520px] flex-col overflow-hidden rounded-lg border border-border bg-background/70">
+                    <OnboardingStatusRow label={t("Provider")} ready={providerReady} />
+                    <OnboardingStatusRow label={t("Profile")} ready={profileReady} />
+                    <OnboardingStatusRow label={t("Service")} ready={serviceReady} />
+                    <OnboardingDetailRow label={t("Endpoint")} value={endpoint} />
                   </div>
                   <div className="mt-auto flex flex-wrap items-center justify-center gap-2">
                     {!providerReady ? (
@@ -3957,14 +4331,10 @@ function OnboardingView({
                 </div>
               </div>
 
-              <div className="mt-5 flex items-center justify-between gap-3 border-t border-border/60 pt-4">
-                <Button disabled={!previousStep} onClick={goToPreviousStep} type="button" variant="outline">
-                  <ChevronLeft className="h-4 w-4" />
-                  {t("Previous step")}
-                </Button>
-                <Button disabled={nextDisabled} onClick={goToNextStep} type="button">
+              <div className="mt-5 flex shrink-0 items-center justify-end gap-3 border-t border-border/60 pt-4">
+                <Button disabled={nextDisabled} onClick={() => void goToNextStep()} type="button">
                   {activeStep === "enter" ? <Check className="h-4 w-4" /> : null}
-                  {activeStep === "enter" ? t("Enter app") : t("Next step")}
+                  {activeStep === "enter" ? t("Let's start") : t("Next step")}
                   {activeStep !== "enter" ? <ChevronRight className="h-4 w-4" /> : null}
                 </Button>
               </div>
@@ -3976,11 +4346,56 @@ function OnboardingView({
   );
 }
 
-function OnboardingMetric({ label, value }: { label: string; value: string }) {
+function OnboardingProgress({ activeIndex }: { activeIndex: number }) {
+  const t = useAppText();
+  const stepCount = onboardingStepOrder.length;
+  const progressWidth = `${((activeIndex + 1) / stepCount) * 100}%`;
+
   return (
-    <div className="min-w-0 rounded-lg border border-border bg-background/70 px-3 py-2.5">
-      <div className="truncate text-[11px] font-medium uppercase text-muted-foreground">{label}</div>
-      <div className="mt-1 truncate text-[13px] font-semibold text-foreground" title={value}>{value}</div>
+    <div className="relative shrink-0 border-b border-border/60 bg-card/95" aria-label={`${t("Step")} ${activeIndex + 1} / ${stepCount}`}>
+      <div className="mx-auto flex h-11 max-w-[520px] items-center justify-center px-3 text-[13px] font-medium">
+        {onboardingStepOrder.map((step, index) => (
+          <div className="flex min-w-0 items-center" key={step}>
+            <span
+              className={cn(
+                "max-w-[136px] truncate",
+                index === activeIndex ? "text-foreground" : "text-muted-foreground"
+              )}
+            >
+              {t(onboardingStepDetails[step].title)}
+            </span>
+            {index < stepCount - 1 ? <ChevronRight className="mx-5 h-4 w-4 shrink-0 text-muted-foreground/70 max-[560px]:mx-2" /> : null}
+          </div>
+        ))}
+      </div>
+      <div className="absolute inset-x-0 bottom-0 h-[3px] bg-muted" role="progressbar" aria-valuemin={1} aria-valuemax={stepCount} aria-valuenow={activeIndex + 1}>
+        <div className="h-full bg-foreground transition-[width] duration-200" style={{ width: progressWidth }} />
+      </div>
+    </div>
+  );
+}
+
+function OnboardingStatusRow({ label, ready }: { label: string; ready: boolean }) {
+  return (
+    <div className="flex min-h-11 min-w-0 items-center justify-between gap-3 border-b border-border/60 px-3 py-2.5 last:border-b-0">
+      <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{label}</span>
+      <span
+        className={cn(
+          "flex h-6 w-6 shrink-0 items-center justify-center rounded-full",
+          ready ? "bg-emerald-500/12 text-emerald-600" : "bg-destructive/10 text-destructive"
+        )}
+      >
+        {ready ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
+      </span>
+    </div>
+  );
+}
+
+function OnboardingDetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex min-h-11 min-w-0 items-center justify-between gap-3 border-b border-border/60 px-3 py-2.5 last:border-b-0">
+      <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{label}</span>
+      <span className="min-w-0 max-w-[68%] truncate text-right font-mono text-[12px] text-muted-foreground" title={value}>{value}</span>
     </div>
   );
 }
@@ -4065,7 +4480,7 @@ function AppSettingsDialog({
     { label: copy.settings.languageChinese, value: "zh" },
     { label: copy.settings.languageEnglish, value: "en" }
   ];
-  const trayIconOptions = [
+  const trayIconOptions: Array<{ label: string; value: AppConfig["trayIcon"] }> = [
     { label: copy.settings.trayIconRandom, value: "random" },
     { label: copy.settings.trayIconViolet, value: "violet" },
     { label: copy.settings.trayIconOrange, value: "orange" },
@@ -4075,17 +4490,17 @@ function AppSettingsDialog({
   const trayModuleOptions: Array<{ label: string; value: TrayWindowModuleId }> = [
     { label: copy.settings.trayModuleSourceTabs, value: "source-tabs" },
     { label: copy.settings.trayModuleHeader, value: "header" },
+    { label: copy.settings.trayModuleAccount, value: "account" },
     { label: copy.settings.trayModuleTokenFlow, value: "token-flow" },
     { label: copy.settings.trayModuleStats, value: "stats" },
     { label: copy.settings.trayModuleTokenMix, value: "token-mix" },
     { label: copy.settings.trayModuleRings, value: "rings" },
-    { label: copy.settings.trayModuleModelShare, value: "model-share" },
-    { label: copy.settings.trayModuleFooter, value: "footer" }
+    { label: copy.settings.trayModuleModelShare, value: "model-share" }
   ];
 
   return (
     <Dialog onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="h-[min(620px,calc(100dvh-2rem))] max-w-[860px]">
+      <DialogContent className="h-[min(660px,calc(100dvh-2rem))] max-w-[960px]">
         <DialogHeader>
           <div className="min-w-0">
             <DialogTitle>{copy.settings.title}</DialogTitle>
@@ -4154,39 +4569,45 @@ function AppSettingsDialog({
               </div>
             ) : null}
             {isMac && activePage === "tray" ? (
-              <div className="mx-auto grid max-w-[560px] grid-cols-1 gap-5">
+              <div className="mx-auto grid max-w-[720px] grid-cols-1 gap-5">
                 <h3 className="text-[15px] font-semibold text-foreground">{copy.settings.tray}</h3>
-                <div className="grid grid-cols-1 gap-4">
-                  <Field label={copy.settings.trayIcon}>
-                    <SelectControl onChange={onChangeTrayIcon} options={trayIconOptions} value={trayIconPreference} />
-                  </Field>
-                  {trayIconPreference === "progress" ? (
-                    <Field label={copy.settings.trayProgressTarget}>
-                      <Input
-                        min={1000}
-                        step={1000}
-                        type="number"
-                        value={String(trayProgressTargetTokens)}
-                        onChange={(event) => onChangeTrayProgressTarget(event.target.value)}
-                      />
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-[minmax(0,280px)_minmax(0,1fr)]">
+                  <div className="grid min-w-0 grid-cols-1 gap-4">
+                    <Field label={copy.settings.trayIcon}>
+                      <TrayIconSelect onChange={onChangeTrayIcon} options={trayIconOptions} value={trayIconPreference} />
                     </Field>
-                  ) : null}
-                  <div className="min-w-0 space-y-2">
-                    <div className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{copy.settings.trayWindowModules}</div>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      {trayModuleOptions.map((option) => (
-                        <Label
-                          className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-[12px] font-medium text-foreground"
-                          key={option.value}
-                        >
-                          <Checkbox
-                            checked={trayWindowModuleSet.has(option.value)}
-                            onCheckedChange={(checked) => onSetTrayModuleEnabled(option.value, checked)}
-                          />
-                          <span className="min-w-0 truncate">{option.label}</span>
-                        </Label>
-                      ))}
+                    {trayIconPreference === "progress" ? (
+                      <Field label={copy.settings.trayProgressTarget}>
+                        <Input
+                          min={1000}
+                          step={1000}
+                          type="number"
+                          value={String(trayProgressTargetTokens)}
+                          onChange={(event) => onChangeTrayProgressTarget(event.target.value)}
+                        />
+                      </Field>
+                    ) : null}
+                    <div className="min-w-0 space-y-2">
+                      <div className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{copy.settings.trayWindowModules}</div>
+                      <div className="grid grid-cols-1 gap-2">
+                        {trayModuleOptions.map((option) => (
+                          <Label
+                            className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-[12px] font-medium text-foreground"
+                            key={option.value}
+                          >
+                            <Checkbox
+                              checked={trayWindowModuleSet.has(option.value)}
+                              onCheckedChange={(checked) => onSetTrayModuleEnabled(option.value, checked)}
+                            />
+                            <span className="min-w-0 truncate">{option.label}</span>
+                          </Label>
+                        ))}
+                      </div>
                     </div>
+                  </div>
+                  <div className="min-w-0 space-y-2">
+                    <div className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{copy.settings.trayPreview}</div>
+                    <TrayWindowPreview copy={copy} iconPreference={trayIconPreference} modules={trayWindowModuleSet} />
                   </div>
                 </div>
               </div>
@@ -4204,11 +4625,318 @@ function AppSettingsDialog({
   );
 }
 
+function TrayIconSelect({
+  onChange,
+  options,
+  value
+}: {
+  onChange: (value: string) => void;
+  options: Array<{ label: string; value: AppConfig["trayIcon"] }>;
+  value: AppConfig["trayIcon"];
+}) {
+  return (
+    <div className="relative min-w-0">
+      <TrayIconPreview className="pointer-events-none absolute left-2 top-1/2 z-10 h-5 w-5 -translate-y-1/2 rounded-[5px]" preference={value} />
+      <Select className="pl-10" onValueChange={onChange} options={options} value={value} />
+    </div>
+  );
+}
+
+function TrayIconPreview({
+  className,
+  preference
+}: {
+  className?: string;
+  preference: AppConfig["trayIcon"];
+}) {
+  const randomIcons: Array<"violet" | "orange" | "cyan"> = ["violet", "orange", "cyan"];
+
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-background shadow-[inset_0_1px_1px_rgba(255,255,255,0.3)]",
+        className
+      )}
+    >
+      {preference === "random" ? (
+        randomIcons.map((iconId, index) => (
+          <img
+            alt=""
+            className={cn(
+              "absolute h-[66%] w-[66%] object-contain drop-shadow-sm",
+              index === 0 && "left-[9%] top-[22%]",
+              index === 1 && "left-[22%] top-[11%]",
+              index === 2 && "left-[34%] top-[27%]"
+            )}
+            key={iconId}
+            src={trayMascotIconUrls[iconId]}
+          />
+        ))
+      ) : null}
+      {isTrayMascotIconPreference(preference) ? (
+        <img alt="" className="h-[88%] w-[88%] object-contain drop-shadow-sm" src={trayMascotIconUrls[preference]} />
+      ) : null}
+      {preference === "progress" ? <TrayProgressPreview /> : null}
+    </span>
+  );
+}
+
+function TrayProgressPreview() {
+  const radius = 12.2;
+  const circumference = 2 * Math.PI * radius;
+  const progress = 0.68;
+
+  return (
+    <svg aria-hidden="true" className="h-[80%] w-[80%]" viewBox="0 0 36 36">
+      <circle cx="18" cy="18" fill="rgba(15,23,42,.92)" r="15.2" />
+      <circle cx="18" cy="18" fill="none" r={radius} stroke="rgba(148,163,184,.55)" strokeWidth="4.2" />
+      <circle
+        cx="18"
+        cy="18"
+        fill="none"
+        r={radius}
+        stroke="rgb(248,250,252)"
+        strokeDasharray={circumference}
+        strokeDashoffset={circumference * (1 - progress)}
+        strokeLinecap="round"
+        strokeWidth="4.2"
+        transform="rotate(-90 18 18)"
+      />
+    </svg>
+  );
+}
+
+function TrayWindowPreview({
+  copy,
+  iconPreference,
+  modules
+}: {
+  copy: AppCopy;
+  iconPreference: AppConfig["trayIcon"];
+  modules: ReadonlySet<TrayWindowModuleId>;
+}) {
+  const hasModules = TRAY_WINDOW_MODULE_IDS.some((moduleId) => moduleId !== "footer" && modules.has(moduleId));
+  const showTokenMix = modules.has("token-mix");
+  const showRings = modules.has("rings");
+
+  return (
+    <div className="min-h-[360px] min-w-0 overflow-hidden rounded-[14px] border border-slate-950/15 bg-slate-950 p-3 text-slate-50 shadow-[0_18px_42px_rgba(15,23,42,.28)]">
+      <div className="mb-3 flex min-w-0 items-center justify-between gap-3 border-b border-white/10 pb-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <TrayIconPreview className="h-7 w-7 border-white/15 bg-white/10" preference={iconPreference} />
+          <div className="min-w-0">
+            <div className="truncate text-[12px] font-semibold text-slate-50">88.4k tokens</div>
+            <div className="truncate text-[10px] font-medium text-slate-400">CCR</div>
+          </div>
+        </div>
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[.04] text-slate-300" aria-hidden="true">
+          <Power className="h-3.5 w-3.5" />
+        </span>
+      </div>
+
+      {modules.has("source-tabs") ? <TrayPreviewSourceTabs /> : null}
+      {modules.has("header") ? <TrayPreviewHeader copy={copy} /> : null}
+      {modules.has("account") ? <TrayPreviewAccount title={copy.settings.trayModuleAccount} /> : null}
+      {modules.has("token-flow") ? <TrayPreviewTokenFlow copy={copy} title={copy.settings.trayModuleTokenFlow} /> : null}
+      {modules.has("stats") ? <TrayPreviewStats copy={copy} /> : null}
+      {showTokenMix || showRings ? (
+        <div className={cn("mb-2 grid gap-2", showTokenMix && showRings ? "grid-cols-2" : "grid-cols-1")}>
+          {showTokenMix ? <TrayPreviewTokenMix copy={copy} /> : null}
+          {showRings ? <TrayPreviewRings title={copy.settings.trayModuleRings} /> : null}
+        </div>
+      ) : null}
+      {modules.has("model-share") ? <TrayPreviewModelShare title={copy.settings.trayModuleModelShare} /> : null}
+      {!hasModules ? (
+        <div className="flex min-h-[260px] items-center justify-center rounded-[10px] border border-white/10 bg-white/[.03] px-4 text-center text-[12px] font-medium text-slate-400">
+          {copy.settings.trayPreviewEmpty}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function TrayPreviewSourceTabs() {
+  return (
+    <div className="mb-2 grid min-w-0 grid-cols-4 gap-1.5">
+      {["All", "OpenAI", "Claude", "More"].map((label, index) => (
+        <div
+          className={cn(
+            "min-w-0 truncate rounded-md border px-2 py-1 text-center text-[10px] font-semibold",
+            index === 0 ? "border-teal-300/35 bg-teal-300/16 text-teal-50" : "border-white/10 bg-white/[.04] text-slate-300"
+          )}
+          key={label}
+        >
+          {label}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TrayPreviewHeader({ copy }: { copy: AppCopy }) {
+  return (
+    <div className="mb-2 flex min-w-0 items-start justify-between gap-2 rounded-[8px] border border-white/10 bg-white/[.04] px-2.5 py-2">
+      <div className="min-w-0">
+        <div className="truncate text-[13px] font-bold text-slate-50">{copy.settings.trayModuleHeader}</div>
+        <div className="mt-0.5 truncate text-[10px] font-medium text-slate-400">
+          {trayPreviewText(copy, "Today", "Today")} - {trayPreviewText(copy, "All providers", "All providers", "全部供应商")}
+        </div>
+      </div>
+      <div className="shrink-0 rounded-md border border-white/10 bg-slate-900/70 px-2 py-0.5 text-[10px] font-semibold text-slate-200">7d</div>
+    </div>
+  );
+}
+
+function TrayPreviewAccount({ title }: { title: string }) {
+  return (
+    <div className="mb-2 rounded-[8px] border border-white/10 bg-white/[.04] p-2">
+      <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+        <div className="truncate text-[11px] font-bold text-slate-100">{title}</div>
+        <span className="shrink-0 rounded-full bg-teal-300/15 px-1.5 py-0.5 text-[9px] font-bold text-teal-100">ok</span>
+      </div>
+      <div className="flex min-w-0 items-end justify-between gap-2">
+        <div className="min-w-0 truncate text-[10px] font-medium text-slate-400">Weekly quota</div>
+        <div className="shrink-0 text-[13px] font-bold text-slate-50">7.8h</div>
+      </div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
+        <div className="h-full w-[62%] rounded-full bg-teal-300" />
+      </div>
+    </div>
+  );
+}
+
+function TrayPreviewTokenFlow({ copy, title }: { copy: AppCopy; title: string }) {
+  return (
+    <div className="mb-2 rounded-[8px] border border-white/10 bg-white/[.04] p-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="truncate text-[11px] font-bold text-slate-100">{title}</div>
+        <div className="shrink-0 text-[10px] font-medium text-slate-400">42 {trayPreviewText(copy, "Requests", "req")}</div>
+      </div>
+      <svg aria-hidden="true" className="mt-2 h-16 w-full overflow-visible" preserveAspectRatio="none" viewBox="0 0 260 72">
+        <path d="M0 58 C 34 42, 48 50, 74 35 S 119 15, 146 28 S 189 54, 219 22 S 247 18, 260 11" fill="none" stroke="rgba(45,212,191,.95)" strokeLinecap="round" strokeWidth="4" />
+        <path d="M0 62 C 31 55, 55 60, 79 50 S 120 30, 153 38 S 197 65, 260 42" fill="none" stroke="rgba(167,139,250,.72)" strokeLinecap="round" strokeWidth="2.5" />
+        {[20, 68, 116, 164, 212].map((x) => (
+          <line key={x} stroke="rgba(148,163,184,.12)" strokeWidth="1" x1={x} x2={x} y1="0" y2="72" />
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+function TrayPreviewStats({ copy }: { copy: AppCopy }) {
+  const stats = [
+    { label: trayPreviewText(copy, "Input", "Input", "输入"), value: "41k" },
+    { label: trayPreviewText(copy, "Output", "Output", "输出"), value: "19k" },
+    { label: trayPreviewText(copy, "Cache read", "Cache read", "缓存读取"), value: "28k" },
+    { label: trayPreviewText(copy, "Success", "Success", "成功"), value: "99%" }
+  ];
+
+  return (
+    <div className="mb-2 grid grid-cols-2 gap-1.5">
+      {stats.map((stat) => (
+        <div className="min-w-0 rounded-[7px] border border-white/10 bg-white/[.04] px-2 py-1.5" key={stat.label}>
+          <div className="truncate text-[10px] font-medium text-slate-400">{stat.label}</div>
+          <div className="truncate text-[13px] font-bold text-slate-50">{stat.value}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TrayPreviewTokenMix({ copy }: { copy: AppCopy }) {
+  const bars = [
+    { label: trayPreviewText(copy, "Input", "Input", "输入"), value: "72%", className: "bg-blue-400" },
+    { label: trayPreviewText(copy, "Output", "Output", "输出"), value: "42%", className: "bg-amber-300" },
+    { label: trayPreviewText(copy, "Cache read", "Cache read", "缓存读取"), value: "58%", className: "bg-rose-300" }
+  ];
+
+  return (
+    <div className="min-w-0 rounded-[8px] border border-white/10 bg-white/[.04] p-2">
+      <div className="mb-2 truncate text-[11px] font-bold text-slate-100">{copy.settings.trayModuleTokenMix}</div>
+      <div className="space-y-1.5">
+        {bars.map((bar) => (
+          <div className="min-w-0" key={bar.label}>
+            <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-medium text-slate-400">
+              <span className="truncate">{bar.label}</span>
+              <span className="shrink-0">{bar.value}</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div className={cn("h-full rounded-full", bar.className)} style={{ width: bar.value }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TrayPreviewRings({ title }: { title: string }) {
+  return (
+    <div className="min-w-0 rounded-[8px] border border-white/10 bg-white/[.04] p-2">
+      <div className="mb-2 truncate text-[11px] font-bold text-slate-100">{title}</div>
+      <div className="grid grid-cols-2 gap-2">
+        {[74, 91].map((value) => (
+          <div className="relative aspect-square min-w-0" key={value}>
+            <svg aria-hidden="true" className="h-full w-full" viewBox="0 0 40 40">
+              <circle cx="20" cy="20" fill="none" r="15" stroke="rgba(148,163,184,.22)" strokeWidth="4" />
+              <circle
+                cx="20"
+                cy="20"
+                fill="none"
+                r="15"
+                stroke={value > 80 ? "rgb(45,212,191)" : "rgb(129,140,248)"}
+                strokeDasharray={2 * Math.PI * 15}
+                strokeDashoffset={2 * Math.PI * 15 * (1 - value / 100)}
+                strokeLinecap="round"
+                strokeWidth="4"
+                transform="rotate(-90 20 20)"
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-slate-100">{value}%</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TrayPreviewModelShare({ title }: { title: string }) {
+  return (
+    <div className="mb-2 min-w-0 rounded-[8px] border border-white/10 bg-white/[.04] p-2">
+      <div className="mb-2 truncate text-[11px] font-bold text-slate-100">{title}</div>
+      {[
+        ["claude-sonnet", "48%"],
+        ["gpt-4.1", "31%"],
+        ["deepseek-chat", "21%"]
+      ].map(([model, value]) => (
+        <div className="mb-1.5 flex min-w-0 items-center gap-2 last:mb-0" key={model}>
+          <div className="min-w-0 flex-1 truncate text-[10px] font-medium text-slate-300">{model}</div>
+          <div className="h-1.5 w-14 overflow-hidden rounded-full bg-white/10">
+            <div className="h-full rounded-full bg-teal-300" style={{ width: value }} />
+          </div>
+          <div className="w-7 shrink-0 text-right text-[10px] font-semibold text-slate-400">{value}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function isTrayMascotIconPreference(value: AppConfig["trayIcon"]): value is "cyan" | "orange" | "violet" {
+  return value === "cyan" || value === "orange" || value === "violet";
+}
+
+function trayPreviewText(copy: AppCopy, key: string, fallback: string, alternateKey?: string): string {
+  return copy.text[key] ?? (alternateKey ? copy.text[alternateKey] : undefined) ?? fallback;
+}
+
 function OverviewView({
+  providerAccounts,
   setUsageRange,
   usageRange,
   usageStats
 }: {
+  providerAccounts: ProviderAccountSnapshot[];
   setUsageRange: (range: UsageStatsRange) => void;
   usageRange: UsageStatsRange;
   usageStats: UsageStatsSnapshot;
@@ -4232,6 +4960,8 @@ function OverviewView({
         usageRange={usageRange}
         usageStats={usageStats}
       />
+
+      <ProviderAccountsOverview accounts={providerAccounts} />
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <MetricCard label={t("Requests")} tone="teal" value={formatCompactNumber(totals.requestCount)} />
@@ -4417,6 +5147,63 @@ function SystemStatusBar({
             ))}
           </div>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProviderAccountsOverview({ accounts }: { accounts: ProviderAccountSnapshot[] }) {
+  const t = useAppText();
+  const visibleAccounts = accounts
+    .filter((account) => account.meters.length > 0 || account.status === "error")
+    .sort(compareProviderAccountSnapshots)
+    .slice(0, 6);
+
+  return (
+    <Card className="min-w-0">
+      <CardHeader className="flex-row items-center justify-between">
+        <CardTitle>{t("Account Balance")}</CardTitle>
+        <Badge variant="outline">{accounts.length}</Badge>
+      </CardHeader>
+      <CardContent>
+        {visibleAccounts.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-7 text-center text-[12px] text-muted-foreground">
+            {t("No account balance connectors configured")}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {visibleAccounts.map((account) => {
+              const meter = primaryProviderAccountMeter(account);
+              return (
+                <div className="min-w-0 rounded-lg border border-border bg-muted/20 p-3" key={account.provider}>
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-[13px] font-semibold">{account.provider}</div>
+                      <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{account.source}</div>
+                    </div>
+                    <Badge variant={providerAccountBadgeVariant(account.status)}>{account.status}</Badge>
+                  </div>
+                  {meter ? (
+                    <div className="mt-3 min-w-0">
+                      <div className="flex min-w-0 items-end justify-between gap-3">
+                        <div className="min-w-0 truncate text-[12px] font-medium text-muted-foreground">{meter.label}</div>
+                        <div className="shrink-0 text-[18px] font-semibold tracking-tight">{formatProviderAccountMeterValue(meter)}</div>
+                      </div>
+                      {providerAccountMeterProgress(meter) !== undefined ? (
+                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-background">
+                          <div className={cn("h-full rounded-full", providerAccountProgressClass(account.status))} style={{ width: `${providerAccountMeterProgress(meter)}%` }} />
+                        </div>
+                      ) : null}
+                      {meter.resetAt ? <div className="mt-2 truncate text-[11px] text-muted-foreground">{t("Resets")} {formatProviderAccountReset(meter.resetAt)}</div> : null}
+                    </div>
+                  ) : (
+                    <div className="mt-3 truncate text-[12px] text-muted-foreground">{account.message || account.errors?.[0]?.message || t("Unavailable")}</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -5689,39 +6476,22 @@ function ServerView({
 }
 
 function ProfileView({
-  activeAgent,
   addProfile,
   applyError,
   config,
+  editProfile,
   removeProfile,
-  setActiveAgent,
-  updateProfileItem,
-  updateConfig
+  updateProfileItem
 }: {
-  activeAgent: ProfileConfig["agent"];
   addProfile: (agent?: ProfileConfig["agent"]) => void;
   applyError: string;
   config: AppConfig;
+  editProfile: (index: number) => void;
   removeProfile: (index: number) => void;
-  setActiveAgent: (agent: ProfileConfig["agent"]) => void;
   updateProfileItem: (index: number, patch: Partial<ProfileConfig>) => void;
-  updateConfig: (mutator: (config: AppConfig) => AppConfig) => void;
 }) {
   const t = useAppText();
   const profiles = config.profile.profiles;
-  const visibleProfiles = profiles
-    .map((profile, index) => ({ index, profile }))
-    .filter((item) => item.profile.agent === activeAgent);
-
-  const updateProfile = (patch: Partial<AppConfig["profile"]>) => {
-    updateConfig((next) => ({
-      ...next,
-      profile: {
-        ...next.profile,
-        ...patch
-      }
-    }));
-  };
 
   return (
     <motion.div
@@ -5734,10 +6504,13 @@ function ProfileView({
         <CardHeader>
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
-              <CardTitle>{t("Profile")}</CardTitle>
+              <CardTitle>{t("Agent access")}</CardTitle>
+              <p className="mt-1 text-[12px] text-muted-foreground">
+                {t("Choose where each agent uses CCR. Keep advanced paths hidden unless you need global or custom installs.")}
+              </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <Button onClick={() => addProfile(activeAgent)} size="sm" type="button">
+              <Button onClick={() => addProfile()} size="sm" type="button">
                 <Plus className="h-3.5 w-3.5" />
                 {t("Add profile")}
               </Button>
@@ -5745,139 +6518,57 @@ function ProfileView({
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 gap-3">
-            <Field label={t("Takeover")}>
-              <div className="flex h-10 items-center justify-between gap-3 rounded-md border border-input bg-background px-3">
-                <span className="truncate text-[12px] font-medium text-foreground">
-                  {config.profile.enabled ? t("Enabled") : t("Disabled")}
-                </span>
-                <Toggle checked={config.profile.enabled} onChange={(enabled) => updateProfile({ enabled })} />
-              </div>
-            </Field>
-          </div>
-
-          <ProfileAgentTabs
-            activeAgent={activeAgent}
-            profiles={profiles}
-            setActiveAgent={setActiveAgent}
-          />
-
           <div className="space-y-2">
-            {visibleProfiles.length === 0 ? (
+            {profiles.length === 0 ? (
               <div className="flex h-32 items-center justify-center rounded-md border border-dashed border-border bg-muted/20 text-[12px] text-muted-foreground">
-                {t("No profiles for this agent")}
+                {t("No profiles configured")}
               </div>
             ) : null}
-            {visibleProfiles.map(({ profile, index }) => (
-              <div className="rounded-md border border-border bg-muted/20 p-3" key={profile.id}>
-                <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <AgentLogo agent={profile.agent} />
-                    <span className="min-w-0 truncate text-[13px] font-semibold">{profile.name || t("Unnamed")}</span>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Toggle checked={profile.enabled} onChange={(enabled) => updateProfileItem(index, { enabled })} />
-                    <Button aria-label={t("Remove profile")} onClick={() => removeProfile(index)} size="iconSm" title={t("Remove profile")} type="button" variant="ghost">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <Field className="sm:col-span-2" label={t("Profile name")}>
-                    <Input
-                      value={profile.name}
-                      onChange={(event) => updateProfileItem(index, { name: event.target.value })}
-                    />
-                  </Field>
-                  {profile.agent === "claude-code" ? (
-                    <>
-                      <Field className="sm:col-span-2" label={t("Settings file")}>
-                        <Input
-                          value={profile.settingsFile || ""}
-                          onChange={(event) => updateProfileItem(index, { settingsFile: event.target.value })}
-                        />
-                      </Field>
-                      <Field label={t("Model override")}>
-                        <Input
-                          placeholder={t("Keep Claude Code default")}
-                          value={profile.model}
-                          onChange={(event) => updateProfileItem(index, { model: event.target.value })}
-                        />
-                      </Field>
-                      <Field label={t("Small fast model")}>
-                        <Input
-                          placeholder={t("Keep Claude Code default")}
-                          value={profile.smallFastModel || ""}
-                          onChange={(event) => updateProfileItem(index, { smallFastModel: event.target.value })}
-                        />
-                      </Field>
-                    </>
-                  ) : (
-                    <>
-                      <Field className="sm:col-span-2" label={t("Config file")}>
-                        <Input
-                          value={profile.configFile || ""}
-                          onChange={(event) => updateProfileItem(index, { configFile: event.target.value })}
-                        />
-                      </Field>
-                      <Field label={t("Config format")}>
-                        <SelectControl
-                          onChange={(configFormat) => updateProfileItem(index, { configFormat: normalizeCodexConfigFormat(configFormat) })}
-                          options={translateOptions(codexConfigFormatOptions, t)}
-                          value={profile.configFormat || "legacy"}
-                        />
-                      </Field>
-                      <Field label={t("Codex home")}>
-                        <Input
-                          value={profile.codexHome || ""}
-                          onChange={(event) => updateProfileItem(index, { codexHome: event.target.value })}
-                        />
-                      </Field>
-                      <Field label={t("Provider ID")}>
-                        <Input
-                          value={profile.providerId || ""}
-                          onChange={(event) => updateProfileItem(index, { providerId: event.target.value })}
-                        />
-                      </Field>
-                      <Field label={t("Provider name")}>
-                        <Input
-                          value={profile.providerName || ""}
-                          onChange={(event) => updateProfileItem(index, { providerName: event.target.value })}
-                        />
-                      </Field>
-                      <Field label={t("Remote frontend")}>
-                        <SelectControl
-                          onChange={(remoteFrontendMode) => updateProfileItem(index, { remoteFrontendMode: normalizeCodexRemoteFrontendMode(remoteFrontendMode) })}
-                          options={translateOptions(codexRemoteFrontendModeOptions, t)}
-                          value={profile.remoteFrontendMode || "app"}
-                        />
-                      </Field>
-                      <Field label={t("CLI middleware")}>
-                        <div className="flex h-10 items-center justify-between gap-3 rounded-md border border-input bg-background px-3">
-                          <span className="truncate text-[12px] font-medium text-foreground">
-                            {profile.cliMiddleware ? t("Enabled") : t("Disabled")}
-                          </span>
-                          <Toggle checked={Boolean(profile.cliMiddleware)} onChange={(cliMiddleware) => updateProfileItem(index, { cliMiddleware })} />
+            {profiles.map((profile, index) => {
+              const scope = normalizeProfileScope(profile.scope);
+              const surface = normalizeProfileSurface(profile.surface);
+              const summaryItems = profileSummaryItems(profile, config, t);
+
+              return (
+                <div className="rounded-md border border-border bg-muted/20 p-3" key={profile.id}>
+                  <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+                    <div className="flex min-w-0 flex-1 items-start gap-2">
+                      <AgentLogo agent={profile.agent} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                          <span className="min-w-0 max-w-[180px] truncate text-[13px] font-semibold sm:max-w-[260px] md:max-w-[320px]">{profile.name || t("Unnamed")}</span>
+                          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                            {!profile.enabled ? <Badge variant="outline">{t("Disabled")}</Badge> : null}
+                            <Badge variant="secondary">{t(profileAgentLabel(profile.agent))}</Badge>
+                            <Badge variant={scope === "ccr" ? "success" : scope === "global" ? "warning" : "outline"}>
+                              {t(profileScopeLabel(scope))}
+                            </Badge>
+                            <Badge variant="outline">{t(profileSurfaceLabel(surface))}</Badge>
+                          </div>
                         </div>
-                      </Field>
-                      <Field className="sm:col-span-2" label={t("Codex model")}>
-                        <Input
-                          placeholder={defaultProfileClientModel(config)}
-                          value={profile.model}
-                          onChange={(event) => updateProfileItem(index, { model: event.target.value })}
-                        />
-                      </Field>
-                      <Field className="sm:col-span-2" label={t("Codex CLI path")}>
-                        <Input
-                          value={profile.codexCliPath || ""}
-                          onChange={(event) => updateProfileItem(index, { codexCliPath: event.target.value })}
-                        />
-                      </Field>
-                    </>
-                  )}
+                        <div className="mt-2 min-w-0 space-y-1.5">
+                          {summaryItems.map((item) => (
+                            <div className="grid min-w-0 grid-cols-[96px_minmax(0,1fr)] items-baseline gap-2 text-[12px] sm:grid-cols-[128px_minmax(0,1fr)]" key={item.label}>
+                              <div className="truncate text-muted-foreground">{item.label}</div>
+                              <div className="min-w-0 truncate font-medium text-foreground" title={item.value}>{item.value}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Toggle checked={profile.enabled} onChange={(enabled) => updateProfileItem(index, { enabled })} />
+                      <Button aria-label={`${t("Edit")} ${profile.name || t("Profile")}`} onClick={() => editProfile(index)} size="iconSm" title={t("Edit")} type="button" variant="ghost">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button aria-label={t("Remove profile")} onClick={() => removeProfile(index)} size="iconSm" title={t("Remove profile")} type="button" variant="ghost">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {applyError ? (
@@ -5981,7 +6672,7 @@ function AgentSelectControl({
         aria-expanded={open}
         aria-haspopup="listbox"
         className={cn(
-          "flex h-10 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-[12px] font-medium outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/25",
+          "flex h-8 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-[12px] font-medium shadow-[inset_0_1px_1px_rgba(0,0,0,0.03)] outline-none transition-[background-color,border-color,box-shadow,color] hover:border-muted-foreground/45 focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-ring/25",
           open && "border-ring/35 bg-muted/40"
         )}
         onClick={() => setOpen((current) => !current)}
@@ -5993,9 +6684,9 @@ function AgentSelectControl({
         }}
         type="button"
       >
-        <AgentLogo agent={value} className="h-6 w-6 rounded-[5px]" />
+        <AgentLogo agent={value} className="h-5 w-5 rounded-[5px]" />
         <span className="min-w-0 flex-1 truncate">{t(profileAgentLabel(value))}</span>
-        <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+        <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
       </button>
 
       <AnimatePresence initial={false}>
@@ -6045,20 +6736,440 @@ function AgentSelectControl({
   );
 }
 
+function ProfileModelSelector({
+  onChange,
+  placeholder,
+  providers,
+  value
+}: {
+  onChange: (value: string) => void;
+  placeholder?: string;
+  providers: GatewayProviderConfig[];
+  value: string;
+}) {
+  const t = useAppText();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [popoverLayout, setPopoverLayout] = useState<{
+    gridHeight: number;
+    left: number;
+    maxHeight: number;
+    offset: number;
+    placement: "above" | "below";
+    width: number;
+  }>();
+  const parsedValue = useMemo(() => parseProfileModelValue(value, providers), [providers, value]);
+  const providerOptions = useMemo(() => profileModelProviderOptions(providers), [providers]);
+  const filteredProviders = useMemo(
+    () => providerOptions.filter((provider) => profileModelProviderMatchesQuery(provider, query)),
+    [providerOptions, query]
+  );
+  const [activeProviderName, setActiveProviderName] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
+  const activeProvider =
+    filteredProviders.find((provider) => provider.name === activeProviderName) ??
+    filteredProviders.find((provider) => provider.name === parsedValue.provider) ??
+    filteredProviders[0];
+  const filteredModels = activeProvider
+    ? activeProvider.models.filter((model) => profileModelMatchesQuery(activeProvider.name, model, query))
+    : [];
+  const displayValue = profileModelDisplayValue(value, parsedValue, providers, placeholder);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPopoverLayout(undefined);
+      return;
+    }
+
+    function updatePopoverLayout() {
+      const root = rootRef.current;
+      if (!root) {
+        return;
+      }
+      const anchor = root.getBoundingClientRect();
+      const margin = 12;
+      const gap = 6;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const availableWidth = Math.max(240, viewportWidth - margin * 2);
+      const width = Math.min(560, availableWidth);
+      const left = Math.min(Math.max(margin, anchor.left), viewportWidth - margin - width);
+      const below = Math.max(0, viewportHeight - anchor.bottom - margin - gap);
+      const above = Math.max(0, anchor.top - margin - gap);
+      const placement = below < 240 && above > below ? "above" : "below";
+      const availableHeight = Math.max(144, placement === "above" ? above : below);
+      const maxHeight = Math.min(360, availableHeight);
+      const gridHeight = Math.max(128, Math.min(280, maxHeight - 58));
+      setPopoverLayout({
+        gridHeight,
+        left,
+        maxHeight,
+        offset: placement === "above" ? viewportHeight - anchor.top + gap : anchor.bottom + gap,
+        placement,
+        width
+      });
+    }
+
+    updatePopoverLayout();
+    window.addEventListener("resize", updatePopoverLayout);
+    window.addEventListener("scroll", updatePopoverLayout, true);
+    return () => {
+      window.removeEventListener("resize", updatePopoverLayout);
+      window.removeEventListener("scroll", updatePopoverLayout, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    if (activeProviderName && filteredProviders.some((provider) => provider.name === activeProviderName)) {
+      return;
+    }
+    setActiveProviderName(parsedValue.provider || filteredProviders[0]?.name || "");
+  }, [activeProviderName, filteredProviders, open, parsedValue.provider]);
+
+  function chooseModel(providerName: string, model: string) {
+    onChange(`${providerName}/${model}`);
+    setOpen(false);
+    setQuery("");
+    setActiveProviderName(providerName);
+  }
+
+  function openSelector() {
+    setOpen(true);
+    setQuery("");
+    setActiveProviderName(parsedValue.provider || providerOptions[0]?.name || "");
+  }
+
+  function clearValue(event: React.MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    onChange("");
+    setOpen(false);
+    setQuery("");
+  }
+
+  return (
+    <div className="relative min-w-0" ref={rootRef}>
+      <div
+        className={cn(
+          "flex h-10 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-[12px] shadow-[inset_0_1px_1px_rgba(0,0,0,0.03)] outline-none transition-[background-color,border-color,box-shadow,color] hover:border-muted-foreground/45 focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-ring/25",
+          open && "border-ring/35 bg-muted/40",
+          !value.trim() && "text-muted-foreground"
+        )}
+      >
+        <button
+          aria-expanded={open}
+          aria-haspopup="dialog"
+          className="min-w-0 flex-1 truncate text-left outline-none"
+          onClick={openSelector}
+          type="button"
+        >
+          {displayValue}
+        </button>
+        {value.trim() ? (
+          <button
+            aria-label={t("Clear")}
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
+            onClick={clearValue}
+            title={t("Clear")}
+            type="button"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
+        <button
+          aria-label={open ? t("Collapse") : t("Expand")}
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
+          onClick={openSelector}
+          title={open ? t("Collapse") : t("Expand")}
+          type="button"
+        >
+          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} />
+        </button>
+      </div>
+
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="fixed z-[70]"
+            exit={{ opacity: 0, scale: 0.98, y: -4 }}
+            initial={{ opacity: 0, scale: 0.98, y: -4 }}
+            style={popoverLayout
+              ? {
+                left: `${popoverLayout.left}px`,
+                maxHeight: `${popoverLayout.maxHeight}px`,
+                width: `${popoverLayout.width}px`,
+                ...(popoverLayout.placement === "above"
+                  ? { bottom: `${popoverLayout.offset}px` }
+                  : { top: `${popoverLayout.offset}px` })
+              }
+              : undefined}
+            transition={{ duration: 0.12, ease: "easeOut" }}
+          >
+            <PopoverContent className="w-full overflow-hidden p-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  autoFocus
+                  aria-label={t("Search models")}
+                  className="h-9 pl-8"
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder={t("Search providers or models")}
+                  value={query}
+                />
+              </div>
+
+              {providerOptions.length === 0 ? (
+                <div className="mt-2 rounded-md border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-[12px] text-muted-foreground">
+                  {t("No models configured")}
+                </div>
+              ) : (
+                <div
+                  className="mt-2 grid grid-cols-[minmax(112px,0.38fr)_minmax(0,1fr)] overflow-hidden rounded-md border border-border"
+                  style={{ height: `${popoverLayout?.gridHeight ?? 220}px` }}
+                >
+                  <div className="min-w-0 overflow-auto border-r border-border bg-muted/30 p-1">
+                    {filteredProviders.length === 0 ? (
+                      <div className="px-2 py-6 text-center text-[11px] text-muted-foreground">{t("No matching providers")}</div>
+                    ) : null}
+                    {filteredProviders.map((provider) => {
+                      const active = provider.name === activeProvider?.name;
+                      return (
+                        <button
+                          className={cn(
+                            "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] outline-none transition-colors hover:bg-background focus-visible:ring-2 focus-visible:ring-ring/25",
+                            active && "bg-background text-primary"
+                          )}
+                          key={provider.name}
+                          onClick={() => setActiveProviderName(provider.name)}
+                          type="button"
+                        >
+                          <span className="min-w-0 flex-1 truncate">{provider.name}</span>
+                          <Badge className="shrink-0" variant="outline">{provider.models.length}</Badge>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="min-w-0 overflow-auto bg-background p-1">
+                    {!activeProvider ? (
+                      <div className="px-2 py-10 text-center text-[12px] text-muted-foreground">{t("No matching models")}</div>
+                    ) : null}
+                    {activeProvider && filteredModels.length === 0 ? (
+                      <div className="px-2 py-10 text-center text-[12px] text-muted-foreground">{t("No matching models")}</div>
+                    ) : null}
+                    {activeProvider && filteredModels.map((model) => {
+                      const selected = parsedValue.provider === activeProvider.name && parsedValue.model === model;
+                      return (
+                        <button
+                          className={cn(
+                            "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/25",
+                            selected && "bg-primary/10 text-primary"
+                          )}
+                          key={`${activeProvider.name}/${model}`}
+                          onClick={() => chooseModel(activeProvider.name, model)}
+                          type="button"
+                        >
+                          <span className="min-w-0 flex-1 truncate font-mono">{model}</span>
+                          {selected ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </PopoverContent>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function AddProfileForm({
+  draft,
+  error,
+  onChange,
+  providers
+}: {
+  draft: AddProfileDraft;
+  error: string;
+  onChange: (patch: Partial<AddProfileDraft>) => void;
+  providers: GatewayProviderConfig[];
+}) {
+  const t = useAppText();
+
+  return (
+    <>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label={t("Agent")}>
+          <AgentSelectControl
+            onChange={(agent) => onChange({ agent })}
+            value={draft.agent}
+          />
+        </Field>
+        <Field label={t("Profile name")}>
+          <Input value={draft.name} onChange={(event) => onChange({ name: event.target.value })} />
+        </Field>
+        <Field label={t("Effect scope")}>
+          <SelectControl
+            onChange={(scope) => onChange({ scope: normalizeProfileScope(scope) })}
+            options={translateOptions(profileScopeOptions, t)}
+            value={draft.scope}
+          />
+        </Field>
+        <Field label={t("Entry mode")}>
+          <SelectControl
+            onChange={(surface) => onChange({ surface: normalizeProfileSurface(surface) })}
+            options={translateOptions(profileSurfaceOptions, t)}
+            value={draft.surface}
+          />
+        </Field>
+        {draft.agent === "claude-code" ? (
+          <>
+            {!profileScopeUsesGeneratedPath(draft.scope) ? (
+              <Field className="sm:col-span-2" label={t("Settings file")}>
+                <Input value={draft.settingsFile} onChange={(event) => onChange({ settingsFile: event.target.value })} />
+              </Field>
+            ) : (
+              <div className="sm:col-span-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[12px] text-muted-foreground">
+                {t("CCR manages an isolated Claude Code settings file for this profile.")}
+              </div>
+            )}
+            <Field label={t("Model override")}>
+              <ProfileModelSelector
+                placeholder={t("Keep Claude Code default")}
+                providers={providers}
+                value={draft.model}
+                onChange={(model) => onChange({ model })}
+              />
+            </Field>
+            <Field label={t("Small fast model")}>
+              <ProfileModelSelector
+                placeholder={t("Keep Claude Code default")}
+                providers={providers}
+                value={draft.smallFastModel}
+                onChange={(smallFastModel) => onChange({ smallFastModel })}
+              />
+            </Field>
+          </>
+        ) : (
+          <>
+            {!profileScopeUsesGeneratedPath(draft.scope) ? (
+              <Field className="sm:col-span-2" label={t("Config file")}>
+                <Input value={draft.configFile} onChange={(event) => onChange({ configFile: event.target.value })} />
+              </Field>
+            ) : (
+              <div className="sm:col-span-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[12px] text-muted-foreground">
+                {t("CCR manages an isolated Codex config file for this profile.")}
+              </div>
+            )}
+            <Field label={t("Config format")}>
+              <SelectControl
+                onChange={(configFormat) => onChange({ configFormat: normalizeCodexConfigFormat(configFormat) })}
+                options={translateOptions(codexConfigFormatOptions, t)}
+                value={draft.configFormat}
+              />
+            </Field>
+            <Field label={t("Codex home")}>
+              <Input value={draft.codexHome} onChange={(event) => onChange({ codexHome: event.target.value })} />
+            </Field>
+            <Field label={t("Provider ID")}>
+              <Input value={draft.providerId} onChange={(event) => onChange({ providerId: event.target.value })} />
+            </Field>
+            <Field label={t("Provider name")}>
+              <Input value={draft.providerName} onChange={(event) => onChange({ providerName: event.target.value })} />
+            </Field>
+            <Field label={t("Remote frontend")}>
+              <SelectControl
+                onChange={(remoteFrontendMode) => onChange({ remoteFrontendMode: normalizeCodexRemoteFrontendMode(remoteFrontendMode) })}
+                options={translateOptions(codexRemoteFrontendModeOptions, t)}
+                value={draft.remoteFrontendMode}
+              />
+            </Field>
+            <Field label={t("CLI middleware")}>
+              <div className="flex h-10 items-center justify-between gap-3 rounded-md border border-input bg-background px-3">
+                <span className="truncate text-[12px] font-medium text-foreground">
+                  {draft.cliMiddleware ? t("Enabled") : t("Disabled")}
+                </span>
+                <Toggle checked={draft.cliMiddleware} onChange={(cliMiddleware) => onChange({ cliMiddleware })} />
+              </div>
+            </Field>
+            <Field className="sm:col-span-2" label={t("Codex model")}>
+              <ProfileModelSelector
+                placeholder={providers[0]?.models[0] && providers[0]?.name ? `${providers[0].name}/${providers[0].models[0]}` : ""}
+                providers={providers}
+                value={draft.model}
+                onChange={(model) => onChange({ model })}
+              />
+            </Field>
+            <Field className="sm:col-span-2" label={t("Codex CLI path")}>
+              <Input value={draft.codexCliPath} onChange={(event) => onChange({ codexCliPath: event.target.value })} />
+            </Field>
+          </>
+        )}
+        <Field className="sm:col-span-2" label={t("Environment variables")}>
+          <KeyValueRowsControl
+            addLabel={t("Add env variable")}
+            rows={draft.envRows}
+            onChange={(envRows) => onChange({ envRows })}
+          />
+        </Field>
+      </div>
+      {error ? (
+        <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
+          {error}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 function AddProfileDialog({
   canSubmit,
   draft,
   error,
+  mode = "add",
   onChange,
   onClose,
+  providers,
   onSubmit
 }: {
   canSubmit: boolean;
   draft: AddProfileDraft;
   error: string;
+  mode?: "add" | "edit";
   onChange: (patch: Partial<AddProfileDraft>) => void;
   onClose: () => void;
-  onSubmit: () => void;
+  providers: GatewayProviderConfig[];
+  onSubmit: () => Promise<boolean> | boolean | void;
 }) {
   const t = useAppText();
 
@@ -6067,99 +7178,20 @@ function AddProfileDialog({
       <DialogContent>
         <DialogHeader>
           <div>
-            <DialogTitle>{t("Add Profile")}</DialogTitle>
+            <DialogTitle>{mode === "edit" ? t("Edit Profile") : t("Add Profile")}</DialogTitle>
           </div>
         </DialogHeader>
         <DialogBody>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label={t("Agent")}>
-              <AgentSelectControl
-                onChange={(agent) => onChange({ agent })}
-                value={draft.agent}
-              />
-            </Field>
-            <Field label={t("Profile name")}>
-              <Input value={draft.name} onChange={(event) => onChange({ name: event.target.value })} />
-            </Field>
-            {draft.agent === "claude-code" ? (
-              <>
-                <Field className="sm:col-span-2" label={t("Settings file")}>
-                  <Input value={draft.settingsFile} onChange={(event) => onChange({ settingsFile: event.target.value })} />
-                </Field>
-                <Field label={t("Model override")}>
-                  <Input
-                    placeholder={t("Keep Claude Code default")}
-                    value={draft.model}
-                    onChange={(event) => onChange({ model: event.target.value })}
-                  />
-                </Field>
-                <Field label={t("Small fast model")}>
-                  <Input
-                    placeholder={t("Keep Claude Code default")}
-                    value={draft.smallFastModel}
-                    onChange={(event) => onChange({ smallFastModel: event.target.value })}
-                  />
-                </Field>
-              </>
-            ) : (
-              <>
-                <Field className="sm:col-span-2" label={t("Config file")}>
-                  <Input value={draft.configFile} onChange={(event) => onChange({ configFile: event.target.value })} />
-                </Field>
-                <Field label={t("Config format")}>
-                  <SelectControl
-                    onChange={(configFormat) => onChange({ configFormat: normalizeCodexConfigFormat(configFormat) })}
-                    options={translateOptions(codexConfigFormatOptions, t)}
-                    value={draft.configFormat}
-                  />
-                </Field>
-                <Field label={t("Codex home")}>
-                  <Input value={draft.codexHome} onChange={(event) => onChange({ codexHome: event.target.value })} />
-                </Field>
-                <Field label={t("Provider ID")}>
-                  <Input value={draft.providerId} onChange={(event) => onChange({ providerId: event.target.value })} />
-                </Field>
-                <Field label={t("Provider name")}>
-                  <Input value={draft.providerName} onChange={(event) => onChange({ providerName: event.target.value })} />
-                </Field>
-                <Field label={t("Remote frontend")}>
-                  <SelectControl
-                    onChange={(remoteFrontendMode) => onChange({ remoteFrontendMode: normalizeCodexRemoteFrontendMode(remoteFrontendMode) })}
-                    options={translateOptions(codexRemoteFrontendModeOptions, t)}
-                    value={draft.remoteFrontendMode}
-                  />
-                </Field>
-                <Field label={t("CLI middleware")}>
-                  <div className="flex h-10 items-center justify-between gap-3 rounded-md border border-input bg-background px-3">
-                    <span className="truncate text-[12px] font-medium text-foreground">
-                      {draft.cliMiddleware ? t("Enabled") : t("Disabled")}
-                    </span>
-                    <Toggle checked={draft.cliMiddleware} onChange={(cliMiddleware) => onChange({ cliMiddleware })} />
-                  </div>
-                </Field>
-                <Field className="sm:col-span-2" label={t("Codex model")}>
-                  <Input value={draft.model} onChange={(event) => onChange({ model: event.target.value })} />
-                </Field>
-                <Field className="sm:col-span-2" label={t("Codex CLI path")}>
-                  <Input value={draft.codexCliPath} onChange={(event) => onChange({ codexCliPath: event.target.value })} />
-                </Field>
-              </>
-            )}
-          </div>
-          {error ? (
-            <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
-              {error}
-            </div>
-          ) : null}
+          <AddProfileForm draft={draft} error={error} onChange={onChange} providers={providers} />
         </DialogBody>
         <DialogFooter>
           <div className="flex justify-end gap-2">
             <Button onClick={onClose} type="button" variant="outline">
               {t("Cancel")}
             </Button>
-            <Button disabled={!canSubmit} onClick={onSubmit} type="button">
-              <Plus className="h-4 w-4" />
-              {t("Add")}
+            <Button disabled={!canSubmit} onClick={() => void onSubmit()} type="button">
+              {mode === "add" ? <Plus className="h-4 w-4" /> : null}
+              {mode === "edit" ? t("Save") : t("Add")}
             </Button>
           </div>
         </DialogFooter>
@@ -7144,7 +8176,8 @@ function NetworkInspectorCode({ value }: { value: string }) {
   );
 }
 
-function ProvidersView({ addProvider, editProvider, notify, providers, removeProvider }: {
+function ProvidersView({ accountSnapshots, addProvider, editProvider, notify, providers, removeProvider }: {
+  accountSnapshots: ProviderAccountSnapshot[];
   addProvider: () => void;
   editProvider: (index: number) => void;
   notify: (message: string) => void;
@@ -7158,6 +8191,10 @@ function ProvidersView({ addProvider, editProvider, notify, providers, removePro
   const visibleProviders = useMemo(
     () => providers.filter(({ provider }) => providerMatchesQuery(provider, normalizedQuery)),
     [normalizedQuery, providers]
+  );
+  const accountSnapshotByProvider = useMemo(
+    () => new Map(accountSnapshots.map((snapshot) => [snapshot.provider, snapshot])),
+    [accountSnapshots]
   );
 
   function toggleProvider(provider: GatewayProviderConfig, index: number) {
@@ -7215,11 +8252,12 @@ function ProvidersView({ addProvider, editProvider, notify, providers, removePro
           ) : null}
           {visibleProviders.length > 0 ? (
             <div className="overflow-x-auto">
-              <div className="min-w-[920px]">
-                <div className="sticky top-0 z-10 grid h-10 grid-cols-[minmax(160px,0.85fr)_minmax(240px,1.15fr)_minmax(180px,0.75fr)_96px_84px] items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <div className="min-w-[1080px]">
+                <div className="sticky top-0 z-10 grid h-10 grid-cols-[minmax(160px,0.8fr)_minmax(220px,1fr)_minmax(160px,0.7fr)_minmax(150px,0.65fr)_80px_84px] items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   <div className="truncate">{t("Name")}</div>
                   <div className="truncate">{t("Base URL")}</div>
                   <div className="truncate">{t("Capability")}</div>
+                  <div className="truncate">{t("Account")}</div>
                   <div className="truncate">{t("Models")}</div>
                   <div aria-hidden="true" />
                 </div>
@@ -7228,10 +8266,11 @@ function ProvidersView({ addProvider, editProvider, notify, providers, removePro
                   {visibleProviders.map(({ provider, index }) => {
                     const itemKey = providerListItemKey(provider, index);
                     const expanded = expandedProviders.has(itemKey);
+                    const accountSnapshot = accountSnapshotByProvider.get(provider.name);
                     return (
                       <AnimatedListItem key={itemKey}>
                         <div
-                          className="grid min-h-[58px] cursor-pointer grid-cols-[minmax(160px,0.85fr)_minmax(240px,1.15fr)_minmax(180px,0.75fr)_96px_84px] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35"
+                          className="grid min-h-[58px] cursor-pointer grid-cols-[minmax(160px,0.8fr)_minmax(220px,1fr)_minmax(160px,0.7fr)_minmax(150px,0.65fr)_80px_84px] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35"
                           onClick={() => toggleProvider(provider, index)}
                           onKeyDown={(event) => {
                             if (event.key === "Enter" || event.key === " ") {
@@ -7266,6 +8305,7 @@ function ProvidersView({ addProvider, editProvider, notify, providers, removePro
                           <div className="min-w-0 truncate text-[11px] text-muted-foreground" title={providerCapabilitiesSummary(provider, t)}>
                             {providerCapabilitiesSummary(provider, t)}
                           </div>
+                          <ProviderAccountListCell provider={provider} snapshot={accountSnapshot} />
                           <div className="min-w-0">
                             <button
                               aria-expanded={expanded}
@@ -7358,6 +8398,107 @@ function ProvidersView({ addProvider, editProvider, notify, providers, removePro
         </CardContent>
       </Card>
     </motion.div>
+  );
+}
+
+function ModelsView({ config }: { config: AppConfig }) {
+  const t = useAppText();
+  const [query, setQuery] = useState("");
+  const rows = useMemo(() => createModelCatalogItems(config), [config]);
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleRows = useMemo(
+    () => rows.filter((row) => modelCatalogItemMatchesQuery(row, normalizedQuery)),
+    [normalizedQuery, rows]
+  );
+
+  return (
+    <motion.div
+      animate={{ opacity: 1 }}
+      className="flex h-full min-h-0 min-w-0 flex-col"
+      initial={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+    >
+      <Card className="flex h-full min-h-0 min-w-0 flex-col">
+        <CardHeader className="flex-row flex-wrap items-center gap-2">
+          <div className="min-w-[180px] flex-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <CardTitle className="min-w-0">{t("Models")}</CardTitle>
+            </div>
+          </div>
+          <div className="relative w-[320px] max-w-full">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 z-[1] h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              aria-label={t("Search all models")}
+              className="pl-8"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t("Search all models")}
+              value={query}
+            />
+          </div>
+        </CardHeader>
+        <CardContent className="min-h-0 flex-1 overflow-auto p-0">
+          {rows.length === 0 ? (
+            <div className="m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center">
+              <Box className="mx-auto mb-2 h-7 w-7 text-muted-foreground/40" />
+              <div className="text-[12px] text-muted-foreground">{t("No models available")}</div>
+            </div>
+          ) : null}
+          {rows.length > 0 && visibleRows.length === 0 ? (
+            <div className="m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center text-[12px] text-muted-foreground">{t("No matching models")}</div>
+          ) : null}
+          {visibleRows.length > 0 ? (
+            <div className="overflow-x-auto">
+              <div className="min-w-[360px]">
+                <div className="sticky top-0 z-10 grid h-10 grid-cols-[minmax(0,1fr)] items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <div className="truncate">{t("Model")}</div>
+                </div>
+                <div className="divide-y divide-border/60">
+                  <AnimatePresence initial={false}>
+                    {visibleRows.map((row) => (
+                      <AnimatedListItem
+                        className="grid min-h-[48px] grid-cols-[minmax(0,1fr)] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35"
+                        key={row.key}
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-mono text-[12px] font-semibold text-foreground" title={row.model}>
+                            {row.model}
+                          </div>
+                        </div>
+                      </AnimatedListItem>
+                    ))}
+                  </AnimatePresence>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
+
+function ProviderAccountListCell({ provider, snapshot }: { provider: GatewayProviderConfig; snapshot?: ProviderAccountSnapshot }) {
+  const t = useAppText();
+  const meter = snapshot ? primaryProviderAccountMeter(snapshot) : undefined;
+
+  if (!provider.account?.enabled) {
+    return <div className="min-w-0 truncate text-[11px] text-muted-foreground">{t("Disabled")}</div>;
+  }
+
+  if (!snapshot) {
+    return <div className="min-w-0 truncate text-[11px] text-muted-foreground">{t("Pending")}</div>;
+  }
+
+  return (
+    <div className="min-w-0">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <Badge variant={providerAccountBadgeVariant(snapshot.status)}>{snapshot.status}</Badge>
+        {meter ? <span className="min-w-0 truncate text-[11px] font-medium">{formatProviderAccountMeterValue(meter)}</span> : null}
+      </div>
+      <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
+        {meter?.label ?? snapshot.message ?? snapshot.errors?.[0]?.message ?? snapshot.source}
+      </div>
+    </div>
   );
 }
 
@@ -7552,47 +8693,278 @@ function ProviderDeepLinkDetail({
   );
 }
 
-function AddProviderDialog({
-  canSubmit,
+type ProviderPresetComboboxOption = {
+  iconUrl?: string;
+  label: string;
+  preset?: ProviderPreset;
+  value: string;
+};
+
+function ProviderPresetCombobox({
+  onChange,
+  options,
+  value
+}: {
+  onChange: (value: string) => void;
+  options: ProviderPresetComboboxOption[];
+  value: string;
+}) {
+  const t = useAppText();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const selected = options.find((option) => option.value === value) ?? options[0];
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredOptions = normalizedQuery
+    ? options.filter((option) => providerPresetOptionMatchesQuery(option, normalizedQuery))
+    : options;
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 0);
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  function chooseOption(nextValue: string) {
+    onChange(nextValue);
+    setQuery("");
+    setOpen(false);
+  }
+
+  return (
+    <div className="relative min-w-0" ref={rootRef}>
+      <button
+        aria-controls="provider-preset-options"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        className={cn(
+          "flex h-8 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-[12px] font-medium shadow-[inset_0_1px_1px_rgba(0,0,0,0.03)] outline-none transition-[background-color,border-color,box-shadow,color] hover:border-muted-foreground/45 focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-ring/25",
+          open && "border-ring/35 bg-muted/40"
+        )}
+        onClick={() => setOpen((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+        type="button"
+      >
+        <ProviderPresetIcon className="h-4 w-4 rounded-[4px]" iconUrl={selected?.iconUrl} preset={selected?.preset} />
+        <span className="min-w-0 flex-1 truncate">{selected ? selected.label : t("Select preset provider")}</span>
+        <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+      </button>
+
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="absolute left-0 right-0 top-full z-50 mt-1"
+            exit={{ opacity: 0, scale: 0.98, y: -4 }}
+            initial={{ opacity: 0, scale: 0.98, y: -4 }}
+            transition={{ duration: 0.12, ease: "easeOut" }}
+          >
+            <PopoverContent className="overflow-hidden p-1">
+              <div className="relative mb-1">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  aria-label={t("Filter")}
+                  className="h-8 pl-8"
+                  onChange={(event) => setQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      const first = filteredOptions[0];
+                      if (first) {
+                        chooseOption(first.value);
+                      }
+                    }
+                  }}
+                  placeholder={t("Filter")}
+                  ref={inputRef}
+                  value={query}
+                />
+              </div>
+              <div className="max-h-[240px] overflow-auto" id="provider-preset-options" role="listbox">
+                {filteredOptions.length > 0 ? (
+                  filteredOptions.map((option) => {
+                    const selectedOption = option.value === value;
+                    return (
+                      <button
+                        aria-selected={selectedOption}
+                        className={cn(
+                          "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
+                          selectedOption ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
+                        )}
+                        key={option.value}
+                        onClick={() => chooseOption(option.value)}
+                        role="option"
+                        type="button"
+                      >
+                        <ProviderPresetIcon className="h-5 w-5 rounded-[5px]" iconUrl={option.iconUrl} preset={option.preset} />
+                        <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                        {selectedOption ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="px-2 py-5 text-center text-[12px] text-muted-foreground">{t("No provider presets found")}</div>
+                )}
+              </div>
+            </PopoverContent>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function ProviderPresetIcon({ className, iconUrl: explicitIconUrl, preset }: { className?: string; iconUrl?: string; preset?: ProviderPreset }) {
+  const [failed, setFailed] = useState(false);
+  const resolvedIconUrl = explicitIconUrl || (preset ? providerPresetIconUrls[preset.id] : "");
+  const iconUrl = !failed ? resolvedIconUrl : "";
+  const label = preset?.name.trim().slice(0, 1).toUpperCase() || "";
+
+  useEffect(() => {
+    setFailed(false);
+  }, [preset?.id, resolvedIconUrl]);
+
+  if (iconUrl) {
+    return (
+      <span className={cn("flex shrink-0 items-center justify-center overflow-hidden border border-border bg-background", className)}>
+        <img
+          alt=""
+          className="h-full w-full object-cover"
+          draggable={false}
+          onError={() => setFailed(true)}
+          src={iconUrl}
+        />
+      </span>
+    );
+  }
+
+  return (
+    <span className={cn("flex shrink-0 items-center justify-center border border-border bg-muted text-[10px] font-semibold text-muted-foreground", className)}>
+      {label || <Globe className="h-3.5 w-3.5" />}
+    </span>
+  );
+}
+
+function providerPresetOptionMatchesQuery(
+  option: ProviderPresetComboboxOption,
+  query: string
+): boolean {
+  const preset = option.preset;
+  const haystack = [
+    option.label,
+    option.value,
+    preset?.id,
+    preset?.name,
+    ...(preset?.aliases ?? []),
+    ...(preset?.endpoints.map((endpoint) => endpoint.baseUrl) ?? [])
+  ].filter(Boolean).join("\n").toLowerCase();
+  return haystack.includes(query);
+}
+
+function AddProviderForm({
   draft,
   error,
   mode,
+  onCheck,
   onChange,
-  onClose,
-  onSubmit,
   probe,
   probeLoading,
   providers
 }: {
-  canSubmit: boolean;
   draft: AddProviderDraft;
   error: string;
   mode: "add" | "edit";
+  onCheck?: () => Promise<void>;
   onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
-  onClose: () => void;
-  onSubmit: () => Promise<void>;
   probe?: GatewayProviderProbeResult;
   probeLoading: boolean;
   providers: GatewayProviderConfig[];
 }) {
   const t = useAppText();
+  const shouldReduceMotion = useReducedMotion();
   const [advancedOpen, setAdvancedOpen] = useState(mode === "edit");
+  const [iconDetecting, setIconDetecting] = useState(false);
+  const iconDetectionRequestRef = useRef(0);
+  const onChangeRef = useRef(onChange);
   const hasModelCatalog = Boolean(probe?.models.length);
   const selectedPreset = findProviderPreset(draft.presetId);
   const customEndpoint = draft.presetId === customProviderPresetId;
-  const showBaseUrl = customEndpoint || advancedOpen || mode === "edit";
+  const showBaseUrl = customEndpoint || mode === "edit";
   const detectedProtocol = probe?.detectedProtocol ?? draft.protocol;
   const detectedBaseUrl = probe?.normalizedBaseUrl || draft.baseUrl;
   const providerPresetOptions = [
     { label: t("Select preset provider"), value: "" },
-    ...providerPresets.map((preset) => ({ label: t(preset.name), value: preset.id })),
-    { label: t("Other / custom API endpoint"), value: customProviderPresetId }
+    ...providerPresets.map((preset) => ({ label: t(preset.name), preset, value: preset.id })),
+    { iconUrl: draft.icon, label: t("Other / custom API endpoint"), value: customProviderPresetId }
   ];
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  useEffect(() => {
+    const requestId = iconDetectionRequestRef.current + 1;
+    iconDetectionRequestRef.current = requestId;
+    setIconDetecting(false);
+
+    const baseUrl = draft.baseUrl.trim();
+    const ccr = window.ccr;
+    if (!customEndpoint || !baseUrl || draft.icon || !ccr?.detectProviderIcon) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setIconDetecting(true);
+      void ccr.detectProviderIcon({ baseUrl })
+        .then((result) => {
+          if (iconDetectionRequestRef.current === requestId && result.icon) {
+            onChangeRef.current({ icon: result.icon });
+          }
+        })
+        .catch(() => {
+          // Icon detection is optional; provider probing and saving should continue normally.
+        })
+        .finally(() => {
+          if (iconDetectionRequestRef.current === requestId) {
+            setIconDetecting(false);
+          }
+        });
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [customEndpoint, draft.baseUrl, draft.icon]);
 
   function updatePreset(presetId: string) {
     if (!presetId) {
       onChange({
         baseUrl: "",
+        icon: "",
         modelSearch: "",
         presetId,
         selectedModels: []
@@ -7603,6 +8975,7 @@ function AddProviderDialog({
     if (presetId === customProviderPresetId) {
       onChange({
         baseUrl: "",
+        icon: "",
         modelSearch: "",
         presetId,
         selectedModels: []
@@ -7615,6 +8988,7 @@ function AddProviderDialog({
     const generatedName = !draft.name.trim() || /^provider-\d+$/i.test(draft.name.trim());
     onChange({
       baseUrl: endpoint?.baseUrl ?? "",
+      icon: "",
       modelSearch: "",
       modelsText: draft.modelsText.trim() || preset?.defaultModels?.join("\n") || "",
       name: mode === "add" && preset && generatedName ? uniqueProviderName(providers, t(preset.name)) : draft.name,
@@ -7625,115 +8999,183 @@ function AddProviderDialog({
   }
 
   return (
-    <Dialog className="items-start" onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="mt-[clamp(12px,4dvh,36px)] max-h-[calc(100dvh-1.5rem-clamp(12px,4dvh,36px))] max-w-[780px] origin-top sm:mt-[clamp(16px,6dvh,56px)] sm:max-h-[calc(100dvh-3rem-clamp(16px,6dvh,56px))]">
-        <DialogHeader>
-          <div className="min-w-0">
-            <DialogTitle>{mode === "edit" ? t("Edit Provider") : t("Add Provider")}</DialogTitle>
-          </div>
-          <Button aria-label={t("Close dialog")} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
-            <X className="h-4 w-4" />
-          </Button>
-        </DialogHeader>
-
-        <DialogBody>
-          <motion.div className="grid grid-cols-1 gap-3 sm:grid-cols-2" layout transition={disclosureSpringTransition}>
-            <Field label={t("Preset provider")}>
-              <SelectControl
-                value={draft.presetId}
-                onChange={updatePreset}
-                options={providerPresetOptions}
-              />
-            </Field>
-            <Field label={t("Name")}>
-              <Input value={draft.name} onChange={(event) => onChange({ name: event.target.value })} />
-            </Field>
-            {showBaseUrl ? (
-              <Field className="sm:col-span-2" label={t("API endpoint")}>
-                <Input value={draft.baseUrl} onChange={(event) => onChange({ baseUrl: event.target.value }, true)} />
-                {customEndpoint ? (
-                  <span className="block text-[11px] leading-4 text-muted-foreground">
-                    {t("After you enter the API endpoint and key, the system will automatically detect supported protocols and available models.")}
-                  </span>
-                ) : null}
-              </Field>
-            ) : null}
-            <Field className="sm:col-span-2" label={t("API key")}>
-              <Input type="password" value={draft.apiKey} onChange={(event) => onChange({ apiKey: event.target.value }, true)} />
-            </Field>
-            {selectedPreset && !showBaseUrl ? (
-              <div className="sm:col-span-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[12px] text-muted-foreground">
-                <div className="flex min-w-0 items-center gap-2">
-                  <Globe className="h-3.5 w-3.5 shrink-0" />
-                  <span className="min-w-0 truncate" title={detectedBaseUrl}>{detectedBaseUrl}</span>
-                </div>
+    <>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label={t("Preset provider")}>
+          <ProviderPresetCombobox
+            value={draft.presetId}
+            onChange={updatePreset}
+            options={providerPresetOptions}
+          />
+        </Field>
+        <Field label={t("Name")}>
+          <Input value={draft.name} onChange={(event) => onChange({ name: event.target.value })} />
+        </Field>
+        {showBaseUrl ? (
+          <Field className="sm:col-span-2" label={t("API endpoint")}>
+            <Input value={draft.baseUrl} onChange={(event) => onChange({ baseUrl: event.target.value, icon: "" }, true)} />
+            {customEndpoint ? (
+              <div className="flex min-h-4 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
+                {iconDetecting ? <LoaderCircle className="h-3 w-3 shrink-0 animate-spin" /> : null}
+                <span className="min-w-0">
+                  {iconDetecting
+                    ? t("Detecting icon")
+                    : t("After you enter the API endpoint and key, the system will automatically detect supported protocols and available models.")}
+                </span>
               </div>
             ) : null}
-            <Field className="sm:col-span-2" label={t("Models")}>
-              {hasModelCatalog && probe ? (
-                <div className="space-y-2">
-                  <ModelMultiSelect
-                    models={probe.models}
-                    onQueryChange={(modelSearch) => onChange({ modelSearch })}
-                    onSelectedChange={(selectedModels) => onChange({ selectedModels })}
-                    query={draft.modelSearch}
-                    selected={draft.selectedModels}
-                  />
-                  <div className="space-y-1.5">
-                    <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Custom models")}</span>
-                    <ModelTagInput
-                      ariaLabel={t("Custom models")}
-                      onChange={(models) => onChange({ modelsText: models.join("\n") })}
-                      placeholder={t("Model name")}
-                      value={splitLines(draft.modelsText)}
-                    />
-                  </div>
+          </Field>
+        ) : null}
+        <Field className="sm:col-span-2" label={t("API key")}>
+          <Input type="password" value={draft.apiKey} onChange={(event) => onChange({ apiKey: event.target.value }, true)} />
+        </Field>
+        {selectedPreset && !showBaseUrl ? (
+          <div className="sm:col-span-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[12px] text-muted-foreground">
+            <div className="flex min-w-0 items-center gap-2">
+              <Globe className="h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 truncate" title={detectedBaseUrl}>{detectedBaseUrl}</span>
+            </div>
+          </div>
+        ) : null}
+        <Field className="sm:col-span-2" label={t("Models")}>
+          {hasModelCatalog && probe ? (
+            <div className="space-y-2">
+              <ModelMultiSelect
+                models={probe.models}
+                onQueryChange={(modelSearch) => onChange({ modelSearch })}
+                onSelectedChange={(selectedModels) => onChange({ selectedModels })}
+                query={draft.modelSearch}
+                selected={draft.selectedModels}
+              />
+              <div className="space-y-1.5">
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                  <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Custom models")}</span>
+                  <span className="shrink-0 text-[11px] font-medium leading-4 text-muted-foreground/75">{t("Press Enter to add")}</span>
                 </div>
-              ) : (
                 <ModelTagInput
-                  ariaLabel={t("Models")}
-                  onChange={(models) => onChange({ modelsText: models.join("\n") }, true)}
+                  ariaLabel={t("Custom models")}
+                  onChange={(models) => onChange({ modelsText: models.join("\n") })}
                   placeholder={t("Model name")}
                   value={splitLines(draft.modelsText)}
                 />
-              )}
-            </Field>
-            <div className="sm:col-span-2 flex min-w-0 flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
-              {probeLoading ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                  {t("Detecting provider")}
-                </span>
-              ) : probe?.detectedProtocol ? (
-                <span className="inline-flex items-center gap-1.5 text-foreground">
-                  <Check className="h-3.5 w-3.5" />
-                  {t("Detected automatically")}
-                </span>
-              ) : draft.baseUrl.trim() ? (
-                <span>{t("Enter a model manually if automatic detection does not return a model list.")}</span>
-              ) : null}
+              </div>
             </div>
+          ) : (
+            <ModelTagInput
+              ariaLabel={t("Models")}
+              onChange={(models) => onChange({ modelsText: models.join("\n") }, true)}
+              placeholder={t("Model name")}
+              value={splitLines(draft.modelsText)}
+            />
+          )}
+        </Field>
+        <div className="sm:col-span-2 flex min-w-0 flex-wrap items-center justify-between gap-2 text-[12px] text-muted-foreground">
+          <div className="min-w-0 flex-1">
+            {probeLoading ? (
+              <span className="inline-flex items-center gap-1.5">
+                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                {t("Detecting provider")}
+              </span>
+            ) : providerProbeHasSupportedProtocol(probe) ? (
+              <span className="inline-flex items-center gap-1.5 text-foreground">
+                <Check className="h-3.5 w-3.5" />
+                {t("Connection verified")}
+              </span>
+            ) : probe?.detectedProtocol ? (
+              <span className="inline-flex items-center gap-1.5 text-foreground">
+                <Check className="h-3.5 w-3.5" />
+                {t("Detected automatically")}
+              </span>
+            ) : draft.baseUrl.trim() ? (
+              <span>{t("Enter a model manually if automatic detection does not return a model list.")}</span>
+            ) : null}
+          </div>
+          {onCheck ? (
+            <Button
+              className="h-8 shrink-0 px-2"
+              disabled={probeLoading}
+              onClick={() => void onCheck()}
+              type="button"
+              variant="outline"
+            >
+              {probeLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+              {t("Check")}
+            </Button>
+          ) : null}
+        </div>
 
-            <div className="sm:col-span-2">
-              <button
-                aria-expanded={advancedOpen}
-                className="inline-flex min-w-0 items-center gap-2 border-0 bg-transparent p-0 text-[12px] font-semibold text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
-                onClick={() => setAdvancedOpen((value) => !value)}
-                type="button"
-              >
-                <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", advancedOpen && "rotate-180")} />
-                <span>{t("Advanced settings")}</span>
-              </button>
-            </div>
+        <div className="sm:col-span-2">
+          <button
+            aria-expanded={advancedOpen}
+            className="inline-flex min-w-0 items-center gap-2 border-0 bg-transparent p-0 text-[12px] font-semibold text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
+            onClick={() => setAdvancedOpen((value) => !value)}
+            type="button"
+          >
+            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", advancedOpen && "rotate-180")} />
+            <span>{t("Advanced settings")}</span>
+          </button>
+        </div>
 
-            {advancedOpen ? (
-              <div className="sm:col-span-2 grid grid-cols-1 gap-3 rounded-md border border-border bg-muted/20 p-3 sm:grid-cols-2">
+        <AnimatePresence initial={false}>
+          {advancedOpen ? (
+            <motion.div
+              animate={{ height: "auto", opacity: 1 }}
+              className="sm:col-span-2 overflow-hidden"
+              exit={{ height: 0, opacity: 0 }}
+              initial={{ height: 0, opacity: 0 }}
+              transition={shouldReduceMotion ? reducedMotionTransition : { duration: 0.18, ease: motionEase }}
+            >
+              <div className="grid grid-cols-1 gap-3 rounded-md border border-border bg-muted/20 p-3 sm:grid-cols-2">
+                {selectedPreset && !customEndpoint && mode === "add" ? (
+                  <Field className="sm:col-span-2" label={t("API endpoint")}>
+                    <Input value={draft.baseUrl} onChange={(event) => onChange({ baseUrl: event.target.value }, true)} />
+                  </Field>
+                ) : null}
                 <Field label={t("Detected compatibility")}>
                   <Input readOnly value={translatedProviderProtocolLabel(detectedProtocol, t)} />
                 </Field>
                 <Field label={t("Detected endpoint")}>
                   <Input readOnly value={detectedBaseUrl} />
                 </Field>
+                <div className="sm:col-span-2 space-y-2 rounded-md border border-border bg-background/60 p-3">
+                  <Label className="flex min-w-0 items-center gap-2 text-[12px] font-semibold">
+                    <Checkbox
+                      checked={draft.accountEnabled}
+                      onCheckedChange={(checked) => onChange({ accountEnabled: checked })}
+                    />
+                    <span className="min-w-0 truncate">{t("Account balance connectors")}</span>
+                  </Label>
+                  {draft.accountEnabled ? (
+                    <div className="grid grid-cols-1 gap-3">
+                      <Field label={t("Refresh interval ms")}>
+                        <Input
+                          min={30000}
+                          placeholder="300000"
+                          type="number"
+                          value={draft.accountRefreshIntervalMs}
+                          onChange={(event) => onChange({ accountRefreshIntervalMs: event.target.value })}
+                        />
+                      </Field>
+                      <Field label={t("Connectors JSON")}>
+                        <Textarea
+                          className="min-h-[180px] font-mono text-[11px]"
+                          value={draft.accountConnectorsText}
+                          onChange={(event) => onChange({ accountConnectorsText: event.target.value })}
+                        />
+                        <div className="flex min-w-0 items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                          <span className="min-w-0 truncate">{t("Supports standard, http-json, plugin, and local-estimate connectors.")}</span>
+                          <button
+                            className="shrink-0 text-primary hover:underline"
+                            type="button"
+                            onClick={() => onChange({ accountConnectorsText: providerAccountConnectorExample() })}
+                          >
+                            {t("Insert example")}
+                          </button>
+                        </div>
+                      </Field>
+                    </div>
+                  ) : null}
+                </div>
                 <Field className="sm:col-span-2" label={t("Protocol details")}>
                   <div className="max-h-[128px] overflow-auto rounded-md border border-border bg-background p-2">
                     {probe?.protocols.length ? (
@@ -7754,10 +9196,66 @@ function AddProviderDialog({
                   </div>
                 </Field>
               </div>
-            ) : null}
-          </motion.div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </div>
 
-          {error ? <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive flex items-start gap-2"><CircleAlert className="h-3.5 w-3.5 shrink-0 mt-0.5" /><span>{error}</span></div> : null}
+      {error ? <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive"><CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>{error}</span></div> : null}
+    </>
+  );
+}
+
+function AddProviderDialog({
+  canSubmit,
+  draft,
+  error,
+  mode,
+  onCheck,
+  onChange,
+  onClose,
+  onSubmit,
+  probe,
+  probeLoading,
+  providers
+}: {
+  canSubmit: boolean;
+  draft: AddProviderDraft;
+  error: string;
+  mode: "add" | "edit";
+  onCheck?: () => Promise<void>;
+  onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
+  onClose: () => void;
+  onSubmit: () => Promise<boolean>;
+  probe?: GatewayProviderProbeResult;
+  probeLoading: boolean;
+  providers: GatewayProviderConfig[];
+}) {
+  const t = useAppText();
+
+  return (
+    <Dialog className="items-start" onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="mt-[clamp(12px,4dvh,36px)] max-h-[calc(100dvh-1.5rem-clamp(12px,4dvh,36px))] max-w-[780px] origin-top sm:mt-[clamp(16px,6dvh,56px)] sm:max-h-[calc(100dvh-3rem-clamp(16px,6dvh,56px))]">
+        <DialogHeader>
+          <div className="min-w-0">
+            <DialogTitle>{mode === "edit" ? t("Edit Provider") : t("Add Provider")}</DialogTitle>
+          </div>
+          <Button aria-label={t("Close dialog")} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
+            <X className="h-4 w-4" />
+          </Button>
+        </DialogHeader>
+
+        <DialogBody>
+          <AddProviderForm
+            draft={draft}
+            error={error}
+            mode={mode}
+            onCheck={onCheck}
+            onChange={onChange}
+            probe={probe}
+            probeLoading={probeLoading}
+            providers={providers}
+          />
         </DialogBody>
 
         <DialogFooter>
@@ -9406,39 +10904,43 @@ function KeyValueRowsControl({
 
   return (
     <div className="space-y-2">
-      <div className="space-y-2">
-        {visibleRows.map((row, index) => (
-          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_28px] gap-2" key={row.id}>
-            <Input
-              aria-label={t("Key")}
-              onChange={(event) => updateRow(index, { key: event.target.value })}
-              placeholder={t("Key")}
-              value={row.key}
-            />
-            <Input
-              aria-label={t("Value")}
-              onChange={(event) => updateRow(index, { value: event.target.value })}
-              placeholder={t("Value")}
-              value={row.value}
-            />
-            <Button
-              aria-label={t("Remove")}
-              disabled={visibleRows.length === 1 && !row.key.trim() && !row.value.trim()}
-              onClick={() => removeRow(index)}
-              size="iconSm"
-              title={t("Remove")}
-              type="button"
-              variant="ghost"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        ))}
-      </div>
-      <Button onClick={addRow} size="sm" type="button" variant="outline">
-        <Plus className="h-3.5 w-3.5" />
-        {addLabel}
-      </Button>
+      {visibleRows.map((row, index) => (
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_28px_28px] gap-2" key={row.id}>
+          <Input
+            aria-label={t("Key")}
+            onChange={(event) => updateRow(index, { key: event.target.value })}
+            placeholder={t("Key")}
+            value={row.key}
+          />
+          <Input
+            aria-label={t("Value")}
+            onChange={(event) => updateRow(index, { value: event.target.value })}
+            placeholder={t("Value")}
+            value={row.value}
+          />
+          <Button
+            aria-label={t("Remove")}
+            disabled={visibleRows.length === 1 && !row.key.trim() && !row.value.trim()}
+            onClick={() => removeRow(index)}
+            size="iconSm"
+            title={t("Remove")}
+            type="button"
+            variant="ghost"
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            aria-label={addLabel}
+            onClick={addRow}
+            size="iconSm"
+            title={addLabel}
+            type="button"
+            variant="outline"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ))}
     </div>
   );
 }
@@ -9738,6 +11240,88 @@ function normalizeProfileClientModel(value: string | undefined): string {
   return trimmed;
 }
 
+type ProfileModelProviderOption = {
+  models: string[];
+  name: string;
+};
+
+type ParsedProfileModelValue = {
+  model: string;
+  provider: string;
+};
+
+function profileModelProviderOptions(providers: GatewayProviderConfig[]): ProfileModelProviderOption[] {
+  return providers
+    .filter((provider) => provider.name?.trim() && Array.isArray(provider.models))
+    .map((provider) => ({
+      models: uniqueStrings(provider.models.filter(Boolean)),
+      name: provider.name.trim()
+    }))
+    .filter((provider) => provider.models.length > 0);
+}
+
+function parseProfileModelValue(value: string, providers: GatewayProviderConfig[]): ParsedProfileModelValue {
+  const trimmed = normalizeProfileClientModel(value);
+  if (!trimmed) {
+    return { model: "", provider: "" };
+  }
+  const providerOptions = profileModelProviderOptions(providers);
+  for (const provider of providerOptions) {
+    const slashPrefix = `${provider.name}/`;
+    const commaPrefix = `${provider.name},`;
+    if (trimmed.startsWith(slashPrefix)) {
+      return { model: trimmed.slice(slashPrefix.length).trim(), provider: provider.name };
+    }
+    if (trimmed.startsWith(commaPrefix)) {
+      return { model: trimmed.slice(commaPrefix.length).trim(), provider: provider.name };
+    }
+  }
+  const slashIndex = trimmed.indexOf("/");
+  if (slashIndex > 0 && slashIndex < trimmed.length - 1) {
+    return {
+      model: trimmed.slice(slashIndex + 1).trim(),
+      provider: trimmed.slice(0, slashIndex).trim()
+    };
+  }
+  return { model: trimmed, provider: "" };
+}
+
+function profileModelDisplayValue(
+  value: string,
+  parsedValue: ParsedProfileModelValue,
+  providers: GatewayProviderConfig[],
+  placeholder: string | undefined
+): string {
+  if (!value.trim()) {
+    return placeholder?.trim() || "";
+  }
+  const normalized = normalizeProfileClientModel(value);
+  if (parsedValue.provider && parsedValue.model) {
+    return `${parsedValue.provider}/${parsedValue.model}`;
+  }
+  const provider = profileModelProviderOptions(providers).find((item) => item.models.includes(normalized));
+  return provider ? `${provider.name}/${normalized}` : normalized;
+}
+
+function profileModelProviderMatchesQuery(provider: ProfileModelProviderOption, query: string): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+  return (
+    provider.name.toLowerCase().includes(normalizedQuery) ||
+    provider.models.some((model) => model.toLowerCase().includes(normalizedQuery))
+  );
+}
+
+function profileModelMatchesQuery(providerName: string, model: string, query: string): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+  return providerName.toLowerCase().includes(normalizedQuery) || model.toLowerCase().includes(normalizedQuery);
+}
+
 function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code", name?: string): AddProfileDraft {
   return {
     agent,
@@ -9746,18 +11330,71 @@ function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code", name?
     codexHome: "",
     configFormat: "legacy",
     configFile: "~/.codex/config.toml",
+    envRows: [],
     model: "",
     name: name ?? profileAgentLabel(agent),
     providerId: "claude-code-router",
     providerName: "Claude Code Router",
     remoteFrontendMode: "app",
+    scope: "global",
     settingsFile: "~/.claude/settings.json",
-    smallFastModel: ""
+    smallFastModel: "",
+    surface: "auto"
   };
 }
 
-function profileConfigFromDraft(draft: AddProfileDraft, existingProfiles: ProfileConfig[]): ProfileConfig {
-  const id = uniqueProfileId(existingProfiles, draft.name || draft.agent);
+function createProfileDraftFromProfile(profile: ProfileConfig): AddProfileDraft {
+  if (profile.agent === "claude-code") {
+    return {
+      ...createProfileDraft("claude-code", profile.name),
+      envRows: keyValueRowsFromRecord(profile.env ?? {}),
+      model: profile.model,
+      scope: normalizeProfileScope(profile.scope),
+      settingsFile: profile.settingsFile ?? "~/.claude/settings.json",
+      smallFastModel: profile.smallFastModel ?? "",
+      surface: normalizeProfileSurface(profile.surface)
+    };
+  }
+  return {
+    ...createProfileDraft("codex", profile.name),
+    cliMiddleware: Boolean(profile.cliMiddleware),
+    codexCliPath: profile.codexCliPath ?? "",
+    codexHome: profile.codexHome ?? "",
+    configFile: profile.configFile ?? "~/.codex/config.toml",
+    configFormat: normalizeCodexConfigFormat(profile.configFormat),
+    envRows: keyValueRowsFromRecord(profile.env ?? {}),
+    model: profile.model,
+    providerId: profile.providerId ?? "claude-code-router",
+    providerName: profile.providerName ?? "Claude Code Router",
+    remoteFrontendMode: normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode),
+    scope: normalizeProfileScope(profile.scope),
+    surface: normalizeProfileSurface(profile.surface)
+  };
+}
+
+function isProfileDraftSubmittable(draft: AddProfileDraft): boolean {
+  if (!draft.name.trim()) {
+    return false;
+  }
+  if (!validateProfileEnvRows(draft.envRows)) {
+    return false;
+  }
+  if (draft.agent === "claude-code") {
+    return profileScopeUsesGeneratedPath(draft.scope) || Boolean(draft.settingsFile.trim());
+  }
+  return (
+    (profileScopeUsesGeneratedPath(draft.scope) || Boolean(draft.configFile.trim())) &&
+    Boolean(draft.providerId.trim()) &&
+    Boolean(draft.providerName.trim())
+  );
+}
+
+function profileConfigFromDraft(
+  draft: AddProfileDraft,
+  existingProfiles: ProfileConfig[],
+  existingProfile?: ProfileConfig
+): ProfileConfig {
+  const id = existingProfile?.id ?? uniqueProfileId(existingProfiles, draft.name || draft.agent);
   return normalizeProfileItem({
     agent: draft.agent,
     cliMiddleware: draft.cliMiddleware,
@@ -9765,15 +11402,18 @@ function profileConfigFromDraft(draft: AddProfileDraft, existingProfiles: Profil
     codexHome: draft.codexHome,
     configFormat: draft.configFormat,
     configFile: draft.configFile,
-    enabled: true,
+    enabled: existingProfile?.enabled ?? true,
+    env: recordFromKeyValueRows(draft.envRows),
     id,
     model: draft.model,
     name: draft.name,
     providerId: draft.providerId,
     providerName: draft.providerName,
     remoteFrontendMode: draft.remoteFrontendMode,
+    scope: draft.scope,
     settingsFile: draft.settingsFile,
-    smallFastModel: draft.smallFastModel
+    smallFastModel: draft.smallFastModel,
+    surface: draft.surface
   }, existingProfiles.length);
 }
 
@@ -9785,18 +11425,96 @@ function normalizeCodexRemoteFrontendMode(value: unknown): CodexRemoteFrontendMo
   return value === "cli" || value === "claude-code" ? value : "app";
 }
 
+function normalizeProfileScope(value: unknown): ProfileScope {
+  return value === "ccr" || value === "custom" ? value : "global";
+}
+
+function normalizeProfileSurface(value: unknown): ProfileSurface {
+  return value === "cli" || value === "app" ? value : "auto";
+}
+
+function profileScopeUsesGeneratedPath(scope: ProfileScope): boolean {
+  return scope === "ccr" || scope === "custom";
+}
+
+function profileSummaryItems(
+  profile: ProfileConfig,
+  config: AppConfig,
+  t: (value: string) => string
+): Array<{ label: string; value: string }> {
+  const scope = normalizeProfileScope(profile.scope);
+  const generatedPath = profileScopeUsesGeneratedPath(scope);
+  const envCount = Object.keys(profile.env ?? {}).length;
+  const envSummaryItems = envCount > 0
+    ? [{ label: t("Environment variables"), value: String(envCount) }]
+    : [];
+  const smallFastModel = profile.smallFastModel?.trim() || "";
+  const modelValue = profile.model.trim()
+    ? profileModelDisplayValue(
+      profile.model,
+      parseProfileModelValue(profile.model, config.Providers),
+      config.Providers,
+      undefined
+    )
+    : profile.agent === "claude-code"
+      ? t("Keep Claude Code default")
+      : defaultProfileClientModel(config);
+
+  if (profile.agent === "claude-code") {
+    return [
+      { label: t("Model"), value: modelValue },
+      {
+        label: t("Small fast model"),
+        value: smallFastModel
+          ? profileModelDisplayValue(
+            smallFastModel,
+            parseProfileModelValue(smallFastModel, config.Providers),
+            config.Providers,
+            undefined
+          )
+          : t("Keep Claude Code default")
+      },
+      {
+        label: t("Settings file"),
+        value: generatedPath ? t("Generated path") : (profile.settingsFile ?? "~/.claude/settings.json")
+      },
+      ...envSummaryItems
+    ];
+  }
+
+  return [
+    { label: t("Model"), value: modelValue },
+    { label: t("Provider ID"), value: profile.providerId ?? "claude-code-router" },
+    {
+      label: t("Config file"),
+      value: generatedPath ? t("Generated path") : (profile.configFile ?? "~/.codex/config.toml")
+    },
+    {
+      label: t("Remote frontend"),
+      value: t(codexRemoteFrontendModeLabel(normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode)))
+    },
+    ...envSummaryItems
+  ];
+}
+
 function normalizeProfileItem(profile: ProfileConfig, index: number): ProfileConfig {
   const name = profile.name.trim() || profileAgentLabel(profile.agent);
   const model = profile.model.trim();
+  const scope = normalizeProfileScope(profile.scope);
+  const surface = normalizeProfileSurface(profile.surface);
+  const env = isPlainRecord(profile.env) ? stringRecordValue(profile.env) : {};
   if (profile.agent === "claude-code") {
     return {
       agent: "claude-code",
       enabled: profile.enabled,
+      env,
       id: profile.id || `profile-${index + 1}`,
       model,
       name,
+      scope,
       settingsFile: profile.settingsFile?.trim() || "~/.claude/settings.json",
-      smallFastModel: profile.smallFastModel?.trim() || ""
+      smallFastModel: profile.smallFastModel?.trim() || "",
+      surface
     };
   }
   return {
@@ -9807,12 +11525,15 @@ function normalizeProfileItem(profile: ProfileConfig, index: number): ProfileCon
     configFormat: normalizeCodexConfigFormat(profile.configFormat),
     configFile: profile.configFile?.trim() || "~/.codex/config.toml",
     enabled: profile.enabled,
+    env,
     id: profile.id || `profile-${index + 1}`,
     model,
     name,
     providerId: profile.providerId?.trim() || "claude-code-router",
     providerName: profile.providerName?.trim() || "Claude Code Router",
-    remoteFrontendMode: normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode)
+    remoteFrontendMode: normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode),
+    scope,
+    surface
   };
 }
 
@@ -9830,11 +11551,14 @@ function legacyProfileItemsFromProfileConfig(profile: AppConfig["profile"]): Pro
     normalizeProfileItem({
       agent: "claude-code",
       enabled: profile.claudeCode.enabled,
+      env: {},
       id: "default-claude-code",
       model: profile.claudeCode.model,
       name: "Claude Code",
+      scope: "global",
       settingsFile: profile.claudeCode.settingsFile,
-      smallFastModel: profile.claudeCode.smallFastModel
+      smallFastModel: profile.claudeCode.smallFastModel,
+      surface: "auto"
     }, 0),
     normalizeProfileItem({
       agent: "codex",
@@ -9844,12 +11568,15 @@ function legacyProfileItemsFromProfileConfig(profile: AppConfig["profile"]): Pro
       configFormat: profile.codex.configFormat,
       configFile: profile.codex.configFile,
       enabled: profile.codex.enabled,
+      env: {},
       id: "default-codex",
       model: profile.codex.model,
       name: "Codex",
       providerId: profile.codex.providerId,
       providerName: profile.codex.providerName,
-      remoteFrontendMode: profile.codex.remoteFrontendMode
+      remoteFrontendMode: profile.codex.remoteFrontendMode,
+      scope: "global",
+      surface: "auto"
     }, 1)
   ];
 }
@@ -9872,6 +11599,7 @@ function normalizeUnknownProfileItem(value: Record<string, unknown>, index: numb
     configFormat: typeof value.configFormat === "string" ? normalizeCodexConfigFormat(value.configFormat) : undefined,
     configFile: typeof value.configFile === "string" ? value.configFile : undefined,
     enabled: typeof value.enabled === "boolean" ? value.enabled : true,
+    env: isPlainRecord(value.env) ? stringRecordValue(value.env) : {},
     id: typeof value.id === "string" && value.id.trim() ? value.id.trim() : `profile-${index + 1}`,
     model: typeof value.model === "string" ? value.model : "",
     name: typeof value.name === "string" ? value.name : profileAgentLabel(agent),
@@ -9884,8 +11612,10 @@ function normalizeUnknownProfileItem(value: Record<string, unknown>, index: numb
         : typeof value.coreMode === "string"
           ? normalizeCodexRemoteFrontendMode(value.coreMode)
           : undefined,
+    scope: typeof value.scope === "string" ? normalizeProfileScope(value.scope) : "global",
     settingsFile: typeof value.settingsFile === "string" ? value.settingsFile : undefined,
-    smallFastModel: typeof value.smallFastModel === "string" ? value.smallFastModel : undefined
+    smallFastModel: typeof value.smallFastModel === "string" ? value.smallFastModel : undefined,
+    surface: typeof value.surface === "string" ? normalizeProfileSurface(value.surface) : "auto"
   }, index);
 }
 
@@ -9909,6 +11639,30 @@ function profileAgentLabel(agent: ProfileConfig["agent"]): string {
     return "Claude Code";
   }
   return "Codex";
+}
+
+function profileScopeLabel(scope: ProfileScope): string {
+  if (scope === "global") {
+    return "System default";
+  }
+  if (scope === "custom") {
+    return "Custom config path";
+  }
+  return "Only opened from CCR";
+}
+
+function profileSurfaceLabel(surface: ProfileSurface): string {
+  if (surface === "cli") {
+    return "CLI only";
+  }
+  if (surface === "app") {
+    return "App only";
+  }
+  return "Auto";
+}
+
+function codexRemoteFrontendModeLabel(mode: CodexRemoteFrontendMode): string {
+  return codexRemoteFrontendModeOptions.find((option) => option.value === mode)?.label ?? "Codex App";
 }
 
 function profileAgentLogoUrl(agent: ProfileConfig["agent"]): string {
@@ -10364,6 +12118,104 @@ function formatCompactNumber(value: number): string {
     maximumFractionDigits: value >= 1000 ? 1 : 0,
     notation: value >= 10000 ? "compact" : "standard"
   }).format(value);
+}
+
+function compareProviderAccountSnapshots(a: ProviderAccountSnapshot, b: ProviderAccountSnapshot): number {
+  return providerAccountStatusRank(b.status) - providerAccountStatusRank(a.status) || a.provider.localeCompare(b.provider);
+}
+
+function providerAccountStatusRank(status: ProviderAccountSnapshot["status"]): number {
+  if (status === "error") return 4;
+  if (status === "critical") return 3;
+  if (status === "warning") return 2;
+  if (status === "ok") return 1;
+  return 0;
+}
+
+function primaryProviderAccountMeter(account: ProviderAccountSnapshot): ProviderAccountMeter | undefined {
+  return [...account.meters].sort((a, b) => {
+    const aRatio = providerAccountMeterRemainingRatio(a) ?? 1;
+    const bRatio = providerAccountMeterRemainingRatio(b) ?? 1;
+    return aRatio - bRatio;
+  })[0];
+}
+
+function providerAccountMeterRemainingRatio(meter: ProviderAccountMeter): number | undefined {
+  if (!meter.limit || meter.limit <= 0 || meter.remaining === undefined) {
+    return undefined;
+  }
+  return Math.max(0, Math.min(1, meter.remaining / meter.limit));
+}
+
+function providerAccountMeterProgress(meter: ProviderAccountMeter): number | undefined {
+  const ratio = providerAccountMeterRemainingRatio(meter);
+  return ratio === undefined ? undefined : Math.max(3, Math.round(ratio * 100));
+}
+
+function providerAccountBadgeVariant(status: ProviderAccountSnapshot["status"]): "danger" | "outline" | "success" | "warning" {
+  if (status === "critical" || status === "error") {
+    return "danger";
+  }
+  if (status === "warning") {
+    return "warning";
+  }
+  if (status === "ok") {
+    return "success";
+  }
+  return "outline";
+}
+
+function providerAccountProgressClass(status: ProviderAccountSnapshot["status"]): string {
+  if (status === "critical" || status === "error") {
+    return "bg-red-500";
+  }
+  if (status === "warning") {
+    return "bg-amber-500";
+  }
+  return "bg-emerald-500";
+}
+
+function formatProviderAccountMeterValue(meter: ProviderAccountMeter): string {
+  const value = meter.remaining ?? meter.used ?? meter.limit;
+  if (value === undefined) {
+    return "-";
+  }
+  if (meter.unit === "USD") {
+    return `$${formatProviderAccountNumber(value)}`;
+  }
+  if (meter.unit === "CNY") {
+    return `¥${formatProviderAccountNumber(value)}`;
+  }
+  if (meter.unit === "hours") {
+    return `${formatProviderAccountNumber(value)}h`;
+  }
+  if (meter.unit === "minutes") {
+    return `${formatProviderAccountNumber(value)}m`;
+  }
+  return `${formatCompactNumber(value)} ${meter.unit}`;
+}
+
+function formatProviderAccountNumber(value: number): string {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: value >= 10 ? 1 : 2 }).format(value);
+}
+
+function formatProviderAccountReset(value: string): string {
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) {
+    return value;
+  }
+  const minutes = Math.round((timestamp - Date.now()) / 60000);
+  if (minutes <= 0) {
+    return "soon";
+  }
+  if (minutes < 60) {
+    return `${minutes}m`;
+  }
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) {
+    return `${hours}h`;
+  }
+  return `${Math.round(hours / 24)}d`;
 }
 
 function formatAxisNumber(value: number): string {
@@ -12028,6 +13880,17 @@ function validateKeyValueRows(rows: KeyValueDraftRow[]): boolean {
   return rows.every((row) => !row.value.trim() || Boolean(row.key.trim()));
 }
 
+function validateProfileEnvRows(rows: KeyValueDraftRow[]): boolean {
+  return rows.every((row) => {
+    const key = row.key.trim();
+    return (!row.value.trim() || Boolean(key)) && (!key || isProfileEnvName(key));
+  });
+}
+
+function isProfileEnvName(value: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
+}
+
 function recordFromKeyValueRows(rows: KeyValueDraftRow[]): Record<string, string> {
   const result: Record<string, string> = {};
   for (const row of rows) {
@@ -12596,6 +14459,44 @@ function stringListValue(value: unknown): string[] {
   return Array.isArray(value) ? value.map((item) => stringValue(item)).filter((item): item is string => Boolean(item)) : [];
 }
 
+function createModelCatalogItems(config: AppConfig): ModelCatalogItem[] {
+  const providerModels = config.Providers.flatMap((provider) => mergeProviderModelLists(provider.models));
+  const virtualModels = (config.virtualModelProfiles ?? [])
+    .filter(virtualModelIsCatalogVisible)
+    .flatMap(virtualModelCatalogNames);
+
+  return uniqueStrings([...providerModels, ...virtualModels]).map((model, index) => ({
+    key: `model:${index}:${model}`,
+    model
+  }));
+}
+
+function virtualModelIsCatalogVisible(profile: VirtualModelProfileConfig): boolean {
+  return profile.enabled !== false &&
+    profile.materialization?.enabled !== false &&
+    profile.materialization?.includeInGatewayModels !== false;
+}
+
+function virtualModelCatalogNames(profile: VirtualModelProfileConfig): string[] {
+  const exactAliases = uniqueStrings(profile.match?.exactAliases ?? []);
+  if (exactAliases.length > 0) {
+    return exactAliases;
+  }
+  const matchSummary = virtualModelMatchSummary(profile);
+  if (matchSummary && matchSummary !== "-") {
+    return [matchSummary];
+  }
+  return [profile.key || profile.displayName].filter(Boolean);
+}
+
+function modelCatalogItemMatchesQuery(row: ModelCatalogItem, query: string): boolean {
+  if (!query) {
+    return true;
+  }
+
+  return row.model.toLowerCase().includes(query);
+}
+
 function createRouteModelOptions(providers: GatewayProviderConfig[]): Array<{ label: string; value: string }> {
   return providers.flatMap((provider) => {
     if (!provider.name || !Array.isArray(provider.models)) {
@@ -12805,8 +14706,12 @@ function inferProviderNameFromBaseUrl(baseUrl: string): string {
 
 function createProviderDraft(providers: GatewayProviderConfig[]): AddProviderDraft {
   return {
+    accountConnectorsText: "[]",
+    accountEnabled: false,
+    accountRefreshIntervalMs: "",
     apiKey: "",
     baseUrl: "",
+    icon: "",
     modelSearch: "",
     modelsText: "",
     name: uniqueProviderName(providers),
@@ -12820,8 +14725,12 @@ function createProviderDraftFromProvider(provider: GatewayProviderConfig): AddPr
   const baseUrl = providerBaseUrl(provider);
   const preset = findProviderPresetByBaseUrl(baseUrl);
   return {
+    accountConnectorsText: JSON.stringify(provider.account?.connectors ?? [], null, 2),
+    accountEnabled: provider.account?.enabled === true,
+    accountRefreshIntervalMs: provider.account?.refreshIntervalMs ? String(provider.account.refreshIntervalMs) : "",
     apiKey: providerApiKey(provider),
     baseUrl,
+    icon: provider.icon ?? "",
     modelSearch: "",
     modelsText: provider.models.join("\n"),
     name: provider.name,
@@ -12829,6 +14738,75 @@ function createProviderDraftFromProvider(provider: GatewayProviderConfig): AddPr
     protocol: toProviderProtocol(provider.type) ?? toProviderProtocol(provider.provider) ?? "openai_chat_completions",
     selectedModels: []
   };
+}
+
+function parseProviderAccountDraft(draft: AddProviderDraft): GatewayProviderConfig["account"] | string | undefined {
+  const refreshIntervalMs = positiveInteger(draft.accountRefreshIntervalMs);
+  if (!draft.accountEnabled) {
+    return undefined;
+  }
+
+  let connectors: unknown;
+  try {
+    connectors = JSON.parse(draft.accountConnectorsText.trim() || "[]");
+  } catch (error) {
+    return `Account connectors JSON is invalid: ${error instanceof Error ? error.message : String(error)}`;
+  }
+
+  if (!Array.isArray(connectors)) {
+    return "Account connectors must be a JSON array.";
+  }
+  if (connectors.length === 0) {
+    return "Add at least one account connector or disable account balance.";
+  }
+
+  return {
+    connectors: connectors as ProviderAccountConnectorConfig[],
+    enabled: true,
+    refreshIntervalMs: refreshIntervalMs && refreshIntervalMs > 0 ? refreshIntervalMs : undefined
+  };
+}
+
+function providerAccountConnectorExample(): string {
+  return JSON.stringify([
+    {
+      type: "standard",
+      auth: "provider-api-key"
+    },
+    {
+      type: "http-json",
+      endpoint: "https://api.vendor.com/account",
+      auth: "provider-api-key",
+      mapping: {
+        meters: [
+          {
+            id: "balance",
+            label: "Balance",
+            kind: "balance",
+            unit: "USD",
+            remaining: "$.balance.remaining"
+          }
+        ]
+      }
+    },
+    {
+      type: "plugin",
+      pluginId: "vendor-plugin",
+      connectorId: "account"
+    },
+    {
+      type: "local-estimate",
+      windows: [
+        {
+          id: "weekly",
+          label: "Weekly estimate",
+          unit: "tokens",
+          limit: 1000000,
+          window: "weekly"
+        }
+      ]
+    }
+  ], null, 2);
 }
 
 function toProviderProtocol(value: string | undefined): GatewayProviderProtocol | undefined {
@@ -12910,6 +14888,14 @@ async function probeProviderCandidates(
 
 function providerProbeResultIsUsable(probe: GatewayProviderProbeResult): boolean {
   return Boolean(probe.detectedProtocol || probe.models.length > 0 || probe.protocols.some((item) => item.supported));
+}
+
+function providerProbeHasSupportedProtocol(probe: GatewayProviderProbeResult | undefined, protocol?: GatewayProviderProtocol): boolean {
+  return Boolean(probe?.protocols.some((item) => item.supported && (!protocol || item.protocol === protocol)));
+}
+
+function firstProviderConnectivityModel(draft: AddProviderDraft): string {
+  return mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText))[0] ?? "";
 }
 
 function mergeProviderProbeCandidateResults(results: ProviderProbeCandidateResult[]): ProviderProbeCandidateResult | undefined {
@@ -13127,7 +15113,7 @@ function providerMatchesQuery(provider: GatewayProviderConfig, query: string): b
 }
 
 function viewUsesInternalScroll(view: ViewId): boolean {
-  return view === "observability" || view === "api-keys" || view === "networking" || view === "logs" || view === "providers" || view === "routing" || view === "virtual-models" || view === "extensions";
+  return view === "observability" || view === "api-keys" || view === "networking" || view === "logs" || view === "providers" || view === "models" || view === "routing" || view === "virtual-models" || view === "extensions";
 }
 
 function uniqueProviderName(providers: GatewayProviderConfig[], baseName = "provider"): string {

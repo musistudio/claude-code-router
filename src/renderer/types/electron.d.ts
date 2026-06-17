@@ -11,6 +11,9 @@ import type {
   GatewayStatus,
   PluginDirectorySelection,
   PluginMarketplaceEntry,
+  ProviderIconDetectionRequest,
+  ProviderIconDetectionResult,
+  ProviderAccountSnapshot,
   ProviderDeepLinkRequest,
   ProfileApplyResult,
   ProxyCertificateInstallResult,
@@ -30,12 +33,14 @@ declare global {
       applyProfile: () => Promise<ProfileApplyResult>;
       clearProxyNetworkCaptures: () => Promise<ProxyNetworkSnapshot>;
       closeTray: () => Promise<void>;
+      detectProviderIcon: (request: ProviderIconDetectionRequest) => Promise<ProviderIconDetectionResult>;
       getAgentAnalysis: (filter?: AgentAnalysisFilter) => Promise<AgentAnalysisSnapshot>;
       getAppInfo: () => Promise<AppInfo>;
       getConfig: () => Promise<AppConfig>;
       getGatewayStatus: () => Promise<GatewayStatus>;
       getOnboardingFinished: () => Promise<boolean>;
       getPendingProviderDeepLinks: () => Promise<ProviderDeepLinkRequest[]>;
+      getProviderAccountSnapshots: (provider?: string) => Promise<ProviderAccountSnapshot[]>;
       getPluginMarketplace: () => Promise<PluginMarketplaceEntry[]>;
       getProxyCertificateStatus: () => Promise<ProxyCertificateStatus>;
       getProxyNetworkCaptures: () => Promise<ProxyNetworkSnapshot>;

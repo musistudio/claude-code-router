@@ -132,6 +132,7 @@ const localObservabilityHeaderNames = new Set([
   "x-agent-session-id",
   "x-claude-design-chat-id",
   "x-claude-design-project-id",
+  "x-ccr-claude-model-discovery",
   "x-ccr-codex-model-rewrite",
   "x-ccr-cursor-openai-compat"
 ]);
@@ -450,6 +451,11 @@ class GatewayService {
       bodyToForward = codexAppPreparation.body ?? bodyToForward;
       routedModel = codexAppPreparation.routedModel ?? routedModel;
     }
+    const claudeModelRewrite = prepareClaudeCodeDiscoveredModelRequest(this.config, request.headers, method, path, bodyToForward);
+    if (claudeModelRewrite) {
+      headers["x-ccr-claude-model-discovery"] = claudeModelRewrite.diagnostic;
+      bodyToForward = claudeModelRewrite.body;
+    }
     if (!reserveApiKeyLimits(apiKey, request, response, bodyToForward)) {
       return;
     }
@@ -493,8 +499,35 @@ class GatewayService {
       })();
     };
 
+    const shouldCaptureUsage = shouldCaptureGatewayUsage(method, path);
+    if (shouldServeClaudeCodeModelsResponse(method, path, request.headers)) {
+      const responseText = `${JSON.stringify(createClaudeCodeModelsResponse(this.config))}\n`;
+      const modelHeaders = new Headers({
+        "content-length": String(Buffer.byteLength(responseText)),
+        "content-type": "application/json; charset=utf-8"
+      });
+      response.writeHead(200, Object.fromEntries(filteredResponseHeaders(modelHeaders)));
+      if (shouldCaptureUsage) {
+        void recordGatewayUsageCapture({
+          bodyText: responseText,
+          client,
+          durationMs: Date.now() - startedAt,
+          fallbackModel: routedModel,
+          method,
+          path,
+          providerProtocol: resolveResponseProviderProtocol(modelHeaders, this.config),
+          requestId,
+          responseHeaders: modelHeaders,
+          statusCode: 200
+        });
+      }
+      writeRequestLog(200, modelHeaders, responseText, false);
+      response.end(responseText);
+      return;
+    }
+
     if (method === "POST" && path === "/v1/messages") {
-      const body = parseJsonObject(requestBody);
+      const body = parseJsonObject(bodyToForward ?? requestBody);
       const routed = await this.plugin.routeRequest({
         body,
         headers: headers as Record<string, string | string[] | undefined>,
@@ -526,7 +559,6 @@ class GatewayService {
 
     delete headers["content-length"];
     const upstreamUrl = new URL(request.url || "/", this.status.coreEndpoint).toString();
-    const shouldCaptureUsage = shouldCaptureGatewayUsage(method, path);
     let upstreamResult: UpstreamFetchResult;
 
     try {
@@ -1867,6 +1899,230 @@ function countImageInputs(value: unknown): number {
 function readPositiveNumber(value: unknown): number | undefined {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? Math.ceil(number) : undefined;
+}
+
+function shouldServeClaudeCodeModelsResponse(method: string, path: string, headers: IncomingHttpHeaders): boolean {
+  return (method || "GET").toUpperCase() === "GET" &&
+    normalizeGatewayPathname(path) === "/v1/models" &&
+    isClaudeCodeUserAgent(headers);
+}
+
+function prepareClaudeCodeDiscoveredModelRequest(
+  config: AppConfig,
+  headers: IncomingHttpHeaders,
+  method: string,
+  path: string,
+  body: Buffer | undefined
+): { body: Buffer; diagnostic: string } | undefined {
+  if (
+    (method || "GET").toUpperCase() !== "POST" ||
+    normalizeGatewayPathname(path) !== "/v1/messages" ||
+    !isClaudeCodeUserAgent(headers)
+  ) {
+    return undefined;
+  }
+
+  const parsedBody = parseJsonObjectSafe(body);
+  const model = stringValue(parsedBody?.model);
+  const rewrittenModel = resolveClaudeCodeDiscoveredModelId(model, config);
+  if (!parsedBody || !rewrittenModel || rewrittenModel === model) {
+    return undefined;
+  }
+
+  return {
+    body: serializeJsonBodyWithModel(parsedBody, rewrittenModel),
+    diagnostic: `${model}->${rewrittenModel}`
+  };
+}
+
+function createClaudeCodeModelsResponse(config: AppConfig): Record<string, unknown> {
+  const ids = buildClaudeCodeDiscoverableModelIds(config);
+  const data = ids.map((id) => {
+    const claudeId = claudeCodeDiscoveryModelId(id);
+    return {
+      id: claudeId,
+      capabilities: createClaudeCodeModelCapabilities(),
+      created_at: "1970-01-01T00:00:00Z",
+      display_name: formatClaudeCodeModelDisplayName(claudeId),
+      max_input_tokens: 0,
+      max_tokens: 0,
+      type: "model"
+    };
+  });
+
+  return {
+    data,
+    first_id: data[0]?.id ?? null,
+    has_more: false,
+    last_id: data[data.length - 1]?.id ?? null
+  };
+}
+
+function buildClaudeCodeDiscoverableModelIds(config: AppConfig): string[] {
+  const baseEntries: Array<{ modelName: string; providerName: string }> = [];
+  for (const provider of config.Providers) {
+    const providerName = provider.name?.trim();
+    if (!providerName || !Array.isArray(provider.models)) {
+      continue;
+    }
+    for (const rawModel of provider.models) {
+      const modelName = rawModel.trim();
+      if (!modelName) {
+        continue;
+      }
+      baseEntries.push({ modelName, providerName });
+    }
+  }
+
+  const ids = baseEntries.map((entry) => `${entry.providerName}/${entry.modelName}`);
+  for (const profile of config.virtualModelProfiles ?? []) {
+    if (!isVisibleVirtualModelProfile(profile)) {
+      continue;
+    }
+
+    for (const entry of baseEntries) {
+      for (const prefix of profile.match?.prefixes ?? []) {
+        const normalizedPrefix = prefix.trim();
+        if (normalizedPrefix) {
+          ids.push(`${entry.providerName}/${normalizedPrefix}${entry.modelName}`);
+        }
+      }
+      for (const suffix of profile.match?.suffixes ?? []) {
+        const normalizedSuffix = suffix.trim();
+        if (normalizedSuffix) {
+          ids.push(`${entry.providerName}/${entry.modelName}${normalizedSuffix}`);
+        }
+      }
+    }
+
+    const fixedModel = profile.baseModel?.fixedModel?.trim();
+    for (const alias of profile.match?.exactAliases ?? []) {
+      const normalizedAlias = alias.trim();
+      if (!normalizedAlias) {
+        continue;
+      }
+      ids.push(
+        normalizedAlias.includes("/") || !fixedModel
+          ? normalizedAlias
+          : `${providerNameFromModelId(fixedModel) ?? ""}/${normalizedAlias}`.replace(/^\//, "")
+      );
+    }
+  }
+
+  return uniqueStrings(ids);
+}
+
+function isVisibleVirtualModelProfile(profile: NonNullable<AppConfig["virtualModelProfiles"]>[number]): boolean {
+  return profile.enabled !== false &&
+    profile.materialization?.enabled !== false &&
+    profile.materialization?.includeInGatewayModels !== false;
+}
+
+function providerNameFromModelId(value: string): string | undefined {
+  const separator = value.indexOf("/");
+  return separator > 0 ? value.slice(0, separator).trim() || undefined : undefined;
+}
+
+function resolveClaudeCodeDiscoveredModelId(model: string | undefined, config: AppConfig): string | undefined {
+  const normalized = normalizeRouteSelector(model);
+  if (!normalized || !normalized.toLowerCase().startsWith("claude-")) {
+    return undefined;
+  }
+
+  if (isConfiguredGatewayModelSelector(normalized, config)) {
+    return undefined;
+  }
+
+  const unprefixed = normalized.slice("claude-".length);
+  return isConfiguredGatewayModelSelector(unprefixed, config) ? unprefixed : undefined;
+}
+
+function isConfiguredGatewayModelSelector(model: string, config: AppConfig): boolean {
+  const normalized = normalizeRouteSelector(model)?.toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  for (const id of buildClaudeCodeDiscoverableModelIds(config)) {
+    if (id.toLowerCase() === normalized) {
+      return true;
+    }
+  }
+
+  for (const provider of config.Providers) {
+    if (provider.models.some((candidate) => candidate.trim().toLowerCase() === normalized)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function claudeCodeDiscoveryModelId(value: string): string {
+  return value.toLowerCase().startsWith("claude-") ? value : `claude-${value}`;
+}
+
+function formatClaudeCodeModelDisplayName(id: string): string {
+  const normalized = id.replace(/^claude-/i, "");
+  const model = normalized.includes("/") ? normalized.slice(normalized.lastIndexOf("/") + 1) : normalized;
+  const words = model
+    .split(/[-_]+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => (/^\d+$/.test(part) ? part : part.slice(0, 1).toUpperCase() + part.slice(1)));
+  return ["Claude", ...words].filter(Boolean).join(" ");
+}
+
+function createClaudeCodeModelCapabilities(): Record<string, unknown> {
+  return {
+    batch: { supported: true },
+    citations: { supported: true },
+    code_execution: { supported: true },
+    context_management: {
+      clear_thinking_20251015: { supported: true },
+      clear_tool_uses_20250919: { supported: true },
+      compact_20260112: { supported: true },
+      supported: true
+    },
+    effort: {
+      high: { supported: true },
+      low: { supported: true },
+      max: { supported: true },
+      medium: { supported: true },
+      supported: true,
+      xhigh: { supported: true }
+    },
+    image_input: { supported: true },
+    pdf_input: { supported: true },
+    structured_outputs: { supported: true },
+    thinking: {
+      supported: true,
+      types: {
+        adaptive: { supported: true },
+        enabled: { supported: true }
+      }
+    }
+  };
+}
+
+function normalizeGatewayPathname(path: string): string {
+  const normalized = path.trim().replace(/\/+$/, "");
+  return normalized || "/";
+}
+
+function isClaudeCodeUserAgent(headers: IncomingHttpHeaders): boolean {
+  const userAgent = readHeader(headers["user-agent"]);
+  if (!userAgent) {
+    return false;
+  }
+  const normalized = userAgent.toLowerCase();
+  return normalized.includes("@anthropic-ai/claude-code") ||
+    normalized.includes("claudecode") ||
+    normalized.includes("claude_code") ||
+    normalized.includes("claude-code") ||
+    normalized.includes("claude_cli") ||
+    normalized.includes("claude-cli") ||
+    normalized.includes("claude cli");
 }
 
 function prepareCursorOpenAICompatChatBody(

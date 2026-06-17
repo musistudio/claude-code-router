@@ -20,6 +20,7 @@ const DEFAULT_SCRIPT_PATH = "/design/assets/index-DWa5J5J9.js";
 const DEFAULT_STYLE_PATH = "/design/assets/index-DZOB93ZB.css";
 const LEGACY_SCRIPT_PATHS = new Set(["/design/assets/index-DYd5ifc6.js"]);
 const LEGACY_STYLE_PATHS = new Set(["/design/assets/index-j8_-aIUE.css"]);
+const DEFAULT_EXTERNAL_ASSET_BASE_URLS = ["https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/"];
 const DESIGN_INDEX_ASSET_DISCOVERY_TTL_MS = 5 * 60 * 1000;
 const MAX_UPSTREAM_ASSET_REDIRECTS = 5;
 const MAX_LOG_BODY_CHARS = 128 * 1024;
@@ -369,6 +370,10 @@ async function routeMockRequest(runtime, method, url, request, requestBody) {
     return htmlResponse("<!doctype html><html lang=\"en\"><head><meta charset=\"UTF-8\"></head><body></body></html>\n");
   }
 
+  if (method === "GET" && path.startsWith("/assets/")) {
+    return serveAsset(runtime, `/design${path}`, request);
+  }
+
   if (method === "GET" && path.startsWith("/design/assets/")) {
     return serveAsset(runtime, path, request);
   }
@@ -628,7 +633,7 @@ async function serveAsset(runtime, path, request) {
   if (cached) {
     const cachedBody = Buffer.from(cached.bodyBase64, "base64");
     const reusableFallback = isReusableFallbackAsset(cached, path);
-    if ((!isFallbackAsset(cached) || reusableFallback) && isUsableAssetBody(path, cached.contentType, cachedBody)) {
+    if ((!isFallbackAsset(cached) || reusableFallback) && isUsableServedAssetBody(path, cached.contentType, cachedBody)) {
       if (!reusableFallback) {
         recordDesignIndexAssetHint(runtime, path, "cache");
       }
@@ -642,7 +647,7 @@ async function serveAsset(runtime, path, request) {
   }
 
   const localAsset = readLocalAsset(runtime.assetDir, path);
-  if (localAsset) {
+  if (localAsset && isUsableServedAssetBody(path, localAsset.contentType, localAsset.body)) {
     writeCachedAsset(runtime.store, path, localAsset.source, localAsset.contentType, localAsset.body);
     recordDesignIndexAssetHint(runtime, path, "local");
     return binaryResponse(200, localAsset.body, {
@@ -654,28 +659,34 @@ async function serveAsset(runtime, path, request) {
 
   if (runtime.assetProxy) {
     for (const origin of runtime.upstreamOrigins) {
-      const upstreamUrl = new URL(path, origin);
-      const fetched = await fetchUpstreamAsset(upstreamUrl, request).catch((error) => {
-        runtime.logger?.warn?.(
-          `Claude Design failed to fetch upstream asset ${upstreamUrl.toString()}: ${
-            error instanceof Error ? error.message : String(error)
-          }`
-        );
+      for (const upstreamUrl of upstreamAssetUrlCandidates(path, origin)) {
+        const fetched = await fetchUpstreamAsset(upstreamUrl, request).catch((error) => {
+          runtime.logger?.warn?.(
+            `Claude Design failed to fetch upstream asset ${upstreamUrl.toString()}: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
         return undefined;
       });
-      if (fetched && fetched.status >= 200 && fetched.status < 300 && isUsableAssetBody(path, fetched.contentType, fetched.body)) {
+      if (fetched && fetched.status >= 200 && fetched.status < 300 && isUsableServedAssetBody(path, fetched.contentType, fetched.body)) {
         writeCachedAsset(runtime.store, path, fetched.url || upstreamUrl.toString(), fetched.contentType, fetched.body);
         recordDesignIndexAssetHint(runtime, path, "remote");
         return binaryResponse(200, fetched.body, {
-          "cache-control": "public, max-age=86400",
-          "content-type": fetched.contentType,
-          "x-claude-design-asset-source": fetched.url || upstreamUrl.toString()
-        });
-      }
-      if (fetched) {
-        logRejectedUpstreamAsset(runtime, path, upstreamUrl, fetched);
+            "cache-control": "public, max-age=86400",
+            "content-type": fetched.contentType,
+            "x-claude-design-asset-source": fetched.url || upstreamUrl.toString()
+          });
+        }
+        if (fetched) {
+          logRejectedUpstreamAsset(runtime, path, upstreamUrl, fetched);
+        }
       }
     }
+  }
+
+  const refreshedIndexAsset = await serveRefreshedDesignIndexAsset(runtime, path, request);
+  if (refreshedIndexAsset) {
+    return refreshedIndexAsset;
   }
 
   if (path === "/design/pictogram-bookapple.svg") {
@@ -716,6 +727,51 @@ function logRejectedUpstreamAsset(runtime, path, upstreamUrl, fetched) {
   runtime.logger?.warn?.(message);
 }
 
+async function serveRefreshedDesignIndexAsset(runtime, path, request) {
+  const requestPath = normalizePath(path);
+  const isScript = isDesignIndexScriptPath(requestPath);
+  const isStyle = isDesignIndexStylePath(requestPath);
+  if (!runtime.assetAutoUpdate || (!isScript && !isStyle)) {
+    return undefined;
+  }
+
+  const refreshed = await resolveDesignIndexAssets(runtime, request, { force: true });
+  const replacementPath = isScript ? refreshed.scriptPath : refreshed.stylePath;
+  if (!replacementPath || replacementPath === requestPath) {
+    return undefined;
+  }
+
+  const replacement = readResolvedDesignIndexAsset(runtime, replacementPath);
+  if (!replacement || !isUsableDesignIndexAssetResponse(replacementPath, replacement.contentType, replacement.body)) {
+    return undefined;
+  }
+
+  return binaryResponse(200, replacement.body, {
+    "cache-control": "no-store",
+    "content-type": replacement.contentType,
+    "x-claude-design-asset-source": `${replacement.source}; replacement=${replacementPath}`
+  });
+}
+
+function readResolvedDesignIndexAsset(runtime, path) {
+  const cached = runtime.store ? readCachedAsset(runtime.store, path) : undefined;
+  if (cached) {
+    return {
+      body: Buffer.from(cached.bodyBase64 || "", "base64"),
+      contentType: cached.contentType,
+      source: cached.upstreamUrl || "cache"
+    };
+  }
+  const local = readLocalAsset(runtime.assetDir, path);
+  return local
+    ? {
+        body: local.body,
+        contentType: local.contentType,
+        source: local.source
+      }
+    : undefined;
+}
+
 function fallbackDesignAsset(path) {
   if (!path.startsWith("/design/")) {
     return undefined;
@@ -728,6 +784,9 @@ function fallbackDesignAsset(path) {
       body: Buffer.from(questionsViewerFallbackModule(), "utf8"),
       contentType: "application/javascript; charset=utf-8"
     };
+  }
+  if (isDesignIndexScriptPath(path)) {
+    return undefined;
   }
   if (path.endsWith(".js")) {
     return {
@@ -785,6 +844,16 @@ function isUsableAssetBody(path, contentType, body) {
   return true;
 }
 
+function isUsableServedAssetBody(path, contentType, body) {
+  if (!isUsableAssetBody(path, contentType, body)) {
+    return false;
+  }
+  if (isDesignIndexScriptPath(path)) {
+    return isDesignEntryScriptBuffer(path, body);
+  }
+  return true;
+}
+
 function normalizeUpstreamOrigins(value, primaryOrigin) {
   const origins = [];
   const addOrigin = (origin) => {
@@ -811,6 +880,29 @@ function normalizeUpstreamOrigins(value, primaryOrigin) {
   return origins.length > 0 ? origins : [DEFAULT_UPSTREAM_ORIGIN];
 }
 
+function upstreamAssetUrlCandidates(path, origin) {
+  const requestPath = normalizePath(path);
+  const candidates = [new URL(requestPath, origin)];
+  if (requestPath.startsWith("/design/assets/")) {
+    candidates.push(new URL(requestPath.replace(/^\/design\/assets\//, "/assets/"), origin));
+    const assetName = requestPath.split("/").pop();
+    if (assetName) {
+      for (const baseUrl of DEFAULT_EXTERNAL_ASSET_BASE_URLS) {
+        candidates.push(new URL(assetName, baseUrl));
+      }
+    }
+  }
+  const seen = new Set();
+  return candidates.filter((url) => {
+    const key = url.toString();
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
 function normalizeFallbackRouteHosts(value, primaryHost) {
   const hosts = [];
   const addHost = (host) => {
@@ -832,7 +924,7 @@ function normalizeFallbackRouteHosts(value, primaryHost) {
   return hosts;
 }
 
-async function resolveDesignIndexAssets(runtime, request) {
+async function resolveDesignIndexAssets(runtime, request, options = {}) {
   const current = runtime.designIndexAssets || {
     checkedAt: 0,
     scriptPath: runtime.scriptPath || DEFAULT_SCRIPT_PATH,
@@ -844,12 +936,14 @@ async function resolveDesignIndexAssets(runtime, request) {
   }
 
   const now = Date.now();
-  if (current.checkedAt && now - current.checkedAt < DESIGN_INDEX_ASSET_DISCOVERY_TTL_MS) {
+  const forceRefresh = options.force === true || requestHasNoCache(request);
+  if (!forceRefresh && current.checkedAt && now - current.checkedAt < DESIGN_INDEX_ASSET_DISCOVERY_TTL_MS) {
     return current;
   }
 
-  const fromRequests = discoverRequestedDesignIndexAssets(runtime.store);
   const fromRemote = await discoverRemoteDesignIndexAssets(runtime, request);
+  const fromRemoteCache = await cacheRemoteDesignIndexAssets(runtime, fromRemote, request);
+  const fromRequests = discoverRequestedDesignIndexAssets(runtime.store);
   const fromLocal = discoverLocalDesignIndexAssets(runtime.assetDir);
   const fromCache = discoverCachedDesignIndexAssets(runtime.store);
   const fallback = mergeDesignIndexAssetPartials(fromLocal, fromCache) || {};
@@ -858,9 +952,14 @@ async function resolveDesignIndexAssets(runtime, request) {
     source: fallback.source || current.source || "current",
     stylePath: fallback.stylePath || current.stylePath
   };
-  const discovered = mergeDesignIndexAssets(seeded, fromRemote, fromRequests);
+  const discovered = mergeDesignIndexAssets(seeded, fromRequests, fromRemoteCache || fromRemote);
   const safeDiscovered = selectUsableDesignIndexAssets(runtime, discovered, fallback, current);
   return updateDesignIndexAssets(runtime, safeDiscovered, safeDiscovered.source || "discovered", { checkedAt: now });
+}
+
+function requestHasNoCache(request) {
+  return headerIncludes(request?.headers?.["cache-control"], "no-cache") ||
+    headerIncludes(request?.headers?.pragma, "no-cache");
 }
 
 function updateDesignIndexAssets(runtime, assets, source, options = {}) {
@@ -878,7 +977,11 @@ function updateDesignIndexAssets(runtime, assets, source, options = {}) {
     checkedAt: options.checkedAt ?? Date.now(),
     scriptPath,
     source,
-    stylePath
+    stylePath,
+    upstreamUrls: {
+      ...(current.upstreamUrls || {}),
+      ...(assets?.upstreamUrls || {})
+    }
   };
   return runtime.designIndexAssets;
 }
@@ -887,11 +990,18 @@ function mergeDesignIndexAssets(current, ...candidates) {
   const merged = {
     scriptPath: current.scriptPath || DEFAULT_SCRIPT_PATH,
     source: current.source || "current",
-    stylePath: current.stylePath || DEFAULT_STYLE_PATH
+    stylePath: current.stylePath || DEFAULT_STYLE_PATH,
+    upstreamUrls: { ...(current.upstreamUrls || {}) }
   };
   for (const candidate of candidates) {
     if (!candidate) {
       continue;
+    }
+    if (candidate.upstreamUrls) {
+      merged.upstreamUrls = {
+        ...merged.upstreamUrls,
+        ...candidate.upstreamUrls
+      };
     }
     if (candidate.scriptPath) {
       merged.scriptPath = candidate.scriptPath;
@@ -906,10 +1016,16 @@ function mergeDesignIndexAssets(current, ...candidates) {
 }
 
 function mergeDesignIndexAssetPartials(...candidates) {
-  const merged = { source: "remote" };
+  const merged = { source: "remote", upstreamUrls: {} };
   for (const candidate of candidates) {
     if (!candidate) {
       continue;
+    }
+    if (candidate.upstreamUrls) {
+      merged.upstreamUrls = {
+        ...merged.upstreamUrls,
+        ...candidate.upstreamUrls
+      };
     }
     if (candidate.scriptPath) {
       merged.scriptPath = candidate.scriptPath;
@@ -960,30 +1076,131 @@ function recordDesignIndexAssetHint(runtime, path, source) {
 
 async function discoverRemoteDesignIndexAssets(runtime, request) {
   for (const origin of runtime.upstreamOrigins) {
-    const shell = await fetchUpstreamDesignShell(new URL("/design", origin), request).catch((error) => {
-      runtime.logger?.warn?.(
-        `Claude Design failed to discover upstream design assets from ${origin}: ${
-          error instanceof Error ? error.message : String(error)
-        }`
+    for (const shellUrl of upstreamDesignShellUrlCandidates(origin, runtime)) {
+      const shell = await fetchUpstreamDesignShell(shellUrl, request).catch((error) => {
+        runtime.logger?.warn?.(
+          `Claude Design failed to discover upstream design assets from ${shellUrl.toString()}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+        return undefined;
+      });
+      if (!shell) {
+        continue;
+      }
+      const assets = mergeDesignIndexAssetPartials(
+        extractDesignIndexAssetsFromLinkHeaders(shell.linkHeaders, shell.url),
+        extractDesignIndexAssetsFromHtml(shell.body, shell.url)
       );
-      return undefined;
-    });
-    if (!shell) {
-      continue;
-    }
-    const assets = mergeDesignIndexAssetPartials(
-      extractDesignIndexAssetsFromLinkHeaders(shell.linkHeaders, shell.url),
-      extractDesignIndexAssetsFromHtml(shell.body, shell.url)
-    );
-    if (assets?.scriptPath || assets?.stylePath) {
-      return {
-        scriptPath: assets.scriptPath,
-        source: "remote",
-        stylePath: assets.stylePath
-      };
+      if (assets?.scriptPath || assets?.stylePath) {
+        return {
+          origin,
+          scriptPath: assets.scriptPath,
+          source: "remote",
+          stylePath: assets.stylePath,
+          upstreamUrls: assets.upstreamUrls
+        };
+      }
     }
   }
   return undefined;
+}
+
+function upstreamDesignShellUrlCandidates(origin, runtime) {
+  const paths = ["/design"];
+  const seen = new Set();
+  return paths.map((path) => new URL(path, origin)).filter((url) => {
+    const key = url.toString();
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+async function cacheRemoteDesignIndexAssets(runtime, assets, request) {
+  if (!assets || !runtime.assetProxy) {
+    return undefined;
+  }
+
+  const cached = { source: assets.source || "remote" };
+  const scriptPath = normalizePath(assets.scriptPath);
+  if (scriptPath) {
+    if (
+      isUsableDesignIndexScript(runtime, scriptPath) ||
+      await fetchAndCacheRemoteDesignIndexAsset(runtime, scriptPath, request, assets.origin, assets.upstreamUrls?.[scriptPath])
+    ) {
+      cached.scriptPath = scriptPath;
+    }
+  }
+
+  const stylePath = normalizePath(assets.stylePath);
+  if (stylePath) {
+    if (
+      isUsableDesignIndexStyle(runtime, stylePath) ||
+      await fetchAndCacheRemoteDesignIndexAsset(runtime, stylePath, request, assets.origin, assets.upstreamUrls?.[stylePath])
+    ) {
+      cached.stylePath = stylePath;
+    }
+  }
+
+  if (cached.scriptPath || cached.stylePath) {
+    cached.upstreamUrls = assets.upstreamUrls;
+    return cached;
+  }
+  return undefined;
+}
+
+async function fetchAndCacheRemoteDesignIndexAsset(runtime, path, request, preferredOrigin, preferredAssetUrl) {
+  const origins = preferredOrigin
+    ? [preferredOrigin, ...runtime.upstreamOrigins.filter((origin) => origin !== preferredOrigin)]
+    : runtime.upstreamOrigins;
+  const explicitUrl = parseAbsoluteHttpUrl(preferredAssetUrl);
+  if (explicitUrl) {
+    const fetched = await fetchAndMaybeCacheDesignIndexAsset(runtime, path, explicitUrl, request);
+    if (fetched) {
+      return true;
+    }
+  }
+  for (const origin of origins) {
+    for (const upstreamUrl of upstreamAssetUrlCandidates(path, origin)) {
+      const fetched = await fetchAndMaybeCacheDesignIndexAsset(runtime, path, upstreamUrl, request);
+      if (fetched) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+async function fetchAndMaybeCacheDesignIndexAsset(runtime, path, upstreamUrl, request) {
+  const fetched = await fetchUpstreamAsset(upstreamUrl, request).catch((error) => {
+    runtime.logger?.warn?.(
+      `Claude Design failed to fetch upstream index asset ${upstreamUrl.toString()}: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+    return undefined;
+  });
+  if (fetched && fetched.status >= 200 && fetched.status < 300 && isUsableDesignIndexAssetResponse(path, fetched.contentType, fetched.body)) {
+    writeCachedAsset(runtime.store, path, fetched.url || upstreamUrl.toString(), fetched.contentType, fetched.body);
+    return true;
+  }
+  if (fetched) {
+    logRejectedUpstreamAsset(runtime, path, upstreamUrl, fetched);
+  }
+  return false;
+}
+
+function isUsableDesignIndexAssetResponse(path, contentType, body) {
+  if (!isUsableAssetBody(path, contentType, body)) {
+    return false;
+  }
+  if (isDesignIndexScriptPath(path)) {
+    return isDesignEntryScriptBuffer(path, body);
+  }
+  return isDesignIndexStylePath(path);
 }
 
 function discoverRequestedDesignIndexAssets(store) {
@@ -1101,7 +1318,7 @@ function isDesignIndexScriptPath(path) {
 }
 
 function isDesignIndexStylePath(path) {
-  return /^\/design\/assets\/index-[^/]+\.css$/i.test(path);
+  return /^\/design\/assets\/[^/]+\.css$/i.test(path);
 }
 
 function shouldKeepCurrentScriptPath(path) {
@@ -1172,14 +1389,24 @@ function isAcceptableRequestedEntryScript(runtime, path) {
 }
 
 function isDesignEntryScriptBuffer(path, body) {
-  return isDesignIndexScriptPath(path) && designEntryScriptScore(path, body, { mtimeMs: 0, size: body.length }) > 100000;
+  return isDesignIndexScriptPath(path) && designEntryScriptScore(path, body, { mtimeMs: 0, size: body.length }) > 1_000_000;
 }
 
 function designEntryScriptScore(path, body, stat) {
   if (!isDesignIndexScriptPath(path)) {
     return 0;
   }
-  const text = body.toString("utf8", 0, Math.min(body.length, 256 * 1024));
+  const text = body.toString("utf8", 0, Math.min(body.length, 2 * 1024 * 1024));
+  const designMarkers = [
+    "anthropic.omelette.api.v1alpha.OmeletteService",
+    "/v1/design",
+    "/design/v1/design",
+    "__OMELETTE_ME__",
+    "OmeletteService"
+  ];
+  if (!designMarkers.some((marker) => text.includes(marker))) {
+    return 0;
+  }
   let score = Number(stat.size || body.length);
   if (text.includes("__vite__mapDeps")) {
     score += 1_000_000;
@@ -1198,15 +1425,18 @@ function designEntryScriptScore(path, body, stat) {
 
 function extractDesignIndexAssetsFromHtml(body, baseUrl) {
   const html = String(body || "");
-  const assets = { source: "remote-html" };
-  const pattern = /\b(?:src|href)=["']([^"']*\/design\/assets\/index-[^"']+\.(?:js|css)(?:\?[^"']*)?)["']/gi;
+  const assets = { source: "remote-html", upstreamUrls: {} };
+  const pattern = /\b(?:src|href)=["']([^"']+)["']/gi;
   let match;
   while ((match = pattern.exec(html))) {
-    const assetPath = normalizeDesignAssetPath(match[1], baseUrl);
-    if (isDesignIndexScriptPath(assetPath)) {
-      assets.scriptPath = assetPath;
-    } else if (isDesignIndexStylePath(assetPath)) {
-      assets.stylePath = assetPath;
+    const asset = normalizeDesignAssetReference(match[1], baseUrl);
+    if (asset.upstreamUrl) {
+      assets.upstreamUrls[asset.path] = asset.upstreamUrl;
+    }
+    if (isDesignIndexScriptPath(asset.path)) {
+      assets.scriptPath = asset.path;
+    } else if (isDesignIndexStylePath(asset.path)) {
+      assets.stylePath = asset.path;
     }
   }
   return assets.scriptPath || assets.stylePath ? assets : undefined;
@@ -1214,16 +1444,19 @@ function extractDesignIndexAssetsFromHtml(body, baseUrl) {
 
 function extractDesignIndexAssetsFromLinkHeaders(linkHeaders, baseUrl) {
   const headers = Array.isArray(linkHeaders) ? linkHeaders : linkHeaders ? [linkHeaders] : [];
-  const assets = { source: "remote-link" };
+  const assets = { source: "remote-link", upstreamUrls: {} };
   for (const header of headers) {
     const pattern = /<([^>]+)>/g;
     let match;
     while ((match = pattern.exec(String(header)))) {
-      const assetPath = normalizeDesignAssetPath(match[1], baseUrl);
-      if (isDesignIndexScriptPath(assetPath)) {
-        assets.scriptPath = assetPath;
-      } else if (isDesignIndexStylePath(assetPath)) {
-        assets.stylePath = assetPath;
+      const asset = normalizeDesignAssetReference(match[1], baseUrl);
+      if (asset.upstreamUrl) {
+        assets.upstreamUrls[asset.path] = asset.upstreamUrl;
+      }
+      if (isDesignIndexScriptPath(asset.path)) {
+        assets.scriptPath = asset.path;
+      } else if (isDesignIndexStylePath(asset.path)) {
+        assets.stylePath = asset.path;
       }
     }
   }
@@ -1231,15 +1464,61 @@ function extractDesignIndexAssetsFromLinkHeaders(linkHeaders, baseUrl) {
 }
 
 function normalizeDesignAssetPath(value, baseUrl) {
+  return normalizeDesignAssetReference(value, baseUrl).path;
+}
+
+function normalizeDesignAssetReference(value, baseUrl) {
   const raw = stringValue(value);
   if (!raw) {
-    return "";
+    return { path: "" };
   }
   try {
-    return normalizePath(new URL(raw, baseUrl || DEFAULT_UPSTREAM_ORIGIN).pathname);
+    const parsed = new URL(raw, normalizeDesignAssetBaseUrl(baseUrl));
+    const path = normalizeDesignAssetRequestPath(parsed.pathname);
+    return {
+      path,
+      ...(isDesignAssetFilePath(path) && /^https?:$/i.test(parsed.protocol) ? { upstreamUrl: parsed.toString() } : {})
+    };
   } catch {
-    return normalizePath(raw.split("?")[0]);
+    return { path: normalizeDesignAssetRequestPath(raw.split("?")[0]) };
   }
+}
+
+function normalizeDesignAssetBaseUrl(baseUrl) {
+  const value = stringValue(baseUrl) || DEFAULT_UPSTREAM_ORIGIN;
+  try {
+    const parsed = new URL(value);
+    if (parsed.pathname === "/design") {
+      parsed.pathname = "/design/";
+    }
+    return parsed.toString();
+  } catch {
+    return value;
+  }
+}
+
+function normalizeDesignAssetRequestPath(value) {
+  const normalizedPath = normalizePath(value);
+  if (normalizedPath.startsWith("/design/assets/")) {
+    return normalizedPath;
+  }
+  if (normalizedPath.startsWith("/assets/")) {
+    return `/design${normalizedPath}`;
+  }
+  const assetName = designAssetFileName(normalizedPath);
+  if (assetName) {
+    return `/design/assets/${assetName}`;
+  }
+  return normalizedPath;
+}
+
+function designAssetFileName(path) {
+  const match = normalizePath(path).match(/\/assets\/(?:v\d+\/)?([^/?#]+\.(?:css|js|mjs|avif|gif|ico|jpe?g|json|png|svg|webp|woff2?))$/i);
+  return match?.[1];
+}
+
+function isDesignAssetFilePath(path) {
+  return /^\/design\/assets\/[^/?#]+\.(?:css|js|mjs|avif|gif|ico|jpe?g|json|png|svg|webp|woff2?)$/i.test(normalizePath(path));
 }
 
 function questionsViewerFallbackModule() {
@@ -5810,7 +6089,7 @@ function fetchUpstreamAsset(upstreamUrl, request, redirectsRemaining = MAX_UPSTR
   });
 }
 
-function fetchUpstreamDesignShell(upstreamUrl, request) {
+function fetchUpstreamDesignShell(upstreamUrl, request, redirectsRemaining = MAX_UPSTREAM_ASSET_REDIRECTS) {
   return new Promise((resolve, reject) => {
     const transport = upstreamUrl.protocol === "http:" ? http : https;
     const linkHeaders = [];
@@ -5822,6 +6101,20 @@ function fetchUpstreamDesignShell(upstreamUrl, request) {
         timeout: 4000
       },
       (upstreamResponse) => {
+        const redirectLocation = headerValue(upstreamResponse.headers.location);
+        if (
+          redirectLocation &&
+          upstreamResponse.statusCode &&
+          upstreamResponse.statusCode >= 300 &&
+          upstreamResponse.statusCode < 400 &&
+          redirectsRemaining > 0
+        ) {
+          upstreamResponse.resume();
+          const redirectedUrl = new URL(redirectLocation, upstreamUrl);
+          resolve(fetchUpstreamDesignShell(redirectedUrl, request, redirectsRemaining - 1));
+          return;
+        }
+
         linkHeaders.push(...headerValues(upstreamResponse.headers.link));
         const chunks = [];
         let totalBytes = 0;
@@ -6103,6 +6396,19 @@ function normalizePath(value) {
     return "";
   }
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+}
+
+function parseAbsoluteHttpUrl(value) {
+  const raw = stringValue(value);
+  if (!raw) {
+    return undefined;
+  }
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function stringValue(value) {

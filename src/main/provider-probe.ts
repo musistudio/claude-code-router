@@ -54,7 +54,7 @@ export async function probeGatewayProvider(request: GatewayProviderProbeRequest)
   const parsed = parseProviderUrl(request.baseUrl);
   const protocols = uniqueProtocols(request.protocols ?? []);
   const typedModels = uniqueStrings(request.models ?? []);
-  const modelProbe = await probeModels(parsed, request.apiKey, protocols);
+  const modelProbe = request.skipModelDiscovery ? { models: [] } : await probeModels(parsed, request.apiKey, protocols);
   const models = modelProbe.models.length > 0 ? modelProbe.models : typedModels;
   const protocolResults = await probeProtocols(parsed, request.apiKey, models, protocols);
   const detectedProtocol = detectProtocol(parsed, protocolResults, modelProbe.source, protocols);

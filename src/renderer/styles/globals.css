@@ -87,6 +87,11 @@
     --network-error-text: #ffffff;
     --network-shadow: 0 16px 42px rgba(31, 41, 55, .12);
     --radius: 0.5rem;
+    --scrollbar-size: 12px;
+    --scrollbar-border: 3px;
+    --scrollbar-thumb: color-mix(in oklab, var(--foreground) 26%, transparent);
+    --scrollbar-thumb-hover: color-mix(in oklab, var(--foreground) 40%, transparent);
+    --scrollbar-thumb-active: color-mix(in oklab, var(--foreground) 50%, transparent);
     --app-font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     --app-font-mono: "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   }
@@ -232,13 +237,57 @@
     background: transparent;
   }
 
+  body.tray-window {
+    --scrollbar-size: 10px;
+    --scrollbar-border: 3px;
+    --scrollbar-thumb: rgba(248, 250, 252, .26);
+    --scrollbar-thumb-hover: rgba(248, 250, 252, .42);
+    --scrollbar-thumb-active: rgba(248, 250, 252, .56);
+  }
+
   body.tray-window * {
     user-select: none;
   }
 
-  body.tray-window ::-webkit-scrollbar {
-    height: 0;
-    width: 0;
+  * {
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+    scrollbar-width: thin;
+  }
+
+  *::-webkit-scrollbar {
+    height: var(--scrollbar-size);
+    width: var(--scrollbar-size);
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-clip: padding-box;
+    background-color: transparent;
+    border: var(--scrollbar-border) solid transparent;
+    border-radius: 999px;
+    min-height: 40px;
+    min-width: 40px;
+  }
+
+  *:hover::-webkit-scrollbar-thumb,
+  *:focus-within::-webkit-scrollbar-thumb,
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb);
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
+  }
+
+  *::-webkit-scrollbar-thumb:active {
+    background-color: var(--scrollbar-thumb-active);
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
   }
 
   button,
@@ -301,37 +350,6 @@
     color: rgba(248, 250, 252, .98);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-  }
-
-  .tray-live-pill {
-    align-items: center;
-    background: rgba(20, 184, 166, .14);
-    border: 1px solid rgba(94, 234, 212, .24);
-    border-radius: 999px;
-    color: rgba(204, 251, 241, .94);
-    display: inline-flex;
-    flex-shrink: 0;
-    font-size: 11px;
-    font-weight: 800;
-    height: 24px;
-    letter-spacing: 0;
-    padding: 0 9px;
-    position: relative;
-  }
-
-  .tray-live-pill::before {
-    background: rgb(45, 212, 191);
-    border-radius: 999px;
-    box-shadow: 0 0 12px rgba(45, 212, 191, .72);
-    content: "";
-    height: 6px;
-    margin-right: 6px;
-    width: 6px;
-  }
-
-  .tray-live-pill--loading::before {
-    background: rgb(251, 191, 36);
-    box-shadow: 0 0 12px rgba(251, 191, 36, .72);
   }
 
   .tray-chart-panel {
@@ -667,7 +685,7 @@
     aspect-ratio: 1 / 1;
     background-position: 0 0;
     background-repeat: no-repeat;
-    background-size: 800% 100%;
+    background-size: 800% 300%;
     display: block;
     height: 104px;
     position: relative;
@@ -677,13 +695,18 @@
 
   .onboarding-step-panels {
     display: grid;
+    min-height: 0;
     min-width: 0;
+    overflow: hidden;
   }
 
   .onboarding-step-panel {
     grid-area: 1 / 1;
+    max-height: 100%;
+    min-height: 0;
     min-width: 0;
     opacity: 0;
+    overflow: hidden;
     pointer-events: none;
     transform: translateY(10px) scale(.985);
     transition:
@@ -695,6 +718,9 @@
 
   .onboarding-step-panel-active {
     opacity: 1;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding-right: 2px;
     pointer-events: auto;
     transform: translateY(0) scale(1);
     transition:
@@ -734,21 +760,21 @@
 
   @keyframes onboarding-mascot-sprite-run-profile {
     from {
-      background-position: 0 0;
+      background-position: 0 50%;
     }
 
     to {
-      background-position: 100% 0;
+      background-position: 100% 50%;
     }
   }
 
   @keyframes onboarding-mascot-sprite-run-enter {
     from {
-      background-position: 0 0;
+      background-position: 0 100%;
     }
 
     to {
-      background-position: 100% 0;
+      background-position: 100% 100%;
     }
   }
 
