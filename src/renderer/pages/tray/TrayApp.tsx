@@ -1,13 +1,17 @@
 import {
   AppConfig, createSourceTabs, DEFAULT_TRAY_WIDGETS, defaultTrayWidgetVariant, emptySnapshots, formatCompactNumber, formatProviderName,
-  formatUpdated, formatUsdCost, normalizeTrayIconPreference, normalizeTrayWidgets, ProviderAccountSnapshot, rangeLabel,
-  SnapshotMap, SourceTab, TrayComponentVariants, TrayWidgetConfig, UsageComparisonRow, UsageStatsFilter, UsageTotals, useCallback, useEffect,
+  formatPercent, formatUpdated, formatUsdCost, normalizeTrayIconPreference, normalizeTrayWidgets, ProviderAccountSnapshot, rangeLabel,
+  SnapshotMap, SourceTab, TrayComponentVariants, TrayWidgetConfig, UsageComparisonRow, UsageStatsFilter, UsageStatsRange, UsageTotals, useCallback, useEffect,
   useMemo, useState, useTrayText
 } from "./shared";
 import {
   AccountSummaryPanel, AnimatedUsageChart, ChartShell, ModelShareChart, RingMetrics,
   SourceGrid, StatsGrid, TokenMixPanel, TrayStatusStrip
 } from "./components";
+
+type TrayHeaderRange = Exclude<UsageStatsRange, "today">;
+
+const trayHeaderRanges: TrayHeaderRange[] = ["24h", "7d", "30d"];
 
 export function TrayApp() {
   const t = useTrayText();
@@ -20,6 +24,7 @@ export function TrayApp() {
   const [snapshots, setSnapshots] = useState<SnapshotMap>(emptySnapshots);
   const [accountSnapshots, setAccountSnapshots] = useState<ProviderAccountSnapshot[]>([]);
   const [trayWidgets, setTrayWidgets] = useState<TrayWidgetConfig[]>(DEFAULT_TRAY_WIDGETS);
+  const [selectedRange, setSelectedRange] = useState<TrayHeaderRange>("30d");
 
   const refresh = useCallback(async () => {
     if (!window.ccr) {
@@ -82,11 +87,9 @@ export function TrayApp() {
   }, [refresh]);
 
   const tabs = useMemo(() => createSourceTabs(allSnapshots["30d"].models, configuredProviders), [allSnapshots, configuredProviders]);
-  const activeStats = snapshots["30d"];
-  const todayTotals = snapshots.today.totals;
-  const weekTotals = snapshots["7d"].totals;
-  const monthTotals = snapshots["30d"].totals;
-  const topModel = snapshots["30d"].models[0];
+  const activeStats = snapshots[selectedRange];
+  const activeTotals = activeStats.totals;
+  const topModel = activeStats.models[0];
   const hasProviderSwitcher = trayWidgets.some((widget) => widget.type === "source-tabs");
   const hasAnyVisibleModule = trayWidgets.length > 0;
 
@@ -109,22 +112,22 @@ export function TrayApp() {
   return (
     <main className="h-screen w-screen overflow-hidden bg-transparent text-slate-100">
       <aside className="flex h-full min-h-0 flex-col overflow-y-auto rounded-[14px] border border-slate-950/15 bg-slate-950 p-3 text-slate-50 shadow-[0_18px_42px_rgba(15,23,42,.28)]">
-        <TrayStatusStrip totalTokens={activeStats.totals.totalTokens} trayIconPreference={trayIconPreference} />
+        <TrayStatusStrip totalTokens={activeTotals.totalTokens} trayIconPreference={trayIconPreference} />
 
         <section className="space-y-2">
           {trayWidgets.map((widget, index) => (
             <TrayRuntimeWidget
               accountSnapshots={accountSnapshots}
               activeStats={activeStats}
+              activeTotals={activeTotals}
               index={index}
               key={`${widget.id}-${index}`}
-              monthTotals={monthTotals}
+              selectedRange={selectedRange}
               selectedProvider={selectedProvider}
               tabs={tabs}
-              todayTotals={todayTotals}
               topModel={topModel}
-              weekTotals={weekTotals}
               widget={widget}
+              onChangeRange={setSelectedRange}
               onSelectProvider={setSelectedProvider}
             />
           ))}
@@ -147,26 +150,26 @@ export function TrayApp() {
 function TrayRuntimeWidget({
   accountSnapshots,
   activeStats,
+  activeTotals,
   index,
-  monthTotals,
+  selectedRange,
   selectedProvider,
   tabs,
-  todayTotals,
   topModel,
-  weekTotals,
   widget,
+  onChangeRange,
   onSelectProvider
 }: {
   accountSnapshots: ProviderAccountSnapshot[];
   activeStats: SnapshotMap["30d"];
+  activeTotals: UsageTotals;
   index: number;
-  monthTotals: UsageTotals;
+  selectedRange: TrayHeaderRange;
   selectedProvider?: string;
   tabs: SourceTab[];
-  todayTotals: UsageTotals;
   topModel?: UsageComparisonRow;
-  weekTotals: UsageTotals;
   widget: TrayWidgetConfig;
+  onChangeRange: (range: TrayHeaderRange) => void;
   onSelectProvider: (provider?: string) => void;
 }) {
   const t = useTrayText();
@@ -182,7 +185,7 @@ function TrayRuntimeWidget({
           <h1 className="truncate text-[13px] font-bold text-slate-50">{selectedProvider ? formatProviderName(selectedProvider) : t("Usage Overview")}</h1>
           <p className="mt-0.5 truncate text-[10px] font-medium text-slate-400">{formatUpdated(activeStats.generatedAt, t)}</p>
         </div>
-        <div className="shrink-0 rounded-md border border-white/10 bg-slate-900/70 px-2 py-0.5 text-[10px] font-semibold text-slate-200">{rangeLabel("30d", t)}</div>
+        <TrayHeaderRangeSwitch range={selectedRange} onChange={onChangeRange} />
       </div>
     );
   }
@@ -193,7 +196,7 @@ function TrayRuntimeWidget({
 
   if (widget.type === "token-flow") {
     return (
-      <ChartShell meta={topModel?.label ?? t("No model yet")} title={`${t("30d")} ${t("Token Flow")}`}>
+      <ChartShell meta={topModel?.label ?? t("No model yet")} title={`${rangeLabel(selectedRange, t)} ${t("Token Flow")}`}>
         <AnimatedUsageChart chartId={`overview-flow-${index}`} series={activeStats.series} variant={(widget.variant ?? defaultTrayWidgetVariant("token-flow")) as TrayComponentVariants["tokenFlow"]} />
       </ChartShell>
     );
@@ -203,11 +206,10 @@ function TrayRuntimeWidget({
     return (
       <StatsGrid
         items={[
-          { label: t("Today tokens"), value: formatCompactNumber(todayTotals.totalTokens) },
-          { label: `${t("7d")} ${t("tokens")}`, value: formatCompactNumber(weekTotals.totalTokens) },
-          { label: `${t("30d")} ${t("tokens")}`, value: formatCompactNumber(monthTotals.totalTokens) },
-          { label: t("Today req"), value: formatCompactNumber(todayTotals.requestCount) },
-          { label: `${t("Today")} ${t("Cost")}`, value: formatUsdCost(todayTotals.costUsd) }
+          { label: `${rangeLabel(selectedRange, t)} ${t("tokens")}`, value: formatCompactNumber(activeTotals.totalTokens) },
+          { label: `${rangeLabel(selectedRange, t)} ${t("requests")}`, value: formatCompactNumber(activeTotals.requestCount) },
+          { label: `${rangeLabel(selectedRange, t)} ${t("Cost")}`, value: formatUsdCost(activeTotals.costUsd) },
+          { label: t("Success rate"), value: formatPercent(activeTotals.successRate) }
         ]}
         variant={(widget.variant ?? defaultTrayWidgetVariant("stats")) as TrayComponentVariants["stats"]}
       />
@@ -215,12 +217,37 @@ function TrayRuntimeWidget({
   }
 
   if (widget.type === "token-mix") {
-    return <TokenMixPanel totals={monthTotals} variant={(widget.variant ?? defaultTrayWidgetVariant("token-mix")) as TrayComponentVariants["tokenMix"]} />;
+    return <TokenMixPanel totals={activeTotals} variant={(widget.variant ?? defaultTrayWidgetVariant("token-mix")) as TrayComponentVariants["tokenMix"]} />;
   }
 
   if (widget.type === "rings") {
-    return <RingMetrics totals={monthTotals} variant={(widget.variant ?? defaultTrayWidgetVariant("rings")) as TrayComponentVariants["rings"]} />;
+    return <RingMetrics totals={activeTotals} variant={(widget.variant ?? defaultTrayWidgetVariant("rings")) as TrayComponentVariants["rings"]} />;
   }
 
   return <ModelShareChart rows={activeStats.models} variant={(widget.variant ?? defaultTrayWidgetVariant("model-share")) as TrayComponentVariants["modelShare"]} />;
+}
+
+function TrayHeaderRangeSwitch({
+  range,
+  onChange
+}: {
+  range: TrayHeaderRange;
+  onChange: (range: TrayHeaderRange) => void;
+}) {
+  const t = useTrayText();
+
+  return (
+    <div className="flex shrink-0 rounded-md border border-white/10 bg-slate-900/70 p-0.5">
+      {trayHeaderRanges.map((item) => (
+        <button
+          className={`h-5 rounded-[5px] px-1.5 text-[10px] font-bold transition ${range === item ? "bg-white/14 text-slate-50" : "text-slate-400 hover:text-slate-100"}`}
+          key={item}
+          type="button"
+          onClick={() => onChange(item)}
+        >
+          {rangeLabel(item, t)}
+        </button>
+      ))}
+    </div>
+  );
 }

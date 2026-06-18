@@ -93,9 +93,11 @@ export function MainLayout({
   viewProps: MainViewProps;
   visibleNavigation: MainNavigationItem[];
 }) {
+  const windowControlSafeAreaWidth = isMac ? 152 : 88;
+
   return (
     <>
-      <div className={cn("app-no-drag pointer-events-auto absolute top-2 z-[70] flex items-center gap-1", isMac ? "left-[76px]" : "left-3")}>
+      <div className={cn("app-no-drag app-window-controls pointer-events-auto absolute top-2 z-[90] flex items-center gap-1", isMac ? "left-[76px]" : "left-3")}>
         <Button
           aria-controls="primary-sidebar"
           aria-expanded={sidebarOpen}
@@ -138,7 +140,7 @@ export function MainLayout({
             transition={shouldReduceMotion ? reducedMotionTransition : { duration: 0.14, ease: motionEase }}
           >
             <div className="flex h-14 shrink-0 max-[720px]:h-12">
-              <div className="shrink-0" style={{ width: isMac ? 116 : 52 }} />
+              <div className="app-no-drag shrink-0" style={{ width: windowControlSafeAreaWidth }} />
               <div className="app-drag min-w-0 flex-1" />
             </div>
 
@@ -147,7 +149,7 @@ export function MainLayout({
                 <Button
                   className={cn(
                     "flex h-9 min-w-0 items-center gap-2 rounded-md px-2 text-left text-[12px] font-medium text-muted-foreground transition-all duration-150 max-[720px]:min-w-[118px]",
-                    item.id !== "browser" && activeView === item.id
+                    activeView === item.id
                       ? "bg-card text-foreground shadow-[0_1px_3px_rgba(0,0,0,0.06)]"
                       : "hover:bg-muted/80 hover:text-foreground"
                   )}
@@ -158,8 +160,8 @@ export function MainLayout({
                 >
                   <motion.span
                     className={cn(
-                    "flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors",
-                    item.id !== "browser" && activeView === item.id && "bg-primary/10 text-primary"
+                      "flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors",
+                      activeView === item.id && "bg-primary/10 text-primary"
                     )}
                     layout="position"
                     transition={shouldReduceMotion ? reducedMotionTransition : listSpringTransition}
@@ -198,7 +200,9 @@ export function MainLayout({
             needsTrafficLightSafeArea && "pl-[116px] max-[720px]:pl-[116px]"
           )}
         >
-          {needsTrafficLightSafeArea ? <div className="app-no-drag absolute left-0 top-0 h-full w-[152px]" /> : null}
+          {needsTrafficLightSafeArea || !sidebarOpen ? (
+            <div className="app-no-drag absolute left-0 top-0 h-full" style={{ width: windowControlSafeAreaWidth }} />
+          ) : null}
           <EndpointTitleBar
             config={viewProps.server.config as AppConfig}
             endpoint={gatewayEndpoint}

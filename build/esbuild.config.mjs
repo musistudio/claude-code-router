@@ -1,20 +1,17 @@
 import esbuild from "esbuild";
 import { spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { builtinModules, createRequire } from "node:module";
+import { builtinModules } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const require = createRequire(import.meta.url);
 
 export const projectRoot = path.resolve(__dirname, "..");
 export const distDir = path.join(projectRoot, "dist");
 export const mainOutDir = path.join(distDir, "main");
 export const rendererOutDir = path.join(distDir, "renderer");
 export const appAssetsDir = path.join(distDir, "assets");
-export const vendorDir = path.join(distDir, "vendor");
-export const unimcpVendorDir = path.join(vendorDir, "unimcp");
 export const rendererAssetsDir = path.join(rendererOutDir, "assets");
 export const marketplacePluginsDir = path.join(distDir, "marketplace", "plugins");
 export const appAssetsInput = path.join(projectRoot, "assets");
@@ -42,18 +39,11 @@ export function cleanDist() {
 export function ensureDist() {
   mkdirSync(mainOutDir, { recursive: true });
   mkdirSync(appAssetsDir, { recursive: true });
-  mkdirSync(vendorDir, { recursive: true });
   mkdirSync(marketplacePluginsDir, { recursive: true });
   mkdirSync(rendererAssetsDir, { recursive: true });
   mkdirSync(path.dirname(rendererHtmlOutput), { recursive: true });
   mkdirSync(path.dirname(browserRendererHtmlOutput), { recursive: true });
   mkdirSync(path.dirname(trayRendererHtmlOutput), { recursive: true });
-}
-
-export function copyBuiltInMcpServers() {
-  ensureDist();
-  const packageJsonPath = require.resolve("@musistudio/unimcp/package.json");
-  cpSync(path.dirname(packageJsonPath), unimcpVendorDir, { recursive: true });
 }
 
 export function copyAppAssets() {
@@ -110,6 +100,8 @@ export function createMainBuildOptions({ mode = "production", plugins = [] } = {
     entryPoints: [
       path.join(projectRoot, "src", "main", "main.ts"),
       path.join(projectRoot, "src", "main", "browser-preload.ts"),
+      path.join(projectRoot, "src", "main", "cli.ts"),
+      path.join(projectRoot, "src", "main", "mcp", "fusion-vision-mcp.ts"),
       path.join(projectRoot, "src", "main", "preload.ts")
     ],
     external: nodeExternals,

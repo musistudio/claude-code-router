@@ -10,16 +10,17 @@ import {
   ExtensionConfigTarget, ExtensionDeleteTarget, ExtensionInstallDraft, ExtensionSource, fallbackAgentAnalysis, fallbackConfig,
   fallbackGatewayStatus, fallbackInfo, fallbackProxyCertificateStatus, fallbackProxyNetworkSnapshot, fallbackProxyStatus, fallbackRequestLogPage,
   fallbackUsageStats, findProviderDeepLinkReplacementIndex, firstProviderConnectivityModel, formatJson, formatProxyCertificateInstallMessage, GatewayProviderConfig,
+  fusionCustomMcpServerFromDraft, fusionCustomToolConfigFromProfile,
   GatewayProviderProbeResult, gatewayServiceMessage, GatewayStatus, getDefaultOnboardingStep, isClaudeDesignPluginConfig, isClaudeDesignRoutingDraftValid,
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
   LayoutGroup, mergeProviderCapabilities, mergeProviderModelLists,
   navigation, NavigationId, normalizeApiKeys, normalizeConfig, normalizeLanguagePreference, normalizeOverviewWidgets,
-  normalizeProfileItem, normalizeProviderBaseUrl, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeTrayIconPreference,
+  normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeTrayIconPreference,
   normalizeTrayProgressTargetTokens, normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingStepId, onboardingStepOrder,
   OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parseProviderAccountDraft,
   persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, ProfileConfig, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
-  ProviderAccountSnapshot, providerApiKeySafetyIssue, providerAutoProbeDelayMs, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
+  profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, providerAutoProbeDelayMs, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
   providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
   ResolvedTheme, resolvePluginInstallPlan, RouterRule, ServerActionBusy,
@@ -31,6 +32,14 @@ import {
 import {
   AppDialogStack, LightToast, MainLayout, OnboardingLayout
 } from "./components";
+
+type ProfileOpenDialogState = {
+  busy?: "" | "cli" | "app";
+  command?: string;
+  error?: string;
+  mode: "choose" | "cli";
+  profile: ProfileConfig;
+};
 
 function App() {
   const [activeView, setActiveView] = useState<ViewId>("onboarding");
@@ -53,6 +62,8 @@ function App() {
   const [profileDraft, setProfileDraft] = useState<AddProfileDraft>(() => createProfileDraft());
   const [profileEditDraft, setProfileEditDraft] = useState<AddProfileDraft>(() => createProfileDraft());
   const [profileEditIndex, setProfileEditIndex] = useState<number>();
+  const [profileOpenDialog, setProfileOpenDialog] = useState<ProfileOpenDialogState>();
+  const [profileSubmitBusy, setProfileSubmitBusy] = useState<"" | "add" | "edit">("");
   const [apiKeyAddOpen, setApiKeyAddOpen] = useState(false);
   const [apiKeyDraft, setApiKeyDraft] = useState<AddApiKeyDraft>(() => createApiKeyDraft());
   const [apiKeyEditDraft, setApiKeyEditDraft] = useState<AddApiKeyDraft>(() => createApiKeyDraft());
@@ -1125,7 +1136,7 @@ function App() {
       return;
     }
     setVirtualModelEditIndex(index);
-    setVirtualModelDraft(createVirtualModelDraftFromProfile(profile));
+    setVirtualModelDraft(createVirtualModelDraftFromProfile(profile, draftConfig));
     setVirtualModelError("");
     setVirtualModelDialogOpen(true);
   }
@@ -1143,13 +1154,33 @@ function App() {
 
     updateConfig((config) => {
       const values = [...(config.virtualModelProfiles ?? [])];
+      const previousProfile = virtualModelEditIndex === undefined ? undefined : values[virtualModelEditIndex];
       const profile = virtualModelProfileFromDraft(virtualModelDraft, values, virtualModelEditIndex);
+      const previousMcpServerName = previousProfile ? fusionCustomToolConfigFromProfile(previousProfile)?.mcpServerName : undefined;
       if (virtualModelEditIndex === undefined) {
         values.push(profile);
       } else {
         values[virtualModelEditIndex] = profile;
       }
       config.virtualModelProfiles = values;
+      const existingMcpServers = [...(config.agent?.mcpServers ?? [])];
+      const replacementIndex = previousMcpServerName
+        ? existingMcpServers.findIndex((server) => server.name === previousMcpServerName)
+        : existingMcpServers.findIndex((server) => server.name === virtualModelDraft.customMcpServer.name.trim());
+      const customMcpServer = fusionCustomMcpServerFromDraft(virtualModelDraft, existingMcpServers, replacementIndex >= 0 ? replacementIndex : undefined);
+      if (customMcpServer) {
+        if (replacementIndex >= 0) {
+          existingMcpServers[replacementIndex] = customMcpServer;
+        } else {
+          existingMcpServers.push(customMcpServer);
+        }
+      } else if (previousMcpServerName && replacementIndex >= 0) {
+        existingMcpServers.splice(replacementIndex, 1);
+      }
+      config.agent = {
+        ...(config.agent ?? { mcpServers: [] }),
+        mcpServers: existingMcpServers
+      };
       return config;
     });
     setVirtualModelEditIndex(undefined);
@@ -1550,29 +1581,6 @@ function App() {
     }
   }
 
-  async function openBuiltInBrowser() {
-    if (!window.ccr?.openBuiltInBrowser) {
-      setActionError("APPs are available in the Electron app.");
-      return;
-    }
-
-    setActionBusy("browser");
-    setActionError("");
-    setActionMessage("");
-    try {
-      if (dirty && !(await persistConfig(draftConfig, setActionError))) {
-        return;
-      }
-      await window.ccr.openBuiltInBrowser();
-      const status = await window.ccr.getProxyStatus();
-      setProxyStatus(status);
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setActionBusy("");
-    }
-  }
-
   async function completeOnboarding() {
     if (window.ccr) {
       try {
@@ -1586,10 +1594,6 @@ function App() {
   }
 
   function selectNavigationItem(id: NavigationId) {
-    if (id === "browser") {
-      void openBuiltInBrowser();
-      return;
-    }
     setActiveView(id);
   }
 
@@ -1795,6 +1799,76 @@ function App() {
     setProfileActionError("");
   }
 
+  function openProfileDialog(index: number) {
+    const profile = draftConfig.profile.profiles[index];
+    if (!profile?.enabled || normalizeProfileScope(profile.scope) !== "ccr") {
+      return;
+    }
+    setProfileActionError("");
+    const surfaces = profileOpenSurfaces(profile);
+    if (surfaces.length > 1) {
+      void showProfileCliCommand(profile, "choose");
+      return;
+    }
+    if (surfaces[0] === "app") {
+      void openProfileApp(profile);
+      return;
+    }
+    void showProfileCliCommand(profile);
+  }
+
+  async function showProfileCliCommand(profile: ProfileConfig, mode: "choose" | "cli" = "cli") {
+    const fallbackCommand = profileOpenCommandFallback(profile, "cli");
+    setProfileOpenDialog({ busy: "cli", command: fallbackCommand, mode, profile });
+    if (!(await persistConfig(draftConfig, setProfileActionError))) {
+      setProfileOpenDialog((current) => current?.profile.id === profile.id
+        ? { ...current, busy: "", error: profileActionError || "Failed to save profile before opening." }
+        : current);
+      return;
+    }
+    if (!window.ccr?.getProfileOpenCommand) {
+      setProfileOpenDialog((current) => current?.profile.id === profile.id ? { ...current, busy: "" } : current);
+      return;
+    }
+    try {
+      const result = await window.ccr.getProfileOpenCommand({ profileId: profile.id, surface: "cli" });
+      setProfileOpenDialog((current) => current?.profile.id === profile.id
+        ? { ...current, busy: "", command: result.command, error: "" }
+        : current);
+    } catch (error) {
+      setProfileOpenDialog((current) => current?.profile.id === profile.id
+        ? { ...current, busy: "", error: error instanceof Error ? error.message : String(error) }
+        : current);
+    }
+  }
+
+  async function openProfileApp(profile: ProfileConfig) {
+    setProfileOpenDialog((current) => current?.profile.id === profile.id
+      ? { ...current, busy: "app", error: "" }
+      : { busy: "app", mode: "choose", profile });
+    if (!(await persistConfig(draftConfig, setProfileActionError))) {
+      setProfileOpenDialog((current) => current?.profile.id === profile.id
+        ? { ...current, busy: "", error: profileActionError || "Failed to save profile before opening." }
+        : current);
+      return;
+    }
+    if (!window.ccr?.openProfile) {
+      setProfileOpenDialog((current) => current?.profile.id === profile.id
+        ? { ...current, busy: "", error: "Profile opening is only available in the Electron app." }
+        : current);
+      return;
+    }
+    try {
+      const result = await window.ccr.openProfile({ profileId: profile.id, surface: "app" });
+      setProfileOpenDialog(undefined);
+      showToast(result.message);
+    } catch (error) {
+      setProfileOpenDialog((current) => current?.profile.id === profile.id
+        ? { ...current, busy: "", error: error instanceof Error ? error.message : String(error) }
+        : current);
+    }
+  }
+
   function updateProfileDraft(patch: Partial<AddProfileDraft>) {
     setProfileDraft((current) => {
       const next = { ...current, ...patch };
@@ -1825,13 +1899,17 @@ function App() {
     setProfileActionError("");
   }
 
-  async function submitProfileDraft(): Promise<boolean> {
-    if (!canSubmitProfile) {
-      setProfileActionError("Profile name, required target settings, and environment variable keys are required.");
-      return false;
-    }
-    const profile = profileConfigFromDraft(profileDraft, draftConfig.profile.profiles);
-    setProfileAgentTab(profile.agent);
+	  async function submitProfileDraft(): Promise<boolean> {
+	    if (profileSubmitBusy) {
+	      return false;
+	    }
+	    if (!canSubmitProfile) {
+	      setProfileActionError("Profile name, required target settings, and environment variable keys are required.");
+	      return false;
+	    }
+	    setProfileSubmitBusy("add");
+	    const profile = profileConfigFromDraft(profileDraft, draftConfig.profile.profiles);
+	    setProfileAgentTab(profile.agent);
     const next = buildConfigUpdate((config) => ({
       ...config,
       profile: {
@@ -1841,31 +1919,40 @@ function App() {
       }
     }));
     setConfigDraft(next);
-    if (!(await persistConfig(next, setProfileActionError))) {
-      return false;
-    }
-    setProfileAddOpen(false);
-    setProfileDraft(createProfileDraft());
-    setProfileActionError("");
-    if (activeView === "onboarding") {
-      setOnboardingStep("enter");
-    }
-    return true;
-  }
+	    try {
+	      if (!(await persistConfig(next, setProfileActionError))) {
+	        return false;
+	      }
+	      setProfileAddOpen(false);
+	      setProfileDraft(createProfileDraft());
+	      setProfileActionError("");
+	      if (activeView === "onboarding") {
+	        setOnboardingStep("enter");
+	      }
+	      return true;
+	    } finally {
+	      setProfileSubmitBusy("");
+	    }
+	  }
 
-  async function submitProfileEditDraft(): Promise<boolean> {
-    if (profileEditIndex === undefined) {
-      return false;
-    }
-    if (!canSubmitProfileEdit) {
-      setProfileActionError("Profile name, required target settings, and environment variable keys are required.");
-      return false;
-    }
-    const currentProfile = draftConfig.profile.profiles[profileEditIndex];
-    if (!currentProfile) {
-      setProfileActionError("Profile no longer exists.");
-      return false;
-    }
+	  async function submitProfileEditDraft(): Promise<boolean> {
+	    if (profileSubmitBusy) {
+	      return false;
+	    }
+	    if (profileEditIndex === undefined) {
+	      return false;
+	    }
+	    if (!canSubmitProfileEdit) {
+	      setProfileActionError("Profile name, required target settings, and environment variable keys are required.");
+	      return false;
+	    }
+	    setProfileSubmitBusy("edit");
+	    const currentProfile = draftConfig.profile.profiles[profileEditIndex];
+	    if (!currentProfile) {
+	      setProfileSubmitBusy("");
+	      setProfileActionError("Profile no longer exists.");
+	      return false;
+	    }
     const nextProfile = profileConfigFromDraft(profileEditDraft, draftConfig.profile.profiles, currentProfile);
     setProfileAgentTab(nextProfile.agent);
     const next = buildConfigUpdate((config) => {
@@ -1880,14 +1967,18 @@ function App() {
       };
     });
     setConfigDraft(next);
-    if (!(await persistConfig(next, setProfileActionError))) {
-      return false;
-    }
-    setProfileEditIndex(undefined);
-    setProfileEditDraft(createProfileDraft());
-    setProfileActionError("");
-    return true;
-  }
+	    try {
+	      if (!(await persistConfig(next, setProfileActionError))) {
+	        return false;
+	      }
+	      setProfileEditIndex(undefined);
+	      setProfileEditDraft(createProfileDraft());
+	      setProfileActionError("");
+	      return true;
+	    } finally {
+	      setProfileSubmitBusy("");
+	    }
+	  }
 
   function updateProfileItem(index: number, patch: Partial<ProfileConfig>) {
     updateConfig((next) => {
@@ -2023,6 +2114,7 @@ function App() {
                   applyError: profileActionError,
                   config: draftConfig,
                   editProfile: openEditProfileDialog,
+                  openProfile: openProfileDialog,
                   removeProfile,
                   updateProfileItem
                 },
@@ -2147,11 +2239,13 @@ function App() {
               draft: profileDraft,
               error: profileActionError,
               mode: "add",
-              onChange: updateProfileDraft,
-              onClose: () => setProfileAddOpen(false),
-              providers: draftConfig.Providers,
-              onSubmit: submitProfileDraft
-            } : undefined}
+	              onChange: updateProfileDraft,
+	              onClose: () => setProfileAddOpen(false),
+	              providers: draftConfig.Providers,
+	              submitting: profileSubmitBusy === "add",
+	              virtualModelProfiles: draftConfig.virtualModelProfiles ?? [],
+	              onSubmit: submitProfileDraft
+	            } : undefined}
             profileEdit={profileEditIndex !== undefined ? {
               canSubmit: canSubmitProfileEdit,
               draft: profileEditDraft,
@@ -2161,9 +2255,20 @@ function App() {
               onClose: () => {
                 setProfileEditIndex(undefined);
                 setProfileActionError("");
-              },
-              providers: draftConfig.Providers,
-              onSubmit: submitProfileEditDraft
+	              },
+	              providers: draftConfig.Providers,
+	              submitting: profileSubmitBusy === "edit",
+	              virtualModelProfiles: draftConfig.virtualModelProfiles ?? [],
+	              onSubmit: submitProfileEditDraft
+	            } : undefined}
+            profileOpen={profileOpenDialog ? {
+              busy: profileOpenDialog.busy,
+              command: profileOpenDialog.command,
+              error: profileOpenDialog.error,
+              mode: profileOpenDialog.mode,
+              onChooseApp: () => void openProfileApp(profileOpenDialog.profile),
+              onClose: () => setProfileOpenDialog(undefined),
+              profile: profileOpenDialog.profile
             } : undefined}
             providerDeepLink={providerDeepLinkRequest ? {
               busy: providerDeepLinkBusy,
@@ -2235,6 +2340,7 @@ function App() {
               canSubmit: canSubmitVirtualModel,
               draft: virtualModelDraft,
               error: virtualModelError || virtualModelValidationError,
+              mcpServers: draftConfig.agent?.mcpServers ?? [],
               mode: virtualModelEditIndex === undefined ? "add" : "edit",
               onChange: updateVirtualModelDraft,
               onClose: () => {

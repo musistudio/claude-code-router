@@ -1,4 +1,4 @@
-import type { AppConfig, GatewayProviderConfig } from "../../shared/app";
+import type { AppConfig, VirtualModelProfileConfig } from "../../shared/app";
 import { normalizeRouteSelector } from "./claude-code-router-plugin";
 
 type CodexAppRequestPreparationInput = {
@@ -11,21 +11,12 @@ type CodexAppRequestPreparationInput = {
 
 type CodexAppRequestPreparation = {
   body?: Buffer;
-  diagnostic: "model-remembered" | "model-rewritten";
+  diagnostic: "model-rewritten";
   routedModel?: string;
 };
 
-type RememberedCodexModel = {
-  expiresAt: number;
-  model: string;
-  providerName?: string;
-};
-
-const codexModelRewriteSessionTtlMs = 6 * 60 * 60 * 1000;
-const rememberedCodexModels = new Map<string, RememberedCodexModel>();
-
 export function prepareCodexAppRequest(input: CodexAppRequestPreparationInput): CodexAppRequestPreparation | undefined {
-  if (!isOpenAIResponsesPath(input.path) || !isCodexClient(input.client, input.headers)) {
+  if (!isOpenAIModelRequestPath(input.path) || !isCodexClient(input.client, input.headers)) {
     return undefined;
   }
 
@@ -41,125 +32,72 @@ export function prepareCodexAppRequest(input: CodexAppRequestPreparationInput): 
     return undefined;
   }
 
-  const sessionKeys = codexSessionKeys(input.headers, body);
-  const provider = providerForModelSelector(input.config, requestedModel);
-  if (provider && isRememberableGatewayModel(requestedModel)) {
-    rememberCodexModel(sessionKeys, {
-      expiresAt: Date.now() + codexModelRewriteSessionTtlMs,
-      model: requestedModel,
-      providerName: provider.name
-    });
-    return {
-      diagnostic: "model-remembered"
-    };
-  }
-
-  if (!isCodexInternalModel(requestedModel)) {
+  const canonicalFusionModel = visibleFusionModelSelector(input.config, requestedModel);
+  if (!canonicalFusionModel || canonicalFusionModel === requestedModel) {
     return undefined;
   }
 
-  const remembered = findRememberedCodexModel(sessionKeys);
-  if (!remembered || remembered.model === requestedModel) {
-    return undefined;
-  }
-
-  const nextBody = {
-    ...body,
-    model: remembered.model
-  };
   if (headerModel) {
-    input.headers["x-target-model"] = remembered.model;
+    input.headers["x-target-model"] = canonicalFusionModel;
   }
 
   return {
-    body: Buffer.from(`${JSON.stringify(nextBody)}\n`, "utf8"),
+    body: encodeJsonBody({
+      ...body,
+      model: canonicalFusionModel
+    }),
     diagnostic: "model-rewritten",
-    routedModel: remembered.model
+    routedModel: canonicalFusionModel
   };
 }
 
-function rememberCodexModel(keys: string[], value: RememberedCodexModel): void {
-  pruneRememberedCodexModels();
-  for (const key of keys) {
-    rememberedCodexModels.set(key, value);
+function visibleFusionModelSelector(config: AppConfig, selector: string): string | undefined {
+  const normalized = fusionModelNameFromSelector(selector).toLowerCase();
+  if (!normalized) {
+    return undefined;
   }
-}
-
-function findRememberedCodexModel(keys: string[]): RememberedCodexModel | undefined {
-  pruneRememberedCodexModels();
-  for (const key of keys) {
-    const value = rememberedCodexModels.get(key);
-    if (value) {
-      return value;
+  for (const profile of config.virtualModelProfiles ?? []) {
+    if (!isVisibleVirtualModelProfile(profile)) {
+      continue;
+    }
+    const match = virtualModelRawCatalogNames(profile).find((name) =>
+      fusionModelNameFromSelector(name).toLowerCase() === normalized
+    );
+    const canonical = match ? fusionModelNameFromSelector(match) : "";
+    if (canonical) {
+      return `Fusion/${canonical}`;
     }
   }
   return undefined;
 }
 
-function pruneRememberedCodexModels(): void {
-  const now = Date.now();
-  for (const [key, value] of rememberedCodexModels) {
-    if (value.expiresAt <= now) {
-      rememberedCodexModels.delete(key);
-    }
-  }
+function isVisibleVirtualModelProfile(profile: VirtualModelProfileConfig): boolean {
+  return profile.enabled !== false &&
+    profile.materialization?.enabled !== false &&
+    profile.materialization?.includeInGatewayModels !== false;
 }
 
-function codexSessionKeys(headers: Record<string, string>, body: Record<string, unknown>): string[] {
-  const accountId =
-    readHeader(headers, "x-codex-account-id") ||
-    stringValue(body.account_id) ||
-    stringValue(body.accountId);
-  const sessionId =
-    readHeader(headers, "x-codex-session-id") ||
-    readHeader(headers, "x-codex-conversation-id") ||
-    readHeader(headers, "x-codex-thread-id") ||
-    readHeader(headers, "x-agent-session-id") ||
-    stringValue(body.session_id) ||
-    stringValue(body.sessionId) ||
-    stringValue(body.conversation_id) ||
-    stringValue(body.conversationId);
-  const keys: string[] = [];
-  if (accountId && sessionId) {
-    keys.push(`codex:${accountId}:${sessionId}`);
-  }
-  if (sessionId) {
-    keys.push(`codex:session:${sessionId}`);
-  }
-  if (accountId) {
-    keys.push(`codex:account:${accountId}`);
-  }
-  keys.push("codex");
-  return [...new Set(keys)];
+function virtualModelRawCatalogNames(profile: VirtualModelProfileConfig): string[] {
+  const exactAliases = uniqueStrings(profile.match?.exactAliases ?? []);
+  return exactAliases.length > 0 ? exactAliases : [profile.key || profile.displayName].filter(Boolean);
 }
 
-function providerForModelSelector(config: AppConfig, selector: string): GatewayProviderConfig | undefined {
-  const providerName = selector.split("/", 1)[0]?.trim().toLowerCase();
-  if (!providerName || providerName === selector.toLowerCase()) {
-    return undefined;
-  }
-  return config.Providers.find((provider) =>
-    provider.name.trim().toLowerCase() === providerName ||
-    provider.provider?.trim().toLowerCase() === providerName
-  );
+function fusionModelNameFromSelector(model: string): string {
+  const trimmed = model.trim();
+  const prefix = "Fusion/";
+  return trimmed.toLowerCase().startsWith(prefix.toLowerCase())
+    ? trimmed.slice(prefix.length).trim()
+    : trimmed;
 }
 
-function isRememberableGatewayModel(model: string): boolean {
-  const slashIndex = model.indexOf("/");
-  return slashIndex > 0 && slashIndex < model.length - 1;
-}
-
-function isCodexInternalModel(model: string): boolean {
-  if (model.includes("/")) {
-    return false;
-  }
-  const normalized = model.trim().toLowerCase();
-  return /^gpt(?:[-_]|$)/.test(normalized) || /^o\d(?:[-_]|$)/.test(normalized);
-}
-
-function isOpenAIResponsesPath(path: string): boolean {
+function isOpenAIModelRequestPath(path: string): boolean {
   const normalized = path.toLowerCase();
-  return normalized === "/v1/responses" || normalized === "/responses" || normalized.endsWith("/responses");
+  return normalized === "/v1/responses" ||
+    normalized === "/responses" ||
+    normalized.endsWith("/responses") ||
+    normalized === "/v1/chat/completions" ||
+    normalized === "/chat/completions" ||
+    normalized.endsWith("/chat/completions");
 }
 
 function isCodexClient(client: string | undefined, headers: Record<string, string>): boolean {
@@ -198,6 +136,24 @@ function readHeader(headers: Record<string, string>, name: string): string | und
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function encodeJsonBody(value: Record<string, unknown>): Buffer {
+  return Buffer.from(`${JSON.stringify(value)}\n`, "utf8");
+}
+
+function uniqueStrings(values: string[]): string[] {
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const normalized = value.trim();
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    output.push(normalized);
+  }
+  return output;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

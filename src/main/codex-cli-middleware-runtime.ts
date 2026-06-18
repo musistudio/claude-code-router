@@ -23,7 +23,13 @@ async function main() {
     await runClaudeCodeAppServer(args);
     return;
   }
-  await runCodexCliMiddleware(args.length === 0 ? ["app-server", "--analytics-default-enabled"] : args);
+  await runCodexCliMiddleware(args.length === 0 ? defaultCodexArgs() : args);
+}
+
+function defaultCodexArgs() {
+  return normalizeProfileSurface(nonEmptyEnv("CCR_PROFILE_SURFACE") || nonEmptyEnv("CODEXL_PROFILE_SURFACE")) === "cli"
+    ? []
+    : ["app-server", "--analytics-default-enabled"];
 }
 
 async function runCodexCliMiddleware(args) {
@@ -33,6 +39,12 @@ async function runCodexCliMiddleware(args) {
   const configFormat = normalizeConfigFormat(nonEmptyEnv("CCR_CODEX_PROFILE_CONFIG_FORMAT") || nonEmptyEnv("CODEXL_CODEX_PROFILE_CONFIG_FORMAT"));
   const realArgs = realCliArgs(profile, modelProvider, configFormat, args);
   log("codex_cli_start", { realCli, realArgs });
+
+  if (shouldRunDirectCodexCli(args)) {
+    await runDirectCodexCli(realCli, realArgs);
+    return;
+  }
+
   const child = childProcess.spawn(realCli, realArgs, {
     env: withoutKeys(process.env, ["CODEX_CLI_PATH", "CCR_REAL_CODEX_CLI_PATH", "CODEXL_REAL_CODEX_CLI_PATH"]),
     stdio: ["pipe", "pipe", "inherit"]
@@ -66,6 +78,23 @@ async function runCodexCliMiddleware(args) {
   const code = await waitForChild(child);
   log("codex_cli_exit", { code });
   process.exitCode = code;
+}
+
+async function runDirectCodexCli(realCli, realArgs) {
+  const child = childProcess.spawn(realCli, realArgs, {
+    env: withoutKeys(process.env, ["CODEX_CLI_PATH", "CCR_REAL_CODEX_CLI_PATH", "CODEXL_REAL_CODEX_CLI_PATH"]),
+    stdio: "inherit"
+  });
+  child.on("error", (error) => {
+    log("codex_cli_spawn_error", { error: formatError(error) });
+  });
+  const code = await waitForChild(child);
+  log("codex_cli_exit", { code });
+  process.exitCode = code;
+}
+
+function shouldRunDirectCodexCli(args) {
+  return codexPositionalArgs(args)[0] !== "app-server";
 }
 
 function realCliArgs(profile, modelProvider, configFormat, args) {
@@ -143,6 +172,8 @@ function rewriteCodexStdoutLine(line, requestMap) {
     value.result = mockAuthStatus(request.includeToken);
   } else if (request.method === "thread/list") {
     value = mergeForeignThreadList(value, request.params);
+  } else if (request.method === "model/list") {
+    value.result = modelList(request.params, value.result);
   }
   return JSON.stringify(value);
 }
@@ -1075,19 +1106,152 @@ function collaborationModes() {
   ] };
 }
 
-function modelList(params) {
-  const configured = nonEmptyEnv("CCR_CODEX_MODEL") || nonEmptyEnv("CODEXL_CLAUDE_CODE_MODEL") || DEFAULT_MODEL;
-  const models = Array.from(new Set([configured, DEFAULT_MODEL, "claude-opus-4-5", "claude-haiku-4-5"].filter(Boolean))).map((model) => ({
+function modelList(params, existingResult) {
+  const isClaudeCodeRuntime = normalizeRemoteFrontendMode(nonEmptyEnv("CCR_CODEX_REMOTE_FRONTEND_MODE") || nonEmptyEnv("CODEXL_CODEX_CORE_MODE")) === "claude-code";
+  const configured = normalizeModelSelector(nonEmptyEnv("CCR_CODEX_MODEL") || nonEmptyEnv("CODEXL_CLAUDE_CODE_MODEL") || (isClaudeCodeRuntime ? DEFAULT_MODEL : ""));
+  const fallbackIds = isClaudeCodeRuntime
+    ? [configured, DEFAULT_MODEL, "claude-opus-4-5", "claude-haiku-4-5"].filter(Boolean)
+    : [configured].filter((model) => model && !isClaudeCodeOnlyModel(model));
+  const models = mergeModelListItems(extractModelListItems(existingResult), [...catalogModelIds(), ...fallbackIds], configured);
+  const offset = Number(params.cursor || 0) || 0;
+  const limit = Number(params.limit || models.length) || models.length;
+  const data = models.slice(offset, offset + limit);
+  return {
+    ...(existingResult && typeof existingResult === "object" && !Array.isArray(existingResult) ? existingResult : {}),
+    data,
+    models: data,
+    nextCursor: offset + limit < models.length ? String(offset + limit) : null
+  };
+}
+
+function catalogModelIds() {
+  const values = parseModelCatalogEnv();
+  return values.map(normalizeModelSelector).filter(Boolean);
+}
+
+function parseModelCatalogEnv() {
+  const encoded = nonEmptyEnv("CCR_CODEX_MODEL_CATALOG_B64") || nonEmptyEnv("CODEXL_CODEX_MODEL_CATALOG_B64");
+  if (encoded) {
+    try {
+      return modelIdsFromJson(JSON.parse(Buffer.from(encoded, "base64").toString("utf8")));
+    } catch (error) {
+      log("model_catalog_parse_error", { source: "base64", error: formatError(error) });
+    }
+  }
+  const raw = nonEmptyEnv("CCR_CODEX_MODEL_CATALOG") || nonEmptyEnv("CODEXL_CODEX_MODEL_CATALOG");
+  if (raw) {
+    try {
+      return modelIdsFromJson(JSON.parse(raw));
+    } catch (error) {
+      log("model_catalog_parse_error", { source: "json", error: formatError(error) });
+    }
+  }
+  return [];
+}
+
+function modelIdsFromJson(value) {
+  if (!Array.isArray(value)) return [];
+  const output = [];
+  for (const item of value) {
+    const id = typeof item === "string"
+      ? item
+      : item && typeof item === "object"
+        ? firstString(item, ["/model", "/id", "/slug", "/name", "/label"])
+        : "";
+    if (id) output.push(id);
+  }
+  return output;
+}
+
+function mergeModelListItems(existingItems, catalogIds, selectedModel) {
+  const seen = new Set();
+  const output = [];
+  for (const item of existingItems) {
+    const id = normalizeModelSelector(modelItemId(item));
+    if (!id || seen.has(id.toLowerCase())) continue;
+    seen.add(id.toLowerCase());
+    output.push(typeof item === "object" && item !== null ? { ...item, id: item.id || id, model: item.model || id } : codexModelItem(id, selectedModel));
+  }
+  for (const rawId of catalogIds) {
+    const id = normalizeModelSelector(rawId);
+    if (!id || seen.has(id.toLowerCase())) continue;
+    seen.add(id.toLowerCase());
+    output.push(codexModelItem(id, selectedModel));
+  }
+  return output;
+}
+
+function extractModelListItems(result) {
+  if (Array.isArray(result)) return result;
+  if (!result || typeof result !== "object") return [];
+  for (const key of ["models", "data", "items"]) {
+    if (Array.isArray(result[key])) return result[key];
+  }
+  return [];
+}
+
+function modelItemId(item) {
+  if (typeof item === "string") return item;
+  if (!item || typeof item !== "object") return "";
+  return firstString(item, ["/model", "/id", "/slug", "/name", "/label"]) || "";
+}
+
+function codexModelItem(model, selectedModel) {
+  const provider = modelProviderFromSelector(model) || nonEmptyEnv("CCR_CODEX_MODEL_PROVIDER") || "claude-code-router";
+  const displayName = modelDisplayName(model);
+  return {
     id: model,
     model,
     name: model,
     label: model,
-    provider: "claude-code"
-  }));
-  const offset = Number(params.cursor || 0) || 0;
-  const limit = Number(params.limit || models.length) || models.length;
-  const data = models.slice(offset, offset + limit);
-  return { data, models: data, nextCursor: offset + limit < models.length ? String(offset + limit) : null };
+    provider,
+    providerName: provider,
+    modelProvider: provider,
+    displayName,
+    description: "CCR model",
+    hidden: false,
+    isDefault: model === selectedModel,
+    contextWindow: 0,
+    inputModalities: ["text", "image"],
+    supportedReasoningEfforts: [],
+    defaultReasoningEffort: null,
+    supportsPersonality: false,
+    additionalSpeedTiers: [],
+    serviceTiers: [],
+    defaultServiceTier: null,
+    upgrade: null,
+    upgradeInfo: null,
+    availabilityNux: null
+  };
+}
+
+function normalizeModelSelector(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+  const commaIndex = trimmed.indexOf(",");
+  if (commaIndex > 0 && commaIndex < trimmed.length - 1) {
+    const provider = trimmed.slice(0, commaIndex).trim();
+    const model = trimmed.slice(commaIndex + 1).trim();
+    return provider && model ? provider + "/" + model : "";
+  }
+  return trimmed;
+}
+
+function modelProviderFromSelector(model) {
+  const slashIndex = model.indexOf("/");
+  return slashIndex > 0 && slashIndex < model.length - 1 ? model.slice(0, slashIndex) : "";
+}
+
+function modelDisplayName(model) {
+  const slashIndex = model.indexOf("/");
+  return slashIndex > 0 && slashIndex < model.length - 1 ? model.slice(slashIndex + 1) : model;
+}
+
+function isClaudeCodeOnlyModel(model) {
+  const normalized = String(model || "").trim().toLowerCase();
+  return normalized === DEFAULT_MODEL ||
+    normalized === "claude-opus-4-5" ||
+    normalized === "claude-haiku-4-5";
 }
 
 function configRead(params, values) {
@@ -1097,6 +1261,7 @@ function configRead(params, values) {
       ...values,
       cwd,
       model: nonEmptyEnv("CCR_CODEX_MODEL") || DEFAULT_MODEL,
+      model_catalog_json: JSON.stringify(catalogModelIds()),
       model_provider: nonEmptyEnv("CCR_CODEX_MODEL_PROVIDER") || "claude-code",
       approval_policy: "default",
       sandbox_mode: "workspace-write"
@@ -1397,12 +1562,17 @@ function numberEnv(name, fallback) {
 }
 
 function normalizeConfigFormat(value) {
-  return String(value || "").replace(/-/g, "_").toLowerCase() === "separate_profile_files" ? "separate_profile_files" : "legacy";
+  return "separate_profile_files";
 }
 
 function normalizeRemoteFrontendMode(value) {
   const normalized = String(value || "").replace(/_/g, "-").toLowerCase();
   return normalized === "cli" || normalized === "claude-code" ? normalized : "app";
+}
+
+function normalizeProfileSurface(value) {
+  const normalized = String(value || "").replace(/_/g, "-").toLowerCase();
+  return normalized === "cli" || normalized === "app" ? normalized : "auto";
 }
 
 function expandHome(value) {

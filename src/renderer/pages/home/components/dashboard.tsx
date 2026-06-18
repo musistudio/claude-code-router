@@ -12,7 +12,7 @@ import {
   OverviewMetricKind, overviewMetricOptions, overviewWidgetCollisionDetection, OverviewWidgetConfig, OverviewWidgetSize, overviewWidgetSizeOptions,
   OverviewWidgetType, OverviewWidgetVariant, Pencil, Pie, PieChart, Plus,
   PointerSensor, primaryProviderAccountMeter, providerAccountBadgeVariant, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass,
-  ProviderAccountSnapshot, ReactNode, rectSortingStrategy, RefreshCw, Select,
+  ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ReactPointerEvent, rectSortingStrategy, RefreshCw, Select,
   SelectControl, SortableContext, sortableKeyboardCoordinates, systemStatusIconClass, systemStatusPointTooltip, systemStatusSegmentClass,
   systemStatusTooltipPositionClass, Tooltip, translateOptions, Trash2, UsageComparisonRow, usageRangeOptions,
   UsageSeriesPoint, UsageStatsRange, UsageStatsSnapshot, usageStatusTone, UsageTotals, useAppText,
@@ -39,6 +39,7 @@ export function OverviewView({
   const [activeWidgetId, setActiveWidgetId] = useState<string>();
   const [selectedWidgetId, setSelectedWidgetId] = useState<string>();
   const [dragPreviewWidgets, setDragPreviewWidgets] = useState<OverviewWidgetConfig[]>();
+  const [pendingScrollWidgetId, setPendingScrollWidgetId] = useState<string>();
   const [editing, setEditing] = useState(false);
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -76,6 +77,22 @@ export function OverviewView({
       setSelectedWidgetId(configuredVisibleWidgets[0].id);
     }
   }, [configuredVisibleWidgets, editing, selectedWidgetId]);
+
+  useEffect(() => {
+    if (!editing || !pendingScrollWidgetId || !widgets.some((widget) => widget.enabled && widget.id === pendingScrollWidgetId)) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      const element = findOverviewWidgetElement(viewRef.current, pendingScrollWidgetId);
+      if (!element) {
+        return;
+      }
+      element.scrollIntoView({ block: "center", inline: "nearest" });
+      setPendingScrollWidgetId(undefined);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [editing, pendingScrollWidgetId, widgets]);
 
   function updateWidget(id: string, patch: Partial<OverviewWidgetConfig>) {
     onWidgetsChange(widgets.map((widget) => widget.id === id ? normalizeOverviewWidget({ ...widget, ...patch }) ?? widget : widget));
@@ -158,6 +175,7 @@ export function OverviewView({
     }
     onWidgetsChange([...widgets, widget]);
     setSelectedWidgetId(id);
+    setPendingScrollWidgetId(id);
     setEditing(true);
   }
 
@@ -209,6 +227,8 @@ export function OverviewView({
                 <OverviewWidgetFrame
                   editing={editing}
                   selected={selectedWidgetId === widget.id}
+                  widget={widget}
+                  onResize={(size) => updateWidget(widget.id, { size })}
                   onSelect={() => setSelectedWidgetId(widget.id)}
                 >
                   <OverviewWidgetRenderer
@@ -253,25 +273,25 @@ export function OverviewView({
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="truncate text-[18px] font-semibold tracking-tight">{t("Overview layout")}</h2>
-          <p className="mt-0.5 truncate text-[12px] text-muted-foreground">{editing ? t("Drag cards to arrange") : t("Overview")}</p>
+          <h2 className="truncate text-[18px] font-semibold tracking-tight">{t("Overview")}</h2>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {!editing ? (
-            <Button onClick={() => setEditing(true)} size="sm" type="button" variant="outline">
-              <Plus className="h-3.5 w-3.5" />
-              {t("Add widget")}
-            </Button>
-          ) : null}
           {editing ? (
             <Button onClick={resetLayout} size="sm" type="button" variant="outline">
               <RefreshCw className="h-3.5 w-3.5" />
               {t("Reset layout")}
             </Button>
           ) : null}
-          <Button onClick={() => setEditing((value) => !value)} size="sm" type="button" variant={editing ? "default" : "outline"}>
+          <Button
+            aria-label={editing ? t("Done") : t("Edit widgets")}
+            onClick={() => setEditing((value) => !value)}
+            size={editing ? "sm" : "iconSm"}
+            title={editing ? t("Done") : t("Edit widgets")}
+            type="button"
+            variant={editing ? "default" : "outline"}
+          >
             <Pencil className="h-3.5 w-3.5" />
-            {editing ? t("Done") : t("Edit widgets")}
+            {editing ? t("Done") : null}
           </Button>
         </div>
       </div>
@@ -296,7 +316,9 @@ export function OverviewView({
 
           <aside className="min-w-0 rounded-lg border border-border bg-card p-3 xl:sticky xl:top-4 xl:self-start">
             <OverviewWidgetProperties
+              providerAccounts={providerAccounts}
               widget={selectedWidget}
+              onChangeAccountProvider={(accountProvider) => selectedWidget ? updateWidget(selectedWidget.id, { accountProvider }) : undefined}
               onChangeAnalysisData={(type) => selectedWidget ? changeWidgetAnalysisData(selectedWidget.id, type) : undefined}
               onChangeCategory={(category) => selectedWidget ? changeWidgetCategory(selectedWidget.id, category) : undefined}
               onChangeMetric={(metric) => selectedWidget ? updateWidget(selectedWidget.id, { metric }) : undefined}
@@ -315,6 +337,14 @@ export function OverviewView({
 
 function isEditableKeyboardTarget(target: Element | undefined): boolean {
   return Boolean(target?.closest("input, textarea, select, [contenteditable='true'], [contenteditable='plaintext-only'], [role='textbox']"));
+}
+
+function findOverviewWidgetElement(root: HTMLElement | null, id: string): HTMLElement | undefined {
+  if (!root) {
+    return undefined;
+  }
+  return Array.from(root.querySelectorAll<HTMLElement>("[data-overview-widget-id]"))
+    .find((element) => element.dataset.overviewWidgetId === id);
 }
 
 function OverviewWidgetPalette({
@@ -347,7 +377,9 @@ function OverviewWidgetPalette({
 }
 
 function OverviewWidgetProperties({
+  providerAccounts,
   widget,
+  onChangeAccountProvider,
   onChangeAnalysisData,
   onChangeCategory,
   onChangeMetric,
@@ -355,7 +387,9 @@ function OverviewWidgetProperties({
   onChangeVariant,
   onRemove
 }: {
+  providerAccounts: ProviderAccountSnapshot[];
   widget: OverviewWidgetConfig | undefined;
+  onChangeAccountProvider: (accountProvider: string | undefined) => void;
   onChangeAnalysisData: (type: "client-analysis" | "provider-analysis") => void;
   onChangeCategory: (category: OverviewWidgetCategory) => void;
   onChangeMetric: (metric: OverviewMetricKind) => void;
@@ -374,9 +408,12 @@ function OverviewWidgetProperties({
   }
 
   const category = overviewWidgetCategory(widget.type);
-  const dataOptions = overviewWidgetDataOptions(widget);
+  const dataOptions = overviewWidgetDataOptions(widget, providerAccounts);
   const dataValue = overviewWidgetDataValue(widget);
   const changeData = (value: string) => {
+    if (category === "account-balance") {
+      onChangeAccountProvider(value || undefined);
+    }
     if (category === "metric") {
       onChangeMetric(value as OverviewMetricKind);
     }
@@ -447,6 +484,7 @@ function SortableOverviewWidget({
         editing && "cursor-grab touch-none",
         isDragging && "relative z-20 cursor-grabbing opacity-70"
       )}
+      data-overview-widget-id={widget.id}
       layout
       onFocus={editing ? onSelect : undefined}
       ref={setNodeRef}
@@ -492,19 +530,70 @@ function OverviewWidgetFrame({
   children,
   editing,
   selected,
+  widget,
+  onResize,
   onSelect
 }: {
   children: ReactNode;
   editing: boolean;
   selected: boolean;
+  widget: OverviewWidgetConfig;
+  onResize: (size: OverviewWidgetSize) => void;
   onSelect: () => void;
 }) {
+  const t = useAppText();
+  const frameRef = useRef<HTMLDivElement>(null);
   const selectFrame = () => {
     if (!editing) {
       return;
     }
     onSelect();
   };
+
+  function startResize(axis: OverviewWidgetResizeAxis, event: ReactPointerEvent<HTMLButtonElement>) {
+    const grid = frameRef.current?.closest<HTMLElement>("[data-overview-widget-grid]");
+    const metrics = readOverviewWidgetGridMetrics(grid);
+    if (!editing || !metrics) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const start = overviewWidgetDimensions(widget.size);
+    const maxWidth = Math.min(4, Math.max(start.width, metrics.columns)) as 1 | 2 | 3 | 4;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    let currentSize = widget.size;
+    document.body.style.cursor = overviewWidgetResizeCursor(axis);
+    document.body.style.userSelect = "none";
+
+    const update = (pointerEvent: PointerEvent) => {
+      const widthDelta = axis === "height" ? 0 : Math.round((pointerEvent.clientX - startX) / metrics.columnStep);
+      const heightDelta = axis === "width" ? 0 : Math.round((pointerEvent.clientY - startY) / metrics.rowStep);
+      const nextWidth = clampOverviewWidgetDimension(start.width + widthDelta, 1, maxWidth);
+      const nextHeight = clampOverviewWidgetDimension(start.height + heightDelta, 1, 4);
+      const nextSize = overviewWidgetSize(nextWidth, nextHeight);
+      if (nextSize === currentSize) {
+        return;
+      }
+      currentSize = nextSize;
+      onResize(nextSize);
+    };
+    const stop = () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("pointermove", update);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+
+    window.addEventListener("pointermove", update);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  }
 
   return (
     <div
@@ -518,10 +607,148 @@ function OverviewWidgetFrame({
       role={editing ? "group" : undefined}
       onFocus={editing ? onSelect : undefined}
       onPointerDownCapture={selectFrame}
+      ref={frameRef}
     >
       {children}
+      {editing ? (
+        <>
+          <OverviewWidgetResizeHandle
+            axis="width"
+            label={t("Resize widget width")}
+            selected={selected}
+            onPointerDown={(event) => startResize("width", event)}
+          />
+          <OverviewWidgetResizeHandle
+            axis="height"
+            label={t("Resize widget height")}
+            selected={selected}
+            onPointerDown={(event) => startResize("height", event)}
+          />
+          <OverviewWidgetResizeHandle
+            axis="both"
+            label={t("Resize widget size")}
+            selected={selected}
+            onPointerDown={(event) => startResize("both", event)}
+          />
+        </>
+      ) : null}
     </div>
   );
+}
+
+type OverviewWidgetResizeAxis = "both" | "height" | "width";
+
+type OverviewWidgetGridMetrics = {
+  columns: 1 | 2 | 3 | 4;
+  columnStep: number;
+  rowStep: number;
+};
+
+function OverviewWidgetResizeHandle({
+  axis,
+  label,
+  selected,
+  onPointerDown
+}: {
+  axis: OverviewWidgetResizeAxis;
+  label: string;
+  selected: boolean;
+  onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+}) {
+  if (axis === "width") {
+    return (
+      <button
+        aria-label={label}
+        className="absolute -right-2 bottom-7 top-3 z-30 w-4 touch-none cursor-ew-resize rounded-full bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
+        onPointerDown={onPointerDown}
+        title={label}
+        type="button"
+      >
+        <span aria-hidden="true" className={cn("absolute left-1/2 top-1/2 h-12 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/65 opacity-0 transition-opacity group-hover/overview-widget:opacity-100", selected && "opacity-100")} />
+      </button>
+    );
+  }
+
+  if (axis === "height") {
+    return (
+      <button
+        aria-label={label}
+        className="absolute -bottom-2 left-3 right-7 z-30 h-4 touch-none cursor-ns-resize rounded-full bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
+        onPointerDown={onPointerDown}
+        title={label}
+        type="button"
+      >
+        <span aria-hidden="true" className={cn("absolute left-1/2 top-1/2 h-1 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/65 opacity-0 transition-opacity group-hover/overview-widget:opacity-100", selected && "opacity-100")} />
+      </button>
+    );
+  }
+
+  return (
+    <button
+      aria-label={label}
+      className={cn(
+        "absolute -bottom-2 -right-2 z-40 h-5 w-5 touch-none cursor-nwse-resize rounded-[6px] border border-primary/70 bg-background p-0 opacity-0 shadow-sm outline-none transition-opacity focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/25 group-hover/overview-widget:opacity-100",
+        selected && "opacity-100"
+      )}
+      onPointerDown={onPointerDown}
+      title={label}
+      type="button"
+    >
+      <span aria-hidden="true" className="absolute bottom-1 right-1 h-2.5 w-2.5 rounded-br-[3px] border-b-2 border-r-2 border-primary/70" />
+    </button>
+  );
+}
+
+function readOverviewWidgetGridMetrics(grid: HTMLElement | null | undefined): OverviewWidgetGridMetrics | undefined {
+  if (!grid) {
+    return undefined;
+  }
+  const gridRect = grid.getBoundingClientRect();
+  if (gridRect.width <= 0) {
+    return undefined;
+  }
+  const styles = window.getComputedStyle(grid);
+  const columnTracks = styles.gridTemplateColumns
+    .split(" ")
+    .map((track) => track.trim())
+    .filter((track) => track && track !== "none");
+  const columnCount = Math.max(1, Math.min(4, columnTracks.length || 1)) as 1 | 2 | 3 | 4;
+  const columnGap = parseFiniteCssPixels(styles.columnGap);
+  const rowGap = parseFiniteCssPixels(styles.rowGap);
+  const rowHeight = parseFiniteCssPixels(styles.gridAutoRows) || 148;
+  const columnWidth = (gridRect.width - columnGap * (columnCount - 1)) / columnCount;
+  return {
+    columns: columnCount,
+    columnStep: Math.max(1, columnWidth + columnGap),
+    rowStep: Math.max(1, rowHeight + rowGap)
+  };
+}
+
+function parseFiniteCssPixels(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function clampOverviewWidgetDimension(value: number, min: 1 | 2 | 3 | 4, max: 1 | 2 | 3 | 4): 1 | 2 | 3 | 4 {
+  const clamped = Math.max(min, Math.min(max, value));
+  if (clamped >= 4) return 4;
+  if (clamped >= 3) return 3;
+  if (clamped >= 2) return 2;
+  return 1;
+}
+
+function overviewWidgetSize(width: 1 | 2 | 3 | 4, height: 1 | 2 | 3 | 4): OverviewWidgetSize {
+  return `${width}:${height}` as OverviewWidgetSize;
+}
+
+function overviewWidgetResizeCursor(axis: OverviewWidgetResizeAxis): string {
+  if (axis === "width") {
+    return "ew-resize";
+  }
+  if (axis === "height") {
+    return "ns-resize";
+  }
+  return "nwse-resize";
 }
 
 function OverviewWidgetRenderer({
@@ -537,21 +764,22 @@ function OverviewWidgetRenderer({
   usageStats: UsageStatsSnapshot;
   widget: OverviewWidgetConfig;
 }) {
+  const dimensions = overviewWidgetDimensions(widget.size);
   let content: ReactNode;
   if (widget.type === "system-status") {
     content = <SystemStatusBar usageRange={usageRange} usageStats={usageStats} variant={widget.variant === "compact" ? "compact" : "timeline"} />;
   } else if (widget.type === "account-balance") {
-    content = <ProviderAccountsOverview accounts={providerAccounts} variant={overviewAccountVariant(widget.variant)} />;
+    content = <ProviderAccountsOverview accountProvider={widget.accountProvider} accounts={providerAccounts} dimensions={dimensions} variant={overviewAccountVariant(widget.variant)} />;
   } else if (widget.type === "metric") {
     content = <OverviewMetricWidget metric={widget.metric ?? "requests"} totals={usageStats.totals} variant={overviewMetricVariant(widget.variant)} />;
   } else if (widget.type === "usage-trend") {
-    content = <UsageTrendWidget setUsageRange={setUsageRange} usageRange={usageRange} usageStats={usageStats} variant={overviewTrendVariant(widget.variant)} />;
+    content = <UsageTrendWidget dimensions={dimensions} setUsageRange={setUsageRange} usageRange={usageRange} usageStats={usageStats} variant={overviewTrendVariant(widget.variant)} />;
   } else if (widget.type === "token-mix") {
-    content = <TokenMixOverviewWidget totals={usageStats.totals} variant={overviewTokenMixVariant(widget.variant)} />;
+    content = <TokenMixOverviewWidget dimensions={dimensions} totals={usageStats.totals} variant={overviewTokenMixVariant(widget.variant)} />;
   } else if (widget.type === "client-analysis") {
-    content = <OverviewAnalysisWidget kind="client" rows={usageStats.clientModels} variant={widget.variant === "compact" ? "compact" : "table"} />;
+    content = <OverviewAnalysisWidget dimensions={dimensions} kind="client" rows={usageStats.clientModels} variant={widget.variant === "compact" ? "compact" : "table"} />;
   } else {
-    content = <OverviewAnalysisWidget kind="provider" rows={usageStats.providerModels} variant={widget.variant === "compact" ? "compact" : "table"} />;
+    content = <OverviewAnalysisWidget dimensions={dimensions} kind="provider" rows={usageStats.providerModels} variant={widget.variant === "compact" ? "compact" : "table"} />;
   }
 
   return <div className="h-full min-h-0 min-w-0 overflow-hidden">{content}</div>;
@@ -638,23 +866,29 @@ function OverviewRingMetric({ ratio, tone }: { ratio: number; tone: MetricTone }
 }
 
 function UsageTrendWidget({
+  dimensions,
   setUsageRange,
   usageRange,
   usageStats,
   variant
 }: {
+  dimensions: OverviewWidgetDimensions;
   setUsageRange: (range: UsageStatsRange) => void;
   usageRange: UsageStatsRange;
   usageStats: UsageStatsSnapshot;
   variant: "area" | "bar" | "composed" | "line";
 }) {
   const t = useAppText();
+  const showRangeControls = dimensions.width >= 3 && dimensions.height >= 2;
+  const chartMargin = dimensions.height <= 1
+    ? { bottom: 0, left: 0, right: 4, top: 8 }
+    : { bottom: 4, left: 0, right: 8, top: 28 };
 
   return (
     <Card className="flex h-full min-h-0 min-w-0 flex-col">
       <CardHeader className="shrink-0 flex-row items-center justify-between">
         <CardTitle>{t("Usage Trend")}</CardTitle>
-        <div className="flex rounded-md border border-border bg-background p-0.5">
+        {showRangeControls ? <div className="flex rounded-md border border-border bg-background p-0.5">
           {usageRangeOptions.map((option) => (
             <Button
               className={cn(
@@ -669,15 +903,15 @@ function UsageTrendWidget({
               {t(option.label)}
             </Button>
           ))}
-        </div>
+        </div> : null}
       </CardHeader>
       <CardContent className="min-h-0 flex-1">
         <ChartFrame fill>
           {({ height, width }) => (
-            <ComposedChart data={usageStats.series} height={height} margin={{ bottom: 4, left: 0, right: 8, top: 28 }} width={width}>
+            <ComposedChart data={usageStats.series} height={height} margin={chartMargin} width={width}>
               <CartesianGrid stroke="#dfe3e8" strokeDasharray="3 3" vertical={false} />
-              <XAxis axisLine={false} dataKey="label" tick={{ fill: "#5f6b7a", fontSize: 11 }} tickLine={false} />
-              <YAxis axisLine={false} tick={{ fill: "#5f6b7a", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} yAxisId="tokens" />
+              <XAxis axisLine={false} dataKey="label" hide={dimensions.height <= 1} tick={{ fill: "#5f6b7a", fontSize: 11 }} tickLine={false} />
+              <YAxis axisLine={false} hide={dimensions.width <= 1} tick={{ fill: "#5f6b7a", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} yAxisId="tokens" />
               <YAxis axisLine={false} hide orientation="right" yAxisId="requests" />
               <Tooltip content={<UsageTooltip />} />
               {variant === "composed" ? (
@@ -716,9 +950,11 @@ function UsageTrendWidget({
 }
 
 function TokenMixOverviewWidget({
+  dimensions,
   totals,
   variant
 }: {
+  dimensions: OverviewWidgetDimensions;
   totals: UsageTotals;
   variant: "bars" | "donut" | "pie" | "stacked";
 }) {
@@ -729,6 +965,10 @@ function TokenMixOverviewWidget({
     { color: "#be123c", name: t("Cache"), value: totals.cacheTokens }
   ];
   const total = tokenMix.reduce((sum, item) => sum + item.value, 0);
+  const showLegend = dimensions.height >= 2 && dimensions.width >= 2;
+  const chartMargin = dimensions.height <= 1
+    ? { bottom: 2, left: 0, right: 8, top: 2 }
+    : { bottom: 8, left: 8, right: 12, top: 8 };
 
   return (
     <Card className="flex h-full min-h-0 min-w-0 flex-col">
@@ -736,7 +976,7 @@ function TokenMixOverviewWidget({
         <CardTitle>{t("Token Mix")}</CardTitle>
         <Badge variant="outline">{formatCompactNumber(totals.totalTokens)}</Badge>
       </CardHeader>
-      <CardContent className="min-h-0 flex-1 overflow-auto">
+      <CardContent className="min-h-0 flex-1 overflow-hidden">
         {variant === "stacked" ? (
           <div className="space-y-3">
             <div className="flex h-3 overflow-hidden rounded-full bg-muted">
@@ -744,7 +984,7 @@ function TokenMixOverviewWidget({
                 <div key={item.name} style={{ backgroundColor: item.color, width: `${total > 0 ? Math.max(2, (item.value / total) * 100) : 100 / tokenMix.length}%` }} />
               ))}
             </div>
-            <OverviewTokenLegend rows={tokenMix} />
+            {showLegend ? <OverviewTokenLegend rows={tokenMix} /> : null}
           </div>
         ) : null}
         {variant === "donut" || variant === "pie" ? (
@@ -773,10 +1013,10 @@ function TokenMixOverviewWidget({
         {variant === "bars" ? (
           <ChartFrame fill>
             {({ height, width }) => (
-              <BarChart data={tokenMix} height={height} layout="vertical" margin={{ bottom: 8, left: 8, right: 12, top: 8 }} width={width}>
+              <BarChart data={tokenMix} height={height} layout="vertical" margin={chartMargin} width={width}>
                 <CartesianGrid stroke="#dfe3e8" strokeDasharray="3 3" horizontal={false} />
-                <XAxis axisLine={false} tick={{ fill: "#5f6b7a", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} type="number" />
-                <YAxis axisLine={false} dataKey="name" tick={{ fill: "#5f6b7a", fontSize: 11 }} tickLine={false} type="category" width={52} />
+                <XAxis axisLine={false} hide={dimensions.height <= 1} tick={{ fill: "#5f6b7a", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} type="number" />
+                <YAxis axisLine={false} dataKey="name" tick={{ fill: "#5f6b7a", fontSize: 11 }} tickLine={false} type="category" width={dimensions.width <= 1 ? 42 : 52} />
                 <Tooltip content={<TokenTooltip />} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                   {tokenMix.map((item) => (
@@ -807,10 +1047,12 @@ function OverviewTokenLegend({ rows }: { rows: Array<{ color: string; name: stri
 }
 
 function OverviewAnalysisWidget({
+  dimensions,
   kind,
   rows,
   variant
 }: {
+  dimensions: OverviewWidgetDimensions;
   kind: "client" | "provider";
   rows: UsageComparisonRow[];
   variant: "compact" | "table";
@@ -829,19 +1071,22 @@ function OverviewAnalysisWidget({
       { key: "model", label: t("Model") }
     ];
 
-  if (variant === "compact") {
+  const rowLimit = overviewAnalysisRowLimit(dimensions);
+  const shouldUseCompact = variant === "compact" || dimensions.width <= 2 || dimensions.height <= 1;
+
+  if (shouldUseCompact) {
     return (
       <Card className="flex h-full min-h-0 min-w-0 flex-col">
         <CardHeader className="shrink-0 flex-row items-center justify-between">
           <CardTitle>{title}</CardTitle>
           <Badge variant="outline">{rows.length}</Badge>
         </CardHeader>
-        <CardContent className="min-h-0 flex-1 overflow-auto">
+        <CardContent className="min-h-0 flex-1 overflow-hidden">
           {rows.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-7 text-center text-[12px] text-muted-foreground">{emptyLabel}</div>
           ) : (
             <div className="space-y-2">
-              {rows.slice(0, 5).map((row) => (
+              {rows.slice(0, rowLimit).map((row) => (
                 <div className="flex min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2" key={row.key}>
                   <span className="min-w-0 truncate text-[12px] font-medium">{row.label}</span>
                   <span className="shrink-0 text-[12px] font-semibold">{formatCompactNumber(row.totalTokens)}</span>
@@ -854,7 +1099,14 @@ function OverviewAnalysisWidget({
     );
   }
 
-  return <UsageAnalysisCard columns={columns} emptyLabel={emptyLabel} rows={rows} title={title} />;
+  return <UsageAnalysisCard columns={columns} dimensions={dimensions} emptyLabel={emptyLabel} rows={rows} title={title} />;
+}
+
+function overviewAnalysisRowLimit(dimensions: OverviewWidgetDimensions): number {
+  if (dimensions.height <= 1) return 2;
+  if (dimensions.height === 2) return 5;
+  if (dimensions.height === 3) return 8;
+  return 12;
 }
 
 function overviewWidgetTemplates(): OverviewWidgetConfig[] {
@@ -891,7 +1143,7 @@ function overviewAnalysisDataOptions(): Array<{ label: string; value: "client-an
   ];
 }
 
-function overviewWidgetDataOptions(widget: OverviewWidgetConfig): Array<{ label: string; value: string }> {
+function overviewWidgetDataOptions(widget: OverviewWidgetConfig, providerAccounts: ProviderAccountSnapshot[]): Array<{ label: string; value: string }> {
   const category = overviewWidgetCategory(widget.type);
   if (category === "metric") {
     return overviewMetricOptions;
@@ -900,7 +1152,14 @@ function overviewWidgetDataOptions(widget: OverviewWidgetConfig): Array<{ label:
     return overviewAnalysisDataOptions();
   }
   if (category === "account-balance") {
-    return [{ label: "Account Balance", value: "account-balance" }];
+    const options = providerAccounts
+      .filter((account) => account.provider)
+      .sort(compareProviderAccountSnapshots)
+      .map((account) => ({ label: account.provider, value: account.provider }));
+    if (widget.accountProvider && !options.some((option) => option.value === widget.accountProvider)) {
+      options.push({ label: widget.accountProvider, value: widget.accountProvider });
+    }
+    return [{ label: "All accounts", value: "" }, ...options];
   }
   if (category === "system-status") {
     return [{ label: "System status", value: "system-status" }];
@@ -918,6 +1177,9 @@ function overviewWidgetDataValue(widget: OverviewWidgetConfig): string {
   }
   if (category === "analysis") {
     return widget.type;
+  }
+  if (category === "account-balance") {
+    return widget.accountProvider ?? "";
   }
   return category;
 }
@@ -977,7 +1239,11 @@ function overviewWidgetVariantOptions(type: OverviewWidgetType): Array<{ label: 
     return [
       { label: "Cards", value: "cards" },
       { label: "Compact", value: "compact" },
-      { label: "Bars", value: "bars" }
+      { label: "Bars", value: "bars" },
+      { label: "Ring", value: "ring" },
+      { label: "Semicircle", value: "semicircle" },
+      { label: "Arc", value: "arc" },
+      { label: "Nested rings", value: "nested-rings" }
     ];
   }
   if (type === "metric") {
@@ -1026,7 +1292,9 @@ function overviewWidgetOverlaySizeClass(size: OverviewWidgetSize): string {
   return cn(overviewWidgetOverlayWidthClass(width), overviewWidgetOverlayHeightClass(height));
 }
 
-function overviewWidgetDimensions(size: OverviewWidgetSize): { height: 1 | 2 | 3 | 4; width: 1 | 2 | 3 | 4 } {
+type OverviewWidgetDimensions = { height: 1 | 2 | 3 | 4; width: 1 | 2 | 3 | 4 };
+
+function overviewWidgetDimensions(size: OverviewWidgetSize): OverviewWidgetDimensions {
   const [widthText, heightText] = size.split(":");
   const width = overviewWidgetDimensionValue(widthText);
   const height = overviewWidgetDimensionValue(heightText);
@@ -1084,8 +1352,10 @@ function uniqueOverviewWidgetId(widgets: OverviewWidgetConfig[], baseId: string)
   return `${baseId}-${index}`;
 }
 
-function overviewAccountVariant(value: OverviewWidgetVariant): "bars" | "cards" | "compact" {
-  return value === "bars" || value === "compact" ? value : "cards";
+type OverviewAccountVariant = "arc" | "bars" | "cards" | "compact" | "nested-rings" | "ring" | "semicircle";
+
+function overviewAccountVariant(value: OverviewWidgetVariant): OverviewAccountVariant {
+  return value === "arc" || value === "bars" || value === "compact" || value === "nested-rings" || value === "ring" || value === "semicircle" ? value : "cards";
 }
 
 function overviewMetricVariant(value: OverviewWidgetVariant): "bar" | "card" | "compact" | "ring" {
@@ -1253,41 +1523,48 @@ function SystemStatusBar({
 }
 
 function ProviderAccountsOverview({
+  accountProvider,
   accounts,
+  dimensions,
   variant = "cards"
 }: {
+  accountProvider?: string;
   accounts: ProviderAccountSnapshot[];
-  variant?: "bars" | "cards" | "compact";
+  dimensions: OverviewWidgetDimensions;
+  variant?: OverviewAccountVariant;
 }) {
   const t = useAppText();
-  const visibleAccounts = accounts
-    .filter((account) => account.meters.length > 0 || account.status === "error")
-    .sort(compareProviderAccountSnapshots)
-    .slice(0, 6);
+  const selectedAccountProvider = accountProvider?.trim();
+  const sortedAccounts = [...accounts].sort(compareProviderAccountSnapshots);
+  const accountLimit = selectedAccountProvider ? 1 : providerAccountVisibleLimit(dimensions, variant);
+  const visibleAccounts = selectedAccountProvider
+    ? sortedAccounts.filter((account) => account.provider === selectedAccountProvider).slice(0, 1)
+    : sortedAccounts
+      .filter((account) => account.meters.length > 0 || account.status === "error")
+      .slice(0, accountLimit);
+  const isSingleAccount = visibleAccounts.length === 1;
 
   return (
     <Card className="flex h-full min-h-0 min-w-0 flex-col">
-      <CardHeader className="shrink-0 flex-row items-center justify-between">
-        <CardTitle>{t("Account Balance")}</CardTitle>
-        <Badge variant="outline">{accounts.length}</Badge>
-      </CardHeader>
-      <CardContent className="min-h-0 flex-1 overflow-auto">
+      <CardContent className={cn("min-h-0 flex-1 overflow-hidden", providerAccountContentPaddingClass(dimensions))}>
         {visibleAccounts.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-7 text-center text-[12px] text-muted-foreground">
+          <div className="flex h-full min-h-0 items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 px-3 py-4 text-center text-[12px] text-muted-foreground">
             {t("No account balance connectors configured")}
           </div>
+        ) : isSingleAccount ? (
+          <ProviderAccountSinglePanel account={visibleAccounts[0]} dimensions={dimensions} variant={variant} />
         ) : variant === "compact" ? (
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+          <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-hidden", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions))}>
             {visibleAccounts.map((account) => {
-              const meter = primaryProviderAccountMeter(account);
+              const meter = primaryProviderAccountDisplayMeter(account);
               return (
-                <div className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 px-3 py-2" key={account.provider}>
+                <div className="flex min-h-0 min-w-0 items-center justify-between gap-3 overflow-hidden rounded-lg border border-border bg-muted/20 px-3 py-2" key={account.provider}>
                   <div className="min-w-0">
                     <div className="truncate text-[12px] font-semibold">{account.provider}</div>
-                    <div className="truncate text-[11px] text-muted-foreground">{meter ? t(meter.label) : account.source}</div>
+                    {providerAccountShowSource(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{meter ? t(meter.label) : account.source}</div> : null}
                   </div>
                   <div className="shrink-0 text-right">
-                    <Badge variant={providerAccountBadgeVariant(account.status)}>{account.status}</Badge>
+                    {providerAccountShowStatus(dimensions) ? <Badge variant={providerAccountBadgeVariant(account.status)}>{account.status}</Badge> : null}
                     {meter ? <div className="mt-1 text-[12px] font-semibold">{formatProviderAccountMeterValue(meter)}</div> : null}
                   </div>
                 </div>
@@ -1295,16 +1572,16 @@ function ProviderAccountsOverview({
             })}
           </div>
         ) : variant === "bars" ? (
-          <div className="space-y-3">
+          <div className={cn("h-full min-h-0 overflow-hidden", providerAccountStackClass(dimensions))}>
             {visibleAccounts.map((account) => {
-              const meter = primaryProviderAccountMeter(account);
-              const progress = meter ? providerAccountMeterProgress(meter) : undefined;
+              const meter = primaryProviderAccountDisplayMeter(account);
+              const progress = meter && isProviderAccountQuotaMeter(meter) ? providerAccountMeterProgress(meter) : undefined;
               return (
-                <div className="min-w-0" key={account.provider}>
+                <div className="min-w-0 overflow-hidden" key={account.provider}>
                   <div className="flex min-w-0 items-end justify-between gap-3">
                     <div className="min-w-0">
                       <div className="truncate text-[12px] font-semibold">{account.provider}</div>
-                      <div className="truncate text-[11px] text-muted-foreground">{meter ? t(meter.label) : account.source}</div>
+                      {providerAccountShowSource(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{meter ? t(meter.label) : account.source}</div> : null}
                     </div>
                     <div className="shrink-0 text-[12px] font-semibold">{meter ? formatProviderAccountMeterValue(meter) : account.status}</div>
                   </div>
@@ -1318,52 +1595,470 @@ function ProviderAccountsOverview({
             })}
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-hidden", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions))}>
             {visibleAccounts.map((account) => {
-              const meters = providerAccountMetersForDisplay(account, 3);
-              return (
-                <div className="min-w-0 rounded-lg border border-border bg-muted/20 p-3" key={account.provider}>
-                  <div className="flex min-w-0 items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate text-[13px] font-semibold">{account.provider}</div>
-                      <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{account.source}</div>
-                    </div>
-                    <Badge variant={providerAccountBadgeVariant(account.status)}>{account.status}</Badge>
-                  </div>
-                  {meters.length > 0 ? (
-                    <div className="mt-3 space-y-2.5">
-                      {meters.map((meter) => {
-                        const progress = providerAccountMeterProgress(meter);
-                        return (
-                          <div className="min-w-0" key={meter.id}>
-                            <div className="flex min-w-0 items-end justify-between gap-3">
-                              <div className="min-w-0 truncate text-[12px] font-medium text-muted-foreground">{t(meter.label)}</div>
-                              <div className="shrink-0 text-[15px] font-semibold tracking-tight">{formatProviderAccountMeterValue(meter)}</div>
-                            </div>
-                            {progress !== undefined ? (
-                              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-background">
-                                <div className={cn("h-full rounded-full", providerAccountProgressClass(account.status))} style={{ width: `${progress}%` }} />
-                              </div>
-                            ) : null}
-                            {meter.resetAt ? <div className="mt-1 truncate text-[10px] text-muted-foreground">{t("Resets")} {formatProviderAccountReset(meter.resetAt)}</div> : null}
-                          </div>
-                        );
-                      })}
-                      {account.meters.length > meters.length ? (
-                        <div className="truncate text-[10px] text-muted-foreground">+{account.meters.length - meters.length}</div>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <div className="mt-3 truncate text-[12px] text-muted-foreground">{account.message || account.errors?.[0]?.message || t("Unavailable")}</div>
-                  )}
-                </div>
-              );
+              return <ProviderAccountSummaryCard account={account} dimensions={dimensions} key={account.provider} variant={variant} />;
             })}
           </div>
         )}
       </CardContent>
     </Card>
   );
+}
+
+function ProviderAccountSinglePanel({
+  account,
+  dimensions,
+  variant
+}: {
+  account: ProviderAccountSnapshot;
+  dimensions: OverviewWidgetDimensions;
+  variant: OverviewAccountVariant;
+}) {
+  const t = useAppText();
+  const quotaMeters = providerAccountQuotaMeters(account);
+  const balanceMeter = primaryProviderAccountBalanceMeter(account);
+  const meters = providerAccountMetersForDisplayOrdered(account, providerAccountMeterLimit(dimensions, true, variant));
+  const showQuotaVisual = providerAccountUsesQuotaVisual(variant) && quotaMeters.length > 0;
+
+  return (
+    <div className={cn("flex h-full min-h-0 min-w-0 flex-col overflow-hidden", providerAccountStackClass(dimensions))}>
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className={cn("truncate font-semibold", dimensions.height <= 1 ? "text-[12px]" : "text-[13px]")}>{account.provider}</div>
+          {providerAccountShowSource(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{account.source}</div> : null}
+        </div>
+        {providerAccountShowStatus(dimensions) ? <Badge variant={providerAccountBadgeVariant(account.status)}>{account.status}</Badge> : null}
+      </div>
+      {showQuotaVisual ? (
+        <ProviderAccountQuotaVisual account={account} dimensions={dimensions} meters={quotaMeters} variant={variant} />
+      ) : quotaMeters.length === 0 && balanceMeter ? (
+        <ProviderAccountBalanceMetric dimensions={dimensions} meter={balanceMeter} />
+      ) : meters.length > 0 ? (
+        <div className={cn("min-h-0 overflow-hidden", providerAccountStackClass(dimensions))}>
+          {meters.map((meter) => (
+            <ProviderAccountMeterLine account={account} dimensions={dimensions} key={meter.id} meter={meter} single />
+          ))}
+          {providerAccountShowExtraCount(dimensions) && account.meters.length > meters.length ? (
+            <div className="truncate text-[10px] text-muted-foreground">+{account.meters.length - meters.length}</div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="truncate text-[12px] text-muted-foreground">{account.message || account.errors?.[0]?.message || t("Unavailable")}</div>
+      )}
+    </div>
+  );
+}
+
+function ProviderAccountSummaryCard({
+  account,
+  dimensions,
+  variant
+}: {
+  account: ProviderAccountSnapshot;
+  dimensions: OverviewWidgetDimensions;
+  variant: OverviewAccountVariant;
+}) {
+  const t = useAppText();
+  const quotaMeters = providerAccountQuotaMeters(account);
+  const balanceMeter = primaryProviderAccountBalanceMeter(account);
+  const meters = providerAccountMetersForDisplayOrdered(account, providerAccountMeterLimit(dimensions, false, variant));
+  const showQuotaVisual = providerAccountUsesQuotaVisual(variant) && quotaMeters.length > 0;
+
+  return (
+    <div className={cn("min-h-0 min-w-0 overflow-hidden rounded-lg border border-border bg-muted/20", providerAccountCardPaddingClass(dimensions))}>
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-[13px] font-semibold">{account.provider}</div>
+          {providerAccountShowSource(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{account.source}</div> : null}
+        </div>
+        {providerAccountShowStatus(dimensions) ? <Badge variant={providerAccountBadgeVariant(account.status)}>{account.status}</Badge> : null}
+      </div>
+      {showQuotaVisual ? (
+        <div className="mt-2 min-h-0 overflow-hidden">
+          <ProviderAccountQuotaVisual account={account} dimensions={dimensions} meters={quotaMeters} variant={variant} />
+        </div>
+      ) : quotaMeters.length === 0 && balanceMeter ? (
+        <div className="mt-2 min-h-0 overflow-hidden">
+          <ProviderAccountBalanceMetric dimensions={dimensions} meter={balanceMeter} compact />
+        </div>
+      ) : meters.length > 0 ? (
+        <div className={cn("mt-2 min-h-0 overflow-hidden", providerAccountStackClass(dimensions))}>
+          {meters.map((meter) => (
+            <ProviderAccountMeterLine account={account} dimensions={dimensions} key={meter.id} meter={meter} />
+          ))}
+          {providerAccountShowExtraCount(dimensions) && account.meters.length > meters.length ? (
+            <div className="truncate text-[10px] text-muted-foreground">+{account.meters.length - meters.length}</div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mt-2 truncate text-[12px] text-muted-foreground">{account.message || account.errors?.[0]?.message || t("Unavailable")}</div>
+      )}
+    </div>
+  );
+}
+
+function ProviderAccountMeterLine({
+  account,
+  dimensions,
+  meter,
+  single = false
+}: {
+  account: ProviderAccountSnapshot;
+  dimensions: OverviewWidgetDimensions;
+  meter: ReturnType<typeof providerAccountMetersForDisplay>[number];
+  single?: boolean;
+}) {
+  const t = useAppText();
+  const progress = isProviderAccountQuotaMeter(meter) ? providerAccountMeterProgress(meter) : undefined;
+
+  return (
+    <div className="min-w-0 overflow-hidden">
+      <div className="flex min-w-0 items-end justify-between gap-3">
+        <div className={cn("min-w-0 truncate font-medium text-muted-foreground", single && dimensions.height >= 2 ? "text-[13px]" : "text-[12px]")}>{t(meter.label)}</div>
+        <div className={cn("shrink-0 font-semibold tracking-tight", single && dimensions.height >= 2 ? "text-[18px]" : "text-[15px]")}>{formatProviderAccountMeterValue(meter)}</div>
+      </div>
+      {progress !== undefined && providerAccountShowProgress(dimensions) ? (
+        <div className={cn("mt-1.5 overflow-hidden rounded-full", single ? "bg-muted" : "bg-background", dimensions.height <= 1 ? "h-1.5" : "h-2")}>
+          <div className={cn("h-full rounded-full", providerAccountProgressClass(account.status))} style={{ width: `${progress}%` }} />
+        </div>
+      ) : null}
+      {meter.resetAt && providerAccountShowReset(dimensions) ? (
+        <div className="mt-1 truncate text-[10px] text-muted-foreground">{t("Resets")} {formatProviderAccountReset(meter.resetAt)}</div>
+      ) : null}
+    </div>
+  );
+}
+
+function ProviderAccountBalanceMetric({
+  compact = false,
+  dimensions,
+  meter
+}: {
+  compact?: boolean;
+  dimensions: OverviewWidgetDimensions;
+  meter: ProviderAccountMeter;
+}) {
+  const t = useAppText();
+  const large = !compact && dimensions.height >= 2;
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-col justify-center overflow-hidden">
+      <div className={cn("truncate font-medium text-muted-foreground", large ? "text-[12px]" : "text-[11px]")}>{t(meter.label)}</div>
+      <div className={cn("truncate font-semibold tracking-tight", large ? "text-[24px]" : "text-[18px]")}>{formatProviderAccountMeterValue(meter)}</div>
+    </div>
+  );
+}
+
+function ProviderAccountQuotaVisual({
+  account,
+  dimensions,
+  meters,
+  variant
+}: {
+  account: ProviderAccountSnapshot;
+  dimensions: OverviewWidgetDimensions;
+  meters: ProviderAccountMeter[];
+  variant: OverviewAccountVariant;
+}) {
+  const t = useAppText();
+  const displayMeters = providerAccountQuotaMetersForVisual(meters, variant);
+  const showLabels = dimensions.width >= 2 && dimensions.height >= 2;
+  const primary = displayMeters[0];
+
+  if (!primary) {
+    return null;
+  }
+
+  return (
+    <div className={cn("flex min-h-0 min-w-0 items-center overflow-hidden", showLabels ? "justify-center gap-4" : "justify-center")}>
+      <ProviderAccountQuotaGauge account={account} dimensions={dimensions} meters={displayMeters} variant={variant} />
+      {showLabels ? (
+        <div className="min-w-0 space-y-2">
+          {displayMeters.slice(0, variant === "nested-rings" ? 2 : 1).map((meter) => (
+            <div className="min-w-0" key={meter.id}>
+              <div className="truncate text-[12px] font-medium text-muted-foreground">{t(meter.label)}</div>
+              <div className="truncate text-[17px] font-semibold tracking-tight">{formatProviderAccountMeterValue(meter)}</div>
+              {meter.resetAt && providerAccountShowReset(dimensions) ? (
+                <div className="truncate text-[10px] text-muted-foreground">{t("Resets")} {formatProviderAccountReset(meter.resetAt)}</div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ProviderAccountQuotaGauge({
+  account,
+  dimensions,
+  meters,
+  variant
+}: {
+  account: ProviderAccountSnapshot;
+  dimensions: OverviewWidgetDimensions;
+  meters: ProviderAccountMeter[];
+  variant: OverviewAccountVariant;
+}) {
+  const primary = meters[0];
+  const secondary = meters[1];
+  const primaryRatio = providerAccountMeterRatio(primary) ?? 0;
+  const secondaryRatio = secondary ? providerAccountMeterRatio(secondary) ?? 0 : 0;
+  const stroke = providerAccountProgressStroke(account.status);
+  const secondaryStroke = "#2563eb";
+  const compact = dimensions.height <= 1 || dimensions.width <= 1;
+  const sizeClass = compact ? "h-[72px] w-[72px]" : dimensions.height >= 3 ? "h-[124px] w-[124px]" : "h-[104px] w-[104px]";
+
+  if (variant === "semicircle" || variant === "arc") {
+    const start = variant === "semicircle" ? 270 : 225;
+    const end = variant === "semicircle" ? 450 : 495;
+    const path = describeSvgArc(60, 66, 42, start, end);
+    return (
+      <svg aria-hidden="true" className={sizeClass} viewBox="0 0 120 120">
+        <path d={path} fill="none" pathLength={100} stroke="hsl(var(--muted))" strokeLinecap="round" strokeWidth="11" />
+        <path d={path} fill="none" pathLength={100} stroke={stroke} strokeDasharray={`${Math.round(primaryRatio * 100)} 100`} strokeLinecap="round" strokeWidth="11" />
+        <text className="fill-foreground text-[18px] font-semibold" dy="0.35em" textAnchor="middle" x="60" y="60">{formatProviderAccountMeterValue(primary)}</text>
+      </svg>
+    );
+  }
+
+  if (variant === "nested-rings" && secondary) {
+    return (
+      <svg aria-hidden="true" className={sizeClass} viewBox="0 0 120 120">
+        <ProviderAccountQuotaCircle cx={60} cy={60} ratio={primaryRatio} radius={44} stroke={stroke} strokeWidth={9} />
+        <ProviderAccountQuotaCircle cx={60} cy={60} ratio={secondaryRatio} radius={30} stroke={secondaryStroke} strokeWidth={9} />
+        <text className="fill-foreground text-[17px] font-semibold" dy="0.35em" textAnchor="middle" x="60" y="55">{formatProviderAccountMeterValue(primary)}</text>
+        <text className="fill-muted-foreground text-[10px] font-medium" dy="0.35em" textAnchor="middle" x="60" y="72">{formatProviderAccountMeterValue(secondary)}</text>
+      </svg>
+    );
+  }
+
+  return (
+    <svg aria-hidden="true" className={sizeClass} viewBox="0 0 120 120">
+      <ProviderAccountQuotaCircle cx={60} cy={60} ratio={primaryRatio} radius={40} stroke={stroke} strokeWidth={10} />
+      <text className="fill-foreground text-[20px] font-semibold" dy="0.35em" textAnchor="middle" x="60" y={dimensions.height >= 2 ? "57" : "60"}>{formatProviderAccountMeterValue(primary)}</text>
+      {dimensions.height >= 2 ? <text className="fill-muted-foreground text-[10px] font-medium" dy="0.35em" textAnchor="middle" x="60" y="75">{primary.window ?? ""}</text> : null}
+    </svg>
+  );
+}
+
+function ProviderAccountQuotaCircle({
+  cx,
+  cy,
+  ratio,
+  radius,
+  stroke,
+  strokeWidth
+}: {
+  cx: number;
+  cy: number;
+  ratio: number;
+  radius: number;
+  stroke: string;
+  strokeWidth: number;
+}) {
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.max(0, Math.min(1, ratio));
+
+  return (
+    <>
+      <circle cx={cx} cy={cy} fill="none" r={radius} stroke="hsl(var(--muted))" strokeWidth={strokeWidth} />
+      <circle
+        cx={cx}
+        cy={cy}
+        fill="none"
+        r={radius}
+        stroke={stroke}
+        strokeDasharray={circumference}
+        strokeDashoffset={circumference * (1 - clamped)}
+        strokeLinecap="round"
+        strokeWidth={strokeWidth}
+        transform={`rotate(-90 ${cx} ${cy})`}
+      />
+    </>
+  );
+}
+
+function primaryProviderAccountDisplayMeter(account: ProviderAccountSnapshot): ProviderAccountMeter | undefined {
+  return providerAccountQuotaMeters(account)[0] ?? primaryProviderAccountBalanceMeter(account) ?? primaryProviderAccountMeter(account);
+}
+
+function primaryProviderAccountBalanceMeter(account: ProviderAccountSnapshot): ProviderAccountMeter | undefined {
+  return providerAccountBalanceMeters(account)[0];
+}
+
+function providerAccountMetersForDisplayOrdered(account: ProviderAccountSnapshot, maxCount: number): ProviderAccountMeter[] {
+  const ordered = [...providerAccountQuotaMeters(account), ...providerAccountBalanceMeters(account)];
+  const seen = new Set<string>();
+  const unique = ordered.filter((meter) => {
+    const key = `${meter.id}:${meter.kind}:${meter.window ?? ""}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+  return (unique.length > 0 ? unique : providerAccountMetersForDisplay(account, maxCount)).slice(0, maxCount);
+}
+
+function providerAccountQuotaMeters(account: ProviderAccountSnapshot): ProviderAccountMeter[] {
+  return account.meters
+    .filter(isProviderAccountQuotaMeter)
+    .sort(compareProviderAccountQuotaMeters);
+}
+
+function providerAccountBalanceMeters(account: ProviderAccountSnapshot): ProviderAccountMeter[] {
+  return account.meters
+    .filter(isProviderAccountBalanceMeter)
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function isProviderAccountBalanceMeter(meter: ProviderAccountMeter): boolean {
+  return meter.kind === "balance";
+}
+
+function isProviderAccountQuotaMeter(meter: ProviderAccountMeter): boolean {
+  return meter.kind !== "balance" && providerAccountMeterRatio(meter) !== undefined;
+}
+
+function compareProviderAccountQuotaMeters(a: ProviderAccountMeter, b: ProviderAccountMeter): number {
+  return providerAccountMeterWindowRank(a) - providerAccountMeterWindowRank(b) || a.label.localeCompare(b.label);
+}
+
+function providerAccountMeterWindowRank(meter: ProviderAccountMeter): number {
+  if (meter.window === "5h" || meter.id.toLowerCase().includes("5h") || meter.label.toLowerCase().includes("5h")) {
+    return 0;
+  }
+  if (meter.window === "weekly" || meter.id.toLowerCase().includes("weekly") || meter.label.toLowerCase().includes("weekly")) {
+    return 1;
+  }
+  if (meter.window === "daily") return 2;
+  if (meter.window === "monthly") return 3;
+  return 4;
+}
+
+function providerAccountQuotaMetersForVisual(meters: ProviderAccountMeter[], variant: OverviewAccountVariant): ProviderAccountMeter[] {
+  const sorted = [...meters].filter(isProviderAccountQuotaMeter).sort(compareProviderAccountQuotaMeters);
+  if (variant !== "nested-rings") {
+    return sorted.slice(0, 1);
+  }
+  const fiveHour = sorted.find((meter) => providerAccountMeterWindowRank(meter) === 0);
+  const weekly = sorted.find((meter) => providerAccountMeterWindowRank(meter) === 1);
+  const result = [fiveHour ?? sorted[0], weekly ?? sorted.find((meter) => meter !== (fiveHour ?? sorted[0]))].filter((meter): meter is ProviderAccountMeter => Boolean(meter));
+  return result.slice(0, 2);
+}
+
+function providerAccountMeterRatio(meter: ProviderAccountMeter): number | undefined {
+  if (!meter.limit || meter.limit <= 0 || meter.remaining === undefined) {
+    return undefined;
+  }
+  return Math.max(0, Math.min(1, meter.remaining / meter.limit));
+}
+
+function providerAccountUsesQuotaVisual(variant: OverviewAccountVariant): boolean {
+  return variant === "arc" || variant === "nested-rings" || variant === "ring" || variant === "semicircle";
+}
+
+function providerAccountProgressStroke(status: ProviderAccountSnapshot["status"]): string {
+  if (status === "critical" || status === "error") {
+    return "#ef4444";
+  }
+  if (status === "warning") {
+    return "#f59e0b";
+  }
+  return "#10b981";
+}
+
+function describeSvgArc(cx: number, cy: number, radius: number, startAngle: number, endAngle: number): string {
+  const start = svgPolarToCartesian(cx, cy, radius, endAngle);
+  const end = svgPolarToCartesian(cx, cy, radius, startAngle);
+  const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+  return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`;
+}
+
+function svgPolarToCartesian(cx: number, cy: number, radius: number, angleInDegrees: number): { x: number; y: number } {
+  const angleInRadians = (angleInDegrees - 90) * Math.PI / 180;
+  return {
+    x: cx + radius * Math.cos(angleInRadians),
+    y: cy + radius * Math.sin(angleInRadians)
+  };
+}
+
+function providerAccountVisibleLimit(dimensions: OverviewWidgetDimensions, variant: OverviewAccountVariant): number {
+  if (variant === "compact") {
+    if (dimensions.height <= 1) {
+      return dimensions.width >= 3 ? 3 : dimensions.width >= 2 ? 2 : 1;
+    }
+    return Math.min(6, dimensions.width * dimensions.height);
+  }
+  if (variant === "bars") {
+    return dimensions.height <= 1 ? 2 : Math.min(6, dimensions.height * 2);
+  }
+  if (dimensions.height <= 1) {
+    return dimensions.width >= 3 ? 2 : 1;
+  }
+  if (dimensions.height === 2) {
+    return dimensions.width >= 4 ? 3 : Math.min(2, dimensions.width);
+  }
+  return Math.min(6, dimensions.width * 2);
+}
+
+function providerAccountMeterLimit(dimensions: OverviewWidgetDimensions, single: boolean, variant: OverviewAccountVariant): number {
+  if (variant === "compact" || variant === "bars" || dimensions.height <= 1) {
+    return 1;
+  }
+  if (single) {
+    if (dimensions.height >= 4) return 6;
+    if (dimensions.height >= 3) return dimensions.width >= 2 ? 5 : 3;
+    return dimensions.width >= 3 ? 3 : 2;
+  }
+  if (dimensions.height >= 3 && dimensions.width >= 3) {
+    return 3;
+  }
+  return 2;
+}
+
+function providerAccountContentPaddingClass(dimensions: OverviewWidgetDimensions): string {
+  return dimensions.height <= 1 || dimensions.width <= 1 ? "p-2" : "p-3";
+}
+
+function providerAccountCardPaddingClass(dimensions: OverviewWidgetDimensions): string {
+  return dimensions.height <= 1 || dimensions.width <= 1 ? "p-2" : "p-3";
+}
+
+function providerAccountGapClass(dimensions: OverviewWidgetDimensions): string {
+  return dimensions.height <= 1 || dimensions.width <= 1 ? "gap-2" : "gap-3";
+}
+
+function providerAccountStackClass(dimensions: OverviewWidgetDimensions): string {
+  return dimensions.height <= 1 ? "space-y-1.5" : "space-y-2.5";
+}
+
+function providerAccountGridClass(dimensions: OverviewWidgetDimensions): string {
+  if (dimensions.width >= 3) return "md:grid-cols-2 xl:grid-cols-3";
+  if (dimensions.width >= 2) return "md:grid-cols-2";
+  return "";
+}
+
+function providerAccountShowSource(dimensions: OverviewWidgetDimensions): boolean {
+  return dimensions.height >= 2 && dimensions.width >= 2;
+}
+
+function providerAccountShowStatus(dimensions: OverviewWidgetDimensions): boolean {
+  return dimensions.width >= 2;
+}
+
+function providerAccountShowProgress(dimensions: OverviewWidgetDimensions): boolean {
+  return dimensions.height >= 1;
+}
+
+function providerAccountShowReset(dimensions: OverviewWidgetDimensions): boolean {
+  return dimensions.height >= 2;
+}
+
+function providerAccountShowExtraCount(dimensions: OverviewWidgetDimensions): boolean {
+  return dimensions.height >= 3;
 }
 
 export function AgentAnalysisView({
@@ -1920,16 +2615,23 @@ type UsageAnalysisColumn = {
 
 function UsageAnalysisCard({
   columns,
+  dimensions,
   emptyLabel,
   rows,
   title
 }: {
   columns: UsageAnalysisColumn[];
+  dimensions: OverviewWidgetDimensions;
   emptyLabel: string;
   rows: UsageComparisonRow[];
   title: string;
 }) {
   const t = useAppText();
+  const visibleColumns = dimensions.width >= 4 ? columns : columns.slice(0, 1);
+  const visibleRows = rows.slice(0, overviewAnalysisRowLimit(dimensions));
+  const showCost = dimensions.width >= 4;
+  const showTokenBreakdown = dimensions.width >= 4 && dimensions.height >= 3;
+  const showCacheRate = dimensions.width >= 4 && dimensions.height >= 3;
 
   return (
     <Card className="flex h-full min-h-0 min-w-0 flex-col">
@@ -1937,41 +2639,41 @@ function UsageAnalysisCard({
         <CardTitle>{title}</CardTitle>
         <Badge variant="outline">{rows.length}</Badge>
       </CardHeader>
-      <CardContent className="min-h-0 flex-1 overflow-auto">
+      <CardContent className="min-h-0 flex-1 overflow-hidden">
         {rows.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-[12px] text-muted-foreground">{emptyLabel}</div>
         ) : (
-          <div className="h-full overflow-auto rounded-lg border border-border/60">
-            <table className="min-w-[840px] w-full border-collapse text-left text-[11px]">
-              <thead className="sticky top-0 z-10 bg-muted text-muted-foreground">
+          <div className="h-full overflow-hidden rounded-lg border border-border/60">
+            <table className="w-full table-fixed border-collapse text-left text-[11px]">
+              <thead className="bg-muted text-muted-foreground">
                 <tr>
-                  {columns.map((column) => (
+                  {visibleColumns.map((column) => (
                     <th className="px-3 py-2 font-semibold" key={column.key}>{column.label}</th>
                   ))}
                   <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th>
+                  {showCost ? <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th> : null}
                   <th className="px-3 py-2 text-right font-semibold">{t("Requests")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Input")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Output")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Cache rate")}</th>
+                  {showTokenBreakdown ? <th className="px-3 py-2 text-right font-semibold">{t("Input")}</th> : null}
+                  {showTokenBreakdown ? <th className="px-3 py-2 text-right font-semibold">{t("Output")}</th> : null}
+                  {showTokenBreakdown ? <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th> : null}
+                  {showCacheRate ? <th className="px-3 py-2 text-right font-semibold">{t("Cache rate")}</th> : null}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
-                {rows.map((row) => (
+                {visibleRows.map((row) => (
                   <tr className="bg-card/40 hover:bg-muted/30" key={row.key}>
-                    {columns.map((column) => (
+                    {visibleColumns.map((column) => (
                       <td className="max-w-[180px] px-3 py-2 font-medium" key={column.key}>
                         <span className="block truncate" title={row[column.key] ?? "unknown"}>{row[column.key] ?? "unknown"}</span>
                       </td>
                     ))}
                     <td className="px-3 py-2 text-right font-semibold">{formatCompactNumber(row.totalTokens)}</td>
-                    <td className="px-3 py-2 text-right font-semibold">{formatUsdCost(row.costUsd)}</td>
+                    {showCost ? <td className="px-3 py-2 text-right font-semibold">{formatUsdCost(row.costUsd)}</td> : null}
                     <td className="px-3 py-2 text-right">{formatCompactNumber(row.requestCount)}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(row.inputTokens)}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(row.outputTokens)}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(row.cacheTokens)}</td>
-                    <td className="px-3 py-2 text-right">{formatPercent(row.cacheRatio)}</td>
+                    {showTokenBreakdown ? <td className="px-3 py-2 text-right">{formatCompactNumber(row.inputTokens)}</td> : null}
+                    {showTokenBreakdown ? <td className="px-3 py-2 text-right">{formatCompactNumber(row.outputTokens)}</td> : null}
+                    {showTokenBreakdown ? <td className="px-3 py-2 text-right">{formatCompactNumber(row.cacheTokens)}</td> : null}
+                    {showCacheRate ? <td className="px-3 py-2 text-right">{formatPercent(row.cacheRatio)}</td> : null}
                   </tr>
                 ))}
               </tbody>

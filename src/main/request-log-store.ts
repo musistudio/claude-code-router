@@ -80,6 +80,7 @@ export type RequestLogRawTraceUpdateInput = {
   requestBodyTruncated?: boolean;
   requestHeaders?: HeaderRecord;
   requestId: string;
+  isStream?: boolean;
   responseBodyContentType?: string;
   responseBodyText?: string;
   responseBodyTruncated?: boolean;
@@ -99,6 +100,7 @@ type StoredRequestLogEntry = {
   error: string;
   id: number;
   inputTokens: number;
+  isStream: boolean;
   method: string;
   model: string;
   ok: boolean;
@@ -217,6 +219,14 @@ class RequestLogStore {
       headerValue(responseHeaders, "content-type"),
       Boolean(input.responseBodyTruncated)
     );
+    const isStream = inferRequestLogIsStream({
+      path: input.path,
+      requestBodyText: requestBody.encoding === "utf8" ? requestBody.text : undefined,
+      requestHeaders,
+      responseBodyContentType: responseBody.contentType,
+      responseHeaders,
+      url: input.url
+    });
 
     const statement = database.prepare(`
       INSERT INTO request_logs (
@@ -229,6 +239,7 @@ class RequestLogStore {
         url,
         provider,
         model,
+        is_stream,
         status_code,
         ok,
         duration_ms,
@@ -251,7 +262,7 @@ class RequestLogStore {
         response_body_size_bytes,
         response_body_truncated,
         error
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     try {
@@ -265,6 +276,7 @@ class RequestLogStore {
         input.url,
         providerName,
         model,
+        isStream ? 1 : 0,
         normalizeCount(input.statusCode),
         isSuccessStatus(input.statusCode, input.error) ? 1 : 0,
         normalizeCount(input.durationMs),
@@ -340,6 +352,25 @@ class RequestLogStore {
     if (responseHeaders) {
       pushValue("response_headers", JSON.stringify(responseHeaders));
     }
+    const hasStreamSignal =
+      input.isStream !== undefined ||
+      input.path !== undefined ||
+      input.url !== undefined ||
+      input.requestBodyText !== undefined ||
+      input.requestHeaders !== undefined ||
+      input.responseBodyContentType !== undefined ||
+      input.responseHeaders !== undefined;
+    if (hasStreamSignal) {
+      pushValue("is_stream", inferRequestLogIsStream({
+        path,
+        requestBodyText: input.requestBodyText,
+        requestHeaders: mergedRequestHeaders,
+        responseBodyContentType: input.responseBodyContentType,
+        responseHeaders,
+        responseWasStream: input.isStream,
+        url
+      }) ? 1 : 0);
+    }
     if (input.requestBodyText !== undefined) {
       const requestBody = bodyFromText(
         input.requestBodyText,
@@ -390,6 +421,7 @@ class RequestLogStore {
             url,
             provider,
             model,
+            is_stream,
             status_code,
             ok,
             duration_ms,
@@ -452,6 +484,7 @@ class RequestLogStore {
             url,
             provider,
             model,
+            is_stream,
             status_code,
             ok,
             duration_ms,
@@ -549,6 +582,7 @@ class RequestLogStore {
         url TEXT NOT NULL DEFAULT '',
         provider TEXT NOT NULL DEFAULT 'unknown',
         model TEXT NOT NULL DEFAULT 'unknown',
+        is_stream INTEGER NOT NULL DEFAULT 0,
         status_code INTEGER NOT NULL DEFAULT 0,
         ok INTEGER NOT NULL DEFAULT 0,
         duration_ms INTEGER NOT NULL DEFAULT 0,
@@ -574,6 +608,7 @@ class RequestLogStore {
       );
     `);
     ensureRequestLogSchema(database);
+    backfillRequestLogStreamFlags(database);
 
     this.database = database;
     this.pruneOldRequestLogs(database);
@@ -1577,6 +1612,7 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   addColumn("url", "TEXT NOT NULL DEFAULT ''");
   addColumn("provider", "TEXT NOT NULL DEFAULT 'unknown'");
   addColumn("model", "TEXT NOT NULL DEFAULT 'unknown'");
+  addColumn("is_stream", "INTEGER NOT NULL DEFAULT 0");
   addColumn("status_code", "INTEGER NOT NULL DEFAULT 0");
   addColumn("ok", "INTEGER NOT NULL DEFAULT 0");
   addColumn("duration_ms", "INTEGER NOT NULL DEFAULT 0");
@@ -1605,6 +1641,117 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   database.run("CREATE INDEX IF NOT EXISTS request_logs_provider_idx ON request_logs(provider)");
   database.run("CREATE INDEX IF NOT EXISTS request_logs_source_usage_id_idx ON request_logs(source_usage_id)");
   database.run("CREATE INDEX IF NOT EXISTS request_logs_status_idx ON request_logs(ok, status_code)");
+}
+
+function backfillRequestLogStreamFlags(database: SqlDatabase): void {
+  const rows = readRows(
+    database.exec(
+      `
+        SELECT
+          rowid AS id,
+          path,
+          url,
+          request_headers,
+          response_headers,
+          request_body_text,
+          request_body_encoding,
+          response_body_content_type
+        FROM request_logs
+        WHERE source_usage_id IS NULL
+          AND is_stream = 0
+          AND (
+            path LIKE '%stream%' OR
+            url LIKE '%stream%' OR
+            request_body_text LIKE '%stream%' OR
+            response_headers LIKE '%event-stream%' OR
+            response_body_content_type LIKE '%event-stream%'
+          )
+      `
+    )[0]
+  );
+  if (rows.length === 0) {
+    return;
+  }
+
+  const statement = database.prepare("UPDATE request_logs SET is_stream = 1 WHERE rowid = ?");
+  try {
+    for (const row of rows) {
+      const requestBodyText = String(row.request_body_encoding ?? "utf8") === "utf8"
+        ? String(row.request_body_text ?? "")
+        : undefined;
+      const isStream = inferRequestLogIsStream({
+        path: String(row.path ?? ""),
+        requestBodyText,
+        requestHeaders: parseHeaderJson(row.request_headers),
+        responseBodyContentType: String(row.response_body_content_type ?? ""),
+        responseHeaders: parseHeaderJson(row.response_headers),
+        url: String(row.url ?? "")
+      });
+      if (isStream) {
+        statement.run([normalizeCount(row.id)]);
+      }
+    }
+  } finally {
+    statement.free();
+  }
+}
+
+type RequestLogStreamInferenceInput = {
+  path?: string;
+  requestBodyText?: string;
+  requestHeaders?: Record<string, string | string[]>;
+  responseBodyContentType?: string;
+  responseHeaders?: Record<string, string | string[]>;
+  responseWasStream?: boolean;
+  url?: string;
+};
+
+function inferRequestLogIsStream(input: RequestLogStreamInferenceInput): boolean {
+  return Boolean(
+    input.responseWasStream ||
+    requestPathLooksStreaming(input.path) ||
+    requestPathLooksStreaming(input.url) ||
+    contentTypeLooksStreaming(input.responseBodyContentType) ||
+    contentTypeLooksStreaming(headerValue(input.responseHeaders ?? {}, "content-type")) ||
+    contentTypeLooksStreaming(headerValue(input.requestHeaders ?? {}, "accept")) ||
+    requestBodyHasStreamFlag(input.requestBodyText)
+  );
+}
+
+function requestPathLooksStreaming(value: string | undefined): boolean {
+  const normalized = value?.toLowerCase() ?? "";
+  return normalized.includes(":streamgeneratecontent");
+}
+
+function contentTypeLooksStreaming(value: string | undefined): boolean {
+  const normalized = value?.toLowerCase() ?? "";
+  return normalized.includes("text/event-stream") || normalized.includes("application/x-ndjson");
+}
+
+function requestBodyHasStreamFlag(text: string | undefined): boolean {
+  const trimmed = text?.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  const parsed = parseJson(trimmed);
+  return payloadHasStreamFlag(parsed);
+}
+
+function payloadHasStreamFlag(value: unknown, depth = 0): boolean {
+  if (depth > 3) {
+    return false;
+  }
+  if (Array.isArray(value)) {
+    return value.some((item) => payloadHasStreamFlag(item, depth + 1));
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (value.stream === true || value.stream === "true") {
+    return true;
+  }
+  return Object.values(value).some((item) => payloadHasStreamFlag(item, depth + 1));
 }
 
 function buildLogWhereClause(filter: RequestLogListFilter): { params: SqlValue[]; where: string } {
@@ -1667,6 +1814,18 @@ function firstNumber(result: QueryExecResult | undefined, column: string): numbe
 
 function toRequestLogEntry(row: Record<string, SqlValue>): StoredRequestLogEntry {
   const costUsd = asFloat(row.cost_usd);
+  const requestBody = bodyFromRow(row, "request") ?? emptyBody();
+  const responseBody = bodyFromRow(row, "response");
+  const requestHeaders = parseHeaderJson(row.request_headers);
+  const responseHeaders = parseHeaderJson(row.response_headers);
+  const isStream = normalizeCount(row.is_stream) === 1 || inferRequestLogIsStream({
+    path: String(row.path ?? ""),
+    requestBodyText: requestBody.encoding === "utf8" ? requestBody.text : undefined,
+    requestHeaders,
+    responseBodyContentType: responseBody?.contentType,
+    responseHeaders,
+    url: String(row.url ?? "")
+  });
   return {
     cacheReadTokens: normalizeCount(row.cache_read_tokens),
     cacheWriteTokens: normalizeCount(row.cache_write_tokens),
@@ -1678,17 +1837,18 @@ function toRequestLogEntry(row: Record<string, SqlValue>): StoredRequestLogEntry
     error: String(row.error ?? ""),
     id: normalizeCount(row.id),
     inputTokens: normalizeCount(row.input_tokens),
+    isStream,
     method: String(row.method ?? ""),
     model: normalizeLabel(String(row.model ?? ""), "unknown"),
     ok: normalizeCount(row.ok) === 1,
     outputTokens: normalizeCount(row.output_tokens),
     path: normalizeLabel(String(row.path ?? ""), "/"),
     provider: normalizeLabel(String(row.provider ?? ""), "unknown"),
-    requestBody: bodyFromRow(row, "request") ?? emptyBody(),
-    requestHeaders: parseHeaderJson(row.request_headers),
+    requestBody,
+    requestHeaders,
     requestId: String(row.request_id ?? ""),
-    responseBody: bodyFromRow(row, "response"),
-    responseHeaders: parseHeaderJson(row.response_headers),
+    responseBody,
+    responseHeaders,
     statusCode: normalizeCount(row.status_code),
     totalTokens: normalizeCount(row.total_tokens),
     url: String(row.url ?? "")

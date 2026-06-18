@@ -226,9 +226,11 @@ function RingMetric({
   const clamped = Math.max(0, Math.min(1, value));
   const stroke = clamped > 0.8 ? "rgb(45,212,191)" : "rgb(129,140,248)";
   return (
-    <div className="relative aspect-square min-w-0 text-center">
-      <RadialMetric color={stroke} label={formatPercent(clamped)} value={clamped} variant={variant === "rings" ? "ring" : variant === "arcs" ? "arc" : "gauge"} />
-      <div className="absolute inset-x-0 bottom-1 truncate px-1 text-[8px] font-medium text-slate-400">{label}</div>
+    <div className="flex min-w-0 flex-col items-center text-center">
+      <div className="aspect-square w-full min-w-0">
+        <RadialMetric color={stroke} label={formatPercent(clamped)} value={clamped} variant={variant === "rings" ? "ring" : variant === "arcs" ? "arc" : "gauge"} />
+      </div>
+      <div className="mt-1 w-full truncate px-1 text-[10px] font-semibold leading-none text-slate-300">{label}</div>
     </div>
   );
 }

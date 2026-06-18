@@ -11,10 +11,9 @@ export type AppInfo = {
   version: string;
 };
 
-export const BUILTIN_UNIMCP_PACKAGE = "@musistudio/unimcp";
-export const BUILTIN_UNIMCP_SERVER_NAME = "unimcp";
-export const BUILTIN_UNIMCP_VISION_TOOL_NAME = "vision_understand";
-export const BUILTIN_UNIMCP_WEB_SEARCH_TOOL_NAME = "web_search";
+export const BUILTIN_FUSION_TOOL_SERVER_NAME = "ccr-fusion-builtins";
+export const BUILTIN_FUSION_VISION_TOOL_NAME = "vision_understand";
+export const BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME = "web_search";
 
 export type GatewayProviderProtocol =
   | "openai_responses"
@@ -365,6 +364,12 @@ export type GatewayAgentConfig = {
   mcpServers: GatewayMcpServerConfig[];
 };
 
+export type GatewayMcpToolInfo = {
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+  name: string;
+};
+
 export type VirtualModelMatchConfig = {
   exactAliases: string[];
   prefixes: string[];
@@ -410,6 +415,37 @@ export type VirtualModelMaterializationConfig = {
   displayNameTemplate?: string;
   enabled: boolean;
   includeInGatewayModels: boolean;
+};
+
+export type VirtualModelFusionVisionConfig = {
+  apiKey?: string;
+  baseUrl?: string;
+  model?: string;
+  modelSelector?: string;
+  timeoutMs?: number;
+  toolName?: string;
+};
+
+export type VirtualModelFusionWebSearchProvider =
+  | "brave"
+  | "bing"
+  | "google_cse"
+  | "serper"
+  | "serpapi"
+  | "tavily"
+  | "exa";
+
+export type VirtualModelFusionWebSearchConfig = {
+  env?: Record<string, string>;
+  provider?: VirtualModelFusionWebSearchProvider;
+  resultCount?: number;
+  timeoutMs?: number;
+  toolName?: string;
+};
+
+export type VirtualModelFusionCustomToolConfig = {
+  env?: Record<string, string>;
+  mcpServerName?: string;
 };
 
 export type VirtualModelProfileConfig = {
@@ -558,8 +594,11 @@ export type OverviewWidgetVariant =
   | "composed"
   | "donut"
   | "line"
+  | "arc"
+  | "nested-rings"
   | "pie"
   | "ring"
+  | "semicircle"
   | "stacked"
   | "table"
   | "timeline";
@@ -577,6 +616,7 @@ export type OverviewMetricKind =
   | "total-tokens";
 
 export type OverviewWidgetConfig = {
+  accountProvider?: string;
   enabled: boolean;
   id: string;
   metric?: OverviewMetricKind;
@@ -615,6 +655,7 @@ export const TRAY_WINDOW_MODULE_IDS = [
 export type TrayWindowModuleId = (typeof TRAY_WINDOW_MODULE_IDS)[number];
 export type TrayWidgetType = Exclude<TrayWindowModuleId, "footer">;
 export const TRAY_SINGLETON_WIDGET_TYPES = ["source-tabs", "header"] as const satisfies readonly TrayWidgetType[];
+export const TRAY_TOP_WIDGET_TYPES = ["source-tabs", "header"] as const satisfies readonly TrayWidgetType[];
 
 export type TrayWidgetConfig = {
   id: string;
@@ -639,6 +680,7 @@ export type CodexProfileConfigFormat = "legacy" | "separate_profile_files";
 export type CodexRemoteFrontendMode = "app" | "cli" | "claude-code";
 export type ProfileScope = "ccr" | "global" | "custom";
 export type ProfileSurface = "auto" | "cli" | "app";
+export type ProfileOpenSurface = "cli" | "app";
 
 export type ClaudeCodeProfileConfig = {
   enabled: boolean;
@@ -704,6 +746,25 @@ export type ProfileApplyResult = {
   appliedAt: string;
   clients: ProfileClientApplyStatus[];
   enabled: boolean;
+};
+
+export type ProfileOpenRequest = {
+  profileId: string;
+  surface: ProfileOpenSurface;
+};
+
+export type ProfileOpenCommandResult = {
+  command: string;
+  profileId: string;
+  profileName: string;
+  surface: ProfileOpenSurface;
+};
+
+export type ProfileOpenResult = {
+  message: string;
+  profileId: string;
+  profileName: string;
+  surface: ProfileOpenSurface;
 };
 
 export type ApiKeyLimitConfig = {
@@ -901,6 +962,7 @@ export type RequestLogEntry = {
   error?: string;
   id: number;
   inputTokens: number;
+  isStream: boolean;
   method: string;
   model: string;
   ok: boolean;

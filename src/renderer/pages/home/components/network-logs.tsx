@@ -376,9 +376,10 @@ export function LogsView({
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="network-table-scroll min-h-0 flex-1 overflow-auto">
             <div className="w-full min-w-0">
-              <div className="network-table-header sticky top-0 z-10 grid h-9 grid-cols-[minmax(0,0.9fr)_minmax(96px,0.45fr)_minmax(0,0.95fr)_minmax(0,0.85fr)_84px] items-center border-b text-[12px] font-semibold">
+              <div className="network-table-header sticky top-0 z-10 grid h-9 grid-cols-[minmax(0,0.85fr)_minmax(96px,0.42fr)_minmax(104px,0.45fr)_minmax(0,0.9fr)_minmax(0,0.78fr)_82px] items-center border-b text-[12px] font-semibold">
                 <NetworkHeaderCell label={t("时间")} />
                 <NetworkHeaderCell label={t("状态")} />
+                <NetworkHeaderCell label={t("Stream")} />
                 <NetworkHeaderCell label={t("模型")} />
                 <NetworkHeaderCell label={t("令牌")} />
                 <NetworkHeaderCell label={t("持续时间")} />
@@ -398,7 +399,7 @@ export function LogsView({
                     <button
                       aria-expanded={expanded}
                       className={cn(
-                        "network-row grid h-10 w-full grid-cols-[minmax(0,0.9fr)_minmax(96px,0.45fr)_minmax(0,0.95fr)_minmax(0,0.85fr)_84px] items-center border-0 px-0 text-left text-[12px] font-semibold outline-none transition-colors",
+                        "network-row grid h-10 w-full grid-cols-[minmax(0,0.85fr)_minmax(96px,0.42fr)_minmax(104px,0.45fr)_minmax(0,0.9fr)_minmax(0,0.78fr)_82px] items-center border-0 px-0 text-left text-[12px] font-semibold outline-none transition-colors",
                         index % 2 === 0 ? "network-row-even" : "network-row-odd",
                         expanded && "network-row-selected"
                       )}
@@ -413,6 +414,7 @@ export function LogsView({
                         <LogStatusDot entry={item} />
                         <span className="network-row-secondary truncate">{item.statusCode || "-"}</span>
                       </div>
+                      <LogStreamCell entry={item} />
                       <LogModelRouteCell entry={item} />
                       <div className="network-row-secondary truncate px-2" title={formatLogTokenSummary(item, t)}>{formatLogTokenSummary(item, t)}</div>
                       <div className="network-row-secondary truncate px-2">{formatDuration(item.durationMs)}</div>
@@ -447,8 +449,9 @@ function LogExpandedDetails({ entry }: { entry: RequestLogEntry }) {
           {entry.method} {entry.path}
         </span>
       </div>
-      <div className="network-body-meta grid grid-cols-2 gap-y-2 border-b px-3 py-2 text-[12px] sm:grid-cols-4 lg:grid-cols-6">
+      <div className="network-body-meta grid grid-cols-2 gap-y-2 border-b px-3 py-2 text-[12px] sm:grid-cols-4 lg:grid-cols-8">
         <LogMetric label={t("持续时间")} value={formatDuration(entry.durationMs)} />
+        <LogMetric label={t("Stream")} value={entry.isStream ? t("Streaming") : t("Non-streaming")} />
         <LogMetric label={t("输入")} value={formatCompactNumber(entry.inputTokens)} />
         <LogMetric label={t("输出")} value={formatCompactNumber(entry.outputTokens)} />
         <LogMetric label={t("缓存读取")} value={formatCompactNumber(entry.cacheReadTokens)} />
@@ -497,6 +500,15 @@ function LogModelRouteCell({ entry }: { entry: RequestLogEntry }) {
 function LogStatusDot({ entry }: { entry: RequestLogEntry }) {
   return (
     <span className={cn("h-3 w-3 shrink-0 rounded-full", entry.ok ? "network-dot-completed" : "network-dot-error")} />
+  );
+}
+
+function LogStreamCell({ entry }: { entry: RequestLogEntry }) {
+  const t = useAppText();
+  const label = entry.isStream ? t("Streaming") : t("Non-streaming");
+
+  return (
+    <div className="network-row-secondary truncate px-2" title={label}>{label}</div>
   );
 }
 

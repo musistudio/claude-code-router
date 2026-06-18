@@ -2,7 +2,7 @@ import type { ComponentProps } from "react";
 import { AnimatePresence } from "../shared";
 import { AddApiKeyDialog, EditApiKeyDialog } from "./api-keys";
 import { ConfigureClaudeDesignDialog, DeleteExtensionDialog, PluginSettingsDialog } from "./extensions";
-import { AddProfileDialog } from "./profiles";
+import { AddProfileDialog, ProfileOpenDialog } from "./profiles";
 import { AddProviderDialog, DeleteProviderDialog, ProviderDeepLinkDialog } from "./providers";
 import { AddRoutingRuleDialog, DeleteRoutingRuleDialog } from "./routing";
 import { AppSettingsDialog } from "./settings";
@@ -18,6 +18,7 @@ export function AppDialogStack({
   extensionSettings,
   profileAdd,
   profileEdit,
+  profileOpen,
   providerDeepLink,
   providerDelete,
   providerUpsert,
@@ -35,6 +36,7 @@ export function AppDialogStack({
   extensionSettings?: ComponentProps<typeof PluginSettingsDialog>;
   profileAdd?: ComponentProps<typeof AddProfileDialog>;
   profileEdit?: ComponentProps<typeof AddProfileDialog>;
+  profileOpen?: ComponentProps<typeof ProfileOpenDialog>;
   providerDeepLink?: ComponentProps<typeof ProviderDeepLinkDialog>;
   providerDelete?: ComponentProps<typeof DeleteProviderDialog>;
   providerUpsert?: ComponentProps<typeof AddProviderDialog>;
@@ -48,6 +50,7 @@ export function AppDialogStack({
       {apiKeyAdd ? <AddApiKeyDialog {...apiKeyAdd} key="api-key-add" /> : null}
       {profileAdd ? <AddProfileDialog {...profileAdd} key="profile-add" /> : null}
       {profileEdit ? <AddProfileDialog {...profileEdit} key="profile-edit" /> : null}
+      {profileOpen ? <ProfileOpenDialog {...profileOpen} key="profile-open" /> : null}
       {apiKeyEdit ? <EditApiKeyDialog {...apiKeyEdit} key="api-key-edit" /> : null}
       {providerDeepLink ? <ProviderDeepLinkDialog {...providerDeepLink} key="provider-deep-link" /> : null}
       {providerUpsert ? <AddProviderDialog {...providerUpsert} key="provider-upsert" /> : null}

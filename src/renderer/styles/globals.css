@@ -306,7 +306,10 @@
   }
 
   .app-no-drag,
-  .app-sidebar {
+  .app-no-drag *,
+  .app-sidebar,
+  .app-window-controls,
+  .app-window-controls * {
     -webkit-app-region: no-drag;
   }
 

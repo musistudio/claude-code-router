@@ -53,6 +53,11 @@ type ClaudeAppGatewayBackup = {
   version: 1;
 };
 
+type ClaudeAppGatewayApplyOptions = {
+  backup?: boolean;
+  dataDir?: string;
+};
+
 export type ClaudeAppGatewaySyncResult = {
   config: AppConfig;
   configChanged: boolean;
@@ -76,9 +81,9 @@ export async function syncClaudeAppGatewayConfig(config: AppConfig): Promise<Cla
   };
 }
 
-export function applyClaudeAppGatewayConfig(config: AppConfig): { config: AppConfig; result: ClaudeAppGatewayApplyResult } {
+export function applyClaudeAppGatewayConfig(config: AppConfig, options: ClaudeAppGatewayApplyOptions = {}): { config: AppConfig; result: ClaudeAppGatewayApplyResult } {
   const state = ensureClaudeAppGatewayState(config);
-  const paths = getClaudeAppGatewayPaths();
+  const paths = getClaudeAppGatewayPaths(options.dataDir);
   const endpoint = gatewayEndpoint(state.config);
   const model = inferClaudeAppGatewayModel(state.config);
   const gatewayConfig: ClaudeAppGatewayConfig = {
@@ -92,7 +97,9 @@ export function applyClaudeAppGatewayConfig(config: AppConfig): { config: AppCon
     unstableDisableModelVerification: true
   };
 
-  backupClaudeAppGatewayConfig(paths);
+  if (options.backup !== false) {
+    backupClaudeAppGatewayConfig(paths);
+  }
   mkdirSync(paths.libraryDir, { mode: 0o700, recursive: true });
   writeJsonFile(paths.configLibraryFile, gatewayConfig);
   applyClaudeAppConfigMeta(paths.metaFile);
@@ -175,8 +182,7 @@ function findReusableApiKey(config: AppConfig): string {
   return config.APIKEY.trim();
 }
 
-function getClaudeAppGatewayPaths(): ClaudeAppGatewayPaths {
-  const dataDir = getClaudeApp3pDataDir();
+function getClaudeAppGatewayPaths(dataDir = getClaudeApp3pDataDir()): ClaudeAppGatewayPaths {
   const libraryDir = path.join(dataDir, CLAUDE_APP_CONFIG_LIBRARY_DIR);
   return {
     configLibraryFile: path.join(libraryDir, `${CLAUDE_APP_CONFIG_ID}.json`),

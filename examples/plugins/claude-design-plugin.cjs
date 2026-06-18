@@ -9,6 +9,8 @@ const pathModule = require("node:path");
 const DEFAULT_HOST = "claude.ai";
 const DEFAULT_GATEWAY_URL = "http://127.0.0.1:3456";
 const DEFAULT_UPSTREAM_ORIGIN = "https://claude.ai";
+const DEFAULT_DESIGN_ORIGIN = "https://claude.ai";
+const DEFAULT_DESIGN_REFERRER = "https://claude.ai/design";
 const DEFAULT_FALLBACK_ROUTE_HOSTS = ["claude.com", "www.anthropic.com", "anthropic.com"];
 const OMELETTE_RPC_PATH_PREFIX = "/design/anthropic.omelette.api.v1alpha.OmeletteService";
 const AUTH_ESCAPE_ROUTE_PATHS = ["/login", "/auth", "/oauth"];
@@ -16,10 +18,17 @@ const BOOTSTRAP_ROUTE_PATHS = ["/_bootstrap", "/api/bootstrap"];
 const REQUIRED_ROUTE_PATHS = ["/", OMELETTE_RPC_PATH_PREFIX, "/v1/design", ...BOOTSTRAP_ROUTE_PATHS, ...AUTH_ESCAPE_ROUTE_PATHS];
 const DEFAULT_ROUTE_PATHS = ["/design", "/v1/design", "/api", "/organizations", "/cdn-cgi", ...BOOTSTRAP_ROUTE_PATHS, ...AUTH_ESCAPE_ROUTE_PATHS];
 const FALLBACK_ROUTE_PATHS = ["/app-unavailable-in-region", "/cdn-cgi", "/design", ...AUTH_ESCAPE_ROUTE_PATHS];
-const DEFAULT_SCRIPT_PATH = "/design/assets/index-DWa5J5J9.js";
-const DEFAULT_STYLE_PATH = "/design/assets/index-DZOB93ZB.css";
-const LEGACY_SCRIPT_PATHS = new Set(["/design/assets/index-DYd5ifc6.js"]);
-const LEGACY_STYLE_PATHS = new Set(["/design/assets/index-j8_-aIUE.css"]);
+const DEFAULT_SCRIPT_PATH = "";
+const DEFAULT_STYLE_PATH = "";
+const LEGACY_SCRIPT_PATHS = new Set([
+  "/design/assets/index-DWa5J5J9.js",
+  "/design/assets/index-DYd5ifc6.js",
+  "/design/assets/index-BxFzSrWf.js"
+]);
+const LEGACY_STYLE_PATHS = new Set([
+  "/design/assets/index-DZOB93ZB.css",
+  "/design/assets/index-j8_-aIUE.css"
+]);
 const DEFAULT_EXTERNAL_ASSET_BASE_URLS = ["https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/"];
 const DESIGN_INDEX_ASSET_DISCOVERY_TTL_MS = 5 * 60 * 1000;
 const MAX_UPSTREAM_ASSET_REDIRECTS = 5;
@@ -145,8 +154,10 @@ module.exports = {
     const upstreamOrigin = stringValue(options.upstreamOrigin) || DEFAULT_UPSTREAM_ORIGIN;
     const assetProxy = options.assetProxy !== false;
     const assetDir = stringValue(options.assetDir);
-    const scriptPath = normalizePath(stringValue(options.scriptPath) || DEFAULT_SCRIPT_PATH);
-    const stylePath = normalizePath(stringValue(options.stylePath) || DEFAULT_STYLE_PATH);
+    const configuredScriptPath = normalizePath(stringValue(options.scriptPath) || DEFAULT_SCRIPT_PATH);
+    const configuredStylePath = normalizePath(stringValue(options.stylePath) || DEFAULT_STYLE_PATH);
+    const scriptPath = shouldKeepCurrentScriptPath(configuredScriptPath) ? configuredScriptPath : DEFAULT_SCRIPT_PATH;
+    const stylePath = shouldKeepCurrentStylePath(configuredStylePath) ? configuredStylePath : DEFAULT_STYLE_PATH;
     const assetAutoUpdate = options.assetAutoUpdate !== false;
     const autoAnswerQuestions = options.autoAnswerQuestions !== false;
     const gatewayUrl = stringValue(options.gatewayUrl) || DEFAULT_GATEWAY_URL;
@@ -238,6 +249,7 @@ module.exports = {
       assetDir,
       designIndexAssets: {
         checkedAt: 0,
+        html: "",
         scriptPath,
         source: "configured",
         stylePath
@@ -351,12 +363,12 @@ async function routeMockRequest(runtime, method, url, request, requestBody) {
 
   if (method === "GET" && (path === "/" || isDesignSpaRoute(path))) {
     const assets = await resolveDesignIndexAssets(runtime, request);
-    return htmlResponse(renderDesignIndex(runtime.me, assets.scriptPath, assets.stylePath));
+    return htmlResponse(renderDesignIndex(runtime.me, assets.scriptPath, assets.stylePath, assets.html));
   }
 
   if (method === "GET" && path === "/app-unavailable-in-region") {
     const assets = await resolveDesignIndexAssets(runtime, request);
-    return htmlResponse(renderDesignIndex(runtime.me, assets.scriptPath, assets.stylePath));
+    return htmlResponse(renderDesignIndex(runtime.me, assets.scriptPath, assets.stylePath, assets.html));
   }
 
   if (method === "GET" && path === "/design/favicon.png") {
@@ -927,6 +939,7 @@ function normalizeFallbackRouteHosts(value, primaryHost) {
 async function resolveDesignIndexAssets(runtime, request, options = {}) {
   const current = runtime.designIndexAssets || {
     checkedAt: 0,
+    html: "",
     scriptPath: runtime.scriptPath || DEFAULT_SCRIPT_PATH,
     source: "default",
     stylePath: runtime.stylePath || DEFAULT_STYLE_PATH
@@ -937,7 +950,8 @@ async function resolveDesignIndexAssets(runtime, request, options = {}) {
 
   const now = Date.now();
   const forceRefresh = options.force === true || requestHasNoCache(request);
-  if (!forceRefresh && current.checkedAt && now - current.checkedAt < DESIGN_INDEX_ASSET_DISCOVERY_TTL_MS) {
+  const hasRenderableIndex = isUsableDesignShellHtml(current.html) || Boolean(current.scriptPath || current.stylePath);
+  if (!forceRefresh && hasRenderableIndex && current.checkedAt && now - current.checkedAt < DESIGN_INDEX_ASSET_DISCOVERY_TTL_MS) {
     return current;
   }
 
@@ -948,6 +962,7 @@ async function resolveDesignIndexAssets(runtime, request, options = {}) {
   const fromCache = discoverCachedDesignIndexAssets(runtime.store);
   const fallback = mergeDesignIndexAssetPartials(fromLocal, fromCache) || {};
   const seeded = {
+    html: current.html,
     scriptPath: fallback.scriptPath || current.scriptPath,
     source: fallback.source || current.source || "current",
     stylePath: fallback.stylePath || current.stylePath
@@ -965,16 +980,25 @@ function requestHasNoCache(request) {
 function updateDesignIndexAssets(runtime, assets, source, options = {}) {
   const current = runtime.designIndexAssets || {
     checkedAt: 0,
+    html: "",
     scriptPath: runtime.scriptPath || DEFAULT_SCRIPT_PATH,
     source: "default",
     stylePath: runtime.stylePath || DEFAULT_STYLE_PATH
   };
-  const scriptPath = normalizePath(stringValue(assets?.scriptPath) || current.scriptPath || DEFAULT_SCRIPT_PATH);
-  const stylePath = normalizePath(stringValue(assets?.stylePath) || current.stylePath || DEFAULT_STYLE_PATH);
+  const candidateScriptPath = normalizePath(stringValue(assets?.scriptPath) || current.scriptPath || DEFAULT_SCRIPT_PATH);
+  const candidateStylePath = normalizePath(stringValue(assets?.stylePath) || current.stylePath || DEFAULT_STYLE_PATH);
+  const scriptPath = shouldKeepCurrentScriptPath(candidateScriptPath) ? candidateScriptPath : DEFAULT_SCRIPT_PATH;
+  const stylePath = shouldKeepCurrentStylePath(candidateStylePath) ? candidateStylePath : DEFAULT_STYLE_PATH;
+  const html = isUsableDesignShellHtml(assets?.html)
+    ? String(assets.html)
+    : isUsableDesignShellHtml(current.html)
+      ? String(current.html)
+      : "";
   runtime.scriptPath = scriptPath;
   runtime.stylePath = stylePath;
   runtime.designIndexAssets = {
     checkedAt: options.checkedAt ?? Date.now(),
+    html,
     scriptPath,
     source,
     stylePath,
@@ -988,9 +1012,10 @@ function updateDesignIndexAssets(runtime, assets, source, options = {}) {
 
 function mergeDesignIndexAssets(current, ...candidates) {
   const merged = {
-    scriptPath: current.scriptPath || DEFAULT_SCRIPT_PATH,
+    html: isUsableDesignShellHtml(current.html) ? String(current.html) : "",
+    scriptPath: shouldKeepCurrentScriptPath(current.scriptPath) ? current.scriptPath : DEFAULT_SCRIPT_PATH,
     source: current.source || "current",
-    stylePath: current.stylePath || DEFAULT_STYLE_PATH,
+    stylePath: shouldKeepCurrentStylePath(current.stylePath) ? current.stylePath : DEFAULT_STYLE_PATH,
     upstreamUrls: { ...(current.upstreamUrls || {}) }
   };
   for (const candidate of candidates) {
@@ -1002,6 +1027,10 @@ function mergeDesignIndexAssets(current, ...candidates) {
         ...merged.upstreamUrls,
         ...candidate.upstreamUrls
       };
+    }
+    if (isUsableDesignShellHtml(candidate.html)) {
+      merged.html = String(candidate.html);
+      merged.source = candidate.source || merged.source;
     }
     if (candidate.scriptPath) {
       merged.scriptPath = candidate.scriptPath;
@@ -1040,20 +1069,27 @@ function mergeDesignIndexAssetPartials(...candidates) {
 }
 
 function selectUsableDesignIndexAssets(runtime, discovered, fallback, current) {
+  const currentScriptPath = shouldKeepCurrentScriptPath(current.scriptPath) ? current.scriptPath : DEFAULT_SCRIPT_PATH;
+  const currentStylePath = shouldKeepCurrentStylePath(current.stylePath) ? current.stylePath : DEFAULT_STYLE_PATH;
+  const html = isUsableDesignShellHtml(discovered.html)
+    ? discovered.html
+    : isUsableDesignShellHtml(current.html)
+      ? current.html
+      : "";
   const scriptPath = isUsableDesignIndexScript(runtime, discovered.scriptPath)
     ? discovered.scriptPath
     : isUsableDesignIndexScript(runtime, fallback.scriptPath)
       ? fallback.scriptPath
-      : current.scriptPath || DEFAULT_SCRIPT_PATH;
+      : currentScriptPath;
   const stylePath = isUsableDesignIndexStyle(runtime, discovered.stylePath)
     ? discovered.stylePath
     : isUsableDesignIndexStyle(runtime, fallback.stylePath)
       ? fallback.stylePath
-      : current.stylePath || DEFAULT_STYLE_PATH;
+      : currentStylePath;
   const source = scriptPath === discovered.scriptPath || stylePath === discovered.stylePath
     ? discovered.source
     : fallback.source || current.source || "current";
-  return { scriptPath, source, stylePath };
+  return { html, scriptPath, source, stylePath };
 }
 
 function recordDesignIndexAssetHint(runtime, path, source) {
@@ -1088,22 +1124,76 @@ async function discoverRemoteDesignIndexAssets(runtime, request) {
       if (!shell) {
         continue;
       }
+      logRemoteDesignShell(runtime, shellUrl, shell);
       const assets = mergeDesignIndexAssetPartials(
         extractDesignIndexAssetsFromLinkHeaders(shell.linkHeaders, shell.url),
         extractDesignIndexAssetsFromHtml(shell.body, shell.url)
       );
-      if (assets?.scriptPath || assets?.stylePath) {
+      const html = isUsableDesignShellHtml(shell.body) ? shell.body : "";
+      if (html || assets?.scriptPath || assets?.stylePath) {
         return {
+          html,
           origin,
-          scriptPath: assets.scriptPath,
+          scriptPath: assets?.scriptPath,
           source: "remote",
-          stylePath: assets.stylePath,
-          upstreamUrls: assets.upstreamUrls
+          stylePath: assets?.stylePath,
+          upstreamUrls: assets?.upstreamUrls
         };
       }
     }
   }
   return undefined;
+}
+
+function logRemoteDesignShell(runtime, shellUrl, shell) {
+  const summary = summarizeRemoteDesignShell(shell);
+  runtime.logger?.warn?.(
+    [
+      "Claude Design upstream /design raw HTML:",
+      `request-url=${shellUrl.toString()}`,
+      `final-url=${shell.url || shellUrl.toString()}`,
+      `status=${shell.status}`,
+      `content-type=${shell.contentType || "unknown"}`,
+      "----- BEGIN RAW HTML -----",
+      shell.body || "",
+      "----- END RAW HTML -----",
+      "Claude Design upstream /design raw HTML summary:",
+      `title=${summary.title || "unknown"}`,
+      `has-assets-proxy=${summary.hasAssetsProxy}`,
+      `has-design-assets=${summary.hasDesignAssets}`,
+      `has-app-unavailable=${summary.hasAppUnavailable}`,
+      `has-cloudflare-challenge=${summary.hasCloudflareChallenge}`,
+      `module-scripts=${summary.moduleScripts.join(", ") || "none"}`,
+      `stylesheets=${summary.stylesheets.join(", ") || "none"}`
+    ].join("\n")
+  );
+}
+
+function summarizeRemoteDesignShell(shell) {
+  const html = String(shell?.body || "");
+  return {
+    hasAppUnavailable: /App unavailable in region/i.test(html),
+    hasAssetsProxy: /https:\/\/assets-proxy\.anthropic\.com\/claude-ai\/v2\/assets\/v1\//i.test(html),
+    hasCloudflareChallenge: /\bJust a moment\b|cf_chl|Performing security verification/i.test(html),
+    hasDesignAssets: /(?:src|href)=["'][^"']*(?:\/design)?\/assets\//i.test(html),
+    moduleScripts: firstMatches(html, /<script\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi, 5),
+    stylesheets: firstMatches(html, /<link\b[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi, 5),
+    title: firstMatch(html, /<title[^>]*>([^<]*)<\/title>/i)
+  };
+}
+
+function firstMatch(value, pattern) {
+  const match = pattern.exec(String(value || ""));
+  return match?.[1]?.trim() || "";
+}
+
+function firstMatches(value, pattern, limit) {
+  const matches = [];
+  let match;
+  while ((match = pattern.exec(String(value || ""))) && matches.length < limit) {
+    matches.push(match[1]);
+  }
+  return matches;
 }
 
 function upstreamDesignShellUrlCandidates(origin, runtime) {
@@ -1124,7 +1214,10 @@ async function cacheRemoteDesignIndexAssets(runtime, assets, request) {
     return undefined;
   }
 
-  const cached = { source: assets.source || "remote" };
+  const cached = {
+    html: isUsableDesignShellHtml(assets.html) ? assets.html : "",
+    source: assets.source || "remote"
+  };
   const scriptPath = normalizePath(assets.scriptPath);
   if (scriptPath) {
     if (
@@ -1145,7 +1238,7 @@ async function cacheRemoteDesignIndexAssets(runtime, assets, request) {
     }
   }
 
-  if (cached.scriptPath || cached.stylePath) {
+  if (cached.html || cached.scriptPath || cached.stylePath) {
     cached.upstreamUrls = assets.upstreamUrls;
     return cached;
   }
@@ -1336,6 +1429,9 @@ function isUsableDesignIndexScript(runtime, path) {
   if (!isDesignIndexScriptPath(normalizedPath)) {
     return false;
   }
+  if (LEGACY_SCRIPT_PATHS.has(normalizedPath)) {
+    return false;
+  }
   if (runtime?.store && isUsableCachedEntryScript(runtime.store, normalizedPath)) {
     return true;
   }
@@ -1345,6 +1441,9 @@ function isUsableDesignIndexScript(runtime, path) {
 function isUsableDesignIndexStyle(runtime, path) {
   const normalizedPath = normalizePath(path);
   if (!isDesignIndexStylePath(normalizedPath)) {
+    return false;
+  }
+  if (LEGACY_STYLE_PATHS.has(normalizedPath)) {
     return false;
   }
   if (runtime?.store && isUsableCachedEntryStyle(runtime.store, normalizedPath)) {
@@ -6146,18 +6245,12 @@ function fetchUpstreamDesignShell(upstreamUrl, request, redirectsRemaining = MAX
 }
 
 function upstreamDesignShellHeaders(upstreamUrl, request) {
-  const origin = `${upstreamUrl.protocol}//${upstreamUrl.host}`;
+  const cookie = headerValue(request.headers.cookie);
   return {
-    accept: headerValue(request.headers.accept) || "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "accept-encoding": "identity",
-    "accept-language": headerValue(request.headers["accept-language"]) || "en-US,en;q=0.9",
-    "cache-control": "no-cache",
-    pragma: "no-cache",
-    referer: headerValue(request.headers.referer) || `${origin}/design/`,
-    "sec-fetch-dest": "document",
-    "sec-fetch-mode": "navigate",
-    "sec-fetch-site": "same-origin",
-    "upgrade-insecure-requests": "1",
+    accept: "*/*",
+    ...(cookie ? { cookie } : {}),
+    origin: DEFAULT_DESIGN_ORIGIN,
+    referer: DEFAULT_DESIGN_REFERRER,
     "user-agent":
       headerValue(request.headers["user-agent"]) ||
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
@@ -6165,14 +6258,15 @@ function upstreamDesignShellHeaders(upstreamUrl, request) {
 }
 
 function upstreamAssetHeaders(upstreamUrl, request) {
-  const origin = `${upstreamUrl.protocol}//${upstreamUrl.host}`;
+  const cookie = shouldForwardCookieToAsset(upstreamUrl) ? headerValue(request.headers.cookie) : undefined;
   return {
     accept: headerValue(request.headers.accept) || defaultAssetAccept(upstreamUrl.pathname),
     "accept-encoding": "identity",
     "accept-language": headerValue(request.headers["accept-language"]) || "en-US,en;q=0.9",
     "cache-control": "no-cache",
+    ...(cookie ? { cookie } : {}),
     pragma: "no-cache",
-    referer: headerValue(request.headers.referer) || `${origin}/design/`,
+    referer: DEFAULT_DESIGN_REFERRER,
     "sec-fetch-dest": assetFetchDest(upstreamUrl.pathname),
     "sec-fetch-mode": "no-cors",
     "sec-fetch-site": "same-origin",
@@ -6180,6 +6274,10 @@ function upstreamAssetHeaders(upstreamUrl, request) {
       headerValue(request.headers["user-agent"]) ||
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
   };
+}
+
+function shouldForwardCookieToAsset(upstreamUrl) {
+  return upstreamUrl.hostname === DEFAULT_HOST;
 }
 
 function defaultAssetAccept(path) {
@@ -6303,7 +6401,16 @@ function readRequestBody(request) {
   });
 }
 
-function renderDesignIndex(me, scriptPath, stylePath) {
+function renderDesignIndex(me, scriptPath, stylePath, html) {
+  if (isUsableDesignShellHtml(html)) {
+    return injectDesignMeIntoHtml(String(html), me);
+  }
+  const scriptTag = scriptPath
+    ? `        <script type="module" crossorigin src="${escapeHtmlAttribute(scriptPath)}"></script>\n`
+    : "";
+  const styleTag = stylePath
+    ? `        <link rel="stylesheet" crossorigin href="${escapeHtmlAttribute(stylePath)}">\n`
+    : "";
   return `<!doctype html>
 <html lang="en">
     <head>
@@ -6311,9 +6418,7 @@ function renderDesignIndex(me, scriptPath, stylePath) {
         <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
         <title>Claude Design</title>
         <link rel="icon" type="image/png" href="/design/favicon.png"/>
-        <script type="module" crossorigin src="${escapeHtmlAttribute(scriptPath)}"></script>
-        <link rel="stylesheet" crossorigin href="${escapeHtmlAttribute(stylePath)}">
-    </head>
+${scriptTag}${styleTag}    </head>
     <body>
         <script>
             window.__OMELETTE_ME__ = ${escapeJsonForScript(me)}
@@ -6322,6 +6427,32 @@ function renderDesignIndex(me, scriptPath, stylePath) {
     </body>
 </html>
 `;
+}
+
+function injectDesignMeIntoHtml(html, me) {
+  if (html.includes("__OMELETTE_ME__")) {
+    return html;
+  }
+  const meScript = `<script>window.__OMELETTE_ME__ = ${escapeJsonForScript(me)}</script>`;
+  if (/<body\b[^>]*>/i.test(html)) {
+    return html.replace(/<body\b([^>]*)>/i, `<body$1>\n        ${meScript}`);
+  }
+  return `${meScript}\n${html}`;
+}
+
+function isUsableDesignShellHtml(value) {
+  const html = stringValue(value);
+  if (!html) {
+    return false;
+  }
+  if (!/<html[\s>]/i.test(html) || !/<script\b[^>]*\bsrc=/i.test(html)) {
+    return false;
+  }
+  if (/\bJust a moment\b|cf_chl|Performing security verification|App unavailable in region/i.test(html)) {
+    return false;
+  }
+  return /(?:src|href)=["'][^"']*(?:\/design)?\/assets\//i.test(html) ||
+    /anthropic\.omelette|OmeletteService|__OMELETTE_ME__|\/v1\/design/i.test(html);
 }
 
 function normalizeMe(value) {

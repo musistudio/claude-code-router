@@ -1,10 +1,9 @@
-import { buildBrowserRenderer, buildMain, buildRenderer, buildStyles, buildTrayRenderer, cleanDist, copyAppAssets, copyBrowserRendererHtml, copyBuiltInMcpServers, copyMarketplacePlugins, copyRendererHtml, copyTrayRendererHtml } from "./esbuild.config.mjs";
+import { buildBrowserRenderer, buildMain, buildRenderer, buildStyles, buildTrayRenderer, cleanDist, copyAppAssets, copyBrowserRendererHtml, copyMarketplacePlugins, copyRendererHtml, copyTrayRendererHtml } from "./esbuild.config.mjs";
 
 const mode = process.argv.includes("--dev") ? "development" : "production";
 
 cleanDist();
 copyAppAssets();
-copyBuiltInMcpServers();
 copyMarketplacePlugins();
 copyBrowserRendererHtml();
 copyRendererHtml();

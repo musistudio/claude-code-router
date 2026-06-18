@@ -13,13 +13,15 @@ import { detectProviderIcon } from "./provider-icons";
 import { fetchProviderManifest } from "./provider-manifest-service";
 import { probeGatewayProvider } from "./provider-probe";
 import { applyProfileConfig } from "./profile-service";
+import { getProfileOpenCommand, openProfileFromCcr } from "./profile-launch-service";
 import { ensureProxyCertificateAuthority } from "./proxy/certificates";
 import { proxyService } from "./proxy/service";
+import { listMcpServerTools } from "./mcp/tool-discovery";
 import { getAgentAnalysis, getRequestLogs } from "./request-log-store";
 import trayController from "./tray-controller";
 import { getUsageStats } from "./usage-store";
 import windowsManager from "./windows";
-import type { AgentAnalysisFilter, ApiKeyConfig, AppConfig, AppInfo, GatewayPluginAppConfig, GatewayProviderProbeRequest, GatewayStatus, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProviderAccountTestRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
+import type { AgentAnalysisFilter, ApiKeyConfig, AppConfig, AppInfo, GatewayMcpServerConfig, GatewayPluginAppConfig, GatewayProviderProbeRequest, GatewayStatus, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountTestRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
 
 const pluginMarketplace: PluginMarketplaceEntry[] = [
   {
@@ -66,6 +68,9 @@ ipcMain.handle(IPC_CHANNELS.appGetInfo, () => {
 ipcMain.handle(IPC_CHANNELS.appGetConfig, () => loadAppConfig());
 ipcMain.handle(IPC_CHANNELS.appGetOnboardingFinished, () => existsSync(ONBOARDING_FINISHED_FILE));
 ipcMain.handle(IPC_CHANNELS.appGetPendingProviderDeepLinks, () => deepLinkService.consumePendingProviderRequests());
+ipcMain.handle(IPC_CHANNELS.appGetProfileOpenCommand, async (_event, request: ProfileOpenRequest) => {
+  return getProfileOpenCommand(await loadAppConfig(), request);
+});
 ipcMain.handle(IPC_CHANNELS.appGetProviderAccountSnapshots, (_event, provider?: string) => getProviderAccountSnapshots(provider));
 ipcMain.handle(IPC_CHANNELS.appGetAgentAnalysis, (_event, filter?: AgentAnalysisFilter) => getAgentAnalysis(filter));
 ipcMain.handle(IPC_CHANNELS.appGetGatewayStatus, () => gatewayService.getStatus());
@@ -77,6 +82,7 @@ ipcMain.handle(IPC_CHANNELS.appGetRequestLogs, (_event, filter?: RequestLogListF
 ipcMain.handle(IPC_CHANNELS.appGetUsageStats, (_event, range?: UsageStatsRange, filter?: UsageStatsFilter) => getUsageStats(range, filter));
 ipcMain.handle(IPC_CHANNELS.appFetchProviderManifest, (_event, request: ProviderManifestFetchRequest) => fetchProviderManifest(request));
 ipcMain.handle(IPC_CHANNELS.appInstallProxyCertificate, () => proxyService.installCertificate());
+ipcMain.handle(IPC_CHANNELS.appListMcpServerTools, (_event, server: GatewayMcpServerConfig) => listMcpServerTools(server));
 ipcMain.handle(IPC_CHANNELS.appOpenBuiltInBrowser, async () => {
   const config = await loadAppConfig();
   await ensureBuiltInBrowserProxyReady(config);
@@ -111,6 +117,16 @@ ipcMain.handle(IPC_CHANNELS.appOpenExternal, async (_event, url: string) => {
     throw new Error("Only http and https URLs can be opened.");
   }
   await shell.openExternal(parsed.toString());
+});
+ipcMain.handle(IPC_CHANNELS.appOpenProfile, async (_event, request: ProfileOpenRequest) => {
+  const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(await loadAppConfig());
+  const config = syncedClaudeAppConfig.config;
+  const status = await gatewayService.start(config);
+  if (status.state !== "running") {
+    throw new Error(status.lastError || "CCR gateway did not start.");
+  }
+  logProfileApplyResult(await applyProfileConfig(config));
+  return openProfileFromCcr(config, request);
 });
 ipcMain.handle(IPC_CHANNELS.appApplyClaudeAppGateway, async (_event, config?: AppConfig) => {
   const previousConfig = await loadAppConfig();

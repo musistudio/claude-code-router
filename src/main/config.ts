@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { loadPersistedApiKeys, replacePersistedApiKeys } from "./api-key-store";
 import { CONFIGDIR, CONFIG_FILE, GATEWAY_CONFIG_FILE } from "./constants";
-import { DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS } from "../shared/app";
+import { DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS } from "../shared/app";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "../shared/provider-presets";
 import type {
   AppConfig,
@@ -116,7 +116,7 @@ const DEFAULT_CONFIG: AppConfig = {
       cliMiddleware: true,
       codexCliPath: "",
       codexHome: "",
-      configFormat: "legacy",
+      configFormat: "separate_profile_files",
       configFile: "~/.codex/config.toml",
       enabled: true,
       model: "",
@@ -143,7 +143,7 @@ const DEFAULT_CONFIG: AppConfig = {
         cliMiddleware: true,
         codexCliPath: "",
         codexHome: "",
-        configFormat: "legacy",
+        configFormat: "separate_profile_files",
         configFile: "~/.codex/config.toml",
         enabled: true,
         env: {},
@@ -524,7 +524,9 @@ function parseOverviewWidget(value: unknown): OverviewWidgetConfig | undefined {
     return undefined;
   }
   const metric = type === "metric" ? parseOverviewMetricKind(value.metric) ?? "requests" : undefined;
+  const accountProvider = type === "account-balance" ? readString(value.accountProvider) : undefined;
   return {
+    ...(accountProvider ? { accountProvider } : {}),
     enabled: typeof value.enabled === "boolean" ? value.enabled : true,
     id: readString(value.id) || overviewWidgetId(type, metric),
     ...(metric ? { metric } : {}),
@@ -559,7 +561,7 @@ function parseOverviewWidgetSize(value: unknown, type: OverviewWidgetType): Over
 }
 
 function parseOverviewWidgetVariant(value: unknown): OverviewWidgetVariant | undefined {
-  return parseEnumValue(value, ["area", "bar", "bars", "card", "cards", "compact", "composed", "donut", "line", "pie", "ring", "stacked", "table", "timeline"], undefined);
+  return parseEnumValue(value, ["arc", "area", "bar", "bars", "card", "cards", "compact", "composed", "donut", "line", "nested-rings", "pie", "ring", "semicircle", "stacked", "table", "timeline"], undefined);
 }
 
 function parseOverviewMetricKind(value: unknown): OverviewMetricKind | undefined {
@@ -628,9 +630,9 @@ function parseTrayWidgets(value: unknown): TrayWidgetConfig[] | undefined {
   if (!Array.isArray(value)) {
     return undefined;
   }
-  return dedupeTraySingletonWidgets(value
+  return orderTrayWidgetsForLayout(dedupeTraySingletonWidgets(value
     .map(parseTrayWidget)
-    .filter((widget): widget is TrayWidgetConfig => Boolean(widget)));
+    .filter((widget): widget is TrayWidgetConfig => Boolean(widget))));
 }
 
 function parseTrayWidget(value: unknown): TrayWidgetConfig | undefined {
@@ -688,6 +690,17 @@ function isTraySingletonWidgetType(type: TrayWidgetType): boolean {
   return (TRAY_SINGLETON_WIDGET_TYPES as readonly string[]).includes(type);
 }
 
+function isTrayPinnedTopWidgetType(type: TrayWidgetType): boolean {
+  return (TRAY_TOP_WIDGET_TYPES as readonly string[]).includes(type);
+}
+
+function orderTrayWidgetsForLayout(widgets: TrayWidgetConfig[]): TrayWidgetConfig[] {
+  return [
+    ...widgets.filter((widget) => isTrayPinnedTopWidgetType(widget.type)),
+    ...widgets.filter((widget) => !isTrayPinnedTopWidgetType(widget.type))
+  ];
+}
+
 function dedupeTraySingletonWidgets(widgets: TrayWidgetConfig[]): TrayWidgetConfig[] {
   const seenSingletons = new Set<TrayWidgetType>();
   return widgets.filter((widget) => {
@@ -703,7 +716,7 @@ function dedupeTraySingletonWidgets(widgets: TrayWidgetConfig[]): TrayWidgetConf
 }
 
 function trayWidgetsFromModules(modules: TrayWindowModuleId[], variants: TrayComponentVariants): TrayWidgetConfig[] {
-  return modules
+  return orderTrayWidgetsForLayout(modules
     .filter((moduleId): moduleId is TrayWidgetType => moduleId !== "footer")
     .map((type) => ({
       id: trayWidgetId(type),
@@ -714,7 +727,7 @@ function trayWidgetsFromModules(modules: TrayWindowModuleId[], variants: TrayCom
       ...((type === "stats") ? { variant: variants.stats } : {}),
       ...((type === "token-flow") ? { variant: variants.tokenFlow } : {}),
       ...((type === "token-mix") ? { variant: variants.tokenMix } : {})
-    }));
+    })));
 }
 
 function parseTrayComponentVariants(value: unknown): TrayComponentVariants | undefined {
@@ -1451,7 +1464,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         cliMiddleware: true,
         codexCliPath: readString(item.codexCliPath) || readString(item.cliPath) || readString(item.codexPath) || "",
         codexHome: readString(item.codexHome) || readString(item.home) || "",
-        configFormat: parseCodexProfileConfigFormat(readString(item.configFormat) || readString(item.profileConfigFormat)) || "legacy",
+        configFormat: parseCodexProfileConfigFormat(readString(item.configFormat) || readString(item.profileConfigFormat)) || "separate_profile_files",
         configFile: readString(item.configFile) || readString(item.settingsFile) || "~/.codex/config.toml",
         enabled,
         env,
@@ -1564,7 +1577,7 @@ function parseCodexProfileConfigFormat(value: string | undefined): "legacy" | "s
   }
   const normalized = value.trim().toLowerCase().replace(/-/g, "_").replace(/\s+/g, "_");
   if (normalized === "legacy" || normalized === "profiles" || normalized === "profile_table" || normalized === "profiles_table") {
-    return "legacy";
+    return "separate_profile_files";
   }
   if (normalized === "separate" || normalized === "separate_profile_files" || normalized === "profile_files" || normalized === "profile_file" || normalized === "new") {
     return "separate_profile_files";

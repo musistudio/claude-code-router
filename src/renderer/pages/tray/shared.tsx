@@ -4,7 +4,7 @@ import { Power } from "lucide-react";
 import trayCyanIconUrl from "../../../../assets/tray-cyan.png";
 import trayOrangeIconUrl from "../../../../assets/tray-orange.png";
 import trayVioletIconUrl from "../../../../assets/tray-violet.png";
-import { DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS } from "../../../shared/app";
+import { DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS } from "../../../shared/app";
 import type {
   AppConfig,
   ProviderAccountMeter,
@@ -23,7 +23,7 @@ import type {
 
 export  {
   createContext, useCallback, useContext, useEffect, useMemo, useState, createRoot,
-  Power, trayCyanIconUrl, trayOrangeIconUrl, trayVioletIconUrl, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS
+  Power, trayCyanIconUrl, trayOrangeIconUrl, trayVioletIconUrl, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS
 };
 export type {
   ReactNode, AppConfig, ProviderAccountMeter, ProviderAccountSnapshot, TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant, TrayWindowModuleId, UsageComparisonRow,
@@ -238,13 +238,13 @@ export function normalizeTrayComponentVariants(value: unknown): TrayComponentVar
 export function normalizeTrayWidgets(value: unknown, fallbackModules?: unknown, fallbackVariants?: unknown): TrayWidgetConfig[] {
   if (!Array.isArray(value)) {
     if (Array.isArray(fallbackModules)) {
-      return dedupeTraySingletonWidgets(trayWidgetsFromModules(normalizeTrayWindowModules(fallbackModules as AppConfig["trayWindowModules"]), normalizeTrayComponentVariants(fallbackVariants)));
+      return orderTrayWidgetsForLayout(dedupeTraySingletonWidgets(trayWidgetsFromModules(normalizeTrayWindowModules(fallbackModules as AppConfig["trayWindowModules"]), normalizeTrayComponentVariants(fallbackVariants))));
     }
     return DEFAULT_TRAY_WIDGETS.map((widget) => ({ ...widget }));
   }
-  return dedupeTraySingletonWidgets(value
+  return orderTrayWidgetsForLayout(dedupeTraySingletonWidgets(value
     .map(normalizeTrayWidget)
-    .filter((widget): widget is TrayWidgetConfig => Boolean(widget)));
+    .filter((widget): widget is TrayWidgetConfig => Boolean(widget))));
 }
 
 export function normalizeTrayWidget(value: unknown): TrayWidgetConfig | undefined {
@@ -345,6 +345,17 @@ export function isTraySingletonWidgetType(type: TrayWidgetType): boolean {
   return (TRAY_SINGLETON_WIDGET_TYPES as readonly string[]).includes(type);
 }
 
+export function isTrayPinnedTopWidgetType(type: TrayWidgetType): boolean {
+  return (TRAY_TOP_WIDGET_TYPES as readonly string[]).includes(type);
+}
+
+export function orderTrayWidgetsForLayout(widgets: TrayWidgetConfig[]): TrayWidgetConfig[] {
+  return [
+    ...widgets.filter((widget) => isTrayPinnedTopWidgetType(widget.type)),
+    ...widgets.filter((widget) => !isTrayPinnedTopWidgetType(widget.type))
+  ];
+}
+
 function dedupeTraySingletonWidgets(widgets: TrayWidgetConfig[]): TrayWidgetConfig[] {
   const seenSingletons = new Set<TrayWidgetType>();
   return widgets.filter((widget) => {
@@ -360,7 +371,7 @@ function dedupeTraySingletonWidgets(widgets: TrayWidgetConfig[]): TrayWidgetConf
 }
 
 export function trayWidgetsFromModules(modules: TrayWindowModuleId[], variants: TrayComponentVariants): TrayWidgetConfig[] {
-  return modules
+  return orderTrayWidgetsForLayout(modules
     .filter((moduleId): moduleId is TrayWidgetType => moduleId !== "footer")
     .map((type) => ({
       id: trayWidgetId(type),
@@ -371,7 +382,7 @@ export function trayWidgetsFromModules(modules: TrayWindowModuleId[], variants: 
       ...((type === "stats") ? { variant: variants.stats } : {}),
       ...((type === "token-flow") ? { variant: variants.tokenFlow } : {}),
       ...((type === "token-mix") ? { variant: variants.tokenMix } : {})
-    }));
+    })));
 }
 
 export function normalizeEnumValue<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {

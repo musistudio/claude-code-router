@@ -14,9 +14,15 @@ import type {
   GatewayProviderProtocol,
   GatewayStatus,
   RouterFallbackConfig,
-  RouterFallbackMode
+  RouterFallbackMode,
+  VirtualModelFusionVisionConfig,
+  VirtualModelFusionWebSearchConfig,
+  VirtualModelFusionWebSearchProvider
 } from "../../shared/app";
-import { BUILTIN_UNIMCP_SERVER_NAME } from "../../shared/app";
+import {
+  BUILTIN_FUSION_VISION_TOOL_NAME,
+  BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME
+} from "../../shared/app";
 import { providerApiKeySafetyIssue } from "../../shared/provider-presets";
 import { normalizeProviderBaseUrl as normalizeProviderBaseUrlInput } from "../../shared/provider-url";
 import { backendService } from "../backend-service";
@@ -39,6 +45,9 @@ type CoreGatewayProvider = {
   name: string;
   type: GatewayProviderProtocol;
 };
+
+const defaultFusionWebSearchProvider: VirtualModelFusionWebSearchProvider = "brave";
+const fusionModelProviderName = "Fusion";
 
 type ApiKeyAuthorizationResult =
   | { ok: true; apiKey?: ApiKeyConfig }
@@ -429,6 +438,7 @@ class GatewayService {
 
     const headers = forwardHeaders(request.headers);
     if (apiKey) {
+      stripLocalGatewayAuthHeaders(headers);
       headers["x-auth-api-key-id"] = apiKey.id;
       headers["x-auth-sub"] = apiKey.id;
     }
@@ -721,24 +731,30 @@ export const gatewayService = new GatewayService();
 
 function writeCoreGatewayConfig(config: AppConfig, rawTraceSyncToken: string): void {
   mkdirSync(dirname(config.gateway.generatedConfigFile), { recursive: true });
-  const providers = config.Providers
-    .flatMap(toCoreGatewayProviders)
-    .filter((provider): provider is CoreGatewayProvider => Boolean(provider));
   const pluginCoreGatewayConfig = pluginService.getCoreGatewayConfig();
   const providerPlugins = [
     ...(config.providerPlugins ?? []),
     ...pluginService.getCoreProviderPlugins()
   ];
-  const virtualModelProfiles = [
+  const virtualModelProfiles = withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases([
     ...(config.virtualModelProfiles ?? []),
     ...pluginService.getVirtualModelProfiles()
+  ]));
+  const coreEndpoint = endpoint(config.gateway.coreHost, config.gateway.corePort);
+  const builtinToolArtifacts = fusionBuiltinToolArtifacts(virtualModelProfiles, coreEndpoint);
+  const providers = [
+    ...config.Providers
+      .flatMap(toCoreGatewayProviders)
+      .filter((provider): provider is CoreGatewayProvider => Boolean(provider)),
+    ...builtinToolArtifacts.providers
   ];
   const pluginAgentConfig = isRecord(pluginCoreGatewayConfig.agent) ? pluginCoreGatewayConfig.agent : {};
   const pluginMcpServers = Array.isArray(pluginAgentConfig.mcpServers) ? pluginAgentConfig.mcpServers : [];
-  const mcpServers = withBuiltInUnimcpMcpServer([
+  const mcpServers = [
+    ...builtinToolArtifacts.mcpServers,
     ...pluginMcpServers,
     ...(config.agent?.mcpServers ?? [])
-  ]);
+  ];
   const payload = {
     auth: {
       enabled: false
@@ -773,22 +789,86 @@ function writeCoreGatewayConfig(config: AppConfig, rawTraceSyncToken: string): v
   writeFileSync(config.gateway.generatedConfigFile, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
-function withBuiltInUnimcpMcpServer(servers: unknown[]): unknown[] {
-  if (servers.some((server) => isRecord(server) && server.name === BUILTIN_UNIMCP_SERVER_NAME)) {
-    return servers;
-  }
-  return [builtInUnimcpMcpServer(), ...servers];
+function fusionBuiltinToolArtifacts(
+  profiles: unknown[],
+  coreEndpoint: string
+): { mcpServers: GatewayMcpServerConfig[]; providers: CoreGatewayProvider[] } {
+  const providers: CoreGatewayProvider[] = [];
+  const mcpServers: GatewayMcpServerConfig[] = [];
+  const toolServerKeys = new Set<string>();
+  const entry = bundledFusionBuiltinMcpEntryPath();
+
+  profiles.forEach((profile, index) => {
+    if (!isRecord(profile) || profile.enabled === false) {
+      return;
+    }
+    const metadata = isRecord(profile.metadata) ? profile.metadata : undefined;
+    const profileId = stringValue(profile.id) || stringValue(profile.key) || `fusion-${index + 1}`;
+    const sanitizedProfileId = sanitizeMcpServerName(profileId);
+
+    const visionConfig = readFusionVisionConfig(metadata?.fusionVision) ?? legacyFusionVisionConfig(profile);
+    if (visionConfig?.toolName) {
+      const resolvedVision = resolveFusionVisionRuntime(visionConfig);
+      providers.push(...resolvedVision.providers);
+      const toolServerKey = `vision:${visionConfig.toolName}`;
+      if (!toolServerKeys.has(toolServerKey)) {
+        toolServerKeys.add(toolServerKey);
+        mcpServers.push(fusionBuiltinMcpServer({
+          entry,
+          env: {
+            FUSION_BUILTIN_TOOL_KIND: "vision",
+            FUSION_TOOL_NAME: visionConfig.toolName,
+            ...(visionConfig.baseUrl ? { VISION_BASE_URL: visionConfig.baseUrl } : { VISION_GATEWAY_BASE_URL: `${coreEndpoint}/v1` }),
+            ...(resolvedVision.model ? { VISION_MODEL: resolvedVision.model } : {}),
+            ...(visionConfig.baseUrl && visionConfig.apiKey ? { VISION_API_KEY: visionConfig.apiKey } : {}),
+            ...(visionConfig.timeoutMs ? { VISION_TIMEOUT_MS: String(visionConfig.timeoutMs) } : {})
+          },
+          name: `fusion-vision-${sanitizedProfileId}`
+        }));
+      }
+    }
+
+    const webSearchConfig = readFusionWebSearchConfig(metadata?.fusionWebSearch) ?? legacyFusionWebSearchConfig(profile);
+    if (webSearchConfig?.toolName) {
+      const toolServerKey = `web_search:${webSearchConfig.toolName}`;
+      if (!toolServerKeys.has(toolServerKey)) {
+        toolServerKeys.add(toolServerKey);
+        mcpServers.push(fusionBuiltinMcpServer({
+          entry,
+          env: {
+            FUSION_BUILTIN_TOOL_KIND: "web_search",
+            FUSION_TOOL_NAME: webSearchConfig.toolName,
+            SEARCH_PROVIDER: webSearchConfig.provider ?? defaultFusionWebSearchProvider,
+            ...(webSearchConfig.resultCount ? { SEARCH_RESULT_COUNT: String(webSearchConfig.resultCount) } : {}),
+            ...(webSearchConfig.timeoutMs ? { SEARCH_TIMEOUT_MS: String(webSearchConfig.timeoutMs) } : {}),
+            ...(webSearchConfig.env ?? {})
+          },
+          name: `fusion-web-search-${sanitizedProfileId}`
+        }));
+      }
+    }
+  });
+
+  return { mcpServers, providers };
 }
 
-function builtInUnimcpMcpServer(): GatewayMcpServerConfig {
-  const entry = bundledUnimcpEntryPath();
+function fusionBuiltinMcpServer({
+  entry,
+  env,
+  name
+}: {
+  entry: string;
+  env: Record<string, string>;
+  name: string;
+}): GatewayMcpServerConfig {
   return {
     args: [entry],
     command: process.execPath,
     env: {
-      ELECTRON_RUN_AS_NODE: "1"
+      ELECTRON_RUN_AS_NODE: "1",
+      ...env
     },
-    name: BUILTIN_UNIMCP_SERVER_NAME,
+    name,
     protocolVersion: "2024-11-05",
     requestTimeoutMs: 600000,
     startupTimeoutMs: 600000,
@@ -797,8 +877,240 @@ function builtInUnimcpMcpServer(): GatewayMcpServerConfig {
   };
 }
 
-function bundledUnimcpEntryPath(): string {
-  return pathJoin(__dirname, "..", "vendor", "unimcp", "dist", "index.js");
+function bundledFusionBuiltinMcpEntryPath(): string {
+  return pathJoin(__dirname, "fusion-vision-mcp.js");
+}
+
+function withFusionVirtualModelAliases(profiles: unknown[]): unknown[] {
+  return profiles.map((profile) => {
+    if (!isRecord(profile)) {
+      return profile;
+    }
+    const match = isRecord(profile.match) ? profile.match : {};
+    const exactAliases = stringListValue(match.exactAliases);
+    const catalogNames = exactAliases.length > 0
+      ? exactAliases
+      : [stringValue(profile.key) || stringValue(profile.displayName)].filter((value): value is string => Boolean(value));
+    const fusionAliases = catalogNames.flatMap(fusionModelSelectors).filter(Boolean);
+    if (fusionAliases.length === 0) {
+      return profile;
+    }
+    return {
+      ...profile,
+      match: {
+        ...match,
+        exactAliases: uniqueStrings([...exactAliases, ...fusionAliases])
+      }
+    };
+  });
+}
+
+function withCodexCompatibleVirtualModelProfiles(profiles: unknown[]): unknown[] {
+  return profiles.map((profile) => {
+    if (!isRecord(profile) || profile.enabled === false) {
+      return profile;
+    }
+    const materialization = isRecord(profile.materialization) ? profile.materialization : {};
+    if (materialization.enabled === false || materialization.includeInGatewayModels === false) {
+      return profile;
+    }
+    const execution = isRecord(profile.execution) ? profile.execution : {};
+    if (execution.clientToolsPolicy === "allow") {
+      return profile;
+    }
+    return {
+      ...profile,
+      execution: {
+        ...execution,
+        clientToolsPolicy: "allow"
+      }
+    };
+  });
+}
+
+function fusionModelSelector(model: string): string {
+  const normalized = fusionModelNameFromSelector(model);
+  return normalized ? `${fusionModelProviderName}/${normalized}` : "";
+}
+
+function fusionModelSelectors(model: string): string[] {
+  const normalized = fusionModelNameFromSelector(model);
+  if (!normalized) {
+    return [];
+  }
+  const lowerModel = normalized.toLowerCase();
+  return uniqueStrings([
+    fusionModelSelector(normalized),
+    lowerModel,
+    `${fusionModelProviderName}/${lowerModel}`,
+    `${fusionModelProviderName.toLowerCase()}/${lowerModel}`
+  ]);
+}
+
+function fusionModelNameFromSelector(model: string): string {
+  const trimmed = model.trim();
+  const prefix = `${fusionModelProviderName}/`;
+  return trimmed.toLowerCase().startsWith(prefix.toLowerCase())
+    ? trimmed.slice(prefix.length).trim()
+    : trimmed;
+}
+
+function legacyFusionVisionConfig(profile: Record<string, unknown>): VirtualModelFusionVisionConfig | undefined {
+  const toolName = legacyFusionBuiltinToolName(profile, BUILTIN_FUSION_VISION_TOOL_NAME, "matchMultimodal");
+  return toolName ? { toolName } : undefined;
+}
+
+function legacyFusionWebSearchConfig(profile: Record<string, unknown>): VirtualModelFusionWebSearchConfig | undefined {
+  const toolName = legacyFusionBuiltinToolName(profile, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME, "matchWebSearch");
+  return toolName ? { provider: defaultFusionWebSearchProvider, toolName } : undefined;
+}
+
+function legacyFusionBuiltinToolName(
+  profile: Record<string, unknown>,
+  baseToolName: string,
+  executionFlag: "matchMultimodal" | "matchWebSearch"
+): string | undefined {
+  const tools = Array.isArray(profile.tools) ? profile.tools : [];
+  const toolName = tools
+    .map((tool) => isRecord(tool) ? stringValue(tool.name) ?? "" : "")
+    .find((name) => name === baseToolName || name.startsWith(`${baseToolName}_`));
+  if (toolName) {
+    return toolName;
+  }
+  const execution = isRecord(profile.execution) ? profile.execution : {};
+  return execution[executionFlag] === true ? baseToolName : undefined;
+}
+
+function readFusionVisionConfig(value: unknown): VirtualModelFusionVisionConfig | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const toolName = stringValue(value.toolName);
+  if (!toolName) {
+    return undefined;
+  }
+  const config: VirtualModelFusionVisionConfig = {
+    toolName,
+    apiKey: stringValue(value.apiKey),
+    baseUrl: stringValue(value.baseUrl),
+    model: stringValue(value.model),
+    modelSelector: stringValue(value.modelSelector)
+  };
+  const timeoutMs = numberValue(value.timeoutMs);
+  if (timeoutMs) {
+    config.timeoutMs = timeoutMs;
+  }
+  return config;
+}
+
+function readFusionWebSearchConfig(value: unknown): VirtualModelFusionWebSearchConfig | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const toolName = stringValue(value.toolName);
+  if (!toolName) {
+    return undefined;
+  }
+  const config: VirtualModelFusionWebSearchConfig = {
+    toolName,
+    env: isRecord(value.env) ? stringRecordFromUnknown(value.env) : undefined,
+    provider: parseFusionWebSearchProvider(value.provider)
+  };
+  const resultCount = numberValue(value.resultCount);
+  if (resultCount) {
+    config.resultCount = resultCount;
+  }
+  const timeoutMs = numberValue(value.timeoutMs);
+  if (timeoutMs) {
+    config.timeoutMs = timeoutMs;
+  }
+  return config;
+}
+
+function resolveFusionVisionRuntime(
+  config: VirtualModelFusionVisionConfig
+): { model?: string; providers: CoreGatewayProvider[] } {
+  const selector = config.modelSelector || config.model;
+  if (config.baseUrl) {
+    return {
+      model: config.model || config.modelSelector,
+      providers: []
+    };
+  }
+
+  const parsed = parseFusionModelSelector(selector);
+  if (!parsed) {
+    return {
+      model: selector ? normalizeGatewayModelSelector(selector) : undefined,
+      providers: []
+    };
+  }
+
+  return {
+    model: `${parsed.providerName}/${parsed.model}`,
+    providers: []
+  };
+}
+
+function parseFusionModelSelector(value: string | undefined): { model: string; providerName: string } | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const commaIndex = trimmed.indexOf(",");
+  if (commaIndex > 0 && commaIndex < trimmed.length - 1) {
+    const providerName = trimmed.slice(0, commaIndex).trim();
+    const model = trimmed.slice(commaIndex + 1).trim();
+    return providerName && model ? { model, providerName } : undefined;
+  }
+  const slashIndex = trimmed.indexOf("/");
+  if (slashIndex > 0 && slashIndex < trimmed.length - 1) {
+    const providerName = trimmed.slice(0, slashIndex).trim();
+    const model = trimmed.slice(slashIndex + 1).trim();
+    return providerName && model ? { model, providerName } : undefined;
+  }
+  return undefined;
+}
+
+function normalizeGatewayModelSelector(value: string): string {
+  const parsed = parseFusionModelSelector(value);
+  return parsed ? `${parsed.providerName}/${parsed.model}` : value.trim();
+}
+
+function parseFusionWebSearchProvider(value: unknown): VirtualModelFusionWebSearchProvider | undefined {
+  const normalized = stringValue(value)?.toLowerCase();
+  if (
+    normalized === "brave" ||
+    normalized === "bing" ||
+    normalized === "google_cse" ||
+    normalized === "serper" ||
+    normalized === "serpapi" ||
+    normalized === "tavily" ||
+    normalized === "exa"
+  ) {
+    return normalized;
+  }
+  return undefined;
+}
+
+function stringRecordFromUnknown(value: Record<string, unknown>): Record<string, string> | undefined {
+  const result: Record<string, string> = {};
+  for (const [key, rawValue] of Object.entries(value)) {
+    const normalizedKey = key.trim();
+    const normalizedValue = stringValue(rawValue);
+    if (normalizedKey && normalizedValue) {
+      result[normalizedKey] = normalizedValue;
+    }
+  }
+  return Object.keys(result).length ? result : undefined;
+}
+
+function sanitizeMcpServerName(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "fusion";
 }
 
 function buildRawTraceConfig(config: AppConfig, rawTraceSyncToken: string): Record<string, unknown> {
@@ -846,6 +1158,7 @@ function readRawTraceRequestLogUpdate(manifest: Record<string, unknown>): Reques
     requestBodyText: upstreamRequestBody?.text,
     requestHeaders: headerRecordFromUnknown(upstreamRequestMetadata?.headers),
     requestId,
+    isStream: upstreamResponseStream !== undefined,
     responseBodyContentType: upstreamResponseBody?.contentType,
     responseBodyText: upstreamResponseBody?.text,
     responseHeaders: headerRecordFromUnknown(upstreamResponseMetadata?.headers),
@@ -1919,6 +2232,10 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+function stringListValue(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((item) => stringValue(item)).filter((item): item is string => Boolean(item)) : [];
+}
+
 function numberValue(value: unknown): number | undefined {
   const number = Number(value);
   return Number.isFinite(number) ? Math.trunc(number) : undefined;
@@ -2035,17 +2352,12 @@ function buildClaudeCodeDiscoverableModelIds(config: AppConfig): string[] {
       }
     }
 
-    const fixedModel = profile.baseModel?.fixedModel?.trim();
     for (const alias of profile.match?.exactAliases ?? []) {
       const normalizedAlias = alias.trim();
       if (!normalizedAlias) {
         continue;
       }
-      ids.push(
-        normalizedAlias.includes("/") || !fixedModel
-          ? normalizedAlias
-          : `${providerNameFromModelId(fixedModel) ?? ""}/${normalizedAlias}`.replace(/^\//, "")
-      );
+      ids.push(fusionModelSelector(normalizedAlias));
     }
   }
 
@@ -2056,11 +2368,6 @@ function isVisibleVirtualModelProfile(profile: NonNullable<AppConfig["virtualMod
   return profile.enabled !== false &&
     profile.materialization?.enabled !== false &&
     profile.materialization?.includeInGatewayModels !== false;
-}
-
-function providerNameFromModelId(value: string): string | undefined {
-  const separator = value.indexOf("/");
-  return separator > 0 ? value.slice(0, separator).trim() || undefined : undefined;
 }
 
 function resolveClaudeCodeDiscoveredModelId(model: string | undefined, config: AppConfig): string | undefined {
@@ -2421,6 +2728,12 @@ function forwardHeaders(headers: IncomingHttpHeaders): Record<string, string> {
     forwarded[normalized] = Array.isArray(value) ? value.join(",") : String(value);
   }
   return forwarded;
+}
+
+function stripLocalGatewayAuthHeaders(headers: Record<string, string>): void {
+  delete headers.authorization;
+  delete headers["x-api-key"];
+  delete headers["api-key"];
 }
 
 function omitLocalObservabilityHeaders(headers: Record<string, string>): Record<string, string> {

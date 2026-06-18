@@ -9,8 +9,6 @@ import { proxyService } from "./proxy/service";
 import trayController from "./tray-controller";
 import windowsManager from "./windows";
 
-deepLinkService.register();
-
 const gotTheLock = app.requestSingleInstanceLock();
 const quitProxyRestoreTimeoutMs = 30_000;
 let quitPrepared = false;
@@ -22,6 +20,11 @@ let stopForQuitPromise: Promise<void> | undefined;
 if (!gotTheLock) {
   app.quit();
 } else {
+  startPrimaryInstance();
+}
+
+function startPrimaryInstance(): void {
+  deepLinkService.register();
   deepLinkService.handleArgv(process.argv);
 
   app.on("second-instance", (_event, argv) => {
@@ -29,43 +32,43 @@ if (!gotTheLock) {
     deepLinkService.handleArgv(argv);
     queueEnsureConfiguredProxyModeActive("second-instance");
   });
-}
 
-app.whenReady().then(() => {
-  windowsManager.createMainWindow();
-  trayController.start();
-  void startConfiguredServices("startup");
+  app.whenReady().then(() => {
+    windowsManager.createMainWindow();
+    trayController.start();
+    void startConfiguredServices("startup");
 
-  app.on("activate", () => {
-    windowsManager.showMainWindow();
-    queueEnsureConfiguredProxyModeActive("activate");
+    app.on("activate", () => {
+      windowsManager.showMainWindow();
+      queueEnsureConfiguredProxyModeActive("activate");
+    });
   });
-});
 
-app.on("before-quit", (event) => {
-  if (quitPrepared) {
-    return;
-  }
-  event.preventDefault();
-  prepareAndQuit();
-});
+  app.on("before-quit", (event) => {
+    if (quitPrepared) {
+      return;
+    }
+    event.preventDefault();
+    prepareAndQuit();
+  });
 
-app.on("will-quit", (event) => {
-  if (quitPrepared) {
-    return;
-  }
-  event.preventDefault();
-  prepareAndQuit();
-});
+  app.on("will-quit", (event) => {
+    if (quitPrepared) {
+      return;
+    }
+    event.preventDefault();
+    prepareAndQuit();
+  });
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
-});
+  app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") {
+      app.quit();
+    }
+  });
 
-process.once("SIGINT", () => handleTerminationSignal("SIGINT"));
-process.once("SIGTERM", () => handleTerminationSignal("SIGTERM"));
+  process.once("SIGINT", () => handleTerminationSignal("SIGINT"));
+  process.once("SIGTERM", () => handleTerminationSignal("SIGTERM"));
+}
 
 function prepareAndQuit(): void {
   if (stoppingForQuit) {

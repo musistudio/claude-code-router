@@ -1,12 +1,13 @@
 import {
   AddProfileDraft, AgentLogo, AnimatePresence, AppConfig, Badge, Button,
-  Card, CardContent, CardHeader, CardTitle, Check, ChevronDown,
-  cn, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader,
-  DialogTitle, Field, GatewayProviderConfig, Input, KeyValueRowsControl, motion,
+	  Card, CardContent, CardHeader, CardTitle, Check, ChevronDown, Copy,
+	  cn, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader,
+	  DialogTitle, Field, GatewayProviderConfig, Input, KeyValueRowsControl, LoaderCircle, motion,
   normalizeProfileScope, normalizeProfileSurface, parseProfileModelValue, Pencil, Plus, PopoverContent,
   profileAgentLabel, profileAgentOptions, ProfileConfig, profileModelDisplayValue, profileModelMatchesQuery, profileModelProviderMatchesQuery,
-  profileModelProviderOptions, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
-  Search, SelectControl, Toggle, translateOptions, Trash2, useAppText,
+  profileModelProviderOptions, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
+  Play, Search, SelectControl, Toggle, translateOptions, Trash2, useAppText, type ProfileOpenSurface, type VirtualModelProfileConfig,
+  copyTextToClipboard,
   useEffect, useLayoutEffect, useMemo, useRef, useState, X
 } from "../shared";
 export function ProfileView({
@@ -14,6 +15,7 @@ export function ProfileView({
   applyError,
   config,
   editProfile,
+  openProfile,
   removeProfile,
   updateProfileItem
 }: {
@@ -21,6 +23,7 @@ export function ProfileView({
   applyError: string;
   config: AppConfig;
   editProfile: (index: number) => void;
+  openProfile: (index: number) => void;
   removeProfile: (index: number) => void;
   updateProfileItem: (index: number, patch: Partial<ProfileConfig>) => void;
 }) {
@@ -30,11 +33,11 @@ export function ProfileView({
   return (
     <motion.div
       animate={{ opacity: 1 }}
-      className="mx-auto w-full max-w-4xl"
+      className="flex h-full min-h-0 min-w-0 flex-col"
       initial={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
     >
-      <Card className="min-w-0">
+      <Card className="flex h-full min-h-0 min-w-0 flex-col">
         <CardHeader>
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
@@ -51,7 +54,7 @@ export function ProfileView({
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="min-h-0 flex-1 space-y-4 overflow-auto">
           <div className="space-y-2">
             {profiles.length === 0 ? (
               <div className="flex h-32 items-center justify-center rounded-md border border-dashed border-border bg-muted/20 text-[12px] text-muted-foreground">
@@ -92,6 +95,11 @@ export function ProfileView({
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       <Toggle checked={profile.enabled} onChange={(enabled) => updateProfileItem(index, { enabled })} />
+                      {profile.enabled && scope === "ccr" ? (
+                        <Button aria-label={`${t("Open")} ${profile.name || t("Profile")}`} onClick={() => openProfile(index)} size="iconSm" title={t("Open")} type="button" variant="ghost">
+                          <Play className="h-3.5 w-3.5" />
+                        </Button>
+                      ) : null}
                       <Button aria-label={`${t("Edit")} ${profile.name || t("Profile")}`} onClick={() => editProfile(index)} size="iconSm" title={t("Edit")} type="button" variant="ghost">
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
@@ -113,6 +121,132 @@ export function ProfileView({
         </CardContent>
       </Card>
     </motion.div>
+  );
+}
+
+export function ProfileOpenDialog({
+  busy,
+  command,
+  error,
+  mode,
+  onChooseApp,
+  onClose,
+  profile
+}: {
+  busy?: ProfileOpenSurface | "";
+  command?: string;
+  error?: string;
+  mode: "choose" | "cli";
+  onChooseApp: () => void;
+  onClose: () => void;
+  profile: ProfileConfig;
+}) {
+  const t = useAppText();
+  const surfaces = profileOpenSurfaces(profile);
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<number>();
+
+  useEffect(() => {
+    setCopied(false);
+  }, [command]);
+
+  useEffect(() => () => {
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current);
+    }
+  }, []);
+
+  async function copyCommand() {
+    if (!command) {
+      return;
+    }
+    await copyTextToClipboard(command);
+    setCopied(true);
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current);
+    }
+    timerRef.current = window.setTimeout(() => setCopied(false), 3000);
+  }
+
+  return (
+    <Dialog onOpenChange={(open) => !open && onClose()} open>
+      <DialogContent className="max-w-[560px]">
+        <DialogHeader>
+          <div className="min-w-0">
+            <DialogTitle>{t("Open Agent")}</DialogTitle>
+          </div>
+        </DialogHeader>
+        <DialogBody>
+          <div className="space-y-3">
+            <div className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-muted/20 px-3 py-2">
+              <AgentLogo agent={profile.agent} className="h-6 w-6 rounded-[5px]" />
+              <div className="min-w-0 flex-1 truncate text-[13px] font-semibold">{profile.name || profile.id}</div>
+              {mode === "choose" && surfaces.includes("app") ? (
+                <Button className="shrink-0" disabled={Boolean(busy)} onClick={onChooseApp} size="sm" type="button" variant="outline">
+                  {busy === "app" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                  {t("App")}
+                </Button>
+              ) : null}
+            </div>
+            {mode === "choose" ? (
+              <div className="space-y-3">
+                {surfaces.includes("cli") ? (
+                  <ProfileCliCommandBlock
+                    command={command}
+                    copied={copied}
+                    onCopy={() => void copyCommand()}
+                    t={t}
+                  />
+                ) : null}
+              </div>
+            ) : (
+              <ProfileCliCommandBlock
+                command={command}
+                copied={copied}
+                onCopy={() => void copyCommand()}
+                t={t}
+              />
+            )}
+            {error ? (
+              <div className="whitespace-pre-wrap rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
+                {t(error)}
+              </div>
+            ) : null}
+          </div>
+        </DialogBody>
+        <DialogFooter>
+          <Button onClick={onClose} type="button" variant="outline">
+            {t("Close")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ProfileCliCommandBlock({
+  command,
+  copied,
+  onCopy,
+  t
+}: {
+  command?: string;
+  copied: boolean;
+  onCopy: () => void;
+  t: (value: string) => string;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="text-[12px] font-medium text-muted-foreground">{t("CLI command")}</div>
+      <div className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-muted/20 p-2">
+        <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-[5px] bg-background px-2 py-2 font-mono text-[12px] text-foreground">
+          {command || t("Loading")}
+        </code>
+        <Button aria-label={copied ? t("Copied") : t("Copy")} disabled={!command} onClick={onCopy} size="iconSm" title={copied ? t("Copied") : t("Copy")} type="button" variant={copied ? "default" : "outline"}>
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -274,12 +408,14 @@ function ProfileModelSelector({
   onChange,
   placeholder,
   providers,
-  value
+  value,
+  virtualModelProfiles = []
 }: {
   onChange: (value: string) => void;
   placeholder?: string;
   providers: GatewayProviderConfig[];
   value: string;
+  virtualModelProfiles?: VirtualModelProfileConfig[];
 }) {
   const t = useAppText();
   const [open, setOpen] = useState(false);
@@ -292,8 +428,8 @@ function ProfileModelSelector({
     placement: "above" | "below";
     width: number;
   }>();
-  const parsedValue = useMemo(() => parseProfileModelValue(value, providers), [providers, value]);
-  const providerOptions = useMemo(() => profileModelProviderOptions(providers), [providers]);
+  const parsedValue = useMemo(() => parseProfileModelValue(value, providers, virtualModelProfiles), [providers, value, virtualModelProfiles]);
+  const providerOptions = useMemo(() => profileModelProviderOptions(providers, virtualModelProfiles), [providers, virtualModelProfiles]);
   const filteredProviders = useMemo(
     () => providerOptions.filter((provider) => profileModelProviderMatchesQuery(provider, query)),
     [providerOptions, query]
@@ -307,7 +443,7 @@ function ProfileModelSelector({
   const filteredModels = activeProvider
     ? activeProvider.models.filter((model) => profileModelMatchesQuery(activeProvider.name, model, query))
     : [];
-  const displayValue = profileModelDisplayValue(value, parsedValue, providers, placeholder);
+  const displayValue = profileModelDisplayValue(value, parsedValue, providers, placeholder, virtualModelProfiles);
 
   useLayoutEffect(() => {
     if (!open) {
@@ -551,12 +687,14 @@ export function AddProfileForm({
   draft,
   error,
   onChange,
-  providers
+  providers,
+  virtualModelProfiles = []
 }: {
   draft: AddProfileDraft;
   error: string;
   onChange: (patch: Partial<AddProfileDraft>) => void;
   providers: GatewayProviderConfig[];
+  virtualModelProfiles?: VirtualModelProfileConfig[];
 }) {
   const t = useAppText();
 
@@ -590,19 +728,21 @@ export function AddProfileForm({
           <>
             <Field label={t("Model override")}>
               <ProfileModelSelector
-                placeholder={t("Keep Claude Code default")}
-                providers={providers}
-                value={draft.model}
-                onChange={(model) => onChange({ model })}
-              />
+	                placeholder={t("Keep Claude Code default")}
+	                providers={providers}
+	                value={draft.model}
+	                virtualModelProfiles={virtualModelProfiles}
+	                onChange={(model) => onChange({ model })}
+	              />
             </Field>
             <Field label={t("Small fast model")}>
               <ProfileModelSelector
-                placeholder={t("Keep Claude Code default")}
-                providers={providers}
-                value={draft.smallFastModel}
-                onChange={(smallFastModel) => onChange({ smallFastModel })}
-              />
+	                placeholder={t("Keep Claude Code default")}
+	                providers={providers}
+	                value={draft.smallFastModel}
+	                virtualModelProfiles={virtualModelProfiles}
+	                onChange={(smallFastModel) => onChange({ smallFastModel })}
+	              />
             </Field>
           </>
         ) : (
@@ -619,11 +759,12 @@ export function AddProfileForm({
             </div>
             <Field className="sm:col-span-2" label={t("Codex model")}>
               <ProfileModelSelector
-                placeholder={providers[0]?.models[0] && providers[0]?.name ? `${providers[0].name}/${providers[0].models[0]}` : ""}
-                providers={providers}
-                value={draft.model}
-                onChange={(model) => onChange({ model })}
-              />
+	                placeholder={providers[0]?.models[0] && providers[0]?.name ? `${providers[0].name}/${providers[0].models[0]}` : ""}
+	                providers={providers}
+	                value={draft.model}
+	                virtualModelProfiles={virtualModelProfiles}
+	                onChange={(model) => onChange({ model })}
+	              />
             </Field>
           </>
         )}
@@ -652,6 +793,8 @@ export function AddProfileDialog({
   onChange,
   onClose,
   providers,
+  submitting = false,
+  virtualModelProfiles = [],
   onSubmit
 }: {
   canSubmit: boolean;
@@ -661,12 +804,14 @@ export function AddProfileDialog({
   onChange: (patch: Partial<AddProfileDraft>) => void;
   onClose: () => void;
   providers: GatewayProviderConfig[];
+  submitting?: boolean;
+  virtualModelProfiles?: VirtualModelProfileConfig[];
   onSubmit: () => Promise<boolean> | boolean | void;
 }) {
   const t = useAppText();
 
   return (
-    <Dialog onOpenChange={(open) => !open && onClose()} open>
+	    <Dialog onOpenChange={(open) => !open && !submitting && onClose()} open>
       <DialogContent>
         <DialogHeader>
           <div>
@@ -674,17 +819,17 @@ export function AddProfileDialog({
           </div>
         </DialogHeader>
         <DialogBody>
-          <AddProfileForm draft={draft} error={error} onChange={onChange} providers={providers} />
+	          <AddProfileForm draft={draft} error={error} onChange={onChange} providers={providers} virtualModelProfiles={virtualModelProfiles} />
         </DialogBody>
         <DialogFooter>
           <div className="flex justify-end gap-2">
-            <Button onClick={onClose} type="button" variant="outline">
-              {t("Cancel")}
-            </Button>
-            <Button disabled={!canSubmit} onClick={() => void onSubmit()} type="button">
-              {mode === "add" ? <Plus className="h-4 w-4" /> : null}
-              {mode === "edit" ? t("Save") : t("Add")}
-            </Button>
+	            <Button disabled={submitting} onClick={onClose} type="button" variant="outline">
+	              {t("Cancel")}
+	            </Button>
+	            <Button disabled={!canSubmit || submitting} onClick={() => void onSubmit()} type="button">
+	              {submitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : mode === "add" ? <Plus className="h-4 w-4" /> : null}
+	              {mode === "edit" ? t("Save") : t("Add")}
+	            </Button>
           </div>
         </DialogFooter>
       </DialogContent>

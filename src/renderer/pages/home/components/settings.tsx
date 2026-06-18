@@ -1,11 +1,12 @@
 import {
-  Activity, AppConfig, AppCopy, AppLanguagePreference, ArrowDown, ArrowUp, Boxes, Button,
-  cn, Database, Dialog, DialogBody, DialogContent,
+  Activity, AppConfig, AppCopy, AppLanguagePreference, Boxes, Button,
+  closestCenter, cn, CSS, Database, Dialog, DialogBody, DialogContent,
   DialogFooter, DialogHeader, DialogTitle, Field, formatSystemOption, Gauge,
-  Input, languageDisplayName, Layers3, Palette,
+  DndContext, DragEndEvent, Input, KeyboardSensor, languageDisplayName, Layers3, Palette,
   PanelLeftOpen, Power, ReactNode, ResolvedLanguage, ResolvedTheme, Select, SelectControl,
-  SettingsPageId, themeDisplayName, TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant,
-  trayMascotIconUrls, arrayMove, defaultTrayWidgetVariant, isTraySingletonWidgetType, normalizeTrayWidget, normalizeTrayWidgets, Switch, trayWidgetVariantOptions, useMemo, useState,
+  PointerSensor, rectSortingStrategy, SettingsPageId, SortableContext, sortableKeyboardCoordinates, themeDisplayName,
+  TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant,
+  trayMascotIconUrls, arrayMove, defaultTrayWidgetVariant, isTraySingletonWidgetType, normalizeTrayWidget, normalizeTrayWidgets, Switch, trayWidgetVariantOptions, useEffect, useMemo, useRef, useSensor, useSensors, useSortable, useState,
   X
 } from "../shared";
 export function AppSettingsDialog({
@@ -228,7 +229,9 @@ function TraySettingsPage({
   trayProgressTargetTokens: number;
   trayWidgets: TrayWidgetConfig[];
 }) {
+  const pageRef = useRef<HTMLDivElement>(null);
   const [selectedTrayWidgetId, setSelectedTrayWidgetId] = useState<string>();
+  const [pendingScrollTrayWidgetId, setPendingScrollTrayWidgetId] = useState<string>();
   const widgets = useMemo(() => normalizeTrayWidgets(trayWidgets), [trayWidgets]);
   const selectedWidget = widgets.find((widget) => widget.id === selectedTrayWidgetId) ?? widgets[0];
   const selectedWidgetIndex = selectedWidget ? widgets.findIndex((widget) => widget.id === selectedWidget.id) : -1;
@@ -243,9 +246,18 @@ function TraySettingsPage({
   const trayT = (value: string) => copy.text[value] ?? value;
   const selectedCategory = selectedWidget ? trayComponentCategoryForType(selectedWidget.type) : "provider-tabs";
   const selectedCategoryOption = paletteItems.find((item) => item.value === selectedCategory) ?? paletteItems[0];
-  const selectedDataOptions = selectedCategoryOption.dataOptions;
   const selectedStyleOptions = selectedWidget ? trayWidgetVariantOptions(selectedWidget.type) : [];
   const SelectedTrayCategoryIcon = selectedCategoryOption.icon;
+  const trayPreviewSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 6
+      }
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates
+    })
+  );
 
   function commitWidgets(nextWidgets: TrayWidgetConfig[]) {
     onChangeTrayWidgets(normalizeTrayWidgets(nextWidgets));
@@ -266,6 +278,7 @@ function TraySettingsPage({
     }
     commitWidgets([...widgets, widget]);
     setSelectedTrayWidgetId(id);
+    setPendingScrollTrayWidgetId(id);
   }
 
   function toggleSingletonTrayWidget(template: TrayWidgetConfig, enabled: boolean) {
@@ -288,50 +301,11 @@ function TraySettingsPage({
     commitWidgets(widgets.map((widget) => widget.id === id ? normalizeTrayWidget({ ...widget, ...patch }) ?? widget : widget));
   }
 
-  function changeSelectedTrayWidgetType(type: TrayWidgetType) {
-    if (!selectedWidget) {
-      return;
-    }
-    const existingSingleton = isTraySingletonWidgetType(type)
-      ? widgets.find((widget) => widget.type === type && widget.id !== selectedWidget.id)
-      : undefined;
-    if (existingSingleton) {
-      const nextWidgets = widgets.filter((widget) => widget.id !== selectedWidget.id);
-      commitWidgets(nextWidgets);
-      setSelectedTrayWidgetId(existingSingleton.id);
-      return;
-    }
-    updateTrayWidget(selectedWidget.id, { type, variant: defaultTrayWidgetVariant(type) });
-  }
-
-  function changeTrayWidgetCategory(category: TrayComponentCategory) {
-    if (!selectedWidget) {
-      return;
-    }
-    const type = trayWidgetTypeForCategory(category, selectedWidget.type);
-    changeSelectedTrayWidgetType(type);
-  }
-
-  function changeTrayWidgetData(type: TrayWidgetType) {
-    changeSelectedTrayWidgetType(type);
-  }
-
   function changeTrayWidgetVariant(variant: TrayWidgetVariant) {
     if (!selectedWidget) {
       return;
     }
     updateTrayWidget(selectedWidget.id, { variant });
-  }
-
-  function moveTrayWidget(direction: -1 | 1) {
-    if (!selectedWidget || selectedWidgetIndex < 0) {
-      return;
-    }
-    const nextIndex = selectedWidgetIndex + direction;
-    if (nextIndex < 0 || nextIndex >= widgets.length) {
-      return;
-    }
-    commitWidgets(arrayMove(widgets, selectedWidgetIndex, nextIndex));
   }
 
   function removeSelectedTrayWidget() {
@@ -353,8 +327,32 @@ function TraySettingsPage({
       : currentId);
   }
 
+  useEffect(() => {
+    if (!selectedWidget || selectedWidgetIndex < 0) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || (event.key !== "Delete" && event.key !== "Backspace")) {
+        return;
+      }
+      const target = event.target instanceof Element ? event.target : undefined;
+      if (isEditableKeyboardTarget(target)) {
+        return;
+      }
+      if (target && target !== document.body && !pageRef.current?.contains(target)) {
+        return;
+      }
+      event.preventDefault();
+      removeTrayWidget(selectedWidget.id);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedWidget, selectedWidgetIndex, widgets]);
+
   return (
-    <div className="grid min-h-[520px] grid-rows-[auto_auto_auto] gap-4">
+    <div className="grid min-h-[520px] grid-rows-[auto_auto_auto] gap-4" ref={pageRef}>
       <h3 className="text-[15px] font-semibold text-foreground">{copy.settings.tray}</h3>
       <div className="flex flex-wrap items-end gap-3 rounded-md border border-border bg-background p-3">
         <Field className="min-w-[220px] flex-1" label={copy.settings.trayIcon}>
@@ -454,9 +452,13 @@ function TraySettingsPage({
               <TrayWindowPreview
                 copy={copy}
                 iconPreference={trayIconPreference}
+                pendingScrollWidgetId={pendingScrollTrayWidgetId}
                 selectedWidgetId={selectedWidget?.id}
                 widgets={widgets}
+                onPendingScrollComplete={() => setPendingScrollTrayWidgetId(undefined)}
                 onSelectWidget={setSelectedTrayWidgetId}
+                onSortWidgets={commitWidgets}
+                sensors={trayPreviewSensors}
               />
             </div>
           </div>
@@ -479,22 +481,6 @@ function TraySettingsPage({
                 </div>
               </div>
 
-              <Field label={trayT("Component category")}>
-                <SelectControl
-                  onChange={(value) => changeTrayWidgetCategory(value as TrayComponentCategory)}
-                  options={paletteItems.map((option) => ({ label: option.label, value: option.value }))}
-                  value={selectedCategory}
-                />
-              </Field>
-
-              <Field label={trayT("Data")}>
-                <SelectControl
-                  onChange={(value) => changeTrayWidgetData(value as TrayWidgetType)}
-                  options={selectedDataOptions}
-                  value={selectedWidget.type}
-                />
-              </Field>
-
               {selectedStyleOptions.length > 0 ? (
                 <Field label={copy.settings.trayComponentStyle}>
                   <SelectControl
@@ -504,17 +490,6 @@ function TraySettingsPage({
                   />
                 </Field>
               ) : null}
-
-              <div className="grid grid-cols-2 gap-2">
-                <Button disabled={selectedWidgetIndex <= 0} onClick={() => moveTrayWidget(-1)} size="sm" type="button" variant="outline">
-                  <ArrowUp className="h-3.5 w-3.5" />
-                  {trayT("Move up")}
-                </Button>
-                <Button disabled={selectedWidgetIndex < 0 || selectedWidgetIndex >= widgets.length - 1} onClick={() => moveTrayWidget(1)} size="sm" type="button" variant="outline">
-                  <ArrowDown className="h-3.5 w-3.5" />
-                  {trayT("Move down")}
-                </Button>
-              </div>
 
               <Button className="w-full justify-center" onClick={removeSelectedTrayWidget} size="sm" type="button" variant="outline">
                 {trayT("Remove widget")}
@@ -616,15 +591,6 @@ function trayComponentCategoryForType(type: TrayWidgetType): TrayComponentCatego
   if (type === "token-flow") return "trend";
   if (type === "stats") return "metrics";
   return "breakdown";
-}
-
-function trayWidgetTypeForCategory(category: TrayComponentCategory, currentType: TrayWidgetType): TrayWidgetType {
-  if (category === "provider-tabs") return "source-tabs";
-  if (category === "header") return "header";
-  if (category === "account") return "account";
-  if (category === "trend") return "token-flow";
-  if (category === "metrics") return "stats";
-  return trayComponentCategoryForType(currentType) === "breakdown" ? currentType : "token-mix";
 }
 
 function trayWidgetTypeLabel(type: TrayWidgetType, copy: AppCopy): string {
@@ -732,21 +698,66 @@ function TrayProgressPreview() {
   );
 }
 
+function isEditableKeyboardTarget(target: Element | undefined): boolean {
+  return Boolean(target?.closest("input, textarea, select, [contenteditable='true'], [contenteditable='plaintext-only'], [role='textbox']"));
+}
+
 function TrayWindowPreview({
   copy,
   iconPreference,
+  pendingScrollWidgetId,
   selectedWidgetId,
   widgets,
-  onSelectWidget
+  onPendingScrollComplete,
+  onSelectWidget,
+  onSortWidgets,
+  sensors
 }: {
   copy: AppCopy;
   iconPreference: AppConfig["trayIcon"];
+  pendingScrollWidgetId?: string;
   selectedWidgetId?: string;
   widgets: TrayWidgetConfig[];
+  onPendingScrollComplete?: () => void;
   onSelectWidget?: (id: string) => void;
+  onSortWidgets?: (widgets: TrayWidgetConfig[]) => void;
+  sensors: ReturnType<typeof useSensors>;
 }) {
+  const previewRef = useRef<HTMLDivElement>(null);
+
+  function finishWidgetSort(event: DragEndEvent) {
+    const activeId = String(event.active.id);
+    const overId = event.over ? String(event.over.id) : "";
+    if (!overId || activeId === overId) {
+      return;
+    }
+    const activeIndex = widgets.findIndex((widget) => widget.id === activeId);
+    const overIndex = widgets.findIndex((widget) => widget.id === overId);
+    if (activeIndex < 0 || overIndex < 0 || activeIndex === overIndex) {
+      return;
+    }
+    onSortWidgets?.(arrayMove(widgets, activeIndex, overIndex));
+    onSelectWidget?.(activeId);
+  }
+
+  useEffect(() => {
+    if (!pendingScrollWidgetId || !widgets.some((widget) => widget.id === pendingScrollWidgetId)) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      const element = findTrayWidgetElement(previewRef.current, pendingScrollWidgetId);
+      if (!element) {
+        return;
+      }
+      element.scrollIntoView({ block: "center", inline: "nearest" });
+      onPendingScrollComplete?.();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [onPendingScrollComplete, pendingScrollWidgetId, widgets]);
+
   return (
-    <div className="h-[740px] min-w-0 overflow-y-auto overflow-x-hidden rounded-[14px] border border-slate-950/15 bg-slate-950 p-3 text-slate-50 shadow-[0_18px_42px_rgba(15,23,42,.28)]">
+    <div className="h-[740px] min-w-0 overflow-y-auto overflow-x-hidden rounded-[14px] border border-slate-950/15 bg-slate-950 p-3 text-slate-50 shadow-[0_18px_42px_rgba(15,23,42,.28)]" ref={previewRef}>
       <div className="mb-3 flex min-w-0 items-center justify-between gap-3 border-b border-white/10 pb-2">
         <div className="flex min-w-0 items-center gap-2">
           <TrayIconPreview className="h-7 w-7 border-white/15 bg-white/10" preference={iconPreference} />
@@ -760,22 +771,80 @@ function TrayWindowPreview({
         </span>
       </div>
 
-      <div className="space-y-2">
-        {widgets.map((widget) => (
-          <TrayPreviewWidget
-            copy={copy}
-            key={widget.id}
-            selected={widget.id === selectedWidgetId}
-            widget={widget}
-            onSelect={onSelectWidget}
-          />
-        ))}
-      </div>
+      <DndContext collisionDetection={closestCenter} sensors={sensors} onDragEnd={finishWidgetSort}>
+        <SortableContext items={widgets.map((widget) => widget.id)} strategy={rectSortingStrategy}>
+          <div className="space-y-2">
+            {widgets.map((widget) => (
+              <SortableTrayPreviewWidget
+                copy={copy}
+                key={widget.id}
+                selected={widget.id === selectedWidgetId}
+                widget={widget}
+                onSelect={onSelectWidget}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
       {widgets.length === 0 ? (
         <div className="flex min-h-[260px] items-center justify-center rounded-[10px] border border-white/10 bg-white/[.03] px-4 text-center text-[12px] font-medium text-slate-400">
           {copy.settings.trayPreviewEmpty}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function findTrayWidgetElement(root: HTMLElement | null, id: string): HTMLElement | undefined {
+  if (!root) {
+    return undefined;
+  }
+  return Array.from(root.querySelectorAll<HTMLElement>("[data-tray-widget-id]"))
+    .find((element) => element.dataset.trayWidgetId === id);
+}
+
+function SortableTrayPreviewWidget({
+  copy,
+  selected,
+  widget,
+  onSelect
+}: {
+  copy: AppCopy;
+  selected: boolean;
+  widget: TrayWidgetConfig;
+  onSelect?: (id: string) => void;
+}) {
+  const {
+    attributes,
+    isDragging,
+    listeners,
+    setNodeRef,
+    transform,
+    transition
+  } = useSortable({
+    id: widget.id
+  });
+
+  return (
+    <div
+      className={cn(
+        "cursor-grab touch-none rounded-[10px]",
+        isDragging && "relative z-20 cursor-grabbing opacity-70"
+      )}
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition
+      }}
+      {...attributes}
+      {...listeners}
+    >
+      <TrayPreviewWidget
+        copy={copy}
+        selected={selected}
+        widget={widget}
+        onSelect={onSelect}
+      />
     </div>
   );
 }
@@ -811,7 +880,7 @@ function TrayPreviewWidget({
   }
 
   if (!onSelect) {
-    return <div>{content}</div>;
+    return <div data-tray-widget-id={widget.id}>{content}</div>;
   }
 
   return (
@@ -820,6 +889,7 @@ function TrayPreviewWidget({
         "block w-full rounded-[10px] text-left transition",
         selected ? "outline outline-2 outline-teal-300/80 outline-offset-2" : "outline outline-1 outline-transparent hover:outline-white/18"
       )}
+      data-tray-widget-id={widget.id}
       onClick={() => onSelect(widget.id)}
       type="button"
     >
@@ -855,7 +925,19 @@ function TrayPreviewHeader({ copy }: { copy: AppCopy }) {
           {trayPreviewText(copy, "Today", "Today")} - {trayPreviewText(copy, "All providers", "All providers", "全部供应商")}
         </div>
       </div>
-      <div className="shrink-0 rounded-md border border-white/10 bg-slate-900/70 px-2 py-0.5 text-[10px] font-semibold text-slate-200">{trayPreviewText(copy, "7d", "7d")}</div>
+      <div className="flex shrink-0 rounded-md border border-white/10 bg-slate-900/70 p-0.5">
+        {["24h", "7d", "30d"].map((range) => (
+          <span
+            className={cn(
+              "h-5 rounded-[5px] px-1.5 text-[10px] font-bold",
+              range === "30d" ? "bg-white/14 text-slate-50" : "text-slate-400"
+            )}
+            key={range}
+          >
+            {trayPreviewText(copy, range, range)}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

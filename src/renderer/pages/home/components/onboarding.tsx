@@ -216,10 +216,11 @@ export function OnboardingView({
                   <div className="mx-auto w-full max-w-[720px]">
                     <AddProfileForm
                       draft={profileDraft}
-                      error={profileError}
-                      onChange={onChangeProfile}
-                      providers={config.Providers}
-                    />
+	                      error={profileError}
+	                      onChange={onChangeProfile}
+	                      providers={config.Providers}
+	                      virtualModelProfiles={config.virtualModelProfiles ?? []}
+	                    />
                   </div>
                 </div>
 

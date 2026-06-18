@@ -9,7 +9,6 @@ import {
   browserRendererHtmlInput,
   copyAppAssets,
   copyBrowserRendererHtml,
-  copyBuiltInMcpServers,
   copyMarketplacePlugins,
   copyRendererHtml,
   copyTrayRendererHtml,
@@ -73,7 +72,6 @@ function restartElectron() {
 
 cleanDist();
 copyAppAssets();
-copyBuiltInMcpServers();
 copyMarketplacePlugins();
 copyBrowserRendererHtml();
 copyRendererHtml();

@@ -32,8 +32,9 @@
         "assetAutoUpdate": true,
         "autoAnswerQuestions": true,
         "assetDir": "/absolute/path/to/claude-design-assets",
-        "scriptPath": "/design/assets/index-DWa5J5J9.js",
-        "stylePath": "/design/assets/index-DZOB93ZB.css",
+        // Optional. Leave unset to auto-discover the current hashed entry assets.
+        // "scriptPath": "/design/assets/index-<hash>.js",
+        // "stylePath": "/design/assets/index-<hash>.css",
         "upstreamOrigin": "https://claude.ai",
         // Optional. Missing lazy-loaded assets are fetched from these origins in order.
         "upstreamOrigins": ["https://claude.ai"],

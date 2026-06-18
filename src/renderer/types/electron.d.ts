@@ -7,11 +7,16 @@ import type {
   AppInfo,
   ApiKeyConfig,
   ClaudeAppGatewayApplyResult,
+  GatewayMcpServerConfig,
+  GatewayMcpToolInfo,
   GatewayProviderProbeRequest,
   GatewayProviderProbeResult,
   GatewayStatus,
   PluginDirectorySelection,
   PluginMarketplaceEntry,
+  ProfileOpenCommandResult,
+  ProfileOpenRequest,
+  ProfileOpenResult,
   ProviderAccountTestRequest,
   ProviderAccountTestResult,
   ProviderIconDetectionRequest,
@@ -47,6 +52,7 @@ declare global {
       getGatewayStatus: () => Promise<GatewayStatus>;
       getOnboardingFinished: () => Promise<boolean>;
       getPendingProviderDeepLinks: () => Promise<ProviderDeepLinkRequest[]>;
+      getProfileOpenCommand: (request: ProfileOpenRequest) => Promise<ProfileOpenCommandResult>;
       getProviderAccountSnapshots: (provider?: string) => Promise<ProviderAccountSnapshot[]>;
       getPluginMarketplace: () => Promise<PluginMarketplaceEntry[]>;
       getProxyCertificateStatus: () => Promise<ProxyCertificateStatus>;
@@ -55,8 +61,10 @@ declare global {
       getRequestLogs: (filter?: RequestLogListFilter) => Promise<RequestLogPage>;
       getUsageStats: (range?: UsageStatsRange, filter?: UsageStatsFilter) => Promise<UsageStatsSnapshot>;
       installProxyCertificate: () => Promise<ProxyCertificateInstallResult>;
+      listMcpServerTools: (server: GatewayMcpServerConfig) => Promise<GatewayMcpToolInfo[]>;
       openBuiltInBrowser: () => Promise<void>;
       openExternal: (url: string) => Promise<void>;
+      openProfile: (request: ProfileOpenRequest) => Promise<ProfileOpenResult>;
       probeProvider: (request: GatewayProviderProbeRequest) => Promise<GatewayProviderProbeResult>;
       quitApp: () => Promise<void>;
       revealProxyCertificate: () => Promise<void>;

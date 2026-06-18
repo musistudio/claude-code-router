@@ -5,6 +5,7 @@ import path from "node:path";
 import type { ApiKeyConfig, AppConfig, ProfileApplyResult, ProfileClientApplyStatus, ProfileConfig } from "../shared/app";
 import { replacePersistedApiKeys } from "./api-key-store";
 import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
+import { codexModelCatalogBase64 } from "./codex-model-catalog";
 import { CONFIGDIR } from "./constants";
 import { normalizeRouteSelector } from "./gateway/claude-code-router-plugin";
 
@@ -126,6 +127,7 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
       ? writeCodexCliMiddleware(profile, {
           configFormat,
           configFile,
+          modelCatalogBase64: codexModelCatalogBase64(config, model),
           model,
           providerId
         })
@@ -388,6 +390,7 @@ function writeCodexCliMiddleware(
   values: {
     configFormat: "legacy" | "separate_profile_files";
     configFile: string;
+    modelCatalogBase64: string;
     model: string;
     providerId: string;
   }
@@ -429,6 +432,7 @@ function codexMiddlewareShellScript(
   values: {
     configFormat: "legacy" | "separate_profile_files";
     configFile: string;
+    modelCatalogBase64: string;
     model: string;
     providerId: string;
   },
@@ -446,17 +450,21 @@ function codexMiddlewareShellScript(
     `export CCR_REAL_CODEX_CLI_PATH=${shellQuote(codexCli)}`,
     `export CCR_CODEX_PROFILE=${shellQuote(values.providerId)}`,
     `export CCR_CODEX_MODEL=${shellQuote(values.model)}`,
+    `export CCR_CODEX_MODEL_CATALOG_B64=${shellQuote(values.modelCatalogBase64)}`,
     `export CCR_CODEX_MODEL_PROVIDER=${shellQuote(values.providerId)}`,
     `export CCR_CODEX_REMOTE_FRONTEND_MODE=${shellQuote(remoteFrontendMode)}`,
     `export CCR_CODEX_PROFILE_CONFIG_FORMAT=${shellQuote(values.configFormat)}`,
     `export CCR_PROFILE_SCOPE=${shellQuote(normalizeProfileScope(profile.scope))}`,
-    `export CCR_PROFILE_SURFACE=${shellQuote(surface)}`,
+    `: "\${CCR_PROFILE_SURFACE:=${surface}}"`,
+    "export CCR_PROFILE_SURFACE",
     `export CODEXL_REAL_CODEX_CLI_PATH=${shellQuote(codexCli)}`,
     `export CODEXL_CODEX_PROFILE=${shellQuote(values.providerId)}`,
     `export CODEXL_CODEX_MODEL_PROVIDER=${shellQuote(values.providerId)}`,
     `export CODEXL_CODEX_WORKSPACE_NAME=${shellQuote(profile.name || values.providerId)}`,
     `export CODEXL_CODEX_CORE_MODE=${shellQuote(remoteFrontendMode)}`,
     `export CODEXL_CODEX_PROFILE_CONFIG_FORMAT=${shellQuote(values.configFormat)}`,
+    ": \"${CODEXL_PROFILE_SURFACE:=$CCR_PROFILE_SURFACE}\"",
+    "export CODEXL_PROFILE_SURFACE",
     "NODE_BIN=${CCR_NODE_BIN:-node}",
     `exec "$NODE_BIN" ${shellQuote(runtimeFile)} "$@"`,
     ""
@@ -468,6 +476,7 @@ function codexMiddlewareCmdScript(
   values: {
     configFormat: "legacy" | "separate_profile_files";
     configFile: string;
+    modelCatalogBase64: string;
     model: string;
     providerId: string;
   },
@@ -487,17 +496,19 @@ function codexMiddlewareCmdScript(
     `set "CCR_REAL_CODEX_CLI_PATH=${codexCli.replace(/"/g, '\\"')}"`,
     `set "CCR_CODEX_PROFILE=${providerId}"`,
     `set "CCR_CODEX_MODEL=${values.model.replace(/"/g, '\\"')}"`,
+    `set "CCR_CODEX_MODEL_CATALOG_B64=${values.modelCatalogBase64}"`,
     `set "CCR_CODEX_MODEL_PROVIDER=${providerId}"`,
     `set "CCR_CODEX_REMOTE_FRONTEND_MODE=${remoteFrontendMode}"`,
     `set "CCR_CODEX_PROFILE_CONFIG_FORMAT=${values.configFormat}"`,
     `set "CCR_PROFILE_SCOPE=${normalizeProfileScope(profile.scope)}"`,
-    `set "CCR_PROFILE_SURFACE=${surface}"`,
+    `if not defined CCR_PROFILE_SURFACE set "CCR_PROFILE_SURFACE=${surface}"`,
     `set "CODEXL_REAL_CODEX_CLI_PATH=${codexCli.replace(/"/g, '\\"')}"`,
     `set "CODEXL_CODEX_PROFILE=${providerId}"`,
     `set "CODEXL_CODEX_MODEL_PROVIDER=${providerId}"`,
     `set "CODEXL_CODEX_WORKSPACE_NAME=${workspaceName}"`,
     `set "CODEXL_CODEX_CORE_MODE=${remoteFrontendMode}"`,
     `set "CODEXL_CODEX_PROFILE_CONFIG_FORMAT=${values.configFormat}"`,
+    "if not defined CODEXL_PROFILE_SURFACE set \"CODEXL_PROFILE_SURFACE=%CCR_PROFILE_SURFACE%\"",
     "if not defined CCR_NODE_BIN set \"CCR_NODE_BIN=node\"",
     "if \"%~1\"==\"\" (",
     `  "%CCR_NODE_BIN%" "${runtimeFile.replace(/"/g, '\\"')}"`,
@@ -661,8 +672,8 @@ function sanitizeProfilePathSegment(value: string): string {
   return value.trim().replace(/[^a-zA-Z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
-function normalizeCodexConfigFormat(value: ProfileConfig["configFormat"]): "legacy" | "separate_profile_files" {
-  return value === "separate_profile_files" ? "separate_profile_files" : "legacy";
+function normalizeCodexConfigFormat(_value: ProfileConfig["configFormat"]): "legacy" | "separate_profile_files" {
+  return "separate_profile_files";
 }
 
 function normalizeCodexRemoteFrontendMode(value: ProfileConfig["remoteFrontendMode"]): "app" | "cli" | "claude-code" {

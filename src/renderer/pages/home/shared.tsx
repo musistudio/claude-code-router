@@ -114,16 +114,16 @@ import trayCyanIconUrl from "../../../../assets/tray-cyan.png";
 import trayOrangeIconUrl from "../../../../assets/tray-orange.png";
 import trayVioletIconUrl from "../../../../assets/tray-violet.png";
 import {
-  BUILTIN_UNIMCP_PACKAGE,
-  BUILTIN_UNIMCP_SERVER_NAME,
-  BUILTIN_UNIMCP_VISION_TOOL_NAME,
-  BUILTIN_UNIMCP_WEB_SEARCH_TOOL_NAME,
+  BUILTIN_FUSION_TOOL_SERVER_NAME,
+  BUILTIN_FUSION_VISION_TOOL_NAME,
+  BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME,
   DEFAULT_OVERVIEW_WIDGETS,
   DEFAULT_TRAY_COMPONENT_VARIANTS,
   DEFAULT_TRAY_WIDGETS,
   DEFAULT_TRAY_WINDOW_MODULES,
   OVERVIEW_WIDGET_SIZE_VALUES,
   TRAY_SINGLETON_WIDGET_TYPES,
+  TRAY_TOP_WIDGET_TYPES,
   TRAY_WINDOW_MODULE_IDS
 } from "../../../shared/app";
 import type {
@@ -142,6 +142,7 @@ import type {
   GatewayMcpServerConfig,
   GatewayMcpServerTransport,
   GatewayMcpStdioMessageMode,
+  GatewayMcpToolInfo,
   GatewayStatus,
   OverviewMetricKind,
   OverviewWidgetConfig,
@@ -162,6 +163,7 @@ import type {
   ProviderDeepLinkPayload,
   ProviderDeepLinkRequest,
   ProfileConfig,
+  ProfileOpenSurface,
   CodexProfileConfigFormat,
   ProfileScope,
   ProfileSurface,
@@ -194,6 +196,10 @@ import type {
   UsageTotals,
   VirtualModelBaseModelMode,
   VirtualModelExecutionMode,
+  VirtualModelFusionCustomToolConfig,
+  VirtualModelFusionVisionConfig,
+  VirtualModelFusionWebSearchConfig,
+  VirtualModelFusionWebSearchProvider,
   VirtualModelProfileConfig,
   VirtualModelToolVisibility
 } from "../../../shared/app";
@@ -231,8 +237,8 @@ export  {
   DialogTitle, Input, Label, PopoverContent, Select, Switch, Textarea,
   cn, claudeCodeLogoUrl, codexLogoUrl, onboardingMascotSpriteUrl, anthropicProviderIconUrl, bailianProviderIconUrl, deepseekProviderIconUrl,
   geminiProviderIconUrl, mistralProviderIconUrl, moonshotProviderIconUrl, openaiProviderIconUrl, openrouterProviderIconUrl, siliconflowProviderIconUrl, zaiGlobalCodingProviderIconUrl,
-  zaiGlobalGeneralProviderIconUrl, zhipuCnCodingProviderIconUrl, zhipuCnGeneralProviderIconUrl, trayCyanIconUrl, trayOrangeIconUrl, trayVioletIconUrl, BUILTIN_UNIMCP_PACKAGE,
-  BUILTIN_UNIMCP_SERVER_NAME, BUILTIN_UNIMCP_VISION_TOOL_NAME, BUILTIN_UNIMCP_WEB_SEARCH_TOOL_NAME, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS,
+  zaiGlobalGeneralProviderIconUrl, zhipuCnCodingProviderIconUrl, zhipuCnGeneralProviderIconUrl, trayCyanIconUrl, trayOrangeIconUrl, trayVioletIconUrl, BUILTIN_FUSION_TOOL_SERVER_NAME,
+  BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS,
   customProviderPresetId, defaultProviderAccountConfig, findProviderPreset, findProviderPresetByBaseUrl, primaryProviderPresetEndpoint, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey,
   providerIdentitySafetyIssue, providerPresets, standardProviderAccountConfig, normalizeProviderBaseUrl, providerUrlWithDefaultScheme
 };
@@ -240,19 +246,19 @@ export type {
   HTMLAttributes, ReactPointerEvent, ReactNode, CollisionDetection, DragEndEvent, DragOverEvent, DragStartEvent,
   LucideIcon, AgentAnalysisFilter, AgentAnalysisSnapshot, AgentKind, AppConfig, AppInfo, ApiKeyConfig,
   ApiKeyLimitConfig, GatewayProviderConfig, GatewayProviderCapability, GatewayPluginAppConfig, GatewayProviderProbeResult, GatewayProviderProtocol, GatewayMcpServerConfig,
-  GatewayMcpServerTransport, GatewayMcpStdioMessageMode, GatewayStatus, OverviewMetricKind, OverviewWidgetConfig, OverviewWidgetSize, OverviewWidgetType,
+  GatewayMcpServerTransport, GatewayMcpStdioMessageMode, GatewayMcpToolInfo, GatewayStatus, OverviewMetricKind, OverviewWidgetConfig, OverviewWidgetSize, OverviewWidgetType,
   OverviewWidgetVariant, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProviderAccountConfig, ProviderAccountConnectorConfig, ProviderAccountHttpJsonConnectorConfig,
   ProviderAccountMeter, ProviderAccountStandardConnectorConfig, ProviderAccountSnapshot, ProviderAccountTestPath, ProviderAccountTestResult, ProviderDeepLinkPayload, ProviderDeepLinkRequest,
-  ProfileConfig, CodexProfileConfigFormat, ProfileScope, ProfileSurface, ProxyCertificateInstallResult, ProxyCertificateStatus, ProxyNetworkBody,
+  ProfileConfig, ProfileOpenSurface, CodexProfileConfigFormat, ProfileScope, ProfileSurface, ProxyCertificateInstallResult, ProxyCertificateStatus, ProxyNetworkBody,
   ProxyNetworkExchange, ProxyNetworkSnapshot, ProxyStatus, RequestLogBody, RequestLogEntry, RequestLogListFilter, RequestLogPage,
   RequestLogStatusFilter, RouterConfig, RouterFallbackConfig, RouterFallbackMode, RouterRule, RouterRuleType, TrayComponentVariants,
   TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant, TrayWindowModuleId, UsageComparisonRow, UsageSeriesPoint, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, UsageTotals,
-  VirtualModelBaseModelMode, VirtualModelExecutionMode, VirtualModelProfileConfig, VirtualModelToolVisibility, ProviderIdentitySafetyIssue, ProviderPreset, ProviderPresetEndpoint
+  VirtualModelBaseModelMode, VirtualModelExecutionMode, VirtualModelFusionCustomToolConfig, VirtualModelFusionVisionConfig, VirtualModelFusionWebSearchConfig, VirtualModelFusionWebSearchProvider, VirtualModelProfileConfig, VirtualModelToolVisibility, ProviderIdentitySafetyIssue, ProviderPreset, ProviderPresetEndpoint
 };
 
 
 export type ViewId = "onboarding" | "overview" | "observability" | "api-keys" | "server" | "profile" | "networking" | "logs" | "providers" | "models" | "routing" | "virtual-models" | "extensions";
-export type NavigationId = ViewId | "browser";
+export type NavigationId = ViewId;
 export type OnboardingStepId = "provider" | "profile" | "enter";
 export type AppLanguagePreference = "system" | "en" | "zh";
 export type ResolvedLanguage = "en" | "zh";
@@ -349,13 +355,12 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
     navigation: {
       onboarding: "Onboarding",
       "api-keys": "API Keys",
-      browser: "APPs",
       extensions: "Extensions",
       logs: "Logs",
       networking: "Networking",
       observability: "Observability",
       overview: "Overview",
-      profile: "Profile",
+      profile: "Agent Config",
       providers: "Providers",
       models: "Models",
       routing: "Routing",
@@ -437,6 +442,9 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "时间": "Time",
       "状态": "Status",
       "模型": "Model",
+      "Stream": "Stream",
+      "Streaming": "Streaming",
+      "Non-streaming": "Non-streaming",
       "令牌": "Tokens",
       "成本": "Cost",
       "持续时间": "Duration",
@@ -471,8 +479,10 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Service": "Service",
       "Account Balance": "Account Balance",
       "Account component": "Account component",
+      "All accounts": "All accounts",
       "Add widget": "Add widget",
       "Analysis component": "Analysis component",
+      "Arc": "Arc",
       "Area": "Area",
       "Average latency": "Average latency",
       "Bar": "Bar",
@@ -502,6 +512,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Metric component": "Metric component",
       "Move down": "Move down",
       "Move up": "Move up",
+      "Nested rings": "Nested rings",
       "No widget selected": "No widget selected",
       "No widgets configured": "No widgets configured",
       "Overview layout": "Overview layout",
@@ -513,7 +524,11 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Requests, tokens, cost": "Requests, tokens, cost",
       "Remove widget": "Remove widget",
       "Reset layout": "Reset layout",
+      "Resize widget height": "Resize widget height",
+      "Resize widget size": "Resize widget size",
+      "Resize widget width": "Resize widget width",
       "Ring": "Ring",
+      "Semicircle": "Semicircle",
       "Small": "Small",
       "Stacked": "Stacked",
       "Status component": "Status component",
@@ -537,7 +552,34 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Edit virtual model": "Edit Fusion",
       "Fusion combines a model with another model or tools into a new model.": "Fusion combines a model with another model or tools into a new model.",
       "Fusion example": "Example: GLM 5.2 + GLM 5V Turbo = GLM 5.2V",
-      "Image recognition": "Image recognition",
+      "Vision tool configuration": "Vision tool configuration",
+      "Choose a configured gateway model for image understanding.": "Choose a configured gateway model for image understanding.",
+      "Vision model": "Vision model",
+      "Vision model is required.": "Vision model is required.",
+      "Web search configuration": "Web search configuration",
+      "Search provider": "Search provider",
+	      "Provider configuration": "Provider configuration",
+	      "Add variable": "Add variable",
+	      "Add custom MCP": "Add custom MCP",
+	      "Add custom MCP tool": "Add custom MCP tool",
+	      "Custom MCP tool": "Custom MCP tool",
+	      "Discover tools": "Discover tools",
+	      "MCP tools": "MCP tools",
+	      "MCP server": "MCP server",
+      "Arguments": "Arguments",
+      "Working directory": "Working directory",
+      "API key env": "API key env",
+      "Tool name": "Tool name",
+      "Third-party tool environment": "Third-party tool environment",
+      "Environment variables": "Environment variables",
+      "Tool name is required.": "Tool name is required.",
+	      "Environment variable keys are required when values are set.": "Environment variable keys are required when values are set.",
+	      "MCP tool discovery is available in the Electron app.": "MCP tool discovery is available in the Electron app.",
+	      "No MCP servers configured": "No MCP servers configured",
+	      "No tools discovered": "No tools discovered",
+	      "Select tool": "Select tool",
+	      "Tool discovery failed": "Tool discovery failed",
+	      "Image recognition": "Image recognition",
       "Image recognition and Web Search": "Image recognition and Web Search",
       "Generic image understanding tool for OCR, screenshot analysis, chart reading, UI comparison, error diagnosis, and other multi-image tasks.": "Generic image understanding tool for OCR, screenshot analysis, chart reading, UI comparison, error diagnosis, and other multi-image tasks.",
       "Generic web search tool supporting Brave, Bing, Google CSE, Serper, SerpAPI, Tavily, and Exa.": "Generic web search tool supporting Brave, Bing, Google CSE, Serper, SerpAPI, Tavily, and Exa.",
@@ -559,13 +601,12 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
     navigation: {
       onboarding: "上手引导",
       "api-keys": "API 密钥",
-      browser: "APPs",
       extensions: "扩展",
       logs: "日志",
       networking: "网络",
       observability: "观测",
       overview: "概览",
-      profile: "配置",
+      profile: "Agent配置",
       providers: "供应商",
       models: "模型",
       routing: "路由",
@@ -660,8 +701,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Add API Key": "添加 API 密钥",
       "Add API key": "添加 API 密钥",
       "Add limit": "添加限制",
-      "Add Profile": "添加配置档案",
-      "Add profile": "添加配置档案",
+      "Add Profile": "添加配置",
+      "Add profile": "添加配置",
       "Add Provider": "添加供应商",
       "Add provider": "添加供应商",
       "Add Routing Rule": "添加路由规则",
@@ -698,6 +739,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Client Analysis": "客户端分析",
       "Client Signals": "客户端信号",
       "Claude Code": "Claude Code",
+      "CLI": "CLI",
+      "CLI command": "CLI 命令",
       "Close": "关闭",
       "Close dialog": "关闭弹窗",
       "Code": "代码",
@@ -716,6 +759,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Configure plugin": "配置插件",
       "Configure plugin route": "配置插件路由",
       "Configure Routing": "配置路由",
+      "Copy": "复制",
       "Continue": "继续",
       "Custom config path": "自定义配置路径",
       "Core gateway": "核心网关",
@@ -742,7 +786,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Edit": "编辑",
       "Edit API Key": "编辑 API 密钥",
       "Edit API key": "编辑 API 密钥",
-      "Edit Profile": "编辑配置档案",
+      "Edit Profile": "编辑配置",
       "Edit Provider": "编辑供应商",
       "Edit provider": "编辑供应商",
       "Edit Routing Rule": "编辑路由规则",
@@ -786,6 +830,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Input": "输入",
       "Input tokens": "输入令牌",
       "Install": "安装",
+      "App": "App",
       "Install Extension": "安装扩展",
       "Install extension": "安装扩展",
       "Install CA": "安装 CA",
@@ -798,6 +843,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Legacy profile table": "旧版配置档案表",
       "Limit": "限制",
       "Limits": "限制",
+      "Loading": "加载中",
       "Local": "本地",
       "Logs": "日志",
       "Long context": "长上下文",
@@ -827,7 +873,10 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "No route activity": "暂无路由活动",
       "Not configured": "未配置",
       "Not running": "未运行",
+      "Open": "打开",
+      "Open Agent": "打开Agent",
       "Open CA": "打开 CA",
+      "Open Profile": "打开配置",
       "Only opened from CCR": "仅从 CCR 打开",
       "Open profiles": "查看配置档案",
       "Open providers": "查看供应商",
@@ -911,8 +960,10 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Search routing rules": "搜索路由规则",
       "Server": "服务",
       "Account component": "账户组件",
+      "All accounts": "所有账户",
       "Add widget": "添加组件",
       "Analysis component": "分析组件",
+      "Arc": "弧形",
       "Area": "面积图",
       "Average latency": "平均延迟",
       "Bar": "柱状图",
@@ -937,6 +988,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Medium": "中",
       "Metric": "指标",
       "Metric component": "指标组件",
+      "Nested rings": "内外圆",
       "No widget selected": "未选择组件",
       "No widgets configured": "未配置组件",
       "Overview layout": "概览布局",
@@ -947,7 +999,11 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Preview": "预览",
       "Requests, tokens, cost": "请求、Token、成本",
       "Reset layout": "重置布局",
+      "Resize widget height": "调整组件高度",
+      "Resize widget size": "调整组件大小",
+      "Resize widget width": "调整组件宽度",
       "Ring": "圆环",
+      "Semicircle": "半圆",
       "Small": "小",
       "Stacked": "堆叠",
       "Status component": "状态组件",
@@ -969,6 +1025,9 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Show all sessions": "显示所有会话",
       "Status": "状态",
       "Status codes": "状态码",
+      "Stream": "流式",
+      "Streaming": "流式",
+      "Non-streaming": "非流式",
       "Subagent": "子代理",
       "Subagent Routing": "Subagent 路由",
       "Subagent calls": "Subagent 调用",
@@ -1055,7 +1114,26 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Max turns must be greater than zero.": "最大轮次必须大于 0。",
       "Fusion combines a model with another model or tools into a new model.": "将模型和模型/工具组合起来成为一个新的模型。",
       "Fusion example": "例如：GLM 5.2 + GLM 5V Turbo = GLM 5.2V",
-      "Image recognition": "图片识别",
+      "Vision tool configuration": "视觉工具配置",
+      "Choose a configured gateway model for image understanding.": "选择已配置的网关模型作为图片理解模型。",
+      "Vision model": "视觉模型",
+      "Vision model is required.": "必须选择视觉模型。",
+      "Web search configuration": "Web Search 配置",
+      "Search provider": "搜索类型",
+	      "Provider configuration": "类型配置",
+	      "Add variable": "添加变量",
+	      "Add custom MCP": "添加自定义 MCP",
+	      "Add custom MCP tool": "添加自定义 MCP 工具",
+	      "Custom MCP tool": "自定义 MCP 工具",
+	      "Discover tools": "发现工具",
+	      "MCP server": "MCP 服务",
+      "Arguments": "参数",
+      "Working directory": "工作目录",
+      "API key env": "API Key 环境变量",
+	      "Third-party tool environment": "三方工具环境变量",
+	      "Environment variable keys are required when values are set.": "设置变量值时必须填写变量名。",
+	      "MCP tool discovery is available in the Electron app.": "MCP 工具发现仅在 Electron App 中可用。",
+	      "Image recognition": "图片识别",
       "Image recognition and Web Search": "图片识别和 Web Search",
       "Generic image understanding tool for OCR, screenshot analysis, chart reading, UI comparison, error diagnosis, and other multi-image tasks.": "通用图片理解工具，支持 OCR、截图分析、图表解读、UI 对比、错误诊断等多图任务。",
       "Generic web search tool supporting Brave, Bing, Google CSE, Serper, SerpAPI, Tavily, and Exa.": "通用网络搜索工具，支持 Brave、Bing、Google CSE、Serper、SerpAPI、Tavily、Exa。",
@@ -1064,10 +1142,11 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "New model is required.": "新模型不能为空。",
       "Base model is required.": "基础模型不能为空。",
       "Tool is required.": "必须选择工具。",
-      "No matching virtual models": "没有匹配的 Fusion",
-      "No MCP servers configured": "未配置 MCP 服务",
-      "No tools configured": "未配置工具",
-      "No virtual models configured": "尚未配置 Fusion",
+	      "No matching virtual models": "没有匹配的 Fusion",
+	      "No MCP servers configured": "未配置 MCP 服务",
+	      "No tools discovered": "未发现工具",
+	      "No tools configured": "未配置工具",
+	      "No virtual models configured": "尚未配置 Fusion",
       "Original request model": "原始请求模型",
       "Adapt image requests": "适配图像请求",
       "Adapt web search": "适配网页搜索",
@@ -1083,8 +1162,9 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Replace instructions": "替换指令",
       "Request timeout": "请求超时",
       "Request timeout must be at least 100 ms.": "请求超时至少为 100 ms。",
-      "Search virtual models": "搜索 Fusion",
-      "Startup timeout": "启动超时",
+	      "Search virtual models": "搜索 Fusion",
+	      "Select tool": "选择工具",
+	      "Startup timeout": "启动超时",
       "Startup timeout must be at least 100 ms.": "启动超时至少为 100 ms。",
       "Stdio message mode": "Stdio 消息模式",
       "Strip alias prefix": "移除别名前缀",
@@ -1092,8 +1172,9 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Suffixes": "后缀",
       "Suffix": "后缀",
       "Suffix is required.": "后缀不能为空。",
-      "Tool choice": "Tool choice",
-      "Tool loop": "工具循环",
+	      "Tool choice": "Tool choice",
+	      "Tool discovery failed": "工具发现失败",
+	      "Tool loop": "工具循环",
       "Tool name": "工具名称",
       "Tool name is required.": "工具名称不能为空。",
       "Tool names must be unique.": "工具名称不能重复。",
@@ -1481,15 +1562,40 @@ export const virtualModelToolVisibilityOptions: Array<{ label: string; value: Vi
 export const fusionToolOptions: Array<{ description: string; label: string; value: string }> = [
   {
     description: "Generic image understanding tool for OCR, screenshot analysis, chart reading, UI comparison, error diagnosis, and other multi-image tasks.",
-    label: `${BUILTIN_UNIMCP_SERVER_NAME} / ${BUILTIN_UNIMCP_VISION_TOOL_NAME}`,
-    value: BUILTIN_UNIMCP_VISION_TOOL_NAME
+    label: `${BUILTIN_FUSION_TOOL_SERVER_NAME} / ${BUILTIN_FUSION_VISION_TOOL_NAME}`,
+    value: BUILTIN_FUSION_VISION_TOOL_NAME
   },
   {
     description: "Generic web search tool supporting Brave, Bing, Google CSE, Serper, SerpAPI, Tavily, and Exa.",
-    label: `${BUILTIN_UNIMCP_SERVER_NAME} / ${BUILTIN_UNIMCP_WEB_SEARCH_TOOL_NAME}`,
-    value: BUILTIN_UNIMCP_WEB_SEARCH_TOOL_NAME
+    label: `${BUILTIN_FUSION_TOOL_SERVER_NAME} / ${BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME}`,
+    value: BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME
   }
 ];
+
+const legacyUnimcpPackageName = "@musistudio/unimcp";
+const legacyUnimcpServerName = "unimcp";
+export const customFusionToolName = "custom_mcp_tool";
+export const defaultFusionWebSearchProvider: VirtualModelFusionWebSearchProvider = "brave";
+
+export const fusionWebSearchProviderOptions: Array<{ label: string; value: VirtualModelFusionWebSearchProvider }> = [
+  { label: "Brave", value: "brave" },
+  { label: "Bing", value: "bing" },
+  { label: "Google CSE", value: "google_cse" },
+  { label: "Serper", value: "serper" },
+  { label: "SerpAPI", value: "serpapi" },
+  { label: "Tavily", value: "tavily" },
+  { label: "Exa", value: "exa" }
+];
+
+export const fusionWebSearchEnvKeysByProvider: Record<VirtualModelFusionWebSearchProvider, string[]> = {
+  bing: ["BING_SEARCH_API_KEY", "BING_SEARCH_ENDPOINT"],
+  brave: ["BRAVE_SEARCH_API_KEY", "BRAVE_SEARCH_ENDPOINT"],
+  exa: ["EXA_API_KEY", "EXA_SEARCH_ENDPOINT"],
+  google_cse: ["GOOGLE_SEARCH_API_KEY", "GOOGLE_SEARCH_CX", "GOOGLE_SEARCH_ENDPOINT"],
+  serper: ["SERPER_API_KEY", "SERPER_SEARCH_ENDPOINT"],
+  serpapi: ["SERPAPI_API_KEY", "SERPAPI_SEARCH_ENDPOINT"],
+  tavily: ["TAVILY_API_KEY", "TAVILY_SEARCH_ENDPOINT"]
+};
 
 export const virtualModelClientToolsPolicyOptions: Array<{ label: string; value: VirtualModelClientToolsPolicy }> = [
   { label: "Allow client tools", value: "allow" },
@@ -1533,17 +1639,16 @@ export const mcpServerStartupTimeoutMs = 600000;
 
 export const navigation: Array<{ icon: LucideIcon; id: NavigationId }> = [
   { icon: Gauge, id: "overview" },
-  { icon: Activity, id: "observability" },
-  { icon: KeyRound, id: "api-keys" },
-  { icon: Server, id: "server" },
-  { icon: UserRound, id: "profile" },
-  { icon: Globe, id: "browser" },
-  { icon: Network, id: "networking" },
-  { icon: Database, id: "logs" },
   { icon: Layers3, id: "providers" },
-  { icon: Box, id: "models" },
+  { icon: UserRound, id: "profile" },
   { icon: Route, id: "routing" },
+  { icon: Box, id: "models" },
   { icon: Boxes, id: "virtual-models" },
+  { icon: KeyRound, id: "api-keys" },
+  { icon: Activity, id: "observability" },
+  { icon: Database, id: "logs" },
+  { icon: Server, id: "server" },
+  { icon: Network, id: "networking" },
   { icon: Braces, id: "extensions" }
 ];
 
@@ -1710,7 +1815,7 @@ export const fallbackConfig: AppConfig = {
       cliMiddleware: true,
       codexCliPath: "",
       codexHome: "",
-      configFormat: "legacy",
+      configFormat: "separate_profile_files",
       configFile: "~/.codex/config.toml",
       enabled: true,
       model: "",
@@ -1737,7 +1842,7 @@ export const fallbackConfig: AppConfig = {
         cliMiddleware: true,
         codexCliPath: "",
         codexHome: "",
-        configFormat: "legacy",
+        configFormat: "separate_profile_files",
         configFile: "~/.codex/config.toml",
         enabled: true,
         env: {},
@@ -2027,6 +2132,9 @@ export type ClaudeDesignRoutingDraft = {
 
 export type VirtualModelClientToolsPolicy = "allow" | "deny";
 export type VirtualModelMatchMode = "alias" | "prefix" | "suffix";
+export const fusionCustomToolMetadataKey = "fusionTool";
+export const fusionVisionMetadataKey = "fusionVision";
+export const fusionWebSearchMetadataKey = "fusionWebSearch";
 
 export type VirtualModelToolDraft = {
   description: string;
@@ -2063,6 +2171,11 @@ export type VirtualModelDraft = {
   toolChoiceText: string;
   tools: VirtualModelToolDraft[];
   toolsText: string;
+  customMcpServer: McpServerDraft;
+  customToolName: string;
+  visionModel: string;
+  webSearchEnvRows: KeyValueDraftRow[];
+  webSearchProvider: VirtualModelFusionWebSearchProvider;
   executionMode: VirtualModelExecutionMode;
 };
 
@@ -2170,7 +2283,7 @@ export type AppToast = {
   message: string;
 };
 
-export type ServerActionBusy = "" | "browser" | "cert" | "proxy";
+export type ServerActionBusy = "" | "cert" | "proxy";
 
 export function Field({ children, className, label }: { children: React.ReactNode; className?: string; label: string }) {
   return (
@@ -2186,10 +2299,10 @@ export function AgentLogo({ agent, className }: { agent: ProfileConfig["agent"];
 
   return (
     <span
-      className={cn("flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-background", className)}
+      className={cn("flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-[5px]", className)}
       title={label}
     >
-      <img alt={`${label} icon`} className="h-5 w-5 object-contain" src={profileAgentLogoUrl(agent)} />
+      <img alt={`${label} icon`} className="h-full w-full rounded-[inherit] object-cover" src={profileAgentLogoUrl(agent)} />
     </span>
   );
 }
@@ -2297,6 +2410,16 @@ export function KeyValueRowsControl({
             value={row.value}
           />
           <Button
+            aria-label={addLabel}
+            onClick={addRow}
+            size="iconSm"
+            title={addLabel}
+            type="button"
+            variant="outline"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </Button>
+          <Button
             aria-label={t("Remove")}
             disabled={visibleRows.length === 1 && !row.key.trim() && !row.value.trim()}
             onClick={() => removeRow(index)}
@@ -2306,16 +2429,6 @@ export function KeyValueRowsControl({
             variant="ghost"
           >
             <X className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            aria-label={addLabel}
-            onClick={addRow}
-            size="iconSm"
-            title={addLabel}
-            type="button"
-            variant="outline"
-          >
-            <Plus className="h-3.5 w-3.5" />
           </Button>
         </div>
       ))}
@@ -2634,27 +2747,40 @@ export type ProfileModelProviderOption = {
   name: string;
 };
 
+export const fusionModelProviderName = "Fusion";
+
 export type ParsedProfileModelValue = {
   model: string;
   provider: string;
 };
 
-export function profileModelProviderOptions(providers: GatewayProviderConfig[]): ProfileModelProviderOption[] {
-  return providers
+export function profileModelProviderOptions(
+  providers: GatewayProviderConfig[],
+  virtualModelProfiles: VirtualModelProfileConfig[] = []
+): ProfileModelProviderOption[] {
+  const providerOptions = providers
     .filter((provider) => provider.name?.trim() && Array.isArray(provider.models))
     .map((provider) => ({
       models: uniqueStrings(provider.models.filter(Boolean)),
       name: provider.name.trim()
     }))
     .filter((provider) => provider.models.length > 0);
+  const fusionModels = virtualModelProfileModelNames(virtualModelProfiles);
+  return fusionModels.length > 0
+    ? [...providerOptions, { models: fusionModels, name: fusionModelProviderName }]
+    : providerOptions;
 }
 
-export function parseProfileModelValue(value: string, providers: GatewayProviderConfig[]): ParsedProfileModelValue {
+export function parseProfileModelValue(
+  value: string,
+  providers: GatewayProviderConfig[],
+  virtualModelProfiles: VirtualModelProfileConfig[] = []
+): ParsedProfileModelValue {
   const trimmed = normalizeProfileClientModel(value);
   if (!trimmed) {
     return { model: "", provider: "" };
   }
-  const providerOptions = profileModelProviderOptions(providers);
+  const providerOptions = profileModelProviderOptions(providers, virtualModelProfiles);
   for (const provider of providerOptions) {
     const slashPrefix = `${provider.name}/`;
     const commaPrefix = `${provider.name},`;
@@ -2679,7 +2805,8 @@ export function profileModelDisplayValue(
   value: string,
   parsedValue: ParsedProfileModelValue,
   providers: GatewayProviderConfig[],
-  placeholder: string | undefined
+  placeholder: string | undefined,
+  virtualModelProfiles: VirtualModelProfileConfig[] = []
 ): string {
   if (!value.trim()) {
     return placeholder?.trim() || "";
@@ -2688,7 +2815,7 @@ export function profileModelDisplayValue(
   if (parsedValue.provider && parsedValue.model) {
     return `${parsedValue.provider}/${parsedValue.model}`;
   }
-  const provider = profileModelProviderOptions(providers).find((item) => item.models.includes(normalized));
+  const provider = profileModelProviderOptions(providers, virtualModelProfiles).find((item) => item.models.includes(normalized));
   return provider ? `${provider.name}/${normalized}` : normalized;
 }
 
@@ -2793,8 +2920,8 @@ export function profileConfigFromDraft(
   }, existingProfiles.length);
 }
 
-export function normalizeCodexConfigFormat(value: unknown): CodexProfileConfigFormat {
-  return value === "separate_profile_files" ? "separate_profile_files" : "legacy";
+export function normalizeCodexConfigFormat(_value: unknown): CodexProfileConfigFormat {
+  return "separate_profile_files";
 }
 
 export function normalizeProfileScope(value: unknown): ProfileScope {
@@ -2822,11 +2949,12 @@ export function profileSummaryItems(
   const smallFastModel = profile.smallFastModel?.trim() || "";
   const modelValue = profile.model.trim()
     ? profileModelDisplayValue(
-      profile.model,
-      parseProfileModelValue(profile.model, config.Providers),
-      config.Providers,
-      undefined
-    )
+	      profile.model,
+	      parseProfileModelValue(profile.model, config.Providers, config.virtualModelProfiles ?? []),
+	      config.Providers,
+	      undefined,
+	      config.virtualModelProfiles ?? []
+	    )
     : profile.agent === "claude-code"
       ? t("Keep Claude Code default")
       : defaultProfileClientModel(config);
@@ -2838,11 +2966,12 @@ export function profileSummaryItems(
         label: t("Small fast model"),
         value: smallFastModel
           ? profileModelDisplayValue(
-            smallFastModel,
-            parseProfileModelValue(smallFastModel, config.Providers),
-            config.Providers,
-            undefined
-          )
+	            smallFastModel,
+	            parseProfileModelValue(smallFastModel, config.Providers, config.virtualModelProfiles ?? []),
+	            config.Providers,
+	            undefined,
+	            config.virtualModelProfiles ?? []
+	          )
           : t("Keep Claude Code default")
       },
       ...envSummaryItems
@@ -2882,7 +3011,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
     cliMiddleware: true,
     codexCliPath: "",
     codexHome: "",
-    configFormat: "legacy",
+    configFormat: "separate_profile_files",
     configFile: profile.configFile?.trim() || "~/.codex/config.toml",
     enabled: profile.enabled,
     env,
@@ -3017,6 +3146,28 @@ export function profileSurfaceLabel(surface: ProfileSurface): string {
     return "App only";
   }
   return "Auto";
+}
+
+export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[] {
+  const surface = normalizeProfileSurface(profile.surface);
+  if (surface === "cli") {
+    return ["cli"];
+  }
+  if (surface === "app") {
+    return ["app"];
+  }
+  return ["cli", "app"];
+}
+
+export function profileOpenCommandFallback(profile: ProfileConfig, surface: ProfileOpenSurface = "cli"): string {
+  const profileRef = profile.name.trim() || profile.id;
+  return ["ccr", shellCommandQuote(profileRef), ...(surface === "app" ? ["--app"] : [])].join(" ");
+}
+
+function shellCommandQuote(value: string): string {
+  return /^[A-Za-z0-9_./:-]+$/.test(value)
+    ? value
+    : `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 export function profileAgentLogoUrl(agent: ProfileConfig["agent"]): string {
@@ -3964,11 +4115,11 @@ export function normalizeTrayComponentVariants(value: unknown): TrayComponentVar
 
 export function normalizeTrayWidgets(value: unknown, fallbackModules?: unknown, fallbackVariants?: unknown): TrayWidgetConfig[] {
   if (!Array.isArray(value)) {
-    return dedupeTraySingletonWidgets(trayWidgetsFromModules(normalizeTrayWindowModules(fallbackModules), normalizeTrayComponentVariants(fallbackVariants)));
+    return orderTrayWidgetsForLayout(dedupeTraySingletonWidgets(trayWidgetsFromModules(normalizeTrayWindowModules(fallbackModules), normalizeTrayComponentVariants(fallbackVariants))));
   }
-  return dedupeTraySingletonWidgets(value
+  return orderTrayWidgetsForLayout(dedupeTraySingletonWidgets(value
     .map(normalizeTrayWidget)
-    .filter((widget): widget is TrayWidgetConfig => Boolean(widget)));
+    .filter((widget): widget is TrayWidgetConfig => Boolean(widget))));
 }
 
 export function normalizeTrayWidget(value: unknown): TrayWidgetConfig | undefined {
@@ -4069,6 +4220,17 @@ export function isTraySingletonWidgetType(type: TrayWidgetType): boolean {
   return (TRAY_SINGLETON_WIDGET_TYPES as readonly string[]).includes(type);
 }
 
+export function isTrayPinnedTopWidgetType(type: TrayWidgetType): boolean {
+  return (TRAY_TOP_WIDGET_TYPES as readonly string[]).includes(type);
+}
+
+export function orderTrayWidgetsForLayout(widgets: TrayWidgetConfig[]): TrayWidgetConfig[] {
+  return [
+    ...widgets.filter((widget) => isTrayPinnedTopWidgetType(widget.type)),
+    ...widgets.filter((widget) => !isTrayPinnedTopWidgetType(widget.type))
+  ];
+}
+
 function dedupeTraySingletonWidgets(widgets: TrayWidgetConfig[]): TrayWidgetConfig[] {
   const seenSingletons = new Set<TrayWidgetType>();
   return widgets.filter((widget) => {
@@ -4084,7 +4246,7 @@ function dedupeTraySingletonWidgets(widgets: TrayWidgetConfig[]): TrayWidgetConf
 }
 
 export function trayWidgetsFromModules(modules: TrayWindowModuleId[], variants: TrayComponentVariants): TrayWidgetConfig[] {
-  return modules
+  return orderTrayWidgetsForLayout(modules
     .filter((moduleId): moduleId is TrayWidgetType => moduleId !== "footer")
     .map((type) => ({
       id: trayWidgetId(type),
@@ -4095,7 +4257,7 @@ export function trayWidgetsFromModules(modules: TrayWindowModuleId[], variants: 
       ...((type === "stats") ? { variant: variants.stats } : {}),
       ...((type === "token-flow") ? { variant: variants.tokenFlow } : {}),
       ...((type === "token-mix") ? { variant: variants.tokenMix } : {})
-    }));
+    })));
 }
 
 export function normalizeEnumValue<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
@@ -4122,7 +4284,9 @@ export function normalizeOverviewWidget(value: unknown): OverviewWidgetConfig | 
   }
   const metric = type === "metric" ? normalizeOverviewMetricKind(value.metric) ?? "requests" : undefined;
   const variant = normalizeOverviewWidgetVariant(type, value.variant);
+  const accountProvider = type === "account-balance" ? stringValue(value.accountProvider) : undefined;
   return {
+    ...(accountProvider ? { accountProvider } : {}),
     enabled: typeof value.enabled === "boolean" ? value.enabled : true,
     id: stringValue(value.id) || overviewWidgetId(type, metric),
     ...(metric ? { metric } : {}),
@@ -4171,7 +4335,11 @@ export function overviewWidgetVariantOptions(type: OverviewWidgetType): Array<{ 
     return [
       { label: "Cards", value: "cards" },
       { label: "Compact", value: "compact" },
-      { label: "Bars", value: "bars" }
+      { label: "Bars", value: "bars" },
+      { label: "Ring", value: "ring" },
+      { label: "Semicircle", value: "semicircle" },
+      { label: "Arc", value: "arc" },
+      { label: "Nested rings", value: "nested-rings" }
     ];
   }
   if (type === "metric") {
@@ -5019,16 +5187,19 @@ export function claudeDesignRoutingConfigFromDraft(draft: ClaudeDesignRoutingDra
 export function createVirtualModelDraft(config: AppConfig): VirtualModelDraft {
   const profiles = config.virtualModelProfiles ?? [];
   const key = uniqueVirtualModelKey(profiles);
+  const defaultModel = createRouteModelOptions(config.Providers)[0]?.value ?? "";
   return {
     baseModelMode: "fixed",
-    clientToolsPolicy: "deny",
+    clientToolsPolicy: "allow",
+    customMcpServer: createMcpServerDraft(config.agent?.mcpServers ?? []),
+    customToolName: customFusionToolName,
     description: "",
     descriptionTemplate: "",
     displayName: "Fusion",
     displayNameTemplate: "{profileDisplayName}",
     enabled: true,
     exactAliasesText: key,
-    fixedModel: createRouteModelOptions(config.Providers)[0]?.value ?? "",
+    fixedModel: defaultModel,
     id: uniqueVirtualModelId(profiles, key),
     includeInGatewayModels: true,
     instructionsAppend: "",
@@ -5045,23 +5216,48 @@ export function createVirtualModelDraft(config: AppConfig): VirtualModelDraft {
     suffixesText: "",
     toolChoiceText: "",
     tools: [],
-    toolsText: BUILTIN_UNIMCP_VISION_TOOL_NAME,
+    toolsText: BUILTIN_FUSION_VISION_TOOL_NAME,
+    visionModel: defaultModel,
+    webSearchEnvRows: createFusionWebSearchEnvRows(defaultFusionWebSearchProvider),
+    webSearchProvider: defaultFusionWebSearchProvider,
     executionMode: "tool_loop"
   };
 }
 
-export function createVirtualModelDraftFromProfile(profile: VirtualModelProfileConfig): VirtualModelDraft {
+export function createVirtualModelDraftFromProfile(profile: VirtualModelProfileConfig, config?: AppConfig): VirtualModelDraft {
   const exactAliases = profile.match?.exactAliases ?? [];
   const prefixes = profile.match?.prefixes ?? [];
   const suffixes = profile.match?.suffixes ?? [];
   const matchMode = virtualModelMatchModeFromProfile(profile);
   const matchValues = matchMode === "prefix" ? prefixes : matchMode === "suffix" ? suffixes : exactAliases;
   const toolDrafts = (profile.tools ?? []).map((tool, index) => createVirtualModelToolDraft(tool, index));
-  const selectedToolName = selectedFusionToolNameFromProfile(toolDrafts, profile);
+  const visionConfig = fusionVisionConfigFromProfile(profile);
+  const webSearchConfig = fusionWebSearchConfigFromProfile(profile);
+  const selectedToolName = visionConfig
+    ? BUILTIN_FUSION_VISION_TOOL_NAME
+    : webSearchConfig
+      ? BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME
+      : selectedFusionToolNameFromProfile(toolDrafts, profile);
   const flags = fusionToolExecutionFlags(selectedToolName);
+  const routeModelOptions = createRouteModelOptions(config?.Providers ?? []);
+  const defaultVisionModel = routeModelOptions[0]?.value ?? "";
+  const customToolConfig = fusionCustomToolConfigFromProfile(profile);
+  const customToolName = !isBuiltInFusionToolName(selectedToolName) ? selectedToolName : customFusionToolName;
+  const configuredMcpServers = config?.agent?.mcpServers ?? [];
+  const customMcpServerConfig = customToolConfig?.mcpServerName
+    ? configuredMcpServers.find((server) => server.name === customToolConfig.mcpServerName)
+    : undefined;
+  const customMcpServerDraft = customMcpServerConfig
+    ? createMcpServerDraftFromConfig(customMcpServerConfig)
+    : createMcpServerDraft(configuredMcpServers);
+  if (!customMcpServerConfig && customToolConfig?.env) {
+    customMcpServerDraft.envRows = keyValueRowsFromRecord(customToolConfig.env);
+  }
   return {
     baseModelMode: "fixed",
-    clientToolsPolicy: "deny",
+    clientToolsPolicy: profile.execution?.clientToolsPolicy === "deny" ? "deny" : "allow",
+    customMcpServer: customMcpServerDraft,
+    customToolName,
     description: profile.description ?? "",
     descriptionTemplate: profile.materialization?.descriptionTemplate ?? "",
     displayName: profile.displayName ?? profile.key,
@@ -5086,6 +5282,9 @@ export function createVirtualModelDraftFromProfile(profile: VirtualModelProfileC
     toolChoiceText: formatVirtualModelToolChoice(profile.toolChoice),
     tools: toolDrafts,
     toolsText: selectedToolName,
+    visionModel: visionConfig?.modelSelector ?? visionConfig?.model ?? defaultVisionModel,
+    webSearchEnvRows: createFusionWebSearchEnvRows(webSearchConfig?.provider ?? defaultFusionWebSearchProvider, keyValueRowsFromRecord(webSearchConfig?.env ?? {})),
+    webSearchProvider: webSearchConfig?.provider ?? defaultFusionWebSearchProvider,
     executionMode: "tool_loop"
   };
 }
@@ -5148,18 +5347,180 @@ export function normalizeVirtualModelDraftPatch(current: VirtualModelDraft, patc
   return next;
 }
 
+export function fusionVisionConfigFromProfile(profile: VirtualModelProfileConfig): VirtualModelFusionVisionConfig | undefined {
+  const value = profile.metadata?.[fusionVisionMetadataKey];
+  if (!isPlainRecord(value)) {
+    return undefined;
+  }
+  const config: VirtualModelFusionVisionConfig = {
+    apiKey: stringValue(value.apiKey),
+    baseUrl: stringValue(value.baseUrl),
+    model: stringValue(value.model),
+    modelSelector: stringValue(value.modelSelector),
+    toolName: stringValue(value.toolName)
+  };
+  const timeoutMs = typeof value.timeoutMs === "number"
+    ? value.timeoutMs
+    : typeof value.timeoutMs === "string"
+      ? numberValue(value.timeoutMs)
+      : 0;
+  if (timeoutMs) {
+    config.timeoutMs = timeoutMs;
+  }
+  return config.apiKey || config.baseUrl || config.model || config.modelSelector || config.toolName || config.timeoutMs ? config : undefined;
+}
+
+export function fusionVisionConfigFromDraft(draft: VirtualModelDraft, key: string): VirtualModelFusionVisionConfig | undefined {
+  if (!fusionToolExecutionFlags(selectedFusionToolName(draft.toolsText)).matchMultimodal) {
+    return undefined;
+  }
+  const model = draft.visionModel.trim();
+  if (!model) {
+    return undefined;
+  }
+  return {
+    ...(model ? { modelSelector: model } : {}),
+    toolName: fusionVisionToolName(key)
+  };
+}
+
+export function fusionVisionToolName(key: string): string {
+  const normalized = sanitizeConfigId(key).replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+  return `vision_understand_${normalized || "fusion"}`;
+}
+
+export function fusionWebSearchConfigFromProfile(profile: VirtualModelProfileConfig): VirtualModelFusionWebSearchConfig | undefined {
+  const value = profile.metadata?.[fusionWebSearchMetadataKey];
+  if (!isPlainRecord(value)) {
+    return undefined;
+  }
+  const provider = parseFusionWebSearchProvider(value.provider);
+  const env = isPlainRecord(value.env) ? stringRecordValue(value.env) : {};
+  const config: VirtualModelFusionWebSearchConfig = {
+    ...(Object.keys(env).length ? { env } : {}),
+    ...(provider ? { provider } : {}),
+    toolName: stringValue(value.toolName)
+  };
+  const timeoutMs = typeof value.timeoutMs === "number"
+    ? value.timeoutMs
+    : typeof value.timeoutMs === "string"
+      ? numberValue(value.timeoutMs)
+      : 0;
+  if (timeoutMs) {
+    config.timeoutMs = timeoutMs;
+  }
+  const resultCount = typeof value.resultCount === "number"
+    ? value.resultCount
+    : typeof value.resultCount === "string"
+      ? numberValue(value.resultCount)
+      : 0;
+  if (resultCount) {
+    config.resultCount = resultCount;
+  }
+  return config.env || config.provider || config.toolName || config.timeoutMs || config.resultCount ? config : undefined;
+}
+
+export function fusionWebSearchConfigFromDraft(draft: VirtualModelDraft, key: string): VirtualModelFusionWebSearchConfig | undefined {
+  if (!fusionToolExecutionFlags(selectedFusionToolName(draft.toolsText)).matchWebSearch) {
+    return undefined;
+  }
+  const env = recordFromKeyValueRows(draft.webSearchEnvRows);
+  return {
+    ...(Object.keys(env).length ? { env } : {}),
+    provider: draft.webSearchProvider,
+    toolName: fusionWebSearchToolName(key)
+  };
+}
+
+export function fusionWebSearchToolName(key: string): string {
+  const normalized = sanitizeConfigId(key).replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+  return `web_search_${normalized || "fusion"}`;
+}
+
+export function fusionCustomToolConfigFromProfile(profile: VirtualModelProfileConfig): VirtualModelFusionCustomToolConfig | undefined {
+  const value = profile.metadata?.[fusionCustomToolMetadataKey];
+  if (!isPlainRecord(value)) {
+    return undefined;
+  }
+  const env = isPlainRecord(value.env) ? stringRecordValue(value.env) : {};
+  const mcpServerName = stringValue(value.mcpServerName);
+  return Object.keys(env).length || mcpServerName ? { ...(Object.keys(env).length ? { env } : {}), ...(mcpServerName ? { mcpServerName } : {}) } : undefined;
+}
+
+export function fusionCustomToolConfigFromDraft(draft: VirtualModelDraft): VirtualModelFusionCustomToolConfig | undefined {
+  const selectedTool = selectedFusionToolName(draft.toolsText);
+  if (isBuiltInFusionToolName(selectedTool)) {
+    return undefined;
+  }
+  const mcpServerName = draft.customMcpServer.name.trim();
+  return mcpServerName ? { mcpServerName } : undefined;
+}
+
+export function fusionCustomMcpServerFromDraft(
+  draft: VirtualModelDraft,
+  existingServers: GatewayMcpServerConfig[],
+  editIndex?: number
+): GatewayMcpServerConfig | undefined {
+  const selectedTool = selectedFusionToolName(draft.toolsText);
+  if (isBuiltInFusionToolName(selectedTool)) {
+    return undefined;
+  }
+  return mcpServerConfigFromDraft(draft.customMcpServer, existingServers, editIndex);
+}
+
+export function parseFusionWebSearchProvider(value: unknown): VirtualModelFusionWebSearchProvider | undefined {
+  const normalized = stringValue(value)?.toLowerCase() ?? "";
+  return fusionWebSearchProviderOptions.some((option) => option.value === normalized)
+    ? normalized as VirtualModelFusionWebSearchProvider
+    : undefined;
+}
+
+export function createFusionWebSearchEnvRows(
+  provider: VirtualModelFusionWebSearchProvider,
+  currentRows: KeyValueDraftRow[] = []
+): KeyValueDraftRow[] {
+  const templateKeys = fusionWebSearchEnvKeysByProvider[provider] ?? [];
+  const currentByKey = new Map(
+    currentRows
+      .map((row) => [row.key.trim(), row.value] as const)
+      .filter(([rowKey]) => Boolean(rowKey))
+  );
+  const templateRows = templateKeys.map((rowKey) => createKeyValueDraftRow(rowKey, currentByKey.get(rowKey) ?? ""));
+  const extraRows = currentRows
+    .filter((row) => {
+      const rowKey = row.key.trim();
+      return rowKey && !templateKeys.includes(rowKey);
+    })
+    .map((row) => createKeyValueDraftRow(row.key, row.value));
+  const rows = [...templateRows, ...extraRows];
+  return rows.length ? rows : [createKeyValueDraftRow()];
+}
+
 export function validateVirtualModelDraft(draft: VirtualModelDraft): string {
   const matchValues = parseVirtualModelTextList(draft.exactAliasesText);
+  const selectedTool = selectedFusionToolName(draft.toolsText);
+  const flags = fusionToolExecutionFlags(selectedTool);
   if (matchValues.length === 0) {
     return "New model is required.";
   }
   if (!draft.fixedModel.trim()) {
     return "Base model is required.";
   }
-  if (!isFusionToolName(selectedFusionToolName(draft.toolsText))) {
+  if (!isFusionToolName(selectedTool)) {
     return "Tool is required.";
   }
-
+  if (flags.matchMultimodal && !draft.visionModel.trim()) {
+    return "Vision model is required.";
+  }
+  if (flags.matchWebSearch && !validateKeyValueRows(draft.webSearchEnvRows)) {
+    return "Environment variable keys are required when values are set.";
+  }
+  if (!flags.matchMultimodal && !flags.matchWebSearch) {
+    if (!selectedTool.trim()) {
+      return "Tool name is required.";
+    }
+    return validateMcpServerDraft(draft.customMcpServer);
+  }
   return "";
 }
 
@@ -5173,17 +5534,25 @@ export function virtualModelProfileFromDraft(
   const key = sanitizeConfigId(primaryMatchValue) || sanitizeConfigId(draft.key) || primaryMatchValue || draft.key.trim();
   const id = editIndex === undefined ? uniqueVirtualModelId(existingProfiles, key, editIndex) : draft.id || uniqueVirtualModelId(existingProfiles, key, editIndex);
   const displayName = titleFromConfigKey(primaryMatchValue) || primaryMatchValue || draft.displayName.trim() || key;
-  const tools = virtualModelToolsFromDraft(draft);
+  const fusionVisionConfig = fusionVisionConfigFromDraft(draft, id);
+  const fusionWebSearchConfig = fusionWebSearchConfigFromDraft(draft, id);
+  const fusionCustomToolConfig = fusionCustomToolConfigFromDraft(draft);
+  const selectedTool = fusionVisionConfig?.toolName ?? fusionWebSearchConfig?.toolName ?? selectedFusionToolName(draft.toolsText);
+  const tools = virtualModelToolsFromDraft(draft, selectedTool);
   const maxToolCalls = numberValue(draft.maxToolCalls);
   const maxTurns = numberValue(draft.maxTurns);
-  const selectedTool = selectedFusionToolName(draft.toolsText);
   const flags = fusionToolExecutionFlags(selectedTool);
+  const metadata = {
+    ...(fusionVisionConfig ? { [fusionVisionMetadataKey]: fusionVisionConfig } : {}),
+    ...(fusionWebSearchConfig ? { [fusionWebSearchMetadataKey]: fusionWebSearchConfig } : {}),
+    ...(fusionCustomToolConfig ? { [fusionCustomToolMetadataKey]: fusionCustomToolConfig } : {})
+  };
   return {
     baseModel: virtualModelBaseModelFromDraft(draft),
     displayName,
     enabled: draft.enabled,
     execution: {
-      clientToolsPolicy: "deny",
+      clientToolsPolicy: draft.clientToolsPolicy,
       ...flags,
       maxToolCalls: clampNumber(maxToolCalls || Math.max(tools.length, 1), 1, 50),
       maxTurns: clampNumber(maxTurns || 6, 1, 50),
@@ -5202,6 +5571,7 @@ export function virtualModelProfileFromDraft(
       enabled: true,
       includeInGatewayModels: true
     },
+    ...(Object.keys(metadata).length ? { metadata } : {}),
     tools
   };
 }
@@ -5238,14 +5608,14 @@ export function virtualModelMatchFromDraft(
   };
 }
 
-export function virtualModelToolsFromDraft(draft: VirtualModelDraft): VirtualModelProfileConfig["tools"] {
+export function virtualModelToolsFromDraft(draft: VirtualModelDraft, selectedToolName = selectedFusionToolName(draft.toolsText)): VirtualModelProfileConfig["tools"] {
   const existingTools = new Map(
     draft.tools
       .map((tool) => [normalizeFusionToolName(tool.name.trim()), tool] as const)
       .filter(([name]) => Boolean(name))
   );
 
-  return uniqueStrings([selectedFusionToolName(draft.toolsText)])
+  return uniqueStrings([selectedToolName])
     .filter(isFusionToolName)
     .map((name) => {
       const existingTool = existingTools.get(name);
@@ -5386,22 +5756,50 @@ export function virtualModelToolSummary(profile: VirtualModelProfileConfig): str
   if (!profile.tools?.length) {
     return "-";
   }
+  const visionConfig = fusionVisionConfigFromProfile(profile);
+  if (visionConfig?.toolName && profile.tools.some((tool) => tool.name === visionConfig.toolName)) {
+    return `${fusionToolDisplayName(BUILTIN_FUSION_VISION_TOOL_NAME)}${visionConfig.modelSelector || visionConfig.model ? ` (${visionConfig.modelSelector || visionConfig.model})` : ""}`;
+  }
+  const webSearchConfig = fusionWebSearchConfigFromProfile(profile);
+  if (webSearchConfig?.toolName && profile.tools.some((tool) => tool.name === webSearchConfig.toolName)) {
+    return `${fusionToolDisplayName(BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME)}${webSearchConfig.provider ? ` (${fusionWebSearchProviderLabel(webSearchConfig.provider)})` : ""}`;
+  }
+  const customToolConfig = fusionCustomToolConfigFromProfile(profile);
+  if (customToolConfig?.mcpServerName) {
+    return profile.tools.map((tool) => `${customToolConfig.mcpServerName} / ${fusionToolDisplayName(tool.name)}`).join(", ");
+  }
   return profile.tools.map((tool) => fusionToolDisplayName(tool.name)).join(", ");
 }
 
 export function normalizeFusionToolName(name: string): string {
-  if (name === BUILTIN_UNIMCP_PACKAGE || name === BUILTIN_UNIMCP_SERVER_NAME) {
-    return BUILTIN_UNIMCP_VISION_TOOL_NAME;
+  const trimmed = name.trim();
+  if (trimmed === legacyUnimcpPackageName || trimmed === legacyUnimcpServerName) {
+    return BUILTIN_FUSION_VISION_TOOL_NAME;
   }
-  return name;
+  return trimmed;
 }
 
 export function isFusionToolName(name: string): boolean {
-  return name === BUILTIN_UNIMCP_VISION_TOOL_NAME || name === BUILTIN_UNIMCP_WEB_SEARCH_TOOL_NAME;
+  return Boolean(normalizeFusionToolName(name));
+}
+
+export function isBuiltInFusionToolName(name: string): boolean {
+  const normalized = normalizeFusionToolName(name);
+  return isFusionVisionToolName(normalized) || isFusionWebSearchToolName(normalized);
+}
+
+export function isFusionVisionToolName(name: string): boolean {
+  const normalized = normalizeFusionToolName(name);
+  return normalized === BUILTIN_FUSION_VISION_TOOL_NAME || normalized.startsWith(`${BUILTIN_FUSION_VISION_TOOL_NAME}_`);
+}
+
+export function isFusionWebSearchToolName(name: string): boolean {
+  const normalized = normalizeFusionToolName(name);
+  return normalized === BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME || normalized.startsWith(`${BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME}_`);
 }
 
 export function selectedFusionToolName(toolsText: string): string {
-  return parseVirtualModelTextList(toolsText).map(normalizeFusionToolName).find(isFusionToolName) ?? BUILTIN_UNIMCP_VISION_TOOL_NAME;
+  return parseVirtualModelTextList(toolsText).map(normalizeFusionToolName).find(isFusionToolName) ?? BUILTIN_FUSION_VISION_TOOL_NAME;
 }
 
 export function selectedFusionToolNameFromProfile(toolDrafts: VirtualModelToolDraft[], profile: VirtualModelProfileConfig): string {
@@ -5410,17 +5808,21 @@ export function selectedFusionToolNameFromProfile(toolDrafts: VirtualModelToolDr
     return directTool;
   }
   if (profile.execution?.matchWebSearch && !profile.execution?.matchMultimodal) {
-    return BUILTIN_UNIMCP_WEB_SEARCH_TOOL_NAME;
+    return BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME;
   }
-  return BUILTIN_UNIMCP_VISION_TOOL_NAME;
+  return BUILTIN_FUSION_VISION_TOOL_NAME;
 }
 
 export function fusionToolExecutionFlags(name: string): Pick<VirtualModelDraft, "matchMultimodal" | "matchWebSearch"> {
   const normalized = normalizeFusionToolName(name);
   return {
-    matchMultimodal: normalized === BUILTIN_UNIMCP_VISION_TOOL_NAME,
-    matchWebSearch: normalized === BUILTIN_UNIMCP_WEB_SEARCH_TOOL_NAME
+    matchMultimodal: isFusionVisionToolName(normalized),
+    matchWebSearch: isFusionWebSearchToolName(normalized)
   };
+}
+
+export function fusionWebSearchProviderLabel(provider: VirtualModelFusionWebSearchProvider): string {
+  return fusionWebSearchProviderOptions.find((option) => option.value === provider)?.label ?? provider;
 }
 
 export function fusionToolDescription(name: string): string {
@@ -5430,7 +5832,8 @@ export function fusionToolDescription(name: string): string {
 
 export function fusionToolDisplayName(name: string): string {
   const normalized = normalizeFusionToolName(name);
-  return isFusionToolName(normalized) ? `${BUILTIN_UNIMCP_SERVER_NAME} / ${normalized}` : name;
+  const option = fusionToolOptions.find((item) => item.value === normalized);
+  return option?.label ?? normalized;
 }
 
 export function createMcpToolOptions(mcpServers: GatewayMcpServerConfig[], selectedToolsText: string): Array<{ available: boolean; description: string; label: string; value: string }> {
@@ -5515,6 +5918,9 @@ export function validateMcpServerDraft(draft: McpServerDraft): string {
   if (numberValue(draft.requestTimeoutMs) < 100) {
     return "Request timeout must be at least 100 ms.";
   }
+  if (numberValue(draft.startupTimeoutMs) < 100) {
+    return "Startup timeout must be at least 100 ms.";
+  }
   if (draft.transport === "stdio" && !validateKeyValueRows(draft.envRows)) {
     return "Env rows require keys.";
   }
@@ -5533,7 +5939,7 @@ export function mcpServerConfigFromDraft(
     name: draft.name.trim() || uniqueMcpServerName(existingServers, editIndex),
     protocolVersion: draft.protocolVersion.trim() || "2024-11-05",
     requestTimeoutMs: clampNumber(numberValue(draft.requestTimeoutMs), 100, 600000),
-    startupTimeoutMs: mcpServerStartupTimeoutMs
+    startupTimeoutMs: clampNumber(numberValue(draft.startupTimeoutMs), 100, 600000)
   };
 
   if (draft.transport !== "stdio") {
@@ -6229,6 +6635,33 @@ export function virtualModelIsCatalogVisible(profile: VirtualModelProfileConfig)
 }
 
 export function virtualModelCatalogNames(profile: VirtualModelProfileConfig): string[] {
+  return virtualModelRawCatalogNames(profile).map(fusionModelSelector);
+}
+
+export function virtualModelProfileModelNames(profiles: VirtualModelProfileConfig[]): string[] {
+  return uniqueStrings(
+    profiles
+      .filter(virtualModelIsCatalogVisible)
+      .flatMap(virtualModelRawCatalogNames)
+      .map(fusionModelNameFromSelector)
+      .filter(Boolean)
+  );
+}
+
+export function fusionModelSelector(model: string): string {
+  const normalized = fusionModelNameFromSelector(model);
+  return normalized ? `${fusionModelProviderName}/${normalized}` : "";
+}
+
+export function fusionModelNameFromSelector(model: string): string {
+  const trimmed = model.trim();
+  const prefix = `${fusionModelProviderName}/`;
+  return trimmed.toLowerCase().startsWith(prefix.toLowerCase())
+    ? trimmed.slice(prefix.length).trim()
+    : trimmed;
+}
+
+function virtualModelRawCatalogNames(profile: VirtualModelProfileConfig): string[] {
   const exactAliases = uniqueStrings(profile.match?.exactAliases ?? []);
   if (exactAliases.length > 0) {
     return exactAliases;
@@ -7292,7 +7725,7 @@ export function providerMatchesQuery(provider: GatewayProviderConfig, query: str
 }
 
 export function viewUsesInternalScroll(view: ViewId): boolean {
-  return view === "observability" || view === "api-keys" || view === "networking" || view === "logs" || view === "providers" || view === "models" || view === "routing" || view === "virtual-models" || view === "extensions";
+  return view === "observability" || view === "api-keys" || view === "profile" || view === "networking" || view === "logs" || view === "providers" || view === "models" || view === "routing" || view === "virtual-models" || view === "extensions";
 }
 
 export function uniqueProviderName(providers: GatewayProviderConfig[], baseName = "provider"): string {
