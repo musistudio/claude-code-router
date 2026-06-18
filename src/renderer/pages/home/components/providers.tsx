@@ -1,0 +1,1541 @@
+import {
+  AddProviderDraft, AnimatedDisclosure, AnimatedListItem, AnimatePresence, AppConfig, Badge,
+  Box, Button, Card, CardContent, CardHeader, CardTitle,
+  Check, Checkbox, ChevronDown, ChevronRight, CircleAlert, cn,
+  Copy, copyTextToClipboard, createDefaultProviderAccountDraft, createModelCatalogItems, createProviderAccountDraftFromConfig, createProviderInstallLinkFromDraft,
+  customProviderPresetId, defaultProviderAccountConfigForPreset, Dialog, DialogBody, DialogContent, DialogFooter,
+  DialogHeader, DialogTitle, Field, findProviderPreset, formatProviderAccountMeterValue, GatewayProviderConfig,
+  GatewayProviderProbeResult, Globe, inferProviderNameFromBaseUrl, Input, KeyValueRowsControl, Label,
+  Layers3, LoaderCircle, mergeProviderModelLists, modelCatalogItemMatchesQuery, motion, motionEase,
+  Pencil, Plus, PopoverContent, primaryProviderAccountMeter, primaryProviderPresetEndpoint, providerAccountBadgeVariant,
+  providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountSnapshot, ProviderAccountTestPath,
+  ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerHttpJsonConnectorFromDraft,
+  providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerPresets, providerProbeHasSupportedProtocol,
+  providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, reducedMotionTransition, Search, SelectControl,
+  ShieldCheck, splitLines, splitModelTagInput, Textarea, translatedProviderProtocolLabel, translateOptions,
+  translateProbeProtocolMessage, Trash2, uniqueProviderName, useAppText, useEffect, useMemo,
+  useReducedMotion, useRef, useState, X
+} from "../shared";
+export function ProvidersView({ accountSnapshots, addProvider, editProvider, notify, providers, removeProvider }: {
+  accountSnapshots: ProviderAccountSnapshot[];
+  addProvider: () => void;
+  editProvider: (index: number) => void;
+  notify: (message: string) => void;
+  providers: Array<{ provider: GatewayProviderConfig; index: number }>;
+  removeProvider: (index: number) => void;
+}) {
+  const t = useAppText();
+  const [query, setQuery] = useState("");
+  const [expandedProviders, setExpandedProviders] = useState<Set<string>>(() => new Set());
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleProviders = useMemo(
+    () => providers.filter(({ provider }) => providerMatchesQuery(provider, normalizedQuery)),
+    [normalizedQuery, providers]
+  );
+  const accountSnapshotByProvider = useMemo(
+    () => new Map(accountSnapshots.map((snapshot) => [snapshot.provider, snapshot])),
+    [accountSnapshots]
+  );
+
+  function toggleProvider(provider: GatewayProviderConfig, index: number) {
+    const key = providerListItemKey(provider, index);
+    setExpandedProviders((current) => {
+      const next = new Set(current);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }
+
+  async function copyModel(model: string) {
+    await copyTextToClipboard(model);
+    notify(`${t("Copied")} ${model}`);
+  }
+
+  return (
+    <motion.div
+      animate={{ opacity: 1 }}
+      className="flex h-full min-h-0 min-w-0 flex-col"
+      initial={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+    >
+      <Card className="flex h-full min-h-0 min-w-0 flex-col">
+        <CardHeader className="flex-row items-center gap-2">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 z-[1] h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              aria-label={t("Search providers")}
+              className="pl-8"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t("Search providers")}
+              value={query}
+            />
+          </div>
+          <Button aria-label={t("Add provider")} onClick={addProvider} title={t("Add provider")} type="button">
+            <Plus className="h-4 w-4" />
+            {t("Add")}
+          </Button>
+        </CardHeader>
+        <CardContent className="min-h-0 flex-1 overflow-auto p-0">
+          {providers.length === 0 ? (
+            <div className="m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center">
+              <Layers3 className="mx-auto mb-2 h-7 w-7 text-muted-foreground/40" />
+              <div className="text-[12px] text-muted-foreground">{t("No providers configured")}</div>
+              <div className="mt-1 text-[11px] text-muted-foreground/60">{t("Click Add to create one")}</div>
+            </div>
+          ) : null}
+          {providers.length > 0 && visibleProviders.length === 0 ? (
+            <div className="m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center text-[12px] text-muted-foreground">{t("No matching providers")}</div>
+          ) : null}
+          {visibleProviders.length > 0 ? (
+            <div className="overflow-x-auto">
+              <div className="min-w-[1080px]">
+                <div className="sticky top-0 z-10 grid h-10 grid-cols-[minmax(160px,0.8fr)_minmax(220px,1fr)_minmax(160px,0.7fr)_minmax(150px,0.65fr)_80px_84px] items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <div className="truncate">{t("Name")}</div>
+                  <div className="truncate">{t("Base URL")}</div>
+                  <div className="truncate">{t("Capability")}</div>
+                  <div className="truncate">{t("Account")}</div>
+                  <div className="truncate">{t("Models")}</div>
+                  <div aria-hidden="true" />
+                </div>
+                <div className="divide-y divide-border/60">
+                  <AnimatePresence initial={false}>
+                  {visibleProviders.map(({ provider, index }) => {
+                    const itemKey = providerListItemKey(provider, index);
+                    const expanded = expandedProviders.has(itemKey);
+                    const accountSnapshot = accountSnapshotByProvider.get(provider.name);
+                    return (
+                      <AnimatedListItem key={itemKey}>
+                        <div
+                          className="grid min-h-[58px] cursor-pointer grid-cols-[minmax(160px,0.8fr)_minmax(220px,1fr)_minmax(160px,0.7fr)_minmax(150px,0.65fr)_80px_84px] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35"
+                          onClick={() => toggleProvider(provider, index)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              toggleProvider(provider, index);
+                            }
+                          }}
+                          role="button"
+                          tabIndex={0}
+                        >
+                          <div className="flex min-w-0 items-center gap-2">
+                            <button
+                              aria-expanded={expanded}
+                              aria-label={`${expanded ? t("Collapse") : t("Expand")} ${provider.name || t("provider")} ${t("models")}`}
+                              className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                toggleProvider(provider, index);
+                              }}
+                              title={expanded ? t("Collapse models") : t("Expand models")}
+                              type="button"
+                            >
+                              {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                            </button>
+                            <div className="min-w-0">
+                              <div className="truncate text-[12px] font-semibold">{provider.name || t("Unnamed")}</div>
+                            </div>
+                          </div>
+                          <div className="min-w-0 truncate font-mono text-[11px] text-muted-foreground" title={providerBaseUrl(provider)}>
+                            {providerBaseUrl(provider) || t("Not set")}
+                          </div>
+                          <div className="min-w-0 truncate text-[11px] text-muted-foreground" title={providerCapabilitiesSummary(provider, t)}>
+                            {providerCapabilitiesSummary(provider, t)}
+                          </div>
+                          <ProviderAccountListCell provider={provider} snapshot={accountSnapshot} />
+                          <div className="min-w-0">
+                            <button
+                              aria-expanded={expanded}
+                              className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                toggleProvider(provider, index);
+                              }}
+                              title={expanded ? t("Collapse models") : t("Expand models")}
+                              type="button"
+                            >
+                              <Badge variant={provider.models.length > 0 ? "outline" : "warning"}>{provider.models.length}</Badge>
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              aria-label={`${t("Edit")} ${provider.name || t("provider")}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                editProvider(index);
+                              }}
+                              size="iconSm"
+                              title={t("Edit provider")}
+                              type="button"
+                              variant="ghost"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              aria-label={`${t("Remove")} ${provider.name || t("provider")}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                removeProvider(index);
+                              }}
+                              size="iconSm"
+                              title={t("Remove provider")}
+                              type="button"
+                              variant="ghost"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                        <AnimatePresence initial={false}>
+                          {expanded ? (
+                            <AnimatedDisclosure key="provider-models">
+                              <div className="border-t border-border/50 bg-muted/20 px-4 py-3">
+                                {provider.capabilities?.length ? (
+                                  <div className="mb-3 flex flex-wrap gap-2">
+                                    {provider.capabilities.map((capability) => (
+                                      <Badge key={`${capability.type}:${capability.baseUrl}`} variant="secondary">
+                                        {translatedProviderProtocolLabel(capability.type, t)}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                ) : null}
+                                {provider.models.length === 0 ? (
+                                  <div className="rounded-md border border-dashed border-border bg-background/60 px-3 py-4 text-center text-[12px] text-muted-foreground">{t("No models configured")}</div>
+                                ) : (
+                                  <div className="flex flex-wrap gap-2">
+                                    {provider.models.map((model) => {
+                                      const modelKey = `${itemKey}:${model}`;
+                                      return (
+                                        <button
+                                          aria-label={`${t("Double click to copy")} ${model}`}
+                                          className="inline-flex max-w-full items-center rounded-full border border-border bg-background px-2.5 py-1 font-mono text-[11px] leading-4 text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                                          key={modelKey}
+                                          onDoubleClick={() => void copyModel(model)}
+                                          title={t("Double click to copy")}
+                                          type="button"
+                                        >
+                                          <span className="min-w-0 truncate">{model}</span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            </AnimatedDisclosure>
+                          ) : null}
+                        </AnimatePresence>
+                      </AnimatedListItem>
+                    );
+                  })}
+                  </AnimatePresence>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
+
+export function ModelsView({ config }: { config: AppConfig }) {
+  const t = useAppText();
+  const [query, setQuery] = useState("");
+  const rows = useMemo(() => createModelCatalogItems(config), [config]);
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleRows = useMemo(
+    () => rows.filter((row) => modelCatalogItemMatchesQuery(row, normalizedQuery)),
+    [normalizedQuery, rows]
+  );
+
+  return (
+    <motion.div
+      animate={{ opacity: 1 }}
+      className="flex h-full min-h-0 min-w-0 flex-col"
+      initial={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+    >
+      <Card className="flex h-full min-h-0 min-w-0 flex-col">
+        <CardHeader className="flex-row flex-wrap items-center gap-2">
+          <div className="min-w-[180px] flex-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <CardTitle className="min-w-0">{t("Models")}</CardTitle>
+            </div>
+          </div>
+          <div className="relative w-[320px] max-w-full">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 z-[1] h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              aria-label={t("Search all models")}
+              className="pl-8"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t("Search all models")}
+              value={query}
+            />
+          </div>
+        </CardHeader>
+        <CardContent className="min-h-0 flex-1 overflow-auto p-0">
+          {rows.length === 0 ? (
+            <div className="m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center">
+              <Box className="mx-auto mb-2 h-7 w-7 text-muted-foreground/40" />
+              <div className="text-[12px] text-muted-foreground">{t("No models available")}</div>
+            </div>
+          ) : null}
+          {rows.length > 0 && visibleRows.length === 0 ? (
+            <div className="m-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-10 text-center text-[12px] text-muted-foreground">{t("No matching models")}</div>
+          ) : null}
+          {visibleRows.length > 0 ? (
+            <div className="overflow-x-auto">
+              <div className="min-w-[360px]">
+                <div className="sticky top-0 z-10 grid h-10 grid-cols-[minmax(0,1fr)] items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <div className="truncate">{t("Model")}</div>
+                </div>
+                <div className="divide-y divide-border/60">
+                  <AnimatePresence initial={false}>
+                    {visibleRows.map((row) => (
+                      <AnimatedListItem
+                        className="grid min-h-[48px] grid-cols-[minmax(0,1fr)] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35"
+                        key={row.key}
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-mono text-[12px] font-semibold text-foreground" title={row.model}>
+                            {row.model}
+                          </div>
+                        </div>
+                      </AnimatedListItem>
+                    ))}
+                  </AnimatePresence>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
+
+function ProviderAccountListCell({ provider, snapshot }: { provider: GatewayProviderConfig; snapshot?: ProviderAccountSnapshot }) {
+  const t = useAppText();
+  const meter = snapshot ? primaryProviderAccountMeter(snapshot) : undefined;
+
+  if (!provider.account?.enabled) {
+    return <div className="min-w-0 truncate text-[11px] text-muted-foreground">{t("Disabled")}</div>;
+  }
+
+  if (!snapshot) {
+    return <div className="min-w-0 truncate text-[11px] text-muted-foreground">{t("Pending")}</div>;
+  }
+
+  return (
+    <div className="min-w-0">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <Badge variant={providerAccountBadgeVariant(snapshot.status)}>{snapshot.status}</Badge>
+        {meter ? <span className="min-w-0 truncate text-[11px] font-medium">{formatProviderAccountMeterValue(meter)}</span> : null}
+      </div>
+      <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
+        {meter?.label ?? snapshot.message ?? snapshot.errors?.[0]?.message ?? snapshot.source}
+      </div>
+    </div>
+  );
+}
+
+export function DeleteProviderDialog({
+  onClose,
+  onConfirm,
+  provider
+}: {
+  onClose: () => void;
+  onConfirm: () => void;
+  provider: GatewayProviderConfig;
+}) {
+  const t = useAppText();
+  const name = provider.name || t("Unnamed provider");
+  const baseUrl = providerBaseUrl(provider);
+
+  return (
+    <Dialog onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-[520px]">
+        <DialogHeader>
+          <div className="min-w-0">
+            <DialogTitle>{t("Delete Provider")}</DialogTitle>
+          </div>
+          <Button aria-label={t("Close dialog")} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
+            <X className="h-4 w-4" />
+          </Button>
+        </DialogHeader>
+
+        <DialogBody>
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5">
+            <div className="flex items-start gap-2 text-[12px] font-medium text-destructive">
+              <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{t("Delete this provider from the configuration?")}</span>
+            </div>
+            <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+              <div className="truncate">
+                <span className="font-medium text-foreground">{t("Name")}:</span> {name}
+              </div>
+              <div className="truncate" title={baseUrl}>
+                <span className="font-medium text-foreground">{t("Base URL")}:</span> {baseUrl || t("Not set")}
+              </div>
+              <div>{t("This action is applied immediately to the draft config and will auto-save with other changes.")}</div>
+            </div>
+          </div>
+        </DialogBody>
+
+        <DialogFooter>
+          <Button autoFocus onClick={onClose} type="button" variant="outline">
+            {t("Cancel")}
+          </Button>
+          <Button onClick={onConfirm} type="button" variant="destructive">
+            <Trash2 className="h-4 w-4" />
+            {t("Delete")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function ProviderDeepLinkDialog({
+  busy,
+  error,
+  onClose,
+  onSubmit,
+  request
+}: {
+  busy: boolean;
+  error: string;
+  onClose: () => void;
+  onSubmit: () => Promise<void>;
+  request: ProviderDeepLinkRequest;
+}) {
+  const t = useAppText();
+  const provider = request.provider;
+  const manifest = request.manifest;
+  const displayName = provider ? provider.name?.trim() || inferProviderNameFromBaseUrl(provider.baseUrl) : "";
+  const modelPreview = provider?.models.slice(0, 8) ?? [];
+
+  return (
+    <Dialog onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-[580px]">
+        <DialogHeader>
+          <div className="min-w-0">
+            <DialogTitle>{provider ? t("Import Provider") : manifest ? t("Import Provider Manifest") : t("Provider link failed")}</DialogTitle>
+          </div>
+          <Button aria-label={t("Close dialog")} disabled={busy} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
+            <X className="h-4 w-4" />
+          </Button>
+        </DialogHeader>
+
+        <DialogBody>
+          {provider ? (
+            <div className="space-y-3">
+              <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5">
+                <div className="flex items-start gap-2 text-[12px] font-medium text-foreground">
+                  <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>{t("External provider link")}</span>
+                </div>
+                <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                  {t("This provider link came from an external website. Review details before importing.")}
+                </div>
+              </div>
+              <div className="flex items-start gap-2 rounded-md border border-border bg-background px-3 py-2 text-[11px] leading-4 text-muted-foreground">
+                <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>{t("Only enter an API key issued for this endpoint. Official provider keys must only be used with official endpoints.")}</span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 text-[12px] sm:grid-cols-2">
+                <ProviderDeepLinkDetail label={t("Name")} value={displayName} />
+                <ProviderDeepLinkDetail label={t("Protocol")} value={provider.protocol ? translatedProviderProtocolLabel(provider.protocol, t) : t("Detected automatically")} />
+                <ProviderDeepLinkDetail className="sm:col-span-2" label={t("Base URL")} value={provider.baseUrl} mono />
+                {manifest ? (
+                  <ProviderDeepLinkDetail className="sm:col-span-2" label={t("Manifest URL")} value={manifest.url} mono />
+                ) : null}
+                {provider.source ? (
+                  <ProviderDeepLinkDetail className="sm:col-span-2" label={t("Provider website")} value={provider.source} mono />
+                ) : null}
+                <ProviderDeepLinkDetail
+                  label={t("API key")}
+                  value={provider.apiKey ? t("API key included") : t("API key not included")}
+                />
+                <ProviderDeepLinkDetail
+                  label={t("Fetch usage")}
+                  value={provider.account?.enabled === false ? t("Disabled") : t("Enabled")}
+                />
+                <ProviderDeepLinkDetail
+                  label={t("Models")}
+                  value={provider.models.length > 0 ? String(provider.models.length) : t("Models will be detected automatically.")}
+                />
+              </div>
+
+              {modelPreview.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {modelPreview.map((model) => (
+                    <Badge key={model} variant="outline">
+                      <span className="max-w-[210px] truncate font-mono">{model}</span>
+                    </Badge>
+                  ))}
+                  {provider.models.length > modelPreview.length ? (
+                    <Badge variant="secondary">+{provider.models.length - modelPreview.length}</Badge>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {(provider.setDefault || provider.replaceExisting) ? (
+                <div className="flex flex-wrap gap-2">
+                  {provider.setDefault ? <Badge variant="secondary">{t("Set as default provider")}</Badge> : null}
+                  {provider.replaceExisting ? <Badge variant="secondary">{t("Replace existing provider")}</Badge> : null}
+                </div>
+              ) : null}
+            </div>
+          ) : manifest ? (
+            <div className="space-y-3">
+              <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5">
+                <div className="flex items-start gap-2 text-[12px] font-medium text-foreground">
+                  <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>{t("Remote provider manifest")}</span>
+                </div>
+                <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                  {t("CCR will fetch this HTTPS manifest with strict safety checks before showing provider details.")}
+                </div>
+              </div>
+              <ProviderDeepLinkDetail label={t("Manifest URL")} value={manifest.url} mono />
+            </div>
+          ) : (
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5">
+              <div className="flex items-start gap-2 text-[12px] font-medium text-destructive">
+                <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>{request.error || t("Invalid")}</span>
+              </div>
+            </div>
+          )}
+
+          {error ? (
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
+              <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{t(error)}</span>
+            </div>
+          ) : null}
+        </DialogBody>
+
+        <DialogFooter>
+          <Button disabled={busy} onClick={onClose} type="button" variant="outline">
+            {t("Cancel")}
+          </Button>
+          {provider || manifest ? (
+            <Button disabled={busy} onClick={() => void onSubmit()} type="button">
+              {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              {provider ? t("Import") : t("Fetch manifest")}
+            </Button>
+          ) : null}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ProviderDeepLinkDetail({
+  className,
+  label,
+  mono = false,
+  value
+}: {
+  className?: string;
+  label: string;
+  mono?: boolean;
+  value: string;
+}) {
+  return (
+    <div className={cn("min-w-0 rounded-md border border-border bg-background px-3 py-2", className)}>
+      <div className="truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className={cn("mt-1 min-w-0 truncate text-[12px] text-foreground", mono && "font-mono text-[11px]")} title={value}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+type ProviderPresetComboboxOption = {
+  iconUrl?: string;
+  label: string;
+  preset?: ProviderPreset;
+  value: string;
+};
+
+function ProviderPresetCombobox({
+  onChange,
+  options,
+  value
+}: {
+  onChange: (value: string) => void;
+  options: ProviderPresetComboboxOption[];
+  value: string;
+}) {
+  const t = useAppText();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const selected = options.find((option) => option.value === value) ?? options[0];
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredOptions = normalizedQuery
+    ? options.filter((option) => providerPresetOptionMatchesQuery(option, normalizedQuery))
+    : options;
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 0);
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  function chooseOption(nextValue: string) {
+    onChange(nextValue);
+    setQuery("");
+    setOpen(false);
+  }
+
+  return (
+    <div className="relative min-w-0" ref={rootRef}>
+      <button
+        aria-controls="provider-preset-options"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        className={cn(
+          "flex h-8 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-[12px] font-medium shadow-[inset_0_1px_1px_rgba(0,0,0,0.03)] outline-none transition-[background-color,border-color,box-shadow,color] hover:border-muted-foreground/45 focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-ring/25",
+          open && "border-ring/35 bg-muted/40"
+        )}
+        onClick={() => setOpen((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+        type="button"
+      >
+        <ProviderPresetIcon className="h-4 w-4 rounded-[4px]" iconUrl={selected?.iconUrl} preset={selected?.preset} />
+        <span className="min-w-0 flex-1 truncate">{selected ? selected.label : t("Select preset provider")}</span>
+        <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+      </button>
+
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="absolute left-0 right-0 top-full z-50 mt-1"
+            exit={{ opacity: 0, scale: 0.98, y: -4 }}
+            initial={{ opacity: 0, scale: 0.98, y: -4 }}
+            transition={{ duration: 0.12, ease: "easeOut" }}
+          >
+            <PopoverContent className="overflow-hidden p-1">
+              <div className="relative mb-1">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  aria-label={t("Filter")}
+                  className="h-8 pl-8"
+                  onChange={(event) => setQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      const first = filteredOptions[0];
+                      if (first) {
+                        chooseOption(first.value);
+                      }
+                    }
+                  }}
+                  placeholder={t("Filter")}
+                  ref={inputRef}
+                  value={query}
+                />
+              </div>
+              <div className="max-h-[240px] overflow-auto" id="provider-preset-options" role="listbox">
+                {filteredOptions.length > 0 ? (
+                  filteredOptions.map((option) => {
+                    const selectedOption = option.value === value;
+                    return (
+                      <button
+                        aria-selected={selectedOption}
+                        className={cn(
+                          "flex h-9 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[12px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
+                          selectedOption ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
+                        )}
+                        key={option.value}
+                        onClick={() => chooseOption(option.value)}
+                        role="option"
+                        type="button"
+                      >
+                        <ProviderPresetIcon className="h-5 w-5 rounded-[5px]" iconUrl={option.iconUrl} preset={option.preset} />
+                        <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                        {selectedOption ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="px-2 py-5 text-center text-[12px] text-muted-foreground">{t("No provider presets found")}</div>
+                )}
+              </div>
+            </PopoverContent>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function ProviderPresetIcon({ className, iconUrl: explicitIconUrl, preset }: { className?: string; iconUrl?: string; preset?: ProviderPreset }) {
+  const [failed, setFailed] = useState(false);
+  const resolvedIconUrl = explicitIconUrl || (preset ? providerPresetIconUrls[preset.id] : "");
+  const iconUrl = !failed ? resolvedIconUrl : "";
+  const label = preset?.name.trim().slice(0, 1).toUpperCase() || "";
+
+  useEffect(() => {
+    setFailed(false);
+  }, [preset?.id, resolvedIconUrl]);
+
+  if (iconUrl) {
+    return (
+      <span className={cn("flex shrink-0 items-center justify-center overflow-hidden border border-border bg-background", className)}>
+        <img
+          alt=""
+          className="h-full w-full object-cover"
+          draggable={false}
+          onError={() => setFailed(true)}
+          src={iconUrl}
+        />
+      </span>
+    );
+  }
+
+  return (
+    <span className={cn("flex shrink-0 items-center justify-center border border-border bg-muted text-[10px] font-semibold text-muted-foreground", className)}>
+      {label || <Globe className="h-3.5 w-3.5" />}
+    </span>
+  );
+}
+
+function providerPresetOptionMatchesQuery(
+  option: ProviderPresetComboboxOption,
+  query: string
+): boolean {
+  const preset = option.preset;
+  const haystack = [
+    option.label,
+    option.value,
+    preset?.id,
+    preset?.name,
+    ...(preset?.aliases ?? []),
+    ...(preset?.endpoints.map((endpoint) => endpoint.baseUrl) ?? [])
+  ].filter(Boolean).join("\n").toLowerCase();
+  return haystack.includes(query);
+}
+
+export function AddProviderForm({
+  draft,
+  error,
+  mode,
+  onCheck,
+  onChange,
+  probe,
+  probeLoading,
+  providers
+}: {
+  draft: AddProviderDraft;
+  error: string;
+  mode: "add" | "edit";
+  onCheck?: () => Promise<void>;
+  onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
+  probe?: GatewayProviderProbeResult;
+  probeLoading: boolean;
+  providers: GatewayProviderConfig[];
+}) {
+  const t = useAppText();
+  const shouldReduceMotion = useReducedMotion();
+  const [advancedOpen, setAdvancedOpen] = useState(mode === "edit");
+  const [iconDetecting, setIconDetecting] = useState(false);
+  const iconDetectionRequestRef = useRef(0);
+  const onChangeRef = useRef(onChange);
+  const hasModelCatalog = Boolean(probe?.models.length);
+  const selectedPreset = findProviderPreset(draft.presetId);
+  const customEndpoint = draft.presetId === customProviderPresetId;
+  const showBaseUrl = customEndpoint || mode === "edit";
+  const detectedProtocol = probe?.detectedProtocol ?? draft.protocol;
+  const detectedBaseUrl = probe?.normalizedBaseUrl || draft.baseUrl;
+  const safetyIssue = providerDraftSafetyIssue(draft, detectedBaseUrl);
+  const providerPresetOptions = [
+    { label: t("Select preset provider"), value: "" },
+    ...providerPresets.map((preset) => ({ label: t(preset.name), preset, value: preset.id })),
+    { iconUrl: draft.icon, label: t("Other / custom API endpoint"), value: customProviderPresetId }
+  ];
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  useEffect(() => {
+    const requestId = iconDetectionRequestRef.current + 1;
+    iconDetectionRequestRef.current = requestId;
+    setIconDetecting(false);
+
+    const baseUrl = draft.baseUrl.trim();
+    const ccr = window.ccr;
+    if (!customEndpoint || !baseUrl || draft.icon || !ccr?.detectProviderIcon) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setIconDetecting(true);
+      void ccr.detectProviderIcon({ baseUrl })
+        .then((result) => {
+          if (iconDetectionRequestRef.current === requestId && result.icon) {
+            onChangeRef.current({ icon: result.icon });
+          }
+        })
+        .catch(() => {
+          // Icon detection is optional; provider probing and saving should continue normally.
+        })
+        .finally(() => {
+          if (iconDetectionRequestRef.current === requestId) {
+            setIconDetecting(false);
+          }
+        });
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [customEndpoint, draft.baseUrl, draft.icon]);
+
+  function updatePreset(presetId: string) {
+    if (!presetId) {
+      onChange({
+        ...createDefaultProviderAccountDraft(),
+        baseUrl: "",
+        icon: "",
+        modelSearch: "",
+        presetId,
+        selectedModels: []
+      }, true);
+      return;
+    }
+
+    if (presetId === customProviderPresetId) {
+      onChange({
+        ...createDefaultProviderAccountDraft(),
+        baseUrl: "",
+        icon: "",
+        modelSearch: "",
+        presetId,
+        selectedModels: []
+      }, true);
+      return;
+    }
+
+    const preset = findProviderPreset(presetId);
+    const endpoint = preset ? primaryProviderPresetEndpoint(preset) : undefined;
+    const generatedName = !draft.name.trim() || /^provider-\d+$/i.test(draft.name.trim());
+    const accountDraft = createProviderAccountDraftFromConfig(defaultProviderAccountConfigForPreset(presetId));
+    onChange({
+      ...accountDraft,
+      baseUrl: endpoint?.baseUrl ?? "",
+      icon: "",
+      modelSearch: "",
+      modelsText: draft.modelsText.trim() || preset?.defaultModels?.join("\n") || "",
+      name: mode === "add" && preset && generatedName ? uniqueProviderName(providers, t(preset.name)) : draft.name,
+      presetId,
+      protocol: endpoint?.protocols[0] ?? draft.protocol,
+      selectedModels: []
+    }, true);
+  }
+
+  return (
+    <>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label={t("Preset provider")}>
+          <ProviderPresetCombobox
+            value={draft.presetId}
+            onChange={updatePreset}
+            options={providerPresetOptions}
+          />
+        </Field>
+        <Field label={t("Name")}>
+          <Input value={draft.name} onChange={(event) => onChange({ name: event.target.value })} />
+        </Field>
+        {showBaseUrl ? (
+          <Field className="sm:col-span-2" label={t("API endpoint")}>
+            <Input value={draft.baseUrl} onChange={(event) => onChange({ baseUrl: event.target.value, icon: "" }, true)} />
+            {customEndpoint ? (
+              <div className="flex min-h-4 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
+                {iconDetecting ? <LoaderCircle className="h-3 w-3 shrink-0 animate-spin" /> : null}
+                <span className="min-w-0">
+                  {iconDetecting
+                    ? t("Detecting icon")
+                    : t("After you enter the API endpoint and key, the system will automatically detect supported protocols and available models.")}
+                </span>
+              </div>
+            ) : null}
+          </Field>
+        ) : null}
+        <Field className="sm:col-span-2" label={t("API key")}>
+          <Input type="password" value={draft.apiKey} onChange={(event) => onChange({ apiKey: event.target.value }, true)} />
+          <div className="flex items-start gap-1.5 text-[11px] leading-4 text-muted-foreground">
+            <CircleAlert className="mt-0.5 h-3 w-3 shrink-0" />
+            <span>{t("Only enter an API key issued for this endpoint. Official provider keys must only be used with official endpoints.")}</span>
+          </div>
+        </Field>
+        {safetyIssue ? (
+          <div className="sm:col-span-2 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] leading-5 text-amber-900 dark:text-amber-100">
+            <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>{safetyIssue.message}</span>
+          </div>
+        ) : null}
+        {selectedPreset && !showBaseUrl ? (
+          <div className="sm:col-span-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[12px] text-muted-foreground">
+            <div className="flex min-w-0 items-center gap-2">
+              <Globe className="h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 truncate" title={detectedBaseUrl}>{detectedBaseUrl}</span>
+            </div>
+          </div>
+        ) : null}
+        <Field className="sm:col-span-2" label={t("Models")}>
+          {hasModelCatalog && probe ? (
+            <div className="space-y-2">
+              <ModelMultiSelect
+                models={probe.models}
+                onQueryChange={(modelSearch) => onChange({ modelSearch })}
+                onSelectedChange={(selectedModels) => onChange({ selectedModels })}
+                query={draft.modelSearch}
+                selected={draft.selectedModels}
+              />
+              <div className="space-y-1.5">
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                  <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Custom models")}</span>
+                  <span className="shrink-0 text-[11px] font-medium leading-4 text-muted-foreground/75">{t("Press Enter to add")}</span>
+                </div>
+                <ModelTagInput
+                  ariaLabel={t("Custom models")}
+                  onChange={(models) => onChange({ modelsText: models.join("\n") })}
+                  placeholder={t("Model name")}
+                  value={splitLines(draft.modelsText)}
+                />
+              </div>
+            </div>
+          ) : (
+            <ModelTagInput
+              ariaLabel={t("Models")}
+              onChange={(models) => onChange({ modelsText: models.join("\n") }, true)}
+              placeholder={t("Model name")}
+              value={splitLines(draft.modelsText)}
+            />
+          )}
+        </Field>
+        <div className="sm:col-span-2 flex min-w-0 flex-wrap items-center justify-between gap-2 text-[12px] text-muted-foreground">
+          <div className="min-w-0 flex-1">
+            {probeLoading ? (
+              <span className="inline-flex items-center gap-1.5">
+                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                {t("Detecting provider")}
+              </span>
+            ) : providerProbeHasSupportedProtocol(probe) ? (
+              <span className="inline-flex items-center gap-1.5 text-foreground">
+                <Check className="h-3.5 w-3.5" />
+                {t("Connection verified")}
+              </span>
+            ) : probe?.detectedProtocol ? (
+              <span className="inline-flex items-center gap-1.5 text-foreground">
+                <Check className="h-3.5 w-3.5" />
+                {t("Detected automatically")}
+              </span>
+            ) : draft.baseUrl.trim() ? (
+              <span>{t("Enter a model manually if automatic detection does not return a model list.")}</span>
+            ) : null}
+          </div>
+          {onCheck ? (
+            <Button
+              className="h-8 shrink-0 px-2"
+              disabled={probeLoading}
+              onClick={() => void onCheck()}
+              type="button"
+              variant="outline"
+            >
+              {probeLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+              {t("Check")}
+            </Button>
+          ) : null}
+        </div>
+
+        <div className="sm:col-span-2">
+          <button
+            aria-expanded={advancedOpen}
+            className="inline-flex min-w-0 items-center gap-2 border-0 bg-transparent p-0 text-[12px] font-semibold text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
+            onClick={() => setAdvancedOpen((value) => !value)}
+            type="button"
+          >
+            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", advancedOpen && "rotate-180")} />
+            <span>{t("Advanced settings")}</span>
+          </button>
+        </div>
+
+        <AnimatePresence initial={false}>
+          {advancedOpen ? (
+            <motion.div
+              animate={{ height: "auto", opacity: 1 }}
+              className="sm:col-span-2 overflow-hidden"
+              exit={{ height: 0, opacity: 0 }}
+              initial={{ height: 0, opacity: 0 }}
+              transition={shouldReduceMotion ? reducedMotionTransition : { duration: 0.18, ease: motionEase }}
+            >
+              <div className="grid grid-cols-1 gap-3 rounded-md border border-border bg-muted/20 p-3 sm:grid-cols-2">
+                {selectedPreset && !customEndpoint && mode === "add" ? (
+                  <Field className="sm:col-span-2" label={t("API endpoint")}>
+                    <Input value={draft.baseUrl} onChange={(event) => onChange({ baseUrl: event.target.value }, true)} />
+                  </Field>
+                ) : null}
+                <Field label={t("Detected compatibility")}>
+                  <Input readOnly value={translatedProviderProtocolLabel(detectedProtocol, t)} />
+                </Field>
+                <Field label={t("Detected endpoint")}>
+                  <Input readOnly value={detectedBaseUrl} />
+                </Field>
+                <ProviderUsageSettings
+                  customEndpoint={customEndpoint}
+                  draft={draft}
+                  onChange={onChange}
+                  probe={probe}
+                />
+                <Field className="sm:col-span-2" label={t("Protocol details")}>
+                  <div className="max-h-[128px] overflow-auto rounded-md border border-border bg-background p-2">
+                    {probe?.protocols.length ? (
+                      <div className="space-y-1.5">
+                        {probe.protocols.map((item) => (
+                          <div className="grid grid-cols-[minmax(118px,0.7fr)_72px_minmax(0,1fr)] gap-2 text-[11px]" key={`${item.protocol}-${item.endpoint}`}>
+                            <span className="truncate font-medium">{translatedProviderProtocolLabel(item.protocol, t)}</span>
+                            <span className={cn("truncate", item.supported ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground")}>
+                              {item.supported ? t("Available") : t("Unavailable")}
+                            </span>
+                            <span className="truncate text-muted-foreground" title={translateProbeProtocolMessage(item.message, t)}>{translateProbeProtocolMessage(item.message, t)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-muted-foreground">{t("No protocol detection yet")}</div>
+                    )}
+                  </div>
+                </Field>
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </div>
+
+      {error ? <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive"><CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>{error}</span></div> : null}
+    </>
+  );
+}
+
+function ProviderUsageSettings({
+  customEndpoint,
+  draft,
+  onChange,
+  probe
+}: {
+  customEndpoint: boolean;
+  draft: AddProviderDraft;
+  onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
+  probe?: GatewayProviderProbeResult;
+}) {
+  const t = useAppText();
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResult, setTestResult] = useState<ProviderAccountTestResult>();
+  const [testError, setTestError] = useState("");
+  const [copiedLink, setCopiedLink] = useState(false);
+  const modeOptions = translateOptions(providerAccountModeOptions, t);
+
+  useEffect(() => {
+    setTestResult(undefined);
+    setTestError("");
+  }, [draft.accountMode, draft.usageRequestUrl, draft.usageRequestMethod]);
+
+  useEffect(() => {
+    if (!copiedLink) {
+      return;
+    }
+    const timer = window.setTimeout(() => setCopiedLink(false), 1300);
+    return () => window.clearTimeout(timer);
+  }, [copiedLink]);
+
+  async function testUsageRequest() {
+    if (!window.ccr?.testProviderAccountConnector) {
+      setTestError("Request failed.");
+      return;
+    }
+    const connector = providerHttpJsonConnectorFromDraft(draft, { requireMeters: false });
+    if (typeof connector === "string") {
+      setTestError(connector);
+      return;
+    }
+    const safetyIssue = providerAccountConnectorApiKeySafetyIssue(connector, {
+      apiKey: draft.apiKey,
+      baseUrl: (probe?.normalizedBaseUrl || draft.baseUrl).trim(),
+      providerName: draft.name.trim(),
+      providerPresetId: draft.presetId
+    });
+    if (safetyIssue) {
+      setTestError(safetyIssue.message);
+      return;
+    }
+
+    setTestLoading(true);
+    setTestError("");
+    try {
+      const result = await window.ccr.testProviderAccountConnector({
+        apiKey: draft.apiKey.trim(),
+        baseUrl: draft.baseUrl.trim(),
+        connector,
+        providerName: draft.name.trim()
+      });
+      setTestResult(result);
+    } catch (error) {
+      setTestResult(undefined);
+      setTestError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTestLoading(false);
+    }
+  }
+
+  async function copyProviderPluginLink() {
+    const link = createProviderInstallLinkFromDraft(draft, probe);
+    if (typeof link === "string" && link.startsWith("ccr://")) {
+      await copyTextToClipboard(link);
+      setCopiedLink(true);
+      setTestError("");
+      return;
+    }
+    setTestError(link);
+  }
+
+  function selectPath(target: ProviderUsageFieldTarget, path: string) {
+    onChange(providerUsageFieldPatch(target, path));
+  }
+
+  return (
+    <div className="sm:col-span-2 space-y-3 rounded-md border border-border bg-background/60 p-3">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+        <Label className="flex min-w-0 items-center gap-2 text-[12px] font-semibold">
+          <Checkbox
+            checked={draft.accountEnabled}
+            onCheckedChange={(checked) => onChange({ accountEnabled: checked })}
+          />
+          <span className="min-w-0 truncate">{t("Fetch usage")}</span>
+        </Label>
+        <Button className="h-8 shrink-0 px-2" onClick={() => void copyProviderPluginLink()} type="button" variant="outline">
+          {copiedLink ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          {copiedLink ? t("Copied") : t("Copy provider plugin link")}
+        </Button>
+      </div>
+
+      {draft.accountEnabled ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label={t("Usage mode")}>
+            <SelectControl
+              onChange={(accountMode) => onChange({ accountMode: accountMode as ProviderAccountDraftMode })}
+              options={modeOptions}
+              value={draft.accountMode}
+            />
+          </Field>
+          <Field label={t("Refresh interval ms")}>
+            <Input
+              min={30000}
+              placeholder="300000"
+              type="number"
+              value={draft.accountRefreshIntervalMs}
+              onChange={(event) => onChange({ accountRefreshIntervalMs: event.target.value })}
+            />
+          </Field>
+
+          {draft.accountMode === "standard" ? (
+            <div className="sm:col-span-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[11px] leading-4 text-muted-foreground">
+              {t("Standard usage endpoint will try provider-hosted CCR account endpoints.")}
+              {customEndpoint ? <span> {t("Switch to HTTP JSON request to configure method, URL, headers, body, and response fields.")}</span> : null}
+            </div>
+          ) : null}
+
+          {draft.accountMode === "http-json" ? (
+            <div className="sm:col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label={t("Method")}>
+                <SelectControl
+                  onChange={(usageRequestMethod) => onChange({ usageRequestMethod: usageRequestMethod as "GET" | "POST" })}
+                  options={providerUsageMethodOptions}
+                  value={draft.usageRequestMethod}
+                />
+              </Field>
+              <Field label={t("Usage request URL")}>
+                <Input
+                  placeholder="https://api.vendor.com/account"
+                  value={draft.usageRequestUrl}
+                  onChange={(event) => onChange({ usageRequestUrl: event.target.value })}
+                />
+              </Field>
+              <Field className="sm:col-span-2" label={t("Headers")}>
+                <KeyValueRowsControl
+                  addLabel={t("Add header")}
+                  rows={draft.usageRequestHeaders}
+                  onChange={(usageRequestHeaders) => onChange({ usageRequestHeaders })}
+                />
+              </Field>
+              <Field className="sm:col-span-2" label={t("Body")}>
+                <Textarea
+                  className="min-h-[92px] font-mono text-[11px]"
+                  placeholder={`{\n  "query": "usage"\n}`}
+                  value={draft.usageRequestBodyText}
+                  onChange={(event) => onChange({ usageRequestBodyText: event.target.value })}
+                />
+              </Field>
+
+              <Field label={t("Balance field")}>
+                <Input placeholder="$.balance.remaining" value={draft.usageBalanceRemainingPath} onChange={(event) => onChange({ usageBalanceRemainingPath: event.target.value })} />
+              </Field>
+              <Field label={t("Balance unit")}>
+                <Input placeholder="USD" value={draft.usageBalanceUnit} onChange={(event) => onChange({ usageBalanceUnit: event.target.value })} />
+              </Field>
+              <Field label={t("Subscription remaining field")}>
+                <Input placeholder="$.subscription.remaining" value={draft.usageSubscriptionRemainingPath} onChange={(event) => onChange({ usageSubscriptionRemainingPath: event.target.value })} />
+              </Field>
+              <Field label={t("Subscription limit field")}>
+                <Input placeholder="$.subscription.limit" value={draft.usageSubscriptionLimitPath} onChange={(event) => onChange({ usageSubscriptionLimitPath: event.target.value })} />
+              </Field>
+              <Field label={t("Subscription reset field")}>
+                <Input placeholder="$.subscription.resetAt" value={draft.usageSubscriptionResetPath} onChange={(event) => onChange({ usageSubscriptionResetPath: event.target.value })} />
+              </Field>
+              <Field label={t("Subscription unit")}>
+                <Input placeholder="tokens" value={draft.usageSubscriptionUnit} onChange={(event) => onChange({ usageSubscriptionUnit: event.target.value })} />
+              </Field>
+              <Field label={t("Status field")}>
+                <Input placeholder="$.status" value={draft.usageStatusPath} onChange={(event) => onChange({ usageStatusPath: event.target.value })} />
+              </Field>
+              <Field label={t("Message field")}>
+                <Input placeholder="$.message" value={draft.usageMessagePath} onChange={(event) => onChange({ usageMessagePath: event.target.value })} />
+              </Field>
+
+              <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
+                <Button disabled={testLoading} onClick={() => void testUsageRequest()} size="sm" type="button" variant="outline">
+                  {testLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                  {t("Test usage request")}
+                </Button>
+                {testResult ? <Badge variant={testResult.meters.length > 0 ? "success" : "outline"}>{testResult.meters.length} {t("meters")}</Badge> : null}
+              </div>
+
+              {testResult ? (
+                <ProviderUsageTestResultPanel result={testResult} onSelectPath={selectPath} />
+              ) : null}
+            </div>
+          ) : null}
+
+          {draft.accountMode === "raw" ? (
+            <Field className="sm:col-span-2" label={t("Connectors JSON")}>
+              <Textarea
+                className="min-h-[180px] font-mono text-[11px]"
+                value={draft.accountConnectorsText}
+                onChange={(event) => onChange({ accountConnectorsText: event.target.value })}
+              />
+              <div className="flex min-w-0 items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                <span className="min-w-0 truncate">{t("Supports standard, http-json, plugin, and local-estimate connectors.")}</span>
+                <button
+                  className="shrink-0 text-primary hover:underline"
+                  type="button"
+                  onClick={() => onChange({ accountConnectorsText: providerAccountConnectorExample() })}
+                >
+                  {t("Insert example")}
+                </button>
+              </div>
+            </Field>
+          ) : null}
+        </div>
+      ) : null}
+
+      {testError ? (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
+          <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{t(testError)}</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ProviderUsageTestResultPanel({
+  onSelectPath,
+  result
+}: {
+  onSelectPath: (target: ProviderUsageFieldTarget, path: string) => void;
+  result: ProviderAccountTestResult;
+}) {
+  const t = useAppText();
+  const visiblePaths = result.paths.slice(0, 120);
+
+  return (
+    <div className="sm:col-span-2 rounded-md border border-border bg-muted/20">
+      <div className="flex min-w-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
+        <div className="min-w-0 truncate text-[12px] font-semibold">{t("Response fields")}</div>
+        <Badge variant="outline">{result.paths.length}</Badge>
+      </div>
+      {visiblePaths.length === 0 ? (
+        <div className="px-3 py-6 text-center text-[12px] text-muted-foreground">{t("No response fields")}</div>
+      ) : (
+        <div className="max-h-[260px] overflow-auto p-2">
+          <div className="space-y-1.5">
+            {visiblePaths.map((item) => (
+              <ProviderUsagePathRow item={item} key={item.path} onSelectPath={onSelectPath} />
+            ))}
+          </div>
+          {result.paths.length > visiblePaths.length ? (
+            <div className="px-1 py-2 text-[11px] text-muted-foreground">
+              {t("Showing first response fields only.")}
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProviderUsagePathRow({
+  item,
+  onSelectPath
+}: {
+  item: ProviderAccountTestPath;
+  onSelectPath: (target: ProviderUsageFieldTarget, path: string) => void;
+}) {
+  const t = useAppText();
+
+  return (
+    <div className="grid min-w-0 grid-cols-[minmax(180px,1fr)_minmax(120px,0.6fr)_auto] items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5 text-[11px]">
+      <div className="min-w-0">
+        <div className="truncate font-mono font-semibold" title={item.path}>{item.path}</div>
+        <div className="truncate text-muted-foreground" title={item.preview}>{item.preview}</div>
+      </div>
+      <Badge className="justify-self-start" variant="outline">{item.type}</Badge>
+      <div className="flex flex-wrap justify-end gap-1">
+        <Button className="h-6 px-1.5 text-[10px]" onClick={() => onSelectPath("balance", item.path)} type="button" variant="outline">{t("Balance")}</Button>
+        <Button className="h-6 px-1.5 text-[10px]" onClick={() => onSelectPath("subscriptionRemaining", item.path)} type="button" variant="outline">{t("Sub rem")}</Button>
+        <Button className="h-6 px-1.5 text-[10px]" onClick={() => onSelectPath("subscriptionLimit", item.path)} type="button" variant="outline">{t("Sub limit")}</Button>
+        <Button className="h-6 px-1.5 text-[10px]" onClick={() => onSelectPath("subscriptionReset", item.path)} type="button" variant="outline">{t("Reset")}</Button>
+      </div>
+    </div>
+  );
+}
+
+export function AddProviderDialog({
+  canSubmit,
+  draft,
+  error,
+  mode,
+  onCheck,
+  onChange,
+  onClose,
+  onSubmit,
+  probe,
+  probeLoading,
+  providers
+}: {
+  canSubmit: boolean;
+  draft: AddProviderDraft;
+  error: string;
+  mode: "add" | "edit";
+  onCheck?: () => Promise<void>;
+  onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
+  onClose: () => void;
+  onSubmit: () => Promise<boolean>;
+  probe?: GatewayProviderProbeResult;
+  probeLoading: boolean;
+  providers: GatewayProviderConfig[];
+}) {
+  const t = useAppText();
+
+  return (
+    <Dialog className="items-start" onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="mt-[clamp(12px,4dvh,36px)] max-h-[calc(100dvh-1.5rem-clamp(12px,4dvh,36px))] max-w-[780px] origin-top sm:mt-[clamp(16px,6dvh,56px)] sm:max-h-[calc(100dvh-3rem-clamp(16px,6dvh,56px))]">
+        <DialogHeader>
+          <div className="min-w-0">
+            <DialogTitle>{mode === "edit" ? t("Edit Provider") : t("Add Provider")}</DialogTitle>
+          </div>
+          <Button aria-label={t("Close dialog")} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
+            <X className="h-4 w-4" />
+          </Button>
+        </DialogHeader>
+
+        <DialogBody>
+          <AddProviderForm
+            draft={draft}
+            error={error}
+            mode={mode}
+            onCheck={onCheck}
+            onChange={onChange}
+            probe={probe}
+            probeLoading={probeLoading}
+            providers={providers}
+          />
+        </DialogBody>
+
+        <DialogFooter>
+          <Button onClick={onClose} type="button" variant="outline">
+            {t("Cancel")}
+          </Button>
+          <Button disabled={!canSubmit} onClick={() => void onSubmit()} type="button">
+            {mode === "edit" ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+            {mode === "edit" ? t("Save") : t("Add")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ModelTagInput({
+  ariaLabel,
+  onChange,
+  placeholder,
+  value
+}: {
+  ariaLabel: string;
+  onChange: (value: string[]) => void;
+  placeholder: string;
+  value: string[];
+}) {
+  const t = useAppText();
+  const [draft, setDraft] = useState("");
+  const models = mergeProviderModelLists(value);
+
+  function addModels(rawValue = draft) {
+    const nextModels = splitModelTagInput(rawValue);
+    if (nextModels.length === 0) {
+      return;
+    }
+    onChange(mergeProviderModelLists(models, nextModels));
+    setDraft("");
+  }
+
+  function removeModel(model: string) {
+    onChange(models.filter((item) => item !== model));
+  }
+
+  return (
+    <>
+      <Input
+        aria-label={ariaLabel}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            addModels();
+          }
+        }}
+        placeholder={placeholder}
+        value={draft}
+      />
+      {models.length > 0 ? (
+        <div className="flex max-h-[120px] flex-wrap gap-1.5 overflow-auto">
+          {models.map((model) => (
+            <Badge className="max-w-full pr-1" key={model} variant="secondary">
+              <span className="min-w-0 max-w-[260px] truncate">{model}</span>
+              <button
+                aria-label={`${t("Remove model")} ${model}`}
+                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
+                onClick={() => removeModel(model)}
+                title={t("Remove model")}
+                type="button"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function ModelMultiSelect({
+  models,
+  onQueryChange,
+  onSelectedChange,
+  query,
+  selected
+}: {
+  models: string[];
+  onQueryChange: (value: string) => void;
+  onSelectedChange: (value: string[]) => void;
+  query: string;
+  selected: string[];
+}) {
+  const t = useAppText();
+  const normalized = query.trim().toLowerCase();
+  const visibleModels = normalized ? models.filter((model) => model.toLowerCase().includes(normalized)) : models;
+
+  function toggleModel(model: string) {
+    onSelectedChange(selected.includes(model) ? selected.filter((item) => item !== model) : [...selected, model]);
+  }
+
+  function selectVisibleModels() {
+    onSelectedChange(Array.from(new Set([...selected, ...visibleModels])));
+  }
+
+  return (
+    <div className="rounded-md border border-input bg-card">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border p-2">
+        <div className="relative min-w-[180px] flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input aria-label={t("Search models")} className="pl-8" onChange={(event) => onQueryChange(event.target.value)} placeholder={t("Search models")} value={query} />
+        </div>
+        <Button disabled={visibleModels.length === 0} onClick={selectVisibleModels} size="sm" type="button" variant="outline">
+          {t("All")}
+        </Button>
+        <Button disabled={selected.length === 0} onClick={() => onSelectedChange([])} size="sm" type="button" variant="outline">
+          {t("Clear")}
+        </Button>
+      </div>
+      <div className="max-h-[220px] overflow-auto p-2">
+        {visibleModels.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-6 text-center text-[12px] text-muted-foreground">{t("No matching models")}</div>
+        ) : null}
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {visibleModels.map((model) => {
+            const checked = selected.includes(model);
+            return (
+              <Label
+                className={cn(
+                  "flex h-8 min-w-0 cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2 text-left text-[12px] transition-colors hover:bg-muted",
+                  checked && "border-primary bg-accent"
+                )}
+                key={model}
+              >
+                <Checkbox checked={checked} onCheckedChange={() => toggleModel(model)} />
+                <span className="min-w-0 flex-1 truncate">{model}</span>
+              </Label>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
