@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { loadPersistedApiKeys, replacePersistedApiKeys } from "./api-key-store";
 import { CONFIGDIR, CONFIG_FILE, GATEWAY_CONFIG_FILE } from "./constants";
-import { DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_WINDOW_MODULE_IDS } from "../shared/app";
+import { DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS } from "../shared/app";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "../shared/provider-presets";
 import type {
   AppConfig,
@@ -528,7 +528,7 @@ function parseOverviewWidget(value: unknown): OverviewWidgetConfig | undefined {
     enabled: typeof value.enabled === "boolean" ? value.enabled : true,
     id: readString(value.id) || overviewWidgetId(type, metric),
     ...(metric ? { metric } : {}),
-    size: parseOverviewWidgetSize(value.size) ?? defaultOverviewWidgetSize(type),
+    size: parseOverviewWidgetSize(value.size, type) ?? defaultOverviewWidgetSize(type),
     type,
     variant: parseOverviewWidgetVariant(value.variant) ?? defaultOverviewWidgetVariant(type)
   };
@@ -538,8 +538,24 @@ function parseOverviewWidgetType(value: unknown): OverviewWidgetType | undefined
   return parseEnumValue(value, ["account-balance", "client-analysis", "metric", "provider-analysis", "system-status", "token-mix", "usage-trend"], undefined);
 }
 
-function parseOverviewWidgetSize(value: unknown): OverviewWidgetSize | undefined {
-  return parseEnumValue(value, ["small", "medium", "large", "wide", "full"], undefined);
+function parseOverviewWidgetSize(value: unknown, type: OverviewWidgetType): OverviewWidgetSize | undefined {
+  const size = parseEnumValue(value, OVERVIEW_WIDGET_SIZE_VALUES, undefined);
+  if (size) {
+    return size;
+  }
+  if (value === "small") {
+    return "1:1";
+  }
+  if (value === "medium" || value === "large") {
+    return "2:2";
+  }
+  if (value === "wide") {
+    return "3:2";
+  }
+  if (value === "full") {
+    return type === "system-status" ? "4:1" : "4:2";
+  }
+  return undefined;
 }
 
 function parseOverviewWidgetVariant(value: unknown): OverviewWidgetVariant | undefined {
@@ -552,18 +568,21 @@ function parseOverviewMetricKind(value: unknown): OverviewMetricKind | undefined
 
 function defaultOverviewWidgetSize(type: OverviewWidgetType): OverviewWidgetSize {
   if (type === "metric") {
-    return "small";
+    return "1:1";
   }
   if (type === "token-mix") {
-    return "medium";
+    return "1:2";
   }
   if (type === "client-analysis" || type === "provider-analysis") {
-    return "large";
+    return "2:2";
   }
   if (type === "usage-trend") {
-    return "wide";
+    return "3:2";
   }
-  return "full";
+  if (type === "system-status") {
+    return "4:1";
+  }
+  return "4:2";
 }
 
 function defaultOverviewWidgetVariant(type: OverviewWidgetType): OverviewWidgetVariant {
@@ -609,9 +628,9 @@ function parseTrayWidgets(value: unknown): TrayWidgetConfig[] | undefined {
   if (!Array.isArray(value)) {
     return undefined;
   }
-  return value
+  return dedupeTraySingletonWidgets(value
     .map(parseTrayWidget)
-    .filter((widget): widget is TrayWidgetConfig => Boolean(widget));
+    .filter((widget): widget is TrayWidgetConfig => Boolean(widget)));
 }
 
 function parseTrayWidget(value: unknown): TrayWidgetConfig | undefined {
@@ -663,6 +682,24 @@ function defaultTrayWidgetVariant(type: TrayWidgetType): TrayWidgetVariant | und
 
 function trayWidgetId(type: TrayWidgetType): string {
   return type;
+}
+
+function isTraySingletonWidgetType(type: TrayWidgetType): boolean {
+  return (TRAY_SINGLETON_WIDGET_TYPES as readonly string[]).includes(type);
+}
+
+function dedupeTraySingletonWidgets(widgets: TrayWidgetConfig[]): TrayWidgetConfig[] {
+  const seenSingletons = new Set<TrayWidgetType>();
+  return widgets.filter((widget) => {
+    if (!isTraySingletonWidgetType(widget.type)) {
+      return true;
+    }
+    if (seenSingletons.has(widget.type)) {
+      return false;
+    }
+    seenSingletons.add(widget.type);
+    return true;
+  });
 }
 
 function trayWidgetsFromModules(modules: TrayWindowModuleId[], variants: TrayComponentVariants): TrayWidgetConfig[] {

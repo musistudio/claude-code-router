@@ -203,7 +203,7 @@ export function OverviewView({
     >
       <SortableContext items={visibleWidgets.map((widget) => widget.id)} strategy={rectSortingStrategy}>
         <LayoutGroup>
-          <section className="grid grid-cols-12 gap-4" data-overview-widget-grid>
+          <section className="grid auto-rows-[132px] grid-cols-1 gap-4 sm:auto-rows-[140px] sm:grid-cols-2 xl:auto-rows-[148px] xl:grid-cols-4" data-overview-widget-grid>
             {visibleWidgets.map((widget) => (
               <SortableOverviewWidget editing={editing} key={widget.id} widget={widget} onSelect={() => setSelectedWidgetId(widget.id)}>
                 <OverviewWidgetFrame
@@ -222,7 +222,7 @@ export function OverviewView({
               </SortableOverviewWidget>
             ))}
             {visibleWidgets.length === 0 ? (
-              <div className="col-span-12 rounded-lg border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-[12px] text-muted-foreground">
+              <div className="col-span-1 rounded-lg border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-[12px] text-muted-foreground sm:col-span-2 xl:col-span-4">
                 {t("No widgets configured")}
               </div>
             ) : null}
@@ -442,7 +442,7 @@ function SortableOverviewWidget({
   return (
     <motion.div
       className={cn(
-        "min-w-0",
+        "min-h-0 min-w-0",
         overviewWidgetSizeClass(widget.size),
         editing && "cursor-grab touch-none",
         isDragging && "relative z-20 cursor-grabbing opacity-70"
@@ -476,7 +476,7 @@ function OverviewWidgetDragOverlay({
   widget: OverviewWidgetConfig;
 }) {
   return (
-    <div className={cn("pointer-events-none opacity-95 shadow-2xl", overviewWidgetOverlaySizeClass(widget.size))}>
+    <div className={cn("pointer-events-none overflow-hidden opacity-95 shadow-2xl", overviewWidgetOverlaySizeClass(widget.size))}>
       <OverviewWidgetRenderer
         providerAccounts={providerAccounts}
         setUsageRange={setUsageRange}
@@ -510,7 +510,7 @@ function OverviewWidgetFrame({
     <div
       aria-selected={editing ? selected : undefined}
       className={cn(
-        "group/overview-widget relative min-w-0 transition-opacity",
+        "group/overview-widget relative h-full min-h-0 min-w-0 transition-opacity",
         editing && (selected
           ? "rounded-xl outline outline-2 outline-primary outline-offset-2 ring-2 ring-primary/20"
           : "rounded-xl outline outline-2 outline-primary/35 outline-offset-2")
@@ -537,25 +537,24 @@ function OverviewWidgetRenderer({
   usageStats: UsageStatsSnapshot;
   widget: OverviewWidgetConfig;
 }) {
+  let content: ReactNode;
   if (widget.type === "system-status") {
-    return <SystemStatusBar usageRange={usageRange} usageStats={usageStats} variant={widget.variant === "compact" ? "compact" : "timeline"} />;
+    content = <SystemStatusBar usageRange={usageRange} usageStats={usageStats} variant={widget.variant === "compact" ? "compact" : "timeline"} />;
+  } else if (widget.type === "account-balance") {
+    content = <ProviderAccountsOverview accounts={providerAccounts} variant={overviewAccountVariant(widget.variant)} />;
+  } else if (widget.type === "metric") {
+    content = <OverviewMetricWidget metric={widget.metric ?? "requests"} totals={usageStats.totals} variant={overviewMetricVariant(widget.variant)} />;
+  } else if (widget.type === "usage-trend") {
+    content = <UsageTrendWidget setUsageRange={setUsageRange} usageRange={usageRange} usageStats={usageStats} variant={overviewTrendVariant(widget.variant)} />;
+  } else if (widget.type === "token-mix") {
+    content = <TokenMixOverviewWidget totals={usageStats.totals} variant={overviewTokenMixVariant(widget.variant)} />;
+  } else if (widget.type === "client-analysis") {
+    content = <OverviewAnalysisWidget kind="client" rows={usageStats.clientModels} variant={widget.variant === "compact" ? "compact" : "table"} />;
+  } else {
+    content = <OverviewAnalysisWidget kind="provider" rows={usageStats.providerModels} variant={widget.variant === "compact" ? "compact" : "table"} />;
   }
-  if (widget.type === "account-balance") {
-    return <ProviderAccountsOverview accounts={providerAccounts} variant={overviewAccountVariant(widget.variant)} />;
-  }
-  if (widget.type === "metric") {
-    return <OverviewMetricWidget metric={widget.metric ?? "requests"} totals={usageStats.totals} variant={overviewMetricVariant(widget.variant)} />;
-  }
-  if (widget.type === "usage-trend") {
-    return <UsageTrendWidget setUsageRange={setUsageRange} usageRange={usageRange} usageStats={usageStats} variant={overviewTrendVariant(widget.variant)} />;
-  }
-  if (widget.type === "token-mix") {
-    return <TokenMixOverviewWidget totals={usageStats.totals} variant={overviewTokenMixVariant(widget.variant)} />;
-  }
-  if (widget.type === "client-analysis") {
-    return <OverviewAnalysisWidget kind="client" rows={usageStats.clientModels} variant={widget.variant === "compact" ? "compact" : "table"} />;
-  }
-  return <OverviewAnalysisWidget kind="provider" rows={usageStats.providerModels} variant={widget.variant === "compact" ? "compact" : "table"} />;
+
+  return <div className="h-full min-h-0 min-w-0 overflow-hidden">{content}</div>;
 }
 
 function OverviewMetricWidget({
@@ -572,8 +571,8 @@ function OverviewMetricWidget({
 
   if (variant === "compact") {
     return (
-      <Card className="min-w-0">
-        <CardContent className="flex items-center justify-between gap-3 p-3">
+      <Card className="flex h-full min-h-0 min-w-0 flex-col">
+        <CardContent className="flex min-h-0 flex-1 items-center justify-between gap-3 p-3">
           <div className="min-w-0 truncate text-[12px] font-medium text-muted-foreground">{item.label}</div>
           <div className="shrink-0 text-[18px] font-semibold tracking-tight">{item.value}</div>
         </CardContent>
@@ -583,8 +582,8 @@ function OverviewMetricWidget({
 
   if (variant === "bar") {
     return (
-      <Card className="min-w-0">
-        <CardContent className="p-3">
+      <Card className="flex h-full min-h-0 min-w-0 flex-col">
+        <CardContent className="min-h-0 flex-1 p-3">
           <div className="flex items-end justify-between gap-3">
             <div className="min-w-0 truncate text-[12px] font-medium text-muted-foreground">{item.label}</div>
             <div className="shrink-0 text-[18px] font-semibold tracking-tight">{item.value}</div>
@@ -599,8 +598,8 @@ function OverviewMetricWidget({
 
   if (variant === "ring") {
     return (
-      <Card className="min-w-0">
-        <CardContent className="grid grid-cols-[58px_minmax(0,1fr)] items-center gap-3 p-3">
+      <Card className="flex h-full min-h-0 min-w-0 flex-col">
+        <CardContent className="grid min-h-0 flex-1 grid-cols-[58px_minmax(0,1fr)] items-center gap-3 p-3">
           <OverviewRingMetric ratio={item.ratio} tone={item.tone} />
           <div className="min-w-0">
             <div className="truncate text-[12px] font-medium text-muted-foreground">{item.label}</div>
@@ -652,8 +651,8 @@ function UsageTrendWidget({
   const t = useAppText();
 
   return (
-    <Card className="min-w-0">
-      <CardHeader className="flex-row items-center justify-between">
+    <Card className="flex h-full min-h-0 min-w-0 flex-col">
+      <CardHeader className="shrink-0 flex-row items-center justify-between">
         <CardTitle>{t("Usage Trend")}</CardTitle>
         <div className="flex rounded-md border border-border bg-background p-0.5">
           {usageRangeOptions.map((option) => (
@@ -672,8 +671,8 @@ function UsageTrendWidget({
           ))}
         </div>
       </CardHeader>
-      <CardContent>
-        <ChartFrame>
+      <CardContent className="min-h-0 flex-1">
+        <ChartFrame fill>
           {({ height, width }) => (
             <ComposedChart data={usageStats.series} height={height} margin={{ bottom: 4, left: 0, right: 8, top: 28 }} width={width}>
               <CartesianGrid stroke="#dfe3e8" strokeDasharray="3 3" vertical={false} />
@@ -732,12 +731,12 @@ function TokenMixOverviewWidget({
   const total = tokenMix.reduce((sum, item) => sum + item.value, 0);
 
   return (
-    <Card className="min-w-0">
-      <CardHeader className="flex-row items-center justify-between">
+    <Card className="flex h-full min-h-0 min-w-0 flex-col">
+      <CardHeader className="shrink-0 flex-row items-center justify-between">
         <CardTitle>{t("Token Mix")}</CardTitle>
         <Badge variant="outline">{formatCompactNumber(totals.totalTokens)}</Badge>
       </CardHeader>
-      <CardContent>
+      <CardContent className="min-h-0 flex-1 overflow-auto">
         {variant === "stacked" ? (
           <div className="space-y-3">
             <div className="flex h-3 overflow-hidden rounded-full bg-muted">
@@ -749,7 +748,7 @@ function TokenMixOverviewWidget({
           </div>
         ) : null}
         {variant === "donut" || variant === "pie" ? (
-          <ChartFrame>
+          <ChartFrame fill>
             {({ height, width }) => (
               <PieChart height={height} width={width}>
                 <Tooltip content={<TokenTooltip />} />
@@ -772,7 +771,7 @@ function TokenMixOverviewWidget({
           </ChartFrame>
         ) : null}
         {variant === "bars" ? (
-          <ChartFrame>
+          <ChartFrame fill>
             {({ height, width }) => (
               <BarChart data={tokenMix} height={height} layout="vertical" margin={{ bottom: 8, left: 8, right: 12, top: 8 }} width={width}>
                 <CartesianGrid stroke="#dfe3e8" strokeDasharray="3 3" horizontal={false} />
@@ -832,12 +831,12 @@ function OverviewAnalysisWidget({
 
   if (variant === "compact") {
     return (
-      <Card className="min-w-0">
-        <CardHeader className="flex-row items-center justify-between">
+      <Card className="flex h-full min-h-0 min-w-0 flex-col">
+        <CardHeader className="shrink-0 flex-row items-center justify-between">
           <CardTitle>{title}</CardTitle>
           <Badge variant="outline">{rows.length}</Badge>
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-h-0 flex-1 overflow-auto">
           {rows.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-7 text-center text-[12px] text-muted-foreground">{emptyLabel}</div>
           ) : (
@@ -860,12 +859,12 @@ function OverviewAnalysisWidget({
 
 function overviewWidgetTemplates(): OverviewWidgetConfig[] {
   return [
-    { enabled: true, id: "system-status", size: "full", type: "system-status", variant: "timeline" },
-    { enabled: true, id: "account-balance", size: "full", type: "account-balance", variant: "cards" },
-    { enabled: true, id: "metric-requests", metric: "requests", size: "small", type: "metric", variant: "card" },
-    { enabled: true, id: "usage-trend", size: "wide", type: "usage-trend", variant: "composed" },
-    { enabled: true, id: "token-mix", size: "medium", type: "token-mix", variant: "bars" },
-    { enabled: true, id: "client-analysis", size: "large", type: "client-analysis", variant: "table" }
+    { enabled: true, id: "system-status", size: "4:1", type: "system-status", variant: "timeline" },
+    { enabled: true, id: "account-balance", size: "4:2", type: "account-balance", variant: "cards" },
+    { enabled: true, id: "metric-requests", metric: "requests", size: "1:1", type: "metric", variant: "card" },
+    { enabled: true, id: "usage-trend", size: "3:2", type: "usage-trend", variant: "composed" },
+    { enabled: true, id: "token-mix", size: "1:2", type: "token-mix", variant: "bars" },
+    { enabled: true, id: "client-analysis", size: "2:2", type: "client-analysis", variant: "table" }
   ];
 }
 
@@ -1018,19 +1017,55 @@ function overviewWidgetVariantOptions(type: OverviewWidgetType): Array<{ label: 
 }
 
 function overviewWidgetSizeClass(size: OverviewWidgetSize): string {
-  if (size === "small") return "col-span-12 sm:col-span-6 xl:col-span-2";
-  if (size === "medium") return "col-span-12 md:col-span-6 xl:col-span-4";
-  if (size === "large") return "col-span-12 lg:col-span-6";
-  if (size === "wide") return "col-span-12 lg:col-span-8";
-  return "col-span-12";
+  const { height, width } = overviewWidgetDimensions(size);
+  return cn(overviewWidgetWidthClass(width), overviewWidgetHeightClass(height));
 }
 
 function overviewWidgetOverlaySizeClass(size: OverviewWidgetSize): string {
-  if (size === "small") return "w-[min(320px,calc(100vw-2rem))]";
-  if (size === "medium") return "w-[min(460px,calc(100vw-2rem))]";
-  if (size === "large") return "w-[min(640px,calc(100vw-2rem))]";
-  if (size === "wide") return "w-[min(860px,calc(100vw-2rem))]";
-  return "w-[min(960px,calc(100vw-2rem))]";
+  const { height, width } = overviewWidgetDimensions(size);
+  return cn(overviewWidgetOverlayWidthClass(width), overviewWidgetOverlayHeightClass(height));
+}
+
+function overviewWidgetDimensions(size: OverviewWidgetSize): { height: 1 | 2 | 3 | 4; width: 1 | 2 | 3 | 4 } {
+  const [widthText, heightText] = size.split(":");
+  const width = overviewWidgetDimensionValue(widthText);
+  const height = overviewWidgetDimensionValue(heightText);
+  return { height, width };
+}
+
+function overviewWidgetDimensionValue(value: string | undefined): 1 | 2 | 3 | 4 {
+  if (value === "2") return 2;
+  if (value === "3") return 3;
+  if (value === "4") return 4;
+  return 1;
+}
+
+function overviewWidgetWidthClass(width: 1 | 2 | 3 | 4): string {
+  if (width === 1) return "col-span-1";
+  if (width === 2) return "col-span-1 sm:col-span-2";
+  if (width === 3) return "col-span-1 sm:col-span-2 xl:col-span-3";
+  return "col-span-1 sm:col-span-2 xl:col-span-4";
+}
+
+function overviewWidgetHeightClass(height: 1 | 2 | 3 | 4): string {
+  if (height === 1) return "row-span-1";
+  if (height === 2) return "row-span-2";
+  if (height === 3) return "row-span-3";
+  return "row-span-4";
+}
+
+function overviewWidgetOverlayWidthClass(width: 1 | 2 | 3 | 4): string {
+  if (width === 1) return "w-[min(260px,calc(100vw-2rem))]";
+  if (width === 2) return "w-[min(536px,calc(100vw-2rem))]";
+  if (width === 3) return "w-[min(812px,calc(100vw-2rem))]";
+  return "w-[min(1088px,calc(100vw-2rem))]";
+}
+
+function overviewWidgetOverlayHeightClass(height: 1 | 2 | 3 | 4): string {
+  if (height === 1) return "h-[148px]";
+  if (height === 2) return "h-[312px]";
+  if (height === 3) return "h-[476px]";
+  return "h-[640px]";
 }
 
 function sameOverviewWidgetOrder(a: OverviewWidgetConfig[], b: OverviewWidgetConfig[]): boolean {
@@ -1130,8 +1165,8 @@ function SystemStatusBar({
 
   if (variant === "compact") {
     return (
-      <Card className="min-w-0 border-border/70 bg-card">
-        <CardContent className="flex min-w-0 items-center justify-between gap-3 p-4">
+      <Card className="flex h-full min-h-0 min-w-0 flex-col border-border/70 bg-card">
+        <CardContent className="flex min-h-0 min-w-0 flex-1 items-center justify-between gap-3 p-4">
           <div className="flex min-w-0 items-center gap-2">
             <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full", systemStatusIconClass(overallTone))}>
               <StatusIcon className="h-3.5 w-3.5" />
@@ -1150,8 +1185,8 @@ function SystemStatusBar({
   }
 
   return (
-    <Card className="min-w-0 overflow-visible border-border/70 bg-card">
-      <CardContent className="space-y-4 p-4">
+    <Card className="flex h-full min-h-0 min-w-0 flex-col border-border/70 bg-card">
+      <CardContent className="min-h-0 flex-1 space-y-4 overflow-hidden p-4">
         <div className="flex min-w-0 items-center justify-between gap-3">
           <h2 className="truncate text-[15px] font-semibold tracking-tight">{t("System status")}</h2>
           <div className="flex shrink-0 items-center gap-2 text-[12px] font-medium text-muted-foreground">
@@ -1231,12 +1266,12 @@ function ProviderAccountsOverview({
     .slice(0, 6);
 
   return (
-    <Card className="min-w-0">
-      <CardHeader className="flex-row items-center justify-between">
+    <Card className="flex h-full min-h-0 min-w-0 flex-col">
+      <CardHeader className="shrink-0 flex-row items-center justify-between">
         <CardTitle>{t("Account Balance")}</CardTitle>
         <Badge variant="outline">{accounts.length}</Badge>
       </CardHeader>
-      <CardContent>
+      <CardContent className="min-h-0 flex-1 overflow-auto">
         {visibleAccounts.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-7 text-center text-[12px] text-muted-foreground">
             {t("No account balance connectors configured")}
@@ -1897,16 +1932,16 @@ function UsageAnalysisCard({
   const t = useAppText();
 
   return (
-    <Card className="min-w-0">
-      <CardHeader className="flex-row items-center justify-between">
+    <Card className="flex h-full min-h-0 min-w-0 flex-col">
+      <CardHeader className="shrink-0 flex-row items-center justify-between">
         <CardTitle>{title}</CardTitle>
         <Badge variant="outline">{rows.length}</Badge>
       </CardHeader>
-      <CardContent>
+      <CardContent className="min-h-0 flex-1 overflow-auto">
         {rows.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-[12px] text-muted-foreground">{emptyLabel}</div>
         ) : (
-          <div className="max-h-[420px] overflow-auto rounded-lg border border-border/60">
+          <div className="h-full overflow-auto rounded-lg border border-border/60">
             <table className="min-w-[840px] w-full border-collapse text-left text-[11px]">
               <thead className="sticky top-0 z-10 bg-muted text-muted-foreground">
                 <tr>
@@ -2037,7 +2072,7 @@ function UsageTooltip({
   );
 }
 
-function ChartFrame({ children }: { children: (size: { height: number; width: number }) => ReactNode }) {
+function ChartFrame({ children, fill = false }: { children: (size: { height: number; width: number }) => ReactNode; fill?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ height: 0, width: 0 });
 
@@ -2070,7 +2105,7 @@ function ChartFrame({ children }: { children: (size: { height: number; width: nu
   }, []);
 
   return (
-    <div className="h-[260px] min-w-0" ref={containerRef}>
+    <div className={cn(fill ? "h-full min-h-[120px]" : "h-[260px]", "min-w-0")} ref={containerRef}>
       {size.height > 0 && size.width > 0 ? children(size) : null}
     </div>
   );

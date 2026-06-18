@@ -122,6 +122,8 @@ import {
   DEFAULT_TRAY_COMPONENT_VARIANTS,
   DEFAULT_TRAY_WIDGETS,
   DEFAULT_TRAY_WINDOW_MODULES,
+  OVERVIEW_WIDGET_SIZE_VALUES,
+  TRAY_SINGLETON_WIDGET_TYPES,
   TRAY_WINDOW_MODULE_IDS
 } from "../../../shared/app";
 import type {
@@ -230,7 +232,7 @@ export  {
   cn, claudeCodeLogoUrl, codexLogoUrl, onboardingMascotSpriteUrl, anthropicProviderIconUrl, bailianProviderIconUrl, deepseekProviderIconUrl,
   geminiProviderIconUrl, mistralProviderIconUrl, moonshotProviderIconUrl, openaiProviderIconUrl, openrouterProviderIconUrl, siliconflowProviderIconUrl, zaiGlobalCodingProviderIconUrl,
   zaiGlobalGeneralProviderIconUrl, zhipuCnCodingProviderIconUrl, zhipuCnGeneralProviderIconUrl, trayCyanIconUrl, trayOrangeIconUrl, trayVioletIconUrl, BUILTIN_UNIMCP_PACKAGE,
-  BUILTIN_UNIMCP_SERVER_NAME, BUILTIN_UNIMCP_VISION_TOOL_NAME, BUILTIN_UNIMCP_WEB_SEARCH_TOOL_NAME, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_WINDOW_MODULE_IDS,
+  BUILTIN_UNIMCP_SERVER_NAME, BUILTIN_UNIMCP_VISION_TOOL_NAME, BUILTIN_UNIMCP_WEB_SEARCH_TOOL_NAME, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS,
   customProviderPresetId, defaultProviderAccountConfig, findProviderPreset, findProviderPresetByBaseUrl, primaryProviderPresetEndpoint, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey,
   providerIdentitySafetyIssue, providerPresets, standardProviderAccountConfig, normalizeProviderBaseUrl, providerUrlWithDefaultScheme
 };
@@ -1823,11 +1825,7 @@ export const usageRangeOptions: Array<{ label: string; value: UsageStatsRange }>
 ];
 
 export const overviewWidgetSizeOptions: Array<{ label: string; value: OverviewWidgetSize }> = [
-  { label: "Small", value: "small" },
-  { label: "Medium", value: "medium" },
-  { label: "Large", value: "large" },
-  { label: "Wide", value: "wide" },
-  { label: "Full", value: "full" }
+  ...OVERVIEW_WIDGET_SIZE_VALUES.map((size) => ({ label: size, value: size }))
 ];
 
 export const overviewMetricOptions: Array<{ label: string; value: OverviewMetricKind }> = [
@@ -2333,9 +2331,9 @@ export type MetricTone = "amber" | "blue" | "indigo" | "rose" | "slate" | "teal"
 
 export function MetricCard({ label, tone, value }: { label: string; tone: MetricTone; value: string }) {
   return (
-    <Card className="h-full min-w-0 overflow-hidden">
+    <Card className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       <div className={cn("h-1", metricToneBar(tone))} />
-      <CardContent className="flex h-full min-h-[88px] flex-col justify-center">
+      <CardContent className="flex min-h-[88px] flex-1 flex-col justify-center">
         <div className="min-w-0">
           <div className="truncate text-[11px] font-medium text-muted-foreground">{label}</div>
           <div className="mt-1 truncate text-[20px] font-semibold">{value}</div>
@@ -3966,11 +3964,11 @@ export function normalizeTrayComponentVariants(value: unknown): TrayComponentVar
 
 export function normalizeTrayWidgets(value: unknown, fallbackModules?: unknown, fallbackVariants?: unknown): TrayWidgetConfig[] {
   if (!Array.isArray(value)) {
-    return trayWidgetsFromModules(normalizeTrayWindowModules(fallbackModules), normalizeTrayComponentVariants(fallbackVariants));
+    return dedupeTraySingletonWidgets(trayWidgetsFromModules(normalizeTrayWindowModules(fallbackModules), normalizeTrayComponentVariants(fallbackVariants)));
   }
-  return value
+  return dedupeTraySingletonWidgets(value
     .map(normalizeTrayWidget)
-    .filter((widget): widget is TrayWidgetConfig => Boolean(widget));
+    .filter((widget): widget is TrayWidgetConfig => Boolean(widget)));
 }
 
 export function normalizeTrayWidget(value: unknown): TrayWidgetConfig | undefined {
@@ -4067,6 +4065,24 @@ export function trayWidgetId(type: TrayWidgetType): string {
   return type;
 }
 
+export function isTraySingletonWidgetType(type: TrayWidgetType): boolean {
+  return (TRAY_SINGLETON_WIDGET_TYPES as readonly string[]).includes(type);
+}
+
+function dedupeTraySingletonWidgets(widgets: TrayWidgetConfig[]): TrayWidgetConfig[] {
+  const seenSingletons = new Set<TrayWidgetType>();
+  return widgets.filter((widget) => {
+    if (!isTraySingletonWidgetType(widget.type)) {
+      return true;
+    }
+    if (seenSingletons.has(widget.type)) {
+      return false;
+    }
+    seenSingletons.add(widget.type);
+    return true;
+  });
+}
+
 export function trayWidgetsFromModules(modules: TrayWindowModuleId[], variants: TrayComponentVariants): TrayWidgetConfig[] {
   return modules
     .filter((moduleId): moduleId is TrayWidgetType => moduleId !== "footer")
@@ -4110,7 +4126,7 @@ export function normalizeOverviewWidget(value: unknown): OverviewWidgetConfig | 
     enabled: typeof value.enabled === "boolean" ? value.enabled : true,
     id: stringValue(value.id) || overviewWidgetId(type, metric),
     ...(metric ? { metric } : {}),
-    size: normalizeOverviewWidgetSize(value.size) ?? defaultOverviewWidgetSize(type),
+    size: normalizeOverviewWidgetSize(value.size, type) ?? defaultOverviewWidgetSize(type),
     type,
     variant
   };
@@ -4122,10 +4138,26 @@ export function normalizeOverviewWidgetType(value: unknown): OverviewWidgetType 
     : undefined;
 }
 
-export function normalizeOverviewWidgetSize(value: unknown): OverviewWidgetSize | undefined {
-  return typeof value === "string" && ["small", "medium", "large", "wide", "full"].includes(value)
-    ? value as OverviewWidgetSize
-    : undefined;
+export function normalizeOverviewWidgetSize(value: unknown, type: OverviewWidgetType): OverviewWidgetSize | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  if ((OVERVIEW_WIDGET_SIZE_VALUES as readonly string[]).includes(value)) {
+    return value as OverviewWidgetSize;
+  }
+  if (value === "small") {
+    return "1:1";
+  }
+  if (value === "medium" || value === "large") {
+    return "2:2";
+  }
+  if (value === "wide") {
+    return "3:2";
+  }
+  if (value === "full") {
+    return type === "system-status" ? "4:1" : "4:2";
+  }
+  return undefined;
 }
 
 export function normalizeOverviewMetricKind(value: unknown): OverviewMetricKind | undefined {
@@ -4186,11 +4218,12 @@ export function normalizeOverviewWidgetVariant(type: OverviewWidgetType, value: 
 }
 
 export function defaultOverviewWidgetSize(type: OverviewWidgetType): OverviewWidgetSize {
-  if (type === "metric") return "small";
-  if (type === "token-mix") return "medium";
-  if (type === "client-analysis" || type === "provider-analysis") return "large";
-  if (type === "usage-trend") return "wide";
-  return "full";
+  if (type === "metric") return "1:1";
+  if (type === "token-mix") return "1:2";
+  if (type === "client-analysis" || type === "provider-analysis") return "2:2";
+  if (type === "usage-trend") return "3:2";
+  if (type === "system-status") return "4:1";
+  return "4:2";
 }
 
 export function defaultOverviewWidgetVariant(type: OverviewWidgetType): OverviewWidgetVariant {

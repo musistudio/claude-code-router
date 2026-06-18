@@ -528,7 +528,26 @@ export type OverviewWidgetType =
   | "token-mix"
   | "usage-trend";
 
-export type OverviewWidgetSize = "small" | "medium" | "large" | "wide" | "full";
+export const OVERVIEW_WIDGET_SIZE_VALUES = [
+  "1:1",
+  "2:1",
+  "3:1",
+  "4:1",
+  "1:2",
+  "2:2",
+  "3:2",
+  "4:2",
+  "1:3",
+  "2:3",
+  "3:3",
+  "4:3",
+  "1:4",
+  "2:4",
+  "3:4",
+  "4:4"
+] as const;
+
+export type OverviewWidgetSize = typeof OVERVIEW_WIDGET_SIZE_VALUES[number];
 export type OverviewWidgetVariant =
   | "area"
   | "bar"
@@ -567,18 +586,18 @@ export type OverviewWidgetConfig = {
 };
 
 export const DEFAULT_OVERVIEW_WIDGETS: OverviewWidgetConfig[] = [
-  { enabled: true, id: "system-status", size: "full", type: "system-status", variant: "timeline" },
-  { enabled: true, id: "account-balance", size: "full", type: "account-balance", variant: "cards" },
-  { enabled: true, id: "metric-requests", metric: "requests", size: "small", type: "metric", variant: "card" },
-  { enabled: true, id: "metric-input-tokens", metric: "input-tokens", size: "small", type: "metric", variant: "card" },
-  { enabled: true, id: "metric-output-tokens", metric: "output-tokens", size: "small", type: "metric", variant: "card" },
-  { enabled: true, id: "metric-cache-tokens", metric: "cache-tokens", size: "small", type: "metric", variant: "card" },
-  { enabled: true, id: "metric-cache-ratio", metric: "cache-ratio", size: "small", type: "metric", variant: "card" },
-  { enabled: true, id: "metric-estimated-cost", metric: "estimated-cost", size: "small", type: "metric", variant: "card" },
-  { enabled: true, id: "usage-trend", size: "wide", type: "usage-trend", variant: "composed" },
-  { enabled: true, id: "token-mix", size: "medium", type: "token-mix", variant: "bars" },
-  { enabled: true, id: "client-analysis", size: "large", type: "client-analysis", variant: "table" },
-  { enabled: true, id: "provider-analysis", size: "large", type: "provider-analysis", variant: "table" }
+  { enabled: true, id: "system-status", size: "4:1", type: "system-status", variant: "timeline" },
+  { enabled: true, id: "account-balance", size: "4:2", type: "account-balance", variant: "cards" },
+  { enabled: true, id: "metric-requests", metric: "requests", size: "1:1", type: "metric", variant: "card" },
+  { enabled: true, id: "metric-input-tokens", metric: "input-tokens", size: "1:1", type: "metric", variant: "card" },
+  { enabled: true, id: "metric-output-tokens", metric: "output-tokens", size: "1:1", type: "metric", variant: "card" },
+  { enabled: true, id: "metric-cache-tokens", metric: "cache-tokens", size: "1:1", type: "metric", variant: "card" },
+  { enabled: true, id: "metric-cache-ratio", metric: "cache-ratio", size: "1:1", type: "metric", variant: "card" },
+  { enabled: true, id: "metric-estimated-cost", metric: "estimated-cost", size: "1:1", type: "metric", variant: "card" },
+  { enabled: true, id: "usage-trend", size: "3:2", type: "usage-trend", variant: "composed" },
+  { enabled: true, id: "token-mix", size: "1:2", type: "token-mix", variant: "bars" },
+  { enabled: true, id: "client-analysis", size: "2:2", type: "client-analysis", variant: "table" },
+  { enabled: true, id: "provider-analysis", size: "2:2", type: "provider-analysis", variant: "table" }
 ];
 
 export const TRAY_WINDOW_MODULE_IDS = [
@@ -595,6 +614,7 @@ export const TRAY_WINDOW_MODULE_IDS = [
 
 export type TrayWindowModuleId = (typeof TRAY_WINDOW_MODULE_IDS)[number];
 export type TrayWidgetType = Exclude<TrayWindowModuleId, "footer">;
+export const TRAY_SINGLETON_WIDGET_TYPES = ["source-tabs", "header"] as const satisfies readonly TrayWidgetType[];
 
 export type TrayWidgetConfig = {
   id: string;

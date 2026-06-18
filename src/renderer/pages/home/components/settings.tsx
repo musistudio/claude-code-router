@@ -5,7 +5,7 @@ import {
   Input, languageDisplayName, Layers3, Palette,
   PanelLeftOpen, Power, ReactNode, ResolvedLanguage, ResolvedTheme, Select, SelectControl,
   SettingsPageId, themeDisplayName, TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant,
-  trayMascotIconUrls, arrayMove, defaultTrayWidgetVariant, normalizeTrayWidget, normalizeTrayWidgets, trayWidgetVariantOptions, useMemo, useState,
+  trayMascotIconUrls, arrayMove, defaultTrayWidgetVariant, isTraySingletonWidgetType, normalizeTrayWidget, normalizeTrayWidgets, Switch, trayWidgetVariantOptions, useMemo, useState,
   X
 } from "../shared";
 export function AppSettingsDialog({
@@ -252,6 +252,13 @@ function TraySettingsPage({
   }
 
   function addTrayWidget(template: TrayWidgetConfig) {
+    const existingSingleton = isTraySingletonWidgetType(template.type)
+      ? widgets.find((widget) => widget.type === template.type)
+      : undefined;
+    if (existingSingleton) {
+      setSelectedTrayWidgetId(existingSingleton.id);
+      return;
+    }
     const id = uniqueTrayWidgetId(widgets, template.id);
     const widget = normalizeTrayWidget({ ...template, id });
     if (!widget) {
@@ -261,8 +268,40 @@ function TraySettingsPage({
     setSelectedTrayWidgetId(id);
   }
 
+  function toggleSingletonTrayWidget(template: TrayWidgetConfig, enabled: boolean) {
+    const existingWidget = widgets.find((widget) => widget.type === template.type);
+    if (enabled) {
+      if (existingWidget) {
+        setSelectedTrayWidgetId(existingWidget.id);
+        return;
+      }
+      addTrayWidget(template);
+      return;
+    }
+    if (!existingWidget) {
+      return;
+    }
+    removeTrayWidget(existingWidget.id);
+  }
+
   function updateTrayWidget(id: string, patch: Partial<TrayWidgetConfig>) {
     commitWidgets(widgets.map((widget) => widget.id === id ? normalizeTrayWidget({ ...widget, ...patch }) ?? widget : widget));
+  }
+
+  function changeSelectedTrayWidgetType(type: TrayWidgetType) {
+    if (!selectedWidget) {
+      return;
+    }
+    const existingSingleton = isTraySingletonWidgetType(type)
+      ? widgets.find((widget) => widget.type === type && widget.id !== selectedWidget.id)
+      : undefined;
+    if (existingSingleton) {
+      const nextWidgets = widgets.filter((widget) => widget.id !== selectedWidget.id);
+      commitWidgets(nextWidgets);
+      setSelectedTrayWidgetId(existingSingleton.id);
+      return;
+    }
+    updateTrayWidget(selectedWidget.id, { type, variant: defaultTrayWidgetVariant(type) });
   }
 
   function changeTrayWidgetCategory(category: TrayComponentCategory) {
@@ -270,14 +309,11 @@ function TraySettingsPage({
       return;
     }
     const type = trayWidgetTypeForCategory(category, selectedWidget.type);
-    updateTrayWidget(selectedWidget.id, { type, variant: defaultTrayWidgetVariant(type) });
+    changeSelectedTrayWidgetType(type);
   }
 
   function changeTrayWidgetData(type: TrayWidgetType) {
-    if (!selectedWidget) {
-      return;
-    }
-    updateTrayWidget(selectedWidget.id, { type, variant: defaultTrayWidgetVariant(type) });
+    changeSelectedTrayWidgetType(type);
   }
 
   function changeTrayWidgetVariant(variant: TrayWidgetVariant) {
@@ -302,9 +338,19 @@ function TraySettingsPage({
     if (!selectedWidget || selectedWidgetIndex < 0) {
       return;
     }
-    const nextWidgets = widgets.filter((widget) => widget.id !== selectedWidget.id);
+    removeTrayWidget(selectedWidget.id);
+  }
+
+  function removeTrayWidget(id: string) {
+    const widgetIndex = widgets.findIndex((widget) => widget.id === id);
+    if (widgetIndex < 0) {
+      return;
+    }
+    const nextWidgets = widgets.filter((widget) => widget.id !== id);
     commitWidgets(nextWidgets);
-    setSelectedTrayWidgetId(nextWidgets[Math.min(selectedWidgetIndex, nextWidgets.length - 1)]?.id);
+    setSelectedTrayWidgetId((currentId) => currentId === id
+      ? nextWidgets[Math.min(widgetIndex, nextWidgets.length - 1)]?.id
+      : currentId);
   }
 
   return (
@@ -335,8 +381,9 @@ function TraySettingsPage({
             <div className="grid grid-cols-1 gap-1.5">
               {paletteItems.map((option) => {
                 const Icon = option.icon;
+                const enabledSingleton = !option.repeatable && widgets.some((widget) => widget.type === option.template.type);
 
-                return (
+                return option.repeatable ? (
                   <Button
                     className={cn(
                       "flex min-h-[46px] w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] font-medium transition-colors",
@@ -358,6 +405,40 @@ function TraySettingsPage({
                       +
                     </span>
                   </Button>
+                ) : (
+                  <div
+                    className={cn(
+                      "flex min-h-[46px] w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] font-medium transition-colors",
+                      enabledSingleton ? "bg-primary/5 text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    )}
+                    key={option.value}
+                  >
+                    <span className={cn(
+                      "flex h-6 w-6 shrink-0 items-center justify-center rounded-md",
+                      enabledSingleton ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                    )}>
+                      <Icon className="h-3.5 w-3.5" />
+                    </span>
+                    <button
+                      className="min-w-0 flex-1 text-left"
+                      onClick={() => {
+                        const existingWidget = widgets.find((widget) => widget.type === option.template.type);
+                        if (existingWidget) {
+                          setSelectedTrayWidgetId(existingWidget.id);
+                          return;
+                        }
+                        toggleSingletonTrayWidget(option.template, true);
+                      }}
+                      type="button"
+                    >
+                      <span className="block truncate">{option.label}</span>
+                      <span className="block truncate text-[10px] font-normal opacity-70">{option.description}</span>
+                    </button>
+                    <Switch
+                      checked={enabledSingleton}
+                      onCheckedChange={(checked) => toggleSingletonTrayWidget(option.template, checked)}
+                    />
+                  </div>
                 );
               })}
             </div>
@@ -458,6 +539,7 @@ type TrayWidgetPaletteItem = {
   description: string;
   icon: typeof Layers3;
   label: string;
+  repeatable: boolean;
   template: TrayWidgetConfig;
   value: TrayComponentCategory;
 };
@@ -471,6 +553,7 @@ function trayWidgetPalette(copy: AppCopy): TrayWidgetPaletteItem[] {
       description: copy.settings.trayModuleSourceTabs,
       icon: Layers3,
       label: t("Provider component"),
+      repeatable: false,
       template: { id: "source-tabs", type: "source-tabs" },
       value: "provider-tabs"
     },
@@ -479,6 +562,7 @@ function trayWidgetPalette(copy: AppCopy): TrayWidgetPaletteItem[] {
       description: copy.settings.trayModuleHeader,
       icon: PanelLeftOpen,
       label: t("Header component"),
+      repeatable: false,
       template: { id: "header", type: "header" },
       value: "header"
     },
@@ -487,6 +571,7 @@ function trayWidgetPalette(copy: AppCopy): TrayWidgetPaletteItem[] {
       description: copy.settings.trayModuleAccount,
       icon: Database,
       label: t("Account component"),
+      repeatable: true,
       template: { id: "account", type: "account", variant: defaultTrayWidgetVariant("account") },
       value: "account"
     },
@@ -495,6 +580,7 @@ function trayWidgetPalette(copy: AppCopy): TrayWidgetPaletteItem[] {
       description: copy.settings.trayModuleTokenFlow,
       icon: Activity,
       label: t("Trend component"),
+      repeatable: true,
       template: { id: "token-flow", type: "token-flow", variant: defaultTrayWidgetVariant("token-flow") },
       value: "trend"
     },
@@ -503,6 +589,7 @@ function trayWidgetPalette(copy: AppCopy): TrayWidgetPaletteItem[] {
       description: copy.settings.trayModuleStats,
       icon: Gauge,
       label: t("Metric component"),
+      repeatable: true,
       template: { id: "stats", type: "stats", variant: defaultTrayWidgetVariant("stats") },
       value: "metrics"
     },
@@ -515,6 +602,7 @@ function trayWidgetPalette(copy: AppCopy): TrayWidgetPaletteItem[] {
       description: t("Token mix, rings, model share"),
       icon: Boxes,
       label: t("Breakdown component"),
+      repeatable: true,
       template: { id: "token-mix", type: "token-mix", variant: defaultTrayWidgetVariant("token-mix") },
       value: "breakdown"
     }

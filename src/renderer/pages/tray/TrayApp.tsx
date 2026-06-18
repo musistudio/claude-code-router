@@ -87,7 +87,14 @@ export function TrayApp() {
   const weekTotals = snapshots["7d"].totals;
   const monthTotals = snapshots["30d"].totals;
   const topModel = snapshots["30d"].models[0];
+  const hasProviderSwitcher = trayWidgets.some((widget) => widget.type === "source-tabs");
   const hasAnyVisibleModule = trayWidgets.length > 0;
+
+  useEffect(() => {
+    if (!hasProviderSwitcher && selectedProvider) {
+      setSelectedProvider(undefined);
+    }
+  }, [hasProviderSwitcher, selectedProvider]);
 
   useEffect(() => {
     if (!selectedProvider) {

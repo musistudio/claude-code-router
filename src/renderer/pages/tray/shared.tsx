@@ -4,7 +4,7 @@ import { Power } from "lucide-react";
 import trayCyanIconUrl from "../../../../assets/tray-cyan.png";
 import trayOrangeIconUrl from "../../../../assets/tray-orange.png";
 import trayVioletIconUrl from "../../../../assets/tray-violet.png";
-import { DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_WINDOW_MODULE_IDS } from "../../../shared/app";
+import { DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS } from "../../../shared/app";
 import type {
   AppConfig,
   ProviderAccountMeter,
@@ -23,7 +23,7 @@ import type {
 
 export  {
   createContext, useCallback, useContext, useEffect, useMemo, useState, createRoot,
-  Power, trayCyanIconUrl, trayOrangeIconUrl, trayVioletIconUrl, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_WINDOW_MODULE_IDS
+  Power, trayCyanIconUrl, trayOrangeIconUrl, trayVioletIconUrl, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS
 };
 export type {
   ReactNode, AppConfig, ProviderAccountMeter, ProviderAccountSnapshot, TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant, TrayWindowModuleId, UsageComparisonRow,
@@ -49,6 +49,7 @@ export const trayText: Record<ResolvedLanguage, Record<string, string>> = {
     "24h": "24 小时",
     "7d": "7 天",
     "30d": "30 天",
+    "All": "全部",
     "Account": "账户",
     "All providers": "全部供应商",
     "Avg latency": "平均延迟",
@@ -198,8 +199,8 @@ export function createSourceTabs(rows: UsageComparisonRow[], configuredProviders
 
   return [
     {
-      id: "overview",
-      label: "Overview"
+      id: "all",
+      label: "All"
     },
     ...providerTabs
   ];
@@ -237,13 +238,13 @@ export function normalizeTrayComponentVariants(value: unknown): TrayComponentVar
 export function normalizeTrayWidgets(value: unknown, fallbackModules?: unknown, fallbackVariants?: unknown): TrayWidgetConfig[] {
   if (!Array.isArray(value)) {
     if (Array.isArray(fallbackModules)) {
-      return trayWidgetsFromModules(normalizeTrayWindowModules(fallbackModules as AppConfig["trayWindowModules"]), normalizeTrayComponentVariants(fallbackVariants));
+      return dedupeTraySingletonWidgets(trayWidgetsFromModules(normalizeTrayWindowModules(fallbackModules as AppConfig["trayWindowModules"]), normalizeTrayComponentVariants(fallbackVariants)));
     }
     return DEFAULT_TRAY_WIDGETS.map((widget) => ({ ...widget }));
   }
-  return value
+  return dedupeTraySingletonWidgets(value
     .map(normalizeTrayWidget)
-    .filter((widget): widget is TrayWidgetConfig => Boolean(widget));
+    .filter((widget): widget is TrayWidgetConfig => Boolean(widget)));
 }
 
 export function normalizeTrayWidget(value: unknown): TrayWidgetConfig | undefined {
@@ -338,6 +339,24 @@ export function defaultTrayWidgetVariant(type: TrayWidgetType): TrayWidgetVarian
 
 export function trayWidgetId(type: TrayWidgetType): string {
   return type;
+}
+
+export function isTraySingletonWidgetType(type: TrayWidgetType): boolean {
+  return (TRAY_SINGLETON_WIDGET_TYPES as readonly string[]).includes(type);
+}
+
+function dedupeTraySingletonWidgets(widgets: TrayWidgetConfig[]): TrayWidgetConfig[] {
+  const seenSingletons = new Set<TrayWidgetType>();
+  return widgets.filter((widget) => {
+    if (!isTraySingletonWidgetType(widget.type)) {
+      return true;
+    }
+    if (seenSingletons.has(widget.type)) {
+      return false;
+    }
+    seenSingletons.add(widget.type);
+    return true;
+  });
 }
 
 export function trayWidgetsFromModules(modules: TrayWindowModuleId[], variants: TrayComponentVariants): TrayWidgetConfig[] {
