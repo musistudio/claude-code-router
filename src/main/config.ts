@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { loadPersistedApiKeys, replacePersistedApiKeys } from "./api-key-store";
 import { CONFIGDIR, CONFIG_FILE, GATEWAY_CONFIG_FILE } from "./constants";
-import { DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_WINDOW_MODULE_IDS } from "../shared/app";
+import { DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_WINDOW_MODULE_IDS } from "../shared/app";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "../shared/provider-presets";
 import type {
   AppConfig,
@@ -36,6 +36,9 @@ import type {
   RouterRuleType,
   TrayComponentVariants,
   TrayIconPreference,
+  TrayWidgetConfig,
+  TrayWidgetType,
+  TrayWidgetVariant,
   TrayWindowModuleId
 } from "../shared/app";
 
@@ -170,6 +173,7 @@ const DEFAULT_CONFIG: AppConfig = {
   trayComponentVariants: DEFAULT_TRAY_COMPONENT_VARIANTS,
   trayIcon: "random",
   trayProgressTargetTokens: 100000,
+  trayWidgets: DEFAULT_TRAY_WIDGETS,
   trayWindowModules: DEFAULT_TRAY_WINDOW_MODULES
 };
 
@@ -482,9 +486,16 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   if (trayComponentVariants) {
     config.trayComponentVariants = trayComponentVariants;
   }
+  const resolvedTrayComponentVariants = trayComponentVariants ?? DEFAULT_TRAY_COMPONENT_VARIANTS;
   const trayWindowModules = parseTrayWindowModules((value as Record<string, unknown>).trayWindowModules);
   if (trayWindowModules !== undefined) {
     config.trayWindowModules = trayWindowModules;
+  }
+  const trayWidgets = parseTrayWidgets((value as Record<string, unknown>).trayWidgets);
+  if (trayWidgets !== undefined) {
+    config.trayWidgets = trayWidgets;
+  } else if (trayWindowModules !== undefined) {
+    config.trayWidgets = trayWidgetsFromModules(trayWindowModules, resolvedTrayComponentVariants);
   }
   const overviewWidgets = parseOverviewWidgets((value as Record<string, unknown>).overviewWidgets);
   if (overviewWidgets !== undefined) {
@@ -592,6 +603,81 @@ function parseTrayWindowModules(value: unknown): TrayWindowModuleId[] | undefine
   const allowed = new Set<string>(TRAY_WINDOW_MODULE_IDS);
   return uniqueStrings(value.map((item) => readString(item)).filter((item): item is string => Boolean(item)))
     .filter((item): item is TrayWindowModuleId => allowed.has(item));
+}
+
+function parseTrayWidgets(value: unknown): TrayWidgetConfig[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value
+    .map(parseTrayWidget)
+    .filter((widget): widget is TrayWidgetConfig => Boolean(widget));
+}
+
+function parseTrayWidget(value: unknown): TrayWidgetConfig | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const type = parseTrayWidgetType(value.type);
+  if (!type) {
+    return undefined;
+  }
+  const variant = parseTrayWidgetVariant(type, value.variant);
+  return {
+    id: readString(value.id) || trayWidgetId(type),
+    type,
+    ...(variant ? { variant } : {})
+  };
+}
+
+function parseTrayWidgetType(value: unknown): TrayWidgetType | undefined {
+  return parseEnumValue(value, ["account", "header", "model-share", "rings", "source-tabs", "stats", "token-flow", "token-mix"], undefined);
+}
+
+function parseTrayWidgetVariant(type: TrayWidgetType, value: unknown): TrayWidgetVariant | undefined {
+  const fallback = defaultTrayWidgetVariant(type);
+  return fallback === undefined
+    ? parseEnumValue(value, trayWidgetVariantValues(type), undefined)
+    : parseEnumValue(value, trayWidgetVariantValues(type), fallback);
+}
+
+function trayWidgetVariantValues(type: TrayWidgetType): TrayWidgetVariant[] {
+  if (type === "account") return ["bar", "compact", "ring", "arc", "stacked"];
+  if (type === "model-share") return ["bars", "list", "donut", "pie"];
+  if (type === "rings") return ["rings", "arcs", "gauges"];
+  if (type === "stats") return ["cards", "compact", "pills"];
+  if (type === "token-flow") return ["line", "area", "bar", "sparkline"];
+  if (type === "token-mix") return ["bars", "stacked", "donut", "pie"];
+  return [];
+}
+
+function defaultTrayWidgetVariant(type: TrayWidgetType): TrayWidgetVariant | undefined {
+  if (type === "account") return DEFAULT_TRAY_COMPONENT_VARIANTS.account;
+  if (type === "model-share") return DEFAULT_TRAY_COMPONENT_VARIANTS.modelShare;
+  if (type === "rings") return DEFAULT_TRAY_COMPONENT_VARIANTS.rings;
+  if (type === "stats") return DEFAULT_TRAY_COMPONENT_VARIANTS.stats;
+  if (type === "token-flow") return DEFAULT_TRAY_COMPONENT_VARIANTS.tokenFlow;
+  if (type === "token-mix") return DEFAULT_TRAY_COMPONENT_VARIANTS.tokenMix;
+  return undefined;
+}
+
+function trayWidgetId(type: TrayWidgetType): string {
+  return type;
+}
+
+function trayWidgetsFromModules(modules: TrayWindowModuleId[], variants: TrayComponentVariants): TrayWidgetConfig[] {
+  return modules
+    .filter((moduleId): moduleId is TrayWidgetType => moduleId !== "footer")
+    .map((type) => ({
+      id: trayWidgetId(type),
+      type,
+      ...((type === "account") ? { variant: variants.account } : {}),
+      ...((type === "model-share") ? { variant: variants.modelShare } : {}),
+      ...((type === "rings") ? { variant: variants.rings } : {}),
+      ...((type === "stats") ? { variant: variants.stats } : {}),
+      ...((type === "token-flow") ? { variant: variants.tokenFlow } : {}),
+      ...((type === "token-mix") ? { variant: variants.tokenMix } : {})
+    }));
 }
 
 function parseTrayComponentVariants(value: unknown): TrayComponentVariants | undefined {

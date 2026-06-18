@@ -120,6 +120,7 @@ import {
   BUILTIN_UNIMCP_WEB_SEARCH_TOOL_NAME,
   DEFAULT_OVERVIEW_WIDGETS,
   DEFAULT_TRAY_COMPONENT_VARIANTS,
+  DEFAULT_TRAY_WIDGETS,
   DEFAULT_TRAY_WINDOW_MODULES,
   TRAY_WINDOW_MODULE_IDS
 } from "../../../shared/app";
@@ -179,6 +180,9 @@ import type {
   RouterRule,
   RouterRuleType,
   TrayComponentVariants,
+  TrayWidgetConfig,
+  TrayWidgetType,
+  TrayWidgetVariant,
   TrayWindowModuleId,
   UsageComparisonRow,
   UsageSeriesPoint,
@@ -226,7 +230,7 @@ export  {
   cn, claudeCodeLogoUrl, codexLogoUrl, onboardingMascotSpriteUrl, anthropicProviderIconUrl, bailianProviderIconUrl, deepseekProviderIconUrl,
   geminiProviderIconUrl, mistralProviderIconUrl, moonshotProviderIconUrl, openaiProviderIconUrl, openrouterProviderIconUrl, siliconflowProviderIconUrl, zaiGlobalCodingProviderIconUrl,
   zaiGlobalGeneralProviderIconUrl, zhipuCnCodingProviderIconUrl, zhipuCnGeneralProviderIconUrl, trayCyanIconUrl, trayOrangeIconUrl, trayVioletIconUrl, BUILTIN_UNIMCP_PACKAGE,
-  BUILTIN_UNIMCP_SERVER_NAME, BUILTIN_UNIMCP_VISION_TOOL_NAME, BUILTIN_UNIMCP_WEB_SEARCH_TOOL_NAME, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_WINDOW_MODULE_IDS,
+  BUILTIN_UNIMCP_SERVER_NAME, BUILTIN_UNIMCP_VISION_TOOL_NAME, BUILTIN_UNIMCP_WEB_SEARCH_TOOL_NAME, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_WINDOW_MODULE_IDS,
   customProviderPresetId, defaultProviderAccountConfig, findProviderPreset, findProviderPresetByBaseUrl, primaryProviderPresetEndpoint, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey,
   providerIdentitySafetyIssue, providerPresets, standardProviderAccountConfig, normalizeProviderBaseUrl, providerUrlWithDefaultScheme
 };
@@ -240,7 +244,7 @@ export type {
   ProfileConfig, CodexProfileConfigFormat, ProfileScope, ProfileSurface, ProxyCertificateInstallResult, ProxyCertificateStatus, ProxyNetworkBody,
   ProxyNetworkExchange, ProxyNetworkSnapshot, ProxyStatus, RequestLogBody, RequestLogEntry, RequestLogListFilter, RequestLogPage,
   RequestLogStatusFilter, RouterConfig, RouterFallbackConfig, RouterFallbackMode, RouterRule, RouterRuleType, TrayComponentVariants,
-  TrayWindowModuleId, UsageComparisonRow, UsageSeriesPoint, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, UsageTotals,
+  TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant, TrayWindowModuleId, UsageComparisonRow, UsageSeriesPoint, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, UsageTotals,
   VirtualModelBaseModelMode, VirtualModelExecutionMode, VirtualModelProfileConfig, VirtualModelToolVisibility, ProviderIdentitySafetyIssue, ProviderPreset, ProviderPresetEndpoint
 };
 
@@ -464,41 +468,62 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Press Enter to add": "Press Enter to add",
       "Service": "Service",
       "Account Balance": "Account Balance",
+      "Account component": "Account component",
       "Add widget": "Add widget",
+      "Analysis component": "Analysis component",
       "Area": "Area",
       "Average latency": "Average latency",
       "Bar": "Bar",
       "Bars": "Bars",
+      "Breakdown component": "Breakdown component",
       "Cards": "Cards",
       "Change widget type": "Change widget type",
       "Client Analysis": "Client Analysis",
+      "Component properties": "Component properties",
+      "Components": "Components",
+      "Component category": "Component category",
       "Compact": "Compact",
       "Composed": "Composed",
+      "Client or provider": "Client or provider",
+      "Data": "Data",
       "Done": "Done",
       "Donut": "Donut",
       "Drag cards to arrange": "Drag cards to arrange",
       "Drag to move": "Drag to move",
       "Edit widgets": "Edit widgets",
       "Full": "Full",
+      "Header component": "Header component",
       "Large": "Large",
       "Line": "Line",
       "Medium": "Medium",
       "Metric": "Metric",
+      "Metric component": "Metric component",
       "Move down": "Move down",
       "Move up": "Move up",
+      "No widget selected": "No widget selected",
       "No widgets configured": "No widgets configured",
       "Overview layout": "Overview layout",
       "Overview": "Overview",
       "Pie": "Pie",
       "Provider Analysis": "Provider Analysis",
+      "Provider component": "Provider component",
+      "Preview": "Preview",
+      "Requests, tokens, cost": "Requests, tokens, cost",
       "Remove widget": "Remove widget",
       "Reset layout": "Reset layout",
       "Ring": "Ring",
       "Small": "Small",
       "Stacked": "Stacked",
+      "Status component": "Status component",
+      "Status timeline": "Status timeline",
       "Style": "Style",
       "Table": "Table",
       "Timeline": "Timeline",
+      "Token distribution": "Token distribution",
+      "Token mix, rings, model share": "Token mix, rings, model share",
+      "Token mix component": "Token mix component",
+      "Trend component": "Trend component",
+      "Usage over time": "Usage over time",
       "Widget": "Widget",
       "Widget size": "Widget size",
       "Wide": "Wide",
@@ -883,35 +908,56 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Search request logs": "搜索请求日志",
       "Search routing rules": "搜索路由规则",
       "Server": "服务",
+      "Account component": "账户组件",
       "Add widget": "添加组件",
+      "Analysis component": "分析组件",
       "Area": "面积图",
       "Average latency": "平均延迟",
       "Bar": "柱状图",
       "Bars": "横条",
+      "Breakdown component": "构成组件",
       "Cards": "卡片",
       "Change widget type": "切换组件类型",
+      "Client or provider": "客户端或供应商",
+      "Component properties": "组件属性",
+      "Components": "组件",
+      "Component category": "组件类型",
       "Compact": "紧凑",
       "Composed": "组合图",
+      "Data": "数据",
       "Done": "完成",
       "Donut": "环形图",
       "Edit widgets": "编辑组件",
       "Full": "整行",
+      "Header component": "标题组件",
       "Large": "大",
       "Line": "折线图",
       "Medium": "中",
       "Metric": "指标",
+      "Metric component": "指标组件",
+      "No widget selected": "未选择组件",
       "No widgets configured": "未配置组件",
       "Overview layout": "概览布局",
       "Overview": "概览",
       "Pie": "饼图",
+      "Provider component": "供应商组件",
       "Remove widget": "移除组件",
+      "Preview": "预览",
+      "Requests, tokens, cost": "请求、Token、成本",
       "Reset layout": "重置布局",
       "Ring": "圆环",
       "Small": "小",
       "Stacked": "堆叠",
+      "Status component": "状态组件",
+      "Status timeline": "状态时间线",
       "Style": "样式",
       "Table": "表格",
       "Timeline": "时间线",
+      "Token distribution": "Token 分布",
+      "Token mix, rings, model share": "Token 构成、环形指标、模型占比",
+      "Token mix component": "Token 构成组件",
+      "Trend component": "趋势组件",
+      "Usage over time": "按时间查看用量",
       "Widget": "组件",
       "Widget size": "组件大小",
       "Wide": "宽",
@@ -1728,6 +1774,7 @@ export const fallbackConfig: AppConfig = {
   trayComponentVariants: DEFAULT_TRAY_COMPONENT_VARIANTS,
   trayIcon: "random",
   trayProgressTargetTokens: 100000,
+  trayWidgets: DEFAULT_TRAY_WIDGETS,
   trayWindowModules: DEFAULT_TRAY_WINDOW_MODULES,
   virtualModelProfiles: []
 };
@@ -3917,6 +3964,124 @@ export function normalizeTrayComponentVariants(value: unknown): TrayComponentVar
   };
 }
 
+export function normalizeTrayWidgets(value: unknown, fallbackModules?: unknown, fallbackVariants?: unknown): TrayWidgetConfig[] {
+  if (!Array.isArray(value)) {
+    return trayWidgetsFromModules(normalizeTrayWindowModules(fallbackModules), normalizeTrayComponentVariants(fallbackVariants));
+  }
+  return value
+    .map(normalizeTrayWidget)
+    .filter((widget): widget is TrayWidgetConfig => Boolean(widget));
+}
+
+export function normalizeTrayWidget(value: unknown): TrayWidgetConfig | undefined {
+  if (!isPlainRecord(value)) {
+    return undefined;
+  }
+  const type = normalizeTrayWidgetType(value.type);
+  if (!type) {
+    return undefined;
+  }
+  const variant = normalizeTrayWidgetVariant(type, value.variant);
+  return {
+    id: stringValue(value.id) || trayWidgetId(type),
+    type,
+    ...(variant ? { variant } : {})
+  };
+}
+
+export function normalizeTrayWidgetType(value: unknown): TrayWidgetType | undefined {
+  return typeof value === "string" && ["account", "header", "model-share", "rings", "source-tabs", "stats", "token-flow", "token-mix"].includes(value)
+    ? value as TrayWidgetType
+    : undefined;
+}
+
+export function normalizeTrayWidgetVariant(type: TrayWidgetType, value: unknown): TrayWidgetVariant | undefined {
+  const variants = trayWidgetVariantOptions(type).map((option) => option.value);
+  return typeof value === "string" && (variants as readonly string[]).includes(value)
+    ? value as TrayWidgetVariant
+    : defaultTrayWidgetVariant(type);
+}
+
+export function trayWidgetVariantOptions(type: TrayWidgetType): Array<{ label: string; value: TrayWidgetVariant }> {
+  if (type === "account") {
+    return [
+      { label: "Bars", value: "bar" },
+      { label: "Compact", value: "compact" },
+      { label: "Ring", value: "ring" },
+      { label: "Arc", value: "arc" },
+      { label: "Stacked", value: "stacked" }
+    ];
+  }
+  if (type === "token-flow") {
+    return [
+      { label: "Line", value: "line" },
+      { label: "Area", value: "area" },
+      { label: "Bar", value: "bar" },
+      { label: "Sparkline", value: "sparkline" }
+    ];
+  }
+  if (type === "stats") {
+    return [
+      { label: "Cards", value: "cards" },
+      { label: "Compact", value: "compact" },
+      { label: "Pills", value: "pills" }
+    ];
+  }
+  if (type === "token-mix") {
+    return [
+      { label: "Bars", value: "bars" },
+      { label: "Stacked", value: "stacked" },
+      { label: "Donut", value: "donut" },
+      { label: "Pie", value: "pie" }
+    ];
+  }
+  if (type === "rings") {
+    return [
+      { label: "Rings", value: "rings" },
+      { label: "Arc", value: "arcs" },
+      { label: "Gauges", value: "gauges" }
+    ];
+  }
+  if (type === "model-share") {
+    return [
+      { label: "Bars", value: "bars" },
+      { label: "List", value: "list" },
+      { label: "Donut", value: "donut" },
+      { label: "Pie", value: "pie" }
+    ];
+  }
+  return [];
+}
+
+export function defaultTrayWidgetVariant(type: TrayWidgetType): TrayWidgetVariant | undefined {
+  if (type === "account") return DEFAULT_TRAY_COMPONENT_VARIANTS.account;
+  if (type === "model-share") return DEFAULT_TRAY_COMPONENT_VARIANTS.modelShare;
+  if (type === "rings") return DEFAULT_TRAY_COMPONENT_VARIANTS.rings;
+  if (type === "stats") return DEFAULT_TRAY_COMPONENT_VARIANTS.stats;
+  if (type === "token-flow") return DEFAULT_TRAY_COMPONENT_VARIANTS.tokenFlow;
+  if (type === "token-mix") return DEFAULT_TRAY_COMPONENT_VARIANTS.tokenMix;
+  return undefined;
+}
+
+export function trayWidgetId(type: TrayWidgetType): string {
+  return type;
+}
+
+export function trayWidgetsFromModules(modules: TrayWindowModuleId[], variants: TrayComponentVariants): TrayWidgetConfig[] {
+  return modules
+    .filter((moduleId): moduleId is TrayWidgetType => moduleId !== "footer")
+    .map((type) => ({
+      id: trayWidgetId(type),
+      type,
+      ...((type === "account") ? { variant: variants.account } : {}),
+      ...((type === "model-share") ? { variant: variants.modelShare } : {}),
+      ...((type === "rings") ? { variant: variants.rings } : {}),
+      ...((type === "stats") ? { variant: variants.stats } : {}),
+      ...((type === "token-flow") ? { variant: variants.tokenFlow } : {}),
+      ...((type === "token-mix") ? { variant: variants.tokenMix } : {})
+    }));
+}
+
 export function normalizeEnumValue<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
   return typeof value === "string" && (allowed as readonly string[]).includes(value) ? value as T : fallback;
 }
@@ -4141,6 +4306,7 @@ export function normalizeConfig(config: AppConfig): AppConfig {
     trayComponentVariants: normalizeTrayComponentVariants(config.trayComponentVariants),
     trayIcon: normalizeTrayIconPreference(config.trayIcon),
     trayProgressTargetTokens: normalizeTrayProgressTargetTokens(config.trayProgressTargetTokens),
+    trayWidgets: normalizeTrayWidgets(config.trayWidgets, config.trayWindowModules, config.trayComponentVariants),
     trayWindowModules: normalizeTrayWindowModules(config.trayWindowModules),
     virtualModelProfiles: Array.isArray(config.virtualModelProfiles) ? config.virtualModelProfiles : []
   };

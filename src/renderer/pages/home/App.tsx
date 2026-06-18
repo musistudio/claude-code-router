@@ -6,7 +6,7 @@ import {
   createApiKeyList, createClaudeDesignRoutingDraft, createClaudeDesignRoutingRuleDraft, createCursorProxyRoutingDraft, createCursorProxyRoutingRuleDraft, createEmptyAgentAnalysis,
   createEmptyRequestLogPage, createEmptyUsageStats, createExtensionInstallDraft, createGeneratedApiKey, createPluginSettingsDraft, createProfileDraft,
   createProfileDraftFromProfile, createProviderConfigFromDeepLink, createProviderDraft, createProviderDraftFromProvider, createRoutingRuleDraft, createRoutingRuleDraftFromRule,
-  createVirtualModelDraft, createVirtualModelDraftFromProfile, DEFAULT_TRAY_WINDOW_MODULES, detectSystemLanguage, detectSystemTheme,
+  createVirtualModelDraft, createVirtualModelDraftFromProfile, DEFAULT_TRAY_WIDGETS, detectSystemLanguage, detectSystemTheme,
   ExtensionConfigTarget, ExtensionDeleteTarget, ExtensionInstallDraft, ExtensionSource, fallbackAgentAnalysis, fallbackConfig,
   fallbackGatewayStatus, fallbackInfo, fallbackProxyCertificateStatus, fallbackProxyNetworkSnapshot, fallbackProxyStatus, fallbackRequestLogPage,
   fallbackUsageStats, findProviderDeepLinkReplacementIndex, firstProviderConnectivityModel, formatJson, formatProxyCertificateInstallMessage, GatewayProviderConfig,
@@ -14,8 +14,8 @@ import {
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
   LayoutGroup, mergeProviderCapabilities, mergeProviderModelLists,
   navigation, NavigationId, normalizeApiKeys, normalizeConfig, normalizeLanguagePreference, normalizeOverviewWidgets,
-  normalizeProfileItem, normalizeProviderBaseUrl, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeTrayComponentVariants, normalizeTrayIconPreference,
-  normalizeTrayProgressTargetTokens, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingStepId, onboardingStepOrder,
+  normalizeProfileItem, normalizeProviderBaseUrl, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeTrayIconPreference,
+  normalizeTrayProgressTargetTokens, normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingStepId, onboardingStepOrder,
   OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parseProviderAccountDraft,
   persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, ProfileConfig, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
@@ -23,7 +23,7 @@ import {
   providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
   ResolvedTheme, resolvePluginInstallPlan, RouterRule, ServerActionBusy,
-  shouldAutoProbeProviderBaseUrl, splitLines, translateProxyCertificateMessage, translateText, TrayComponentVariants, TrayWindowModuleId,
+  shouldAutoProbeProviderBaseUrl, splitLines, translateProxyCertificateMessage, translateText, TrayWidgetConfig,
   uniqueRoutingRuleId, updateApiKeyEditableConfig, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, useEffect,
   useMemo, useReducedMotion, useRef, useState, validateVirtualModelDraft, ViewId,
   VirtualModelDraft, virtualModelProfileFromDraft
@@ -1508,27 +1508,13 @@ function App() {
     }));
   }
 
-  function changeTrayComponentVariant(key: keyof TrayComponentVariants, value: string) {
+  function changeTrayWidgets(widgets: TrayWidgetConfig[]) {
+    const trayWidgets = normalizeTrayWidgets(widgets);
     updateConfig((config) => ({
       ...config,
-      trayComponentVariants: normalizeTrayComponentVariants({
-        ...normalizeTrayComponentVariants(config.trayComponentVariants),
-        [key]: value
-      })
+      trayWidgets,
+      trayWindowModules: normalizeTrayWindowModules([...trayWidgets.map((widget) => widget.type), "footer"])
     }));
-  }
-
-  function setTrayWindowModuleEnabled(moduleId: TrayWindowModuleId, enabled: boolean) {
-    updateConfig((config) => {
-      const modules = normalizeTrayWindowModules(config.trayWindowModules);
-      const nextModules = enabled
-        ? [...modules, moduleId]
-        : modules.filter((item) => item !== moduleId);
-      return {
-        ...config,
-        trayWindowModules: normalizeTrayWindowModules(nextModules)
-      };
-    });
   }
 
   function changeOverviewWidgets(widgets: OverviewWidgetConfig[]) {
@@ -2235,17 +2221,15 @@ function App() {
               onChangeLanguage: changeLanguagePreference,
               onChangeTheme: changeThemePreference,
               onChangeTrayIcon: changeTrayIconPreference,
-              onChangeTrayComponentVariant: changeTrayComponentVariant,
               onChangeTrayProgressTarget: changeTrayProgressTargetTokens,
-              onSetTrayModuleEnabled: setTrayWindowModuleEnabled,
+              onChangeTrayWidgets: changeTrayWidgets,
               onClose: () => setSettingsOpen(false),
               systemLanguage,
               systemTheme,
               themePreference: draftConfig.theme || "system",
               trayIconPreference: draftConfig.trayIcon || "random",
-              trayComponentVariants: normalizeTrayComponentVariants(draftConfig.trayComponentVariants),
               trayProgressTargetTokens: draftConfig.trayProgressTargetTokens || 100000,
-              trayWindowModules: draftConfig.trayWindowModules || DEFAULT_TRAY_WINDOW_MODULES
+              trayWidgets: normalizeTrayWidgets(draftConfig.trayWidgets ?? DEFAULT_TRAY_WIDGETS, draftConfig.trayWindowModules, draftConfig.trayComponentVariants)
             } : undefined}
             virtualModelUpsert={virtualModelDialogOpen ? {
               canSubmit: canSubmitVirtualModel,

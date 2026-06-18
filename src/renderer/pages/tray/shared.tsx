@@ -4,12 +4,15 @@ import { Power } from "lucide-react";
 import trayCyanIconUrl from "../../../../assets/tray-cyan.png";
 import trayOrangeIconUrl from "../../../../assets/tray-orange.png";
 import trayVioletIconUrl from "../../../../assets/tray-violet.png";
-import { DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_WINDOW_MODULE_IDS } from "../../../shared/app";
+import { DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_WINDOW_MODULE_IDS } from "../../../shared/app";
 import type {
   AppConfig,
   ProviderAccountMeter,
   ProviderAccountSnapshot,
   TrayComponentVariants,
+  TrayWidgetConfig,
+  TrayWidgetType,
+  TrayWidgetVariant,
   TrayWindowModuleId,
   UsageComparisonRow,
   UsageStatsFilter,
@@ -20,10 +23,10 @@ import type {
 
 export  {
   createContext, useCallback, useContext, useEffect, useMemo, useState, createRoot,
-  Power, trayCyanIconUrl, trayOrangeIconUrl, trayVioletIconUrl, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_WINDOW_MODULE_IDS
+  Power, trayCyanIconUrl, trayOrangeIconUrl, trayVioletIconUrl, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_WINDOW_MODULE_IDS
 };
 export type {
-  ReactNode, AppConfig, ProviderAccountMeter, ProviderAccountSnapshot, TrayComponentVariants, TrayWindowModuleId, UsageComparisonRow,
+  ReactNode, AppConfig, ProviderAccountMeter, ProviderAccountSnapshot, TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant, TrayWindowModuleId, UsageComparisonRow,
   UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, UsageTotals
 };
 
@@ -229,6 +232,127 @@ export function normalizeTrayComponentVariants(value: unknown): TrayComponentVar
     tokenFlow: normalizeEnumValue(record.tokenFlow, ["line", "area", "bar", "sparkline"], DEFAULT_TRAY_COMPONENT_VARIANTS.tokenFlow),
     tokenMix: normalizeEnumValue(record.tokenMix, ["bars", "stacked", "donut", "pie"], DEFAULT_TRAY_COMPONENT_VARIANTS.tokenMix)
   };
+}
+
+export function normalizeTrayWidgets(value: unknown, fallbackModules?: unknown, fallbackVariants?: unknown): TrayWidgetConfig[] {
+  if (!Array.isArray(value)) {
+    if (Array.isArray(fallbackModules)) {
+      return trayWidgetsFromModules(normalizeTrayWindowModules(fallbackModules as AppConfig["trayWindowModules"]), normalizeTrayComponentVariants(fallbackVariants));
+    }
+    return DEFAULT_TRAY_WIDGETS.map((widget) => ({ ...widget }));
+  }
+  return value
+    .map(normalizeTrayWidget)
+    .filter((widget): widget is TrayWidgetConfig => Boolean(widget));
+}
+
+export function normalizeTrayWidget(value: unknown): TrayWidgetConfig | undefined {
+  if (!isObjectRecord(value)) {
+    return undefined;
+  }
+  const type = normalizeTrayWidgetType(value.type);
+  if (!type) {
+    return undefined;
+  }
+  const variant = normalizeTrayWidgetVariant(type, value.variant);
+  return {
+    id: typeof value.id === "string" && value.id.trim() ? value.id.trim() : trayWidgetId(type),
+    type,
+    ...(variant ? { variant } : {})
+  };
+}
+
+export function normalizeTrayWidgetType(value: unknown): TrayWidgetType | undefined {
+  return typeof value === "string" && ["account", "header", "model-share", "rings", "source-tabs", "stats", "token-flow", "token-mix"].includes(value)
+    ? value as TrayWidgetType
+    : undefined;
+}
+
+export function normalizeTrayWidgetVariant(type: TrayWidgetType, value: unknown): TrayWidgetVariant | undefined {
+  const variants = trayWidgetVariantOptions(type).map((option) => option.value);
+  return typeof value === "string" && (variants as readonly string[]).includes(value)
+    ? value as TrayWidgetVariant
+    : defaultTrayWidgetVariant(type);
+}
+
+export function trayWidgetVariantOptions(type: TrayWidgetType): Array<{ label: string; value: TrayWidgetVariant }> {
+  if (type === "account") {
+    return [
+      { label: "Bars", value: "bar" },
+      { label: "Compact", value: "compact" },
+      { label: "Ring", value: "ring" },
+      { label: "Arc", value: "arc" },
+      { label: "Stacked", value: "stacked" }
+    ];
+  }
+  if (type === "token-flow") {
+    return [
+      { label: "Line", value: "line" },
+      { label: "Area", value: "area" },
+      { label: "Bar", value: "bar" },
+      { label: "Sparkline", value: "sparkline" }
+    ];
+  }
+  if (type === "stats") {
+    return [
+      { label: "Cards", value: "cards" },
+      { label: "Compact", value: "compact" },
+      { label: "Pills", value: "pills" }
+    ];
+  }
+  if (type === "token-mix") {
+    return [
+      { label: "Bars", value: "bars" },
+      { label: "Stacked", value: "stacked" },
+      { label: "Donut", value: "donut" },
+      { label: "Pie", value: "pie" }
+    ];
+  }
+  if (type === "rings") {
+    return [
+      { label: "Rings", value: "rings" },
+      { label: "Arc", value: "arcs" },
+      { label: "Gauges", value: "gauges" }
+    ];
+  }
+  if (type === "model-share") {
+    return [
+      { label: "Bars", value: "bars" },
+      { label: "List", value: "list" },
+      { label: "Donut", value: "donut" },
+      { label: "Pie", value: "pie" }
+    ];
+  }
+  return [];
+}
+
+export function defaultTrayWidgetVariant(type: TrayWidgetType): TrayWidgetVariant | undefined {
+  if (type === "account") return DEFAULT_TRAY_COMPONENT_VARIANTS.account;
+  if (type === "model-share") return DEFAULT_TRAY_COMPONENT_VARIANTS.modelShare;
+  if (type === "rings") return DEFAULT_TRAY_COMPONENT_VARIANTS.rings;
+  if (type === "stats") return DEFAULT_TRAY_COMPONENT_VARIANTS.stats;
+  if (type === "token-flow") return DEFAULT_TRAY_COMPONENT_VARIANTS.tokenFlow;
+  if (type === "token-mix") return DEFAULT_TRAY_COMPONENT_VARIANTS.tokenMix;
+  return undefined;
+}
+
+export function trayWidgetId(type: TrayWidgetType): string {
+  return type;
+}
+
+export function trayWidgetsFromModules(modules: TrayWindowModuleId[], variants: TrayComponentVariants): TrayWidgetConfig[] {
+  return modules
+    .filter((moduleId): moduleId is TrayWidgetType => moduleId !== "footer")
+    .map((type) => ({
+      id: trayWidgetId(type),
+      type,
+      ...((type === "account") ? { variant: variants.account } : {}),
+      ...((type === "model-share") ? { variant: variants.modelShare } : {}),
+      ...((type === "rings") ? { variant: variants.rings } : {}),
+      ...((type === "stats") ? { variant: variants.stats } : {}),
+      ...((type === "token-flow") ? { variant: variants.tokenFlow } : {}),
+      ...((type === "token-mix") ? { variant: variants.tokenMix } : {})
+    }));
 }
 
 export function normalizeEnumValue<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {

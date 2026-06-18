@@ -1,5 +1,5 @@
 import {
-  agentAnalysisRangeOptions, AgentAnalysisSnapshot, agentFilterOptions, AgentFilterValue, agentKindLabel, AnimatePresence,
+  agentAnalysisRangeOptions, AgentAnalysisSnapshot, agentFilterOptions, AgentFilterValue, agentKindLabel,
   Area, arrayMove, Badge, Bar, BarChart, Button,
   Card, CardContent, CardHeader, CardTitle, CartesianGrid, Cell,
   Check, ChevronLeft, ChevronRight, CircleAlert, cn, compactId,
@@ -12,7 +12,7 @@ import {
   OverviewMetricKind, overviewMetricOptions, overviewWidgetCollisionDetection, OverviewWidgetConfig, OverviewWidgetSize, overviewWidgetSizeOptions,
   OverviewWidgetType, OverviewWidgetVariant, Pencil, Pie, PieChart, Plus,
   PointerSensor, primaryProviderAccountMeter, providerAccountBadgeVariant, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass,
-  ProviderAccountSnapshot, ReactNode, ReactPointerEvent, rectSortingStrategy, RefreshCw, Select,
+  ProviderAccountSnapshot, ReactNode, rectSortingStrategy, RefreshCw, Select,
   SelectControl, SortableContext, sortableKeyboardCoordinates, systemStatusIconClass, systemStatusPointTooltip, systemStatusSegmentClass,
   systemStatusTooltipPositionClass, Tooltip, translateOptions, Trash2, UsageComparisonRow, usageRangeOptions,
   UsageSeriesPoint, UsageStatsRange, UsageStatsSnapshot, usageStatusTone, UsageTotals, useAppText,
@@ -40,7 +40,6 @@ export function OverviewView({
   const [selectedWidgetId, setSelectedWidgetId] = useState<string>();
   const [dragPreviewWidgets, setDragPreviewWidgets] = useState<OverviewWidgetConfig[]>();
   const [editing, setEditing] = useState(false);
-  const [showAddPanel, setShowAddPanel] = useState(false);
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -52,9 +51,11 @@ export function OverviewView({
     })
   );
   const widgets = useMemo(() => normalizeOverviewWidgets(overviewWidgets), [overviewWidgets]);
+  const configuredVisibleWidgets = useMemo(() => widgets.filter((widget) => widget.enabled), [widgets]);
   const displayWidgets = dragPreviewWidgets ?? widgets;
   const visibleWidgets = displayWidgets.filter((widget) => widget.enabled);
   const activeWidget = visibleWidgets.find((widget) => widget.id === activeWidgetId);
+  const selectedWidget = widgets.find((widget) => widget.id === selectedWidgetId);
 
   useEffect(() => {
     if (!editing) {
@@ -69,6 +70,12 @@ export function OverviewView({
       setSelectedWidgetId(undefined);
     }
   }, [selectedWidgetId, widgets]);
+
+  useEffect(() => {
+    if (editing && !selectedWidgetId && configuredVisibleWidgets[0]) {
+      setSelectedWidgetId(configuredVisibleWidgets[0].id);
+    }
+  }, [configuredVisibleWidgets, editing, selectedWidgetId]);
 
   function updateWidget(id: string, patch: Partial<OverviewWidgetConfig>) {
     onWidgetsChange(widgets.map((widget) => widget.id === id ? normalizeOverviewWidget({ ...widget, ...patch }) ?? widget : widget));
@@ -151,15 +158,90 @@ export function OverviewView({
     }
     onWidgetsChange([...widgets, widget]);
     setSelectedWidgetId(id);
-    setShowAddPanel(false);
     setEditing(true);
+  }
+
+  function changeWidgetCategory(id: string, category: OverviewWidgetCategory) {
+    const current = widgets.find((widget) => widget.id === id);
+    if (!current) {
+      return;
+    }
+    const type = overviewWidgetTypeForCategory(category, current.type);
+    const metric = type === "metric" ? current.metric ?? "requests" : undefined;
+    updateWidget(id, {
+      metric,
+      type,
+      variant: overviewWidgetVariantOptions(type)[0]?.value ?? current.variant
+    });
+  }
+
+  function changeWidgetAnalysisData(id: string, type: "client-analysis" | "provider-analysis") {
+    const current = widgets.find((widget) => widget.id === id);
+    if (!current) {
+      return;
+    }
+    updateWidget(id, {
+      type,
+      variant: overviewWidgetVariantOptions(type)[0]?.value ?? current.variant
+    });
   }
 
   function resetLayout() {
     onWidgetsChange(DEFAULT_OVERVIEW_WIDGETS.map((widget) => ({ ...widget })));
     setSelectedWidgetId(undefined);
-    setShowAddPanel(false);
   }
+
+  const widgetGrid = (
+    <DndContext
+      collisionDetection={overviewWidgetCollisionDetection}
+      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+      sensors={sensors}
+      onDragCancel={cancelWidgetSort}
+      onDragEnd={finishWidgetSort}
+      onDragOver={previewWidgetSort}
+      onDragStart={startWidgetSort}
+    >
+      <SortableContext items={visibleWidgets.map((widget) => widget.id)} strategy={rectSortingStrategy}>
+        <LayoutGroup>
+          <section className="grid grid-cols-12 gap-4" data-overview-widget-grid>
+            {visibleWidgets.map((widget) => (
+              <SortableOverviewWidget editing={editing} key={widget.id} widget={widget} onSelect={() => setSelectedWidgetId(widget.id)}>
+                <OverviewWidgetFrame
+                  editing={editing}
+                  selected={selectedWidgetId === widget.id}
+                  onSelect={() => setSelectedWidgetId(widget.id)}
+                >
+                  <OverviewWidgetRenderer
+                    providerAccounts={providerAccounts}
+                    setUsageRange={setUsageRange}
+                    usageRange={usageRange}
+                    usageStats={usageStats}
+                    widget={widget}
+                  />
+                </OverviewWidgetFrame>
+              </SortableOverviewWidget>
+            ))}
+            {visibleWidgets.length === 0 ? (
+              <div className="col-span-12 rounded-lg border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-[12px] text-muted-foreground">
+                {t("No widgets configured")}
+              </div>
+            ) : null}
+          </section>
+        </LayoutGroup>
+      </SortableContext>
+      <DragOverlay adjustScale={false}>
+        {activeWidget ? (
+          <OverviewWidgetDragOverlay
+            providerAccounts={providerAccounts}
+            setUsageRange={setUsageRange}
+            usageRange={usageRange}
+            usageStats={usageStats}
+            widget={activeWidget}
+          />
+        ) : null}
+      </DragOverlay>
+    </DndContext>
+  );
 
   return (
     <motion.div
@@ -175,8 +257,8 @@ export function OverviewView({
           <p className="mt-0.5 truncate text-[12px] text-muted-foreground">{editing ? t("Drag cards to arrange") : t("Overview")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {editing ? (
-            <Button onClick={() => setShowAddPanel((value) => !value)} size="sm" type="button" variant="outline">
+          {!editing ? (
+            <Button onClick={() => setEditing(true)} size="sm" type="button" variant="outline">
               <Plus className="h-3.5 w-3.5" />
               {t("Add widget")}
             </Button>
@@ -194,74 +276,39 @@ export function OverviewView({
         </div>
       </div>
 
-      <AnimatePresence initial={false}>
-        {editing && showAddPanel ? (
-          <motion.div
-            animate={{ opacity: 1, y: 0 }}
-            className="rounded-lg border border-border bg-card p-3"
-            exit={{ opacity: 0, y: -6 }}
-            initial={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.14 }}
-          >
-            <OverviewWidgetPalette widgets={widgets} onAdd={addWidget} />
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+      {editing ? (
+        <div className="grid min-h-0 grid-cols-1 gap-4 xl:grid-cols-[220px_minmax(0,1fr)_260px]">
+          <aside className="min-w-0 rounded-lg border border-border bg-card p-3 xl:sticky xl:top-4 xl:self-start">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h3 className="truncate text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{t("Components")}</h3>
+              <Badge variant="outline">{overviewWidgetTemplates().length}</Badge>
+            </div>
+            <OverviewWidgetPalette onAdd={addWidget} />
+          </aside>
 
-      <DndContext
-        collisionDetection={overviewWidgetCollisionDetection}
-        measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
-        sensors={sensors}
-        onDragCancel={cancelWidgetSort}
-        onDragEnd={finishWidgetSort}
-        onDragOver={previewWidgetSort}
-        onDragStart={startWidgetSort}
-      >
-        <SortableContext items={visibleWidgets.map((widget) => widget.id)} strategy={rectSortingStrategy}>
-          <LayoutGroup>
-            <section className="grid grid-cols-12 gap-4" data-overview-widget-grid>
-              {visibleWidgets.map((widget) => (
-                <SortableOverviewWidget editing={editing} key={widget.id} widget={widget} onSelect={() => setSelectedWidgetId(widget.id)}>
-                  <OverviewWidgetFrame
-                    editing={editing}
-                    selected={selectedWidgetId === widget.id}
-                    widget={widget}
-                    onChangeMetric={(metric) => updateWidget(widget.id, { metric })}
-                    onChangeSize={(size) => updateWidget(widget.id, { size })}
-                    onChangeVariant={(variant) => updateWidget(widget.id, { variant })}
-                    onRemove={() => removeWidget(widget.id)}
-                    onSelect={() => setSelectedWidgetId(widget.id)}
-                  >
-                    <OverviewWidgetRenderer
-                      providerAccounts={providerAccounts}
-                      setUsageRange={setUsageRange}
-                      usageRange={usageRange}
-                      usageStats={usageStats}
-                      widget={widget}
-                    />
-                  </OverviewWidgetFrame>
-                </SortableOverviewWidget>
-              ))}
-              {visibleWidgets.length === 0 ? (
-                <div className="col-span-12 rounded-lg border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-[12px] text-muted-foreground">
-                  {t("No widgets configured")}
-                </div>
-              ) : null}
-            </section>
-          </LayoutGroup>
-        </SortableContext>
-        <DragOverlay adjustScale={false}>
-          {activeWidget ? (
-            <OverviewWidgetDragOverlay
-              providerAccounts={providerAccounts}
-              setUsageRange={setUsageRange}
-              usageRange={usageRange}
-              usageStats={usageStats}
-              widget={activeWidget}
+          <main className="min-w-0 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="truncate text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{t("Preview")}</h3>
+              <Badge variant="outline">{visibleWidgets.length}</Badge>
+            </div>
+            {widgetGrid}
+          </main>
+
+          <aside className="min-w-0 rounded-lg border border-border bg-card p-3 xl:sticky xl:top-4 xl:self-start">
+            <OverviewWidgetProperties
+              widget={selectedWidget}
+              onChangeAnalysisData={(type) => selectedWidget ? changeWidgetAnalysisData(selectedWidget.id, type) : undefined}
+              onChangeCategory={(category) => selectedWidget ? changeWidgetCategory(selectedWidget.id, category) : undefined}
+              onChangeMetric={(metric) => selectedWidget ? updateWidget(selectedWidget.id, { metric }) : undefined}
+              onChangeSize={(size) => selectedWidget ? updateWidget(selectedWidget.id, { size }) : undefined}
+              onChangeVariant={(variant) => selectedWidget ? updateWidget(selectedWidget.id, { variant }) : undefined}
+              onRemove={() => selectedWidget ? removeWidget(selectedWidget.id) : undefined}
             />
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+          </aside>
+        </div>
+      ) : (
+        widgetGrid
+      )}
     </motion.div>
   );
 }
@@ -271,36 +318,100 @@ function isEditableKeyboardTarget(target: Element | undefined): boolean {
 }
 
 function OverviewWidgetPalette({
-  widgets,
   onAdd
 }: {
-  widgets: OverviewWidgetConfig[];
   onAdd: (widget: OverviewWidgetConfig) => void;
 }) {
   const t = useAppText();
-  const existingKeys = new Set(widgets.map(overviewWidgetTemplateKey));
   const templates = overviewWidgetTemplates();
 
   return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-      {templates.map((template) => {
-        const exists = existingKeys.has(overviewWidgetTemplateKey(template));
-        return (
-          <Button
-            className="h-auto justify-start rounded-md border border-border bg-background px-3 py-2 text-left"
-            disabled={exists}
-            key={overviewWidgetTemplateKey(template)}
-            onClick={() => onAdd(template)}
-            type="button"
-            unstyled
-          >
-            <div className="min-w-0">
-              <div className="truncate text-[12px] font-semibold text-foreground">{overviewWidgetTitle(template, t)}</div>
-              <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{t(overviewWidgetTypeLabel(template.type))}</div>
-            </div>
-          </Button>
-        );
-      })}
+    <div className="grid grid-cols-1 gap-2">
+      {templates.map((template) => (
+        <Button
+          className="grid h-auto w-full grid-cols-[18px_minmax(0,1fr)] items-center gap-2 rounded-md border border-border bg-background px-2.5 py-2 text-left transition-colors hover:bg-muted/55 focus-visible:ring-2 focus-visible:ring-ring/25"
+          key={overviewWidgetTemplateKey(template)}
+          onClick={() => onAdd(template)}
+          type="button"
+          unstyled
+        >
+          <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+          <div className="min-w-0">
+            <div className="truncate text-[12px] font-semibold text-foreground">{t(overviewWidgetCategoryLabel(overviewWidgetCategory(template.type)))}</div>
+            <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{t(overviewWidgetCategoryDescription(overviewWidgetCategory(template.type)))}</div>
+          </div>
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+function OverviewWidgetProperties({
+  widget,
+  onChangeAnalysisData,
+  onChangeCategory,
+  onChangeMetric,
+  onChangeSize,
+  onChangeVariant,
+  onRemove
+}: {
+  widget: OverviewWidgetConfig | undefined;
+  onChangeAnalysisData: (type: "client-analysis" | "provider-analysis") => void;
+  onChangeCategory: (category: OverviewWidgetCategory) => void;
+  onChangeMetric: (metric: OverviewMetricKind) => void;
+  onChangeSize: (size: OverviewWidgetSize) => void;
+  onChangeVariant: (variant: OverviewWidgetVariant) => void;
+  onRemove: () => void;
+}) {
+  const t = useAppText();
+
+  if (!widget) {
+    return (
+      <div className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-[12px] text-muted-foreground">
+        {t("No widget selected")}
+      </div>
+    );
+  }
+
+  const category = overviewWidgetCategory(widget.type);
+  const dataOptions = overviewWidgetDataOptions(widget);
+  const dataValue = overviewWidgetDataValue(widget);
+  const changeData = (value: string) => {
+    if (category === "metric") {
+      onChangeMetric(value as OverviewMetricKind);
+    }
+    if (category === "analysis") {
+      onChangeAnalysisData(value as "client-analysis" | "provider-analysis");
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="min-w-0">
+        <h3 className="truncate text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{t("Component properties")}</h3>
+        <div className="mt-1 truncate text-[13px] font-semibold text-foreground">{overviewWidgetTitle(widget, t)}</div>
+      </div>
+
+      <Field label={t("Component category")}>
+        <SelectControl onChange={(value) => onChangeCategory(value as OverviewWidgetCategory)} options={translateOptions(overviewWidgetCategoryOptions(), t)} value={overviewWidgetCategory(widget.type)} />
+      </Field>
+
+      <Field label={t("Data")}>
+        <SelectControl onChange={changeData} options={translateOptions(dataOptions, t)} value={dataValue} />
+      </Field>
+
+      <Field label={t("Widget size")}>
+        <SelectControl onChange={(value) => onChangeSize(value as OverviewWidgetSize)} options={translateOptions(overviewWidgetSizeOptions, t)} value={widget.size} />
+      </Field>
+
+      <Field label={t("Style")}>
+        <SelectControl onChange={(value) => onChangeVariant(value as OverviewWidgetVariant)} options={translateOptions(overviewWidgetVariantOptions(widget.type), t)} value={widget.variant} />
+      </Field>
+
+      <Button className="w-full justify-center" onClick={onRemove} size="sm" type="button" variant="outline">
+        <Trash2 className="h-3.5 w-3.5" />
+        {t("Remove widget")}
+      </Button>
     </div>
   );
 }
@@ -381,55 +492,19 @@ function OverviewWidgetFrame({
   children,
   editing,
   selected,
-  widget,
-  onChangeMetric,
-  onChangeSize,
-  onChangeVariant,
-  onRemove,
   onSelect
 }: {
   children: ReactNode;
   editing: boolean;
   selected: boolean;
-  widget: OverviewWidgetConfig;
-  onChangeMetric: (metric: OverviewMetricKind) => void;
-  onChangeSize: (size: OverviewWidgetSize) => void;
-  onChangeVariant: (variant: OverviewWidgetVariant) => void;
-  onRemove: () => void;
   onSelect: () => void;
 }) {
-  const t = useAppText();
-  const frameRef = useRef<HTMLDivElement>(null);
-  const toolbarRef = useRef<HTMLDivElement>(null);
-  const [toolbarPlacement, setToolbarPlacement] = useState<OverviewToolbarPlacement>("right");
-  const variantOptions = overviewWidgetVariantOptions(widget.type);
-  const isHorizontalToolbar = toolbarPlacement === "top" || toolbarPlacement === "bottom";
-  const toolbarFieldClass = cn("space-y-0.5", isHorizontalToolbar && "w-[112px] shrink-0");
-  const toolbarSelectClass = cn(
-    "h-7 min-w-0 bg-[length:12px] text-[10px]",
-    isHorizontalToolbar ? "w-[112px] px-2 pr-6" : "px-1.5 pr-5"
-  );
-  const updateToolbarPlacement = () => {
-    setToolbarPlacement(resolveOverviewToolbarPlacement(frameRef.current, toolbarRef.current));
-  };
-  const selectFrame = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const selectFrame = () => {
     if (!editing) {
-      return;
-    }
-    if (event.target instanceof Node && toolbarRef.current?.contains(event.target)) {
       return;
     }
     onSelect();
   };
-
-  useEffect(() => {
-    if (!editing) {
-      return;
-    }
-    updateToolbarPlacement();
-    window.addEventListener("resize", updateToolbarPlacement);
-    return () => window.removeEventListener("resize", updateToolbarPlacement);
-  }, [editing, widget.type]);
 
   return (
     <div
@@ -440,51 +515,10 @@ function OverviewWidgetFrame({
           ? "rounded-xl outline outline-2 outline-primary outline-offset-2 ring-2 ring-primary/20"
           : "rounded-xl outline outline-2 outline-primary/35 outline-offset-2")
       )}
-      ref={frameRef}
       role={editing ? "group" : undefined}
-      onFocus={editing ? () => {
-        onSelect();
-        updateToolbarPlacement();
-      } : undefined}
-      onMouseEnter={editing ? updateToolbarPlacement : undefined}
+      onFocus={editing ? onSelect : undefined}
       onPointerDownCapture={selectFrame}
     >
-      {editing ? (
-        <div
-          className={cn(
-            "pointer-events-none absolute z-40 opacity-0 transition-opacity duration-150 group-hover/overview-widget:pointer-events-auto group-hover/overview-widget:opacity-100 group-focus-within/overview-widget:pointer-events-auto group-focus-within/overview-widget:opacity-100",
-            isHorizontalToolbar ? "w-max max-w-[min(520px,calc(100vw-2rem))]" : toolbarPlacement === "inside" ? "w-[84px]" : "w-[88px]",
-            toolbarPlacement === "right" && "left-full top-2 pl-1.5",
-            toolbarPlacement === "left" && "right-full top-2 pr-1.5",
-            toolbarPlacement === "top" && "bottom-full left-1/2 -translate-x-1/2 pb-1.5",
-            toolbarPlacement === "bottom" && "left-1/2 top-full -translate-x-1/2 pt-1.5",
-            toolbarPlacement === "inside" && "right-2 top-2"
-          )}
-          data-overview-toolbar-layout={isHorizontalToolbar ? "horizontal" : "vertical"}
-          onPointerDownCapture={(event) => event.stopPropagation()}
-          ref={toolbarRef}
-        >
-          <div className={cn(
-            "cursor-default gap-1.5 rounded-md border border-border bg-card/98 p-1.5 shadow-xl backdrop-blur supports-[backdrop-filter]:bg-card/90",
-            isHorizontalToolbar ? "flex max-w-[min(520px,calc(100vw-2rem))] flex-wrap items-end" : "grid grid-cols-1"
-          )}>
-            {widget.type === "metric" ? (
-              <Field className={toolbarFieldClass} label={t("Metric")}>
-                <SelectControl className={toolbarSelectClass} onChange={(value) => onChangeMetric(value as OverviewMetricKind)} options={translateOptions(overviewMetricOptions, t)} value={widget.metric ?? "requests"} />
-              </Field>
-            ) : null}
-            <Field className={toolbarFieldClass} label={t("Widget size")}>
-              <SelectControl className={toolbarSelectClass} onChange={(value) => onChangeSize(value as OverviewWidgetSize)} options={translateOptions(overviewWidgetSizeOptions, t)} value={widget.size} />
-            </Field>
-            <Field className={toolbarFieldClass} label={t("Style")}>
-              <SelectControl className={toolbarSelectClass} onChange={(value) => onChangeVariant(value as OverviewWidgetVariant)} options={translateOptions(variantOptions, t)} value={widget.variant} />
-            </Field>
-            <Button aria-label={t("Remove widget")} className={cn("h-7 justify-center px-0", isHorizontalToolbar ? "w-7 shrink-0" : "w-full")} onClick={onRemove} size="sm" title={t("Remove widget")} type="button" variant="outline">
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
-      ) : null}
       {children}
     </div>
   );
@@ -825,29 +859,101 @@ function OverviewAnalysisWidget({
 }
 
 function overviewWidgetTemplates(): OverviewWidgetConfig[] {
-  const baseWidgets: OverviewWidgetConfig[] = [
+  return [
     { enabled: true, id: "system-status", size: "full", type: "system-status", variant: "timeline" },
     { enabled: true, id: "account-balance", size: "full", type: "account-balance", variant: "cards" },
+    { enabled: true, id: "metric-requests", metric: "requests", size: "small", type: "metric", variant: "card" },
     { enabled: true, id: "usage-trend", size: "wide", type: "usage-trend", variant: "composed" },
     { enabled: true, id: "token-mix", size: "medium", type: "token-mix", variant: "bars" },
-    { enabled: true, id: "client-analysis", size: "large", type: "client-analysis", variant: "table" },
-    { enabled: true, id: "provider-analysis", size: "large", type: "provider-analysis", variant: "table" }
-  ];
-  return [
-    ...baseWidgets,
-    ...overviewMetricOptions.map((option) => ({
-      enabled: true,
-      id: `metric-${option.value}`,
-      metric: option.value,
-      size: "small" as const,
-      type: "metric" as const,
-      variant: "card" as const
-    }))
+    { enabled: true, id: "client-analysis", size: "large", type: "client-analysis", variant: "table" }
   ];
 }
 
+type OverviewWidgetCategory = "account-balance" | "analysis" | "metric" | "system-status" | "token-mix" | "usage-trend";
+
+function overviewWidgetCategoryOptions(): Array<{ label: string; value: OverviewWidgetCategory }> {
+  return [
+    "system-status",
+    "account-balance",
+    "metric",
+    "usage-trend",
+    "token-mix",
+    "analysis"
+  ].map((category) => ({
+    label: overviewWidgetCategoryLabel(category as OverviewWidgetCategory),
+    value: category as OverviewWidgetCategory
+  }));
+}
+
+function overviewAnalysisDataOptions(): Array<{ label: string; value: "client-analysis" | "provider-analysis" }> {
+  return [
+    { label: "Client Analysis", value: "client-analysis" },
+    { label: "Provider Analysis", value: "provider-analysis" }
+  ];
+}
+
+function overviewWidgetDataOptions(widget: OverviewWidgetConfig): Array<{ label: string; value: string }> {
+  const category = overviewWidgetCategory(widget.type);
+  if (category === "metric") {
+    return overviewMetricOptions;
+  }
+  if (category === "analysis") {
+    return overviewAnalysisDataOptions();
+  }
+  if (category === "account-balance") {
+    return [{ label: "Account Balance", value: "account-balance" }];
+  }
+  if (category === "system-status") {
+    return [{ label: "System status", value: "system-status" }];
+  }
+  if (category === "token-mix") {
+    return [{ label: "Token distribution", value: "token-mix" }];
+  }
+  return [{ label: "Usage over time", value: "usage-trend" }];
+}
+
+function overviewWidgetDataValue(widget: OverviewWidgetConfig): string {
+  const category = overviewWidgetCategory(widget.type);
+  if (category === "metric") {
+    return widget.metric ?? "requests";
+  }
+  if (category === "analysis") {
+    return widget.type;
+  }
+  return category;
+}
+
+function overviewWidgetCategory(type: OverviewWidgetType): OverviewWidgetCategory {
+  return type === "client-analysis" || type === "provider-analysis" ? "analysis" : type;
+}
+
+function overviewWidgetTypeForCategory(category: OverviewWidgetCategory, currentType: OverviewWidgetType): OverviewWidgetType {
+  if (category === "analysis") {
+    return currentType === "provider-analysis" ? "provider-analysis" : "client-analysis";
+  }
+  return category;
+}
+
 function overviewWidgetTemplateKey(widget: OverviewWidgetConfig): string {
-  return widget.type === "metric" ? `metric:${widget.metric ?? "requests"}` : widget.type;
+  return overviewWidgetCategory(widget.type);
+}
+
+function overviewWidgetCategoryLabel(category: OverviewWidgetCategory): string {
+  if (category === "account-balance") return "Account component";
+  if (category === "analysis") return "Analysis component";
+  if (category === "metric") return "Metric component";
+  if (category === "system-status") return "Status component";
+  if (category === "token-mix") return "Breakdown component";
+  return "Trend component";
+}
+
+function overviewWidgetCategoryDescription(category: OverviewWidgetCategory): string {
+  if (category === "account-balance") return "Account Balance";
+  if (category === "analysis") return "Client or provider";
+  if (category === "metric") return "Requests, tokens, cost";
+  if (category === "system-status") return "Status timeline";
+  if (category === "token-mix") return "Token distribution";
+  return "Usage over time";
 }
 
 function overviewWidgetTitle(widget: OverviewWidgetConfig, translate: (value: string) => string): string {
@@ -925,48 +1031,6 @@ function overviewWidgetOverlaySizeClass(size: OverviewWidgetSize): string {
   if (size === "large") return "w-[min(640px,calc(100vw-2rem))]";
   if (size === "wide") return "w-[min(860px,calc(100vw-2rem))]";
   return "w-[min(960px,calc(100vw-2rem))]";
-}
-
-type OverviewToolbarPlacement = "bottom" | "inside" | "left" | "right" | "top";
-
-function resolveOverviewToolbarPlacement(element: HTMLElement | null, toolbar: HTMLElement | null): OverviewToolbarPlacement {
-  if (!element || typeof window === "undefined") {
-    return "right";
-  }
-  const rect = element.getBoundingClientRect();
-  const toolbarWidth = 96;
-  const gutter = 12;
-  const boundary = element.closest<HTMLElement>("[data-overview-widget-grid]")?.getBoundingClientRect();
-  const boundaryLeft = boundary?.left ?? 0;
-  const boundaryRight = boundary?.right ?? window.innerWidth;
-  const boundaryWidth = boundaryRight - boundaryLeft;
-  const horizontalToolbarWidth = Math.min(520, Math.max(toolbarWidth, boundaryWidth - gutter * 2));
-  const horizontalToolbarHeight = toolbar?.dataset.overviewToolbarLayout === "horizontal"
-    ? toolbar.getBoundingClientRect().height || 56
-    : 56;
-  const leftSpace = rect.left - boundaryLeft;
-  const rightSpace = boundaryRight - rect.right;
-  const topSpace = rect.top;
-  const bottomSpace = window.innerHeight - rect.bottom;
-  const centerX = rect.left + rect.width / 2;
-  const hasCenteredHorizontalSpace = centerX >= boundaryLeft + horizontalToolbarWidth / 2 + gutter && boundaryRight - centerX >= horizontalToolbarWidth / 2 + gutter;
-
-  if (rightSpace >= toolbarWidth + gutter) {
-    return "right";
-  }
-  if (leftSpace >= toolbarWidth + gutter) {
-    return "left";
-  }
-  if (hasCenteredHorizontalSpace && topSpace >= horizontalToolbarHeight + gutter) {
-    return "top";
-  }
-  if (hasCenteredHorizontalSpace && bottomSpace >= horizontalToolbarHeight + gutter) {
-    return "bottom";
-  }
-  if (hasCenteredHorizontalSpace && Math.max(topSpace, bottomSpace) >= horizontalToolbarHeight * 0.6) {
-    return bottomSpace >= topSpace ? "bottom" : "top";
-  }
-  return "inside";
 }
 
 function sameOverviewWidgetOrder(a: OverviewWidgetConfig[], b: OverviewWidgetConfig[]): boolean {

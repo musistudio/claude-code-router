@@ -1,11 +1,11 @@
 import {
-  Activity, AppConfig, AppCopy, AppLanguagePreference, Boxes, Button,
-  CircleAlert, cn, Database, Dialog, DialogBody, DialogContent,
+  Activity, AppConfig, AppCopy, AppLanguagePreference, ArrowDown, ArrowUp, Boxes, Button,
+  cn, Database, Dialog, DialogBody, DialogContent,
   DialogFooter, DialogHeader, DialogTitle, Field, formatSystemOption, Gauge,
-  Input, Label, languageDisplayName, Layers3, Network, Palette,
+  Input, languageDisplayName, Layers3, Palette,
   PanelLeftOpen, Power, ReactNode, ResolvedLanguage, ResolvedTheme, Select, SelectControl,
-  SettingsPageId, Switch, themeDisplayName, TRAY_WINDOW_MODULE_IDS, TrayComponentOptionGroup, TrayComponentVariants,
-  TrayEditableModuleId, trayMascotIconUrls, TrayModuleOption, TrayWindowModuleId, useMemo, useState,
+  SettingsPageId, themeDisplayName, TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant,
+  trayMascotIconUrls, arrayMove, defaultTrayWidgetVariant, normalizeTrayWidget, normalizeTrayWidgets, trayWidgetVariantOptions, useMemo, useState,
   X
 } from "../shared";
 export function AppSettingsDialog({
@@ -14,36 +14,32 @@ export function AppSettingsDialog({
   languagePreference,
   onChangeLanguage,
   onChangeTheme,
-  onChangeTrayComponentVariant,
   onChangeTrayIcon,
   onChangeTrayProgressTarget,
-  onSetTrayModuleEnabled,
+  onChangeTrayWidgets,
   onClose,
   systemLanguage,
   systemTheme,
   themePreference,
   trayIconPreference,
-  trayComponentVariants,
   trayProgressTargetTokens,
-  trayWindowModules
+  trayWidgets
 }: {
   copy: AppCopy;
   isMac: boolean;
   languagePreference: AppLanguagePreference;
   onChangeLanguage: (value: string) => void;
   onChangeTheme: (value: string) => void;
-  onChangeTrayComponentVariant: (key: keyof TrayComponentVariants, value: string) => void;
   onChangeTrayIcon: (value: string) => void;
   onChangeTrayProgressTarget: (value: string) => void;
-  onSetTrayModuleEnabled: (moduleId: TrayWindowModuleId, enabled: boolean) => void;
+  onChangeTrayWidgets: (widgets: TrayWidgetConfig[]) => void;
   onClose: () => void;
   systemLanguage: ResolvedLanguage;
   systemTheme: ResolvedTheme;
   themePreference: AppConfig["theme"];
   trayIconPreference: AppConfig["trayIcon"];
-  trayComponentVariants: TrayComponentVariants;
   trayProgressTargetTokens: number;
-  trayWindowModules: TrayWindowModuleId[];
+  trayWidgets: TrayWidgetConfig[];
 }) {
   return (
     <SettingsLayout
@@ -63,14 +59,12 @@ export function AppSettingsDialog({
       ) : (
         <TraySettingsPage
           copy={copy}
-          onChangeTrayComponentVariant={onChangeTrayComponentVariant}
           onChangeTrayIcon={onChangeTrayIcon}
           onChangeTrayProgressTarget={onChangeTrayProgressTarget}
-          onSetTrayModuleEnabled={onSetTrayModuleEnabled}
-          trayComponentVariants={trayComponentVariants}
+          onChangeTrayWidgets={onChangeTrayWidgets}
           trayIconPreference={trayIconPreference}
           trayProgressTargetTokens={trayProgressTargetTokens}
-          trayWindowModules={trayWindowModules}
+          trayWidgets={trayWidgets}
         />
       )}
     />
@@ -219,27 +213,25 @@ function AppearanceSettingsPage({
 
 function TraySettingsPage({
   copy,
-  onChangeTrayComponentVariant,
   onChangeTrayIcon,
   onChangeTrayProgressTarget,
-  onSetTrayModuleEnabled,
-  trayComponentVariants,
+  onChangeTrayWidgets,
   trayIconPreference,
   trayProgressTargetTokens,
-  trayWindowModules
+  trayWidgets
 }: {
   copy: AppCopy;
-  onChangeTrayComponentVariant: (key: keyof TrayComponentVariants, value: string) => void;
   onChangeTrayIcon: (value: string) => void;
   onChangeTrayProgressTarget: (value: string) => void;
-  onSetTrayModuleEnabled: (moduleId: TrayWindowModuleId, enabled: boolean) => void;
-  trayComponentVariants: TrayComponentVariants;
+  onChangeTrayWidgets: (widgets: TrayWidgetConfig[]) => void;
   trayIconPreference: AppConfig["trayIcon"];
   trayProgressTargetTokens: number;
-  trayWindowModules: TrayWindowModuleId[];
+  trayWidgets: TrayWidgetConfig[];
 }) {
-  const [selectedTrayModule, setSelectedTrayModule] = useState<TrayEditableModuleId>("source-tabs");
-  const trayWindowModuleSet = useMemo(() => new Set(trayWindowModules), [trayWindowModules]);
+  const [selectedTrayWidgetId, setSelectedTrayWidgetId] = useState<string>();
+  const widgets = useMemo(() => normalizeTrayWidgets(trayWidgets), [trayWidgets]);
+  const selectedWidget = widgets.find((widget) => widget.id === selectedTrayWidgetId) ?? widgets[0];
+  const selectedWidgetIndex = selectedWidget ? widgets.findIndex((widget) => widget.id === selectedWidget.id) : -1;
   const trayIconOptions: Array<{ label: string; value: AppConfig["trayIcon"] }> = [
     { label: copy.settings.trayIconRandom, value: "random" },
     { label: copy.settings.trayIconViolet, value: "violet" },
@@ -247,86 +239,93 @@ function TraySettingsPage({
     { label: copy.settings.trayIconCyan, value: "cyan" },
     { label: copy.settings.trayIconProgress, value: "progress" }
   ];
-  const trayModuleOptions: TrayModuleOption[] = [
-    { icon: Layers3, label: copy.settings.trayModuleSourceTabs, value: "source-tabs" },
-    { icon: PanelLeftOpen, label: copy.settings.trayModuleHeader, value: "header" },
-    { icon: Database, label: copy.settings.trayModuleAccount, styleKey: "account", value: "account" },
-    { icon: Activity, label: copy.settings.trayModuleTokenFlow, styleKey: "tokenFlow", value: "token-flow" },
-    { icon: Gauge, label: copy.settings.trayModuleStats, styleKey: "stats", value: "stats" },
-    { icon: Boxes, label: copy.settings.trayModuleTokenMix, styleKey: "tokenMix", value: "token-mix" },
-    { icon: CircleAlert, label: copy.settings.trayModuleRings, styleKey: "rings", value: "rings" },
-    { icon: Network, label: copy.settings.trayModuleModelShare, styleKey: "modelShare", value: "model-share" }
-  ];
-  const trayComponentOptionGroups: TrayComponentOptionGroup[] = [
-    {
-      key: "account" as const,
-      label: copy.settings.trayComponentAccount,
-      options: [
-        { label: copy.settings.trayComponentBars, value: "bar" },
-        { label: copy.settings.trayComponentCompact, value: "compact" },
-        { label: copy.settings.trayComponentRing, value: "ring" },
-        { label: copy.settings.trayComponentArc, value: "arc" },
-        { label: copy.settings.trayComponentStacked, value: "stacked" }
-      ]
-    },
-    {
-      key: "tokenFlow" as const,
-      label: copy.settings.trayComponentFlow,
-      options: [
-        { label: copy.settings.trayComponentLine, value: "line" },
-        { label: copy.settings.trayComponentArea, value: "area" },
-        { label: copy.settings.trayComponentBar, value: "bar" },
-        { label: copy.settings.trayComponentSparkline, value: "sparkline" }
-      ]
-    },
-    {
-      key: "stats" as const,
-      label: copy.settings.trayComponentStats,
-      options: [
-        { label: copy.settings.trayComponentCards, value: "cards" },
-        { label: copy.settings.trayComponentCompact, value: "compact" },
-        { label: copy.settings.trayComponentPills, value: "pills" }
-      ]
-    },
-    {
-      key: "tokenMix" as const,
-      label: copy.settings.trayComponentTokenMix,
-      options: [
-        { label: copy.settings.trayComponentBars, value: "bars" },
-        { label: copy.settings.trayComponentStacked, value: "stacked" },
-        { label: copy.settings.trayComponentDonut, value: "donut" },
-        { label: copy.settings.trayComponentPie, value: "pie" }
-      ]
-    },
-    {
-      key: "rings" as const,
-      label: copy.settings.trayModuleRings,
-      options: [
-        { label: copy.settings.trayComponentRings, value: "rings" },
-        { label: copy.settings.trayComponentArc, value: "arcs" },
-        { label: copy.settings.trayComponentGauges, value: "gauges" }
-      ]
-    },
-    {
-      key: "modelShare" as const,
-      label: copy.settings.trayComponentModelShare,
-      options: [
-        { label: copy.settings.trayComponentBars, value: "bars" },
-        { label: copy.settings.trayComponentList, value: "list" },
-        { label: copy.settings.trayComponentDonut, value: "donut" },
-        { label: copy.settings.trayComponentPie, value: "pie" }
-      ]
+  const paletteItems = trayWidgetPalette(copy);
+  const trayT = (value: string) => copy.text[value] ?? value;
+  const selectedCategory = selectedWidget ? trayComponentCategoryForType(selectedWidget.type) : "provider-tabs";
+  const selectedCategoryOption = paletteItems.find((item) => item.value === selectedCategory) ?? paletteItems[0];
+  const selectedDataOptions = selectedCategoryOption.dataOptions;
+  const selectedStyleOptions = selectedWidget ? trayWidgetVariantOptions(selectedWidget.type) : [];
+  const SelectedTrayCategoryIcon = selectedCategoryOption.icon;
+
+  function commitWidgets(nextWidgets: TrayWidgetConfig[]) {
+    onChangeTrayWidgets(normalizeTrayWidgets(nextWidgets));
+  }
+
+  function addTrayWidget(template: TrayWidgetConfig) {
+    const id = uniqueTrayWidgetId(widgets, template.id);
+    const widget = normalizeTrayWidget({ ...template, id });
+    if (!widget) {
+      return;
     }
-  ];
-  const selectedTrayModuleOption = trayModuleOptions.find((option) => option.value === selectedTrayModule) ?? trayModuleOptions[0];
-  const selectedTrayStyleGroup = selectedTrayModuleOption.styleKey
-    ? trayComponentOptionGroups.find((group) => group.key === selectedTrayModuleOption.styleKey)
-    : undefined;
-  const SelectedTrayModuleIcon = selectedTrayModuleOption.icon;
+    commitWidgets([...widgets, widget]);
+    setSelectedTrayWidgetId(id);
+  }
+
+  function updateTrayWidget(id: string, patch: Partial<TrayWidgetConfig>) {
+    commitWidgets(widgets.map((widget) => widget.id === id ? normalizeTrayWidget({ ...widget, ...patch }) ?? widget : widget));
+  }
+
+  function changeTrayWidgetCategory(category: TrayComponentCategory) {
+    if (!selectedWidget) {
+      return;
+    }
+    const type = trayWidgetTypeForCategory(category, selectedWidget.type);
+    updateTrayWidget(selectedWidget.id, { type, variant: defaultTrayWidgetVariant(type) });
+  }
+
+  function changeTrayWidgetData(type: TrayWidgetType) {
+    if (!selectedWidget) {
+      return;
+    }
+    updateTrayWidget(selectedWidget.id, { type, variant: defaultTrayWidgetVariant(type) });
+  }
+
+  function changeTrayWidgetVariant(variant: TrayWidgetVariant) {
+    if (!selectedWidget) {
+      return;
+    }
+    updateTrayWidget(selectedWidget.id, { variant });
+  }
+
+  function moveTrayWidget(direction: -1 | 1) {
+    if (!selectedWidget || selectedWidgetIndex < 0) {
+      return;
+    }
+    const nextIndex = selectedWidgetIndex + direction;
+    if (nextIndex < 0 || nextIndex >= widgets.length) {
+      return;
+    }
+    commitWidgets(arrayMove(widgets, selectedWidgetIndex, nextIndex));
+  }
+
+  function removeSelectedTrayWidget() {
+    if (!selectedWidget || selectedWidgetIndex < 0) {
+      return;
+    }
+    const nextWidgets = widgets.filter((widget) => widget.id !== selectedWidget.id);
+    commitWidgets(nextWidgets);
+    setSelectedTrayWidgetId(nextWidgets[Math.min(selectedWidgetIndex, nextWidgets.length - 1)]?.id);
+  }
 
   return (
-    <div className="grid min-h-[520px] grid-rows-[auto_minmax(0,1fr)] gap-4">
+    <div className="grid min-h-[520px] grid-rows-[auto_auto_auto] gap-4">
       <h3 className="text-[15px] font-semibold text-foreground">{copy.settings.tray}</h3>
+      <div className="flex flex-wrap items-end gap-3 rounded-md border border-border bg-background p-3">
+        <Field className="min-w-[220px] flex-1" label={copy.settings.trayIcon}>
+          <TrayIconSelect onChange={onChangeTrayIcon} options={trayIconOptions} value={trayIconPreference} />
+        </Field>
+        {trayIconPreference === "progress" ? (
+          <Field className="min-w-[180px] flex-1" label={copy.settings.trayProgressTarget}>
+            <Input
+              min={1000}
+              step={1000}
+              type="number"
+              value={String(trayProgressTargetTokens)}
+              onChange={(event) => onChangeTrayProgressTarget(event.target.value)}
+            />
+          </Field>
+        ) : null}
+      </div>
       <div className="grid min-h-0 grid-cols-[220px_minmax(320px,1fr)_260px] gap-4 max-[1100px]:grid-cols-1">
         <div className="flex min-h-0 flex-col overflow-hidden rounded-md border border-border bg-background">
           <div className="shrink-0 border-b border-border/70 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -334,39 +333,30 @@ function TraySettingsPage({
           </div>
           <div className="min-h-0 flex-1 overflow-auto p-2">
             <div className="grid grid-cols-1 gap-1.5">
-              {trayModuleOptions.map((option) => {
+              {paletteItems.map((option) => {
                 const Icon = option.icon;
-                const enabled = trayWindowModuleSet.has(option.value);
-                const selected = selectedTrayModule === option.value;
 
                 return (
                   <Button
-                    aria-pressed={selected}
                     className={cn(
-                      "flex h-10 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-[12px] font-medium transition-colors",
-                      selected
-                        ? "bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.18)]"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                      !enabled && "opacity-70"
+                      "flex min-h-[46px] w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] font-medium transition-colors",
+                      "text-muted-foreground hover:bg-muted hover:text-foreground"
                     )}
                     key={option.value}
-                    onClick={() => setSelectedTrayModule(option.value)}
+                    onClick={() => addTrayWidget(option.template)}
                     type="button"
                     unstyled
                   >
-                    <span
-                      className={cn(
-                        "flex h-6 w-6 shrink-0 items-center justify-center rounded-md",
-                        selected ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-                      )}
-                    >
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
                       <Icon className="h-3.5 w-3.5" />
                     </span>
-                    <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                    <span
-                      aria-hidden="true"
-                      className={cn("h-2 w-2 shrink-0 rounded-full", enabled ? "bg-emerald-500" : "bg-muted-foreground/30")}
-                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{option.label}</span>
+                      <span className="block truncate text-[10px] font-normal opacity-70">{option.description}</span>
+                    </span>
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">
+                      +
+                    </span>
                   </Button>
                 );
               })}
@@ -379,8 +369,14 @@ function TraySettingsPage({
             {copy.settings.trayPreview}
           </div>
           <div className="flex min-h-0 flex-1 justify-center overflow-auto p-3">
-            <div className="w-full max-w-[360px]">
-              <TrayWindowPreview copy={copy} componentVariants={trayComponentVariants} iconPreference={trayIconPreference} modules={trayWindowModuleSet} />
+            <div className="w-full max-w-[420px]">
+              <TrayWindowPreview
+                copy={copy}
+                iconPreference={trayIconPreference}
+                selectedWidgetId={selectedWidget?.id}
+                widgets={widgets}
+                onSelectWidget={setSelectedTrayWidgetId}
+              />
             </div>
           </div>
         </div>
@@ -389,58 +385,181 @@ function TraySettingsPage({
           <div className="shrink-0 border-b border-border/70 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             {copy.settings.trayComponentProperties}
           </div>
-          <div className="min-h-0 flex-1 space-y-4 overflow-auto p-3">
-            <div className="space-y-3 border-b border-border/70 pb-4">
-              <Field label={copy.settings.trayIcon}>
-                <TrayIconSelect onChange={onChangeTrayIcon} options={trayIconOptions} value={trayIconPreference} />
-              </Field>
-              {trayIconPreference === "progress" ? (
-                <Field label={copy.settings.trayProgressTarget}>
-                  <Input
-                    min={1000}
-                    step={1000}
-                    type="number"
-                    value={String(trayProgressTargetTokens)}
-                    onChange={(event) => onChangeTrayProgressTarget(event.target.value)}
-                  />
-                </Field>
-              ) : null}
-            </div>
-
+          <div className="min-h-0 flex-1 overflow-auto p-3">
+            {selectedWidget ? (
             <div className="space-y-3">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                  <SelectedTrayModuleIcon className="h-4 w-4" />
+                  <SelectedTrayCategoryIcon className="h-4 w-4" />
                 </span>
                 <div className="min-w-0">
-                  <div className="truncate text-[13px] font-semibold text-foreground">{selectedTrayModuleOption.label}</div>
-                  <div className="truncate text-[11px] text-muted-foreground">{copy.settings.trayComponentProperties}</div>
+                  <div className="truncate text-[13px] font-semibold text-foreground">{selectedCategoryOption.label}</div>
+                  <div className="truncate text-[11px] text-muted-foreground">{trayWidgetTypeLabel(selectedWidget.type, copy)}</div>
                 </div>
               </div>
 
-              <Label className="flex min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
-                <span className="min-w-0 truncate text-[12px] font-medium text-foreground">{copy.settings.trayComponentEnabled}</span>
-                <Switch
-                  checked={trayWindowModuleSet.has(selectedTrayModuleOption.value)}
-                  onCheckedChange={(checked) => onSetTrayModuleEnabled(selectedTrayModuleOption.value, checked)}
+              <Field label={trayT("Component category")}>
+                <SelectControl
+                  onChange={(value) => changeTrayWidgetCategory(value as TrayComponentCategory)}
+                  options={paletteItems.map((option) => ({ label: option.label, value: option.value }))}
+                  value={selectedCategory}
                 />
-              </Label>
+              </Field>
 
-              {selectedTrayStyleGroup ? (
+              <Field label={trayT("Data")}>
+                <SelectControl
+                  onChange={(value) => changeTrayWidgetData(value as TrayWidgetType)}
+                  options={selectedDataOptions}
+                  value={selectedWidget.type}
+                />
+              </Field>
+
+              {selectedStyleOptions.length > 0 ? (
                 <Field label={copy.settings.trayComponentStyle}>
                   <SelectControl
-                    onChange={(value) => onChangeTrayComponentVariant(selectedTrayStyleGroup.key, value)}
-                    options={selectedTrayStyleGroup.options}
-                    value={trayComponentVariants[selectedTrayStyleGroup.key]}
+                    onChange={(value) => changeTrayWidgetVariant(value as TrayWidgetVariant)}
+                    options={selectedStyleOptions.map((option) => ({ ...option, label: trayT(option.label) }))}
+                    value={selectedWidget.variant ?? defaultTrayWidgetVariant(selectedWidget.type) ?? ""}
                   />
                 </Field>
               ) : null}
+
+              <div className="grid grid-cols-2 gap-2">
+                <Button disabled={selectedWidgetIndex <= 0} onClick={() => moveTrayWidget(-1)} size="sm" type="button" variant="outline">
+                  <ArrowUp className="h-3.5 w-3.5" />
+                  {trayT("Move up")}
+                </Button>
+                <Button disabled={selectedWidgetIndex < 0 || selectedWidgetIndex >= widgets.length - 1} onClick={() => moveTrayWidget(1)} size="sm" type="button" variant="outline">
+                  <ArrowDown className="h-3.5 w-3.5" />
+                  {trayT("Move down")}
+                </Button>
+              </div>
+
+              <Button className="w-full justify-center" onClick={removeSelectedTrayWidget} size="sm" type="button" variant="outline">
+                {trayT("Remove widget")}
+              </Button>
             </div>
+            ) : (
+              <div className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-[12px] text-muted-foreground">
+                {trayT("No widget selected")}
+              </div>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
+}
+
+type TrayComponentCategory = "account" | "breakdown" | "header" | "metrics" | "provider-tabs" | "trend";
+
+type TrayWidgetPaletteItem = {
+  dataOptions: Array<{ label: string; value: TrayWidgetType }>;
+  description: string;
+  icon: typeof Layers3;
+  label: string;
+  template: TrayWidgetConfig;
+  value: TrayComponentCategory;
+};
+
+function trayWidgetPalette(copy: AppCopy): TrayWidgetPaletteItem[] {
+  const t = (value: string) => copy.text[value] ?? value;
+
+  return [
+    {
+      dataOptions: [{ label: copy.settings.trayModuleSourceTabs, value: "source-tabs" }],
+      description: copy.settings.trayModuleSourceTabs,
+      icon: Layers3,
+      label: t("Provider component"),
+      template: { id: "source-tabs", type: "source-tabs" },
+      value: "provider-tabs"
+    },
+    {
+      dataOptions: [{ label: copy.settings.trayModuleHeader, value: "header" }],
+      description: copy.settings.trayModuleHeader,
+      icon: PanelLeftOpen,
+      label: t("Header component"),
+      template: { id: "header", type: "header" },
+      value: "header"
+    },
+    {
+      dataOptions: [{ label: copy.settings.trayModuleAccount, value: "account" }],
+      description: copy.settings.trayModuleAccount,
+      icon: Database,
+      label: t("Account component"),
+      template: { id: "account", type: "account", variant: defaultTrayWidgetVariant("account") },
+      value: "account"
+    },
+    {
+      dataOptions: [{ label: copy.settings.trayModuleTokenFlow, value: "token-flow" }],
+      description: copy.settings.trayModuleTokenFlow,
+      icon: Activity,
+      label: t("Trend component"),
+      template: { id: "token-flow", type: "token-flow", variant: defaultTrayWidgetVariant("token-flow") },
+      value: "trend"
+    },
+    {
+      dataOptions: [{ label: copy.settings.trayModuleStats, value: "stats" }],
+      description: copy.settings.trayModuleStats,
+      icon: Gauge,
+      label: t("Metric component"),
+      template: { id: "stats", type: "stats", variant: defaultTrayWidgetVariant("stats") },
+      value: "metrics"
+    },
+    {
+      dataOptions: [
+        { label: copy.settings.trayModuleTokenMix, value: "token-mix" },
+        { label: copy.settings.trayModuleRings, value: "rings" },
+        { label: copy.settings.trayModuleModelShare, value: "model-share" }
+      ],
+      description: t("Token mix, rings, model share"),
+      icon: Boxes,
+      label: t("Breakdown component"),
+      template: { id: "token-mix", type: "token-mix", variant: defaultTrayWidgetVariant("token-mix") },
+      value: "breakdown"
+    }
+  ];
+}
+
+function trayComponentCategoryForType(type: TrayWidgetType): TrayComponentCategory {
+  if (type === "source-tabs") return "provider-tabs";
+  if (type === "header") return "header";
+  if (type === "account") return "account";
+  if (type === "token-flow") return "trend";
+  if (type === "stats") return "metrics";
+  return "breakdown";
+}
+
+function trayWidgetTypeForCategory(category: TrayComponentCategory, currentType: TrayWidgetType): TrayWidgetType {
+  if (category === "provider-tabs") return "source-tabs";
+  if (category === "header") return "header";
+  if (category === "account") return "account";
+  if (category === "trend") return "token-flow";
+  if (category === "metrics") return "stats";
+  return trayComponentCategoryForType(currentType) === "breakdown" ? currentType : "token-mix";
+}
+
+function trayWidgetTypeLabel(type: TrayWidgetType, copy: AppCopy): string {
+  if (type === "account") return copy.settings.trayModuleAccount;
+  if (type === "header") return copy.settings.trayModuleHeader;
+  if (type === "model-share") return copy.settings.trayModuleModelShare;
+  if (type === "rings") return copy.settings.trayModuleRings;
+  if (type === "source-tabs") return copy.settings.trayModuleSourceTabs;
+  if (type === "stats") return copy.settings.trayModuleStats;
+  if (type === "token-flow") return copy.settings.trayModuleTokenFlow;
+  return copy.settings.trayModuleTokenMix;
+}
+
+function uniqueTrayWidgetId(widgets: TrayWidgetConfig[], baseId: string): string {
+  const ids = new Set(widgets.map((widget) => widget.id));
+  if (!ids.has(baseId)) {
+    return baseId;
+  }
+  let index = 2;
+  while (ids.has(`${baseId}-${index}`)) {
+    index += 1;
+  }
+  return `${baseId}-${index}`;
 }
 
 function TrayIconSelect({
@@ -526,22 +645,20 @@ function TrayProgressPreview() {
 }
 
 function TrayWindowPreview({
-  componentVariants,
   copy,
   iconPreference,
-  modules
+  selectedWidgetId,
+  widgets,
+  onSelectWidget
 }: {
-  componentVariants: TrayComponentVariants;
   copy: AppCopy;
   iconPreference: AppConfig["trayIcon"];
-  modules: ReadonlySet<TrayWindowModuleId>;
+  selectedWidgetId?: string;
+  widgets: TrayWidgetConfig[];
+  onSelectWidget?: (id: string) => void;
 }) {
-  const hasModules = TRAY_WINDOW_MODULE_IDS.some((moduleId) => moduleId !== "footer" && modules.has(moduleId));
-  const showTokenMix = modules.has("token-mix");
-  const showRings = modules.has("rings");
-
   return (
-    <div className="h-[360px] min-w-0 overflow-y-auto overflow-x-hidden rounded-[14px] border border-slate-950/15 bg-slate-950 p-3 text-slate-50 shadow-[0_18px_42px_rgba(15,23,42,.28)]">
+    <div className="h-[740px] min-w-0 overflow-y-auto overflow-x-hidden rounded-[14px] border border-slate-950/15 bg-slate-950 p-3 text-slate-50 shadow-[0_18px_42px_rgba(15,23,42,.28)]">
       <div className="mb-3 flex min-w-0 items-center justify-between gap-3 border-b border-white/10 pb-2">
         <div className="flex min-w-0 items-center gap-2">
           <TrayIconPreview className="h-7 w-7 border-white/15 bg-white/10" preference={iconPreference} />
@@ -555,19 +672,18 @@ function TrayWindowPreview({
         </span>
       </div>
 
-      {modules.has("source-tabs") ? <TrayPreviewSourceTabs copy={copy} /> : null}
-      {modules.has("header") ? <TrayPreviewHeader copy={copy} /> : null}
-      {modules.has("account") ? <TrayPreviewAccount copy={copy} title={copy.settings.trayModuleAccount} variant={componentVariants.account} /> : null}
-      {modules.has("token-flow") ? <TrayPreviewTokenFlow copy={copy} title={copy.settings.trayModuleTokenFlow} variant={componentVariants.tokenFlow} /> : null}
-      {modules.has("stats") ? <TrayPreviewStats copy={copy} variant={componentVariants.stats} /> : null}
-      {showTokenMix || showRings ? (
-        <div className={cn("mb-2 grid gap-2", showTokenMix && showRings ? "grid-cols-2" : "grid-cols-1")}>
-          {showTokenMix ? <TrayPreviewTokenMix copy={copy} variant={componentVariants.tokenMix} /> : null}
-          {showRings ? <TrayPreviewRings title={copy.settings.trayModuleRings} variant={componentVariants.rings} /> : null}
-        </div>
-      ) : null}
-      {modules.has("model-share") ? <TrayPreviewModelShare title={copy.settings.trayModuleModelShare} variant={componentVariants.modelShare} /> : null}
-      {!hasModules ? (
+      <div className="space-y-2">
+        {widgets.map((widget) => (
+          <TrayPreviewWidget
+            copy={copy}
+            key={widget.id}
+            selected={widget.id === selectedWidgetId}
+            widget={widget}
+            onSelect={onSelectWidget}
+          />
+        ))}
+      </div>
+      {widgets.length === 0 ? (
         <div className="flex min-h-[260px] items-center justify-center rounded-[10px] border border-white/10 bg-white/[.03] px-4 text-center text-[12px] font-medium text-slate-400">
           {copy.settings.trayPreviewEmpty}
         </div>
@@ -576,9 +692,57 @@ function TrayWindowPreview({
   );
 }
 
+function TrayPreviewWidget({
+  copy,
+  selected,
+  widget,
+  onSelect
+}: {
+  copy: AppCopy;
+  selected: boolean;
+  widget: TrayWidgetConfig;
+  onSelect?: (id: string) => void;
+}) {
+  let content: ReactNode;
+  if (widget.type === "source-tabs") {
+    content = <TrayPreviewSourceTabs copy={copy} />;
+  } else if (widget.type === "header") {
+    content = <TrayPreviewHeader copy={copy} />;
+  } else if (widget.type === "account") {
+    content = <TrayPreviewAccount copy={copy} title={copy.settings.trayModuleAccount} variant={(widget.variant ?? defaultTrayWidgetVariant("account")) as TrayComponentVariants["account"]} />;
+  } else if (widget.type === "token-flow") {
+    content = <TrayPreviewTokenFlow copy={copy} title={copy.settings.trayModuleTokenFlow} variant={(widget.variant ?? defaultTrayWidgetVariant("token-flow")) as TrayComponentVariants["tokenFlow"]} />;
+  } else if (widget.type === "stats") {
+    content = <TrayPreviewStats copy={copy} variant={(widget.variant ?? defaultTrayWidgetVariant("stats")) as TrayComponentVariants["stats"]} />;
+  } else if (widget.type === "token-mix") {
+    content = <TrayPreviewTokenMix copy={copy} variant={(widget.variant ?? defaultTrayWidgetVariant("token-mix")) as TrayComponentVariants["tokenMix"]} />;
+  } else if (widget.type === "rings") {
+    content = <TrayPreviewRings title={copy.settings.trayModuleRings} variant={(widget.variant ?? defaultTrayWidgetVariant("rings")) as TrayComponentVariants["rings"]} />;
+  } else {
+    content = <TrayPreviewModelShare title={copy.settings.trayModuleModelShare} variant={(widget.variant ?? defaultTrayWidgetVariant("model-share")) as TrayComponentVariants["modelShare"]} />;
+  }
+
+  if (!onSelect) {
+    return <div>{content}</div>;
+  }
+
+  return (
+    <button
+      className={cn(
+        "block w-full rounded-[10px] text-left transition",
+        selected ? "outline outline-2 outline-teal-300/80 outline-offset-2" : "outline outline-1 outline-transparent hover:outline-white/18"
+      )}
+      onClick={() => onSelect(widget.id)}
+      type="button"
+    >
+      {content}
+    </button>
+  );
+}
+
 function TrayPreviewSourceTabs({ copy }: { copy: AppCopy }) {
   return (
-    <div className="mb-2 grid min-w-0 grid-cols-4 gap-1.5">
+    <div className="grid min-w-0 grid-cols-4 gap-1.5">
       {["All", "OpenAI", "Claude", "More"].map((label, index) => (
         <div
           className={cn(

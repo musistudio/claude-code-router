@@ -493,6 +493,13 @@ export type TrayStatsComponentVariant = "cards" | "compact" | "pills";
 export type TrayTokenMixComponentVariant = "bars" | "stacked" | "donut" | "pie";
 export type TrayRingsComponentVariant = "rings" | "arcs" | "gauges";
 export type TrayModelShareComponentVariant = "bars" | "list" | "donut" | "pie";
+export type TrayWidgetVariant =
+  | TrayAccountComponentVariant
+  | TrayFlowComponentVariant
+  | TrayStatsComponentVariant
+  | TrayTokenMixComponentVariant
+  | TrayRingsComponentVariant
+  | TrayModelShareComponentVariant;
 
 export type TrayComponentVariants = {
   account: TrayAccountComponentVariant;
@@ -587,8 +594,25 @@ export const TRAY_WINDOW_MODULE_IDS = [
 ] as const;
 
 export type TrayWindowModuleId = (typeof TRAY_WINDOW_MODULE_IDS)[number];
+export type TrayWidgetType = Exclude<TrayWindowModuleId, "footer">;
+
+export type TrayWidgetConfig = {
+  id: string;
+  type: TrayWidgetType;
+  variant?: TrayWidgetVariant;
+};
 
 export const DEFAULT_TRAY_WINDOW_MODULES: TrayWindowModuleId[] = [...TRAY_WINDOW_MODULE_IDS];
+export const DEFAULT_TRAY_WIDGETS: TrayWidgetConfig[] = [
+  { id: "source-tabs", type: "source-tabs" },
+  { id: "header", type: "header" },
+  { id: "account", type: "account", variant: DEFAULT_TRAY_COMPONENT_VARIANTS.account },
+  { id: "token-flow", type: "token-flow", variant: DEFAULT_TRAY_COMPONENT_VARIANTS.tokenFlow },
+  { id: "stats", type: "stats", variant: DEFAULT_TRAY_COMPONENT_VARIANTS.stats },
+  { id: "token-mix", type: "token-mix", variant: DEFAULT_TRAY_COMPONENT_VARIANTS.tokenMix },
+  { id: "rings", type: "rings", variant: DEFAULT_TRAY_COMPONENT_VARIANTS.rings },
+  { id: "model-share", type: "model-share", variant: DEFAULT_TRAY_COMPONENT_VARIANTS.modelShare }
+];
 
 export type ProfileClientKind = "claude-code" | "codex";
 export type CodexProfileConfigFormat = "legacy" | "separate_profile_files";
@@ -728,6 +752,7 @@ export type AppConfig = {
   trayProgressTargetTokens: number;
   trayComponentVariants: TrayComponentVariants;
   trayIcon: TrayIconPreference;
+  trayWidgets: TrayWidgetConfig[];
   trayWindowModules: TrayWindowModuleId[];
   virtualModelProfiles?: VirtualModelProfileConfig[];
 };
