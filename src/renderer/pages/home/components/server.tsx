@@ -43,7 +43,7 @@ export function ServerView({
   return (
     <motion.div
       animate={{ opacity: 1 }}
-      className="mx-auto w-full max-w-3xl"
+      className="w-full"
       initial={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
     >

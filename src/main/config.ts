@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { loadPersistedApiKeys, replacePersistedApiKeys } from "./api-key-store";
 import { CONFIGDIR, CONFIG_FILE, GATEWAY_CONFIG_FILE } from "./constants";
-import { DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS } from "../shared/app";
+import { DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "../shared/app";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "../shared/provider-presets";
 import type {
   AppConfig,
@@ -193,7 +193,7 @@ export async function loadAppConfig(): Promise<AppConfig> {
     const configFileApiKeys = normalizeApiKeys(picked.APIKEYS, picked.APIKEY).filter((apiKey) => !isDefaultSeedApiKey(apiKey));
     const persistedApiKeys = await loadPersistedApiKeys();
     const apiKeys = uniqueApiKeyConfigs([...persistedApiKeys, ...configFileApiKeys]);
-    const config: AppConfig = {
+    const config: AppConfig = withSingleEnabledGlobalProfiles({
       ...DEFAULT_CONFIG,
       ...picked,
       APIKEY: apiKeys[0]?.key ?? "",
@@ -240,7 +240,7 @@ export async function loadAppConfig(): Promise<AppConfig> {
         targets: picked.proxy?.targets?.length ? picked.proxy.targets : DEFAULT_CONFIG.proxy.targets
       },
       routerEndpoint: endpoint
-    };
+    });
     if (hasConfigFileApiKeys(rawValue) || configFileApiKeys.length > 0) {
       await replacePersistedApiKeys(apiKeys);
       writeSanitizedConfig(config);
@@ -261,16 +261,27 @@ export async function loadAppConfig(): Promise<AppConfig> {
 }
 
 export async function saveAppConfig(config: AppConfig): Promise<AppConfig> {
-  assertProviderApiKeysAreSafe(config);
+  const normalizedConfig = withSingleEnabledGlobalProfiles(config);
+  assertProviderApiKeysAreSafe(normalizedConfig);
   mkdirSync(CONFIGDIR, { recursive: true });
-  const apiKeys = normalizeApiKeys(config.APIKEYS, config.APIKEY).filter((apiKey) => !isDefaultSeedApiKey(apiKey));
+  const apiKeys = normalizeApiKeys(normalizedConfig.APIKEYS, normalizedConfig.APIKEY).filter((apiKey) => !isDefaultSeedApiKey(apiKey));
   await replacePersistedApiKeys(apiKeys);
   writeSanitizedConfig({
-    ...config,
+    ...normalizedConfig,
     APIKEY: apiKeys[0]?.key ?? "",
     APIKEYS: apiKeys
   });
   return loadAppConfig();
+}
+
+function withSingleEnabledGlobalProfiles(config: AppConfig): AppConfig {
+  return {
+    ...config,
+    profile: {
+      ...config.profile,
+      profiles: enforceSingleEnabledGlobalProfilePerAgent(config.profile.profiles)
+    }
+  };
 }
 
 function assertProviderApiKeysAreSafe(config: AppConfig): void {

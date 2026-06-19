@@ -1,15 +1,16 @@
 import {
   AddApiKeyDraft, AddProfileDraft, AddProviderDraft, AddRoutingRuleDraft, AgentAnalysisSnapshot, AgentFilterValue,
-  ApiKeyConfig, AppConfig, appCopy, AppI18nContext, AppInfo,
+  ApiKeyConfig, AppConfig, appCopy, AppI18nContext, AppInfo, AppUpdateStatus,
   AppLanguagePreference, applyProviderProbeResult, AppToast, buildExtensionList, claudeDesignRoutingConfigFromDraft,
   ClaudeDesignRoutingDraft, ClaudeDesignRoutingRuleDraft, cloneConfig, createApiKeyDraft, createApiKeyEditDraft,
   createApiKeyList, createClaudeDesignRoutingDraft, createClaudeDesignRoutingRuleDraft, createCursorProxyRoutingDraft, createCursorProxyRoutingRuleDraft, createEmptyAgentAnalysis,
   createEmptyRequestLogPage, createEmptyUsageStats, createExtensionInstallDraft, createGeneratedApiKey, createPluginSettingsDraft, createProfileDraft,
   createProfileDraftFromProfile, createProviderConfigFromDeepLink, createProviderDraft, createProviderDraftFromProvider, createRoutingRuleDraft, createRoutingRuleDraftFromRule,
   createVirtualModelDraft, createVirtualModelDraftFromProfile, DEFAULT_TRAY_WIDGETS, detectSystemLanguage, detectSystemTheme,
+  enforceSingleEnabledGlobalProfilePerAgent,
   ExtensionConfigTarget, ExtensionDeleteTarget, ExtensionInstallDraft, ExtensionSource, fallbackAgentAnalysis, fallbackConfig,
   fallbackGatewayStatus, fallbackInfo, fallbackProxyCertificateStatus, fallbackProxyNetworkSnapshot, fallbackProxyStatus, fallbackRequestLogPage,
-  fallbackUsageStats, findProviderDeepLinkReplacementIndex, firstProviderConnectivityModel, formatJson, formatProxyCertificateInstallMessage, GatewayProviderConfig,
+  fallbackUpdateStatus, fallbackUsageStats, findProviderDeepLinkReplacementIndex, firstProviderConnectivityModel, formatJson, formatProxyCertificateInstallMessage, GatewayProviderConfig,
   fusionCustomMcpServerFromDraft, fusionCustomToolConfigFromProfile,
   GatewayProviderProbeResult, gatewayServiceMessage, GatewayStatus, getDefaultOnboardingStep, isClaudeDesignPluginConfig, isClaudeDesignRoutingDraftValid,
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
@@ -41,6 +42,8 @@ type ProfileOpenDialogState = {
   profile: ProfileConfig;
 };
 
+type UpdateActionBusy = "" | "check" | "download" | "install";
+
 function App() {
   const [activeView, setActiveView] = useState<ViewId>("onboarding");
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStepId>(() => getDefaultOnboardingStep(fallbackConfig));
@@ -52,6 +55,9 @@ function App() {
   const [proxyCertificateStatus, setProxyCertificateStatus] = useState<ProxyCertificateStatus>(fallbackProxyCertificateStatus);
   const [proxyNetworkSnapshot, setProxyNetworkSnapshot] = useState<ProxyNetworkSnapshot>(fallbackProxyNetworkSnapshot);
   const [proxyStatus, setProxyStatus] = useState<ProxyStatus>(fallbackProxyStatus);
+  const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus>(fallbackUpdateStatus);
+  const [updateActionBusy, setUpdateActionBusy] = useState<UpdateActionBusy>("");
+  const [updateActionError, setUpdateActionError] = useState("");
   const [actionBusy, setActionBusy] = useState<ServerActionBusy>("");
   const [gatewayActionBusy, setGatewayActionBusy] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
@@ -183,13 +189,18 @@ function App() {
       .finally(() => setOnboardingStatusLoaded(true));
     void window.ccr.getPluginMarketplace().then(setPluginMarketplace).catch(() => setPluginMarketplace([]));
     void window.ccr.getProxyCertificateStatus().then(setProxyCertificateStatus);
+    void window.ccr.getUpdateStatus().then(setUpdateStatus).catch(() => setUpdateStatus(fallbackUpdateStatus));
+    const unsubscribeUpdateStatus = window.ccr.onUpdateStatusChanged(setUpdateStatus);
     const refreshRuntimeStatus = () => {
       void window.ccr?.getGatewayStatus().then(setGatewayStatus);
       void window.ccr?.getProxyStatus().then(setProxyStatus);
     };
     refreshRuntimeStatus();
     const timer = window.setInterval(refreshRuntimeStatus, 2000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(timer);
+      unsubscribeUpdateStatus();
+    };
   }, []);
 
   useEffect(() => {
@@ -587,6 +598,53 @@ function App() {
       setToast(undefined);
       toastTimer.current = undefined;
     }, 1800);
+  }
+
+  async function checkForAppUpdate() {
+    if (!window.ccr) {
+      setUpdateActionError(t("Updates are only available in packaged builds."));
+      return;
+    }
+    setUpdateActionBusy("check");
+    setUpdateActionError("");
+    try {
+      setUpdateStatus(await window.ccr.updateCheck());
+    } catch (error) {
+      setUpdateActionError(formatUnknownError(error));
+    } finally {
+      setUpdateActionBusy("");
+    }
+  }
+
+  async function downloadAppUpdate() {
+    if (!window.ccr) {
+      setUpdateActionError(t("Updates are only available in packaged builds."));
+      return;
+    }
+    setUpdateActionBusy("download");
+    setUpdateActionError("");
+    try {
+      setUpdateStatus(await window.ccr.updateDownload());
+    } catch (error) {
+      setUpdateActionError(formatUnknownError(error));
+    } finally {
+      setUpdateActionBusy("");
+    }
+  }
+
+  async function installAppUpdate() {
+    if (!window.ccr) {
+      setUpdateActionError(t("Updates are only available in packaged builds."));
+      return;
+    }
+    setUpdateActionBusy("install");
+    setUpdateActionError("");
+    try {
+      await window.ccr.updateInstall();
+    } catch (error) {
+      setUpdateActionError(formatUnknownError(error));
+      setUpdateActionBusy("");
+    }
   }
 
   function updateConfig(mutator: (config: AppConfig) => AppConfig) {
@@ -1915,7 +1973,10 @@ function App() {
       profile: {
         ...config.profile,
         enabled: true,
-        profiles: [...config.profile.profiles, profile]
+        profiles: enforceSingleEnabledGlobalProfilePerAgent(
+          [...config.profile.profiles, profile],
+          config.profile.profiles.length
+        )
       }
     }));
     setConfigDraft(next);
@@ -1962,7 +2023,7 @@ function App() {
         ...config,
         profile: {
           ...config.profile,
-          profiles
+          profiles: enforceSingleEnabledGlobalProfilePerAgent(profiles, profileEditIndex)
         }
       };
     });
@@ -1992,7 +2053,7 @@ function App() {
         ...next,
         profile: {
           ...next.profile,
-          profiles
+          profiles: enforceSingleEnabledGlobalProfilePerAgent(profiles, index)
         }
       };
     });
@@ -2323,18 +2384,24 @@ function App() {
               copy,
               isMac,
               languagePreference,
+              onCheckUpdate: checkForAppUpdate,
               onChangeLanguage: changeLanguagePreference,
               onChangeTheme: changeThemePreference,
               onChangeTrayIcon: changeTrayIconPreference,
               onChangeTrayProgressTarget: changeTrayProgressTargetTokens,
               onChangeTrayWidgets: changeTrayWidgets,
               onClose: () => setSettingsOpen(false),
+              onDownloadUpdate: downloadAppUpdate,
+              onInstallUpdate: installAppUpdate,
               systemLanguage,
               systemTheme,
               themePreference: draftConfig.theme || "system",
               trayIconPreference: draftConfig.trayIcon || "random",
               trayProgressTargetTokens: draftConfig.trayProgressTargetTokens || 100000,
-              trayWidgets: normalizeTrayWidgets(draftConfig.trayWidgets ?? DEFAULT_TRAY_WIDGETS, draftConfig.trayWindowModules, draftConfig.trayComponentVariants)
+              trayWidgets: normalizeTrayWidgets(draftConfig.trayWidgets ?? DEFAULT_TRAY_WIDGETS, draftConfig.trayWindowModules, draftConfig.trayComponentVariants),
+              updateActionBusy,
+              updateActionError,
+              updateStatus
             } : undefined}
             virtualModelUpsert={virtualModelDialogOpen ? {
               canSubmit: canSubmitVirtualModel,
@@ -2356,6 +2423,10 @@ function App() {
       </LayoutGroup>
     </AppI18nContext.Provider>
   );
+}
+
+function formatUnknownError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export default App;

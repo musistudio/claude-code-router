@@ -121,6 +121,8 @@ import {
   DEFAULT_TRAY_COMPONENT_VARIANTS,
   DEFAULT_TRAY_WIDGETS,
   DEFAULT_TRAY_WINDOW_MODULES,
+  enforceSingleEnabledGlobalProfilePerAgent,
+  normalizeProfileScopeValue,
   OVERVIEW_WIDGET_SIZE_VALUES,
   TRAY_SINGLETON_WIDGET_TYPES,
   TRAY_TOP_WIDGET_TYPES,
@@ -132,6 +134,7 @@ import type {
   AgentKind,
   AppConfig,
   AppInfo,
+  AppUpdateStatus,
   ApiKeyConfig,
   ApiKeyLimitConfig,
   GatewayProviderConfig,
@@ -238,13 +241,13 @@ export  {
   cn, claudeCodeLogoUrl, codexLogoUrl, onboardingMascotSpriteUrl, anthropicProviderIconUrl, bailianProviderIconUrl, deepseekProviderIconUrl,
   geminiProviderIconUrl, mistralProviderIconUrl, moonshotProviderIconUrl, openaiProviderIconUrl, openrouterProviderIconUrl, siliconflowProviderIconUrl, zaiGlobalCodingProviderIconUrl,
   zaiGlobalGeneralProviderIconUrl, zhipuCnCodingProviderIconUrl, zhipuCnGeneralProviderIconUrl, trayCyanIconUrl, trayOrangeIconUrl, trayVioletIconUrl, BUILTIN_FUSION_TOOL_SERVER_NAME,
-  BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS,
+  BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, enforceSingleEnabledGlobalProfilePerAgent, OVERVIEW_WIDGET_SIZE_VALUES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS,
   customProviderPresetId, defaultProviderAccountConfig, findProviderPreset, findProviderPresetByBaseUrl, primaryProviderPresetEndpoint, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey,
   providerIdentitySafetyIssue, providerPresets, standardProviderAccountConfig, normalizeProviderBaseUrl, providerUrlWithDefaultScheme
 };
 export type {
   HTMLAttributes, ReactPointerEvent, ReactNode, CollisionDetection, DragEndEvent, DragOverEvent, DragStartEvent,
-  LucideIcon, AgentAnalysisFilter, AgentAnalysisSnapshot, AgentKind, AppConfig, AppInfo, ApiKeyConfig,
+  LucideIcon, AgentAnalysisFilter, AgentAnalysisSnapshot, AgentKind, AppConfig, AppInfo, AppUpdateStatus, ApiKeyConfig,
   ApiKeyLimitConfig, GatewayProviderConfig, GatewayProviderCapability, GatewayPluginAppConfig, GatewayProviderProbeResult, GatewayProviderProtocol, GatewayMcpServerConfig,
   GatewayMcpServerTransport, GatewayMcpStdioMessageMode, GatewayMcpToolInfo, GatewayStatus, OverviewMetricKind, OverviewWidgetConfig, OverviewWidgetSize, OverviewWidgetType,
   OverviewWidgetVariant, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProviderAccountConfig, ProviderAccountConnectorConfig, ProviderAccountHttpJsonConnectorConfig,
@@ -263,7 +266,7 @@ export type OnboardingStepId = "provider" | "profile" | "enter";
 export type AppLanguagePreference = "system" | "en" | "zh";
 export type ResolvedLanguage = "en" | "zh";
 export type ResolvedTheme = "light" | "dark";
-export type SettingsPageId = "appearance" | "tray";
+export type SettingsPageId = "appearance" | "tray" | "update";
 export type TrayEditableModuleId = Exclude<TrayWindowModuleId, "footer">;
 export type TrayComponentOptionGroup = {
   key: keyof TrayComponentVariants;
@@ -293,6 +296,7 @@ export type AppCopy = {
     themeLight: string;
     themeSystem: string;
     tray: string;
+    update: string;
     trayIcon: string;
     trayIconCyan: string;
     trayIconOrange: string;
@@ -381,6 +385,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       themeLight: "Light",
       themeSystem: "System",
       tray: "Tray",
+      update: "Updates",
       trayIcon: "Tray mascot",
       trayIconCyan: "Cyan",
       trayIconOrange: "Orange",
@@ -627,6 +632,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       themeLight: "亮色",
       themeSystem: "跟随系统",
       tray: "Tray",
+      update: "更新",
       trayIcon: "托盘小精灵",
       trayIconCyan: "青色小精灵",
       trayIconOrange: "橙色小精灵",
@@ -729,6 +735,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Cache write": "缓存写入",
       "Cancel": "取消",
       "Check": "检查",
+      "Check for updates": "检查更新",
+      "Checking for updates": "正在检查更新",
       "Capture network": "捕获网络",
       "Connection verified": "连通性已验证",
       "Check trust": "检查信任",
@@ -830,6 +838,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Input": "输入",
       "Input tokens": "输入令牌",
       "Install": "安装",
+      "Install and restart": "安装并重启",
       "App": "App",
       "Install Extension": "安装扩展",
       "Install extension": "安装扩展",
@@ -838,6 +847,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Keep Claude Code default": "保持 Claude Code 默认值",
       "Keep default": "保持默认值",
       "Last apply": "上次应用",
+      "Last checked": "上次检查",
       "Last request": "最近请求",
       "Last seen": "最近活跃",
       "Legacy profile table": "旧版配置档案表",
@@ -1337,6 +1347,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "No subagent calls": "暂无 Subagent 调用",
       "No tool calls": "暂无工具调用",
       "No routing rules configured": "未配置路由规则",
+      "No updates available": "当前已是最新版本",
       "Not installed": "未安装",
       "Not set": "未设置",
       "Pause capture": "暂停捕获",
@@ -1395,6 +1406,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "API Service": "API 服务 (API Service)",
       "Availability": "可用性",
       "Current": "当前",
+      "Current version": "当前版本",
       "Current model": "当前模型",
       "Degraded": "降级",
       "Gateway": "网关",
@@ -1404,6 +1416,17 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Proxy Service": "代理服务",
       "System status": "系统状态",
       "System Proxy": "系统代理",
+      "Available version": "可用版本",
+      "Download update": "下载更新",
+      "Downloading update": "正在下载更新",
+      "Feed URL": "更新源",
+      "Online updates": "在线更新",
+      "Release notes": "更新说明",
+      "Update available": "发现新版本",
+      "Update downloaded": "更新已下载",
+      "Update failed": "更新失败",
+      "Update ready to install": "更新已准备安装",
+      "Updates are only available in packaged builds.": "在线更新仅在打包后的应用中可用。",
       "This action is applied immediately to the draft config and will auto-save with other changes.": "此操作会立即应用到草稿配置，并随其他变更自动保存。",
       "This provider link came from an external website. Review details before importing.": "这个供应商链接来自外部网站。导入前请确认下面的内容。",
       "Welcome to CCR": "欢迎使用CCR",
@@ -1771,6 +1794,15 @@ export const fallbackInfo: AppInfo = {
   requestLogsDbFile: "Browser preview",
   usageDbFile: "Browser preview",
   version: "0.1.0"
+};
+
+export const fallbackUpdateStatus: AppUpdateStatus = {
+  canCheck: false,
+  canDownload: false,
+  canInstall: false,
+  currentVersion: fallbackInfo.version,
+  state: "idle",
+  supported: false
 };
 
 export const fallbackConfig: AppConfig = {
@@ -2925,7 +2957,7 @@ export function normalizeCodexConfigFormat(_value: unknown): CodexProfileConfigF
 }
 
 export function normalizeProfileScope(value: unknown): ProfileScope {
-  return value === "ccr" || value === "custom" ? value : "global";
+  return normalizeProfileScopeValue(value);
 }
 
 export function normalizeProfileFormScope(value: unknown): ProfileScope {
@@ -3030,9 +3062,9 @@ export function normalizeProfileItems(values: unknown): ProfileConfig[] {
   if (!Array.isArray(values)) {
     return fallbackConfig.profile.profiles;
   }
-  return values
+  return enforceSingleEnabledGlobalProfilePerAgent(values
     .map((value, index) => isPlainRecord(value) ? normalizeUnknownProfileItem(value, index) : undefined)
-    .filter((profile): profile is ProfileConfig => Boolean(profile));
+    .filter((profile): profile is ProfileConfig => Boolean(profile)));
 }
 
 export function legacyProfileItemsFromProfileConfig(profile: AppConfig["profile"]): ProfileConfig[] {
@@ -5557,7 +5589,7 @@ export function virtualModelProfileFromDraft(
       maxToolCalls: clampNumber(maxToolCalls || Math.max(tools.length, 1), 1, 50),
       maxTurns: clampNumber(maxTurns || 6, 1, 50),
       mode: "tool_loop",
-      streamMode: "buffered"
+      streamMode: "optimistic"
     },
     id,
     key,

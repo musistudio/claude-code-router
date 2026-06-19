@@ -5,6 +5,7 @@ import path from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 import { saveAppConfig } from "./config";
 import { CONFIGDIR } from "./constants";
+import { buildCodexModelCatalog } from "./codex-model-catalog";
 import type { ApiKeyConfig, AppConfig, ClaudeAppGatewayApplyResult } from "../shared/app";
 
 const CLAUDE_APP_CONFIG_ID = "8f69f2f1-3275-4ad8-9317-4aa7e972f311";
@@ -86,12 +87,13 @@ export function applyClaudeAppGatewayConfig(config: AppConfig, options: ClaudeAp
   const paths = getClaudeAppGatewayPaths(options.dataDir);
   const endpoint = gatewayEndpoint(state.config);
   const model = inferClaudeAppGatewayModel(state.config);
+  const models = buildClaudeAppGatewayModels(state.config, model);
   const gatewayConfig: ClaudeAppGatewayConfig = {
     inferenceCredentialKind: "static",
     inferenceGatewayApiKey: state.apiKey,
     inferenceGatewayAuthScheme: "x-api-key",
     inferenceGatewayBaseUrl: endpoint,
-    inferenceModels: [{ name: model }],
+    inferenceModels: models.map((name) => ({ name })),
     inferenceProvider: "gateway",
     modelDiscoveryEnabled: false,
     unstableDisableModelVerification: true
@@ -304,6 +306,14 @@ function inferClaudeAppGatewayModel(config: AppConfig): string {
   }
 
   return CLAUDE_APP_FALLBACK_MODEL;
+}
+
+function buildClaudeAppGatewayModels(config: AppConfig, selectedModel: string): string[] {
+  const models = buildCodexModelCatalog(config, selectedModel);
+  if (models.length > 0) {
+    return models;
+  }
+  return [CLAUDE_APP_FALLBACK_MODEL];
 }
 
 function normalizeGatewayModelSelector(value: unknown): string {

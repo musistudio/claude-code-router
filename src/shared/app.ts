@@ -11,6 +11,41 @@ export type AppInfo = {
   version: string;
 };
 
+export type AppUpdateState =
+  | "idle"
+  | "checking"
+  | "available"
+  | "not-available"
+  | "downloading"
+  | "downloaded"
+  | "installing"
+  | "error";
+
+export type AppUpdateDownloadProgress = {
+  bytesPerSecond?: number;
+  percent?: number;
+  total?: number;
+  transferred?: number;
+};
+
+export type AppUpdateStatus = {
+  availableVersion?: string;
+  canCheck: boolean;
+  canDownload: boolean;
+  canInstall: boolean;
+  currentVersion: string;
+  downloadedAt?: string;
+  feedUrl?: string;
+  lastCheckedAt?: string;
+  lastError?: string;
+  progress?: AppUpdateDownloadProgress;
+  releaseDate?: string;
+  releaseName?: string;
+  releaseNotes?: string;
+  state: AppUpdateState;
+  supported: boolean;
+};
+
 export const BUILTIN_FUSION_TOOL_SERVER_NAME = "ccr-fusion-builtins";
 export const BUILTIN_FUSION_VISION_TOOL_NAME = "vision_understand";
 export const BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME = "web_search";
@@ -407,7 +442,7 @@ export type VirtualModelExecutionConfig = {
   maxToolCalls: number;
   maxTurns: number;
   mode: VirtualModelExecutionMode;
-  streamMode: "buffered";
+  streamMode: "buffered" | "optimistic";
 };
 
 export type VirtualModelMaterializationConfig = {
@@ -731,6 +766,38 @@ export type ProfileRuntimeConfig = {
   enabled: boolean;
   profiles: ProfileConfig[];
 };
+
+export function normalizeProfileScopeValue(value: unknown): ProfileScope {
+  return value === "ccr" || value === "custom" ? value : "global";
+}
+
+export function isEnabledGlobalProfile(profile: Pick<ProfileConfig, "enabled" | "scope">): boolean {
+  return profile.enabled && normalizeProfileScopeValue(profile.scope) === "global";
+}
+
+export function enforceSingleEnabledGlobalProfilePerAgent(
+  profiles: ProfileConfig[],
+  preferredIndex?: number
+): ProfileConfig[] {
+  const activeGlobalProfileByAgent = new Map<ProfileClientKind, number>();
+  const preferredProfileIndex = typeof preferredIndex === "number" ? preferredIndex : undefined;
+  const preferredProfile = preferredProfileIndex !== undefined ? profiles[preferredProfileIndex] : undefined;
+  if (preferredProfileIndex !== undefined && preferredProfile && isEnabledGlobalProfile(preferredProfile)) {
+    activeGlobalProfileByAgent.set(preferredProfile.agent, preferredProfileIndex);
+  }
+
+  return profiles.map((profile, index) => {
+    if (!isEnabledGlobalProfile(profile)) {
+      return profile;
+    }
+    const activeIndex = activeGlobalProfileByAgent.get(profile.agent);
+    if (activeIndex === undefined) {
+      activeGlobalProfileByAgent.set(profile.agent, index);
+      return profile;
+    }
+    return activeIndex === index ? profile : { ...profile, enabled: false };
+  });
+}
 
 export type ProfileClientApplyStatus = {
   appliedAt?: string;

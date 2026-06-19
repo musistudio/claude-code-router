@@ -3,6 +3,13 @@
   "productName": "Claude Code Router",
   "asar": true,
   "npmRebuild": false,
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "musistudio",
+      "repo": "claude-code-router"
+    }
+  ],
   "directories": {
     "output": "release/${version}"
   },
@@ -18,7 +25,7 @@
   ],
   "mac": {
     "icon": "build/icon.icns",
-    "target": ["dmg"],
+    "target": ["dmg", "zip"],
     "artifactName": "${productName}_${version}.${ext}"
   },
   "win": {

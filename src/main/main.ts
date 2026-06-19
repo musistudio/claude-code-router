@@ -7,6 +7,7 @@ import "./ipc";
 import { applyProfileConfig } from "./profile-service";
 import { proxyService } from "./proxy/service";
 import trayController from "./tray-controller";
+import { appUpdateService } from "./update-service";
 import windowsManager from "./windows";
 
 const gotTheLock = app.requestSingleInstanceLock();
@@ -36,6 +37,8 @@ function startPrimaryInstance(): void {
   app.whenReady().then(() => {
     windowsManager.createMainWindow();
     trayController.start();
+    appUpdateService.start();
+    appUpdateService.setInstallPreparation(prepareForUpdateInstall);
     void startConfiguredServices("startup");
 
     app.on("activate", () => {
@@ -45,7 +48,7 @@ function startPrimaryInstance(): void {
   });
 
   app.on("before-quit", (event) => {
-    if (quitPrepared) {
+    if (quitPrepared || appUpdateService.isInstallingUpdate()) {
       return;
     }
     event.preventDefault();
@@ -53,7 +56,7 @@ function startPrimaryInstance(): void {
   });
 
   app.on("will-quit", (event) => {
-    if (quitPrepared) {
+    if (quitPrepared || appUpdateService.isInstallingUpdate()) {
       return;
     }
     event.preventDefault();
@@ -80,6 +83,14 @@ function prepareAndQuit(): void {
     quitPrepared = true;
     app.quit();
   });
+}
+
+async function prepareForUpdateInstall(): Promise<void> {
+  if (!stoppingForQuit) {
+    stoppingForQuit = true;
+  }
+  await stopServicesForQuit();
+  quitPrepared = true;
 }
 
 function handleTerminationSignal(signal: NodeJS.Signals): void {

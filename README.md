@@ -277,3 +277,9 @@ npm run build:app
 `npm run build` packages the app for the current platform and writes installer artifacts to `release/`.
 
 `npm run build:app` packages both macOS and Windows artifacts with `electron-builder --mac --win`. You can also run `npm run build:app:mac` or `npm run build:app:win` for a single platform. Cross-building Windows installers from macOS may require Wine; otherwise run the Windows build command on Windows.
+
+## Online Updates
+
+Packaged builds check GitHub Releases for updates through `electron-updater`. The builder config publishes update metadata for `musistudio/claude-code-router`; attach the generated installer artifacts and `latest*.yml` files to each release. macOS builds include both `dmg` and `zip` targets because the updater requires the zip artifact.
+
+For local update feed testing, set `CCR_UPDATE_FEED_URL` to a generic electron-updater feed URL before starting the app. `CCR_UPDATE_ALLOW_PRERELEASE=1` enables prerelease updates.

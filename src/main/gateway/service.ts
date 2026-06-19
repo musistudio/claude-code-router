@@ -736,10 +736,10 @@ function writeCoreGatewayConfig(config: AppConfig, rawTraceSyncToken: string): v
     ...(config.providerPlugins ?? []),
     ...pluginService.getCoreProviderPlugins()
   ];
-  const virtualModelProfiles = withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases([
+  const virtualModelProfiles = withOptimisticVirtualModelStreams(withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases([
     ...(config.virtualModelProfiles ?? []),
     ...pluginService.getVirtualModelProfiles()
-  ]));
+  ])));
   const coreEndpoint = endpoint(config.gateway.coreHost, config.gateway.corePort);
   const builtinToolArtifacts = fusionBuiltinToolArtifacts(virtualModelProfiles, coreEndpoint);
   const providers = [
@@ -923,6 +923,25 @@ function withCodexCompatibleVirtualModelProfiles(profiles: unknown[]): unknown[]
       execution: {
         ...execution,
         clientToolsPolicy: "allow"
+      }
+    };
+  });
+}
+
+function withOptimisticVirtualModelStreams(profiles: unknown[]): unknown[] {
+  return profiles.map((profile) => {
+    if (!isRecord(profile) || profile.enabled === false) {
+      return profile;
+    }
+    const execution = isRecord(profile.execution) ? profile.execution : {};
+    if (execution.streamMode === "optimistic") {
+      return profile;
+    }
+    return {
+      ...profile,
+      execution: {
+        ...execution,
+        streamMode: "optimistic"
       }
     };
   });

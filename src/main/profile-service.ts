@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { ApiKeyConfig, AppConfig, ProfileApplyResult, ProfileClientApplyStatus, ProfileConfig } from "../shared/app";
+import { enforceSingleEnabledGlobalProfilePerAgent, type ApiKeyConfig, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileConfig } from "../shared/app";
 import { replacePersistedApiKeys } from "./api-key-store";
 import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
 import { codexModelCatalogBase64 } from "./codex-model-catalog";
@@ -160,7 +160,7 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
 }
 
 function profileEntries(config: AppConfig): ProfileConfig[] {
-  return config.profile.profiles;
+  return enforceSingleEnabledGlobalProfilePerAgent(config.profile.profiles);
 }
 
 async function ensureProfileApiKeys(config: AppConfig, profiles: ProfileConfig[]): Promise<Map<string, string>> {

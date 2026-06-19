@@ -19,6 +19,7 @@ import { proxyService } from "./proxy/service";
 import { listMcpServerTools } from "./mcp/tool-discovery";
 import { getAgentAnalysis, getRequestLogs } from "./request-log-store";
 import trayController from "./tray-controller";
+import { appUpdateService } from "./update-service";
 import { getUsageStats } from "./usage-store";
 import windowsManager from "./windows";
 import type { AgentAnalysisFilter, ApiKeyConfig, AppConfig, AppInfo, GatewayMcpServerConfig, GatewayPluginAppConfig, GatewayProviderProbeRequest, GatewayStatus, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountTestRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
@@ -79,6 +80,7 @@ ipcMain.handle(IPC_CHANNELS.appGetProxyNetworkCaptures, () => proxyService.getNe
 ipcMain.handle(IPC_CHANNELS.appGetProxyStatus, () => proxyService.getStatus());
 ipcMain.handle(IPC_CHANNELS.appGetPluginMarketplace, () => pluginMarketplace);
 ipcMain.handle(IPC_CHANNELS.appGetRequestLogs, (_event, filter?: RequestLogListFilter) => getRequestLogs(filter));
+ipcMain.handle(IPC_CHANNELS.appGetUpdateStatus, () => appUpdateService.getStatus());
 ipcMain.handle(IPC_CHANNELS.appGetUsageStats, (_event, range?: UsageStatsRange, filter?: UsageStatsFilter) => getUsageStats(range, filter));
 ipcMain.handle(IPC_CHANNELS.appFetchProviderManifest, (_event, request: ProviderManifestFetchRequest) => fetchProviderManifest(request));
 ipcMain.handle(IPC_CHANNELS.appInstallProxyCertificate, () => proxyService.installCertificate());
@@ -163,6 +165,9 @@ ipcMain.handle(IPC_CHANNELS.appProbeProvider, (_event, request: GatewayProviderP
 ipcMain.handle(IPC_CHANNELS.appTestProviderAccountConnector, (_event, request: ProviderAccountTestRequest) => {
   return testProviderAccountConnector(request);
 });
+ipcMain.handle(IPC_CHANNELS.appUpdateCheck, () => appUpdateService.checkForUpdates());
+ipcMain.handle(IPC_CHANNELS.appUpdateDownload, () => appUpdateService.downloadUpdate());
+ipcMain.handle(IPC_CHANNELS.appUpdateInstall, () => appUpdateService.installUpdate());
 ipcMain.handle(IPC_CHANNELS.appQuit, () => {
   app.quit();
 });

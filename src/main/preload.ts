@@ -5,6 +5,7 @@ import type {
   AgentAnalysisSnapshot,
   AppConfig,
   AppInfo,
+  AppUpdateStatus,
   ApiKeyConfig,
   ClaudeAppGatewayApplyResult,
   GatewayMcpServerConfig,
@@ -57,6 +58,7 @@ contextBridge.exposeInMainWorld("ccr", {
   getProxyNetworkCaptures: () => ipcRenderer.invoke(IPC_CHANNELS.appGetProxyNetworkCaptures) as Promise<ProxyNetworkSnapshot>,
   getProxyStatus: () => ipcRenderer.invoke(IPC_CHANNELS.appGetProxyStatus) as Promise<ProxyStatus>,
   getRequestLogs: (filter?: RequestLogListFilter) => ipcRenderer.invoke(IPC_CHANNELS.appGetRequestLogs, filter) as Promise<RequestLogPage>,
+  getUpdateStatus: () => ipcRenderer.invoke(IPC_CHANNELS.appGetUpdateStatus) as Promise<AppUpdateStatus>,
   getUsageStats: (range?: UsageStatsRange, filter?: UsageStatsFilter) => ipcRenderer.invoke(IPC_CHANNELS.appGetUsageStats, range, filter) as Promise<UsageStatsSnapshot>,
   installProxyCertificate: () => ipcRenderer.invoke(IPC_CHANNELS.appInstallProxyCertificate) as Promise<ProxyCertificateInstallResult>,
   listMcpServerTools: (server: GatewayMcpServerConfig) => ipcRenderer.invoke(IPC_CHANNELS.appListMcpServerTools, server) as Promise<GatewayMcpToolInfo[]>,
@@ -78,6 +80,9 @@ contextBridge.exposeInMainWorld("ccr", {
   startGateway: () => ipcRenderer.invoke(IPC_CHANNELS.appStartGateway) as Promise<GatewayStatus>,
   stopGateway: () => ipcRenderer.invoke(IPC_CHANNELS.appStopGateway) as Promise<GatewayStatus>,
   testProviderAccountConnector: (request: ProviderAccountTestRequest) => ipcRenderer.invoke(IPC_CHANNELS.appTestProviderAccountConnector, request) as Promise<ProviderAccountTestResult>,
+  updateCheck: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateCheck) as Promise<AppUpdateStatus>,
+  updateDownload: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateDownload) as Promise<AppUpdateStatus>,
+  updateInstall: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateInstall) as Promise<void>,
   onBeforeQuit: (callback: () => void) => {
     const handler = () => callback();
     ipcRenderer.on(IPC_CHANNELS.appBeforeQuit, handler);
@@ -87,5 +92,10 @@ contextBridge.exposeInMainWorld("ccr", {
     const handler = (_event: Electron.IpcRendererEvent, request: ProviderDeepLinkRequest) => callback(request);
     ipcRenderer.on(IPC_CHANNELS.appProviderDeepLink, handler);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.appProviderDeepLink, handler);
+  },
+  onUpdateStatusChanged: (callback: (status: AppUpdateStatus) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, status: AppUpdateStatus) => callback(status);
+    ipcRenderer.on(IPC_CHANNELS.appUpdateStatusChanged, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.appUpdateStatusChanged, handler);
   }
 });

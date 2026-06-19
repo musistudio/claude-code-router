@@ -5,6 +5,7 @@ import type {
   AgentAnalysisSnapshot,
   AppConfig,
   AppInfo,
+  AppUpdateStatus,
   ApiKeyConfig,
   ClaudeAppGatewayApplyResult,
   GatewayMcpServerConfig,
@@ -59,6 +60,7 @@ declare global {
       getProxyNetworkCaptures: () => Promise<ProxyNetworkSnapshot>;
       getProxyStatus: () => Promise<ProxyStatus>;
       getRequestLogs: (filter?: RequestLogListFilter) => Promise<RequestLogPage>;
+      getUpdateStatus: () => Promise<AppUpdateStatus>;
       getUsageStats: (range?: UsageStatsRange, filter?: UsageStatsFilter) => Promise<UsageStatsSnapshot>;
       installProxyCertificate: () => Promise<ProxyCertificateInstallResult>;
       listMcpServerTools: (server: GatewayMcpServerConfig) => Promise<GatewayMcpToolInfo[]>;
@@ -80,8 +82,12 @@ declare global {
       startGateway: () => Promise<GatewayStatus>;
       stopGateway: () => Promise<GatewayStatus>;
       testProviderAccountConnector: (request: ProviderAccountTestRequest) => Promise<ProviderAccountTestResult>;
+      updateCheck: () => Promise<AppUpdateStatus>;
+      updateDownload: () => Promise<AppUpdateStatus>;
+      updateInstall: () => Promise<void>;
       onBeforeQuit: (callback: () => void) => () => void;
       onProviderDeepLink: (callback: (request: ProviderDeepLinkRequest) => void) => () => void;
+      onUpdateStatusChanged: (callback: (status: AppUpdateStatus) => void) => () => void;
     };
   }
 }
