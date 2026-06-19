@@ -27,12 +27,14 @@ import {
   Boxes,
   Braces,
   Check,
+  CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleAlert,
   Copy,
   Database,
+  ExternalLink,
   FolderOpen,
   Gauge,
   Globe,
@@ -49,6 +51,7 @@ import {
   Play,
   Plus,
   Power,
+  QrCode,
   RefreshCw,
   Route,
   Search,
@@ -137,6 +140,14 @@ import type {
   AppUpdateStatus,
   ApiKeyConfig,
   ApiKeyLimitConfig,
+  BotGatewayQrLoginCancelRequest,
+  BotGatewayQrLoginCancelResult,
+  BotGatewayQrLoginStartRequest,
+  BotGatewayQrLoginStartResult,
+  BotGatewayQrLoginWaitRequest,
+  BotGatewayQrLoginWaitResult,
+  BotGatewayRuntimeConfig,
+  BotGatewaySavedConfig,
   GatewayProviderConfig,
   GatewayProviderCapability,
   GatewayPluginAppConfig,
@@ -228,11 +239,11 @@ export  {
   closestCenter, DndContext, DragOverlay, getFirstCollision, KeyboardSensor, MeasuringStrategy, pointerWithin,
   PointerSensor, rectIntersection, useSensor, useSensors, arrayMove, rectSortingStrategy, SortableContext,
   sortableKeyboardCoordinates, useSortable, CSS, AnimatePresence, LayoutGroup, motion, useReducedMotion,
-  Activity, ArrowDown, ArrowUp, Box, Boxes, Braces, Check,
+  Activity, ArrowDown, ArrowUp, Box, Boxes, Braces, Check, CheckCircle2,
   ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Copy, Database, FolderOpen,
-  Gauge, Globe, KeyRound, Layers3, LoaderCircle, MoveRight, Network,
+  ExternalLink, Gauge, Globe, KeyRound, Layers3, LoaderCircle, MoveRight, Network,
   Palette, PanelLeftClose, PanelLeftOpen, Pause, Pencil, Play, Plus,
-  Power, RefreshCw, Route, Search, Server, Settings, ShieldCheck,
+  Power, QrCode, RefreshCw, Route, Search, Server, Settings, ShieldCheck,
   Trash2, UserRound, X, Area, Bar, BarChart, CartesianGrid,
   Cell, ComposedChart, LabelList, Line, Pie, PieChart, Tooltip,
   XAxis, YAxis, Badge, Button, Card, CardContent, CardHeader,
@@ -248,7 +259,7 @@ export  {
 export type {
   HTMLAttributes, ReactPointerEvent, ReactNode, CollisionDetection, DragEndEvent, DragOverEvent, DragStartEvent,
   LucideIcon, AgentAnalysisFilter, AgentAnalysisSnapshot, AgentKind, AppConfig, AppInfo, AppUpdateStatus, ApiKeyConfig,
-  ApiKeyLimitConfig, GatewayProviderConfig, GatewayProviderCapability, GatewayPluginAppConfig, GatewayProviderProbeResult, GatewayProviderProtocol, GatewayMcpServerConfig,
+  ApiKeyLimitConfig, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginCancelResult, BotGatewayQrLoginStartRequest, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitRequest, BotGatewayQrLoginWaitResult, BotGatewayRuntimeConfig, BotGatewaySavedConfig, GatewayProviderConfig, GatewayProviderCapability, GatewayPluginAppConfig, GatewayProviderProbeResult, GatewayProviderProtocol, GatewayMcpServerConfig,
   GatewayMcpServerTransport, GatewayMcpStdioMessageMode, GatewayMcpToolInfo, GatewayStatus, OverviewMetricKind, OverviewWidgetConfig, OverviewWidgetSize, OverviewWidgetType,
   OverviewWidgetVariant, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProviderAccountConfig, ProviderAccountConnectorConfig, ProviderAccountHttpJsonConnectorConfig,
   ProviderAccountMeter, ProviderAccountStandardConnectorConfig, ProviderAccountSnapshot, ProviderAccountTestPath, ProviderAccountTestResult, ProviderDeepLinkPayload, ProviderDeepLinkRequest,
@@ -266,7 +277,7 @@ export type OnboardingStepId = "provider" | "profile" | "enter";
 export type AppLanguagePreference = "system" | "en" | "zh";
 export type ResolvedLanguage = "en" | "zh";
 export type ResolvedTheme = "light" | "dark";
-export type SettingsPageId = "appearance" | "tray" | "update";
+export type SettingsPageId = "appearance" | "bots" | "tray" | "update";
 export type TrayEditableModuleId = Exclude<TrayWindowModuleId, "footer">;
 export type TrayComponentOptionGroup = {
   key: keyof TrayComponentVariants;
@@ -284,6 +295,7 @@ export type AppCopy = {
   navigation: Record<NavigationId, string>;
   settings: {
     appearance: string;
+    bots: string;
     button: string;
     close: string;
     done: string;
@@ -373,6 +385,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
     },
     settings: {
       appearance: "Appearance",
+      bots: "Bots",
       button: "Settings",
       close: "Close",
       done: "Done",
@@ -620,6 +633,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
     },
     settings: {
       appearance: "外观",
+      bots: "Bot 管理",
       button: "设置",
       close: "关闭",
       done: "完成",
@@ -711,6 +725,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Add profile": "添加配置",
       "Add Provider": "添加供应商",
       "Add provider": "添加供应商",
+      "Add bot": "添加 Bot",
+      "Add new bot": "添加新 Bot",
       "Add Routing Rule": "添加路由规则",
       "Add routing rule": "添加路由规则",
       "Advanced Settings...": "高级设置...",
@@ -724,7 +740,57 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "API Keys": "API 密钥",
       "API key included": "已包含 API 密钥",
       "API key not included": "未包含 API 密钥",
+      "Acknowledge events": "确认事件",
+      "Auth type": "认证类型",
+      "Auth method": "认证方式",
+      "Auto start integration": "自动启动集成",
       "Base URL": "基础 URL",
+      "Bot": "Bot",
+      "Bot name, platform, and required authentication fields are required.": "Bot 名称、平台和必填认证字段不能为空。",
+      "Bot gateway path": "Bot 网关路径",
+      "Weixin iLink": "微信",
+      "WeCom": "企业微信",
+      "Feishu": "飞书",
+      "DingTalk": "钉钉",
+      "QR Login": "扫码登录",
+      "Weixin QR login": "微信扫码登录",
+      "Weixin QR code": "微信二维码",
+      "QR login is available in the Electron app.": "扫码登录仅在 Electron App 中可用。",
+      "Generate QR code": "生成二维码",
+      "Generating QR code": "正在生成二维码",
+      "Scan the QR code in Weixin.": "请使用微信扫描二维码。",
+      "Scan with Weixin to connect this bot.": "使用微信扫码连接这个 Bot。",
+      "Waiting for QR code": "等待生成二维码",
+      "Waiting for scan": "等待扫码",
+      "Scanned, confirm on phone": "已扫码，请在手机上确认",
+      "Verification required": "需要验证码",
+      "Connected": "已连接",
+      "QR code expired": "二维码已过期",
+      "Already connected": "已连接过",
+      "QR login failed": "扫码登录失败",
+      "Regenerate": "重新生成",
+      "Bot Token": "Bot Token",
+      "Account ID": "账号 ID",
+      "User ID": "用户 ID",
+      "Corp ID": "企业 ID",
+      "Agent ID": "Agent ID",
+      "Secret": "Secret",
+      "Signing Secret": "Signing Secret",
+      "App Token": "App Token",
+      "OAuth 2.0": "OAuth 2.0",
+      "OAuth Bot Token": "OAuth Bot Token",
+      "OAuth Access Token": "OAuth Access Token",
+      "Application ID": "应用 ID",
+      "Public Key": "公钥",
+      "Channel Access Token": "Channel Access Token",
+      "Channel Secret": "Channel Secret",
+      "App ID": "App ID",
+      "App Secret": "App Secret",
+      "Verification Token": "Verification Token",
+      "Domain": "Domain",
+      "App Key": "App Key",
+      "Robot Code": "Robot Code",
+      "Optional": "可选",
       "Auto": "自动",
       "Back": "返回",
       "Backup": "备份",
@@ -734,6 +800,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Cache tokens": "缓存令牌",
       "Cache write": "缓存写入",
       "Cancel": "取消",
+      "Channel": "频道",
       "Check": "检查",
       "Check for updates": "检查更新",
       "Checking for updates": "正在检查更新",
@@ -757,6 +824,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "CLI only": "仅 CLI",
       "Concurrency": "并发",
       "Condition": "条件",
+      "Conversation type": "会话类型",
       "Claude Design": "Claude Design",
       "Claude Design model": "Claude Design 模型",
       "Claude Design routes": "Claude Design 路由",
@@ -768,6 +836,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Configure plugin route": "配置插件路由",
       "Configure Routing": "配置路由",
       "Copy": "复制",
+      "Create integration": "创建集成",
+      "Credentials JSON": "凭据 JSON",
       "Continue": "继续",
       "Custom config path": "自定义配置路径",
       "Core gateway": "核心网关",
@@ -792,6 +862,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Display name": "显示名称",
       "Double click to copy": "双击复制",
       "Edit": "编辑",
+      "Edit bot": "编辑 Bot",
       "Edit API Key": "编辑 API 密钥",
       "Edit API key": "编辑 API 密钥",
       "Edit Profile": "编辑配置",
@@ -818,12 +889,16 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Fallback model": "回退模型",
       "Failure handling": "故障处理",
       "First enabled": "首个启用规则",
+      "Forward agent messages": "转发 Agent 消息",
+      "Gateway conversation ID": "网关会话 ID",
       "Generated config": "生成配置",
       "Generated path": "生成路径",
+      "Group": "群组",
       "Headers": "请求头",
       "Header rows require keys.": "请求头行必须填写 Key。",
       "Fetch usage": "获取用量",
       "Fetch manifest": "拉取 manifest",
+      "Handoff": "Handoff",
       "Hide advanced settings": "收起高级设置",
       "HTTP JSON request": "HTTP JSON 请求",
       "Host": "主机",
@@ -835,8 +910,10 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Invalid JSON.": "JSON 无效。",
       "Image content": "图像内容",
       "Images": "图像",
+      "Idle seconds": "空闲秒数",
       "Input": "输入",
       "Input tokens": "输入令牌",
+      "Integration ID": "集成 ID",
       "Install": "安装",
       "Install and restart": "安装并重启",
       "App": "App",
@@ -860,6 +937,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Long threshold": "长上下文阈值",
       "Max concurrency": "最大并发",
       "Max concurrent": "最大并发",
+      "Manage bots used by agent profiles.": "管理 Agent 配置中可选择的 Bot。",
       "Method": "方法",
       "Model": "模型",
       "Model override": "模型覆盖",
@@ -880,7 +958,9 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "No provider usage yet": "暂无供应商用量",
       "No provider yet": "还没有供应商",
       "No requests captured yet": "暂无请求记录",
+      "No bots configured": "尚未配置 Bot",
       "No route activity": "暂无路由活动",
+      "None": "无",
       "Not configured": "未配置",
       "Not running": "未运行",
       "Open": "打开",
@@ -900,6 +980,9 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "P99": "P99",
       "Path": "路径",
       "Platform": "平台",
+      "Platform conversation ID": "平台会话 ID",
+      "Phone Bluetooth target": "手机蓝牙目标",
+      "Phone Wi-Fi target": "手机 Wi-Fi 目标",
       "Plugin": "插件",
       "Plugin apps must be a JSON array.": "插件 App 必须是 JSON 数组。",
       "Plugin config JSON": "插件配置 JSON",
@@ -951,6 +1034,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Request": "请求",
       "Request ID": "请求 ID",
       "Request logs database": "请求日志数据库",
+      "Request timeout ms": "请求超时 ms",
       "Requests": "请求",
       "Retries": "重试次数",
       "Retry": "继续重试",
@@ -960,6 +1044,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Route Observability": "路由可观测",
       "Rules": "规则",
       "Save": "保存",
+      "Screen lock": "锁屏",
       "Search API keys": "搜索 API 密钥",
       "Search extensions": "搜索扩展",
       "Search models": "搜索模型",
@@ -968,7 +1053,10 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Search providers or models": "搜索供应商或模型",
       "Search request logs": "搜索请求日志",
       "Search routing rules": "搜索路由规则",
+      "Select bot": "选择 Bot",
       "Server": "服务",
+      "Startup timeout ms": "启动超时 ms",
+      "State directory": "状态目录",
       "Account component": "账户组件",
       "All accounts": "所有账户",
       "Add widget": "添加组件",
@@ -1047,8 +1135,11 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "System proxy": "系统代理",
       "System default": "系统默认",
       "Target": "目标",
+      "Tenant ID": "租户 ID",
       "Target model": "目标模型",
       "Target model is required.": "目标模型不能为空。",
+      "Thread": "线程",
+      "Thread ID": "线程 ID",
       "Thinking": "思考",
       "Token Mix": "令牌构成",
       "Total tokens": "总令牌",
@@ -1073,6 +1164,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Usage request URL must use http or https.": "用量请求 URL 必须使用 http 或 https。",
       "Usage database": "用量数据库",
       "Usage Trend": "用量趋势",
+      "User idle": "用户空闲",
       "Insert example": "插入示例",
       "Virtual model": "Fusion",
       "Virtual Models": "Fusion",
@@ -1826,6 +1918,36 @@ export const fallbackConfig: AppConfig = {
     mcpServers: []
   },
   autoStart: false,
+  botConfigs: [],
+  botGateway: {
+    acknowledgeEvents: false,
+    args: [],
+    authType: "",
+    autoStartIntegration: true,
+    command: "",
+    createIntegration: false,
+    credentials: {},
+    cwd: "",
+    enabled: false,
+    forwardAllAgentMessages: true,
+    handoff: {
+      enabled: false,
+      idleSeconds: 30,
+      phoneBluetoothTargets: [],
+      phoneWifiTargets: [],
+      screenLock: true,
+      userIdle: true
+    },
+    integrationConfig: {},
+    integrationId: "",
+    platform: "none",
+    pollIntervalMs: 2000,
+    requestTimeoutMs: 600000,
+    sourceDir: "/Users/jinhuilee/products/bot-gateway",
+    startupTimeoutMs: 10000,
+    stateDir: "",
+    tenantId: "ccr"
+  },
   gateway: {
     coreHost: "127.0.0.1",
     corePort: 3457,
@@ -2099,6 +2221,17 @@ export type AddApiKeyDraft = {
 
 export type AddProfileDraft = {
   agent: ProfileConfig["agent"];
+  botConfigId: string;
+  botAuthFields: Record<string, string>;
+  botAuthType: string;
+  botConfigured: boolean;
+  botEnabled: boolean;
+  botForwardAllAgentMessages: boolean;
+  botHandoffEnabled: boolean;
+  botHandoffIdleSeconds: string;
+  botHandoffPhoneBluetoothTargets: string;
+  botHandoffPhoneWifiTargets: string;
+  botPlatform: string;
   configFile: string;
   envRows: KeyValueDraftRow[];
   model: string;
@@ -2110,6 +2243,18 @@ export type AddProfileDraft = {
   showAllSessions: boolean;
   smallFastModel: string;
   surface: ProfileSurface;
+};
+
+export type BotGatewayConfigDraft = {
+  botAuthFields: Record<string, string>;
+  botAuthType: string;
+  botForwardAllAgentMessages: boolean;
+  botHandoffEnabled: boolean;
+  botHandoffIdleSeconds: string;
+  botHandoffPhoneBluetoothTargets: string;
+  botHandoffPhoneWifiTargets: string;
+  botPlatform: string;
+  name: string;
 };
 
 export type ApiKeyLimitDraftRow = {
@@ -2243,7 +2388,7 @@ export type ExtensionInstallDraft = {
   selectedName: string;
 };
 
-export type ExtensionSource = "plugins" | "providerPlugins" | "virtualModelProfiles";
+export type ExtensionSource = "plugins" | "providerPlugins";
 
 export type PluginRoutingConfigTarget = {
   index: number;
@@ -2870,9 +3015,231 @@ export function profileModelMatchesQuery(providerName: string, model: string, qu
   return providerName.toLowerCase().includes(normalizedQuery) || model.toLowerCase().includes(normalizedQuery);
 }
 
+export type BotGatewayAuthInputType = "text" | "password";
+
+export type BotGatewayAuthFieldSpec = {
+  key: string;
+  label: string;
+  placeholder?: string;
+  required?: boolean;
+  type?: BotGatewayAuthInputType;
+};
+
+export type BotGatewayAuthSpec = {
+  fields: readonly BotGatewayAuthFieldSpec[];
+  label: string;
+  value: string;
+};
+
+export type BotGatewayPlatformSpec = {
+  auth: readonly BotGatewayAuthSpec[];
+  label: string;
+  value: string;
+};
+
+const botGatewayPlatformSpecs: readonly BotGatewayPlatformSpec[] = [
+  {
+    value: "weixin-ilink",
+    label: "Weixin iLink",
+    auth: [
+      { value: "qr_login", label: "QR Login", fields: [] },
+      {
+        value: "bot_token",
+        label: "Bot Token",
+        fields: [
+          { key: "botToken", label: "Bot Token", required: true, type: "password" },
+          { key: "accountId", label: "Account ID" },
+          { key: "userId", label: "User ID" }
+        ]
+      }
+    ]
+  },
+  {
+    value: "wecom",
+    label: "WeCom",
+    auth: [
+      {
+        value: "app_secret",
+        label: "App Secret",
+        fields: [
+          { key: "corpId", label: "Corp ID", required: true },
+          { key: "agentId", label: "Agent ID", required: true },
+          { key: "secret", label: "Secret", required: true, type: "password" }
+        ]
+      }
+    ]
+  },
+  {
+    value: "slack",
+    label: "Slack",
+    auth: [
+      {
+        value: "bot_token",
+        label: "Bot Token",
+        fields: [
+          { key: "botToken", label: "Bot Token", placeholder: "xoxb-...", required: true, type: "password" },
+          { key: "signingSecret", label: "Signing Secret", type: "password" },
+          { key: "appToken", label: "App Token", placeholder: "xapp-...", type: "password" }
+        ]
+      },
+      {
+        value: "oauth2",
+        label: "OAuth 2.0",
+        fields: [
+          { key: "botToken", label: "OAuth Bot Token", placeholder: "xoxb-...", required: true, type: "password" },
+          { key: "signingSecret", label: "Signing Secret", type: "password" }
+        ]
+      }
+    ]
+  },
+  {
+    value: "discord",
+    label: "Discord",
+    auth: [
+      {
+        value: "bot_token",
+        label: "Bot Token",
+        fields: [
+          { key: "botToken", label: "Bot Token", required: true, type: "password" },
+          { key: "applicationId", label: "Application ID" },
+          { key: "publicKey", label: "Public Key" }
+        ]
+      },
+      {
+        value: "oauth2",
+        label: "OAuth 2.0",
+        fields: [
+          { key: "botToken", label: "OAuth Access Token", required: true, type: "password" },
+          { key: "applicationId", label: "Application ID" },
+          { key: "publicKey", label: "Public Key" }
+        ]
+      }
+    ]
+  },
+  {
+    value: "telegram",
+    label: "Telegram",
+    auth: [
+      {
+        value: "bot_token",
+        label: "Bot Token",
+        fields: [{ key: "botToken", label: "Bot Token", required: true, type: "password" }]
+      }
+    ]
+  },
+  {
+    value: "line",
+    label: "LINE",
+    auth: [
+      {
+        value: "bot_token",
+        label: "Bot Token",
+        fields: [
+          { key: "channelAccessToken", label: "Channel Access Token", required: true, type: "password" },
+          { key: "channelSecret", label: "Channel Secret", type: "password" }
+        ]
+      }
+    ]
+  },
+  {
+    value: "feishu",
+    label: "Feishu",
+    auth: [
+      {
+        value: "app_secret",
+        label: "App Secret",
+        fields: [
+          { key: "appId", label: "App ID", required: true },
+          { key: "appSecret", label: "App Secret", required: true, type: "password" },
+          { key: "verificationToken", label: "Verification Token", type: "password" },
+          { key: "domain", label: "Domain" }
+        ]
+      }
+    ]
+  },
+  {
+    value: "dingtalk",
+    label: "DingTalk",
+    auth: [
+      {
+        value: "app_secret",
+        label: "App Secret",
+        fields: [
+          { key: "appKey", label: "App Key", required: true },
+          { key: "appSecret", label: "App Secret", required: true, type: "password" },
+          { key: "robotCode", label: "Robot Code" }
+        ]
+      }
+    ]
+  }
+];
+
+export const botGatewayPlatformOptions = botGatewayPlatformSpecs.map(({ label, value }) => ({ label, value }));
+
+export function botGatewayPlatformLabel(platform: string): string {
+  const normalized = normalizeBotGatewayPlatform(platform);
+  if (normalized === "none") {
+    return "Bot";
+  }
+  return botGatewayPlatformOptions.find((option) => option.value === normalized)?.label ?? normalized;
+}
+
+export function botGatewayAuthSpecsForPlatform(platform: string): readonly BotGatewayAuthSpec[] {
+  const normalized = normalizeBotGatewayPlatform(platform);
+  if (normalized === "none") {
+    return [];
+  }
+  return botGatewayPlatformSpecs.find((option) => option.value === normalized)?.auth || [];
+}
+
+export function botGatewayFieldsForAuth(platform: string, authType: string): readonly BotGatewayAuthFieldSpec[] {
+  const normalizedAuthType = normalizeBotGatewayAuthType(platform, authType);
+  return botGatewayAuthSpecsForPlatform(platform).find((option) => option.value === normalizedAuthType)?.fields || [];
+}
+
+export function botGatewayDefaultAuthType(platform: string): string {
+  return botGatewayAuthSpecsForPlatform(platform)[0]?.value || "";
+}
+
+export function botGatewayPickAuthFields(fields: Record<string, unknown> | undefined, platform: string, authType: string): Record<string, string> {
+  const allowedKeys = new Set(botGatewayFieldsForAuth(platform, authType).map((field) => field.key));
+  if (allowedKeys.size === 0) {
+    return {};
+  }
+  const result: Record<string, string> = {};
+  for (const [key, rawValue] of Object.entries(fields || {})) {
+    const normalizedKey = key.trim();
+    const value = String(rawValue ?? "").trim();
+    if (normalizedKey && value && allowedKeys.has(normalizedKey) && !isWebhookRelatedBotGatewayKey(normalizedKey)) {
+      result[normalizedKey] = value;
+    }
+  }
+  return result;
+}
+
+function createBotGatewayDraft(botGateway?: BotGatewayRuntimeConfig) {
+  const bot = normalizeBotGatewayRuntimeConfig(botGateway) ?? fallbackConfig.botGateway;
+  const platform = bot.platform || "none";
+  const authType = normalizeBotGatewayAuthType(platform, bot.authType ?? "");
+  return {
+    botConfigId: "",
+    botAuthFields: botGatewayPickAuthFields({ ...(bot.integrationConfig ?? {}), ...(bot.credentials ?? {}) }, platform, authType),
+    botAuthType: authType,
+    botConfigured: Boolean(botGateway),
+    botEnabled: Boolean(bot.enabled),
+    botForwardAllAgentMessages: bot.forwardAllAgentMessages !== false,
+    botHandoffEnabled: Boolean(bot.handoff.enabled),
+    botHandoffIdleSeconds: String(bot.handoff.idleSeconds ?? fallbackConfig.botGateway.handoff.idleSeconds),
+    botHandoffPhoneBluetoothTargets: (bot.handoff.phoneBluetoothTargets ?? []).join("\n"),
+    botHandoffPhoneWifiTargets: (bot.handoff.phoneWifiTargets ?? []).join("\n"),
+    botPlatform: bot.platform || "none"
+  };
+}
+
 export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code", name?: string): AddProfileDraft {
   return {
     agent,
+    ...createBotGatewayDraft(),
     configFile: "~/.codex/config.toml",
     envRows: [],
     model: "",
@@ -2887,10 +3254,16 @@ export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code"
   };
 }
 
-export function createProfileDraftFromProfile(profile: ProfileConfig): AddProfileDraft {
+export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs: BotGatewaySavedConfig[] = []): AddProfileDraft {
+  const botDraft = createBotGatewayDraft(profile.botGateway);
+  const botConfigId = profile.botConfigId || matchingBotConfigId(profile.botGateway, botConfigs);
+  const selectedBot = botConfigId ? botConfigs.find((config) => config.id === botConfigId) : undefined;
   if (profile.agent === "claude-code") {
     return {
       ...createProfileDraft("claude-code", profile.name),
+      ...botDraft,
+      botConfigId,
+      botEnabled: Boolean(selectedBot || profile.botGateway?.enabled),
       envRows: keyValueRowsFromRecord(profile.env ?? {}),
       model: profile.model,
       scope: normalizeProfileFormScope(profile.scope),
@@ -2901,6 +3274,9 @@ export function createProfileDraftFromProfile(profile: ProfileConfig): AddProfil
   }
   return {
     ...createProfileDraft("codex", profile.name),
+    ...botDraft,
+    botConfigId,
+    botEnabled: Boolean(selectedBot || profile.botGateway?.enabled),
     configFile: profile.configFile ?? "~/.codex/config.toml",
     envRows: keyValueRowsFromRecord(profile.env ?? {}),
     model: profile.model,
@@ -2919,6 +3295,9 @@ export function isProfileDraftSubmittable(draft: AddProfileDraft): boolean {
   if (!validateProfileEnvRows(draft.envRows)) {
     return false;
   }
+  if (draft.botEnabled && !draft.botConfigId.trim()) {
+    return false;
+  }
   if (draft.agent === "claude-code") {
     return true;
   }
@@ -2928,14 +3307,34 @@ export function isProfileDraftSubmittable(draft: AddProfileDraft): boolean {
   );
 }
 
+function matchingBotConfigId(botGateway: BotGatewayRuntimeConfig | undefined, botConfigs: BotGatewaySavedConfig[]): string {
+  if (!botGateway?.enabled) {
+    return "";
+  }
+  const integrationId = botGateway.integrationId?.trim();
+  const matched = botConfigs.find((config) =>
+    (integrationId && config.botGateway.integrationId === integrationId) ||
+    (config.botGateway.platform === botGateway.platform && config.botGateway.tenantId === botGateway.tenantId)
+  );
+  return matched?.id ?? "";
+}
+
 export function profileConfigFromDraft(
   draft: AddProfileDraft,
   existingProfiles: ProfileConfig[],
-  existingProfile?: ProfileConfig
+  existingProfile?: ProfileConfig,
+  botConfigs: BotGatewaySavedConfig[] = []
 ): ProfileConfig {
   const id = existingProfile?.id ?? uniqueProfileId(existingProfiles, draft.name || draft.agent);
+  const selectedBot = draft.botEnabled
+    ? botConfigs.find((config) => config.id === draft.botConfigId.trim())
+    : undefined;
+  const botGateway = selectedBot
+    ? { botConfigId: selectedBot.id, botGateway: selectedBot.botGateway }
+    : {};
   return normalizeProfileItem({
     agent: draft.agent,
+    ...botGateway,
     configFile: draft.configFile,
     enabled: existingProfile?.enabled ?? true,
     env: recordFromKeyValueRows(draft.envRows),
@@ -2950,6 +3349,243 @@ export function profileConfigFromDraft(
     smallFastModel: draft.smallFastModel,
     surface: draft.surface
   }, existingProfiles.length);
+}
+
+export function createBotGatewayConfigDraft(config?: BotGatewaySavedConfig): BotGatewayConfigDraft {
+  const botDraft = createBotGatewayDraft(config?.botGateway);
+  return {
+    botAuthFields: botDraft.botAuthFields,
+    botAuthType: botDraft.botAuthType,
+    botForwardAllAgentMessages: botDraft.botForwardAllAgentMessages,
+    botHandoffEnabled: botDraft.botHandoffEnabled,
+    botHandoffIdleSeconds: botDraft.botHandoffIdleSeconds,
+    botHandoffPhoneBluetoothTargets: botDraft.botHandoffPhoneBluetoothTargets,
+    botHandoffPhoneWifiTargets: botDraft.botHandoffPhoneWifiTargets,
+    botPlatform: botDraft.botPlatform === "none" ? "weixin-ilink" : botDraft.botPlatform,
+    name: config?.name ?? ""
+  };
+}
+
+export function isBotGatewayConfigDraftSubmittable(draft: BotGatewayConfigDraft): boolean {
+  if (!draft.name.trim()) {
+    return false;
+  }
+  const platform = normalizeBotGatewayPlatform(draft.botPlatform);
+  const authType = normalizeBotGatewayAuthType(platform, draft.botAuthType);
+  if (!platform || platform === "none") {
+    return false;
+  }
+  return (
+    botGatewayMissingRequiredAuthFields(draft.botAuthFields, platform, authType).length === 0 &&
+    isNumberDraftValid(draft.botHandoffIdleSeconds, 30, 86_400)
+  );
+}
+
+export function botGatewaySavedConfigFromDraft(
+  draft: BotGatewayConfigDraft,
+  existingConfigs: BotGatewaySavedConfig[],
+  existingConfig?: BotGatewaySavedConfig
+): BotGatewaySavedConfig {
+  const id = existingConfig?.id ?? uniqueBotGatewayConfigId(existingConfigs, draft.name);
+  const name = draft.name.trim() || botGatewayPlatformLabel(draft.botPlatform);
+  return normalizeBotGatewaySavedConfig({
+    botGateway: botGatewayConfigFromDraft({ ...draft, botEnabled: true }, id, name, existingConfig?.botGateway),
+    id,
+    name,
+    updatedAt: new Date().toISOString()
+  }) ?? {
+    botGateway: fallbackConfig.botGateway,
+    id,
+    name
+  };
+}
+
+type BotGatewayConfigDraftInput = BotGatewayConfigDraft & {
+  botEnabled?: boolean;
+};
+
+function botGatewayConfigFromDraft(
+  draft: BotGatewayConfigDraftInput,
+  configId: string,
+  configName: string,
+  existingBotGateway?: BotGatewayRuntimeConfig
+): BotGatewayRuntimeConfig {
+  const platform = normalizeBotGatewayPlatform(draft.botPlatform);
+  const authType = normalizeBotGatewayAuthType(platform, draft.botAuthType);
+  const authPayload = botGatewayAuthPayload(platform, authType, draft.botAuthFields);
+  const config: BotGatewayRuntimeConfig = {
+    ...fallbackConfig.botGateway,
+    acknowledgeEvents: true,
+    args: [],
+    authType,
+    autoStartIntegration: true,
+    command: "",
+    createIntegration: draft.botEnabled !== false && platform !== "none",
+    credentials: authPayload.credentials,
+    cwd: "",
+    enabled: draft.botEnabled !== false,
+    forwardAllAgentMessages: draft.botForwardAllAgentMessages,
+    handoff: {
+      enabled: draft.botHandoffEnabled,
+      idleSeconds: numberDraftValue(draft.botHandoffIdleSeconds, fallbackConfig.botGateway.handoff.idleSeconds, 30, 86_400),
+      phoneBluetoothTargets: splitDraftLines(draft.botHandoffPhoneBluetoothTargets).slice(0, 1),
+      phoneWifiTargets: splitDraftLines(draft.botHandoffPhoneWifiTargets).slice(0, 1),
+      screenLock: true,
+      userIdle: true
+    },
+    integrationConfig: authPayload.integrationConfig,
+    integrationId: existingBotGateway?.integrationId?.trim() || createBotGatewayIntegrationId(configId),
+    platform,
+    pollIntervalMs: fallbackConfig.botGateway.pollIntervalMs,
+    requestTimeoutMs: fallbackConfig.botGateway.requestTimeoutMs,
+    sourceDir: "",
+    startupTimeoutMs: fallbackConfig.botGateway.startupTimeoutMs,
+    stateDir: existingBotGateway?.stateDir?.trim() || createBotGatewayStateDir(configId),
+    tenantId: existingBotGateway?.tenantId?.trim() || createBotGatewayTenantId(configName || configId)
+  };
+  return config;
+}
+
+function botGatewayMissingRequiredAuthFields(fields: Record<string, string>, platform: string, authType: string): BotGatewayAuthFieldSpec[] {
+  return botGatewayFieldsForAuth(platform, authType).filter((field) => field.required && !fields[field.key]?.trim());
+}
+
+function botGatewayAuthPayload(platform: string, authType: string, fields: Record<string, string>) {
+  const authFields = botGatewayPickAuthFields(fields, platform, authType);
+  const credentials: Record<string, unknown> = {};
+  const integrationConfig: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(authFields)) {
+    if (isBotGatewayIntegrationConfigField(platform, key)) {
+      integrationConfig[key] = botGatewayConfigValue(key, value);
+    } else {
+      credentials[key] = value;
+    }
+  }
+  return {
+    credentials: sanitizeBotGatewayRecord(credentials),
+    integrationConfig: websocketBotGatewayIntegrationConfig(platform, integrationConfig)
+  };
+}
+
+function isBotGatewayIntegrationConfigField(platform: string, key: string): boolean {
+  return (
+    [
+      "transport",
+      "dryRun",
+      "applicationId",
+      "publicKey",
+      "appId",
+      "appKey",
+      "corpId",
+      "agentId",
+      "robotCode"
+    ].includes(key) ||
+    (platform === "weixin-ilink" && ["accountId", "userId", "botAgent", "routeTag"].includes(key)) ||
+    (platform === "feishu" && ["domain", "appType", "receiveIdType", "tenantKey", "tenantAccessToken"].includes(key))
+  );
+}
+
+function botGatewayConfigValue(key: string, value: string): unknown {
+  if (key === "dryRun") {
+    return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+  }
+  return value;
+}
+
+function createBotGatewayTenantId(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "") || "ccr";
+}
+
+function createBotGatewayIntegrationId(profileId: string): string {
+  if (isUuidLike(profileId)) {
+    return profileId;
+  }
+  return globalThis.crypto?.randomUUID?.() ?? `bot-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function createBotGatewayStateDir(configId: string): string {
+  const safe = configId.replace(/[^a-zA-Z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "") || "default";
+  return `~/.claude-code-router/bot-gateway/${safe}`;
+}
+
+function uniqueBotGatewayConfigId(configs: BotGatewaySavedConfig[], value: string): string {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  if (uuid && !configs.some((config) => config.id === uuid)) {
+    return uuid;
+  }
+  const base = createBotGatewayTenantId(value || "bot");
+  const existingIds = new Set(configs.map((config) => config.id));
+  if (!existingIds.has(base)) {
+    return base;
+  }
+  for (let index = 2; index < 1000; index += 1) {
+    const candidate = `${base}-${index}`;
+    if (!existingIds.has(candidate)) {
+      return candidate;
+    }
+  }
+  return `${base}-${Date.now()}`;
+}
+
+function isUuidLike(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
+}
+
+export function normalizeBotGatewaySavedConfigs(value: unknown): BotGatewaySavedConfig[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const result: BotGatewaySavedConfig[] = [];
+  for (const item of value) {
+    const normalized = normalizeBotGatewaySavedConfig(item, result.length);
+    if (!normalized || result.some((config) => config.id === normalized.id)) {
+      continue;
+    }
+    result.push(normalized);
+  }
+  return result;
+}
+
+function normalizeBotGatewaySavedConfig(value: unknown, index = 0): BotGatewaySavedConfig | undefined {
+  if (!isPlainRecord(value)) {
+    return undefined;
+  }
+  const botGateway = normalizeBotGatewayRuntimeConfig(value.botGateway ?? value.bot_gateway ?? value.bot ?? value.config);
+  if (!botGateway?.enabled || !botGateway.platform || botGateway.platform === "none") {
+    return undefined;
+  }
+  const id = stringValue(value.id) || stringValue(value.savedConfigId) || stringValue(value.saved_config_id) || botGateway.integrationId || `bot-${index + 1}`;
+  const name = stringValue(value.name) || botGatewayPlatformLabel(botGateway.platform);
+  const updatedAt = stringValue(value.updatedAt) || stringValue(value.updated_at);
+  return {
+    botGateway,
+    id,
+    name,
+    ...(updatedAt ? { updatedAt } : {})
+  };
+}
+
+export function botGatewaySavedConfigLabel(config: BotGatewaySavedConfig, translate: (value: string) => string): string {
+  const name = config.name.trim() || translate(botGatewayPlatformLabel(config.botGateway.platform));
+  const platform = translate(botGatewayPlatformLabel(config.botGateway.platform));
+  return name === platform ? name : `${name} / ${platform}`;
+}
+
+function splitDraftLines(value: string): string[] {
+  return uniqueStrings(value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean));
+}
+
+function isNumberDraftValid(value: string, min: number, max: number): boolean {
+  const numeric = Number(value.trim());
+  return Number.isFinite(numeric) && numeric >= min && numeric <= max;
+}
+
+function numberDraftValue(value: string, fallback: number, min: number, max: number): number {
+  const numeric = Number(value.trim());
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, Math.round(numeric)));
 }
 
 export function normalizeCodexConfigFormat(_value: unknown): CodexProfileConfigFormat {
@@ -2969,6 +3605,191 @@ export function normalizeProfileSurface(value: unknown): ProfileSurface {
   return value === "cli" || value === "app" ? value : "auto";
 }
 
+export function normalizeBotGatewayPlatform(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!normalized || normalized === "off" || normalized === "disabled") {
+    return "none";
+  }
+  if (normalized === "lark") {
+    return "feishu";
+  }
+  if (normalized === "dingding") {
+    return "dingtalk";
+  }
+  if (["wechat", "weixin", "wx", "weixin-ilink", "weixin_ilink", "ilink"].includes(normalized)) {
+    return "weixin-ilink";
+  }
+  if (["wecom", "wework", "wechat-work", "work-weixin", "enterprise-wechat"].includes(normalized)) {
+    return "wecom";
+  }
+  return botGatewayPlatformOptions.some((option) => option.value === normalized) ? normalized : "none";
+}
+
+export function normalizeBotGatewayAuthType(platform: string, value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase().replace(/-/g, "_") : "";
+  if (!platform || platform === "none") {
+    return "";
+  }
+  if (!normalized || normalized === "default" || normalized === "auto" || normalized === "webhook" || normalized === "webhook_secret" || normalized === "outgoing_webhook") {
+    return defaultBotGatewayAuthType(platform);
+  }
+  if (normalized === "appsecret") {
+    return authTypeAllowedForPlatform(platform, "app_secret");
+  }
+  if (normalized === "bottoken" || normalized === "token") {
+    return authTypeAllowedForPlatform(platform, "bot_token");
+  }
+  if (normalized === "oauth" || normalized === "oauth_2") {
+    return authTypeAllowedForPlatform(platform, "oauth2");
+  }
+  if (["qr", "qr_login", "qrcode", "qr_code"].includes(normalized)) {
+    return authTypeAllowedForPlatform(platform, "qr_login");
+  }
+  return authTypeAllowedForPlatform(platform, normalized);
+}
+
+function defaultBotGatewayAuthType(platform: string): string {
+  return botGatewayDefaultAuthType(platform);
+}
+
+function authTypeAllowedForPlatform(platform: string, value: string): string {
+  return botGatewayAuthSpecsForPlatform(platform).some((option) => option.value === value)
+    ? value
+    : defaultBotGatewayAuthType(platform);
+}
+
+function websocketBotGatewayIntegrationConfig(platform: string, value: Record<string, unknown>): Record<string, unknown> {
+  const config = sanitizeBotGatewayRecord(value);
+  delete config.transport;
+  delete config.sendMode;
+  const transport = botGatewayWebSocketTransport(platform);
+  return transport ? { ...config, transport } : config;
+}
+
+function botGatewayWebSocketTransport(platform: string): string {
+  if (!platform || platform === "none") {
+    return "";
+  }
+  return platform === "slack" ? "socket" : "websocket";
+}
+
+function sanitizeBotGatewayRecord(value: Record<string, unknown> | undefined): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  if (!isPlainRecord(value)) {
+    return result;
+  }
+  for (const [key, rawValue] of Object.entries(value)) {
+    if (!key.trim() || isWebhookRelatedBotGatewayKey(key)) {
+      continue;
+    }
+    result[key] = rawValue;
+  }
+  return result;
+}
+
+function isWebhookRelatedBotGatewayKey(key: string): boolean {
+  const normalized = key.trim().toLowerCase().replace(/[_-]+/g, "");
+  return normalized.includes("webhook") || normalized === "sendmode";
+}
+
+export function normalizeBotGatewayRuntimeConfig(value: unknown): BotGatewayRuntimeConfig | undefined {
+  if (!isPlainRecord(value)) {
+    return undefined;
+  }
+  const record = value as Partial<BotGatewayRuntimeConfig> & Record<string, unknown>;
+  const handoffRecord: Record<string, unknown> = isPlainRecord(record.handoff) ? record.handoff : {};
+  const platform = normalizeBotGatewayPlatform(record.platform);
+  const conversationRef = normalizeBotGatewayConversationRef(record.conversationRef ?? record.conversation_ref ?? record.conversation);
+  const config: BotGatewayRuntimeConfig = {
+    ...fallbackConfig.botGateway,
+    ...record,
+    acknowledgeEvents: typeof record.acknowledgeEvents === "boolean" ? record.acknowledgeEvents : fallbackConfig.botGateway.acknowledgeEvents,
+    args: Array.isArray(record.args) ? record.args.filter((item): item is string => typeof item === "string") : fallbackConfig.botGateway.args,
+    authType: normalizeBotGatewayAuthType(platform, typeof record.authType === "string" ? record.authType : fallbackConfig.botGateway.authType),
+    autoStartIntegration: typeof record.autoStartIntegration === "boolean" ? record.autoStartIntegration : fallbackConfig.botGateway.autoStartIntegration,
+    command: typeof record.command === "string" ? record.command : fallbackConfig.botGateway.command,
+    createIntegration: typeof record.createIntegration === "boolean" ? record.createIntegration : fallbackConfig.botGateway.createIntegration,
+    credentials: sanitizeBotGatewayRecord(isPlainRecord(record.credentials) ? record.credentials : {}),
+    cwd: typeof record.cwd === "string" ? record.cwd : fallbackConfig.botGateway.cwd,
+    enabled: typeof record.enabled === "boolean" ? record.enabled : fallbackConfig.botGateway.enabled,
+    forwardAllAgentMessages: typeof record.forwardAllAgentMessages === "boolean" ? record.forwardAllAgentMessages : fallbackConfig.botGateway.forwardAllAgentMessages,
+    handoff: {
+      ...fallbackConfig.botGateway.handoff,
+      ...handoffRecord,
+      enabled: typeof handoffRecord.enabled === "boolean" ? handoffRecord.enabled : fallbackConfig.botGateway.handoff.enabled,
+      idleSeconds: Number.isFinite(Number(handoffRecord.idleSeconds))
+        ? numberDraftValue(String(handoffRecord.idleSeconds), fallbackConfig.botGateway.handoff.idleSeconds, 30, 86_400)
+        : fallbackConfig.botGateway.handoff.idleSeconds,
+      phoneBluetoothTargets: Array.isArray(handoffRecord.phoneBluetoothTargets)
+        ? handoffRecord.phoneBluetoothTargets.filter((item): item is string => typeof item === "string").slice(0, 1)
+        : fallbackConfig.botGateway.handoff.phoneBluetoothTargets,
+      phoneWifiTargets: Array.isArray(handoffRecord.phoneWifiTargets)
+        ? handoffRecord.phoneWifiTargets.filter((item): item is string => typeof item === "string").slice(0, 1)
+        : fallbackConfig.botGateway.handoff.phoneWifiTargets,
+      screenLock: typeof handoffRecord.screenLock === "boolean" ? handoffRecord.screenLock : fallbackConfig.botGateway.handoff.screenLock,
+      userIdle: typeof handoffRecord.userIdle === "boolean" ? handoffRecord.userIdle : fallbackConfig.botGateway.handoff.userIdle
+    },
+    integrationConfig: websocketBotGatewayIntegrationConfig(platform, isPlainRecord(record.integrationConfig) ? record.integrationConfig : {}),
+    integrationId: typeof record.integrationId === "string" ? record.integrationId : fallbackConfig.botGateway.integrationId,
+    platform,
+    pollIntervalMs: Number.isFinite(Number(record.pollIntervalMs))
+      ? numberDraftValue(String(record.pollIntervalMs), fallbackConfig.botGateway.pollIntervalMs, 500, 60_000)
+      : fallbackConfig.botGateway.pollIntervalMs,
+    requestTimeoutMs: Number.isFinite(Number(record.requestTimeoutMs))
+      ? numberDraftValue(String(record.requestTimeoutMs), fallbackConfig.botGateway.requestTimeoutMs, 1000, 3_600_000)
+      : fallbackConfig.botGateway.requestTimeoutMs,
+    sourceDir: typeof record.sourceDir === "string" ? record.sourceDir : fallbackConfig.botGateway.sourceDir,
+    startupTimeoutMs: Number.isFinite(Number(record.startupTimeoutMs))
+      ? numberDraftValue(String(record.startupTimeoutMs), fallbackConfig.botGateway.startupTimeoutMs, 1000, 120_000)
+      : fallbackConfig.botGateway.startupTimeoutMs,
+    stateDir: typeof record.stateDir === "string" ? record.stateDir : fallbackConfig.botGateway.stateDir,
+    tenantId: typeof record.tenantId === "string" ? record.tenantId : fallbackConfig.botGateway.tenantId
+  };
+  if (conversationRef) {
+    config.conversationRef = conversationRef;
+  } else {
+    delete config.conversationRef;
+  }
+  return config;
+}
+
+function normalizeBotGatewayConversationRef(value: unknown): BotGatewayRuntimeConfig["conversationRef"] {
+  if (!isPlainRecord(value)) {
+    return undefined;
+  }
+  const gatewayConversationId = typeof value.gatewayConversationId === "string"
+    ? value.gatewayConversationId
+    : typeof value.gateway_conversation_id === "string"
+      ? value.gateway_conversation_id
+      : "";
+  const platformConversationId = typeof value.platformConversationId === "string"
+    ? value.platformConversationId
+    : typeof value.platform_conversation_id === "string"
+      ? value.platform_conversation_id
+      : typeof value.conversationId === "string"
+        ? value.conversationId
+        : typeof value.chatId === "string"
+          ? value.chatId
+          : typeof value.channelId === "string"
+            ? value.channelId
+            : "";
+  if (!gatewayConversationId.trim() && !platformConversationId.trim()) {
+    return undefined;
+  }
+  const type = value.type === "group" || value.type === "channel" || value.type === "thread" ? value.type : "dm";
+  const threadId = typeof value.threadId === "string"
+    ? value.threadId
+    : typeof value.thread_id === "string"
+      ? value.thread_id
+      : "";
+  return {
+    ...(gatewayConversationId.trim() ? { gatewayConversationId: gatewayConversationId.trim() } : {}),
+    ...(platformConversationId.trim() ? { platformConversationId: platformConversationId.trim() } : {}),
+    ...(threadId.trim() ? { threadId: threadId.trim() } : {}),
+    type
+  };
+}
+
 export function profileSummaryItems(
   profile: ProfileConfig,
   config: AppConfig,
@@ -2978,6 +3799,15 @@ export function profileSummaryItems(
   const envSummaryItems = envCount > 0
     ? [{ label: t("Environment variables"), value: String(envCount) }]
     : [];
+  const savedBot = profile.botConfigId
+    ? config.botConfigs.find((item) => item.id === profile.botConfigId)
+    : undefined;
+  const resolvedBotGateway = savedBot?.botGateway ?? profile.botGateway ?? config.botGateway;
+  const botSummaryItems = resolvedBotGateway?.enabled && resolvedBotGateway.platform !== "none"
+    ? [{ label: t("Bot"), value: `${t("Enabled")} (${savedBot ? botGatewaySavedConfigLabel(savedBot, t) : t(botGatewayPlatformLabel(resolvedBotGateway.platform))})` }]
+    : profile.botGateway
+      ? [{ label: t("Bot"), value: t("Disabled") }]
+      : [];
   const smallFastModel = profile.smallFastModel?.trim() || "";
   const modelValue = profile.model.trim()
     ? profileModelDisplayValue(
@@ -3006,6 +3836,7 @@ export function profileSummaryItems(
 	          )
           : t("Keep Claude Code default")
       },
+      ...botSummaryItems,
       ...envSummaryItems
     ];
   }
@@ -3014,6 +3845,7 @@ export function profileSummaryItems(
     { label: t("Model"), value: modelValue },
     { label: t("Provider ID"), value: profile.providerId ?? "claude-code-router" },
     { label: t("Show all sessions"), value: profile.showAllSessions ? t("Enabled") : t("Disabled") },
+    ...botSummaryItems,
     ...envSummaryItems
   ];
 }
@@ -3024,9 +3856,13 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
   const scope = normalizeProfileScope(profile.scope);
   const surface = normalizeProfileSurface(profile.surface);
   const env = isPlainRecord(profile.env) ? stringRecordValue(profile.env) : {};
+  const botGateway = normalizeBotGatewayRuntimeConfig(profile.botGateway);
+  const botConfigId = stringValue(profile.botConfigId);
   if (profile.agent === "claude-code") {
     return {
       agent: "claude-code",
+      ...(botConfigId ? { botConfigId } : {}),
+      ...(botGateway ? { botGateway } : {}),
       enabled: profile.enabled,
       env,
       id: profile.id || `profile-${index + 1}`,
@@ -3040,6 +3876,8 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
   }
   return {
     agent: "codex",
+    ...(botConfigId ? { botConfigId } : {}),
+    ...(botGateway ? { botGateway } : {}),
     cliMiddleware: true,
     codexCliPath: "",
     codexHome: "",
@@ -3114,6 +3952,8 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
   }
   return normalizeProfileItem({
     agent,
+    botConfigId: typeof value.botConfigId === "string" ? value.botConfigId : typeof value.bot_config_id === "string" ? value.bot_config_id : undefined,
+    botGateway: normalizeBotGatewayRuntimeConfig(value.botGateway ?? value.bot_gateway ?? value.bot),
     cliMiddleware: typeof value.cliMiddleware === "boolean" ? value.cliMiddleware : undefined,
     codexCliPath: typeof value.codexCliPath === "string" ? value.codexCliPath : undefined,
     codexHome: typeof value.codexHome === "string" ? value.codexHome : undefined,
@@ -4507,6 +5347,8 @@ export function normalizeConfig(config: AppConfig): AppConfig {
       ...(config.agent || {}),
       mcpServers: Array.isArray(config.agent?.mcpServers) ? normalizeMcpServers(config.agent.mcpServers) : fallbackConfig.agent.mcpServers
     },
+    botConfigs: normalizeBotGatewaySavedConfigs(config.botConfigs),
+    botGateway: normalizeBotGatewayRuntimeConfig(config.botGateway) ?? fallbackConfig.botGateway,
     gateway: {
       ...fallbackConfig.gateway,
       ...(config.gateway || {})
@@ -6377,8 +7219,7 @@ export function sanitizeConfigId(value: string): string {
 export function buildExtensionList(config: AppConfig): ExtensionListItem[] {
   return [
     ...(config.plugins ?? []).map((item, index) => extensionListItem("plugins", item, index)),
-    ...(config.providerPlugins ?? []).map((item, index) => extensionListItem("providerPlugins", item, index)),
-    ...(config.virtualModelProfiles ?? []).map((item, index) => extensionListItem("virtualModelProfiles", item, index))
+    ...(config.providerPlugins ?? []).map((item, index) => extensionListItem("providerPlugins", item, index))
   ];
 }
 
@@ -6483,32 +7324,17 @@ export function extensionListItem(source: ExtensionSource, item: unknown, index:
     };
   }
 
-  if (source === "providerPlugins") {
-    const enabled = item.enabled !== false;
-    return {
-      canConfigure: false,
-      canToggle: true,
-      capability: providerPluginCapability(item),
-      enabled,
-      index,
-      name: stringValue(item.key) || `provider-plugin-${index + 1}`,
-      source,
-      status: enabled ? "enabled" : "disabled",
-      target: stringValue(item.providerName) || stringValue(item.provider) || "All providers"
-    };
-  }
-
   const enabled = item.enabled !== false;
   return {
     canConfigure: false,
     canToggle: true,
-    capability: virtualModelCapability(item),
+    capability: providerPluginCapability(item),
     enabled,
     index,
-    name: stringValue(item.displayName) || stringValue(item.key) || stringValue(item.id) || `fusion-${index + 1}`,
+    name: stringValue(item.key) || `provider-plugin-${index + 1}`,
     source,
     status: enabled ? "enabled" : "disabled",
-    target: virtualModelTarget(item)
+    target: stringValue(item.providerName) || stringValue(item.provider) || "All providers"
   };
 }
 
@@ -6541,7 +7367,7 @@ export function wrapperPluginCapability(item: Record<string, unknown>): string {
   if (providerPlugins > 0) capabilities.push(`${providerPlugins} provider ${providerPlugins === 1 ? "plugin" : "plugins"}`);
 
   const virtualModels = isPlainRecord(coreGateway) && Array.isArray(coreGateway.virtualModelProfiles) ? coreGateway.virtualModelProfiles.length : 0;
-  if (virtualModels > 0) capabilities.push(`${virtualModels} virtual ${virtualModels === 1 ? "model" : "models"}`);
+  if (virtualModels > 0) capabilities.push(`${virtualModels} Fusion ${virtualModels === 1 ? "profile" : "profiles"}`);
 
   if (isClaudeDesignPluginConfig(item)) {
     const routing = readClaudeDesignRoutingConfig(item.config);
@@ -6581,25 +7407,6 @@ export function providerPluginCapability(item: Record<string, unknown>): string 
   if (item.request) capabilities.push("Request mutation");
   if (item.response) capabilities.push("Response mutation");
   return capabilities.join(", ");
-}
-
-export function virtualModelCapability(item: Record<string, unknown>): string {
-  const tools = Array.isArray(item.tools) ? item.tools.length : 0;
-  const execution = isPlainRecord(item.execution) ? stringValue(item.execution.mode) : undefined;
-  return ["Fusion", execution || "decorate_only", `${tools} tools`].join(", ");
-}
-
-export function virtualModelTarget(item: Record<string, unknown>): string {
-  const match = isPlainRecord(item.match) ? item.match : {};
-  const exactAliases = stringListValue(match.exactAliases);
-  const prefixes = stringListValue(match.prefixes);
-  const suffixes = stringListValue(match.suffixes);
-  const parts = [
-    ...exactAliases.map((value) => `=${value}`),
-    ...prefixes.map((value) => `${value}*`),
-    ...suffixes.map((value) => `*${value}`)
-  ];
-  return parts.length ? parts.join(", ") : "No match";
 }
 
 export function createExtensionInstallDraft(): ExtensionInstallDraft {

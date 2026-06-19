@@ -215,9 +215,11 @@ export function OnboardingView({
                 >
                   <div className="mx-auto w-full max-w-[720px]">
                     <AddProfileForm
+                      botConfigs={[]}
                       draft={profileDraft}
 	                      error={profileError}
 	                      onChange={onChangeProfile}
+	                      onCreateBot={() => undefined}
 	                      providers={config.Providers}
 	                      virtualModelProfiles={config.virtualModelProfiles ?? []}
 	                    />

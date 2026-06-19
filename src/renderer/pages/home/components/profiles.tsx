@@ -1,5 +1,5 @@
 import {
-  AddProfileDraft, AgentLogo, AnimatePresence, AppConfig, Badge, Button,
+  AddProfileDraft, AgentLogo, AnimatePresence, AppConfig, Badge, BotGatewaySavedConfig, botGatewaySavedConfigLabel, Button,
 	  Card, CardContent, CardHeader, CardTitle, Check, ChevronDown, Copy,
 	  cn, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader,
 	  DialogTitle, Field, GatewayProviderConfig, Input, KeyValueRowsControl, LoaderCircle, motion,
@@ -684,15 +684,19 @@ function ProfileModelSelector({
 }
 
 export function AddProfileForm({
+  botConfigs,
   draft,
   error,
   onChange,
+  onCreateBot,
   providers,
   virtualModelProfiles = []
 }: {
+  botConfigs: BotGatewaySavedConfig[];
   draft: AddProfileDraft;
   error: string;
   onChange: (patch: Partial<AddProfileDraft>) => void;
+  onCreateBot: () => void;
   providers: GatewayProviderConfig[];
   virtualModelProfiles?: VirtualModelProfileConfig[];
 }) {
@@ -768,6 +772,9 @@ export function AddProfileForm({
             </Field>
           </>
         )}
+        <div className="sm:col-span-2">
+          <BotGatewaySelectForm botConfigs={botConfigs} draft={draft} onChange={onChange} onCreateBot={onCreateBot} />
+        </div>
         <Field className="sm:col-span-2" label={t("Environment variables")}>
           <KeyValueRowsControl
             addLabel={t("Add env variable")}
@@ -785,23 +792,89 @@ export function AddProfileForm({
   );
 }
 
+const ADD_BOT_SELECT_VALUE = "__add_bot__";
+
+function BotGatewaySelectForm({
+  botConfigs,
+  draft,
+  onChange,
+  onCreateBot
+}: {
+  botConfigs: BotGatewaySavedConfig[];
+  draft: AddProfileDraft;
+  onChange: (patch: Partial<AddProfileDraft>) => void;
+  onCreateBot: () => void;
+}) {
+  const t = useAppText();
+  const options = [
+    { label: t("None"), value: "none" },
+    ...botConfigs.map((config) => ({ label: botGatewaySavedConfigLabel(config, t), value: config.id })),
+    { label: t("Add new bot"), value: ADD_BOT_SELECT_VALUE }
+  ];
+  const selectedValue = draft.botEnabled && draft.botConfigId ? draft.botConfigId : "none";
+
+  function updateEnabled(botEnabled: boolean) {
+    if (!botEnabled) {
+      onChange({ botConfigId: "", botConfigured: true, botEnabled: false });
+      return;
+    }
+    onChange({
+      botConfigId: draft.botConfigId || botConfigs[0]?.id || "",
+      botConfigured: true,
+      botEnabled: true
+    });
+  }
+
+  function updateBot(value: string) {
+    if (value === ADD_BOT_SELECT_VALUE) {
+      onCreateBot();
+      return;
+    }
+    if (value === "none") {
+      onChange({ botConfigId: "", botConfigured: true, botEnabled: false });
+      return;
+    }
+    onChange({ botConfigId: value, botConfigured: true, botEnabled: true });
+  }
+
+  return (
+    <div className="rounded-md border border-border bg-muted/20 px-3 py-2">
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <span className="text-[12px] font-medium">{t("Bot")}</span>
+        <Toggle checked={draft.botEnabled} onChange={updateEnabled} />
+      </div>
+      {draft.botEnabled ? (
+        <div className="mt-3 border-t border-border/70 pt-3">
+          <Field label={t("Select bot")}>
+            <SelectControl onChange={updateBot} options={options} value={selectedValue} />
+          </Field>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function AddProfileDialog({
+  botConfigs,
   canSubmit,
   draft,
   error,
   mode = "add",
   onChange,
+  onCreateBot,
   onClose,
   providers,
   submitting = false,
   virtualModelProfiles = [],
   onSubmit
 }: {
+  botConfigs: BotGatewaySavedConfig[];
   canSubmit: boolean;
   draft: AddProfileDraft;
   error: string;
   mode?: "add" | "edit";
   onChange: (patch: Partial<AddProfileDraft>) => void;
+  onCreateBot: () => void;
   onClose: () => void;
   providers: GatewayProviderConfig[];
   submitting?: boolean;
@@ -819,7 +892,7 @@ export function AddProfileDialog({
           </div>
         </DialogHeader>
         <DialogBody>
-	          <AddProfileForm draft={draft} error={error} onChange={onChange} providers={providers} virtualModelProfiles={virtualModelProfiles} />
+	          <AddProfileForm botConfigs={botConfigs} draft={draft} error={error} onChange={onChange} onCreateBot={onCreateBot} providers={providers} virtualModelProfiles={virtualModelProfiles} />
         </DialogBody>
         <DialogFooter>
           <div className="flex justify-end gap-2">

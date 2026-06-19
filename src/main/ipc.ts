@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import net from "node:net";
 import path from "node:path";
 import { builtInBrowserService } from "./built-in-browser";
+import { cancelBotGatewayQrLogin, startBotGatewayQrLogin, waitBotGatewayQrLogin } from "./bot-gateway-qr-login-service";
 import { syncClaudeAppGatewayConfig } from "./claude-app-gateway-service";
 import { loadAppConfig, saveApiKeysConfig, saveAppConfig } from "./config";
 import { API_KEYS_DB_FILE, APP_NAME, CONFIGDIR, CONFIG_FILE, DATADIR, GATEWAY_CONFIG_FILE, IPC_CHANNELS, ONBOARDING_FINISHED_FILE, PROXY_CA_CERT_FILE, REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "./constants";
@@ -22,7 +23,7 @@ import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
 import { getUsageStats } from "./usage-store";
 import windowsManager from "./windows";
-import type { AgentAnalysisFilter, ApiKeyConfig, AppConfig, AppInfo, GatewayMcpServerConfig, GatewayPluginAppConfig, GatewayProviderProbeRequest, GatewayStatus, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountTestRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
+import type { AgentAnalysisFilter, ApiKeyConfig, AppConfig, AppInfo, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, GatewayMcpServerConfig, GatewayPluginAppConfig, GatewayProviderProbeRequest, GatewayStatus, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountTestRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
 
 const pluginMarketplace: PluginMarketplaceEntry[] = [
   {
@@ -154,6 +155,15 @@ ipcMain.handle(IPC_CHANNELS.appApplyClaudeAppGateway, async (_event, config?: Ap
     ...synced.result,
     message: `${synced.result.message}\n${gatewayDetail}\n${apiKeyDetail}`
   };
+});
+ipcMain.handle(IPC_CHANNELS.appBotGatewayQrLoginStart, (_event, request: BotGatewayQrLoginStartRequest) => {
+  return startBotGatewayQrLogin(request);
+});
+ipcMain.handle(IPC_CHANNELS.appBotGatewayQrLoginWait, (_event, request: BotGatewayQrLoginWaitRequest) => {
+  return waitBotGatewayQrLogin(request);
+});
+ipcMain.handle(IPC_CHANNELS.appBotGatewayQrLoginCancel, (_event, request: BotGatewayQrLoginCancelRequest) => {
+  return cancelBotGatewayQrLogin(request);
 });
 ipcMain.handle(IPC_CHANNELS.appApplyProfile, async () => {
   const config = await loadAppConfig();

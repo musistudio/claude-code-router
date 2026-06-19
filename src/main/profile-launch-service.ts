@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import os from "node:os";
 import path from "node:path";
 import type { AppConfig, ProfileOpenCommandResult, ProfileOpenRequest, ProfileOpenResult } from "../shared/app";
+import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { applyClaudeAppGatewayConfig } from "./claude-app-gateway-service";
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "./claude-app-launch";
 import { launchCodexAppProfile } from "./codex-app-launch";
@@ -44,7 +45,8 @@ export async function openProfileFromCcr(config: AppConfig, request: ProfileOpen
     detached: true,
     env: {
       ...process.env,
-      ...plan.env
+      ...plan.env,
+      ...botGatewayProfileEnv(config, profile)
     },
     stdio: "ignore"
   });

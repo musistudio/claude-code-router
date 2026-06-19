@@ -133,11 +133,11 @@ function buildClaudeCodeLaunchPlan(
   if (surface === "app") {
     throw new Error("Claude App opening is available from the CCR desktop app.");
   }
-  const command = profile.env?.CCR_CLAUDE_CODE_BIN?.trim() || "claude";
   const settingsFile = resolveClaudeCodeSettingsFile(configDir, profile);
+  const launcher = path.join(configDir, "bin", claudeCodeWrapperFilename(profile));
   return {
     args: extraArgs,
-    command,
+    command: launcher,
     env: {
       CLAUDE_CONFIG_DIR: path.dirname(settingsFile),
       CCR_PROFILE_SURFACE: surface
@@ -145,6 +145,13 @@ function buildClaudeCodeLaunchPlan(
     profile,
     surface
   };
+}
+
+function claudeCodeWrapperFilename(profile: ProfileConfig): string {
+  const slug = sanitizePathSegment(profile.id || profile.name || profile.agent) || "claude-code";
+  return process.platform === "win32"
+    ? `ccr-claude-code-wrapper-${slug}.cmd`
+    : `ccr-claude-code-wrapper-${slug}`;
 }
 
 function codexMiddlewareFilename(profile: ProfileConfig, providerId: string): string {

@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node
 import os from "node:os";
 import path from "node:path";
 import type { AppConfig, ProfileConfig } from "../shared/app";
+import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { codexModelCatalogBase64 } from "./codex-model-catalog";
 import { buildProfileLaunchPlan, resolveCodexConfigFile } from "./profile-launch-core";
 
@@ -43,6 +44,7 @@ export function launchCodexAppProfile(configDir: string, profile: ProfileConfig,
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     ...plan.env,
+    ...(config ? botGatewayProfileEnv(config, profile) : {}),
     ...codexProfileEnv(profile),
     CODEX_CLI_PATH: plan.command,
     CODEX_ELECTRON_USER_DATA_PATH: userDataDir,

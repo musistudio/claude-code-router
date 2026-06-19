@@ -8,6 +8,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const readline = require("node:readline");
+const { pathToFileURL } = require("node:url");
 
 const VERSION = "3.0.0";
 const DEFAULT_MODEL = "claude-sonnet-4-5";
@@ -16,14 +17,47 @@ const REQUEST_TIMEOUT_MS = numberEnv("CCR_CODEX_APP_REQUEST_TIMEOUT_MS", 10 * 60
 const TURN_IDLE_TIMEOUT_MS = numberEnv("CCR_CODEX_CLAUDE_TURN_IDLE_TIMEOUT_MS", 10 * 60 * 1000);
 const CONFIG_DIR = path.join(os.homedir(), ".claude-code-router");
 const LOG_PATH = process.env.CCR_CODEX_CLI_MIDDLEWARE_LOG || path.join(CONFIG_DIR, "codex-cli-middleware.log");
+const BOT_BRIDGE = createBotGatewayBridge();
 
 async function main() {
   const args = process.argv.slice(2);
+  if (process.env.CCR_CLAUDE_CODE_WRAPPER === "1") {
+    await runClaudeCodeCliWrapper(args);
+    return;
+  }
   if (shouldRunClaudeCodeAppServer(args)) {
     await runClaudeCodeAppServer(args);
     return;
   }
   await runCodexCliMiddleware(args.length === 0 ? defaultCodexArgs() : args);
+}
+
+async function runClaudeCodeCliWrapper(args) {
+  const realCli = expandHome(nonEmptyEnv("CCR_REAL_CLAUDE_CODE_BIN") || nonEmptyEnv("CCR_CLAUDE_CODE_BIN") || nonEmptyEnv("CODEXL_CLAUDE_CODE_BIN") || "claude");
+  log("claude_code_wrapper_start", { realCli, args });
+  const child = childProcess.spawn(realCli, args, {
+    env: withoutKeys(process.env, ["CCR_CLAUDE_CODE_WRAPPER", "CCR_REAL_CLAUDE_CODE_BIN"]),
+    stdio: ["inherit", "pipe", "inherit"]
+  });
+  child.on("error", (error) => {
+    log("claude_code_wrapper_spawn_error", { error: formatError(error) });
+  });
+  let pending = "";
+  child.stdout.on("data", (chunk) => {
+    process.stdout.write(chunk);
+    pending += chunk.toString("utf8");
+    const lines = pending.split(/\r?\n/g);
+    pending = lines.pop() || "";
+    for (const line of lines) {
+      BOT_BRIDGE.handleClaudeCliLine(line);
+    }
+  });
+  const code = await waitForChild(child);
+  if (pending.trim()) {
+    BOT_BRIDGE.handleClaudeCliLine(pending);
+  }
+  log("claude_code_wrapper_exit", { code });
+  process.exitCode = code;
 }
 
 function defaultCodexArgs() {
@@ -70,6 +104,7 @@ async function runCodexCliMiddleware(args) {
   const stdoutRl = readline.createInterface({ input: child.stdout, crlfDelay: Infinity, terminal: false });
   stdoutRl.on("line", (line) => {
     const rewritten = rewriteCodexStdoutLine(line, requestMap);
+    BOT_BRIDGE.handleJsonRpcLine(rewritten);
     if (!shouldSuppressBotBridgeLine(rewritten)) {
       process.stdout.write(rewritten + "\n");
     }
@@ -1380,11 +1415,671 @@ function writeNotification(method, params) {
 }
 
 function writeRaw(value) {
+  BOT_BRIDGE.handleJsonRpcValue(value);
   writeLine(process.stdout, value);
 }
 
 function writeLine(stream, value) {
   stream.write(JSON.stringify(value) + "\n");
+}
+
+function createBotGatewayBridge() {
+  const config = readBotGatewayBridgeConfig();
+  if (!config.enabled) {
+    return {
+      handleClaudeCliLine() {},
+      handleJsonRpcLine() {},
+      handleJsonRpcValue() {}
+    };
+  }
+  const bridge = new BotGatewayBridge(config);
+  process.once("exit", () => bridge.stop());
+  return bridge;
+}
+
+function readBotGatewayBridgeConfig() {
+  const enabled = boolEnv("CCR_BOT_GATEWAY_ENABLED") || boolEnv("CODEXL_BOT_GATEWAY_ENABLED");
+  const platform = normalizeBotGatewayPlatform(nonEmptyEnv("CCR_BOT_GATEWAY_PLATFORM") || nonEmptyEnv("CODEXL_BOT_GATEWAY_PLATFORM") || "none");
+  const handoffEnabled = boolEnv("CCR_BOT_HANDOFF_ENABLED") || boolEnv("CODEXL_BOT_HANDOFF_ENABLED");
+  return {
+    acknowledgeEvents: boolEnv("CCR_BOT_GATEWAY_ACK_EVENTS"),
+    args: jsonArrayEnv("CCR_BOT_GATEWAY_ARGS_JSON"),
+    authType: normalizeBotGatewayAuthType(platform, nonEmptyEnv("CCR_BOT_GATEWAY_AUTH_TYPE") || ""),
+    autoStartIntegration: boolEnv("CCR_BOT_GATEWAY_AUTO_START_INTEGRATION"),
+    command: nonEmptyEnv("CCR_BOT_GATEWAY_COMMAND") || "",
+    conversationRef: jsonObjectEnv("CCR_BOT_GATEWAY_CONVERSATION_REF_JSON"),
+    createIntegration: boolEnv("CCR_BOT_GATEWAY_CREATE_INTEGRATION"),
+    credentials: sanitizeBotGatewayRecord(jsonObjectEnv("CCR_BOT_GATEWAY_CREDENTIALS_JSON") || {}),
+    cwd: nonEmptyEnv("CCR_BOT_GATEWAY_CWD") || "",
+    enabled: enabled && platform !== "none",
+    forwardAllAgentMessages: boolEnv("CCR_BOT_GATEWAY_FORWARD_ALL_AGENT_MESSAGES") || boolEnv("CODEXL_BOT_GATEWAY_FORWARD_ALL_CODEX_MESSAGES"),
+    handoff: {
+      enabled: handoffEnabled,
+      idleSeconds: numberEnv("CCR_BOT_HANDOFF_IDLE_SECONDS", numberEnv("CODEXL_BOT_HANDOFF_IDLE_SECONDS", 30)),
+      phoneBluetoothTargets: listEnv("CCR_BOT_HANDOFF_PHONE_BLUETOOTH_TARGETS") || listEnv("CODEXL_BOT_HANDOFF_PHONE_BLUETOOTH_TARGETS"),
+      phoneWifiTargets: listEnv("CCR_BOT_HANDOFF_PHONE_WIFI_TARGETS") || listEnv("CODEXL_BOT_HANDOFF_PHONE_WIFI_TARGETS"),
+      screenLock: boolEnv("CCR_BOT_HANDOFF_SCREEN_LOCK") || boolEnv("CODEXL_BOT_HANDOFF_SCREEN_LOCK"),
+      userIdle: boolEnv("CCR_BOT_HANDOFF_USER_IDLE") || boolEnv("CODEXL_BOT_HANDOFF_USER_IDLE")
+    },
+    integrationConfig: websocketBotGatewayIntegrationConfig(platform, jsonObjectEnv("CCR_BOT_GATEWAY_CONFIG_JSON") || {}),
+    integrationId: nonEmptyEnv("CCR_BOT_GATEWAY_INTEGRATION_ID") || nonEmptyEnv("CODEXL_BOT_GATEWAY_INTEGRATION_ID") || "",
+    platform,
+    pollIntervalMs: numberEnv("CCR_BOT_GATEWAY_POLL_INTERVAL_MS", 2000),
+    profileId: nonEmptyEnv("CCR_BOT_PROFILE_ID") || nonEmptyEnv("CCR_CODEX_PROFILE") || nonEmptyEnv("CODEXL_CODEX_PROFILE") || "default",
+    profileName: nonEmptyEnv("CCR_BOT_PROFILE_NAME") || nonEmptyEnv("CODEXL_CODEX_WORKSPACE_NAME") || "CCR",
+    requestTimeoutMs: numberEnv("CCR_BOT_GATEWAY_REQUEST_TIMEOUT_MS", 600000),
+    sourceDir: nonEmptyEnv("CCR_BOT_GATEWAY_SOURCE_DIR") || "",
+    startupTimeoutMs: numberEnv("CCR_BOT_GATEWAY_STARTUP_TIMEOUT_MS", 10000),
+    stateDir: nonEmptyEnv("CCR_BOT_GATEWAY_STATE_DIR") || nonEmptyEnv("CODEXL_BOT_GATEWAY_STATE_DIR") || nonEmptyEnv("BOT_GATEWAY_STATE_DIR") || "",
+    tenantId: nonEmptyEnv("CCR_BOT_GATEWAY_TENANT_ID") || nonEmptyEnv("CODEXL_BOT_GATEWAY_TENANT_ID") || "ccr"
+  };
+}
+
+function normalizeBotGatewayPlatform(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized || normalized === "off" || normalized === "disabled") return "none";
+  if (normalized === "lark") return "feishu";
+  if (normalized === "dingding") return "dingtalk";
+  if (["wechat", "weixin", "wx", "weixin-ilink", "weixin_ilink", "ilink"].includes(normalized)) return "weixin-ilink";
+  if (["wecom", "wework", "wechat-work", "work-weixin", "enterprise-wechat"].includes(normalized)) return "wecom";
+  return normalized;
+}
+
+function normalizeBotGatewayAuthType(platform, value) {
+  const normalized = String(value || "").trim().toLowerCase().replace(/-/g, "_");
+  if (!platform || platform === "none") return "";
+  if (!normalized || normalized === "default" || normalized === "auto" || normalized === "webhook" || normalized === "webhook_secret" || normalized === "outgoing_webhook") {
+    return defaultBotGatewayAuthType(platform);
+  }
+  if (normalized === "appsecret") return "app_secret";
+  if (normalized === "bottoken" || normalized === "token") return "bot_token";
+  if (normalized === "oauth" || normalized === "oauth_2") return "oauth2";
+  if (["qr", "qr_login", "qrcode", "qr_code"].includes(normalized)) return "qr_login";
+  return normalized;
+}
+
+function defaultBotGatewayAuthType(platform) {
+  if (platform === "weixin-ilink") return "qr_login";
+  if (platform === "feishu" || platform === "dingtalk" || platform === "wecom") return "app_secret";
+  if (platform === "slack" || platform === "discord" || platform === "telegram" || platform === "line") return "bot_token";
+  return "";
+}
+
+function websocketBotGatewayIntegrationConfig(platform, value) {
+  const config = sanitizeBotGatewayRecord(value);
+  delete config.transport;
+  delete config.sendMode;
+  const transport = botGatewayWebSocketTransport(platform);
+  return transport ? { ...config, transport } : config;
+}
+
+function botGatewayWebSocketTransport(platform) {
+  if (!platform || platform === "none") return "";
+  return platform === "slack" ? "socket" : "websocket";
+}
+
+function sanitizeBotGatewayRecord(value) {
+  const result = {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) return result;
+  for (const [key, rawValue] of Object.entries(value)) {
+    if (!key.trim() || isWebhookRelatedBotGatewayKey(key)) continue;
+    result[key] = rawValue;
+  }
+  return result;
+}
+
+function isWebhookRelatedBotGatewayKey(key) {
+  const normalized = key.trim().toLowerCase().replace(/[_-]+/g, "");
+  return normalized.includes("webhook") || normalized === "sendmode";
+}
+
+class BotGatewayBridge {
+  constructor(config) {
+    this.config = config;
+    this.child = null;
+    this.client = null;
+    this.forwarded = new Set();
+    this.latestEvent = null;
+    this.messageCounter = 0;
+    this.pollTimer = null;
+    this.startPromise = null;
+    this.claudeCliCapture = { finalText: "", resultCount: 0, text: "" };
+    this.turnCaptures = new Map();
+  }
+
+  handleClaudeCliLine(line) {
+    if (!line || !this.config.enabled) return;
+    let message;
+    try {
+      message = JSON.parse(line);
+    } catch {
+      return;
+    }
+    if (!message || typeof message !== "object") return;
+    if (message.type === "stream_event" && message.event) {
+      this.captureClaudeStreamEvent(message.event);
+      return;
+    }
+    if (message.type === "assistant" && message.message && message.message.content) {
+      const text = textFromContent(message.message.content);
+      if (text) this.claudeCliCapture.finalText = text;
+      return;
+    }
+    if (message.type === "result") {
+      const errorText = message.is_error ? stringValue(message.result) || "Claude Code returned an error" : "";
+      const text = errorText
+        ? "Agent turn failed: " + errorText
+        : this.claudeCliCapture.finalText || stringValue(message.result) || this.claudeCliCapture.text;
+      this.completeClaudeCliCapture(text, Boolean(errorText));
+      return;
+    }
+    const result = stringValue(message.result);
+    if (result && !message.method && !message.params) {
+      this.completeClaudeCliCapture(result, false);
+    }
+  }
+
+  captureClaudeStreamEvent(event) {
+    if (!event || typeof event !== "object") return;
+    if (event.type === "content_block_delta" && event.delta && event.delta.type === "text_delta" && typeof event.delta.text === "string") {
+      this.claudeCliCapture.text += event.delta.text;
+      return;
+    }
+    if (event.type === "content_block_start" && event.content_block) {
+      const text = textFromContent([event.content_block]);
+      if (text) this.claudeCliCapture.finalText = text;
+    }
+  }
+
+  completeClaudeCliCapture(text, isError) {
+    const trimmed = typeof text === "string" ? text.trim() : "";
+    if (!trimmed) return;
+    this.claudeCliCapture.resultCount += 1;
+    const key = [
+      isError ? "claude-cli-error" : "claude-cli",
+      process.pid,
+      this.claudeCliCapture.resultCount,
+      trimmed.length
+    ].join(":");
+    this.forwardAgentText(key, trimmed, {});
+    this.claudeCliCapture.finalText = "";
+    this.claudeCliCapture.text = "";
+  }
+
+  handleJsonRpcLine(line) {
+    if (!line || !this.config.enabled) return;
+    let value;
+    try {
+      value = JSON.parse(line);
+    } catch {
+      return;
+    }
+    this.handleJsonRpcValue(value);
+  }
+
+  handleJsonRpcValue(value) {
+    if (!this.config.enabled || !value || typeof value !== "object") return;
+    this.ensureStarted().catch((error) => this.logError("start_failed", error));
+    const method = typeof value.method === "string" ? value.method : "";
+    const params = value.params && typeof value.params === "object" ? value.params : {};
+    if (method === "item/completed") {
+      this.handleCompletedItem(params);
+    } else if (method === "item/agentMessage/delta") {
+      this.handleAgentMessageDelta(params);
+    } else if (method === "turn/completed") {
+      this.handleTurnCompleted(params);
+    }
+  }
+
+  handleCompletedItem(params) {
+    const item = params.item && typeof params.item === "object" ? params.item : null;
+    if (!isAgentMessageItem(item)) return;
+    const text = agentMessageItemText(item).trim();
+    if (!text) return;
+    const capture = this.turnCapture(params);
+    if (capture) capture.finalText = text;
+    const key = ["item", params.threadId, params.turnId, item.id, text.length].map((part) => String(part || "")).join(":");
+    this.forwardAgentText(key, text, params);
+  }
+
+  handleAgentMessageDelta(params) {
+    const delta = typeof params.delta === "string" ? params.delta : typeof params.text === "string" ? params.text : "";
+    if (!delta) return;
+    const capture = this.turnCapture(params);
+    if (capture) capture.text += delta;
+  }
+
+  handleTurnCompleted(params) {
+    const turn = params.turn && typeof params.turn === "object" ? params.turn : null;
+    const captureKey = turnCaptureKey(params);
+    const errorText = turnErrorText(turn);
+    if (errorText) {
+      const key = ["turn-error", params.threadId || (turn && turn.threadId), turn && turn.id, errorText.length].map((part) => String(part || "")).join(":");
+      this.forwardAgentText(key, "Agent turn failed: " + errorText, params);
+      if (captureKey) this.turnCaptures.delete(captureKey);
+      return;
+    }
+    const capture = captureKey ? this.turnCaptures.get(captureKey) : null;
+    const text = capture ? (capture.finalText || capture.text || "").trim() : "";
+    if (text) {
+      const key = ["turn", params.threadId || (turn && turn.threadId), turn && turn.id, text.length].map((part) => String(part || "")).join(":");
+      this.forwardAgentText(key, text, params);
+    }
+    if (captureKey) this.turnCaptures.delete(captureKey);
+  }
+
+  turnCapture(params) {
+    const key = turnCaptureKey(params);
+    if (!key) return null;
+    let capture = this.turnCaptures.get(key);
+    if (!capture) {
+      capture = { finalText: "", text: "" };
+      this.turnCaptures.set(key, capture);
+    }
+    return capture;
+  }
+
+  forwardAgentText(key, text, params) {
+    if (this.forwarded.has(key)) return;
+    const decision = this.forwardDecision();
+    if (!decision.shouldForward) {
+      log("bot_gateway_forward_skip", { key, reason: decision.reason });
+      return;
+    }
+    this.forwarded.add(key);
+    this.ensureStarted()
+      .then(() => this.sendText(key, text, params, decision))
+      .catch((error) => {
+        this.forwarded.delete(key);
+        this.logError("forward_failed", error);
+      });
+  }
+
+  forwardDecision() {
+    if (!this.config.forwardAllAgentMessages) {
+      return { shouldForward: false, reason: "forward_all_disabled" };
+    }
+    if (!this.config.handoff.enabled) {
+      return { shouldForward: false, reason: "handoff_disabled" };
+    }
+    const presence = evaluateHandoffPresence(this.config.handoff);
+    return {
+      shouldForward: presence.away,
+      reason: presence.away ? presence.reasons.join(", ") : presence.evidence.join(", ")
+    };
+  }
+
+  async sendText(key, text, params, decision) {
+    const conversationRef = this.resolveConversationRef();
+    if (!conversationRef) {
+      throw new Error("No Bot Gateway conversationRef is configured and no inbound bot event context is available.");
+    }
+    this.messageCounter += 1;
+    const outbound = {
+      tenantId: this.resolveTenantId(),
+      integrationId: this.resolveIntegrationId(),
+      conversationRef,
+      intent: {
+        type: "text",
+        text
+      },
+      idempotencyKey: "ccr:handoff:" + this.config.profileId + ":" + key + ":" + this.messageCounter
+    };
+    await withTimeout(this.client.send(outbound), this.config.requestTimeoutMs, "Bot Gateway request timed out: outbound.send");
+    log("bot_gateway_forward_sent", {
+      key,
+      reason: decision.reason,
+      textLen: text.length,
+      threadId: params.threadId || "",
+      turnId: params.turnId || ""
+    });
+  }
+
+  resolveTenantId() {
+    return eventString(this.latestEvent, "tenantId") || this.config.tenantId || "ccr";
+  }
+
+  resolveIntegrationId() {
+    return eventString(this.latestEvent, "integrationId") || this.config.integrationId;
+  }
+
+  resolveConversationRef() {
+    if (this.config.conversationRef) return this.config.conversationRef;
+    const event = this.latestEvent;
+    if (!event || !event.conversation || typeof event.conversation !== "object") return null;
+    const id = eventString(event.conversation, "id");
+    if (!id) return null;
+    const type = ["dm", "group", "channel", "thread"].includes(event.conversation.type) ? event.conversation.type : "dm";
+    const ref = { platformConversationId: id, type };
+    const threadId = event.message && typeof event.message === "object" ? eventString(event.message, "threadId") : "";
+    if (threadId) ref.threadId = threadId;
+    return ref;
+  }
+
+  async ensureStarted() {
+    if (this.client) return;
+    if (this.startPromise) return this.startPromise;
+    this.startPromise = this.start().finally(() => {
+      this.startPromise = null;
+    });
+    return this.startPromise;
+  }
+
+  async start() {
+    const sdk = await loadBotGatewaySdk();
+    const env = Object.assign({}, process.env, {
+      BOT_GATEWAY_STATE_DIR: this.config.stateDir || path.join(CONFIG_DIR, "bot-gateway", safePathSegment(this.config.profileId)),
+      CODEXL_HOME: CONFIG_DIR
+    });
+    const clientOptions = botGatewaySdkClientOptions(this.config, env);
+    this.client = sdk.createBotGatewayClient(clientOptions);
+    await withTimeout(this.client.health(), this.config.startupTimeoutMs, "Bot Gateway health check timed out.");
+    await this.ensureIntegration();
+    await this.pollEvents();
+    this.pollTimer = setInterval(() => {
+      this.pollEvents().catch((error) => this.logError("poll_failed", error));
+    }, Math.max(500, this.config.pollIntervalMs));
+    log("bot_gateway_started", { platform: this.config.platform, sdkTransport: clientOptions.transport, command: clientOptions.command || "sdk-bundled" });
+  }
+
+  async ensureIntegration() {
+    if (!this.config.integrationId) return;
+    if (this.config.createIntegration) {
+      await botGatewayClientRequest(this.client, "integrations.create", {
+        id: this.config.integrationId,
+        tenantId: this.config.tenantId,
+        platform: this.config.platform,
+        authType: this.config.authType,
+        credentials: this.config.credentials,
+        config: this.config.integrationConfig
+      }, this.config.requestTimeoutMs);
+    }
+    if (this.config.autoStartIntegration) {
+      await botGatewayClientRequest(this.client, "integrations.start", {
+        integrationId: this.config.integrationId
+      }, this.config.requestTimeoutMs).catch((error) => {
+        log("bot_gateway_integration_start_skip", { error: formatError(error) });
+      });
+    }
+  }
+
+  async pollEvents() {
+    if (!this.client) return;
+    const result = await withTimeout(this.client.events(20), this.config.requestTimeoutMs, "Bot Gateway request timed out: events.list");
+    const events = Array.isArray(result && result.events) ? result.events : [];
+    for (const queued of events) {
+      const event = queued && queued.event && typeof queued.event === "object" ? queued.event : null;
+      if (!event || !this.matchesEvent(event)) continue;
+      if (event.actor && event.actor.isBot === true) continue;
+      this.latestEvent = event;
+      if (this.config.acknowledgeEvents) {
+        const eventId = eventString(queued, "id") || eventString(event, "id");
+        if (eventId) {
+          await withTimeout(this.client.ackEvent(eventId), this.config.requestTimeoutMs, "Bot Gateway request timed out: events.ack").catch((error) => {
+            log("bot_gateway_ack_failed", { eventId, error: formatError(error) });
+          });
+        }
+      }
+    }
+  }
+
+  matchesEvent(event) {
+    if (this.config.integrationId && event.integrationId !== this.config.integrationId) return false;
+    if (this.config.platform && this.config.platform !== "none" && event.platform !== this.config.platform) return false;
+    if (this.config.tenantId && event.tenantId !== this.config.tenantId) return false;
+    return true;
+  }
+
+  stop() {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
+    if (this.client && typeof this.client.close === "function") {
+      this.client.close();
+    }
+    this.client = null;
+  }
+
+  logError(event, error) {
+    log("bot_gateway_" + event, { error: formatError(error) });
+  }
+}
+
+let BOT_GATEWAY_SDK_PROMISE = null;
+
+async function loadBotGatewaySdk() {
+  if (!BOT_GATEWAY_SDK_PROMISE) {
+    BOT_GATEWAY_SDK_PROMISE = importBotGatewaySdk();
+  }
+  return BOT_GATEWAY_SDK_PROMISE;
+}
+
+async function importBotGatewaySdk() {
+  const candidates = [];
+  const configured = nonEmptyEnv("CCR_BOT_GATEWAY_SDK_MODULE");
+  if (configured) {
+    candidates.push(configured);
+  }
+  candidates.push("@the-next-ai/bot-gateway-sdk");
+  const errors = [];
+  for (const candidate of candidates) {
+    try {
+      const sdk = await import(botGatewaySdkImportSpecifier(candidate));
+      if (sdk && typeof sdk.createBotGatewayClient === "function") {
+        return sdk;
+      }
+      errors.push(candidate + ": missing createBotGatewayClient export");
+    } catch (error) {
+      errors.push(candidate + ": " + formatError(error));
+    }
+  }
+  throw new Error("Unable to load @the-next-ai/bot-gateway-sdk. " + errors.join("; "));
+}
+
+function botGatewaySdkImportSpecifier(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "@the-next-ai/bot-gateway-sdk";
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) return trimmed;
+  if (path.isAbsolute(trimmed)) return pathToFileURL(trimmed).href;
+  return trimmed;
+}
+
+function botGatewaySdkClientOptions(config, env) {
+  const command = resolveBotGatewayCommand(config);
+  return {
+    transport: "stdio",
+    ...(command || {}),
+    env
+  };
+}
+
+function resolveBotGatewayCommand(config) {
+  if (config.command) {
+    return {
+      command: expandHome(config.command),
+      args: config.args,
+      cwd: config.cwd || process.cwd()
+    };
+  }
+  const sourceDir = expandHome(config.sourceDir || "");
+  const candidates = sourceDir ? [
+    path.join(sourceDir, "dist-bundle", "stdio", "stdio.js"),
+    path.join(sourceDir, "dist", "src", "stdio.js")
+  ] : [];
+  for (const entry of candidates) {
+    if (fs.existsSync(entry)) {
+      return {
+        command: process.execPath,
+        args: [entry],
+        cwd: sourceDir
+      };
+    }
+  }
+  return undefined;
+}
+
+function botGatewayClientRequest(client, method, params, timeoutMs) {
+  if (!client || typeof client.request !== "function") {
+    return Promise.reject(new Error("Bot Gateway SDK client does not expose request()."));
+  }
+  return withTimeout(client.request(method, params), timeoutMs, "Bot Gateway request timed out: " + method);
+}
+
+function withTimeout(promise, timeoutMs, message) {
+  const timeout = Math.max(1000, timeoutMs || 30000);
+  let timer = null;
+  return new Promise((resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeout);
+    Promise.resolve(promise).then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
+function evaluateHandoffPresence(config) {
+  if (!config.enabled) {
+    return { away: false, reasons: [], evidence: ["handoff disabled"] };
+  }
+  const reasons = [];
+  const evidence = [];
+  if (config.screenLock) {
+    const locked = detectScreenLocked();
+    if (locked !== true) {
+      return { away: false, reasons, evidence: [locked === false ? "screen unlocked" : "screen lock unknown"] };
+    }
+    reasons.push("screen locked");
+  }
+  if (config.userIdle) {
+    const seconds = detectUserIdleSeconds();
+    if (!Number.isFinite(seconds)) {
+      evidence.push("idle time unknown");
+    } else if (seconds >= config.idleSeconds) {
+      reasons.push("idle for " + seconds + "s");
+    } else {
+      return { away: false, reasons, evidence: ["idle for " + seconds + "s"] };
+    }
+  }
+  if (config.phoneWifiTargets.length || config.phoneBluetoothTargets.length) {
+    evidence.push("phone target checks are configured but not available in CCR middleware");
+  }
+  return { away: reasons.length > 0, reasons, evidence };
+}
+
+function detectScreenLocked() {
+  if (process.platform !== "darwin") return null;
+  const output = commandOutput("/usr/sbin/ioreg", ["-r", "-k", "CGSSessionScreenIsLocked"]) || commandOutput("/usr/sbin/ioreg", ["-n", "Root", "-d1"]);
+  if (!output) return null;
+  for (const line of output.split(/\r?\n/g)) {
+    if (!line.includes("CGSSessionScreenIsLocked") && !line.includes("IOConsoleLocked")) continue;
+    const lower = line.toLowerCase();
+    if (lower.includes("yes") || lower.includes("true") || lower.includes("= 1")) return true;
+    if (lower.includes("no") || lower.includes("false") || lower.includes("= 0")) return false;
+  }
+  return false;
+}
+
+function detectUserIdleSeconds() {
+  if (process.platform !== "darwin") return null;
+  const output = commandOutput("/usr/sbin/ioreg", ["-c", "IOHIDSystem"]);
+  if (!output) return null;
+  for (const line of output.split(/\r?\n/g)) {
+    if (!line.includes("HIDIdleTime")) continue;
+    const raw = String(line.split("=")[1] || "").trim();
+    const digits = raw.match(/^\d+/);
+    if (!digits) return null;
+    return Math.floor(Number(digits[0]) / 1000000000);
+  }
+  return null;
+}
+
+function commandOutput(command, args) {
+  try {
+    const result = childProcess.spawnSync(command, args, { encoding: "utf8", timeout: 2000 });
+    return result.status === 0 ? result.stdout : "";
+  } catch {
+    return "";
+  }
+}
+
+function isAgentMessageItem(item) {
+  if (!item || typeof item !== "object") return false;
+  return item.type === "agentMessage" || item.type === "agent_message" || item.type === "assistantMessage" || item.type === "assistant_message";
+}
+
+function agentMessageItemText(item) {
+  if (!item || typeof item !== "object") return "";
+  if (typeof item.text === "string") return item.text;
+  if (typeof item.content === "string") return item.content;
+  if (typeof item.message === "string") return item.message;
+  return "";
+}
+
+function turnCaptureKey(params) {
+  const threadId = params.threadId || params.thread_id || (params.thread && params.thread.id);
+  const turnId = params.turnId || params.turn_id || (params.turn && params.turn.id);
+  if (!threadId || !turnId) return "";
+  return String(threadId) + ":" + String(turnId);
+}
+
+function turnErrorText(turn) {
+  if (!turn) return "";
+  if (typeof turn.error === "string" && turn.error.trim()) return turn.error.trim();
+  if (turn.error && typeof turn.error === "object") {
+    if (typeof turn.error.message === "string") return turn.error.message.trim();
+    if (typeof turn.error.details === "string") return turn.error.details.trim();
+  }
+  return "";
+}
+
+function eventString(value, key) {
+  return value && typeof value[key] === "string" ? value[key].trim() : "";
+}
+
+function jsonObjectEnv(name) {
+  const text = nonEmptyEnv(name);
+  if (!text) return null;
+  try {
+    const value = JSON.parse(text);
+    return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function jsonArrayEnv(name) {
+  const text = nonEmptyEnv(name);
+  if (!text) return [];
+  try {
+    const value = JSON.parse(text);
+    return Array.isArray(value) ? value.map((item) => String(item)) : [];
+  } catch {
+    return [];
+  }
+}
+
+function listEnv(name) {
+  const value = process.env[name];
+  if (!value) return [];
+  return value.split(/\r?\n|,/g).map((item) => item.trim()).filter(Boolean);
+}
+
+function boolEnv(name) {
+  const value = process.env[name];
+  if (!value) return false;
+  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+}
+
+function safePathSegment(value) {
+  const segment = String(value || "").trim().toLowerCase().replace(/[^a-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
+  return segment || "default";
 }
 
 function waitForChild(child) {

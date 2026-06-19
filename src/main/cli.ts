@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AppConfig, ProfileOpenSurface } from "../shared/app";
+import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { launchCodexAppProfile } from "./codex-app-launch";
 import { buildProfileLaunchPlan, findProfileForOpen, resolveProfileOpenSurface } from "./profile-launch-core";
 
@@ -41,7 +42,8 @@ async function main(): Promise<void> {
 
   const childEnv = {
     ...process.env,
-    ...plan.env
+    ...plan.env,
+    ...botGatewayProfileEnv(config, profile)
   };
   delete childEnv.ELECTRON_RUN_AS_NODE;
 

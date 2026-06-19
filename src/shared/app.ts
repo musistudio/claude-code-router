@@ -740,6 +740,8 @@ export type CodexProfileConfig = {
 
 export type ProfileConfig = {
   agent: ProfileClientKind;
+  botConfigId?: string;
+  botGateway?: BotGatewayRuntimeConfig;
   configFile?: string;
   cliMiddleware?: boolean;
   codexCliPath?: string;
@@ -877,6 +879,94 @@ export type ProxyCertificateStatus = {
   trusted: boolean;
 };
 
+export type BotGatewayHandoffConfig = {
+  enabled: boolean;
+  idleSeconds: number;
+  phoneBluetoothTargets: string[];
+  phoneWifiTargets: string[];
+  screenLock: boolean;
+  userIdle: boolean;
+};
+
+export type BotGatewayConversationConfig = {
+  gatewayConversationId?: string;
+  platformConversationId?: string;
+  threadId?: string;
+  type: "dm" | "group" | "channel" | "thread";
+};
+
+export type BotGatewayRuntimeConfig = {
+  acknowledgeEvents: boolean;
+  args: string[];
+  authType: string;
+  autoStartIntegration: boolean;
+  command: string;
+  conversationRef?: BotGatewayConversationConfig;
+  createIntegration: boolean;
+  credentials: Record<string, unknown>;
+  cwd: string;
+  enabled: boolean;
+  forwardAllAgentMessages: boolean;
+  handoff: BotGatewayHandoffConfig;
+  integrationConfig: Record<string, unknown>;
+  integrationId: string;
+  platform: string;
+  pollIntervalMs: number;
+  requestTimeoutMs: number;
+  sourceDir: string;
+  startupTimeoutMs: number;
+  stateDir: string;
+  tenantId: string;
+};
+
+export type BotGatewaySavedConfig = {
+  botGateway: BotGatewayRuntimeConfig;
+  id: string;
+  name: string;
+  updatedAt?: string;
+};
+
+export type BotGatewayQrLoginStartRequest = {
+  config: BotGatewaySavedConfig;
+  force?: boolean;
+};
+
+export type BotGatewayQrLoginStartResult = {
+  botConfigId: string;
+  expiresAt: string;
+  integrationId: string;
+  message: string;
+  platform: string;
+  qrCodeUrl: string;
+  sessionId: string;
+  stateDir: string;
+  tenantId: string;
+};
+
+export type BotGatewayQrLoginWaitRequest = {
+  sessionId: string;
+  timeoutMs?: number;
+  verifyCode?: string;
+};
+
+export type BotGatewayQrLoginWaitResult = {
+  confirmed: boolean;
+  integrationId: string;
+  message: string;
+  sessionId: string;
+  stateDir: string;
+  status: string;
+  tenantId: string;
+};
+
+export type BotGatewayQrLoginCancelRequest = {
+  sessionId: string;
+};
+
+export type BotGatewayQrLoginCancelResult = {
+  canceled: boolean;
+};
+
 export type AppConfig = {
   APIKEY: string;
   APIKEYS: ApiKeyConfig[];
@@ -888,6 +978,8 @@ export type AppConfig = {
   Router: RouterConfig;
   agent: GatewayAgentConfig;
   autoStart: boolean;
+  botConfigs: BotGatewaySavedConfig[];
+  botGateway: BotGatewayRuntimeConfig;
   gateway: GatewayRuntimeConfig;
   preferredProvider: string;
   plugins: GatewayPluginConfig[];

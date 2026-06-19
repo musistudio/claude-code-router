@@ -7,6 +7,12 @@ import type {
   AppInfo,
   AppUpdateStatus,
   ApiKeyConfig,
+  BotGatewayQrLoginCancelRequest,
+  BotGatewayQrLoginCancelResult,
+  BotGatewayQrLoginStartRequest,
+  BotGatewayQrLoginStartResult,
+  BotGatewayQrLoginWaitRequest,
+  BotGatewayQrLoginWaitResult,
   ClaudeAppGatewayApplyResult,
   GatewayMcpServerConfig,
   GatewayMcpToolInfo,
@@ -41,6 +47,7 @@ import type {
 contextBridge.exposeInMainWorld("ccr", {
   applyClaudeAppGateway: (config?: AppConfig) => ipcRenderer.invoke(IPC_CHANNELS.appApplyClaudeAppGateway, config) as Promise<ClaudeAppGatewayApplyResult>,
   applyProfile: () => ipcRenderer.invoke(IPC_CHANNELS.appApplyProfile) as Promise<ProfileApplyResult>,
+  cancelBotGatewayQrLogin: (request: BotGatewayQrLoginCancelRequest) => ipcRenderer.invoke(IPC_CHANNELS.appBotGatewayQrLoginCancel, request) as Promise<BotGatewayQrLoginCancelResult>,
   clearProxyNetworkCaptures: () => ipcRenderer.invoke(IPC_CHANNELS.appClearProxyNetworkCaptures) as Promise<ProxyNetworkSnapshot>,
   closeTray: () => ipcRenderer.invoke(IPC_CHANNELS.appCloseTray) as Promise<void>,
   detectProviderIcon: (request: ProviderIconDetectionRequest) => ipcRenderer.invoke(IPC_CHANNELS.appDetectProviderIcon, request) as Promise<ProviderIconDetectionResult>,
@@ -78,11 +85,13 @@ contextBridge.exposeInMainWorld("ccr", {
   setTrayDetailOpen: (open: boolean, provider?: string) => ipcRenderer.invoke(IPC_CHANNELS.appSetTrayDetailOpen, open, provider) as Promise<void>,
   showMainWindow: () => ipcRenderer.invoke(IPC_CHANNELS.appShowMainWindow) as Promise<void>,
   startGateway: () => ipcRenderer.invoke(IPC_CHANNELS.appStartGateway) as Promise<GatewayStatus>,
+  startBotGatewayQrLogin: (request: BotGatewayQrLoginStartRequest) => ipcRenderer.invoke(IPC_CHANNELS.appBotGatewayQrLoginStart, request) as Promise<BotGatewayQrLoginStartResult>,
   stopGateway: () => ipcRenderer.invoke(IPC_CHANNELS.appStopGateway) as Promise<GatewayStatus>,
   testProviderAccountConnector: (request: ProviderAccountTestRequest) => ipcRenderer.invoke(IPC_CHANNELS.appTestProviderAccountConnector, request) as Promise<ProviderAccountTestResult>,
   updateCheck: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateCheck) as Promise<AppUpdateStatus>,
   updateDownload: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateDownload) as Promise<AppUpdateStatus>,
   updateInstall: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateInstall) as Promise<void>,
+  waitBotGatewayQrLogin: (request: BotGatewayQrLoginWaitRequest) => ipcRenderer.invoke(IPC_CHANNELS.appBotGatewayQrLoginWait, request) as Promise<BotGatewayQrLoginWaitResult>,
   onBeforeQuit: (callback: () => void) => {
     const handler = () => callback();
     ipcRenderer.on(IPC_CHANNELS.appBeforeQuit, handler);

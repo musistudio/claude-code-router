@@ -7,6 +7,8 @@ import type {
   AppConfig,
   ApiKeyConfig,
   ApiKeyLimitConfig,
+  BotGatewayRuntimeConfig,
+  BotGatewaySavedConfig,
   ClaudeCodeProfileConfig,
   CodexProfileConfig,
   GatewayAgentConfig,
@@ -48,9 +50,15 @@ type LoadedProfileConfig = Partial<Omit<ProfileRuntimeConfig, "claudeCode" | "co
   profiles?: ProfileConfig[];
 };
 
-type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "gateway" | "profile" | "proxy">> & {
+type LoadedBotGatewayConfig = Partial<Omit<BotGatewayRuntimeConfig, "handoff">> & {
+  handoff?: Partial<BotGatewayRuntimeConfig["handoff"]>;
+};
+
+type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway" | "gateway" | "profile" | "proxy">> & {
   Router?: Partial<RouterConfig>;
   agent?: Partial<GatewayAgentConfig>;
+  botConfigs?: BotGatewaySavedConfig[];
+  botGateway?: LoadedBotGatewayConfig;
   gateway?: Partial<AppConfig["gateway"]>;
   profile?: LoadedProfileConfig;
   proxy?: Partial<ProxyRuntimeConfig>;
@@ -94,6 +102,36 @@ const DEFAULT_CONFIG: AppConfig = {
     mcpServers: []
   },
   autoStart: false,
+  botConfigs: [],
+  botGateway: {
+    acknowledgeEvents: false,
+    args: [],
+    authType: "",
+    autoStartIntegration: true,
+    command: "",
+    createIntegration: false,
+    credentials: {},
+    cwd: "",
+    enabled: false,
+    forwardAllAgentMessages: true,
+    handoff: {
+      enabled: false,
+      idleSeconds: 30,
+      phoneBluetoothTargets: [],
+      phoneWifiTargets: [],
+      screenLock: true,
+      userIdle: true
+    },
+    integrationConfig: {},
+    integrationId: "",
+    platform: "none",
+    pollIntervalMs: 2000,
+    requestTimeoutMs: 600000,
+    sourceDir: "/Users/jinhuilee/products/bot-gateway",
+    startupTimeoutMs: 10000,
+    stateDir: "",
+    tenantId: "ccr"
+  },
   gateway: {
     coreHost: "127.0.0.1",
     corePort: 3457,
@@ -177,6 +215,112 @@ const DEFAULT_CONFIG: AppConfig = {
   trayWindowModules: DEFAULT_TRAY_WINDOW_MODULES
 };
 
+function completeBotGatewayConfig(config: LoadedBotGatewayConfig | undefined): BotGatewayRuntimeConfig {
+  const platform = normalizeBotGatewayPlatform(config?.platform ?? DEFAULT_CONFIG.botGateway.platform);
+  return {
+    ...DEFAULT_CONFIG.botGateway,
+    ...(config ?? {}),
+    authType: normalizeBotGatewayAuthType(platform, config?.authType ?? DEFAULT_CONFIG.botGateway.authType),
+    credentials: sanitizeBotGatewayRecord(config?.credentials ?? DEFAULT_CONFIG.botGateway.credentials),
+    handoff: {
+      ...DEFAULT_CONFIG.botGateway.handoff,
+      ...(config?.handoff ?? {})
+    },
+    integrationConfig: websocketBotGatewayIntegrationConfig(platform, config?.integrationConfig ?? DEFAULT_CONFIG.botGateway.integrationConfig),
+    platform
+  };
+}
+
+function normalizeBotGatewayPlatform(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!normalized || normalized === "off" || normalized === "disabled") {
+    return "none";
+  }
+  if (normalized === "lark") {
+    return "feishu";
+  }
+  if (normalized === "dingding") {
+    return "dingtalk";
+  }
+  if (["wechat", "weixin", "wx", "weixin-ilink", "weixin_ilink", "ilink"].includes(normalized)) {
+    return "weixin-ilink";
+  }
+  if (["wecom", "wework", "wechat-work", "work-weixin", "enterprise-wechat"].includes(normalized)) {
+    return "wecom";
+  }
+  return normalized;
+}
+
+function normalizeBotGatewayAuthType(platform: string, value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase().replace(/-/g, "_") : "";
+  if (!platform || platform === "none") {
+    return "";
+  }
+  if (!normalized || normalized === "default" || normalized === "auto" || normalized === "webhook" || normalized === "webhook_secret" || normalized === "outgoing_webhook") {
+    return defaultBotGatewayAuthType(platform);
+  }
+  if (normalized === "appsecret") {
+    return "app_secret";
+  }
+  if (normalized === "bottoken" || normalized === "token") {
+    return "bot_token";
+  }
+  if (normalized === "oauth" || normalized === "oauth_2") {
+    return "oauth2";
+  }
+  if (["qr", "qr_login", "qrcode", "qr_code"].includes(normalized)) {
+    return "qr_login";
+  }
+  return normalized;
+}
+
+function defaultBotGatewayAuthType(platform: string): string {
+  if (platform === "weixin-ilink") {
+    return "qr_login";
+  }
+  if (platform === "feishu" || platform === "dingtalk" || platform === "wecom") {
+    return "app_secret";
+  }
+  if (platform === "slack" || platform === "discord" || platform === "telegram" || platform === "line") {
+    return "bot_token";
+  }
+  return "";
+}
+
+function websocketBotGatewayIntegrationConfig(platform: string, value: Record<string, unknown>): Record<string, unknown> {
+  const config = sanitizeBotGatewayRecord(value);
+  delete config.transport;
+  delete config.sendMode;
+  const transport = botGatewayWebSocketTransport(platform);
+  return transport ? { ...config, transport } : config;
+}
+
+function botGatewayWebSocketTransport(platform: string): string {
+  if (!platform || platform === "none") {
+    return "";
+  }
+  return platform === "slack" ? "socket" : "websocket";
+}
+
+function sanitizeBotGatewayRecord(value: Record<string, unknown> | undefined): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  if (!isObject(value)) {
+    return result;
+  }
+  for (const [key, rawValue] of Object.entries(value)) {
+    if (!key.trim() || isWebhookRelatedBotGatewayKey(key)) {
+      continue;
+    }
+    result[key] = rawValue;
+  }
+  return result;
+}
+
+function isWebhookRelatedBotGatewayKey(key: string): boolean {
+  const normalized = key.trim().toLowerCase().replace(/[_-]+/g, "");
+  return normalized.includes("webhook") || normalized === "sendmode";
+}
+
 export async function loadAppConfig(): Promise<AppConfig> {
   ensureConfigFile();
 
@@ -210,6 +354,8 @@ export async function loadAppConfig(): Promise<AppConfig> {
         ...(picked.agent ?? {}),
         mcpServers: picked.agent?.mcpServers ?? DEFAULT_CONFIG.agent.mcpServers
       },
+      botConfigs: picked.botConfigs ?? DEFAULT_CONFIG.botConfigs,
+      botGateway: completeBotGatewayConfig(picked.botGateway),
       gateway: {
         ...DEFAULT_CONFIG.gateway,
         ...gatewayConfig,
@@ -442,6 +588,14 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   const agent = parseAgent((value as Record<string, unknown>).agent ?? (value as Record<string, unknown>).Agent, (value as Record<string, unknown>).mcpServers);
   if (agent) {
     config.agent = agent;
+  }
+  const botGateway = parseBotGateway((value as Record<string, unknown>).botGateway ?? (value as Record<string, unknown>).bot_gateway ?? (value as Record<string, unknown>).bot);
+  if (botGateway) {
+    config.botGateway = botGateway;
+  }
+  const botConfigs = parseBotGatewaySavedConfigs((value as Record<string, unknown>).botConfigs ?? (value as Record<string, unknown>).bot_configs);
+  if (botConfigs) {
+    config.botConfigs = botConfigs;
   }
   if (typeof value.autoStart === "boolean") {
     config.autoStart = value.autoStart;
@@ -977,6 +1131,14 @@ function parseStringList(value: unknown): string[] {
   return [];
 }
 
+function parseStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value) && typeof value !== "string") {
+    return undefined;
+  }
+  const list = parseStringList(value);
+  return list.length ? list : undefined;
+}
+
 function parseRouterRules(value: unknown): RouterRule[] | undefined {
   if (!Array.isArray(value)) {
     return undefined;
@@ -1052,6 +1214,199 @@ function parseAgent(value: unknown, legacyMcpServers?: unknown): Partial<Gateway
     return undefined;
   }
   return { mcpServers };
+}
+
+function parseBotGateway(value: unknown): LoadedBotGatewayConfig | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const config: LoadedBotGatewayConfig = {};
+  if (typeof value.enabled === "boolean") {
+    config.enabled = value.enabled;
+  }
+  const sourceDir = readString(value.sourceDir) || readString(value.source_dir) || readString(value.projectDir) || readString(value.project_dir);
+  if (sourceDir) {
+    config.sourceDir = sourceDir;
+  }
+  const command = readString(value.command);
+  if (command) {
+    config.command = command;
+  }
+  const args = parseStringArray(value.args);
+  if (args) {
+    config.args = args;
+  }
+  const cwd = readString(value.cwd) || readString(value.rootDir) || readString(value.root_dir);
+  if (cwd) {
+    config.cwd = cwd;
+  }
+  const stateDir = readString(value.stateDir) || readString(value.state_dir);
+  if (stateDir) {
+    config.stateDir = stateDir;
+  }
+  const tenantId = readString(value.tenantId) || readString(value.tenant_id);
+  if (tenantId) {
+    config.tenantId = tenantId;
+  }
+  const integrationId = readString(value.integrationId) || readString(value.integration_id);
+  if (integrationId) {
+    config.integrationId = integrationId;
+  }
+  const platform = readString(value.platform);
+  if (platform) {
+    config.platform = platform;
+  }
+  const authType = readString(value.authType) || readString(value.auth_type);
+  if (authType) {
+    config.authType = authType;
+  }
+  const credentials = parseUnknownRecord(value.credentials) || parseUnknownRecord(value.authFields) || parseUnknownRecord(value.auth_fields);
+  if (credentials) {
+    config.credentials = credentials;
+  }
+  const integrationConfig = parseUnknownRecord(value.integrationConfig) || parseUnknownRecord(value.config);
+  if (integrationConfig) {
+    config.integrationConfig = integrationConfig;
+  }
+  const conversationRef = parseBotGatewayConversation(value.conversationRef ?? value.conversation_ref ?? value.conversation);
+  if (conversationRef) {
+    config.conversationRef = conversationRef;
+  }
+  if (typeof value.createIntegration === "boolean") {
+    config.createIntegration = value.createIntegration;
+  } else if (typeof value.create_integration === "boolean") {
+    config.createIntegration = value.create_integration;
+  }
+  if (typeof value.autoStartIntegration === "boolean") {
+    config.autoStartIntegration = value.autoStartIntegration;
+  } else if (typeof value.auto_start_integration === "boolean") {
+    config.autoStartIntegration = value.auto_start_integration;
+  }
+  if (typeof value.acknowledgeEvents === "boolean") {
+    config.acknowledgeEvents = value.acknowledgeEvents;
+  } else if (typeof value.acknowledge_events === "boolean") {
+    config.acknowledgeEvents = value.acknowledge_events;
+  }
+  if (typeof value.forwardAllAgentMessages === "boolean") {
+    config.forwardAllAgentMessages = value.forwardAllAgentMessages;
+  } else if (typeof value.forward_all_agent_messages === "boolean" || typeof value.forward_all_codex_messages === "boolean") {
+    config.forwardAllAgentMessages = Boolean(value.forward_all_agent_messages ?? value.forward_all_codex_messages);
+  }
+
+  const requestTimeoutMs = readNumber(value.requestTimeoutMs ?? value.request_timeout_ms);
+  if (requestTimeoutMs !== undefined) {
+    config.requestTimeoutMs = clampNumber(requestTimeoutMs, 1000, 3_600_000);
+  }
+  const startupTimeoutMs = readNumber(value.startupTimeoutMs ?? value.startup_timeout_ms);
+  if (startupTimeoutMs !== undefined) {
+    config.startupTimeoutMs = clampNumber(startupTimeoutMs, 1000, 120_000);
+  }
+  const pollIntervalMs = readNumber(value.pollIntervalMs ?? value.poll_interval_ms);
+  if (pollIntervalMs !== undefined) {
+    config.pollIntervalMs = clampNumber(pollIntervalMs, 500, 60_000);
+  }
+
+  const handoff = parseBotGatewayHandoff(value.handoff);
+  if (handoff) {
+    config.handoff = handoff;
+  }
+
+  return config;
+}
+
+function parseBotGatewaySavedConfigs(value: unknown): BotGatewaySavedConfig[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const result: BotGatewaySavedConfig[] = [];
+  const seen = new Set<string>();
+  value.forEach((item, index) => {
+    if (!isObject(item)) {
+      return;
+    }
+    const rawBot = item.botGateway ?? item.bot_gateway ?? item.bot ?? item.config;
+    const parsedBot = parseBotGateway(rawBot);
+    if (!parsedBot) {
+      return;
+    }
+    const botGateway = completeBotGatewayConfig(parsedBot);
+    if (!botGateway.enabled || !botGateway.platform || botGateway.platform === "none") {
+      return;
+    }
+    const fallbackId = botGateway.integrationId || `bot-${index + 1}`;
+    const id = readString(item.id) || readString(item.savedConfigId) || readString(item.saved_config_id) || fallbackId;
+    if (!id || seen.has(id)) {
+      return;
+    }
+    seen.add(id);
+    result.push({
+      botGateway,
+      id,
+      name: readString(item.name) || botGateway.platform || id,
+      ...(readString(item.updatedAt) || readString(item.updated_at)
+        ? { updatedAt: readString(item.updatedAt) || readString(item.updated_at) }
+        : {})
+    });
+  });
+  return result;
+}
+
+function parseBotGatewayHandoff(value: unknown): Partial<BotGatewayRuntimeConfig["handoff"]> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const handoff: Partial<BotGatewayRuntimeConfig["handoff"]> = {};
+  if (typeof value.enabled === "boolean") {
+    handoff.enabled = value.enabled;
+  }
+  const idleSeconds = readNumber(value.idleSeconds ?? value.idle_seconds);
+  if (idleSeconds !== undefined) {
+    handoff.idleSeconds = clampNumber(idleSeconds, 30, 86_400);
+  }
+  if (typeof value.screenLock === "boolean") {
+    handoff.screenLock = value.screenLock;
+  } else if (typeof value.screen_lock === "boolean") {
+    handoff.screenLock = value.screen_lock;
+  }
+  if (typeof value.userIdle === "boolean") {
+    handoff.userIdle = value.userIdle;
+  } else if (typeof value.user_idle === "boolean") {
+    handoff.userIdle = value.user_idle;
+  }
+  const phoneWifiTargets = parseStringArray(value.phoneWifiTargets ?? value.phone_wifi_targets);
+  if (phoneWifiTargets) {
+    handoff.phoneWifiTargets = uniqueStrings(phoneWifiTargets).slice(0, 1);
+  }
+  const phoneBluetoothTargets = parseStringArray(value.phoneBluetoothTargets ?? value.phone_bluetooth_targets);
+  if (phoneBluetoothTargets) {
+    handoff.phoneBluetoothTargets = uniqueStrings(phoneBluetoothTargets).slice(0, 1);
+  }
+  return Object.keys(handoff).length ? handoff : undefined;
+}
+
+function parseBotGatewayConversation(value: unknown): BotGatewayRuntimeConfig["conversationRef"] | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const platformConversationId =
+    readString(value.platformConversationId) ||
+    readString(value.platform_conversation_id) ||
+    readString(value.conversationId) ||
+    readString(value.chatId) ||
+    readString(value.channelId);
+  const gatewayConversationId = readString(value.gatewayConversationId) || readString(value.gateway_conversation_id);
+  if (!platformConversationId && !gatewayConversationId) {
+    return undefined;
+  }
+  const type = parseEnumValue(value.type, ["dm", "group", "channel", "thread"], "dm");
+  const threadId = readString(value.threadId) || readString(value.thread_id);
+  return {
+    ...(gatewayConversationId ? { gatewayConversationId } : {}),
+    ...(platformConversationId ? { platformConversationId } : {}),
+    ...(threadId ? { threadId } : {}),
+    type
+  };
 }
 
 function parseMcpServers(value: unknown): GatewayMcpServerConfig[] | undefined {
@@ -1454,10 +1809,15 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       const name = readString(item.name) || (agent === "claude-code" ? "Claude Code" : "Codex");
       const model = readString(item.model) ?? "";
       const env = parseStringRecord(item.env) ?? {};
+      const botConfigId = readString(item.botConfigId) || readString(item.bot_config_id) || readString(item.savedBotConfigId) || readString(item.saved_bot_config_id);
+      const parsedBotGateway = parseBotGateway(item.botGateway ?? item.bot_gateway ?? item.bot);
+      const botGateway = parsedBotGateway ? completeBotGatewayConfig(parsedBotGateway) : undefined;
 
       if (agent === "claude-code") {
         return {
           agent,
+          ...(botConfigId ? { botConfigId } : {}),
+          ...(botGateway ? { botGateway } : {}),
           enabled,
           env,
           id,
@@ -1472,6 +1832,8 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
 
       return {
         agent,
+        ...(botConfigId ? { botConfigId } : {}),
+        ...(botGateway ? { botGateway } : {}),
         cliMiddleware: true,
         codexCliPath: readString(item.codexCliPath) || readString(item.cliPath) || readString(item.codexPath) || "",
         codexHome: readString(item.codexHome) || readString(item.home) || "",
@@ -1626,6 +1988,13 @@ function parseStringRecord(value: unknown): Record<string, string> | undefined {
     }
   }
   return Object.keys(result).length ? result : undefined;
+}
+
+function parseUnknownRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  return { ...value };
 }
 
 function parseApiKeys(value: unknown): ApiKeyConfig[] | undefined {

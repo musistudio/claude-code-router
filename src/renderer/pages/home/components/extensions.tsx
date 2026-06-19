@@ -24,7 +24,7 @@ export function ExtensionsView({
   const t = useAppText();
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
-  const extensions = useMemo(() => buildExtensionList(config), [config.plugins, config.providerPlugins, config.virtualModelProfiles]);
+  const extensions = useMemo(() => buildExtensionList(config), [config.plugins, config.providerPlugins]);
   const visibleExtensions = useMemo(
     () => extensions.filter((extension) => extensionMatchesQuery(extension, normalizedQuery)),
     [extensions, normalizedQuery]

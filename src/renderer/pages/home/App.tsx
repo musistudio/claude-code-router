@@ -1,7 +1,7 @@
 import {
   AddApiKeyDraft, AddProfileDraft, AddProviderDraft, AddRoutingRuleDraft, AgentAnalysisSnapshot, AgentFilterValue,
   ApiKeyConfig, AppConfig, appCopy, AppI18nContext, AppInfo, AppUpdateStatus,
-  AppLanguagePreference, applyProviderProbeResult, AppToast, buildExtensionList, claudeDesignRoutingConfigFromDraft,
+  AppLanguagePreference, applyProviderProbeResult, AppToast, BotGatewaySavedConfig, buildExtensionList, claudeDesignRoutingConfigFromDraft,
   ClaudeDesignRoutingDraft, ClaudeDesignRoutingRuleDraft, cloneConfig, createApiKeyDraft, createApiKeyEditDraft,
   createApiKeyList, createClaudeDesignRoutingDraft, createClaudeDesignRoutingRuleDraft, createCursorProxyRoutingDraft, createCursorProxyRoutingRuleDraft, createEmptyAgentAnalysis,
   createEmptyRequestLogPage, createEmptyUsageStats, createExtensionInstallDraft, createGeneratedApiKey, createPluginSettingsDraft, createProfileDraft,
@@ -15,7 +15,7 @@ import {
   GatewayProviderProbeResult, gatewayServiceMessage, GatewayStatus, getDefaultOnboardingStep, isClaudeDesignPluginConfig, isClaudeDesignRoutingDraftValid,
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
   LayoutGroup, mergeProviderCapabilities, mergeProviderModelLists,
-  navigation, NavigationId, normalizeApiKeys, normalizeConfig, normalizeLanguagePreference, normalizeOverviewWidgets,
+  navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeOverviewWidgets,
   normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeTrayIconPreference,
   normalizeTrayProgressTargetTokens, normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingStepId, onboardingStepOrder,
   OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parseProviderAccountDraft,
@@ -109,6 +109,8 @@ function App() {
   const [savedConfig, setSavedConfig] = useState<AppConfig>(fallbackConfig);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialPage, setSettingsInitialPage] = useState<"appearance" | "bots" | "tray" | "update">("appearance");
+  const [settingsBotAddRequestKey, setSettingsBotAddRequestKey] = useState(0);
   const [compactLayout, setCompactLayout] = useState(() => window.matchMedia("(max-width: 720px)").matches);
   const [toast, setToast] = useState<AppToast>();
   const [languagePreference, setLanguagePreference] = useState<AppLanguagePreference>(() => readLanguagePreference());
@@ -408,7 +410,7 @@ function App() {
     return buildExtensionList(draftConfig).find((extension) =>
       extension.source === extensionDeleteTarget.source && extension.index === extensionDeleteTarget.index
     );
-  }, [draftConfig.plugins, draftConfig.providerPlugins, draftConfig.virtualModelProfiles, extensionDeleteTarget]);
+  }, [draftConfig.plugins, draftConfig.providerPlugins, extensionDeleteTarget]);
   const extensionConfigItem = useMemo(() => {
     if (!extensionConfigTarget) {
       return undefined;
@@ -443,8 +445,8 @@ function App() {
   const canSubmitProvider =
     Boolean(providerDraft.name.trim() && providerDraft.baseUrl.trim()) &&
     providerDialogModels.length > 0;
-  const canSubmitProfile = isProfileDraftSubmittable(profileDraft);
-  const canSubmitProfileEdit = profileEditIndex !== undefined && isProfileDraftSubmittable(profileEditDraft);
+  const canSubmitProfile = isProfileDraftSubmittable(profileDraft) && isProfileBotSelectionValid(profileDraft, draftConfig.botConfigs);
+  const canSubmitProfileEdit = profileEditIndex !== undefined && isProfileDraftSubmittable(profileEditDraft) && isProfileBotSelectionValid(profileEditDraft, draftConfig.botConfigs);
   const canSubmitApiKey = Boolean(apiKeyDraft.name.trim()) && (apiKeyDraft.expirationPreset !== "custom" || Boolean(apiKeyDraft.expiresAt.trim()));
   const canSubmitApiKeyEdit = apiKeyEditDraft.expirationPreset !== "custom" || Boolean(apiKeyEditDraft.expiresAt.trim());
   const canSubmitRoutingRule =
@@ -1348,10 +1350,8 @@ function App() {
     updateConfig((config) => {
       if (source === "plugins") {
         config.plugins = (config.plugins ?? []).filter((_, itemIndex) => itemIndex !== index);
-      } else if (source === "providerPlugins") {
-        config.providerPlugins = (config.providerPlugins ?? []).filter((_, itemIndex) => itemIndex !== index);
       } else {
-        config.virtualModelProfiles = (config.virtualModelProfiles ?? []).filter((_, itemIndex) => itemIndex !== index);
+        config.providerPlugins = (config.providerPlugins ?? []).filter((_, itemIndex) => itemIndex !== index);
       }
       return config;
     });
@@ -1561,14 +1561,6 @@ function App() {
         config.providerPlugins = values;
         return config;
       }
-
-      const values = [...(config.virtualModelProfiles ?? [])];
-      const item = values[index];
-      if (!item) {
-        return config;
-      }
-      values[index] = { ...item, enabled };
-      config.virtualModelProfiles = values;
       return config;
     });
   }
@@ -1604,6 +1596,29 @@ function App() {
       trayWidgets,
       trayWindowModules: normalizeTrayWindowModules([...trayWidgets.map((widget) => widget.type), "footer"])
     }));
+  }
+
+  function changeBotConfigs(botConfigs: BotGatewaySavedConfig[]) {
+    const normalizedBotConfigs = normalizeBotGatewaySavedConfigs(botConfigs);
+    const validIds = new Set(normalizedBotConfigs.map((config) => config.id));
+    updateConfig((config) => ({
+      ...config,
+      botConfigs: normalizedBotConfigs,
+      profile: {
+        ...config.profile,
+        profiles: config.profile.profiles.map((profile) =>
+          profile.botConfigId && !validIds.has(profile.botConfigId)
+            ? removeProfileBotReference(profile)
+            : profile
+        )
+      }
+    }));
+  }
+
+  function openBotSettingsWithAddDialog() {
+    setSettingsInitialPage("bots");
+    setSettingsBotAddRequestKey((current) => current + 1);
+    setSettingsOpen(true);
   }
 
   function changeOverviewWidgets(widgets: OverviewWidgetConfig[]) {
@@ -1853,7 +1868,7 @@ function App() {
       return;
     }
     setProfileEditIndex(index);
-    setProfileEditDraft(createProfileDraftFromProfile(profile));
+    setProfileEditDraft(createProfileDraftFromProfile(profile, draftConfig.botConfigs));
     setProfileActionError("");
   }
 
@@ -1966,7 +1981,7 @@ function App() {
 	      return false;
 	    }
 	    setProfileSubmitBusy("add");
-	    const profile = profileConfigFromDraft(profileDraft, draftConfig.profile.profiles);
+	    const profile = profileConfigFromDraft(profileDraft, draftConfig.profile.profiles, undefined, draftConfig.botConfigs);
 	    setProfileAgentTab(profile.agent);
     const next = buildConfigUpdate((config) => ({
       ...config,
@@ -2014,7 +2029,7 @@ function App() {
 	      setProfileActionError("Profile no longer exists.");
 	      return false;
 	    }
-    const nextProfile = profileConfigFromDraft(profileEditDraft, draftConfig.profile.profiles, currentProfile);
+    const nextProfile = profileConfigFromDraft(profileEditDraft, draftConfig.profile.profiles, currentProfile, draftConfig.botConfigs);
     setProfileAgentTab(nextProfile.agent);
     const next = buildConfigUpdate((config) => {
       const profiles = [...config.profile.profiles];
@@ -2110,7 +2125,10 @@ function App() {
               needsTrafficLightSafeArea={needsTrafficLightSafeArea}
               networkCaptureEnabled={networkCaptureEnabled}
               onOpenServerView={() => setActiveView("server")}
-              onOpenSettings={() => setSettingsOpen(true)}
+              onOpenSettings={() => {
+                setSettingsInitialPage("appearance");
+                setSettingsOpen(true);
+              }}
               onSelectNavigationItem={selectNavigationItem}
               onToggleSidebar={() => setSidebarOpen((current) => !current)}
               proxyStatus={proxyStatus}
@@ -2296,11 +2314,13 @@ function App() {
               onSubmit: submitPluginSettingsDraft
             } : undefined}
             profileAdd={profileAddOpen ? {
+              botConfigs: draftConfig.botConfigs,
               canSubmit: canSubmitProfile,
               draft: profileDraft,
               error: profileActionError,
               mode: "add",
 	              onChange: updateProfileDraft,
+	              onCreateBot: openBotSettingsWithAddDialog,
 	              onClose: () => setProfileAddOpen(false),
 	              providers: draftConfig.Providers,
 	              submitting: profileSubmitBusy === "add",
@@ -2308,11 +2328,13 @@ function App() {
 	              onSubmit: submitProfileDraft
 	            } : undefined}
             profileEdit={profileEditIndex !== undefined ? {
+              botConfigs: draftConfig.botConfigs,
               canSubmit: canSubmitProfileEdit,
               draft: profileEditDraft,
               error: profileActionError,
               mode: "edit",
               onChange: updateProfileEditDraft,
+              onCreateBot: openBotSettingsWithAddDialog,
               onClose: () => {
                 setProfileEditIndex(undefined);
                 setProfileActionError("");
@@ -2381,9 +2403,13 @@ function App() {
               providers: draftConfig.Providers
             } : undefined}
             settings={settingsOpen ? {
+              botAddRequestKey: settingsBotAddRequestKey,
+              botConfigs: draftConfig.botConfigs,
               copy,
+              initialPage: settingsInitialPage,
               isMac,
               languagePreference,
+              onChangeBotConfigs: changeBotConfigs,
               onCheckUpdate: checkForAppUpdate,
               onChangeLanguage: changeLanguagePreference,
               onChangeTheme: changeThemePreference,
@@ -2423,6 +2449,15 @@ function App() {
       </LayoutGroup>
     </AppI18nContext.Provider>
   );
+}
+
+function removeProfileBotReference(profile: ProfileConfig): ProfileConfig {
+  const { botConfigId: _botConfigId, botGateway: _botGateway, ...rest } = profile;
+  return rest;
+}
+
+function isProfileBotSelectionValid(draft: AddProfileDraft, botConfigs: BotGatewaySavedConfig[]): boolean {
+  return !draft.botEnabled || botConfigs.some((config) => config.id === draft.botConfigId.trim());
 }
 
 function formatUnknownError(error: unknown): string {

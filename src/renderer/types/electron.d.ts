@@ -1,5 +1,6 @@
 export {};
 
+import type * as React from "react";
 import type {
   AgentAnalysisFilter,
   AgentAnalysisSnapshot,
@@ -7,6 +8,12 @@ import type {
   AppInfo,
   AppUpdateStatus,
   ApiKeyConfig,
+  BotGatewayQrLoginCancelRequest,
+  BotGatewayQrLoginCancelResult,
+  BotGatewayQrLoginStartRequest,
+  BotGatewayQrLoginStartResult,
+  BotGatewayQrLoginWaitRequest,
+  BotGatewayQrLoginWaitResult,
   ClaudeAppGatewayApplyResult,
   GatewayMcpServerConfig,
   GatewayMcpToolInfo,
@@ -39,10 +46,24 @@ import type {
 } from "../../shared/app";
 
 declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      webview: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
+        allowpopups?: boolean | string;
+        partition?: string;
+        preload?: string;
+        src?: string;
+        title?: string;
+        webpreferences?: string;
+      };
+    }
+  }
+
   interface Window {
     ccr?: {
       applyClaudeAppGateway: (config?: AppConfig) => Promise<ClaudeAppGatewayApplyResult>;
       applyProfile: () => Promise<ProfileApplyResult>;
+      cancelBotGatewayQrLogin: (request: BotGatewayQrLoginCancelRequest) => Promise<BotGatewayQrLoginCancelResult>;
       clearProxyNetworkCaptures: () => Promise<ProxyNetworkSnapshot>;
       closeTray: () => Promise<void>;
       detectProviderIcon: (request: ProviderIconDetectionRequest) => Promise<ProviderIconDetectionResult>;
@@ -80,11 +101,13 @@ declare global {
       setTrayDetailOpen: (open: boolean, provider?: string) => Promise<void>;
       showMainWindow: () => Promise<void>;
       startGateway: () => Promise<GatewayStatus>;
+      startBotGatewayQrLogin: (request: BotGatewayQrLoginStartRequest) => Promise<BotGatewayQrLoginStartResult>;
       stopGateway: () => Promise<GatewayStatus>;
       testProviderAccountConnector: (request: ProviderAccountTestRequest) => Promise<ProviderAccountTestResult>;
       updateCheck: () => Promise<AppUpdateStatus>;
       updateDownload: () => Promise<AppUpdateStatus>;
       updateInstall: () => Promise<void>;
+      waitBotGatewayQrLogin: (request: BotGatewayQrLoginWaitRequest) => Promise<BotGatewayQrLoginWaitResult>;
       onBeforeQuit: (callback: () => void) => () => void;
       onProviderDeepLink: (callback: (request: ProviderDeepLinkRequest) => void) => () => void;
       onUpdateStatusChanged: (callback: (status: AppUpdateStatus) => void) => () => void;

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { enforceSingleEnabledGlobalProfilePerAgent, type ApiKeyConfig, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileConfig } from "../shared/app";
 import { replacePersistedApiKeys } from "./api-key-store";
+import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
 import { codexModelCatalogBase64 } from "./codex-model-catalog";
 import { CONFIGDIR } from "./constants";
@@ -47,7 +48,8 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
     const settings = readJsonObject(settingsFile);
     const env = {
       ...Object.fromEntries(stringRecord(settings.env)),
-      ...profileEnv(profile)
+      ...profileEnv(profile),
+      ...botGatewayProfileEnv(config, profile)
     };
     env.ANTHROPIC_BASE_URL = endpoint;
     env.ANTHROPIC_API_BASE_URL = endpoint;
@@ -66,19 +68,21 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
     }
 
     const helperResult = writeClaudeCodeApiKeyHelper(profile, token);
+    const wrapperResult = writeClaudeCodeWrapper(config, profile);
     const nextSettings = {
       ...settings,
       apiKeyHelper: helperResult.file,
       env
     };
     const writeResult = writeFileWithBackup(settingsFile, `${JSON.stringify(nextSettings, null, 2)}\n`);
+    const changed = writeResult.changed || helperResult.changed || wrapperResult.changed;
     return {
       appliedAt,
-      backupFile: writeResult.backupFile ?? helperResult.backupFile,
+      backupFile: writeResult.backupFile ?? helperResult.backupFile ?? wrapperResult.backupFile,
       client: "claude-code",
       enabled: true,
-      message: writeResult.changed || helperResult.changed
-        ? "Claude Code settings are managed by CCR."
+      message: changed
+        ? `Claude Code settings are managed by CCR (wrapper ${wrapperResult.file}).`
         : "Claude Code settings already match CCR.",
       ok: true,
       path: settingsFile
@@ -124,7 +128,7 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
       showAllSessions: Boolean(profile.showAllSessions)
     });
     const middlewareResult = profile.cliMiddleware
-      ? writeCodexCliMiddleware(profile, {
+      ? writeCodexCliMiddleware(config, profile, {
           configFormat,
           configFile,
           modelCatalogBase64: codexModelCatalogBase64(config, model),
@@ -385,7 +389,83 @@ function claudeCodeApiKeyHelperCmdScript(token: string): string {
   ].join("\r\n");
 }
 
+function writeClaudeCodeWrapper(config: AppConfig, profile: ProfileConfig): { backupFile?: string; changed: boolean; file: string } {
+  const binDir = path.join(CONFIGDIR, "bin");
+  mkdirSync(binDir, { recursive: true });
+  const runtimeFile = path.join(binDir, codexMiddlewareRuntimeFilename());
+  const runtimeResult = writeFileWithBackup(runtimeFile, codexCliMiddlewareRuntimeScript());
+  if (process.platform !== "win32") {
+    chmodSync(runtimeFile, 0o755);
+  }
+  const file = path.join(binDir, claudeCodeWrapperFilename(profile));
+  const content = process.platform === "win32"
+    ? claudeCodeWrapperCmdScript(config, profile, runtimeFile)
+    : claudeCodeWrapperShellScript(config, profile, runtimeFile);
+  const writeResult = writeFileWithBackup(file, content);
+  if (process.platform !== "win32") {
+    chmodSync(file, 0o755);
+  }
+  return {
+    backupFile: writeResult.backupFile ?? runtimeResult.backupFile,
+    changed: writeResult.changed || runtimeResult.changed,
+    file
+  };
+}
+
+function claudeCodeWrapperFilename(profile: ProfileConfig): string {
+  const slug = sanitizeProfilePathSegment(profile.id || profile.name || profile.agent).toLowerCase() || "claude-code";
+  return process.platform === "win32"
+    ? `ccr-claude-code-wrapper-${slug}.cmd`
+    : `ccr-claude-code-wrapper-${slug}`;
+}
+
+function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig, runtimeFile: string): string {
+  const realClaude = profile.env?.CCR_CLAUDE_CODE_BIN?.trim() || "claude";
+  const envExports = Object.entries({
+    ...profileEnv(profile),
+    ...botGatewayProfileEnv(config, profile)
+  })
+    .filter(([key]) => key !== "CCR_CLAUDE_CODE_BIN")
+    .map(([key, value]) => `export ${key}=${shellQuote(value)}`);
+  return [
+    "#!/bin/sh",
+    ...envExports,
+    `export CCR_CLAUDE_CODE_WRAPPER=1`,
+    `export CCR_REAL_CLAUDE_CODE_BIN=${shellQuote(realClaude)}`,
+    `export CODEXL_CLAUDE_CODE_BIN=${shellQuote(realClaude)}`,
+    "NODE_BIN=${CCR_NODE_BIN:-node}",
+    `exec "$NODE_BIN" ${shellQuote(runtimeFile)} "$@"`,
+    ""
+  ].join("\n");
+}
+
+function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, runtimeFile: string): string {
+  const realClaude = profile.env?.CCR_CLAUDE_CODE_BIN?.trim() || "claude";
+  const envExports = Object.entries({
+    ...profileEnv(profile),
+    ...botGatewayProfileEnv(config, profile)
+  })
+    .filter(([key]) => key !== "CCR_CLAUDE_CODE_BIN")
+    .map(([key, value]) => `set "${key}=${value.replace(/"/g, '\\"')}"`);
+  return [
+    "@echo off",
+    ...envExports,
+    `set "CCR_CLAUDE_CODE_WRAPPER=1"`,
+    `set "CCR_REAL_CLAUDE_CODE_BIN=${realClaude.replace(/"/g, '\\"')}"`,
+    `set "CODEXL_CLAUDE_CODE_BIN=${realClaude.replace(/"/g, '\\"')}"`,
+    "if not defined CCR_NODE_BIN set \"CCR_NODE_BIN=node\"",
+    "if \"%~1\"==\"\" (",
+    `  "%CCR_NODE_BIN%" "${runtimeFile.replace(/"/g, '\\"')}"`,
+    ") else (",
+    `  "%CCR_NODE_BIN%" "${runtimeFile.replace(/"/g, '\\"')}" %*`,
+    ")",
+    "exit /b %ERRORLEVEL%",
+    ""
+  ].join("\r\n");
+}
+
 function writeCodexCliMiddleware(
+  config: AppConfig,
   profile: ProfileConfig,
   values: {
     configFormat: "legacy" | "separate_profile_files";
@@ -404,8 +484,8 @@ function writeCodexCliMiddleware(
   }
   const file = path.join(binDir, codexMiddlewareFilename(profile, values.providerId));
   const content = process.platform === "win32"
-    ? codexMiddlewareCmdScript(profile, values, runtimeFile)
-    : codexMiddlewareShellScript(profile, values, runtimeFile);
+    ? codexMiddlewareCmdScript(config, profile, values, runtimeFile)
+    : codexMiddlewareShellScript(config, profile, values, runtimeFile);
   const writeResult = writeFileWithBackup(file, content);
   if (process.platform !== "win32") {
     chmodSync(file, 0o755);
@@ -428,6 +508,7 @@ function codexMiddlewareFilename(profile: ProfileConfig, providerId: string): st
 }
 
 function codexMiddlewareShellScript(
+  config: AppConfig,
   profile: ProfileConfig,
   values: {
     configFormat: "legacy" | "separate_profile_files";
@@ -442,7 +523,10 @@ function codexMiddlewareShellScript(
   const codexHome = profile.codexHome?.trim() || path.dirname(values.configFile);
   const remoteFrontendMode = normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode);
   const surface = normalizeProfileSurface(profile.surface);
-  const envExports = Object.entries(profileEnv(profile)).map(([key, value]) => `export ${key}=${shellQuote(value)}`);
+  const envExports = Object.entries({
+    ...profileEnv(profile),
+    ...botGatewayProfileEnv(config, profile)
+  }).map(([key, value]) => `export ${key}=${shellQuote(value)}`);
   return [
     "#!/bin/sh",
     ...envExports,
@@ -472,6 +556,7 @@ function codexMiddlewareShellScript(
 }
 
 function codexMiddlewareCmdScript(
+  config: AppConfig,
   profile: ProfileConfig,
   values: {
     configFormat: "legacy" | "separate_profile_files";
@@ -488,7 +573,10 @@ function codexMiddlewareCmdScript(
   const surface = normalizeProfileSurface(profile.surface);
   const providerId = values.providerId.replace(/"/g, '\\"');
   const workspaceName = (profile.name || values.providerId).replace(/"/g, '\\"');
-  const envExports = Object.entries(profileEnv(profile)).map(([key, value]) => `set "${key}=${value.replace(/"/g, '\\"')}"`);
+  const envExports = Object.entries({
+    ...profileEnv(profile),
+    ...botGatewayProfileEnv(config, profile)
+  }).map(([key, value]) => `set "${key}=${value.replace(/"/g, '\\"')}"`);
   return [
     "@echo off",
     ...envExports,

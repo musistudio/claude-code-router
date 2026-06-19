@@ -1,10 +1,13 @@
 import {
-  Activity, AppConfig, AppCopy, AppLanguagePreference, AppUpdateStatus, Boxes, Button,
-  Check, CircleAlert, closestCenter, cn, CSS, Database, Dialog, DialogBody, DialogContent,
-  DialogFooter, DialogHeader, DialogTitle, Field, formatSystemOption, Gauge,
-  DndContext, DragEndEvent, Input, KeyboardSensor, languageDisplayName, Layers3, LoaderCircle, Palette,
+  Activity, AppConfig, AppCopy, AppLanguagePreference, AppUpdateStatus, Boxes, BotGatewayConfigDraft, botGatewayAuthSpecsForPlatform,
+  botGatewayDefaultAuthType, botGatewayFieldsForAuth, botGatewayPickAuthFields, botGatewayPlatformLabel, botGatewayPlatformOptions,
+  botGatewaySavedConfigFromDraft, botGatewaySavedConfigLabel, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitResult, BotGatewaySavedConfig, Button,
+  Check, CheckCircle2, CircleAlert, closestCenter, cn, CSS, Database, Dialog, DialogBody, DialogContent,
+  DialogFooter, DialogHeader, DialogTitle, ExternalLink, Field, formatSystemOption, Gauge,
+  createBotGatewayConfigDraft, DndContext, DragEndEvent, Input, isBotGatewayConfigDraftSubmittable, KeyboardSensor, languageDisplayName, Layers3, LoaderCircle,
+  normalizeBotGatewayAuthType, normalizeBotGatewayPlatform, Palette,
   PanelLeftOpen, Power, ReactNode, ResolvedLanguage, ResolvedTheme, Select, SelectControl,
-  PointerSensor, rectSortingStrategy, RefreshCw, SettingsPageId, SortableContext, sortableKeyboardCoordinates, themeDisplayName,
+  PointerSensor, QrCode, rectSortingStrategy, RefreshCw, SettingsPageId, SortableContext, sortableKeyboardCoordinates, themeDisplayName,
   TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant,
   trayMascotIconUrls, arrayMove, defaultTrayWidgetVariant, isTraySingletonWidgetType, normalizeTrayWidget, normalizeTrayWidgets, Switch, trayWidgetVariantOptions, useEffect, useMemo, useRef, useSensor, useSensors, useSortable, useState,
   X
@@ -13,9 +16,13 @@ import {
 type UpdateActionBusy = "" | "check" | "download" | "install";
 
 export function AppSettingsDialog({
+  botAddRequestKey,
+  botConfigs,
   copy,
+  initialPage = "appearance",
   isMac,
   languagePreference,
+  onChangeBotConfigs,
   onCheckUpdate,
   onChangeLanguage,
   onChangeTheme,
@@ -35,9 +42,13 @@ export function AppSettingsDialog({
   updateActionError,
   updateStatus
 }: {
+  botAddRequestKey?: number;
+  botConfigs: BotGatewaySavedConfig[];
   copy: AppCopy;
+  initialPage?: SettingsPageId;
   isMac: boolean;
   languagePreference: AppLanguagePreference;
+  onChangeBotConfigs: (configs: BotGatewaySavedConfig[]) => void;
   onCheckUpdate: () => Promise<void>;
   onChangeLanguage: (value: string) => void;
   onChangeTheme: (value: string) => void;
@@ -60,6 +71,7 @@ export function AppSettingsDialog({
   return (
     <SettingsLayout
       copy={copy}
+      initialPage={initialPage}
       isMac={isMac}
       onClose={onClose}
       renderPage={(activePage) => {
@@ -89,6 +101,16 @@ export function AppSettingsDialog({
             />
           );
         }
+        if (activePage === "bots") {
+          return (
+            <BotSettingsPage
+              addRequestKey={botAddRequestKey}
+              botConfigs={botConfigs}
+              copy={copy}
+              onChange={onChangeBotConfigs}
+            />
+          );
+        }
         return (
           <UpdateSettingsPage
             actionBusy={updateActionBusy}
@@ -107,17 +129,23 @@ export function AppSettingsDialog({
 
 function SettingsLayout({
   copy,
+  initialPage,
   isMac,
   onClose,
   renderPage
 }: {
   copy: AppCopy;
+  initialPage: SettingsPageId;
   isMac: boolean;
   onClose: () => void;
   renderPage: (activePage: SettingsPageId) => ReactNode;
 }) {
-  const [activePage, setActivePage] = useState<SettingsPageId>("appearance");
+  const [activePage, setActivePage] = useState<SettingsPageId>(initialPage);
   const visiblePage = activePage === "tray" && !isMac ? "appearance" : activePage;
+
+  useEffect(() => {
+    setActivePage(initialPage);
+  }, [initialPage]);
 
   return (
     <Dialog onOpenChange={(open) => !open && onClose()}>
@@ -138,6 +166,13 @@ function SettingsLayout({
               icon={Palette}
               label={copy.settings.appearance}
               onClick={() => setActivePage("appearance")}
+            />
+            <SettingsPageButton
+              active={visiblePage === "bots"}
+              className="mt-1"
+              icon={Boxes}
+              label={copy.settings.bots}
+              onClick={() => setActivePage("bots")}
             />
             {isMac ? (
               <SettingsPageButton
@@ -250,6 +285,536 @@ function AppearanceSettingsPage({
       </div>
     </div>
   );
+}
+
+function BotSettingsPage({
+  addRequestKey = 0,
+  botConfigs,
+  copy,
+  onChange
+}: {
+  addRequestKey?: number;
+  botConfigs: BotGatewaySavedConfig[];
+  copy: AppCopy;
+  onChange: (configs: BotGatewaySavedConfig[]) => void;
+}) {
+  const t = (value: string) => copy.text[value] ?? value;
+  const [editor, setEditor] = useState<{ config?: BotGatewaySavedConfig; mode: "add" | "edit" }>();
+  const lastAddRequestKey = useRef(0);
+
+  useEffect(() => {
+    if (addRequestKey === lastAddRequestKey.current) {
+      return;
+    }
+    lastAddRequestKey.current = addRequestKey;
+    setEditor({ mode: "add" });
+  }, [addRequestKey]);
+
+  function saveBotConfig(config: BotGatewaySavedConfig) {
+    const exists = botConfigs.some((item) => item.id === config.id);
+    onChange(exists
+      ? botConfigs.map((item) => item.id === config.id ? config : item)
+      : [...botConfigs, config]);
+    setEditor(undefined);
+  }
+
+  function removeBotConfig(config: BotGatewaySavedConfig) {
+    onChange(botConfigs.filter((item) => item.id !== config.id));
+  }
+
+  return (
+    <div className="mx-auto grid max-w-[760px] grid-cols-1 gap-5">
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-[15px] font-semibold text-foreground">{copy.settings.bots}</h3>
+          <div className="mt-1 text-[12px] text-muted-foreground">{t("Manage bots used by agent profiles.")}</div>
+        </div>
+        <Button onClick={() => setEditor({ mode: "add" })} size="sm" type="button">
+          {t("Add bot")}
+        </Button>
+      </div>
+
+      <div className="grid gap-2">
+        {botConfigs.length === 0 ? (
+          <div className="rounded-md border border-dashed border-border bg-muted/20 px-3 py-8 text-center text-[12px] text-muted-foreground">
+            {t("No bots configured")}
+          </div>
+        ) : null}
+        {botConfigs.map((config) => (
+          <div className="flex min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-background px-3 py-2.5" key={config.id}>
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-semibold text-foreground">{config.name}</div>
+              <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                {t(botGatewayPlatformLabel(config.botGateway.platform))}
+                {config.botGateway.authType ? ` / ${t(authMethodLabel(config.botGateway.platform, config.botGateway.authType))}` : ""}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button onClick={() => setEditor({ config, mode: "edit" })} size="sm" type="button" variant="outline">
+                {t("Edit")}
+              </Button>
+              <Button onClick={() => removeBotConfig(config)} size="sm" type="button" variant="outline">
+                {t("Delete")}
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {editor ? (
+        <BotConfigDialog
+          botConfigs={botConfigs}
+          config={editor.config}
+          copy={copy}
+          mode={editor.mode}
+          onClose={() => setEditor(undefined)}
+          onSave={saveBotConfig}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+type BotQrDisplay =
+  | { kind: "empty"; src: "" }
+  | { kind: "frame"; src: string }
+  | { kind: "image"; src: string };
+
+type BotQrLoginState = {
+  display: BotQrDisplay;
+  error: string;
+  loading: boolean;
+  message: string;
+  savedConfig?: BotGatewaySavedConfig;
+  start?: BotGatewayQrLoginStartResult;
+  status: string;
+  wait?: BotGatewayQrLoginWaitResult;
+};
+
+function BotConfigDialog({
+  botConfigs,
+  config,
+  copy,
+  mode,
+  onClose,
+  onSave
+}: {
+  botConfigs: BotGatewaySavedConfig[];
+  config?: BotGatewaySavedConfig;
+  copy: AppCopy;
+  mode: "add" | "edit";
+  onClose: () => void;
+  onSave: (config: BotGatewaySavedConfig) => void;
+}) {
+  const t = (value: string) => copy.text[value] ?? value;
+  const [draft, setDraft] = useState<BotGatewayConfigDraft>(() => createBotGatewayConfigDraft(config));
+  const [error, setError] = useState("");
+  const [qrLogin, setQrLogin] = useState<BotQrLoginState>(() => emptyBotQrLoginState());
+  const qrSessionRef = useRef("");
+  const platform = normalizeBotGatewayPlatform(draft.botPlatform);
+  const authType = normalizeBotGatewayAuthType(platform, draft.botAuthType);
+  const authSpecs = botGatewayAuthSpecsForPlatform(platform);
+  const authFields = botGatewayFieldsForAuth(platform, authType);
+  const platformOptions = botGatewayPlatformOptions.map((option) => ({ ...option, label: t(option.label) }));
+  const authOptions = authSpecs.map((option) => ({ label: t(option.label), value: option.value }));
+  const qrLoginSupported = platform === "weixin-ilink" && authType === "qr_login";
+  const qrModeKey = qrLoginSupported ? `${config?.id ?? "new"}:${platform}:${authType}` : "";
+
+  function update(patch: Partial<BotGatewayConfigDraft>) {
+    setDraft((current) => ({ ...current, ...patch }));
+    setError("");
+  }
+
+  function updatePlatform(value: string) {
+    const nextPlatform = normalizeBotGatewayPlatform(value);
+    const nextAuthType = botGatewayDefaultAuthType(nextPlatform);
+    update({
+      botAuthFields: botGatewayPickAuthFields(draft.botAuthFields, nextPlatform, nextAuthType),
+      botAuthType: nextAuthType,
+      botPlatform: nextPlatform
+    });
+  }
+
+  function updateAuthType(value: string) {
+    const nextAuthType = normalizeBotGatewayAuthType(platform, value);
+    update({
+      botAuthFields: botGatewayPickAuthFields(draft.botAuthFields, platform, nextAuthType),
+      botAuthType: nextAuthType
+    });
+  }
+
+  function save() {
+    if (!isBotGatewayConfigDraftSubmittable(draft)) {
+      setError(t("Bot name, platform, and required authentication fields are required."));
+      return;
+    }
+    const saved = botGatewaySavedConfigFromDraft(draft, botConfigs, config ?? qrLogin.savedConfig);
+    if (qrLogin.start && saved.botGateway.platform === "weixin-ilink") {
+      saved.botGateway = {
+        ...saved.botGateway,
+        integrationId: qrLogin.start.integrationId,
+        stateDir: qrLogin.start.stateDir,
+        tenantId: qrLogin.start.tenantId
+      };
+    }
+    onSave(saved);
+  }
+
+  function qrSavedConfigDraft(): BotGatewaySavedConfig {
+    return botGatewaySavedConfigFromDraft(
+      draft.name.trim() ? draft : { ...draft, name: t(botGatewayPlatformLabel(platform)) },
+      botConfigs,
+      config ?? qrLogin.savedConfig
+    );
+  }
+
+  async function cancelQrSession(sessionId = qrSessionRef.current) {
+    const normalized = sessionId.trim();
+    if (!normalized) {
+      return;
+    }
+    qrSessionRef.current = "";
+    await window.ccr?.cancelBotGatewayQrLogin?.({ sessionId: normalized }).catch(() => undefined);
+  }
+
+  async function startQrLogin(force = true) {
+    if (!window.ccr?.startBotGatewayQrLogin) {
+      setQrLogin((current) => ({
+        ...current,
+        error: t("QR login is available in the Electron app."),
+        loading: false
+      }));
+      return;
+    }
+
+    const savedConfig = qrSavedConfigDraft();
+    setQrLogin((current) => ({
+      ...current,
+      error: "",
+      loading: true,
+      message: t("Generating QR code"),
+      savedConfig,
+      status: "starting"
+    }));
+    await cancelQrSession();
+    try {
+      const start = await window.ccr.startBotGatewayQrLogin({ config: savedConfig, force });
+      qrSessionRef.current = start.sessionId;
+      setQrLogin({
+        display: normalizeBotQrDisplay(start.qrCodeUrl),
+        error: "",
+        loading: false,
+        message: start.message || t("Scan the QR code in Weixin."),
+        savedConfig,
+        start,
+        status: "qr_pending"
+      });
+    } catch (error) {
+      setQrLogin((current) => ({
+        ...current,
+        error: formatBotQrError(error),
+        loading: false,
+        message: "",
+        status: "failed"
+      }));
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      const sessionId = qrSessionRef.current;
+      if (sessionId) {
+        void window.ccr?.cancelBotGatewayQrLogin?.({ sessionId }).catch(() => undefined);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!qrModeKey) {
+      void cancelQrSession();
+      setQrLogin(emptyBotQrLoginState());
+      return;
+    }
+    setQrLogin(emptyBotQrLoginState());
+    void startQrLogin(false);
+  }, [qrModeKey]);
+
+  useEffect(() => {
+    const sessionId = qrLogin.start?.sessionId;
+    if (!sessionId || !window.ccr?.waitBotGatewayQrLogin) {
+      return;
+    }
+    let cancelled = false;
+    let timer: number | undefined;
+    const poll = async () => {
+      if (cancelled) {
+        return;
+      }
+      try {
+        const wait = await window.ccr?.waitBotGatewayQrLogin?.({ sessionId, timeoutMs: 5000 });
+        if (cancelled || !wait) {
+          return;
+        }
+        setQrLogin((current) => current.start?.sessionId === sessionId
+          ? {
+              ...current,
+              error: "",
+              message: wait.message || current.message,
+              status: wait.status,
+              wait
+            }
+          : current);
+        if (isTerminalBotQrLoginStatus(wait.status)) {
+          qrSessionRef.current = "";
+          return;
+        }
+        timer = window.setTimeout(poll, 1200);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        setQrLogin((current) => current.start?.sessionId === sessionId
+          ? { ...current, error: formatBotQrError(error) }
+          : current);
+        timer = window.setTimeout(poll, 2500);
+      }
+    };
+    timer = window.setTimeout(poll, 800);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+      }
+    };
+  }, [qrLogin.start?.sessionId]);
+
+  return (
+    <Dialog onOpenChange={(open) => !open && onClose()} open>
+      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{mode === "add" ? t("Add bot") : t("Edit bot")}</DialogTitle>
+          <Button aria-label={copy.settings.close} onClick={onClose} size="iconSm" title={copy.settings.close} type="button" variant="ghost">
+            <X className="h-4 w-4" />
+          </Button>
+        </DialogHeader>
+        <DialogBody>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field className="sm:col-span-2" label={t("Name")}>
+              <Input value={draft.name} onChange={(event) => update({ name: event.target.value })} />
+            </Field>
+            <Field label={t("Platform")}>
+              <SelectControl onChange={updatePlatform} options={platformOptions} value={platform} />
+            </Field>
+            {authOptions.length > 0 ? (
+              <Field label={t("Auth method")}>
+                <SelectControl onChange={updateAuthType} options={authOptions} value={authType} />
+              </Field>
+            ) : null}
+            {authFields.map((field) => (
+              <Field
+                key={field.key}
+                label={field.required ? t(field.label) : `${t(field.label)} (${t("Optional")})`}
+              >
+                <Input
+                  autoComplete="off"
+                  placeholder={field.placeholder ?? ""}
+                  type={field.type === "password" ? "password" : "text"}
+                  value={draft.botAuthFields[field.key] ?? ""}
+                  onChange={(event) => update({
+                    botAuthFields: {
+                      ...draft.botAuthFields,
+                      [field.key]: event.target.value
+                    }
+                  })}
+                />
+              </Field>
+            ))}
+            {qrLoginSupported ? (
+              <div className="rounded-md border border-border bg-muted/20 p-3 sm:col-span-2">
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[12px] font-semibold text-foreground">{t("Weixin QR login")}</div>
+                    <div className="mt-1 text-[11px] text-muted-foreground">
+                      {qrLogin.message || t("Scan with Weixin to connect this bot.")}
+                    </div>
+                  </div>
+                  <Button
+                    disabled={qrLogin.loading}
+                    onClick={() => void startQrLogin(true)}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    {qrLogin.loading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    {qrLogin.start ? t("Regenerate") : t("Generate QR code")}
+                  </Button>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[184px_minmax(0,1fr)]">
+                  <div className="flex h-[184px] w-full items-center justify-center overflow-hidden rounded-md border border-border bg-white p-2">
+                    <BotQrPreview display={qrLogin.display} label={t("Weixin QR code")} />
+                  </div>
+                  <div className="grid min-w-0 content-start gap-2">
+                    <div className="rounded-md border border-border bg-background px-3 py-2">
+                      <div className="flex min-w-0 items-center gap-2 text-[12px] font-medium text-foreground">
+                        {qrLogin.loading ? (
+                          <LoaderCircle className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                        ) : qrLogin.status === "confirmed" ? (
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald" />
+                        ) : qrLogin.error || isFailedBotQrLoginStatus(qrLogin.status) ? (
+                          <CircleAlert className="h-3.5 w-3.5 text-destructive" />
+                        ) : (
+                          <QrCode className="h-3.5 w-3.5 text-muted-foreground" />
+                        )}
+                        <span>{t(botQrLoginStatusLabel(qrLogin.status))}</span>
+                      </div>
+                      {qrLogin.error ? (
+                        <div className="mt-1 break-words text-[11px] text-destructive">{qrLogin.error}</div>
+                      ) : null}
+                    </div>
+                    {qrLogin.start?.expiresAt ? (
+                      <div className="rounded-md border border-border bg-background px-3 py-2">
+                        <div className="text-[11px] font-medium text-muted-foreground">{t("Expires")}</div>
+                        <div className="mt-1 break-all font-mono text-[11px] text-foreground">{qrLogin.start.expiresAt}</div>
+                      </div>
+                    ) : null}
+                    {qrLogin.display.kind === "frame" ? (
+                      <Button
+                        onClick={() => void window.ccr?.openExternal?.(qrLogin.display.src)}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        {t("Open")}
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 sm:col-span-2">
+              <span className="text-[12px] font-medium">{t("Forward agent messages")}</span>
+              <Switch checked={draft.botForwardAllAgentMessages} onCheckedChange={(checked) => update({ botForwardAllAgentMessages: checked === true })} />
+            </div>
+            <div className="rounded-md border border-border bg-muted/20 p-3 sm:col-span-2">
+              <div className="flex min-w-0 items-center justify-between gap-3">
+                <span className="text-[12px] font-medium">{t("Handoff")}</span>
+                <Switch checked={draft.botHandoffEnabled} onCheckedChange={(checked) => update({ botHandoffEnabled: checked === true })} />
+              </div>
+              {draft.botHandoffEnabled ? (
+                <div className="mt-3 grid grid-cols-1 gap-3 border-t border-border/70 pt-3 sm:grid-cols-2">
+                  <Field label={t("Idle seconds")}>
+                    <Input type="number" value={draft.botHandoffIdleSeconds} onChange={(event) => update({ botHandoffIdleSeconds: event.target.value })} />
+                  </Field>
+                  <Field label={t("Phone Wi-Fi target")}>
+                    <Input value={draft.botHandoffPhoneWifiTargets} onChange={(event) => update({ botHandoffPhoneWifiTargets: event.target.value })} />
+                  </Field>
+                  <Field label={t("Phone Bluetooth target")}>
+                    <Input value={draft.botHandoffPhoneBluetoothTargets} onChange={(event) => update({ botHandoffPhoneBluetoothTargets: event.target.value })} />
+                  </Field>
+                </div>
+              ) : null}
+            </div>
+          </div>
+          {error ? (
+            <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
+              {error}
+            </div>
+          ) : null}
+        </DialogBody>
+        <DialogFooter>
+          <Button onClick={onClose} type="button" variant="outline">{t("Cancel")}</Button>
+          <Button onClick={save} type="button">{t("Save")}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function BotQrPreview({ display, label }: { display: BotQrDisplay; label: string }) {
+  if (display.kind === "image") {
+    return <img alt={label} className="h-full w-full object-contain" src={display.src} />;
+  }
+  if (display.kind === "frame") {
+    return (
+      <webview
+        className="h-full w-full bg-white"
+        partition="persist:ccr-weixin-bot-qr"
+        src={display.src}
+        title={label}
+        webpreferences="contextIsolation=yes,nodeIntegration=no,sandbox=yes"
+      />
+    );
+  }
+  return <QrCode className="h-16 w-16 text-black/45" />;
+}
+
+function emptyBotQrLoginState(): BotQrLoginState {
+  return {
+    display: { kind: "empty", src: "" },
+    error: "",
+    loading: false,
+    message: "",
+    status: "idle"
+  };
+}
+
+function normalizeBotQrDisplay(raw: string): BotQrDisplay {
+  const value = raw.trim();
+  if (!value) {
+    return { kind: "empty", src: "" };
+  }
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    return { kind: "frame", src: value };
+  }
+  if (value.startsWith("data:")) {
+    return { kind: "image", src: value };
+  }
+  if (value.startsWith("<svg")) {
+    return { kind: "image", src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(value)}` };
+  }
+  return { kind: "image", src: `data:image/png;base64,${value}` };
+}
+
+function isTerminalBotQrLoginStatus(status: string): boolean {
+  return ["already_bound", "confirmed", "expired", "failed"].includes(status);
+}
+
+function isFailedBotQrLoginStatus(status: string): boolean {
+  return ["already_bound", "expired", "failed"].includes(status);
+}
+
+function botQrLoginStatusLabel(status: string): string {
+  switch (status) {
+    case "starting":
+      return "Generating QR code";
+    case "qr_pending":
+    case "pending":
+      return "Waiting for scan";
+    case "scanned":
+      return "Scanned, confirm on phone";
+    case "needs_verification":
+      return "Verification required";
+    case "confirmed":
+      return "Connected";
+    case "expired":
+      return "QR code expired";
+    case "already_bound":
+      return "Already connected";
+    case "failed":
+      return "QR login failed";
+    default:
+      return "Waiting for QR code";
+  }
+}
+
+function formatBotQrError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function authMethodLabel(platform: string, authType: string): string {
+  const normalized = normalizeBotGatewayAuthType(platform, authType);
+  return botGatewayAuthSpecsForPlatform(platform).find((option) => option.value === normalized)?.label ?? normalized;
 }
 
 function UpdateSettingsPage({
