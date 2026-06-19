@@ -1,15 +1,15 @@
 import {
   Activity, AppConfig, AppCopy, AppLanguagePreference, AppUpdateStatus, Boxes, BotGatewayConfigDraft, botGatewayAuthSpecsForPlatform,
   botGatewayDefaultAuthType, botGatewayFieldsForAuth, botGatewayPickAuthFields, botGatewayPlatformLabel, botGatewayPlatformOptions,
-  botGatewaySavedConfigFromDraft, botGatewaySavedConfigLabel, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitResult, BotGatewaySavedConfig, Button,
-  Check, CheckCircle2, CircleAlert, closestCenter, cn, CSS, Database, Dialog, DialogBody, DialogContent,
-  DialogFooter, DialogHeader, DialogTitle, ExternalLink, Field, formatSystemOption, Gauge,
+  botGatewaySavedConfigFromDraft, botGatewaySavedConfigLabel, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitResult, BotGatewayQrWindowOpenResult, BotGatewaySavedConfig, Button,
+  Check, CircleAlert, closestCenter, cn, CSS, Database, Dialog, DialogBody, DialogContent,
+  DialogFooter, DialogHeader, DialogTitle, Field, formatProviderAccountMeterValue, formatSystemOption, Gauge,
   createBotGatewayConfigDraft, DndContext, DragEndEvent, Input, isBotGatewayConfigDraftSubmittable, KeyboardSensor, languageDisplayName, Layers3, LoaderCircle,
-  normalizeBotGatewayAuthType, normalizeBotGatewayPlatform, Palette,
-  PanelLeftOpen, Power, ReactNode, ResolvedLanguage, ResolvedTheme, Select, SelectControl,
-  PointerSensor, QrCode, rectSortingStrategy, RefreshCw, SettingsPageId, SortableContext, sortableKeyboardCoordinates, themeDisplayName,
-  TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant,
-  trayMascotIconUrls, arrayMove, defaultTrayWidgetVariant, isTraySingletonWidgetType, normalizeTrayWidget, normalizeTrayWidgets, Switch, trayWidgetVariantOptions, useEffect, useMemo, useRef, useSensor, useSensors, useSortable, useState,
+  normalizeBotGatewayAuthType, normalizeBotGatewayPlatform, Palette, ProfileConfig, profileAgentLabel,
+  PanelLeftOpen, Power, ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ResolvedLanguage, ResolvedTheme, Select, SelectControl,
+  PointerSensor, rectSortingStrategy, RefreshCw, SettingsPageId, SortableContext, sortableKeyboardCoordinates, themeDisplayName,
+  TrayBalanceProgressConfig, TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant,
+  appLogoUrl, trayMascotIconUrls, arrayMove, defaultTrayWidgetVariant, isTraySingletonWidgetType, normalizeTrayWidget, normalizeTrayWidgets, Switch, Trash2, trayWidgetVariantOptions, useEffect, useMemo, useRef, useSensor, useSensors, useSortable, useState,
   X
 } from "../shared";
 
@@ -23,20 +23,22 @@ export function AppSettingsDialog({
   isMac,
   languagePreference,
   onChangeBotConfigs,
+  onChangeTrayBalanceProgress,
   onCheckUpdate,
   onChangeLanguage,
   onChangeTheme,
   onChangeTrayIcon,
-  onChangeTrayProgressTarget,
   onChangeTrayWidgets,
   onClose,
   onDownloadUpdate,
   onInstallUpdate,
+  profiles,
+  providerAccountSnapshots,
   systemLanguage,
   systemTheme,
   themePreference,
+  trayBalanceProgress,
   trayIconPreference,
-  trayProgressTargetTokens,
   trayWidgets,
   updateActionBusy,
   updateActionError,
@@ -49,20 +51,22 @@ export function AppSettingsDialog({
   isMac: boolean;
   languagePreference: AppLanguagePreference;
   onChangeBotConfigs: (configs: BotGatewaySavedConfig[]) => void;
+  onChangeTrayBalanceProgress: (config: TrayBalanceProgressConfig) => void;
   onCheckUpdate: () => Promise<void>;
   onChangeLanguage: (value: string) => void;
   onChangeTheme: (value: string) => void;
   onChangeTrayIcon: (value: string) => void;
-  onChangeTrayProgressTarget: (value: string) => void;
   onChangeTrayWidgets: (widgets: TrayWidgetConfig[]) => void;
   onClose: () => void;
   onDownloadUpdate: () => Promise<void>;
   onInstallUpdate: () => Promise<void>;
+  profiles: ProfileConfig[];
+  providerAccountSnapshots: ProviderAccountSnapshot[];
   systemLanguage: ResolvedLanguage;
   systemTheme: ResolvedTheme;
   themePreference: AppConfig["theme"];
+  trayBalanceProgress?: TrayBalanceProgressConfig;
   trayIconPreference: AppConfig["trayIcon"];
-  trayProgressTargetTokens: number;
   trayWidgets: TrayWidgetConfig[];
   updateActionBusy: UpdateActionBusy;
   updateActionError: string;
@@ -92,11 +96,12 @@ export function AppSettingsDialog({
           return (
             <TraySettingsPage
               copy={copy}
+              onChangeTrayBalanceProgress={onChangeTrayBalanceProgress}
               onChangeTrayIcon={onChangeTrayIcon}
-              onChangeTrayProgressTarget={onChangeTrayProgressTarget}
               onChangeTrayWidgets={onChangeTrayWidgets}
+              providerAccountSnapshots={providerAccountSnapshots}
+              trayBalanceProgress={trayBalanceProgress}
               trayIconPreference={trayIconPreference}
-              trayProgressTargetTokens={trayProgressTargetTokens}
               trayWidgets={trayWidgets}
             />
           );
@@ -108,6 +113,7 @@ export function AppSettingsDialog({
               botConfigs={botConfigs}
               copy={copy}
               onChange={onChangeBotConfigs}
+              profiles={profiles}
             />
           );
         }
@@ -291,15 +297,18 @@ function BotSettingsPage({
   addRequestKey = 0,
   botConfigs,
   copy,
-  onChange
+  onChange,
+  profiles
 }: {
   addRequestKey?: number;
   botConfigs: BotGatewaySavedConfig[];
   copy: AppCopy;
   onChange: (configs: BotGatewaySavedConfig[]) => void;
+  profiles: ProfileConfig[];
 }) {
   const t = (value: string) => copy.text[value] ?? value;
   const [editor, setEditor] = useState<{ config?: BotGatewaySavedConfig; mode: "add" | "edit" }>();
+  const [deleteTarget, setDeleteTarget] = useState<BotGatewaySavedConfig>();
   const lastAddRequestKey = useRef(0);
 
   useEffect(() => {
@@ -319,7 +328,11 @@ function BotSettingsPage({
   }
 
   function removeBotConfig(config: BotGatewaySavedConfig) {
+    if (botConfigUsageProfiles(config, profiles).length > 0) {
+      return;
+    }
     onChange(botConfigs.filter((item) => item.id !== config.id));
+    setDeleteTarget(undefined);
   }
 
   return (
@@ -340,25 +353,29 @@ function BotSettingsPage({
             {t("No bots configured")}
           </div>
         ) : null}
-        {botConfigs.map((config) => (
-          <div className="flex min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-background px-3 py-2.5" key={config.id}>
-            <div className="min-w-0">
-              <div className="truncate text-[13px] font-semibold text-foreground">{config.name}</div>
-              <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                {t(botGatewayPlatformLabel(config.botGateway.platform))}
-                {config.botGateway.authType ? ` / ${t(authMethodLabel(config.botGateway.platform, config.botGateway.authType))}` : ""}
+        {botConfigs.map((config) => {
+          const usedByProfiles = botConfigUsageProfiles(config, profiles);
+          return (
+            <div className="flex min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-background px-3 py-2.5" key={config.id}>
+              <div className="min-w-0">
+                <div className="truncate text-[13px] font-semibold text-foreground">{config.name}</div>
+                <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                  {t(botGatewayPlatformLabel(config.botGateway.platform))}
+                  {config.botGateway.authType ? ` / ${t(authMethodLabel(config.botGateway.platform, config.botGateway.authType))}` : ""}
+                  {usedByProfiles.length > 0 ? ` · ${botUsageCountLabel(usedByProfiles.length, t)}` : ""}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button onClick={() => setEditor({ config, mode: "edit" })} size="sm" type="button" variant="outline">
+                  {t("Edit")}
+                </Button>
+                <Button onClick={() => setDeleteTarget(config)} size="sm" type="button" variant="outline">
+                  {t("Delete")}
+                </Button>
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <Button onClick={() => setEditor({ config, mode: "edit" })} size="sm" type="button" variant="outline">
-                {t("Edit")}
-              </Button>
-              <Button onClick={() => removeBotConfig(config)} size="sm" type="button" variant="outline">
-                {t("Delete")}
-              </Button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {editor ? (
@@ -371,14 +388,112 @@ function BotSettingsPage({
           onSave={saveBotConfig}
         />
       ) : null}
+      {deleteTarget ? (
+        <DeleteBotDialog
+          config={deleteTarget}
+          copy={copy}
+          onClose={() => setDeleteTarget(undefined)}
+          onConfirm={() => removeBotConfig(deleteTarget)}
+          usedByProfiles={botConfigUsageProfiles(deleteTarget, profiles)}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function botConfigUsageProfiles(config: BotGatewaySavedConfig, profiles: ProfileConfig[]): ProfileConfig[] {
+  return profiles.filter((profile) => profile.botConfigId === config.id);
+}
+
+function botUsageProfileLabel(profile: ProfileConfig, t: (value: string) => string): string {
+  const agent = t(profileAgentLabel(profile.agent));
+  const name = profile.name.trim();
+  return name && name !== agent ? `${agent} / ${name}` : agent;
+}
+
+function botUsageCountLabel(count: number, t: (value: string) => string): string {
+  return t("{count} agent profiles use this bot").replace("{count}", String(count));
+}
+
+function DeleteBotDialog({
+  config,
+  copy,
+  onClose,
+  onConfirm,
+  usedByProfiles
+}: {
+  config: BotGatewaySavedConfig;
+  copy: AppCopy;
+  onClose: () => void;
+  onConfirm: () => void;
+  usedByProfiles: ProfileConfig[];
+}) {
+  const t = (value: string) => copy.text[value] ?? value;
+  const isBlocked = usedByProfiles.length > 0;
+  return (
+    <Dialog onOpenChange={(open) => !open && onClose()} open>
+      <DialogContent className="max-w-[520px]">
+        <DialogHeader>
+          <div className="min-w-0">
+            <DialogTitle>{t("Delete bot")}</DialogTitle>
+          </div>
+          <Button aria-label={copy.settings.close} onClick={onClose} size="iconSm" title={copy.settings.close} type="button" variant="ghost">
+            <X className="h-4 w-4" />
+          </Button>
+        </DialogHeader>
+        <DialogBody>
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5">
+            <div className="flex items-start gap-2 text-[12px] font-medium text-destructive">
+              <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{isBlocked ? t("This bot is being used by the following agents and cannot be deleted.") : t("Delete this bot?")}</span>
+            </div>
+            <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+              <div className="truncate" title={config.name}>
+                <span className="font-medium text-foreground">{t("Name")}:</span> {config.name}
+              </div>
+              <div className="truncate">
+                <span className="font-medium text-foreground">{t("Platform")}:</span> {t(botGatewayPlatformLabel(config.botGateway.platform))}
+              </div>
+              {isBlocked ? (
+                <div className="space-y-1 pt-1">
+                  {usedByProfiles.map((profile) => (
+                    <div className="truncate rounded border border-destructive/20 bg-background/70 px-2 py-1 text-foreground" key={profile.id} title={botUsageProfileLabel(profile, t)}>
+                      {botUsageProfileLabel(profile, t)}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div>{t("After deletion, this bot data cannot be recovered.")}</div>
+              )}
+            </div>
+          </div>
+        </DialogBody>
+        <DialogFooter>
+          {isBlocked ? (
+            <Button autoFocus onClick={onClose} type="button">
+              {copy.settings.close}
+            </Button>
+          ) : (
+            <>
+              <Button autoFocus onClick={onClose} type="button" variant="outline">
+                {t("Cancel")}
+              </Button>
+              <Button onClick={onConfirm} type="button" variant="destructive">
+                <Trash2 className="h-4 w-4" />
+                {t("Delete")}
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 type BotQrDisplay =
   | { kind: "empty"; src: "" }
-  | { kind: "frame"; src: string }
-  | { kind: "image"; src: string };
+  | { kind: "image"; src: string }
+  | { kind: "window"; src: string };
 
 type BotQrLoginState = {
   display: BotQrDisplay;
@@ -410,6 +525,9 @@ function BotConfigDialog({
   const [draft, setDraft] = useState<BotGatewayConfigDraft>(() => createBotGatewayConfigDraft(config));
   const [error, setError] = useState("");
   const [qrLogin, setQrLogin] = useState<BotQrLoginState>(() => emptyBotQrLoginState());
+  const [saving, setSaving] = useState(false);
+  const qrMountedRef = useRef(false);
+  const qrStartGenerationRef = useRef(0);
   const qrSessionRef = useRef("");
   const platform = normalizeBotGatewayPlatform(draft.botPlatform);
   const authType = normalizeBotGatewayAuthType(platform, draft.botAuthType);
@@ -418,7 +536,8 @@ function BotConfigDialog({
   const platformOptions = botGatewayPlatformOptions.map((option) => ({ ...option, label: t(option.label) }));
   const authOptions = authSpecs.map((option) => ({ label: t(option.label), value: option.value }));
   const qrLoginSupported = platform === "weixin-ilink" && authType === "qr_login";
-  const qrModeKey = qrLoginSupported ? `${config?.id ?? "new"}:${platform}:${authType}` : "";
+  const busy = saving || qrLogin.loading;
+  const shouldCompleteQrLoginOnSave = qrLoginSupported && !canReuseExistingQrConfig();
 
   function update(patch: Partial<BotGatewayConfigDraft>) {
     setDraft((current) => ({ ...current, ...patch }));
@@ -443,29 +562,50 @@ function BotConfigDialog({
     });
   }
 
-  function save() {
+  async function save() {
+    if (busy) {
+      return;
+    }
     if (!isBotGatewayConfigDraftSubmittable(draft)) {
       setError(t("Bot name, platform, and required authentication fields are required."));
       return;
     }
     const saved = botGatewaySavedConfigFromDraft(draft, botConfigs, config ?? qrLogin.savedConfig);
-    if (qrLogin.start && saved.botGateway.platform === "weixin-ilink") {
-      saved.botGateway = {
-        ...saved.botGateway,
-        integrationId: qrLogin.start.integrationId,
-        stateDir: qrLogin.start.stateDir,
-        tenantId: qrLogin.start.tenantId
-      };
+    if (shouldCompleteQrLoginOnSave) {
+      await saveWithQrLogin(saved);
+      return;
     }
-    onSave(saved);
+    onSave(configWithQrLoginResult(saved, qrLogin.start));
   }
 
-  function qrSavedConfigDraft(): BotGatewaySavedConfig {
-    return botGatewaySavedConfigFromDraft(
-      draft.name.trim() ? draft : { ...draft, name: t(botGatewayPlatformLabel(platform)) },
-      botConfigs,
-      config ?? qrLogin.savedConfig
+  function canReuseExistingQrConfig(): boolean {
+    const bot = config?.botGateway;
+    return Boolean(
+      bot &&
+      bot.platform === platform &&
+      bot.authType === authType &&
+      bot.integrationId?.trim() &&
+      bot.stateDir?.trim()
     );
+  }
+
+  function configWithQrLoginResult(
+    saved: BotGatewaySavedConfig,
+    start?: BotGatewayQrLoginStartResult,
+    wait?: BotGatewayQrLoginWaitResult
+  ): BotGatewaySavedConfig {
+    if (!start || saved.botGateway.platform !== "weixin-ilink") {
+      return saved;
+    }
+    return {
+      ...saved,
+      botGateway: {
+        ...saved.botGateway,
+        integrationId: wait?.integrationId || start.integrationId,
+        stateDir: wait?.stateDir || start.stateDir,
+        tenantId: wait?.tenantId || start.tenantId
+      }
+    };
   }
 
   async function cancelQrSession(sessionId = qrSessionRef.current) {
@@ -474,131 +614,202 @@ function BotConfigDialog({
       return;
     }
     qrSessionRef.current = "";
+    await closeQrWindow(normalized);
     await window.ccr?.cancelBotGatewayQrLogin?.({ sessionId: normalized }).catch(() => undefined);
   }
 
-  async function startQrLogin(force = true) {
-    if (!window.ccr?.startBotGatewayQrLogin) {
-      setQrLogin((current) => ({
-        ...current,
-        error: t("QR login is available in the Electron app."),
-        loading: false
-      }));
+  async function discardQrSession(sessionId: string) {
+    const normalized = sessionId.trim();
+    if (!normalized) {
       return;
     }
+    await window.ccr?.closeBotGatewayQrWindow?.({ sessionId: normalized }).catch(() => undefined);
+    await window.ccr?.cancelBotGatewayQrLogin?.({ sessionId: normalized }).catch(() => undefined);
+  }
 
-    const savedConfig = qrSavedConfigDraft();
+  async function closeQrWindow(sessionId = qrSessionRef.current) {
+    const normalized = sessionId.trim();
+    if (!normalized) {
+      return;
+    }
+    await window.ccr?.closeBotGatewayQrWindow?.({ sessionId: normalized }).catch(() => undefined);
+  }
+
+  async function openQrWindow(
+    start: BotGatewayQrLoginStartResult,
+    display: BotQrDisplay,
+    waitForScan = false
+  ): Promise<BotGatewayQrWindowOpenResult | undefined> {
+    if (display.kind !== "window") {
+      return undefined;
+    }
+    if (!window.ccr?.openBotGatewayQrWindow) {
+      throw new Error(t("QR window is available in the Electron app."));
+    }
+    return window.ccr.openBotGatewayQrWindow({
+      scanTimeoutMs: 5 * 60 * 1000,
+      sessionId: start.sessionId,
+      title: `${t("Weixin Login")} - ${draft.name.trim() || t("Bot")}`,
+      url: display.src,
+      waitForScan
+    });
+  }
+
+  async function saveWithQrLogin(savedConfig: BotGatewaySavedConfig) {
+    const generation = qrStartGenerationRef.current + 1;
+    qrStartGenerationRef.current = generation;
+    setSaving(true);
+    setError("");
+    try {
+      const start = await startQrLogin(savedConfig, true, generation);
+      const display = normalizeBotQrDisplay(start.qrCodeUrl);
+      if (display.kind !== "window") {
+        throw new Error(t("Weixin login requires a web login URL."));
+      }
+      const opened = await openQrWindow(start, display, true);
+      if (!qrMountedRef.current || generation !== qrStartGenerationRef.current) {
+        await discardQrSession(start.sessionId);
+        return;
+      }
+      if (opened?.reason === "timeout") {
+        throw new Error(t("QR scan timed out."));
+      }
+      if (opened?.reason === "error") {
+        throw new Error(t(opened.message || "QR scan observation failed."));
+      }
+      if (display.kind === "window" && opened && !opened.observed) {
+        throw new Error(t("QR scan observation failed."));
+      }
+      setQrLogin((current) => current.start?.sessionId === start.sessionId
+        ? {
+            ...current,
+            error: "",
+            loading: true,
+            message: t("Weixin login window closed, confirming login status."),
+            status: "scanned"
+          }
+        : current);
+      const wait = await waitForQrLoginConfirmation(start.sessionId, generation);
+      qrSessionRef.current = "";
+      onSave(configWithQrLoginResult(savedConfig, start, wait));
+    } catch (error) {
+      if (qrMountedRef.current && generation === qrStartGenerationRef.current) {
+        const message = formatBotQrError(error);
+        setError(message);
+        setQrLogin((current) => ({
+          ...current,
+          error: message,
+          loading: false,
+          message: "",
+          status: "failed"
+        }));
+        await cancelQrSession();
+      }
+    } finally {
+      if (qrMountedRef.current && generation === qrStartGenerationRef.current) {
+        setSaving(false);
+      }
+    }
+  }
+
+  async function startQrLogin(
+    savedConfig: BotGatewaySavedConfig,
+    force: boolean,
+    generation: number
+  ): Promise<BotGatewayQrLoginStartResult> {
+    if (!window.ccr?.startBotGatewayQrLogin) {
+      throw new Error(t("QR login is available in the Electron app."));
+    }
+
     setQrLogin((current) => ({
       ...current,
       error: "",
       loading: true,
-      message: t("Generating QR code"),
+      message: t("Preparing Weixin login."),
       savedConfig,
       status: "starting"
     }));
     await cancelQrSession();
-    try {
-      const start = await window.ccr.startBotGatewayQrLogin({ config: savedConfig, force });
-      qrSessionRef.current = start.sessionId;
-      setQrLogin({
-        display: normalizeBotQrDisplay(start.qrCodeUrl),
-        error: "",
-        loading: false,
-        message: start.message || t("Scan the QR code in Weixin."),
-        savedConfig,
-        start,
-        status: "qr_pending"
-      });
-    } catch (error) {
-      setQrLogin((current) => ({
-        ...current,
-        error: formatBotQrError(error),
-        loading: false,
-        message: "",
-        status: "failed"
-      }));
+    if (!qrMountedRef.current || generation !== qrStartGenerationRef.current) {
+      throw new Error(t("QR login canceled."));
     }
+    const start = await window.ccr.startBotGatewayQrLogin({ config: savedConfig, force });
+    if (!qrMountedRef.current || generation !== qrStartGenerationRef.current) {
+      if (qrSessionRef.current !== start.sessionId) {
+        await discardQrSession(start.sessionId);
+      }
+      throw new Error(t("QR login canceled."));
+    }
+    qrSessionRef.current = start.sessionId;
+    const display = normalizeBotQrDisplay(start.qrCodeUrl);
+    setQrLogin({
+      display,
+      error: "",
+      loading: true,
+      message: start.message || t("Scan with Weixin in the opened window."),
+      savedConfig,
+      start,
+      status: "qr_pending"
+    });
+    return start;
+  }
+
+  async function waitForQrLoginConfirmation(
+    sessionId: string,
+    generation: number
+  ): Promise<BotGatewayQrLoginWaitResult> {
+    if (!window.ccr?.waitBotGatewayQrLogin) {
+      throw new Error(t("QR login is available in the Electron app."));
+    }
+    while (qrMountedRef.current && generation === qrStartGenerationRef.current) {
+      const wait = await window.ccr.waitBotGatewayQrLogin({ sessionId, timeoutMs: 5000 });
+      if (!qrMountedRef.current || generation !== qrStartGenerationRef.current) {
+        throw new Error(t("QR login canceled."));
+      }
+      setQrLogin((current) => current.start?.sessionId === sessionId
+        ? {
+            ...current,
+            error: "",
+            loading: true,
+            message: wait.message || current.message,
+            status: wait.status,
+            wait
+          }
+        : current);
+      if (wait.confirmed || wait.status === "confirmed") {
+        return wait;
+      }
+      if (isTerminalBotQrLoginStatus(wait.status)) {
+        throw new Error(wait.message || t(botQrLoginStatusLabel(wait.status)));
+      }
+    }
+    throw new Error(t("QR login canceled."));
   }
 
   useEffect(() => {
+    qrMountedRef.current = true;
     return () => {
+      qrMountedRef.current = false;
+      qrStartGenerationRef.current += 1;
       const sessionId = qrSessionRef.current;
       if (sessionId) {
+        void window.ccr?.closeBotGatewayQrWindow?.({ sessionId }).catch(() => undefined);
         void window.ccr?.cancelBotGatewayQrLogin?.({ sessionId }).catch(() => undefined);
       }
     };
   }, []);
 
-  useEffect(() => {
-    if (!qrModeKey) {
-      void cancelQrSession();
-      setQrLogin(emptyBotQrLoginState());
-      return;
-    }
-    setQrLogin(emptyBotQrLoginState());
-    void startQrLogin(false);
-  }, [qrModeKey]);
-
-  useEffect(() => {
-    const sessionId = qrLogin.start?.sessionId;
-    if (!sessionId || !window.ccr?.waitBotGatewayQrLogin) {
-      return;
-    }
-    let cancelled = false;
-    let timer: number | undefined;
-    const poll = async () => {
-      if (cancelled) {
-        return;
-      }
-      try {
-        const wait = await window.ccr?.waitBotGatewayQrLogin?.({ sessionId, timeoutMs: 5000 });
-        if (cancelled || !wait) {
-          return;
-        }
-        setQrLogin((current) => current.start?.sessionId === sessionId
-          ? {
-              ...current,
-              error: "",
-              message: wait.message || current.message,
-              status: wait.status,
-              wait
-            }
-          : current);
-        if (isTerminalBotQrLoginStatus(wait.status)) {
-          qrSessionRef.current = "";
-          return;
-        }
-        timer = window.setTimeout(poll, 1200);
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-        setQrLogin((current) => current.start?.sessionId === sessionId
-          ? { ...current, error: formatBotQrError(error) }
-          : current);
-        timer = window.setTimeout(poll, 2500);
-      }
-    };
-    timer = window.setTimeout(poll, 800);
-    return () => {
-      cancelled = true;
-      if (timer !== undefined) {
-        window.clearTimeout(timer);
-      }
-    };
-  }, [qrLogin.start?.sessionId]);
-
   return (
-    <Dialog onOpenChange={(open) => !open && onClose()} open>
+    <Dialog onOpenChange={(open) => !open && !busy && onClose()} open>
       <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{mode === "add" ? t("Add bot") : t("Edit bot")}</DialogTitle>
-          <Button aria-label={copy.settings.close} onClick={onClose} size="iconSm" title={copy.settings.close} type="button" variant="ghost">
+          <Button aria-label={copy.settings.close} disabled={busy} onClick={onClose} size="iconSm" title={copy.settings.close} type="button" variant="ghost">
             <X className="h-4 w-4" />
           </Button>
         </DialogHeader>
         <DialogBody>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <fieldset className="m-0 grid min-w-0 grid-cols-1 gap-3 border-0 p-0 sm:grid-cols-2" disabled={busy}>
             <Field className="sm:col-span-2" label={t("Name")}>
               <Input value={draft.name} onChange={(event) => update({ name: event.target.value })} />
             </Field>
@@ -629,93 +840,7 @@ function BotConfigDialog({
                 />
               </Field>
             ))}
-            {qrLoginSupported ? (
-              <div className="rounded-md border border-border bg-muted/20 p-3 sm:col-span-2">
-                <div className="flex min-w-0 items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-[12px] font-semibold text-foreground">{t("Weixin QR login")}</div>
-                    <div className="mt-1 text-[11px] text-muted-foreground">
-                      {qrLogin.message || t("Scan with Weixin to connect this bot.")}
-                    </div>
-                  </div>
-                  <Button
-                    disabled={qrLogin.loading}
-                    onClick={() => void startQrLogin(true)}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    {qrLogin.loading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                    {qrLogin.start ? t("Regenerate") : t("Generate QR code")}
-                  </Button>
-                </div>
-                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[184px_minmax(0,1fr)]">
-                  <div className="flex h-[184px] w-full items-center justify-center overflow-hidden rounded-md border border-border bg-white p-2">
-                    <BotQrPreview display={qrLogin.display} label={t("Weixin QR code")} />
-                  </div>
-                  <div className="grid min-w-0 content-start gap-2">
-                    <div className="rounded-md border border-border bg-background px-3 py-2">
-                      <div className="flex min-w-0 items-center gap-2 text-[12px] font-medium text-foreground">
-                        {qrLogin.loading ? (
-                          <LoaderCircle className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                        ) : qrLogin.status === "confirmed" ? (
-                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald" />
-                        ) : qrLogin.error || isFailedBotQrLoginStatus(qrLogin.status) ? (
-                          <CircleAlert className="h-3.5 w-3.5 text-destructive" />
-                        ) : (
-                          <QrCode className="h-3.5 w-3.5 text-muted-foreground" />
-                        )}
-                        <span>{t(botQrLoginStatusLabel(qrLogin.status))}</span>
-                      </div>
-                      {qrLogin.error ? (
-                        <div className="mt-1 break-words text-[11px] text-destructive">{qrLogin.error}</div>
-                      ) : null}
-                    </div>
-                    {qrLogin.start?.expiresAt ? (
-                      <div className="rounded-md border border-border bg-background px-3 py-2">
-                        <div className="text-[11px] font-medium text-muted-foreground">{t("Expires")}</div>
-                        <div className="mt-1 break-all font-mono text-[11px] text-foreground">{qrLogin.start.expiresAt}</div>
-                      </div>
-                    ) : null}
-                    {qrLogin.display.kind === "frame" ? (
-                      <Button
-                        onClick={() => void window.ccr?.openExternal?.(qrLogin.display.src)}
-                        size="sm"
-                        type="button"
-                        variant="outline"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                        {t("Open")}
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            ) : null}
-            <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 sm:col-span-2">
-              <span className="text-[12px] font-medium">{t("Forward agent messages")}</span>
-              <Switch checked={draft.botForwardAllAgentMessages} onCheckedChange={(checked) => update({ botForwardAllAgentMessages: checked === true })} />
-            </div>
-            <div className="rounded-md border border-border bg-muted/20 p-3 sm:col-span-2">
-              <div className="flex min-w-0 items-center justify-between gap-3">
-                <span className="text-[12px] font-medium">{t("Handoff")}</span>
-                <Switch checked={draft.botHandoffEnabled} onCheckedChange={(checked) => update({ botHandoffEnabled: checked === true })} />
-              </div>
-              {draft.botHandoffEnabled ? (
-                <div className="mt-3 grid grid-cols-1 gap-3 border-t border-border/70 pt-3 sm:grid-cols-2">
-                  <Field label={t("Idle seconds")}>
-                    <Input type="number" value={draft.botHandoffIdleSeconds} onChange={(event) => update({ botHandoffIdleSeconds: event.target.value })} />
-                  </Field>
-                  <Field label={t("Phone Wi-Fi target")}>
-                    <Input value={draft.botHandoffPhoneWifiTargets} onChange={(event) => update({ botHandoffPhoneWifiTargets: event.target.value })} />
-                  </Field>
-                  <Field label={t("Phone Bluetooth target")}>
-                    <Input value={draft.botHandoffPhoneBluetoothTargets} onChange={(event) => update({ botHandoffPhoneBluetoothTargets: event.target.value })} />
-                  </Field>
-                </div>
-              ) : null}
-            </div>
-          </div>
+          </fieldset>
           {error ? (
             <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
               {error}
@@ -723,30 +848,15 @@ function BotConfigDialog({
           ) : null}
         </DialogBody>
         <DialogFooter>
-          <Button onClick={onClose} type="button" variant="outline">{t("Cancel")}</Button>
-          <Button onClick={save} type="button">{t("Save")}</Button>
+          <Button disabled={busy} onClick={onClose} type="button" variant="outline">{t("Cancel")}</Button>
+          <Button disabled={busy} onClick={() => void save()} type="button">
+            {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+            {t("Save")}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
-}
-
-function BotQrPreview({ display, label }: { display: BotQrDisplay; label: string }) {
-  if (display.kind === "image") {
-    return <img alt={label} className="h-full w-full object-contain" src={display.src} />;
-  }
-  if (display.kind === "frame") {
-    return (
-      <webview
-        className="h-full w-full bg-white"
-        partition="persist:ccr-weixin-bot-qr"
-        src={display.src}
-        title={label}
-        webpreferences="contextIsolation=yes,nodeIntegration=no,sandbox=yes"
-      />
-    );
-  }
-  return <QrCode className="h-16 w-16 text-black/45" />;
 }
 
 function emptyBotQrLoginState(): BotQrLoginState {
@@ -765,7 +875,7 @@ function normalizeBotQrDisplay(raw: string): BotQrDisplay {
     return { kind: "empty", src: "" };
   }
   if (value.startsWith("http://") || value.startsWith("https://")) {
-    return { kind: "frame", src: value };
+    return { kind: "window", src: value };
   }
   if (value.startsWith("data:")) {
     return { kind: "image", src: value };
@@ -780,14 +890,10 @@ function isTerminalBotQrLoginStatus(status: string): boolean {
   return ["already_bound", "confirmed", "expired", "failed"].includes(status);
 }
 
-function isFailedBotQrLoginStatus(status: string): boolean {
-  return ["already_bound", "expired", "failed"].includes(status);
-}
-
 function botQrLoginStatusLabel(status: string): string {
   switch (status) {
     case "starting":
-      return "Generating QR code";
+      return "Waiting for QR code";
     case "qr_pending":
     case "pending":
       return "Waiting for scan";
@@ -999,27 +1105,41 @@ function formatUpdateDate(value: string | undefined): string {
 
 function TraySettingsPage({
   copy,
+  onChangeTrayBalanceProgress,
   onChangeTrayIcon,
-  onChangeTrayProgressTarget,
   onChangeTrayWidgets,
+  providerAccountSnapshots,
+  trayBalanceProgress,
   trayIconPreference,
-  trayProgressTargetTokens,
   trayWidgets
 }: {
   copy: AppCopy;
+  onChangeTrayBalanceProgress: (config: TrayBalanceProgressConfig) => void;
   onChangeTrayIcon: (value: string) => void;
-  onChangeTrayProgressTarget: (value: string) => void;
   onChangeTrayWidgets: (widgets: TrayWidgetConfig[]) => void;
+  providerAccountSnapshots: ProviderAccountSnapshot[];
+  trayBalanceProgress?: TrayBalanceProgressConfig;
   trayIconPreference: AppConfig["trayIcon"];
-  trayProgressTargetTokens: number;
   trayWidgets: TrayWidgetConfig[];
 }) {
   const pageRef = useRef<HTMLDivElement>(null);
   const [selectedTrayWidgetId, setSelectedTrayWidgetId] = useState<string>();
   const [pendingScrollTrayWidgetId, setPendingScrollTrayWidgetId] = useState<string>();
+  const [progressSelectionActive, setProgressSelectionActive] = useState(false);
+  const [progressDraft, setProgressDraft] = useState<Partial<TrayBalanceProgressConfig>>(trayBalanceProgress ?? {});
   const widgets = useMemo(() => normalizeTrayWidgets(trayWidgets), [trayWidgets]);
   const selectedWidget = widgets.find((widget) => widget.id === selectedTrayWidgetId) ?? widgets[0];
   const selectedWidgetIndex = selectedWidget ? widgets.findIndex((widget) => widget.id === selectedWidget.id) : -1;
+  const progressAccounts = useMemo(() => trayBalanceProgressAccounts(providerAccountSnapshots), [providerAccountSnapshots]);
+  const progressProvider = progressDraft.provider ?? "";
+  const progressMeters = useMemo(() => trayBalanceProgressMeters(progressAccounts, progressProvider), [progressAccounts, progressProvider]);
+  const progressProviderValue = progressAccounts.some((snapshot) => snapshot.provider === progressProvider) ? progressProvider : "";
+  const progressMeterValue = progressMeters.some((meter) => meter.id === progressDraft.meterId) ? progressDraft.meterId ?? "" : "";
+  const progressBinding = trayBalanceProgressBindingFromDraft(progressDraft);
+  const progressPreviewBinding = progressBinding ?? trayBalanceProgress;
+  const progressPreviewValue = trayBalanceProgressValue(providerAccountSnapshots, progressPreviewBinding);
+  const effectiveTrayIconPreference: AppConfig["trayIcon"] = progressSelectionActive ? "progress" : trayIconPreference;
+  const progressEditorOpen = effectiveTrayIconPreference === "progress";
   const trayIconOptions: Array<{ label: string; value: AppConfig["trayIcon"] }> = [
     { label: copy.settings.trayIconRandom, value: "random" },
     { label: copy.settings.trayIconViolet, value: "violet" },
@@ -1044,8 +1164,41 @@ function TraySettingsPage({
     })
   );
 
+  useEffect(() => {
+    if (!progressSelectionActive) {
+      setProgressDraft(trayBalanceProgress ?? {});
+    }
+  }, [progressSelectionActive, trayBalanceProgress?.meterId, trayBalanceProgress?.provider]);
+
   function commitWidgets(nextWidgets: TrayWidgetConfig[]) {
     onChangeTrayWidgets(normalizeTrayWidgets(nextWidgets));
+  }
+
+  function changeTrayIcon(value: string) {
+    if (value === "progress") {
+      setProgressSelectionActive(true);
+      setProgressDraft(trayBalanceProgress ?? {});
+      return;
+    }
+    setProgressSelectionActive(false);
+    onChangeTrayIcon(value);
+  }
+
+  function changeProgressProvider(provider: string) {
+    setProgressSelectionActive(true);
+    setProgressDraft(provider ? { provider } : {});
+  }
+
+  function changeProgressMeter(meterId: string) {
+    const provider = progressDraft.provider?.trim();
+    if (!provider || !meterId.trim()) {
+      setProgressDraft((current) => ({ ...current, meterId }));
+      return;
+    }
+    const nextProgress = { meterId: meterId.trim(), provider };
+    setProgressDraft(nextProgress);
+    setProgressSelectionActive(false);
+    onChangeTrayBalanceProgress(nextProgress);
   }
 
   function addTrayWidget(template: TrayWidgetConfig) {
@@ -1141,18 +1294,41 @@ function TraySettingsPage({
       <h3 className="text-[15px] font-semibold text-foreground">{copy.settings.tray}</h3>
       <div className="flex flex-wrap items-end gap-3 rounded-md border border-border bg-background p-3">
         <Field className="min-w-[220px] flex-1" label={copy.settings.trayIcon}>
-          <TrayIconSelect onChange={onChangeTrayIcon} options={trayIconOptions} value={trayIconPreference} />
+          <TrayIconSelect onChange={changeTrayIcon} options={trayIconOptions} progress={progressPreviewValue} value={effectiveTrayIconPreference} />
         </Field>
-        {trayIconPreference === "progress" ? (
-          <Field className="min-w-[180px] flex-1" label={copy.settings.trayProgressTarget}>
-            <Input
-              min={1000}
-              step={1000}
-              type="number"
-              value={String(trayProgressTargetTokens)}
-              onChange={(event) => onChangeTrayProgressTarget(event.target.value)}
-            />
-          </Field>
+        {progressEditorOpen ? (
+          progressAccounts.length > 0 ? (
+            <>
+              <Field className="min-w-[180px] flex-1" label={copy.settings.trayBalanceProgressAccount}>
+                <Select
+                  onValueChange={changeProgressProvider}
+                  options={[
+                    { disabled: true, label: trayT("Select account"), value: "" },
+                    ...progressAccounts.map((snapshot) => ({ label: snapshot.provider, value: snapshot.provider }))
+                  ]}
+                  value={progressProviderValue}
+                />
+              </Field>
+              <Field className="min-w-[180px] flex-1" label={copy.settings.trayBalanceProgressData}>
+                <Select
+                  disabled={!progressProvider}
+                  onValueChange={changeProgressMeter}
+                  options={[
+                    { disabled: true, label: trayT("Select data"), value: "" },
+                    ...progressMeters.map((meter) => ({ label: trayBalanceProgressMeterLabel(meter, trayT), value: meter.id }))
+                  ]}
+                  value={progressMeterValue}
+                />
+              </Field>
+              <div className="basis-full text-[11px] font-medium text-muted-foreground">
+                {copy.settings.trayBalanceProgressRequired}
+              </div>
+            </>
+          ) : (
+            <div className="min-w-[240px] flex-1 rounded-md border border-dashed border-border bg-muted/30 px-3 py-2 text-[12px] text-muted-foreground">
+              {copy.settings.trayBalanceProgressNoData}
+            </div>
+          )
         ) : null}
       </div>
       <div className="grid min-h-0 grid-cols-[220px_minmax(320px,1fr)_260px] gap-4 max-[1100px]:grid-cols-1">
@@ -1236,7 +1412,6 @@ function TraySettingsPage({
             <div className="w-full max-w-[420px]">
               <TrayWindowPreview
                 copy={copy}
-                iconPreference={trayIconPreference}
                 pendingScrollWidgetId={pendingScrollTrayWidgetId}
                 selectedWidgetId={selectedWidget?.id}
                 widgets={widgets}
@@ -1404,15 +1579,17 @@ function uniqueTrayWidgetId(widgets: TrayWidgetConfig[], baseId: string): string
 function TrayIconSelect({
   onChange,
   options,
+  progress,
   value
 }: {
   onChange: (value: string) => void;
   options: Array<{ label: string; value: AppConfig["trayIcon"] }>;
+  progress?: number;
   value: AppConfig["trayIcon"];
 }) {
   return (
     <div className="relative min-w-0">
-      <TrayIconPreview className="pointer-events-none absolute left-2 top-1/2 z-10 h-5 w-5 -translate-y-1/2 rounded-[5px]" preference={value} />
+      <TrayIconPreview className="pointer-events-none absolute left-2 top-1/2 z-10 h-5 w-5 -translate-y-1/2 rounded-[5px]" preference={value} progress={progress} />
       <Select className="pl-10" onValueChange={onChange} options={options} value={value} />
     </div>
   );
@@ -1420,10 +1597,12 @@ function TrayIconSelect({
 
 function TrayIconPreview({
   className,
-  preference
+  preference,
+  progress
 }: {
   className?: string;
   preference: AppConfig["trayIcon"];
+  progress?: number;
 }) {
   const randomIcons: Array<"violet" | "orange" | "cyan"> = ["violet", "orange", "cyan"];
 
@@ -1453,32 +1632,21 @@ function TrayIconPreview({
       {isTrayMascotIconPreference(preference) ? (
         <img alt="" className="h-[88%] w-[88%] object-contain drop-shadow-sm" src={trayMascotIconUrls[preference]} />
       ) : null}
-      {preference === "progress" ? <TrayProgressPreview /> : null}
+      {preference === "progress" ? <TrayProgressPreview progress={progress} /> : null}
     </span>
   );
 }
 
-function TrayProgressPreview() {
-  const radius = 12.2;
-  const circumference = 2 * Math.PI * radius;
-  const progress = 0.68;
+function TrayProgressPreview({ progress = 0 }: { progress?: number }) {
+  const clamped = Math.max(0, Math.min(1, progress));
 
   return (
-    <svg aria-hidden="true" className="h-[80%] w-[80%]" viewBox="0 0 36 36">
-      <circle cx="18" cy="18" fill="rgba(15,23,42,.92)" r="15.2" />
-      <circle cx="18" cy="18" fill="none" r={radius} stroke="rgba(148,163,184,.55)" strokeWidth="4.2" />
-      <circle
-        cx="18"
-        cy="18"
-        fill="none"
-        r={radius}
-        stroke="rgb(248,250,252)"
-        strokeDasharray={circumference}
-        strokeDashoffset={circumference * (1 - progress)}
-        strokeLinecap="round"
-        strokeWidth="4.2"
-        transform="rotate(-90 18 18)"
-      />
+    <svg aria-hidden="true" className="h-[82%] w-[82%]" viewBox="0 0 36 36">
+      <rect fill="rgba(15,23,42,.92)" height="30" rx="8" width="30" x="3" y="3" />
+      <rect fill="rgba(148,163,184,.28)" height="5" rx="2.5" width="22" x="7" y="22" />
+      <rect fill="rgb(248,250,252)" height="5" rx="2.5" width={Math.max(2, 22 * clamped)} x="7" y="22" />
+      <rect fill="rgba(248,250,252,.78)" height="2.5" rx="1.25" width="12" x="7" y="9" />
+      <rect fill="rgba(45,212,191,.9)" height="2.5" rx="1.25" width="18" x="7" y="15" />
     </svg>
   );
 }
@@ -1489,7 +1657,6 @@ function isEditableKeyboardTarget(target: Element | undefined): boolean {
 
 function TrayWindowPreview({
   copy,
-  iconPreference,
   pendingScrollWidgetId,
   selectedWidgetId,
   widgets,
@@ -1499,7 +1666,6 @@ function TrayWindowPreview({
   sensors
 }: {
   copy: AppCopy;
-  iconPreference: AppConfig["trayIcon"];
   pendingScrollWidgetId?: string;
   selectedWidgetId?: string;
   widgets: TrayWidgetConfig[];
@@ -1545,7 +1711,7 @@ function TrayWindowPreview({
     <div className="h-[740px] min-w-0 overflow-y-auto overflow-x-hidden rounded-[14px] border border-slate-950/15 bg-slate-950 p-3 text-slate-50 shadow-[0_18px_42px_rgba(15,23,42,.28)]" ref={previewRef}>
       <div className="mb-3 flex min-w-0 items-center justify-between gap-3 border-b border-white/10 pb-2">
         <div className="flex min-w-0 items-center gap-2">
-          <TrayIconPreview className="h-7 w-7 border-white/15 bg-white/10" preference={iconPreference} />
+          <TrayWindowHeaderIcon />
           <div className="min-w-0">
             <div className="truncate text-[12px] font-semibold text-slate-50">88.4k {trayPreviewText(copy, "tokens", "tokens")}</div>
             <div className="truncate text-[10px] font-medium text-slate-400">CCR</div>
@@ -1577,6 +1743,17 @@ function TrayWindowPreview({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function TrayWindowHeaderIcon() {
+  return (
+    <span
+      aria-hidden="true"
+      className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md border border-white/15 bg-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.12)]"
+    >
+      <img alt="" className="h-[72%] w-[72%] object-contain" src={appLogoUrl} />
+    </span>
   );
 }
 
@@ -2114,6 +2291,67 @@ function PreviewShareLegend({ rows }: { rows: Array<{ color: string; label: stri
       ))}
     </div>
   );
+}
+
+function trayBalanceProgressAccounts(snapshots: ProviderAccountSnapshot[]): ProviderAccountSnapshot[] {
+  return snapshots
+    .filter((snapshot) => snapshot.meters.length > 0)
+    .sort((a, b) => a.provider.localeCompare(b.provider));
+}
+
+function trayBalanceProgressMeters(accounts: ProviderAccountSnapshot[], provider: string): ProviderAccountMeter[] {
+  const snapshot = accounts.find((account) => account.provider === provider);
+  if (!snapshot) {
+    return [];
+  }
+  return [...snapshot.meters].sort((a, b) => {
+    if (a.kind === "balance" && b.kind !== "balance") return -1;
+    if (a.kind !== "balance" && b.kind === "balance") return 1;
+    return a.label.localeCompare(b.label);
+  });
+}
+
+function trayBalanceProgressBindingFromDraft(value: Partial<TrayBalanceProgressConfig>): TrayBalanceProgressConfig | undefined {
+  const provider = value.provider?.trim();
+  const meterId = value.meterId?.trim();
+  return provider && meterId ? { meterId, provider } : undefined;
+}
+
+function trayBalanceProgressValue(
+  snapshots: ProviderAccountSnapshot[],
+  binding: TrayBalanceProgressConfig | undefined
+): number | undefined {
+  if (!binding) {
+    return undefined;
+  }
+  const snapshot = snapshots.find((account) => account.provider === binding.provider);
+  const meter = snapshot?.meters.find((candidate) => candidate.id === binding.meterId);
+  return meter ? trayBalanceMeterProgress(meter) : undefined;
+}
+
+function trayBalanceMeterProgress(meter: ProviderAccountMeter): number {
+  if (meter.limit && meter.limit > 0) {
+    if (meter.remaining !== undefined) {
+      return Math.max(0, Math.min(1, meter.remaining / meter.limit));
+    }
+    if (meter.used !== undefined) {
+      return Math.max(0, Math.min(1, 1 - meter.used / meter.limit));
+    }
+  }
+  if (meter.unit === "%") {
+    if (meter.remaining !== undefined) {
+      return Math.max(0, Math.min(1, meter.remaining / 100));
+    }
+    if (meter.used !== undefined) {
+      return Math.max(0, Math.min(1, 1 - meter.used / 100));
+    }
+  }
+  const rawValue = meter.remaining ?? meter.limit ?? meter.used ?? 0;
+  return rawValue > 0 ? 1 : 0;
+}
+
+function trayBalanceProgressMeterLabel(meter: ProviderAccountMeter, t: (value: string) => string): string {
+  return `${t(meter.label)} - ${formatProviderAccountMeterValue(meter)}`;
 }
 
 function isTrayMascotIconPreference(value: AppConfig["trayIcon"]): value is "cyan" | "orange" | "violet" {

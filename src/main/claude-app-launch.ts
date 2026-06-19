@@ -2,7 +2,8 @@ import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { ProfileConfig } from "../shared/app";
+import type { AppConfig, ProfileConfig } from "../shared/app";
+import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { resolveClaudeCodeSettingsFile } from "./profile-launch-core";
 
 type ClaudeAppLookupResult = {
@@ -20,7 +21,7 @@ const macClaudeAppNames = ["Claude.app", "Claude Desktop.app"];
 const windowsClaudeAppDirs = ["Claude", "Claude Desktop", "ClaudeDesktop", "AnthropicClaude"];
 const windowsClaudeExeNames = ["Claude.exe", "claude.exe", "Claude Desktop.exe"];
 
-export function launchClaudeAppProfile(configDir: string, profile: ProfileConfig): ClaudeAppLaunchResult {
+export function launchClaudeAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): ClaudeAppLaunchResult {
   const lookup = findInstalledClaudeAppExecutable();
   if (!lookup.executable) {
     throw new Error([
@@ -37,6 +38,7 @@ export function launchClaudeAppProfile(configDir: string, profile: ProfileConfig
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     ...profileEnv(profile),
+    ...(config ? botGatewayProfileEnv(config, profile, "app") : {}),
     CLAUDE_CONFIG_DIR: settingsDir,
     CLAUDE_USER_DATA_DIR: userDataDir,
     CCR_CLAUDE_APP_USER_DATA_PATH: userDataDir,

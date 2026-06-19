@@ -17,10 +17,21 @@ const REQUEST_TIMEOUT_MS = numberEnv("CCR_CODEX_APP_REQUEST_TIMEOUT_MS", 10 * 60
 const TURN_IDLE_TIMEOUT_MS = numberEnv("CCR_CODEX_CLAUDE_TURN_IDLE_TIMEOUT_MS", 10 * 60 * 1000);
 const CONFIG_DIR = path.join(os.homedir(), ".claude-code-router");
 const LOG_PATH = process.env.CCR_CODEX_CLI_MIDDLEWARE_LOG || path.join(CONFIG_DIR, "codex-cli-middleware.log");
-const BOT_BRIDGE = createBotGatewayBridge();
+let BOT_BRIDGE_INSTANCE = null;
+
+function botBridge() {
+  if (!BOT_BRIDGE_INSTANCE) {
+    BOT_BRIDGE_INSTANCE = createBotGatewayBridge();
+  }
+  return BOT_BRIDGE_INSTANCE;
+}
 
 async function main() {
   const args = process.argv.slice(2);
+  if (process.env.CCR_CLAUDE_CODE_BOT_WORKER === "1" || args[0] === "claude-bot-worker") {
+    await runClaudeCodeBotWorker(args);
+    return;
+  }
   if (process.env.CCR_CLAUDE_CODE_WRAPPER === "1") {
     await runClaudeCodeCliWrapper(args);
     return;
@@ -49,12 +60,12 @@ async function runClaudeCodeCliWrapper(args) {
     const lines = pending.split(/\r?\n/g);
     pending = lines.pop() || "";
     for (const line of lines) {
-      BOT_BRIDGE.handleClaudeCliLine(line);
+      botBridge().handleClaudeCliLine(line);
     }
   });
   const code = await waitForChild(child);
   if (pending.trim()) {
-    BOT_BRIDGE.handleClaudeCliLine(pending);
+    botBridge().handleClaudeCliLine(pending);
   }
   log("claude_code_wrapper_exit", { code });
   process.exitCode = code;
@@ -104,7 +115,7 @@ async function runCodexCliMiddleware(args) {
   const stdoutRl = readline.createInterface({ input: child.stdout, crlfDelay: Infinity, terminal: false });
   stdoutRl.on("line", (line) => {
     const rewritten = rewriteCodexStdoutLine(line, requestMap);
-    BOT_BRIDGE.handleJsonRpcLine(rewritten);
+    botBridge().handleJsonRpcLine(rewritten);
     if (!shouldSuppressBotBridgeLine(rewritten)) {
       process.stdout.write(rewritten + "\n");
     }
@@ -276,6 +287,32 @@ async function runClaudeCodeAppServer(args) {
   await server.run();
 }
 
+async function runClaudeCodeBotWorker(args) {
+  const options = parseAppServerOptions(args);
+  const server = new ClaudeCodeAppServer(options);
+  server.ensureBotBridgeRegistered();
+  log("claude_bot_worker_start", { workspaceName: options.workspaceName, pid: process.pid });
+  await waitForTerminationSignal();
+  await botBridge().stop();
+  log("claude_bot_worker_stop", { pid: process.pid });
+}
+
+function waitForTerminationSignal() {
+  return new Promise((resolve) => {
+    const timer = setInterval(() => {}, 2147483647);
+    const done = () => {
+      clearInterval(timer);
+      process.off("SIGINT", done);
+      process.off("SIGTERM", done);
+      process.off("SIGHUP", done);
+      resolve();
+    };
+    process.once("SIGINT", done);
+    process.once("SIGTERM", done);
+    process.once("SIGHUP", done);
+  });
+}
+
 function parseAppServerOptions(args) {
   let workspaceName = nonEmptyEnv("CCR_CODEX_WORKSPACE_NAME") || nonEmptyEnv("CODEXL_CODEX_WORKSPACE_NAME") || nonEmptyEnv("CODEXL_CODEX_INSTANCE_NAME") || "Claude Code";
   for (let i = 0; i < args.length; i += 1) {
@@ -299,7 +336,13 @@ class ClaudeCodeAppServer {
     this.threads = new Map();
     this.active = new Map();
     this.appResponses = new Map();
+    this.botBridgeRegistered = false;
+    this.botSessionStore = { version: 1, conversations: {} };
+    this.botSessionStoreLoaded = false;
+    this.botThreadKeys = new Map();
+    this.botThreads = new Map();
     this.configValues = {};
+    this.pollingEvents = false;
     this.stdin = readline.createInterface({ input: process.stdin, crlfDelay: Infinity, terminal: false });
   }
 
@@ -364,6 +407,7 @@ class ClaudeCodeAppServer {
           platformFamily: process.platform === "win32" ? "windows" : "unix",
           platformOs: process.platform
         });
+        this.ensureBotBridgeRegistered();
         return undefined;
       case "thread/start": {
         const thread = this.createThread(params);
@@ -551,6 +595,173 @@ class ClaudeCodeAppServer {
     }
   }
 
+  async handleBotInbound(event, _queued, eventId, bridge) {
+    const text = botEventText(event);
+    if (!text) {
+      log("bot_gateway_inbound_skip", { eventId, reason: "empty_text" });
+      return;
+    }
+    const thread = this.botThreadForEvent(event, text);
+    const prepared = this.startTurn({
+      cwd: thread.cwd,
+      input: [{ type: "text", text }],
+      threadId: thread.id
+    });
+    for (const notification of prepared.notifications) writeRaw(notification);
+    bridge.suppressTurn(prepared.turn.id);
+    try {
+      await this.runTurn(prepared.work);
+    } finally {
+      bridge.unsuppressTurn(prepared.turn.id);
+    }
+
+    const completed = thread.turns.find((turn) => turn.id === prepared.turn.id) || prepared.turn;
+    const responseText = completed.error
+      ? "Agent turn failed: " + completed.error
+      : (completed.agentText || "").trim() || "Claude Code completed the turn without a text response.";
+    await bridge.sendReplyToEvent(event, responseText, "ccr:claude-code:" + eventId + ":" + prepared.turn.id);
+    log("bot_gateway_inbound_replied", { eventId, threadId: thread.id, turnId: prepared.turn.id, textLen: responseText.length });
+  }
+
+  ensureBotBridgeRegistered() {
+    if (this.botBridgeRegistered) return;
+    this.botBridgeRegistered = true;
+    botBridge().setInboundHandler((event, queued, eventId, bridge) => this.handleBotInbound(event, queued, eventId, bridge));
+  }
+
+  botThreadForEvent(event, text) {
+    const key = botConversationKey(event);
+    const mappedThreadId = this.botThreads.get(key);
+    if (mappedThreadId && this.threads.has(mappedThreadId)) {
+      return this.threads.get(mappedThreadId);
+    }
+    const restoredThread = this.restoreBotThreadForConversation(key);
+    if (restoredThread) {
+      if (!restoredThread.preview) restoredThread.preview = text.slice(0, 160);
+      return restoredThread;
+    }
+    const appThread = this.inferBotThreadFromClaudeAppSession(key, text);
+    if (appThread) return appThread;
+    const thread = this.createThread({ cwd: process.cwd(), workspaceKind: "local" });
+    if (!thread.preview) thread.preview = text.slice(0, 160);
+    this.botThreads.set(key, thread.id);
+    this.botThreadKeys.set(thread.id, key);
+    this.persistBotThread(thread.id);
+    return thread;
+  }
+
+  restoreBotThreadForConversation(key) {
+    const entry = this.loadBotSessionStore().conversations[key];
+    if (!entry || typeof entry !== "object") return null;
+    if (!entry.claudeSessionId && !entry.claudeAppSessionId) return null;
+    const thread = this.createThread({
+      cwd: entry.cwd || process.cwd(),
+      model: entry.model || undefined,
+      workspaceKind: "local",
+      claudeConfigDir: entry.claudeConfigDir || null
+    });
+    this.replaceThreadId(thread, entry.threadId || thread.id);
+    thread.sessionId = entry.sessionId || thread.id;
+    thread.claudeSessionId = entry.claudeSessionId || null;
+    thread.claudeConfigDir = entry.claudeConfigDir || null;
+    thread.claudeAppSessionId = entry.claudeAppSessionId || null;
+    thread.preview = entry.preview || "";
+    thread.updatedAt = entry.updatedAtSeconds || nowSeconds();
+    this.botThreads.set(key, thread.id);
+    this.botThreadKeys.set(thread.id, key);
+    log("bot_gateway_session_restored", {
+      conversationKeyPrefix: key.slice(0, 80),
+      threadId: thread.id,
+      claudeSessionIdPrefix: thread.claudeSessionId ? thread.claudeSessionId.slice(0, 8) : ""
+    });
+    return thread;
+  }
+
+  inferBotThreadFromClaudeAppSession(key, text) {
+    const session = latestClaudeAppLocalAgentSession();
+    if (!session) return null;
+    const thread = this.createThread({
+      cwd: session.cwd || process.cwd(),
+      model: session.model || undefined,
+      workspaceKind: "local",
+      claudeConfigDir: session.claudeConfigDir || null
+    });
+    thread.sessionId = session.sessionId || thread.id;
+    thread.claudeSessionId = session.cliSessionId || null;
+    thread.claudeConfigDir = session.claudeConfigDir || null;
+    thread.claudeAppSessionId = session.sessionId || null;
+    thread.preview = session.title || session.initialMessage || text.slice(0, 160);
+    thread.name = session.title || this.workspaceName;
+    thread.updatedAt = Math.floor((session.lastActivityAt || Date.now()) / 1000);
+    this.botThreads.set(key, thread.id);
+    this.botThreadKeys.set(thread.id, key);
+    this.persistBotThread(thread.id);
+    log("bot_gateway_session_inferred", {
+      conversationKeyPrefix: key.slice(0, 80),
+      threadId: thread.id,
+      appSessionId: thread.claudeAppSessionId,
+      claudeSessionIdPrefix: thread.claudeSessionId ? thread.claudeSessionId.slice(0, 8) : "",
+      cwd: thread.cwd
+    });
+    return thread;
+  }
+
+  replaceThreadId(thread, id) {
+    const nextId = String(id || "").trim();
+    if (!nextId || thread.id === nextId) return;
+    this.threads.delete(thread.id);
+    thread.id = nextId;
+    this.threads.set(thread.id, thread);
+  }
+
+  loadBotSessionStore() {
+    if (this.botSessionStoreLoaded) return this.botSessionStore;
+    this.botSessionStoreLoaded = true;
+    try {
+      this.botSessionStore = normalizeBotSessionStore(JSON.parse(fs.readFileSync(botSessionStorePath(), "utf8")));
+    } catch {
+      this.botSessionStore = { version: 1, conversations: {} };
+    }
+    return this.botSessionStore;
+  }
+
+  saveBotSessionStore() {
+    const file = botSessionStorePath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(this.botSessionStore, null, 2));
+  }
+
+  persistBotThread(threadId) {
+    const key = this.botThreadKeys.get(threadId);
+    if (!key) return;
+    const thread = this.threads.get(threadId);
+    if (!thread) return;
+    const store = this.loadBotSessionStore();
+    store.conversations[key] = {
+      threadId: thread.id,
+      sessionId: thread.sessionId || thread.id,
+      claudeSessionId: thread.claudeSessionId || null,
+      claudeAppSessionId: thread.claudeAppSessionId || null,
+      claudeConfigDir: thread.claudeConfigDir || null,
+      cwd: thread.cwd || process.cwd(),
+      model: thread.model || "",
+      preview: thread.preview || "",
+      updatedAt: Date.now(),
+      updatedAtSeconds: thread.updatedAt || nowSeconds()
+    };
+    this.saveBotSessionStore();
+  }
+
+  rememberClaudeSession(message, work) {
+    const sessionId = claudeSessionIdFromMessage(message);
+    if (!sessionId) return;
+    const thread = this.threads.get(work.threadId);
+    if (!thread || thread.claudeSessionId === sessionId) return;
+    thread.claudeSessionId = sessionId;
+    log("claude_session_remembered", { threadId: work.threadId, turnId: work.turnId, sessionIdPrefix: sessionId.slice(0, 8) });
+    this.persistBotThread(work.threadId);
+  }
+
   createThread(params) {
     const id = uuid();
     const cwd = normalizeCwd(params.cwd);
@@ -558,7 +769,9 @@ class ClaudeCodeAppServer {
     const thread = {
       id,
       sessionId: id,
-      claudeSessionId: id,
+      claudeSessionId: null,
+      claudeConfigDir: params.claudeConfigDir || null,
+      claudeAppSessionId: params.claudeAppSessionId || null,
       path: null,
       preview: "",
       cwd,
@@ -656,7 +869,9 @@ class ClaudeCodeAppServer {
       cwd: thread.cwd,
       prompt,
       input,
-      resumeExisting: thread.turns.length > 1,
+      resumeExisting: Boolean(thread.claudeSessionId),
+      claudeSessionId: thread.claudeSessionId,
+      claudeConfigDir: thread.claudeConfigDir,
       model: thread.model
     };
     const userItem = userItemJson(turn);
@@ -691,7 +906,7 @@ class ClaudeCodeAppServer {
     this.active.set(key, { key, threadId: work.threadId, turnId: work.turnId, child });
     try {
       child.stdin.write(JSON.stringify({ type: "control_request", request_id: uuid(), request: { subtype: "initialize" } }) + "\n");
-      child.stdin.write(JSON.stringify(claudeInputMessage(work.input.length ? work.input : [{ type: "text", text: work.prompt }])) + "\n");
+      child.stdin.write(JSON.stringify(claudeInputMessage(work.input.length ? work.input : [{ type: "text", text: work.prompt }], work.claudeSessionId || "")) + "\n");
     } catch (error) {
       childSpawnError = error;
       log("claude_stdin_error", { threadId: work.threadId, turnId: work.turnId, error: formatError(error) });
@@ -742,6 +957,7 @@ class ClaudeCodeAppServer {
     turn.toolItems = Array.from(stream.tools.values()).map((tool) => toolItemJson(work.threadId, work.cwd, tool));
     thread.updatedAt = turn.completedAt;
     thread.latestTokenUsageInfo = stream.latestUsage;
+    this.persistBotThread(work.threadId);
     if (!stream.agentStarted && text) {
       writeNotification("item/completed", {
         threadId: thread.id,
@@ -762,6 +978,7 @@ class ClaudeCodeAppServer {
     } catch {
       return;
     }
+    this.rememberClaudeSession(message, work);
     rememberUsage(message, work, stream);
     if (message.type === "control_request") {
       this.handleControlRequest(message, work, child);
@@ -858,6 +1075,22 @@ function handleClaudeToolResults(content, work, stream) {
   }
 }
 
+function claudeSessionIdFromMessage(message) {
+  return (
+    objectSessionId(message) ||
+    objectSessionId(message && message.message) ||
+    objectSessionId(message && message.event) ||
+    objectSessionId(message && message.result) ||
+    objectSessionId(message && message.response) ||
+    ""
+  );
+}
+
+function objectSessionId(value) {
+  if (!value || typeof value !== "object") return "";
+  return stringValue(value.session_id) || stringValue(value.sessionId);
+}
+
 function handleClaudeContentBlock(block, work, stream) {
   const type = block && block.type;
   if (type === "text" && typeof block.text === "string") {
@@ -923,25 +1156,29 @@ function claudeCommand(work) {
   ];
   const model = nonEmptyEnv("CCR_CLAUDE_CODE_MODEL") || nonEmptyEnv("CODEXL_CLAUDE_CODE_MODEL") || work.model;
   if (model) args.push("--model", model);
-  if (work.resumeExisting) args.push("--resume", work.threadId);
+  if (work.resumeExisting && work.claudeSessionId) args.push("--resume", work.claudeSessionId);
   const extra = splitShellLike(nonEmptyEnv("CCR_CLAUDE_CODE_EXTRA_ARGS") || nonEmptyEnv("CODEXL_CLAUDE_CODE_EXTRA_ARGS") || "");
   args.push(...extra);
+  const env = withoutKeys({
+    ...process.env,
+    CODEX_SESSION_ID: work.threadId,
+    CODEX_THREAD_ID: work.threadId,
+    CODEX_TURN_ID: work.turnId
+  }, ["CCR_CLAUDE_CODE_BOT_WORKER", "ELECTRON_RUN_AS_NODE"]);
+  if (work.claudeConfigDir) {
+    env.CLAUDE_CONFIG_DIR = work.claudeConfigDir;
+  }
   return {
     command,
     args,
-    env: {
-      ...process.env,
-      CODEX_SESSION_ID: work.threadId,
-      CODEX_THREAD_ID: work.threadId,
-      CODEX_TURN_ID: work.turnId
-    }
+    env
   };
 }
 
-function claudeInputMessage(input) {
+function claudeInputMessage(input, sessionId = "") {
   return {
     type: "user",
-    session_id: "",
+    session_id: sessionId || "",
     message: { role: "user", content: claudeContentFromInput(input) },
     parent_tool_use_id: null
   };
@@ -1013,6 +1250,7 @@ function threadJson(thread, includeTurns) {
     threadId: thread.id,
     conversationId: thread.id,
     sessionId: thread.sessionId,
+    claudeSessionId: thread.claudeSessionId,
     path: thread.path,
     preview: thread.preview,
     cwd: thread.cwd,
@@ -1415,7 +1653,7 @@ function writeNotification(method, params) {
 }
 
 function writeRaw(value) {
-  BOT_BRIDGE.handleJsonRpcValue(value);
+  botBridge().handleJsonRpcValue(value);
   writeLine(process.stdout, value);
 }
 
@@ -1429,7 +1667,12 @@ function createBotGatewayBridge() {
     return {
       handleClaudeCliLine() {},
       handleJsonRpcLine() {},
-      handleJsonRpcValue() {}
+      handleJsonRpcValue() {},
+      sendReplyToEvent: async () => {},
+      setInboundHandler() {},
+      stop: async () => {},
+      suppressTurn() {},
+      unsuppressTurn() {}
     };
   }
   const bridge = new BotGatewayBridge(config);
@@ -1539,12 +1782,41 @@ class BotGatewayBridge {
     this.child = null;
     this.client = null;
     this.forwarded = new Set();
+    this.inboundHandler = null;
+    this.inboundEvents = new Set();
     this.latestEvent = null;
     this.messageCounter = 0;
     this.pollTimer = null;
     this.startPromise = null;
+    this.suppressedTurnIds = new Set();
     this.claudeCliCapture = { finalText: "", resultCount: 0, text: "" };
     this.turnCaptures = new Map();
+  }
+
+  setInboundHandler(handler) {
+    this.inboundHandler = typeof handler === "function" ? handler : null;
+    if (this.inboundHandler) {
+      this.ensureStarted().catch((error) => this.logError("start_failed", error));
+    }
+  }
+
+  suppressTurn(turnId) {
+    if (turnId) this.suppressedTurnIds.add(String(turnId));
+  }
+
+  unsuppressTurn(turnId) {
+    if (turnId) this.suppressedTurnIds.delete(String(turnId));
+  }
+
+  async stop() {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
+    const client = this.client;
+    this.client = null;
+    this.startPromise = null;
+    await closeBotGatewayClient(client);
   }
 
   handleClaudeCliLine(line) {
@@ -1619,7 +1891,6 @@ class BotGatewayBridge {
 
   handleJsonRpcValue(value) {
     if (!this.config.enabled || !value || typeof value !== "object") return;
-    this.ensureStarted().catch((error) => this.logError("start_failed", error));
     const method = typeof value.method === "string" ? value.method : "";
     const params = value.params && typeof value.params === "object" ? value.params : {};
     if (method === "item/completed") {
@@ -1681,6 +1952,11 @@ class BotGatewayBridge {
 
   forwardAgentText(key, text, params) {
     if (this.forwarded.has(key)) return;
+    const turnId = params && (params.turnId || params.turn_id || (params.turn && params.turn.id));
+    if (turnId && this.suppressedTurnIds.has(String(turnId))) {
+      log("bot_gateway_forward_skip", { key, reason: "bot_inbound_turn" });
+      return;
+    }
     const decision = this.forwardDecision();
     if (!decision.shouldForward) {
       log("bot_gateway_forward_skip", { key, reason: decision.reason });
@@ -1735,6 +2011,27 @@ class BotGatewayBridge {
     });
   }
 
+  async sendReplyToEvent(event, text, key) {
+    if (!text || !String(text).trim()) return;
+    await this.ensureStarted();
+    const conversationRef = conversationRefFromEvent(event) || this.config.conversationRef;
+    if (!conversationRef) {
+      throw new Error("No Bot Gateway conversationRef is available for inbound bot response.");
+    }
+    this.messageCounter += 1;
+    const outbound = {
+      tenantId: eventString(event, "tenantId") || this.config.tenantId || "ccr",
+      integrationId: eventString(event, "integrationId") || this.config.integrationId,
+      conversationRef,
+      intent: {
+        type: "text",
+        text
+      },
+      idempotencyKey: key + ":" + this.messageCounter
+    };
+    await withTimeout(this.client.send(outbound), this.config.requestTimeoutMs, "Bot Gateway request timed out: inbound outbound.send");
+  }
+
   resolveTenantId() {
     return eventString(this.latestEvent, "tenantId") || this.config.tenantId || "ccr";
   }
@@ -1746,14 +2043,7 @@ class BotGatewayBridge {
   resolveConversationRef() {
     if (this.config.conversationRef) return this.config.conversationRef;
     const event = this.latestEvent;
-    if (!event || !event.conversation || typeof event.conversation !== "object") return null;
-    const id = eventString(event.conversation, "id");
-    if (!id) return null;
-    const type = ["dm", "group", "channel", "thread"].includes(event.conversation.type) ? event.conversation.type : "dm";
-    const ref = { platformConversationId: id, type };
-    const threadId = event.message && typeof event.message === "object" ? eventString(event.message, "threadId") : "";
-    if (threadId) ref.threadId = threadId;
-    return ref;
+    return conversationRefFromEvent(event);
   }
 
   async ensureStarted() {
@@ -1771,7 +2061,7 @@ class BotGatewayBridge {
       BOT_GATEWAY_STATE_DIR: this.config.stateDir || path.join(CONFIG_DIR, "bot-gateway", safePathSegment(this.config.profileId)),
       CODEXL_HOME: CONFIG_DIR
     });
-    const clientOptions = botGatewaySdkClientOptions(this.config, env);
+    const clientOptions = botGatewaySdkClientOptions(this.config, env, sdk);
     this.client = sdk.createBotGatewayClient(clientOptions);
     await withTimeout(this.client.health(), this.config.startupTimeoutMs, "Bot Gateway health check timed out.");
     await this.ensureIntegration();
@@ -1784,7 +2074,7 @@ class BotGatewayBridge {
 
   async ensureIntegration() {
     if (!this.config.integrationId) return;
-    if (this.config.createIntegration) {
+    if (this.config.createIntegration && this.config.authType !== "qr_login") {
       await botGatewayClientRequest(this.client, "integrations.create", {
         id: this.config.integrationId,
         tenantId: this.config.tenantId,
@@ -1805,22 +2095,46 @@ class BotGatewayBridge {
 
   async pollEvents() {
     if (!this.client) return;
-    const result = await withTimeout(this.client.events(20), this.config.requestTimeoutMs, "Bot Gateway request timed out: events.list");
-    const events = Array.isArray(result && result.events) ? result.events : [];
-    for (const queued of events) {
-      const event = queued && queued.event && typeof queued.event === "object" ? queued.event : null;
-      if (!event || !this.matchesEvent(event)) continue;
-      if (event.actor && event.actor.isBot === true) continue;
-      this.latestEvent = event;
-      if (this.config.acknowledgeEvents) {
-        const eventId = eventString(queued, "id") || eventString(event, "id");
-        if (eventId) {
-          await withTimeout(this.client.ackEvent(eventId), this.config.requestTimeoutMs, "Bot Gateway request timed out: events.ack").catch((error) => {
-            log("bot_gateway_ack_failed", { eventId, error: formatError(error) });
-          });
+    if (this.pollingEvents) return;
+    this.pollingEvents = true;
+    try {
+      const result = await withTimeout(this.client.events(20), this.config.requestTimeoutMs, "Bot Gateway request timed out: events.list");
+      const events = Array.isArray(result && result.events) ? result.events : [];
+      for (const queued of events) {
+        const event = queued && queued.event && typeof queued.event === "object" ? queued.event : null;
+        if (!event || !this.matchesEvent(event)) continue;
+        if (event.actor && event.actor.isBot === true) continue;
+        this.latestEvent = event;
+        const eventId = eventIdFromQueued(queued, event);
+        if (this.inboundHandler) {
+          await this.dispatchInboundEvent(queued, event, eventId);
+        } else {
+          await this.ackEvent(eventId);
         }
       }
+    } finally {
+      this.pollingEvents = false;
     }
+  }
+
+  async dispatchInboundEvent(queued, event, eventId) {
+    const key = eventId || botEventDedupeKey(event);
+    if (this.inboundEvents.has(key)) return;
+    this.inboundEvents.add(key);
+    try {
+      await this.inboundHandler(event, queued, eventId || key, this);
+      await this.ackEvent(eventId);
+    } catch (error) {
+      this.inboundEvents.delete(key);
+      throw error;
+    }
+  }
+
+  async ackEvent(eventId) {
+    if (!this.config.acknowledgeEvents || !eventId) return;
+    await withTimeout(this.client.ackEvent(eventId), this.config.requestTimeoutMs, "Bot Gateway request timed out: events.ack").catch((error) => {
+      log("bot_gateway_ack_failed", { eventId, error: formatError(error) });
+    });
   }
 
   matchesEvent(event) {
@@ -1885,8 +2199,8 @@ function botGatewaySdkImportSpecifier(value) {
   return trimmed;
 }
 
-function botGatewaySdkClientOptions(config, env) {
-  const command = resolveBotGatewayCommand(config);
+function botGatewaySdkClientOptions(config, env, sdk) {
+  const command = resolveBotGatewayCommand(config) || resolveBundledBotGatewayCommand(sdk);
   return {
     transport: "stdio",
     ...(command || {}),
@@ -1902,21 +2216,47 @@ function resolveBotGatewayCommand(config) {
       cwd: config.cwd || process.cwd()
     };
   }
-  const sourceDir = expandHome(config.sourceDir || "");
-  const candidates = sourceDir ? [
-    path.join(sourceDir, "dist-bundle", "stdio", "stdio.js"),
-    path.join(sourceDir, "dist", "src", "stdio.js")
-  ] : [];
-  for (const entry of candidates) {
-    if (fs.existsSync(entry)) {
-      return {
-        command: process.execPath,
-        args: [entry],
-        cwd: sourceDir
-      };
-    }
-  }
   return undefined;
+}
+
+function resolveBundledBotGatewayCommand(sdk) {
+  if (!sdk || typeof sdk.bundledStdioPath !== "function") {
+    return undefined;
+  }
+  const bundledPath = sdk.bundledStdioPath();
+  return {
+    command: process.execPath,
+    args: [sanitizedBotGatewayStdioRunnerPath(bundledPath)],
+    cwd: path.dirname(bundledPath)
+  };
+}
+
+function sanitizedBotGatewayStdioRunnerPath(sourcePath) {
+  const source = fs.readFileSync(sourcePath, "utf8");
+  const normalized = normalizeDuplicateShebangs(source);
+  if (normalized === source) {
+    return sourcePath;
+  }
+
+  const targetDir = path.join(CONFIG_DIR, "bot-gateway", "runners");
+  const targetPath = path.join(targetDir, "bot-gateway-stdio.mjs");
+  fs.mkdirSync(targetDir, { recursive: true });
+  if (!fs.existsSync(targetPath) || fs.readFileSync(targetPath, "utf8") !== normalized) {
+    fs.writeFileSync(targetPath, normalized);
+  }
+  return targetPath;
+}
+
+function normalizeDuplicateShebangs(source) {
+  const lines = source.split("\n");
+  if (!lines[0] || !lines[0].startsWith("#!")) {
+    return source;
+  }
+  let index = 1;
+  while (lines[index] && lines[index].startsWith("#!")) {
+    index += 1;
+  }
+  return [lines[0], ...lines.slice(index)].join("\n");
 }
 
 function botGatewayClientRequest(client, method, params, timeoutMs) {
@@ -1924,6 +2264,19 @@ function botGatewayClientRequest(client, method, params, timeoutMs) {
     return Promise.reject(new Error("Bot Gateway SDK client does not expose request()."));
   }
   return withTimeout(client.request(method, params), timeoutMs, "Bot Gateway request timed out: " + method);
+}
+
+async function closeBotGatewayClient(client) {
+  if (!client || typeof client !== "object") return;
+  for (const method of ["close", "dispose", "stop"]) {
+    if (typeof client[method] !== "function") continue;
+    try {
+      await Promise.resolve(client[method]());
+    } catch (error) {
+      log("bot_gateway_client_close_failed", { method, error: formatError(error) });
+    }
+    return;
+  }
 }
 
 function withTimeout(promise, timeoutMs, message) {
@@ -2039,6 +2392,201 @@ function turnErrorText(turn) {
   return "";
 }
 
+function botSessionStorePath() {
+  const stateDir = nonEmptyEnv("CCR_BOT_GATEWAY_STATE_DIR") ||
+    nonEmptyEnv("CODEXL_BOT_GATEWAY_STATE_DIR") ||
+    nonEmptyEnv("BOT_GATEWAY_STATE_DIR") ||
+    path.join(CONFIG_DIR, "bot-gateway", safePathSegment(nonEmptyEnv("CCR_BOT_PROFILE_ID") || "default"));
+  return path.join(expandHome(stateDir), "claude-bot-sessions.json");
+}
+
+function normalizeBotSessionStore(value) {
+  const conversations = value && typeof value === "object" && value.conversations && typeof value.conversations === "object"
+    ? value.conversations
+    : {};
+  return { version: 1, conversations };
+}
+
+function latestClaudeAppLocalAgentSession() {
+  const baseDir = nonEmptyEnv("CCR_CLAUDE_APP_USER_DATA_PATH") || nonEmptyEnv("CLAUDE_USER_DATA_DIR");
+  if (!baseDir) return null;
+  const root = path.join(expandHome(baseDir), "local-agent-mode-sessions");
+  const files = listClaudeAppSessionFiles(root, 6);
+  let latest = null;
+  for (const file of files) {
+    let value;
+    try {
+      value = JSON.parse(fs.readFileSync(file, "utf8"));
+    } catch {
+      continue;
+    }
+    if (!value || typeof value !== "object" || value.isArchived === true || value.archived === true) continue;
+    const cliSessionId = stringValue(value.cliSessionId) || stringValue(value.cli_session_id);
+    if (!cliSessionId) continue;
+    const sessionId = stringValue(value.sessionId) || path.basename(file, ".json");
+    const lastActivityAt = numberValue(value.lastActivityAt) || numberValue(value.updatedAt) || numberValue(value.createdAt) || fileMtimeMs(file);
+    const item = {
+      file,
+      sessionId,
+      cliSessionId,
+      cwd: stringValue(value.cwd) || process.cwd(),
+      model: stringValue(value.model) || "",
+      title: stringValue(value.title) || "",
+      initialMessage: stringValue(value.initialMessage) || "",
+      lastActivityAt,
+      claudeConfigDir: claudeAppSessionConfigDir(file, value)
+    };
+    if (!latest || item.lastActivityAt > latest.lastActivityAt) latest = item;
+  }
+  return latest;
+}
+
+function listClaudeAppSessionFiles(root, maxDepth) {
+  const files = [];
+  const visit = (dir, depth) => {
+    if (depth < 0) return;
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        visit(fullPath, depth - 1);
+      } else if (entry.isFile() && entry.name.startsWith("local_") && entry.name.endsWith(".json")) {
+        files.push(fullPath);
+      }
+    }
+  };
+  visit(root, maxDepth);
+  return files;
+}
+
+function claudeAppSessionConfigDir(file, value) {
+  const candidates = [];
+  const cwd = stringValue(value && value.cwd);
+  if (cwd) candidates.push(path.join(path.dirname(expandHome(cwd)), ".claude"));
+  const sessionId = stringValue(value && value.sessionId) || path.basename(file, ".json");
+  if (sessionId) candidates.push(path.join(path.dirname(file), sessionId, ".claude"));
+  candidates.push(path.join(path.dirname(file), ".claude"));
+  for (const candidate of candidates) {
+    if (candidate && fs.existsSync(candidate)) return candidate;
+  }
+  return "";
+}
+
+function fileMtimeMs(file) {
+  try {
+    return fs.statSync(file).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+function numberValue(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function botEventText(event) {
+  const direct = valueStringAtPaths(event, [
+    "/message/text",
+    "/message/content",
+    "/raw/message/text",
+    "/raw/message/content",
+    "/raw/text/content",
+    "/raw/content/text",
+    "/raw/content",
+    "/text",
+    "/content"
+  ]);
+  if (direct) return direct;
+  return valueStringAtPaths(event, [
+    "/message/transcript",
+    "/message/transcription",
+    "/message/voiceText",
+    "/message/voice_text",
+    "/message/audioText",
+    "/message/audio_text",
+    "/raw/transcript",
+    "/raw/transcription",
+    "/raw/voiceText",
+    "/raw/voice_text",
+    "/raw/audioText",
+    "/raw/audio_text"
+  ]) || "";
+}
+
+function conversationRefFromEvent(event) {
+  if (!event || !event.conversation || typeof event.conversation !== "object") return null;
+  const conversation = event.conversation;
+  const platformConversationId = eventString(conversation, "id") || eventString(conversation, "platformConversationId");
+  const gatewayConversationId = eventString(conversation, "gatewayConversationId");
+  if (!platformConversationId && !gatewayConversationId) return null;
+  const rawType = eventString(conversation, "type");
+  const type = ["dm", "group", "channel", "thread"].includes(rawType) ? rawType : "dm";
+  const ref = {
+    ...(gatewayConversationId ? { gatewayConversationId } : {}),
+    ...(platformConversationId ? { platformConversationId } : {}),
+    type
+  };
+  const threadId = event.message && typeof event.message === "object" ? eventString(event.message, "threadId") : "";
+  if (threadId) ref.threadId = threadId;
+  const contextToken = valueStringAtPaths(event, ["/raw/context_token", "/raw/sessionWebhook", "/raw/contextToken"]);
+  if (contextToken) ref.contextToken = contextToken;
+  return ref;
+}
+
+function eventIdFromQueued(queued, event) {
+  return eventString(queued, "id") ||
+    eventString(event, "id") ||
+    valueStringAtPaths(event, ["/message/id", "/message/messageId", "/raw/message/id", "/raw/messageId", "/raw/msgId"]);
+}
+
+function botEventDedupeKey(event) {
+  const conversation = event && event.conversation && typeof event.conversation === "object" ? event.conversation : {};
+  return [
+    eventString(event, "tenantId"),
+    eventString(event, "integrationId"),
+    eventString(conversation, "id") || eventString(conversation, "gatewayConversationId"),
+    valueStringAtPaths(event, ["/message/id", "/message/messageId", "/raw/message/id", "/raw/messageId", "/raw/msgId"]),
+    botEventText(event),
+    valueStringAtPaths(event, ["/message/createdAt", "/message/timestamp", "/raw/createAt", "/raw/timestamp"])
+  ].join(":");
+}
+
+function botConversationKey(event) {
+  const conversation = event && event.conversation && typeof event.conversation === "object" ? event.conversation : {};
+  return [
+    eventString(event, "tenantId"),
+    eventString(event, "integrationId"),
+    eventString(conversation, "id") || eventString(conversation, "gatewayConversationId") || "default",
+    event.message && typeof event.message === "object" ? eventString(event.message, "threadId") : ""
+  ].join(":");
+}
+
+function valueStringAtPaths(value, paths) {
+  for (const path of paths) {
+    const candidate = valueAtPointer(value, path);
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+    if (Number.isFinite(candidate) || typeof candidate === "boolean") return String(candidate);
+  }
+  return "";
+}
+
+function valueAtPointer(value, pointer) {
+  if (!value || typeof pointer !== "string" || !pointer.startsWith("/")) return undefined;
+  let current = value;
+  for (const rawPart of pointer.slice(1).split("/")) {
+    if (current === null || current === undefined) return undefined;
+    const part = rawPart.replace(/~1/g, "/").replace(/~0/g, "~");
+    current = current[part];
+  }
+  return current;
+}
+
 function eventString(value, key) {
   return value && typeof value[key] === "string" ? value[key].trim() : "";
 }
@@ -2091,6 +2639,16 @@ function waitForChild(child) {
 
 function activeKey(threadId, turnId) {
   return String(threadId || "") + "\0" + String(turnId || "");
+}
+
+function latestThread(threads) {
+  let latest = null;
+  for (const thread of threads.values()) {
+    if (!latest || (thread.updatedAt || 0) > (latest.updatedAt || 0)) {
+      latest = thread;
+    }
+  }
+  return latest;
 }
 
 function findActiveForThread(active, threadId) {

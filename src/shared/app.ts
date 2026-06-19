@@ -66,14 +66,41 @@ export type GatewayProviderConfig = {
   baseurl?: string;
   billing?: unknown;
   capabilities?: GatewayProviderCapability[];
+  credentials?: ProviderCredentialConfig[];
   extraBody?: unknown;
   extraHeaders?: unknown;
+  failover?: ProviderFailoverConfig;
   icon?: string;
   models: string[];
   name: string;
   provider?: string;
   transformer?: unknown;
   type?: GatewayProviderProtocol | string;
+};
+
+export type ProviderCredentialConfig = {
+  account?: ProviderAccountConfig;
+  api_key?: string;
+  apiKey?: string;
+  apikey?: string;
+  enabled?: boolean;
+  id: string;
+  label?: string;
+  limits?: ApiKeyLimitConfig;
+  priority?: number;
+  weight?: number;
+};
+
+export type ProviderFailoverStrategy =
+  | "failover-only"
+  | "least-utilized"
+  | "priority-spillover"
+  | "weighted-round-robin";
+
+export type ProviderFailoverConfig = {
+  cooldownMs?: number;
+  spilloverThreshold?: number;
+  strategy?: ProviderFailoverStrategy;
 };
 
 export type ProviderAccountAuthMode = "provider-api-key" | "provider-api-key-raw" | "none";
@@ -558,6 +585,11 @@ export type ProxyRuntimeConfig = {
 
 export type TrayIconPreference = "random" | "violet" | "orange" | "cyan" | "progress";
 
+export type TrayBalanceProgressConfig = {
+  meterId: string;
+  provider: string;
+};
+
 export type TrayAccountComponentVariant = "bar" | "compact" | "ring" | "arc" | "stacked";
 export type TrayFlowComponentVariant = "line" | "area" | "bar" | "sparkline";
 export type TrayStatsComponentVariant = "cards" | "compact" | "pills";
@@ -888,6 +920,14 @@ export type BotGatewayHandoffConfig = {
   userIdle: boolean;
 };
 
+export type BotHandoffScanTarget = {
+  detail: string;
+  id: string;
+  label: string;
+  source: "bluetooth" | "selected" | "wifi" | string;
+  target: string;
+};
+
 export type BotGatewayConversationConfig = {
   gatewayConversationId?: string;
   platformConversationId?: string;
@@ -967,6 +1007,29 @@ export type BotGatewayQrLoginCancelResult = {
   canceled: boolean;
 };
 
+export type BotGatewayQrWindowOpenRequest = {
+  scanTimeoutMs?: number;
+  sessionId: string;
+  title?: string;
+  url: string;
+  waitForScan?: boolean;
+};
+
+export type BotGatewayQrWindowOpenResult = {
+  message?: string;
+  observed?: boolean;
+  opened: boolean;
+  reason?: "closed" | "error" | "scan_detected" | "timeout";
+};
+
+export type BotGatewayQrWindowCloseRequest = {
+  sessionId: string;
+};
+
+export type BotGatewayQrWindowCloseResult = {
+  closed: boolean;
+};
+
 export type AppConfig = {
   APIKEY: string;
   APIKEYS: ApiKeyConfig[];
@@ -989,6 +1052,7 @@ export type AppConfig = {
   overviewWidgets: OverviewWidgetConfig[];
   routerEndpoint: string;
   theme: "system" | "light" | "dark";
+  trayBalanceProgress?: TrayBalanceProgressConfig;
   trayProgressTargetTokens: number;
   trayComponentVariants: TrayComponentVariants;
   trayIcon: TrayIconPreference;

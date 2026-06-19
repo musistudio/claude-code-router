@@ -43,7 +43,7 @@ async function main(): Promise<void> {
   const childEnv = {
     ...process.env,
     ...plan.env,
-    ...botGatewayProfileEnv(config, profile)
+    ...botGatewayProfileEnv(config, profile, resolvedSurface)
   };
   delete childEnv.ELECTRON_RUN_AS_NODE;
 

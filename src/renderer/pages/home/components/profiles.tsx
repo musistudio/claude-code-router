@@ -1,14 +1,14 @@
 import {
-  AddProfileDraft, AgentLogo, AnimatePresence, AppConfig, Badge, BotGatewaySavedConfig, botGatewaySavedConfigLabel, Button,
+  AddProfileDraft, AgentLogo, AnimatePresence, AppConfig, Badge, BotGatewaySavedConfig, botGatewaySavedConfigLabel, BotHandoffScanTarget, Button,
 	  Card, CardContent, CardHeader, CardTitle, Check, ChevronDown, Copy,
 	  cn, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader,
-	  DialogTitle, Field, GatewayProviderConfig, Input, KeyValueRowsControl, LoaderCircle, motion,
+	  DialogTitle, Field, GatewayProviderConfig, Info, Input, KeyValueRowsControl, LoaderCircle, motion,
   normalizeProfileScope, normalizeProfileSurface, parseProfileModelValue, Pencil, Plus, PopoverContent,
   profileAgentLabel, profileAgentOptions, ProfileConfig, profileModelDisplayValue, profileModelMatchesQuery, profileModelProviderMatchesQuery,
   profileModelProviderOptions, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
-  Play, Search, SelectControl, Toggle, translateOptions, Trash2, useAppText, type ProfileOpenSurface, type VirtualModelProfileConfig,
+  Play, RefreshCw, Search, Select, SelectControl, Toggle, translateOptions, Trash2, useAppText, type ProfileOpenSurface, type VirtualModelProfileConfig,
   copyTextToClipboard,
-  useEffect, useLayoutEffect, useMemo, useRef, useState, X
+  useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, X
 } from "../shared";
 export function ProfileView({
   addProfile,
@@ -95,7 +95,7 @@ export function ProfileView({
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       <Toggle checked={profile.enabled} onChange={(enabled) => updateProfileItem(index, { enabled })} />
-                      {profile.enabled && scope === "ccr" ? (
+                      {profile.enabled ? (
                         <Button aria-label={`${t("Open")} ${profile.name || t("Profile")}`} onClick={() => openProfile(index)} size="iconSm" title={t("Open")} type="button" variant="ghost">
                           <Play className="h-3.5 w-3.5" />
                         </Button>
@@ -723,7 +723,17 @@ export function AddProfileForm({
         </Field>
         <Field label={t("Entry mode")}>
           <SelectControl
-            onChange={(surface) => onChange({ surface: normalizeProfileSurface(surface) })}
+            onChange={(surface) => {
+              const nextSurface = normalizeProfileSurface(surface);
+              onChange(nextSurface !== "cli"
+                ? { surface: nextSurface }
+                : {
+                    botConfigId: "",
+                    botConfigured: true,
+                    botEnabled: false,
+                    surface: nextSurface
+                  });
+            }}
             options={translateOptions(profileSurfaceOptions, t)}
             value={draft.surface}
           />
@@ -772,9 +782,11 @@ export function AddProfileForm({
             </Field>
           </>
         )}
-        <div className="sm:col-span-2">
-          <BotGatewaySelectForm botConfigs={botConfigs} draft={draft} onChange={onChange} onCreateBot={onCreateBot} />
-        </div>
+        {draft.surface !== "cli" ? (
+          <div className="sm:col-span-2">
+            <BotGatewaySelectForm botConfigs={botConfigs} draft={draft} onChange={onChange} onCreateBot={onCreateBot} />
+          </div>
+        ) : null}
         <Field className="sm:col-span-2" label={t("Environment variables")}>
           <KeyValueRowsControl
             addLabel={t("Add env variable")}
@@ -793,6 +805,19 @@ export function AddProfileForm({
 }
 
 const ADD_BOT_SELECT_VALUE = "__add_bot__";
+const HANDOFF_TARGET_NONE_VALUE = "__ccr_handoff_target_none__";
+
+type BotHandoffScanState = {
+  error: string;
+  loading: boolean;
+  results: BotHandoffScanTarget[];
+};
+
+const emptyHandoffScanState: BotHandoffScanState = {
+  error: "",
+  loading: false,
+  results: []
+};
 
 function BotGatewaySelectForm({
   botConfigs,
@@ -812,16 +837,68 @@ function BotGatewaySelectForm({
     { label: t("Add new bot"), value: ADD_BOT_SELECT_VALUE }
   ];
   const selectedValue = draft.botEnabled && draft.botConfigId ? draft.botConfigId : "none";
+  const selectedBot = draft.botEnabled
+    ? botConfigs.find((config) => config.id === selectedValue)
+    : undefined;
+  const [wifiScan, setWifiScan] = useState<BotHandoffScanState>(emptyHandoffScanState);
+  const [bluetoothScan, setBluetoothScan] = useState<BotHandoffScanState>(emptyHandoffScanState);
+  const autoHandoffScanRef = useRef(false);
+
+  const scanHandoffTargets = useCallback(async (kind: "bluetooth" | "wifi") => {
+    const setScan = kind === "wifi" ? setWifiScan : setBluetoothScan;
+    const scanner = kind === "wifi"
+      ? window.ccr?.scanBotHandoffWifiTargets
+      : window.ccr?.scanBotHandoffBluetoothTargets;
+    if (!scanner) {
+      setScan({
+        error: t("Handoff target scan is available in the Electron app."),
+        loading: false,
+        results: []
+      });
+      return;
+    }
+    setScan({ ...emptyHandoffScanState, loading: true });
+    try {
+      const results = await scanner();
+      setScan({
+        error: "",
+        loading: false,
+        results
+      });
+    } catch (error) {
+      setScan({
+        error: error instanceof Error ? error.message : String(error),
+        loading: false,
+        results: []
+      });
+    }
+  }, [t]);
+
+  useEffect(() => {
+    if (!draft.botEnabled || !draft.botHandoffEnabled || !selectedBot) {
+      autoHandoffScanRef.current = false;
+      return;
+    }
+    if (autoHandoffScanRef.current) {
+      return;
+    }
+    autoHandoffScanRef.current = true;
+    void scanHandoffTargets("wifi");
+    void scanHandoffTargets("bluetooth");
+  }, [draft.botEnabled, draft.botHandoffEnabled, scanHandoffTargets, selectedBot]);
 
   function updateEnabled(botEnabled: boolean) {
     if (!botEnabled) {
       onChange({ botConfigId: "", botConfigured: true, botEnabled: false });
       return;
     }
+    const nextBotConfigId = draft.botConfigId || botConfigs[0]?.id || "";
+    const nextBot = botConfigs.find((config) => config.id === nextBotConfigId);
     onChange({
-      botConfigId: draft.botConfigId || botConfigs[0]?.id || "",
+      botConfigId: nextBotConfigId,
       botConfigured: true,
-      botEnabled: true
+      botEnabled: true,
+      botForwardAllAgentMessages: nextBot ? nextBot.botGateway.forwardAllAgentMessages !== false : draft.botForwardAllAgentMessages
     });
   }
 
@@ -834,24 +911,188 @@ function BotGatewaySelectForm({
       onChange({ botConfigId: "", botConfigured: true, botEnabled: false });
       return;
     }
-    onChange({ botConfigId: value, botConfigured: true, botEnabled: true });
+    const nextBot = botConfigs.find((config) => config.id === value);
+    onChange({
+      botConfigId: value,
+      botConfigured: true,
+      botEnabled: true,
+      botForwardAllAgentMessages: nextBot ? nextBot.botGateway.forwardAllAgentMessages !== false : draft.botForwardAllAgentMessages
+    });
   }
+
+  const botScopeHint = t("Messages are forwarded only when using the corresponding app.");
 
   return (
     <div className="rounded-md border border-border bg-muted/20 px-3 py-2">
       <div className="flex min-w-0 items-center justify-between gap-3">
-        <span className="text-[12px] font-medium">{t("Bot")}</span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="text-[12px] font-medium">{t("Bot")}</span>
+          <span aria-label={botScopeHint} title={botScopeHint}>
+            <Info
+              aria-hidden="true"
+              className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+            />
+          </span>
+        </span>
         <Toggle checked={draft.botEnabled} onChange={updateEnabled} />
       </div>
       {draft.botEnabled ? (
-        <div className="mt-3 border-t border-border/70 pt-3">
+        <div className="mt-3 space-y-3 border-t border-border/70 pt-3">
           <Field label={t("Select bot")}>
             <SelectControl onChange={updateBot} options={options} value={selectedValue} />
           </Field>
+          {selectedBot ? (
+            <>
+              <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-background px-3 py-2">
+                <span className="text-[12px] font-medium">{t("Forward agent messages")}</span>
+                <Toggle checked={draft.botForwardAllAgentMessages} onChange={(botForwardAllAgentMessages) => onChange({ botForwardAllAgentMessages })} />
+              </div>
+              <div className="rounded-md border border-border bg-background p-3">
+                <div className="flex min-w-0 items-center justify-between gap-3">
+                  <span className="text-[12px] font-medium">{t("Handoff")}</span>
+                  <Toggle checked={draft.botHandoffEnabled} onChange={(botHandoffEnabled) => onChange({ botHandoffEnabled })} />
+                </div>
+                {draft.botHandoffEnabled ? (
+                  <div className="mt-3 grid grid-cols-1 gap-3 border-t border-border/70 pt-3 sm:grid-cols-2">
+                    <Field label={t("Idle seconds")}>
+                      <Input
+                        min={30}
+                        max={86400}
+                        type="number"
+                        value={draft.botHandoffIdleSeconds}
+                        onChange={(event) => onChange({ botHandoffIdleSeconds: event.target.value })}
+                      />
+                    </Field>
+                    <HandoffTargetPicker
+                      label={t("Phone Wi-Fi target")}
+                      scan={wifiScan}
+                      selectedTarget={firstHandoffTarget(draft.botHandoffPhoneWifiTargets)}
+                      onRefresh={() => void scanHandoffTargets("wifi")}
+                      onSelect={(botHandoffPhoneWifiTargets) => onChange({ botHandoffPhoneWifiTargets })}
+                    />
+                    <HandoffTargetPicker
+                      className="sm:col-span-2"
+                      label={t("Phone Bluetooth target")}
+                      scan={bluetoothScan}
+                      selectedTarget={firstHandoffTarget(draft.botHandoffPhoneBluetoothTargets)}
+                      onRefresh={() => void scanHandoffTargets("bluetooth")}
+                      onSelect={(botHandoffPhoneBluetoothTargets) => onChange({ botHandoffPhoneBluetoothTargets })}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>
   );
+}
+
+function HandoffTargetPicker({
+  className,
+  label,
+  scan,
+  selectedTarget,
+  onRefresh,
+  onSelect
+}: {
+  className?: string;
+  label: string;
+  scan: BotHandoffScanState;
+  selectedTarget: string;
+  onRefresh: () => void;
+  onSelect: (targetValue: string) => void;
+}) {
+  const t = useAppText();
+  const options = selectedTarget && !scan.results.some((target) => handoffTargetMatchesSavedValue(target, selectedTarget))
+    ? [
+        {
+          detail: "",
+          id: `selected:${selectedTarget}`,
+          label: selectedTarget,
+          source: "selected",
+          target: selectedTarget
+        },
+        ...scan.results
+      ]
+    : scan.results;
+  const placeholderText = scan.loading
+    ? t("Scanning targets")
+    : options.length > 0
+      ? t("Select a scanned target")
+      : t("No targets found");
+  const selectedOption = options.find((target) => handoffTargetMatchesSavedValue(target, selectedTarget));
+  const selectValue = selectedTarget || HANDOFF_TARGET_NONE_VALUE;
+  const selectOptions = [
+    ...(selectedTarget ? [{ label: t("None"), value: HANDOFF_TARGET_NONE_VALUE }] : []),
+    ...(!selectedTarget ? [{ disabled: true, label: placeholderText, value: HANDOFF_TARGET_NONE_VALUE }] : []),
+    ...options.map((target) => ({
+      label: handoffTargetSelectionText(target),
+      value: handoffTargetSavedValue(target)
+    }))
+  ];
+
+  return (
+    <div className={cn("min-w-0 space-y-1", className)}>
+      <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+      <div className="flex min-w-0 items-center gap-2">
+        <Select
+          className="min-w-0 flex-1"
+          disabled={scan.loading || (!selectedTarget && options.length === 0)}
+          onValueChange={(value) => onSelect(value === HANDOFF_TARGET_NONE_VALUE ? "" : value)}
+          options={selectOptions}
+          value={selectValue}
+        />
+        <Button
+          className="h-8 w-8 border-0 bg-transparent p-0 shadow-none hover:bg-transparent"
+          aria-label={t("Refresh targets")}
+          disabled={scan.loading}
+          onClick={onRefresh}
+          title={t("Refresh targets")}
+          type="button"
+          unstyled
+        >
+          <RefreshCw className={cn("h-5 w-5 text-muted-foreground hover:text-foreground", scan.loading && "animate-spin")} />
+        </Button>
+      </div>
+      {selectedOption?.detail ? (
+        <div className="truncate text-[11px] text-muted-foreground" title={selectedOption.detail}>
+          {selectedOption.detail}
+        </div>
+      ) : null}
+      {scan.error ? (
+        <div className="break-words text-[11px] text-destructive">{scan.error}</div>
+      ) : null}
+    </div>
+  );
+}
+
+function firstHandoffTarget(value: string): string {
+  return value.split(/\r?\n/).map((item) => item.trim()).find(Boolean) ?? "";
+}
+
+function handoffTargetSelectionText(target: BotHandoffScanTarget): string {
+  if (target.source !== "bluetooth") {
+    return target.label;
+  }
+  const label = target.label.trim();
+  const value = target.target.trim();
+  if (!label || !value || label === value || label.includes(value)) {
+    return label || value;
+  }
+  return `${label}(${value})`;
+}
+
+function handoffTargetSavedValue(target: BotHandoffScanTarget): string {
+  if (target.source === "bluetooth") {
+    return handoffTargetSelectionText(target);
+  }
+  return target.target;
+}
+
+function handoffTargetMatchesSavedValue(target: BotHandoffScanTarget, savedValue: string): boolean {
+  return target.target === savedValue || handoffTargetSavedValue(target) === savedValue;
 }
 
 export function AddProfileDialog({

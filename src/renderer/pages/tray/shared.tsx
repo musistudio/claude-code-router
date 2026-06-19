@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { Power } from "lucide-react";
+import appLogoUrl from "../../../../assets/logo.png";
 import trayCyanIconUrl from "../../../../assets/tray-cyan.png";
 import trayOrangeIconUrl from "../../../../assets/tray-orange.png";
 import trayVioletIconUrl from "../../../../assets/tray-violet.png";
@@ -9,6 +10,7 @@ import type {
   AppConfig,
   ProviderAccountMeter,
   ProviderAccountSnapshot,
+  TrayBalanceProgressConfig,
   TrayComponentVariants,
   TrayWidgetConfig,
   TrayWidgetType,
@@ -23,10 +25,10 @@ import type {
 
 export  {
   createContext, useCallback, useContext, useEffect, useMemo, useState, createRoot,
-  Power, trayCyanIconUrl, trayOrangeIconUrl, trayVioletIconUrl, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS
+  Power, appLogoUrl, trayCyanIconUrl, trayOrangeIconUrl, trayVioletIconUrl, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS
 };
 export type {
-  ReactNode, AppConfig, ProviderAccountMeter, ProviderAccountSnapshot, TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant, TrayWindowModuleId, UsageComparisonRow,
+  ReactNode, AppConfig, ProviderAccountMeter, ProviderAccountSnapshot, TrayBalanceProgressConfig, TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant, TrayWindowModuleId, UsageComparisonRow,
   UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, UsageTotals
 };
 

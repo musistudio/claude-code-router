@@ -7,11 +7,14 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { dirname, join as pathJoin, resolve as pathResolve, sep as pathSep } from "node:path";
 import type {
   ApiKeyConfig,
+  ApiKeyLimitConfig,
   AppConfig,
   GatewayMcpServerConfig,
   GatewayProviderCapability,
   GatewayProviderConfig,
   GatewayProviderProtocol,
+  ProviderCredentialConfig,
+  ProviderFailoverStrategy,
   GatewayStatus,
   RouterFallbackConfig,
   RouterFallbackMode,
@@ -110,11 +113,16 @@ type CursorOpenAICompatPreparation = {
 
 type UpstreamAttempt = {
   body?: Buffer;
+  credentialChain?: string[];
+  credentialProtocol?: GatewayProviderProtocol;
+  headers?: Record<string, string>;
   index: number;
+  logicalProvider?: string;
   model?: string;
 };
 
 type UpstreamFailedAttempt = {
+  credentialChain?: string[];
   error?: string;
   model?: string;
   statusCode?: number;
@@ -146,7 +154,10 @@ const localObservabilityHeaderNames = new Set([
   "x-claude-design-project-id",
   "x-ccr-claude-model-discovery",
   "x-ccr-codex-model-rewrite",
-  "x-ccr-cursor-openai-compat"
+  "x-ccr-cursor-openai-compat",
+  "x-ccr-logical-provider",
+  "x-ccr-provider-credential-chain",
+  "x-ccr-provider-credential-saturated"
 ]);
 const proxyHeaderDenyList = new Set(["connection", "host", "upgrade"]);
 const responseHeaderDenyList = new Set(["connection", "content-encoding", "transfer-encoding"]);
@@ -159,6 +170,7 @@ let warnedMissingCursorOpenAICompatContext = false;
 const rawTraceSyncPath = "/__ccr/raw-trace-sync";
 const gatewayPackageCandidates = ["@the-next-ai/ai-gateway", "gateway"];
 const apiKeyLimitCounters = new Map<string, ApiKeyWindowCounter>();
+const providerCredentialCooldowns = new Map<string, { reason: string; until: number }>();
 
 class GatewayService {
   private child?: ChildProcess;
@@ -577,9 +589,11 @@ class GatewayService {
     try {
       upstreamResult = await fetchUpstreamWithFallback({
         body: bodyToForward,
+        config: this.config,
         fallback: routeFallback,
         headers,
         method,
+        path,
         routedModel,
         upstreamUrl
       });
@@ -614,6 +628,7 @@ class GatewayService {
       this.config
     );
     const upstreamResponse = upstreamResult.response;
+    recordProviderCredentialOutcome(this.config, method, upstreamResult.attempt, upstreamResponse.status, responseHeaders);
     response.writeHead(upstreamResponse.status, Object.fromEntries(filteredResponseHeaders(responseHeaders)));
     if (!upstreamResponse.body) {
       if (shouldCaptureUsage) {
@@ -1459,6 +1474,12 @@ function findProviderByPublicOrInternalName(config: AppConfig, name: string): Ga
   if (!normalized) {
     return undefined;
   }
+  const credentialInternalName = parseProviderCredentialInternalName(name);
+  if (credentialInternalName) {
+    return config.Providers.find((provider) =>
+      provider.name.trim().toLowerCase() === credentialInternalName.providerName.toLowerCase()
+    );
+  }
   return config.Providers.find((provider) =>
     provider.name.trim().toLowerCase() === normalized ||
     provider.provider?.trim().toLowerCase() === normalized ||
@@ -1472,6 +1493,20 @@ function rewriteCapabilityResponseHeaders(headers: Headers, config: AppConfig): 
   const providerName = headers.get("x-gateway-target-provider-name")?.trim();
   if (!providerName) {
     return headers;
+  }
+  const credentialInternalName = parseProviderCredentialInternalName(providerName);
+  if (credentialInternalName) {
+    const provider = findProviderByPublicOrInternalName(config, credentialInternalName.providerName);
+    if (!provider) {
+      return headers;
+    }
+    const credential = findProviderCredentialBySlug(provider, credentialInternalName.credentialSlug);
+    const rewritten = new Headers(headers);
+    rewritten.set("x-gateway-target-provider-name", provider.name);
+    rewritten.set("x-ccr-provider-protocol", credentialInternalName.protocol);
+    rewritten.set("x-ccr-provider-credential-provider", provider.name);
+    rewritten.set("x-ccr-provider-credential-id", credential?.id ?? credentialInternalName.credentialSlug);
+    return rewritten;
   }
   const provider = findProviderByPublicOrInternalName(config, providerName);
   if (!provider || provider.name === providerName) {
@@ -1490,9 +1525,11 @@ function rewriteCapabilityResponseHeaders(headers: Headers, config: AppConfig): 
 
 async function fetchUpstreamWithFallback(input: {
   body?: Buffer;
+  config: AppConfig;
   fallback: RouterFallbackConfig;
   headers: Record<string, string>;
   method: string;
+  path: string;
   routedModel?: string;
   upstreamUrl: string;
 }): Promise<UpstreamFetchResult> {
@@ -1501,18 +1538,25 @@ async function fetchUpstreamWithFallback(input: {
   const failedAttempts: UpstreamFailedAttempt[] = [];
 
   for (let index = 0; index < attempts.length; index += 1) {
-    const attempt = attempts[index];
+    const attempt = prepareUpstreamCredentialAttempt({
+      attempt: attempts[index],
+      config: input.config,
+      headers: input.headers,
+      method: input.method,
+      path: input.path
+    });
     const hasNextAttempt = index < attempts.length - 1;
 
     try {
       const response = await fetch(input.upstreamUrl, {
         body: shouldSendBody(input.method) ? attempt.body?.toString("utf8") : undefined,
-        headers: omitLocalObservabilityHeaders(input.headers),
+        headers: omitLocalObservabilityHeaders(attempt.headers ?? input.headers),
         method: input.method
       });
 
       if (hasNextAttempt && shouldFallbackAfterStatus(response.status, fallbackMode)) {
         failedAttempts.push({
+          credentialChain: attempt.credentialChain,
           model: attempt.model,
           statusCode: response.status
         });
@@ -1528,6 +1572,7 @@ async function fetchUpstreamWithFallback(input: {
     } catch (error) {
       const message = formatError(error);
       failedAttempts.push({
+        credentialChain: attempt.credentialChain,
         error: message,
         model: attempt.model
       });
@@ -1545,6 +1590,221 @@ async function fetchUpstreamWithFallback(input: {
   throw new UpstreamRequestError("Gateway request failed before reaching an upstream provider.", {
     failedAttempts
   });
+}
+
+function prepareUpstreamCredentialAttempt(input: {
+  attempt: UpstreamAttempt;
+  config: AppConfig;
+  headers: Record<string, string>;
+  method: string;
+  path: string;
+}): UpstreamAttempt {
+  const target = resolveProviderCredentialRoutingTarget(input.config, input.headers, input.path, input.attempt.body);
+  if (!target) {
+    return {
+      ...input.attempt,
+      headers: input.headers
+    };
+  }
+
+  const credentials = activeProviderCredentials(target.provider);
+  if (credentials.length === 0) {
+    return {
+      ...input.attempt,
+      headers: input.headers
+    };
+  }
+
+  const usage = estimateLimitUsage(input.method, input.attempt.body ?? Buffer.alloc(0));
+  const selection = selectProviderCredentials(target.provider, target.protocol, credentials, usage);
+  if (selection.credentials.length === 0) {
+    return {
+      ...input.attempt,
+      headers: input.headers
+    };
+  }
+
+  const headers: Record<string, string> = {
+    ...input.headers,
+    "x-target-providers": selection.credentials.map((candidate) => candidate.internalName).join(","),
+    "x-ccr-logical-provider": target.provider.name,
+    "x-ccr-provider-credential-chain": selection.credentials.map((candidate) => candidate.credential.id).join(",")
+  };
+  delete headers["x-target-provider"];
+  if (selection.saturated) {
+    headers["x-ccr-provider-credential-saturated"] = "true";
+  }
+
+  return {
+    ...input.attempt,
+    body: target.body ?? input.attempt.body,
+    credentialChain: selection.credentials.map((candidate) => candidate.internalName),
+    credentialProtocol: target.protocol,
+    headers,
+    logicalProvider: target.provider.name
+  };
+}
+
+function resolveProviderCredentialRoutingTarget(
+  config: AppConfig,
+  headers: Record<string, string>,
+  path: string,
+  body: Buffer | undefined
+): { body?: Buffer; model?: string; provider: GatewayProviderConfig; protocol: GatewayProviderProtocol } | undefined {
+  const protocol = requestProtocolForPath(path);
+  if (!protocol) {
+    return undefined;
+  }
+
+  const parsedBody = parseJsonObjectSafe(body);
+  const bodyModel = stringValue(parsedBody?.model);
+  const parsedModel = parseProviderModelSelector(bodyModel);
+  if (parsedModel) {
+    const provider = findProviderByPublicOrInternalName(config, parsedModel.provider);
+    if (provider && activeProviderCredentials(provider).length > 0) {
+      return {
+        body: parsedBody ? serializeJsonBodyWithModel(parsedBody, parsedModel.model) : body,
+        model: parsedModel.model,
+        provider,
+        protocol
+      };
+    }
+  }
+
+  const targetProviderName = firstTargetProviderHeader(headers);
+  if (!targetProviderName) {
+    return undefined;
+  }
+
+  const provider = findProviderByPublicOrInternalName(config, targetProviderName);
+  if (!provider || activeProviderCredentials(provider).length === 0) {
+    return undefined;
+  }
+
+  return {
+    body,
+    model: bodyModel,
+    provider,
+    protocol
+  };
+}
+
+function parseProviderModelSelector(value: string | undefined): { model: string; provider: string } | undefined {
+  const normalized = normalizeRouteSelector(value);
+  if (!normalized) {
+    return undefined;
+  }
+  const separator = normalized.indexOf("/");
+  if (separator <= 0 || separator >= normalized.length - 1) {
+    return undefined;
+  }
+  const provider = normalized.slice(0, separator).trim();
+  const model = normalized.slice(separator + 1).trim();
+  return provider && model ? { model, provider } : undefined;
+}
+
+function firstTargetProviderHeader(headers: Record<string, string>): string | undefined {
+  const provider = headers["x-target-provider"] || headers["x-gateway-target-provider"];
+  if (provider?.trim()) {
+    return provider.trim();
+  }
+  const providers = headers["x-target-providers"];
+  return providers
+    ?.split(",")
+    .map((item) => item.trim())
+    .find(Boolean);
+}
+
+function activeProviderCredentials(provider: GatewayProviderConfig): ProviderCredentialConfig[] {
+  return (provider.credentials ?? []).filter((credential) =>
+    credential.enabled !== false &&
+    Boolean(providerCredentialApiKey(credential))
+  );
+}
+
+function selectProviderCredentials(
+  provider: GatewayProviderConfig,
+  protocol: GatewayProviderProtocol,
+  credentials: ProviderCredentialConfig[],
+  usage: ApiKeyLimitUsage
+): { credentials: Array<{ credential: ProviderCredentialConfig; internalName: string }>; saturated: boolean } {
+  const candidates = credentials.map((credential, index) => {
+    const limitState = providerCredentialLimitState(provider, credential, usage);
+    const cooldown = readProviderCredentialCooldown(provider, credential);
+    return {
+      cooldown,
+      credential,
+      index,
+      internalName: providerCredentialInternalName(provider.name, protocol, credential),
+      limitState,
+      priority: providerCredentialPriority(credential, index),
+      weight: Math.max(1, credential.weight ?? 1)
+    };
+  });
+  const available = candidates.filter((candidate) => !candidate.cooldown && !candidate.limitState.blocked);
+  const sorted = sortProviderCredentialCandidates(
+    available.length > 0 ? available : candidates,
+    provider.failover?.strategy,
+    provider.failover?.spilloverThreshold
+  );
+  return {
+    credentials: sorted.map((candidate) => ({
+      credential: candidate.credential,
+      internalName: candidate.internalName
+    })),
+    saturated: available.length === 0 && candidates.length > 0
+  };
+}
+
+function sortProviderCredentialCandidates<T extends {
+  index: number;
+  limitState: { utilization: number };
+  priority: number;
+  weight: number;
+}>(
+  candidates: T[],
+  strategy: ProviderFailoverStrategy | undefined,
+  spilloverThreshold: number | undefined
+): T[] {
+  const normalizedStrategy = strategy ?? "least-utilized";
+  if (normalizedStrategy === "priority-spillover") {
+    const prioritySorted = [...candidates].sort((left, right) =>
+      left.priority - right.priority ||
+      left.index - right.index
+    );
+    const primary = prioritySorted[0];
+    const threshold = Number.isFinite(spilloverThreshold) && spilloverThreshold !== undefined && spilloverThreshold > 0
+      ? spilloverThreshold
+      : 0.8;
+    if (!primary || primary.limitState.utilization < threshold) {
+      return prioritySorted;
+    }
+    return prioritySorted.sort((left, right) =>
+      left.limitState.utilization - right.limitState.utilization ||
+      left.priority - right.priority ||
+      right.weight - left.weight ||
+      left.index - right.index
+    );
+  }
+  return [...candidates].sort((left, right) => {
+    if (normalizedStrategy === "weighted-round-robin") {
+      return right.weight - left.weight || left.priority - right.priority || left.index - right.index;
+    }
+    if (normalizedStrategy === "least-utilized") {
+      return left.limitState.utilization - right.limitState.utilization ||
+        left.priority - right.priority ||
+        right.weight - left.weight ||
+        left.index - right.index;
+    }
+    return left.priority - right.priority ||
+      left.limitState.utilization - right.limitState.utilization ||
+      right.weight - left.weight ||
+      left.index - right.index;
+  });
+}
+
+function providerCredentialPriority(credential: ProviderCredentialConfig, index: number): number {
+  return Number.isFinite(credential.priority) ? Number(credential.priority) : index + 1;
 }
 
 function buildUpstreamAttempts(fallback: RouterFallbackConfig, method: string, body: Buffer | undefined, routedModel: string | undefined): UpstreamAttempt[] {
@@ -1749,18 +2009,33 @@ function appendNodeRequireOption(current: string | undefined, preloadFile: strin
 function toCoreGatewayProviders(provider: GatewayProviderConfig): CoreGatewayProvider[] {
   const capabilities = normalizedProviderCapabilities(provider);
   if (capabilities.length === 0) {
-    const coreProvider = toCoreGatewayProvider(provider);
-    return coreProvider ? [coreProvider] : [];
+    return toCoreGatewayProvidersForCapability(provider);
   }
 
   return capabilities
-    .map((capability) => toCoreGatewayProvider(provider, capability))
+    .flatMap((capability) => toCoreGatewayProvidersForCapability(provider, capability))
+    .filter((item): item is CoreGatewayProvider => Boolean(item));
+}
+
+function toCoreGatewayProvidersForCapability(
+  provider: GatewayProviderConfig,
+  capability?: GatewayProviderCapability
+): CoreGatewayProvider[] {
+  const credentials = activeProviderCredentials(provider);
+  if (credentials.length === 0) {
+    const coreProvider = toCoreGatewayProvider(provider, capability);
+    return coreProvider ? [coreProvider] : [];
+  }
+
+  return sortProviderCredentialsForConfig(credentials)
+    .map((credential) => toCoreGatewayProvider(provider, capability, credential))
     .filter((item): item is CoreGatewayProvider => Boolean(item));
 }
 
 function toCoreGatewayProvider(
   provider: GatewayProviderConfig,
-  capability?: GatewayProviderCapability
+  capability?: GatewayProviderCapability,
+  credential?: ProviderCredentialConfig
 ): CoreGatewayProvider | undefined {
   const type =
     capability?.type ??
@@ -1768,7 +2043,7 @@ function toCoreGatewayProvider(
     normalizeProviderProtocol(provider.provider) ??
     inferProtocol(provider);
   const baseurl = normalizeProviderRuntimeBaseUrl(capability?.baseUrl ?? readBaseUrl(provider), type);
-  const apikey = provider.apikey || provider.apiKey || provider.api_key;
+  const apikey = credential ? providerCredentialApiKey(credential) : provider.apikey || provider.apiKey || provider.api_key;
 
   if (!provider.name || provider.models.length === 0) {
     return undefined;
@@ -1789,9 +2064,20 @@ function toCoreGatewayProvider(
     extraBody: provider.extraBody,
     extraHeaders: provider.extraHeaders,
     models: provider.models,
-    name: capability ? providerCapabilityInternalName(provider.name, type) : provider.name,
+    name: credential
+      ? providerCredentialInternalName(provider.name, type, credential)
+      : capability
+        ? providerCapabilityInternalName(provider.name, type)
+        : provider.name,
     type
   };
+}
+
+function sortProviderCredentialsForConfig(credentials: ProviderCredentialConfig[]): ProviderCredentialConfig[] {
+  return [...credentials].sort((left, right) =>
+    providerCredentialPriority(left, 0) - providerCredentialPriority(right, 0) ||
+    providerCredentialSlug(left.id).localeCompare(providerCredentialSlug(right.id))
+  );
 }
 
 function normalizedProviderCapabilities(provider: GatewayProviderConfig): GatewayProviderCapability[] {
@@ -1820,6 +2106,54 @@ function normalizedProviderCapabilities(provider: GatewayProviderConfig): Gatewa
 
 function providerCapabilityInternalName(providerName: string, protocol: GatewayProviderProtocol): string {
   return `${providerName}::${protocol}`;
+}
+
+function providerCredentialInternalName(
+  providerName: string,
+  protocol: GatewayProviderProtocol,
+  credential: ProviderCredentialConfig
+): string {
+  return `${providerCapabilityInternalName(providerName, protocol)}::cred:${providerCredentialSlug(credential.id)}`;
+}
+
+function parseProviderCredentialInternalName(value: string | undefined): {
+  credentialSlug: string;
+  providerName: string;
+  protocol: GatewayProviderProtocol;
+} | undefined {
+  const marker = "::cred:";
+  const markerIndex = value?.lastIndexOf(marker) ?? -1;
+  if (!value || markerIndex <= 0) {
+    return undefined;
+  }
+  const baseName = value.slice(0, markerIndex);
+  const credentialSlug = value.slice(markerIndex + marker.length).trim();
+  const protocolSeparator = baseName.lastIndexOf("::");
+  if (!credentialSlug || protocolSeparator <= 0) {
+    return undefined;
+  }
+  const protocol = normalizeProviderProtocol(baseName.slice(protocolSeparator + 2));
+  const providerName = baseName.slice(0, protocolSeparator).trim();
+  return protocol && providerName ? { credentialSlug, providerName, protocol } : undefined;
+}
+
+function providerCredentialSlug(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "key";
+}
+
+function providerCredentialApiKey(credential: ProviderCredentialConfig): string {
+  return credential.api_key || credential.apiKey || credential.apikey || "";
+}
+
+function findProviderCredentialBySlug(
+  provider: GatewayProviderConfig,
+  credentialSlug: string
+): ProviderCredentialConfig | undefined {
+  return (provider.credentials ?? []).find((credential) => providerCredentialSlug(credential.id) === credentialSlug);
 }
 
 function normalizeProviderProtocol(value: unknown): GatewayProviderProtocol | undefined {
@@ -1864,6 +2198,10 @@ function resolveResponseProviderProtocol(headers: Headers, config: AppConfig | u
     headers.get("x-gateway-target-provider")?.trim();
   if (!providerName) {
     return undefined;
+  }
+  const credentialInternalName = parseProviderCredentialInternalName(providerName);
+  if (credentialInternalName) {
+    return credentialInternalName.protocol;
   }
   const provider = config ? findProviderByPublicOrInternalName(config, providerName) : undefined;
   if (!provider) {
@@ -2162,7 +2500,10 @@ function reserveApiKeyLimits(apiKey: ApiKeyConfig | undefined, request: Incoming
 }
 
 function apiKeyLimitRules(apiKey: ApiKeyConfig, usage: ApiKeyLimitUsage): ApiKeyLimitRule[] {
-  const limits = apiKey.limits;
+  return limitRules(apiKey.limits, usage);
+}
+
+function limitRules(limits: ApiKeyLimitConfig | undefined, usage: ApiKeyLimitUsage): ApiKeyLimitRule[] {
   if (!limits) {
     return [];
   }
@@ -2179,6 +2520,134 @@ function apiKeyLimitRules(apiKey: ApiKeyConfig, usage: ApiKeyLimitUsage): ApiKey
   addApiKeyLimitRule(rules, "ipd", "images", 86_400_000, limits.ipd, usage.imageCount);
   addApiKeyLimitRule(rules, "quota", "tokens", limits.quotaWindowMs ?? 86_400_000, limits.maxTokens, usage.totalTokens);
   return rules;
+}
+
+function providerCredentialLimitState(
+  provider: GatewayProviderConfig,
+  credential: ProviderCredentialConfig,
+  usage: ApiKeyLimitUsage
+): { blocked: boolean; utilization: number } {
+  const rules = limitRules(credential.limits, usage);
+  if (rules.length === 0) {
+    return {
+      blocked: false,
+      utilization: 0
+    };
+  }
+
+  const now = Date.now();
+  let blocked = false;
+  let utilization = 0;
+  for (const rule of rules) {
+    const windowStart = Math.floor(now / rule.windowMs) * rule.windowMs;
+    const counter = readApiKeyWindowCounter(providerCredentialCounterKey(provider, credential, rule, windowStart), windowStart);
+    blocked = blocked || counter.value + rule.requested > rule.limit;
+    utilization = Math.max(utilization, (counter.value + rule.requested) / rule.limit);
+  }
+
+  return {
+    blocked,
+    utilization
+  };
+}
+
+function recordProviderCredentialOutcome(
+  config: AppConfig,
+  method: string,
+  attempt: UpstreamAttempt,
+  statusCode: number,
+  responseHeaders: Headers
+): void {
+  if (!attempt.logicalProvider || !attempt.credentialProtocol || !attempt.credentialChain?.length) {
+    return;
+  }
+
+  const provider = findProviderByPublicOrInternalName(config, attempt.logicalProvider);
+  if (!provider) {
+    return;
+  }
+
+  const responseCredentialId = responseHeaders.get("x-ccr-provider-credential-id")?.trim();
+  const responseCredential = responseCredentialId
+    ? (provider.credentials ?? []).find((credential) => credential.id === responseCredentialId)
+    : undefined;
+  const fallbackCredential = providerCredentialFromInternalName(provider, attempt.credentialChain[0]);
+  const credential = responseCredential ?? fallbackCredential;
+  if (!credential) {
+    return;
+  }
+
+  if (statusCode >= 200 && statusCode < 500 && statusCode !== 401 && statusCode !== 403 && statusCode !== 429) {
+    incrementProviderCredentialCounters(provider, credential, estimateLimitUsage(method, attempt.body ?? Buffer.alloc(0)));
+    clearProviderCredentialCooldown(provider, credential);
+    return;
+  }
+
+  if (statusCode === 401 || statusCode === 403 || statusCode === 429 || statusCode >= 500) {
+    setProviderCredentialCooldown(provider, credential, providerCredentialCooldownMs(provider), `HTTP ${statusCode}`);
+  }
+}
+
+function providerCredentialFromInternalName(
+  provider: GatewayProviderConfig,
+  internalName: string | undefined
+): ProviderCredentialConfig | undefined {
+  const parsed = parseProviderCredentialInternalName(internalName);
+  return parsed ? findProviderCredentialBySlug(provider, parsed.credentialSlug) : undefined;
+}
+
+function incrementProviderCredentialCounters(
+  provider: GatewayProviderConfig,
+  credential: ProviderCredentialConfig,
+  usage: ApiKeyLimitUsage
+): void {
+  const rules = limitRules(credential.limits, usage);
+  const now = Date.now();
+  for (const rule of rules) {
+    const windowStart = Math.floor(now / rule.windowMs) * rule.windowMs;
+    readApiKeyWindowCounter(providerCredentialCounterKey(provider, credential, rule, windowStart), windowStart).value += rule.requested;
+  }
+}
+
+function providerCredentialCounterKey(
+  provider: GatewayProviderConfig,
+  credential: ProviderCredentialConfig,
+  rule: ApiKeyLimitRule,
+  windowStart: number
+): string {
+  return ["provider-credential", provider.name, credential.id, rule.name, rule.metric, rule.windowMs, windowStart].join("|");
+}
+
+function readProviderCredentialCooldown(provider: GatewayProviderConfig, credential: ProviderCredentialConfig): { reason: string; until: number } | undefined {
+  const key = providerCredentialStateKey(provider, credential);
+  const cooldown = providerCredentialCooldowns.get(key);
+  if (!cooldown) {
+    return undefined;
+  }
+  if (cooldown.until > Date.now()) {
+    return cooldown;
+  }
+  providerCredentialCooldowns.delete(key);
+  return undefined;
+}
+
+function setProviderCredentialCooldown(provider: GatewayProviderConfig, credential: ProviderCredentialConfig, cooldownMs: number, reason: string): void {
+  providerCredentialCooldowns.set(providerCredentialStateKey(provider, credential), {
+    reason,
+    until: Date.now() + cooldownMs
+  });
+}
+
+function clearProviderCredentialCooldown(provider: GatewayProviderConfig, credential: ProviderCredentialConfig): void {
+  providerCredentialCooldowns.delete(providerCredentialStateKey(provider, credential));
+}
+
+function providerCredentialStateKey(provider: GatewayProviderConfig, credential: ProviderCredentialConfig): string {
+  return `${provider.name}::${credential.id}`;
+}
+
+function providerCredentialCooldownMs(provider: GatewayProviderConfig): number {
+  return clampNumber(provider.failover?.cooldownMs ?? 60_000, 1_000, 3_600_000);
 }
 
 function addApiKeyLimitRule(
@@ -2212,7 +2681,11 @@ function readApiKeyWindowCounter(key: string, windowStart: number): ApiKeyWindow
 }
 
 function estimateApiKeyLimitUsage(request: IncomingMessage, requestBody: Buffer): ApiKeyLimitUsage {
-  if ((request.method ?? "GET").toUpperCase() !== "POST" || requestBody.byteLength === 0) {
+  return estimateLimitUsage(request.method ?? "GET", requestBody);
+}
+
+function estimateLimitUsage(method: string, requestBody: Buffer): ApiKeyLimitUsage {
+  if (method.toUpperCase() !== "POST" || requestBody.byteLength === 0) {
     return {
       imageCount: 0,
       totalTokens: 0

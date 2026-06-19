@@ -4,8 +4,9 @@ import { pathToFileURL } from "node:url";
 import { deflateSync } from "node:zlib";
 import { loadAppConfig } from "./config";
 import { APP_NAME } from "./constants";
+import { getProviderAccountSnapshots } from "./provider-account-service";
 import { getTodayUsageTotals, onUsageRecorded } from "./usage-store";
-import type { AppConfig, TrayIconPreference } from "../shared/app";
+import type { AppConfig, ProviderAccountMeter, TrayBalanceProgressConfig, TrayIconPreference } from "../shared/app";
 
 const popoverMenuWidth = 420;
 const popoverPreferredHeight = 740;
@@ -37,8 +38,8 @@ class TrayController {
   private resolvedRandomTrayIcon?: TrayMascotIconId;
   private refreshTimer?: NodeJS.Timeout;
   private tray?: Tray;
+  private trayBalanceProgress?: TrayBalanceProgressConfig;
   private trayIconPreference: TrayIconPreference = "random";
-  private trayProgressTargetTokens = 100000;
   private trayTotalTokens = 0;
   private unsubscribeUsageUpdates?: () => void;
 
@@ -113,9 +114,9 @@ class TrayController {
       this.resolvedRandomTrayIcon = undefined;
     }
     this.trayIconPreference = nextPreference;
-    this.trayProgressTargetTokens = normalizeTrayProgressTarget(nextConfig.trayProgressTargetTokens);
-    if (nextPreference === "progress") {
-      this.applyProgressTrayIcon(this.trayTotalTokens);
+    this.trayBalanceProgress = normalizeTrayBalanceProgressConfig(nextConfig.trayBalanceProgress);
+    if (nextPreference === "progress" && this.trayBalanceProgress) {
+      await this.refreshBalanceProgressTrayIcon();
       return;
     }
     this.applyTrayIcon(this.resolveTrayIconId(nextPreference));
@@ -342,8 +343,8 @@ class TrayController {
     try {
       const totals = await getTodayUsageTotals(undefined, { includeProxy: true });
       this.trayTotalTokens = Math.max(0, totals.totalTokens);
-      if (this.trayIconPreference === "progress") {
-        this.applyProgressTrayIcon(this.trayTotalTokens);
+      if (this.trayIconPreference === "progress" && this.trayBalanceProgress) {
+        await this.refreshBalanceProgressTrayIcon();
       }
       this.tray.setTitle(formatTokenTitle(totals.totalTokens));
     } catch {
@@ -359,13 +360,26 @@ class TrayController {
     this.tray.setImage(icon.isEmpty() ? nativeImage.createEmpty() : icon);
   }
 
-  private applyProgressTrayIcon(totalTokens: number): void {
+  private applyProgressTrayIcon(progress: number): void {
     if (!this.tray) {
       return;
     }
-    const progress = calculateTrayProgress(totalTokens, this.trayProgressTargetTokens);
     const icon = createTrayProgressIcon(progress);
     this.tray.setImage(icon.isEmpty() ? nativeImage.createEmpty() : icon);
+  }
+
+  private async refreshBalanceProgressTrayIcon(): Promise<void> {
+    if (!this.trayBalanceProgress) {
+      return;
+    }
+    try {
+      const snapshots = await getProviderAccountSnapshots(this.trayBalanceProgress.provider);
+      const snapshot = snapshots.find((account) => account.provider === this.trayBalanceProgress?.provider) ?? snapshots[0];
+      const meter = snapshot?.meters.find((candidate) => candidate.id === this.trayBalanceProgress?.meterId);
+      this.applyProgressTrayIcon(meter ? calculateTrayBalanceProgress(meter) : 0);
+    } catch {
+      this.applyProgressTrayIcon(0);
+    }
   }
 
   private refreshRandomTrayIconForCurrentDay(): void {
@@ -471,7 +485,7 @@ function createTrayIcon(iconId: TrayMascotIconId): Electron.NativeImage {
 
 function createTrayProgressIcon(progress: number): Electron.NativeImage {
   const clamped = Math.max(0, Math.min(1, progress));
-  const image = nativeImage.createFromBuffer(createProgressRingPng(clamped));
+  const image = nativeImage.createFromBuffer(createBalanceProgressBarPng(clamped));
   if (image.isEmpty()) {
     return nativeImage.createEmpty();
   }
@@ -486,71 +500,92 @@ function normalizeTrayIconPreference(value: unknown): TrayIconPreference {
     : "random";
 }
 
-function normalizeTrayProgressTarget(value: unknown): number {
-  const target = Number(value);
-  if (!Number.isFinite(target) || target <= 0) {
-    return 100000;
+function normalizeTrayBalanceProgressConfig(value: unknown): TrayBalanceProgressConfig | undefined {
+  if (!isRecord(value)) {
+    return undefined;
   }
-  return Math.min(1_000_000_000, Math.max(1000, Math.trunc(target)));
+  const provider = readRecordString(value, "provider");
+  const meterId = readRecordString(value, "meterId");
+  return provider && meterId ? { meterId, provider } : undefined;
 }
 
-function calculateTrayProgress(totalTokens: number, targetTokens: number): number {
-  if (targetTokens <= 0) {
-    return 0;
+function calculateTrayBalanceProgress(meter: ProviderAccountMeter): number {
+  if (meter.limit && meter.limit > 0) {
+    if (meter.remaining !== undefined) {
+      return Math.max(0, Math.min(1, meter.remaining / meter.limit));
+    }
+    if (meter.used !== undefined) {
+      return Math.max(0, Math.min(1, 1 - meter.used / meter.limit));
+    }
   }
-  return Math.max(0, Math.min(1, totalTokens / targetTokens));
+  if (meter.unit === "%") {
+    if (meter.remaining !== undefined) {
+      return Math.max(0, Math.min(1, meter.remaining / 100));
+    }
+    if (meter.used !== undefined) {
+      return Math.max(0, Math.min(1, 1 - meter.used / 100));
+    }
+  }
+  const rawValue = meter.remaining ?? meter.limit ?? meter.used ?? 0;
+  return rawValue > 0 ? 1 : 0;
 }
 
-function createProgressRingPng(progress: number): Buffer {
+function createBalanceProgressBarPng(progress: number): Buffer {
   const size = 36;
-  const center = (size - 1) / 2;
-  const outerRadius = 15.2;
-  const ringRadius = 12.2;
-  const ringWidth = 4.2;
   const rgba = Buffer.alloc(size * size * 4);
-  const track = { a: 0.55, b: 184, g: 163, r: 148 };
-  const fill = progress >= 0.99
-    ? { a: 1, b: 153, g: 211, r: 52 }
-    : { a: 1, b: 250, g: 250, r: 248 };
+  const clamped = Math.max(0, Math.min(1, progress));
+  const track = { a: 0.48, b: 184, g: 163, r: 148 };
+  const fill = clamped <= 0.05
+    ? { a: 1, b: 68, g: 68, r: 248 }
+    : clamped <= 0.2
+      ? { a: 1, b: 36, g: 191, r: 245 }
+      : { a: 1, b: 252, g: 250, r: 248 };
+  const accent = { a: 0.95, b: 191, g: 212, r: 45 };
   const background = { a: 0.92, b: 42, g: 23, r: 15 };
 
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
       const px = x + 0.5;
       const py = y + 0.5;
-      const dx = px - center;
-      const dy = py - center;
-      const distance = Math.hypot(dx, dy);
       const index = (y * size + x) * 4;
-      blendPngPixel(rgba, index, background, edgeAlpha(outerRadius - distance));
-      blendPngPixel(rgba, index, track, strokeAlpha(distance, ringRadius, ringWidth));
-      if (progress > 0 && isProgressArcPoint(dx, dy, progress)) {
-        blendPngPixel(rgba, index, fill, strokeAlpha(distance, ringRadius, ringWidth));
-      }
-      blendPngPixel(rgba, index, background, edgeAlpha(4.4 - distance));
+      blendPngPixel(rgba, index, background, roundedRectAlpha(px, py, 3, 3, 30, 30, 8));
+      blendPngPixel(rgba, index, { a: 0.74, b: 250, g: 250, r: 248 }, roundedRectAlpha(px, py, 7, 9, 12, 2.5, 1.25));
+      blendPngPixel(rgba, index, accent, roundedRectAlpha(px, py, 7, 15, 18, 2.5, 1.25));
+      blendPngPixel(rgba, index, track, roundedRectAlpha(px, py, 7, 22, 22, 5, 2.5));
+      blendPngPixel(rgba, index, fill, roundedRectAlpha(px, py, 7, 22, Math.max(2, 22 * clamped), 5, 2.5));
     }
   }
 
   return encodePngRgba(rgba, size, size);
 }
 
-function isProgressArcPoint(dx: number, dy: number, progress: number): boolean {
-  if (progress >= 1) {
-    return true;
-  }
-  let angle = Math.atan2(dy, dx) + Math.PI / 2;
-  if (angle < 0) {
-    angle += Math.PI * 2;
-  }
-  return angle <= progress * Math.PI * 2;
+function roundedRectAlpha(
+  px: number,
+  py: number,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number
+): number {
+  const halfWidth = Math.max(0, width / 2 - radius);
+  const halfHeight = Math.max(0, height / 2 - radius);
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+  const dx = Math.abs(px - centerX) - halfWidth;
+  const dy = Math.abs(py - centerY) - halfHeight;
+  const outside = Math.hypot(Math.max(dx, 0), Math.max(dy, 0));
+  const inside = Math.min(Math.max(dx, dy), 0);
+  return Math.max(0, Math.min(1, 0.5 - (outside + inside - radius)));
 }
 
-function edgeAlpha(distance: number): number {
-  return Math.max(0, Math.min(1, distance + 0.5));
+function readRecordString(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function strokeAlpha(distance: number, radius: number, width: number): number {
-  return Math.max(0, Math.min(1, width / 2 + 0.5 - Math.abs(distance - radius)));
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function blendPngPixel(

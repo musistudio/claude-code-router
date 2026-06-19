@@ -42,8 +42,7 @@ class WindowsManager {
         nodeIntegration: false,
         preload: path.join(__dirname, "preload.js"),
         sandbox: true,
-        webSecurity: true,
-        webviewTag: true
+        webSecurity: true
       },
       width
     });

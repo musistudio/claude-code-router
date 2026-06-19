@@ -1,5 +1,5 @@
 import {
-  AppConfig, DEFAULT_TRAY_WIDGETS, emptySnapshots, normalizeTrayIconPreference,
+  DEFAULT_TRAY_WIDGETS, emptySnapshots,
   normalizeTrayWidgets, ProviderAccountSnapshot, SnapshotMap, TrayWidgetConfig, UsageStatsFilter,
   UsageStatsRange, useCallback, useEffect, useState, useTrayText
 } from "./shared";
@@ -14,7 +14,6 @@ export function TrayDetailApp({ provider }: { provider?: string }) {
   const [range, setRange] = useState<UsageStatsRange>("30d");
   const [snapshots, setSnapshots] = useState<SnapshotMap>(emptySnapshots);
   const [accountSnapshots, setAccountSnapshots] = useState<ProviderAccountSnapshot[]>([]);
-  const [trayIconPreference, setTrayIconPreference] = useState<AppConfig["trayIcon"]>("random");
   const [trayWidgets, setTrayWidgets] = useState<TrayWidgetConfig[]>(DEFAULT_TRAY_WIDGETS);
 
   const refresh = useCallback(async () => {
@@ -38,7 +37,6 @@ export function TrayDetailApp({ provider }: { provider?: string }) {
       ]);
       setSnapshots({ today, "24h": day, "7d": week, "30d": month });
       setAccountSnapshots(accounts);
-      setTrayIconPreference(normalizeTrayIconPreference(config.trayIcon));
       setTrayWidgets(normalizeTrayWidgets(config.trayWidgets, config.trayWindowModules, config.trayComponentVariants));
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : String(nextError));
@@ -75,7 +73,7 @@ export function TrayDetailApp({ provider }: { provider?: string }) {
     <main
       className="h-screen w-screen overflow-y-auto rounded-[14px] border border-slate-950/15 bg-slate-950 p-3 text-slate-100 shadow-[0_18px_42px_rgba(15,23,42,.28)]"
     >
-      <TrayStatusStrip totalTokens={snapshots[range].totals.totalTokens} trayIconPreference={trayIconPreference} />
+      <TrayStatusStrip totalTokens={snapshots[range].totals.totalTokens} />
       <UsageDetailPanel activeStats={snapshots[range]} accountSnapshots={accountSnapshots} provider={provider} range={range} widgets={trayWidgets} onRangeChange={setRange} />
       {loading ? <div className="mt-2 text-[11px] font-medium text-slate-200/60">{t("Syncing usage...")}</div> : null}
       {error ? <div className="mt-3 rounded-lg border border-rose-400/24 bg-rose-500/18 px-3 py-2 text-[12px] font-medium text-rose-100">{error}</div> : null}

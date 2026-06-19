@@ -44,7 +44,7 @@ export function launchCodexAppProfile(configDir: string, profile: ProfileConfig,
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     ...plan.env,
-    ...(config ? botGatewayProfileEnv(config, profile) : {}),
+    ...(config ? botGatewayProfileEnv(config, profile, "app") : {}),
     ...codexProfileEnv(profile),
     CODEX_CLI_PATH: plan.command,
     CODEX_ELECTRON_USER_DATA_PATH: userDataDir,

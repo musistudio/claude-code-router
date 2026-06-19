@@ -47,9 +47,8 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
     const endpoint = gatewayEndpoint(config);
     const settings = readJsonObject(settingsFile);
     const env = {
-      ...Object.fromEntries(stringRecord(settings.env)),
-      ...profileEnv(profile),
-      ...botGatewayProfileEnv(config, profile)
+      ...withoutBotGatewayEnv(Object.fromEntries(stringRecord(settings.env))),
+      ...profileEnv(profile)
     };
     env.ANTHROPIC_BASE_URL = endpoint;
     env.ANTHROPIC_API_BASE_URL = endpoint;
@@ -421,15 +420,17 @@ function claudeCodeWrapperFilename(profile: ProfileConfig): string {
 
 function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig, runtimeFile: string): string {
   const realClaude = profile.env?.CCR_CLAUDE_CODE_BIN?.trim() || "claude";
-  const envExports = Object.entries({
-    ...profileEnv(profile),
-    ...botGatewayProfileEnv(config, profile)
-  })
+  const surface = normalizeProfileSurface(profile.surface);
+  const envExports = Object.entries(profileEnv(profile))
     .filter(([key]) => key !== "CCR_CLAUDE_CODE_BIN")
     .map(([key, value]) => `export ${key}=${shellQuote(value)}`);
+  const botEnvExports = shellBotGatewayEnvExports(config, profile);
   return [
     "#!/bin/sh",
     ...envExports,
+    `: "\${CCR_PROFILE_SURFACE:=${surface}}"`,
+    "export CCR_PROFILE_SURFACE",
+    ...botEnvExports,
     `export CCR_CLAUDE_CODE_WRAPPER=1`,
     `export CCR_REAL_CLAUDE_CODE_BIN=${shellQuote(realClaude)}`,
     `export CODEXL_CLAUDE_CODE_BIN=${shellQuote(realClaude)}`,
@@ -441,15 +442,16 @@ function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig,
 
 function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, runtimeFile: string): string {
   const realClaude = profile.env?.CCR_CLAUDE_CODE_BIN?.trim() || "claude";
-  const envExports = Object.entries({
-    ...profileEnv(profile),
-    ...botGatewayProfileEnv(config, profile)
-  })
+  const surface = normalizeProfileSurface(profile.surface);
+  const envExports = Object.entries(profileEnv(profile))
     .filter(([key]) => key !== "CCR_CLAUDE_CODE_BIN")
     .map(([key, value]) => `set "${key}=${value.replace(/"/g, '\\"')}"`);
+  const botEnvExports = cmdBotGatewayEnvExports(config, profile);
   return [
     "@echo off",
     ...envExports,
+    `if not defined CCR_PROFILE_SURFACE set "CCR_PROFILE_SURFACE=${surface}"`,
+    ...botEnvExports,
     `set "CCR_CLAUDE_CODE_WRAPPER=1"`,
     `set "CCR_REAL_CLAUDE_CODE_BIN=${realClaude.replace(/"/g, '\\"')}"`,
     `set "CODEXL_CLAUDE_CODE_BIN=${realClaude.replace(/"/g, '\\"')}"`,
@@ -523,10 +525,8 @@ function codexMiddlewareShellScript(
   const codexHome = profile.codexHome?.trim() || path.dirname(values.configFile);
   const remoteFrontendMode = normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode);
   const surface = normalizeProfileSurface(profile.surface);
-  const envExports = Object.entries({
-    ...profileEnv(profile),
-    ...botGatewayProfileEnv(config, profile)
-  }).map(([key, value]) => `export ${key}=${shellQuote(value)}`);
+  const envExports = Object.entries(profileEnv(profile)).map(([key, value]) => `export ${key}=${shellQuote(value)}`);
+  const botEnvExports = shellBotGatewayEnvExports(config, profile);
   return [
     "#!/bin/sh",
     ...envExports,
@@ -541,6 +541,7 @@ function codexMiddlewareShellScript(
     `export CCR_PROFILE_SCOPE=${shellQuote(normalizeProfileScope(profile.scope))}`,
     `: "\${CCR_PROFILE_SURFACE:=${surface}}"`,
     "export CCR_PROFILE_SURFACE",
+    ...botEnvExports,
     `export CODEXL_REAL_CODEX_CLI_PATH=${shellQuote(codexCli)}`,
     `export CODEXL_CODEX_PROFILE=${shellQuote(values.providerId)}`,
     `export CODEXL_CODEX_MODEL_PROVIDER=${shellQuote(values.providerId)}`,
@@ -573,10 +574,8 @@ function codexMiddlewareCmdScript(
   const surface = normalizeProfileSurface(profile.surface);
   const providerId = values.providerId.replace(/"/g, '\\"');
   const workspaceName = (profile.name || values.providerId).replace(/"/g, '\\"');
-  const envExports = Object.entries({
-    ...profileEnv(profile),
-    ...botGatewayProfileEnv(config, profile)
-  }).map(([key, value]) => `set "${key}=${value.replace(/"/g, '\\"')}"`);
+  const envExports = Object.entries(profileEnv(profile)).map(([key, value]) => `set "${key}=${value.replace(/"/g, '\\"')}"`);
+  const botEnvExports = cmdBotGatewayEnvExports(config, profile);
   return [
     "@echo off",
     ...envExports,
@@ -590,6 +589,7 @@ function codexMiddlewareCmdScript(
     `set "CCR_CODEX_PROFILE_CONFIG_FORMAT=${values.configFormat}"`,
     `set "CCR_PROFILE_SCOPE=${normalizeProfileScope(profile.scope)}"`,
     `if not defined CCR_PROFILE_SURFACE set "CCR_PROFILE_SURFACE=${surface}"`,
+    ...botEnvExports,
     `set "CODEXL_REAL_CODEX_CLI_PATH=${codexCli.replace(/"/g, '\\"')}"`,
     `set "CODEXL_CODEX_PROFILE=${providerId}"`,
     `set "CODEXL_CODEX_MODEL_PROVIDER=${providerId}"`,
@@ -606,6 +606,37 @@ function codexMiddlewareCmdScript(
     "exit /b %ERRORLEVEL%",
     ""
   ].join("\r\n");
+}
+
+function shellBotGatewayEnvExports(config: AppConfig, profile: ProfileConfig): string[] {
+  return [
+    'if [ "$CCR_PROFILE_SURFACE" = "app" ]; then',
+    ...Object.entries(botGatewayProfileEnv(config, profile, "app")).map(([key, value]) => `  export ${key}=${shellQuote(value)}`),
+    "else",
+    ...Object.entries(botGatewayProfileEnv(config, profile, "cli")).map(([key, value]) => `  export ${key}=${shellQuote(value)}`),
+    "fi"
+  ];
+}
+
+function cmdBotGatewayEnvExports(config: AppConfig, profile: ProfileConfig): string[] {
+  return [
+    `if /I "%CCR_PROFILE_SURFACE%"=="app" (`,
+    ...Object.entries(botGatewayProfileEnv(config, profile, "app")).map(([key, value]) => `  set "${key}=${value.replace(/"/g, '\\"')}"`),
+    ") else (",
+    ...Object.entries(botGatewayProfileEnv(config, profile, "cli")).map(([key, value]) => `  set "${key}=${value.replace(/"/g, '\\"')}"`),
+    ")"
+  ];
+}
+
+function withoutBotGatewayEnv(values: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(values).filter(([key]) => !isBotGatewayEnvKey(key)));
+}
+
+function isBotGatewayEnvKey(key: string): boolean {
+  return key === "BOT_GATEWAY_STATE_DIR" ||
+    key.startsWith("CCR_BOT_") ||
+    key.startsWith("CODEXL_BOT_") ||
+    key === "CCR_BOT_GATEWAY_SDK_MODULE";
 }
 
 function removeRootTomlKeys(source: string, keys: string[]): string {

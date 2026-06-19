@@ -1,6 +1,5 @@
 export {};
 
-import type * as React from "react";
 import type {
   AgentAnalysisFilter,
   AgentAnalysisSnapshot,
@@ -14,6 +13,11 @@ import type {
   BotGatewayQrLoginStartResult,
   BotGatewayQrLoginWaitRequest,
   BotGatewayQrLoginWaitResult,
+  BotGatewayQrWindowCloseRequest,
+  BotGatewayQrWindowCloseResult,
+  BotGatewayQrWindowOpenRequest,
+  BotGatewayQrWindowOpenResult,
+  BotHandoffScanTarget,
   ClaudeAppGatewayApplyResult,
   GatewayMcpServerConfig,
   GatewayMcpToolInfo,
@@ -46,24 +50,12 @@ import type {
 } from "../../shared/app";
 
 declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      webview: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
-        allowpopups?: boolean | string;
-        partition?: string;
-        preload?: string;
-        src?: string;
-        title?: string;
-        webpreferences?: string;
-      };
-    }
-  }
-
   interface Window {
     ccr?: {
       applyClaudeAppGateway: (config?: AppConfig) => Promise<ClaudeAppGatewayApplyResult>;
       applyProfile: () => Promise<ProfileApplyResult>;
       cancelBotGatewayQrLogin: (request: BotGatewayQrLoginCancelRequest) => Promise<BotGatewayQrLoginCancelResult>;
+      closeBotGatewayQrWindow: (request: BotGatewayQrWindowCloseRequest) => Promise<BotGatewayQrWindowCloseResult>;
       clearProxyNetworkCaptures: () => Promise<ProxyNetworkSnapshot>;
       closeTray: () => Promise<void>;
       detectProviderIcon: (request: ProviderIconDetectionRequest) => Promise<ProviderIconDetectionResult>;
@@ -86,6 +78,7 @@ declare global {
       installProxyCertificate: () => Promise<ProxyCertificateInstallResult>;
       listMcpServerTools: (server: GatewayMcpServerConfig) => Promise<GatewayMcpToolInfo[]>;
       openBuiltInBrowser: () => Promise<void>;
+      openBotGatewayQrWindow: (request: BotGatewayQrWindowOpenRequest) => Promise<BotGatewayQrWindowOpenResult>;
       openExternal: (url: string) => Promise<void>;
       openProfile: (request: ProfileOpenRequest) => Promise<ProfileOpenResult>;
       probeProvider: (request: GatewayProviderProbeRequest) => Promise<GatewayProviderProbeResult>;
@@ -103,6 +96,8 @@ declare global {
       startGateway: () => Promise<GatewayStatus>;
       startBotGatewayQrLogin: (request: BotGatewayQrLoginStartRequest) => Promise<BotGatewayQrLoginStartResult>;
       stopGateway: () => Promise<GatewayStatus>;
+      scanBotHandoffBluetoothTargets: () => Promise<BotHandoffScanTarget[]>;
+      scanBotHandoffWifiTargets: () => Promise<BotHandoffScanTarget[]>;
       testProviderAccountConnector: (request: ProviderAccountTestRequest) => Promise<ProviderAccountTestResult>;
       updateCheck: () => Promise<AppUpdateStatus>;
       updateDownload: () => Promise<AppUpdateStatus>;

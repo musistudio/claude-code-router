@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
   closestCenter,
   DndContext,
@@ -38,6 +38,7 @@ import {
   FolderOpen,
   Gauge,
   Globe,
+  Info,
   KeyRound,
   Layers3,
   LoaderCircle,
@@ -97,6 +98,7 @@ import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import appLogoUrl from "../../../../assets/logo.png";
 import claudeCodeLogoUrl from "@/assets/agent-logos/claude-code.png";
 import codexLogoUrl from "@/assets/agent-logos/codex.png";
 import onboardingMascotSpriteUrl from "@/assets/onboarding/mascot-transition.svg";
@@ -146,8 +148,10 @@ import type {
   BotGatewayQrLoginStartResult,
   BotGatewayQrLoginWaitRequest,
   BotGatewayQrLoginWaitResult,
+  BotGatewayQrWindowOpenResult,
   BotGatewayRuntimeConfig,
   BotGatewaySavedConfig,
+  BotHandoffScanTarget,
   GatewayProviderConfig,
   GatewayProviderCapability,
   GatewayPluginAppConfig,
@@ -197,6 +201,7 @@ import type {
   RouterFallbackMode,
   RouterRule,
   RouterRuleType,
+  TrayBalanceProgressConfig,
   TrayComponentVariants,
   TrayWidgetConfig,
   TrayWidgetType,
@@ -235,13 +240,13 @@ import {
 import { normalizeProviderBaseUrl, providerUrlWithDefaultScheme } from "../../../shared/provider-url";
 
 export  {
-  createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState,
+  createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState,
   closestCenter, DndContext, DragOverlay, getFirstCollision, KeyboardSensor, MeasuringStrategy, pointerWithin,
   PointerSensor, rectIntersection, useSensor, useSensors, arrayMove, rectSortingStrategy, SortableContext,
   sortableKeyboardCoordinates, useSortable, CSS, AnimatePresence, LayoutGroup, motion, useReducedMotion,
   Activity, ArrowDown, ArrowUp, Box, Boxes, Braces, Check, CheckCircle2,
   ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Copy, Database, FolderOpen,
-  ExternalLink, Gauge, Globe, KeyRound, Layers3, LoaderCircle, MoveRight, Network,
+  ExternalLink, Gauge, Globe, Info, KeyRound, Layers3, LoaderCircle, MoveRight, Network,
   Palette, PanelLeftClose, PanelLeftOpen, Pause, Pencil, Play, Plus,
   Power, QrCode, RefreshCw, Route, Search, Server, Settings, ShieldCheck,
   Trash2, UserRound, X, Area, Bar, BarChart, CartesianGrid,
@@ -249,7 +254,7 @@ export  {
   XAxis, YAxis, Badge, Button, Card, CardContent, CardHeader,
   CardTitle, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader,
   DialogTitle, Input, Label, PopoverContent, Select, Switch, Textarea,
-  cn, claudeCodeLogoUrl, codexLogoUrl, onboardingMascotSpriteUrl, anthropicProviderIconUrl, bailianProviderIconUrl, deepseekProviderIconUrl,
+  cn, appLogoUrl, claudeCodeLogoUrl, codexLogoUrl, onboardingMascotSpriteUrl, anthropicProviderIconUrl, bailianProviderIconUrl, deepseekProviderIconUrl,
   geminiProviderIconUrl, mistralProviderIconUrl, moonshotProviderIconUrl, openaiProviderIconUrl, openrouterProviderIconUrl, siliconflowProviderIconUrl, zaiGlobalCodingProviderIconUrl,
   zaiGlobalGeneralProviderIconUrl, zhipuCnCodingProviderIconUrl, zhipuCnGeneralProviderIconUrl, trayCyanIconUrl, trayOrangeIconUrl, trayVioletIconUrl, BUILTIN_FUSION_TOOL_SERVER_NAME,
   BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, enforceSingleEnabledGlobalProfilePerAgent, OVERVIEW_WIDGET_SIZE_VALUES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS,
@@ -259,14 +264,14 @@ export  {
 export type {
   HTMLAttributes, ReactPointerEvent, ReactNode, CollisionDetection, DragEndEvent, DragOverEvent, DragStartEvent,
   LucideIcon, AgentAnalysisFilter, AgentAnalysisSnapshot, AgentKind, AppConfig, AppInfo, AppUpdateStatus, ApiKeyConfig,
-  ApiKeyLimitConfig, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginCancelResult, BotGatewayQrLoginStartRequest, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitRequest, BotGatewayQrLoginWaitResult, BotGatewayRuntimeConfig, BotGatewaySavedConfig, GatewayProviderConfig, GatewayProviderCapability, GatewayPluginAppConfig, GatewayProviderProbeResult, GatewayProviderProtocol, GatewayMcpServerConfig,
+  ApiKeyLimitConfig, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginCancelResult, BotGatewayQrLoginStartRequest, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitRequest, BotGatewayQrLoginWaitResult, BotGatewayQrWindowOpenResult, BotGatewayRuntimeConfig, BotGatewaySavedConfig, BotHandoffScanTarget, GatewayProviderConfig, GatewayProviderCapability, GatewayPluginAppConfig, GatewayProviderProbeResult, GatewayProviderProtocol, GatewayMcpServerConfig,
   GatewayMcpServerTransport, GatewayMcpStdioMessageMode, GatewayMcpToolInfo, GatewayStatus, OverviewMetricKind, OverviewWidgetConfig, OverviewWidgetSize, OverviewWidgetType,
   OverviewWidgetVariant, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProviderAccountConfig, ProviderAccountConnectorConfig, ProviderAccountHttpJsonConnectorConfig,
   ProviderAccountMeter, ProviderAccountStandardConnectorConfig, ProviderAccountSnapshot, ProviderAccountTestPath, ProviderAccountTestResult, ProviderDeepLinkPayload, ProviderDeepLinkRequest,
   ProfileConfig, ProfileOpenSurface, CodexProfileConfigFormat, ProfileScope, ProfileSurface, ProxyCertificateInstallResult, ProxyCertificateStatus, ProxyNetworkBody,
   ProxyNetworkExchange, ProxyNetworkSnapshot, ProxyStatus, RequestLogBody, RequestLogEntry, RequestLogListFilter, RequestLogPage,
   RequestLogStatusFilter, RouterConfig, RouterFallbackConfig, RouterFallbackMode, RouterRule, RouterRuleType, TrayComponentVariants,
-  TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant, TrayWindowModuleId, UsageComparisonRow, UsageSeriesPoint, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, UsageTotals,
+  TrayBalanceProgressConfig, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant, TrayWindowModuleId, UsageComparisonRow, UsageSeriesPoint, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, UsageTotals,
   VirtualModelBaseModelMode, VirtualModelExecutionMode, VirtualModelFusionCustomToolConfig, VirtualModelFusionVisionConfig, VirtualModelFusionWebSearchConfig, VirtualModelFusionWebSearchProvider, VirtualModelProfileConfig, VirtualModelToolVisibility, ProviderIdentitySafetyIssue, ProviderPreset, ProviderPresetEndpoint
 };
 
@@ -309,6 +314,10 @@ export type AppCopy = {
     themeSystem: string;
     tray: string;
     update: string;
+    trayBalanceProgressAccount: string;
+    trayBalanceProgressData: string;
+    trayBalanceProgressNoData: string;
+    trayBalanceProgressRequired: string;
     trayIcon: string;
     trayIconCyan: string;
     trayIconOrange: string;
@@ -399,12 +408,16 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       themeSystem: "System",
       tray: "Tray",
       update: "Updates",
+      trayBalanceProgressAccount: "Account",
+      trayBalanceProgressData: "Data",
+      trayBalanceProgressNoData: "No account data is available. Enable account monitoring on a provider first.",
+      trayBalanceProgressRequired: "Choose an account and data to enable balance progress.",
       trayIcon: "Tray mascot",
-      trayIconCyan: "Cyan",
-      trayIconOrange: "Orange",
-      trayIconProgress: "Progress ring",
+      trayIconCyan: "Auralis",
+      trayIconOrange: "Solara",
+      trayIconProgress: "Balance progress",
       trayIconRandom: "Random",
-      trayIconViolet: "Violet",
+      trayIconViolet: "Vesper",
       trayComponentAccount: "Account meter",
       trayComponentArc: "Arc",
       trayComponentArea: "Area",
@@ -647,12 +660,16 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       themeSystem: "跟随系统",
       tray: "Tray",
       update: "更新",
+      trayBalanceProgressAccount: "账户",
+      trayBalanceProgressData: "数据",
+      trayBalanceProgressNoData: "暂无可用账户数据，请先为供应商启用账户监控。",
+      trayBalanceProgressRequired: "请选择账户和数据后启用余额进度条。",
       trayIcon: "托盘小精灵",
-      trayIconCyan: "青色小精灵",
-      trayIconOrange: "橙色小精灵",
-      trayIconProgress: "圆形进度条",
+      trayIconCyan: "晴岚",
+      trayIconOrange: "暖阳",
+      trayIconProgress: "余额进度条",
       trayIconRandom: "随机",
-      trayIconViolet: "紫色小精灵",
+      trayIconViolet: "星澜",
       trayComponentAccount: "账户指标",
       trayComponentArc: "弧形",
       trayComponentArea: "面积图",
@@ -753,13 +770,23 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Feishu": "飞书",
       "DingTalk": "钉钉",
       "QR Login": "扫码登录",
-      "Weixin QR login": "微信扫码登录",
+      "Weixin Login": "微信登录",
       "Weixin QR code": "微信二维码",
       "QR login is available in the Electron app.": "扫码登录仅在 Electron App 中可用。",
+      "QR window is available in the Electron app.": "二维码窗口仅在 Electron App 中可用。",
+      "QR scan timed out.": "扫码超时。",
+      "QR scan observation failed.": "扫码状态观测失败。",
+      "QR scan observation ended unexpectedly.": "扫码状态观测异常结束。",
+      "Preparing Weixin login.": "正在准备微信登录。",
+      "QR login canceled.": "扫码登录已取消。",
+      "Weixin login requires a web login URL.": "微信登录需要网页形式的登录地址。",
       "Generate QR code": "生成二维码",
       "Generating QR code": "正在生成二维码",
+      "Open QR window": "打开二维码窗口",
       "Scan the QR code in Weixin.": "请使用微信扫描二维码。",
       "Scan with Weixin to connect this bot.": "使用微信扫码连接这个 Bot。",
+      "Scan with Weixin in the opened window.": "请在打开的窗口中使用微信扫码。",
+      "Weixin login window closed, confirming login status.": "微信登录窗口已关闭，正在确认登录状态。",
       "Waiting for QR code": "等待生成二维码",
       "Waiting for scan": "等待扫码",
       "Scanned, confirm on phone": "已扫码，请在手机上确认",
@@ -849,9 +876,11 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Cursor Proxy routes": "Cursor Proxy 路由",
       "Custom": "自定义",
       "Delete": "删除",
+      "Delete bot": "删除 Bot",
       "Delete Extension": "删除扩展",
       "Delete Provider": "删除供应商",
       "Delete Routing Rule": "删除路由规则",
+      "Delete this bot?": "删除这个 Bot？",
       "Delete this extension from the configuration?": "从配置中删除这个扩展？",
       "Delete this provider from the configuration?": "从配置中删除这个供应商？",
       "Delete this routing rule from the configuration?": "从配置中删除这条路由规则？",
@@ -888,17 +917,19 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Fallback chain": "回退链",
       "Fallback model": "回退模型",
       "Failure handling": "故障处理",
-      "First enabled": "首个启用规则",
       "Forward agent messages": "转发 Agent 消息",
+      "Messages are forwarded only when using the corresponding app.": "仅在使用对应 App 时才会转发消息。",
+      "First enabled": "首个启用规则",
       "Gateway conversation ID": "网关会话 ID",
       "Generated config": "生成配置",
       "Generated path": "生成路径",
       "Group": "群组",
+      "Handoff": "接力",
+      "Handoff target scan is available in the Electron app.": "接力目标扫描仅在 Electron App 中可用。",
       "Headers": "请求头",
       "Header rows require keys.": "请求头行必须填写 Key。",
       "Fetch usage": "获取用量",
       "Fetch manifest": "拉取 manifest",
-      "Handoff": "Handoff",
       "Hide advanced settings": "收起高级设置",
       "HTTP JSON request": "HTTP JSON 请求",
       "Host": "主机",
@@ -960,6 +991,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "No requests captured yet": "暂无请求记录",
       "No bots configured": "尚未配置 Bot",
       "No route activity": "暂无路由活动",
+      "No targets found": "未发现目标",
       "None": "无",
       "Not configured": "未配置",
       "Not running": "未运行",
@@ -1053,7 +1085,9 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Search providers or models": "搜索供应商或模型",
       "Search request logs": "搜索请求日志",
       "Search routing rules": "搜索路由规则",
+      "Select account": "选择账户",
       "Select bot": "选择 Bot",
+      "Select data": "选择数据",
       "Server": "服务",
       "Startup timeout ms": "启动超时 ms",
       "State directory": "状态目录",
@@ -1487,10 +1521,13 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Resize request list and detail panels": "调整请求列表和详情面板",
       "Resize request/response": "调整请求/响应",
       "Response": "响应",
+      "Refresh targets": "刷新目标",
       "Restart Proxy": "重启代理",
       "Select provider": "选择供应商",
+      "Select a scanned target": "选择扫描到的目标",
       "Selected": "已选择",
       "Service": "服务",
+      "Scanning targets": "正在扫描目标",
       "Service status": "服务状态",
       "Step": "步骤",
       "Start service": "启动服务",
@@ -1519,7 +1556,9 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Update failed": "更新失败",
       "Update ready to install": "更新已准备安装",
       "Updates are only available in packaged builds.": "在线更新仅在打包后的应用中可用。",
-      "This action is applied immediately to the draft config and will auto-save with other changes.": "此操作会立即应用到草稿配置，并随其他变更自动保存。",
+      "After deletion, this bot data cannot be recovered.": "删除后数据不可恢复。",
+      "This bot is being used by the following agents and cannot be deleted.": "当前 Bot 正在被以下 Agent 使用，不能删除。",
+      "{count} agent profiles use this bot": "{count} 个 Agent 使用中",
       "This provider link came from an external website. Review details before importing.": "这个供应商链接来自外部网站。导入前请确认下面的内容。",
       "Welcome to CCR": "欢迎使用CCR",
       "Trusted": "已信任",
@@ -1943,7 +1982,7 @@ export const fallbackConfig: AppConfig = {
     platform: "none",
     pollIntervalMs: 2000,
     requestTimeoutMs: 600000,
-    sourceDir: "/Users/jinhuilee/products/bot-gateway",
+    sourceDir: "",
     startupTimeoutMs: 10000,
     stateDir: "",
     tenantId: "ccr"
@@ -3259,24 +3298,26 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
   const botConfigId = profile.botConfigId || matchingBotConfigId(profile.botGateway, botConfigs);
   const selectedBot = botConfigId ? botConfigs.find((config) => config.id === botConfigId) : undefined;
   if (profile.agent === "claude-code") {
+    const surface = normalizeProfileSurface(profile.surface);
     return {
       ...createProfileDraft("claude-code", profile.name),
       ...botDraft,
       botConfigId,
-      botEnabled: Boolean(selectedBot || profile.botGateway?.enabled),
+      botEnabled: surface !== "cli" && Boolean(selectedBot || profile.botGateway?.enabled),
       envRows: keyValueRowsFromRecord(profile.env ?? {}),
       model: profile.model,
       scope: normalizeProfileFormScope(profile.scope),
       settingsFile: profile.settingsFile ?? "~/.claude/settings.json",
       smallFastModel: profile.smallFastModel ?? "",
-      surface: normalizeProfileSurface(profile.surface)
+      surface
     };
   }
+  const surface = normalizeProfileSurface(profile.surface);
   return {
     ...createProfileDraft("codex", profile.name),
     ...botDraft,
     botConfigId,
-    botEnabled: Boolean(selectedBot || profile.botGateway?.enabled),
+    botEnabled: surface !== "cli" && Boolean(selectedBot || profile.botGateway?.enabled),
     configFile: profile.configFile ?? "~/.codex/config.toml",
     envRows: keyValueRowsFromRecord(profile.env ?? {}),
     model: profile.model,
@@ -3284,7 +3325,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
     providerName: profile.providerName ?? "Claude Code Router",
     scope: normalizeProfileFormScope(profile.scope),
     showAllSessions: Boolean(profile.showAllSessions),
-    surface: normalizeProfileSurface(profile.surface)
+    surface
   };
 }
 
@@ -3295,7 +3336,11 @@ export function isProfileDraftSubmittable(draft: AddProfileDraft): boolean {
   if (!validateProfileEnvRows(draft.envRows)) {
     return false;
   }
-  if (draft.botEnabled && !draft.botConfigId.trim()) {
+  const botAllowed = draft.surface !== "cli";
+  if (botAllowed && draft.botEnabled && !draft.botConfigId.trim()) {
+    return false;
+  }
+  if (botAllowed && draft.botEnabled && draft.botHandoffEnabled && !isNumberDraftValid(draft.botHandoffIdleSeconds, 30, 86_400)) {
     return false;
   }
   if (draft.agent === "claude-code") {
@@ -3326,11 +3371,19 @@ export function profileConfigFromDraft(
   botConfigs: BotGatewaySavedConfig[] = []
 ): ProfileConfig {
   const id = existingProfile?.id ?? uniqueProfileId(existingProfiles, draft.name || draft.agent);
-  const selectedBot = draft.botEnabled
+  const botAllowed = draft.surface !== "cli";
+  const selectedBot = botAllowed && draft.botEnabled
     ? botConfigs.find((config) => config.id === draft.botConfigId.trim())
     : undefined;
   const botGateway = selectedBot
-    ? { botConfigId: selectedBot.id, botGateway: selectedBot.botGateway }
+    ? {
+        botConfigId: selectedBot.id,
+        botGateway: {
+          ...selectedBot.botGateway,
+          forwardAllAgentMessages: draft.botForwardAllAgentMessages,
+          handoff: botGatewayHandoffFromProfileDraft(draft, selectedBot.botGateway.handoff)
+        }
+      }
     : {};
   return normalizeProfileItem({
     agent: draft.agent,
@@ -3349,6 +3402,22 @@ export function profileConfigFromDraft(
     smallFastModel: draft.smallFastModel,
     surface: draft.surface
   }, existingProfiles.length);
+}
+
+function botGatewayHandoffFromProfileDraft(
+  draft: AddProfileDraft,
+  fallback: BotGatewayRuntimeConfig["handoff"] = fallbackConfig.botGateway.handoff
+): BotGatewayRuntimeConfig["handoff"] {
+  return {
+    ...fallbackConfig.botGateway.handoff,
+    ...fallback,
+    enabled: draft.botHandoffEnabled,
+    idleSeconds: numberDraftValue(draft.botHandoffIdleSeconds, fallback.idleSeconds ?? fallbackConfig.botGateway.handoff.idleSeconds, 30, 86_400),
+    phoneBluetoothTargets: splitDraftLines(draft.botHandoffPhoneBluetoothTargets).slice(0, 1),
+    phoneWifiTargets: splitDraftLines(draft.botHandoffPhoneWifiTargets).slice(0, 1),
+    screenLock: fallback.screenLock ?? fallbackConfig.botGateway.handoff.screenLock,
+    userIdle: fallback.userIdle ?? fallbackConfig.botGateway.handoff.userIdle
+  };
 }
 
 export function createBotGatewayConfigDraft(config?: BotGatewaySavedConfig): BotGatewayConfigDraft {
@@ -3376,8 +3445,7 @@ export function isBotGatewayConfigDraftSubmittable(draft: BotGatewayConfigDraft)
     return false;
   }
   return (
-    botGatewayMissingRequiredAuthFields(draft.botAuthFields, platform, authType).length === 0 &&
-    isNumberDraftValid(draft.botHandoffIdleSeconds, 30, 86_400)
+    botGatewayMissingRequiredAuthFields(draft.botAuthFields, platform, authType).length === 0
   );
 }
 
@@ -3420,18 +3488,13 @@ function botGatewayConfigFromDraft(
     authType,
     autoStartIntegration: true,
     command: "",
-    createIntegration: draft.botEnabled !== false && platform !== "none",
+    createIntegration: draft.botEnabled !== false && platform !== "none" && authType !== "qr_login",
     credentials: authPayload.credentials,
     cwd: "",
     enabled: draft.botEnabled !== false,
     forwardAllAgentMessages: draft.botForwardAllAgentMessages,
     handoff: {
-      enabled: draft.botHandoffEnabled,
-      idleSeconds: numberDraftValue(draft.botHandoffIdleSeconds, fallbackConfig.botGateway.handoff.idleSeconds, 30, 86_400),
-      phoneBluetoothTargets: splitDraftLines(draft.botHandoffPhoneBluetoothTargets).slice(0, 1),
-      phoneWifiTargets: splitDraftLines(draft.botHandoffPhoneWifiTargets).slice(0, 1),
-      screenLock: true,
-      userIdle: true
+      ...fallbackConfig.botGateway.handoff
     },
     integrationConfig: authPayload.integrationConfig,
     integrationId: existingBotGateway?.integrationId?.trim() || createBotGatewayIntegrationId(configId),
@@ -3795,6 +3858,7 @@ export function profileSummaryItems(
   config: AppConfig,
   t: (value: string) => string
 ): Array<{ label: string; value: string }> {
+  const surface = normalizeProfileSurface(profile.surface);
   const envCount = Object.keys(profile.env ?? {}).length;
   const envSummaryItems = envCount > 0
     ? [{ label: t("Environment variables"), value: String(envCount) }]
@@ -3803,9 +3867,9 @@ export function profileSummaryItems(
     ? config.botConfigs.find((item) => item.id === profile.botConfigId)
     : undefined;
   const resolvedBotGateway = savedBot?.botGateway ?? profile.botGateway ?? config.botGateway;
-  const botSummaryItems = resolvedBotGateway?.enabled && resolvedBotGateway.platform !== "none"
+  const botSummaryItems = surface !== "cli" && resolvedBotGateway?.enabled && resolvedBotGateway.platform !== "none"
     ? [{ label: t("Bot"), value: `${t("Enabled")} (${savedBot ? botGatewaySavedConfigLabel(savedBot, t) : t(botGatewayPlatformLabel(resolvedBotGateway.platform))})` }]
-    : profile.botGateway
+    : surface !== "cli" && profile.botGateway
       ? [{ label: t("Bot"), value: t("Disabled") }]
       : [];
   const smallFastModel = profile.smallFastModel?.trim() || "";
@@ -3856,8 +3920,8 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
   const scope = normalizeProfileScope(profile.scope);
   const surface = normalizeProfileSurface(profile.surface);
   const env = isPlainRecord(profile.env) ? stringRecordValue(profile.env) : {};
-  const botGateway = normalizeBotGatewayRuntimeConfig(profile.botGateway);
-  const botConfigId = stringValue(profile.botConfigId);
+  const botGateway = surface !== "cli" ? normalizeBotGatewayRuntimeConfig(profile.botGateway) : undefined;
+  const botConfigId = surface !== "cli" ? stringValue(profile.botConfigId) : "";
   if (profile.agent === "claude-code") {
     return {
       agent: "claude-code",
@@ -4969,6 +5033,15 @@ export function normalizeTrayIconPreference(value: unknown): AppConfig["trayIcon
     : "random";
 }
 
+export function normalizeTrayBalanceProgressConfig(value: unknown): TrayBalanceProgressConfig | undefined {
+  if (!isPlainRecord(value)) {
+    return undefined;
+  }
+  const provider = typeof value.provider === "string" ? value.provider.trim() : "";
+  const meterId = typeof value.meterId === "string" ? value.meterId.trim() : "";
+  return provider && meterId ? { meterId, provider } : undefined;
+}
+
 export function normalizeTrayProgressTargetTokens(value: unknown): number {
   return Math.min(1_000_000_000, Math.max(1000, positiveInteger(value) ?? 100000));
 }
@@ -5334,6 +5407,8 @@ export function normalizeConfig(config: AppConfig): AppConfig {
   const profiles = Array.isArray(profileConfig.profiles)
     ? normalizeProfileItems(profileConfig.profiles)
     : legacyProfileItemsFromProfileConfig(profileConfig);
+  const trayBalanceProgress = normalizeTrayBalanceProgressConfig(config.trayBalanceProgress);
+  const trayIcon = normalizeTrayIconPreference(config.trayIcon);
 
   return {
     ...fallbackConfig,
@@ -5378,8 +5453,9 @@ export function normalizeConfig(config: AppConfig): AppConfig {
     plugins: Array.isArray(config.plugins) ? config.plugins : [],
     providerPlugins: Array.isArray(config.providerPlugins) ? config.providerPlugins : [],
     theme: normalizeThemePreference(config.theme),
+    trayBalanceProgress,
     trayComponentVariants: normalizeTrayComponentVariants(config.trayComponentVariants),
-    trayIcon: normalizeTrayIconPreference(config.trayIcon),
+    trayIcon: trayIcon === "progress" && !trayBalanceProgress ? "random" : trayIcon,
     trayProgressTargetTokens: normalizeTrayProgressTargetTokens(config.trayProgressTargetTokens),
     trayWidgets: normalizeTrayWidgets(config.trayWidgets, config.trayWindowModules, config.trayComponentVariants),
     trayWindowModules: normalizeTrayWindowModules(config.trayWindowModules),

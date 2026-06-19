@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -20,6 +20,7 @@ type BotGatewayClientWithRequest = {
 };
 
 type BotGatewaySdkModule = {
+  bundledStdioPath?: () => string;
   createBotGatewayClient: (options?: unknown) => unknown;
 };
 
@@ -87,13 +88,18 @@ export async function startBotGatewayQrLogin(
     });
     registered = true;
 
+    const qrCodeUrl = qrCodeUrlFromAuth(auth);
+    if (!qrCodeUrl) {
+      throw new Error("Bot Gateway QR start response missing qrCodeUrl.");
+    }
+
     return {
       botConfigId: savedConfig.id,
       expiresAt: stringValue(auth.expiresAt),
       integrationId,
       message: stringValue(auth.message),
       platform: bot.platform,
-      qrCodeUrl: stringValue(auth.qrCodeUrl),
+      qrCodeUrl,
       sessionId,
       stateDir,
       tenantId: bot.tenantId
@@ -165,6 +171,7 @@ export function cancelBotGatewayQrLogin(
 
 async function createQrClient(bot: BotGatewayRuntimeConfig, stateDir: string): Promise<BotGatewayClientWithRequest> {
   const sdk = await loadBotGatewaySdk();
+  const command = resolveBotGatewayCommand(sdk, bot);
   const client = sdk.createBotGatewayClient({
     transport: "stdio",
     env: {
@@ -172,18 +179,59 @@ async function createQrClient(bot: BotGatewayRuntimeConfig, stateDir: string): P
       BOT_GATEWAY_STATE_DIR: stateDir,
       CODEXL_HOME: CONFIGDIR
     },
-    ...(bot.command
-      ? {
-          args: bot.args,
-          command: resolveUserPath(bot.command),
-          cwd: bot.cwd ? resolveUserPath(bot.cwd) : process.cwd()
-        }
-      : {})
+    ...command
   }) as BotGatewayClientWithRequest;
   if (!client || typeof client.request !== "function" || typeof client.health !== "function") {
     throw new Error("Bot Gateway SDK client does not expose request().");
   }
   return client;
+}
+
+function resolveBotGatewayCommand(sdk: BotGatewaySdkModule, bot: BotGatewayRuntimeConfig): { args?: string[]; command: string; cwd?: string } | undefined {
+  if (bot.command) {
+    return {
+      args: bot.args,
+      command: resolveUserPath(bot.command),
+      cwd: bot.cwd ? resolveUserPath(bot.cwd) : process.cwd()
+    };
+  }
+  if (typeof sdk.bundledStdioPath !== "function") {
+    return undefined;
+  }
+  const bundledPath = sdk.bundledStdioPath();
+  return {
+    args: [sanitizedBotGatewayStdioRunnerPath(bundledPath)],
+    command: process.execPath,
+    cwd: path.dirname(bundledPath)
+  };
+}
+
+function sanitizedBotGatewayStdioRunnerPath(sourcePath: string): string {
+  const source = readFileSync(sourcePath, "utf8");
+  const normalized = normalizeDuplicateShebangs(source);
+  if (normalized === source) {
+    return sourcePath;
+  }
+
+  const targetDir = path.join(CONFIGDIR, "bot-gateway", "runners");
+  const targetPath = path.join(targetDir, "bot-gateway-stdio.mjs");
+  mkdirSync(targetDir, { recursive: true });
+  if (!existsSync(targetPath) || readFileSync(targetPath, "utf8") !== normalized) {
+    writeFileSync(targetPath, normalized);
+  }
+  return targetPath;
+}
+
+function normalizeDuplicateShebangs(source: string): string {
+  const lines = source.split("\n");
+  if (!lines[0]?.startsWith("#!")) {
+    return source;
+  }
+  let index = 1;
+  while (lines[index]?.startsWith("#!")) {
+    index += 1;
+  }
+  return [lines[0], ...lines.slice(index)].join("\n");
 }
 
 async function loadBotGatewaySdk(): Promise<BotGatewaySdkModule> {
@@ -347,6 +395,28 @@ function unwrapGatewayResult(value: unknown): Record<string, unknown> {
   }
   const result = value.result;
   return isRecord(result) ? result : value;
+}
+
+function qrCodeUrlFromAuth(auth: Record<string, unknown>): string {
+  const direct = stringValue(auth.qrCodeUrl) ||
+    stringValue(auth.qrCodeURL) ||
+    stringValue(auth.qrcodeUrl) ||
+    stringValue(auth.qrcodeURL) ||
+    stringValue(auth.qrcode_img_content) ||
+    stringValue(auth.url);
+  if (direct) {
+    return direct;
+  }
+  const raw = auth.raw;
+  if (isRecord(raw)) {
+    return stringValue(raw.qrCodeUrl) ||
+      stringValue(raw.qrCodeURL) ||
+      stringValue(raw.qrcodeUrl) ||
+      stringValue(raw.qrcodeURL) ||
+      stringValue(raw.qrcode_img_content) ||
+      stringValue(raw.url);
+  }
+  return "";
 }
 
 function botGatewayClientRequest(

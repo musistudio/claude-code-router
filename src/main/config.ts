@@ -27,6 +27,9 @@ import type {
   OverviewWidgetVariant,
   ProviderAccountConfig,
   ProviderAccountConnectorConfig,
+  ProviderCredentialConfig,
+  ProviderFailoverConfig,
+  ProviderFailoverStrategy,
   ProfileConfig,
   ProfileRuntimeConfig,
   ProxyRouteTarget,
@@ -36,6 +39,7 @@ import type {
   RouterFallbackMode,
   RouterRule,
   RouterRuleType,
+  TrayBalanceProgressConfig,
   TrayComponentVariants,
   TrayIconPreference,
   TrayWidgetConfig,
@@ -127,7 +131,7 @@ const DEFAULT_CONFIG: AppConfig = {
     platform: "none",
     pollIntervalMs: 2000,
     requestTimeoutMs: 600000,
-    sourceDir: "/Users/jinhuilee/products/bot-gateway",
+    sourceDir: "",
     startupTimeoutMs: 10000,
     stateDir: "",
     tenantId: "ccr"
@@ -443,6 +447,18 @@ function assertProviderApiKeysAreSafe(config: AppConfig): void {
       throw new Error(issue.message);
     }
     assertProviderAccountApiKeyTargetsAreSafe(provider, apiKey, baseUrl);
+    for (const credential of provider.credentials ?? []) {
+      const credentialApiKey = providerCredentialApiKey(credential);
+      const credentialIssue = providerApiKeySafetyIssue({
+        apiKey: credentialApiKey,
+        baseUrl,
+        name: provider.name
+      });
+      if (credentialIssue) {
+        throw new Error(credentialIssue.message);
+      }
+      assertProviderCredentialAccountApiKeyTargetsAreSafe(provider, credential, credentialApiKey, baseUrl);
+    }
   }
 }
 
@@ -453,6 +469,33 @@ function assertProviderAccountApiKeyTargetsAreSafe(provider: GatewayProviderConf
 
   const presetId = findProviderPresetByBaseUrl(baseUrl)?.id;
   for (const connector of provider.account?.connectors ?? []) {
+    const endpoints = providerAccountConnectorApiKeyEndpoints(connector);
+    for (const endpoint of endpoints) {
+      const issue = providerEndpointCanReceiveProviderApiKey({
+        apiKey,
+        endpoint,
+        providerName: provider.name,
+        providerPresetId: presetId
+      });
+      if (issue) {
+        throw new Error(issue.message);
+      }
+    }
+  }
+}
+
+function assertProviderCredentialAccountApiKeyTargetsAreSafe(
+  provider: GatewayProviderConfig,
+  credential: ProviderCredentialConfig,
+  apiKey: string,
+  baseUrl: string
+): void {
+  if (!apiKey || credential.account?.enabled === false) {
+    return;
+  }
+
+  const presetId = findProviderPresetByBaseUrl(baseUrl)?.id;
+  for (const connector of credential.account?.connectors ?? []) {
     const endpoints = providerAccountConnectorApiKeyEndpoints(connector);
     for (const endpoint of endpoints) {
       const issue = providerEndpointCanReceiveProviderApiKey({
@@ -490,6 +533,10 @@ function providerBaseUrl(provider: GatewayProviderConfig): string {
 
 function providerApiKey(provider: GatewayProviderConfig): string {
   return provider.api_key || provider.apiKey || provider.apikey || "";
+}
+
+function providerCredentialApiKey(credential: ProviderCredentialConfig): string {
+  return credential.api_key || credential.apiKey || credential.apikey || "";
 }
 
 export async function saveApiKeysConfig(apiKeys: ApiKeyConfig[]): Promise<AppConfig> {
@@ -643,6 +690,12 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   if (trayIcon) {
     config.trayIcon = trayIcon;
   }
+  const trayBalanceProgress = parseTrayBalanceProgress((value as Record<string, unknown>).trayBalanceProgress);
+  if (trayBalanceProgress) {
+    config.trayBalanceProgress = trayBalanceProgress;
+  } else if (config.trayIcon === "progress") {
+    config.trayIcon = "random";
+  }
   const trayProgressTargetTokens = readNumber((value as Record<string, unknown>).trayProgressTargetTokens);
   if (trayProgressTargetTokens && trayProgressTargetTokens > 0) {
     config.trayProgressTargetTokens = clampNumber(trayProgressTargetTokens, 1000, 1_000_000_000);
@@ -780,6 +833,15 @@ function parseTrayIconPreference(value: unknown): TrayIconPreference | undefined
     return value;
   }
   return undefined;
+}
+
+function parseTrayBalanceProgress(value: unknown): TrayBalanceProgressConfig | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const provider = readString(value.provider);
+  const meterId = readString(value.meterId);
+  return provider && meterId ? { meterId, provider } : undefined;
 }
 
 function parseTrayWindowModules(value: unknown): TrayWindowModuleId[] | undefined {
@@ -944,8 +1006,10 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         baseurl: readString(item.baseurl),
         billing: item.billing,
         capabilities: parseProviderCapabilities(item.capabilities),
+        credentials: parseProviderCredentials(item.credentials ?? item.keys ?? item.apiKeys),
         extraBody: item.extraBody,
         extraHeaders: item.extraHeaders,
+        failover: parseProviderFailover(item.failover ?? item.credentialFailover),
         icon: readString(item.icon),
         models,
         name,
@@ -958,6 +1022,73 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
     .filter((item): item is GatewayProviderConfig => Boolean(item));
 
   return providers;
+}
+
+function parseProviderCredentials(value: unknown): ProviderCredentialConfig[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const credentials = value
+    .map((item, index): ProviderCredentialConfig | undefined => {
+      if (!isObject(item)) {
+        return undefined;
+      }
+
+      const apiKey = readString(item.api_key) || readString(item.apiKey) || readString(item.apikey) || readString(item.key) || readString(item.token);
+      if (!apiKey) {
+        return undefined;
+      }
+
+      const id = readString(item.id) || readString(item.name) || readString(item.label) || `key-${index + 1}`;
+      const priority = readNumber(item.priority);
+      const weight = readNumber(item.weight);
+      return {
+        account: parseProviderAccount(item.account),
+        api_key: apiKey,
+        enabled: typeof item.enabled === "boolean" ? item.enabled : undefined,
+        id,
+        label: readString(item.label) || readString(item.name),
+        limits: parseApiKeyLimits(item.limits),
+        priority: priority !== undefined ? priority : undefined,
+        weight: weight !== undefined && weight > 0 ? weight : undefined
+      };
+    })
+    .filter((item): item is ProviderCredentialConfig => Boolean(item));
+
+  return credentials.length > 0 ? credentials : undefined;
+}
+
+function parseProviderFailover(value: unknown): ProviderFailoverConfig | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const strategy = parseProviderFailoverStrategy(readString(value.strategy) || readString(value.mode));
+  const cooldownMs = readNumber(value.cooldownMs ?? value.cooldown);
+  const spilloverThreshold = readNumber(value.spilloverThreshold ?? value.threshold);
+  const failover: ProviderFailoverConfig = {
+    ...(strategy ? { strategy } : {}),
+    ...(cooldownMs !== undefined && cooldownMs > 0 ? { cooldownMs } : {}),
+    ...(spilloverThreshold !== undefined && spilloverThreshold > 0 ? { spilloverThreshold } : {})
+  };
+  return Object.keys(failover).length > 0 ? failover : undefined;
+}
+
+function parseProviderFailoverStrategy(value: string | undefined): ProviderFailoverStrategy | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/_/g, "-");
+  if (
+    normalized === "failover-only" ||
+    normalized === "least-utilized" ||
+    normalized === "priority-spillover" ||
+    normalized === "weighted-round-robin"
+  ) {
+    return normalized;
+  }
+  return undefined;
 }
 
 function parseProviderAccount(value: unknown): ProviderAccountConfig | undefined {
@@ -1809,9 +1940,12 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       const name = readString(item.name) || (agent === "claude-code" ? "Claude Code" : "Codex");
       const model = readString(item.model) ?? "";
       const env = parseStringRecord(item.env) ?? {};
-      const botConfigId = readString(item.botConfigId) || readString(item.bot_config_id) || readString(item.savedBotConfigId) || readString(item.saved_bot_config_id);
+      const surface = parseProfileSurface(readString(item.surface) || readString(item.entry) || readString(item.frontend)) || "auto";
+      const botConfigId = surface !== "cli"
+        ? readString(item.botConfigId) || readString(item.bot_config_id) || readString(item.savedBotConfigId) || readString(item.saved_bot_config_id)
+        : "";
       const parsedBotGateway = parseBotGateway(item.botGateway ?? item.bot_gateway ?? item.bot);
-      const botGateway = parsedBotGateway ? completeBotGatewayConfig(parsedBotGateway) : undefined;
+      const botGateway = surface !== "cli" && parsedBotGateway ? completeBotGatewayConfig(parsedBotGateway) : undefined;
 
       if (agent === "claude-code") {
         return {
@@ -1826,7 +1960,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
           scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
           settingsFile: readString(item.settingsFile) || readString(item.configFile) || "~/.claude/settings.json",
           smallFastModel: readString(item.smallFastModel) || readString(item.smallModel) || "",
-          surface: parseProfileSurface(readString(item.surface) || readString(item.entry) || readString(item.frontend)) || "auto"
+          surface
         };
       }
 
@@ -1853,7 +1987,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
           : typeof item.show_all_sessions === "boolean"
             ? item.show_all_sessions
             : false,
-        surface: parseProfileSurface(readString(item.surface) || readString(item.entry) || readString(item.frontend)) || "auto"
+        surface
       };
     })
     .filter((item): item is ProfileConfig => Boolean(item));

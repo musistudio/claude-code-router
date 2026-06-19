@@ -1,6 +1,6 @@
 import {
   AppConfig, createSourceTabs, DEFAULT_TRAY_WIDGETS, defaultTrayWidgetVariant, emptySnapshots, formatCompactNumber, formatProviderName,
-  formatPercent, formatUpdated, formatUsdCost, normalizeTrayIconPreference, normalizeTrayWidgets, ProviderAccountSnapshot, rangeLabel,
+  formatPercent, formatUpdated, formatUsdCost, normalizeTrayWidgets, ProviderAccountSnapshot, rangeLabel,
   SnapshotMap, SourceTab, TrayComponentVariants, TrayWidgetConfig, UsageComparisonRow, UsageStatsFilter, UsageStatsRange, UsageTotals, useCallback, useEffect,
   useMemo, useState, useTrayText
 } from "./shared";
@@ -20,7 +20,6 @@ export function TrayApp() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<string>();
-  const [trayIconPreference, setTrayIconPreference] = useState<AppConfig["trayIcon"]>("random");
   const [snapshots, setSnapshots] = useState<SnapshotMap>(emptySnapshots);
   const [accountSnapshots, setAccountSnapshots] = useState<ProviderAccountSnapshot[]>([]);
   const [trayWidgets, setTrayWidgets] = useState<TrayWidgetConfig[]>(DEFAULT_TRAY_WIDGETS);
@@ -52,7 +51,6 @@ export function TrayApp() {
       setAllSnapshots((current) => ({ ...current, "30d": allMonth ?? month }));
       setAccountSnapshots(accounts);
       setConfiguredProviders(config.Providers.map((provider) => provider.name.trim()).filter(Boolean));
-      setTrayIconPreference(normalizeTrayIconPreference(config.trayIcon));
       setTrayWidgets(normalizeTrayWidgets(config.trayWidgets, config.trayWindowModules, config.trayComponentVariants));
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : String(nextError));
@@ -112,7 +110,7 @@ export function TrayApp() {
   return (
     <main className="h-screen w-screen overflow-hidden bg-transparent text-slate-100">
       <aside className="flex h-full min-h-0 flex-col overflow-y-auto rounded-[14px] border border-slate-950/15 bg-slate-950 p-3 text-slate-50 shadow-[0_18px_42px_rgba(15,23,42,.28)]">
-        <TrayStatusStrip totalTokens={activeTotals.totalTokens} trayIconPreference={trayIconPreference} />
+        <TrayStatusStrip totalTokens={activeTotals.totalTokens} />
 
         <section className="space-y-2">
           {trayWidgets.map((widget, index) => (

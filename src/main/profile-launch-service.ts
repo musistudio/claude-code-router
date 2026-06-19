@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,12 +7,17 @@ import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { applyClaudeAppGatewayConfig } from "./claude-app-gateway-service";
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "./claude-app-launch";
 import { launchCodexAppProfile } from "./codex-app-launch";
+import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
 import { CONFIGDIR } from "./constants";
-import { buildProfileLaunchPlan, findProfileForOpen, profileOpenCommand, resolveProfileOpenSurface } from "./profile-launch-core";
+import { gatewayService } from "./gateway/service";
+import { buildProfileLaunchPlan, findProfileForOpen, profileOpenCommand, resolveClaudeCodeSettingsFile, resolveProfileOpenSurface } from "./profile-launch-core";
 import { applyProfileConfig } from "./profile-service";
 
 const ccrPathBlockStart = "# >>> Claude Code Router CLI >>>";
 const ccrPathBlockEnd = "# <<< Claude Code Router CLI <<<";
+let claudeAppBotWorker: ChildProcess | undefined;
+
+process.once("exit", stopClaudeAppBotWorker);
 
 export async function getProfileOpenCommand(config: AppConfig, request: ProfileOpenRequest): Promise<ProfileOpenCommandResult> {
   await applyProfileConfig(config);
@@ -28,6 +33,7 @@ export async function getProfileOpenCommand(config: AppConfig, request: ProfileO
 }
 
 export async function openProfileFromCcr(config: AppConfig, request: ProfileOpenRequest): Promise<ProfileOpenResult> {
+  await applyProfileConfig(config);
   const profile = findProfileForOpen(config, request.profileId);
   const surface = resolveProfileOpenSurface(profile, request.surface);
   if (profile.agent === "claude-code" && surface === "app") {
@@ -46,7 +52,7 @@ export async function openProfileFromCcr(config: AppConfig, request: ProfileOpen
     env: {
       ...process.env,
       ...plan.env,
-      ...botGatewayProfileEnv(config, profile)
+      ...botGatewayProfileEnv(config, profile, surface)
     },
     stdio: "ignore"
   });
@@ -97,12 +103,118 @@ async function openClaudeAppProfile(config: AppConfig, profile: ReturnType<typeo
     backup: false,
     dataDir: resolveClaudeAppProfileUserDataDir(CONFIGDIR, profile)
   });
-  launchClaudeAppProfile(CONFIGDIR, profile);
+  const gatewayStatus = gatewayService.getStatus();
+  if (gatewayStatus.state === "running") {
+    gatewayService.updateConfig(profileGatewayConfig);
+  } else {
+    const startedStatus = await gatewayService.start(profileGatewayConfig);
+    if (startedStatus.state !== "running") {
+      throw new Error(startedStatus.lastError || "CCR gateway did not start.");
+    }
+  }
+  launchClaudeAppProfile(CONFIGDIR, profile, config);
+  startClaudeAppBotWorker(config, profile);
   return {
     message: `Opened Claude App with ${profile.name || profile.id}.`,
     profileId: profile.id,
     profileName: profile.name,
     surface: "app"
+  };
+}
+
+function startClaudeAppBotWorker(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): void {
+  const botEnv = botGatewayProfileEnv(config, profile, "app");
+  stopClaudeAppBotWorker();
+  if (botEnv.CCR_BOT_GATEWAY_ENABLED !== "true") {
+    return;
+  }
+
+  const runtimeFile = path.join(CONFIGDIR, "bin", "ccr-codex-cli-middleware.js");
+  ensureClaudeBotWorkerRuntime(runtimeFile);
+
+  const settingsFile = resolveClaudeCodeSettingsFile(CONFIGDIR, profile);
+  const claudeAppUserDataDir = resolveClaudeAppProfileUserDataDir(CONFIGDIR, profile);
+  const nodeLaunch = nodeRuntimeLaunch();
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...stringRecord(profile.env),
+    ...botEnv,
+    ...(nodeLaunch.electronRunAsNode ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
+    CLAUDE_CONFIG_DIR: path.dirname(settingsFile),
+    CLAUDE_USER_DATA_DIR: claudeAppUserDataDir,
+    CCR_CLAUDE_APP_USER_DATA_PATH: claudeAppUserDataDir,
+    CCR_CLAUDE_CODE_BOT_WORKER: "1",
+    CCR_CLAUDE_CODE_MODEL: profile.model.trim(),
+    CCR_CODEX_MODEL: profile.model.trim(),
+    CCR_CODEX_WORKSPACE_NAME: profile.name || profile.id,
+    CCR_PROFILE_SURFACE: "app",
+    CODEXL_CODEX_WORKSPACE_NAME: profile.name || profile.id,
+    CODEXL_PROFILE_SURFACE: "app"
+  };
+  delete env.ELECTRON_NO_ATTACH_CONSOLE;
+
+  const child = spawn(nodeLaunch.command, [runtimeFile, "claude-bot-worker", "--workspace-name", profile.name || profile.id], {
+    detached: false,
+    env,
+    stdio: ["ignore", "ignore", "pipe"],
+    windowsHide: true
+  });
+  claudeAppBotWorker = child;
+  child.stderr?.on("data", (chunk) => {
+    console.warn(`[profile] Claude App bot worker stderr: ${chunk.toString("utf8").trim()}`);
+  });
+  child.once("exit", (code, signal) => {
+    if (claudeAppBotWorker === child) {
+      claudeAppBotWorker = undefined;
+    }
+    if (code && code !== 0) {
+      console.warn(`[profile] Claude App bot worker exited: code=${code}${signal ? ` signal=${signal}` : ""}`);
+    }
+  });
+  child.once("error", (error) => {
+    if (claudeAppBotWorker === child) {
+      claudeAppBotWorker = undefined;
+    }
+    console.warn(`[profile] Claude App bot worker failed: ${formatError(error)}`);
+  });
+}
+
+function ensureClaudeBotWorkerRuntime(runtimeFile: string): void {
+  const content = codexCliMiddlewareRuntimeScript();
+  const existing = existsSync(runtimeFile) ? readFileSync(runtimeFile, "utf8") : "";
+  if (existing !== content) {
+    mkdirSync(path.dirname(runtimeFile), { recursive: true });
+    writeFileSync(runtimeFile, content);
+    if (process.platform !== "win32") {
+      chmodSync(runtimeFile, 0o755);
+    }
+  }
+  if (!content.includes("CCR_CLAUDE_CODE_BOT_WORKER") || !content.includes("claude-bot-worker")) {
+    throw new Error("Claude bot worker runtime does not contain the bot worker entrypoint.");
+  }
+}
+
+function stopClaudeAppBotWorker(): void {
+  const child = claudeAppBotWorker;
+  claudeAppBotWorker = undefined;
+  if (!child || child.killed) {
+    return;
+  }
+  try {
+    child.kill("SIGTERM");
+  } catch {
+    // The worker may have already exited.
+  }
+}
+
+function nodeRuntimeLaunch(): { command: string; electronRunAsNode: boolean } {
+  const configured = process.env.CCR_NODE_BIN?.trim();
+  if (configured) {
+    return { command: configured, electronRunAsNode: false };
+  }
+  return {
+    command: process.execPath,
+    electronRunAsNode: Boolean(process.versions.electron)
   };
 }
 
@@ -405,6 +517,13 @@ function escapeRegExp(value: string): string {
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function stringRecord(value: Record<string, string> | undefined): Record<string, string> {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => typeof item === "string"));
 }
 
 function findProfileApiKey(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): string {

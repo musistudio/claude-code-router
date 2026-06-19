@@ -1,13 +1,13 @@
 import os from "node:os";
 import { createRequire } from "node:module";
 import path from "node:path";
-import type { AppConfig, BotGatewayRuntimeConfig, ProfileConfig } from "../shared/app";
+import type { AppConfig, BotGatewayRuntimeConfig, ProfileConfig, ProfileOpenSurface } from "../shared/app";
 import { CONFIGDIR } from "./constants";
 
 const requireFromHere = createRequire(__filename);
 
-export function botGatewayProfileEnv(config: AppConfig, profile: ProfileConfig): Record<string, string> {
-  const bot = normalizeBotGatewayForWebSocket(resolveBotGatewayConfig(config, profile));
+export function botGatewayProfileEnv(config: AppConfig, profile: ProfileConfig, surface?: ProfileOpenSurface): Record<string, string> {
+  const bot = normalizeBotGatewayForWebSocket(resolveBotGatewayConfig(config, profile, surface));
   if (!bot?.enabled || !bot.platform || bot.platform === "none") {
     return disabledBotGatewayEnv();
   }
@@ -29,7 +29,7 @@ export function botGatewayProfileEnv(config: AppConfig, profile: ProfileConfig):
     CCR_BOT_GATEWAY_AUTO_START_INTEGRATION: boolEnv(bot.autoStartIntegration),
     CCR_BOT_GATEWAY_COMMAND: bot.command ?? "",
     CCR_BOT_GATEWAY_CONFIG_JSON: JSON.stringify(bot.integrationConfig ?? {}),
-    CCR_BOT_GATEWAY_CREATE_INTEGRATION: boolEnv(bot.createIntegration),
+    CCR_BOT_GATEWAY_CREATE_INTEGRATION: boolEnv(shouldCreateBotGatewayIntegration(bot)),
     CCR_BOT_GATEWAY_CREDENTIALS_JSON: JSON.stringify(bot.credentials ?? {}),
     CCR_BOT_GATEWAY_CWD: bot.cwd ?? "",
     CCR_BOT_GATEWAY_ENABLED: "true",
@@ -38,7 +38,7 @@ export function botGatewayProfileEnv(config: AppConfig, profile: ProfileConfig):
     CCR_BOT_GATEWAY_PLATFORM: bot.platform,
     CCR_BOT_GATEWAY_POLL_INTERVAL_MS: String(bot.pollIntervalMs ?? 2000),
     CCR_BOT_GATEWAY_REQUEST_TIMEOUT_MS: String(bot.requestTimeoutMs ?? 600000),
-    CCR_BOT_GATEWAY_SOURCE_DIR: bot.sourceDir ?? "",
+    CCR_BOT_GATEWAY_SOURCE_DIR: "",
     ...botGatewaySdkEnv(),
     CCR_BOT_GATEWAY_STARTUP_TIMEOUT_MS: String(bot.startupTimeoutMs ?? 10000),
     CCR_BOT_GATEWAY_STATE_DIR: stateDir,
@@ -73,11 +73,51 @@ export function botGatewayProfileEnv(config: AppConfig, profile: ProfileConfig):
   return env;
 }
 
-function resolveBotGatewayConfig(config: AppConfig, profile: ProfileConfig): BotGatewayRuntimeConfig {
+function resolveBotGatewayConfig(config: AppConfig, profile: ProfileConfig, surface?: ProfileOpenSurface): BotGatewayRuntimeConfig {
+  const runtimeSurface = surface ?? normalizeProfileSurface(profile.surface);
+  if (runtimeSurface !== "app") {
+    return {
+      ...config.botGateway,
+      enabled: false,
+      platform: "none"
+    };
+  }
   const savedBot = profile.botConfigId
     ? (config.botConfigs ?? []).find((item) => item.id === profile.botConfigId)
     : undefined;
-  return savedBot?.botGateway ?? profile.botGateway ?? config.botGateway;
+  return mergeBotGatewayRuntimeConfig(
+    mergeBotGatewayRuntimeConfig(config.botGateway, savedBot?.botGateway),
+    profile.botGateway
+  );
+}
+
+function mergeBotGatewayRuntimeConfig(
+  base: BotGatewayRuntimeConfig,
+  override?: BotGatewayRuntimeConfig
+): BotGatewayRuntimeConfig {
+  if (!override) {
+    return base;
+  }
+  return {
+    ...base,
+    ...override,
+    credentials: {
+      ...base.credentials,
+      ...override.credentials
+    },
+    handoff: {
+      ...base.handoff,
+      ...override.handoff
+    },
+    integrationConfig: {
+      ...base.integrationConfig,
+      ...override.integrationConfig
+    }
+  };
+}
+
+function normalizeProfileSurface(value: ProfileConfig["surface"]): "auto" | "cli" | "app" {
+  return value === "cli" || value === "app" ? value : "auto";
 }
 
 function botGatewaySdkEnv(): Record<string, string> {
@@ -227,4 +267,11 @@ function sanitizePathSegment(value: string): string {
 
 function boolEnv(value: boolean): string {
   return value ? "true" : "false";
+}
+
+function shouldCreateBotGatewayIntegration(bot: BotGatewayRuntimeConfig): boolean {
+  if (bot.authType === "qr_login") {
+    return false;
+  }
+  return bot.createIntegration;
 }

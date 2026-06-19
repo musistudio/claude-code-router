@@ -16,8 +16,8 @@ import {
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
   LayoutGroup, mergeProviderCapabilities, mergeProviderModelLists,
   navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeOverviewWidgets,
-  normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeTrayIconPreference,
-  normalizeTrayProgressTargetTokens, normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingStepId, onboardingStepOrder,
+  normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
+  normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingStepId, onboardingStepOrder,
   OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parseProviderAccountDraft,
   persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, ProfileConfig, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
@@ -25,7 +25,7 @@ import {
   providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
   ResolvedTheme, resolvePluginInstallPlan, RouterRule, ServerActionBusy,
-  shouldAutoProbeProviderBaseUrl, splitLines, translateProxyCertificateMessage, translateText, TrayWidgetConfig,
+  shouldAutoProbeProviderBaseUrl, splitLines, translateProxyCertificateMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
   uniqueRoutingRuleId, updateApiKeyEditableConfig, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, useEffect,
   useMemo, useReducedMotion, useRef, useState, validateVirtualModelDraft, ViewId,
   VirtualModelDraft, virtualModelProfileFromDraft
@@ -969,11 +969,14 @@ function App() {
       probe?.capabilities ?? [],
       protocol && baseUrl ? [{ baseUrl, source: probe?.detectedProtocol ? "detected" : "preset", type: protocol }] : []
     );
+    const existingProvider = providerEditIndex === undefined ? undefined : draftConfig.Providers[providerEditIndex];
     const provider: GatewayProviderConfig = {
       api_base_url: normalizeProviderBaseUrl(baseUrl, protocol),
       api_key: providerDraft.apiKey.trim(),
       capabilities: capabilities.length > 0 ? capabilities : undefined,
       account: accountConfig,
+      credentials: existingProvider?.credentials,
+      failover: existingProvider?.failover,
       icon: providerDraft.icon.trim() || undefined,
       models,
       name: providerName,
@@ -1575,17 +1578,21 @@ function App() {
 
   function changeTrayIconPreference(value: string) {
     const trayIcon = normalizeTrayIconPreference(value);
+    if (trayIcon === "progress" && !normalizeTrayBalanceProgressConfig(draftConfig.trayBalanceProgress)) {
+      return;
+    }
     updateConfig((config) => ({
       ...config,
       trayIcon
     }));
   }
 
-  function changeTrayProgressTargetTokens(value: string) {
-    const trayProgressTargetTokens = normalizeTrayProgressTargetTokens(value);
-    updateConfig((config) => ({
-      ...config,
-      trayProgressTargetTokens
+  function changeTrayBalanceProgress(config: TrayBalanceProgressConfig) {
+    const trayBalanceProgress = normalizeTrayBalanceProgressConfig(config);
+    updateConfig((current) => ({
+      ...current,
+      trayBalanceProgress,
+      trayIcon: trayBalanceProgress ? "progress" : current.trayIcon === "progress" ? "random" : current.trayIcon
     }));
   }
 
@@ -1874,7 +1881,7 @@ function App() {
 
   function openProfileDialog(index: number) {
     const profile = draftConfig.profile.profiles[index];
-    if (!profile?.enabled || normalizeProfileScope(profile.scope) !== "ccr") {
+    if (!profile?.enabled) {
       return;
     }
     setProfileActionError("");
@@ -2413,17 +2420,19 @@ function App() {
               onCheckUpdate: checkForAppUpdate,
               onChangeLanguage: changeLanguagePreference,
               onChangeTheme: changeThemePreference,
+              onChangeTrayBalanceProgress: changeTrayBalanceProgress,
               onChangeTrayIcon: changeTrayIconPreference,
-              onChangeTrayProgressTarget: changeTrayProgressTargetTokens,
               onChangeTrayWidgets: changeTrayWidgets,
               onClose: () => setSettingsOpen(false),
               onDownloadUpdate: downloadAppUpdate,
               onInstallUpdate: installAppUpdate,
+              profiles: draftConfig.profile.profiles,
               systemLanguage,
               systemTheme,
               themePreference: draftConfig.theme || "system",
+              providerAccountSnapshots,
+              trayBalanceProgress: normalizeTrayBalanceProgressConfig(draftConfig.trayBalanceProgress),
               trayIconPreference: draftConfig.trayIcon || "random",
-              trayProgressTargetTokens: draftConfig.trayProgressTargetTokens || 100000,
               trayWidgets: normalizeTrayWidgets(draftConfig.trayWidgets ?? DEFAULT_TRAY_WIDGETS, draftConfig.trayWindowModules, draftConfig.trayComponentVariants),
               updateActionBusy,
               updateActionError,

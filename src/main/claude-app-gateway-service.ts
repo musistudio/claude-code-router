@@ -5,7 +5,6 @@ import path from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 import { saveAppConfig } from "./config";
 import { CONFIGDIR } from "./constants";
-import { buildCodexModelCatalog } from "./codex-model-catalog";
 import type { ApiKeyConfig, AppConfig, ClaudeAppGatewayApplyResult } from "../shared/app";
 
 const CLAUDE_APP_CONFIG_ID = "8f69f2f1-3275-4ad8-9317-4aa7e972f311";
@@ -86,8 +85,8 @@ export function applyClaudeAppGatewayConfig(config: AppConfig, options: ClaudeAp
   const state = ensureClaudeAppGatewayState(config);
   const paths = getClaudeAppGatewayPaths(options.dataDir);
   const endpoint = gatewayEndpoint(state.config);
-  const model = inferClaudeAppGatewayModel(state.config);
-  const models = buildClaudeAppGatewayModels(state.config, model);
+  const model = inferClaudeAppGatewayModel();
+  const models = buildClaudeAppGatewayModels(model);
   const gatewayConfig: ClaudeAppGatewayConfig = {
     inferenceCredentialKind: "static",
     inferenceGatewayApiKey: state.apiKey,
@@ -290,47 +289,15 @@ function gatewayEndpoint(config: AppConfig): string {
   return `http://${formattedHost}:${port}`;
 }
 
-function inferClaudeAppGatewayModel(config: AppConfig): string {
-  const routerModel = normalizeGatewayModelSelector(config.Router.default);
-  if (routerModel) {
-    return routerModel;
-  }
-
-  for (const provider of Array.isArray(config.Providers) ? config.Providers : []) {
-    for (const model of Array.isArray(provider.models) ? provider.models : []) {
-      const modelName = stringValue(model);
-      if (modelName) {
-        return provider.name ? `${provider.name}/${modelName}` : modelName;
-      }
-    }
-  }
-
+function inferClaudeAppGatewayModel(): string {
+  // Claude App validates gateway model routes as Anthropic-looking model IDs.
+  // Keep the App picker schema-valid; CCR routes this placeholder to the
+  // profile's real provider/model through Router.default at request time.
   return CLAUDE_APP_FALLBACK_MODEL;
 }
 
-function buildClaudeAppGatewayModels(config: AppConfig, selectedModel: string): string[] {
-  const models = buildCodexModelCatalog(config, selectedModel);
-  if (models.length > 0) {
-    return models;
-  }
-  return [CLAUDE_APP_FALLBACK_MODEL];
-}
-
-function normalizeGatewayModelSelector(value: unknown): string {
-  if (typeof value !== "string") {
-    return "";
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return "";
-  }
-  const commaIndex = trimmed.indexOf(",");
-  if (commaIndex > 0 && commaIndex < trimmed.length - 1) {
-    const provider = trimmed.slice(0, commaIndex).trim();
-    const model = trimmed.slice(commaIndex + 1).trim();
-    return provider && model ? `${provider}/${model}` : "";
-  }
-  return trimmed;
+function buildClaudeAppGatewayModels(selectedModel: string): string[] {
+  return [selectedModel || CLAUDE_APP_FALLBACK_MODEL];
 }
 
 function applyClaudeAppConfigMeta(metaFile: string): void {

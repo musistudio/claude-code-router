@@ -6,3 +6,8 @@ release
 .env
 .env.*
 !.env.example
+.idea
+.claude
+.bot-gateway-state
+.agent-data
+tmp
