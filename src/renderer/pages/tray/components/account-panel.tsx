@@ -1,5 +1,5 @@
 import {
-  accountMetersForDisplay, accountProgressClass, accountProgressColor, accountStatusClass, compareAccountSnapshots, formatAccountMeterValue,
+  accountMetersForDisplay, accountProgressClass, accountProgressColor, accountStatusClass, compareAccountSnapshots, formatAccountMeterSchedule, formatAccountMeterValue,
   meterProgress, meterRemainingRatio, ProviderAccountMeter, ProviderAccountSnapshot, translateAccountMeterLabel, TrayComponentVariants,
   useTrayText
 } from "../shared";
@@ -60,12 +60,16 @@ function AccountMeters({
   if (variant === "compact") {
     return (
       <div className="grid grid-cols-2 gap-1.5">
-        {meters.map((meter) => (
-          <div className="min-w-0 rounded-md bg-white/[.04] px-2 py-1" key={meter.id}>
-            <div className="truncate text-[9px] font-medium text-slate-400">{translateAccountMeterLabel(meter.label, t)}</div>
-            <div className="truncate text-[12px] font-bold text-slate-50">{formatAccountMeterValue(meter, t)}</div>
-          </div>
-        ))}
+        {meters.map((meter) => {
+          const schedule = formatAccountMeterSchedule(meter, t);
+          return (
+            <div className="min-w-0 rounded-md bg-white/[.04] px-2 py-1" key={meter.id}>
+              <div className="truncate text-[9px] font-medium text-slate-400">{translateAccountMeterLabel(meter.label, t)}</div>
+              <div className="truncate text-[12px] font-bold text-slate-50">{formatAccountMeterValue(meter, t)}</div>
+              {schedule ? <div className="truncate text-[8px] font-medium text-slate-500">{schedule}</div> : null}
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -85,10 +89,12 @@ function AccountMeters({
       <div className="space-y-1.5">
         {meters.map((meter) => {
           const progress = meterProgress(meter);
+          const schedule = formatAccountMeterSchedule(meter, t);
           return (
             <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_56px] items-center gap-2" key={meter.id}>
               <div className="min-w-0">
                 <div className="truncate text-[10px] font-medium text-slate-400">{translateAccountMeterLabel(meter.label, t)}</div>
+                {schedule ? <div className="truncate text-[8px] font-medium text-slate-500">{schedule}</div> : null}
                 {progress !== undefined ? (
                   <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
                     <div className={`h-full rounded-full ${progressClass}`} style={{ width: `${progress}%` }} />
@@ -107,6 +113,7 @@ function AccountMeters({
     <div className="space-y-1.5">
       {meters.map((meter) => {
         const progress = meterProgress(meter);
+        const schedule = formatAccountMeterSchedule(meter, t);
         return (
           <div className="min-w-0" key={meter.id}>
             <div className="flex min-w-0 items-end justify-between gap-2">
@@ -118,6 +125,7 @@ function AccountMeters({
                 <div className={`h-full rounded-full ${progressClass}`} style={{ width: `${progress}%` }} />
               </div>
             ) : null}
+            {schedule ? <div className="mt-0.5 truncate text-[8px] font-medium text-slate-500">{schedule}</div> : null}
           </div>
         );
       })}
@@ -137,10 +145,12 @@ function AccountMeterGauge({
   const t = useTrayText();
   const ratio = meterRemainingRatio(meter) ?? 0;
   const color = accountProgressColor(status);
+  const schedule = formatAccountMeterSchedule(meter, t);
   return (
     <div className="min-w-0 text-center">
       <RadialMetric color={color} label={formatAccountMeterValue(meter, t)} value={ratio} variant={variant} />
       <div className="mt-0.5 truncate text-[9px] font-medium text-slate-400">{translateAccountMeterLabel(meter.label, t)}</div>
+      {schedule ? <div className="truncate text-[8px] font-medium text-slate-500">{schedule}</div> : null}
     </div>
   );
 }

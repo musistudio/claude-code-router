@@ -51,6 +51,8 @@ type CoreGatewayProvider = {
 
 const defaultFusionWebSearchProvider: VirtualModelFusionWebSearchProvider = "brave";
 const fusionModelProviderName = "Fusion";
+const claudeCodeDefaultContextTokens = 200_000;
+const claudeCodeOneMillionContextSuffix = "[1m]";
 
 type ApiKeyAuthorizationResult =
   | { ok: true; apiKey?: ApiKeyConfig }
@@ -109,6 +111,44 @@ type CursorOpenAICompatContext = {
 type CursorOpenAICompatPreparation = {
   body?: Buffer;
   diagnostic: "fallback-injected" | "simplified-missing-context";
+};
+
+type ModelCatalogCapabilities = Record<string, unknown>;
+
+type ModelCatalogLimits = {
+  contextTokens?: number;
+  inputTokens?: number;
+  maxTokens?: number;
+  outputTokens?: number;
+  supports1MContext?: boolean;
+};
+
+type ModelCatalogModalities = {
+  input?: string[];
+  output?: string[];
+};
+
+type ModelCatalogEntry = {
+  aliases: string[];
+  capabilities?: ModelCatalogCapabilities;
+  displayName?: string;
+  family?: string;
+  id: string;
+  limits?: ModelCatalogLimits;
+  modalities?: ModelCatalogModalities;
+  model?: string;
+  providers?: string[];
+};
+
+type ModelCatalogIndex = {
+  byKey: Map<string, ModelCatalogEntry>;
+  byModelKey: Map<string, ModelCatalogEntry | undefined>;
+  loadedFrom?: string;
+};
+
+type ClaudeCodeDiscoverableModel = {
+  id: string;
+  oneMillionContext: boolean;
 };
 
 type UpstreamAttempt = {
@@ -171,6 +211,7 @@ const rawTraceSyncPath = "/__ccr/raw-trace-sync";
 const gatewayPackageCandidates = ["@the-next-ai/ai-gateway", "gateway"];
 const apiKeyLimitCounters = new Map<string, ApiKeyWindowCounter>();
 const providerCredentialCooldowns = new Map<string, { reason: string; until: number }>();
+let modelCatalogIndex: ModelCatalogIndex | undefined;
 
 class GatewayService {
   private child?: ChildProcess;
@@ -2785,16 +2826,29 @@ function prepareClaudeCodeDiscoveredModelRequest(
 }
 
 function createClaudeCodeModelsResponse(config: AppConfig): Record<string, unknown> {
-  const ids = buildClaudeCodeDiscoverableModelIds(config);
-  const data = ids.map((id) => {
-    const claudeId = claudeCodeDiscoveryModelId(id);
+  const models = buildClaudeCodeDiscoverableModels(config);
+  const data = models.map((model) => {
+    const claudeId = claudeCodeDiscoveryModelId(model.id);
+    const catalogId = stripClaudeCodeOneMillionContextSuffix(model.id);
+    const catalogEntry = findModelCatalogEntry(catalogId);
+    const maxInputTokens = claudeCodeEffectiveMaxInputTokens(catalogEntry, model.oneMillionContext);
+    const maxOutputTokens = modelCatalogMaxOutputTokens(catalogEntry);
     return {
       id: claudeId,
-      capabilities: createClaudeCodeModelCapabilities(),
+      capabilities: createClaudeCodeModelCapabilities(catalogEntry, {
+        maxInputTokens,
+        oneMillionContext: model.oneMillionContext
+      }),
+      catalog_id: catalogEntry?.id,
+      context_window: maxInputTokens,
       created_at: "1970-01-01T00:00:00Z",
-      display_name: formatClaudeCodeModelDisplayName(claudeId),
-      max_input_tokens: 0,
-      max_tokens: 0,
+      display_name: formatClaudeCodeModelDisplayName(claudeId, catalogEntry, model.oneMillionContext),
+      input_modalities: catalogEntry?.modalities?.input ?? ["text"],
+      max_input_tokens: maxInputTokens,
+      max_tokens: maxOutputTokens,
+      one_million_context_variant: model.oneMillionContext,
+      output_modalities: catalogEntry?.modalities?.output ?? ["text"],
+      supports_1m_context: Boolean(catalogEntry?.limits?.supports1MContext),
       type: "model"
     };
   });
@@ -2805,6 +2859,216 @@ function createClaudeCodeModelsResponse(config: AppConfig): Record<string, unkno
     has_more: false,
     last_id: data[data.length - 1]?.id ?? null
   };
+}
+
+function findModelCatalogEntry(model: string): ModelCatalogEntry | undefined {
+  const index = loadModelCatalogIndex();
+  const candidates = modelCatalogLookupKeys(model);
+  for (const key of candidates) {
+    const entry = index.byKey.get(key);
+    if (entry) {
+      return entry;
+    }
+  }
+
+  for (const key of candidates) {
+    const modelKey = modelCatalogLastSegmentKey(key);
+    if (!modelKey) {
+      continue;
+    }
+    const entry = index.byModelKey.get(modelKey);
+    if (entry) {
+      return entry;
+    }
+  }
+
+  return undefined;
+}
+
+function loadModelCatalogIndex(): ModelCatalogIndex {
+  if (modelCatalogIndex) {
+    return modelCatalogIndex;
+  }
+
+  for (const candidate of modelCatalogPathCandidates()) {
+    if (!existsSync(candidate)) {
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(readFileSync(candidate, "utf8")) as unknown;
+      modelCatalogIndex = buildModelCatalogIndex(parsed, candidate);
+      return modelCatalogIndex;
+    } catch (error) {
+      console.warn(`Failed to load model catalog from ${candidate}:`, error);
+    }
+  }
+
+  modelCatalogIndex = {
+    byKey: new Map(),
+    byModelKey: new Map()
+  };
+  return modelCatalogIndex;
+}
+
+function modelCatalogPathCandidates(): string[] {
+  return uniqueStrings([
+    process.env.CCR_MODEL_CATALOG_PATH?.trim() || "",
+    process.env.CCR_MODELS_JSON_PATH?.trim() || "",
+    pathResolve(process.cwd(), "models.json"),
+    pathResolve(__dirname, "..", "..", "..", "models.json")
+  ]);
+}
+
+function buildModelCatalogIndex(payload: unknown, loadedFrom: string): ModelCatalogIndex {
+  const byKey = new Map<string, ModelCatalogEntry>();
+  const byModelKey = new Map<string, ModelCatalogEntry | undefined>();
+  const models = isRecord(payload) && Array.isArray(payload.models) ? payload.models : [];
+
+  for (const item of models) {
+    const entry = parseModelCatalogEntry(item);
+    if (!entry) {
+      continue;
+    }
+
+    for (const key of modelCatalogEntryKeys(entry)) {
+      byKey.set(key, entry);
+    }
+
+    const shortKeys = uniqueStrings([
+      entry.model ? normalizeModelCatalogToken(entry.model) : "",
+      ...entry.aliases.map((alias) => modelCatalogLastSegmentKey(normalizeModelCatalogKey(alias)))
+    ]);
+    for (const key of shortKeys) {
+      if (!key) {
+        continue;
+      }
+      if (byModelKey.has(key) && byModelKey.get(key) !== entry) {
+        byModelKey.set(key, undefined);
+      } else {
+        byModelKey.set(key, entry);
+      }
+    }
+  }
+
+  return { byKey, byModelKey, loadedFrom };
+}
+
+function parseModelCatalogEntry(value: unknown): ModelCatalogEntry | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const id = stringValue(value.id);
+  if (!id) {
+    return undefined;
+  }
+  const aliases = uniqueStrings([id, ...stringListValue(value.aliases)]);
+  const limits = parseModelCatalogLimits(value.limits);
+  const modalities = parseModelCatalogModalities(value.modalities);
+  return {
+    aliases,
+    capabilities: isRecord(value.capabilities) ? value.capabilities : undefined,
+    displayName: stringValue(value.displayName),
+    family: stringValue(value.family),
+    id,
+    limits,
+    modalities,
+    model: stringValue(value.model),
+    providers: stringListValue(value.providers)
+  };
+}
+
+function parseModelCatalogLimits(value: unknown): ModelCatalogLimits | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const limits: ModelCatalogLimits = {
+    contextTokens: readCatalogPositiveInteger(value.contextTokens),
+    inputTokens: readCatalogPositiveInteger(value.inputTokens),
+    maxTokens: readCatalogPositiveInteger(value.maxTokens),
+    outputTokens: readCatalogPositiveInteger(value.outputTokens),
+    supports1MContext: typeof value.supports1MContext === "boolean" ? value.supports1MContext : undefined
+  };
+  return Object.values(limits).some((item) => item !== undefined) ? limits : undefined;
+}
+
+function parseModelCatalogModalities(value: unknown): ModelCatalogModalities | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const modalities: ModelCatalogModalities = {
+    input: stringListValue(value.input),
+    output: stringListValue(value.output)
+  };
+  return (modalities.input?.length || modalities.output?.length) ? modalities : undefined;
+}
+
+function modelCatalogEntryKeys(entry: ModelCatalogEntry): string[] {
+  return uniqueStrings([
+    normalizeModelCatalogKey(entry.id),
+    ...entry.aliases.map(normalizeModelCatalogKey),
+    ...((entry.providers ?? []).map((provider) => entry.model ? normalizeModelCatalogKey(`${provider}/${entry.model}`) : ""))
+  ]);
+}
+
+function modelCatalogLookupKeys(value: string): string[] {
+  const raw = String(value || "").trim();
+  const normalized = normalizeModelCatalogKey(raw);
+  const withoutClaudePrefix = raw.toLowerCase().startsWith("claude-") && raw.includes("/")
+    ? normalizeModelCatalogKey(raw.replace(/^claude-/i, ""))
+    : "";
+  return uniqueStrings([normalized, withoutClaudePrefix]);
+}
+
+function normalizeModelCatalogKey(value: string): string {
+  return String(value || "")
+    .trim()
+    .split("/")
+    .map(normalizeModelCatalogToken)
+    .filter(Boolean)
+    .join("/");
+}
+
+function normalizeModelCatalogToken(value: string): string {
+  return String(value || "")
+    .trim()
+    .replace(/^hf:/i, "")
+    .replace(/^@/, "")
+    .replace(/[_\s]+/g, "-")
+    .replace(/-+/g, "-")
+    .toLowerCase();
+}
+
+function modelCatalogLastSegmentKey(value: string): string {
+  return value.split("/").filter(Boolean).at(-1) ?? "";
+}
+
+function modelCatalogMaxInputTokens(entry: ModelCatalogEntry | undefined): number {
+  return Math.max(
+    0,
+    entry?.limits?.contextTokens ?? 0,
+    entry?.limits?.inputTokens ?? 0
+  );
+}
+
+function claudeCodeEffectiveMaxInputTokens(entry: ModelCatalogEntry | undefined, oneMillionContext: boolean): number {
+  const maxInputTokens = modelCatalogMaxInputTokens(entry);
+  if (oneMillionContext) {
+    return maxInputTokens || 1_000_000;
+  }
+  return maxInputTokens > 0 ? Math.min(maxInputTokens, claudeCodeDefaultContextTokens) : 0;
+}
+
+function modelCatalogMaxOutputTokens(entry: ModelCatalogEntry | undefined): number {
+  return Math.max(
+    0,
+    entry?.limits?.outputTokens ?? 0,
+    entry?.limits?.maxTokens ?? 0
+  );
+}
+
+function readCatalogPositiveInteger(value: unknown): number | undefined {
+  const parsed = numberValue(value);
+  return parsed !== undefined && parsed > 0 ? parsed : undefined;
 }
 
 function buildClaudeCodeDiscoverableModelIds(config: AppConfig): string[] {
@@ -2856,6 +3120,34 @@ function buildClaudeCodeDiscoverableModelIds(config: AppConfig): string[] {
   return uniqueStrings(ids);
 }
 
+function buildClaudeCodeDiscoverableModels(config: AppConfig): ClaudeCodeDiscoverableModel[] {
+  const seen = new Set<string>();
+  const models: ClaudeCodeDiscoverableModel[] = [];
+
+  const pushModel = (id: string, oneMillionContext: boolean) => {
+    const normalized = id.trim();
+    if (!normalized) {
+      return;
+    }
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    models.push({ id: normalized, oneMillionContext });
+  };
+
+  for (const id of buildClaudeCodeDiscoverableModelIds(config)) {
+    pushModel(id, hasClaudeCodeOneMillionContextSuffix(id));
+    const baseId = stripClaudeCodeOneMillionContextSuffix(id);
+    if (!hasClaudeCodeOneMillionContextSuffix(id) && findModelCatalogEntry(baseId)?.limits?.supports1MContext) {
+      pushModel(claudeCodeOneMillionContextModelId(baseId), true);
+    }
+  }
+
+  return models;
+}
+
 function isVisibleVirtualModelProfile(profile: NonNullable<AppConfig["virtualModelProfiles"]>[number]): boolean {
   return profile.enabled !== false &&
     profile.materialization?.enabled !== false &&
@@ -2873,7 +3165,15 @@ function resolveClaudeCodeDiscoveredModelId(model: string | undefined, config: A
   }
 
   const unprefixed = normalized.slice("claude-".length);
-  return isConfiguredGatewayModelSelector(unprefixed, config) ? unprefixed : undefined;
+  if (isConfiguredGatewayModelSelector(unprefixed, config)) {
+    return unprefixed;
+  }
+
+  const withoutOneMillionContextSuffix = stripClaudeCodeOneMillionContextSuffix(unprefixed);
+  return withoutOneMillionContextSuffix !== unprefixed &&
+    isConfiguredGatewayModelSelector(withoutOneMillionContextSuffix, config)
+    ? withoutOneMillionContextSuffix
+    : undefined;
 }
 
 function isConfiguredGatewayModelSelector(model: string, config: AppConfig): boolean {
@@ -2901,18 +3201,112 @@ function claudeCodeDiscoveryModelId(value: string): string {
   return value.toLowerCase().startsWith("claude-") ? value : `claude-${value}`;
 }
 
-function formatClaudeCodeModelDisplayName(id: string): string {
-  const normalized = id.replace(/^claude-/i, "");
+function claudeCodeOneMillionContextModelId(id: string): string {
+  return hasClaudeCodeOneMillionContextSuffix(id) ? id : `${id}${claudeCodeOneMillionContextSuffix}`;
+}
+
+function hasClaudeCodeOneMillionContextSuffix(id: string): boolean {
+  return id.trim().toLowerCase().endsWith(claudeCodeOneMillionContextSuffix);
+}
+
+function stripClaudeCodeOneMillionContextSuffix(id: string): string {
+  return id.trim().replace(/\[1m\]$/i, "").trim();
+}
+
+function formatClaudeCodeModelDisplayName(
+  id: string,
+  entry?: ModelCatalogEntry,
+  oneMillionContext = hasClaudeCodeOneMillionContextSuffix(id)
+): string {
+  if (entry?.displayName) {
+    return oneMillionContext ? `${entry.displayName} (1M context)` : entry.displayName;
+  }
+
+  const normalized = stripClaudeCodeOneMillionContextSuffix(id.replace(/^claude-/i, ""));
   const model = normalized.includes("/") ? normalized.slice(normalized.lastIndexOf("/") + 1) : normalized;
   const words = model
     .split(/[-_]+/)
     .map((part) => part.trim())
     .filter(Boolean)
     .map((part) => (/^\d+$/.test(part) ? part : part.slice(0, 1).toUpperCase() + part.slice(1)));
-  return ["Claude", ...words].filter(Boolean).join(" ");
+  const displayName = ["Claude", ...words].filter(Boolean).join(" ");
+  return oneMillionContext ? `${displayName} (1M context)` : displayName;
 }
 
-function createClaudeCodeModelCapabilities(): Record<string, unknown> {
+function createClaudeCodeModelCapabilities(
+  entry?: ModelCatalogEntry,
+  options: { maxInputTokens?: number; oneMillionContext?: boolean } = {}
+): Record<string, unknown> {
+  if (!entry) {
+    return createDefaultClaudeCodeModelCapabilities();
+  }
+
+  const capabilities = entry.capabilities ?? {};
+  const inputModalities = new Set((entry.modalities?.input ?? []).map((item) => item.toLowerCase()));
+  const outputModalities = new Set((entry.modalities?.output ?? []).map((item) => item.toLowerCase()));
+  const supportsReasoning = readCatalogCapability(capabilities, "reasoning");
+  const supportsImageInput = readCatalogCapability(capabilities, "imageInput") || inputModalities.has("image");
+  const supportsPdfInput = readCatalogCapability(capabilities, "pdfInput") || inputModalities.has("pdf");
+  const supportsStructuredOutput =
+    readCatalogCapability(capabilities, "structuredOutput") ||
+    readCatalogCapability(capabilities, "nativeStructuredOutput") ||
+    readCatalogCapability(capabilities, "responseSchema");
+  const supportsCodeExecution = readCatalogCapability(capabilities, "codeExecution");
+  const supportsAdaptiveThinking = readCatalogCapability(capabilities, "adaptiveThinking");
+  const supportsToolUse =
+    readCatalogCapability(capabilities, "toolCalling") ||
+    readCatalogCapability(capabilities, "functionCalling");
+  const supportsBatch = readCatalogCapability(capabilities, "batch");
+  const supportsCitations = readCatalogCapability(capabilities, "citations");
+  const supportsAudioInput = readCatalogCapability(capabilities, "audioInput") || inputModalities.has("audio");
+  const supportsAudioOutput = readCatalogCapability(capabilities, "audioOutput") || outputModalities.has("audio");
+  const supportsVideoInput = readCatalogCapability(capabilities, "videoInput") || inputModalities.has("video");
+  const maxInputTokens = options.maxInputTokens ?? modelCatalogMaxInputTokens(entry);
+  const supportsOneMillionContext = Boolean(entry.limits?.supports1MContext);
+
+  return {
+    audio_input: { supported: supportsAudioInput },
+    audio_output: { supported: supportsAudioOutput },
+    batch: { supported: supportsBatch },
+    citations: { supported: supportsCitations },
+    code_execution: { supported: supportsCodeExecution },
+    context_management: {
+      clear_thinking_20251015: { supported: supportsReasoning },
+      clear_tool_uses_20250919: { supported: supportsToolUse },
+      compact_20260112: { supported: maxInputTokens > 0 },
+      max_input_tokens: maxInputTokens,
+      supported: maxInputTokens > 0
+    },
+    context_window: {
+      max_input_tokens: maxInputTokens,
+      supported: maxInputTokens > 0,
+      supports_1m_context: supportsOneMillionContext,
+      one_million_context_variant: options.oneMillionContext === true
+    },
+    effort: {
+      high: { supported: supportsReasoning },
+      low: { supported: supportsReasoning },
+      max: { supported: supportsReasoning },
+      medium: { supported: supportsReasoning },
+      supported: supportsReasoning,
+      xhigh: { supported: supportsReasoning }
+    },
+    image_input: { supported: supportsImageInput },
+    pdf_input: { supported: supportsPdfInput },
+    structured_outputs: { supported: supportsStructuredOutput },
+    thinking: {
+      supported: supportsReasoning,
+      types: {
+        adaptive: { supported: supportsAdaptiveThinking },
+        enabled: { supported: supportsReasoning }
+      }
+    },
+    tool_use: { supported: supportsToolUse },
+    video_input: { supported: supportsVideoInput }
+  };
+}
+
+function createDefaultClaudeCodeModelCapabilities(): Record<string, unknown> {
   return {
     batch: { supported: true },
     citations: { supported: true },
@@ -2942,6 +3336,10 @@ function createClaudeCodeModelCapabilities(): Record<string, unknown> {
       }
     }
   };
+}
+
+function readCatalogCapability(capabilities: ModelCatalogCapabilities, key: string): boolean {
+  return capabilities[key] === true;
 }
 
 function normalizeGatewayPathname(path: string): string {

@@ -4,11 +4,11 @@ import {
   Check, Checkbox, ChevronDown, ChevronRight, CircleAlert, cn,
   Copy, copyTextToClipboard, createDefaultProviderAccountDraft, createModelCatalogItems, createProviderAccountDraftFromConfig, createProviderInstallLinkFromDraft,
   customProviderPresetId, defaultProviderAccountConfigForPreset, Dialog, DialogBody, DialogContent, DialogFooter,
-  DialogHeader, DialogTitle, Field, findProviderPreset, formatProviderAccountMeterValue, GatewayProviderConfig,
+  DialogHeader, DialogTitle, Field, findProviderPreset, formatProviderAccountMeterValue, formatProviderAccountSchedule, GatewayProviderConfig,
   GatewayProviderProbeResult, Globe, inferProviderNameFromBaseUrl, Input, KeyValueRowsControl, Label,
   Layers3, LoaderCircle, mergeProviderModelLists, modelCatalogItemMatchesQuery, motion, motionEase,
   Pencil, Plus, PopoverContent, primaryProviderAccountMeter, primaryProviderPresetEndpoint, providerAccountBadgeVariant,
-  providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountSnapshot, ProviderAccountTestPath,
+  providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountMeter, ProviderAccountSnapshot, ProviderAccountTestPath,
   ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerHttpJsonConnectorFromDraft,
   ProviderConnectivityCheckReport, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerPresets, providerProbeHasSupportedProtocol,
   providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, reducedMotionTransition, Search, SelectControl,
@@ -320,6 +320,7 @@ export function ModelsView({ config }: { config: AppConfig }) {
 function ProviderAccountListCell({ provider, snapshot }: { provider: GatewayProviderConfig; snapshot?: ProviderAccountSnapshot }) {
   const t = useAppText();
   const meter = snapshot ? primaryProviderAccountMeter(snapshot) : undefined;
+  const displayMeters = snapshot ? providerAccountListMeters(snapshot) : [];
 
   if (!provider.account?.enabled) {
     return <div className="min-w-0 truncate text-[11px] text-muted-foreground">{t("Disabled")}</div>;
@@ -335,11 +336,32 @@ function ProviderAccountListCell({ provider, snapshot }: { provider: GatewayProv
         <Badge variant={providerAccountBadgeVariant(snapshot.status)}>{snapshot.status}</Badge>
         {meter ? <span className="min-w-0 truncate text-[11px] font-medium">{formatProviderAccountMeterValue(meter)}</span> : null}
       </div>
-      <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
-        {meter?.label ?? snapshot.message ?? snapshot.errors?.[0]?.message ?? snapshot.source}
-      </div>
+      {displayMeters.length > 0 ? (
+        <div className="mt-0.5 space-y-0.5">
+          {displayMeters.map((item) => (
+            <div className="truncate text-[10px] text-muted-foreground" key={item.id} title={providerAccountMeterScheduleTitle(item, t)}>
+              {providerAccountMeterScheduleTitle(item, t)}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
+          {snapshot.message ?? snapshot.errors?.[0]?.message ?? snapshot.source}
+        </div>
+      )}
     </div>
   );
+}
+
+function providerAccountListMeters(snapshot: ProviderAccountSnapshot): ProviderAccountMeter[] {
+  const scheduledMeters = snapshot.meters.filter((item) => item.resetAt || item.window);
+  return (scheduledMeters.length > 0 ? scheduledMeters : snapshot.meters).slice(0, 2);
+}
+
+function providerAccountMeterScheduleTitle(meter: ProviderAccountMeter, translate: (value: string) => string): string {
+  const label = translate(meter.label);
+  const schedule = formatProviderAccountSchedule(meter, translate);
+  return [label, schedule].filter(Boolean).join(" / ");
 }
 
 export function DeleteProviderDialog({
@@ -1627,9 +1649,8 @@ function ProviderConnectivityResultGroup({
 
   return (
     <div className={className}>
-      <div className="mb-1 flex min-w-0 items-center justify-between gap-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+      <div className="mb-1 min-w-0 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
         <span className="min-w-0 truncate">{label}</span>
-        <span className="shrink-0">{items.length}</span>
       </div>
       {items.length === 0 ? (
         <div className="rounded-md border border-dashed border-border bg-background/70 px-2 py-2 text-center text-[11px] text-muted-foreground">{emptyLabel}</div>

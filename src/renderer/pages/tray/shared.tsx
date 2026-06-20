@@ -63,10 +63,12 @@ export const trayText: Record<ResolvedLanguage, Record<string, string>> = {
     "Cost": "成本",
     "Credit balance": "信用余额",
     "Current balance": "当前余额",
+    "Daily": "每日",
     "5h quota": "5 小时额度",
     "Granted balance": "赠送余额",
     "Input": "输入",
     "Monthly budget": "月度预算",
+    "Monthly": "每月",
     "Model Share": "模型占比",
     "No account data configured": "未配置账户数据",
     "No model yet": "暂无模型",
@@ -90,6 +92,8 @@ export const trayText: Record<ResolvedLanguage, Record<string, string>> = {
     "Unavailable": "不可用",
     "Updated just now": "刚刚更新",
     "Voucher balance": "代金券余额",
+    "Weekly": "每周",
+    "Weekly quota": "周额度",
     "Usage Detail": "用量详情",
     "Usage Overview": "用量概览",
     "Usage chart": "用量图表",
@@ -683,6 +687,29 @@ export function formatAccountReset(value: string): string {
     return `${hours}h`;
   }
   return `${Math.round(hours / 24)}d`;
+}
+
+export function formatAccountMeterSchedule(meter: ProviderAccountMeter, translate: (value: string) => string): string | undefined {
+  const windowLabel = accountMeterWindowLabel(meter.window, translate);
+  const resetLabel = meter.resetAt ? formatAccountReset(meter.resetAt) : undefined;
+  return [windowLabel, resetLabel].filter(Boolean).join(" · ") || undefined;
+}
+
+function accountMeterWindowLabel(value: string | undefined, translate: (value: string) => string): string | undefined {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized === "daily") {
+    return translate("Daily");
+  }
+  if (normalized === "weekly") {
+    return translate("Weekly");
+  }
+  if (normalized === "monthly") {
+    return translate("Monthly");
+  }
+  return normalized;
 }
 
 export function accountStatusClass(status: ProviderAccountSnapshot["status"]): string {

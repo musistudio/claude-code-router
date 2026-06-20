@@ -1464,6 +1464,9 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Refresh interval ms": "刷新间隔（毫秒）",
       "Response fields": "响应字段",
       "Reset": "重置时间",
+      "Daily": "每日",
+      "Weekly": "每周",
+      "Monthly": "每月",
       "Select at least one protocol.": "请至少选择一个协议。",
       "Select at least one usage response field.": "请至少选择一个用量响应字段。",
       "Showing first response fields only.": "仅显示前面的响应字段。",
@@ -4765,6 +4768,29 @@ export function formatProviderAccountReset(value: string): string {
     return `${hours}h`;
   }
   return `${Math.round(hours / 24)}d`;
+}
+
+export function formatProviderAccountSchedule(meter: ProviderAccountMeter, translate: (value: string) => string): string | undefined {
+  const windowLabel = providerAccountWindowLabel(meter.window, translate);
+  const resetLabel = meter.resetAt ? formatProviderAccountReset(meter.resetAt) : undefined;
+  return [windowLabel, resetLabel].filter(Boolean).join(" · ") || undefined;
+}
+
+export function providerAccountWindowLabel(value: string | undefined, translate: (value: string) => string): string | undefined {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized === "daily") {
+    return translate("Daily");
+  }
+  if (normalized === "weekly") {
+    return translate("Weekly");
+  }
+  if (normalized === "monthly") {
+    return translate("Monthly");
+  }
+  return normalized;
 }
 
 export function formatAxisNumber(value: number): string {

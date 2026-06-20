@@ -5,7 +5,7 @@ import {
   Check, ChevronLeft, ChevronRight, CircleAlert, cn, compactId,
   compactUserAgent, compareProviderAccountSnapshots, ComposedChart, CSS, DEFAULT_OVERVIEW_WIDGETS, DndContext,
   DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent, Field, formatAxisNumber,
-  formatCompactNumber, formatDuration, formatLogDateTime, formatPercent, formatProviderAccountMeterValue, formatProviderAccountReset,
+  formatCompactNumber, formatDuration, formatLogDateTime, formatPercent, formatProviderAccountMeterValue, formatProviderAccountSchedule,
   formatStatusBucketDate, formatStatusCodeCounts, formatSystemStatusRange, formatToolCounts, formatUsdCost, KeyboardSensor,
   LabelList, LayoutGroup, Line, MeasuringStrategy, MetricCard, MetricTone,
   metricToneBar, metricToneStroke, motion, normalizeAgentFilterValue, normalizeOverviewWidget, normalizeOverviewWidgets,
@@ -1711,6 +1711,7 @@ function ProviderAccountMeterLine({
 }) {
   const t = useAppText();
   const progress = isProviderAccountQuotaMeter(meter) ? providerAccountMeterProgress(meter) : undefined;
+  const schedule = formatProviderAccountSchedule(meter, t);
 
   return (
     <div className="min-w-0 overflow-hidden">
@@ -1723,8 +1724,8 @@ function ProviderAccountMeterLine({
           <div className={cn("h-full rounded-full", providerAccountProgressClass(account.status))} style={{ width: `${progress}%` }} />
         </div>
       ) : null}
-      {meter.resetAt && providerAccountShowReset(dimensions) ? (
-        <div className="mt-1 truncate text-[10px] text-muted-foreground">{t("Resets")} {formatProviderAccountReset(meter.resetAt)}</div>
+      {schedule && providerAccountShowReset(dimensions) ? (
+        <div className="mt-1 truncate text-[10px] text-muted-foreground">{schedule}</div>
       ) : null}
     </div>
   );
@@ -1775,15 +1776,18 @@ function ProviderAccountQuotaVisual({
       <ProviderAccountQuotaGauge account={account} dimensions={dimensions} meters={displayMeters} variant={variant} />
       {showLabels ? (
         <div className="min-w-0 space-y-2">
-          {displayMeters.slice(0, variant === "nested-rings" ? 2 : 1).map((meter) => (
-            <div className="min-w-0" key={meter.id}>
-              <div className="truncate text-[12px] font-medium text-muted-foreground">{t(meter.label)}</div>
-              <div className="truncate text-[17px] font-semibold tracking-tight">{formatProviderAccountMeterValue(meter)}</div>
-              {meter.resetAt && providerAccountShowReset(dimensions) ? (
-                <div className="truncate text-[10px] text-muted-foreground">{t("Resets")} {formatProviderAccountReset(meter.resetAt)}</div>
-              ) : null}
-            </div>
-          ))}
+          {displayMeters.slice(0, variant === "nested-rings" ? 2 : 1).map((meter) => {
+            const schedule = formatProviderAccountSchedule(meter, t);
+            return (
+              <div className="min-w-0" key={meter.id}>
+                <div className="truncate text-[12px] font-medium text-muted-foreground">{t(meter.label)}</div>
+                <div className="truncate text-[17px] font-semibold tracking-tight">{formatProviderAccountMeterValue(meter)}</div>
+                {schedule && providerAccountShowReset(dimensions) ? (
+                  <div className="truncate text-[10px] text-muted-foreground">{schedule}</div>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       ) : null}
     </div>
@@ -1801,6 +1805,7 @@ function ProviderAccountQuotaGauge({
   meters: ProviderAccountMeter[];
   variant: OverviewAccountVariant;
 }) {
+  const t = useAppText();
   const primary = meters[0];
   const secondary = meters[1];
   const primaryRatio = providerAccountMeterRatio(primary) ?? 0;
@@ -1838,7 +1843,7 @@ function ProviderAccountQuotaGauge({
     <svg aria-hidden="true" className={sizeClass} viewBox="0 0 120 120">
       <ProviderAccountQuotaCircle cx={60} cy={60} ratio={primaryRatio} radius={40} stroke={stroke} strokeWidth={10} />
       <text className="fill-foreground text-[20px] font-semibold" dy="0.35em" textAnchor="middle" x="60" y={dimensions.height >= 2 ? "57" : "60"}>{formatProviderAccountMeterValue(primary)}</text>
-      {dimensions.height >= 2 ? <text className="fill-muted-foreground text-[10px] font-medium" dy="0.35em" textAnchor="middle" x="60" y="75">{primary.window ?? ""}</text> : null}
+      {dimensions.height >= 2 ? <text className="fill-muted-foreground text-[10px] font-medium" dy="0.35em" textAnchor="middle" x="60" y="75">{formatProviderAccountSchedule(primary, t) ?? ""}</text> : null}
     </svg>
   );
 }
