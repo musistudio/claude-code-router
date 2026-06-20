@@ -10,7 +10,7 @@ import {
   enforceSingleEnabledGlobalProfilePerAgent,
   ExtensionConfigTarget, ExtensionDeleteTarget, ExtensionInstallDraft, ExtensionSource, fallbackAgentAnalysis, fallbackConfig,
   fallbackGatewayStatus, fallbackInfo, fallbackProxyCertificateStatus, fallbackProxyNetworkSnapshot, fallbackProxyStatus, fallbackRequestLogPage,
-  fallbackUpdateStatus, fallbackUsageStats, findProviderDeepLinkReplacementIndex, firstProviderConnectivityModel, formatJson, formatProxyCertificateInstallMessage, GatewayProviderConfig,
+  fallbackUpdateStatus, fallbackUsageStats, findProviderDeepLinkReplacementIndex, formatJson, formatProxyCertificateInstallMessage, GatewayProviderConfig,
   fusionCustomMcpServerFromDraft, fusionCustomToolConfigFromProfile,
   GatewayProviderProbeResult, gatewayServiceMessage, GatewayStatus, getDefaultOnboardingStep, isClaudeDesignPluginConfig, isClaudeDesignRoutingDraftValid,
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
@@ -21,11 +21,11 @@ import {
   OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parseProviderAccountDraft,
   persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, ProfileConfig, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
-  profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, providerAutoProbeDelayMs, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
-  providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
+  profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
+  providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
   ResolvedTheme, resolvePluginInstallPlan, RouterRule, ServerActionBusy,
-  shouldAutoProbeProviderBaseUrl, splitLines, translateProxyCertificateMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
+  splitLines, translateProxyCertificateMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
   uniqueRoutingRuleId, updateApiKeyEditableConfig, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, useEffect,
   useMemo, useReducedMotion, useRef, useState, validateVirtualModelDraft, ViewId,
   VirtualModelDraft, virtualModelProfileFromDraft
@@ -81,6 +81,8 @@ function App() {
   const [providerDraft, setProviderDraft] = useState<AddProviderDraft>(() => createProviderDraft(fallbackConfig.Providers));
   const [providerProbe, setProviderProbe] = useState<GatewayProviderProbeResult>();
   const [providerProbeLoading, setProviderProbeLoading] = useState(false);
+  const [providerConnectivityProbe, setProviderConnectivityProbe] = useState<GatewayProviderProbeResult>();
+  const [providerConnectivityLoading, setProviderConnectivityLoading] = useState(false);
   const [providerDeepLinkRequest, setProviderDeepLinkRequest] = useState<ProviderDeepLinkRequest>();
   const [providerDeepLinkBusy, setProviderDeepLinkBusy] = useState(false);
   const [providerDeepLinkError, setProviderDeepLinkError] = useState("");
@@ -211,11 +213,15 @@ function App() {
     }
 
     const showProviderDeepLink = (request: ProviderDeepLinkRequest) => {
+      providerProbeRequestId.current += 1;
+      providerConnectivityRequestId.current += 1;
       setProviderAddOpen(false);
       setProviderEditIndex(undefined);
       setProviderProbe(undefined);
+      setProviderConnectivityProbe(undefined);
       setProviderProbeError("");
       setProviderProbeLoading(false);
+      setProviderConnectivityLoading(false);
       setProviderDeepLinkRequest(request);
       setProviderDeepLinkError("");
       setProviderDeepLinkBusy(false);
@@ -434,6 +440,7 @@ function App() {
   );
   const autoSaveRequestId = useRef(0);
   const providerProbeRequestId = useRef(0);
+  const providerConnectivityRequestId = useRef(0);
   const toastTimer = useRef<number>();
 
   const shouldReduceMotion = useReducedMotion();
@@ -441,7 +448,6 @@ function App() {
   const needsTrafficLightSafeArea = isMac && !sidebarOpen;
   const providerTypedModels = splitLines(providerDraft.modelsText);
   const providerDialogModels = mergeProviderModelLists(providerDraft.selectedModels, providerTypedModels);
-  const providerFormActive = providerAddOpen || (activeView === "onboarding" && onboardingStep === "provider");
   const canSubmitProvider =
     Boolean(providerDraft.name.trim() && providerDraft.baseUrl.trim()) &&
     providerDialogModels.length > 0;
@@ -491,10 +497,14 @@ function App() {
     }
 
     setProviderEditIndex(resolvedIndex);
+    providerProbeRequestId.current += 1;
+    providerConnectivityRequestId.current += 1;
     setProviderDraft(createProviderDraftFromProvider(provider));
     setProviderProbe(undefined);
+    setProviderConnectivityProbe(undefined);
     setProviderProbeError("");
     setProviderProbeLoading(false);
+    setProviderConnectivityLoading(false);
   }, [activeView, configLoaded, onboardingStatusLoaded, draftConfig.Providers, draftConfig.preferredProvider, providerAddOpen]);
 
   useEffect(() => () => {
@@ -502,62 +512,6 @@ function App() {
       window.clearTimeout(toastTimer.current);
     }
   }, []);
-
-  useEffect(() => {
-    providerProbeRequestId.current += 1;
-    const requestId = providerProbeRequestId.current;
-    const candidates = providerProbeCandidates(providerDraft).filter(isProviderProbeCandidateReady);
-
-    if (!providerFormActive || !window.ccr || candidates.length === 0) {
-      setProviderProbeLoading(false);
-      return;
-    }
-
-    const apiKey = providerDraft.apiKey.trim();
-    const models = splitLines(providerDraft.modelsText);
-    const inputKey = providerProbeInputKey(candidates, apiKey, models);
-    const safetyIssue = providerProbeCandidatesApiKeySafetyIssue(candidates, apiKey, providerDraft.name, providerDraft.presetId);
-    if (safetyIssue) {
-      setProviderProbeLoading(false);
-      setProviderProbeError(safetyIssue.message);
-      return;
-    }
-
-    setProviderProbeLoading(true);
-    const timer = window.setTimeout(() => {
-      void probeProviderCandidates(candidates, apiKey, models)
-        .then((result) => {
-          if (providerProbeRequestId.current !== requestId) {
-            return;
-          }
-          if (!result) {
-            return;
-          }
-          setProviderProbe(result.probe);
-          setProviderDraft((current) => {
-            const currentCandidates = providerProbeCandidates(current).filter(isProviderProbeCandidateReady);
-            const currentKey = providerProbeInputKey(currentCandidates, current.apiKey.trim(), splitLines(current.modelsText));
-            if (currentKey !== inputKey) {
-              return current;
-            }
-            return applyProviderProbeResult(current, result.probe);
-          });
-        })
-        .catch(() => {
-          // Background probing is best-effort. Manual model entry remains the fallback.
-        })
-        .finally(() => {
-          if (providerProbeRequestId.current === requestId) {
-            setProviderProbeLoading(false);
-          }
-        });
-    }, providerAutoProbeDelayMs);
-
-    return () => {
-      window.clearTimeout(timer);
-      setProviderProbeLoading(false);
-    };
-  }, [providerFormActive, providerDraft.apiKey, providerDraft.baseUrl, providerDraft.modelsText, providerDraft.name, providerDraft.presetId]);
 
   useEffect(() => {
     if (!window.ccr || !dirty) {
@@ -788,11 +742,15 @@ function App() {
   }
 
   function openAddProviderDialog() {
+    providerProbeRequestId.current += 1;
+    providerConnectivityRequestId.current += 1;
     setProviderEditIndex(undefined);
     setProviderDraft(createProviderDraft(draftConfig.Providers));
     setProviderProbe(undefined);
+    setProviderConnectivityProbe(undefined);
     setProviderProbeError("");
     setProviderProbeLoading(false);
+    setProviderConnectivityLoading(false);
     setProviderAddOpen(true);
   }
 
@@ -801,18 +759,32 @@ function App() {
     if (!provider) {
       return;
     }
+    providerProbeRequestId.current += 1;
+    providerConnectivityRequestId.current += 1;
     setProviderEditIndex(index);
     setProviderDraft(createProviderDraftFromProvider(provider));
     setProviderProbe(undefined);
+    setProviderConnectivityProbe(undefined);
     setProviderProbeError("");
     setProviderProbeLoading(false);
+    setProviderConnectivityLoading(false);
     setProviderAddOpen(true);
   }
 
   function updateProviderDraft(patch: Partial<AddProviderDraft>, resetProbe = false) {
+    const shouldResetProtocolProbe = resetProbe && (patch.baseUrl !== undefined || patch.presetId !== undefined || patch.protocol !== undefined);
+    const shouldResetConnectivityProbe = resetProbe ||
+      patch.apiKey !== undefined ||
+      patch.baseUrl !== undefined ||
+      patch.modelsText !== undefined ||
+      patch.presetId !== undefined ||
+      patch.protocol !== undefined ||
+      patch.selectedModels !== undefined ||
+      patch.selectedProtocols !== undefined;
+
     setProviderDraft((current) => {
       const next = { ...current, ...patch };
-      if (!resetProbe) {
+      if (!shouldResetProtocolProbe) {
         return next;
       }
       if (patch.selectedModels !== undefined) {
@@ -822,88 +794,203 @@ function App() {
       return {
         ...next,
         modelsText: mergeProviderModelLists(current.selectedModels, splitLines(next.modelsText)).join("\n"),
-        selectedModels: []
+        selectedModels: [],
+        selectedProtocols: patch.selectedProtocols ?? current.selectedProtocols
       };
     });
     setProviderProbeError("");
-    if (resetProbe) {
+    if (shouldResetConnectivityProbe) {
+      providerConnectivityRequestId.current += 1;
+      setProviderConnectivityProbe(undefined);
+      setProviderConnectivityLoading(false);
+    }
+    if (shouldResetProtocolProbe) {
+      providerProbeRequestId.current += 1;
       setProviderProbe(undefined);
       setProviderProbeLoading(false);
     }
   }
 
-  async function checkProviderDraft(): Promise<void> {
+  useEffect(() => {
+    const providerFormVisible = providerAddOpen || (activeView === "onboarding" && onboardingStep === "provider");
+    if (!window.ccr || !providerFormVisible) {
+      return;
+    }
+
     providerProbeRequestId.current += 1;
     const requestId = providerProbeRequestId.current;
-    const baseUrl = providerDraft.baseUrl.trim();
-    const protocol = providerDraft.protocol;
+    const candidates = providerProbeCandidates(providerDraft).filter(isProviderProbeCandidateReady);
+    const inputKey = providerProbeInputKey(candidates, "", []);
+
+    setProviderProbeError("");
+    if (candidates.length === 0) {
+      setProviderProbeLoading(false);
+      return undefined;
+    }
+    setProviderProbeLoading(true);
+
+    const timer = window.setTimeout(() => {
+      void probeProviderCandidates(candidates, "", [], { mode: "protocols" })
+        .then((result) => {
+          if (providerProbeRequestId.current !== requestId) {
+            return;
+          }
+          if (!result) {
+            setProviderProbe(undefined);
+            setProviderProbeError("Request failed.");
+            return;
+          }
+
+          setProviderProbe(result.probe);
+          setProviderDraft((current) => {
+            const currentCandidates = providerProbeCandidates(current).filter(isProviderProbeCandidateReady);
+            const currentKey = providerProbeInputKey(currentCandidates, "", []);
+            if (currentKey !== inputKey) {
+              return current;
+            }
+            return applyProviderProbeResult(current, result.probe);
+          });
+
+          if (!providerProbeHasSupportedProtocol(result.probe)) {
+            const message = result.probe.protocols.find((item) => item.message)?.message || "Request failed.";
+            setProviderProbeError(message);
+          }
+        })
+        .catch((error) => {
+          if (providerProbeRequestId.current === requestId) {
+            setProviderProbe(undefined);
+            setProviderProbeError(error instanceof Error ? error.message : String(error));
+          }
+        })
+        .finally(() => {
+          if (providerProbeRequestId.current === requestId) {
+            setProviderProbeLoading(false);
+          }
+        });
+    }, 350);
+
+    return () => {
+      window.clearTimeout(timer);
+      if (providerProbeRequestId.current === requestId) {
+        providerProbeRequestId.current += 1;
+        setProviderProbeLoading(false);
+      }
+    };
+  }, [activeView, onboardingStep, providerAddOpen, providerDraft.baseUrl, providerDraft.presetId, providerDraft.protocol]);
+
+  async function checkProviderDraft(modelsToCheck?: string[]): Promise<ProviderConnectivityCheckReport> {
+    const emptyReport: ProviderConnectivityCheckReport = { failed: [], passed: [], results: [] };
+    providerConnectivityRequestId.current += 1;
+    const requestId = providerConnectivityRequestId.current;
     const apiKey = providerDraft.apiKey.trim();
-    const model = firstProviderConnectivityModel(providerDraft);
-    const inputKey = JSON.stringify([baseUrl, protocol, apiKey, model]);
+    const models = mergeProviderModelLists(modelsToCheck ?? mergeProviderModelLists(providerDraft.selectedModels, splitLines(providerDraft.modelsText)));
+    const protocols = providerDraft.selectedProtocols.length > 0 ? providerDraft.selectedProtocols : [providerDraft.protocol];
+    const candidates = providerProbeCandidates(providerDraft)
+      .map((candidate) => ({
+        ...candidate,
+        protocols: candidate.protocols.filter((protocol) => protocols.includes(protocol))
+      }))
+      .filter((candidate) => isProviderProbeCandidateReady(candidate) && candidate.protocols.length > 0);
 
     setProviderProbeError("");
     if (!window.ccr) {
       setProviderProbeError("Request failed.");
-      return;
+      return emptyReport;
     }
-    if (!shouldAutoProbeProviderBaseUrl(baseUrl)) {
+    if (candidates.length === 0) {
       setProviderProbeError("No endpoint candidates available.");
-      return;
+      return emptyReport;
     }
-    if (!model) {
+    if (models.length === 0) {
       setProviderProbeError("Select or enter at least one model.");
-      return;
+      return emptyReport;
     }
-    const safetyIssue = providerApiKeySafetyIssue({
+    const safetyIssue = providerProbeCandidatesApiKeySafetyIssue(
+      candidates,
       apiKey,
-      baseUrl,
-      name: providerDraft.name,
-      presetId: providerDraft.presetId
-    });
+      providerDraft.name,
+      providerDraft.presetId
+    );
     if (safetyIssue) {
       setProviderProbeError(safetyIssue.message);
-      return;
+      return emptyReport;
     }
 
-    setProviderProbeLoading(true);
+    setProviderConnectivityLoading(true);
     try {
-      const probe = await window.ccr.probeProvider({
-        apiKey,
-        baseUrl,
-        models: [model],
-        protocols: [protocol],
-        skipModelDiscovery: true
-      });
-      if (providerProbeRequestId.current !== requestId) {
-        return;
+      const checks = await Promise.all(
+        models.map(async (model) => {
+          try {
+            const result = await probeProviderCandidates(candidates, apiKey, [model], {
+              mode: "connectivity",
+              protocols
+            });
+            if (!result) {
+              return {
+                model,
+                probe: undefined,
+                report: {
+                  message: "Request failed.",
+                  model,
+                  protocols: [],
+                  supported: false
+                }
+              };
+            }
+
+            const supported = providerProbeHasSupportedProtocol(result.probe);
+            return {
+              model,
+              probe: result.probe,
+              report: {
+                message: supported
+                  ? "Connection verified"
+                  : result.probe.protocols.find((item) => item.message)?.message || "Request failed.",
+                model,
+                protocols: result.probe.protocols,
+                supported
+              }
+            };
+          } catch (error) {
+            return {
+              model,
+              probe: undefined,
+              report: {
+                message: error instanceof Error ? error.message : String(error),
+                model,
+                protocols: [],
+                supported: false
+              }
+            };
+          }
+        })
+      );
+      if (providerConnectivityRequestId.current !== requestId) {
+        return emptyReport;
       }
 
-      setProviderProbe(probe);
-      setProviderDraft((current) => {
-        const currentKey = JSON.stringify([
-          current.baseUrl.trim(),
-          current.protocol,
-          current.apiKey.trim(),
-          firstProviderConnectivityModel(current)
-        ]);
-        if (currentKey !== inputKey) {
-          return current;
-        }
-        return applyProviderProbeResult(current, probe);
-      });
+      const reports = checks.map((check) => check.report);
+      const report: ProviderConnectivityCheckReport = {
+        failed: reports.filter((item) => !item.supported),
+        passed: reports.filter((item) => item.supported),
+        results: reports
+      };
+      const supportedProbe = checks.find((check) => check.report.supported && check.probe)?.probe;
+      setProviderConnectivityProbe(supportedProbe);
 
-      if (!providerProbeHasSupportedProtocol(probe, protocol)) {
-        const message = probe.protocols.find((item) => item.protocol === protocol)?.message || "Request failed.";
-        setProviderProbeError(message);
+      if (report.passed.length === 0) {
+        setProviderProbeError(report.failed[0]?.message || "Request failed.");
       }
+      return report;
     } catch (error) {
-      if (providerProbeRequestId.current === requestId) {
-        setProviderProbe(undefined);
+      if (providerConnectivityRequestId.current === requestId) {
+        setProviderConnectivityProbe(undefined);
         setProviderProbeError(error instanceof Error ? error.message : String(error));
       }
+      return emptyReport;
     } finally {
-      if (providerProbeRequestId.current === requestId) {
-        setProviderProbeLoading(false);
+      if (providerConnectivityRequestId.current === requestId) {
+        setProviderConnectivityLoading(false);
       }
     }
   }
@@ -931,8 +1018,35 @@ function App() {
       return false;
     }
 
-    const protocol = probe?.detectedProtocol ?? providerDraft.protocol;
-    const baseUrl = probe?.normalizedBaseUrl || providerDraft.baseUrl;
+    const fallbackProtocol = probe?.detectedProtocol ?? providerDraft.protocol;
+    const fallbackBaseUrl = probe?.normalizedBaseUrl || providerDraft.baseUrl;
+    const selectableProtocols = providerSelectableProtocolsFromProbe(probe);
+    const selectedProtocols = providerDraft.selectedProtocols.length > 0
+      ? providerDraft.selectedProtocols.filter((protocol) => selectableProtocols.length === 0 || selectableProtocols.includes(protocol))
+      : [];
+    if (selectableProtocols.length > 0 && selectedProtocols.length === 0) {
+      setProviderProbeError("Select at least one protocol.");
+      return false;
+    }
+
+    const protocolsToSave = selectedProtocols.length > 0 ? selectedProtocols : [fallbackProtocol];
+    const selectedProtocolSet = new Set(protocolsToSave);
+    const capabilityCandidates = mergeProviderCapabilities(
+      presetCapabilitiesFromDraft(providerDraft),
+      probe?.capabilities ?? [],
+      protocolsToSave.map((type) => ({
+        baseUrl: fallbackBaseUrl,
+        source: probe?.detectedProtocol ? ("detected" as const) : ("preset" as const),
+        type
+      }))
+    );
+    const capabilities = capabilityCandidates.filter((capability) => selectedProtocolSet.has(capability.type));
+    const primaryCapability =
+      capabilities.find((capability) => capability.type === fallbackProtocol) ??
+      capabilities[0];
+    const protocol = primaryCapability?.type ?? fallbackProtocol;
+    const baseUrl = primaryCapability?.baseUrl ?? fallbackBaseUrl;
+
     const keySafetyIssue = providerApiKeySafetyIssue({
       apiKey: providerDraft.apiKey,
       baseUrl,
@@ -964,11 +1078,6 @@ function App() {
       return false;
     }
 
-    const capabilities = mergeProviderCapabilities(
-      presetCapabilitiesFromDraft(providerDraft),
-      probe?.capabilities ?? [],
-      protocol && baseUrl ? [{ baseUrl, source: probe?.detectedProtocol ? "detected" : "preset", type: protocol }] : []
-    );
     const existingProvider = providerEditIndex === undefined ? undefined : draftConfig.Providers[providerEditIndex];
     const provider: GatewayProviderConfig = {
       api_base_url: normalizeProviderBaseUrl(baseUrl, protocol),
@@ -2116,6 +2225,8 @@ function App() {
                 profileError: profileActionError,
                 providerDraft,
                 providerError: providerProbeError,
+                providerConnectivityLoading,
+                providerConnectivityProbe,
                 providerProbe,
                 providerProbeLoading
               }}
@@ -2378,6 +2489,8 @@ function App() {
             } : undefined}
             providerUpsert={providerAddOpen ? {
               canSubmit: canSubmitProvider,
+              connectivityLoading: providerConnectivityLoading,
+              connectivityProbe: providerConnectivityProbe,
               draft: providerDraft,
               error: providerProbeError,
               onChange: updateProviderDraft,

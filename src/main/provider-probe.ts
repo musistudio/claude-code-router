@@ -50,10 +50,12 @@ const protocolOrder: GatewayProviderProtocol[] = [
 
 const modelSourceOrder: ModelSource[] = ["openai", "anthropic", "gemini"];
 const probeTimeoutMs = 10000;
+const probeOutputTokenLimit = 1;
 
 export async function probeGatewayProvider(request: GatewayProviderProbeRequest): Promise<GatewayProviderProbeResult> {
+  const mode = request.mode ?? "protocols";
   const safetyIssue = providerApiKeySafetyIssue({
-    apiKey: request.apiKey,
+    apiKey: mode === "connectivity" ? request.apiKey : undefined,
     baseUrl: request.baseUrl
   });
   if (safetyIssue) {
@@ -63,9 +65,11 @@ export async function probeGatewayProvider(request: GatewayProviderProbeRequest)
   const parsed = parseProviderUrl(request.baseUrl);
   const protocols = uniqueProtocols(request.protocols ?? []);
   const typedModels = uniqueStrings(request.models ?? []);
-  const modelProbe = request.skipModelDiscovery ? { models: [] } : await probeModels(parsed, request.apiKey, protocols);
-  const models = modelProbe.models.length > 0 ? modelProbe.models : typedModels;
-  const protocolResults = await probeProtocols(parsed, request.apiKey, models, protocols);
+  const modelProbe = mode === "protocols" || mode === "connectivity" || request.skipModelDiscovery
+    ? { models: [] }
+    : await probeModels(parsed, request.apiKey, protocols);
+  const models = mode === "connectivity" && modelProbe.models.length > 0 ? modelProbe.models : typedModels;
+  const protocolResults = await probeProtocols(parsed, request.apiKey, models, protocols, mode);
   const detectedProtocol = detectProtocol(parsed, protocolResults, modelProbe.source, protocols);
 
   return {
@@ -173,18 +177,58 @@ async function probeProtocols(
   parsed: ParsedProviderUrl,
   apiKey: string | undefined,
   models: string[],
-  allowedProtocols: GatewayProviderProtocol[] = []
+  allowedProtocols: GatewayProviderProtocol[] = [],
+  mode: NonNullable<GatewayProviderProbeRequest["mode"]> = "protocols"
 ): Promise<GatewayProviderProbeProtocolResult[]> {
   const results: GatewayProviderProbeProtocolResult[] = [];
 
   for (const protocol of orderedProtocols(parsed, allowedProtocols)) {
-    results.push(await probeProtocol(parsed, apiKey, models, protocol));
+    results.push(
+      mode === "connectivity"
+        ? await probeProtocolConnectivity(parsed, apiKey, models, protocol)
+        : await probeProtocolSupport(parsed, protocol)
+    );
   }
 
   return results;
 }
 
-async function probeProtocol(
+async function probeProtocolSupport(
+  parsed: ParsedProviderUrl,
+  protocol: GatewayProviderProtocol
+): Promise<GatewayProviderProbeProtocolResult> {
+  const endpoints = endpointsForProtocol(parsed, protocol, undefined);
+  const endpoint = endpoints[0]?.endpoint ?? providerBaseUrlForProtocol(parsed, protocol);
+  let firstResult: GatewayProviderProbeProtocolResult | undefined;
+
+  for (const candidate of endpoints) {
+    const result = await requestJson(candidate.endpoint, requestForProtocolSupport(protocol));
+    const message = readResponseMessage(result);
+    const supported = isProtocolEndpointSupported(result.status, message);
+    const probeResult = {
+      baseUrl: candidate.baseUrl,
+      endpoint: candidate.endpoint,
+      message,
+      protocol,
+      status: result.status,
+      supported
+    };
+
+    firstResult ??= probeResult;
+    if (supported) {
+      return probeResult;
+    }
+  }
+
+  return firstResult ?? {
+    endpoint,
+    message: "No endpoint candidates available.",
+    protocol,
+    supported: false
+  };
+}
+
+async function probeProtocolConnectivity(
   parsed: ParsedProviderUrl,
   apiKey: string | undefined,
   models: string[],
@@ -237,7 +281,7 @@ function requestForProtocol(protocol: GatewayProviderProtocol, model: string, ap
     return {
       body: JSON.stringify({
         input: "ping",
-        max_output_tokens: 1,
+        max_output_tokens: probeOutputTokenLimit,
         model,
         stream: false
       }),
@@ -252,7 +296,7 @@ function requestForProtocol(protocol: GatewayProviderProtocol, model: string, ap
   if (protocol === "openai_chat_completions") {
     return {
       body: JSON.stringify({
-        max_tokens: 1,
+        max_tokens: probeOutputTokenLimit,
         messages: [{ content: "ping", role: "user" }],
         model,
         stream: false
@@ -268,7 +312,7 @@ function requestForProtocol(protocol: GatewayProviderProtocol, model: string, ap
   if (protocol === "anthropic_messages") {
     return {
       body: JSON.stringify({
-        max_tokens: 1,
+        max_tokens: probeOutputTokenLimit,
         messages: [{ content: "ping", role: "user" }],
         model,
         stream: false
@@ -285,12 +329,23 @@ function requestForProtocol(protocol: GatewayProviderProtocol, model: string, ap
     body: JSON.stringify({
       contents: [{ parts: [{ text: "ping" }], role: "user" }],
       generationConfig: {
-        maxOutputTokens: 1
+        maxOutputTokens: probeOutputTokenLimit
       }
     }),
     headers: {
       "content-type": "application/json",
       ...geminiHeaders(apiKey)
+    },
+    method: "POST"
+  };
+}
+
+function requestForProtocolSupport(protocol: GatewayProviderProtocol): RequestInit {
+  return {
+    body: JSON.stringify({}),
+    headers: {
+      "content-type": "application/json",
+      ...(protocol === "anthropic_messages" ? { "anthropic-version": "2023-06-01" } : {})
     },
     method: "POST"
   };
@@ -613,6 +668,19 @@ function isProtocolSupported(status: number | undefined, message: string): boole
   if (status === 400) {
     const normalized = message.toLowerCase();
     return /model|max_tokens|max output|messages|input|required/.test(normalized) && !/not found|unknown endpoint|unknown route|no route/.test(normalized);
+  }
+
+  return false;
+}
+
+function isProtocolEndpointSupported(status: number | undefined, message: string): boolean {
+  if (isProtocolSupported(status, message)) {
+    return true;
+  }
+
+  if (status === 401 || status === 403) {
+    const normalized = message.toLowerCase();
+    return !/not found|unknown endpoint|unknown route|no route/.test(normalized);
   }
 
   return false;

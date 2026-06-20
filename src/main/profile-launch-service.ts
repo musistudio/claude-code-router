@@ -133,13 +133,16 @@ function startClaudeAppBotWorker(config: AppConfig, profile: ReturnType<typeof f
   ensureClaudeBotWorkerRuntime(runtimeFile);
 
   const settingsFile = resolveClaudeCodeSettingsFile(CONFIGDIR, profile);
+  const settingsEnv = readClaudeCodeSettingsEnv(settingsFile);
   const claudeAppUserDataDir = resolveClaudeAppProfileUserDataDir(CONFIGDIR, profile);
   const nodeLaunch = nodeRuntimeLaunch();
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     ...stringRecord(profile.env),
+    ...settingsEnv,
     ...botEnv,
     ...(nodeLaunch.electronRunAsNode ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
+    CCR_CLAUDE_BASE_CONFIG_DIR: path.dirname(settingsFile),
     CLAUDE_CONFIG_DIR: path.dirname(settingsFile),
     CLAUDE_USER_DATA_DIR: claudeAppUserDataDir,
     CCR_CLAUDE_APP_USER_DATA_PATH: claudeAppUserDataDir,
@@ -177,6 +180,35 @@ function startClaudeAppBotWorker(config: AppConfig, profile: ReturnType<typeof f
     }
     console.warn(`[profile] Claude App bot worker failed: ${formatError(error)}`);
   });
+}
+
+function readClaudeCodeSettingsEnv(settingsFile: string): Record<string, string> {
+  if (!existsSync(settingsFile)) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(readFileSync(settingsFile, "utf8")) as unknown;
+    if (!isRecord(parsed) || !isRecord(parsed.env)) {
+      return {};
+    }
+    const env: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed.env)) {
+      if (isEnvName(key) && typeof value === "string") {
+        env[key] = value;
+      }
+    }
+    return env;
+  } catch {
+    return {};
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isEnvName(value: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
 }
 
 function ensureClaudeBotWorkerRuntime(runtimeFile: string): void {

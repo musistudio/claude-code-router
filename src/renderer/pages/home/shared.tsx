@@ -155,6 +155,7 @@ import type {
   GatewayProviderConfig,
   GatewayProviderCapability,
   GatewayPluginAppConfig,
+  GatewayProviderProbeProtocolResult,
   GatewayProviderProbeResult,
   GatewayProviderProtocol,
   GatewayMcpServerConfig,
@@ -504,10 +505,27 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "No provider presets found": "No provider presets found",
       "After you enter the API endpoint and key, the system will automatically detect supported protocols and available models.": "After you enter the API endpoint and key, the system will automatically detect supported protocols and available models.",
       "Back": "Back",
+      "Available models": "Available models",
       "Check": "Check",
+      "Check Connection": "Check Connection",
+      "Check results": "Check results",
+      "Checking connection": "Checking connection",
+      "Click Check Connection to verify connectivity with a real model request.": "Click Check Connection to verify connectivity with a real model request.",
       "Connection verified": "Connection verified",
+      "Detected": "Detected",
+      "Detecting protocols": "Detecting protocols",
+      "Enter API endpoint, API key, and at least one model to enable connectivity check.": "Enter API endpoint, API key, and at least one model to enable connectivity check.",
+      "Generated output is limited to 1 token for connectivity checks.": "Generated output is limited to 1 token for connectivity checks.",
+      "Models to check": "Models to check",
+      "No available models": "No available models",
+      "No unavailable models": "No unavailable models",
       "Press Enter to add": "Press Enter to add",
+      "Protocols detected": "Protocols detected",
+      "Select at least one protocol.": "Select at least one protocol.",
       "Service": "Service",
+      "Start check": "Start check",
+      "This check sends real model requests with your provider API key and may consume account balance.": "This check sends real model requests with your provider API key and may consume account balance.",
+      "Unavailable models": "Unavailable models",
       "Account Balance": "Account Balance",
       "Account component": "Account component",
       "All accounts": "All accounts",
@@ -829,12 +847,15 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Cancel": "取消",
       "Channel": "频道",
       "Check": "检查",
+      "Check Connection": "检测连通性",
+      "Checking connection": "正在检测连通性",
       "Check for updates": "检查更新",
       "Checking for updates": "正在检查更新",
       "Capture network": "捕获网络",
       "Connection verified": "连通性已验证",
       "Check trust": "检查信任",
       "Choose where each agent uses CCR.": "选择每个 Agent 在哪里使用 CCR。",
+      "Click Check Connection to verify connectivity with a real model request.": "点击检测连通性，用一次真实模型请求验证是否可用。",
       "Click Add to create one": "点击添加创建一项",
       "Click Install to add one": "点击安装添加一项",
       "Client": "客户端",
@@ -842,6 +863,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Client Signals": "客户端信号",
       "Claude Code": "Claude Code",
       "CLI": "CLI",
+      "APP": "APP",
       "CLI command": "CLI 命令",
       "Close": "关闭",
       "Close dialog": "关闭弹窗",
@@ -888,6 +910,9 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Default target model": "默认目标模型",
       "Default failure handling": "默认故障处理",
       "Description": "描述",
+      "Detected": "已检测",
+      "Detecting protocols": "正在探测协议",
+      "Enter API endpoint, API key, and at least one model to enable connectivity check.": "填写 API 地址、API Key 和至少一个模型后，才可检测连通性。",
       "Display name": "显示名称",
       "Double click to copy": "双击复制",
       "Edit": "编辑",
@@ -1025,6 +1050,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Process": "进程",
       "Protocol": "协议",
       "Protocol details": "协议详情",
+      "Protocols detected": "协议已探测",
       "External core": "外部 Core",
       "External provider link": "外部供应商链接",
       "Provider": "供应商",
@@ -1408,6 +1434,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Move up": "上移",
       "Network capture is paused": "网络捕获已暂停",
       "No API keys configured": "未配置 API 密钥",
+      "Available models": "可用模型",
       "No body": "无正文",
       "No extensions installed": "未安装扩展",
       "No limits configured": "未配置限制",
@@ -1418,8 +1445,10 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "No matching providers": "没有匹配的供应商",
       "No matching routing rules": "没有匹配的路由规则",
       "No account balance connectors configured": "未配置账户余额连接器",
+      "No available models": "没有可用模型",
       "No protocol detection yet": "尚未检测协议",
       "No response fields": "没有响应字段",
+      "No unavailable models": "没有不可用模型",
       "OpenAI Chat": "OpenAI Chat",
       "OpenAI Responses": "OpenAI Responses",
       "Anthropic Messages": "Anthropic Messages",
@@ -1427,17 +1456,22 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Model required before protocol verification.": "需要先填写模型，才能验证协议。",
       "No endpoint candidates available.": "没有可用的端点候选。",
       "Request failed.": "请求失败。",
+      "Generated output is limited to 1 token for connectivity checks.": "连通性检测会把生成输出限制为 1 个 token。",
+      "Check results": "检测结果",
+      "Models to check": "要检测的模型",
       "Raw connector JSON": "原始连接器 JSON",
       "Remote provider manifest": "远程供应商 Manifest",
       "Refresh interval ms": "刷新间隔（毫秒）",
       "Response fields": "响应字段",
       "Reset": "重置时间",
+      "Select at least one protocol.": "请至少选择一个协议。",
       "Select at least one usage response field.": "请至少选择一个用量响应字段。",
       "Showing first response fields only.": "仅显示前面的响应字段。",
       "Standard usage endpoint": "标准用量端点",
       "Standard usage endpoint will try provider-hosted CCR account endpoints.": "标准用量端点会尝试供应商托管的 CCR 账户端点。",
       "Sub limit": "订阅上限",
       "Sub rem": "订阅剩余",
+      "Start check": "开始检测",
       "Subscription limit field": "订阅上限字段",
       "Subscription remaining field": "订阅剩余字段",
       "Subscription reset field": "订阅重置字段",
@@ -1445,6 +1479,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Supports standard, http-json, plugin, and local-estimate connectors.": "支持 standard、http-json、plugin 和 local-estimate 连接器。",
       "Switch to HTTP JSON request to configure method, URL, headers, body, and response fields.": "切换到 HTTP JSON 请求即可配置 method、URL、header、body 和响应字段。",
       "Test usage request": "测试用量请求",
+      "This check sends real model requests with your provider API key and may consume account balance.": "本次检测会使用你的供应商 API Key 发起真实模型请求，可能消耗账户余额。",
+      "Unavailable models": "不可用模型",
       "No marketplace extensions": "市场暂无扩展",
       "No fallback models configured": "未配置回退模型",
       "No models configured": "未配置模型",
@@ -2161,7 +2197,6 @@ export const agentAnalysisRangeOptions: Array<{ label: string; value: UsageStats
   { label: "30d", value: "30d" }
 ];
 
-export const providerAutoProbeDelayMs = 800;
 export const fallbackAgentAnalysis = createEmptyAgentAnalysis("7d");
 export const fallbackUsageStats = createEmptyUsageStats("7d");
 export const fallbackRequestLogPage = createEmptyRequestLogPage();
@@ -2187,9 +2222,8 @@ export const profileScopeOptions: Array<{ label: string; value: ProfileScope }> 
 ];
 
 export const profileSurfaceOptions: Array<{ label: string; value: ProfileSurface }> = [
-  { label: "Auto", value: "auto" },
-  { label: "CLI only", value: "cli" },
-  { label: "App only", value: "app" }
+  { label: "CLI", value: "cli" },
+  { label: "APP", value: "app" }
 ];
 
 export const requestLogStatusOptions: Array<{ label: string; value: RequestLogStatusFilter }> = [
@@ -2219,6 +2253,7 @@ export type AddProviderDraft = {
   presetId: string;
   protocol: GatewayProviderProtocol;
   selectedModels: string[];
+  selectedProtocols: GatewayProviderProtocol[];
   usageBalanceRemainingPath: string;
   usageBalanceUnit: string;
   usageMessagePath: string;
@@ -2249,6 +2284,19 @@ export type ProviderProbeCandidate = ProviderPresetEndpoint & {
 export type ProviderProbeCandidateResult = {
   candidate: ProviderProbeCandidate;
   probe: GatewayProviderProbeResult;
+};
+
+export type ProviderConnectivityCheckModelResult = {
+  message: string;
+  model: string;
+  protocols: GatewayProviderProbeProtocolResult[];
+  supported: boolean;
+};
+
+export type ProviderConnectivityCheckReport = {
+  failed: ProviderConnectivityCheckModelResult[];
+  passed: ProviderConnectivityCheckModelResult[];
+  results: ProviderConnectivityCheckModelResult[];
 };
 
 export type AddApiKeyDraft = {
@@ -3289,7 +3337,7 @@ export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code"
     settingsFile: "~/.claude/settings.json",
     showAllSessions: false,
     smallFastModel: "",
-    surface: "auto"
+    surface: "cli"
   };
 }
 
@@ -3298,7 +3346,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
   const botConfigId = profile.botConfigId || matchingBotConfigId(profile.botGateway, botConfigs);
   const selectedBot = botConfigId ? botConfigs.find((config) => config.id === botConfigId) : undefined;
   if (profile.agent === "claude-code") {
-    const surface = normalizeProfileSurface(profile.surface);
+    const surface = normalizeProfileSurfaceForForm(profile.surface);
     return {
       ...createProfileDraft("claude-code", profile.name),
       ...botDraft,
@@ -3312,7 +3360,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
       surface
     };
   }
-  const surface = normalizeProfileSurface(profile.surface);
+  const surface = normalizeProfileSurfaceForForm(profile.surface);
   return {
     ...createProfileDraft("codex", profile.name),
     ...botDraft,
@@ -3666,6 +3714,10 @@ export function normalizeProfileFormScope(value: unknown): ProfileScope {
 
 export function normalizeProfileSurface(value: unknown): ProfileSurface {
   return value === "cli" || value === "app" ? value : "auto";
+}
+
+export function normalizeProfileSurfaceForForm(value: unknown): ProfileSurface {
+  return normalizeProfileSurface(value) === "app" ? "app" : "cli";
 }
 
 export function normalizeBotGatewayPlatform(value: unknown): string {
@@ -4076,12 +4128,12 @@ export function profileScopeLabel(scope: ProfileScope): string {
 
 export function profileSurfaceLabel(surface: ProfileSurface): string {
   if (surface === "cli") {
-    return "CLI only";
+    return "CLI";
   }
   if (surface === "app") {
-    return "App only";
+    return "APP";
   }
-  return "Auto";
+  return "CLI";
 }
 
 export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[] {
@@ -7735,6 +7787,7 @@ export async function probeProviderDeepLinkPayload(payload: ProviderDeepLinkPayl
     return await window.ccr.probeProvider({
       apiKey: undefined,
       baseUrl: payload.baseUrl,
+      mode: "protocols",
       models: payload.models,
       protocols: payload.protocol ? [payload.protocol] : providerProtocolOptions.map((option) => option.value)
     });
@@ -7834,7 +7887,8 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
     name: uniqueProviderName(providers),
     presetId: "",
     protocol: "openai_chat_completions",
-    selectedModels: []
+    selectedModels: [],
+    selectedProtocols: []
   };
 }
 
@@ -7842,6 +7896,7 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
   const baseUrl = providerBaseUrl(provider);
   const preset = findProviderPresetByBaseUrl(baseUrl);
   const accountDraft = createProviderAccountDraftFromConfig(provider.account);
+  const protocol = toProviderProtocol(provider.type) ?? toProviderProtocol(provider.provider) ?? "openai_chat_completions";
   return {
     ...accountDraft,
     apiKey: providerApiKey(provider),
@@ -7851,8 +7906,9 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
     modelsText: provider.models.join("\n"),
     name: provider.name,
     presetId: preset?.id ?? customProviderPresetId,
-    protocol: toProviderProtocol(provider.type) ?? toProviderProtocol(provider.provider) ?? "openai_chat_completions",
-    selectedModels: []
+    protocol,
+    selectedModels: [],
+    selectedProtocols: selectedProviderProtocolsFromCapabilities(provider.capabilities, protocol)
   };
 }
 
@@ -8388,17 +8444,30 @@ export function providerProbeInputKey(candidates: ProviderProbeCandidate[], apiK
 export async function probeProviderCandidates(
   candidates: ProviderProbeCandidate[],
   apiKey: string,
-  models: string[]
+  models: string[],
+  options: {
+    mode?: "connectivity" | "protocols";
+    protocols?: GatewayProviderProtocol[];
+  } = {}
 ): Promise<ProviderProbeCandidateResult | undefined> {
   const results: ProviderProbeCandidateResult[] = [];
+  const mode = options.mode ?? "protocols";
 
   for (const candidate of candidates) {
+    const protocols = options.protocols
+      ? candidate.protocols.filter((protocol) => options.protocols?.includes(protocol))
+      : candidate.protocols;
+    if (protocols.length === 0) {
+      continue;
+    }
+
     try {
       const probe = await window.ccr?.probeProvider({
-        apiKey,
+        apiKey: mode === "connectivity" ? apiKey : undefined,
         baseUrl: candidate.baseUrl,
-        models,
-        protocols: candidate.protocols
+        mode,
+        models: mode === "connectivity" ? models : [],
+        protocols
       });
       if (!probe) {
         continue;
@@ -8419,10 +8488,6 @@ export function providerProbeResultIsUsable(probe: GatewayProviderProbeResult): 
 
 export function providerProbeHasSupportedProtocol(probe: GatewayProviderProbeResult | undefined, protocol?: GatewayProviderProtocol): boolean {
   return Boolean(probe?.protocols.some((item) => item.supported && (!protocol || item.protocol === protocol)));
-}
-
-export function firstProviderConnectivityModel(draft: AddProviderDraft): string {
-  return mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText))[0] ?? "";
 }
 
 export function mergeProviderProbeCandidateResults(results: ProviderProbeCandidateResult[]): ProviderProbeCandidateResult | undefined {
@@ -8484,6 +8549,61 @@ export function presetCapabilitiesFromDraft(draft: AddProviderDraft): GatewayPro
   );
 }
 
+export function providerSelectableProtocolsFromProbe(probe: GatewayProviderProbeResult | undefined): GatewayProviderProtocol[] {
+  if (!probe) {
+    return [];
+  }
+
+  return uniqueProviderProtocols([
+    ...(probe.capabilities ?? []).map((capability) => capability.type),
+    ...probe.protocols.filter((item) => item.supported).map((item) => item.protocol)
+  ]);
+}
+
+export function selectedProviderProtocolsFromCapabilities(
+  capabilities: GatewayProviderCapability[] | undefined,
+  fallback: GatewayProviderProtocol
+): GatewayProviderProtocol[] {
+  const selected = uniqueProviderProtocols((capabilities ?? []).map((capability) => capability.type));
+  return selected.length > 0 ? selected : [fallback];
+}
+
+export function selectedProviderProtocolsForProbe(
+  selectedProtocols: GatewayProviderProtocol[],
+  probe: GatewayProviderProbeResult,
+  fallback: GatewayProviderProtocol
+): GatewayProviderProtocol[] {
+  const selectable = providerSelectableProtocolsFromProbe(probe);
+  if (selectable.length === 0) {
+    return selectedProtocols.length > 0 ? uniqueProviderProtocols(selectedProtocols) : [fallback];
+  }
+
+  const selected = uniqueProviderProtocols(selectedProtocols).filter((protocol) => selectable.includes(protocol));
+  return selected.length > 0 ? selected : selectable;
+}
+
+export function uniqueProviderProtocols(values: Array<GatewayProviderProtocol | string | undefined>): GatewayProviderProtocol[] {
+  const allowed = new Set(providerProtocolOptions.map((option) => option.value));
+  const seen = new Set<GatewayProviderProtocol>();
+  const selected: GatewayProviderProtocol[] = [];
+
+  for (const value of values) {
+    if (!value || !allowed.has(value as GatewayProviderProtocol)) {
+      continue;
+    }
+    const protocol = value as GatewayProviderProtocol;
+    if (seen.has(protocol)) {
+      continue;
+    }
+    seen.add(protocol);
+    selected.push(protocol);
+  }
+
+  return providerProtocolOptions
+    .map((option) => option.value)
+    .filter((protocol) => seen.has(protocol) && selected.includes(protocol));
+}
+
 export function mergeProviderCapabilities(...groups: GatewayProviderCapability[][]): GatewayProviderCapability[] {
   const seen = new Set<string>();
   const capabilities: GatewayProviderCapability[] = [];
@@ -8508,12 +8628,16 @@ export function mergeProviderCapabilities(...groups: GatewayProviderCapability[]
 }
 
 export function applyProviderProbeResult(draft: AddProviderDraft, probe: GatewayProviderProbeResult): AddProviderDraft {
+  const protocol = probe.detectedProtocol ?? draft.protocol;
+  const selectedProtocols = selectedProviderProtocolsForProbe(draft.selectedProtocols, probe, protocol);
+
   if (probe.models.length === 0) {
     return {
       ...draft,
       baseUrl: probe.normalizedBaseUrl || draft.baseUrl,
-      protocol: probe.detectedProtocol ?? draft.protocol,
-      selectedModels: mergeProviderModelLists(draft.selectedModels)
+      protocol,
+      selectedModels: mergeProviderModelLists(draft.selectedModels),
+      selectedProtocols
     };
   }
 
@@ -8532,9 +8656,10 @@ export function applyProviderProbeResult(draft: AddProviderDraft, probe: Gateway
   return {
     ...draft,
     baseUrl: probe.normalizedBaseUrl || draft.baseUrl,
-    protocol: probe.detectedProtocol ?? draft.protocol,
+    protocol,
     modelsText: customModels.join("\n"),
-    selectedModels: nextSelectedModels
+    selectedModels: nextSelectedModels,
+    selectedProtocols
   };
 }
 

@@ -10,10 +10,10 @@ import {
   Pencil, Plus, PopoverContent, primaryProviderAccountMeter, primaryProviderPresetEndpoint, providerAccountBadgeVariant,
   providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountSnapshot, ProviderAccountTestPath,
   ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerHttpJsonConnectorFromDraft,
-  providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerPresets, providerProbeHasSupportedProtocol,
-  providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, reducedMotionTransition, Search, SelectControl,
+  ProviderConnectivityCheckReport, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerPresets, providerProbeHasSupportedProtocol,
+  providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, reducedMotionTransition, Search, SelectControl,
   ShieldCheck, splitLines, splitModelTagInput, Textarea, translatedProviderProtocolLabel, translateOptions,
-  translateProbeProtocolMessage, Trash2, uniqueProviderName, useAppText, useEffect, useMemo,
+  translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppText, useEffect, useMemo,
   useReducedMotion, useRef, useState, X
 } from "../shared";
 export function ProvidersView({ accountSnapshots, addProvider, editProvider, notify, providers, removeProvider }: {
@@ -755,6 +755,8 @@ function providerPresetOptionMatchesQuery(
 export function AddProviderForm({
   draft,
   error,
+  connectivityLoading = false,
+  connectivityProbe,
   mode,
   onCheck,
   onChange,
@@ -762,10 +764,12 @@ export function AddProviderForm({
   probeLoading,
   providers
 }: {
+  connectivityLoading?: boolean;
+  connectivityProbe?: GatewayProviderProbeResult;
   draft: AddProviderDraft;
   error: string;
   mode: "add" | "edit";
-  onCheck?: () => Promise<void>;
+  onCheck?: () => Promise<unknown>;
   onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
   probe?: GatewayProviderProbeResult;
   probeLoading: boolean;
@@ -789,6 +793,12 @@ export function AddProviderForm({
     ...providerPresets.map((preset) => ({ label: t(preset.name), preset, value: preset.id })),
     { iconUrl: draft.icon, label: t("Other / custom API endpoint"), value: customProviderPresetId }
   ];
+  const selectableProtocols = providerSelectableProtocolsFromProbe(probe);
+  const hasConnectivityCheckInputs = Boolean(
+    draft.baseUrl.trim() &&
+    draft.apiKey.trim() &&
+    mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText)).length > 0
+  );
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -834,7 +844,8 @@ export function AddProviderForm({
         icon: "",
         modelSearch: "",
         presetId,
-        selectedModels: []
+        selectedModels: [],
+        selectedProtocols: []
       }, true);
       return;
     }
@@ -846,7 +857,8 @@ export function AddProviderForm({
         icon: "",
         modelSearch: "",
         presetId,
-        selectedModels: []
+        selectedModels: [],
+        selectedProtocols: []
       }, true);
       return;
     }
@@ -864,7 +876,8 @@ export function AddProviderForm({
       name: mode === "add" && preset && generatedName ? uniqueProviderName(providers, t(preset.name)) : draft.name,
       presetId,
       protocol: endpoint?.protocols[0] ?? draft.protocol,
-      selectedModels: []
+      selectedModels: [],
+      selectedProtocols: uniqueProviderProtocols(preset?.endpoints.flatMap((item) => item.protocols) ?? endpoint?.protocols ?? [])
     }, true);
   }
 
@@ -890,7 +903,7 @@ export function AddProviderForm({
                 <span className="min-w-0">
                   {iconDetecting
                     ? t("Detecting icon")
-                    : t("After you enter the API endpoint and key, the system will automatically detect supported protocols and available models.")}
+                    : t("Enter API endpoint, API key, and at least one model to enable connectivity check.")}
                 </span>
               </div>
             ) : null}
@@ -951,37 +964,51 @@ export function AddProviderForm({
         </Field>
         <div className="sm:col-span-2 flex min-w-0 flex-wrap items-center justify-between gap-2 text-[12px] text-muted-foreground">
           <div className="min-w-0 flex-1">
-            {probeLoading ? (
+            {connectivityLoading ? (
               <span className="inline-flex items-center gap-1.5">
                 <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                {t("Detecting provider")}
+                {t("Checking connection")}
               </span>
-            ) : providerProbeHasSupportedProtocol(probe) ? (
+            ) : providerProbeHasSupportedProtocol(connectivityProbe) ? (
               <span className="inline-flex items-center gap-1.5 text-foreground">
                 <Check className="h-3.5 w-3.5" />
                 {t("Connection verified")}
               </span>
+            ) : probeLoading ? (
+              <span className="inline-flex items-center gap-1.5">
+                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                {t("Detecting protocols")}
+              </span>
+            ) : providerProbeHasSupportedProtocol(probe) ? (
+              <span className="inline-flex items-center gap-1.5 text-foreground">
+                <Check className="h-3.5 w-3.5" />
+                {t("Protocols detected")}
+              </span>
             ) : probe?.detectedProtocol ? (
               <span className="inline-flex items-center gap-1.5 text-foreground">
                 <Check className="h-3.5 w-3.5" />
-                {t("Detected automatically")}
+                {t("Detected")}
               </span>
-            ) : draft.baseUrl.trim() ? (
-              <span>{t("Enter a model manually if automatic detection does not return a model list.")}</span>
+            ) : hasConnectivityCheckInputs ? (
+              <span>{t("Click Check Connection to verify connectivity with a real model request.")}</span>
+            ) : draft.baseUrl.trim() || draft.apiKey.trim() || splitLines(draft.modelsText).length > 0 || draft.selectedModels.length > 0 ? (
+              <span>{t("Enter API endpoint, API key, and at least one model to enable connectivity check.")}</span>
             ) : null}
           </div>
-          {onCheck ? (
-            <Button
-              className="h-8 shrink-0 px-2"
-              disabled={probeLoading}
-              onClick={() => void onCheck()}
-              type="button"
-              variant="outline"
-            >
-              {probeLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
-              {t("Check")}
-            </Button>
-          ) : null}
+          <div className="flex shrink-0 flex-wrap justify-end gap-2">
+            {onCheck && hasConnectivityCheckInputs ? (
+              <Button
+                className="h-8 px-2"
+                disabled={connectivityLoading || probeLoading}
+                onClick={() => void onCheck()}
+                type="button"
+                variant="outline"
+              >
+                {connectivityLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                {t("Check Connection")}
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         <div className="sm:col-span-2">
@@ -1027,18 +1054,39 @@ export function AddProviderForm({
                   <div className="max-h-[128px] overflow-auto rounded-md border border-border bg-background p-2">
                     {probe?.protocols.length ? (
                       <div className="space-y-1.5">
-                        {probe.protocols.map((item) => (
-                          <div className="grid grid-cols-[minmax(118px,0.7fr)_72px_minmax(0,1fr)] gap-2 text-[11px]" key={`${item.protocol}-${item.endpoint}`}>
-                            <span className="truncate font-medium">{translatedProviderProtocolLabel(item.protocol, t)}</span>
-                            <span className={cn("truncate", item.supported ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground")}>
-                              {item.supported ? t("Available") : t("Unavailable")}
-                            </span>
-                            <span className="truncate text-muted-foreground" title={translateProbeProtocolMessage(item.message, t)}>{translateProbeProtocolMessage(item.message, t)}</span>
-                          </div>
-                        ))}
+                        {probe.protocols.map((item) => {
+                          const selectable = item.supported && selectableProtocols.includes(item.protocol);
+                          const checked = draft.selectedProtocols.includes(item.protocol);
+                          return (
+                            <div className="grid grid-cols-[20px_minmax(118px,0.7fr)_72px_minmax(0,1fr)] items-center gap-2 text-[11px]" key={`${item.protocol}-${item.endpoint}`}>
+                              <Checkbox
+                                aria-label={`${t("Add")} ${translatedProviderProtocolLabel(item.protocol, t)}`}
+                                checked={checked}
+                                disabled={!selectable}
+                                onCheckedChange={() => {
+                                  if (!selectable) {
+                                    return;
+                                  }
+                                  onChange({
+                                    selectedProtocols: checked
+                                      ? draft.selectedProtocols.filter((protocol) => protocol !== item.protocol)
+                                      : uniqueProviderProtocols([...draft.selectedProtocols, item.protocol])
+                                  });
+                                }}
+                              />
+                              <span className="truncate font-medium">{translatedProviderProtocolLabel(item.protocol, t)}</span>
+                              <span className={cn("truncate", item.supported ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground")}>
+                                {item.supported ? t("Available") : t("Unavailable")}
+                              </span>
+                              <span className="truncate text-muted-foreground" title={translateProbeProtocolMessage(item.message, t)}>{translateProbeProtocolMessage(item.message, t)}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     ) : (
-                      <div className="text-[11px] text-muted-foreground">{t("No protocol detection yet")}</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        <span>{t("No protocol detection yet")}</span>
+                      </div>
                     )}
                   </div>
                 </Field>
@@ -1347,6 +1395,8 @@ function ProviderUsagePathRow({
 
 export function AddProviderDialog({
   canSubmit,
+  connectivityLoading = false,
+  connectivityProbe,
   draft,
   error,
   mode,
@@ -1359,10 +1409,12 @@ export function AddProviderDialog({
   providers
 }: {
   canSubmit: boolean;
+  connectivityLoading?: boolean;
+  connectivityProbe?: GatewayProviderProbeResult;
   draft: AddProviderDraft;
   error: string;
   mode: "add" | "edit";
-  onCheck?: () => Promise<void>;
+  onCheck?: (models: string[]) => Promise<ProviderConnectivityCheckReport>;
   onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
   onClose: () => void;
   onSubmit: () => Promise<boolean>;
@@ -1371,43 +1423,244 @@ export function AddProviderDialog({
   providers: GatewayProviderConfig[];
 }) {
   const t = useAppText();
+  const [checkConfirmOpen, setCheckConfirmOpen] = useState(false);
+  const [checkConfirmBusy, setCheckConfirmBusy] = useState(false);
+  const [checkModelSelection, setCheckModelSelection] = useState<string[]>([]);
+  const [checkResult, setCheckResult] = useState<ProviderConnectivityCheckReport>();
+  const checkModels = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
+
+  function openCheckConfirm() {
+    setCheckModelSelection(checkModels);
+    setCheckResult(undefined);
+    setCheckConfirmOpen(true);
+  }
+
+  async function confirmCheck() {
+    if (!onCheck) {
+      return;
+    }
+    setCheckConfirmBusy(true);
+    try {
+      setCheckResult(await onCheck(checkModelSelection));
+    } finally {
+      setCheckConfirmBusy(false);
+    }
+  }
+
+  function toggleCheckModel(model: string) {
+    setCheckModelSelection((current) =>
+      current.includes(model)
+        ? current.filter((item) => item !== model)
+        : mergeProviderModelLists(current, [model])
+    );
+    setCheckResult(undefined);
+  }
 
   return (
-    <Dialog className="items-start" onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="mt-[clamp(12px,4dvh,36px)] max-h-[calc(100dvh-1.5rem-clamp(12px,4dvh,36px))] max-w-[780px] origin-top sm:mt-[clamp(16px,6dvh,56px)] sm:max-h-[calc(100dvh-3rem-clamp(16px,6dvh,56px))]">
-        <DialogHeader>
-          <div className="min-w-0">
-            <DialogTitle>{mode === "edit" ? t("Edit Provider") : t("Add Provider")}</DialogTitle>
-          </div>
-          <Button aria-label={t("Close dialog")} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
-            <X className="h-4 w-4" />
-          </Button>
-        </DialogHeader>
+    <>
+      <Dialog className="items-start" onOpenChange={(open) => !open && onClose()}>
+        <DialogContent className="mt-[clamp(12px,4dvh,36px)] max-h-[calc(100dvh-1.5rem-clamp(12px,4dvh,36px))] max-w-[780px] origin-top sm:mt-[clamp(16px,6dvh,56px)] sm:max-h-[calc(100dvh-3rem-clamp(16px,6dvh,56px))]">
+          <DialogHeader>
+            <div className="min-w-0">
+              <DialogTitle>{mode === "edit" ? t("Edit Provider") : t("Add Provider")}</DialogTitle>
+            </div>
+            <Button aria-label={t("Close dialog")} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
+              <X className="h-4 w-4" />
+            </Button>
+          </DialogHeader>
 
-        <DialogBody>
-          <AddProviderForm
-            draft={draft}
-            error={error}
-            mode={mode}
-            onCheck={onCheck}
-            onChange={onChange}
-            probe={probe}
-            probeLoading={probeLoading}
-            providers={providers}
-          />
-        </DialogBody>
+          <DialogBody>
+            <AddProviderForm
+              connectivityLoading={connectivityLoading}
+              connectivityProbe={connectivityProbe}
+              draft={draft}
+              error={error}
+              mode={mode}
+              onCheck={onCheck ? async () => openCheckConfirm() : undefined}
+              onChange={onChange}
+              probe={probe}
+              probeLoading={probeLoading}
+              providers={providers}
+            />
+          </DialogBody>
 
-        <DialogFooter>
-          <Button onClick={onClose} type="button" variant="outline">
-            {t("Cancel")}
-          </Button>
-          <Button disabled={!canSubmit} onClick={() => void onSubmit()} type="button">
-            {mode === "edit" ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-            {mode === "edit" ? t("Save") : t("Add")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter>
+            <Button onClick={onClose} type="button" variant="outline">
+              {t("Cancel")}
+            </Button>
+            <Button disabled={!canSubmit} onClick={() => void onSubmit()} type="button">
+              {mode === "edit" ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+              {mode === "edit" ? t("Save") : t("Add")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {checkConfirmOpen ? (
+        <Dialog className="z-[60]" onOpenChange={(open) => !open && !checkConfirmBusy && setCheckConfirmOpen(false)}>
+          <DialogContent className="max-w-[520px]">
+            <DialogHeader>
+              <div className="min-w-0">
+                <DialogTitle>{t("Check Connection")}</DialogTitle>
+              </div>
+              <Button
+                aria-label={t("Close dialog")}
+                disabled={checkConfirmBusy}
+                onClick={() => setCheckConfirmOpen(false)}
+                size="iconSm"
+                title={t("Close")}
+                type="button"
+                variant="ghost"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </DialogHeader>
+            <DialogBody>
+              <div className="space-y-3">
+                <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2.5">
+                  <div className="flex items-start gap-2 text-[12px] font-medium text-amber-900 dark:text-amber-100">
+                    <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>{t("This check sends real model requests with your provider API key and may consume account balance.")}</span>
+                  </div>
+                  <div className="mt-2 text-[11px] leading-4 text-muted-foreground">
+                    {t("Generated output is limited to 1 token for connectivity checks.")}
+                  </div>
+                </div>
+
+                <div className="rounded-md border border-border bg-background p-2">
+                  <div className="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0 truncate text-[12px] font-semibold">{t("Models to check")}</div>
+                    <div className="flex shrink-0 gap-1">
+                      <Button className="h-6 px-1.5 text-[10px]" disabled={checkConfirmBusy || connectivityLoading || checkModels.length === 0} onClick={() => { setCheckModelSelection(checkModels); setCheckResult(undefined); }} type="button" variant="outline">
+                        {t("All")}
+                      </Button>
+                      <Button className="h-6 px-1.5 text-[10px]" disabled={checkConfirmBusy || connectivityLoading || checkModelSelection.length === 0} onClick={() => { setCheckModelSelection([]); setCheckResult(undefined); }} type="button" variant="outline">
+                        {t("Clear")}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="max-h-[180px] overflow-auto">
+                    <div className="grid grid-cols-1 gap-2">
+                      {checkModels.map((model) => {
+                        const checked = checkModelSelection.includes(model);
+                        return (
+                          <Label
+                            className={cn(
+                              "flex min-h-8 min-w-0 cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5 text-left text-[12px] transition-colors hover:bg-muted",
+                              checked && "border-primary bg-accent"
+                            )}
+                            key={model}
+                          >
+                            <Checkbox checked={checked} disabled={checkConfirmBusy || connectivityLoading} onCheckedChange={() => toggleCheckModel(model)} />
+                            <span className="min-w-0 flex-1 truncate font-mono text-[11px]" title={model}>{model}</span>
+                          </Label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {checkResult ? <ProviderConnectivityResultPanel result={checkResult} /> : null}
+              </div>
+            </DialogBody>
+            <DialogFooter>
+              <Button disabled={checkConfirmBusy} onClick={() => setCheckConfirmOpen(false)} type="button" variant="outline">
+                {checkResult ? t("Close") : t("Cancel")}
+              </Button>
+              <Button disabled={checkConfirmBusy || connectivityLoading || checkModelSelection.length === 0} onClick={() => void confirmCheck()} type="button">
+                {checkConfirmBusy || connectivityLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                {t("Start check")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+    </>
+  );
+}
+
+function ProviderConnectivityResultPanel({ result }: { result: ProviderConnectivityCheckReport }) {
+  const t = useAppText();
+
+  return (
+    <div className="rounded-md border border-border bg-muted/20">
+      <div className="flex min-w-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
+        <div className="min-w-0 truncate text-[12px] font-semibold">{t("Check results")}</div>
+        <div className="flex shrink-0 gap-1">
+          <Badge variant={result.passed.length > 0 ? "success" : "outline"}>{result.passed.length} {t("Available")}</Badge>
+          <Badge variant={result.failed.length > 0 ? "warning" : "outline"}>{result.failed.length} {t("Unavailable")}</Badge>
+        </div>
+      </div>
+      <div className="max-h-[220px] overflow-auto p-2">
+        <ProviderConnectivityResultGroup
+          emptyLabel={t("No available models")}
+          items={result.passed}
+          label={t("Available models")}
+          variant="success"
+        />
+        <ProviderConnectivityResultGroup
+          className="mt-2"
+          emptyLabel={t("No unavailable models")}
+          items={result.failed}
+          label={t("Unavailable models")}
+          variant="warning"
+        />
+      </div>
+    </div>
+  );
+}
+
+function ProviderConnectivityResultGroup({
+  className,
+  emptyLabel,
+  items,
+  label,
+  variant
+}: {
+  className?: string;
+  emptyLabel: string;
+  items: ProviderConnectivityCheckReport["results"];
+  label: string;
+  variant: "success" | "warning";
+}) {
+  const t = useAppText();
+
+  return (
+    <div className={className}>
+      <div className="mb-1 flex min-w-0 items-center justify-between gap-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="min-w-0 truncate">{label}</span>
+        <span className="shrink-0">{items.length}</span>
+      </div>
+      {items.length === 0 ? (
+        <div className="rounded-md border border-dashed border-border bg-background/70 px-2 py-2 text-center text-[11px] text-muted-foreground">{emptyLabel}</div>
+      ) : (
+        <div className="space-y-1.5">
+          {items.map((item) => {
+            const supportedProtocols = item.protocols.filter((protocol) => protocol.supported);
+            return (
+              <div className="min-w-0 rounded-md border border-border bg-background px-2 py-1.5 text-[11px]" key={item.model}>
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                  <span className="min-w-0 truncate font-mono font-semibold" title={item.model}>{item.model}</span>
+                  <Badge variant={variant}>{item.supported ? t("Available") : t("Unavailable")}</Badge>
+                </div>
+                <div className="mt-1 truncate text-muted-foreground" title={translateProbeProtocolMessage(item.message, t)}>
+                  {translateProbeProtocolMessage(item.message, t)}
+                </div>
+                {supportedProtocols.length > 0 ? (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {supportedProtocols.map((protocol) => (
+                      <Badge key={`${item.model}:${protocol.protocol}:${protocol.endpoint}`} variant="outline">
+                        {translatedProviderProtocolLabel(protocol.protocol, t)}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -2,7 +2,7 @@ import {
   AddProfileDraft, AddProviderDraft, AppConfig, Button, Check, ChevronLeft,
   ChevronRight, cn, GatewayProviderProbeResult, GatewayStatus, Gauge, getNextOnboardingStep,
   isOnboardingProfileReady, isOnboardingProviderReady, Layers3, LucideIcon, motion, motionEase,
-  onboardingMascotSpriteUrl, OnboardingStepId, onboardingStepOrder, reducedMotionTransition, useAppText, useReducedMotion,
+  onboardingMascotSpriteUrl, OnboardingStepId, onboardingStepOrder, ProviderConnectivityCheckReport, reducedMotionTransition, useAppText, useReducedMotion,
   UserRound, X
 } from "../shared";
 import { AddProviderForm } from "./providers";
@@ -75,6 +75,8 @@ export function OnboardingView({
   profileError,
   providerDraft,
   providerError,
+  providerConnectivityLoading,
+  providerConnectivityProbe,
   providerProbe,
   providerProbeLoading
 }: {
@@ -84,7 +86,7 @@ export function OnboardingView({
   config: AppConfig;
   endpoint: string;
   gatewayStatus: GatewayStatus;
-  onCheckProvider: () => Promise<void>;
+  onCheckProvider: () => Promise<ProviderConnectivityCheckReport>;
   onChangeProfile: (patch: Partial<AddProfileDraft>) => void;
   onChangeProvider: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
   onComplete: () => void | Promise<void>;
@@ -95,6 +97,8 @@ export function OnboardingView({
   profileError: string;
   providerDraft: AddProviderDraft;
   providerError: string;
+  providerConnectivityLoading: boolean;
+  providerConnectivityProbe?: GatewayProviderProbeResult;
   providerProbe?: GatewayProviderProbeResult;
   providerProbeLoading: boolean;
 }) {
@@ -197,6 +201,8 @@ export function OnboardingView({
                 >
                   <div className="mx-auto w-full max-w-[780px]">
                     <AddProviderForm
+                      connectivityLoading={providerConnectivityLoading}
+                      connectivityProbe={providerConnectivityProbe}
                       draft={providerDraft}
                       error={providerError}
                       mode={providerReady ? "edit" : "add"}

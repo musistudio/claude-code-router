@@ -280,6 +280,7 @@ export type GatewayProviderCapability = {
 export type GatewayProviderProbeRequest = {
   apiKey?: string;
   baseUrl: string;
+  mode?: "connectivity" | "protocols";
   models?: string[];
   protocols?: GatewayProviderProtocol[];
   skipModelDiscovery?: boolean;

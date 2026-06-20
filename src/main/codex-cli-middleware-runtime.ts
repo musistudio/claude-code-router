@@ -13,6 +13,7 @@ const { pathToFileURL } = require("node:url");
 const VERSION = "3.0.0";
 const DEFAULT_MODEL = "claude-sonnet-4-5";
 const PROTOCOL_VERSION = "2025-06-18";
+const BOT_SESSION_ENTRY_VERSION = 2;
 const REQUEST_TIMEOUT_MS = numberEnv("CCR_CODEX_APP_REQUEST_TIMEOUT_MS", 10 * 60 * 1000);
 const TURN_IDLE_TIMEOUT_MS = numberEnv("CCR_CODEX_CLAUDE_TURN_IDLE_TIMEOUT_MS", 10 * 60 * 1000);
 const CONFIG_DIR = path.join(os.homedir(), ".claude-code-router");
@@ -289,12 +290,83 @@ async function runClaudeCodeAppServer(args) {
 
 async function runClaudeCodeBotWorker(args) {
   const options = parseAppServerOptions(args);
-  const server = new ClaudeCodeAppServer(options);
-  server.ensureBotBridgeRegistered();
-  log("claude_bot_worker_start", { workspaceName: options.workspaceName, pid: process.pid });
-  await waitForTerminationSignal();
-  await botBridge().stop();
-  log("claude_bot_worker_stop", { pid: process.pid });
+  const lock = acquireClaudeBotWorkerLock();
+  if (!lock) return;
+  try {
+    const server = new ClaudeCodeAppServer(options);
+    server.ensureBotBridgeRegistered();
+    log("claude_bot_worker_start", { workspaceName: options.workspaceName, pid: process.pid, lockPath: lock.path });
+    await waitForTerminationSignal();
+    await botBridge().stop();
+    log("claude_bot_worker_stop", { pid: process.pid });
+  } finally {
+    releaseClaudeBotWorkerLock(lock);
+  }
+}
+
+function acquireClaudeBotWorkerLock() {
+  const lockPath = claudeBotWorkerLockPath();
+  const token = uuid();
+  const payload = {
+    pid: process.pid,
+    token,
+    startedAt: Date.now()
+  };
+  fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      fs.writeFileSync(lockPath, JSON.stringify(payload, null, 2), { flag: "wx" });
+      const lock = { path: lockPath, token };
+      process.once("exit", () => releaseClaudeBotWorkerLock(lock));
+      return lock;
+    } catch (error) {
+      if (!error || error.code !== "EEXIST") throw error;
+      const existing = readJsonFile(lockPath) || {};
+      const existingPid = Number(existing.pid);
+      if (existingPid && existingPid !== process.pid && processIsRunning(existingPid)) {
+        log("claude_bot_worker_lock_held", { lockPath, pid: process.pid, ownerPid: existingPid });
+        return null;
+      }
+      try {
+        fs.unlinkSync(lockPath);
+        log("claude_bot_worker_stale_lock_removed", { lockPath, pid: process.pid, ownerPid: existingPid || null });
+      } catch (unlinkError) {
+        log("claude_bot_worker_lock_remove_failed", { lockPath, pid: process.pid, error: formatError(unlinkError) });
+        return null;
+      }
+    }
+  }
+  log("claude_bot_worker_lock_failed", { lockPath, pid: process.pid });
+  return null;
+}
+
+function releaseClaudeBotWorkerLock(lock) {
+  if (!lock || !lock.path) return;
+  try {
+    const existing = readJsonFile(lock.path) || {};
+    if (existing.token && existing.token !== lock.token) return;
+    fs.unlinkSync(lock.path);
+  } catch {
+    // The lock may have already been removed during shutdown.
+  }
+}
+
+function claudeBotWorkerLockPath() {
+  const stateDir = nonEmptyEnv("CCR_BOT_GATEWAY_STATE_DIR") ||
+    nonEmptyEnv("CODEXL_BOT_GATEWAY_STATE_DIR") ||
+    nonEmptyEnv("BOT_GATEWAY_STATE_DIR") ||
+    path.join(CONFIG_DIR, "bot-gateway", safePathSegment(nonEmptyEnv("CCR_BOT_PROFILE_ID") || "default"));
+  return path.join(expandHome(stateDir), "claude-bot-worker.lock");
+}
+
+function processIsRunning(pid) {
+  if (!Number.isFinite(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return Boolean(error && error.code === "EPERM");
+  }
 }
 
 function waitForTerminationSignal() {
@@ -601,6 +673,12 @@ class ClaudeCodeAppServer {
       log("bot_gateway_inbound_skip", { eventId, reason: "empty_text" });
       return;
     }
+    const commandReply = this.handleBotCommand(event, text);
+    if (commandReply !== null) {
+      await bridge.sendReplyToEvent(event, commandReply, "ccr:claude-code:command:" + eventId);
+      log("bot_gateway_command_replied", { eventId, textLen: commandReply.length });
+      return;
+    }
     const thread = this.botThreadForEvent(event, text);
     const prepared = this.startTurn({
       cwd: thread.cwd,
@@ -623,6 +701,37 @@ class ClaudeCodeAppServer {
     log("bot_gateway_inbound_replied", { eventId, threadId: thread.id, turnId: prepared.turn.id, textLen: responseText.length });
   }
 
+  handleBotCommand(event, text) {
+    const command = parseBotCommand(text);
+    if (!command) return null;
+    const key = botConversationKey(event);
+    try {
+      if (command.name === "help") return botCommandHelpText();
+      if (command.name === "ls") return this.renderBotSessionList(key);
+      if (command.name === "current" || command.name === "status") return this.renderCurrentBotSession(key);
+      if (command.name === "reset") {
+        this.clearBotThreadForConversation(key);
+        return "Reset. The next message will create a new Claude App session.";
+      }
+      if (command.name === "new") {
+        this.clearBotThreadForConversation(key);
+        const seed = command.args.replace(/^session\b/i, "").trim() || "New Claude App bot session";
+        const thread = this.botThreadForEvent(event, seed);
+        return "Created session " + shortSessionId(thread.claudeAppSessionId || thread.sessionId || thread.id) + ": " + (thread.preview || "New Claude App session") + "\nNext message will continue in this Claude App session.";
+      }
+      if (command.name === "select" || command.name === "use") {
+        if (!command.args) return "Usage: select <session-number-or-id>. Send 'ls' to list sessions.";
+        const session = resolveClaudeAppLocalAgentSession(command.args);
+        if (!session) return "Session '" + command.args + "' was not found. Send 'ls' to list sessions.";
+        const thread = this.bindBotConversationToClaudeAppSession(key, session);
+        return "Selected session " + shortSessionId(session.sessionId) + ": " + botSessionTitle(session) + "\nNext message will continue in this Claude App session.";
+      }
+      return null;
+    } catch (error) {
+      return formatError(error);
+    }
+  }
+
   ensureBotBridgeRegistered() {
     if (this.botBridgeRegistered) return;
     this.botBridgeRegistered = true;
@@ -640,7 +749,7 @@ class ClaudeCodeAppServer {
       if (!restoredThread.preview) restoredThread.preview = text.slice(0, 160);
       return restoredThread;
     }
-    const appThread = this.inferBotThreadFromClaudeAppSession(key, text);
+    const appThread = this.createBotThreadForNewClaudeAppSession(key, text);
     if (appThread) return appThread;
     const thread = this.createThread({ cwd: process.cwd(), workspaceKind: "local" });
     if (!thread.preview) thread.preview = text.slice(0, 160);
@@ -650,9 +759,97 @@ class ClaudeCodeAppServer {
     return thread;
   }
 
+  bindBotConversationToClaudeAppSession(key, session) {
+    const oldThreadId = this.botThreads.get(key);
+    if (oldThreadId) this.botThreadKeys.delete(oldThreadId);
+    const thread = this.createThread({
+      cwd: session.cwd || process.cwd(),
+      model: session.model || undefined,
+      workspaceKind: "local",
+      claudeConfigDir: session.claudeConfigDir || null
+    });
+    thread.sessionId = session.sessionId || thread.id;
+    thread.claudeSessionId = session.cliSessionId || null;
+    thread.claudeConfigDir = session.claudeConfigDir || null;
+    thread.claudeAppSessionId = session.sessionId || null;
+    thread.claudeAppSessionFile = session.file || "";
+    thread.preview = botSessionTitle(session);
+    thread.name = botSessionTitle(session);
+    thread.updatedAt = Math.floor((session.lastActivityAt || Date.now()) / 1000);
+    this.botThreads.set(key, thread.id);
+    this.botThreadKeys.set(thread.id, key);
+    this.persistBotThread(thread.id);
+    return thread;
+  }
+
+  clearBotThreadForConversation(key) {
+    const threadId = this.botThreads.get(key);
+    if (threadId) this.botThreadKeys.delete(threadId);
+    this.botThreads.delete(key);
+    const store = this.loadBotSessionStore();
+    delete store.conversations[key];
+    this.saveBotSessionStore();
+  }
+
+  renderBotSessionList(key) {
+    const sessions = claudeAppLocalAgentSessions();
+    if (!sessions.length) return "No Claude App sessions found. Send any message to create a new session.";
+    const current = this.currentBotSessionInfo(key);
+    const lines = ["Claude App sessions:"];
+    for (let i = 0; i < sessions.length; i += 1) {
+      const session = sessions[i];
+      const selected = current && current.sessionId === session.sessionId ? " [selected]" : "";
+      lines.push("[" + (i + 1) + "] " + shortSessionId(session.sessionId) + " " + botSessionTitle(session) + selected);
+      lines.push("    cwd: " + (session.cwd || "(unknown)"));
+    }
+    lines.push("Commands: select <n>, new, current, reset, help");
+    return lines.join("\n");
+  }
+
+  renderCurrentBotSession(key) {
+    const current = this.currentBotSessionInfo(key);
+    if (!current) return "No selected Claude App session. Send any message to create a new session, or send 'ls' and then 'select <n>'.";
+    const title = current.title || current.sessionId || "Claude App session";
+    return [
+      "Current Claude App session:",
+      shortSessionId(current.sessionId || current.threadId || "") + " " + title,
+      "cwd: " + (current.cwd || "(unknown)")
+    ].join("\n");
+  }
+
+  currentBotSessionInfo(key) {
+    const threadId = this.botThreads.get(key);
+    const thread = threadId ? this.threads.get(threadId) : null;
+    if (thread) {
+      return {
+        sessionId: thread.claudeAppSessionId || thread.sessionId,
+        threadId: thread.id,
+        title: thread.name || thread.preview,
+        cwd: thread.cwd
+      };
+    }
+    const entry = this.loadBotSessionStore().conversations[key];
+    if (!entry || typeof entry !== "object") return null;
+    if (Number(entry.entryVersion || 0) < BOT_SESSION_ENTRY_VERSION) return null;
+    return {
+      sessionId: entry.claudeAppSessionId || entry.sessionId || "",
+      threadId: entry.threadId || "",
+      title: entry.preview || "",
+      cwd: entry.cwd || ""
+    };
+  }
+
   restoreBotThreadForConversation(key) {
     const entry = this.loadBotSessionStore().conversations[key];
     if (!entry || typeof entry !== "object") return null;
+    if (Number(entry.entryVersion || 0) < BOT_SESSION_ENTRY_VERSION) {
+      log("bot_gateway_session_legacy_skip", {
+        conversationKeyPrefix: key.slice(0, 80),
+        threadId: entry.threadId || "",
+        entryVersion: Number(entry.entryVersion || 0)
+      });
+      return null;
+    }
     if (!entry.claudeSessionId && !entry.claudeAppSessionId) return null;
     const thread = this.createThread({
       cwd: entry.cwd || process.cwd(),
@@ -660,11 +857,13 @@ class ClaudeCodeAppServer {
       workspaceKind: "local",
       claudeConfigDir: entry.claudeConfigDir || null
     });
+    const appSession = readClaudeAppLocalAgentSession(entry.claudeAppSessionFile || "");
     this.replaceThreadId(thread, entry.threadId || thread.id);
     thread.sessionId = entry.sessionId || thread.id;
-    thread.claudeSessionId = entry.claudeSessionId || null;
-    thread.claudeConfigDir = entry.claudeConfigDir || null;
+    thread.claudeSessionId = entry.claudeSessionId || appSession.cliSessionId || null;
+    thread.claudeConfigDir = entry.claudeConfigDir || appSession.claudeConfigDir || null;
     thread.claudeAppSessionId = entry.claudeAppSessionId || null;
+    thread.claudeAppSessionFile = entry.claudeAppSessionFile || "";
     thread.preview = entry.preview || "";
     thread.updatedAt = entry.updatedAtSeconds || nowSeconds();
     this.botThreads.set(key, thread.id);
@@ -677,8 +876,8 @@ class ClaudeCodeAppServer {
     return thread;
   }
 
-  inferBotThreadFromClaudeAppSession(key, text) {
-    const session = latestClaudeAppLocalAgentSession();
+  createBotThreadForNewClaudeAppSession(key, text) {
+    const session = createClaudeAppLocalAgentSession(text);
     if (!session) return null;
     const thread = this.createThread({
       cwd: session.cwd || process.cwd(),
@@ -687,20 +886,20 @@ class ClaudeCodeAppServer {
       claudeConfigDir: session.claudeConfigDir || null
     });
     thread.sessionId = session.sessionId || thread.id;
-    thread.claudeSessionId = session.cliSessionId || null;
+    thread.claudeSessionId = null;
     thread.claudeConfigDir = session.claudeConfigDir || null;
     thread.claudeAppSessionId = session.sessionId || null;
-    thread.preview = session.title || session.initialMessage || text.slice(0, 160);
+    thread.claudeAppSessionFile = session.file || "";
+    thread.preview = session.title || text.slice(0, 160);
     thread.name = session.title || this.workspaceName;
     thread.updatedAt = Math.floor((session.lastActivityAt || Date.now()) / 1000);
     this.botThreads.set(key, thread.id);
     this.botThreadKeys.set(thread.id, key);
     this.persistBotThread(thread.id);
-    log("bot_gateway_session_inferred", {
+    log("bot_gateway_session_created", {
       conversationKeyPrefix: key.slice(0, 80),
       threadId: thread.id,
       appSessionId: thread.claudeAppSessionId,
-      claudeSessionIdPrefix: thread.claudeSessionId ? thread.claudeSessionId.slice(0, 8) : "",
       cwd: thread.cwd
     });
     return thread;
@@ -738,10 +937,12 @@ class ClaudeCodeAppServer {
     if (!thread) return;
     const store = this.loadBotSessionStore();
     store.conversations[key] = {
+      entryVersion: BOT_SESSION_ENTRY_VERSION,
       threadId: thread.id,
       sessionId: thread.sessionId || thread.id,
       claudeSessionId: thread.claudeSessionId || null,
       claudeAppSessionId: thread.claudeAppSessionId || null,
+      claudeAppSessionFile: thread.claudeAppSessionFile || null,
       claudeConfigDir: thread.claudeConfigDir || null,
       cwd: thread.cwd || process.cwd(),
       model: thread.model || "",
@@ -759,6 +960,7 @@ class ClaudeCodeAppServer {
     if (!thread || thread.claudeSessionId === sessionId) return;
     thread.claudeSessionId = sessionId;
     log("claude_session_remembered", { threadId: work.threadId, turnId: work.turnId, sessionIdPrefix: sessionId.slice(0, 8) });
+    updateClaudeAppLocalAgentSession(thread, { cliSessionId: sessionId, lastActivityAt: Date.now() });
     this.persistBotThread(work.threadId);
   }
 
@@ -772,6 +974,7 @@ class ClaudeCodeAppServer {
       claudeSessionId: null,
       claudeConfigDir: params.claudeConfigDir || null,
       claudeAppSessionId: params.claudeAppSessionId || null,
+      claudeAppSessionFile: params.claudeAppSessionFile || null,
       path: null,
       preview: "",
       cwd,
@@ -918,11 +1121,16 @@ class ClaudeCodeAppServer {
       agentStarted: false,
       resultText: "",
       resultError: null,
+      resultSeenAt: 0,
+      onResult: null,
       latestUsage: null,
       tools: new Map(),
       toolIndex: new Map(),
       toolDelta: new Map()
     };
+    const resultSeen = new Promise((resolve) => {
+      stream.onResult = resolve;
+    });
     let stderr = "";
     let lastEventAt = Date.now();
     const stdoutRl = readline.createInterface({ input: child.stdout, crlfDelay: Infinity, terminal: false });
@@ -945,8 +1153,25 @@ class ClaudeCodeAppServer {
       }
     }, 1000);
 
-    const code = await waitForChild(child);
+    const childDone = waitForChild(child).then((code) => ({ kind: "exit", code }));
+    const resultDone = resultSeen.then(() => sleep(250).then(() => ({ kind: "result", code: 0 })));
+    const done = await Promise.race([childDone, resultDone]);
+    if (done.kind === "result" && !child.killed) {
+      log("claude_turn_finish_after_result", {
+        threadId: work.threadId,
+        turnId: work.turnId,
+        resultSeenAt: stream.resultSeenAt
+      });
+      try {
+        child.kill("SIGTERM");
+      } catch {
+        // The process may have already exited after emitting result.
+      }
+    }
+    const code = done.code;
     clearInterval(idle);
+    stdoutRl.close();
+    stderrRl.close();
     this.active.delete(key);
     const text = stream.resultText || stream.emitted || stream.pending;
     turn.agentText = text;
@@ -957,6 +1182,10 @@ class ClaudeCodeAppServer {
     turn.toolItems = Array.from(stream.tools.values()).map((tool) => toolItemJson(work.threadId, work.cwd, tool));
     thread.updatedAt = turn.completedAt;
     thread.latestTokenUsageInfo = stream.latestUsage;
+    updateClaudeAppLocalAgentSession(thread, {
+      lastActivityAt: Date.now(),
+      title: thread.name || thread.preview || promptTitle(thread.preview || work.prompt)
+    });
     this.persistBotThread(work.threadId);
     if (!stream.agentStarted && text) {
       writeNotification("item/completed", {
@@ -999,6 +1228,10 @@ class ClaudeCodeAppServer {
     if (message.type === "result") {
       stream.resultText = stringValue(message.result) || stream.resultText;
       stream.resultError = message.is_error ? stringValue(message.result) || "Claude Code returned an error" : stream.resultError;
+      if (!stream.resultSeenAt) {
+        stream.resultSeenAt = Date.now();
+        if (typeof stream.onResult === "function") stream.onResult(stream.resultSeenAt);
+      }
     }
   }
 
@@ -1149,18 +1382,25 @@ function emitReasoningDelta(work, stream, text) {
 
 function claudeCommand(work) {
   const command = nonEmptyEnv("CCR_CLAUDE_CODE_BIN") || nonEmptyEnv("CODEXL_CLAUDE_CODE_BIN") || "claude";
+  if (work.claudeConfigDir) {
+    ensureClaudeSessionConfig(work.claudeConfigDir);
+  }
   const args = [
+    "--print",
     "--output-format", "stream-json",
     "--input-format", "stream-json",
-    "--verbose"
+    "--verbose",
+    "--include-partial-messages"
   ];
   const model = nonEmptyEnv("CCR_CLAUDE_CODE_MODEL") || nonEmptyEnv("CODEXL_CLAUDE_CODE_MODEL") || work.model;
   if (model) args.push("--model", model);
   if (work.resumeExisting && work.claudeSessionId) args.push("--resume", work.claudeSessionId);
   const extra = splitShellLike(nonEmptyEnv("CCR_CLAUDE_CODE_EXTRA_ARGS") || nonEmptyEnv("CODEXL_CLAUDE_CODE_EXTRA_ARGS") || "");
   args.push(...extra);
+  const settingsEnv = work.claudeConfigDir ? claudeSettingsEnv(work.claudeConfigDir) : {};
   const env = withoutKeys({
     ...process.env,
+    ...settingsEnv,
     CODEX_SESSION_ID: work.threadId,
     CODEX_THREAD_ID: work.threadId,
     CODEX_TURN_ID: work.turnId
@@ -2404,15 +2644,49 @@ function normalizeBotSessionStore(value) {
   const conversations = value && typeof value === "object" && value.conversations && typeof value.conversations === "object"
     ? value.conversations
     : {};
-  return { version: 1, conversations };
+  return { version: BOT_SESSION_ENTRY_VERSION, conversations };
+}
+
+function parseBotCommand(text) {
+  let trimmed = String(text || "").trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("/")) trimmed = trimmed.slice(1).trim();
+  const space = trimmed.search(/\s/);
+  const rawName = space >= 0 ? trimmed.slice(0, space) : trimmed;
+  const name = rawName.toLowerCase();
+  const args = space >= 0 ? trimmed.slice(space + 1).trim() : "";
+  if (["help", "?", "h"].includes(name)) return { name: "help", args };
+  if (["ls", "list", "sessions"].includes(name)) return { name: "ls", args };
+  if (["current", "status", "pwd"].includes(name)) return { name: "current", args };
+  if (["new", "create"].includes(name)) return { name: "new", args };
+  if (name === "reset") return { name, args };
+  if (name === "select" || name === "use") return { name, args };
+  return null;
+}
+
+function botCommandHelpText() {
+  return [
+    "Bot commands:",
+    "ls - list Claude App sessions",
+    "new - create and select a new Claude App session",
+    "select <n|id> - continue a listed session",
+    "use <n|id> - alias for select",
+    "current - show selected session",
+    "reset - clear selected session; next message creates a new Claude App session",
+    "help - show this message"
+  ].join("\n");
 }
 
 function latestClaudeAppLocalAgentSession() {
+  return claudeAppLocalAgentSessions()[0] || null;
+}
+
+function claudeAppLocalAgentSessions() {
   const baseDir = nonEmptyEnv("CCR_CLAUDE_APP_USER_DATA_PATH") || nonEmptyEnv("CLAUDE_USER_DATA_DIR");
-  if (!baseDir) return null;
+  if (!baseDir) return [];
   const root = path.join(expandHome(baseDir), "local-agent-mode-sessions");
   const files = listClaudeAppSessionFiles(root, 6);
-  let latest = null;
+  const sessions = [];
   for (const file of files) {
     let value;
     try {
@@ -2434,11 +2708,260 @@ function latestClaudeAppLocalAgentSession() {
       title: stringValue(value.title) || "",
       initialMessage: stringValue(value.initialMessage) || "",
       lastActivityAt,
-      claudeConfigDir: claudeAppSessionConfigDir(file, value)
+      claudeConfigDir: claudeAppSessionConfigDir(file, value),
+      metadata: value
     };
-    if (!latest || item.lastActivityAt > latest.lastActivityAt) latest = item;
+    sessions.push(item);
   }
-  return latest;
+  sessions.sort((left, right) => (right.lastActivityAt || 0) - (left.lastActivityAt || 0));
+  return sessions;
+}
+
+function resolveClaudeAppLocalAgentSession(selector) {
+  const query = String(selector || "").trim();
+  if (!query) return null;
+  const sessions = claudeAppLocalAgentSessions();
+  const numeric = Number(query);
+  if (Number.isInteger(numeric) && numeric >= 1 && numeric <= sessions.length) {
+    return sessions[numeric - 1];
+  }
+  const lower = query.toLowerCase();
+  let matches = sessions.filter((session) =>
+    String(session.sessionId || "").toLowerCase() === lower ||
+    String(session.sessionId || "").toLowerCase().startsWith(lower) ||
+    String(session.cliSessionId || "").toLowerCase() === lower ||
+    String(session.cliSessionId || "").toLowerCase().startsWith(lower) ||
+    botSessionTitle(session).toLowerCase().includes(lower)
+  );
+  if (!matches.length) return null;
+  matches.sort((left, right) =>
+    scoreBotSessionMatch(left, lower) - scoreBotSessionMatch(right, lower) ||
+    (right.lastActivityAt || 0) - (left.lastActivityAt || 0)
+  );
+  return matches[0];
+}
+
+function scoreBotSessionMatch(session, query) {
+  const id = String(session.sessionId || "").toLowerCase();
+  const cli = String(session.cliSessionId || "").toLowerCase();
+  const title = botSessionTitle(session).toLowerCase();
+  if (id === query || cli === query) return 0;
+  if (id.startsWith(query) || cli.startsWith(query)) return 1;
+  if (title === query) return 2;
+  return 3;
+}
+
+function botSessionTitle(session) {
+  return stringValue(session && session.title) ||
+    stringValue(session && session.initialMessage) ||
+    "Untitled";
+}
+
+function shortSessionId(value) {
+  const text = String(value || "").trim();
+  if (!text) return "(none)";
+  if (text.startsWith("local_")) return text.slice(0, 14);
+  return text.slice(0, 8);
+}
+
+function createClaudeAppLocalAgentSession(text) {
+  const baseDir = nonEmptyEnv("CCR_CLAUDE_APP_USER_DATA_PATH") || nonEmptyEnv("CLAUDE_USER_DATA_DIR");
+  if (!baseDir) return null;
+  const root = path.join(expandHome(baseDir), "local-agent-mode-sessions");
+  const template = latestClaudeAppLocalAgentSession();
+  const parentDir = template && template.file ? path.dirname(template.file) : defaultClaudeAppLocalAgentParentDir(root);
+  const sessionId = "local_" + uuid();
+  const sessionDir = path.join(parentDir, sessionId);
+  const cwd = path.join(sessionDir, "outputs");
+  const claudeConfigDir = path.join(sessionDir, ".claude");
+  const file = path.join(parentDir, sessionId + ".json");
+  const now = Date.now();
+  const title = promptTitle(text);
+  fs.mkdirSync(cwd, { recursive: true });
+  fs.mkdirSync(path.join(sessionDir, "uploads"), { recursive: true });
+  fs.mkdirSync(claudeConfigDir, { recursive: true });
+  copyClaudeConfigTemplate(claudeConfigDir, template);
+  const metadata = {
+    ...claudeAppSessionTemplateFields(template && template.metadata),
+    sessionId,
+    processName: "ccr-bot-" + sessionId.slice(6, 14),
+    cliSessionId: "",
+    cwd,
+    userSelectedFolders: [],
+    createdAt: now,
+    lastActivityAt: now,
+    model: nonEmptyEnv("CCR_CLAUDE_CODE_MODEL") || nonEmptyEnv("CODEXL_CLAUDE_CODE_MODEL") || nonEmptyEnv("CCR_CODEX_MODEL") || DEFAULT_MODEL,
+    isArchived: false,
+    title,
+    vmProcessName: "ccr-bot-" + sessionId.slice(6, 14),
+    hostLoopMode: true,
+    initialMessage: text
+  };
+  fs.mkdirSync(parentDir, { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(metadata, null, 2));
+  return { file, sessionId, cwd, claudeConfigDir, title, lastActivityAt: now };
+}
+
+function defaultClaudeAppLocalAgentParentDir(root) {
+  const config = readJsonFile(path.join(nonEmptyEnv("CLAUDE_CONFIG_DIR") || path.join(os.homedir(), ".claude"), ".claude.json")) || {};
+  const account = config.oauthAccount && typeof config.oauthAccount === "object" ? config.oauthAccount : {};
+  const accountPrefix = uuidPrefix(stringValue(account.accountUuid)) || "ccr";
+  const orgPrefix = uuidPrefix(stringValue(account.organizationUuid)) || "00000000";
+  return path.join(root, accountPrefix, orgPrefix);
+}
+
+function claudeAppSessionTemplateFields(value) {
+  if (!value || typeof value !== "object") return {};
+  const output = {};
+  for (const key of [
+    "slashCommands",
+    "enabledMcpTools",
+    "remoteMcpServersConfig",
+    "egressAllowedDomains",
+    "orgCliExecPolicies",
+    "memoryEnabled",
+    "skillsEnabled",
+    "pluginsEnabled",
+    "systemPrompt",
+    "systemPromptRendererAppends",
+    "accountName",
+    "emailAddress"
+  ]) {
+    if (value[key] !== undefined) output[key] = clone(value[key]);
+  }
+  return output;
+}
+
+function copyClaudeConfigTemplate(claudeConfigDir, template) {
+  const targetDir = expandHome(claudeConfigDir);
+  fs.mkdirSync(targetDir, { recursive: true });
+  copyClaudeConfigFile(targetDir, ".claude.json", claudeConfigSourceDirs(template, "session-first"));
+  copyClaudeConfigFile(targetDir, "settings.json", claudeConfigSourceDirs(template, "base-first"));
+  if (!fs.existsSync(path.join(targetDir, ".claude.json"))) {
+    fs.writeFileSync(path.join(targetDir, ".claude.json"), JSON.stringify({ firstStartTime: new Date().toISOString() }, null, 2));
+  }
+}
+
+function ensureClaudeSessionConfig(claudeConfigDir) {
+  const targetDir = expandHome(claudeConfigDir);
+  if (!targetDir) return;
+  try {
+    fs.mkdirSync(targetDir, { recursive: true });
+    copyClaudeConfigFile(targetDir, "settings.json", claudeConfigSourceDirs(null, "base-first"));
+    if (!fs.existsSync(path.join(targetDir, ".claude.json"))) {
+      copyClaudeConfigFile(targetDir, ".claude.json", claudeConfigSourceDirs(null, "base-first"));
+    }
+  } catch (error) {
+    log("claude_session_config_ensure_failed", { claudeConfigDir: targetDir, error: formatError(error) });
+  }
+}
+
+function copyClaudeConfigFile(targetDir, filename, sourceDirs) {
+  const target = path.join(targetDir, filename);
+  if (fs.existsSync(target)) return false;
+  for (const sourceDir of sourceDirs) {
+    const source = path.join(sourceDir, filename);
+    if (source === target) continue;
+    try {
+      if (!fs.existsSync(source)) continue;
+      fs.copyFileSync(source, target);
+      log("claude_session_config_copied", { filename, sourceDir, targetDir });
+      return true;
+    } catch (error) {
+      log("claude_session_config_copy_failed", { filename, sourceDir, targetDir, error: formatError(error) });
+    }
+  }
+  return false;
+}
+
+function claudeConfigSourceDirs(template, order) {
+  const base = [
+    nonEmptyEnv("CCR_CLAUDE_BASE_CONFIG_DIR"),
+    nonEmptyEnv("CLAUDE_CONFIG_DIR"),
+    path.join(os.homedir(), ".claude")
+  ];
+  const session = [
+    template && template.claudeConfigDir ? template.claudeConfigDir : "",
+    inferBaseClaudeConfigDirFromSession(template && template.claudeConfigDir ? template.claudeConfigDir : "")
+  ];
+  return uniqueExistingDirs(order === "session-first" ? [...session, ...base] : [...base, ...session]);
+}
+
+function inferBaseClaudeConfigDirFromSession(value) {
+  const text = String(value || "");
+  const marker = path.sep + ".claude-code-router" + path.sep;
+  const index = text.indexOf(marker);
+  return index > 0 ? text.slice(0, index) : "";
+}
+
+function uniqueExistingDirs(values) {
+  const seen = new Set();
+  const output = [];
+  for (const value of values) {
+    const dir = expandHome(value || "");
+    if (!dir || seen.has(dir)) continue;
+    seen.add(dir);
+    if (fs.existsSync(dir)) output.push(dir);
+  }
+  return output;
+}
+
+function claudeSettingsEnv(claudeConfigDir) {
+  const settings = readJsonFile(path.join(claudeConfigDir, "settings.json"));
+  const raw = settings && typeof settings === "object" && settings.env && typeof settings.env === "object" ? settings.env : null;
+  if (!raw) return {};
+  const env = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) && typeof value === "string") {
+      env[key] = value;
+    }
+  }
+  return env;
+}
+
+function readClaudeAppLocalAgentSession(file) {
+  const metadata = readJsonFile(file);
+  if (!metadata || typeof metadata !== "object") return {};
+  return {
+    cliSessionId: stringValue(metadata.cliSessionId) || stringValue(metadata.cli_session_id) || "",
+    claudeConfigDir: claudeAppSessionConfigDir(file, metadata)
+  };
+}
+
+function updateClaudeAppLocalAgentSession(thread, updates) {
+  const file = thread && thread.claudeAppSessionFile;
+  if (!file) return;
+  const metadata = readJsonFile(file);
+  if (!metadata || typeof metadata !== "object") return;
+  if (updates.cliSessionId) metadata.cliSessionId = updates.cliSessionId;
+  if (updates.lastActivityAt) metadata.lastActivityAt = updates.lastActivityAt;
+  if (updates.title && !metadata.title) metadata.title = updates.title;
+  try {
+    fs.writeFileSync(file, JSON.stringify(metadata, null, 2));
+  } catch (error) {
+    log("claude_app_session_update_failed", { file, error: formatError(error) });
+  }
+}
+
+function promptTitle(text) {
+  const value = String(text || "").replace(/\s+/g, " ").trim();
+  if (!value) return "Bot message";
+  return value.length > 48 ? value.slice(0, 48) : value;
+}
+
+function uuidPrefix(value) {
+  const text = stringValue(value);
+  if (!text) return "";
+  return text.split("-")[0] || "";
+}
+
+function readJsonFile(file) {
+  if (!file) return null;
+  try {
+    return JSON.parse(fs.readFileSync(expandHome(file), "utf8"));
+  } catch {
+    return null;
+  }
 }
 
 function listClaudeAppSessionFiles(root, maxDepth) {
