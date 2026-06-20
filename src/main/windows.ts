@@ -1,10 +1,17 @@
 import { app, BrowserWindow, screen } from "electron";
+import { existsSync } from "node:fs";
 import path from "node:path";
-import { APP_NAME, IPC_CHANNELS } from "./constants";
+import { APP_NAME, IPC_CHANNELS, ONBOARDING_FINISHED_FILE } from "./constants";
 
 type WindowName = "main" | string;
+type WindowBounds = { height: number; width: number; x?: number; y?: number };
 
 const titleBarHeight = 46;
+const mainWindowDefaultHeight = 760;
+const mainWindowDefaultWidth = 1180;
+const mainWindowMargin = 48;
+const mainWindowMinHeight = 420;
+const mainWindowMinWidth = 360;
 
 class WindowsManager {
   private windows = new Map<WindowName, BrowserWindow>();
@@ -16,16 +23,12 @@ class WindowsManager {
       return existing;
     }
 
-    const { height: availableHeight, width: availableWidth } = screen.getPrimaryDisplay().workAreaSize;
-    const minHeight = 420;
-    const minWidth = 360;
-    const height = fitWindowSize(760, minHeight, availableHeight - 48);
-    const width = fitWindowSize(1180, minWidth, availableWidth - 48);
+    const bounds = getMainWindowInitialBounds();
 
     const window = new BrowserWindow({
-      height,
-      minHeight,
-      minWidth,
+      ...bounds,
+      minHeight: mainWindowMinHeight,
+      minWidth: mainWindowMinWidth,
       show: false,
       title: APP_NAME,
       ...(process.platform === "darwin"
@@ -43,8 +46,7 @@ class WindowsManager {
         preload: path.join(__dirname, "preload.js"),
         sandbox: true,
         webSecurity: true
-      },
-      width
+      }
     });
 
     this.windows.set("main", window);
@@ -76,6 +78,14 @@ class WindowsManager {
     window.show();
     window.focus();
     return window;
+  }
+
+  resizeMainWindowToScreenSize(): void {
+    const window = this.getWindow("main");
+    if (!window) {
+      return;
+    }
+    window.setBounds(getMainWindowScreenBounds());
   }
 
   getWindow(name: WindowName): BrowserWindow | undefined {
@@ -110,4 +120,28 @@ app.on("before-quit", () => {
 
 function fitWindowSize(preferred: number, minimum: number, available: number): number {
   return Math.max(minimum, Math.min(preferred, available > 0 ? available : preferred));
+}
+
+function getMainWindowInitialBounds(): WindowBounds {
+  const { height: availableHeight, width: availableWidth } = screen.getPrimaryDisplay().workAreaSize;
+
+  if (existsSync(ONBOARDING_FINISHED_FILE)) {
+    return getMainWindowScreenBounds();
+  }
+
+  return {
+    height: fitWindowSize(mainWindowDefaultHeight, mainWindowMinHeight, availableHeight - mainWindowMargin),
+    width: fitWindowSize(mainWindowDefaultWidth, mainWindowMinWidth, availableWidth - mainWindowMargin)
+  };
+}
+
+function getMainWindowScreenBounds(): Required<WindowBounds> {
+  const { workArea } = screen.getPrimaryDisplay();
+
+  return {
+    height: Math.max(mainWindowMinHeight, workArea.height),
+    width: Math.max(mainWindowMinWidth, workArea.width),
+    x: workArea.x,
+    y: workArea.y
+  };
 }

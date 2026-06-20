@@ -232,6 +232,7 @@ ipcMain.handle(IPC_CHANNELS.appSaveApiKeys, async (_event, apiKeys: ApiKeyConfig
 ipcMain.handle(IPC_CHANNELS.appSetOnboardingFinished, () => {
   mkdirSync(CONFIGDIR, { recursive: true });
   writeFileSync(ONBOARDING_FINISHED_FILE, `${new Date().toISOString()}\n`, "utf8");
+  windowsManager.resizeMainWindowToScreenSize();
   return true;
 });
 ipcMain.handle(IPC_CHANNELS.appRestartGateway, async () => {
