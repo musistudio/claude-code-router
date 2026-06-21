@@ -510,14 +510,41 @@ function normalizeToolList(value: unknown): GatewayMcpToolInfo[] {
       if (!name) {
         return undefined;
       }
-      const inputSchema = isRecord(tool.inputSchema) ? { ...tool.inputSchema } : undefined;
+      const inputSchema = normalizeToolInputSchema(tool);
       return {
         ...(stringValue(tool.description) ? { description: stringValue(tool.description) } : {}),
-        ...(inputSchema ? { inputSchema } : {}),
+        inputSchema,
         name
       };
     })
     .filter((tool): tool is GatewayMcpToolInfo => Boolean(tool));
+}
+
+function normalizeToolInputSchema(tool: Record<string, unknown>): Record<string, unknown> {
+  const candidates = [
+    tool.inputSchema,
+    tool.input_schema,
+    tool.parameters,
+    tool.schema
+  ];
+  for (const candidate of candidates) {
+    const parsed = normalizeSchemaCandidate(candidate);
+    if (parsed) {
+      return parsed;
+    }
+  }
+  return { properties: {}, type: "object" };
+}
+
+function normalizeSchemaCandidate(value: unknown): Record<string, unknown> | undefined {
+  if (isRecord(value)) {
+    return { ...value };
+  }
+  if (typeof value !== "string" || !value.trim()) {
+    return undefined;
+  }
+  const parsed = parseJsonValue(value);
+  return isRecord(parsed) ? { ...parsed } : undefined;
 }
 
 function parseJsonRpcMessage(value: string): JsonRpcMessage | undefined {

@@ -6,7 +6,7 @@ import { enforceSingleEnabledGlobalProfilePerAgent, type ApiKeyConfig, type AppC
 import { replacePersistedApiKeys } from "./api-key-store";
 import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
-import { codexModelCatalogBase64 } from "./codex-model-catalog";
+import { codexModelCatalogBase64, codexModelCatalogJson } from "./codex-model-catalog";
 import { CONFIGDIR } from "./constants";
 import { normalizeRouteSelector } from "./gateway/claude-code-router-plugin";
 
@@ -110,8 +110,11 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
     const model = normalizeClientModel(profile.model) || defaultClientModel(config);
     const source = existsSync(configFile) ? readFileSync(configFile, "utf8") : "";
     const configFormat = normalizeCodexConfigFormat(profile.configFormat);
+    const modelCatalogFile = codexModelCatalogFile(configFile);
+    const modelCatalogResult = writeFileWithBackup(modelCatalogFile, codexModelCatalogJson(config, model));
     const nextConfig = buildCodexConfigToml(source, {
       baseUrl: endpoint,
+      modelCatalogFile,
       configFormat,
       model,
       providerId,
@@ -135,8 +138,9 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
           providerId
         })
       : undefined;
-    const changed = writeResult.changed || Boolean(separateProfileResult?.changed) || Boolean(middlewareResult?.changed);
+    const changed = writeResult.changed || modelCatalogResult.changed || Boolean(separateProfileResult?.changed) || Boolean(middlewareResult?.changed);
     const extras = [
+      modelCatalogFile ? `catalog ${modelCatalogFile}` : "",
       separateProfileResult?.file ? `profile ${separateProfileResult.file}` : "",
       middlewareResult?.file ? `middleware ${middlewareResult.file}` : ""
     ].filter(Boolean);
@@ -248,6 +252,10 @@ function resolveCodexConfigFile(profile: ProfileConfig): string {
   return resolveUserPath(profile.configFile || "~/.codex/config.toml");
 }
 
+function codexModelCatalogFile(configFile: string): string {
+  return path.join(path.dirname(configFile), "ccr-model-catalog.json");
+}
+
 function ccrManagedProfileDir(profile: ProfileConfig): string {
   const slug = sanitizeProfilePathSegment(profile.id || profile.name || profile.agent);
   const baseDir = path.join(CONFIGDIR, "profiles", slug || "profile");
@@ -258,6 +266,7 @@ function buildCodexConfigToml(
   source: string,
   values: {
     baseUrl: string;
+    modelCatalogFile: string;
     configFormat: "legacy" | "separate_profile_files";
     model: string;
     providerId: string;
@@ -276,11 +285,12 @@ function buildCodexConfigToml(
   const firstTableIndex = firstTomlTableIndex(content);
   const rootSource = firstTableIndex === -1 ? content : content.slice(0, firstTableIndex);
   const restSource = firstTableIndex === -1 ? "" : content.slice(firstTableIndex);
-  const cleanedRoot = removeRootTomlKeys(rootSource, ["model", "model_provider", "profile", "show_all_sessions"]);
+  const cleanedRoot = removeRootTomlKeys(rootSource, ["model", "model_catalog_json", "model_provider", "profile", "show_all_sessions"]);
   const rootBlock = [
     managedRootStart,
     `model_provider = ${tomlString(values.providerId)}`,
     `model = ${tomlString(values.model)}`,
+    `model_catalog_json = ${tomlString(values.modelCatalogFile)}`,
     ...(values.showAllSessions ? ["show_all_sessions = true"] : []),
     managedRootEnd,
     ""
@@ -544,6 +554,7 @@ function codexMiddlewareShellScript(
     ...botEnvExports,
     `export CODEXL_REAL_CODEX_CLI_PATH=${shellQuote(codexCli)}`,
     `export CODEXL_CODEX_PROFILE=${shellQuote(values.providerId)}`,
+    `export CODEXL_CODEX_MODEL_CATALOG_B64=${shellQuote(values.modelCatalogBase64)}`,
     `export CODEXL_CODEX_MODEL_PROVIDER=${shellQuote(values.providerId)}`,
     `export CODEXL_CODEX_WORKSPACE_NAME=${shellQuote(profile.name || values.providerId)}`,
     `export CODEXL_CODEX_CORE_MODE=${shellQuote(remoteFrontendMode)}`,
@@ -592,6 +603,7 @@ function codexMiddlewareCmdScript(
     ...botEnvExports,
     `set "CODEXL_REAL_CODEX_CLI_PATH=${codexCli.replace(/"/g, '\\"')}"`,
     `set "CODEXL_CODEX_PROFILE=${providerId}"`,
+    `set "CODEXL_CODEX_MODEL_CATALOG_B64=${values.modelCatalogBase64}"`,
     `set "CODEXL_CODEX_MODEL_PROVIDER=${providerId}"`,
     `set "CODEXL_CODEX_WORKSPACE_NAME=${workspaceName}"`,
     `set "CODEXL_CODEX_CORE_MODE=${remoteFrontendMode}"`,

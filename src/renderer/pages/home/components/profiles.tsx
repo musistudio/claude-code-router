@@ -78,7 +78,8 @@ export function ProfileView({
               const summaryItems = profileSummaryItems(profile, config, t);
               const cliBusy = profileActionBusy?.profileId === profile.id && profileActionBusy.surface === "cli";
               const appBusy = profileActionBusy?.profileId === profile.id && profileActionBusy.surface === "app";
-              const profileActionDisabled = !profile.enabled || Boolean(profileActionBusy);
+              const showProfileLaunchActions = profile.enabled;
+              const profileActionDisabled = Boolean(profileActionBusy);
 
               return (
                 <div className="rounded-md border border-border bg-muted/20 p-3" key={profile.id}>
@@ -109,26 +110,26 @@ export function ProfileView({
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       <Toggle checked={profile.enabled} onChange={(enabled) => updateProfileItem(index, { enabled })} />
-                      {openSurfaces.includes("cli") ? (
+                      {showProfileLaunchActions && openSurfaces.includes("cli") ? (
                         <Button
                           aria-label={`${t("Copy")} ${t("CLI command")} ${profile.name || t("Profile")}`}
                           disabled={profileActionDisabled}
                           onClick={() => copyProfileCliCommand(index)}
                           size="iconSm"
-                          title={profile.enabled ? t("CLI command") : t("Disabled")}
+                          title={t("CLI command")}
                           type="button"
                           variant="ghost"
                         >
                           {cliBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Terminal className="h-3.5 w-3.5" />}
                         </Button>
                       ) : null}
-                      {openSurfaces.includes("app") ? (
+                      {showProfileLaunchActions && openSurfaces.includes("app") ? (
                         <Button
                           aria-label={`${t("Open")} ${t("App")} ${profile.name || t("Profile")}`}
                           disabled={profileActionDisabled}
                           onClick={() => openProfileApp(index)}
                           size="iconSm"
-                          title={profile.enabled ? t("Open") : t("Disabled")}
+                          title={t("Open")}
                           type="button"
                           variant="ghost"
                         >

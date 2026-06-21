@@ -40,6 +40,7 @@ export function launchCodexAppProfile(configDir: string, profile: ProfileConfig,
   const codexHome = path.dirname(configFile);
   const userDataDir = codexElectronUserDataDir(codexHome, profile);
   mkdirSync(userDataDir, { recursive: true });
+  const modelCatalogBase64 = codexModelCatalogBase64(config, profile.model);
 
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -50,8 +51,9 @@ export function launchCodexAppProfile(configDir: string, profile: ProfileConfig,
     CODEX_ELECTRON_USER_DATA_PATH: userDataDir,
     CODEX_HOME: codexHome,
     CODEXL_PROFILE_SURFACE: "app",
+    CODEXL_CODEX_MODEL_CATALOG_B64: modelCatalogBase64,
     CCR_PROFILE_SURFACE: "app",
-    CCR_CODEX_MODEL_CATALOG_B64: codexModelCatalogBase64(config, profile.model),
+    CCR_CODEX_MODEL_CATALOG_B64: modelCatalogBase64,
     ELECTRON_ENABLE_LOGGING: "1"
   };
   delete env.ELECTRON_RUN_AS_NODE;
@@ -90,6 +92,7 @@ function codexProfileEnv(profile: ProfileConfig): Record<string, string> {
 
 function codexElectronArgs(userDataDir: string): string[] {
   return [
+    "--remote-debugging-port=0",
     `--user-data-dir=${userDataDir}`,
     "--remote-allow-origins=*",
     "--disable-renderer-backgrounding",

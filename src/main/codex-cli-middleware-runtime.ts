@@ -108,8 +108,9 @@ async function runCodexCliMiddleware(args) {
       writeLine(process.stdout, custom);
       return;
     }
-    trackRequestLine(line, requestMap, current);
-    child.stdin.write(line + "\n");
+    const rewritten = rewriteCodexStdinLine(line);
+    trackRequestLine(rewritten, requestMap, current);
+    child.stdin.write(rewritten + "\n");
   });
   stdinRl.on("close", () => child.stdin.end());
 
@@ -208,7 +209,7 @@ function rewriteCodexStdoutLine(line, requestMap) {
   } catch {
     return line;
   }
-  const id = typeof value.id === "string" ? value.id : undefined;
+  const id = jsonRpcIdKey(value.id);
   if (!id || !requestMap.has(id)) return line;
   const request = requestMap.get(id);
   requestMap.delete(id);
@@ -225,6 +226,351 @@ function rewriteCodexStdoutLine(line, requestMap) {
   return JSON.stringify(value);
 }
 
+function rewriteCodexStdinLine(line) {
+  let value;
+  try {
+    value = JSON.parse(line);
+  } catch {
+    return line;
+  }
+  if (value && value.type === "fetch") {
+    return rewriteCodexFetchLine(line, value);
+  }
+  if (!value || typeof value !== "object" || typeof value.method !== "string") {
+    return line;
+  }
+  let changed = false;
+  if (normalizeCliAppServerRequest(value)) {
+    changed = true;
+    log("codex_app_server_request_normalized", { method: value.method, id: jsonRpcIdKey(value.id) });
+  }
+  if (value.params && normalizeCodexToolSchemas(value.params, "", 0)) {
+    changed = true;
+    log("codex_stdin_tool_schema_rewrite", { method: value.method, id: jsonRpcIdKey(value.id) });
+  }
+  if (!changed) {
+    return line;
+  }
+  return JSON.stringify(value);
+}
+
+function normalizeCliAppServerRequest(request) {
+  const method = typeof request.method === "string" ? request.method : "";
+  if (!["thread/start", "thread/resume", "turn/start"].includes(method)) return false;
+  const before = JSON.stringify(request.params === undefined ? null : request.params);
+  request.params = cliAppServerMethodParams(method, request.params);
+  return JSON.stringify(request.params) !== before;
+}
+
+function cliAppServerMethodParams(method, params) {
+  if (method === "thread/start") return cliThreadStartParams(params);
+  if (method === "thread/resume") return cliThreadResumeParams(params);
+  if (method === "turn/start") return cliTurnStartParamsForAppServer(params);
+  return params;
+}
+
+function cliThreadStartParams(params) {
+  const source = isPlainObject(params) ? params : {};
+  const output = {};
+  for (const key of [
+    "cwd",
+    "serviceTier",
+    "config",
+    "threadSource",
+    "model",
+    "modelProvider",
+    "reasoningEffort",
+    "workspaceKind",
+    "workspaceRoots",
+    "projectlessOutputDirectory",
+    "sandbox",
+    "baseInstructions",
+    "developerInstructions",
+    "personality",
+    "ephemeral",
+    "persistExtendedHistory"
+  ]) {
+    copyJsonField(source, output, key);
+  }
+  copyJsonField(source, output, "additionalDeveloperInstructions", "developerInstructions");
+  ensureCliProjectlessOutputDirectory(source, output);
+  copyPermissionFields(source, output);
+  copyCollaborationModelFields(source, output);
+  if (output.threadSource === undefined) output.threadSource = "user";
+  if (output.serviceName === undefined) output.serviceName = "ccr_codex_cli_middleware";
+  if (output.ephemeral === undefined) output.ephemeral = false;
+  if (output.personality === undefined) output.personality = "pragmatic";
+  return output;
+}
+
+function cliThreadResumeParams(params) {
+  const source = isPlainObject(params) ? params : {};
+  const output = {};
+  copyJsonField(source, output, "threadId");
+  if (output.threadId === undefined) copyJsonField(source, output, "conversationId", "threadId");
+  for (const key of [
+    "cwd",
+    "path",
+    "history",
+    "serviceTier",
+    "config",
+    "model",
+    "modelProvider",
+    "reasoningEffort",
+    "workspaceKind",
+    "workspaceRoots",
+    "projectlessOutputDirectory",
+    "sandbox",
+    "baseInstructions",
+    "developerInstructions",
+    "personality",
+    "excludeTurns",
+    "persistExtendedHistory"
+  ]) {
+    copyJsonField(source, output, key);
+  }
+  copyPermissionFields(source, output);
+  copyCollaborationModelFields(source, output);
+  return output;
+}
+
+function cliTurnStartParamsForAppServer(params) {
+  const source = isPlainObject(params) ? params : {};
+  const output = {};
+  for (const key of [
+    "threadId",
+    "cwd",
+    "input",
+    "attachments",
+    "commentAttachments",
+    "serviceTier",
+    "model",
+    "effort",
+    "reasoningEffort",
+    "workspaceKind",
+    "projectlessOutputDirectory"
+  ]) {
+    copyJsonField(source, output, key);
+  }
+  copyPermissionFields(source, output);
+  copyCollaborationModelFields(source, output);
+  return output;
+}
+
+function ensureCliProjectlessOutputDirectory(source, target) {
+  if (source.workspaceKind !== "projectless") return;
+  const outputDirectory = stringValue(target.projectlessOutputDirectory) ||
+    stringValue(source.projectlessOutputDirectory) ||
+    stringValue(source.outputDirectory) ||
+    stringValue(source.cwd) ||
+    firstArrayString(source.workspaceRoots);
+  if (!outputDirectory) return;
+  target.projectlessOutputDirectory = outputDirectory;
+  if (target.cwd === undefined) target.cwd = outputDirectory;
+  appendDeveloperInstruction(
+    target,
+    "When using local files for this projectless thread, write scratch files, drafts, generated assets, and other outputs under " +
+      outputDirectory +
+      ". Do not write directly in the home directory unless the user explicitly asks."
+  );
+}
+
+function appendDeveloperInstruction(target, instruction) {
+  const existing = typeof target.developerInstructions === "string" ? target.developerInstructions.trim() : "";
+  target.developerInstructions = existing ? existing + "\n\n" + instruction : instruction;
+}
+
+function copyPermissionFields(source, target) {
+  if (isPlainObject(source.permissions)) {
+    copyJsonField(source.permissions, target, "approvalPolicy");
+    copyJsonField(source.permissions, target, "sandboxPolicy");
+    copyJsonField(source.permissions, target, "approvalsReviewer");
+  }
+  copyJsonField(source, target, "approvalPolicy");
+  copyJsonField(source, target, "sandboxPolicy");
+  copyJsonField(source, target, "approvalsReviewer");
+}
+
+function copyCollaborationModelFields(source, target) {
+  const settings = source.collaborationMode && isPlainObject(source.collaborationMode.settings)
+    ? source.collaborationMode.settings
+    : undefined;
+  if (!settings) return;
+  if (target.model === undefined) copyJsonField(settings, target, "model");
+  if (target.reasoningEffort === undefined) {
+    if (!copyJsonField(settings, target, "reasoning_effort", "reasoningEffort")) {
+      copyJsonField(settings, target, "reasoningEffort");
+    }
+  }
+}
+
+function copyJsonField(source, target, sourceKey, targetKey) {
+  const value = source[sourceKey];
+  if (value === undefined || value === null) return false;
+  target[targetKey || sourceKey] = value;
+  return true;
+}
+
+function firstArrayString(value) {
+  return Array.isArray(value) ? value.map(stringValue).find(Boolean) : undefined;
+}
+
+function rewriteCodexFetchLine(line, value) {
+  const rewritten = rewriteCodexFetchBody(value);
+  if (!rewritten) return line;
+  log("codex_fetch_tool_schema_rewrite", {
+    method: String(value.method || ""),
+    requestId: jsonRpcIdKey(value.requestId || value.id),
+    url: String(value.url || "")
+  });
+  return JSON.stringify(value);
+}
+
+function rewriteCodexFetchBody(value) {
+  for (const key of ["body", "bodyText", "data", "payload"]) {
+    if (rewriteCodexFetchJsonField(value, key)) return true;
+  }
+  if (typeof value.bodyBase64 === "string" && value.bodyBase64.trim()) {
+    try {
+      const text = Buffer.from(value.bodyBase64, "base64").toString("utf8");
+      if (!codexBodyMayContainToolSchemaAliases(text)) return false;
+      const body = JSON.parse(text);
+      if (!normalizeCodexToolSchemas(body, "", 0)) return false;
+      value.bodyBase64 = Buffer.from(JSON.stringify(body), "utf8").toString("base64");
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+function rewriteCodexFetchJsonField(value, key) {
+  const body = value[key];
+  if (typeof body === "string") {
+    if (!codexBodyMayContainToolSchemaAliases(body)) return false;
+    try {
+      const parsed = JSON.parse(body);
+      if (!normalizeCodexToolSchemas(parsed, "", 0)) return false;
+      value[key] = JSON.stringify(parsed);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  if (!body || typeof body !== "object" || !codexValueMayContainToolSchemaAliases(body)) {
+    return false;
+  }
+  return normalizeCodexToolSchemas(body, "", 0);
+}
+
+function codexBodyMayContainToolSchemaAliases(value) {
+  return /"input_schema"|"dynamic_tools"|"dynamicTools"|"experimental_supported_tools"|"experimentalSupportedTools"|"defer_loading"|"expose_to_context"/.test(value);
+}
+
+function codexValueMayContainToolSchemaAliases(value) {
+  try {
+    return codexBodyMayContainToolSchemaAliases(JSON.stringify(value));
+  } catch {
+    return false;
+  }
+}
+
+function normalizeCodexToolSchemas(value, parentKey, depth) {
+  if (depth > 40 || !value || typeof value !== "object") return false;
+  let changed = false;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (normalizeCodexToolSchemas(item, parentKey, depth + 1)) changed = true;
+    }
+    return changed;
+  }
+  if (normalizeCodexToolSchemaObject(value, parentKey)) changed = true;
+  for (const [key, child] of Object.entries(value)) {
+    if (normalizeCodexToolSchemas(child, key, depth + 1)) changed = true;
+  }
+  return changed;
+}
+
+function normalizeCodexToolSchemaObject(value, parentKey) {
+  if (!looksLikeCodexToolSpec(value, parentKey)) return false;
+  let changed = false;
+  const inputSchema = normalizeCodexInputSchema(value.inputSchema) ||
+    normalizeCodexInputSchema(value.input_schema) ||
+    normalizeCodexInputSchema(value.parameters) ||
+    normalizeCodexInputSchema(value.schema) ||
+    normalizeCodexInputSchema(value.inputConfig && value.inputConfig.inputSchema) ||
+    normalizeCodexInputSchema(value.function && value.function.parameters);
+  if (!isPlainObject(value.inputSchema)) {
+    value.inputSchema = inputSchema || { type: "object", properties: {} };
+    changed = true;
+  }
+  if (!isPlainObject(value.outputSchema)) {
+    const outputSchema = normalizeCodexInputSchema(value.output_schema);
+    if (outputSchema) {
+      value.outputSchema = outputSchema;
+      changed = true;
+    }
+  }
+  if (value.deferLoading === undefined && value.defer_loading !== undefined) {
+    value.deferLoading = Boolean(value.defer_loading);
+    changed = true;
+  }
+  if (value.exposeToContext === undefined && value.expose_to_context !== undefined) {
+    value.exposeToContext = Boolean(value.expose_to_context);
+    changed = true;
+  }
+  return changed;
+}
+
+function looksLikeCodexToolSpec(value, parentKey) {
+  const parent = String(parentKey || "");
+  if (["dynamic_tools", "dynamicTools", "experimental_supported_tools", "experimentalSupportedTools"].includes(parent)) {
+    return true;
+  }
+  if (parent === "tools" && hasCodexToolIdentity(value)) {
+    return Boolean(
+      value.inputSchema ||
+      value.input_schema ||
+      value.parameters ||
+      value.schema ||
+      (value.inputConfig && value.inputConfig.inputSchema) ||
+      (value.function && value.function.parameters)
+    );
+  }
+  return hasCodexToolIdentity(value) && Boolean(value.input_schema || value.parameters || value.schema);
+}
+
+function hasCodexToolIdentity(value) {
+  return stringValue(value.name) ||
+    stringValue(value.namespace) ||
+    stringValue(value.toolName) ||
+    stringValue(value.canonicalName) ||
+    stringValue(value.alias) ||
+    Boolean(value.function && stringValue(value.function.name));
+}
+
+function normalizeCodexInputSchema(value) {
+  let parsed = value;
+  if (typeof value === "string" && value.trim()) {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      return undefined;
+    }
+  }
+  if (!isPlainObject(parsed)) return undefined;
+  return {
+    type: parsed.type || "object",
+    properties: isPlainObject(parsed.properties) ? parsed.properties : {},
+    ...parsed
+  };
+}
+
+function isPlainObject(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
 function trackRequestLine(line, requestMap, current) {
   let value;
   try {
@@ -232,7 +578,7 @@ function trackRequestLine(line, requestMap, current) {
   } catch {
     return;
   }
-  const id = typeof value.id === "string" ? value.id : undefined;
+  const id = jsonRpcIdKey(value.id);
   const method = typeof value.method === "string" ? value.method : undefined;
   if (!id || !method) return;
   const cwd = requestWorkspaceCwd(value, method);
@@ -1663,17 +2009,41 @@ function parseModelCatalogEnv() {
 }
 
 function modelIdsFromJson(value) {
-  if (!Array.isArray(value)) return [];
   const output = [];
-  for (const item of value) {
-    const id = typeof item === "string"
-      ? item
-      : item && typeof item === "object"
-        ? firstString(item, ["/model", "/id", "/slug", "/name", "/label"])
-        : "";
+  collectModelIdsFromJson(value, output);
+  return output;
+}
+
+function collectModelIdsFromJson(value, output) {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectModelIdFromJsonItem(item, output);
+    }
+    return;
+  }
+  if (value && typeof value === "object") {
+    let foundList = false;
+    for (const key of ["models", "data", "items", "results", "model_list"]) {
+      if (Array.isArray(value[key])) {
+        foundList = true;
+        collectModelIdsFromJson(value[key], output);
+      }
+    }
+    if (!foundList) {
+      collectModelIdFromJsonItem(value, output);
+    }
+  }
+}
+
+function collectModelIdFromJsonItem(item, output) {
+  if (typeof item === "string") {
+    output.push(item);
+    return;
+  }
+  if (item && typeof item === "object") {
+    const id = firstString(item, ["/model", "/id", "/slug", "/display_name", "/displayName", "/name", "/label"]);
     if (id) output.push(id);
   }
-  return output;
 }
 
 function mergeModelListItems(existingItems, catalogIds, selectedModel) {
@@ -1774,11 +2144,63 @@ function configRead(params, values) {
       ...values,
       cwd,
       model: nonEmptyEnv("CCR_CODEX_MODEL") || DEFAULT_MODEL,
-      model_catalog_json: JSON.stringify(catalogModelIds()),
+      model_catalog_json: JSON.stringify(modelCatalogConfigValue()),
       model_provider: nonEmptyEnv("CCR_CODEX_MODEL_PROVIDER") || "claude-code",
       approval_policy: "default",
       sandbox_mode: "workspace-write"
     }
+  };
+}
+
+function modelCatalogConfigValue() {
+  const encoded = nonEmptyEnv("CCR_CODEX_MODEL_CATALOG_B64") || nonEmptyEnv("CODEXL_CODEX_MODEL_CATALOG_B64");
+  if (encoded) {
+    try {
+      const parsed = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch (error) {
+      log("model_catalog_parse_error", { source: "base64-config", error: formatError(error) });
+    }
+  }
+  return { models: catalogModelIds().map((model, index) => modelCatalogConfigItem(model, index)) };
+}
+
+function modelCatalogConfigItem(model, priority) {
+  return {
+    slug: model,
+    display_name: model,
+    description: "CCR gateway model " + model,
+    default_reasoning_level: "medium",
+    supported_reasoning_levels: [
+      { effort: "low", description: "Low reasoning" },
+      { effort: "medium", description: "Medium reasoning" },
+      { effort: "high", description: "High reasoning" },
+      { effort: "xhigh", description: "Extra high reasoning" }
+    ],
+    shell_type: "shell_command",
+    visibility: "list",
+    supported_in_api: true,
+    priority,
+    additional_speed_tiers: [],
+    service_tiers: [],
+    availability_nux: null,
+    upgrade: null,
+    base_instructions: "You are Codex, a coding agent.",
+    supports_reasoning_summaries: true,
+    default_reasoning_summary: "none",
+    support_verbosity: true,
+    default_verbosity: "low",
+    apply_patch_tool_type: "freeform",
+    web_search_tool_type: "text_and_image",
+    truncation_policy: { mode: "tokens", limit: 10000 },
+    supports_parallel_tool_calls: true,
+    supports_image_detail_original: true,
+    context_window: 128000,
+    max_context_window: 128000,
+    effective_context_window_percent: 95,
+    experimental_supported_tools: [],
+    input_modalities: ["text", "image"],
+    supports_search_tool: true
   };
 }
 
