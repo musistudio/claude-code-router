@@ -279,6 +279,12 @@ export function LogsView({
   const [expandedId, setExpandedId] = useState<number>();
   const firstItem = page.total === 0 ? 0 : (page.page - 1) * page.pageSize + 1;
   const lastItem = Math.min(page.total, page.page * page.pageSize);
+  const hasAnyCredentialInfo = Boolean(filter.credential) ||
+    page.options.credentials.length > 0 ||
+    page.items.some(logHasCredentialInfo);
+  const logTableGridClass = hasAnyCredentialInfo
+    ? "grid-cols-[minmax(0,0.8fr)_minmax(92px,0.38fr)_minmax(98px,0.4fr)_minmax(0,0.78fr)_minmax(120px,0.42fr)_minmax(0,0.68fr)_82px]"
+    : "grid-cols-[minmax(0,0.8fr)_minmax(92px,0.38fr)_minmax(98px,0.4fr)_minmax(0,0.9fr)_minmax(0,0.74fr)_82px]";
 
   useEffect(() => {
     if (!expandedId || page.items.some((item) => item.id === expandedId)) {
@@ -327,13 +333,15 @@ export function LogsView({
             options={logSelectOptions(t("全部模型"), page.options.models, filter.model)}
             value={filter.model ?? ""}
           />
-          <Select
-            aria-label={t("Filter request log credential")}
-            className="h-7 w-[150px] bg-[length:14px] px-2 pr-7 text-[11px]"
-            onValueChange={(value) => updateFilter({ credential: value || undefined })}
-            options={logSelectOptions(t("All credentials"), page.options.credentials, filter.credential)}
-            value={filter.credential ?? ""}
-          />
+          {hasAnyCredentialInfo ? (
+            <Select
+              aria-label={t("Filter request log credential")}
+              className="h-7 w-[150px] bg-[length:14px] px-2 pr-7 text-[11px]"
+              onValueChange={(value) => updateFilter({ credential: value || undefined })}
+              options={logSelectOptions(t("All credentials"), page.options.credentials, filter.credential)}
+              value={filter.credential ?? ""}
+            />
+          ) : null}
           <span className="network-count rounded-full px-2 py-0.5 text-[11px] font-semibold">{page.total}</span>
           <button
             aria-label={t("Previous page")}
@@ -383,12 +391,12 @@ export function LogsView({
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="network-table-scroll min-h-0 flex-1 overflow-auto">
             <div className="w-full min-w-0">
-              <div className="network-table-header sticky top-0 z-10 grid h-9 grid-cols-[minmax(0,0.8fr)_minmax(92px,0.38fr)_minmax(98px,0.4fr)_minmax(0,0.78fr)_minmax(120px,0.42fr)_minmax(0,0.68fr)_82px] items-center border-b text-[12px] font-semibold">
+              <div className={cn("network-table-header sticky top-0 z-10 grid h-9 items-center border-b text-[12px] font-semibold", logTableGridClass)}>
                 <NetworkHeaderCell label={t("时间")} />
                 <NetworkHeaderCell label={t("状态")} />
                 <NetworkHeaderCell label={t("Stream")} />
                 <NetworkHeaderCell label={t("模型")} />
-                <NetworkHeaderCell label={t("Credential")} />
+                {hasAnyCredentialInfo ? <NetworkHeaderCell label={t("Credential")} /> : null}
                 <NetworkHeaderCell label={t("令牌")} />
                 <NetworkHeaderCell label={t("持续时间")} />
               </div>
@@ -407,7 +415,8 @@ export function LogsView({
                     <button
                       aria-expanded={expanded}
                       className={cn(
-                        "network-row grid h-10 w-full grid-cols-[minmax(0,0.8fr)_minmax(92px,0.38fr)_minmax(98px,0.4fr)_minmax(0,0.78fr)_minmax(120px,0.42fr)_minmax(0,0.68fr)_82px] items-center border-0 px-0 text-left text-[12px] font-semibold outline-none transition-colors",
+                        "network-row grid h-10 w-full items-center border-0 px-0 text-left text-[12px] font-semibold outline-none transition-colors",
+                        logTableGridClass,
                         index % 2 === 0 ? "network-row-even" : "network-row-odd",
                         expanded && "network-row-selected"
                       )}
@@ -424,7 +433,7 @@ export function LogsView({
                       </div>
                       <LogStreamCell entry={item} />
                       <LogModelRouteCell entry={item} />
-                      <LogCredentialCell entry={item} />
+                      {hasAnyCredentialInfo ? <LogCredentialCell entry={item} /> : null}
                       <div className="network-row-secondary truncate px-2" title={formatLogTokenSummary(item, t)}>{formatLogTokenSummary(item, t)}</div>
                       <div className="network-row-secondary truncate px-2">{formatDuration(item.durationMs)}</div>
                     </button>
@@ -444,6 +453,7 @@ export function LogsView({
 
 function LogExpandedDetails({ entry }: { entry: RequestLogEntry }) {
   const t = useAppText();
+  const hasCredentialInfo = logHasCredentialInfo(entry);
 
   return (
     <AnimatedDisclosure className="network-detail border-b">
@@ -458,14 +468,15 @@ function LogExpandedDetails({ entry }: { entry: RequestLogEntry }) {
           {entry.method} {entry.path}
         </span>
       </div>
-      <div className="network-body-meta grid grid-cols-2 gap-y-2 border-b px-3 py-2 text-[12px] sm:grid-cols-4 lg:grid-cols-10">
+      <div className={cn("network-body-meta grid grid-cols-2 gap-y-2 border-b px-3 py-2 text-[12px] sm:grid-cols-4", hasCredentialInfo ? "lg:grid-cols-12" : "lg:grid-cols-9")}>
         <LogMetric label={t("持续时间")} value={formatDuration(entry.durationMs)} />
         <LogMetric label={t("Stream")} value={entry.isStream ? t("Streaming") : t("Non-streaming")} />
-        <LogMetric label={t("Credential")} value={entry.credentialId || t("None")} />
-        <LogMetric label={t("Credential chain")} value={entry.credentialChain.length ? entry.credentialChain.join(" > ") : t("None")} />
-        <LogMetric label={t("Credential saturated")} value={entry.credentialSaturated ? t("Yes") : t("No")} />
+        {entry.credentialId ? <LogMetric label={t("Credential")} value={entry.credentialId} /> : null}
+        {entry.credentialChain.length ? <LogMetric label={t("Credential chain")} value={entry.credentialChain.join(" > ")} /> : null}
+        {hasCredentialInfo ? <LogMetric label={t("Credential saturated")} value={entry.credentialSaturated ? t("Yes") : t("No")} /> : null}
         <LogMetric label={t("输入")} value={formatCompactNumber(entry.inputTokens)} />
         <LogMetric label={t("输出")} value={formatCompactNumber(entry.outputTokens)} />
+        <LogMetric label={t("Thinking")} value={formatCompactNumber(entry.reasoningTokens)} />
         <LogMetric label={t("缓存读取")} value={formatCompactNumber(entry.cacheReadTokens)} />
         <LogMetric label={t("缓存写入")} value={formatCompactNumber(entry.cacheWriteTokens)} />
         <LogMetric label={t("总计")} value={formatCompactNumber(entry.totalTokens)} />
@@ -510,12 +521,20 @@ function LogModelRouteCell({ entry }: { entry: RequestLogEntry }) {
 }
 
 function LogCredentialCell({ entry }: { entry: RequestLogEntry }) {
-  const label = entry.credentialId || "-";
+  const label = logCredentialCellLabel(entry);
   const title = entry.credentialChain.length ? entry.credentialChain.join(" > ") : label;
 
   return (
     <div className="network-row-secondary truncate px-2" title={title}>{label}</div>
   );
+}
+
+function logHasCredentialInfo(entry: RequestLogEntry): boolean {
+  return Boolean(entry.credentialId || entry.credentialChain.length > 0 || entry.credentialSaturated);
+}
+
+function logCredentialCellLabel(entry: RequestLogEntry): string {
+  return entry.credentialId || entry.credentialChain[0] || (entry.credentialSaturated ? "saturated" : "-");
 }
 
 function LogStatusDot({ entry }: { entry: RequestLogEntry }) {

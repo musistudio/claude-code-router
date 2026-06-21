@@ -4,13 +4,13 @@ import {
   Check, Checkbox, ChevronDown, ChevronRight, CircleAlert, cn,
   compareProviderAccountSnapshots, Copy, copyTextToClipboard, createDefaultProviderAccountDraft, createModelCatalogItems, createProviderAccountDraftFromConfig, createProviderCredentialDraft, createProviderInstallLinkFromDraft,
   customProviderPresetId, defaultProviderAccountConfigForPreset, Dialog, DialogBody, DialogContent, DialogFooter,
-  DialogHeader, DialogTitle, Field, findProviderPreset, formatProviderAccountMeterTitle, formatProviderAccountMeterValue, GatewayProviderConfig,
+  DialogHeader, DialogTitle, Field, findProviderPreset, formatProviderAccountMeterValue, GatewayProviderConfig,
   GatewayProviderProbeResult, getProviderPresets, Globe, inferProviderNameFromBaseUrl, Input, KeyValueRowsControl, Label,
   Layers3, LoaderCircle, mergeProviderModelLists, modelCatalogItemMatchesQuery, motion, motionEase,
   Pencil, Plus, PopoverContent, primaryProviderAccountMeter, primaryProviderPresetEndpoint, providerAccountBadgeVariant,
-  providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountMeter, ProviderAccountSnapshot,
+  providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountSnapshot,
   providerAccountSnapshotCredentialLabel, providerAccountSnapshotLabel, ProviderAccountTestPath,
-  ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerFailoverStrategyOptions, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
+  ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
   ProviderConnectivityCheckReport, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
   providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, reducedMotionTransition, Search, SelectControl,
   ShieldCheck, splitLines, splitModelTagInput, Switch, Textarea, translatedProviderProtocolLabel, translateOptions,
@@ -328,7 +328,6 @@ function ProviderAccountListCell({ provider, snapshots }: { provider: GatewayPro
   const sortedSnapshots = [...snapshots].sort(compareProviderAccountSnapshots);
   const snapshot = sortedSnapshots[0];
   const meter = snapshot ? primaryProviderAccountMeter(snapshot) : undefined;
-  const displayMeters = snapshot ? providerAccountListMeters(snapshot) : [];
 
   if (!provider.account?.enabled && snapshots.length === 0) {
     return <div className="min-w-0 truncate text-[11px] text-muted-foreground">{t("Disabled")}</div>;
@@ -341,7 +340,7 @@ function ProviderAccountListCell({ provider, snapshots }: { provider: GatewayPro
   return (
     <div className="min-w-0">
       <div className="flex min-w-0 items-center gap-1.5">
-        <Badge variant={providerAccountBadgeVariant(snapshot.status)}>{snapshot.status}</Badge>
+        {snapshot.status === "ok" ? null : <Badge variant={providerAccountBadgeVariant(snapshot.status)}>{snapshot.status}</Badge>}
         {meter ? <span className="min-w-0 truncate text-[11px] font-medium">{formatProviderAccountMeterValue(meter)}</span> : null}
         {sortedSnapshots.length > 1 ? <Badge variant="outline">{sortedSnapshots.length} {t("keys")}</Badge> : null}
       </div>
@@ -350,26 +349,13 @@ function ProviderAccountListCell({ provider, snapshots }: { provider: GatewayPro
           {providerAccountSnapshotCredentialLabel(snapshot)}
         </div>
       ) : null}
-      {displayMeters.length > 0 ? (
-        <div className="mt-0.5 space-y-0.5">
-          {displayMeters.map((item) => (
-            <div className="truncate text-[10px] text-muted-foreground" key={item.id} title={formatProviderAccountMeterTitle(item, t)}>
-              {formatProviderAccountMeterTitle(item, t)}
-            </div>
-          ))}
-        </div>
-      ) : (
+      {!meter ? (
         <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
           {snapshot.message ?? snapshot.errors?.[0]?.message ?? snapshot.source}
         </div>
-      )}
+      ) : null}
     </div>
   );
-}
-
-function providerAccountListMeters(snapshot: ProviderAccountSnapshot): ProviderAccountMeter[] {
-  const scheduledMeters = snapshot.meters.filter((item) => item.resetAt || item.window);
-  return (scheduledMeters.length > 0 ? scheduledMeters : snapshot.meters).slice(0, 2);
 }
 
 export function DeleteProviderDialog({
@@ -1146,7 +1132,6 @@ function ProviderCredentialSettings({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [importError, setImportError] = useState("");
-  const strategyOptions = translateOptions(providerFailoverStrategyOptions, t);
 
   function addCredential() {
     onChange({
@@ -1231,36 +1216,6 @@ function ProviderCredentialSettings({
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Field label={t("Key failover strategy")}>
-              <SelectControl
-                onChange={(credentialFailoverStrategy) => onChange({ credentialFailoverStrategy: credentialFailoverStrategy as AddProviderDraft["credentialFailoverStrategy"] })}
-                options={strategyOptions}
-                value={draft.credentialFailoverStrategy}
-              />
-            </Field>
-            <Field label={t("Cooldown ms")}>
-              <Input
-                min={1000}
-                placeholder="60000"
-                type="number"
-                value={draft.credentialFailoverCooldownMs}
-                onChange={(event) => onChange({ credentialFailoverCooldownMs: event.target.value })}
-              />
-            </Field>
-            <Field label={t("Spillover threshold")}>
-              <Input
-                max={1}
-                min={0}
-                placeholder="0.8"
-                step="0.01"
-                type="number"
-                value={draft.credentialSpilloverThreshold}
-                onChange={(event) => onChange({ credentialSpilloverThreshold: event.target.value })}
-              />
-            </Field>
-          </div>
-
           {draft.credentials.length === 0 ? (
             <div className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-4 text-center text-[12px] text-muted-foreground">
               {t("No provider credentials configured")}
@@ -1271,7 +1226,7 @@ function ProviderCredentialSettings({
                 <ProviderCredentialRow
                   credential={credential}
                   index={index}
-                  key={`${credential.id || "key"}-${index}`}
+                  key={`credential-${index}`}
                   onChange={(patch) => updateCredential(index, patch)}
                   onRemove={() => removeCredential(index)}
                 />
@@ -1303,46 +1258,69 @@ function ProviderCredentialRow({
   onRemove: () => void;
 }) {
   const t = useAppText();
+  const label = credential.name || `key-${index + 1}`;
+  const [advancedOpen, setAdvancedOpen] = useState(
+    () => Boolean(
+      credential.limitsText.trim() ||
+      credential.priority.trim() ||
+      credential.weight.trim()
+    )
+  );
 
   return (
     <div className="rounded-md border border-border bg-muted/20 p-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[auto_minmax(88px,0.55fr)_minmax(120px,0.7fr)_minmax(160px,1fr)_72px_72px_auto]">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[auto_minmax(140px,0.75fr)_minmax(180px,1fr)_auto]">
         <div className="flex items-end pb-2">
           <Checkbox
-            aria-label={`${t("Enable")} ${credential.id || `key-${index + 1}`}`}
+            aria-label={`${t("Enable")} ${label}`}
             checked={credential.enabled}
             onCheckedChange={(enabled) => onChange({ enabled })}
           />
         </div>
-        <Field label={t("ID")}>
-          <Input value={credential.id} onChange={(event) => onChange({ id: event.target.value })} />
-        </Field>
         <Field label={t("Name")}>
           <Input value={credential.name} onChange={(event) => onChange({ name: event.target.value })} />
         </Field>
         <Field label={t("API key")}>
           <Input type="password" value={credential.apiKey} onChange={(event) => onChange({ apiKey: event.target.value })} />
         </Field>
-        <Field label={t("Priority")}>
-          <Input min={1} type="number" value={credential.priority} onChange={(event) => onChange({ priority: event.target.value })} />
-        </Field>
-        <Field label={t("Weight")}>
-          <Input min={1} type="number" value={credential.weight} onChange={(event) => onChange({ weight: event.target.value })} />
-        </Field>
         <div className="flex items-end justify-end">
-          <Button aria-label={`${t("Remove")} ${credential.id || `key-${index + 1}`}`} onClick={onRemove} size="iconSm" title={t("Remove")} type="button" variant="ghost">
+          <Button aria-label={`${t("Remove")} ${label}`} onClick={onRemove} size="iconSm" title={t("Remove")} type="button" variant="ghost">
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>
-      <Field className="mt-3" label={t("Limits JSON")}>
-        <Textarea
-          className="min-h-[76px] font-mono text-[11px]"
-          placeholder={`{\n  "rpm": 60,\n  "tpm": 100000\n}`}
-          value={credential.limitsText}
-          onChange={(event) => onChange({ limitsText: event.target.value })}
-        />
-      </Field>
+      <Button
+        aria-expanded={advancedOpen}
+        className="mt-3 flex h-8 w-full items-center justify-between gap-3 rounded-md border border-border bg-background px-3 text-left text-[12px] font-medium transition-colors hover:bg-muted/40"
+        onClick={() => setAdvancedOpen((value) => !value)}
+        type="button"
+        unstyled
+      >
+        <span className="min-w-0 truncate">{t("Advanced key options")}</span>
+        <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", advancedOpen && "rotate-180")} />
+      </Button>
+      <AnimatePresence initial={false}>
+        {advancedOpen ? (
+          <AnimatedDisclosure key="credential-row-advanced">
+            <div className="mt-3 grid grid-cols-1 gap-3 border-t border-border/60 pt-3 sm:grid-cols-2">
+              <Field label={t("Priority")}>
+                <Input min={1} placeholder={String(index + 1)} type="number" value={credential.priority} onChange={(event) => onChange({ priority: event.target.value })} />
+              </Field>
+              <Field label={t("Weight")}>
+                <Input min={1} placeholder="1" type="number" value={credential.weight} onChange={(event) => onChange({ weight: event.target.value })} />
+              </Field>
+              <Field className="sm:col-span-2" label={t("Limits JSON")}>
+                <Textarea
+                  className="min-h-[76px] font-mono text-[11px]"
+                  placeholder={`{\n  "rpm": 60,\n  "tpm": 100000\n}`}
+                  value={credential.limitsText}
+                  onChange={(event) => onChange({ limitsText: event.target.value })}
+                />
+              </Field>
+            </div>
+          </AnimatedDisclosure>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

@@ -202,10 +202,11 @@ async function refreshProviderAccountSnapshot(
   generation: number
 ): Promise<ProviderAccountSnapshot | undefined> {
   const now = new Date();
+  const credentialId = credential ? providerCredentialRuntimeId(provider, credential) : undefined;
   const connectorResults = await Promise.all(
-    normalizeConnectors(account).map((connector) => resolveConnector(config, provider, connector, now, credential?.id))
+    normalizeConnectors(account).map((connector) => resolveConnector(config, provider, connector, now, credentialId))
   );
-  const snapshot = mergeConnectorResults(provider.name.trim(), connectorResults, now, refreshIntervalMs, credential);
+  const snapshot = mergeConnectorResults(provider.name.trim(), connectorResults, now, refreshIntervalMs, credential, credentialId);
   const cacheTtlMs = providerAccountCacheTtl(snapshot, refreshIntervalMs);
   const expiresAt = Date.now() + cacheTtlMs;
   snapshot.nextRefreshAt = new Date(expiresAt).toISOString();
@@ -229,7 +230,7 @@ function providerAccountCacheKey(
     apiKeyHash: hashSensitiveValue(providerApiKey(provider)),
     baseUrl: providerBaseUrl(provider),
     connectors: account.connectors ?? [],
-    credentialId: credential?.id ?? "",
+    credentialId: credential ? providerCredentialRuntimeId(provider, credential) : "",
     providerName: normalizeProviderName(provider.name),
     refreshIntervalMs: account.refreshIntervalMs ?? null
   });
@@ -535,7 +536,8 @@ function mergeConnectorResults(
   results: ConnectorResult[],
   now: Date,
   refreshIntervalMs: number,
-  credential?: ProviderCredentialConfig
+  credential?: ProviderCredentialConfig,
+  credentialId?: string
 ): ProviderAccountSnapshot {
   const errors = results.flatMap((result) => result.errors);
   const metersById = new Map<string, ProviderAccountMeter>();
@@ -561,7 +563,7 @@ function mergeConnectorResults(
   const message = results.find((result) => result.message)?.message ?? (errors.length > 0 && meters.length === 0 ? errors[0]?.message : undefined);
 
   return {
-    credentialId: credential?.id,
+    credentialId,
     credentialLabel: credential?.name ?? credential?.label ?? credential?.id,
     errors: errors.length > 0 ? errors : undefined,
     message,
@@ -801,8 +803,30 @@ function providerApiKey(provider: GatewayProviderConfig): string {
   return provider.api_key || provider.apiKey || provider.apikey || "";
 }
 
+function providerCredentialRuntimeId(
+  provider: GatewayProviderConfig,
+  credential: ProviderCredentialConfig,
+  index = provider.credentials?.indexOf(credential) ?? -1
+): string {
+  const explicitId = credential.id?.trim();
+  if (explicitId) {
+    return explicitId;
+  }
+  const oneBasedIndex = index >= 0 ? index + 1 : 1;
+  const label = credential.name?.trim() || credential.label?.trim();
+  return label ? `${providerCredentialSlug(label)}-${oneBasedIndex}` : `key-${oneBasedIndex}`;
+}
+
 function providerCredentialApiKey(credential: ProviderCredentialConfig): string {
   return credential.api_key || credential.apiKey || credential.apikey || "";
+}
+
+function providerCredentialSlug(value: string | undefined): string {
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "key";
 }
 
 function localEstimateWindowStart(window: string, now: Date): Date {

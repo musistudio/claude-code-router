@@ -28,8 +28,6 @@ import type {
   ProviderAccountConfig,
   ProviderAccountConnectorConfig,
   ProviderCredentialConfig,
-  ProviderFailoverConfig,
-  ProviderFailoverStrategy,
   ProfileConfig,
   ProfileRuntimeConfig,
   ProxyRouteTarget,
@@ -38,6 +36,10 @@ import type {
   RouterFallbackConfig,
   RouterFallbackMode,
   RouterRule,
+  RouterRuleCondition,
+  RouterRuleOperator,
+  RouterRuleRewrite,
+  RouterRuleRewriteOperation,
   RouterRuleType,
   TrayBalanceProgressConfig,
   TrayComponentVariants,
@@ -1009,7 +1011,6 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         credentials: parseProviderCredentials(item.credentials ?? item.keys ?? item.apiKeys),
         extraBody: item.extraBody,
         extraHeaders: item.extraHeaders,
-        failover: parseProviderFailover(item.failover ?? item.credentialFailover),
         icon: readString(item.icon),
         models,
         name,
@@ -1041,16 +1042,16 @@ function parseProviderCredentials(value: unknown): ProviderCredentialConfig[] | 
       }
 
       const legacyLabel = readString(item.label);
-      const id = readString(item.id) || readString(item.name) || legacyLabel || `key-${index + 1}`;
-      const name = readString(item.name) || legacyLabel || id;
+      const id = readString(item.id);
+      const name = readString(item.name) || legacyLabel || id || `Key ${index + 1}`;
       const priority = readNumber(item.priority);
       const weight = readNumber(item.weight);
       return {
         account: parseProviderAccount(item.account),
         api_key: apiKey,
         enabled: typeof item.enabled === "boolean" ? item.enabled : undefined,
-        id,
         ...(legacyLabel ? { label: legacyLabel } : {}),
+        ...(id ? { id } : {}),
         name,
         limits: parseApiKeyLimits(item.limits),
         priority: priority !== undefined ? priority : undefined,
@@ -1060,38 +1061,6 @@ function parseProviderCredentials(value: unknown): ProviderCredentialConfig[] | 
     .filter((item): item is ProviderCredentialConfig => Boolean(item));
 
   return credentials.length > 0 ? credentials : undefined;
-}
-
-function parseProviderFailover(value: unknown): ProviderFailoverConfig | undefined {
-  if (!isObject(value)) {
-    return undefined;
-  }
-
-  const strategy = parseProviderFailoverStrategy(readString(value.strategy) || readString(value.mode));
-  const cooldownMs = readNumber(value.cooldownMs ?? value.cooldown);
-  const spilloverThreshold = readNumber(value.spilloverThreshold ?? value.threshold);
-  const failover: ProviderFailoverConfig = {
-    ...(strategy ? { strategy } : {}),
-    ...(cooldownMs !== undefined && cooldownMs > 0 ? { cooldownMs } : {}),
-    ...(spilloverThreshold !== undefined && spilloverThreshold > 0 ? { spilloverThreshold } : {})
-  };
-  return Object.keys(failover).length > 0 ? failover : undefined;
-}
-
-function parseProviderFailoverStrategy(value: string | undefined): ProviderFailoverStrategy | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const normalized = value.trim().toLowerCase().replace(/_/g, "-");
-  if (
-    normalized === "failover-only" ||
-    normalized === "least-utilized" ||
-    normalized === "priority-spillover" ||
-    normalized === "weighted-round-robin"
-  ) {
-    return normalized;
-  }
-  return undefined;
 }
 
 function parseProviderAccount(value: unknown): ProviderAccountConfig | undefined {
@@ -1295,17 +1264,25 @@ function parseRouterRules(value: unknown): RouterRule[] | undefined {
       const target = readString(item.target);
       const pattern = readString(item.pattern);
       const threshold = readNumber(item.threshold);
+      const condition = parseRouterRuleCondition(item.condition ?? item) ?? routerRuleConditionFromLegacy(type, {
+        pattern,
+        threshold: threshold !== undefined && threshold > 0 ? threshold : undefined
+      });
+      const rewrites = parseRouterRuleRewrites(item);
       const fallback = parseRouterFallback(item.fallback ?? item.failureFallback ?? item.fallbackStrategy);
 
       return {
+        ...(condition ? { condition } : {}),
         enabled: typeof item.enabled === "boolean" ? item.enabled : true,
         ...(fallback ? { fallback } : {}),
         id,
         name,
         ...(pattern ? { pattern } : {}),
+        ...(rewrites.length === 1 ? { rewrite: rewrites[0] } : {}),
+        ...(rewrites.length > 0 ? { rewrites } : {}),
         ...(target ? { target } : {}),
         ...(threshold !== undefined && threshold > 0 ? { threshold } : {}),
-        type
+        type: condition && type !== "subagent" ? "condition" : type
       };
     })
     .filter((item): item is RouterRule => Boolean(item));
@@ -1318,7 +1295,7 @@ function parseRouterRuleType(value: unknown): RouterRuleType | undefined {
 
   const normalized = value.trim().toLowerCase();
   if (
-    normalized === "always" ||
+    normalized === "condition" ||
     normalized === "image" ||
     normalized === "long-context" ||
     normalized === "model-prefix" ||
@@ -1331,14 +1308,172 @@ function parseRouterRuleType(value: unknown): RouterRuleType | undefined {
   return undefined;
 }
 
+function parseRouterRuleCondition(value: unknown): RouterRuleCondition | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const left =
+    readString(value.left) ??
+    readString(value.path) ??
+    readString(value.field) ??
+    readString(value.parameter);
+  const operator = parseRouterRuleOperator(value.operator ?? value.op);
+  const right = readConditionValue(value.right ?? value.value);
+
+  return left && operator && right !== undefined
+    ? { left, operator, right }
+    : undefined;
+}
+
+function parseRouterRuleOperator(value: unknown): RouterRuleOperator | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim();
+  if (
+    normalized === "==" ||
+    normalized === "!=" ||
+    normalized === ">" ||
+    normalized === ">=" ||
+    normalized === "<" ||
+    normalized === "<=" ||
+    normalized === "starts-with" ||
+    normalized === "contains" ||
+    normalized === "contains-deep" ||
+    normalized === "not-contains"
+  ) {
+    return normalized;
+  }
+  return undefined;
+}
+
+function routerRuleConditionFromLegacy(
+  type: RouterRuleType,
+  input: { pattern?: string; threshold?: number }
+): RouterRuleCondition | undefined {
+  if (type === "long-context") {
+    return {
+      left: "request.tokenCount",
+      operator: ">",
+      right: String(input.threshold ?? "200000")
+    };
+  }
+  if (type === "model-prefix" && input.pattern) {
+    return {
+      left: "request.body.model",
+      operator: "starts-with",
+      right: input.pattern
+    };
+  }
+  if (type === "thinking") {
+    return {
+      left: "request.body.thinking",
+      operator: "==",
+      right: "true"
+    };
+  }
+  if (type === "web-search") {
+    return {
+      left: "request.body.tools",
+      operator: "contains-deep",
+      right: "web_search"
+    };
+  }
+  if (type === "image") {
+    return {
+      left: "request.body.messages",
+      operator: "contains-deep",
+      right: "image"
+    };
+  }
+  return undefined;
+}
+
+function readConditionValue(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return undefined;
+}
+
+function parseRouterRuleRewrites(rule: Record<string, unknown>): RouterRuleRewrite[] {
+  if (Array.isArray(rule.rewrites)) {
+    return rule.rewrites
+      .map((item) => parseRouterRuleRewrite(item))
+      .filter((item): item is RouterRuleRewrite => Boolean(item));
+  }
+  const rewrite = parseRouterRuleRewrite(rule.rewrite ?? rule.action);
+  const target = readString(rule.target);
+  return [
+    ...(rewrite ? [rewrite] : []),
+    ...(target ? [{ key: "request.body.model", operation: "set" as const, value: target }] : [])
+  ];
+}
+
+function parseRouterRuleRewrite(value: unknown): RouterRuleRewrite | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const key =
+    readString(value.key) ??
+    readString(value.path) ??
+    readString(value.field) ??
+    readString(value.parameter);
+  const operation = parseRouterRewriteOperation(value.operation ?? value.op ?? value.type) ?? "set";
+  const rewriteValue = readRewriteValue(value.value);
+  const match = readRewriteValue(value.match);
+
+  if (!key) {
+    return undefined;
+  }
+  if (operation === "delete") {
+    return { key, operation };
+  }
+  if (operation === "array-replace") {
+    return match !== undefined && rewriteValue !== undefined
+      ? { key, match, operation, value: rewriteValue }
+      : undefined;
+  }
+  return rewriteValue !== undefined
+    ? { key, operation, value: rewriteValue }
+    : undefined;
+}
+
+function parseRouterRewriteOperation(value: unknown): RouterRuleRewriteOperation | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized === "set" ||
+    normalized === "delete" ||
+    normalized === "array-append" ||
+    normalized === "array-prepend" ||
+    normalized === "array-remove" ||
+    normalized === "array-replace"
+  ) {
+    return normalized;
+  }
+  return undefined;
+}
+
+function readRewriteValue(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return undefined;
+}
+
 function routerRuleTypeLabel(type: RouterRuleType): string {
-  if (type === "long-context") return "Long context";
-  if (type === "model-prefix") return "Model prefix";
-  if (type === "subagent") return "Subagent model";
-  if (type === "thinking") return "Thinking";
-  if (type === "web-search") return "Web search";
-  if (type === "image") return "Image";
-  return "Always";
+  return type === "condition" ? "Condition" : "Legacy";
 }
 
 function parseAgent(value: unknown, legacyMcpServers?: unknown): Partial<GatewayAgentConfig> | undefined {

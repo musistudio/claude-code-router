@@ -14,7 +14,6 @@ import type {
   GatewayProviderConfig,
   GatewayProviderProtocol,
   ProviderCredentialConfig,
-  ProviderFailoverStrategy,
   GatewayStatus,
   RouterFallbackConfig,
   RouterFallbackMode,
@@ -217,6 +216,8 @@ const rawTraceSyncPath = "/__ccr/raw-trace-sync";
 const gatewayPackageCandidates = ["@the-next-ai/ai-gateway", "gateway"];
 const apiKeyLimitCounters = new Map<string, ApiKeyWindowCounter>();
 const providerCredentialCooldowns = new Map<string, { reason: string; until: number }>();
+const providerCredentialCooldownMs = 60_000;
+const providerCredentialSpilloverThreshold = 0.8;
 let modelCatalogIndex: ModelCatalogIndex | undefined;
 
 class GatewayService {
@@ -1549,7 +1550,7 @@ function rewriteCapabilityResponseHeaders(headers: Headers, config: AppConfig): 
     rewritten.set("x-gateway-target-provider-name", provider.name);
     rewritten.set("x-ccr-provider-protocol", credentialInternalName.protocol);
     rewritten.set("x-ccr-provider-credential-provider", provider.name);
-    rewritten.set("x-ccr-provider-credential-id", credential?.id ?? credentialInternalName.credentialSlug);
+    rewritten.set("x-ccr-provider-credential-id", credential ? providerCredentialRuntimeId(provider, credential) : credentialInternalName.credentialSlug);
     return rewritten;
   }
   const provider = findProviderByPublicOrInternalName(config, providerName);
@@ -1674,7 +1675,7 @@ function prepareUpstreamCredentialAttempt(input: {
     ...input.headers,
     "x-target-providers": selection.credentials.map((candidate) => candidate.internalName).join(","),
     "x-ccr-logical-provider": target.provider.name,
-    "x-ccr-provider-credential-chain": selection.credentials.map((candidate) => candidate.credential.id).join(",")
+    "x-ccr-provider-credential-chain": selection.credentials.map((candidate) => candidate.credentialId).join(",")
   };
   delete headers["x-target-provider"];
   if (selection.saturated) {
@@ -1685,7 +1686,7 @@ function prepareUpstreamCredentialAttempt(input: {
     ...input.attempt,
     body: target.body ?? input.attempt.body,
     credentialChain: selection.credentials.map((candidate) => candidate.internalName),
-    credentialIds: selection.credentials.map((candidate) => candidate.credential.id),
+    credentialIds: selection.credentials.map((candidate) => candidate.credentialId),
     credentialProtocol: target.protocol,
     headers,
     logicalProvider: target.provider.name
@@ -1774,29 +1775,28 @@ function selectProviderCredentials(
   protocol: GatewayProviderProtocol,
   credentials: ProviderCredentialConfig[],
   usage: ApiKeyLimitUsage
-): { credentials: Array<{ credential: ProviderCredentialConfig; internalName: string }>; saturated: boolean } {
+): { credentials: Array<{ credential: ProviderCredentialConfig; credentialId: string; internalName: string }>; saturated: boolean } {
   const candidates = credentials.map((credential, index) => {
+    const providerIndex = provider.credentials?.indexOf(credential) ?? index;
     const limitState = providerCredentialLimitState(provider, credential, usage);
     const cooldown = readProviderCredentialCooldown(provider, credential);
     return {
       cooldown,
       credential,
-      index,
-      internalName: providerCredentialInternalName(provider.name, protocol, credential),
+      credentialId: providerCredentialRuntimeId(provider, credential, providerIndex),
+      index: providerIndex,
+      internalName: providerCredentialInternalName(provider, protocol, credential),
       limitState,
-      priority: providerCredentialPriority(credential, index),
+      priority: providerCredentialPriority(credential, providerIndex),
       weight: Math.max(1, credential.weight ?? 1)
     };
   });
   const available = candidates.filter((candidate) => !candidate.cooldown && !candidate.limitState.blocked);
-  const sorted = sortProviderCredentialCandidates(
-    available.length > 0 ? available : candidates,
-    provider.failover?.strategy,
-    provider.failover?.spilloverThreshold
-  );
+  const sorted = sortProviderCredentialCandidates(available.length > 0 ? available : candidates);
   return {
     credentials: sorted.map((candidate) => ({
       credential: candidate.credential,
+      credentialId: candidate.credentialId,
       internalName: candidate.internalName
     })),
     saturated: available.length === 0 && candidates.length > 0
@@ -1808,24 +1808,19 @@ function sortProviderCredentialCandidates<T extends {
   limitState: { utilization: number };
   priority: number;
   weight: number;
-}>(
-  candidates: T[],
-  strategy: ProviderFailoverStrategy | undefined,
-  spilloverThreshold: number | undefined
-): T[] {
-  const normalizedStrategy = strategy ?? "least-utilized";
-  if (normalizedStrategy === "priority-spillover") {
-    const prioritySorted = [...candidates].sort((left, right) =>
-      left.priority - right.priority ||
-      left.index - right.index
-    );
-    const primary = prioritySorted[0];
-    const threshold = Number.isFinite(spilloverThreshold) && spilloverThreshold !== undefined && spilloverThreshold > 0
-      ? spilloverThreshold
-      : 0.8;
-    if (!primary || primary.limitState.utilization < threshold) {
-      return prioritySorted;
-    }
+}>(candidates: T[]): T[] {
+  const prioritySorted = [...candidates].sort((left, right) =>
+    left.priority - right.priority ||
+    left.limitState.utilization - right.limitState.utilization ||
+    right.weight - left.weight ||
+    left.index - right.index
+  );
+  const primaryPriority = prioritySorted[0]?.priority;
+  const primaryCandidates = prioritySorted.filter((candidate) => candidate.priority === primaryPriority);
+  const shouldSpillOver = primaryCandidates.length > 0 &&
+    primaryCandidates.every((candidate) => candidate.limitState.utilization >= providerCredentialSpilloverThreshold);
+
+  if (shouldSpillOver) {
     return prioritySorted.sort((left, right) =>
       left.limitState.utilization - right.limitState.utilization ||
       left.priority - right.priority ||
@@ -1833,21 +1828,8 @@ function sortProviderCredentialCandidates<T extends {
       left.index - right.index
     );
   }
-  return [...candidates].sort((left, right) => {
-    if (normalizedStrategy === "weighted-round-robin") {
-      return right.weight - left.weight || left.priority - right.priority || left.index - right.index;
-    }
-    if (normalizedStrategy === "least-utilized") {
-      return left.limitState.utilization - right.limitState.utilization ||
-        left.priority - right.priority ||
-        right.weight - left.weight ||
-        left.index - right.index;
-    }
-    return left.priority - right.priority ||
-      left.limitState.utilization - right.limitState.utilization ||
-      right.weight - left.weight ||
-      left.index - right.index;
-  });
+
+  return prioritySorted;
 }
 
 function providerCredentialPriority(credential: ProviderCredentialConfig, index: number): number {
@@ -2122,7 +2104,7 @@ function toCoreGatewayProvider(
     extraHeaders: provider.extraHeaders,
     models: provider.models,
     name: credential
-      ? providerCredentialInternalName(provider.name, type, credential)
+      ? providerCredentialInternalName(provider, type, credential)
       : capability
         ? providerCapabilityInternalName(provider.name, type)
         : provider.name,
@@ -2133,7 +2115,7 @@ function toCoreGatewayProvider(
 function sortProviderCredentialsForConfig(credentials: ProviderCredentialConfig[]): ProviderCredentialConfig[] {
   return [...credentials].sort((left, right) =>
     providerCredentialPriority(left, 0) - providerCredentialPriority(right, 0) ||
-    providerCredentialSlug(left.id).localeCompare(providerCredentialSlug(right.id))
+    providerCredentialSortKey(left).localeCompare(providerCredentialSortKey(right))
   );
 }
 
@@ -2166,11 +2148,11 @@ function providerCapabilityInternalName(providerName: string, protocol: GatewayP
 }
 
 function providerCredentialInternalName(
-  providerName: string,
+  provider: GatewayProviderConfig,
   protocol: GatewayProviderProtocol,
   credential: ProviderCredentialConfig
 ): string {
-  return `${providerCapabilityInternalName(providerName, protocol)}::cred:${providerCredentialSlug(credential.id)}`;
+  return `${providerCapabilityInternalName(provider.name, protocol)}::cred:${providerCredentialSlug(providerCredentialRuntimeId(provider, credential))}`;
 }
 
 function parseProviderCredentialInternalName(value: string | undefined): {
@@ -2194,23 +2176,54 @@ function parseProviderCredentialInternalName(value: string | undefined): {
   return protocol && providerName ? { credentialSlug, providerName, protocol } : undefined;
 }
 
-function providerCredentialSlug(value: string): string {
-  return value
+function providerCredentialSlug(value: string | undefined): string {
+  return (value ?? "")
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9_.-]+/g, "-")
     .replace(/^-+|-+$/g, "") || "key";
 }
 
+function providerCredentialRuntimeId(
+  provider: GatewayProviderConfig,
+  credential: ProviderCredentialConfig,
+  index = provider.credentials?.indexOf(credential) ?? -1
+): string {
+  const explicitId = credential.id?.trim();
+  if (explicitId) {
+    return explicitId;
+  }
+  const oneBasedIndex = index >= 0 ? index + 1 : 1;
+  const label = credential.name?.trim() || credential.label?.trim();
+  return label ? `${providerCredentialSlug(label)}-${oneBasedIndex}` : `key-${oneBasedIndex}`;
+}
+
+function providerCredentialSortKey(credential: ProviderCredentialConfig): string {
+  return providerCredentialSlug(credential.id || credential.name || credential.label);
+}
+
 function providerCredentialApiKey(credential: ProviderCredentialConfig): string {
   return credential.api_key || credential.apiKey || credential.apikey || "";
+}
+
+function findProviderCredentialByRuntimeId(
+  provider: GatewayProviderConfig,
+  credentialId: string
+): ProviderCredentialConfig | undefined {
+  const normalizedId = credentialId.trim();
+  const normalizedSlug = providerCredentialSlug(normalizedId);
+  return (provider.credentials ?? []).find((credential, index) => {
+    const runtimeId = providerCredentialRuntimeId(provider, credential, index);
+    return runtimeId === normalizedId || providerCredentialSlug(runtimeId) === normalizedSlug || credential.id?.trim() === normalizedId;
+  });
 }
 
 function findProviderCredentialBySlug(
   provider: GatewayProviderConfig,
   credentialSlug: string
 ): ProviderCredentialConfig | undefined {
-  return (provider.credentials ?? []).find((credential) => providerCredentialSlug(credential.id) === credentialSlug);
+  const normalizedSlug = providerCredentialSlug(credentialSlug);
+  return (provider.credentials ?? []).find((credential, index) => providerCredentialSlug(providerCredentialRuntimeId(provider, credential, index)) === normalizedSlug);
 }
 
 function normalizeProviderProtocol(value: unknown): GatewayProviderProtocol | undefined {
@@ -2626,7 +2639,7 @@ function recordProviderCredentialOutcome(
 
   const responseCredentialId = responseHeaders.get("x-ccr-provider-credential-id")?.trim();
   const responseCredential = responseCredentialId
-    ? (provider.credentials ?? []).find((credential) => credential.id === responseCredentialId)
+    ? findProviderCredentialByRuntimeId(provider, responseCredentialId)
     : undefined;
   const fallbackCredential = providerCredentialFromInternalName(provider, attempt.credentialChain[0]);
   const credential = responseCredential ?? fallbackCredential;
@@ -2641,7 +2654,7 @@ function recordProviderCredentialOutcome(
   }
 
   if (statusCode === 401 || statusCode === 403 || statusCode === 429 || statusCode >= 500) {
-    setProviderCredentialCooldown(provider, credential, providerCredentialCooldownMs(provider), `HTTP ${statusCode}`);
+    setProviderCredentialCooldown(provider, credential, providerCredentialCooldownMs, `HTTP ${statusCode}`);
   }
 }
 
@@ -2672,7 +2685,7 @@ function providerCredentialCounterKey(
   rule: ApiKeyLimitRule,
   windowStart: number
 ): string {
-  return ["provider-credential", provider.name, credential.id, rule.name, rule.metric, rule.windowMs, windowStart].join("|");
+  return ["provider-credential", provider.name, providerCredentialRuntimeId(provider, credential), rule.name, rule.metric, rule.windowMs, windowStart].join("|");
 }
 
 function readProviderCredentialCooldown(provider: GatewayProviderConfig, credential: ProviderCredentialConfig): { reason: string; until: number } | undefined {
@@ -2700,11 +2713,7 @@ function clearProviderCredentialCooldown(provider: GatewayProviderConfig, creden
 }
 
 function providerCredentialStateKey(provider: GatewayProviderConfig, credential: ProviderCredentialConfig): string {
-  return `${provider.name}::${credential.id}`;
-}
-
-function providerCredentialCooldownMs(provider: GatewayProviderConfig): number {
-  return clampNumber(provider.failover?.cooldownMs ?? 60_000, 1_000, 3_600_000);
+  return `${provider.name}::${providerCredentialRuntimeId(provider, credential)}`;
 }
 
 function addApiKeyLimitRule(

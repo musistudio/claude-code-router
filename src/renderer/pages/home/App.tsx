@@ -2,9 +2,10 @@ import {
   AddApiKeyDraft, AddProfileDraft, AddProviderDraft, AddRoutingRuleDraft, AgentAnalysisSessionSelection, AgentAnalysisSnapshot, AgentFilterValue,
   ApiKeyConfig, AppConfig, appCopy, AppI18nContext, AppInfo, AppUpdateStatus,
   AppLanguagePreference, applyProviderProbeResult, AppToast, BotGatewaySavedConfig, buildExtensionList, claudeDesignRoutingConfigFromDraft,
+  buildRouterConditionPath,
   ClaudeDesignRoutingDraft, ClaudeDesignRoutingRuleDraft, cloneConfig, createApiKeyDraft, createApiKeyEditDraft,
   createApiKeyList, createClaudeDesignRoutingDraft, createClaudeDesignRoutingRuleDraft, createCursorProxyRoutingDraft, createCursorProxyRoutingRuleDraft, createEmptyAgentAnalysis,
-  createEmptyRequestLogPage, createEmptyUsageStats, createExtensionInstallDraft, createGeneratedApiKey, createPluginSettingsDraft, createProfileDraft,
+  copyTextToClipboard, createEmptyRequestLogPage, createEmptyUsageStats, createExtensionInstallDraft, createGeneratedApiKey, createPluginSettingsDraft, createProfileDraft,
   createProfileDraftFromProfile, createProviderConfigFromDeepLink, createProviderDraft, createProviderDraftFromProvider, createRoutingRuleDraft, createRoutingRuleDraftFromRule,
   createVirtualModelDraft, createVirtualModelDraftFromProfile, DEFAULT_TRAY_WIDGETS, detectSystemLanguage, detectSystemTheme,
   enforceSingleEnabledGlobalProfilePerAgent,
@@ -14,19 +15,20 @@ import {
   fusionCustomMcpServerFromDraft, fusionCustomToolConfigFromProfile,
   GatewayProviderProbeResult, gatewayServiceMessage, GatewayStatus, getDefaultOnboardingStep, isClaudeDesignPluginConfig, isClaudeDesignRoutingDraftValid,
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
+  isRoutingRewriteDraftRowValid,
   LayoutGroup, mergeProviderCapabilities, mergeProviderModelLists,
   navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeOverviewWidgets,
   normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
   normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingStepId, onboardingStepOrder,
   OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parseProviderAccountDraft,
-  providerCredentialsFromDraft, providerFailoverFromDraft,
+  providerCredentialsFromDraft,
   persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
-  probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, ProfileConfig, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
+  probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, ProfileConfig, ProfileOpenSurface, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
   providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
   ResolvedTheme, resolvePluginInstallPlan, RouterRule, ServerActionBusy, SettingsPageId,
-  setProviderPresets, splitLines, translateProxyCertificateMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
+  routingRewriteFromDraftRow, setProviderPresets, splitLines, translateProxyCertificateMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
   uniqueRoutingRuleId, updateApiKeyEditableConfig, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, useEffect,
   useMemo, useReducedMotion, useRef, useState, validateVirtualModelDraft, ViewId,
   VirtualModelDraft, virtualModelProfileFromDraft
@@ -41,6 +43,11 @@ type ProfileOpenDialogState = {
   error?: string;
   mode: "choose" | "cli";
   profile: ProfileConfig;
+};
+
+type ProfileActionBusy = {
+  profileId: string;
+  surface: ProfileOpenSurface;
 };
 
 type UpdateActionBusy = "" | "download" | "install";
@@ -70,6 +77,7 @@ function App() {
   const [profileEditDraft, setProfileEditDraft] = useState<AddProfileDraft>(() => createProfileDraft());
   const [profileEditIndex, setProfileEditIndex] = useState<number>();
   const [profileOpenDialog, setProfileOpenDialog] = useState<ProfileOpenDialogState>();
+  const [profileActionBusy, setProfileActionBusy] = useState<ProfileActionBusy>();
   const [profileSubmitBusy, setProfileSubmitBusy] = useState<"" | "add" | "edit">("");
   const [apiKeyAddOpen, setApiKeyAddOpen] = useState(false);
   const [apiKeyDraft, setApiKeyDraft] = useState<AddApiKeyDraft>(() => createApiKeyDraft());
@@ -475,8 +483,9 @@ function App() {
   const canSubmitApiKeyEdit = apiKeyEditDraft.expirationPreset !== "custom" || Boolean(apiKeyEditDraft.expiresAt.trim());
   const canSubmitRoutingRule =
     Boolean(routingRuleDraft.name.trim()) &&
-    (routingRuleDraft.type === "subagent" || Boolean(routingRuleDraft.target.trim())) &&
-    (routingRuleDraft.type !== "model-prefix" || Boolean(routingRuleDraft.pattern.trim()));
+    routingRuleDraft.rewrites.length > 0 &&
+    routingRuleDraft.rewrites.every(isRoutingRewriteDraftRowValid) &&
+    Boolean(routingRuleDraft.conditionField.trim() && routingRuleDraft.conditionOperator && routingRuleDraft.conditionRight.trim());
   const canSubmitClaudeDesignRouting = isClaudeDesignRoutingDraftValid(claudeDesignRoutingDraft);
   const canSubmitCursorProxyRouting = isClaudeDesignRoutingDraftValid(cursorProxyRoutingDraft);
   const virtualModelValidationError = useMemo(() => validateVirtualModelDraft(virtualModelDraft), [virtualModelDraft]);
@@ -981,8 +990,6 @@ function App() {
       setProviderProbeError(credentials);
       return false;
     }
-    const failover = providerFailoverFromDraft(providerDraft);
-
     const fallbackProtocol = probe?.detectedProtocol ?? providerDraft.protocol;
     const fallbackBaseUrl = probe?.normalizedBaseUrl || providerDraft.baseUrl;
     const selectableProtocols = providerSelectableProtocolsFromProbe(probe);
@@ -1061,7 +1068,6 @@ function App() {
       capabilities: capabilities.length > 0 ? capabilities : undefined,
       account: accountConfig,
       credentials: credentials.length > 0 ? credentials : undefined,
-      failover,
       icon: providerDraft.icon.trim() || undefined,
       models,
       name: providerName,
@@ -1206,16 +1212,18 @@ function App() {
       return;
     }
 
-    const threshold = numberValue(routingRuleDraft.threshold);
     const rule: RouterRule = {
+      condition: {
+        left: buildRouterConditionPath(routingRuleDraft.conditionSource, routingRuleDraft.conditionField),
+        operator: routingRuleDraft.conditionOperator,
+        right: routingRuleDraft.conditionRight.trim()
+      },
       enabled: routingRuleDraft.enabled,
       fallback: normalizeRouterFallbackConfig(routingRuleDraft.fallback),
       id: uniqueRoutingRuleId(draftConfig.Router.rules),
       name: routingRuleDraft.name.trim(),
-      ...(routingRuleDraft.pattern.trim() ? { pattern: routingRuleDraft.pattern.trim() } : {}),
-      ...(routingRuleDraft.target.trim() && routingRuleDraft.type !== "subagent" ? { target: routingRuleDraft.target.trim() } : {}),
-      ...(threshold > 0 ? { threshold } : {}),
-      type: routingRuleDraft.type
+      rewrites: routingRuleDraft.rewrites.map(routingRewriteFromDraftRow),
+      type: "condition"
     };
 
     updateConfig((config) => {
@@ -2002,6 +2010,80 @@ function App() {
     void showProfileCliCommand(profile);
   }
 
+  async function copyProfileCliCommand(index: number) {
+    const profile = draftConfig.profile.profiles[index];
+    if (!profile?.enabled || !profileOpenSurfaces(profile).includes("cli") || profileActionBusy) {
+      return;
+    }
+
+    setProfileActionError("");
+    setProfileActionBusy({ profileId: profile.id, surface: "cli" });
+    try {
+      let saveError = "";
+      const setSaveError = (message: string) => {
+        saveError = message;
+        setProfileActionError(message);
+      };
+      if (!(await persistConfig(draftConfig, setSaveError))) {
+        if (!saveError) {
+          setProfileActionError("Failed to save profile before copying.");
+        }
+        return;
+      }
+
+      let command = profileOpenCommandFallback(profile, "cli");
+      if (window.ccr?.getProfileOpenCommand) {
+        const result = await window.ccr.getProfileOpenCommand({ profileId: profile.id, surface: "cli" });
+        command = result.command;
+      }
+      await copyTextToClipboard(command);
+      setProfileActionError("");
+      showToast(t("Copied"));
+    } catch (error) {
+      setProfileActionError(formatUnknownError(error));
+    } finally {
+      setProfileActionBusy((current) =>
+        current?.profileId === profile.id && current.surface === "cli" ? undefined : current
+      );
+    }
+  }
+
+  async function openProfileAppFromList(index: number) {
+    const profile = draftConfig.profile.profiles[index];
+    if (!profile?.enabled || !profileOpenSurfaces(profile).includes("app") || profileActionBusy) {
+      return;
+    }
+
+    setProfileActionError("");
+    setProfileActionBusy({ profileId: profile.id, surface: "app" });
+    try {
+      let saveError = "";
+      const setSaveError = (message: string) => {
+        saveError = message;
+        setProfileActionError(message);
+      };
+      if (!(await persistConfig(draftConfig, setSaveError))) {
+        if (!saveError) {
+          setProfileActionError("Failed to save profile before opening.");
+        }
+        return;
+      }
+
+      if (!window.ccr?.openProfile) {
+        setProfileActionError("Profile opening is only available in the Electron app.");
+        return;
+      }
+      const result = await window.ccr.openProfile({ profileId: profile.id, surface: "app" });
+      showToast(result.message);
+    } catch (error) {
+      setProfileActionError(formatUnknownError(error));
+    } finally {
+      setProfileActionBusy((current) =>
+        current?.profileId === profile.id && current.surface === "app" ? undefined : current
+      );
+    }
+  }
+
   async function showProfileCliCommand(profile: ProfileConfig, mode: "choose" | "cli" = "cli") {
     const fallbackCommand = profileOpenCommandFallback(profile, "cli");
     setProfileOpenDialog({ busy: "cli", command: fallbackCommand, mode, profile });
@@ -2308,9 +2390,11 @@ function App() {
                 profile: {
                   addProfile: openAddProfileDialog,
                   applyError: profileActionError,
+                  copyProfileCliCommand: (index) => void copyProfileCliCommand(index),
                   config: draftConfig,
                   editProfile: openEditProfileDialog,
-                  openProfile: openProfileDialog,
+                  openProfileApp: (index) => void openProfileAppFromList(index),
+                  profileActionBusy,
                   removeProfile,
                   updateProfileItem
                 },

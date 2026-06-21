@@ -1,11 +1,11 @@
 import {
-  AddRoutingRuleDraft, AnimatedFieldSlot, AnimatedListItem, AnimatePresence, AppConfig, ArrowDown,
+  AddRoutingRuleDraft, AnimatedListItem, AnimatePresence, AppConfig, ArrowDown,
   ArrowUp, Badge, buildRoutingRuleRows, Button, Card, CardContent,
-  CardHeader, Check, CircleAlert, clampNumber, cn, createRouteModelOptions,
+  CardHeader, Check, CircleAlert, clampNumber, cn, createRouteModelOptions, createRoutingRewriteDraftRow,
   Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle,
   disclosureSpringTransition, Field, formatRouterRuleCondition, formatRouterRuleTarget, GatewayProviderConfig, Input,
   motion, normalizeRouterFallbackConfig, Pencil, Plus, Route, RouterFallbackConfig,
-  RouterFallbackMode, routerFallbackModeOptions, RouterRule, RouterRuleType, routerRuleTypeLabel, routerRuleTypeOptions,
+  RouterFallbackMode, routerConditionSourceOptions, routerFallbackModeOptions, RouterRule, routerRewriteOperationOptions, routerRuleOperatorOptions,
   RouteTargetControl, routingRuleRowMatchesQuery, Search, SelectControl, Toggle, translateOptions,
   Trash2, uniqueStrings, useAppText, useMemo, useState, X
 } from "../shared";
@@ -312,7 +312,7 @@ export function DeleteRoutingRuleDialog({
                 <span className="font-medium text-foreground">{t("Condition")}:</span> {condition}
               </div>
               <div className="truncate" title={target}>
-                <span className="font-medium text-foreground">{t("Target")}:</span> {target}
+                <span className="font-medium text-foreground">{t("Request action")}:</span> {target}
               </div>
               <div>{t("This action is applied immediately to the draft config and will auto-save with other changes.")}</div>
             </div>
@@ -351,26 +351,23 @@ export function AddRoutingRuleDialog({
   providers: GatewayProviderConfig[];
 }) {
   const t = useAppText();
-  const modelOptions = useMemo(() => createRouteModelOptions(providers), [providers]);
-  const ruleTypeOptions = translateOptions(routerRuleTypeOptions, t);
-  const requiresTarget = draft.type !== "subagent";
-  const showsPattern = draft.type === "model-prefix";
-  const showsThreshold = draft.type === "long-context";
+  const conditionSourceOptions = translateOptions(routerConditionSourceOptions, t);
+  const rewriteOperationOptions = translateOptions(routerRewriteOperationOptions, t);
 
-  function changeType(value: string) {
-    const type = value as RouterRuleType;
-    const previousDefaultName = routerRuleTypeLabel(draft.type);
-    const patch: Partial<AddRoutingRuleDraft> = { type };
-    if (!draft.name.trim() || draft.name.trim() === previousDefaultName) {
-      patch.name = routerRuleTypeLabel(type);
-    }
-    if (type === "model-prefix" && !draft.pattern.trim()) {
-      patch.pattern = "claude-3-5-haiku";
-    }
-    if (type === "long-context" && !draft.threshold.trim()) {
-      patch.threshold = "200000";
-    }
-    onChange(patch);
+  function addRewrite() {
+    onChange({ rewrites: [...draft.rewrites, createRoutingRewriteDraftRow()] });
+  }
+
+  function updateRewrite(index: number, patch: Partial<AddRoutingRuleDraft["rewrites"][number]>) {
+    onChange({
+      rewrites: draft.rewrites.map((rewrite, rewriteIndex) =>
+        rewriteIndex === index ? { ...rewrite, ...patch } : rewrite
+      )
+    });
+  }
+
+  function removeRewrite(index: number) {
+    onChange({ rewrites: draft.rewrites.filter((_, rewriteIndex) => rewriteIndex !== index) });
   }
 
   return (
@@ -387,43 +384,99 @@ export function AddRoutingRuleDialog({
 
         <DialogBody>
           <motion.div className="grid grid-cols-1 gap-3 sm:grid-cols-2" layout transition={disclosureSpringTransition}>
-            <Field label={t("Name")}>
+            <Field className="sm:col-span-2" label={t("Name")}>
               <Input value={draft.name} onChange={(event) => onChange({ name: event.target.value })} />
             </Field>
-            <Field label={t("Condition")}>
-              <SelectControl
-                value={draft.type}
-                onChange={changeType}
-                options={ruleTypeOptions}
-              />
+            <Field className="sm:col-span-2" label={t("Condition")}>
+              <div className="rounded-md border border-border bg-muted/20 p-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[160px_minmax(0,1fr)_112px_minmax(0,1fr)]">
+                  <SelectControl
+                    onChange={(source) => onChange({ conditionSource: source as AddRoutingRuleDraft["conditionSource"] })}
+                    options={conditionSourceOptions}
+                    value={draft.conditionSource}
+                  />
+                  <Input
+                    className="font-mono text-[12px]"
+                    onChange={(event) => onChange({ conditionField: event.target.value })}
+                    placeholder={draft.conditionSource.endsWith(".header") ? "x-api-key" : "model"}
+                    value={draft.conditionField}
+                  />
+                  <SelectControl
+                    onChange={(operator) => onChange({ conditionOperator: operator as AddRoutingRuleDraft["conditionOperator"] })}
+                    options={routerRuleOperatorOptions}
+                    value={draft.conditionOperator}
+                  />
+                  <Input
+                    className="font-mono text-[12px]"
+                    onChange={(event) => onChange({ conditionRight: event.target.value })}
+                    placeholder={t("Value")}
+                    value={draft.conditionRight}
+                  />
+                </div>
+              </div>
             </Field>
-            <AnimatePresence initial={false}>
-              {requiresTarget ? (
-                <AnimatedFieldSlot className="sm:col-span-2" key="routing-target">
-                  <Field label={t("Rewrite request model")}>
-                    <RouteTargetControl
-                      modelOptions={modelOptions}
-                      onChange={(target) => onChange({ target })}
-                      value={draft.target}
+            <Field className="sm:col-span-2" label={t("Rewrite request parameters")}>
+              <div className="space-y-2 rounded-md border border-border bg-muted/20 p-2">
+                {draft.rewrites.map((rewrite, index) => (
+                  <div
+                    className="grid grid-cols-1 gap-2 sm:grid-cols-[150px_minmax(0,1fr)_minmax(0,1fr)_32px]"
+                    key={rewrite.id}
+                  >
+                    <SelectControl
+                      onChange={(operation) => updateRewrite(index, { operation: operation as AddRoutingRuleDraft["rewrites"][number]["operation"] })}
+                      options={rewriteOperationOptions}
+                      value={rewrite.operation}
                     />
-                  </Field>
-                </AnimatedFieldSlot>
-              ) : null}
-              {showsPattern ? (
-                <AnimatedFieldSlot className="sm:col-span-2" key="routing-pattern">
-                  <Field label={t("Model prefix")}>
-                    <Input value={draft.pattern} onChange={(event) => onChange({ pattern: event.target.value })} />
-                  </Field>
-                </AnimatedFieldSlot>
-              ) : null}
-              {showsThreshold ? (
-                <AnimatedFieldSlot key="routing-threshold">
-                  <Field label={t("Token threshold")}>
-                    <Input type="number" value={draft.threshold} onChange={(event) => onChange({ threshold: event.target.value })} />
-                  </Field>
-                </AnimatedFieldSlot>
-              ) : null}
-            </AnimatePresence>
+                    <Input
+                      className="font-mono text-[12px]"
+                      onChange={(event) => updateRewrite(index, { key: event.target.value })}
+                      placeholder="request.body.model"
+                      value={rewrite.key}
+                    />
+                    {rewrite.operation === "delete" ? (
+                      <div className="h-9 rounded-md border border-dashed border-border bg-background/40" />
+                    ) : rewrite.operation === "array-replace" ? (
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <Input
+                          className="font-mono text-[12px]"
+                          onChange={(event) => updateRewrite(index, { match: event.target.value })}
+                          placeholder={t("Match value")}
+                          value={rewrite.match}
+                        />
+                        <Input
+                          className="font-mono text-[12px]"
+                          onChange={(event) => updateRewrite(index, { value: event.target.value })}
+                          placeholder={t("Value")}
+                          value={rewrite.value}
+                        />
+                      </div>
+                    ) : (
+                      <Input
+                        className="font-mono text-[12px]"
+                        onChange={(event) => updateRewrite(index, { value: event.target.value })}
+                        placeholder={rewrite.operation === "set" ? "glm-5.2" : t("Value")}
+                        value={rewrite.value}
+                      />
+                    )}
+                    <Button
+                      aria-label={t("Remove")}
+                      disabled={draft.rewrites.length <= 1}
+                      onClick={() => removeRewrite(index)}
+                      size="iconSm"
+                      title={t("Remove")}
+                      type="button"
+                      variant="ghost"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+                <Button onClick={addRewrite} type="button" variant="outline">
+                  <Plus className="h-4 w-4" />
+                  {t("Add parameter")}
+                </Button>
+              </div>
+            </Field>
             <Field label={t("Enabled")}>
               <Toggle checked={draft.enabled} onChange={(enabled) => onChange({ enabled })} />
             </Field>

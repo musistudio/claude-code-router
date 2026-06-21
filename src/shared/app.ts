@@ -69,7 +69,6 @@ export type GatewayProviderConfig = {
   credentials?: ProviderCredentialConfig[];
   extraBody?: unknown;
   extraHeaders?: unknown;
-  failover?: ProviderFailoverConfig;
   icon?: string;
   models: string[];
   name: string;
@@ -84,24 +83,12 @@ export type ProviderCredentialConfig = {
   apiKey?: string;
   apikey?: string;
   enabled?: boolean;
-  id: string;
+  id?: string;
   label?: string;
   name?: string;
   limits?: ApiKeyLimitConfig;
   priority?: number;
   weight?: number;
-};
-
-export type ProviderFailoverStrategy =
-  | "failover-only"
-  | "least-utilized"
-  | "priority-spillover"
-  | "weighted-round-robin";
-
-export type ProviderFailoverConfig = {
-  cooldownMs?: number;
-  spilloverThreshold?: number;
-  strategy?: ProviderFailoverStrategy;
 };
 
 export type ProviderAccountAuthMode = "provider-api-key" | "provider-api-key-raw" | "none";
@@ -368,7 +355,7 @@ export type GatewayProviderConnectivityCheckReport = {
 };
 
 export type RouterRuleType =
-  | "always"
+  | "condition"
   | "image"
   | "long-context"
   | "model-prefix"
@@ -376,12 +363,48 @@ export type RouterRuleType =
   | "thinking"
   | "web-search";
 
+export type RouterRuleOperator =
+  | "=="
+  | "!="
+  | ">"
+  | ">="
+  | "<"
+  | "<="
+  | "contains"
+  | "contains-deep"
+  | "not-contains"
+  | "starts-with";
+
+export type RouterRuleCondition = {
+  left: string;
+  operator: RouterRuleOperator;
+  right: string;
+};
+
+export type RouterRuleRewriteOperation =
+  | "array-append"
+  | "array-prepend"
+  | "array-remove"
+  | "array-replace"
+  | "delete"
+  | "set";
+
+export type RouterRuleRewrite = {
+  key: string;
+  match?: string;
+  operation?: RouterRuleRewriteOperation;
+  value?: string;
+};
+
 export type RouterRule = {
+  condition?: RouterRuleCondition;
   enabled: boolean;
   fallback?: RouterFallbackConfig;
   id: string;
   name: string;
   pattern?: string;
+  rewrite?: RouterRuleRewrite;
+  rewrites?: RouterRuleRewrite[];
   target?: string;
   threshold?: number;
   type: RouterRuleType;
@@ -1253,6 +1276,7 @@ export type RequestLogEntry = {
   outputTokens: number;
   path: string;
   provider: string;
+  reasoningTokens: number;
   requestBody: RequestLogBody;
   requestHeaders: Record<string, string | string[]>;
   requestId: string;

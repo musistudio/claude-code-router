@@ -59,6 +59,7 @@ import {
   Server,
   Settings,
   ShieldCheck,
+  Terminal,
   Trash2,
   UserRound,
   X,
@@ -187,8 +188,6 @@ import type {
   ProviderCredentialConfig,
   ProviderDeepLinkPayload,
   ProviderDeepLinkRequest,
-  ProviderFailoverConfig,
-  ProviderFailoverStrategy,
   ProfileConfig,
   ProfileOpenSurface,
   CodexProfileConfigFormat,
@@ -209,6 +208,10 @@ import type {
   RouterFallbackConfig,
   RouterFallbackMode,
   RouterRule,
+  RouterRuleCondition,
+  RouterRuleOperator,
+  RouterRuleRewrite,
+  RouterRuleRewriteOperation,
   RouterRuleType,
   TrayBalanceProgressConfig,
   TrayComponentVariants,
@@ -307,7 +310,7 @@ export  {
   ExternalLink, Gauge, Globe, Info, KeyRound, Layers3, LoaderCircle, MoveRight, Network,
   Palette, PanelLeftClose, PanelLeftOpen, Pause, Pencil, Play, Plus,
   Power, QrCode, RefreshCw, Route, Search, Server, Settings, ShieldCheck,
-  Trash2, UserRound, X, Area, Bar, BarChart, CartesianGrid,
+  Terminal, Trash2, UserRound, X, Area, Bar, BarChart, CartesianGrid,
   Cell, ComposedChart, LabelList, Line, Pie, PieChart, Tooltip,
   XAxis, YAxis, Badge, Button, Card, CardContent, CardHeader,
   CardTitle, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader,
@@ -326,7 +329,7 @@ export type {
   GatewayMcpServerTransport, GatewayMcpStdioMessageMode, GatewayMcpToolInfo, GatewayStatus, OverviewMetricKind, OverviewWidgetConfig, OverviewWidgetSize, OverviewWidgetType,
   OverviewWidgetVariant, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProviderAccountConfig, ProviderAccountConnectorConfig, ProviderAccountHttpJsonConnectorConfig,
   ProviderAccountMeter, ProviderAccountStandardConnectorConfig, ProviderAccountSnapshot, ProviderAccountTestPath, ProviderAccountTestResult, ProviderDeepLinkPayload, ProviderDeepLinkRequest,
-  ProviderCredentialConfig, ProviderFailoverConfig, ProviderFailoverStrategy,
+  ProviderCredentialConfig,
   ProfileConfig, ProfileOpenSurface, CodexProfileConfigFormat, ProfileScope, ProfileSurface, ProxyCertificateInstallResult, ProxyCertificateStatus, ProxyNetworkBody,
   ProxyNetworkExchange, ProxyNetworkSnapshot, ProxyStatus, RequestLogBody, RequestLogEntry, RequestLogListFilter, RequestLogPage,
   RequestLogStatusFilter, RouterConfig, RouterFallbackConfig, RouterFallbackMode, RouterRule, RouterRuleType, TrayComponentVariants,
@@ -813,6 +816,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Add API key": "添加 API 密钥",
       "Add key": "添加 Key",
       "Add limit": "添加限制",
+      "Add parameter": "添加参数",
       "Add Profile": "添加配置",
       "Add profile": "添加配置",
       "Add Provider": "添加供应商",
@@ -822,6 +826,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Add Routing Rule": "添加路由规则",
       "Add routing rule": "添加路由规则",
       "Advanced Settings...": "高级设置...",
+      "Advanced key options": "Key 高级选项",
       "Advanced settings": "高级设置",
       "Always": "始终",
       "Alias": "别名",
@@ -932,6 +937,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Concurrency": "并发",
       "Condition": "条件",
       "Conversation type": "会话类型",
+      "Mode": "模式",
+      "Match value": "匹配值",
       "Claude Design": "Claude Design",
       "Claude Design model": "Claude Design 模型",
       "Claude Design routes": "Claude Design 路由",
@@ -951,7 +958,6 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Credential saturated": "凭据已饱和",
       "Credentials JSON": "凭据 JSON",
       "Continue": "继续",
-      "Cooldown ms": "冷却时间（毫秒）",
       "Custom config path": "自定义配置路径",
       "Core gateway": "核心网关",
       "Cost": "成本",
@@ -1011,6 +1017,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Fallback targets": "失败降级目标",
       "Failure handling": "故障处理",
       "Forward agent messages": "转发 Agent 消息",
+      "Bot only forwards messages when opening the APP from CCR. CLI does not forward messages yet.": "Bot仅在使用CCR打开APP的情况下才会转发消息，cli目前不会转发消息",
       "Messages are forwarded only when using the corresponding app.": "仅在使用对应 App 时才会转发消息。",
       "First enabled": "首个启用规则",
       "Least utilized": "使用率最低",
@@ -1047,7 +1054,6 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Install extension": "安装扩展",
       "Install CA": "安装 CA",
       "Key": "键",
-      "Key failover strategy": "Key 失败切换策略",
       "keys": "个 Key",
       "Keep Claude Code default": "保持 Claude Code 默认值",
       "Keep default": "保持默认值",
@@ -1132,7 +1138,6 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "External provider link": "外部供应商链接",
       "Provider": "供应商",
       "Provider Analysis": "供应商分析",
-      "Provider credential IDs must be unique.": "供应商凭据 ID 不能重复。",
       "Provider credential JSON did not contain any API keys.": "供应商凭据 JSON 中没有可用 API Key。",
       "Provider credential JSON is invalid.": "供应商凭据 JSON 无效。",
       "Provider credential JSON must be an array or object.": "供应商凭据 JSON 必须是数组或对象。",
@@ -1182,7 +1187,16 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Request logs database": "请求日志数据库",
       "Request timeout ms": "请求超时 ms",
       "Requests": "请求",
-      "Rewrite request model": "改写请求模型",
+      "Rewrite request parameters": "改写请求参数",
+      "Set": "设置",
+      "Append to array": "追加到数组",
+      "Prepend to array": "插入到数组开头",
+      "Remove from array": "从数组移除",
+      "Replace in array": "替换数组元素",
+      "starts with": "开头匹配",
+      "contains": "包含",
+      "contains deep": "深度包含",
+      "not contains": "不包含",
       "Retries": "重试次数",
       "Retry": "继续重试",
       "Weighted order": "按权重排序",
@@ -1283,7 +1297,6 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Show all sessions": "显示所有会话",
       "Status": "状态",
       "Status codes": "状态码",
-      "Spillover threshold": "溢出阈值",
       "Stream": "流式",
       "Streaming": "流式",
       "Non-streaming": "非流式",
@@ -1801,26 +1814,51 @@ export const apiKeyLimitMetricOptions: Array<{ label: string; value: ApiKeyLimit
 ];
 
 export const routerRuleTypeOptions: Array<{ label: string; value: RouterRuleType }> = [
-  { label: "Long context", value: "long-context" },
-  { label: "Model prefix", value: "model-prefix" },
-  { label: "Thinking", value: "thinking" },
-  { label: "Web search", value: "web-search" },
-  { label: "Image content", value: "image" },
-  { label: "Subagent", value: "subagent" },
-  { label: "Always", value: "always" }
+  { label: "Condition", value: "condition" }
+];
+
+export type RouterConditionSource = "request.header" | "request.body";
+
+export const routerConditionSourceOptions: Array<{ label: string; value: RouterConditionSource }> = [
+  { label: "request.header", value: "request.header" },
+  { label: "request.body", value: "request.body" }
+];
+
+export const routerRuleOperatorOptions: Array<{ label: string; value: RouterRuleOperator }> = [
+  { label: "==", value: "==" },
+  { label: "!=", value: "!=" },
+  { label: ">=", value: ">=" },
+  { label: ">", value: ">" },
+  { label: "<=", value: "<=" },
+  { label: "<", value: "<" },
+  { label: "starts with", value: "starts-with" },
+  { label: "contains", value: "contains" },
+  { label: "contains deep", value: "contains-deep" },
+  { label: "not contains", value: "not-contains" }
+];
+
+export const routerRewriteOperationOptions: Array<{ label: string; value: RouterRuleRewriteOperation }> = [
+  { label: "Set", value: "set" },
+  { label: "Delete", value: "delete" },
+  { label: "Append to array", value: "array-append" },
+  { label: "Prepend to array", value: "array-prepend" },
+  { label: "Remove from array", value: "array-remove" },
+  { label: "Replace in array", value: "array-replace" }
+];
+
+const legacyRouterRuleTypes: RouterRuleType[] = [
+  "image",
+  "long-context",
+  "model-prefix",
+  "subagent",
+  "thinking",
+  "web-search"
 ];
 
 export const routerFallbackModeOptions: Array<{ label: string; value: RouterFallbackMode }> = [
   { label: "Off", value: "off" },
   { label: "Retry", value: "retry" },
   { label: "Fallback targets", value: "model-chain" }
-];
-
-export const providerFailoverStrategyOptions: Array<{ label: string; value: ProviderFailoverStrategy }> = [
-  { label: "Least utilized", value: "least-utilized" },
-  { label: "Priority spillover", value: "priority-spillover" },
-  { label: "Weighted order", value: "weighted-round-robin" },
-  { label: "Priority only", value: "failover-only" }
 ];
 
 export const removedLegacyRouterRuleIds = new Set([
@@ -1947,9 +1985,9 @@ export const navigation: Array<{ icon: LucideIcon; id: NavigationId }> = [
   { icon: Layers3, id: "providers" },
   { icon: UserRound, id: "profile" },
   { icon: Route, id: "routing" },
-  { icon: Box, id: "models" },
   { icon: Boxes, id: "virtual-models" },
   { icon: KeyRound, id: "api-keys" },
+  { icon: Box, id: "models" },
   { icon: Activity, id: "observability" },
   { icon: Database, id: "logs" },
   { icon: Server, id: "server" },
@@ -2362,9 +2400,6 @@ export type AddProviderDraft = {
   accountRefreshIntervalMs: string;
   apiKey: string;
   baseUrl: string;
-  credentialFailoverCooldownMs: string;
-  credentialFailoverStrategy: ProviderFailoverStrategy;
-  credentialSpilloverThreshold: string;
   credentials: ProviderCredentialDraft[];
   icon: string;
   modelSearch: string;
@@ -2479,13 +2514,29 @@ export type ApiKeyListItem = {
 };
 
 export type AddRoutingRuleDraft = {
+  conditionField: string;
+  conditionLeft: string;
+  conditionOperator: RouterRuleOperator;
+  conditionRight: string;
+  conditionSource: RouterConditionSource;
   enabled: boolean;
   fallback: RouterFallbackConfig;
   name: string;
   pattern: string;
+  rewriteKey: string;
+  rewriteValue: string;
+  rewrites: RoutingRewriteDraftRow[];
   target: string;
   threshold: string;
   type: RouterRuleType;
+};
+
+export type RoutingRewriteDraftRow = {
+  id: string;
+  key: string;
+  match: string;
+  operation: RouterRuleRewriteOperation;
+  value: string;
 };
 
 export type ClaudeDesignRouteRuleType = "always" | "image" | "long-context" | "model" | "model-prefix" | "thinking" | "web-search";
@@ -4992,6 +5043,7 @@ export function formatLogTokenSummary(entry: RequestLogEntry, t: (value: string)
     entry.totalTokens === 0 &&
     entry.inputTokens === 0 &&
     entry.outputTokens === 0 &&
+    entry.reasoningTokens === 0 &&
     entry.cacheReadTokens === 0 &&
     entry.cacheWriteTokens === 0
   ) {
@@ -5007,6 +5059,9 @@ export function formatLogTokenSummary(entry: RequestLogEntry, t: (value: string)
   }
   if (entry.cacheWriteTokens > 0) {
     values.push(`${formatCompactNumber(entry.cacheWriteTokens)} ${t("Cache write")}`);
+  }
+  if (entry.reasoningTokens > 0) {
+    values.push(`${formatCompactNumber(entry.reasoningTokens)} ${t("Thinking")}`);
   }
 
   return values.join("  ");
@@ -6078,20 +6133,167 @@ export function normalizeRouterRules(value: unknown): RouterRule[] | undefined {
       const pattern = stringValue(item.pattern);
       const target = stringValue(item.target);
       const threshold = Number(item.threshold);
+      const condition = normalizeRouterRuleCondition(item.condition ?? item) ?? routerRuleConditionFromLegacy(type, {
+        pattern,
+        threshold: Number.isFinite(threshold) && threshold > 0 ? Math.trunc(threshold) : undefined
+      });
+      const rewrites = normalizeRouterRuleRewrites(item);
       const rawFallback = item.fallback ?? item.failureFallback ?? item.fallbackStrategy;
       const fallback = isPlainRecord(rawFallback) ? normalizeRouterFallbackConfig(rawFallback) : undefined;
       return {
+        ...(condition ? { condition } : {}),
         enabled: typeof item.enabled === "boolean" ? item.enabled : true,
         ...(fallback ? { fallback } : {}),
         id,
         name,
         ...(pattern ? { pattern } : {}),
+        ...(rewrites.length === 1 ? { rewrite: rewrites[0] } : {}),
+        ...(rewrites.length > 0 ? { rewrites } : {}),
         ...(target ? { target } : {}),
         ...(Number.isFinite(threshold) && threshold > 0 ? { threshold: Math.trunc(threshold) } : {}),
-        type
+        type: condition && type !== "subagent" ? "condition" : type
       };
     })
     .filter((item): item is RouterRule => Boolean(item));
+}
+
+export function normalizeRouterRuleCondition(value: unknown): RouterRuleCondition | undefined {
+  if (!isPlainRecord(value)) {
+    return undefined;
+  }
+
+  const left =
+    stringValue(value.left) ??
+    stringValue(value.path) ??
+    stringValue(value.field) ??
+    stringValue(value.parameter);
+  const operator = parseRouterRuleOperator(value.operator ?? value.op);
+  const right = typeof value.right === "string"
+    ? value.right.trim()
+    : typeof value.value === "string"
+      ? value.value.trim()
+      : value.right !== undefined
+        ? String(value.right)
+        : value.value !== undefined
+          ? String(value.value)
+          : undefined;
+
+  return left && operator && right !== undefined
+    ? { left, operator, right }
+    : undefined;
+}
+
+export function parseRouterRuleOperator(value: unknown): RouterRuleOperator | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim();
+  return routerRuleOperatorOptions.some((option) => option.value === normalized)
+    ? normalized as RouterRuleOperator
+    : undefined;
+}
+
+function routerRuleConditionFromLegacy(
+  type: RouterRuleType,
+  input: { pattern?: string; threshold?: number }
+): RouterRuleCondition | undefined {
+  if (type === "long-context") {
+    return {
+      left: "request.tokenCount",
+      operator: ">",
+      right: String(input.threshold ?? "200000")
+    };
+  }
+  if (type === "model-prefix" && input.pattern) {
+    return {
+      left: "request.body.model",
+      operator: "starts-with",
+      right: input.pattern
+    };
+  }
+  if (type === "thinking") {
+    return {
+      left: "request.body.thinking",
+      operator: "==",
+      right: "true"
+    };
+  }
+  if (type === "web-search") {
+    return {
+      left: "request.body.tools",
+      operator: "contains-deep",
+      right: "web_search"
+    };
+  }
+  if (type === "image") {
+    return {
+      left: "request.body.messages",
+      operator: "contains-deep",
+      right: "image"
+    };
+  }
+  return undefined;
+}
+
+export function normalizeRouterRuleRewrites(rule: Record<string, unknown>): RouterRuleRewrite[] {
+  if (Array.isArray(rule.rewrites)) {
+    return rule.rewrites
+        .map((item) => normalizeRouterRuleRewrite(item))
+        .filter((item): item is RouterRuleRewrite => Boolean(item));
+  }
+  const rewrite = normalizeRouterRuleRewrite(rule.rewrite ?? rule.action);
+  const target = stringValue(rule.target);
+  return [
+    ...(rewrite ? [rewrite] : []),
+    ...(target ? [{ key: "request.body.model", operation: "set" as const, value: target }] : [])
+  ];
+}
+
+export function normalizeRouterRuleRewrite(value: unknown): RouterRuleRewrite | undefined {
+  if (!isPlainRecord(value)) {
+    return undefined;
+  }
+
+  const key =
+    stringValue(value.key) ??
+    stringValue(value.path) ??
+    stringValue(value.field) ??
+    stringValue(value.parameter);
+  const operation = parseRouterRewriteOperation(value.operation ?? value.op ?? value.type) ?? "set";
+  const rewriteValue = stringifyRewriteValue(value.value);
+  const match = stringifyRewriteValue(value.match);
+
+  if (!key) {
+    return undefined;
+  }
+  if (operation === "delete") {
+    return { key, operation };
+  }
+  if (operation === "array-replace") {
+    return match !== undefined && rewriteValue !== undefined
+      ? { key, match, operation, value: rewriteValue }
+      : undefined;
+  }
+  return rewriteValue !== undefined
+    ? { key, operation, value: rewriteValue }
+    : undefined;
+}
+
+export function parseRouterRewriteOperation(value: unknown): RouterRuleRewriteOperation | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  return routerRewriteOperationOptions.some((option) => option.value === normalized)
+    ? normalized as RouterRuleRewriteOperation
+    : undefined;
+}
+
+function stringifyRewriteValue(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  return value !== undefined ? String(value) : undefined;
 }
 
 export function parseRouterRuleType(value: unknown): RouterRuleType | undefined {
@@ -6104,7 +6306,7 @@ export function parseRouterRuleType(value: unknown): RouterRuleType | undefined 
 }
 
 export function isRouterRuleType(value: string): value is RouterRuleType {
-  return routerRuleTypeOptions.some((option) => option.value === value);
+  return routerRuleTypeOptions.some((option) => option.value === value) || legacyRouterRuleTypes.includes(value as RouterRuleType);
 }
 
 export function formatProxyTargets(targets: AppConfig["proxy"]["targets"]): string {
@@ -7814,34 +8016,105 @@ export function routeTargetOptions(modelOptions: Array<{ label: string; value: s
 }
 
 export function routerRuleTypeLabel(type: RouterRuleType): string {
-  return routerRuleTypeOptions.find((option) => option.value === type)?.label ?? type;
+  return type === "condition" ? "Condition" : "Legacy";
 }
 
 export function formatRouterRuleCondition(rule: RouterRule): string {
+  const condition = routerRuleConditionFromRule(rule);
+  if (condition) {
+    return `${condition.left} ${condition.operator} ${condition.right}`;
+  }
+  return "condition unset";
+}
+
+export function routerRuleConditionFromRule(rule: RouterRule, config?: AppConfig): RouterRuleCondition | undefined {
+  if (rule.condition) {
+    return rule.condition;
+  }
+  if (rule.type === "condition") {
+    return undefined;
+  }
   if (rule.type === "long-context") {
-    return `>${rule.threshold || "threshold"} tokens`;
+    return {
+      left: "request.tokenCount",
+      operator: ">",
+      right: String(rule.threshold ?? config?.Router.longContextThreshold ?? "200000")
+    };
   }
   if (rule.type === "model-prefix") {
-    return rule.pattern ? `starts with ${rule.pattern}` : "prefix unset";
+    return {
+      left: "request.body.model",
+      operator: "starts-with",
+      right: rule.pattern ?? ""
+    };
   }
   if (rule.type === "thinking") {
-    return "thinking enabled";
+    return {
+      left: "request.body.thinking",
+      operator: "==",
+      right: "true"
+    };
   }
   if (rule.type === "web-search") {
-    return "web_search tool";
+    return {
+      left: "request.body.tools",
+      operator: "contains-deep",
+      right: "web_search"
+    };
   }
   if (rule.type === "image") {
-    return "image content";
+    return {
+      left: "request.body.messages",
+      operator: "contains-deep",
+      right: "image"
+    };
   }
   if (rule.type === "subagent") {
-    return "subagent marker";
+    return {
+      left: "request.body.system.1.text",
+      operator: "==",
+      right: "<CCR-SUBAGENT-MODEL>"
+    };
   }
-  return "always";
+  return undefined;
 }
 
 export function formatRouterRuleTarget(rule: RouterRule): string {
-  const target = rule.type === "subagent" ? "Keep embedded request model" : rule.target || "No request rewrite";
-  return rule.fallback ? `${target} · ${formatRouterFallbackSummary(rule.fallback)}` : target;
+  const rewrites = routerRuleRewritesFromRule(rule);
+  const action = rewrites.length
+    ? rewrites.map(formatRouterRewriteSummary).join("; ")
+    : "No request rewrite";
+  return rule.fallback ? `${action} · ${formatRouterFallbackSummary(rule.fallback)}` : action;
+}
+
+export function routerRuleRewriteFromRule(rule: RouterRule): RouterRuleRewrite | undefined {
+  return routerRuleRewritesFromRule(rule)[0];
+}
+
+export function routerRuleRewritesFromRule(rule: RouterRule): RouterRuleRewrite[] {
+  if (rule.rewrites?.length) {
+    return rule.rewrites;
+  }
+  if (rule.rewrite) {
+    return [rule.rewrite];
+  }
+  return rule.target
+    ? [{ key: "request.body.model", operation: "set", value: rule.target }]
+    : [];
+}
+
+export function formatRouterRewriteSummary(rewrite: RouterRuleRewrite): string {
+  const operation = rewrite.operation ?? "set";
+  if (operation === "delete") {
+    return `delete ${rewrite.key}`;
+  }
+  if (operation === "array-replace") {
+    return `array-replace ${rewrite.key}: ${rewrite.match ?? ""} -> ${rewrite.value ?? ""}`;
+  }
+  if (operation.startsWith("array-")) {
+    return `${operation} ${rewrite.key}: ${rewrite.value ?? ""}`;
+  }
+  return `set ${rewrite.key} = ${rewrite.value ?? ""}`;
 }
 
 export function formatRouterFallbackSummary(fallback: RouterFallbackConfig): string {
@@ -7886,28 +8159,105 @@ export function routingRuleRowMatchesQuery(row: RoutingRuleRow, query: string): 
 }
 
 export function createRoutingRuleDraft(config?: AppConfig): AddRoutingRuleDraft {
-  const modelOptions = createRouteModelOptions(config?.Providers ?? []);
+  const rewrite = createRoutingRewriteDraftRow();
   return {
+    conditionField: "",
+    conditionLeft: "request.header.",
+    conditionOperator: "==",
+    conditionRight: "",
+    conditionSource: "request.header",
     enabled: true,
     fallback: normalizeRouterFallbackConfig(config?.Router.fallback),
-    name: "Long context",
+    name: "Condition",
     pattern: "",
-    target: modelOptions[0]?.value ?? "",
+    rewriteKey: rewrite.key,
+    rewriteValue: rewrite.value,
+    rewrites: [rewrite],
+    target: "",
     threshold: String(config?.Router.longContextThreshold || 200000),
-    type: "long-context"
+    type: "condition"
   };
 }
 
 export function createRoutingRuleDraftFromRule(rule: RouterRule, config?: AppConfig): AddRoutingRuleDraft {
-  const modelOptions = createRouteModelOptions(config?.Providers ?? []);
+  const condition = routerRuleConditionFromRule(rule, config);
+  const conditionPath = splitRouterConditionPath(condition?.left);
+  const rewrites = routerRuleRewritesFromRule(rule).map(createRoutingRewriteDraftRowFromRewrite);
+  const firstRewrite = rewrites[0] ?? createRoutingRewriteDraftRow();
   return {
+    conditionField: conditionPath.field,
+    conditionLeft: condition?.left ?? "request.header.",
+    conditionOperator: condition?.operator ?? "==",
+    conditionRight: condition?.right ?? "",
+    conditionSource: conditionPath.source,
     enabled: rule.enabled,
     fallback: normalizeRouterFallbackConfig(rule.fallback ?? config?.Router.fallback),
     name: rule.name,
     pattern: rule.pattern ?? "",
-    target: rule.target ?? modelOptions[0]?.value ?? "",
+    rewriteKey: firstRewrite.key,
+    rewriteValue: firstRewrite.value,
+    rewrites: rewrites.length ? rewrites : [firstRewrite],
+    target: rule.target ?? "",
     threshold: String(rule.threshold ?? config?.Router.longContextThreshold ?? 200000),
-    type: rule.type
+    type: "condition"
+  };
+}
+
+export function buildRouterConditionPath(source: RouterConditionSource, field: string): string {
+  const normalizedField = field.trim().replace(/^\.+/, "");
+  return normalizedField ? `${source}.${normalizedField}` : `${source}.`;
+}
+
+export function splitRouterConditionPath(value: string | undefined): { field: string; source: RouterConditionSource } {
+  const path = value?.trim() ?? "";
+  const source = routerConditionSourceOptions.find((option) =>
+    path === option.value || path.startsWith(`${option.value}.`)
+  )?.value ?? "request.header";
+  return {
+    field: path.startsWith(`${source}.`) ? path.slice(source.length + 1) : "",
+    source
+  };
+}
+
+export function createRoutingRewriteDraftRow(): RoutingRewriteDraftRow {
+  return {
+    id: `rewrite-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    key: "request.body.model",
+    match: "",
+    operation: "set",
+    value: ""
+  };
+}
+
+export function createRoutingRewriteDraftRowFromRewrite(rewrite: RouterRuleRewrite): RoutingRewriteDraftRow {
+  return {
+    id: `rewrite-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    key: rewrite.key,
+    match: rewrite.match ?? "",
+    operation: rewrite.operation ?? "set",
+    value: rewrite.value ?? ""
+  };
+}
+
+export function isRoutingRewriteDraftRowValid(row: RoutingRewriteDraftRow): boolean {
+  if (!row.key.trim()) {
+    return false;
+  }
+  if (row.operation === "delete") {
+    return true;
+  }
+  if (row.operation === "array-replace") {
+    return Boolean(row.match.trim() && row.value.trim());
+  }
+  return Boolean(row.value.trim());
+}
+
+export function routingRewriteFromDraftRow(row: RoutingRewriteDraftRow): RouterRuleRewrite {
+  return {
+    key: row.key.trim(),
+    ...(row.operation !== "set" ? { operation: row.operation } : { operation: "set" as const }),
+    ...(row.operation === "array-replace" ? { match: row.match.trim() } : {}),
+    ...(row.operation !== "delete" ? { value: row.value.trim() } : {})
   };
 }
 
@@ -8024,9 +8374,6 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
     ...accountDraft,
     apiKey: "",
     baseUrl: "",
-    credentialFailoverCooldownMs: "",
-    credentialFailoverStrategy: "least-utilized",
-    credentialSpilloverThreshold: "",
     credentials: [],
     icon: "",
     modelSearch: "",
@@ -8048,9 +8395,6 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
     ...accountDraft,
     apiKey: providerApiKey(provider),
     baseUrl,
-    credentialFailoverCooldownMs: provider.failover?.cooldownMs ? String(provider.failover.cooldownMs) : "",
-    credentialFailoverStrategy: provider.failover?.strategy ?? "least-utilized",
-    credentialSpilloverThreshold: provider.failover?.spilloverThreshold ? String(provider.failover.spilloverThreshold) : "",
     credentials: (provider.credentials ?? []).map(providerCredentialDraftFromConfig),
     icon: provider.icon ?? "",
     modelSearch: "",
@@ -8064,14 +8408,13 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
 }
 
 export function createProviderCredentialDraft(index = 0): ProviderCredentialDraft {
-  const id = `key-${index + 1}`;
   return {
     apiKey: "",
     enabled: true,
-    id,
+    id: "",
     limitsText: "",
     name: `Key ${index + 1}`,
-    priority: String(index + 1),
+    priority: "",
     weight: ""
   };
 }
@@ -8080,26 +8423,24 @@ export function providerCredentialDraftFromConfig(credential: ProviderCredential
   return {
     apiKey: credential.api_key || credential.apiKey || credential.apikey || "",
     enabled: credential.enabled !== false,
-    id: credential.id || `key-${index + 1}`,
+    id: credential.id ?? "",
     limitsText: credential.limits ? JSON.stringify(credential.limits, null, 2) : "",
-    name: credential.name ?? credential.label ?? credential.id ?? `Key ${index + 1}`,
-    priority: credential.priority !== undefined ? String(credential.priority) : String(index + 1),
+    name: credential.name ?? credential.label ?? `Key ${index + 1}`,
+    priority: credential.priority !== undefined ? String(credential.priority) : "",
     weight: credential.weight !== undefined ? String(credential.weight) : ""
   };
 }
 
 export function providerCredentialsFromDraft(draft: AddProviderDraft): ProviderCredentialConfig[] | string {
   const credentials: ProviderCredentialConfig[] = [];
-  const seenSlugs = new Set<string>();
 
   for (const [index, row] of draft.credentials.entries()) {
     const apiKey = row.apiKey.trim();
-    const name = row.name.trim();
-    const id = row.id.trim() || providerCredentialSlug(name || `key-${index + 1}`);
+    const name = row.name.trim() || `Key ${index + 1}`;
     const hasAnyValue = Boolean(
       apiKey ||
       row.id.trim() ||
-      name ||
+      row.name.trim() ||
       row.priority.trim() ||
       row.weight.trim() ||
       row.limitsText.trim()
@@ -8110,15 +8451,6 @@ export function providerCredentialsFromDraft(draft: AddProviderDraft): ProviderC
     if (!apiKey) {
       return "Provider credential rows require API keys.";
     }
-    if (!name) {
-      return "Provider credential rows require names.";
-    }
-
-    const slug = providerCredentialSlug(id);
-    if (seenSlugs.has(slug)) {
-      return "Provider credential IDs must be unique.";
-    }
-    seenSlugs.add(slug);
 
     const priority = row.priority.trim() ? positiveInteger(row.priority) : undefined;
     if (row.priority.trim() && priority === undefined) {
@@ -8137,7 +8469,7 @@ export function providerCredentialsFromDraft(draft: AddProviderDraft): ProviderC
     credentials.push({
       api_key: apiKey,
       enabled: row.enabled,
-      id,
+      ...(row.id.trim() ? { id: row.id.trim() } : {}),
       name,
       ...(limitsResult ? { limits: limitsResult } : {}),
       ...(priority !== undefined ? { priority } : {}),
@@ -8146,24 +8478,6 @@ export function providerCredentialsFromDraft(draft: AddProviderDraft): ProviderC
   }
 
   return credentials;
-}
-
-export function providerFailoverFromDraft(draft: AddProviderDraft): ProviderFailoverConfig | undefined {
-  if (draft.credentials.length === 0) {
-    return undefined;
-  }
-  const cooldownMs = draft.credentialFailoverCooldownMs.trim()
-    ? positiveInteger(draft.credentialFailoverCooldownMs)
-    : undefined;
-  const spilloverThreshold = draft.credentialSpilloverThreshold.trim()
-    ? Number(draft.credentialSpilloverThreshold)
-    : undefined;
-  const failover: ProviderFailoverConfig = {
-    strategy: draft.credentialFailoverStrategy,
-    ...(cooldownMs !== undefined ? { cooldownMs } : {}),
-    ...(Number.isFinite(spilloverThreshold) && spilloverThreshold !== undefined && spilloverThreshold > 0 ? { spilloverThreshold } : {})
-  };
-  return Object.keys(failover).length > 0 ? failover : undefined;
 }
 
 export function providerCredentialDraftPatchFromJson(text: string): Partial<AddProviderDraft> | string {
@@ -8193,20 +8507,8 @@ export function providerCredentialDraftPatchFromJson(text: string): Partial<AddP
     return "Provider credential JSON did not contain any API keys.";
   }
 
-  const failover = isPlainRecord(container.failover)
-    ? container.failover
-    : isPlainRecord(container.credentialFailover)
-      ? container.credentialFailover
-      : undefined;
-  const strategy = parseProviderFailoverStrategyDraft(stringValue(failover?.strategy) || stringValue(failover?.mode));
-  const cooldownMs = numberDraftString(failover?.cooldownMs) || numberDraftString(failover?.cooldown);
-  const spilloverThreshold = numberDraftString(failover?.spilloverThreshold) || numberDraftString(failover?.threshold);
-
   return {
-    credentials,
-    ...(strategy ? { credentialFailoverStrategy: strategy } : {}),
-    ...(cooldownMs ? { credentialFailoverCooldownMs: cooldownMs } : {}),
-    ...(spilloverThreshold ? { credentialSpilloverThreshold: spilloverThreshold } : {})
+    credentials
   };
 }
 
@@ -8214,27 +8516,14 @@ export function providerCredentialImportExample(): string {
   return JSON.stringify({
     credentials: [
       {
-        id: "main",
         name: "Main key",
-        api_key: "sk-...",
-        priority: 1,
-        limits: {
-          rpm: 60,
-          tpm: 100000
-        }
+        api_key: "sk-..."
       },
       {
-        id: "backup",
         name: "Backup key",
-        api_key: "sk-...",
-        priority: 2
+        api_key: "sk-..."
       }
-    ],
-    failover: {
-      strategy: "priority-spillover",
-      spilloverThreshold: 0.8,
-      cooldownMs: 60000
-    }
+    ]
   }, null, 2);
 }
 
@@ -8251,12 +8540,11 @@ function providerCredentialDraftFromUnknown(value: unknown, index: number): Prov
   if (!apiKey) {
     return undefined;
   }
-  const id = stringValue(value.id) || stringValue(value.name) || stringValue(value.label) || `key-${index + 1}`;
-  const name = stringValue(value.name) || stringValue(value.label) || id;
+  const name = stringValue(value.name) || stringValue(value.label) || `Key ${index + 1}`;
   return {
     apiKey,
     enabled: typeof value.enabled === "boolean" ? value.enabled : true,
-    id,
+    id: stringValue(value.id) || "",
     limitsText: isPlainRecord(value.limits) ? JSON.stringify(value.limits, null, 2) : "",
     name,
     priority: numberDraftString(value.priority),
@@ -8278,21 +8566,6 @@ function providerCredentialLimitsFromText(value: string): ApiKeyLimitConfig | un
   } catch {
     return "Provider credential limits JSON is invalid.";
   }
-}
-
-function parseProviderFailoverStrategyDraft(value: string | undefined): ProviderFailoverStrategy | undefined {
-  const normalized = value?.trim().toLowerCase().replace(/_/g, "-");
-  return providerFailoverStrategyOptions.some((option) => option.value === normalized)
-    ? normalized as ProviderFailoverStrategy
-    : undefined;
-}
-
-function providerCredentialSlug(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_.-]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "key";
 }
 
 function numberDraftString(value: unknown): string {
@@ -9128,6 +9401,9 @@ export function translateProbeProtocolMessage(message: string | undefined, trans
   if (!trimmed) {
     return "";
   }
+  if (isProbeAuthorizationMissingMessage(trimmed)) {
+    return "";
+  }
 
   const httpMatch = /^HTTP\s+(\d{3})(?::\s*(.*))?$/i.exec(trimmed);
   if (!httpMatch) {
@@ -9137,4 +9413,14 @@ export function translateProbeProtocolMessage(message: string | undefined, trans
   const status = httpMatch[1];
   const detail = httpMatch[2]?.trim();
   return detail ? `HTTP ${status}: ${translate(detail)}` : `HTTP ${status}`;
+}
+
+function isProbeAuthorizationMissingMessage(message: string): boolean {
+  const normalized = message
+    .trim()
+    .replace(/[。.\s]+$/g, "")
+    .toLowerCase();
+  const match = /^http\s+401\s*:\s*(.*)$/i.exec(normalized);
+  const detail = match?.[1] ?? normalized;
+  return detail.includes("header中未收到authorization参数") && detail.includes("无法进行身份验证");
 }

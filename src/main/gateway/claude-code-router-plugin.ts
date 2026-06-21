@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import { EventEmitter } from "node:events";
-import type { AppConfig, RouterConfig, RouterFallbackConfig, RouterRule } from "../../shared/app";
+import type { AppConfig, RouterConfig, RouterFallbackConfig, RouterRule, RouterRuleCondition, RouterRuleRewrite } from "../../shared/app";
 
 type HeaderValue = string | string[] | undefined;
 
@@ -26,6 +26,8 @@ type ConfiguredRouteDecision = {
   fallback?: RouterFallbackConfig;
   model?: string;
   reason: string;
+  rewrite?: RouterRuleRewrite;
+  rewrites?: RouterRuleRewrite[];
 };
 
 const requireFromHere = createRequire(__filename);
@@ -56,10 +58,21 @@ export class ClaudeCodeRouterPlugin {
 
     const customModel = await this.resolveCustomRoute(request);
     const configuredDecision = resolveConfiguredRouteDecision(request, this.config, tokenCount);
-    const routedModel = customModel ?? configuredDecision.model;
-    if (routedModel) {
-      body.model = routedModel;
+    if (customModel) {
+      body.model = customModel;
+    } else {
+      if (configuredDecision.rewrites?.length) {
+        for (const rewrite of configuredDecision.rewrites) {
+          applyRouterRewrite(rewrite, request);
+        }
+      } else if (configuredDecision.rewrite) {
+        applyRouterRewrite(configuredDecision.rewrite, request);
+      }
+      if (configuredDecision.model) {
+        body.model = configuredDecision.model;
+      }
     }
+    const routedModel = customModel ?? configuredDecision.model ?? readString(body.model);
 
     return {
       body,
@@ -141,41 +154,431 @@ function resolveRouterRule(
     return subagentModel ? { fallback, model: normalizeRouteSelector(subagentModel), reason: "subagent" } : undefined;
   }
 
-  const target = normalizeRouteSelector(rule.target);
-  if (!target) {
+  const rewrites = routerRuleRewritesFromRule(rule);
+  if (rewrites.length === 0) {
     return undefined;
   }
 
-  if (rule.type === "always") {
-    return { fallback, model: target, reason: routerRuleReason(rule) };
+  if (rule.type === "condition") {
+    return rule.condition && routerRuleConditionMatches(rule.condition, request)
+      ? routerRuleRewriteDecision(rule, rewrites, fallback)
+      : undefined;
   }
 
   if (rule.type === "long-context") {
     const threshold = rule.threshold || router.longContextThreshold || 200000;
-    return tokenCount > threshold ? { fallback, model: target, reason: routerRuleReason(rule) } : undefined;
+    return tokenCount > threshold ? routerRuleRewriteDecision(rule, rewrites, fallback) : undefined;
   }
 
   if (rule.type === "model-prefix") {
     const pattern = readString(rule.pattern);
     const requestedModel = readString(request.body.model);
     return pattern && requestedModel?.startsWith(pattern)
-      ? { fallback, model: target, reason: routerRuleReason(rule) }
+      ? routerRuleRewriteDecision(rule, rewrites, fallback)
       : undefined;
   }
 
   if (rule.type === "thinking") {
-    return request.body.thinking ? { fallback, model: target, reason: routerRuleReason(rule) } : undefined;
+    return request.body.thinking ? routerRuleRewriteDecision(rule, rewrites, fallback) : undefined;
   }
 
   if (rule.type === "web-search") {
-    return hasWebSearchTool(request.body.tools) ? { fallback, model: target, reason: routerRuleReason(rule) } : undefined;
+    return hasWebSearchTool(request.body.tools) ? routerRuleRewriteDecision(rule, rewrites, fallback) : undefined;
   }
 
   if (rule.type === "image") {
-    return hasImageContent(request.body.messages) ? { fallback, model: target, reason: routerRuleReason(rule) } : undefined;
+    return hasImageContent(request.body.messages) ? routerRuleRewriteDecision(rule, rewrites, fallback) : undefined;
   }
 
   return undefined;
+}
+
+function routerRuleRewriteDecision(
+  rule: RouterRule,
+  rewrites: RouterRuleRewrite[],
+  fallback: RouterFallbackConfig
+): ConfiguredRouteDecision {
+  const modelRewrite = rewrites.find((rewrite) => (rewrite.operation ?? "set") === "set" && rewrite.key === "request.body.model");
+  return {
+    fallback,
+    model: modelRewrite?.value ? normalizeRouteSelector(modelRewrite.value) : undefined,
+    reason: routerRuleReason(rule),
+    rewrite: rewrites[0],
+    rewrites
+  };
+}
+
+function routerRuleRewritesFromRule(rule: RouterRule): RouterRuleRewrite[] {
+  if (rule.rewrites?.length) {
+    return rule.rewrites;
+  }
+  if (rule.rewrite) {
+    return [rule.rewrite];
+  }
+  return rule.target
+    ? [{ key: "request.body.model", operation: "set", value: rule.target }]
+    : [];
+}
+
+function applyRouterRewrite(rewrite: RouterRuleRewrite, request: MutableRequestLike): void {
+  const parts = rewrite.key
+    .split(".")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const [scope, section, ...rest] = parts;
+  if (scope !== "request") {
+    return;
+  }
+
+  if (section === "header" || section === "headers") {
+    const name = rest.join(".").trim().toLowerCase();
+    if (!name) {
+      return;
+    }
+    if ((rewrite.operation ?? "set") === "delete") {
+      delete request.headers[name];
+    } else if (rewrite.value !== undefined) {
+      request.headers[name] = rewrite.value;
+    }
+    return;
+  }
+
+  if (section === "body") {
+    applyBodyRewrite(request.body, rest, rewrite);
+  }
+}
+
+function applyBodyRewrite(body: Record<string, unknown>, path: string[], rewrite: RouterRuleRewrite): void {
+  const operation = rewrite.operation ?? "set";
+  if (operation === "delete") {
+    deletePathValue(body, path);
+    return;
+  }
+
+  const value = rewrite.key === "request.body.model" && rewrite.value !== undefined
+    ? normalizeRouteSelector(rewrite.value) ?? rewrite.value
+    : rewrite.value !== undefined
+      ? parseRewriteLiteral(rewrite.value)
+      : undefined;
+
+  if (operation === "set") {
+    setPathValue(body, path, value);
+    return;
+  }
+
+  const current = readPathValue(body, path);
+  const array = Array.isArray(current) ? [...current] : [];
+  if (operation === "array-append") {
+    array.push(value);
+    setPathValue(body, path, array);
+    return;
+  }
+  if (operation === "array-prepend") {
+    array.unshift(value);
+    setPathValue(body, path, array);
+    return;
+  }
+  if (operation === "array-remove") {
+    setPathValue(body, path, array.filter((item) => !arrayElementMatches(item, value)));
+    return;
+  }
+  if (operation === "array-replace" && rewrite.match !== undefined) {
+    const match = parseRewriteLiteral(rewrite.match);
+    setPathValue(body, path, array.map((item) => arrayElementMatches(item, match) ? value : item));
+  }
+}
+
+function setPathValue(target: Record<string, unknown>, path: string[], value: unknown): void {
+  if (path.length === 0) {
+    return;
+  }
+
+  let current: unknown = target;
+  for (let index = 0; index < path.length - 1; index += 1) {
+    const key = path[index];
+    const nextKey = path[index + 1];
+    if (Array.isArray(current)) {
+      const arrayIndex = Number(key);
+      if (!Number.isInteger(arrayIndex)) {
+        return;
+      }
+      if (!isRecord(current[arrayIndex]) && !Array.isArray(current[arrayIndex])) {
+        current[arrayIndex] = numericPathSegment(nextKey) ? [] : {};
+      }
+      current = current[arrayIndex];
+      continue;
+    }
+    if (!isRecord(current)) {
+      return;
+    }
+    if (!isRecord(current[key]) && !Array.isArray(current[key])) {
+      current[key] = numericPathSegment(nextKey) ? [] : {};
+    }
+    current = current[key];
+  }
+
+  const lastKey = path[path.length - 1];
+  if (Array.isArray(current)) {
+    const arrayIndex = Number(lastKey);
+    if (Number.isInteger(arrayIndex)) {
+      current[arrayIndex] = value;
+    }
+    return;
+  }
+  if (isRecord(current)) {
+    current[lastKey] = value;
+  }
+}
+
+function deletePathValue(target: Record<string, unknown>, path: string[]): void {
+  if (path.length === 0) {
+    return;
+  }
+  const parent = readPathValue(target, path.slice(0, -1));
+  const key = path[path.length - 1];
+  if (Array.isArray(parent)) {
+    const index = Number(key);
+    if (Number.isInteger(index)) {
+      parent.splice(index, 1);
+    }
+    return;
+  }
+  if (isRecord(parent)) {
+    delete parent[key];
+  }
+}
+
+function numericPathSegment(value: string): boolean {
+  return /^\d+$/.test(value);
+}
+
+function parseRewriteLiteral(value: string): unknown {
+  const trimmed = value.trim();
+  if (trimmed === "true") return true;
+  if (trimmed === "false") return false;
+  if (trimmed === "null") return null;
+  const json = parseJsonLiteral(trimmed);
+  if (json.ok) return json.value;
+  if (
+    (trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  const parsedNumber = Number(trimmed);
+  return trimmed && Number.isFinite(parsedNumber) ? parsedNumber : trimmed;
+}
+
+function routerRuleConditionMatches(condition: RouterRuleCondition, request: MutableRequestLike): boolean {
+  if (condition.left.trim().startsWith("response.")) {
+    return false;
+  }
+  const actual = resolveRouterConditionValue(condition.left, request);
+  const expected = parseConditionLiteral(condition.right);
+
+  if (condition.operator === "starts-with") {
+    const actualText = conditionComparableText(actual);
+    const expectedText = conditionComparableText(expected);
+    return actualText !== undefined && expectedText !== undefined && actualText.startsWith(expectedText);
+  }
+
+  if (condition.operator === "contains" || condition.operator === "not-contains" || condition.operator === "contains-deep") {
+    const matched = condition.operator === "contains-deep"
+      ? valueContainsDeep(actual, expected)
+      : valueContains(actual, expected);
+    return condition.operator === "not-contains" ? !matched : matched;
+  }
+
+  if (condition.operator === "==" || condition.operator === "!=") {
+    const matched = valuesEqual(actual, expected);
+    return condition.operator === "==" ? matched : !matched;
+  }
+
+  const actualNumber = numberValue(actual);
+  const expectedNumber = numberValue(expected);
+  if (actualNumber !== undefined && expectedNumber !== undefined) {
+    if (condition.operator === ">") return actualNumber > expectedNumber;
+    if (condition.operator === ">=") return actualNumber >= expectedNumber;
+    if (condition.operator === "<") return actualNumber < expectedNumber;
+    if (condition.operator === "<=") return actualNumber <= expectedNumber;
+  }
+
+  const actualText = conditionComparableText(actual);
+  const expectedText = conditionComparableText(expected);
+  if (actualText === undefined || expectedText === undefined) {
+    return false;
+  }
+  if (condition.operator === ">") return actualText > expectedText;
+  if (condition.operator === ">=") return actualText >= expectedText;
+  if (condition.operator === "<") return actualText < expectedText;
+  if (condition.operator === "<=") return actualText <= expectedText;
+  return false;
+}
+
+function resolveRouterConditionValue(path: string, request: MutableRequestLike): unknown {
+  const parts = path
+    .split(".")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length === 0) {
+    return undefined;
+  }
+
+  const [scope, section, ...rest] = parts;
+  if (scope === "response") {
+    return undefined;
+  }
+  if (scope !== "request") {
+    return undefined;
+  }
+
+  if (section === "header" || section === "headers") {
+    return readRequestHeader(request.headers, rest.join("."));
+  }
+  if (section === "body") {
+    return readPathValue(request.body, rest);
+  }
+  if (section === "method") {
+    return request.method;
+  }
+  if (section === "url") {
+    return request.url;
+  }
+  if (section === "tokenCount" || section === "token_count") {
+    return request.tokenCount;
+  }
+  if (section === "sessionId" || section === "session_id") {
+    return request.sessionId;
+  }
+
+  return readPathValue(request.body, [section, ...rest].filter(Boolean));
+}
+
+function readRequestHeader(headers: Record<string, HeaderValue>, name: string): string | undefined {
+  const normalized = name.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  const direct = readHeader(headers[normalized]);
+  if (direct !== undefined) {
+    return direct;
+  }
+  const matchedKey = Object.keys(headers).find((key) => key.toLowerCase() === normalized);
+  return matchedKey ? readHeader(headers[matchedKey]) : undefined;
+}
+
+function readPathValue(value: unknown, path: string[]): unknown {
+  return path.reduce<unknown>((current, part) => {
+    if (Array.isArray(current)) {
+      const index = Number(part);
+      return Number.isInteger(index) ? current[index] : undefined;
+    }
+    return isRecord(current) ? current[part] : undefined;
+  }, value);
+}
+
+function parseConditionLiteral(value: string): unknown {
+  const trimmed = value.trim();
+  if (trimmed === "true") return true;
+  if (trimmed === "false") return false;
+  if (trimmed === "null") return null;
+  if (trimmed === "undefined") return undefined;
+  const json = parseJsonLiteral(trimmed);
+  if (json.ok) return json.value;
+  if (
+    (trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  const parsedNumber = Number(trimmed);
+  return trimmed && Number.isFinite(parsedNumber) ? parsedNumber : trimmed;
+}
+
+function valuesEqual(actual: unknown, expected: unknown): boolean {
+  if (actual === expected) {
+    return true;
+  }
+  const actualNumber = numberValue(actual);
+  const expectedNumber = numberValue(expected);
+  if (actualNumber !== undefined && expectedNumber !== undefined) {
+    return actualNumber === expectedNumber;
+  }
+  return conditionComparableText(actual) === conditionComparableText(expected);
+}
+
+function valueContains(actual: unknown, expected: unknown): boolean {
+  if (Array.isArray(actual)) {
+    return actual.some((item) => arrayElementMatches(item, expected));
+  }
+  if (typeof actual === "string") {
+    const expectedText = conditionComparableText(expected);
+    return expectedText !== undefined && actual.includes(expectedText);
+  }
+  return false;
+}
+
+function valueContainsDeep(actual: unknown, expected: unknown): boolean {
+  if (valueContains(actual, expected) || valuesEqual(actual, expected)) {
+    return true;
+  }
+  if (Array.isArray(actual)) {
+    return actual.some((item) => valueContainsDeep(item, expected));
+  }
+  if (isRecord(actual)) {
+    return Object.values(actual).some((item) => valueContainsDeep(item, expected));
+  }
+  const actualText = conditionComparableText(actual);
+  const expectedText = conditionComparableText(expected);
+  return actualText !== undefined && expectedText !== undefined && actualText.includes(expectedText);
+}
+
+function arrayElementMatches(actual: unknown, expected: unknown): boolean {
+  if (isRecord(expected) && isRecord(actual)) {
+    return Object.entries(expected).every(([key, expectedValue]) => arrayElementMatches(actual[key], expectedValue));
+  }
+  if (Array.isArray(expected) && Array.isArray(actual)) {
+    return expected.length === actual.length && expected.every((item, index) => arrayElementMatches(actual[index], item));
+  }
+  return valuesEqual(actual, expected);
+}
+
+function parseJsonLiteral(value: string): { ok: true; value: unknown } | { ok: false } {
+  if (!value || (!value.startsWith("{") && !value.startsWith("["))) {
+    return { ok: false };
+  }
+  try {
+    return { ok: true, value: JSON.parse(value) as unknown };
+  } catch {
+    return { ok: false };
+  }
+}
+
+function numberValue(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value !== "string" || !value.trim()) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function conditionComparableText(value: unknown): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return "null";
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => conditionComparableText(item)).filter((item): item is string => item !== undefined).join(",");
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return String(value);
 }
 
 function routerRuleReason(rule: RouterRule): string {

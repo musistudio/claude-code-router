@@ -6,24 +6,34 @@ import {
   normalizeProfileScope, normalizeProfileSurface, parseProfileModelValue, Pencil, Plus, PopoverContent,
   profileAgentLabel, profileAgentOptions, ProfileConfig, profileModelDisplayValue, profileModelMatchesQuery, profileModelProviderMatchesQuery,
   profileModelProviderOptions, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
-  Play, RefreshCw, Search, Select, SelectControl, Toggle, translateOptions, Trash2, useAppText, type ProfileOpenSurface, type VirtualModelProfileConfig,
+  Play, RefreshCw, Search, Select, SelectControl, Terminal, Toggle, translateOptions, Trash2, useAppText, type ProfileOpenSurface, type VirtualModelProfileConfig,
   copyTextToClipboard,
   useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, X
 } from "../shared";
+
+type ProfileActionBusy = {
+  profileId: string;
+  surface: ProfileOpenSurface;
+};
+
 export function ProfileView({
   addProfile,
   applyError,
+  copyProfileCliCommand,
   config,
   editProfile,
-  openProfile,
+  openProfileApp,
+  profileActionBusy,
   removeProfile,
   updateProfileItem
 }: {
   addProfile: (agent?: ProfileConfig["agent"]) => void;
   applyError: string;
+  copyProfileCliCommand: (index: number) => void;
   config: AppConfig;
   editProfile: (index: number) => void;
-  openProfile: (index: number) => void;
+  openProfileApp: (index: number) => void;
+  profileActionBusy?: ProfileActionBusy;
   removeProfile: (index: number) => void;
   updateProfileItem: (index: number, patch: Partial<ProfileConfig>) => void;
 }) {
@@ -64,7 +74,11 @@ export function ProfileView({
             {profiles.map((profile, index) => {
               const scope = normalizeProfileScope(profile.scope);
               const surface = normalizeProfileSurface(profile.surface);
+              const openSurfaces = profileOpenSurfaces(profile);
               const summaryItems = profileSummaryItems(profile, config, t);
+              const cliBusy = profileActionBusy?.profileId === profile.id && profileActionBusy.surface === "cli";
+              const appBusy = profileActionBusy?.profileId === profile.id && profileActionBusy.surface === "app";
+              const profileActionDisabled = !profile.enabled || Boolean(profileActionBusy);
 
               return (
                 <div className="rounded-md border border-border bg-muted/20 p-3" key={profile.id}>
@@ -95,9 +109,30 @@ export function ProfileView({
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       <Toggle checked={profile.enabled} onChange={(enabled) => updateProfileItem(index, { enabled })} />
-                      {profile.enabled ? (
-                        <Button aria-label={`${t("Open")} ${profile.name || t("Profile")}`} onClick={() => openProfile(index)} size="iconSm" title={t("Open")} type="button" variant="ghost">
-                          <Play className="h-3.5 w-3.5" />
+                      {openSurfaces.includes("cli") ? (
+                        <Button
+                          aria-label={`${t("Copy")} ${t("CLI command")} ${profile.name || t("Profile")}`}
+                          disabled={profileActionDisabled}
+                          onClick={() => copyProfileCliCommand(index)}
+                          size="iconSm"
+                          title={profile.enabled ? t("CLI command") : t("Disabled")}
+                          type="button"
+                          variant="ghost"
+                        >
+                          {cliBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Terminal className="h-3.5 w-3.5" />}
+                        </Button>
+                      ) : null}
+                      {openSurfaces.includes("app") ? (
+                        <Button
+                          aria-label={`${t("Open")} ${t("App")} ${profile.name || t("Profile")}`}
+                          disabled={profileActionDisabled}
+                          onClick={() => openProfileApp(index)}
+                          size="iconSm"
+                          title={profile.enabled ? t("Open") : t("Disabled")}
+                          type="button"
+                          variant="ghost"
+                        >
+                          {appBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
                         </Button>
                       ) : null}
                       <Button aria-label={`${t("Edit")} ${profile.name || t("Profile")}`} onClick={() => editProfile(index)} size="iconSm" title={t("Edit")} type="button" variant="ghost">
@@ -920,19 +955,26 @@ function BotGatewaySelectForm({
     });
   }
 
-  const botScopeHint = t("Messages are forwarded only when using the corresponding app.");
+  const botScopeHint = t("Bot only forwards messages when opening the APP from CCR. CLI does not forward messages yet.");
 
   return (
     <div className="rounded-md border border-border bg-muted/20 px-3 py-2">
       <div className="flex min-w-0 items-center justify-between gap-3">
         <span className="flex min-w-0 items-center gap-1.5">
           <span className="text-[12px] font-medium">{t("Bot")}</span>
-          <span aria-label={botScopeHint} title={botScopeHint}>
+          <button
+            aria-label={botScopeHint}
+            className="group relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
+            type="button"
+          >
             <Info
               aria-hidden="true"
               className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
             />
-          </span>
+            <span className="pointer-events-none invisible absolute left-0 top-full z-[90] mt-1.5 w-[260px] max-w-[calc(100vw-64px)] whitespace-normal rounded-md border border-border bg-popover px-2 py-1.5 text-left text-[11px] font-medium leading-4 text-popover-foreground opacity-0 shadow-card transition-opacity group-hover:visible group-hover:opacity-100 group-focus:visible group-focus:opacity-100 sm:w-[280px]">
+              {botScopeHint}
+            </span>
+          </button>
         </span>
         <Toggle checked={draft.botEnabled} onChange={updateEnabled} />
       </div>

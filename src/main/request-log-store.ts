@@ -40,11 +40,18 @@ type UsageNumbers = {
   inputIncludesCacheTokens?: boolean;
   inputTokens?: number;
   outputTokens?: number;
+  reasoningTokens?: number;
   totalTokens?: number;
 };
 
 type UsageSnapshot = UsageNumbers & {
   model?: string;
+};
+
+type RequestLogUsageContext = {
+  model: string;
+  path: string;
+  provider: string;
 };
 
 type RequestLogRecordInput = {
@@ -107,6 +114,7 @@ type StoredRequestLogEntry = {
   outputTokens: number;
   path: string;
   provider: string;
+  reasoningTokens: number;
   requestBody: RequestLogBody;
   requestHeaders: Record<string, string | string[]>;
   requestId: string;
@@ -195,6 +203,7 @@ class RequestLogStore {
       route.provider;
     const inputTokens = normalizeCount(usage.inputTokens);
     const outputTokens = normalizeCount(usage.outputTokens);
+    const reasoningTokens = normalizeCount(usage.reasoningTokens);
     const cacheReadTokens = normalizeCount(usage.cacheReadTokens);
     const cacheWriteTokens = normalizeCount(usage.cacheWriteTokens);
     const totalTokens =
@@ -249,6 +258,7 @@ class RequestLogStore {
         duration_ms,
         input_tokens,
         output_tokens,
+        reasoning_tokens,
         cache_read_tokens,
         cache_write_tokens,
         total_tokens,
@@ -266,7 +276,7 @@ class RequestLogStore {
         response_body_size_bytes,
         response_body_truncated,
         error
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     statement.run(
@@ -288,6 +298,7 @@ class RequestLogStore {
       normalizeCount(input.durationMs),
       inputTokens,
       outputTokens,
+      reasoningTokens,
       cacheReadTokens,
       cacheWriteTokens,
       totalTokens,
@@ -319,6 +330,7 @@ class RequestLogStore {
     if (!hasRequestLogWithRequestId(database, requestId)) {
       return false;
     }
+    const existingUsageContext = readRequestLogUsageContext(database, requestId);
 
     const sets: string[] = [];
     const params: SqlValue[] = [];
@@ -332,6 +344,9 @@ class RequestLogStore {
 
     const url = normalizeFilterValue(input.url);
     const path = normalizeFilterValue(input.path) ?? pathFromUrl(url);
+    const usagePath = path ?? existingUsageContext.path;
+    const modelFromTrace = normalizeFilterValue(input.model);
+    const providerFromTrace = normalizeFilterValue(input.provider);
     const statusCode = input.statusCode === undefined ? undefined : normalizeCount(input.statusCode);
     const requestHeaders = input.requestHeaders === undefined ? undefined : sanitizeHeaders(input.requestHeaders);
     const responseHeaders = input.responseHeaders === undefined ? undefined : sanitizeHeaders(input.responseHeaders);
@@ -342,8 +357,8 @@ class RequestLogStore {
     pushValue("method", normalizeFilterValue(input.method));
     pushValue("path", path);
     pushValue("url", url);
-    pushValue("provider", normalizeFilterValue(input.provider));
-    pushValue("model", normalizeFilterValue(input.model));
+    pushValue("provider", providerFromTrace);
+    pushValue("model", modelFromTrace);
     if (statusCode !== undefined && statusCode > 0) {
       pushValue("status_code", statusCode);
       pushValue("ok", isSuccessStatus(statusCode, undefined) ? 1 : 0);
@@ -353,6 +368,46 @@ class RequestLogStore {
     }
     if (responseHeaders) {
       pushValue("response_headers", JSON.stringify(responseHeaders));
+    }
+    if (input.responseBodyText !== undefined || responseHeaders) {
+      const bodyUsage = input.responseBodyText === undefined
+        ? undefined
+        : extractUsageFromBody(input.responseBodyText);
+      const usage: UsageSnapshot = normalizeUsageInputTokens<UsageSnapshot>(extractUsageFromBillingHeaders(responseHeaders) ?? bodyUsage, {
+        path: usagePath,
+        usageHint: bodyUsage
+      }) ?? {};
+      if (hasUsageNumbers(usage)) {
+        const inputTokens = normalizeCount(usage.inputTokens);
+        const outputTokens = normalizeCount(usage.outputTokens);
+        const reasoningTokens = normalizeCount(usage.reasoningTokens);
+        const cacheReadTokens = normalizeCount(usage.cacheReadTokens);
+        const cacheWriteTokens = normalizeCount(usage.cacheWriteTokens);
+        const totalTokens =
+          normalizeCount(usage.totalTokens) ||
+          inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens;
+        const model = normalizeLabel(usage.model ?? modelFromTrace ?? existingUsageContext.model, "unknown");
+        const provider = normalizeLabel(providerFromTrace ?? existingUsageContext.provider, "unknown");
+        const cost = await estimateUsageCostUsd({
+          cacheReadTokens,
+          cacheWriteTokens,
+          inputTokens,
+          model,
+          outputTokens,
+          provider
+        });
+
+        pushValue("input_tokens", inputTokens);
+        pushValue("output_tokens", outputTokens);
+        pushValue("reasoning_tokens", reasoningTokens);
+        pushValue("cache_read_tokens", cacheReadTokens);
+        pushValue("cache_write_tokens", cacheWriteTokens);
+        pushValue("total_tokens", totalTokens);
+        pushValue("cost_usd", cost?.amountUsd ?? null);
+        if (usage.model && !modelFromTrace) {
+          pushValue("model", model);
+        }
+      }
     }
     if (hasCredentialLogHeaders(responseHeaders ?? {}) || hasCredentialLogHeaders(mergedRequestHeaders ?? {})) {
       const credentialInfo = readCredentialLogInfo(responseHeaders ?? {}, mergedRequestHeaders ?? {});
@@ -437,6 +492,7 @@ class RequestLogStore {
             duration_ms,
             input_tokens,
             output_tokens,
+            reasoning_tokens,
             cache_read_tokens,
             cache_write_tokens,
             total_tokens,
@@ -502,6 +558,7 @@ class RequestLogStore {
             duration_ms,
             input_tokens,
             output_tokens,
+            reasoning_tokens,
             cache_read_tokens,
             cache_write_tokens,
             total_tokens,
@@ -608,6 +665,7 @@ class RequestLogStore {
         duration_ms INTEGER NOT NULL DEFAULT 0,
         input_tokens INTEGER NOT NULL DEFAULT 0,
         output_tokens INTEGER NOT NULL DEFAULT 0,
+        reasoning_tokens INTEGER NOT NULL DEFAULT 0,
         cache_read_tokens INTEGER NOT NULL DEFAULT 0,
         cache_write_tokens INTEGER NOT NULL DEFAULT 0,
         total_tokens INTEGER NOT NULL DEFAULT 0,
@@ -1737,6 +1795,7 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   addColumn("duration_ms", "INTEGER NOT NULL DEFAULT 0");
   addColumn("input_tokens", "INTEGER NOT NULL DEFAULT 0");
   addColumn("output_tokens", "INTEGER NOT NULL DEFAULT 0");
+  addColumn("reasoning_tokens", "INTEGER NOT NULL DEFAULT 0");
   addColumn("cache_read_tokens", "INTEGER NOT NULL DEFAULT 0");
   addColumn("cache_write_tokens", "INTEGER NOT NULL DEFAULT 0");
   addColumn("total_tokens", "INTEGER NOT NULL DEFAULT 0");
@@ -1970,6 +2029,7 @@ function toRequestLogEntry(row: Record<string, SqlValue>): StoredRequestLogEntry
     outputTokens: normalizeCount(row.output_tokens),
     path: normalizeLabel(String(row.path ?? ""), "/"),
     provider: normalizeLabel(String(row.provider ?? ""), "unknown"),
+    reasoningTokens: normalizeCount(row.reasoning_tokens),
     requestBody,
     requestHeaders,
     requestId: String(row.request_id ?? ""),
@@ -2117,6 +2177,15 @@ function readRequestHeadersForRequestId(database: SqlDatabase, requestId: string
   return row ? parseHeaderJson(row.request_headers) : {};
 }
 
+function readRequestLogUsageContext(database: SqlDatabase, requestId: string): RequestLogUsageContext {
+  const row = queryRows(database, "SELECT model, path, provider FROM request_logs WHERE request_id = ? LIMIT 1", [requestId])[0];
+  return {
+    model: normalizeLabel(String(row?.model ?? ""), "unknown"),
+    path: normalizeLabel(String(row?.path ?? ""), ""),
+    provider: normalizeLabel(String(row?.provider ?? ""), "unknown")
+  };
+}
+
 function mergeRequestHeadersForRawTrace(
   existingHeaders: Record<string, string | string[]>,
   upstreamHeaders: Record<string, string | string[]>
@@ -2176,11 +2245,14 @@ function headerValue(headers: Record<string, string | string[]>, name: string): 
 function extractUsageFromBillingHeaders(headers: Headers | HeaderRecord | undefined): UsageNumbers | undefined {
   const inputTokens = readNumberResponseHeader(headers, "x-gateway-billing-input-tokens");
   const outputTokens = readNumberResponseHeader(headers, "x-gateway-billing-output-tokens");
+  const reasoningTokens =
+    readNumberResponseHeader(headers, "x-gateway-billing-reasoning-tokens") ??
+    readNumberResponseHeader(headers, "x-gateway-billing-thinking-tokens");
   const cacheReadTokens = readNumberResponseHeader(headers, "x-gateway-billing-cache-read-tokens");
   const cacheWriteTokens = readNumberResponseHeader(headers, "x-gateway-billing-cache-write-tokens");
   const totalTokens = readNumberResponseHeader(headers, "x-gateway-billing-total-tokens");
 
-  if ([inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens].every((value) => value === undefined)) {
+  if ([inputTokens, outputTokens, reasoningTokens, cacheReadTokens, cacheWriteTokens, totalTokens].every((value) => value === undefined)) {
     return undefined;
   }
 
@@ -2189,6 +2261,7 @@ function extractUsageFromBillingHeaders(headers: Headers | HeaderRecord | undefi
     cacheWriteTokens,
     inputTokens,
     outputTokens,
+    reasoningTokens,
     totalTokens
   };
 }
@@ -2269,6 +2342,11 @@ function extractUsageSnapshot(payload: unknown): UsageSnapshot | undefined {
     : isRecord(usage.prompt_tokens_details)
       ? usage.prompt_tokens_details
       : undefined;
+  const outputDetails = isRecord(usage.output_tokens_details)
+    ? usage.output_tokens_details
+    : isRecord(usage.completion_tokens_details)
+      ? usage.completion_tokens_details
+      : undefined;
   const hasAnthropicCacheFields =
     usage.cache_read_input_tokens !== undefined ||
     usage.cache_creation_input_tokens !== undefined;
@@ -2297,6 +2375,11 @@ function extractUsageSnapshot(payload: unknown): UsageSnapshot | undefined {
       asString(response.modelVersion) ??
       asString(payload.modelVersion),
     outputTokens: asNumber(usage.output_tokens) ?? asNumber(usage.completion_tokens),
+    reasoningTokens:
+      asNumber(outputDetails?.reasoning_tokens) ??
+      asNumber(outputDetails?.thinking_tokens) ??
+      asNumber(usage.reasoning_tokens) ??
+      asNumber(usage.thinking_tokens),
     totalTokens: asNumber(usage.total_tokens)
   };
 }
@@ -2315,6 +2398,7 @@ function hasUsageNumbers(snapshot: UsageNumbers): boolean {
     snapshot.cacheWriteTokens,
     snapshot.inputTokens,
     snapshot.outputTokens,
+    snapshot.reasoningTokens,
     snapshot.totalTokens
   ].some((value) => value !== undefined);
 }

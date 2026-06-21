@@ -22,7 +22,7 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@the-next-ai/ai-gateway": "file:../../next-ai/gateway",
+    "@the-next-ai/ai-gateway": "^1.0.0",
     "@the-next-ai/bot-gateway-sdk": "^0.1.0",
     "better-sqlite3": "^12.11.1",
     "electron-updater": "^6.8.9",
