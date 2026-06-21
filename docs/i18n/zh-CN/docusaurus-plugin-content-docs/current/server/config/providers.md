@@ -65,6 +65,25 @@ sidebar_position: 2
 }
 ```
 
+### Requesty
+
+Requesty 是一个兼容 OpenAI 的网关。它使用与 OpenRouter 相同的 `provider/model` 命名方式，因此复用 `openrouter` 转换器。参见 [requesty.ai](https://requesty.ai)、[docs.requesty.ai](https://docs.requesty.ai) 以及[模型列表](https://app.requesty.ai/router/list)。
+
+```json
+{
+  "name": "requesty",
+  "api_base_url": "https://router.requesty.ai/v1/chat/completions",
+  "api_key": "your-api-key",
+  "models": [
+    "openai/gpt-4o-mini",
+    "anthropic/claude-sonnet-4-5"
+  ],
+  "transformer": {
+    "use": ["openrouter"]
+  }
+}
+```
+
 ### Ollama（本地模型）
 
 ```json

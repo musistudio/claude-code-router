@@ -83,6 +83,20 @@
       }
     },
     {
+      "name": "requesty",
+      "api_base_url": "https://router.requesty.ai/v1/chat/completions",
+      "api_key": "$REQUESTY_API_KEY",
+      "models": [
+        "openai/gpt-4o-mini",
+        "anthropic/claude-sonnet-4-5"
+      ],
+      "transformer": {
+        "use": [
+          "openrouter"
+        ]
+      }
+    },
+    {
       "name": "deepseek",
       "api_base_url": "https://api.deepseek.com/chat/completions",
       "api_key": "sk-",
