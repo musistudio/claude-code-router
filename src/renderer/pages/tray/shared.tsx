@@ -63,12 +63,10 @@ export const trayText: Record<ResolvedLanguage, Record<string, string>> = {
     "Cost": "成本",
     "Credit balance": "信用余额",
     "Current balance": "当前余额",
-    "Daily": "每日",
     "5h quota": "5 小时额度",
     "Granted balance": "赠送余额",
     "Input": "输入",
     "Monthly budget": "月度预算",
-    "Monthly": "每月",
     "Model Share": "模型占比",
     "No account data configured": "未配置账户数据",
     "No model yet": "暂无模型",
@@ -92,7 +90,6 @@ export const trayText: Record<ResolvedLanguage, Record<string, string>> = {
     "Unavailable": "不可用",
     "Updated just now": "刚刚更新",
     "Voucher balance": "代金券余额",
-    "Weekly": "每周",
     "Weekly quota": "周额度",
     "Usage Detail": "用量详情",
     "Usage Overview": "用量概览",
@@ -601,7 +598,20 @@ export function formatDuration(value: number): string {
 }
 
 export function compareAccountSnapshots(a: ProviderAccountSnapshot, b: ProviderAccountSnapshot): number {
-  return accountStatusRank(b.status) - accountStatusRank(a.status) || a.provider.localeCompare(b.provider);
+  return (
+    accountStatusRank(b.status) - accountStatusRank(a.status) ||
+    a.provider.localeCompare(b.provider) ||
+    accountSnapshotCredentialLabel(a).localeCompare(accountSnapshotCredentialLabel(b))
+  );
+}
+
+export function accountSnapshotLabel(snapshot: ProviderAccountSnapshot): string {
+  const credential = accountSnapshotCredentialLabel(snapshot);
+  return credential ? `${snapshot.provider} / ${credential}` : snapshot.provider;
+}
+
+export function accountSnapshotCredentialLabel(snapshot: ProviderAccountSnapshot): string {
+  return snapshot.credentialLabel?.trim() || snapshot.credentialId?.trim() || "";
 }
 
 export function accountStatusRank(status: ProviderAccountSnapshot["status"]): number {
@@ -689,27 +699,9 @@ export function formatAccountReset(value: string): string {
   return `${Math.round(hours / 24)}d`;
 }
 
-export function formatAccountMeterSchedule(meter: ProviderAccountMeter, translate: (value: string) => string): string | undefined {
-  const windowLabel = accountMeterWindowLabel(meter.window, translate);
-  const resetLabel = meter.resetAt ? formatAccountReset(meter.resetAt) : undefined;
-  return [windowLabel, resetLabel].filter(Boolean).join(" · ") || undefined;
-}
-
-function accountMeterWindowLabel(value: string | undefined, translate: (value: string) => string): string | undefined {
-  const normalized = value?.trim();
-  if (!normalized) {
-    return undefined;
-  }
-  if (normalized === "daily") {
-    return translate("Daily");
-  }
-  if (normalized === "weekly") {
-    return translate("Weekly");
-  }
-  if (normalized === "monthly") {
-    return translate("Monthly");
-  }
-  return normalized;
+export function formatAccountMeterTitle(meter: ProviderAccountMeter, translate: (value: string) => string): string {
+  const label = translateAccountMeterLabel(meter.label, translate);
+  return meter.resetAt ? `${label} (${formatAccountReset(meter.resetAt)})` : label;
 }
 
 export function accountStatusClass(status: ProviderAccountSnapshot["status"]): string {

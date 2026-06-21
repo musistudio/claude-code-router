@@ -66,7 +66,7 @@ export function RoutingView({
           <div className="border-b border-border/60 px-4 py-3">
             <RouterFallbackControl
               fallback={fallback}
-              label={t("Default failure handling")}
+              label={t("Default on failure")}
               onChange={updateFallback}
               providers={providers}
             />
@@ -87,7 +87,7 @@ export function RoutingView({
                 <div className="sticky top-0 z-10 grid h-10 grid-cols-[minmax(160px,0.8fr)_minmax(220px,1fr)_minmax(240px,1.15fr)_84px_148px] items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   <div className="truncate">{t("Name")}</div>
                   <div className="truncate">{t("Condition")}</div>
-	                  <div className="truncate">{t("Path")}</div>
+                  <div className="truncate">{t("Request action")}</div>
                   <div className="truncate">{t("Status")}</div>
                   <div aria-hidden="true" />
                 </div>
@@ -232,7 +232,7 @@ function RouterFallbackControl({
         ) : null}
         {fallback.mode === "model-chain" ? (
           <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-end gap-2 sm:col-span-2">
-            <Field label={t("Fallback model")}>
+            <Field label={t("Fallback target")}>
               <RouteTargetControl
                 modelOptions={modelOptions}
                 onChange={setFallbackModelDraft}
@@ -249,7 +249,7 @@ function RouterFallbackControl({
       {fallback.mode === "model-chain" ? (
         <div className="mt-3 flex min-w-0 flex-wrap gap-2">
           {fallback.models.length === 0 ? (
-            <div className="text-[12px] text-muted-foreground">{t("No fallback models configured")}</div>
+            <div className="text-[12px] text-muted-foreground">{t("No fallback targets configured")}</div>
           ) : (
             fallback.models.map((model, index) => (
               <div className="flex max-w-full items-center gap-1 rounded-md border border-border bg-background px-2 py-1" key={`${model}-${index}`}>
@@ -400,7 +400,7 @@ export function AddRoutingRuleDialog({
             <AnimatePresence initial={false}>
               {requiresTarget ? (
                 <AnimatedFieldSlot className="sm:col-span-2" key="routing-target">
-                  <Field label={t("Target model")}>
+                  <Field label={t("Rewrite request model")}>
                     <RouteTargetControl
                       modelOptions={modelOptions}
                       onChange={(target) => onChange({ target })}
@@ -430,7 +430,7 @@ export function AddRoutingRuleDialog({
             <RouterFallbackControl
               className="sm:col-span-2"
               fallback={draft.fallback}
-              label={t("Failure handling")}
+              label={t("On failure")}
               onChange={(fallback) => onChange({ fallback })}
               providers={providers}
             />

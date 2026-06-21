@@ -327,6 +327,13 @@ export function LogsView({
             options={logSelectOptions(t("全部模型"), page.options.models, filter.model)}
             value={filter.model ?? ""}
           />
+          <Select
+            aria-label={t("Filter request log credential")}
+            className="h-7 w-[150px] bg-[length:14px] px-2 pr-7 text-[11px]"
+            onValueChange={(value) => updateFilter({ credential: value || undefined })}
+            options={logSelectOptions(t("All credentials"), page.options.credentials, filter.credential)}
+            value={filter.credential ?? ""}
+          />
           <span className="network-count rounded-full px-2 py-0.5 text-[11px] font-semibold">{page.total}</span>
           <button
             aria-label={t("Previous page")}
@@ -376,11 +383,12 @@ export function LogsView({
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="network-table-scroll min-h-0 flex-1 overflow-auto">
             <div className="w-full min-w-0">
-              <div className="network-table-header sticky top-0 z-10 grid h-9 grid-cols-[minmax(0,0.85fr)_minmax(96px,0.42fr)_minmax(104px,0.45fr)_minmax(0,0.9fr)_minmax(0,0.78fr)_82px] items-center border-b text-[12px] font-semibold">
+              <div className="network-table-header sticky top-0 z-10 grid h-9 grid-cols-[minmax(0,0.8fr)_minmax(92px,0.38fr)_minmax(98px,0.4fr)_minmax(0,0.78fr)_minmax(120px,0.42fr)_minmax(0,0.68fr)_82px] items-center border-b text-[12px] font-semibold">
                 <NetworkHeaderCell label={t("时间")} />
                 <NetworkHeaderCell label={t("状态")} />
                 <NetworkHeaderCell label={t("Stream")} />
                 <NetworkHeaderCell label={t("模型")} />
+                <NetworkHeaderCell label={t("Credential")} />
                 <NetworkHeaderCell label={t("令牌")} />
                 <NetworkHeaderCell label={t("持续时间")} />
               </div>
@@ -399,7 +407,7 @@ export function LogsView({
                     <button
                       aria-expanded={expanded}
                       className={cn(
-                        "network-row grid h-10 w-full grid-cols-[minmax(0,0.85fr)_minmax(96px,0.42fr)_minmax(104px,0.45fr)_minmax(0,0.9fr)_minmax(0,0.78fr)_82px] items-center border-0 px-0 text-left text-[12px] font-semibold outline-none transition-colors",
+                        "network-row grid h-10 w-full grid-cols-[minmax(0,0.8fr)_minmax(92px,0.38fr)_minmax(98px,0.4fr)_minmax(0,0.78fr)_minmax(120px,0.42fr)_minmax(0,0.68fr)_82px] items-center border-0 px-0 text-left text-[12px] font-semibold outline-none transition-colors",
                         index % 2 === 0 ? "network-row-even" : "network-row-odd",
                         expanded && "network-row-selected"
                       )}
@@ -416,6 +424,7 @@ export function LogsView({
                       </div>
                       <LogStreamCell entry={item} />
                       <LogModelRouteCell entry={item} />
+                      <LogCredentialCell entry={item} />
                       <div className="network-row-secondary truncate px-2" title={formatLogTokenSummary(item, t)}>{formatLogTokenSummary(item, t)}</div>
                       <div className="network-row-secondary truncate px-2">{formatDuration(item.durationMs)}</div>
                     </button>
@@ -449,9 +458,12 @@ function LogExpandedDetails({ entry }: { entry: RequestLogEntry }) {
           {entry.method} {entry.path}
         </span>
       </div>
-      <div className="network-body-meta grid grid-cols-2 gap-y-2 border-b px-3 py-2 text-[12px] sm:grid-cols-4 lg:grid-cols-8">
+      <div className="network-body-meta grid grid-cols-2 gap-y-2 border-b px-3 py-2 text-[12px] sm:grid-cols-4 lg:grid-cols-10">
         <LogMetric label={t("持续时间")} value={formatDuration(entry.durationMs)} />
         <LogMetric label={t("Stream")} value={entry.isStream ? t("Streaming") : t("Non-streaming")} />
+        <LogMetric label={t("Credential")} value={entry.credentialId || t("None")} />
+        <LogMetric label={t("Credential chain")} value={entry.credentialChain.length ? entry.credentialChain.join(" > ") : t("None")} />
+        <LogMetric label={t("Credential saturated")} value={entry.credentialSaturated ? t("Yes") : t("No")} />
         <LogMetric label={t("输入")} value={formatCompactNumber(entry.inputTokens)} />
         <LogMetric label={t("输出")} value={formatCompactNumber(entry.outputTokens)} />
         <LogMetric label={t("缓存读取")} value={formatCompactNumber(entry.cacheReadTokens)} />
@@ -494,6 +506,15 @@ function LogModelRouteCell({ entry }: { entry: RequestLogEntry }) {
       <MoveRight className="mx-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
       <span className="min-w-0 max-w-[45%] truncate">{responseModel}</span>
     </div>
+  );
+}
+
+function LogCredentialCell({ entry }: { entry: RequestLogEntry }) {
+  const label = entry.credentialId || "-";
+  const title = entry.credentialChain.length ? entry.credentialChain.join(" > ") : label;
+
+  return (
+    <div className="network-row-secondary truncate px-2" title={title}>{label}</div>
   );
 }
 

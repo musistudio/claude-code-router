@@ -1,12 +1,27 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import http, { type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { createRequire } from "node:module";
 import path from "node:path";
-import initSqlJs from "sql.js";
+import { createBetterSqliteDatabase, type BetterSqliteDatabase, type BetterSqliteStatement } from "./sqlite-native";
 
 type MaybePromise<T> = T | Promise<T>;
-export type SqlDatabase = InstanceType<Awaited<ReturnType<typeof initSqlJs>>["Database"]>;
-export type SqliteValue = number | string | Uint8Array | null;
+export type SqliteValue = bigint | Buffer | number | string | Uint8Array | null;
+export type SqliteExecResult = {
+  columns: string[];
+  values: SqliteValue[][];
+};
+export type SqliteStatement = {
+  bind: (params?: SqliteValue[]) => void;
+  free: () => void;
+  getAsObject: () => Record<string, SqliteValue>;
+  run: (params?: SqliteValue[]) => void;
+  step: () => boolean;
+};
+export type SqlDatabase = {
+  close: () => void;
+  exec: (sql: string, params?: SqliteValue[]) => SqliteExecResult[];
+  prepare: (sql: string) => SqliteStatement;
+  run: (sql: string, params?: SqliteValue[]) => SqlDatabase;
+};
 
 export type HttpBackendRegistration = {
   handler: (request: IncomingMessage, response: ServerResponse) => MaybePromise<void>;
@@ -39,12 +54,9 @@ type RegisteredBackendServer = RegisteredHttpBackend & {
   server: Server;
 };
 
-const requireFromHere = createRequire(__filename);
-
 class BackendService {
   private backends: RegisteredBackendServer[] = [];
   private sqliteStores: SqliteStoreImpl[] = [];
-  private sqlJs?: Promise<Awaited<ReturnType<typeof initSqlJs>>>;
 
   async registerHttpBackend(ownerId: string, backend: HttpBackendRegistration): Promise<RegisteredHttpBackend> {
     const server = http.createServer((request, response) => {
@@ -88,8 +100,7 @@ class BackendService {
     const filename = options.filename || `${sanitizeFileSegment(ownerId)}.sqlite`;
     const dbFile = path.isAbsolute(filename) ? filename : path.join(dataDir, filename);
     mkdirSync(path.dirname(dbFile), { recursive: true });
-    const SQL = await this.getSqlJs();
-    const database = openSqliteDatabaseWithRecovery(SQL, ownerId, dbFile);
+    const database = openSqliteDatabaseWithRecovery(ownerId, dbFile);
     const store = new SqliteStoreImpl(ownerId, dbFile, database);
     this.sqliteStores.push(store);
     if (options.migrate) {
@@ -122,11 +133,6 @@ class BackendService {
     ]);
     await Promise.all([...ownerIds].map((ownerId) => this.stopOwner(ownerId)));
   }
-
-  private getSqlJs(): Promise<Awaited<ReturnType<typeof initSqlJs>>> {
-    this.sqlJs ??= initSqlJs({ locateFile: () => requireFromHere.resolve("sql.js/dist/sql-wasm.wasm") });
-    return this.sqlJs;
-  }
 }
 
 class SqliteStoreImpl implements SqliteStore {
@@ -141,28 +147,20 @@ class SqliteStoreImpl implements SqliteStore {
   }
 
   persist(): void {
-    writeFileSync(this.dbFile, Buffer.from(this.database.export()));
+    // better-sqlite3 writes mutations directly to the database/WAL. Keep this
+    // method for the plugin API without reintroducing whole-database rewrites.
   }
 
   close(): void {
-    this.persist();
     this.database.close();
   }
 }
 
 export const backendService = new BackendService();
 
-function openSqliteDatabaseWithRecovery(
-  SQL: Awaited<ReturnType<typeof initSqlJs>>,
-  ownerId: string,
-  dbFile: string
-): SqlDatabase {
-  if (!existsSync(dbFile)) {
-    return new SQL.Database();
-  }
-
+function openSqliteDatabaseWithRecovery(ownerId: string, dbFile: string): SqlDatabase {
   try {
-    const database = new SQL.Database(readFileSync(dbFile));
+    const database = openBetterSqliteDatabase(dbFile);
     assertSqliteDatabaseIntegrity(database);
     return database;
   } catch (error) {
@@ -171,13 +169,143 @@ function openSqliteDatabaseWithRecovery(
     }
 
     const backupFile = nextCorruptSqliteBackupPath(dbFile);
-    copyFileSync(dbFile, backupFile);
+    if (existsSync(dbFile)) {
+      copyFileSync(dbFile, backupFile);
+    }
+    removeSqliteDatabaseFiles(dbFile);
     console.warn(
       `[backend:${ownerId}] SQLite store is corrupt and will be rebuilt: ${dbFile}. ` +
       `Corrupt copy saved to ${backupFile}. Error: ${formatError(error)}`
     );
-    return new SQL.Database();
+    return openBetterSqliteDatabase(dbFile);
   }
+}
+
+function openBetterSqliteDatabase(dbFile: string): SqlDatabase {
+  const raw = createBetterSqliteDatabase(dbFile);
+  raw.pragma("journal_mode = WAL");
+  raw.pragma("synchronous = NORMAL");
+  raw.pragma("busy_timeout = 5000");
+  return new SqliteCompatDatabase(raw);
+}
+
+class SqliteCompatDatabase implements SqlDatabase {
+  constructor(private readonly raw: BetterSqliteDatabase) {}
+
+  close(): void {
+    this.raw.close();
+  }
+
+  exec(sql: string, params: SqliteValue[] = []): SqliteExecResult[] {
+    const normalizedParams = normalizeSqliteParams(params);
+    if (normalizedParams.length === 0 && !sqlCanReturnRows(sql)) {
+      this.raw.exec(sql);
+      return [];
+    }
+
+    const statement = this.raw.prepare(sql);
+    if (!statement.reader) {
+      statement.run(...normalizedParams);
+      return [];
+    }
+
+    const columns = statement.columns().map((column) => column.name);
+    const rows = statement.all(...normalizedParams) as Array<Record<string, unknown>>;
+    return [{
+      columns,
+      values: rows.map((row) => columns.map((column) => normalizeSqliteValue(row[column])))
+    }];
+  }
+
+  prepare(sql: string): SqliteStatement {
+    return new SqliteCompatStatement(this.raw.prepare(sql));
+  }
+
+  run(sql: string, params: SqliteValue[] = []): SqlDatabase {
+    const normalizedParams = normalizeSqliteParams(params);
+    if (normalizedParams.length === 0) {
+      this.raw.exec(sql);
+    } else {
+      this.raw.prepare(sql).run(...normalizedParams);
+    }
+    return this;
+  }
+}
+
+class SqliteCompatStatement implements SqliteStatement {
+  private boundParams: SqliteValue[] = [];
+  private currentRow: Record<string, SqliteValue> = {};
+  private rowIndex = -1;
+  private rows?: Array<Record<string, SqliteValue>>;
+
+  constructor(private readonly statement: BetterSqliteStatement) {}
+
+  bind(params: SqliteValue[] = []): void {
+    this.boundParams = normalizeSqliteParams(params);
+    this.currentRow = {};
+    this.rowIndex = -1;
+    this.rows = undefined;
+  }
+
+  free(): void {
+    this.currentRow = {};
+    this.rows = undefined;
+  }
+
+  getAsObject(): Record<string, SqliteValue> {
+    return { ...this.currentRow };
+  }
+
+  run(params?: SqliteValue[]): void {
+    const normalizedParams = params === undefined ? this.boundParams : normalizeSqliteParams(params);
+    this.statement.run(...normalizedParams);
+  }
+
+  step(): boolean {
+    if (!this.statement.reader) {
+      return false;
+    }
+    this.rows ??= (this.statement.all(...this.boundParams) as Array<Record<string, unknown>>)
+      .map((row) => normalizeSqliteRow(row));
+    this.rowIndex += 1;
+    const row = this.rows[this.rowIndex];
+    if (!row) {
+      this.currentRow = {};
+      return false;
+    }
+    this.currentRow = row;
+    return true;
+  }
+}
+
+function sqlCanReturnRows(sql: string): boolean {
+  return /^(?:\s|--[^\n]*\n|\/\*[\s\S]*?\*\/)*(?:select|pragma|with|explain)\b/i.test(sql);
+}
+
+function normalizeSqliteParams(params: SqliteValue[]): SqliteValue[] {
+  return params.map((value) => normalizeSqliteValue(value));
+}
+
+function normalizeSqliteRow(row: Record<string, unknown>): Record<string, SqliteValue> {
+  return Object.fromEntries(
+    Object.entries(row).map(([key, value]) => [key, normalizeSqliteValue(value)])
+  );
+}
+
+function normalizeSqliteValue(value: unknown): SqliteValue {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value === "bigint" || typeof value === "number" || typeof value === "string") {
+    return value;
+  }
+  if (Buffer.isBuffer(value)) {
+    return value;
+  }
+  if (value instanceof Uint8Array) {
+    return Buffer.from(value);
+  }
+  return String(value);
 }
 
 function assertSqliteDatabaseIntegrity(database: SqlDatabase): void {
@@ -209,6 +337,12 @@ function nextCorruptSqliteBackupPath(dbFile: string): string {
     }
   }
   return `${base}-${process.pid}`;
+}
+
+function removeSqliteDatabaseFiles(dbFile: string): void {
+  rmSync(dbFile, { force: true });
+  rmSync(`${dbFile}-wal`, { force: true });
+  rmSync(`${dbFile}-shm`, { force: true });
 }
 
 function sendJson(response: ServerResponse, statusCode: number, body: unknown): void {

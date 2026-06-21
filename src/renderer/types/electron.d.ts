@@ -104,6 +104,7 @@ declare global {
       updateInstall: () => Promise<void>;
       waitBotGatewayQrLogin: (request: BotGatewayQrLoginWaitRequest) => Promise<BotGatewayQrLoginWaitResult>;
       onBeforeQuit: (callback: () => void) => () => void;
+      onOpenSettingsRequest: (callback: () => void) => () => void;
       onProviderDeepLink: (callback: (request: ProviderDeepLinkRequest) => void) => () => void;
       onUpdateStatusChanged: (callback: (status: AppUpdateStatus) => void) => () => void;
     };

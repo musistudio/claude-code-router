@@ -21,6 +21,7 @@ export const IPC_CHANNELS = {
   appListMcpServerTools: "ccr:app:list-mcp-server-tools",
   appOpenBuiltInBrowser: "ccr:app:open-built-in-browser",
   appOpenExternal: "ccr:app:open-external",
+  appOpenSettings: "ccr:app:open-settings",
   appOpenProfile: "ccr:app:open-profile",
   appApplyClaudeAppGateway: "ccr:app:apply-claude-app-gateway",
   appApplyProfile: "ccr:app:apply-profile",

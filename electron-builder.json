@@ -2,7 +2,10 @@
   "appId": "com.claudecoderouter.desktop",
   "productName": "Claude Code Router",
   "asar": true,
-  "npmRebuild": false,
+  "asarUnpack": [
+    "**/*.node"
+  ],
+  "npmRebuild": true,
   "publish": [
     {
       "provider": "github",

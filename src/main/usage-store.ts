@@ -1,10 +1,9 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { EventEmitter } from "node:events";
-import { createRequire } from "node:module";
 import { dirname } from "node:path";
-import initSqlJs from "sql.js";
 import { USAGE_DB_FILE } from "./constants";
 import { estimateUsageCostUsd } from "./model-pricing-service";
+import { createBetterSqliteDatabase, type BetterSqliteDatabase } from "./sqlite-native";
 import { normalizeUsageInputTokens } from "./usage-normalization";
 import type {
   GatewayProviderProtocol,
@@ -16,12 +15,8 @@ import type {
   UsageTotals
 } from "../shared/app";
 
-type SqlDatabase = InstanceType<Awaited<ReturnType<typeof initSqlJs>>["Database"]>;
-type SqlValue = number | string | Uint8Array | null;
-type QueryExecResult = {
-  columns: string[];
-  values: SqlValue[][];
-};
+type SqlDatabase = BetterSqliteDatabase;
+type SqlValue = bigint | Buffer | number | string | null;
 
 type UsageNumbers = {
   cacheReadTokens?: number;
@@ -35,6 +30,7 @@ type UsageNumbers = {
 type UsageEventInput = {
   client?: string;
   createdAt?: string;
+  credentialId?: string;
   durationMs: number;
   method: string;
   model?: string;
@@ -69,6 +65,7 @@ type StoredUsageEvent = {
   costSource: string;
   costUsd: number;
   createdAt: string;
+  credentialId: string;
   durationMs: number;
   id: number;
   inputTokens: number;
@@ -86,7 +83,6 @@ type UsageSnapshot = UsageNumbers & {
   model?: string;
 };
 
-const requireFromHere = createRequire(__filename);
 const usageEvents = new EventEmitter();
 const emptyTotals: UsageTotals = {
   avgDurationMs: 0,
@@ -119,6 +115,7 @@ class UsageStore {
     const route = splitRouteSelector(event.model);
     const model = normalizeLabel(route.model ?? event.model, "unknown");
     const provider = normalizeLabel(event.provider ?? route.provider, "unknown");
+    const credentialId = normalizeLabel(event.credentialId, "");
     const cost = await estimateUsageCostUsd({
       cacheReadTokens,
       cacheWriteTokens,
@@ -137,6 +134,7 @@ class UsageStore {
         path,
         model,
         provider,
+        credential_id,
         status_code,
         duration_ms,
         input_tokens,
@@ -146,33 +144,29 @@ class UsageStore {
         total_tokens,
         cost_usd,
         cost_source
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    try {
-      statement.run([
-        event.createdAt ?? new Date().toISOString(),
-        event.requestId ?? "",
-        normalizeLabel(event.client, "unknown"),
-        event.method,
-        event.path,
-        model,
-        provider,
-        normalizeCount(event.statusCode),
-        normalizeCount(event.durationMs),
-        inputTokens,
-        outputTokens,
-        cacheReadTokens,
-        cacheWriteTokens,
-        totalTokens,
-        cost?.amountUsd ?? null,
-        cost?.source ?? ""
-      ]);
-      this.persist();
-      usageEvents.emit("recorded");
-    } finally {
-      statement.free();
-    }
+    statement.run(
+      event.createdAt ?? new Date().toISOString(),
+      event.requestId ?? "",
+      normalizeLabel(event.client, "unknown"),
+      event.method,
+      event.path,
+      model,
+      provider,
+      credentialId,
+      normalizeCount(event.statusCode),
+      normalizeCount(event.durationMs),
+      inputTokens,
+      outputTokens,
+      cacheReadTokens,
+      cacheWriteTokens,
+      totalTokens,
+      cost?.amountUsd ?? null,
+      cost?.source ?? ""
+    );
+    usageEvents.emit("recorded");
   }
 
   async getStats(range: UsageStatsRange = "7d", filter: UsageStatsFilter = {}): Promise<UsageStatsSnapshot> {
@@ -180,9 +174,7 @@ class UsageStore {
     const now = new Date();
     const since = getRangeSince(range, now);
     const query = buildUsageStatsQuery(since, filter);
-    const events = readRows(
-      database.exec(query.sql, query.params)[0]
-    ).map(toStoredUsageEvent);
+    const events = queryRows(database, query.sql, query.params).map(toStoredUsageEvent);
 
     return {
       clientModels: buildClientModelRows(events),
@@ -199,9 +191,7 @@ class UsageStore {
   async getTotalsSince(since: Date, filter: UsageStatsFilter = {}, options: UsageStatsQueryOptions = {}): Promise<UsageTotals> {
     const database = await this.getDatabase();
     const query = buildUsageStatsQuery(since, filter, options);
-    const events = readRows(
-      database.exec(query.sql, query.params)[0]
-    ).map(toStoredUsageEvent);
+    const events = queryRows(database, query.sql, query.params).map(toStoredUsageEvent);
 
     return buildTotals(events);
   }
@@ -217,13 +207,10 @@ class UsageStore {
 
   private async open(): Promise<SqlDatabase> {
     mkdirSync(dirname(this.dbFile), { recursive: true });
-    const wasmFile = requireFromHere.resolve("sql.js/dist/sql-wasm.wasm");
-    const SQL = await initSqlJs({ locateFile: () => wasmFile });
-    const database = existsSync(this.dbFile)
-      ? new SQL.Database(readFileSync(this.dbFile))
-      : new SQL.Database();
+    const database = createBetterSqliteDatabase(this.dbFile);
+    configureSqliteDatabase(database);
 
-    database.run(`
+    database.exec(`
       CREATE TABLE IF NOT EXISTS usage_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         created_at TEXT NOT NULL,
@@ -233,6 +220,7 @@ class UsageStore {
         path TEXT NOT NULL,
         model TEXT NOT NULL DEFAULT 'unknown',
         provider TEXT NOT NULL DEFAULT 'unknown',
+        credential_id TEXT NOT NULL DEFAULT '',
         status_code INTEGER NOT NULL DEFAULT 0,
         duration_ms INTEGER NOT NULL DEFAULT 0,
         input_tokens INTEGER NOT NULL DEFAULT 0,
@@ -250,15 +238,7 @@ class UsageStore {
     ensureUsageSchema(database);
 
     this.database = database;
-    this.persist();
     return database;
-  }
-
-  private persist(): void {
-    if (!this.database) {
-      return;
-    }
-    writeFileSync(this.dbFile, Buffer.from(this.database.export()));
   }
 }
 
@@ -273,22 +253,29 @@ export function onUsageRecorded(listener: () => void): () => void {
 
 function ensureUsageSchema(database: SqlDatabase): void {
   const columns = new Set(
-    readRows(database.exec("PRAGMA table_info(usage_events)")[0])
+    queryRows(database, "PRAGMA table_info(usage_events)")
       .map((row) => String(row.name ?? ""))
       .filter(Boolean)
   );
 
   if (!columns.has("client")) {
-    database.run("ALTER TABLE usage_events ADD COLUMN client TEXT NOT NULL DEFAULT 'unknown'");
+    database.exec("ALTER TABLE usage_events ADD COLUMN client TEXT NOT NULL DEFAULT 'unknown'");
   }
   if (!columns.has("cost_usd")) {
-    database.run("ALTER TABLE usage_events ADD COLUMN cost_usd REAL");
+    database.exec("ALTER TABLE usage_events ADD COLUMN cost_usd REAL");
   }
   if (!columns.has("cost_source")) {
-    database.run("ALTER TABLE usage_events ADD COLUMN cost_source TEXT NOT NULL DEFAULT ''");
+    database.exec("ALTER TABLE usage_events ADD COLUMN cost_source TEXT NOT NULL DEFAULT ''");
+  }
+  if (!columns.has("credential_id")) {
+    database.exec("ALTER TABLE usage_events ADD COLUMN credential_id TEXT NOT NULL DEFAULT ''");
   }
 
-  database.run("CREATE INDEX IF NOT EXISTS usage_events_client_idx ON usage_events(client)");
+  database.exec("CREATE INDEX IF NOT EXISTS usage_events_client_idx ON usage_events(client)");
+  database.exec("CREATE INDEX IF NOT EXISTS usage_events_created_at_idx ON usage_events(created_at)");
+  database.exec("CREATE INDEX IF NOT EXISTS usage_events_credential_id_idx ON usage_events(credential_id)");
+  database.exec("CREATE INDEX IF NOT EXISTS usage_events_model_idx ON usage_events(model)");
+  database.exec("CREATE INDEX IF NOT EXISTS usage_events_path_idx ON usage_events(path)");
 }
 
 export async function getUsageStats(range?: UsageStatsRange, filter?: UsageStatsFilter): Promise<UsageStatsSnapshot> {
@@ -340,6 +327,7 @@ export async function recordGatewayUsageCapture(input: UsageCaptureInput): Promi
       path: input.path,
       client: input.client,
       provider,
+      credentialId: readCredentialId(input.responseHeaders),
       requestId: input.requestId,
       statusCode: input.statusCode,
       usage
@@ -356,6 +344,7 @@ function buildUsageStatsQuery(
 ): { params: SqlValue[]; sql: string } {
   const where = ["created_at >= ?"];
   const params: SqlValue[] = [since.toISOString()];
+  const credential = normalizeFilterValue(filter.credential);
   const provider = normalizeFilterValue(filter.provider);
   const model = normalizeFilterValue(filter.model);
 
@@ -370,6 +359,10 @@ function buildUsageStatsQuery(
     where.push("model = ?");
     params.push(model);
   }
+  if (credential) {
+    where.push("credential_id = ?");
+    params.push(credential);
+  }
 
   return {
     params,
@@ -383,6 +376,7 @@ function buildUsageStatsQuery(
             path,
             model,
             provider,
+            credential_id,
             status_code,
             duration_ms,
             input_tokens,
@@ -399,13 +393,14 @@ function buildUsageStatsQuery(
   };
 }
 
-function readRows(result: QueryExecResult | undefined): Record<string, SqlValue>[] {
-  if (!result) {
-    return [];
-  }
-  return result.values.map((values) =>
-    Object.fromEntries(result.columns.map((column, index) => [column, values[index] ?? null]))
-  );
+function configureSqliteDatabase(database: SqlDatabase): void {
+  database.pragma("journal_mode = WAL");
+  database.pragma("synchronous = NORMAL");
+  database.pragma("busy_timeout = 5000");
+}
+
+function queryRows(database: SqlDatabase, sql: string, params: SqlValue[] = []): Record<string, SqlValue>[] {
+  return database.prepare(sql).all(...params) as Record<string, SqlValue>[];
 }
 
 function toStoredUsageEvent(row: Record<string, SqlValue>): StoredUsageEvent {
@@ -416,6 +411,7 @@ function toStoredUsageEvent(row: Record<string, SqlValue>): StoredUsageEvent {
     costSource: String(row.cost_source ?? ""),
     costUsd: normalizeCost(row.cost_usd),
     createdAt: String(row.created_at ?? ""),
+    credentialId: normalizeLabel(String(row.credential_id ?? ""), ""),
     durationMs: normalizeCount(row.duration_ms),
     id: normalizeCount(row.id),
     inputTokens: normalizeCount(row.input_tokens),
@@ -495,6 +491,7 @@ function buildModelRows(events: StoredUsageEvent[]): UsageComparisonRow[] {
       return {
         ...buildTotals(groupedEvents),
         caption: latest?.provider || "unknown",
+        credentialId: latest?.credentialId || undefined,
         key,
         label: latest?.model || "unknown",
         maxShare: 0,
@@ -511,7 +508,7 @@ function buildModelRows(events: StoredUsageEvent[]): UsageComparisonRow[] {
 function buildClientModelRows(events: StoredUsageEvent[]): UsageComparisonRow[] {
   const grouped = new Map<string, StoredUsageEvent[]>();
   for (const event of events) {
-    const key = `${event.client}::${event.provider}::${event.model}`;
+    const key = `${event.client}::${event.provider}::${event.credentialId}::${event.model}`;
     const bucket = grouped.get(key) ?? [];
     bucket.push(event);
     grouped.set(key, bucket);
@@ -522,10 +519,12 @@ function buildClientModelRows(events: StoredUsageEvent[]): UsageComparisonRow[] 
       const latest = groupedEvents.at(-1);
       const model = latest?.model || "unknown";
       const provider = latest?.provider || "unknown";
+      const credentialId = latest?.credentialId || "";
       return {
         ...buildTotals(groupedEvents),
-        caption: `${provider} / ${model}`,
+        caption: credentialId ? `${provider} / ${credentialId} / ${model}` : `${provider} / ${model}`,
         client: latest?.client,
+        credentialId: credentialId || undefined,
         key,
         label: latest?.client || "unknown",
         maxShare: 0,
@@ -542,7 +541,7 @@ function buildClientModelRows(events: StoredUsageEvent[]): UsageComparisonRow[] 
 function buildProviderModelRows(events: StoredUsageEvent[]): UsageComparisonRow[] {
   const grouped = new Map<string, StoredUsageEvent[]>();
   for (const event of events) {
-    const key = `${event.provider}::${event.model}`;
+    const key = `${event.provider}::${event.credentialId}::${event.model}`;
     const bucket = grouped.get(key) ?? [];
     bucket.push(event);
     grouped.set(key, bucket);
@@ -553,9 +552,11 @@ function buildProviderModelRows(events: StoredUsageEvent[]): UsageComparisonRow[
       const latest = groupedEvents.at(-1);
       const model = latest?.model || "unknown";
       const provider = latest?.provider || "unknown";
+      const credentialId = latest?.credentialId || "";
       return {
         ...buildTotals(groupedEvents),
-        caption: model,
+        caption: credentialId ? `${credentialId} / ${model}` : model,
+        credentialId: credentialId || undefined,
         key,
         label: provider,
         maxShare: 0,
@@ -575,6 +576,7 @@ function buildRecentRequestRows(events: StoredUsageEvent[]): UsageComparisonRow[
     ...buildTotals([event]),
     caption: `${formatRequestTime(event.createdAt)} · ${event.client} · ${event.path} · ${event.statusCode}`,
     client: event.client,
+    credentialId: event.credentialId || undefined,
     key: String(event.id),
     label: event.model || "unknown",
     maxShare: 0,
@@ -779,6 +781,24 @@ function hasUsageNumbers(snapshot: UsageNumbers): boolean {
 function readHeader(headers: Headers, name: string): string | undefined {
   const value = headers.get(name)?.trim();
   return value || undefined;
+}
+
+function readCredentialId(headers: Headers): string | undefined {
+  return readHeader(headers, "x-ccr-provider-credential-id") ?? parseCredentialChain(readHeader(headers, "x-ccr-provider-credential-chain"))[0];
+}
+
+function parseCredentialChain(value: string | undefined): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const item of (value ?? "").split(",")) {
+    const trimmed = item.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result;
 }
 
 function readNumberHeader(headers: Headers, name: string): number | undefined {

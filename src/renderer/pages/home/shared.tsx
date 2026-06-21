@@ -122,6 +122,7 @@ import {
   BUILTIN_FUSION_TOOL_SERVER_NAME,
   BUILTIN_FUSION_VISION_TOOL_NAME,
   BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME,
+  CLAUDE_CODE_DEFAULT_ENV,
   DEFAULT_OVERVIEW_WIDGETS,
   DEFAULT_TRAY_COMPONENT_VARIANTS,
   DEFAULT_TRAY_WIDGETS,
@@ -135,6 +136,7 @@ import {
 } from "../../../shared/app";
 import type {
   AgentAnalysisFilter,
+  AgentAnalysisSessionSelection,
   AgentAnalysisSnapshot,
   AgentKind,
   AppConfig,
@@ -179,8 +181,11 @@ import type {
   ProviderAccountSnapshot,
   ProviderAccountTestPath,
   ProviderAccountTestResult,
+  ProviderCredentialConfig,
   ProviderDeepLinkPayload,
   ProviderDeepLinkRequest,
+  ProviderFailoverConfig,
+  ProviderFailoverStrategy,
   ProfileConfig,
   ProfileOpenSurface,
   CodexProfileConfigFormat,
@@ -264,11 +269,12 @@ export  {
 };
 export type {
   HTMLAttributes, ReactPointerEvent, ReactNode, CollisionDetection, DragEndEvent, DragOverEvent, DragStartEvent,
-  LucideIcon, AgentAnalysisFilter, AgentAnalysisSnapshot, AgentKind, AppConfig, AppInfo, AppUpdateStatus, ApiKeyConfig,
+  LucideIcon, AgentAnalysisFilter, AgentAnalysisSessionSelection, AgentAnalysisSnapshot, AgentKind, AppConfig, AppInfo, AppUpdateStatus, ApiKeyConfig,
   ApiKeyLimitConfig, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginCancelResult, BotGatewayQrLoginStartRequest, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitRequest, BotGatewayQrLoginWaitResult, BotGatewayQrWindowOpenResult, BotGatewayRuntimeConfig, BotGatewaySavedConfig, BotHandoffScanTarget, GatewayProviderConfig, GatewayProviderCapability, GatewayPluginAppConfig, GatewayProviderProbeResult, GatewayProviderProtocol, GatewayMcpServerConfig,
   GatewayMcpServerTransport, GatewayMcpStdioMessageMode, GatewayMcpToolInfo, GatewayStatus, OverviewMetricKind, OverviewWidgetConfig, OverviewWidgetSize, OverviewWidgetType,
   OverviewWidgetVariant, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProviderAccountConfig, ProviderAccountConnectorConfig, ProviderAccountHttpJsonConnectorConfig,
   ProviderAccountMeter, ProviderAccountStandardConnectorConfig, ProviderAccountSnapshot, ProviderAccountTestPath, ProviderAccountTestResult, ProviderDeepLinkPayload, ProviderDeepLinkRequest,
+  ProviderCredentialConfig, ProviderFailoverConfig, ProviderFailoverStrategy,
   ProfileConfig, ProfileOpenSurface, CodexProfileConfigFormat, ProfileScope, ProfileSurface, ProxyCertificateInstallResult, ProxyCertificateStatus, ProxyNetworkBody,
   ProxyNetworkExchange, ProxyNetworkSnapshot, ProxyStatus, RequestLogBody, RequestLogEntry, RequestLogListFilter, RequestLogPage,
   RequestLogStatusFilter, RouterConfig, RouterFallbackConfig, RouterFallbackMode, RouterRule, RouterRuleType, TrayComponentVariants,
@@ -283,7 +289,7 @@ export type OnboardingStepId = "provider" | "profile" | "enter";
 export type AppLanguagePreference = "system" | "en" | "zh";
 export type ResolvedLanguage = "en" | "zh";
 export type ResolvedTheme = "light" | "dark";
-export type SettingsPageId = "appearance" | "bots" | "tray" | "update";
+export type SettingsPageId = "appearance" | "bots" | "tray";
 export type TrayEditableModuleId = Exclude<TrayWindowModuleId, "footer">;
 export type TrayComponentOptionGroup = {
   key: keyof TrayComponentVariants;
@@ -314,7 +320,6 @@ export type AppCopy = {
     themeLight: string;
     themeSystem: string;
     tray: string;
-    update: string;
     trayBalanceProgressAccount: string;
     trayBalanceProgressData: string;
     trayBalanceProgressNoData: string;
@@ -408,7 +413,6 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       themeLight: "Light",
       themeSystem: "System",
       tray: "Tray",
-      update: "Updates",
       trayBalanceProgressAccount: "Account",
       trayBalanceProgressData: "Data",
       trayBalanceProgressNoData: "No account data is available. Enable account monitoring on a provider first.",
@@ -529,6 +533,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Account Balance": "Account Balance",
       "Account component": "Account component",
       "All accounts": "All accounts",
+      "All credentials": "All credentials",
       "Add widget": "Add widget",
       "Analysis component": "Analysis component",
       "Arc": "Arc",
@@ -677,7 +682,6 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       themeLight: "亮色",
       themeSystem: "跟随系统",
       tray: "Tray",
-      update: "更新",
       trayBalanceProgressAccount: "账户",
       trayBalanceProgressData: "数据",
       trayBalanceProgressNoData: "暂无可用账户数据，请先为供应商启用账户监控。",
@@ -755,6 +759,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Add header": "添加请求头",
       "Add API Key": "添加 API 密钥",
       "Add API key": "添加 API 密钥",
+      "Add key": "添加 Key",
       "Add limit": "添加限制",
       "Add Profile": "添加配置",
       "Add profile": "添加配置",
@@ -864,6 +869,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Claude Code": "Claude Code",
       "CLI": "CLI",
       "APP": "APP",
+      "CLI & APP": "CLI 和 APP",
       "CLI command": "CLI 命令",
       "Close": "关闭",
       "Close dialog": "关闭弹窗",
@@ -884,10 +890,16 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Configure plugin": "配置插件",
       "Configure plugin route": "配置插件路由",
       "Configure Routing": "配置路由",
+      "Configure multiple provider API keys for this supplier.": "为这个供应商配置多个上游 API Key。",
       "Copy": "复制",
       "Create integration": "创建集成",
+      "Credential": "凭据",
+      "Credential chain": "凭据链",
+      "Credential pool": "凭据池",
+      "Credential saturated": "凭据已饱和",
       "Credentials JSON": "凭据 JSON",
       "Continue": "继续",
+      "Cooldown ms": "冷却时间（毫秒）",
       "Custom config path": "自定义配置路径",
       "Core gateway": "核心网关",
       "Cost": "成本",
@@ -909,6 +921,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Dependencies": "依赖",
       "Default target model": "默认目标模型",
       "Default failure handling": "默认故障处理",
+      "Default on failure": "默认失败处理",
       "Description": "描述",
       "Detected": "已检测",
       "Detecting protocols": "正在探测协议",
@@ -925,6 +938,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Edit Routing Rule": "编辑路由规则",
       "Edit rule": "编辑规则",
       "Effect scope": "作用范围",
+      "Enable": "启用",
       "Enabled": "启用",
       "Endpoint": "端点",
       "Entry mode": "入口模式",
@@ -941,10 +955,13 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Fallback": "兜底",
       "Fallback chain": "回退链",
       "Fallback model": "回退模型",
+      "Fallback target": "失败降级目标",
+      "Fallback targets": "失败降级目标",
       "Failure handling": "故障处理",
       "Forward agent messages": "转发 Agent 消息",
       "Messages are forwarded only when using the corresponding app.": "仅在使用对应 App 时才会转发消息。",
       "First enabled": "首个启用规则",
+      "Least utilized": "使用率最低",
       "Gateway conversation ID": "网关会话 ID",
       "Generated config": "生成配置",
       "Generated path": "生成路径",
@@ -962,6 +979,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Import": "导入",
       "Import Provider": "导入供应商",
       "Import Provider Manifest": "导入供应商 Manifest",
+      "Import JSON": "导入 JSON",
       "Imported provider": "已导入供应商",
       "Invalid JSON.": "JSON 无效。",
       "Image content": "图像内容",
@@ -977,14 +995,19 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Install extension": "安装扩展",
       "Install CA": "安装 CA",
       "Key": "键",
+      "Key failover strategy": "Key 失败切换策略",
+      "keys": "个 Key",
       "Keep Claude Code default": "保持 Claude Code 默认值",
       "Keep default": "保持默认值",
+      "Keep embedded request model": "保留请求内模型",
+      "Label": "标签",
       "Last apply": "上次应用",
       "Last checked": "上次检查",
       "Last request": "最近请求",
       "Last seen": "最近活跃",
       "Legacy profile table": "旧版配置档案表",
       "Limit": "限制",
+      "Limits JSON": "限制 JSON",
       "Limits": "限制",
       "Loading": "加载中",
       "Local": "本地",
@@ -1017,6 +1040,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "No bots configured": "尚未配置 Bot",
       "No route activity": "暂无路由活动",
       "No targets found": "未发现目标",
+      "No": "否",
       "None": "无",
       "Not configured": "未配置",
       "Not running": "未运行",
@@ -1031,6 +1055,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Output tokens": "输出令牌",
       "Observability": "可观测",
       "Off": "关闭",
+      "On failure": "失败时",
       "Onboarding": "上手引导",
       "P50": "P50",
       "P95": "P95",
@@ -1055,6 +1080,16 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "External provider link": "外部供应商链接",
       "Provider": "供应商",
       "Provider Analysis": "供应商分析",
+      "Provider credential IDs must be unique.": "供应商凭据 ID 不能重复。",
+      "Provider credential JSON did not contain any API keys.": "供应商凭据 JSON 中没有可用 API Key。",
+      "Provider credential JSON is invalid.": "供应商凭据 JSON 无效。",
+      "Provider credential JSON must be an array or object.": "供应商凭据 JSON 必须是数组或对象。",
+      "Provider credential limits JSON is invalid.": "供应商凭据限制 JSON 无效。",
+      "Provider credential limits must be a JSON object.": "供应商凭据限制必须是 JSON 对象。",
+      "Provider credential priority must be a positive number.": "供应商凭据优先级必须是正数。",
+      "Provider credential rows require API keys.": "供应商凭据行必须填写 API Key。",
+      "Provider credential rows require names.": "供应商凭据行必须填写名称。",
+      "Provider credential weight must be a positive number.": "供应商凭据权重必须是正数。",
       "Provider ID": "供应商 ID",
       "Provider link failed": "供应商链接失败",
       "Provider links cannot include API keys. Add the key manually after verifying the endpoint.": "供应商链接不能包含 API 密钥。请核验端点后手动添加密钥。",
@@ -1090,12 +1125,15 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Remove rule": "移除规则",
       "Replace existing provider": "替换已有供应商",
       "Request": "请求",
+      "Request action": "请求动作",
       "Request ID": "请求 ID",
       "Request logs database": "请求日志数据库",
       "Request timeout ms": "请求超时 ms",
       "Requests": "请求",
+      "Rewrite request model": "改写请求模型",
       "Retries": "重试次数",
       "Retry": "继续重试",
+      "Weighted order": "按权重排序",
       "Ready to route": "可以开始路由",
       "Restart proxy": "重启代理",
       "Route": "路由",
@@ -1119,6 +1157,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "State directory": "状态目录",
       "Account component": "账户组件",
       "All accounts": "所有账户",
+      "All credentials": "全部凭据",
       "Add widget": "添加组件",
       "Analysis component": "分析组件",
       "Arc": "弧形",
@@ -1174,15 +1213,25 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Token mix component": "Token 构成组件",
       "Trend component": "趋势组件",
       "Usage over time": "按时间查看用量",
+      "Weight": "权重",
       "Widget": "组件",
       "Widget size": "组件大小",
       "Wide": "宽",
+      "Yes": "是",
       "Set as default provider": "设为默认供应商",
+      "Show credential settings": "显示凭据配置",
       "Session": "会话",
+      "Session Detail": "会话详情",
+      "Session Requests": "会话请求",
       "Sessions": "会话",
+      "Clear session": "清除会话",
+      "Loading session metrics": "正在加载会话指标",
+      "No model activity": "暂无模型活动",
+      "No session requests": "暂无会话请求",
       "Show all sessions": "显示所有会话",
       "Status": "状态",
       "Status codes": "状态码",
+      "Spillover threshold": "溢出阈值",
       "Stream": "流式",
       "Streaming": "流式",
       "Non-streaming": "非流式",
@@ -1212,6 +1261,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Tool calls": "工具调用",
       "Tools": "工具",
       "Top tools": "高频工具",
+      "Routes": "路由",
       "Timeout": "超时",
       "Type": "类型",
       "UA": "UA",
@@ -1464,9 +1514,6 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Refresh interval ms": "刷新间隔（毫秒）",
       "Response fields": "响应字段",
       "Reset": "重置时间",
-      "Daily": "每日",
-      "Weekly": "每周",
-      "Monthly": "每月",
       "Select at least one protocol.": "请至少选择一个协议。",
       "Select at least one usage response field.": "请至少选择一个用量响应字段。",
       "Showing first response fields only.": "仅显示前面的响应字段。",
@@ -1486,9 +1533,15 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Unavailable models": "不可用模型",
       "No marketplace extensions": "市场暂无扩展",
       "No fallback models configured": "未配置回退模型",
+      "No fallback targets configured": "未配置失败降级目标",
       "No models configured": "未配置模型",
+      "No provider credentials configured": "未配置供应商凭据",
+      "No request rewrite": "不改写请求",
       "Other / custom API endpoint": "其他 / 自定义 API 地址",
       "Pending": "等待中",
+      "Priority": "优先级",
+      "Priority only": "仅按优先级",
+      "Priority spillover": "优先级溢出",
       "Select preset provider": "选择预设供应商",
       "Zhipu AI (China)": "智谱 AI (国内)",
       "Zhipu AI (China) - Coding Plan": "智谱 AI (国内) - Coding Plan",
@@ -1708,7 +1761,14 @@ export const routerRuleTypeOptions: Array<{ label: string; value: RouterRuleType
 export const routerFallbackModeOptions: Array<{ label: string; value: RouterFallbackMode }> = [
   { label: "Off", value: "off" },
   { label: "Retry", value: "retry" },
-  { label: "Fallback chain", value: "model-chain" }
+  { label: "Fallback targets", value: "model-chain" }
+];
+
+export const providerFailoverStrategyOptions: Array<{ label: string; value: ProviderFailoverStrategy }> = [
+  { label: "Least utilized", value: "least-utilized" },
+  { label: "Priority spillover", value: "priority-spillover" },
+  { label: "Weighted order", value: "weighted-round-robin" },
+  { label: "Priority only", value: "failover-only" }
 ];
 
 export const removedLegacyRouterRuleIds = new Set([
@@ -2060,7 +2120,7 @@ export const fallbackConfig: AppConfig = {
       {
         agent: "claude-code",
         enabled: true,
-        env: {},
+        env: { ...CLAUDE_CODE_DEFAULT_ENV },
         id: "default-claude-code",
         model: "",
         name: "Claude Code",
@@ -2225,8 +2285,9 @@ export const profileScopeOptions: Array<{ label: string; value: ProfileScope }> 
 ];
 
 export const profileSurfaceOptions: Array<{ label: string; value: ProfileSurface }> = [
-  { label: "CLI", value: "cli" },
-  { label: "APP", value: "app" }
+  { label: "CLI & APP", value: "auto" },
+  { label: "CLI only", value: "cli" },
+  { label: "App only", value: "app" }
 ];
 
 export const requestLogStatusOptions: Array<{ label: string; value: RequestLogStatusFilter }> = [
@@ -2249,6 +2310,10 @@ export type AddProviderDraft = {
   accountRefreshIntervalMs: string;
   apiKey: string;
   baseUrl: string;
+  credentialFailoverCooldownMs: string;
+  credentialFailoverStrategy: ProviderFailoverStrategy;
+  credentialSpilloverThreshold: string;
+  credentials: ProviderCredentialDraft[];
   icon: string;
   modelSearch: string;
   modelsText: string;
@@ -2269,6 +2334,16 @@ export type AddProviderDraft = {
   usageSubscriptionRemainingPath: string;
   usageSubscriptionResetPath: string;
   usageSubscriptionUnit: string;
+};
+
+export type ProviderCredentialDraft = {
+  apiKey: string;
+  enabled: boolean;
+  id: string;
+  limitsText: string;
+  name: string;
+  priority: string;
+  weight: string;
 };
 
 export type ProviderAccountDraftMode = "standard" | "http-json" | "raw";
@@ -3331,7 +3406,7 @@ export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code"
     agent,
     ...createBotGatewayDraft(),
     configFile: "~/.codex/config.toml",
-    envRows: [],
+    envRows: agent === "claude-code" ? keyValueRowsFromRecord(claudeCodeProfileEnv()) : [],
     model: "",
     name: name ?? profileAgentLabel(agent),
     providerId: "claude-code-router",
@@ -3355,7 +3430,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
       ...botDraft,
       botConfigId,
       botEnabled: surface !== "cli" && Boolean(selectedBot || profile.botGateway?.enabled),
-      envRows: keyValueRowsFromRecord(profile.env ?? {}),
+      envRows: keyValueRowsFromRecord(claudeCodeProfileEnv(profile.env ?? {})),
       model: profile.model,
       scope: normalizeProfileFormScope(profile.scope),
       settingsFile: profile.settingsFile ?? "~/.claude/settings.json",
@@ -3720,7 +3795,14 @@ export function normalizeProfileSurface(value: unknown): ProfileSurface {
 }
 
 export function normalizeProfileSurfaceForForm(value: unknown): ProfileSurface {
-  return normalizeProfileSurface(value) === "app" ? "app" : "cli";
+  return normalizeProfileSurface(value);
+}
+
+export function claudeCodeProfileEnv(env: Record<string, string> = {}): Record<string, string> {
+  return {
+    ...CLAUDE_CODE_DEFAULT_ENV,
+    ...env
+  };
 }
 
 export function normalizeBotGatewayPlatform(value: unknown): string {
@@ -3983,7 +4065,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
       ...(botConfigId ? { botConfigId } : {}),
       ...(botGateway ? { botGateway } : {}),
       enabled: profile.enabled,
-      env,
+      env: claudeCodeProfileEnv(env),
       id: profile.id || `profile-${index + 1}`,
       model,
       name,
@@ -4029,7 +4111,7 @@ export function legacyProfileItemsFromProfileConfig(profile: AppConfig["profile"
     normalizeProfileItem({
       agent: "claude-code",
       enabled: profile.claudeCode.enabled,
-      env: {},
+      env: claudeCodeProfileEnv(),
       id: "default-claude-code",
       model: profile.claudeCode.model,
       name: "Claude Code",
@@ -4131,12 +4213,12 @@ export function profileScopeLabel(scope: ProfileScope): string {
 
 export function profileSurfaceLabel(surface: ProfileSurface): string {
   if (surface === "cli") {
-    return "CLI";
+    return "CLI only";
   }
   if (surface === "app") {
-    return "APP";
+    return "App only";
   }
-  return "CLI";
+  return "CLI & APP";
 }
 
 export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[] {
@@ -4568,6 +4650,7 @@ export function createEmptyRequestLogPage(filter: RequestLogListFilter = {}): Re
     generatedAt: new Date().toISOString(),
     items: [],
     options: {
+      credentials: [],
       models: [],
       providers: []
     },
@@ -4663,7 +4746,24 @@ export function formatUsdCost(value: number | undefined): string {
 }
 
 export function compareProviderAccountSnapshots(a: ProviderAccountSnapshot, b: ProviderAccountSnapshot): number {
-  return providerAccountStatusRank(b.status) - providerAccountStatusRank(a.status) || a.provider.localeCompare(b.provider);
+  return (
+    providerAccountStatusRank(b.status) - providerAccountStatusRank(a.status) ||
+    a.provider.localeCompare(b.provider) ||
+    providerAccountSnapshotCredentialLabel(a).localeCompare(providerAccountSnapshotCredentialLabel(b))
+  );
+}
+
+export function providerAccountSnapshotKey(account: ProviderAccountSnapshot): string {
+  return account.credentialId ? `${account.provider}::${account.credentialId}` : account.provider;
+}
+
+export function providerAccountSnapshotLabel(account: ProviderAccountSnapshot): string {
+  const credential = providerAccountSnapshotCredentialLabel(account);
+  return credential ? `${account.provider} / ${credential}` : account.provider;
+}
+
+export function providerAccountSnapshotCredentialLabel(account: ProviderAccountSnapshot): string {
+  return account.credentialLabel?.trim() || account.credentialId?.trim() || "";
 }
 
 export function providerAccountStatusRank(status: ProviderAccountSnapshot["status"]): number {
@@ -4770,27 +4870,9 @@ export function formatProviderAccountReset(value: string): string {
   return `${Math.round(hours / 24)}d`;
 }
 
-export function formatProviderAccountSchedule(meter: ProviderAccountMeter, translate: (value: string) => string): string | undefined {
-  const windowLabel = providerAccountWindowLabel(meter.window, translate);
-  const resetLabel = meter.resetAt ? formatProviderAccountReset(meter.resetAt) : undefined;
-  return [windowLabel, resetLabel].filter(Boolean).join(" · ") || undefined;
-}
-
-export function providerAccountWindowLabel(value: string | undefined, translate: (value: string) => string): string | undefined {
-  const normalized = value?.trim();
-  if (!normalized) {
-    return undefined;
-  }
-  if (normalized === "daily") {
-    return translate("Daily");
-  }
-  if (normalized === "weekly") {
-    return translate("Weekly");
-  }
-  if (normalized === "monthly") {
-    return translate("Monthly");
-  }
-  return normalized;
+export function formatProviderAccountMeterTitle(meter: ProviderAccountMeter, translate: (value: string) => string): string {
+  const label = translate(meter.label);
+  return meter.resetAt ? `${label} (${formatProviderAccountReset(meter.resetAt)})` : label;
 }
 
 export function formatAxisNumber(value: number): string {
@@ -7723,7 +7805,7 @@ export function formatRouterRuleCondition(rule: RouterRule): string {
 }
 
 export function formatRouterRuleTarget(rule: RouterRule): string {
-  const target = rule.type === "subagent" ? "Embedded request model" : rule.target || "Unset";
+  const target = rule.type === "subagent" ? "Keep embedded request model" : rule.target || "No request rewrite";
   return rule.fallback ? `${target} · ${formatRouterFallbackSummary(rule.fallback)}` : target;
 }
 
@@ -7734,7 +7816,7 @@ export function formatRouterFallbackSummary(fallback: RouterFallbackConfig): str
   if (fallback.mode === "retry") {
     return `retry ${fallback.retryCount}x`;
   }
-  return fallback.models.length ? `fallback ${fallback.models.join(" > ")}` : "fallback chain unset";
+  return fallback.models.length ? `on failure ${fallback.models.join(" > ")}` : "fallback targets unset";
 }
 
 export function routerRuleMatchesQuery(rule: RouterRule, query: string): boolean {
@@ -7907,6 +7989,10 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
     ...accountDraft,
     apiKey: "",
     baseUrl: "",
+    credentialFailoverCooldownMs: "",
+    credentialFailoverStrategy: "least-utilized",
+    credentialSpilloverThreshold: "",
+    credentials: [],
     icon: "",
     modelSearch: "",
     modelsText: "",
@@ -7927,6 +8013,10 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
     ...accountDraft,
     apiKey: providerApiKey(provider),
     baseUrl,
+    credentialFailoverCooldownMs: provider.failover?.cooldownMs ? String(provider.failover.cooldownMs) : "",
+    credentialFailoverStrategy: provider.failover?.strategy ?? "least-utilized",
+    credentialSpilloverThreshold: provider.failover?.spilloverThreshold ? String(provider.failover.spilloverThreshold) : "",
+    credentials: (provider.credentials ?? []).map(providerCredentialDraftFromConfig),
     icon: provider.icon ?? "",
     modelSearch: "",
     modelsText: provider.models.join("\n"),
@@ -7936,6 +8026,245 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
     selectedModels: [],
     selectedProtocols: selectedProviderProtocolsFromCapabilities(provider.capabilities, protocol)
   };
+}
+
+export function createProviderCredentialDraft(index = 0): ProviderCredentialDraft {
+  const id = `key-${index + 1}`;
+  return {
+    apiKey: "",
+    enabled: true,
+    id,
+    limitsText: "",
+    name: `Key ${index + 1}`,
+    priority: String(index + 1),
+    weight: ""
+  };
+}
+
+export function providerCredentialDraftFromConfig(credential: ProviderCredentialConfig, index: number): ProviderCredentialDraft {
+  return {
+    apiKey: credential.api_key || credential.apiKey || credential.apikey || "",
+    enabled: credential.enabled !== false,
+    id: credential.id || `key-${index + 1}`,
+    limitsText: credential.limits ? JSON.stringify(credential.limits, null, 2) : "",
+    name: credential.name ?? credential.label ?? credential.id ?? `Key ${index + 1}`,
+    priority: credential.priority !== undefined ? String(credential.priority) : String(index + 1),
+    weight: credential.weight !== undefined ? String(credential.weight) : ""
+  };
+}
+
+export function providerCredentialsFromDraft(draft: AddProviderDraft): ProviderCredentialConfig[] | string {
+  const credentials: ProviderCredentialConfig[] = [];
+  const seenSlugs = new Set<string>();
+
+  for (const [index, row] of draft.credentials.entries()) {
+    const apiKey = row.apiKey.trim();
+    const name = row.name.trim();
+    const id = row.id.trim() || providerCredentialSlug(name || `key-${index + 1}`);
+    const hasAnyValue = Boolean(
+      apiKey ||
+      row.id.trim() ||
+      name ||
+      row.priority.trim() ||
+      row.weight.trim() ||
+      row.limitsText.trim()
+    );
+    if (!hasAnyValue) {
+      continue;
+    }
+    if (!apiKey) {
+      return "Provider credential rows require API keys.";
+    }
+    if (!name) {
+      return "Provider credential rows require names.";
+    }
+
+    const slug = providerCredentialSlug(id);
+    if (seenSlugs.has(slug)) {
+      return "Provider credential IDs must be unique.";
+    }
+    seenSlugs.add(slug);
+
+    const priority = row.priority.trim() ? positiveInteger(row.priority) : undefined;
+    if (row.priority.trim() && priority === undefined) {
+      return "Provider credential priority must be a positive number.";
+    }
+    const weight = row.weight.trim() ? positiveInteger(row.weight) : undefined;
+    if (row.weight.trim() && weight === undefined) {
+      return "Provider credential weight must be a positive number.";
+    }
+
+    const limitsResult = providerCredentialLimitsFromText(row.limitsText);
+    if (typeof limitsResult === "string") {
+      return limitsResult;
+    }
+
+    credentials.push({
+      api_key: apiKey,
+      enabled: row.enabled,
+      id,
+      name,
+      ...(limitsResult ? { limits: limitsResult } : {}),
+      ...(priority !== undefined ? { priority } : {}),
+      ...(weight !== undefined ? { weight } : {})
+    });
+  }
+
+  return credentials;
+}
+
+export function providerFailoverFromDraft(draft: AddProviderDraft): ProviderFailoverConfig | undefined {
+  if (draft.credentials.length === 0) {
+    return undefined;
+  }
+  const cooldownMs = draft.credentialFailoverCooldownMs.trim()
+    ? positiveInteger(draft.credentialFailoverCooldownMs)
+    : undefined;
+  const spilloverThreshold = draft.credentialSpilloverThreshold.trim()
+    ? Number(draft.credentialSpilloverThreshold)
+    : undefined;
+  const failover: ProviderFailoverConfig = {
+    strategy: draft.credentialFailoverStrategy,
+    ...(cooldownMs !== undefined ? { cooldownMs } : {}),
+    ...(Number.isFinite(spilloverThreshold) && spilloverThreshold !== undefined && spilloverThreshold > 0 ? { spilloverThreshold } : {})
+  };
+  return Object.keys(failover).length > 0 ? failover : undefined;
+}
+
+export function providerCredentialDraftPatchFromJson(text: string): Partial<AddProviderDraft> | string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    return "Provider credential JSON is invalid.";
+  }
+
+  const container = Array.isArray(parsed) ? { credentials: parsed } : parsed;
+  if (!isPlainRecord(container)) {
+    return "Provider credential JSON must be an array or object.";
+  }
+
+  const rawCredentials = Array.isArray(container.credentials)
+    ? container.credentials
+    : Array.isArray(container.keys)
+      ? container.keys
+      : Array.isArray(container.apiKeys)
+        ? container.apiKeys
+        : [];
+  const credentials = rawCredentials
+    .map((item, index) => providerCredentialDraftFromUnknown(item, index))
+    .filter((item): item is ProviderCredentialDraft => Boolean(item));
+  if (credentials.length === 0) {
+    return "Provider credential JSON did not contain any API keys.";
+  }
+
+  const failover = isPlainRecord(container.failover)
+    ? container.failover
+    : isPlainRecord(container.credentialFailover)
+      ? container.credentialFailover
+      : undefined;
+  const strategy = parseProviderFailoverStrategyDraft(stringValue(failover?.strategy) || stringValue(failover?.mode));
+  const cooldownMs = numberDraftString(failover?.cooldownMs) || numberDraftString(failover?.cooldown);
+  const spilloverThreshold = numberDraftString(failover?.spilloverThreshold) || numberDraftString(failover?.threshold);
+
+  return {
+    credentials,
+    ...(strategy ? { credentialFailoverStrategy: strategy } : {}),
+    ...(cooldownMs ? { credentialFailoverCooldownMs: cooldownMs } : {}),
+    ...(spilloverThreshold ? { credentialSpilloverThreshold: spilloverThreshold } : {})
+  };
+}
+
+export function providerCredentialImportExample(): string {
+  return JSON.stringify({
+    credentials: [
+      {
+        id: "main",
+        name: "Main key",
+        api_key: "sk-...",
+        priority: 1,
+        limits: {
+          rpm: 60,
+          tpm: 100000
+        }
+      },
+      {
+        id: "backup",
+        name: "Backup key",
+        api_key: "sk-...",
+        priority: 2
+      }
+    ],
+    failover: {
+      strategy: "priority-spillover",
+      spilloverThreshold: 0.8,
+      cooldownMs: 60000
+    }
+  }, null, 2);
+}
+
+function providerCredentialDraftFromUnknown(value: unknown, index: number): ProviderCredentialDraft | undefined {
+  if (!isPlainRecord(value)) {
+    return undefined;
+  }
+  const apiKey =
+    stringValue(value.api_key) ||
+    stringValue(value.apiKey) ||
+    stringValue(value.apikey) ||
+    stringValue(value.key) ||
+    stringValue(value.token);
+  if (!apiKey) {
+    return undefined;
+  }
+  const id = stringValue(value.id) || stringValue(value.name) || stringValue(value.label) || `key-${index + 1}`;
+  const name = stringValue(value.name) || stringValue(value.label) || id;
+  return {
+    apiKey,
+    enabled: typeof value.enabled === "boolean" ? value.enabled : true,
+    id,
+    limitsText: isPlainRecord(value.limits) ? JSON.stringify(value.limits, null, 2) : "",
+    name,
+    priority: numberDraftString(value.priority),
+    weight: numberDraftString(value.weight)
+  };
+}
+
+function providerCredentialLimitsFromText(value: string): ApiKeyLimitConfig | undefined | string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!isPlainRecord(parsed)) {
+      return "Provider credential limits must be a JSON object.";
+    }
+    return normalizeApiKeyLimits(parsed);
+  } catch {
+    return "Provider credential limits JSON is invalid.";
+  }
+}
+
+function parseProviderFailoverStrategyDraft(value: string | undefined): ProviderFailoverStrategy | undefined {
+  const normalized = value?.trim().toLowerCase().replace(/_/g, "-");
+  return providerFailoverStrategyOptions.some((option) => option.value === normalized)
+    ? normalized as ProviderFailoverStrategy
+    : undefined;
+}
+
+function providerCredentialSlug(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "key";
+}
+
+function numberDraftString(value: unknown): string {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return stringValue(value) || "";
 }
 
 export function parseProviderAccountDraft(draft: AddProviderDraft): GatewayProviderConfig["account"] | string | undefined {

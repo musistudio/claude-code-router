@@ -27,6 +27,7 @@ export const cssOutput = path.join(rendererAssetsDir, "main.css");
 
 const nodeExternals = [
   "electron",
+  "better-sqlite3",
   ...builtinModules,
   ...builtinModules.map((moduleName) => `node:${moduleName}`)
 ];

@@ -154,6 +154,7 @@ type ClaudeCodeDiscoverableModel = {
 type UpstreamAttempt = {
   body?: Buffer;
   credentialChain?: string[];
+  credentialIds?: string[];
   credentialProtocol?: GatewayProviderProtocol;
   headers?: Record<string, string>;
   index: number;
@@ -163,6 +164,7 @@ type UpstreamAttempt = {
 
 type UpstreamFailedAttempt = {
   credentialChain?: string[];
+  credentialIds?: string[];
   error?: string;
   model?: string;
   statusCode?: number;
@@ -189,9 +191,6 @@ class UpstreamRequestError extends Error {
 
 const requireFromHere = createRequire(__filename);
 const localObservabilityHeaderNames = new Set([
-  "x-agent-session-id",
-  "x-claude-design-chat-id",
-  "x-claude-design-project-id",
   "x-ccr-claude-model-discovery",
   "x-ccr-codex-model-rewrite",
   "x-ccr-cursor-openai-compat",
@@ -1189,14 +1188,15 @@ function sanitizeMcpServerName(value: string): string {
 }
 
 function buildRawTraceConfig(config: AppConfig, rawTraceSyncToken: string): Record<string, unknown> {
+  const enabled = rawTraceEnabledFromEnv();
   return {
     deleteLocalAfterUpload: false,
-    enabled: true,
+    enabled,
     maxPartBytes: maxUsageCaptureBytes,
     mode: "wire_raw",
     spoolDir: RAW_TRACE_SPOOL_DIR,
     sync: {
-      enabled: true,
+      enabled,
       endpoint: `${endpoint(config.gateway.host, config.gateway.port)}${rawTraceSyncPath}`,
       headers: {
         [rawTraceSyncHeader]: rawTraceSyncToken
@@ -1204,6 +1204,11 @@ function buildRawTraceConfig(config: AppConfig, rawTraceSyncToken: string): Reco
       timeoutMs: 5000
     }
   };
+}
+
+function rawTraceEnabledFromEnv(): boolean {
+  const value = (process.env.CCR_RAW_TRACE_ENABLED ?? process.env.CCR_RAW_TRACE ?? "").trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
 function readRawTraceRequestLogUpdate(manifest: Record<string, unknown>): RequestLogRawTraceUpdateInput | undefined {
@@ -1598,6 +1603,7 @@ async function fetchUpstreamWithFallback(input: {
       if (hasNextAttempt && shouldFallbackAfterStatus(response.status, fallbackMode)) {
         failedAttempts.push({
           credentialChain: attempt.credentialChain,
+          credentialIds: attempt.credentialIds,
           model: attempt.model,
           statusCode: response.status
         });
@@ -1614,6 +1620,7 @@ async function fetchUpstreamWithFallback(input: {
       const message = formatError(error);
       failedAttempts.push({
         credentialChain: attempt.credentialChain,
+        credentialIds: attempt.credentialIds,
         error: message,
         model: attempt.model
       });
@@ -1680,6 +1687,7 @@ function prepareUpstreamCredentialAttempt(input: {
     ...input.attempt,
     body: target.body ?? input.attempt.body,
     credentialChain: selection.credentials.map((candidate) => candidate.internalName),
+    credentialIds: selection.credentials.map((candidate) => candidate.credential.id),
     credentialProtocol: target.protocol,
     headers,
     logicalProvider: target.provider.name
@@ -1920,15 +1928,25 @@ function serializeJsonBodyWithModel(body: Record<string, unknown>, model: string
 }
 
 function mergeFallbackResponseHeaders(headers: Headers, result: UpstreamFetchResult): Headers {
-  if (result.failedAttempts.length === 0) {
+  const credentialIds = result.attempt.credentialIds ?? [];
+  const credentialSaturated = result.attempt.headers?.["x-ccr-provider-credential-saturated"] === "true";
+  if (result.failedAttempts.length === 0 && credentialIds.length === 0 && !credentialSaturated) {
     return headers;
   }
 
   const merged = new Headers(headers);
-  merged.set("x-ccr-fallback-attempts", String(result.failedAttempts.length + 1));
-  merged.set("x-ccr-fallback-failures", formatFallbackFailures(result.failedAttempts));
-  if (result.attempt.model) {
-    merged.set("x-ccr-fallback-model", result.attempt.model);
+  if (result.failedAttempts.length > 0) {
+    merged.set("x-ccr-fallback-attempts", String(result.failedAttempts.length + 1));
+    merged.set("x-ccr-fallback-failures", formatFallbackFailures(result.failedAttempts));
+    if (result.attempt.model) {
+      merged.set("x-ccr-fallback-model", result.attempt.model);
+    }
+  }
+  if (credentialIds.length) {
+    merged.set("x-ccr-provider-credential-chain", credentialIds.join(","));
+  }
+  if (credentialSaturated) {
+    merged.set("x-ccr-provider-credential-saturated", "true");
   }
   return merged;
 }

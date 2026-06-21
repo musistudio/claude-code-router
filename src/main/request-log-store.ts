@@ -1,14 +1,15 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
+import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import initSqlJs from "sql.js";
 import { REQUEST_LOGS_DB_FILE } from "./constants";
 import { estimateUsageCostUsd } from "./model-pricing-service";
+import { createBetterSqliteDatabase, type BetterSqliteDatabase } from "./sqlite-native";
 import { normalizeUsageInputTokens } from "./usage-normalization";
 import type {
   AgentAnalysisAgentRow,
   AgentAnalysisFilter,
   AgentAnalysisRequestRow,
+  AgentAnalysisSessionDetail,
+  AgentAnalysisSessionModelRow,
   AgentAnalysisSessionRow,
   AgentAnalysisSnapshot,
   AgentAnalysisSubagentRow,
@@ -28,12 +29,8 @@ import type {
   UsageStatsRange
 } from "../shared/app";
 
-type SqlDatabase = InstanceType<Awaited<ReturnType<typeof initSqlJs>>["Database"]>;
-type SqlValue = number | string | Uint8Array | null;
-type QueryExecResult = {
-  columns: string[];
-  values: SqlValue[][];
-};
+type SqlDatabase = BetterSqliteDatabase;
+type SqlValue = bigint | Buffer | number | string | null;
 
 type HeaderRecord = Record<string, string | string[] | undefined>;
 
@@ -96,6 +93,9 @@ type StoredRequestLogEntry = {
   completedAt: string;
   costUsd: number | undefined;
   createdAt: string;
+  credentialChain: string[];
+  credentialId: string;
+  credentialSaturated: boolean;
   durationMs: number;
   error: string;
   id: number;
@@ -133,9 +133,9 @@ type AgentLogDetails = {
   userAgent?: string;
 };
 
-const requireFromHere = createRequire(__filename);
 const maxBodyBytes = 2 * 1024 * 1024;
 const maxAgentAnalysisRows = 5000;
+const maxAgentSessionDetailRequests = 250;
 const emptyAgentAnalysisTotals: AgentAnalysisTotals = {
   avgDurationMs: 0,
   cacheRatio: 0,
@@ -202,6 +202,7 @@ class RequestLogStore {
       inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens;
     const model = normalizeLabel(usage.model ?? route.model ?? requestModel ?? input.fallbackModel, "unknown");
     const providerName = normalizeLabel(provider, "unknown");
+    const credentialInfo = readCredentialLogInfo(responseHeaders, requestHeaders);
     const cost = await estimateUsageCostUsd({
       cacheReadTokens,
       cacheWriteTokens,
@@ -238,6 +239,9 @@ class RequestLogStore {
         path,
         url,
         provider,
+        credential_id,
+        credential_chain,
+        credential_saturated,
         model,
         is_stream,
         status_code,
@@ -262,48 +266,46 @@ class RequestLogStore {
         response_body_size_bytes,
         response_body_truncated,
         error
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    try {
-      statement.run([
-        input.startedAt,
-        input.completedAt ?? new Date().toISOString(),
-        input.requestId ?? "",
-        normalizeLabel(input.client, "unknown"),
-        input.method,
-        input.path,
-        input.url,
-        providerName,
-        model,
-        isStream ? 1 : 0,
-        normalizeCount(input.statusCode),
-        isSuccessStatus(input.statusCode, input.error) ? 1 : 0,
-        normalizeCount(input.durationMs),
-        inputTokens,
-        outputTokens,
-        cacheReadTokens,
-        cacheWriteTokens,
-        totalTokens,
-        cost?.amountUsd ?? null,
-        JSON.stringify(requestHeaders),
-        JSON.stringify(responseHeaders),
-        requestBody.text,
-        requestBody.encoding,
-        requestBody.contentType ?? "",
-        requestBody.sizeBytes,
-        requestBody.truncated ? 1 : 0,
-        responseBody.text,
-        responseBody.encoding,
-        responseBody.contentType ?? "",
-        responseBody.sizeBytes,
-        responseBody.truncated ? 1 : 0,
-        input.error ?? ""
-      ]);
-      this.persist();
-    } finally {
-      statement.free();
-    }
+    statement.run(
+      input.startedAt,
+      input.completedAt ?? new Date().toISOString(),
+      input.requestId ?? "",
+      normalizeLabel(input.client, "unknown"),
+      input.method,
+      input.path,
+      input.url,
+      providerName,
+      credentialInfo.id,
+      credentialInfo.chain.join(","),
+      credentialInfo.saturated ? 1 : 0,
+      model,
+      isStream ? 1 : 0,
+      normalizeCount(input.statusCode),
+      isSuccessStatus(input.statusCode, input.error) ? 1 : 0,
+      normalizeCount(input.durationMs),
+      inputTokens,
+      outputTokens,
+      cacheReadTokens,
+      cacheWriteTokens,
+      totalTokens,
+      cost?.amountUsd ?? null,
+      JSON.stringify(requestHeaders),
+      JSON.stringify(responseHeaders),
+      requestBody.text,
+      requestBody.encoding,
+      requestBody.contentType ?? "",
+      requestBody.sizeBytes,
+      requestBody.truncated ? 1 : 0,
+      responseBody.text,
+      responseBody.encoding,
+      responseBody.contentType ?? "",
+      responseBody.sizeBytes,
+      responseBody.truncated ? 1 : 0,
+      input.error ?? ""
+    );
   }
 
   async updateFromRawTrace(input: RequestLogRawTraceUpdateInput): Promise<boolean> {
@@ -352,6 +354,12 @@ class RequestLogStore {
     if (responseHeaders) {
       pushValue("response_headers", JSON.stringify(responseHeaders));
     }
+    if (hasCredentialLogHeaders(responseHeaders ?? {}) || hasCredentialLogHeaders(mergedRequestHeaders ?? {})) {
+      const credentialInfo = readCredentialLogInfo(responseHeaders ?? {}, mergedRequestHeaders ?? {});
+      pushValue("credential_id", credentialInfo.id);
+      pushValue("credential_chain", credentialInfo.chain.join(","));
+      pushValue("credential_saturated", credentialInfo.saturated ? 1 : 0);
+    }
     const hasStreamSignal =
       input.isStream !== undefined ||
       input.path !== undefined ||
@@ -392,8 +400,7 @@ class RequestLogStore {
       return true;
     }
 
-    database.run(`UPDATE request_logs SET ${sets.join(", ")} WHERE request_id = ?`, [...params, requestId]);
-    this.persist();
+    database.prepare(`UPDATE request_logs SET ${sets.join(", ")} WHERE request_id = ?`).run(...params, requestId);
     return true;
   }
 
@@ -403,12 +410,12 @@ class RequestLogStore {
     const pageSize = clampInteger(filter.pageSize, 1, 100, 25);
     const page = clampInteger(filter.page, 1, Number.MAX_SAFE_INTEGER, 1);
     const query = buildLogWhereClause(filter);
-    const count = firstNumber(database.exec(`SELECT COUNT(*) AS total FROM request_logs ${query.where}`, query.params)[0], "total");
+    const count = firstNumber(queryRows(database, `SELECT COUNT(*) AS total FROM request_logs ${query.where}`, query.params), "total");
     const totalPages = Math.max(1, Math.ceil(count / pageSize));
     const normalizedPage = Math.min(page, totalPages);
     const offset = (normalizedPage - 1) * pageSize;
-    const rows = readRows(
-      database.exec(
+    const rows = queryRows(
+      database,
         `
           SELECT
             rowid AS id,
@@ -420,6 +427,9 @@ class RequestLogStore {
             path,
             url,
             provider,
+            credential_id,
+            credential_chain,
+            credential_saturated,
             model,
             is_stream,
             status_code,
@@ -450,7 +460,6 @@ class RequestLogStore {
           LIMIT ? OFFSET ?
         `,
         [...query.params, pageSize, offset]
-      )[0]
     ).map(toRequestLogEntry);
 
     return {
@@ -470,8 +479,8 @@ class RequestLogStore {
     const now = new Date();
     const range = normalizeAgentAnalysisRange(filter.range);
     const since = getAgentAnalysisSince(range, now);
-    const rows = readRows(
-      database.exec(
+    const rows = queryRows(
+      database,
         `
           SELECT
             rowid AS id,
@@ -483,6 +492,9 @@ class RequestLogStore {
             path,
             url,
             provider,
+            credential_id,
+            credential_chain,
+            credential_saturated,
             model,
             is_stream,
             status_code,
@@ -515,7 +527,6 @@ class RequestLogStore {
           LIMIT ?
         `,
         ["%/count_tokens%", since.toISOString(), maxAgentAnalysisRows]
-      )[0]
     )
       .map(toRequestLogEntry)
       .reverse();
@@ -525,6 +536,7 @@ class RequestLogStore {
       .map(toAnalyzedAgentRequest)
       .filter((request) => requestedAgent === "all" || request.agent === requestedAgent);
     const requests = applyRequestConcurrency(analyzed);
+    const selectedSession = buildSelectedAgentSessionDetail(requests, filter);
 
     return {
       agents: buildAgentRows(requests),
@@ -537,6 +549,7 @@ class RequestLogStore {
       recentRequests: requests.slice(-50).reverse().map(stripAnalysisInternals),
       routes: buildAgentRouteRows(requests),
       scannedRequestCount: rows.length,
+      ...(selectedSession ? { selectedSession } : {}),
       sessions: buildAgentSessionRows(requests),
       subagents: buildAgentSubagentRows(requests),
       tools: buildAgentToolRows(requests),
@@ -547,6 +560,7 @@ class RequestLogStore {
   private async getFilterOptions(): Promise<RequestLogFilterOptions> {
     const database = await this.getDatabase();
     return {
+      credentials: readDistinctValues(database, "credential_id"),
       models: readDistinctValues(database, "model"),
       providers: readDistinctValues(database, "provider")
     };
@@ -563,13 +577,10 @@ class RequestLogStore {
 
   private async open(): Promise<SqlDatabase> {
     mkdirSync(dirname(this.dbFile), { recursive: true });
-    const wasmFile = requireFromHere.resolve("sql.js/dist/sql-wasm.wasm");
-    const SQL = await initSqlJs({ locateFile: () => wasmFile });
-    const database = existsSync(this.dbFile)
-      ? new SQL.Database(readFileSync(this.dbFile))
-      : new SQL.Database();
+    const database = createBetterSqliteDatabase(this.dbFile);
+    configureSqliteDatabase(database);
 
-    database.run(`
+    database.exec(`
       CREATE TABLE IF NOT EXISTS request_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         source_usage_id INTEGER,
@@ -581,6 +592,9 @@ class RequestLogStore {
         path TEXT NOT NULL,
         url TEXT NOT NULL DEFAULT '',
         provider TEXT NOT NULL DEFAULT 'unknown',
+        credential_id TEXT NOT NULL DEFAULT '',
+        credential_chain TEXT NOT NULL DEFAULT '',
+        credential_saturated INTEGER NOT NULL DEFAULT 0,
         model TEXT NOT NULL DEFAULT 'unknown',
         is_stream INTEGER NOT NULL DEFAULT 0,
         status_code INTEGER NOT NULL DEFAULT 0,
@@ -612,7 +626,6 @@ class RequestLogStore {
 
     this.database = database;
     this.pruneOldRequestLogs(database);
-    this.persist();
     return database;
   }
 
@@ -625,10 +638,11 @@ class RequestLogStore {
 
     const cutoff = floorDay(now).toISOString();
     const staleCount = firstNumber(
-      database.exec(
+      queryRows(
+        database,
         "SELECT COUNT(*) AS total FROM request_logs WHERE source_usage_id IS NULL AND created_at < ?",
         [cutoff]
-      )[0],
+      ),
       "total"
     );
 
@@ -637,19 +651,10 @@ class RequestLogStore {
       return;
     }
 
-    database.run(
+    database.prepare(
       "DELETE FROM request_logs WHERE source_usage_id IS NULL AND created_at < ?",
-      [cutoff]
-    );
+    ).run(cutoff);
     this.lastRetentionCleanupDay = dayKey;
-    this.persist();
-  }
-
-  private persist(): void {
-    if (!this.database) {
-      return;
-    }
-    writeFileSync(this.dbFile, Buffer.from(this.database.export()));
   }
 }
 
@@ -1217,27 +1222,79 @@ function buildAgentErrorRows(requests: AnalyzedAgentRequest[]): AgentObservabili
 function buildAgentSessionRows(requests: AnalyzedAgentRequest[]): AgentAnalysisSessionRow[] {
   const grouped = groupBy(requests, (request) => `${request.agent}:${request.sessionId}`);
   return Array.from(grouped.values())
+    .map(buildAgentSessionRow)
+    .sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt))
+    .slice(0, 100);
+}
+
+function buildAgentSessionRow(items: AnalyzedAgentRequest[]): AgentAnalysisSessionRow {
+  const first = items[0];
+  const last = items.at(-1) ?? first;
+  const totals = buildAgentAnalysisTotals(items);
+  return {
+    ...totals,
+    agent: first.agent,
+    client: first.client,
+    durationMs: Math.max(0, last.endedAtMs - first.startedAtMs),
+    id: first.sessionId,
+    lastRequestId: last.requestId,
+    lastSeenAt: last.completedAt || last.createdAt,
+    models: uniqueNonEmpty(items.map((item) => item.model)).slice(0, 8),
+    providers: uniqueNonEmpty(items.map((item) => item.provider)).slice(0, 8),
+    startedAt: first.createdAt,
+    topTools: topToolCounts(items, 5),
+    userAgent: first.userAgent
+  };
+}
+
+function buildSelectedAgentSessionDetail(
+  requests: AnalyzedAgentRequest[],
+  filter: AgentAnalysisFilter
+): AgentAnalysisSessionDetail | undefined {
+  const sessionId = normalizeFilterValue(filter.sessionId);
+  if (!sessionId) {
+    return undefined;
+  }
+
+  const sessionAgent = normalizeSessionAgentFilter(filter.sessionAgent);
+  const sessionRequests = requests.filter((request) =>
+    request.sessionId === sessionId &&
+    (!sessionAgent || request.agent === sessionAgent)
+  );
+  if (sessionRequests.length === 0) {
+    return undefined;
+  }
+
+  return {
+    endpoints: buildAgentEndpointRows(sessionRequests),
+    errors: buildAgentErrorRows(sessionRequests),
+    models: buildAgentSessionModelRows(sessionRequests),
+    requests: sessionRequests.slice(-maxAgentSessionDetailRequests).reverse().map(stripAnalysisInternals),
+    routes: buildAgentRouteRows(sessionRequests),
+    session: buildAgentSessionRow(sessionRequests),
+    statusCodes: buildStatusCodeCounts(sessionRequests),
+    subagents: buildAgentSubagentRows(sessionRequests),
+    tools: buildAgentToolRows(sessionRequests),
+    totals: buildAgentAnalysisTotals(sessionRequests)
+  };
+}
+
+function buildAgentSessionModelRows(requests: AnalyzedAgentRequest[]): AgentAnalysisSessionModelRow[] {
+  const grouped = groupBy(requests, (request) => `${request.provider}:${request.model}`);
+  return Array.from(grouped.values())
     .map((items) => {
       const first = items[0];
       const last = items.at(-1) ?? first;
-      const totals = buildAgentAnalysisTotals(items);
       return {
-        ...totals,
-        agent: first.agent,
-        client: first.client,
-        durationMs: Math.max(0, last.endedAtMs - first.startedAtMs),
-        id: first.sessionId,
-        lastRequestId: last.requestId,
+        ...buildAgentAnalysisTotals(items),
+        key: `${first.provider}:${first.model}`,
         lastSeenAt: last.completedAt || last.createdAt,
-        models: uniqueNonEmpty(items.map((item) => item.model)).slice(0, 8),
-        providers: uniqueNonEmpty(items.map((item) => item.provider)).slice(0, 8),
-        startedAt: first.createdAt,
-        topTools: topToolCounts(items, 5),
-        userAgent: first.userAgent
+        model: first.model,
+        provider: first.provider
       };
     })
-    .sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt))
-    .slice(0, 100);
+    .sort((a, b) => b.totalTokens - a.totalTokens || b.requestCount - a.requestCount || a.model.localeCompare(b.model))
+    .slice(0, 50);
 }
 
 function buildAgentToolRows(requests: AnalyzedAgentRequest[]): AgentAnalysisToolRow[] {
@@ -1527,6 +1584,10 @@ function normalizeAgentFilter(value: AgentAnalysisFilter["agent"] | undefined): 
   return value === "claude-code" || value === "codex" || value === "claude-design" || value === "unknown" ? value : "all";
 }
 
+function normalizeSessionAgentFilter(value: AgentAnalysisFilter["sessionAgent"] | undefined): AgentKind | undefined {
+  return value === "claude-code" || value === "codex" || value === "claude-design" || value === "unknown" ? value : undefined;
+}
+
 function agentDisplayName(agent: AgentKind): string {
   if (agent === "claude-code") {
     return "Claude Code";
@@ -1573,6 +1634,50 @@ function readHeaderValue(headers: Record<string, string | string[]>, name: strin
   return normalizeFilterValue(value);
 }
 
+function hasCredentialLogHeaders(headers: Record<string, string | string[]>): boolean {
+  return Boolean(
+    readHeaderValue(headers, "x-ccr-provider-credential-id") ||
+    readHeaderValue(headers, "x-ccr-provider-credential-chain") ||
+    readHeaderValue(headers, "x-ccr-provider-credential-saturated")
+  );
+}
+
+function readCredentialLogInfo(
+  responseHeaders: Record<string, string | string[]>,
+  requestHeaders: Record<string, string | string[]>
+): { chain: string[]; id: string; saturated: boolean } {
+  const responseChain = parseCredentialChain(readHeaderValue(responseHeaders, "x-ccr-provider-credential-chain"));
+  const requestChain = parseCredentialChain(readHeaderValue(requestHeaders, "x-ccr-provider-credential-chain"));
+  const id = normalizeLabel(
+    readHeaderValue(responseHeaders, "x-ccr-provider-credential-id") ??
+      readHeaderValue(requestHeaders, "x-ccr-provider-credential-id") ??
+      responseChain[0] ??
+      requestChain[0],
+    ""
+  );
+  const chain = responseChain.length > 0
+    ? responseChain
+    : requestChain.length > 0
+      ? requestChain
+      : id
+        ? [id]
+        : [];
+  const saturated = readHeaderFlag(
+    readHeaderValue(responseHeaders, "x-ccr-provider-credential-saturated") ??
+      readHeaderValue(requestHeaders, "x-ccr-provider-credential-saturated")
+  );
+  return { chain, id, saturated };
+}
+
+function parseCredentialChain(value: string | undefined): string[] {
+  return uniqueNonEmpty((value ?? "").split(","));
+}
+
+function readHeaderFlag(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
 function stringifyForSearch(value: unknown): string {
   if (typeof value === "string") {
     return value;
@@ -1591,13 +1696,13 @@ function parseDateMs(value: string): number {
 
 function ensureRequestLogSchema(database: SqlDatabase): void {
   const columns = new Set(
-    readRows(database.exec("PRAGMA table_info(request_logs)")[0])
+    queryRows(database, "PRAGMA table_info(request_logs)")
       .map((row) => String(row.name ?? ""))
       .filter(Boolean)
   );
   const addColumn = (name: string, definition: string) => {
     if (!columns.has(name)) {
-      database.run(`ALTER TABLE request_logs ADD COLUMN ${name} ${definition}`);
+      database.exec(`ALTER TABLE request_logs ADD COLUMN ${name} ${definition}`);
       columns.add(name);
     }
   };
@@ -1611,6 +1716,9 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   addColumn("path", "TEXT NOT NULL DEFAULT ''");
   addColumn("url", "TEXT NOT NULL DEFAULT ''");
   addColumn("provider", "TEXT NOT NULL DEFAULT 'unknown'");
+  addColumn("credential_id", "TEXT NOT NULL DEFAULT ''");
+  addColumn("credential_chain", "TEXT NOT NULL DEFAULT ''");
+  addColumn("credential_saturated", "INTEGER NOT NULL DEFAULT 0");
   addColumn("model", "TEXT NOT NULL DEFAULT 'unknown'");
   addColumn("is_stream", "INTEGER NOT NULL DEFAULT 0");
   addColumn("status_code", "INTEGER NOT NULL DEFAULT 0");
@@ -1636,16 +1744,17 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   addColumn("response_body_truncated", "INTEGER NOT NULL DEFAULT 0");
   addColumn("error", "TEXT NOT NULL DEFAULT ''");
 
-  database.run("CREATE INDEX IF NOT EXISTS request_logs_created_at_idx ON request_logs(created_at)");
-  database.run("CREATE INDEX IF NOT EXISTS request_logs_model_idx ON request_logs(model)");
-  database.run("CREATE INDEX IF NOT EXISTS request_logs_provider_idx ON request_logs(provider)");
-  database.run("CREATE INDEX IF NOT EXISTS request_logs_source_usage_id_idx ON request_logs(source_usage_id)");
-  database.run("CREATE INDEX IF NOT EXISTS request_logs_status_idx ON request_logs(ok, status_code)");
+  database.exec("CREATE INDEX IF NOT EXISTS request_logs_created_at_idx ON request_logs(created_at)");
+  database.exec("CREATE INDEX IF NOT EXISTS request_logs_credential_id_idx ON request_logs(credential_id)");
+  database.exec("CREATE INDEX IF NOT EXISTS request_logs_model_idx ON request_logs(model)");
+  database.exec("CREATE INDEX IF NOT EXISTS request_logs_provider_idx ON request_logs(provider)");
+  database.exec("CREATE INDEX IF NOT EXISTS request_logs_source_usage_id_idx ON request_logs(source_usage_id)");
+  database.exec("CREATE INDEX IF NOT EXISTS request_logs_status_idx ON request_logs(ok, status_code)");
 }
 
 function backfillRequestLogStreamFlags(database: SqlDatabase): void {
-  const rows = readRows(
-    database.exec(
+  const rows = queryRows(
+    database,
       `
         SELECT
           rowid AS id,
@@ -1667,32 +1776,27 @@ function backfillRequestLogStreamFlags(database: SqlDatabase): void {
             response_body_content_type LIKE '%event-stream%'
           )
       `
-    )[0]
   );
   if (rows.length === 0) {
     return;
   }
 
   const statement = database.prepare("UPDATE request_logs SET is_stream = 1 WHERE rowid = ?");
-  try {
-    for (const row of rows) {
-      const requestBodyText = String(row.request_body_encoding ?? "utf8") === "utf8"
-        ? String(row.request_body_text ?? "")
-        : undefined;
-      const isStream = inferRequestLogIsStream({
-        path: String(row.path ?? ""),
-        requestBodyText,
-        requestHeaders: parseHeaderJson(row.request_headers),
-        responseBodyContentType: String(row.response_body_content_type ?? ""),
-        responseHeaders: parseHeaderJson(row.response_headers),
-        url: String(row.url ?? "")
-      });
-      if (isStream) {
-        statement.run([normalizeCount(row.id)]);
-      }
+  for (const row of rows) {
+    const requestBodyText = String(row.request_body_encoding ?? "utf8") === "utf8"
+      ? String(row.request_body_text ?? "")
+      : undefined;
+    const isStream = inferRequestLogIsStream({
+      path: String(row.path ?? ""),
+      requestBodyText,
+      requestHeaders: parseHeaderJson(row.request_headers),
+      responseBodyContentType: String(row.response_body_content_type ?? ""),
+      responseHeaders: parseHeaderJson(row.response_headers),
+      url: String(row.url ?? "")
+    });
+    if (isStream) {
+      statement.run(normalizeCount(row.id));
     }
-  } finally {
-    statement.free();
   }
 }
 
@@ -1758,6 +1862,7 @@ function buildLogWhereClause(filter: RequestLogListFilter): { params: SqlValue[]
   const where: string[] = ["source_usage_id IS NULL", "path NOT LIKE ?"];
   const params: SqlValue[] = ["%/count_tokens%"];
   const status = normalizeStatusFilter(filter.status);
+  const credential = normalizeFilterValue(filter.credential);
   const model = normalizeFilterValue(filter.model);
   const provider = normalizeFilterValue(filter.provider);
   const query = normalizeFilterValue(filter.query);
@@ -1775,6 +1880,10 @@ function buildLogWhereClause(filter: RequestLogListFilter): { params: SqlValue[]
     where.push("provider = ?");
     params.push(provider);
   }
+  if (credential) {
+    where.push("credential_id = ?");
+    params.push(credential);
+  }
   if (query) {
     const like = `%${query}%`;
     where.push(`(
@@ -1784,12 +1893,14 @@ function buildLogWhereClause(filter: RequestLogListFilter): { params: SqlValue[]
       path LIKE ? OR
       url LIKE ? OR
       provider LIKE ? OR
+      credential_id LIKE ? OR
+      credential_chain LIKE ? OR
       model LIKE ? OR
       request_body_text LIKE ? OR
       response_body_text LIKE ? OR
       error LIKE ?
     )`);
-    params.push(like, like, like, like, like, like, like, like, like, like);
+    params.push(like, like, like, like, like, like, like, like, like, like, like, like);
   }
 
   return {
@@ -1798,17 +1909,18 @@ function buildLogWhereClause(filter: RequestLogListFilter): { params: SqlValue[]
   };
 }
 
-function readRows(result: QueryExecResult | undefined): Record<string, SqlValue>[] {
-  if (!result) {
-    return [];
-  }
-  return result.values.map((values) =>
-    Object.fromEntries(result.columns.map((column, index) => [column, values[index] ?? null]))
-  );
+function configureSqliteDatabase(database: SqlDatabase): void {
+  database.pragma("journal_mode = WAL");
+  database.pragma("synchronous = NORMAL");
+  database.pragma("busy_timeout = 5000");
 }
 
-function firstNumber(result: QueryExecResult | undefined, column: string): number {
-  const row = readRows(result)[0];
+function queryRows(database: SqlDatabase, sql: string, params: SqlValue[] = []): Record<string, SqlValue>[] {
+  return database.prepare(sql).all(...params) as Record<string, SqlValue>[];
+}
+
+function firstNumber(rows: Record<string, SqlValue>[], column: string): number {
+  const row = rows[0];
   return normalizeCount(row?.[column]);
 }
 
@@ -1833,6 +1945,9 @@ function toRequestLogEntry(row: Record<string, SqlValue>): StoredRequestLogEntry
     completedAt: String(row.completed_at ?? ""),
     costUsd,
     createdAt: String(row.created_at ?? ""),
+    credentialChain: parseCredentialChain(String(row.credential_chain ?? "")),
+    credentialId: normalizeLabel(String(row.credential_id ?? ""), ""),
+    credentialSaturated: normalizeCount(row.credential_saturated) === 1,
     durationMs: normalizeCount(row.duration_ms),
     error: String(row.error ?? ""),
     id: normalizeCount(row.id),
@@ -1905,9 +2020,9 @@ function parseHeaderJson(value: SqlValue): Record<string, string | string[]> {
   }
 }
 
-function readDistinctValues(database: SqlDatabase, column: "model" | "provider"): string[] {
-  return readRows(
-    database.exec(
+function readDistinctValues(database: SqlDatabase, column: "credential_id" | "model" | "provider"): string[] {
+  return queryRows(
+    database,
       `
         SELECT DISTINCT ${column} AS value
         FROM request_logs
@@ -1916,7 +2031,6 @@ function readDistinctValues(database: SqlDatabase, column: "model" | "provider")
         LIMIT 100
       `,
       ["%/count_tokens%"]
-    )[0]
   )
     .map((row) => String(row.value ?? ""))
     .filter(Boolean);
@@ -1982,15 +2096,13 @@ function isTextLikeContentType(contentType: string | undefined): boolean {
 
 function hasRequestLogWithRequestId(database: SqlDatabase, requestId: string): boolean {
   return firstNumber(
-    database.exec("SELECT COUNT(*) AS total FROM request_logs WHERE request_id = ?", [requestId])[0],
+    queryRows(database, "SELECT COUNT(*) AS total FROM request_logs WHERE request_id = ?", [requestId]),
     "total"
   ) > 0;
 }
 
 function readRequestHeadersForRequestId(database: SqlDatabase, requestId: string): Record<string, string | string[]> {
-  const row = readRows(
-    database.exec("SELECT request_headers FROM request_logs WHERE request_id = ? LIMIT 1", [requestId])[0]
-  )[0];
+  const row = queryRows(database, "SELECT request_headers FROM request_logs WHERE request_id = ? LIMIT 1", [requestId])[0];
   return row ? parseHeaderJson(row.request_headers) : {};
 }
 

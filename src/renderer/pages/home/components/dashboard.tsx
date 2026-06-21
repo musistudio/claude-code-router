@@ -1,23 +1,24 @@
 import {
-  agentAnalysisRangeOptions, AgentAnalysisSnapshot, agentFilterOptions, AgentFilterValue, agentKindLabel,
+  agentAnalysisRangeOptions, AgentAnalysisSessionSelection, AgentAnalysisSnapshot, agentFilterOptions, AgentFilterValue, agentKindLabel,
   Area, arrayMove, Badge, Bar, BarChart, Button,
   Card, CardContent, CardHeader, CardTitle, CartesianGrid, Cell,
   Check, ChevronLeft, ChevronRight, CircleAlert, cn, compactId,
   compactUserAgent, compareProviderAccountSnapshots, ComposedChart, CSS, DEFAULT_OVERVIEW_WIDGETS, DndContext,
   DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent, Field, formatAxisNumber,
-  formatCompactNumber, formatDuration, formatLogDateTime, formatPercent, formatProviderAccountMeterValue, formatProviderAccountSchedule,
+  formatCompactNumber, formatDuration, formatLogDateTime, formatPercent, formatProviderAccountMeterTitle, formatProviderAccountMeterValue,
   formatStatusBucketDate, formatStatusCodeCounts, formatSystemStatusRange, formatToolCounts, formatUsdCost, KeyboardSensor,
   LabelList, LayoutGroup, Line, MeasuringStrategy, MetricCard, MetricTone,
   metricToneBar, metricToneStroke, motion, normalizeAgentFilterValue, normalizeOverviewWidget, normalizeOverviewWidgets,
   OverviewMetricKind, overviewMetricOptions, overviewWidgetCollisionDetection, OverviewWidgetConfig, OverviewWidgetSize, overviewWidgetSizeOptions,
   OverviewWidgetType, OverviewWidgetVariant, Pencil, Pie, PieChart, Plus,
   PointerSensor, primaryProviderAccountMeter, providerAccountBadgeVariant, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass,
+  providerAccountSnapshotKey, providerAccountSnapshotLabel,
   ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ReactPointerEvent, rectSortingStrategy, RefreshCw, Select,
   SelectControl, SortableContext, sortableKeyboardCoordinates, systemStatusIconClass, systemStatusPointTooltip, systemStatusSegmentClass,
   systemStatusTooltipPositionClass, Tooltip, translateOptions, Trash2, UsageComparisonRow, usageRangeOptions,
   UsageSeriesPoint, UsageStatsRange, UsageStatsSnapshot, usageStatusTone, UsageTotals, useAppText,
   useEffect, useMemo, useRef, useSensor, useSensors, useSortable,
-  useState, XAxis, YAxis
+  useState, X, XAxis, YAxis
 } from "../shared";
 export function OverviewView({
   onWidgetsChange,
@@ -233,7 +234,6 @@ export function OverviewView({
                 >
                   <OverviewWidgetRenderer
                     providerAccounts={providerAccounts}
-                    setUsageRange={setUsageRange}
                     usageRange={usageRange}
                     usageStats={usageStats}
                     widget={widget}
@@ -253,7 +253,6 @@ export function OverviewView({
         {activeWidget ? (
           <OverviewWidgetDragOverlay
             providerAccounts={providerAccounts}
-            setUsageRange={setUsageRange}
             usageRange={usageRange}
             usageStats={usageStats}
             widget={activeWidget}
@@ -272,8 +271,9 @@ export function OverviewView({
       transition={{ duration: 0.15 }}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h2 className="truncate text-[18px] font-semibold tracking-tight">{t("Overview")}</h2>
+          <OverviewUsageRangeSelector range={usageRange} setRange={setUsageRange} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {editing ? (
@@ -332,6 +332,35 @@ export function OverviewView({
         widgetGrid
       )}
     </motion.div>
+  );
+}
+
+function OverviewUsageRangeSelector({
+  range,
+  setRange
+}: {
+  range: UsageStatsRange;
+  setRange: (range: UsageStatsRange) => void;
+}) {
+  const t = useAppText();
+
+  return (
+    <div aria-label={t("Usage over time")} className="flex rounded-md border border-input bg-card p-0.5 shadow-sm" role="group">
+      {usageRangeOptions.map((option) => (
+        <Button
+          className={cn(
+            "h-7 rounded px-2.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground",
+            range === option.value && "bg-background text-foreground shadow-sm"
+          )}
+          key={option.value}
+          onClick={() => setRange(option.value)}
+          type="button"
+          unstyled
+        >
+          {t(option.label)}
+        </Button>
+      ))}
+    </div>
   );
 }
 
@@ -502,13 +531,11 @@ function SortableOverviewWidget({
 
 function OverviewWidgetDragOverlay({
   providerAccounts,
-  setUsageRange,
   usageRange,
   usageStats,
   widget
 }: {
   providerAccounts: ProviderAccountSnapshot[];
-  setUsageRange: (range: UsageStatsRange) => void;
   usageRange: UsageStatsRange;
   usageStats: UsageStatsSnapshot;
   widget: OverviewWidgetConfig;
@@ -517,7 +544,6 @@ function OverviewWidgetDragOverlay({
     <div className={cn("pointer-events-none overflow-hidden opacity-95 shadow-2xl", overviewWidgetOverlaySizeClass(widget.size))}>
       <OverviewWidgetRenderer
         providerAccounts={providerAccounts}
-        setUsageRange={setUsageRange}
         usageRange={usageRange}
         usageStats={usageStats}
         widget={widget}
@@ -753,13 +779,11 @@ function overviewWidgetResizeCursor(axis: OverviewWidgetResizeAxis): string {
 
 function OverviewWidgetRenderer({
   providerAccounts,
-  setUsageRange,
   usageRange,
   usageStats,
   widget
 }: {
   providerAccounts: ProviderAccountSnapshot[];
-  setUsageRange: (range: UsageStatsRange) => void;
   usageRange: UsageStatsRange;
   usageStats: UsageStatsSnapshot;
   widget: OverviewWidgetConfig;
@@ -773,7 +797,7 @@ function OverviewWidgetRenderer({
   } else if (widget.type === "metric") {
     content = <OverviewMetricWidget metric={widget.metric ?? "requests"} totals={usageStats.totals} variant={overviewMetricVariant(widget.variant)} />;
   } else if (widget.type === "usage-trend") {
-    content = <UsageTrendWidget dimensions={dimensions} setUsageRange={setUsageRange} usageRange={usageRange} usageStats={usageStats} variant={overviewTrendVariant(widget.variant)} />;
+    content = <UsageTrendWidget dimensions={dimensions} usageRange={usageRange} usageStats={usageStats} variant={overviewTrendVariant(widget.variant)} />;
   } else if (widget.type === "token-mix") {
     content = <TokenMixOverviewWidget dimensions={dimensions} totals={usageStats.totals} variant={overviewTokenMixVariant(widget.variant)} />;
   } else if (widget.type === "client-analysis") {
@@ -867,43 +891,24 @@ function OverviewRingMetric({ ratio, tone }: { ratio: number; tone: MetricTone }
 
 function UsageTrendWidget({
   dimensions,
-  setUsageRange,
   usageRange,
   usageStats,
   variant
 }: {
   dimensions: OverviewWidgetDimensions;
-  setUsageRange: (range: UsageStatsRange) => void;
   usageRange: UsageStatsRange;
   usageStats: UsageStatsSnapshot;
   variant: "area" | "bar" | "composed" | "line";
 }) {
   const t = useAppText();
-  const showRangeControls = dimensions.width >= 3 && dimensions.height >= 2;
   const chartMargin = dimensions.height <= 1
     ? { bottom: 0, left: 0, right: 4, top: 8 }
-    : { bottom: 4, left: 0, right: 8, top: 28 };
+    : { bottom: 4, left: 0, right: 8, top: 8 };
 
   return (
     <Card className="flex h-full min-h-0 min-w-0 flex-col">
       <CardHeader className="shrink-0 flex-row items-center justify-between">
         <CardTitle>{t("Usage Trend")}</CardTitle>
-        {showRangeControls ? <div className="flex rounded-md border border-border bg-background p-0.5">
-          {usageRangeOptions.map((option) => (
-            <Button
-              className={cn(
-                "h-7 rounded px-2.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground",
-                usageRange === option.value && "bg-card text-foreground shadow-sm"
-              )}
-              key={option.value}
-              onClick={() => setUsageRange(option.value)}
-              type="button"
-              unstyled
-            >
-              {t(option.label)}
-            </Button>
-          ))}
-        </div> : null}
       </CardHeader>
       <CardContent className="min-h-0 flex-1">
         <ChartFrame fill>
@@ -1068,6 +1073,7 @@ function OverviewAnalysisWidget({
     ]
     : [
       { key: "provider", label: t("Provider") },
+      { key: "credentialId", label: t("Credential") },
       { key: "model", label: t("Model") }
     ];
 
@@ -1155,7 +1161,7 @@ function overviewWidgetDataOptions(widget: OverviewWidgetConfig, providerAccount
     const options = providerAccounts
       .filter((account) => account.provider)
       .sort(compareProviderAccountSnapshots)
-      .map((account) => ({ label: account.provider, value: account.provider }));
+      .map((account) => ({ label: providerAccountSnapshotLabel(account), value: providerAccountSnapshotKey(account) }));
     if (widget.accountProvider && !options.some((option) => option.value === widget.accountProvider)) {
       options.push({ label: widget.accountProvider, value: widget.accountProvider });
     }
@@ -1538,7 +1544,7 @@ function ProviderAccountsOverview({
   const sortedAccounts = [...accounts].sort(compareProviderAccountSnapshots);
   const accountLimit = selectedAccountProvider ? 1 : providerAccountVisibleLimit(dimensions, variant);
   const visibleAccounts = selectedAccountProvider
-    ? sortedAccounts.filter((account) => account.provider === selectedAccountProvider).slice(0, 1)
+    ? sortedAccounts.filter((account) => providerAccountSelectionMatches(account, selectedAccountProvider)).slice(0, 1)
     : sortedAccounts
       .filter((account) => account.meters.length > 0 || account.status === "error")
       .slice(0, accountLimit);
@@ -1558,9 +1564,9 @@ function ProviderAccountsOverview({
             {visibleAccounts.map((account) => {
               const meter = primaryProviderAccountDisplayMeter(account);
               return (
-                <div className="flex min-h-0 min-w-0 items-center justify-between gap-3 overflow-hidden rounded-lg border border-border bg-muted/20 px-3 py-2" key={account.provider}>
+                <div className="flex min-h-0 min-w-0 items-center justify-between gap-3 overflow-hidden rounded-lg border border-border bg-muted/20 px-3 py-2" key={providerAccountSnapshotKey(account)}>
                   <div className="min-w-0">
-                    <div className="truncate text-[12px] font-semibold">{account.provider}</div>
+                    <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
                     {providerAccountShowSource(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{meter ? t(meter.label) : account.source}</div> : null}
                   </div>
                   <div className="shrink-0 text-right">
@@ -1577,10 +1583,10 @@ function ProviderAccountsOverview({
               const meter = primaryProviderAccountDisplayMeter(account);
               const progress = meter && isProviderAccountQuotaMeter(meter) ? providerAccountMeterProgress(meter) : undefined;
               return (
-                <div className="min-w-0 overflow-hidden" key={account.provider}>
+                <div className="min-w-0 overflow-hidden" key={providerAccountSnapshotKey(account)}>
                   <div className="flex min-w-0 items-end justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="truncate text-[12px] font-semibold">{account.provider}</div>
+                      <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
                       {providerAccountShowSource(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{meter ? t(meter.label) : account.source}</div> : null}
                     </div>
                     <div className="shrink-0 text-[12px] font-semibold">{meter ? formatProviderAccountMeterValue(meter) : account.status}</div>
@@ -1597,7 +1603,7 @@ function ProviderAccountsOverview({
         ) : (
           <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-hidden", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions))}>
             {visibleAccounts.map((account) => {
-              return <ProviderAccountSummaryCard account={account} dimensions={dimensions} key={account.provider} variant={variant} />;
+              return <ProviderAccountSummaryCard account={account} dimensions={dimensions} key={providerAccountSnapshotKey(account)} variant={variant} />;
             })}
           </div>
         )}
@@ -1625,7 +1631,7 @@ function ProviderAccountSinglePanel({
     <div className={cn("flex h-full min-h-0 min-w-0 flex-col overflow-hidden", providerAccountStackClass(dimensions))}>
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className={cn("truncate font-semibold", dimensions.height <= 1 ? "text-[12px]" : "text-[13px]")}>{account.provider}</div>
+          <div className={cn("truncate font-semibold", dimensions.height <= 1 ? "text-[12px]" : "text-[13px]")}>{providerAccountSnapshotLabel(account)}</div>
           {providerAccountShowSource(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{account.source}</div> : null}
         </div>
         {providerAccountShowStatus(dimensions) ? <Badge variant={providerAccountBadgeVariant(account.status)}>{account.status}</Badge> : null}
@@ -1669,7 +1675,7 @@ function ProviderAccountSummaryCard({
     <div className={cn("min-h-0 min-w-0 overflow-hidden rounded-lg border border-border bg-muted/20", providerAccountCardPaddingClass(dimensions))}>
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="truncate text-[13px] font-semibold">{account.provider}</div>
+          <div className="truncate text-[13px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
           {providerAccountShowSource(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{account.source}</div> : null}
         </div>
         {providerAccountShowStatus(dimensions) ? <Badge variant={providerAccountBadgeVariant(account.status)}>{account.status}</Badge> : null}
@@ -1711,21 +1717,17 @@ function ProviderAccountMeterLine({
 }) {
   const t = useAppText();
   const progress = isProviderAccountQuotaMeter(meter) ? providerAccountMeterProgress(meter) : undefined;
-  const schedule = formatProviderAccountSchedule(meter, t);
 
   return (
     <div className="min-w-0 overflow-hidden">
       <div className="flex min-w-0 items-end justify-between gap-3">
-        <div className={cn("min-w-0 truncate font-medium text-muted-foreground", single && dimensions.height >= 2 ? "text-[13px]" : "text-[12px]")}>{t(meter.label)}</div>
+        <div className={cn("min-w-0 truncate font-medium text-muted-foreground", single && dimensions.height >= 2 ? "text-[13px]" : "text-[12px]")}>{formatProviderAccountMeterTitle(meter, t)}</div>
         <div className={cn("shrink-0 font-semibold tracking-tight", single && dimensions.height >= 2 ? "text-[18px]" : "text-[15px]")}>{formatProviderAccountMeterValue(meter)}</div>
       </div>
       {progress !== undefined && providerAccountShowProgress(dimensions) ? (
         <div className={cn("mt-1.5 overflow-hidden rounded-full", single ? "bg-muted" : "bg-background", dimensions.height <= 1 ? "h-1.5" : "h-2")}>
           <div className={cn("h-full rounded-full", providerAccountProgressClass(account.status))} style={{ width: `${progress}%` }} />
         </div>
-      ) : null}
-      {schedule && providerAccountShowReset(dimensions) ? (
-        <div className="mt-1 truncate text-[10px] text-muted-foreground">{schedule}</div>
       ) : null}
     </div>
   );
@@ -1745,7 +1747,7 @@ function ProviderAccountBalanceMetric({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-col justify-center overflow-hidden">
-      <div className={cn("truncate font-medium text-muted-foreground", large ? "text-[12px]" : "text-[11px]")}>{t(meter.label)}</div>
+      <div className={cn("truncate font-medium text-muted-foreground", large ? "text-[12px]" : "text-[11px]")}>{formatProviderAccountMeterTitle(meter, t)}</div>
       <div className={cn("truncate font-semibold tracking-tight", large ? "text-[24px]" : "text-[18px]")}>{formatProviderAccountMeterValue(meter)}</div>
     </div>
   );
@@ -1777,14 +1779,10 @@ function ProviderAccountQuotaVisual({
       {showLabels ? (
         <div className="min-w-0 space-y-2">
           {displayMeters.slice(0, variant === "nested-rings" ? 2 : 1).map((meter) => {
-            const schedule = formatProviderAccountSchedule(meter, t);
             return (
               <div className="min-w-0" key={meter.id}>
-                <div className="truncate text-[12px] font-medium text-muted-foreground">{t(meter.label)}</div>
+                <div className="truncate text-[12px] font-medium text-muted-foreground">{formatProviderAccountMeterTitle(meter, t)}</div>
                 <div className="truncate text-[17px] font-semibold tracking-tight">{formatProviderAccountMeterValue(meter)}</div>
-                {schedule && providerAccountShowReset(dimensions) ? (
-                  <div className="truncate text-[10px] text-muted-foreground">{schedule}</div>
-                ) : null}
               </div>
             );
           })}
@@ -1843,7 +1841,7 @@ function ProviderAccountQuotaGauge({
     <svg aria-hidden="true" className={sizeClass} viewBox="0 0 120 120">
       <ProviderAccountQuotaCircle cx={60} cy={60} ratio={primaryRatio} radius={40} stroke={stroke} strokeWidth={10} />
       <text className="fill-foreground text-[20px] font-semibold" dy="0.35em" textAnchor="middle" x="60" y={dimensions.height >= 2 ? "57" : "60"}>{formatProviderAccountMeterValue(primary)}</text>
-      {dimensions.height >= 2 ? <text className="fill-muted-foreground text-[10px] font-medium" dy="0.35em" textAnchor="middle" x="60" y="75">{formatProviderAccountSchedule(primary, t) ?? ""}</text> : null}
+      {dimensions.height >= 2 ? <text className="fill-muted-foreground text-[10px] font-medium" dy="0.35em" textAnchor="middle" x="60" y="75">{formatProviderAccountMeterTitle(primary, t)}</text> : null}
     </svg>
   );
 }
@@ -1887,6 +1885,10 @@ function ProviderAccountQuotaCircle({
 
 function primaryProviderAccountDisplayMeter(account: ProviderAccountSnapshot): ProviderAccountMeter | undefined {
   return providerAccountQuotaMeters(account)[0] ?? primaryProviderAccountBalanceMeter(account) ?? primaryProviderAccountMeter(account);
+}
+
+function providerAccountSelectionMatches(account: ProviderAccountSnapshot, value: string): boolean {
+  return providerAccountSnapshotKey(account) === value || account.provider === value;
 }
 
 function primaryProviderAccountBalanceMeter(account: ProviderAccountSnapshot): ProviderAccountMeter | undefined {
@@ -2058,10 +2060,6 @@ function providerAccountShowProgress(dimensions: OverviewWidgetDimensions): bool
   return dimensions.height >= 1;
 }
 
-function providerAccountShowReset(dimensions: OverviewWidgetDimensions): boolean {
-  return dimensions.height >= 2;
-}
-
 function providerAccountShowExtraCount(dimensions: OverviewWidgetDimensions): boolean {
   return dimensions.height >= 3;
 }
@@ -2072,8 +2070,10 @@ export function AgentAnalysisView({
   loading,
   range,
   refreshAnalysis,
+  selectedSession,
   setAgentFilter,
   setRange,
+  setSelectedSession,
   snapshot
 }: {
   agentFilter: AgentFilterValue;
@@ -2081,8 +2081,10 @@ export function AgentAnalysisView({
   loading: boolean;
   range: UsageStatsRange;
   refreshAnalysis: () => void;
+  selectedSession?: AgentAnalysisSessionSelection;
   setAgentFilter: (value: AgentFilterValue) => void;
   setRange: (range: UsageStatsRange) => void;
+  setSelectedSession: (value?: AgentAnalysisSessionSelection) => void;
   snapshot: AgentAnalysisSnapshot;
 }) {
   const t = useAppText();
@@ -2206,8 +2208,20 @@ export function AgentAnalysisView({
         <AgentErrorsCard errors={snapshot.errors} />
       </section>
 
+      {selectedSession || snapshot.selectedSession ? (
+        <AgentSessionDetailCard
+          clearSession={() => setSelectedSession(undefined)}
+          detail={snapshot.selectedSession}
+          selectedSession={selectedSession}
+        />
+      ) : null}
+
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,.8fr)]">
-        <AgentSessionsCard sessions={snapshot.sessions} />
+        <AgentSessionsCard
+          onSelectSession={setSelectedSession}
+          selectedSession={selectedSession}
+          sessions={snapshot.sessions}
+        />
         <AgentToolsCard tools={snapshot.tools} />
       </section>
 
@@ -2407,7 +2421,177 @@ function AgentErrorsCard({ errors }: { errors: AgentAnalysisSnapshot["errors"] }
   );
 }
 
-function AgentSessionsCard({ sessions }: { sessions: AgentAnalysisSnapshot["sessions"] }) {
+function AgentSessionDetailCard({
+  clearSession,
+  detail,
+  selectedSession
+}: {
+  clearSession: () => void;
+  detail?: AgentAnalysisSnapshot["selectedSession"];
+  selectedSession?: AgentAnalysisSessionSelection;
+}) {
+  const t = useAppText();
+  const session = detail?.session;
+  const headerLabel = session
+    ? `${t(agentKindLabel(session.agent))} / ${compactId(session.id)}`
+    : selectedSession
+      ? `${t(agentKindLabel(selectedSession.agent))} / ${compactId(selectedSession.id)}`
+      : t("Session");
+
+  return (
+    <Card className="min-w-0">
+      <CardHeader className="flex-row items-start justify-between gap-3">
+        <div className="min-w-0">
+          <CardTitle>{t("Session Detail")}</CardTitle>
+          <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground" title={session?.id ?? selectedSession?.id}>
+            {headerLabel}
+          </div>
+        </div>
+        <Button aria-label={t("Clear session")} onClick={clearSession} size="iconSm" title={t("Clear session")} type="button" variant="outline">
+          <X className="h-3.5 w-3.5" />
+        </Button>
+      </CardHeader>
+      <CardContent>
+        {!detail ? (
+          <AnalysisEmptyState label={t("Loading session metrics")} />
+        ) : (
+          <div className="space-y-4">
+            <div className="grid overflow-hidden rounded-md border border-border/60 bg-card text-[11px] sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+              <SessionMetricCell label={t("Requests")} value={formatCompactNumber(detail.totals.requestCount)} />
+              <SessionMetricCell label={t("Success rate")} value={formatPercent(detail.totals.successRate)} />
+              <SessionMetricCell label={t("P95")} value={formatDuration(detail.totals.p95DurationMs)} />
+              <SessionMetricCell label={t("Max concurrency")} value={formatCompactNumber(detail.totals.maxConcurrentRequests)} />
+              <SessionMetricCell label={t("Tokens")} value={formatCompactNumber(detail.totals.totalTokens)} />
+              <SessionMetricCell label={t("Cache ratio")} value={formatPercent(detail.totals.cacheRatio)} />
+              <SessionMetricCell label={t("Cost")} value={formatUsdCost(detail.totals.costUsd)} />
+              <SessionMetricCell label={t("Status codes")} value={formatStatusCodeCounts(detail.statusCodes) || "-"} />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,.95fr)_minmax(0,1.05fr)]">
+              <div className="min-w-0">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="text-[12px] font-semibold">{t("Models")}</div>
+                  <Badge variant="outline">{detail.models.length}</Badge>
+                </div>
+                {detail.models.length === 0 ? (
+                  <AnalysisEmptyState label={t("No model activity")} />
+                ) : (
+                  <div className="max-h-[260px] overflow-auto rounded-lg border border-border/60">
+                    <table className="min-w-[720px] w-full border-collapse text-left text-[11px]">
+                      <thead className="sticky top-0 z-10 bg-muted text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 font-semibold">{t("Model")}</th>
+                          <th className="px-3 py-2 text-right font-semibold">{t("Requests")}</th>
+                          <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
+                          <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th>
+                          <th className="px-3 py-2 text-right font-semibold">{t("P95")}</th>
+                          <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/60">
+                        {detail.models.map((model) => (
+                          <tr className="bg-card/40 hover:bg-muted/30" key={model.key}>
+                            <td className="max-w-[280px] px-3 py-2" title={`${model.provider}/${model.model}`}>{model.provider}/{model.model}</td>
+                            <td className="px-3 py-2 text-right">{formatCompactNumber(model.requestCount)}</td>
+                            <td className="px-3 py-2 text-right">{formatCompactNumber(model.totalTokens)}</td>
+                            <td className="px-3 py-2 text-right">{formatCompactNumber(model.cacheTokens)}</td>
+                            <td className="px-3 py-2 text-right">{formatDuration(model.p95DurationMs)}</td>
+                            <td className="px-3 py-2 text-right">{formatUsdCost(model.costUsd)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="min-w-0">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="text-[12px] font-semibold">{t("Session Requests")}</div>
+                  <Badge variant="outline">{detail.requests.length}</Badge>
+                </div>
+                {detail.requests.length === 0 ? (
+                  <AnalysisEmptyState label={t("No session requests")} />
+                ) : (
+                  <div className="max-h-[260px] overflow-auto rounded-lg border border-border/60">
+                    <table className="min-w-[980px] w-full border-collapse text-left text-[11px]">
+                      <thead className="sticky top-0 z-10 bg-muted text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 font-semibold">{t("Time")}</th>
+                          <th className="px-3 py-2 font-semibold">{t("Status")}</th>
+                          <th className="px-3 py-2 font-semibold">{t("Route")}</th>
+                          <th className="px-3 py-2 font-semibold">{t("Model")}</th>
+                          <th className="px-3 py-2 text-right font-semibold">{t("Tools")}</th>
+                          <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
+                          <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/60">
+                        {detail.requests.map((request) => (
+                          <tr className="bg-card/40 hover:bg-muted/30" key={request.id}>
+                            <td className="px-3 py-2 font-mono">{formatLogDateTime(request.createdAt)}</td>
+                            <td className="px-3 py-2 font-semibold">{request.statusCode || "-"}</td>
+                            <td className="max-w-[140px] px-3 py-2" title={request.routeReason}>{request.routeReason || "-"}</td>
+                            <td className="max-w-[300px] px-3 py-2" title={`${request.provider}/${request.model}`}>{request.provider}/{request.model}</td>
+                            <td className="px-3 py-2 text-right" title={request.tools.join(", ")}>{formatCompactNumber(request.toolCallCount)}</td>
+                            <td className="px-3 py-2 text-right">{formatCompactNumber(request.totalTokens)}</td>
+                            <td className="px-3 py-2 text-right">{formatDuration(request.durationMs)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+              <SessionInlineList title={t("Top tools")} value={formatToolRows(detail.tools)} />
+              <SessionInlineList title={t("Routes")} value={formatRouteRows(detail.routes)} />
+              <SessionInlineList title={t("Errors")} value={detail.errors.length ? `${formatCompactNumber(detail.errors.length)} ${t("Errors")}` : t("No errors")} />
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function SessionMetricCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 border-b border-r border-border/60 px-3 py-2 last:border-r-0 xl:border-b-0">
+      <div className="truncate text-muted-foreground">{label}</div>
+      <div className="mt-1 truncate font-mono text-[13px] font-semibold text-foreground" title={value}>{value}</div>
+    </div>
+  );
+}
+
+function SessionInlineList({ title, value }: { title: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-md border border-border/60 px-3 py-2 text-[11px]">
+      <div className="text-muted-foreground">{title}</div>
+      <div className="mt-1 truncate font-medium" title={value}>{value || "-"}</div>
+    </div>
+  );
+}
+
+function formatToolRows(tools: AgentAnalysisSnapshot["tools"]): string {
+  return tools.slice(0, 5).map((tool) => `${tool.name} (${formatCompactNumber(tool.count)})`).join(", ");
+}
+
+function formatRouteRows(routes: AgentAnalysisSnapshot["routes"]): string {
+  return routes.slice(0, 5).map((route) => `${route.routeReason}: ${formatCompactNumber(route.requestCount)}`).join(", ");
+}
+
+function AgentSessionsCard({
+  onSelectSession,
+  selectedSession,
+  sessions
+}: {
+  onSelectSession: (value: AgentAnalysisSessionSelection) => void;
+  selectedSession?: AgentAnalysisSessionSelection;
+  sessions: AgentAnalysisSnapshot["sessions"];
+}) {
   const t = useAppText();
 
   return (
@@ -2438,21 +2622,32 @@ function AgentSessionsCard({ sessions }: { sessions: AgentAnalysisSnapshot["sess
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
-                {sessions.map((session) => (
-                  <tr className="bg-card/40 hover:bg-muted/30" key={`${session.agent}:${session.id}`}>
-                    <td className="max-w-[180px] px-3 py-2 font-mono font-semibold" title={session.id}>{compactId(session.id)}</td>
-                    <td className="px-3 py-2">{t(agentKindLabel(session.agent))}</td>
-                    <td className="max-w-[150px] px-3 py-2" title={session.client}>{session.client}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(session.requestCount)}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(session.toolCallCount)}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(session.subagentCallCount)}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(session.cacheTokens)}</td>
-                    <td className="px-3 py-2 text-right">{formatCompactNumber(session.maxConcurrentRequests)}</td>
-                    <td className="max-w-[220px] px-3 py-2" title={formatToolCounts(session.topTools)}>{formatToolCounts(session.topTools) || "-"}</td>
-                    <td className="max-w-[220px] px-3 py-2 font-mono" title={session.userAgent}>{compactUserAgent(session.userAgent)}</td>
-                    <td className="px-3 py-2 font-mono">{formatLogDateTime(session.lastSeenAt)}</td>
-                  </tr>
-                ))}
+                {sessions.map((session) => {
+                  const selected = selectedSession?.agent === session.agent && selectedSession.id === session.id;
+                  return (
+                    <tr className={cn("bg-card/40 hover:bg-muted/30", selected && "bg-teal-500/10 hover:bg-teal-500/15")} key={`${session.agent}:${session.id}`}>
+                      <td className="max-w-[180px] px-3 py-2" title={session.id}>
+                        <button
+                          className="max-w-full truncate font-mono font-semibold text-foreground underline-offset-2 hover:underline"
+                          onClick={() => onSelectSession({ agent: session.agent, id: session.id })}
+                          type="button"
+                        >
+                          {compactId(session.id)}
+                        </button>
+                      </td>
+                      <td className="px-3 py-2">{t(agentKindLabel(session.agent))}</td>
+                      <td className="max-w-[150px] px-3 py-2" title={session.client}>{session.client}</td>
+                      <td className="px-3 py-2 text-right">{formatCompactNumber(session.requestCount)}</td>
+                      <td className="px-3 py-2 text-right">{formatCompactNumber(session.toolCallCount)}</td>
+                      <td className="px-3 py-2 text-right">{formatCompactNumber(session.subagentCallCount)}</td>
+                      <td className="px-3 py-2 text-right">{formatCompactNumber(session.cacheTokens)}</td>
+                      <td className="px-3 py-2 text-right">{formatCompactNumber(session.maxConcurrentRequests)}</td>
+                      <td className="max-w-[220px] px-3 py-2" title={formatToolCounts(session.topTools)}>{formatToolCounts(session.topTools) || "-"}</td>
+                      <td className="max-w-[220px] px-3 py-2 font-mono" title={session.userAgent}>{compactUserAgent(session.userAgent)}</td>
+                      <td className="px-3 py-2 font-mono">{formatLogDateTime(session.lastSeenAt)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -2614,7 +2809,7 @@ function AnalysisEmptyState({ label }: { label: string }) {
 }
 
 type UsageAnalysisColumn = {
-  key: "client" | "model" | "provider";
+  key: "client" | "credentialId" | "model" | "provider";
   label: string;
 };
 
@@ -2669,7 +2864,7 @@ function UsageAnalysisCard({
                   <tr className="bg-card/40 hover:bg-muted/30" key={row.key}>
                     {visibleColumns.map((column) => (
                       <td className="max-w-[180px] px-3 py-2 font-medium" key={column.key}>
-                        <span className="block truncate" title={row[column.key] ?? "unknown"}>{row[column.key] ?? "unknown"}</span>
+                        <span className="block truncate" title={row[column.key] || "-"}>{row[column.key] || "-"}</span>
                       </td>
                     ))}
                     <td className="px-3 py-2 text-right font-semibold">{formatCompactNumber(row.totalTokens)}</td>

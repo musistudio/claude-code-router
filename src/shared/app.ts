@@ -86,6 +86,7 @@ export type ProviderCredentialConfig = {
   enabled?: boolean;
   id: string;
   label?: string;
+  name?: string;
   limits?: ApiKeyLimitConfig;
   priority?: number;
   weight?: number;
@@ -203,6 +204,8 @@ export type ProviderAccountConnectorError = {
 };
 
 export type ProviderAccountSnapshot = {
+  credentialId?: string;
+  credentialLabel?: string;
   errors?: ProviderAccountConnectorError[];
   message?: string;
   meters: ProviderAccountMeter[];
@@ -425,6 +428,11 @@ export type GatewayMcpServerConfig = GatewayMcpStdioServerConfig | GatewayMcpRem
 
 export type GatewayAgentConfig = {
   mcpServers: GatewayMcpServerConfig[];
+};
+
+export const CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV = "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY";
+export const CLAUDE_CODE_DEFAULT_ENV: Record<string, string> = {
+  [CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV]: "1"
 };
 
 export type GatewayMcpToolInfo = {
@@ -1165,6 +1173,7 @@ export type ProxyNetworkSnapshot = {
 export type RequestLogStatusFilter = "all" | "error" | "success";
 
 export type RequestLogListFilter = {
+  credential?: string;
   model?: string;
   page?: number;
   pageSize?: number;
@@ -1182,6 +1191,9 @@ export type RequestLogEntry = {
   completedAt?: string;
   costUsd?: number;
   createdAt: string;
+  credentialChain: string[];
+  credentialId?: string;
+  credentialSaturated: boolean;
   durationMs: number;
   error?: string;
   id: number;
@@ -1204,6 +1216,7 @@ export type RequestLogEntry = {
 };
 
 export type RequestLogFilterOptions = {
+  credentials: string[];
   models: string[];
   providers: string[];
 };
@@ -1221,6 +1234,7 @@ export type RequestLogPage = {
 export type UsageStatsRange = "today" | "24h" | "7d" | "30d";
 
 export type UsageStatsFilter = {
+  credential?: string;
   includeProxy?: boolean;
   model?: string;
   provider?: string;
@@ -1247,6 +1261,7 @@ export type UsageSeriesPoint = UsageTotals & {
 export type UsageComparisonRow = UsageTotals & {
   caption: string;
   client?: string;
+  credentialId?: string;
   key: string;
   label: string;
   maxShare: number;
@@ -1270,6 +1285,8 @@ export type AgentKind = "claude-code" | "codex" | "claude-design" | "unknown";
 export type AgentAnalysisFilter = {
   agent?: AgentKind | "all";
   range?: UsageStatsRange;
+  sessionAgent?: AgentKind;
+  sessionId?: string;
 };
 
 export type AgentAnalysisTotals = UsageTotals & {
@@ -1341,6 +1358,18 @@ export type AgentAnalysisSessionRow = AgentAnalysisTotals & {
   startedAt: string;
   topTools: Array<{ count: number; name: string }>;
   userAgent?: string;
+};
+
+export type AgentAnalysisSessionSelection = {
+  agent: AgentKind;
+  id: string;
+};
+
+export type AgentAnalysisSessionModelRow = AgentAnalysisTotals & {
+  key: string;
+  lastSeenAt: string;
+  model: string;
+  provider: string;
 };
 
 export type AgentAnalysisToolRow = {
@@ -1416,6 +1445,19 @@ export type AgentObservabilityErrorRow = {
   userAgent?: string;
 };
 
+export type AgentAnalysisSessionDetail = {
+  endpoints: AgentObservabilityEndpointRow[];
+  errors: AgentObservabilityErrorRow[];
+  models: AgentAnalysisSessionModelRow[];
+  requests: AgentAnalysisRequestRow[];
+  routes: AgentObservabilityRouteRow[];
+  session: AgentAnalysisSessionRow;
+  statusCodes: Array<{ count: number; statusCode: number }>;
+  subagents: AgentAnalysisSubagentRow[];
+  tools: AgentAnalysisToolRow[];
+  totals: AgentAnalysisTotals;
+};
+
 export type AgentAnalysisSnapshot = {
   agents: AgentAnalysisAgentRow[];
   clients: AgentObservabilityClientRow[];
@@ -1427,6 +1469,7 @@ export type AgentAnalysisSnapshot = {
   recentRequests: AgentAnalysisRequestRow[];
   routes: AgentObservabilityRouteRow[];
   scannedRequestCount: number;
+  selectedSession?: AgentAnalysisSessionDetail;
   sessions: AgentAnalysisSessionRow[];
   subagents: AgentAnalysisSubagentRow[];
   tools: AgentAnalysisToolRow[];

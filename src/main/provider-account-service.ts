@@ -24,6 +24,7 @@ import type {
   ProviderAccountTestRequest,
   ProviderAccountTestResult,
   ProviderAccountStandardConnectorConfig,
+  ProviderCredentialConfig,
   ProviderAccountStatus
 } from "../shared/app";
 
@@ -38,6 +39,12 @@ type ConnectorResult = {
   message?: string;
   source: ProviderAccountConnectorSource;
   status?: ProviderAccountStatus;
+};
+
+type ProviderAccountTarget = {
+  account: ProviderAccountConfig;
+  credential?: ProviderCredentialConfig;
+  provider: GatewayProviderConfig;
 };
 
 const defaultRefreshIntervalMs = 5 * 60 * 1000;
@@ -55,7 +62,11 @@ export async function getProviderAccountSnapshots(providerName?: string): Promis
     return provider.name.trim().toLowerCase() === normalizedProviderName;
   });
 
-  const snapshots = await Promise.all(providers.map((provider) => resolveProviderAccountSnapshot(config, provider)));
+  const snapshots = await Promise.all(
+    providers.flatMap((provider) =>
+      providerAccountTargets(provider).map((target) => resolveProviderAccountSnapshot(config, target))
+    )
+  );
   return snapshots.filter((snapshot): snapshot is ProviderAccountSnapshot => Boolean(snapshot));
 }
 
@@ -86,19 +97,22 @@ export async function testProviderAccountConnector(request: ProviderAccountTestR
   };
 }
 
-async function resolveProviderAccountSnapshot(config: AppConfig, provider: GatewayProviderConfig): Promise<ProviderAccountSnapshot | undefined> {
-  const account = effectiveProviderAccount(provider);
-  if (!account?.enabled) {
-    return undefined;
-  }
-
+async function resolveProviderAccountSnapshot(config: AppConfig, target: ProviderAccountTarget): Promise<ProviderAccountSnapshot | undefined> {
+  const { account, credential } = target;
+  const provider = credential
+    ? providerWithCredentialApiKey(target.provider, credential, account)
+    : { ...target.provider, account };
   const providerName = provider.name.trim();
   if (!providerName) {
     return undefined;
   }
 
   const refreshIntervalMs = normalizeRefreshInterval(account.refreshIntervalMs);
-  const cacheKey = `${providerName}:${JSON.stringify(account.connectors ?? [])}`;
+  const cacheKey = [
+    providerName,
+    credential ? `credential:${credential.id}` : "provider",
+    JSON.stringify(account.connectors ?? [])
+  ].join(":");
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.snapshot;
@@ -106,9 +120,9 @@ async function resolveProviderAccountSnapshot(config: AppConfig, provider: Gatew
 
   const now = new Date();
   const connectorResults = await Promise.all(
-    normalizeConnectors(account).map((connector) => resolveConnector(config, provider, connector, now))
+    normalizeConnectors(account).map((connector) => resolveConnector(config, provider, connector, now, credential?.id))
   );
-  const snapshot = mergeConnectorResults(providerName, connectorResults, now, refreshIntervalMs);
+  const snapshot = mergeConnectorResults(providerName, connectorResults, now, refreshIntervalMs, credential);
   cache.set(cacheKey, {
     expiresAt: Date.now() + refreshIntervalMs,
     snapshot
@@ -116,8 +130,45 @@ async function resolveProviderAccountSnapshot(config: AppConfig, provider: Gatew
   return snapshot;
 }
 
+function providerAccountTargets(provider: GatewayProviderConfig): ProviderAccountTarget[] {
+  const providerAccount = effectiveProviderAccount(provider);
+  const credentials = activeProviderCredentials(provider);
+  if (credentials.length === 0) {
+    return providerAccount ? [{ account: providerAccount, provider }] : [];
+  }
+
+  const credentialTargets = credentials
+    .map((credential): ProviderAccountTarget | undefined => {
+      const account = effectiveProviderCredentialAccount(provider, credential, providerAccount);
+      return account ? { account, credential, provider } : undefined;
+    })
+    .filter((target): target is ProviderAccountTarget => Boolean(target));
+  if (credentialTargets.length > 0) {
+    return credentialTargets;
+  }
+
+  return providerAccount && providerApiKey(provider) ? [{ account: providerAccount, provider }] : [];
+}
+
 function effectiveProviderAccount(provider: GatewayProviderConfig): ProviderAccountConfig | undefined {
-  const account = provider.account;
+  return effectiveProviderAccountConfig(provider, provider.account);
+}
+
+function effectiveProviderCredentialAccount(
+  provider: GatewayProviderConfig,
+  credential: ProviderCredentialConfig,
+  inheritedAccount: ProviderAccountConfig | undefined
+): ProviderAccountConfig | undefined {
+  if (credential.account !== undefined) {
+    return effectiveProviderAccountConfig(provider, credential.account);
+  }
+  return inheritedAccount;
+}
+
+function effectiveProviderAccountConfig(
+  provider: GatewayProviderConfig,
+  account: ProviderAccountConfig | undefined
+): ProviderAccountConfig | undefined {
   if (!account?.enabled) {
     return undefined;
   }
@@ -133,6 +184,27 @@ function effectiveProviderAccount(provider: GatewayProviderConfig): ProviderAcco
   return {
     ...presetAccount,
     refreshIntervalMs: account.refreshIntervalMs ?? presetAccount.refreshIntervalMs
+  };
+}
+
+function activeProviderCredentials(provider: GatewayProviderConfig): ProviderCredentialConfig[] {
+  return (provider.credentials ?? []).filter((credential) =>
+    credential.enabled !== false &&
+    Boolean(providerCredentialApiKey(credential))
+  );
+}
+
+function providerWithCredentialApiKey(
+  provider: GatewayProviderConfig,
+  credential: ProviderCredentialConfig,
+  account: ProviderAccountConfig
+): GatewayProviderConfig {
+  return {
+    ...provider,
+    account,
+    api_key: providerCredentialApiKey(credential),
+    apiKey: undefined,
+    apikey: undefined
   };
 }
 
@@ -158,7 +230,8 @@ async function resolveConnector(
   config: AppConfig,
   provider: GatewayProviderConfig,
   connector: ProviderAccountConnectorConfig,
-  now: Date
+  now: Date,
+  credentialId?: string
 ): Promise<ConnectorResult> {
   try {
     if (connector.type === "standard") {
@@ -171,7 +244,7 @@ async function resolveConnector(
       return await resolvePluginConnector(config, provider, connector, now);
     }
     if (connector.type === "local-estimate") {
-      return await resolveLocalEstimateConnector(provider, connector, now);
+      return await resolveLocalEstimateConnector(provider, connector, now, credentialId);
     }
     return connectorError("unsupported", `Unsupported account connector type: ${readConnectorType(connector)}`, connectorId(connector));
   } catch (error) {
@@ -266,10 +339,11 @@ async function resolvePluginConnector(
 async function resolveLocalEstimateConnector(
   provider: GatewayProviderConfig,
   connector: ProviderAccountLocalEstimateConnectorConfig,
-  now: Date
+  now: Date,
+  credentialId?: string
 ): Promise<ConnectorResult> {
   const meters = await Promise.all(
-    connector.windows.map((window) => localEstimateMeter(provider, window, now))
+    connector.windows.map((window) => localEstimateMeter(provider, window, now, credentialId))
   );
 
   return {
@@ -283,7 +357,8 @@ async function resolveLocalEstimateConnector(
 async function localEstimateMeter(
   provider: GatewayProviderConfig,
   window: ProviderAccountLocalWindowConfig,
-  now: Date
+  now: Date,
+  credentialId?: string
 ): Promise<ProviderAccountMeter | undefined> {
   const limit = normalizeNumber(window.limit);
   if (!window.id || !window.label || !limit || limit <= 0) {
@@ -291,7 +366,10 @@ async function localEstimateMeter(
   }
 
   const since = localEstimateWindowStart(window.window, now);
-  const totals = await getUsageTotalsSince(since, { provider: provider.name });
+  const totals = await getUsageTotalsSince(since, {
+    ...(credentialId ? { credential: credentialId } : {}),
+    provider: provider.name
+  });
   const used = window.unit === "tokens"
     ? totals.totalTokens
     : window.unit === "requests"
@@ -316,7 +394,8 @@ function mergeConnectorResults(
   provider: string,
   results: ConnectorResult[],
   now: Date,
-  refreshIntervalMs: number
+  refreshIntervalMs: number,
+  credential?: ProviderCredentialConfig
 ): ProviderAccountSnapshot {
   const errors = results.flatMap((result) => result.errors);
   const metersById = new Map<string, ProviderAccountMeter>();
@@ -342,6 +421,8 @@ function mergeConnectorResults(
   const message = results.find((result) => result.message)?.message ?? (errors.length > 0 && meters.length === 0 ? errors[0]?.message : undefined);
 
   return {
+    credentialId: credential?.id,
+    credentialLabel: credential?.name ?? credential?.label ?? credential?.id,
     errors: errors.length > 0 ? errors : undefined,
     message,
     meters,
@@ -578,6 +659,10 @@ function providerBaseUrl(provider: GatewayProviderConfig): string {
 
 function providerApiKey(provider: GatewayProviderConfig): string {
   return provider.api_key || provider.apiKey || provider.apikey || "";
+}
+
+function providerCredentialApiKey(credential: ProviderCredentialConfig): string {
+  return credential.api_key || credential.apiKey || credential.apikey || "";
 }
 
 function localEstimateWindowStart(window: string, now: Date): Date {

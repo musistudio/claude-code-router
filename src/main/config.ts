@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { loadPersistedApiKeys, replacePersistedApiKeys } from "./api-key-store";
 import { CONFIGDIR, CONFIG_FILE, GATEWAY_CONFIG_FILE } from "./constants";
-import { DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "../shared/app";
+import { CLAUDE_CODE_DEFAULT_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "../shared/app";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "../shared/provider-presets";
 import type {
   AppConfig,
@@ -171,7 +171,7 @@ const DEFAULT_CONFIG: AppConfig = {
       {
         agent: "claude-code",
         enabled: true,
-        env: {},
+        env: { ...CLAUDE_CODE_DEFAULT_ENV },
         id: "default-claude-code",
         model: "",
         name: "Claude Code",
@@ -1040,7 +1040,9 @@ function parseProviderCredentials(value: unknown): ProviderCredentialConfig[] | 
         return undefined;
       }
 
-      const id = readString(item.id) || readString(item.name) || readString(item.label) || `key-${index + 1}`;
+      const legacyLabel = readString(item.label);
+      const id = readString(item.id) || readString(item.name) || legacyLabel || `key-${index + 1}`;
+      const name = readString(item.name) || legacyLabel || id;
       const priority = readNumber(item.priority);
       const weight = readNumber(item.weight);
       return {
@@ -1048,7 +1050,8 @@ function parseProviderCredentials(value: unknown): ProviderCredentialConfig[] | 
         api_key: apiKey,
         enabled: typeof item.enabled === "boolean" ? item.enabled : undefined,
         id,
-        label: readString(item.label) || readString(item.name),
+        ...(legacyLabel ? { label: legacyLabel } : {}),
+        name,
         limits: parseApiKeyLimits(item.limits),
         priority: priority !== undefined ? priority : undefined,
         weight: weight !== undefined && weight > 0 ? weight : undefined
@@ -1953,7 +1956,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
           ...(botConfigId ? { botConfigId } : {}),
           ...(botGateway ? { botGateway } : {}),
           enabled,
-          env,
+          env: claudeCodeProfileEnv(env),
           id,
           model,
           name,
@@ -2011,7 +2014,7 @@ function profileFromClaudeCodeConfig(config: ClaudeCodeProfileConfig): ProfileCo
   return {
     agent: "claude-code",
     enabled: config.enabled,
-    env: {},
+    env: claudeCodeProfileEnv(),
     id: "default-claude-code",
     model: config.model,
     name: "Claude Code",
@@ -2019,6 +2022,13 @@ function profileFromClaudeCodeConfig(config: ClaudeCodeProfileConfig): ProfileCo
     settingsFile: config.settingsFile,
     smallFastModel: config.smallFastModel,
     surface: "auto"
+  };
+}
+
+function claudeCodeProfileEnv(env: Record<string, string> = {}): Record<string, string> {
+  return {
+    ...CLAUDE_CODE_DEFAULT_ENV,
+    ...env
   };
 }
 

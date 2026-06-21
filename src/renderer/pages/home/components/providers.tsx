@@ -1,18 +1,19 @@
 import {
   AddProviderDraft, AnimatedDisclosure, AnimatedListItem, AnimatePresence, AppConfig, Badge,
-  Box, Button, Card, CardContent, CardHeader, CardTitle,
+  Box, Braces, Button, Card, CardContent, CardHeader, CardTitle,
   Check, Checkbox, ChevronDown, ChevronRight, CircleAlert, cn,
-  Copy, copyTextToClipboard, createDefaultProviderAccountDraft, createModelCatalogItems, createProviderAccountDraftFromConfig, createProviderInstallLinkFromDraft,
+  compareProviderAccountSnapshots, Copy, copyTextToClipboard, createDefaultProviderAccountDraft, createModelCatalogItems, createProviderAccountDraftFromConfig, createProviderCredentialDraft, createProviderInstallLinkFromDraft,
   customProviderPresetId, defaultProviderAccountConfigForPreset, Dialog, DialogBody, DialogContent, DialogFooter,
-  DialogHeader, DialogTitle, Field, findProviderPreset, formatProviderAccountMeterValue, formatProviderAccountSchedule, GatewayProviderConfig,
+  DialogHeader, DialogTitle, Field, findProviderPreset, formatProviderAccountMeterTitle, formatProviderAccountMeterValue, GatewayProviderConfig,
   GatewayProviderProbeResult, Globe, inferProviderNameFromBaseUrl, Input, KeyValueRowsControl, Label,
   Layers3, LoaderCircle, mergeProviderModelLists, modelCatalogItemMatchesQuery, motion, motionEase,
   Pencil, Plus, PopoverContent, primaryProviderAccountMeter, primaryProviderPresetEndpoint, providerAccountBadgeVariant,
-  providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountMeter, ProviderAccountSnapshot, ProviderAccountTestPath,
-  ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerHttpJsonConnectorFromDraft,
+  providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountMeter, ProviderAccountSnapshot,
+  providerAccountSnapshotCredentialLabel, providerAccountSnapshotLabel, ProviderAccountTestPath,
+  ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerFailoverStrategyOptions, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
   ProviderConnectivityCheckReport, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerPresets, providerProbeHasSupportedProtocol,
   providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, reducedMotionTransition, Search, SelectControl,
-  ShieldCheck, splitLines, splitModelTagInput, Textarea, translatedProviderProtocolLabel, translateOptions,
+  ShieldCheck, splitLines, splitModelTagInput, Switch, Textarea, translatedProviderProtocolLabel, translateOptions,
   translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppText, useEffect, useMemo,
   useReducedMotion, useRef, useState, X
 } from "../shared";
@@ -32,10 +33,15 @@ export function ProvidersView({ accountSnapshots, addProvider, editProvider, not
     () => providers.filter(({ provider }) => providerMatchesQuery(provider, normalizedQuery)),
     [normalizedQuery, providers]
   );
-  const accountSnapshotByProvider = useMemo(
-    () => new Map(accountSnapshots.map((snapshot) => [snapshot.provider, snapshot])),
-    [accountSnapshots]
-  );
+  const accountSnapshotsByProvider = useMemo(() => {
+    const grouped = new Map<string, ProviderAccountSnapshot[]>();
+    for (const snapshot of accountSnapshots) {
+      const items = grouped.get(snapshot.provider) ?? [];
+      items.push(snapshot);
+      grouped.set(snapshot.provider, items);
+    }
+    return grouped;
+  }, [accountSnapshots]);
 
   function toggleProvider(provider: GatewayProviderConfig, index: number) {
     const key = providerListItemKey(provider, index);
@@ -106,7 +112,7 @@ export function ProvidersView({ accountSnapshots, addProvider, editProvider, not
                   {visibleProviders.map(({ provider, index }) => {
                     const itemKey = providerListItemKey(provider, index);
                     const expanded = expandedProviders.has(itemKey);
-                    const accountSnapshot = accountSnapshotByProvider.get(provider.name);
+                      const providerAccountSnapshots = accountSnapshotsByProvider.get(provider.name) ?? [];
                     return (
                       <AnimatedListItem key={itemKey}>
                         <div
@@ -145,7 +151,7 @@ export function ProvidersView({ accountSnapshots, addProvider, editProvider, not
                           <div className="min-w-0 truncate text-[11px] text-muted-foreground" title={providerCapabilitiesSummary(provider, t)}>
                             {providerCapabilitiesSummary(provider, t)}
                           </div>
-                          <ProviderAccountListCell provider={provider} snapshot={accountSnapshot} />
+                          <ProviderAccountListCell provider={provider} snapshots={providerAccountSnapshots} />
                           <div className="min-w-0">
                             <button
                               aria-expanded={expanded}
@@ -317,12 +323,14 @@ export function ModelsView({ config }: { config: AppConfig }) {
   );
 }
 
-function ProviderAccountListCell({ provider, snapshot }: { provider: GatewayProviderConfig; snapshot?: ProviderAccountSnapshot }) {
+function ProviderAccountListCell({ provider, snapshots }: { provider: GatewayProviderConfig; snapshots: ProviderAccountSnapshot[] }) {
   const t = useAppText();
+  const sortedSnapshots = [...snapshots].sort(compareProviderAccountSnapshots);
+  const snapshot = sortedSnapshots[0];
   const meter = snapshot ? primaryProviderAccountMeter(snapshot) : undefined;
   const displayMeters = snapshot ? providerAccountListMeters(snapshot) : [];
 
-  if (!provider.account?.enabled) {
+  if (!provider.account?.enabled && snapshots.length === 0) {
     return <div className="min-w-0 truncate text-[11px] text-muted-foreground">{t("Disabled")}</div>;
   }
 
@@ -335,12 +343,18 @@ function ProviderAccountListCell({ provider, snapshot }: { provider: GatewayProv
       <div className="flex min-w-0 items-center gap-1.5">
         <Badge variant={providerAccountBadgeVariant(snapshot.status)}>{snapshot.status}</Badge>
         {meter ? <span className="min-w-0 truncate text-[11px] font-medium">{formatProviderAccountMeterValue(meter)}</span> : null}
+        {sortedSnapshots.length > 1 ? <Badge variant="outline">{sortedSnapshots.length} {t("keys")}</Badge> : null}
       </div>
+      {providerAccountSnapshotCredentialLabel(snapshot) ? (
+        <div className="mt-0.5 truncate text-[10px] font-semibold text-muted-foreground" title={providerAccountSnapshotLabel(snapshot)}>
+          {providerAccountSnapshotCredentialLabel(snapshot)}
+        </div>
+      ) : null}
       {displayMeters.length > 0 ? (
         <div className="mt-0.5 space-y-0.5">
           {displayMeters.map((item) => (
-            <div className="truncate text-[10px] text-muted-foreground" key={item.id} title={providerAccountMeterScheduleTitle(item, t)}>
-              {providerAccountMeterScheduleTitle(item, t)}
+            <div className="truncate text-[10px] text-muted-foreground" key={item.id} title={formatProviderAccountMeterTitle(item, t)}>
+              {formatProviderAccountMeterTitle(item, t)}
             </div>
           ))}
         </div>
@@ -356,12 +370,6 @@ function ProviderAccountListCell({ provider, snapshot }: { provider: GatewayProv
 function providerAccountListMeters(snapshot: ProviderAccountSnapshot): ProviderAccountMeter[] {
   const scheduledMeters = snapshot.meters.filter((item) => item.resetAt || item.window);
   return (scheduledMeters.length > 0 ? scheduledMeters : snapshot.meters).slice(0, 2);
-}
-
-function providerAccountMeterScheduleTitle(meter: ProviderAccountMeter, translate: (value: string) => string): string {
-  const label = translate(meter.label);
-  const schedule = formatProviderAccountSchedule(meter, translate);
-  return [label, schedule].filter(Boolean).join(" / ");
 }
 
 export function DeleteProviderDialog({
@@ -1066,6 +1074,10 @@ export function AddProviderForm({
                 <Field label={t("Detected endpoint")}>
                   <Input readOnly value={detectedBaseUrl} />
                 </Field>
+                <ProviderCredentialSettings
+                  draft={draft}
+                  onChange={onChange}
+                />
                 <ProviderUsageSettings
                   customEndpoint={customEndpoint}
                   draft={draft}
@@ -1120,6 +1132,218 @@ export function AddProviderForm({
 
       {error ? <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive"><CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>{error}</span></div> : null}
     </>
+  );
+}
+
+function ProviderCredentialSettings({
+  draft,
+  onChange
+}: {
+  draft: AddProviderDraft;
+  onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
+}) {
+  const t = useAppText();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [importError, setImportError] = useState("");
+  const strategyOptions = translateOptions(providerFailoverStrategyOptions, t);
+
+  function addCredential() {
+    onChange({
+      credentials: [
+        ...draft.credentials,
+        createProviderCredentialDraft(draft.credentials.length)
+      ]
+    });
+    setImportError("");
+  }
+
+  function updateCredential(index: number, patch: Partial<ProviderCredentialDraft>) {
+    onChange({
+      credentials: draft.credentials.map((credential, credentialIndex) =>
+        credentialIndex === index ? { ...credential, ...patch } : credential
+      )
+    });
+  }
+
+  function removeCredential(index: number) {
+    onChange({
+      credentials: draft.credentials.filter((_, credentialIndex) => credentialIndex !== index)
+    });
+  }
+
+  async function importCredentialFile(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+    try {
+      const text = await file.text();
+      const patch = providerCredentialDraftPatchFromJson(text);
+      if (typeof patch === "string") {
+        setImportError(patch);
+        return;
+      }
+      onChange(patch);
+      setImportError("");
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  }
+
+  return (
+    <div className="sm:col-span-2 space-y-3 rounded-md border border-border bg-background/60 p-3">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <Label className="text-[12px] font-semibold">{t("Credential pool")}</Label>
+          <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t("Configure multiple provider API keys for this supplier.")}</div>
+        </div>
+        <Label className="flex shrink-0 items-center gap-2 text-[12px] font-medium text-muted-foreground">
+          <span>{t("Show credential settings")}</span>
+          <Switch
+            aria-label={t("Show credential settings")}
+            checked={expanded}
+            onCheckedChange={setExpanded}
+          />
+        </Label>
+      </div>
+
+      {expanded ? (
+        <>
+          <div className="flex min-w-0 flex-wrap justify-end gap-2">
+            <input
+              accept=".json,application/json"
+              className="hidden"
+              onChange={(event) => void importCredentialFile(event.target.files?.[0])}
+              ref={fileInputRef}
+              type="file"
+            />
+            <Button className="h-8 px-2" onClick={() => fileInputRef.current?.click()} type="button" variant="outline">
+              <Braces className="h-3.5 w-3.5" />
+              {t("Import JSON")}
+            </Button>
+            <Button className="h-8 px-2" onClick={addCredential} type="button" variant="outline">
+              <Plus className="h-3.5 w-3.5" />
+              {t("Add key")}
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Field label={t("Key failover strategy")}>
+              <SelectControl
+                onChange={(credentialFailoverStrategy) => onChange({ credentialFailoverStrategy: credentialFailoverStrategy as AddProviderDraft["credentialFailoverStrategy"] })}
+                options={strategyOptions}
+                value={draft.credentialFailoverStrategy}
+              />
+            </Field>
+            <Field label={t("Cooldown ms")}>
+              <Input
+                min={1000}
+                placeholder="60000"
+                type="number"
+                value={draft.credentialFailoverCooldownMs}
+                onChange={(event) => onChange({ credentialFailoverCooldownMs: event.target.value })}
+              />
+            </Field>
+            <Field label={t("Spillover threshold")}>
+              <Input
+                max={1}
+                min={0}
+                placeholder="0.8"
+                step="0.01"
+                type="number"
+                value={draft.credentialSpilloverThreshold}
+                onChange={(event) => onChange({ credentialSpilloverThreshold: event.target.value })}
+              />
+            </Field>
+          </div>
+
+          {draft.credentials.length === 0 ? (
+            <div className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-4 text-center text-[12px] text-muted-foreground">
+              {t("No provider credentials configured")}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {draft.credentials.map((credential, index) => (
+                <ProviderCredentialRow
+                  credential={credential}
+                  index={index}
+                  key={`${credential.id || "key"}-${index}`}
+                  onChange={(patch) => updateCredential(index, patch)}
+                  onRemove={() => removeCredential(index)}
+                />
+              ))}
+            </div>
+          )}
+
+          {importError ? (
+            <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
+              <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{t(importError)}</span>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function ProviderCredentialRow({
+  credential,
+  index,
+  onChange,
+  onRemove
+}: {
+  credential: ProviderCredentialDraft;
+  index: number;
+  onChange: (patch: Partial<ProviderCredentialDraft>) => void;
+  onRemove: () => void;
+}) {
+  const t = useAppText();
+
+  return (
+    <div className="rounded-md border border-border bg-muted/20 p-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[auto_minmax(88px,0.55fr)_minmax(120px,0.7fr)_minmax(160px,1fr)_72px_72px_auto]">
+        <div className="flex items-end pb-2">
+          <Checkbox
+            aria-label={`${t("Enable")} ${credential.id || `key-${index + 1}`}`}
+            checked={credential.enabled}
+            onCheckedChange={(enabled) => onChange({ enabled })}
+          />
+        </div>
+        <Field label={t("ID")}>
+          <Input value={credential.id} onChange={(event) => onChange({ id: event.target.value })} />
+        </Field>
+        <Field label={t("Name")}>
+          <Input value={credential.name} onChange={(event) => onChange({ name: event.target.value })} />
+        </Field>
+        <Field label={t("API key")}>
+          <Input type="password" value={credential.apiKey} onChange={(event) => onChange({ apiKey: event.target.value })} />
+        </Field>
+        <Field label={t("Priority")}>
+          <Input min={1} type="number" value={credential.priority} onChange={(event) => onChange({ priority: event.target.value })} />
+        </Field>
+        <Field label={t("Weight")}>
+          <Input min={1} type="number" value={credential.weight} onChange={(event) => onChange({ weight: event.target.value })} />
+        </Field>
+        <div className="flex items-end justify-end">
+          <Button aria-label={`${t("Remove")} ${credential.id || `key-${index + 1}`}`} onClick={onRemove} size="iconSm" title={t("Remove")} type="button" variant="ghost">
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+      <Field className="mt-3" label={t("Limits JSON")}>
+        <Textarea
+          className="min-h-[76px] font-mono text-[11px]"
+          placeholder={`{\n  "rpm": 60,\n  "tpm": 100000\n}`}
+          value={credential.limitsText}
+          onChange={(event) => onChange({ limitsText: event.target.value })}
+        />
+      </Field>
+    </div>
   );
 }
 

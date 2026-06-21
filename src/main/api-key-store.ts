@@ -1,17 +1,12 @@
 import { safeStorage } from "electron";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
+import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import initSqlJs from "sql.js";
 import { API_KEYS_DB_FILE } from "./constants";
+import { createBetterSqliteDatabase, type BetterSqliteDatabase } from "./sqlite-native";
 import type { ApiKeyConfig, ApiKeyLimitConfig } from "../shared/app";
 
-type SqlDatabase = InstanceType<Awaited<ReturnType<typeof initSqlJs>>["Database"]>;
-type SqlValue = number | string | Uint8Array | null;
-type QueryExecResult = {
-  columns: string[];
-  values: SqlValue[][];
-};
+type SqlDatabase = BetterSqliteDatabase;
+type SqlValue = bigint | Buffer | number | string | null;
 
 type StoredApiKeyRow = {
   createdAt: string;
@@ -23,7 +18,6 @@ type StoredApiKeyRow = {
   name: string;
 };
 
-const requireFromHere = createRequire(__filename);
 const plainStorage = "plain";
 const safeStorageEncryption = "electron-safe-storage";
 
@@ -35,8 +29,9 @@ class ApiKeyStore {
 
   async list(): Promise<ApiKeyConfig[]> {
     const database = await this.getDatabase();
-    const rows = readRows(
-      database.exec(`
+    const rows = queryRows(
+      database,
+      `
         SELECT
           id,
           name,
@@ -47,7 +42,7 @@ class ApiKeyStore {
           limits_json
         FROM api_keys
         ORDER BY rowid
-      `)[0]
+      `
     );
 
     return uniqueApiKeyConfigs(rows.map(toApiKeyConfig));
@@ -69,11 +64,11 @@ class ApiKeyStore {
     `);
 
     try {
-      database.run("BEGIN TRANSACTION");
-      database.run("DELETE FROM api_keys");
+      database.exec("BEGIN TRANSACTION");
+      database.exec("DELETE FROM api_keys");
       for (const apiKey of normalized) {
         const stored = encryptApiKey(apiKey.key);
-        statement.run([
+        statement.run(
           apiKey.id,
           apiKey.name ?? "",
           stored.value,
@@ -81,20 +76,17 @@ class ApiKeyStore {
           apiKey.createdAt,
           apiKey.expiresAt ?? "",
           apiKey.limits ? JSON.stringify(apiKey.limits) : ""
-        ]);
+        );
       }
-      database.run("COMMIT");
-      this.persist();
+      database.exec("COMMIT");
       return normalized;
     } catch (error) {
       try {
-        database.run("ROLLBACK");
+        database.exec("ROLLBACK");
       } catch {
         // Ignore rollback errors; the original write error is more useful.
       }
       throw error;
-    } finally {
-      statement.free();
     }
   }
 
@@ -109,13 +101,10 @@ class ApiKeyStore {
 
   private async open(): Promise<SqlDatabase> {
     mkdirSync(dirname(this.dbFile), { recursive: true });
-    const wasmFile = requireFromHere.resolve("sql.js/dist/sql-wasm.wasm");
-    const SQL = await initSqlJs({ locateFile: () => wasmFile });
-    const database = existsSync(this.dbFile)
-      ? new SQL.Database(readFileSync(this.dbFile))
-      : new SQL.Database();
+    const database = createBetterSqliteDatabase(this.dbFile);
+    configureSqliteDatabase(database);
 
-    database.run(`
+    database.exec(`
       CREATE TABLE IF NOT EXISTS api_keys (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL DEFAULT '',
@@ -129,15 +118,7 @@ class ApiKeyStore {
     `);
 
     this.database = database;
-    this.persist();
     return database;
-  }
-
-  private persist(): void {
-    if (!this.database) {
-      return;
-    }
-    writeFileSync(this.dbFile, Buffer.from(this.database.export()));
   }
 }
 
@@ -241,18 +222,14 @@ function parseApiKeyLimits(value: string): ApiKeyLimitConfig | undefined {
   }
 }
 
-function readRows(result: QueryExecResult | undefined): Array<Record<string, SqlValue>> {
-  if (!result) {
-    return [];
-  }
+function configureSqliteDatabase(database: SqlDatabase): void {
+  database.pragma("journal_mode = WAL");
+  database.pragma("synchronous = NORMAL");
+  database.pragma("busy_timeout = 5000");
+}
 
-  return result.values.map((values) => {
-    const row: Record<string, SqlValue> = {};
-    result.columns.forEach((column, index) => {
-      row[column] = values[index] ?? null;
-    });
-    return row;
-  });
+function queryRows(database: SqlDatabase, sql: string, params: SqlValue[] = []): Array<Record<string, SqlValue>> {
+  return database.prepare(sql).all(...params) as Array<Record<string, SqlValue>>;
 }
 
 function uniqueApiKeyConfigs(values: Array<ApiKeyConfig | undefined>): ApiKeyConfig[] {

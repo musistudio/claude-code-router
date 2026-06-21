@@ -1,5 +1,5 @@
 import {
-  AddApiKeyDraft, AddProfileDraft, AddProviderDraft, AddRoutingRuleDraft, AgentAnalysisSnapshot, AgentFilterValue,
+  AddApiKeyDraft, AddProfileDraft, AddProviderDraft, AddRoutingRuleDraft, AgentAnalysisSessionSelection, AgentAnalysisSnapshot, AgentFilterValue,
   ApiKeyConfig, AppConfig, appCopy, AppI18nContext, AppInfo, AppUpdateStatus,
   AppLanguagePreference, applyProviderProbeResult, AppToast, BotGatewaySavedConfig, buildExtensionList, claudeDesignRoutingConfigFromDraft,
   ClaudeDesignRoutingDraft, ClaudeDesignRoutingRuleDraft, cloneConfig, createApiKeyDraft, createApiKeyEditDraft,
@@ -19,12 +19,13 @@ import {
   normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
   normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingStepId, onboardingStepOrder,
   OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parseProviderAccountDraft,
+  providerCredentialsFromDraft, providerFailoverFromDraft,
   persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, ProfileConfig, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
   providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
-  ResolvedTheme, resolvePluginInstallPlan, RouterRule, ServerActionBusy,
+  ResolvedTheme, resolvePluginInstallPlan, RouterRule, ServerActionBusy, SettingsPageId,
   splitLines, translateProxyCertificateMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
   uniqueRoutingRuleId, updateApiKeyEditableConfig, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, useEffect,
   useMemo, useReducedMotion, useRef, useState, validateVirtualModelDraft, ViewId,
@@ -42,7 +43,7 @@ type ProfileOpenDialogState = {
   profile: ProfileConfig;
 };
 
-type UpdateActionBusy = "" | "check" | "download" | "install";
+type UpdateActionBusy = "" | "download" | "install";
 
 function App() {
   const [activeView, setActiveView] = useState<ViewId>("onboarding");
@@ -57,7 +58,6 @@ function App() {
   const [proxyStatus, setProxyStatus] = useState<ProxyStatus>(fallbackProxyStatus);
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus>(fallbackUpdateStatus);
   const [updateActionBusy, setUpdateActionBusy] = useState<UpdateActionBusy>("");
-  const [updateActionError, setUpdateActionError] = useState("");
   const [actionBusy, setActionBusy] = useState<ServerActionBusy>("");
   const [gatewayActionBusy, setGatewayActionBusy] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
@@ -111,7 +111,7 @@ function App() {
   const [savedConfig, setSavedConfig] = useState<AppConfig>(fallbackConfig);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsInitialPage, setSettingsInitialPage] = useState<"appearance" | "bots" | "tray" | "update">("appearance");
+  const [settingsInitialPage, setSettingsInitialPage] = useState<SettingsPageId>("appearance");
   const [settingsBotAddRequestKey, setSettingsBotAddRequestKey] = useState(0);
   const [compactLayout, setCompactLayout] = useState(() => window.matchMedia("(max-width: 720px)").matches);
   const [toast, setToast] = useState<AppToast>();
@@ -131,6 +131,7 @@ function App() {
   const [agentAnalysisError, setAgentAnalysisError] = useState("");
   const [agentAnalysisLoading, setAgentAnalysisLoading] = useState(false);
   const [agentAnalysisRange, setAgentAnalysisRange] = useState<UsageStatsRange>("7d");
+  const [agentAnalysisSession, setAgentAnalysisSession] = useState<AgentAnalysisSessionSelection>();
   const [usageRange, setUsageRange] = useState<UsageStatsRange>("7d");
   const [usageStats, setUsageStats] = useState<UsageStatsSnapshot>(fallbackUsageStats);
   const [providerAccountSnapshots, setProviderAccountSnapshots] = useState<ProviderAccountSnapshot[]>([]);
@@ -194,6 +195,7 @@ function App() {
     void window.ccr.getPluginMarketplace().then(setPluginMarketplace).catch(() => setPluginMarketplace([]));
     void window.ccr.getProxyCertificateStatus().then(setProxyCertificateStatus);
     void window.ccr.getUpdateStatus().then(setUpdateStatus).catch(() => setUpdateStatus(fallbackUpdateStatus));
+    const unsubscribeOpenSettings = window.ccr.onOpenSettingsRequest(openSettingsDialog);
     const unsubscribeUpdateStatus = window.ccr.onUpdateStatusChanged(setUpdateStatus);
     const refreshRuntimeStatus = () => {
       void window.ccr?.getGatewayStatus().then(setGatewayStatus);
@@ -203,6 +205,7 @@ function App() {
     const timer = window.setInterval(refreshRuntimeStatus, 2000);
     return () => {
       window.clearInterval(timer);
+      unsubscribeOpenSettings();
       unsubscribeUpdateStatus();
     };
   }, []);
@@ -293,7 +296,12 @@ function App() {
     };
   }, [draftConfig.Providers]);
 
-  const agentAnalysisFilterKey = JSON.stringify({ agent: agentAnalysisAgent, range: agentAnalysisRange });
+  const agentAnalysisFilterKey = JSON.stringify({
+    agent: agentAnalysisAgent,
+    range: agentAnalysisRange,
+    sessionAgent: agentAnalysisSession?.agent,
+    sessionId: agentAnalysisSession?.id
+  });
 
   useEffect(() => {
     if (activeView !== "observability") {
@@ -309,7 +317,12 @@ function App() {
       if (showLoading) {
         setAgentAnalysisLoading(true);
       }
-      void window.ccr?.getAgentAnalysis({ agent: agentAnalysisAgent, range: agentAnalysisRange })
+      void window.ccr?.getAgentAnalysis({
+        agent: agentAnalysisAgent,
+        range: agentAnalysisRange,
+        sessionAgent: agentAnalysisSession?.agent,
+        sessionId: agentAnalysisSession?.id
+      })
         .then((snapshot) => {
           if (!cancelled) {
             setAgentAnalysis(snapshot);
@@ -556,33 +569,16 @@ function App() {
     }, 1800);
   }
 
-  async function checkForAppUpdate() {
-    if (!window.ccr) {
-      setUpdateActionError(t("Updates are only available in packaged builds."));
-      return;
-    }
-    setUpdateActionBusy("check");
-    setUpdateActionError("");
-    try {
-      setUpdateStatus(await window.ccr.updateCheck());
-    } catch (error) {
-      setUpdateActionError(formatUnknownError(error));
-    } finally {
-      setUpdateActionBusy("");
-    }
-  }
-
   async function downloadAppUpdate() {
     if (!window.ccr) {
-      setUpdateActionError(t("Updates are only available in packaged builds."));
+      showToast(t("Updates are only available in packaged builds."));
       return;
     }
     setUpdateActionBusy("download");
-    setUpdateActionError("");
     try {
       setUpdateStatus(await window.ccr.updateDownload());
     } catch (error) {
-      setUpdateActionError(formatUnknownError(error));
+      showToast(formatUnknownError(error));
     } finally {
       setUpdateActionBusy("");
     }
@@ -590,15 +586,14 @@ function App() {
 
   async function installAppUpdate() {
     if (!window.ccr) {
-      setUpdateActionError(t("Updates are only available in packaged builds."));
+      showToast(t("Updates are only available in packaged builds."));
       return;
     }
     setUpdateActionBusy("install");
-    setUpdateActionError("");
     try {
       await window.ccr.updateInstall();
     } catch (error) {
-      setUpdateActionError(formatUnknownError(error));
+      showToast(formatUnknownError(error));
       setUpdateActionBusy("");
     }
   }
@@ -1017,6 +1012,12 @@ function App() {
       setProviderProbeError(accountConfig);
       return false;
     }
+    const credentials = providerCredentialsFromDraft(providerDraft);
+    if (typeof credentials === "string") {
+      setProviderProbeError(credentials);
+      return false;
+    }
+    const failover = providerFailoverFromDraft(providerDraft);
 
     const fallbackProtocol = probe?.detectedProtocol ?? providerDraft.protocol;
     const fallbackBaseUrl = probe?.normalizedBaseUrl || providerDraft.baseUrl;
@@ -1057,6 +1058,18 @@ function App() {
       setProviderProbeError(keySafetyIssue.message);
       return false;
     }
+    for (const credential of credentials) {
+      const credentialKeySafetyIssue = providerApiKeySafetyIssue({
+        apiKey: credential.api_key || credential.apiKey || credential.apikey,
+        baseUrl,
+        name: providerName,
+        presetId: providerDraft.presetId
+      });
+      if (credentialKeySafetyIssue) {
+        setProviderProbeError(credentialKeySafetyIssue.message);
+        return false;
+      }
+    }
     const identityIssue = providerIdentitySafetyIssue({
       baseUrl,
       name: providerName,
@@ -1078,14 +1091,13 @@ function App() {
       return false;
     }
 
-    const existingProvider = providerEditIndex === undefined ? undefined : draftConfig.Providers[providerEditIndex];
     const provider: GatewayProviderConfig = {
       api_base_url: normalizeProviderBaseUrl(baseUrl, protocol),
       api_key: providerDraft.apiKey.trim(),
       capabilities: capabilities.length > 0 ? capabilities : undefined,
       account: accountConfig,
-      credentials: existingProvider?.credentials,
-      failover: existingProvider?.failover,
+      credentials: credentials.length > 0 ? credentials : undefined,
+      failover,
       icon: providerDraft.icon.trim() || undefined,
       models,
       name: providerName,
@@ -1737,6 +1749,11 @@ function App() {
     setSettingsOpen(true);
   }
 
+  function openSettingsDialog() {
+    setSettingsInitialPage("appearance");
+    setSettingsOpen(true);
+  }
+
   function changeOverviewWidgets(widgets: OverviewWidgetConfig[]) {
     updateConfig((config) => ({
       ...config,
@@ -1923,7 +1940,12 @@ function App() {
 
     setAgentAnalysisLoading(true);
     try {
-      setAgentAnalysis(await window.ccr.getAgentAnalysis({ agent: agentAnalysisAgent, range: agentAnalysisRange }));
+      setAgentAnalysis(await window.ccr.getAgentAnalysis({
+        agent: agentAnalysisAgent,
+        range: agentAnalysisRange,
+        sessionAgent: agentAnalysisSession?.agent,
+        sessionId: agentAnalysisSession?.id
+      }));
       setAgentAnalysisError("");
     } catch (error) {
       setAgentAnalysisError(error instanceof Error ? error.message : String(error));
@@ -1938,6 +1960,16 @@ function App() {
       ...patch,
       page: resetPage ? 1 : patch.page ?? current.page
     }));
+  }
+
+  function updateAgentAnalysisAgent(value: AgentFilterValue) {
+    setAgentAnalysisAgent(value);
+    setAgentAnalysisSession(undefined);
+  }
+
+  function updateAgentAnalysisRange(value: UsageStatsRange) {
+    setAgentAnalysisRange(value);
+    setAgentAnalysisSession(undefined);
   }
 
   async function clearProxyNetworkCaptures() {
@@ -2242,17 +2274,18 @@ function App() {
               isMac={isMac}
               needsTrafficLightSafeArea={needsTrafficLightSafeArea}
               networkCaptureEnabled={networkCaptureEnabled}
+              onDownloadUpdate={downloadAppUpdate}
+              onInstallUpdate={installAppUpdate}
               onOpenServerView={() => setActiveView("server")}
-              onOpenSettings={() => {
-                setSettingsInitialPage("appearance");
-                setSettingsOpen(true);
-              }}
+              onOpenSettings={openSettingsDialog}
               onSelectNavigationItem={selectNavigationItem}
               onToggleSidebar={() => setSidebarOpen((current) => !current)}
               proxyStatus={proxyStatus}
               shouldReduceMotion={shouldReduceMotion}
               sidebarOpen={sidebarOpen}
               toggleGatewayService={toggleGatewayService}
+              updateActionBusy={updateActionBusy}
+              updateStatus={updateStatus}
               visibleNavigation={visibleNavigation}
               viewProps={{
                 apiKeys: {
@@ -2294,8 +2327,10 @@ function App() {
                   loading: agentAnalysisLoading,
                   range: agentAnalysisRange,
                   refreshAnalysis: () => void refreshAgentAnalysis(),
-                  setAgentFilter: setAgentAnalysisAgent,
-                  setRange: setAgentAnalysisRange,
+                  selectedSession: agentAnalysisSession,
+                  setAgentFilter: updateAgentAnalysisAgent,
+                  setRange: updateAgentAnalysisRange,
+                  setSelectedSession: setAgentAnalysisSession,
                   snapshot: agentAnalysis
                 },
                 overview: {
@@ -2530,15 +2565,12 @@ function App() {
               isMac,
               languagePreference,
               onChangeBotConfigs: changeBotConfigs,
-              onCheckUpdate: checkForAppUpdate,
               onChangeLanguage: changeLanguagePreference,
               onChangeTheme: changeThemePreference,
               onChangeTrayBalanceProgress: changeTrayBalanceProgress,
               onChangeTrayIcon: changeTrayIconPreference,
               onChangeTrayWidgets: changeTrayWidgets,
               onClose: () => setSettingsOpen(false),
-              onDownloadUpdate: downloadAppUpdate,
-              onInstallUpdate: installAppUpdate,
               profiles: draftConfig.profile.profiles,
               systemLanguage,
               systemTheme,
@@ -2546,10 +2578,7 @@ function App() {
               providerAccountSnapshots,
               trayBalanceProgress: normalizeTrayBalanceProgressConfig(draftConfig.trayBalanceProgress),
               trayIconPreference: draftConfig.trayIcon || "random",
-              trayWidgets: normalizeTrayWidgets(draftConfig.trayWidgets ?? DEFAULT_TRAY_WIDGETS, draftConfig.trayWindowModules, draftConfig.trayComponentVariants),
-              updateActionBusy,
-              updateActionError,
-              updateStatus
+              trayWidgets: normalizeTrayWidgets(draftConfig.trayWidgets ?? DEFAULT_TRAY_WIDGETS, draftConfig.trayWindowModules, draftConfig.trayComponentVariants)
             } : undefined}
             virtualModelUpsert={virtualModelDialogOpen ? {
               canSubmit: canSubmitVirtualModel,

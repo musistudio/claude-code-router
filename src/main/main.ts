@@ -1,4 +1,5 @@
 import { app } from "electron";
+import { setupApplicationMenu } from "./app-menu";
 import { loadAppConfig } from "./config";
 import { restoreClaudeAppGatewayConfig, syncClaudeAppGatewayConfig } from "./claude-app-gateway-service";
 import { deepLinkService } from "./deep-link";
@@ -35,6 +36,7 @@ function startPrimaryInstance(): void {
   });
 
   app.whenReady().then(() => {
+    setupApplicationMenu();
     windowsManager.createMainWindow();
     trayController.start();
     appUpdateService.start();
