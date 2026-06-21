@@ -1,7 +1,8 @@
+import { createHash } from "node:crypto";
 import { loadAppConfig } from "./config";
 import { pluginService } from "./plugins/service";
 import { getUsageTotalsSince } from "./usage-store";
-import { findProviderPresetByBaseUrl, providerEndpointCanReceiveProviderApiKey } from "../shared/provider-presets";
+import { findProviderPresetByBaseUrl, providerEndpointCanReceiveProviderApiKey } from "./presets";
 import { normalizeProviderBaseUrl, providerUrlWithDefaultScheme } from "../shared/provider-url";
 import type {
   AppConfig,
@@ -20,6 +21,7 @@ import type {
   ProviderAccountMeterUnit,
   ProviderAccountPluginConnectorConfig,
   ProviderAccountSnapshot,
+  ProviderAccountSnapshotRequestOptions,
   ProviderAccountTestPath,
   ProviderAccountTestRequest,
   ProviderAccountTestResult,
@@ -31,6 +33,7 @@ import type {
 type CacheEntry = {
   expiresAt: number;
   snapshot: ProviderAccountSnapshot;
+  staleUntil: number;
 };
 
 type ConnectorResult = {
@@ -49,11 +52,20 @@ type ProviderAccountTarget = {
 
 const defaultRefreshIntervalMs = 5 * 60 * 1000;
 const minRefreshIntervalMs = 30 * 1000;
+const maxErrorRefreshIntervalMs = 60 * 1000;
+const maxStaleAccountSnapshotMs = 2 * 60 * 1000;
+const maxCacheEntries = 500;
 const standardAccountPaths = ["/.well-known/ccr/account", "/v1/account/limits"];
 const cache = new Map<string, CacheEntry>();
+const inFlightRefreshes = new Map<string, Promise<ProviderAccountSnapshot | undefined>>();
+let cacheGeneration = 0;
 
-export async function getProviderAccountSnapshots(providerName?: string): Promise<ProviderAccountSnapshot[]> {
+export async function getProviderAccountSnapshots(
+  providerName?: string,
+  options: ProviderAccountSnapshotRequestOptions = {}
+): Promise<ProviderAccountSnapshot[]> {
   const config = await loadAppConfig();
+  pruneProviderAccountCache();
   const normalizedProviderName = normalizeProviderName(providerName);
   const providers = config.Providers.filter((provider) => {
     if (!normalizedProviderName) {
@@ -64,10 +76,32 @@ export async function getProviderAccountSnapshots(providerName?: string): Promis
 
   const snapshots = await Promise.all(
     providers.flatMap((provider) =>
-      providerAccountTargets(provider).map((target) => resolveProviderAccountSnapshot(config, target))
+      providerAccountTargets(provider).map((target) => resolveProviderAccountSnapshot(config, target, options))
     )
   );
   return snapshots.filter((snapshot): snapshot is ProviderAccountSnapshot => Boolean(snapshot));
+}
+
+export function invalidateProviderAccountSnapshotCache(providerName?: string): void {
+  const normalizedProviderName = normalizeProviderName(providerName);
+  cacheGeneration += 1;
+  if (!normalizedProviderName) {
+    cache.clear();
+    inFlightRefreshes.clear();
+    return;
+  }
+
+  const providerNameKey = `"providerName":"${normalizedProviderName}"`;
+  for (const [key, entry] of cache.entries()) {
+    if (normalizeProviderName(entry.snapshot.provider) === normalizedProviderName || key.includes(providerNameKey)) {
+      cache.delete(key);
+    }
+  }
+  for (const key of inFlightRefreshes.keys()) {
+    if (key.includes(providerNameKey)) {
+      inFlightRefreshes.delete(key);
+    }
+  }
 }
 
 export async function testProviderAccountConnector(request: ProviderAccountTestRequest): Promise<ProviderAccountTestResult> {
@@ -97,7 +131,11 @@ export async function testProviderAccountConnector(request: ProviderAccountTestR
   };
 }
 
-async function resolveProviderAccountSnapshot(config: AppConfig, target: ProviderAccountTarget): Promise<ProviderAccountSnapshot | undefined> {
+async function resolveProviderAccountSnapshot(
+  config: AppConfig,
+  target: ProviderAccountTarget,
+  options: ProviderAccountSnapshotRequestOptions
+): Promise<ProviderAccountSnapshot | undefined> {
   const { account, credential } = target;
   const provider = credential
     ? providerWithCredentialApiKey(target.provider, credential, account)
@@ -108,26 +146,128 @@ async function resolveProviderAccountSnapshot(config: AppConfig, target: Provide
   }
 
   const refreshIntervalMs = normalizeRefreshInterval(account.refreshIntervalMs);
-  const cacheKey = [
-    providerName,
-    credential ? `credential:${credential.id}` : "provider",
-    JSON.stringify(account.connectors ?? [])
-  ].join(":");
+  const cacheKey = providerAccountCacheKey(provider, account, credential);
+  const nowMs = Date.now();
   const cached = cache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
+  if (!options.forceRefresh && cached && cached.expiresAt > nowMs) {
     return cached.snapshot;
   }
+  const inFlight = inFlightRefreshes.get(cacheKey);
+  if (!options.forceRefresh && cached && cached.staleUntil > nowMs) {
+    if (!inFlight) {
+      void startProviderAccountRefresh(config, provider, account, credential, cacheKey, refreshIntervalMs);
+    }
+    return cached.snapshot;
+  }
+  if (inFlight) {
+    return inFlight;
+  }
 
+  return startProviderAccountRefresh(config, provider, account, credential, cacheKey, refreshIntervalMs);
+}
+
+function startProviderAccountRefresh(
+  config: AppConfig,
+  provider: GatewayProviderConfig,
+  account: ProviderAccountConfig,
+  credential: ProviderCredentialConfig | undefined,
+  cacheKey: string,
+  refreshIntervalMs: number
+): Promise<ProviderAccountSnapshot | undefined> {
+  const generation = cacheGeneration;
+  const refresh = refreshProviderAccountSnapshot(config, provider, account, credential, cacheKey, refreshIntervalMs, generation);
+  inFlightRefreshes.set(cacheKey, refresh);
+  refresh.then(
+    () => {
+      if (inFlightRefreshes.get(cacheKey) === refresh) {
+        inFlightRefreshes.delete(cacheKey);
+      }
+    },
+    () => {
+      if (inFlightRefreshes.get(cacheKey) === refresh) {
+        inFlightRefreshes.delete(cacheKey);
+      }
+    }
+  );
+  return refresh;
+}
+
+async function refreshProviderAccountSnapshot(
+  config: AppConfig,
+  provider: GatewayProviderConfig,
+  account: ProviderAccountConfig,
+  credential: ProviderCredentialConfig | undefined,
+  cacheKey: string,
+  refreshIntervalMs: number,
+  generation: number
+): Promise<ProviderAccountSnapshot | undefined> {
   const now = new Date();
   const connectorResults = await Promise.all(
     normalizeConnectors(account).map((connector) => resolveConnector(config, provider, connector, now, credential?.id))
   );
-  const snapshot = mergeConnectorResults(providerName, connectorResults, now, refreshIntervalMs, credential);
-  cache.set(cacheKey, {
-    expiresAt: Date.now() + refreshIntervalMs,
-    snapshot
-  });
+  const snapshot = mergeConnectorResults(provider.name.trim(), connectorResults, now, refreshIntervalMs, credential);
+  const cacheTtlMs = providerAccountCacheTtl(snapshot, refreshIntervalMs);
+  const expiresAt = Date.now() + cacheTtlMs;
+  snapshot.nextRefreshAt = new Date(expiresAt).toISOString();
+  if (generation === cacheGeneration) {
+    cache.set(cacheKey, {
+      expiresAt,
+      snapshot,
+      staleUntil: expiresAt + providerAccountStaleWindow(cacheTtlMs)
+    });
+    pruneProviderAccountCache();
+  }
   return snapshot;
+}
+
+function providerAccountCacheKey(
+  provider: GatewayProviderConfig,
+  account: ProviderAccountConfig,
+  credential?: ProviderCredentialConfig
+): string {
+  return JSON.stringify({
+    apiKeyHash: hashSensitiveValue(providerApiKey(provider)),
+    baseUrl: providerBaseUrl(provider),
+    connectors: account.connectors ?? [],
+    credentialId: credential?.id ?? "",
+    providerName: normalizeProviderName(provider.name),
+    refreshIntervalMs: account.refreshIntervalMs ?? null
+  });
+}
+
+function providerAccountCacheTtl(snapshot: ProviderAccountSnapshot, refreshIntervalMs: number): number {
+  if (snapshot.status === "error" || (snapshot.meters.length === 0 && (snapshot.errors?.length || snapshot.status === "unsupported"))) {
+    return Math.min(refreshIntervalMs, maxErrorRefreshIntervalMs);
+  }
+  return refreshIntervalMs;
+}
+
+function providerAccountStaleWindow(cacheTtlMs: number): number {
+  return Math.min(Math.max(cacheTtlMs, minRefreshIntervalMs), maxStaleAccountSnapshotMs);
+}
+
+function pruneProviderAccountCache(now = Date.now()): void {
+  for (const [key, entry] of cache.entries()) {
+    if (entry.staleUntil <= now) {
+      cache.delete(key);
+    }
+  }
+  if (cache.size <= maxCacheEntries) {
+    return;
+  }
+
+  const oldestEntries = [...cache.entries()]
+    .sort(([, left], [, right]) => left.staleUntil - right.staleUntil)
+    .slice(0, cache.size - maxCacheEntries);
+  for (const [key] of oldestEntries) {
+    cache.delete(key);
+  }
+}
+
+function hashSensitiveValue(value: string): string {
+  return value
+    ? createHash("sha256").update(value).digest("hex").slice(0, 16)
+    : "";
 }
 
 function providerAccountTargets(provider: GatewayProviderConfig): ProviderAccountTarget[] {

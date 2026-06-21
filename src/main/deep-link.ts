@@ -1,8 +1,9 @@
 import { app } from "electron";
 import path from "node:path";
-import { appDeepLinkProtocol, createProviderDeepLinkRequest, isAppDeepLinkUrl } from "../shared/deep-link";
+import { appDeepLinkProtocol, createProviderDeepLinkRequest as createSharedProviderDeepLinkRequest, isAppDeepLinkUrl } from "../shared/deep-link";
 import type { ProviderDeepLinkRequest } from "../shared/app";
 import { IPC_CHANNELS } from "./constants";
+import { providerIdentitySafetyIssue } from "./presets";
 import windowsManager from "./windows";
 
 class DeepLinkService {
@@ -57,6 +58,28 @@ class DeepLinkService {
       console.warn(`[deep-link] Failed to register ${appDeepLinkProtocol} protocol: ${formatError(error)}`);
     }
   }
+}
+
+function createProviderDeepLinkRequest(rawUrl: string): ProviderDeepLinkRequest {
+  const request = createSharedProviderDeepLinkRequest(rawUrl);
+  if (!request.provider) {
+    return request;
+  }
+
+  const identityIssue = providerIdentitySafetyIssue({
+    baseUrl: request.provider.baseUrl,
+    name: request.provider.name
+  });
+  if (!identityIssue) {
+    return request;
+  }
+
+  return {
+    error: identityIssue.message,
+    id: request.id,
+    rawUrl: request.rawUrl,
+    receivedAt: request.receivedAt
+  };
 }
 
 function formatError(error: unknown): string {

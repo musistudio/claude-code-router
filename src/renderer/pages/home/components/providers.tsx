@@ -5,13 +5,13 @@ import {
   compareProviderAccountSnapshots, Copy, copyTextToClipboard, createDefaultProviderAccountDraft, createModelCatalogItems, createProviderAccountDraftFromConfig, createProviderCredentialDraft, createProviderInstallLinkFromDraft,
   customProviderPresetId, defaultProviderAccountConfigForPreset, Dialog, DialogBody, DialogContent, DialogFooter,
   DialogHeader, DialogTitle, Field, findProviderPreset, formatProviderAccountMeterTitle, formatProviderAccountMeterValue, GatewayProviderConfig,
-  GatewayProviderProbeResult, Globe, inferProviderNameFromBaseUrl, Input, KeyValueRowsControl, Label,
+  GatewayProviderProbeResult, getProviderPresets, Globe, inferProviderNameFromBaseUrl, Input, KeyValueRowsControl, Label,
   Layers3, LoaderCircle, mergeProviderModelLists, modelCatalogItemMatchesQuery, motion, motionEase,
   Pencil, Plus, PopoverContent, primaryProviderAccountMeter, primaryProviderPresetEndpoint, providerAccountBadgeVariant,
   providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountMeter, ProviderAccountSnapshot,
   providerAccountSnapshotCredentialLabel, providerAccountSnapshotLabel, ProviderAccountTestPath,
   ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerFailoverStrategyOptions, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
-  ProviderConnectivityCheckReport, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerPresets, providerProbeHasSupportedProtocol,
+  ProviderConnectivityCheckReport, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
   providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, reducedMotionTransition, Search, SelectControl,
   ShieldCheck, splitLines, splitModelTagInput, Switch, Textarea, translatedProviderProtocolLabel, translateOptions,
   translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppText, useEffect, useMemo,
@@ -820,7 +820,7 @@ export function AddProviderForm({
   const safetyIssue = providerDraftSafetyIssue(draft, detectedBaseUrl);
   const providerPresetOptions = [
     { label: t("Select preset provider"), value: "" },
-    ...providerPresets.map((preset) => ({ label: t(preset.name), preset, value: preset.id })),
+    ...getProviderPresets().map((preset) => ({ label: t(preset.name), preset, value: preset.id })),
     { iconUrl: draft.icon, label: t("Other / custom API endpoint"), value: customProviderPresetId }
   ];
   const selectableProtocols = providerSelectableProtocolsFromProbe(probe);

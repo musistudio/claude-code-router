@@ -536,24 +536,30 @@ class RequestLogStore {
       .map(toAnalyzedAgentRequest)
       .filter((request) => requestedAgent === "all" || request.agent === requestedAgent);
     const requests = applyRequestConcurrency(analyzed);
-    const selectedSession = buildSelectedAgentSessionDetail(requests, filter);
+    const sessionScopedRequests = selectAgentSessionRequests(requests, filter);
+    const analysisRequests = sessionScopedRequests
+      ? applyRequestConcurrency(sessionScopedRequests)
+      : requests;
+    const selectedSession = sessionScopedRequests
+      ? buildAgentSessionDetail(analysisRequests)
+      : undefined;
 
     return {
-      agents: buildAgentRows(requests),
-      clients: buildAgentClientRows(requests),
-      concurrency: buildAgentConcurrencySeries(range, now, requests),
-      endpoints: buildAgentEndpointRows(requests),
-      errors: buildAgentErrorRows(requests),
+      agents: buildAgentRows(analysisRequests),
+      clients: buildAgentClientRows(analysisRequests),
+      concurrency: buildAgentConcurrencySeries(range, now, analysisRequests),
+      endpoints: buildAgentEndpointRows(analysisRequests),
+      errors: buildAgentErrorRows(analysisRequests),
       generatedAt: now.toISOString(),
       range,
-      recentRequests: requests.slice(-50).reverse().map(stripAnalysisInternals),
-      routes: buildAgentRouteRows(requests),
+      recentRequests: analysisRequests.slice(-50).reverse().map(stripAnalysisInternals),
+      routes: buildAgentRouteRows(analysisRequests),
       scannedRequestCount: rows.length,
       ...(selectedSession ? { selectedSession } : {}),
       sessions: buildAgentSessionRows(requests),
-      subagents: buildAgentSubagentRows(requests),
-      tools: buildAgentToolRows(requests),
-      totals: buildAgentAnalysisTotals(requests)
+      subagents: buildAgentSubagentRows(analysisRequests),
+      tools: buildAgentToolRows(analysisRequests),
+      totals: buildAgentAnalysisTotals(analysisRequests)
     };
   }
 
@@ -1247,20 +1253,25 @@ function buildAgentSessionRow(items: AnalyzedAgentRequest[]): AgentAnalysisSessi
   };
 }
 
-function buildSelectedAgentSessionDetail(
+function selectAgentSessionRequests(
   requests: AnalyzedAgentRequest[],
   filter: AgentAnalysisFilter
-): AgentAnalysisSessionDetail | undefined {
+): AnalyzedAgentRequest[] | undefined {
   const sessionId = normalizeFilterValue(filter.sessionId);
   if (!sessionId) {
     return undefined;
   }
 
   const sessionAgent = normalizeSessionAgentFilter(filter.sessionAgent);
-  const sessionRequests = requests.filter((request) =>
+  return requests.filter((request) =>
     request.sessionId === sessionId &&
     (!sessionAgent || request.agent === sessionAgent)
   );
+}
+
+function buildAgentSessionDetail(
+  sessionRequests: AnalyzedAgentRequest[]
+): AgentAnalysisSessionDetail | undefined {
   if (sessionRequests.length === 0) {
     return undefined;
   }

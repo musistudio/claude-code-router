@@ -157,7 +157,10 @@ import type {
   GatewayProviderConfig,
   GatewayProviderCapability,
   GatewayPluginAppConfig,
-  GatewayProviderProbeProtocolResult,
+  GatewayProviderConnectivityCheckModelResult,
+  GatewayProviderConnectivityCheckReport,
+  GatewayProviderProbeCandidate,
+  GatewayProviderProbeCandidateResult,
   GatewayProviderProbeResult,
   GatewayProviderProtocol,
   GatewayMcpServerConfig,
@@ -231,19 +234,68 @@ import type {
 import {
   customProviderPresetId,
   defaultProviderAccountConfig,
-  findProviderPreset,
-  findProviderPresetByBaseUrl,
-  primaryProviderPresetEndpoint,
-  providerApiKeySafetyIssue,
-  providerEndpointCanReceiveProviderApiKey,
-  providerIdentitySafetyIssue,
-  providerPresets,
   standardProviderAccountConfig,
   type ProviderIdentitySafetyIssue,
   type ProviderPreset,
   type ProviderPresetEndpoint
 } from "../../../shared/provider-presets";
+import {
+  findProviderPresetByBaseUrlInList,
+  findProviderPresetInList,
+  primaryProviderPresetEndpoint as primaryProviderPresetEndpointFromPreset,
+  providerApiKeySafetyIssueInList,
+  providerEndpointCanReceiveProviderApiKeyInList,
+  providerIdentitySafetyIssueInList
+} from "../../../shared/provider-preset-utils";
 import { normalizeProviderBaseUrl, providerUrlWithDefaultScheme } from "../../../shared/provider-url";
+
+let providerPresetCache: ProviderPreset[] = [];
+
+function setProviderPresets(nextPresets: ProviderPreset[]): void {
+  providerPresetCache = nextPresets;
+}
+
+function getProviderPresets(): ProviderPreset[] {
+  return providerPresetCache;
+}
+
+function findProviderPreset(id: string | undefined): ProviderPreset | undefined {
+  return findProviderPresetInList(providerPresetCache, id);
+}
+
+function findProviderPresetByBaseUrl(baseUrl: string): ProviderPreset | undefined {
+  return findProviderPresetByBaseUrlInList(providerPresetCache, baseUrl);
+}
+
+function primaryProviderPresetEndpoint(preset: ProviderPreset): ProviderPresetEndpoint | undefined {
+  return primaryProviderPresetEndpointFromPreset(preset);
+}
+
+function providerIdentitySafetyIssue(input: {
+  baseUrl: string;
+  name?: string;
+  presetId?: string;
+}): ProviderIdentitySafetyIssue | undefined {
+  return providerIdentitySafetyIssueInList(providerPresetCache, input);
+}
+
+function providerApiKeySafetyIssue(input: {
+  apiKey?: string;
+  baseUrl: string;
+  name?: string;
+  presetId?: string;
+}): ProviderIdentitySafetyIssue | undefined {
+  return providerApiKeySafetyIssueInList(providerPresetCache, input);
+}
+
+function providerEndpointCanReceiveProviderApiKey(input: {
+  apiKey?: string;
+  endpoint: string;
+  providerName?: string;
+  providerPresetId?: string;
+}): ProviderIdentitySafetyIssue | undefined {
+  return providerEndpointCanReceiveProviderApiKeyInList(providerPresetCache, input);
+}
 
 export  {
   createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState,
@@ -265,7 +317,7 @@ export  {
   zaiGlobalGeneralProviderIconUrl, zhipuCnCodingProviderIconUrl, zhipuCnGeneralProviderIconUrl, trayCyanIconUrl, trayOrangeIconUrl, trayVioletIconUrl, BUILTIN_FUSION_TOOL_SERVER_NAME,
   BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, enforceSingleEnabledGlobalProfilePerAgent, OVERVIEW_WIDGET_SIZE_VALUES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS,
   customProviderPresetId, defaultProviderAccountConfig, findProviderPreset, findProviderPresetByBaseUrl, primaryProviderPresetEndpoint, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey,
-  providerIdentitySafetyIssue, providerPresets, standardProviderAccountConfig, normalizeProviderBaseUrl, providerUrlWithDefaultScheme
+  providerIdentitySafetyIssue, getProviderPresets, setProviderPresets, standardProviderAccountConfig, normalizeProviderBaseUrl, providerUrlWithDefaultScheme
 };
 export type {
   HTMLAttributes, ReactPointerEvent, ReactNode, CollisionDetection, DragEndEvent, DragOverEvent, DragStartEvent,
@@ -2355,27 +2407,10 @@ export type ProviderUsageFieldTarget =
   | "subscriptionRemaining"
   | "subscriptionReset";
 
-export type ProviderProbeCandidate = ProviderPresetEndpoint & {
-  source: "custom" | "preset";
-};
-
-export type ProviderProbeCandidateResult = {
-  candidate: ProviderProbeCandidate;
-  probe: GatewayProviderProbeResult;
-};
-
-export type ProviderConnectivityCheckModelResult = {
-  message: string;
-  model: string;
-  protocols: GatewayProviderProbeProtocolResult[];
-  supported: boolean;
-};
-
-export type ProviderConnectivityCheckReport = {
-  failed: ProviderConnectivityCheckModelResult[];
-  passed: ProviderConnectivityCheckModelResult[];
-  results: ProviderConnectivityCheckModelResult[];
-};
+export type ProviderProbeCandidate = GatewayProviderProbeCandidate;
+export type ProviderProbeCandidateResult = GatewayProviderProbeCandidateResult;
+export type ProviderConnectivityCheckModelResult = GatewayProviderConnectivityCheckModelResult;
+export type ProviderConnectivityCheckReport = GatewayProviderConnectivityCheckReport;
 
 export type AddApiKeyDraft = {
   expirationPreset: ApiKeyExpirationPreset;
@@ -8805,88 +8840,18 @@ export async function probeProviderCandidates(
     protocols?: GatewayProviderProtocol[];
   } = {}
 ): Promise<ProviderProbeCandidateResult | undefined> {
-  const results: ProviderProbeCandidateResult[] = [];
   const mode = options.mode ?? "protocols";
-
-  for (const candidate of candidates) {
-    const protocols = options.protocols
-      ? candidate.protocols.filter((protocol) => options.protocols?.includes(protocol))
-      : candidate.protocols;
-    if (protocols.length === 0) {
-      continue;
-    }
-
-    try {
-      const probe = await window.ccr?.probeProvider({
-        apiKey: mode === "connectivity" ? apiKey : undefined,
-        baseUrl: candidate.baseUrl,
-        mode,
-        models: mode === "connectivity" ? models : [],
-        protocols
-      });
-      if (!probe) {
-        continue;
-      }
-
-      results.push({ candidate, probe });
-    } catch {
-      // Try the next candidate. Manual model entry remains the fallback.
-    }
-  }
-
-  return mergeProviderProbeCandidateResults(results);
-}
-
-export function providerProbeResultIsUsable(probe: GatewayProviderProbeResult): boolean {
-  return Boolean(probe.detectedProtocol || probe.models.length > 0 || probe.protocols.some((item) => item.supported));
+  return await window.ccr?.probeProviderCandidates({
+    apiKey: mode === "connectivity" ? apiKey : undefined,
+    candidates,
+    mode,
+    models: mode === "connectivity" ? models : [],
+    protocols: options.protocols
+  });
 }
 
 export function providerProbeHasSupportedProtocol(probe: GatewayProviderProbeResult | undefined, protocol?: GatewayProviderProtocol): boolean {
   return Boolean(probe?.protocols.some((item) => item.supported && (!protocol || item.protocol === protocol)));
-}
-
-export function mergeProviderProbeCandidateResults(results: ProviderProbeCandidateResult[]): ProviderProbeCandidateResult | undefined {
-  if (results.length === 0) {
-    return undefined;
-  }
-
-  const usable = results.find((result) => providerProbeResultIsUsable(result.probe)) ?? results[0];
-  const capabilities = mergeProviderCapabilities(
-    ...results.map((result) => providerProbeCapabilities(result.candidate, result.probe))
-  );
-  const models = mergeProviderModelLists(...results.map((result) => result.probe.models));
-  const protocols = results.flatMap((result) => result.probe.protocols);
-  const detectedCapability = capabilities.find((capability) => capability.type === usable.probe.detectedProtocol) ?? capabilities[0];
-  const probe: GatewayProviderProbeResult = {
-    ...usable.probe,
-    capabilities,
-    detectedProtocol: detectedCapability?.type ?? usable.probe.detectedProtocol,
-    models,
-    normalizedBaseUrl: detectedCapability?.baseUrl ?? usable.probe.normalizedBaseUrl,
-    protocols
-  };
-
-  return {
-    candidate: usable.candidate,
-    probe
-  };
-}
-
-export function providerProbeCapabilities(candidate: ProviderProbeCandidate, probe: GatewayProviderProbeResult): GatewayProviderCapability[] {
-  const detectedCapabilities = mergeProviderCapabilities(probe.capabilities ?? []);
-  if (detectedCapabilities.length > 0) {
-    return detectedCapabilities;
-  }
-
-  if (candidate.source !== "preset") {
-    return [];
-  }
-
-  return candidate.protocols.map((type) => ({
-    baseUrl: probe.normalizedBaseUrl || candidate.baseUrl,
-    source: "preset" as const,
-    type
-  }));
 }
 
 export function presetCapabilitiesFromDraft(draft: AddProviderDraft): GatewayProviderCapability[] {

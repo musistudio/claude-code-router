@@ -11,10 +11,11 @@ import { loadAppConfig, saveApiKeysConfig, saveAppConfig } from "./config";
 import { API_KEYS_DB_FILE, APP_NAME, CONFIGDIR, CONFIG_FILE, DATADIR, GATEWAY_CONFIG_FILE, IPC_CHANNELS, ONBOARDING_FINISHED_FILE, PROXY_CA_CERT_FILE, REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "./constants";
 import { deepLinkService } from "./deep-link";
 import { gatewayService } from "./gateway/service";
-import { getProviderAccountSnapshots, testProviderAccountConnector } from "./provider-account-service";
+import { getProviderAccountSnapshots, invalidateProviderAccountSnapshotCache, testProviderAccountConnector } from "./provider-account-service";
 import { detectProviderIcon } from "./provider-icons";
 import { fetchProviderManifest } from "./provider-manifest-service";
-import { probeGatewayProvider } from "./provider-probe";
+import { getProviderPresets } from "./presets";
+import { checkGatewayProviderConnectivity, probeGatewayProvider, probeGatewayProviderCandidates } from "./provider-probe";
 import { applyProfileConfig } from "./profile-service";
 import { getProfileOpenCommand, openProfileFromCcr } from "./profile-launch-service";
 import { ensureProxyCertificateAuthority } from "./proxy/certificates";
@@ -25,7 +26,7 @@ import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
 import { getUsageStats } from "./usage-store";
 import windowsManager from "./windows";
-import type { AgentAnalysisFilter, ApiKeyConfig, AppConfig, AppInfo, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayMcpServerConfig, GatewayPluginAppConfig, GatewayProviderProbeRequest, GatewayStatus, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountTestRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
+import type { AgentAnalysisFilter, ApiKeyConfig, AppConfig, AppInfo, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayMcpServerConfig, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
 
 const pluginMarketplace: PluginMarketplaceEntry[] = [
   {
@@ -75,7 +76,8 @@ ipcMain.handle(IPC_CHANNELS.appGetPendingProviderDeepLinks, () => deepLinkServic
 ipcMain.handle(IPC_CHANNELS.appGetProfileOpenCommand, async (_event, request: ProfileOpenRequest) => {
   return getProfileOpenCommand(await loadAppConfig(), request);
 });
-ipcMain.handle(IPC_CHANNELS.appGetProviderAccountSnapshots, (_event, provider?: string) => getProviderAccountSnapshots(provider));
+ipcMain.handle(IPC_CHANNELS.appGetProviderAccountSnapshots, (_event, provider?: string, options?: ProviderAccountSnapshotRequestOptions) => getProviderAccountSnapshots(provider, options));
+ipcMain.handle(IPC_CHANNELS.appGetProviderPresets, () => getProviderPresets());
 ipcMain.handle(IPC_CHANNELS.appGetAgentAnalysis, (_event, filter?: AgentAnalysisFilter) => getAgentAnalysis(filter));
 ipcMain.handle(IPC_CHANNELS.appGetGatewayStatus, () => gatewayService.getStatus());
 ipcMain.handle(IPC_CHANNELS.appGetProxyCertificateStatus, () => proxyService.getCertificateStatus());
@@ -148,6 +150,9 @@ ipcMain.handle(IPC_CHANNELS.appApplyClaudeAppGateway, async (_event, config?: Ap
 
   await builtInBrowserService.syncProxy(savedConfig);
   await trayController.refreshIconFromConfig(savedConfig);
+  if (config || synced.configChanged) {
+    invalidateProviderAccountSnapshotCache();
+  }
 
   const gatewayDetail = runtimeStatus.state === "running"
     ? "CCR gateway is running."
@@ -183,8 +188,14 @@ ipcMain.handle(IPC_CHANNELS.appApplyProfile, async () => {
   const config = await loadAppConfig();
   return applyProfileConfig(config);
 });
+ipcMain.handle(IPC_CHANNELS.appCheckProviderConnectivity, (_event, request: GatewayProviderConnectivityCheckRequest) => {
+  return checkGatewayProviderConnectivity(request);
+});
 ipcMain.handle(IPC_CHANNELS.appProbeProvider, (_event, request: GatewayProviderProbeRequest) => {
   return probeGatewayProvider(request);
+});
+ipcMain.handle(IPC_CHANNELS.appProbeProviderCandidates, (_event, request: GatewayProviderProbeCandidatesRequest) => {
+  return probeGatewayProviderCandidates(request);
 });
 ipcMain.handle(IPC_CHANNELS.appTestProviderAccountConnector, (_event, request: ProviderAccountTestRequest) => {
   return testProviderAccountConnector(request);
@@ -219,6 +230,7 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig) => 
   await applyProfileIfServiceRunning(savedConfig, runtimeStatus);
   await builtInBrowserService.syncProxy(savedConfig);
   await trayController.refreshIconFromConfig(savedConfig);
+  invalidateProviderAccountSnapshotCache();
   return savedConfig;
 });
 ipcMain.handle(IPC_CHANNELS.appSaveApiKeys, async (_event, apiKeys: ApiKeyConfig[]) => {
@@ -227,6 +239,7 @@ ipcMain.handle(IPC_CHANNELS.appSaveApiKeys, async (_event, apiKeys: ApiKeyConfig
   const nextConfig = syncedClaudeAppConfig.config;
   gatewayService.updateConfig(nextConfig);
   logProfileApplyResult(await applyProfileConfig(nextConfig));
+  invalidateProviderAccountSnapshotCache();
   return nextConfig;
 });
 ipcMain.handle(IPC_CHANNELS.appSetOnboardingFinished, () => {

@@ -216,6 +216,10 @@ export type ProviderAccountSnapshot = {
   updatedAt: string;
 };
 
+export type ProviderAccountSnapshotRequestOptions = {
+  forceRefresh?: boolean;
+};
+
 export type ProviderDeepLinkPayload = {
   account?: ProviderAccountConfig;
   apiKey?: string;
@@ -283,10 +287,27 @@ export type GatewayProviderCapability = {
 export type GatewayProviderProbeRequest = {
   apiKey?: string;
   baseUrl: string;
+  forceRefresh?: boolean;
   mode?: "connectivity" | "protocols";
   models?: string[];
   protocols?: GatewayProviderProtocol[];
   skipModelDiscovery?: boolean;
+};
+
+export type GatewayProviderProbeCandidate = {
+  baseUrl: string;
+  label?: string;
+  protocols: GatewayProviderProtocol[];
+  source: "custom" | "preset";
+};
+
+export type GatewayProviderProbeCandidatesRequest = {
+  apiKey?: string;
+  candidates: GatewayProviderProbeCandidate[];
+  forceRefresh?: boolean;
+  mode?: "connectivity" | "protocols";
+  models?: string[];
+  protocols?: GatewayProviderProtocol[];
 };
 
 export type ProviderIconDetectionRequest = {
@@ -317,6 +338,33 @@ export type GatewayProviderProbeResult = {
   models: string[];
   normalizedBaseUrl: string;
   protocols: GatewayProviderProbeProtocolResult[];
+};
+
+export type GatewayProviderProbeCandidateResult = {
+  candidate: GatewayProviderProbeCandidate;
+  probe: GatewayProviderProbeResult;
+};
+
+export type GatewayProviderConnectivityCheckModelResult = {
+  message: string;
+  model: string;
+  protocols: GatewayProviderProbeProtocolResult[];
+  supported: boolean;
+};
+
+export type GatewayProviderConnectivityCheckRequest = {
+  apiKey?: string;
+  candidates: GatewayProviderProbeCandidate[];
+  forceRefresh?: boolean;
+  models: string[];
+  protocols?: GatewayProviderProtocol[];
+};
+
+export type GatewayProviderConnectivityCheckReport = {
+  failed: GatewayProviderConnectivityCheckModelResult[];
+  passed: GatewayProviderConnectivityCheckModelResult[];
+  probe?: GatewayProviderProbeResult;
+  results: GatewayProviderConnectivityCheckModelResult[];
 };
 
 export type RouterRuleType =

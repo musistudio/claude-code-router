@@ -2121,6 +2121,15 @@ export function AgentAnalysisView({
           options={translateOptions(agentFilterOptions, t)}
           value={agentFilter}
         />
+        {selectedSession ? (
+          <div className="flex h-8 max-w-full items-center gap-1.5 rounded-md border border-border bg-card px-2 text-[11px]">
+            <span className="shrink-0 text-muted-foreground">{t("Session")}</span>
+            <span className="min-w-0 max-w-[160px] truncate font-mono font-semibold" title={selectedSession.id}>{compactId(selectedSession.id)}</span>
+            <Button aria-label={t("Clear session")} onClick={() => setSelectedSession(undefined)} size="iconSm" title={t("Clear session")} type="button" variant="ghost">
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        ) : null}
         <div className="min-w-0 flex-1" />
         <Button aria-label={t("Refresh observability")} onClick={refreshAnalysis} size="iconSm" title={t("Refresh observability")} type="button" variant="outline">
           <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />

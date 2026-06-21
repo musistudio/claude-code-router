@@ -1,11 +1,17 @@
+import { createHash } from "node:crypto";
 import type {
+  GatewayProviderConnectivityCheckReport,
+  GatewayProviderConnectivityCheckRequest,
   GatewayProviderCapability,
+  GatewayProviderProbeCandidate,
+  GatewayProviderProbeCandidateResult,
+  GatewayProviderProbeCandidatesRequest,
   GatewayProviderProbeProtocolResult,
   GatewayProviderProbeRequest,
   GatewayProviderProbeResult,
   GatewayProviderProtocol
 } from "../shared/app";
-import { providerApiKeySafetyIssue } from "../shared/provider-presets";
+import { providerApiKeySafetyIssue } from "./presets";
 import {
   compactProviderUrl,
   parseProviderBaseUrl,
@@ -41,6 +47,11 @@ type ProtocolEndpoint = {
   endpoint: string;
 };
 
+type ProbeCacheEntry = {
+  expiresAt: number;
+  result: GatewayProviderProbeResult;
+};
+
 const protocolOrder: GatewayProviderProtocol[] = [
   "openai_responses",
   "openai_chat_completions",
@@ -51,8 +62,146 @@ const protocolOrder: GatewayProviderProtocol[] = [
 const modelSourceOrder: ModelSource[] = ["openai", "anthropic", "gemini"];
 const probeTimeoutMs = 10000;
 const probeOutputTokenLimit = 1;
+const protocolProbeCacheMs = 60 * 1000;
+const connectivityProbeCacheMs = 15 * 1000;
+const failedProbeCacheMs = 10 * 1000;
+const maxProbeCacheEntries = 500;
+const probeCache = new Map<string, ProbeCacheEntry>();
+const inFlightProbes = new Map<string, Promise<GatewayProviderProbeResult>>();
 
 export async function probeGatewayProvider(request: GatewayProviderProbeRequest): Promise<GatewayProviderProbeResult> {
+  pruneProbeCache();
+  const cacheKey = providerProbeCacheKey(request);
+  const cached = probeCache.get(cacheKey);
+  if (!request.forceRefresh && cached && cached.expiresAt > Date.now()) {
+    return cached.result;
+  }
+
+  const inFlight = inFlightProbes.get(cacheKey);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const probe = resolveGatewayProviderProbe(request);
+  inFlightProbes.set(cacheKey, probe);
+  probe.then(
+    (result) => {
+      const cacheTtlMs = providerProbeCacheTtl(request, result);
+      probeCache.set(cacheKey, {
+        expiresAt: Date.now() + cacheTtlMs,
+        result
+      });
+      pruneProbeCache();
+      if (inFlightProbes.get(cacheKey) === probe) {
+        inFlightProbes.delete(cacheKey);
+      }
+    },
+    () => {
+      if (inFlightProbes.get(cacheKey) === probe) {
+        inFlightProbes.delete(cacheKey);
+      }
+    }
+  );
+  return probe;
+}
+
+export async function probeGatewayProviderCandidates(
+  request: GatewayProviderProbeCandidatesRequest
+): Promise<GatewayProviderProbeCandidateResult | undefined> {
+  const results: GatewayProviderProbeCandidateResult[] = [];
+  const mode = request.mode ?? "protocols";
+
+  for (const candidate of request.candidates) {
+    const protocols = request.protocols
+      ? candidate.protocols.filter((protocol) => request.protocols?.includes(protocol))
+      : candidate.protocols;
+    if (protocols.length === 0) {
+      continue;
+    }
+
+    try {
+      const probe = await probeGatewayProvider({
+        apiKey: mode === "connectivity" ? request.apiKey : undefined,
+        baseUrl: candidate.baseUrl,
+        forceRefresh: request.forceRefresh,
+        mode,
+        models: mode === "connectivity" ? request.models ?? [] : [],
+        protocols
+      });
+      results.push({ candidate, probe });
+    } catch {
+      // Keep probing later candidates; the UI still receives the best usable result.
+    }
+  }
+
+  return mergeProviderProbeCandidateResults(results);
+}
+
+export async function checkGatewayProviderConnectivity(
+  request: GatewayProviderConnectivityCheckRequest
+): Promise<GatewayProviderConnectivityCheckReport> {
+  const models = uniqueStrings(request.models);
+  const checks = await Promise.all(
+    models.map(async (model) => {
+      try {
+        const result = await probeGatewayProviderCandidates({
+          apiKey: request.apiKey,
+          candidates: request.candidates,
+          forceRefresh: request.forceRefresh,
+          mode: "connectivity",
+          models: [model],
+          protocols: request.protocols
+        });
+        if (!result) {
+          return {
+            model,
+            probe: undefined,
+            report: {
+              message: "Request failed.",
+              model,
+              protocols: [],
+              supported: false
+            }
+          };
+        }
+
+        const supported = providerProbeHasSupportedProtocol(result.probe);
+        return {
+          model,
+          probe: result.probe,
+          report: {
+            message: supported
+              ? "Connection verified"
+              : result.probe.protocols.find((item) => item.message)?.message || "Request failed.",
+            model,
+            protocols: result.probe.protocols,
+            supported
+          }
+        };
+      } catch (error) {
+        return {
+          model,
+          probe: undefined,
+          report: {
+            message: formatError(error),
+            model,
+            protocols: [],
+            supported: false
+          }
+        };
+      }
+    })
+  );
+  const reports = checks.map((check) => check.report);
+  return {
+    failed: reports.filter((item) => !item.supported),
+    passed: reports.filter((item) => item.supported),
+    probe: checks.find((check) => check.report.supported && check.probe)?.probe,
+    results: reports
+  };
+}
+
+async function resolveGatewayProviderProbe(request: GatewayProviderProbeRequest): Promise<GatewayProviderProbeResult> {
   const mode = request.mode ?? "protocols";
   const safetyIssue = providerApiKeySafetyIssue({
     apiKey: mode === "connectivity" ? request.apiKey : undefined,
@@ -82,6 +231,133 @@ export async function probeGatewayProvider(request: GatewayProviderProbeRequest)
       : parsed.normalizedInputBaseUrl,
     protocols: protocolResults
   };
+}
+
+function providerProbeCacheKey(request: GatewayProviderProbeRequest): string {
+  return JSON.stringify({
+    apiKeyHash: hashSensitiveValue(request.apiKey ?? ""),
+    baseUrl: request.baseUrl.trim(),
+    mode: request.mode ?? "protocols",
+    models: uniqueStrings(request.models ?? []),
+    protocols: uniqueProtocols(request.protocols ?? []),
+    skipModelDiscovery: request.skipModelDiscovery === true
+  });
+}
+
+function providerProbeCacheTtl(request: GatewayProviderProbeRequest, result: GatewayProviderProbeResult): number {
+  const hasSupportedProtocol = providerProbeHasSupportedProtocol(result);
+  if (!hasSupportedProtocol && result.models.length === 0) {
+    return failedProbeCacheMs;
+  }
+  return (request.mode ?? "protocols") === "connectivity"
+    ? connectivityProbeCacheMs
+    : protocolProbeCacheMs;
+}
+
+function pruneProbeCache(now = Date.now()): void {
+  for (const [key, entry] of probeCache.entries()) {
+    if (entry.expiresAt <= now) {
+      probeCache.delete(key);
+    }
+  }
+  if (probeCache.size <= maxProbeCacheEntries) {
+    return;
+  }
+
+  const oldestEntries = [...probeCache.entries()]
+    .sort(([, left], [, right]) => left.expiresAt - right.expiresAt)
+    .slice(0, probeCache.size - maxProbeCacheEntries);
+  for (const [key] of oldestEntries) {
+    probeCache.delete(key);
+  }
+}
+
+function hashSensitiveValue(value: string): string {
+  return value
+    ? createHash("sha256").update(value).digest("hex").slice(0, 16)
+    : "";
+}
+
+function providerProbeHasSupportedProtocol(probe: GatewayProviderProbeResult): boolean {
+  return probe.protocols.some((item) => item.supported);
+}
+
+function mergeProviderProbeCandidateResults(
+  results: GatewayProviderProbeCandidateResult[]
+): GatewayProviderProbeCandidateResult | undefined {
+  if (results.length === 0) {
+    return undefined;
+  }
+
+  const usable = results.find((result) => providerProbeResultIsUsable(result.probe)) ?? results[0];
+  const capabilities = mergeProviderCapabilities(
+    ...results.map((result) => providerProbeCapabilities(result.candidate, result.probe))
+  );
+  const models = uniqueStrings(results.flatMap((result) => result.probe.models));
+  const protocols = results.flatMap((result) => result.probe.protocols);
+  const detectedCapability = capabilities.find((capability) => capability.type === usable.probe.detectedProtocol) ?? capabilities[0];
+  const probe: GatewayProviderProbeResult = {
+    ...usable.probe,
+    capabilities,
+    detectedProtocol: detectedCapability?.type ?? usable.probe.detectedProtocol,
+    models,
+    normalizedBaseUrl: detectedCapability?.baseUrl ?? usable.probe.normalizedBaseUrl,
+    protocols
+  };
+
+  return {
+    candidate: usable.candidate,
+    probe
+  };
+}
+
+function providerProbeResultIsUsable(probe: GatewayProviderProbeResult): boolean {
+  return Boolean(probe.detectedProtocol || probe.models.length > 0 || probe.protocols.some((item) => item.supported));
+}
+
+function providerProbeCapabilities(
+  candidate: GatewayProviderProbeCandidate,
+  probe: GatewayProviderProbeResult
+): GatewayProviderCapability[] {
+  const detectedCapabilities = mergeProviderCapabilities(probe.capabilities ?? []);
+  if (detectedCapabilities.length > 0) {
+    return detectedCapabilities;
+  }
+
+  if (candidate.source !== "preset") {
+    return [];
+  }
+
+  return candidate.protocols.map((type) => ({
+    baseUrl: probe.normalizedBaseUrl || candidate.baseUrl,
+    source: "preset" as const,
+    type
+  }));
+}
+
+function mergeProviderCapabilities(...groups: GatewayProviderCapability[][]): GatewayProviderCapability[] {
+  const seen = new Set<string>();
+  const capabilities: GatewayProviderCapability[] = [];
+  for (const group of groups) {
+    for (const capability of group) {
+      const baseUrl = capability.baseUrl.trim();
+      if (!baseUrl) {
+        continue;
+      }
+      const key = `${capability.type}\n${baseUrl}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      capabilities.push({
+        baseUrl,
+        endpoint: capability.endpoint,
+        source: capability.source,
+        type: capability.type
+      });
+    }
+  }
+  return capabilities;
 }
 
 function capabilitiesFromProtocolResults(results: GatewayProviderProbeProtocolResult[]): GatewayProviderCapability[] {

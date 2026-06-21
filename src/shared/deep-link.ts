@@ -7,7 +7,6 @@ import type {
   ProviderDeepLinkRequest,
   ProviderManifestDeepLinkPayload
 } from "./app";
-import { providerIdentitySafetyIssue } from "./provider-presets";
 import { providerUrlWithDefaultScheme } from "./provider-url";
 
 export const appDeepLinkProtocol = "ccr";
@@ -170,11 +169,6 @@ export function parseProviderDeepLinkPayload(rawUrl: string): ProviderDeepLinkPa
     maxSourceLength,
     "Source URL"
   );
-  const identityIssue = providerIdentitySafetyIssue({ baseUrl, name });
-  if (identityIssue) {
-    throw new Error(identityIssue.message);
-  }
-
   return {
     ...(account ? { account } : {}),
     baseUrl,

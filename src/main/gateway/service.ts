@@ -23,10 +23,16 @@ import type {
   VirtualModelFusionWebSearchProvider
 } from "../../shared/app";
 import {
+  CLAUDE_APP_FALLBACK_MODEL,
+  buildClaudeAppGatewayModelRoutes,
+  inferClaudeAppGatewayTargetModel,
+  resolveClaudeAppGatewayRouteModel
+} from "../../shared/claude-app-gateway";
+import {
   BUILTIN_FUSION_VISION_TOOL_NAME,
   BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME
 } from "../../shared/app";
-import { providerApiKeySafetyIssue } from "../../shared/provider-presets";
+import { providerApiKeySafetyIssue } from "../presets";
 import { normalizeProviderBaseUrl as normalizeProviderBaseUrlInput } from "../../shared/provider-url";
 import { backendService } from "../backend-service";
 import { RAW_TRACE_SPOOL_DIR } from "../constants";
@@ -191,6 +197,7 @@ class UpstreamRequestError extends Error {
 
 const requireFromHere = createRequire(__filename);
 const localObservabilityHeaderNames = new Set([
+  "x-ccr-claude-app-model-rewrite",
   "x-ccr-claude-model-discovery",
   "x-ccr-codex-model-rewrite",
   "x-ccr-cursor-openai-compat",
@@ -521,6 +528,12 @@ class GatewayService {
       headers["x-ccr-claude-model-discovery"] = claudeModelRewrite.diagnostic;
       bodyToForward = claudeModelRewrite.body;
     }
+    const claudeAppModelRewrite = prepareClaudeAppFallbackModelRequest(this.config, method, path, bodyToForward);
+    if (claudeAppModelRewrite) {
+      headers["x-ccr-claude-app-model-rewrite"] = claudeAppModelRewrite.diagnostic;
+      bodyToForward = claudeAppModelRewrite.body;
+      routedModel = claudeAppModelRewrite.routedModel;
+    }
     if (!reserveApiKeyLimits(apiKey, request, response, bodyToForward)) {
       return;
     }
@@ -565,28 +578,13 @@ class GatewayService {
     };
 
     const shouldCaptureUsage = shouldCaptureGatewayUsage(method, path);
-    if (shouldServeClaudeCodeModelsResponse(method, path, request.headers)) {
-      const responseText = `${JSON.stringify(createClaudeCodeModelsResponse(this.config))}\n`;
+    if (shouldServeGatewayModelsResponse(method, path)) {
+      const responseText = `${JSON.stringify(createGatewayModelsResponse(this.config, request.headers))}\n`;
       const modelHeaders = new Headers({
         "content-length": String(Buffer.byteLength(responseText)),
         "content-type": "application/json; charset=utf-8"
       });
       response.writeHead(200, Object.fromEntries(filteredResponseHeaders(modelHeaders)));
-      if (shouldCaptureUsage) {
-        void recordGatewayUsageCapture({
-          bodyText: responseText,
-          client,
-          durationMs: Date.now() - startedAt,
-          fallbackModel: routedModel,
-          method,
-          path,
-          providerProtocol: resolveResponseProviderProtocol(modelHeaders, this.config),
-          requestId,
-          responseHeaders: modelHeaders,
-          statusCode: 200
-        });
-      }
-      writeRequestLog(200, modelHeaders, responseText, false);
       response.end(responseText);
       return;
     }
@@ -2809,10 +2807,9 @@ function readPositiveNumber(value: unknown): number | undefined {
   return Number.isFinite(number) && number > 0 ? Math.ceil(number) : undefined;
 }
 
-function shouldServeClaudeCodeModelsResponse(method: string, path: string, headers: IncomingHttpHeaders): boolean {
+function shouldServeGatewayModelsResponse(method: string, path: string): boolean {
   return (method || "GET").toUpperCase() === "GET" &&
-    normalizeGatewayPathname(path) === "/v1/models" &&
-    isClaudeCodeUserAgent(headers);
+    normalizeGatewayPathname(path) === "/v1/models";
 }
 
 function prepareClaudeCodeDiscoveredModelRequest(
@@ -2840,6 +2837,85 @@ function prepareClaudeCodeDiscoveredModelRequest(
   return {
     body: serializeJsonBodyWithModel(parsedBody, rewrittenModel),
     diagnostic: `${model}->${rewrittenModel}`
+  };
+}
+
+function prepareClaudeAppFallbackModelRequest(
+  config: AppConfig,
+  method: string,
+  path: string,
+  body: Buffer | undefined
+): { body: Buffer; diagnostic: string; routedModel: string } | undefined {
+  if (
+    (method || "GET").toUpperCase() !== "POST" ||
+    normalizeGatewayPathname(path) !== "/v1/messages"
+  ) {
+    return undefined;
+  }
+
+  const parsedBody = parseJsonObjectSafe(body);
+  const model = stringValue(parsedBody?.model);
+  const normalizedModel = normalizeRouteSelector(model);
+  if (
+    !parsedBody ||
+    !normalizedModel ||
+    isConfiguredGatewayModelSelector(normalizedModel, config)
+  ) {
+    return undefined;
+  }
+
+  const routedModel = resolveClaudeAppGatewayRouteModel(normalizedModel, config) ??
+    (normalizedModel.toLowerCase() === CLAUDE_APP_FALLBACK_MODEL ? inferClaudeAppGatewayTargetModel(config) : undefined);
+  if (!routedModel || routedModel.toLowerCase() === normalizedModel.toLowerCase()) {
+    return undefined;
+  }
+
+  return {
+    body: serializeJsonBodyWithModel(parsedBody, routedModel),
+    diagnostic: `${model}->${routedModel}`,
+    routedModel
+  };
+}
+
+function createGatewayModelsResponse(config: AppConfig, headers: IncomingHttpHeaders): Record<string, unknown> {
+  return isClaudeCodeUserAgent(headers)
+    ? createClaudeCodeModelsResponse(config)
+    : createClaudeAppGatewayModelsResponse(config);
+}
+
+function createClaudeAppGatewayModelsResponse(config: AppConfig): Record<string, unknown> {
+  const routes = buildClaudeAppGatewayModelRoutes(config);
+  const data = routes.map((route) => {
+    const catalogId = stripClaudeCodeOneMillionContextSuffix(route.targetModel);
+    const catalogEntry = findModelCatalogEntry(catalogId);
+    const maxInputTokens = claudeCodeEffectiveMaxInputTokens(catalogEntry, false);
+    const maxOutputTokens = modelCatalogMaxOutputTokens(catalogEntry);
+    return {
+      id: route.id,
+      capabilities: createClaudeCodeModelCapabilities(catalogEntry, {
+        maxInputTokens,
+        oneMillionContext: false
+      }),
+      catalog_id: catalogEntry?.id,
+      context_window: maxInputTokens,
+      created_at: "1970-01-01T00:00:00Z",
+      display_name: route.displayName,
+      input_modalities: catalogEntry?.modalities?.input ?? ["text"],
+      max_input_tokens: maxInputTokens,
+      max_tokens: maxOutputTokens,
+      one_million_context_variant: false,
+      output_modalities: catalogEntry?.modalities?.output ?? ["text"],
+      supports_1m_context: Boolean(catalogEntry?.limits?.supports1MContext),
+      target_model: route.targetModel,
+      type: "model"
+    };
+  });
+
+  return {
+    data,
+    first_id: data[0]?.id ?? null,
+    has_more: false,
+    last_id: data[data.length - 1]?.id ?? null
   };
 }
 

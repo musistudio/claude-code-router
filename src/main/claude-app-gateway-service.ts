@@ -5,6 +5,7 @@ import path from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 import { saveAppConfig } from "./config";
 import { CONFIGDIR } from "./constants";
+import { buildClaudeAppGatewayInferenceModels } from "../shared/claude-app-gateway";
 import type { ApiKeyConfig, AppConfig, ClaudeAppGatewayApplyResult } from "../shared/app";
 
 const CLAUDE_APP_CONFIG_ID = "8f69f2f1-3275-4ad8-9317-4aa7e972f311";
@@ -12,7 +13,6 @@ const CLAUDE_APP_CONFIG_NAME = "Claude Code Router";
 const CLAUDE_APP_CONFIG_FILE = "claude_desktop_config.json";
 const CLAUDE_APP_CONFIG_LIBRARY_DIR = "configLibrary";
 const CLAUDE_APP_CONFIG_META_FILE = "_meta.json";
-const CLAUDE_APP_FALLBACK_MODEL = "claude-sonnet-4-5";
 const CLAUDE_APP_GATEWAY_BACKUP_FILE = path.join(CONFIGDIR, "claude-app-gateway-backup.json");
 
 type ClaudeAppGatewayConfig = {
@@ -20,9 +20,9 @@ type ClaudeAppGatewayConfig = {
   inferenceGatewayApiKey: string;
   inferenceGatewayAuthScheme: "x-api-key";
   inferenceGatewayBaseUrl: string;
-  inferenceModels: Array<{ name: string }>;
+  inferenceModels: Array<{ displayName?: string; name: string }>;
   inferenceProvider: "gateway";
-  modelDiscoveryEnabled: false;
+  modelDiscoveryEnabled: true;
   unstableDisableModelVerification: true;
 };
 
@@ -85,16 +85,16 @@ export function applyClaudeAppGatewayConfig(config: AppConfig, options: ClaudeAp
   const state = ensureClaudeAppGatewayState(config);
   const paths = getClaudeAppGatewayPaths(options.dataDir);
   const endpoint = gatewayEndpoint(state.config);
-  const model = inferClaudeAppGatewayModel();
-  const models = buildClaudeAppGatewayModels(model);
+  const models = buildClaudeAppGatewayInferenceModels(state.config);
+  const model = models[0]?.name ?? "";
   const gatewayConfig: ClaudeAppGatewayConfig = {
     inferenceCredentialKind: "static",
     inferenceGatewayApiKey: state.apiKey,
     inferenceGatewayAuthScheme: "x-api-key",
     inferenceGatewayBaseUrl: endpoint,
-    inferenceModels: models.map((name) => ({ name })),
+    inferenceModels: models,
     inferenceProvider: "gateway",
-    modelDiscoveryEnabled: false,
+    modelDiscoveryEnabled: true,
     unstableDisableModelVerification: true
   };
 
@@ -287,17 +287,6 @@ function gatewayEndpoint(config: AppConfig): string {
   const formattedHost = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
   const port = Number.isInteger(config.gateway.port) && config.gateway.port > 0 ? config.gateway.port : config.PORT;
   return `http://${formattedHost}:${port}`;
-}
-
-function inferClaudeAppGatewayModel(): string {
-  // Claude App validates gateway model routes as Anthropic-looking model IDs.
-  // Keep the App picker schema-valid; CCR routes this placeholder to the
-  // profile's real provider/model through Router.default at request time.
-  return CLAUDE_APP_FALLBACK_MODEL;
-}
-
-function buildClaudeAppGatewayModels(selectedModel: string): string[] {
-  return [selectedModel || CLAUDE_APP_FALLBACK_MODEL];
 }
 
 function applyClaudeAppConfigMeta(metaFile: string): void {

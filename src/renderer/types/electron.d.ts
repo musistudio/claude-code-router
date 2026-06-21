@@ -21,6 +21,10 @@ import type {
   ClaudeAppGatewayApplyResult,
   GatewayMcpServerConfig,
   GatewayMcpToolInfo,
+  GatewayProviderConnectivityCheckReport,
+  GatewayProviderConnectivityCheckRequest,
+  GatewayProviderProbeCandidateResult,
+  GatewayProviderProbeCandidatesRequest,
   GatewayProviderProbeRequest,
   GatewayProviderProbeResult,
   GatewayStatus,
@@ -29,6 +33,7 @@ import type {
   ProfileOpenCommandResult,
   ProfileOpenRequest,
   ProfileOpenResult,
+  ProviderAccountSnapshotRequestOptions,
   ProviderAccountTestRequest,
   ProviderAccountTestResult,
   ProviderIconDetectionRequest,
@@ -48,6 +53,7 @@ import type {
   UsageStatsRange,
   UsageStatsSnapshot
 } from "../../shared/app";
+import type { ProviderPreset } from "../../shared/provider-presets";
 
 declare global {
   interface Window {
@@ -55,6 +61,7 @@ declare global {
       applyClaudeAppGateway: (config?: AppConfig) => Promise<ClaudeAppGatewayApplyResult>;
       applyProfile: () => Promise<ProfileApplyResult>;
       cancelBotGatewayQrLogin: (request: BotGatewayQrLoginCancelRequest) => Promise<BotGatewayQrLoginCancelResult>;
+      checkProviderConnectivity: (request: GatewayProviderConnectivityCheckRequest) => Promise<GatewayProviderConnectivityCheckReport>;
       closeBotGatewayQrWindow: (request: BotGatewayQrWindowCloseRequest) => Promise<BotGatewayQrWindowCloseResult>;
       clearProxyNetworkCaptures: () => Promise<ProxyNetworkSnapshot>;
       closeTray: () => Promise<void>;
@@ -67,7 +74,8 @@ declare global {
       getOnboardingFinished: () => Promise<boolean>;
       getPendingProviderDeepLinks: () => Promise<ProviderDeepLinkRequest[]>;
       getProfileOpenCommand: (request: ProfileOpenRequest) => Promise<ProfileOpenCommandResult>;
-      getProviderAccountSnapshots: (provider?: string) => Promise<ProviderAccountSnapshot[]>;
+      getProviderAccountSnapshots: (provider?: string, options?: ProviderAccountSnapshotRequestOptions) => Promise<ProviderAccountSnapshot[]>;
+      getProviderPresets: () => Promise<ProviderPreset[]>;
       getPluginMarketplace: () => Promise<PluginMarketplaceEntry[]>;
       getProxyCertificateStatus: () => Promise<ProxyCertificateStatus>;
       getProxyNetworkCaptures: () => Promise<ProxyNetworkSnapshot>;
@@ -81,6 +89,7 @@ declare global {
       openBotGatewayQrWindow: (request: BotGatewayQrWindowOpenRequest) => Promise<BotGatewayQrWindowOpenResult>;
       openExternal: (url: string) => Promise<void>;
       openProfile: (request: ProfileOpenRequest) => Promise<ProfileOpenResult>;
+      probeProviderCandidates: (request: GatewayProviderProbeCandidatesRequest) => Promise<GatewayProviderProbeCandidateResult | undefined>;
       probeProvider: (request: GatewayProviderProbeRequest) => Promise<GatewayProviderProbeResult>;
       quitApp: () => Promise<void>;
       revealProxyCertificate: () => Promise<void>;

@@ -26,7 +26,7 @@ import {
   providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
   ResolvedTheme, resolvePluginInstallPlan, RouterRule, ServerActionBusy, SettingsPageId,
-  splitLines, translateProxyCertificateMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
+  setProviderPresets, splitLines, translateProxyCertificateMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
   uniqueRoutingRuleId, updateApiKeyEditableConfig, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, useEffect,
   useMemo, useReducedMotion, useRef, useState, validateVirtualModelDraft, ViewId,
   VirtualModelDraft, virtualModelProfileFromDraft
@@ -52,6 +52,7 @@ function App() {
   const [draftConfig, setDraftConfig] = useState<AppConfig>(fallbackConfig);
   const [configLoaded, setConfigLoaded] = useState(() => !window.ccr);
   const [onboardingStatusLoaded, setOnboardingStatusLoaded] = useState(() => !window.ccr);
+  const [providerPresetsLoaded, setProviderPresetsLoaded] = useState(() => !window.ccr);
   const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus>(fallbackGatewayStatus);
   const [proxyCertificateStatus, setProxyCertificateStatus] = useState<ProxyCertificateStatus>(fallbackProxyCertificateStatus);
   const [proxyNetworkSnapshot, setProxyNetworkSnapshot] = useState<ProxyNetworkSnapshot>(fallbackProxyNetworkSnapshot);
@@ -182,6 +183,10 @@ function App() {
     }
 
     void window.ccr.getAppInfo().then(setAppInfo);
+    void window.ccr.getProviderPresets()
+      .then(setProviderPresets)
+      .catch(() => setProviderPresets([]))
+      .finally(() => setProviderPresetsLoaded(true));
     void window.ccr.getConfig()
       .then(syncConfigState)
       .catch(() => {
@@ -485,7 +490,7 @@ function App() {
   }, [activeView, networkCaptureEnabled]);
 
   useEffect(() => {
-    if (activeView !== "onboarding" || !configLoaded || !onboardingStatusLoaded) {
+    if (activeView !== "onboarding" || !configLoaded || !onboardingStatusLoaded || !providerPresetsLoaded) {
       return;
     }
     const defaultStep = getDefaultOnboardingStep(draftConfig);
@@ -494,10 +499,10 @@ function App() {
       const currentIndex = onboardingStepOrder.indexOf(current);
       return defaultIndex > currentIndex ? defaultStep : current;
     });
-  }, [activeView, configLoaded, onboardingStatusLoaded, draftConfig]);
+  }, [activeView, configLoaded, onboardingStatusLoaded, providerPresetsLoaded, draftConfig]);
 
   useEffect(() => {
-    if (activeView !== "onboarding" || !configLoaded || !onboardingStatusLoaded || providerAddOpen) {
+    if (activeView !== "onboarding" || !configLoaded || !onboardingStatusLoaded || !providerPresetsLoaded || providerAddOpen) {
       return;
     }
 
@@ -518,7 +523,7 @@ function App() {
     setProviderProbeError("");
     setProviderProbeLoading(false);
     setProviderConnectivityLoading(false);
-  }, [activeView, configLoaded, onboardingStatusLoaded, draftConfig.Providers, draftConfig.preferredProvider, providerAddOpen]);
+  }, [activeView, configLoaded, onboardingStatusLoaded, providerPresetsLoaded, draftConfig.Providers, draftConfig.preferredProvider, providerAddOpen]);
 
   useEffect(() => () => {
     if (toastTimer.current !== undefined) {
@@ -737,6 +742,9 @@ function App() {
   }
 
   function openAddProviderDialog() {
+    if (!providerPresetsLoaded) {
+      return;
+    }
     providerProbeRequestId.current += 1;
     providerConnectivityRequestId.current += 1;
     setProviderEditIndex(undefined);
@@ -750,6 +758,9 @@ function App() {
   }
 
   function openEditProviderDialog(index: number) {
+    if (!providerPresetsLoaded) {
+      return;
+    }
     const provider = draftConfig.Providers[index];
     if (!provider) {
       return;
@@ -913,65 +924,18 @@ function App() {
 
     setProviderConnectivityLoading(true);
     try {
-      const checks = await Promise.all(
-        models.map(async (model) => {
-          try {
-            const result = await probeProviderCandidates(candidates, apiKey, [model], {
-              mode: "connectivity",
-              protocols
-            });
-            if (!result) {
-              return {
-                model,
-                probe: undefined,
-                report: {
-                  message: "Request failed.",
-                  model,
-                  protocols: [],
-                  supported: false
-                }
-              };
-            }
-
-            const supported = providerProbeHasSupportedProtocol(result.probe);
-            return {
-              model,
-              probe: result.probe,
-              report: {
-                message: supported
-                  ? "Connection verified"
-                  : result.probe.protocols.find((item) => item.message)?.message || "Request failed.",
-                model,
-                protocols: result.probe.protocols,
-                supported
-              }
-            };
-          } catch (error) {
-            return {
-              model,
-              probe: undefined,
-              report: {
-                message: error instanceof Error ? error.message : String(error),
-                model,
-                protocols: [],
-                supported: false
-              }
-            };
-          }
-        })
-      );
+      const report = await window.ccr.checkProviderConnectivity({
+        apiKey,
+        candidates,
+        forceRefresh: true,
+        models,
+        protocols
+      });
       if (providerConnectivityRequestId.current !== requestId) {
         return emptyReport;
       }
 
-      const reports = checks.map((check) => check.report);
-      const report: ProviderConnectivityCheckReport = {
-        failed: reports.filter((item) => !item.supported),
-        passed: reports.filter((item) => item.supported),
-        results: reports
-      };
-      const supportedProbe = checks.find((check) => check.report.supported && check.probe)?.probe;
-      setProviderConnectivityProbe(supportedProbe);
+      setProviderConnectivityProbe(report.probe);
 
       if (report.passed.length === 0) {
         setProviderProbeError(report.failed[0]?.message || "Request failed.");
@@ -2238,7 +2202,7 @@ function App() {
         <div className="relative flex h-full min-h-0 w-full min-w-0 overflow-hidden bg-background text-foreground max-[720px]:flex-col">
           {activeView === "onboarding" ? (
             <OnboardingLayout
-              loaded={configLoaded && onboardingStatusLoaded}
+              loaded={configLoaded && onboardingStatusLoaded && providerPresetsLoaded}
               onboarding={{
                 activeStep: onboardingStep,
                 canSubmitProfile,

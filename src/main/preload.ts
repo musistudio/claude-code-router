@@ -21,6 +21,10 @@ import type {
   ClaudeAppGatewayApplyResult,
   GatewayMcpServerConfig,
   GatewayMcpToolInfo,
+  GatewayProviderConnectivityCheckReport,
+  GatewayProviderConnectivityCheckRequest,
+  GatewayProviderProbeCandidateResult,
+  GatewayProviderProbeCandidatesRequest,
   GatewayProviderProbeRequest,
   GatewayProviderProbeResult,
   GatewayStatus,
@@ -29,6 +33,7 @@ import type {
   ProfileOpenCommandResult,
   ProfileOpenRequest,
   ProfileOpenResult,
+  ProviderAccountSnapshotRequestOptions,
   ProviderAccountTestRequest,
   ProviderAccountTestResult,
   ProviderIconDetectionRequest,
@@ -48,11 +53,13 @@ import type {
   UsageStatsRange,
   UsageStatsSnapshot
 } from "../shared/app";
+import type { ProviderPreset } from "../shared/provider-presets";
 
 contextBridge.exposeInMainWorld("ccr", {
   applyClaudeAppGateway: (config?: AppConfig) => ipcRenderer.invoke(IPC_CHANNELS.appApplyClaudeAppGateway, config) as Promise<ClaudeAppGatewayApplyResult>,
   applyProfile: () => ipcRenderer.invoke(IPC_CHANNELS.appApplyProfile) as Promise<ProfileApplyResult>,
   cancelBotGatewayQrLogin: (request: BotGatewayQrLoginCancelRequest) => ipcRenderer.invoke(IPC_CHANNELS.appBotGatewayQrLoginCancel, request) as Promise<BotGatewayQrLoginCancelResult>,
+  checkProviderConnectivity: (request: GatewayProviderConnectivityCheckRequest) => ipcRenderer.invoke(IPC_CHANNELS.appCheckProviderConnectivity, request) as Promise<GatewayProviderConnectivityCheckReport>,
   closeBotGatewayQrWindow: (request: BotGatewayQrWindowCloseRequest) => ipcRenderer.invoke(IPC_CHANNELS.appBotGatewayQrWindowClose, request) as Promise<BotGatewayQrWindowCloseResult>,
   clearProxyNetworkCaptures: () => ipcRenderer.invoke(IPC_CHANNELS.appClearProxyNetworkCaptures) as Promise<ProxyNetworkSnapshot>,
   closeTray: () => ipcRenderer.invoke(IPC_CHANNELS.appCloseTray) as Promise<void>,
@@ -65,7 +72,8 @@ contextBridge.exposeInMainWorld("ccr", {
   getOnboardingFinished: () => ipcRenderer.invoke(IPC_CHANNELS.appGetOnboardingFinished) as Promise<boolean>,
   getPendingProviderDeepLinks: () => ipcRenderer.invoke(IPC_CHANNELS.appGetPendingProviderDeepLinks) as Promise<ProviderDeepLinkRequest[]>,
   getProfileOpenCommand: (request: ProfileOpenRequest) => ipcRenderer.invoke(IPC_CHANNELS.appGetProfileOpenCommand, request) as Promise<ProfileOpenCommandResult>,
-  getProviderAccountSnapshots: (provider?: string) => ipcRenderer.invoke(IPC_CHANNELS.appGetProviderAccountSnapshots, provider) as Promise<ProviderAccountSnapshot[]>,
+  getProviderAccountSnapshots: (provider?: string, options?: ProviderAccountSnapshotRequestOptions) => ipcRenderer.invoke(IPC_CHANNELS.appGetProviderAccountSnapshots, provider, options) as Promise<ProviderAccountSnapshot[]>,
+  getProviderPresets: () => ipcRenderer.invoke(IPC_CHANNELS.appGetProviderPresets) as Promise<ProviderPreset[]>,
   getPluginMarketplace: () => ipcRenderer.invoke(IPC_CHANNELS.appGetPluginMarketplace) as Promise<PluginMarketplaceEntry[]>,
   getProxyCertificateStatus: () => ipcRenderer.invoke(IPC_CHANNELS.appGetProxyCertificateStatus) as Promise<ProxyCertificateStatus>,
   getProxyNetworkCaptures: () => ipcRenderer.invoke(IPC_CHANNELS.appGetProxyNetworkCaptures) as Promise<ProxyNetworkSnapshot>,
@@ -79,6 +87,7 @@ contextBridge.exposeInMainWorld("ccr", {
   openBotGatewayQrWindow: (request: BotGatewayQrWindowOpenRequest) => ipcRenderer.invoke(IPC_CHANNELS.appBotGatewayQrWindowOpen, request) as Promise<BotGatewayQrWindowOpenResult>,
   openExternal: (url: string) => ipcRenderer.invoke(IPC_CHANNELS.appOpenExternal, url) as Promise<void>,
   openProfile: (request: ProfileOpenRequest) => ipcRenderer.invoke(IPC_CHANNELS.appOpenProfile, request) as Promise<ProfileOpenResult>,
+  probeProviderCandidates: (request: GatewayProviderProbeCandidatesRequest) => ipcRenderer.invoke(IPC_CHANNELS.appProbeProviderCandidates, request) as Promise<GatewayProviderProbeCandidateResult | undefined>,
   probeProvider: (request: GatewayProviderProbeRequest) => ipcRenderer.invoke(IPC_CHANNELS.appProbeProvider, request) as Promise<GatewayProviderProbeResult>,
   quitApp: () => ipcRenderer.invoke(IPC_CHANNELS.appQuit) as Promise<void>,
   revealProxyCertificate: () => ipcRenderer.invoke(IPC_CHANNELS.appRevealProxyCertificate) as Promise<void>,

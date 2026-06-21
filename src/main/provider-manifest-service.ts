@@ -2,7 +2,7 @@ import { lookup } from "node:dns/promises";
 import https from "node:https";
 import net from "node:net";
 import { parseProviderManifestPayload } from "../shared/deep-link";
-import { findProviderPresetByBaseUrl, providerEndpointCanReceiveProviderApiKey, providerIdentitySafetyIssue } from "../shared/provider-presets";
+import { findProviderPresetByBaseUrl, providerEndpointCanReceiveProviderApiKey, providerIdentitySafetyIssue } from "./presets";
 import { providerUrlWithDefaultScheme } from "../shared/provider-url";
 import type {
   GatewayProviderConfig,
