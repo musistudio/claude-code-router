@@ -1,7 +1,7 @@
 import electron from "electron";
 import esbuild from "esbuild";
 import { spawn } from "node:child_process";
-import { watch } from "node:fs";
+import { existsSync, watch } from "node:fs";
 import {
   binPath,
   buildStyles,
@@ -10,6 +10,7 @@ import {
   copyAppAssets,
   copyBrowserRendererHtml,
   copyMarketplacePlugins,
+  copyModelCatalog,
   copyRendererHtml,
   copyTrayRendererHtml,
   createBrowserRendererBuildOptions,
@@ -19,6 +20,7 @@ import {
   cssInput,
   cssOutput,
   appAssetsInput,
+  modelCatalogInput,
   projectRoot,
   rendererHtmlInput,
   trayRendererHtmlInput,
@@ -73,6 +75,7 @@ function restartElectron() {
 cleanDist();
 copyAppAssets();
 copyMarketplacePlugins();
+copyModelCatalog();
 copyBrowserRendererHtml();
 copyRendererHtml();
 copyTrayRendererHtml();
@@ -102,6 +105,13 @@ const appAssetsWatcher = watch(appAssetsInput, { persistent: true }, () => {
   copyAppAssets();
   scheduleRestart();
 });
+
+const modelCatalogWatcher = existsSync(modelCatalogInput)
+  ? watch(modelCatalogInput, { persistent: true }, () => {
+      copyModelCatalog();
+      scheduleRestart();
+    })
+  : { close: () => undefined };
 
 const mainContext = await esbuild.context(
   createMainBuildOptions({
@@ -161,6 +171,7 @@ async function shutdown() {
   browserHtmlWatcher.close();
   trayHtmlWatcher.close();
   appAssetsWatcher.close();
+  modelCatalogWatcher.close();
   await Promise.all([mainContext.dispose(), rendererContext.dispose(), trayRendererContext.dispose(), browserRendererContext.dispose()]);
   process.exit(0);
 }

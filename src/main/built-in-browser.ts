@@ -541,7 +541,7 @@ function normalizeBrowserUrl(value: string | undefined): string {
     return browserHomeUrl;
   }
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
-    return trimmed;
+    return isHttpUrl(trimmed) ? trimmed : `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
   }
   if (/^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(trimmed) || trimmed.includes(".")) {
     return `https://${trimmed}`;

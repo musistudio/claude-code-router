@@ -15,6 +15,8 @@ export const appAssetsDir = path.join(distDir, "assets");
 export const rendererAssetsDir = path.join(rendererOutDir, "assets");
 export const marketplacePluginsDir = path.join(distDir, "marketplace", "plugins");
 export const appAssetsInput = path.join(projectRoot, "assets");
+export const modelCatalogInput = path.join(projectRoot, "models.json");
+export const modelCatalogOutput = path.join(distDir, "models.json");
 export const rendererRoot = path.join(projectRoot, "src", "renderer");
 export const rendererHtmlInput = path.join(rendererRoot, "pages", "home", "index.html");
 export const rendererHtmlOutput = path.join(rendererOutDir, "pages", "home", "index.html");
@@ -51,6 +53,13 @@ export function copyAppAssets() {
   ensureDist();
   if (existsSync(appAssetsInput)) {
     cpSync(appAssetsInput, appAssetsDir, { recursive: true });
+  }
+}
+
+export function copyModelCatalog() {
+  ensureDist();
+  if (existsSync(modelCatalogInput)) {
+    cpSync(modelCatalogInput, modelCatalogOutput);
   }
 }
 
