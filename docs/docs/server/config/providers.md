@@ -56,6 +56,20 @@ Detailed guide for configuring LLM providers.
 }
 ```
 
+### Requesty
+
+Requesty is an OpenAI-compatible gateway that uses the same `provider/model` naming as OpenRouter. See [requesty.ai](https://requesty.ai), [docs.requesty.ai](https://docs.requesty.ai), and the [model list](https://app.requesty.ai/router/list).
+
+```json
+{
+  "NAME": "requesty",
+  "HOST": "https://router.requesty.ai/v1",
+  "APIKEY": "your-api-key",
+  "MODELS": ["openai/gpt-4o-mini", "anthropic/claude-sonnet-4-5"],
+  "transformers": ["anthropic"]
+}
+```
+
 ## Provider Configuration Options
 
 | Field | Type | Required | Description |
