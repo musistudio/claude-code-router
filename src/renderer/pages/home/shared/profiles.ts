@@ -102,6 +102,7 @@ import { cn } from "@/lib/utils";
 import appLogoUrl from "../../../../../assets/logo.png";
 import claudeCodeLogoUrl from "@/assets/agent-logos/claude-code.png";
 import codexLogoUrl from "@/assets/agent-logos/codex.png";
+import zcodeLogoUrl from "@/assets/agent-logos/zcode.png";
 import onboardingMascotSpriteUrl from "@/assets/onboarding/mascot-transition.svg";
 import anthropicProviderIconUrl from "@/assets/provider-icons/anthropic.png";
 import bailianProviderIconUrl from "@/assets/provider-icons/bailian.ico";
@@ -730,10 +731,11 @@ function createBotGatewayDraft(botGateway?: BotGatewayRuntimeConfig) {
 }
 
 export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code", name?: string): AddProfileDraft {
+  const surface = agent === "zcode" ? "app" : "cli";
   return {
     agent,
     ...createBotGatewayDraft(),
-    configFile: "~/.codex/config.toml",
+    configFile: defaultCodexConfigFile(agent),
     envRows: agent === "claude-code" ? keyValueRowsFromRecord(claudeCodeProfileEnv()) : [],
     model: "",
     name: name ?? profileAgentLabel(agent),
@@ -743,7 +745,7 @@ export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code"
     settingsFile: "~/.claude/settings.json",
     showAllSessions: false,
     smallFastModel: "",
-    surface: "cli"
+    surface
   };
 }
 
@@ -766,13 +768,13 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
       surface
     };
   }
-  const surface = normalizeProfileSurfaceForForm(profile.surface);
+  const surface = profile.agent === "zcode" ? "app" : normalizeProfileSurfaceForForm(profile.surface);
   return {
-    ...createProfileDraft("codex", profile.name),
+    ...createProfileDraft(profile.agent, profile.name),
     ...botDraft,
     botConfigId,
     botEnabled: surface !== "cli" && Boolean(selectedBot || profile.botGateway?.enabled),
-    configFile: profile.configFile ?? "~/.codex/config.toml",
+    configFile: profile.configFile ?? defaultCodexConfigFile(profile.agent),
     envRows: keyValueRowsFromRecord(profile.env ?? {}),
     model: profile.model,
     providerId: profile.providerId ?? "claude-code-router",
@@ -1323,7 +1325,7 @@ export function profileSummaryItems(
   config: AppConfig,
   t: (value: string) => string
 ): Array<{ label: string; value: string }> {
-  const surface = normalizeProfileSurface(profile.surface);
+  const surface = normalizeProfileSurfaceForAgent(profile.agent, profile.surface);
   const envCount = Object.keys(profile.env ?? {}).length;
   const envSummaryItems = envCount > 0
     ? [{ label: t("Environment variables"), value: String(envCount) }]
@@ -1380,14 +1382,15 @@ export function profileSummaryItems(
 }
 
 export function normalizeProfileItem(profile: ProfileConfig, index: number): ProfileConfig {
+  const agent = normalizeProfileAgent(profile.agent);
   const name = profile.name.trim() || profileAgentLabel(profile.agent);
   const model = profile.model.trim();
   const scope = normalizeProfileScope(profile.scope);
-  const surface = normalizeProfileSurface(profile.surface);
+  const surface = normalizeProfileSurfaceForAgent(agent, profile.surface);
   const env = isPlainRecord(profile.env) ? stringRecordValue(profile.env) : {};
   const botGateway = surface !== "cli" ? normalizeBotGatewayRuntimeConfig(profile.botGateway) : undefined;
   const botConfigId = surface !== "cli" ? stringValue(profile.botConfigId) : "";
-  if (profile.agent === "claude-code") {
+  if (agent === "claude-code") {
     return {
       agent: "claude-code",
       ...(botConfigId ? { botConfigId } : {}),
@@ -1404,14 +1407,14 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
     };
   }
   return {
-    agent: "codex",
+    agent: normalizeCodexCompatibleAgent(agent),
     ...(botConfigId ? { botConfigId } : {}),
     ...(botGateway ? { botGateway } : {}),
     cliMiddleware: true,
     codexCliPath: "",
     codexHome: "",
     configFormat: "separate_profile_files",
-    configFile: profile.configFile?.trim() || "~/.codex/config.toml",
+    configFile: profile.configFile?.trim() || defaultCodexConfigFile(profile.agent),
     enabled: profile.enabled,
     env,
     id: profile.id || `profile-${index + 1}`,
@@ -1475,7 +1478,9 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
     ? "claude-code"
     : rawAgent === "codex"
       ? "codex"
-      : undefined;
+      : rawAgent === "zcode" || rawAgent === "z-code" || rawAgent === "z code"
+        ? "zcode"
+        : undefined;
   if (!agent) {
     return undefined;
   }
@@ -1526,6 +1531,9 @@ export function profileAgentLabel(agent: ProfileConfig["agent"]): string {
   if (agent === "claude-code") {
     return "Claude Code";
   }
+  if (agent === "zcode") {
+    return "ZCode";
+  }
   return "Codex";
 }
 
@@ -1550,6 +1558,9 @@ export function profileSurfaceLabel(surface: ProfileSurface): string {
 }
 
 export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[] {
+  if (profile.agent === "zcode") {
+    return ["app"];
+  }
   const surface = normalizeProfileSurface(profile.surface);
   if (surface === "cli") {
     return ["cli"];
@@ -1560,7 +1571,7 @@ export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[
   return ["cli", "app"];
 }
 
-export function profileOpenCommandFallback(profile: ProfileConfig, surface: ProfileOpenSurface = "cli"): string {
+export function profileOpenCommandFallback(profile: ProfileConfig, surface: ProfileOpenSurface = profile.agent === "zcode" ? "app" : "cli"): string {
   const profileRef = profile.name.trim() || profile.id;
   return ["ccr", shellCommandQuote(profileRef), ...(surface === "app" ? ["--app"] : [])].join(" ");
 }
@@ -1575,5 +1586,24 @@ export function profileAgentLogoUrl(agent: ProfileConfig["agent"]): string {
   if (agent === "claude-code") {
     return claudeCodeLogoUrl;
   }
+  if (agent === "zcode") {
+    return zcodeLogoUrl;
+  }
   return codexLogoUrl;
+}
+
+function normalizeCodexCompatibleAgent(agent: ProfileConfig["agent"]): "codex" | "zcode" {
+  return agent === "zcode" ? "zcode" : "codex";
+}
+
+function normalizeProfileAgent(agent: ProfileConfig["agent"]): ProfileConfig["agent"] {
+  return agent === "zcode" ? "zcode" : agent === "codex" ? "codex" : "claude-code";
+}
+
+function normalizeProfileSurfaceForAgent(agent: ProfileConfig["agent"], surface: unknown): ProfileSurface {
+  return agent === "zcode" ? "app" : normalizeProfileSurface(surface);
+}
+
+function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
+  return agent === "zcode" ? "~/.zcode/config.toml" : "~/.codex/config.toml";
 }

@@ -40,7 +40,6 @@ const deepSeekProviderAccountConfig: ProviderAccountConfig = {
 export const deepSeekProviderPreset: ProviderPreset = {
   account: deepSeekProviderAccountConfig,
   aliases: ["deepseek"],
-  defaultModels: ["deepseek-chat"],
   endpoints: [
     {
       baseUrl: "https://api.deepseek.com",

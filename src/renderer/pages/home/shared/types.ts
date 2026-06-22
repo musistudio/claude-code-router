@@ -428,8 +428,10 @@ export type AddProviderDraft = {
   protocol: GatewayProviderProtocol;
   selectedModels: string[];
   selectedProtocols: GatewayProviderProtocol[];
+  usageBalanceLimitPath: string;
   usageBalanceRemainingPath: string;
   usageBalanceUnit: string;
+  usageBalanceUsedPath: string;
   usageMessagePath: string;
   usageRequestBodyText: string;
   usageRequestHeaders: KeyValueDraftRow[];
@@ -455,6 +457,8 @@ export type ProviderCredentialDraft = {
 export type ProviderAccountDraftMode = "standard" | "http-json" | "raw";
 export type ProviderUsageFieldTarget =
   | "balance"
+  | "balanceLimit"
+  | "balanceUsed"
   | "message"
   | "status"
   | "subscriptionLimit"

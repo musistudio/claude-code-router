@@ -51,7 +51,6 @@ import {
   type ModelCatalogCapabilities,
   type ModelCatalogEntry
 } from "./model-catalog";
-import { createResponseProtocolAdapter } from "./response-protocol-adapter";
 
 type CoreGatewayProvider = {
   apikey?: string;
@@ -645,22 +644,12 @@ class GatewayService {
 
     bodyToForward = upstreamResult.attempt.body ?? bodyToForward;
     routedModel = upstreamResult.attempt.model ?? routedModel;
-    let responseHeaders = rewriteCapabilityResponseHeaders(
+    const responseHeaders = rewriteCapabilityResponseHeaders(
       mergeFallbackResponseHeaders(upstreamResponseHeaders(upstreamResult), upstreamResult),
       this.config
     );
     const upstreamResponse = upstreamResult.response;
     recordProviderCredentialOutcome(this.config, method, upstreamResult.attempt, upstreamResponse.status, responseHeaders);
-    const providerProtocol = resolveResponseProviderProtocol(responseHeaders, this.config);
-    const responseAdapter = createResponseProtocolAdapter({
-      clientProtocol: requestProtocolForPath(path),
-      providerProtocol,
-      responseHeaders,
-      statusCode: upstreamResponse.status
-    });
-    if (responseAdapter) {
-      responseHeaders = responseAdapter.headers;
-    }
     response.writeHead(upstreamResponse.status, Object.fromEntries(filteredResponseHeaders(responseHeaders)));
     if (!upstreamResponse.body) {
       if (shouldCaptureUsage) {
@@ -682,32 +671,8 @@ class GatewayService {
       return;
     }
 
-    if (responseAdapter?.transformText) {
-      const upstreamText = await upstreamResponse.text();
-      const responseText = responseAdapter.transformText(upstreamText);
-      response.end(responseText);
-      if (shouldCaptureUsage) {
-        void recordGatewayUsageCapture({
-          bodyText: responseText,
-          client,
-          durationMs: Date.now() - startedAt,
-          fallbackModel: routedModel,
-          method,
-          path,
-          providerProtocol: resolveResponseProviderProtocol(responseHeaders, this.config),
-          requestId,
-          responseHeaders,
-          statusCode: upstreamResponse.status
-        });
-      }
-      writeRequestLog(upstreamResponse.status, responseHeaders, responseText);
-      return;
-    }
-
     const upstreamBody = Readable.fromWeb(upstreamResponse.body as unknown as import("node:stream/web").ReadableStream);
-    const responseBody = responseAdapter?.createStreamTransform
-      ? upstreamBody.pipe(responseAdapter.createStreamTransform())
-      : upstreamBody;
+    const responseBody = upstreamBody;
     const sampler = createBodySampler();
     let logRecorded = false;
     const writeStreamLog = (error?: string) => {
@@ -1563,6 +1528,9 @@ function providerProtocolForClientProtocol(
 function providerProtocolPreferenceForClient(clientProtocol: GatewayProviderProtocol): GatewayProviderProtocol[] {
   if (clientProtocol === "openai_responses") {
     return ["openai_responses", "openai_chat_completions", "anthropic_messages"];
+  }
+  if (clientProtocol === "anthropic_messages") {
+    return ["anthropic_messages", "openai_chat_completions"];
   }
   return [clientProtocol];
 }

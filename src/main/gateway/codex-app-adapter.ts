@@ -101,14 +101,19 @@ function isOpenAIModelRequestPath(path: string): boolean {
 }
 
 function isCodexClient(client: string | undefined, headers: Record<string, string>): boolean {
-  if (client?.toLowerCase().includes("codex")) {
+  const normalizedClient = client?.toLowerCase() ?? "";
+  if (normalizedClient.includes("codex") || normalizedClient.includes("zcode") || normalizedClient.includes("z-code")) {
     return true;
   }
   return Boolean(
     readHeader(headers, "x-codex-session-id") ||
     readHeader(headers, "x-codex-conversation-id") ||
     readHeader(headers, "x-codex-thread-id") ||
-    readHeader(headers, "x-codex-account-id")
+    readHeader(headers, "x-codex-account-id") ||
+    readHeader(headers, "x-zcode-session-id") ||
+    readHeader(headers, "x-zcode-conversation-id") ||
+    readHeader(headers, "x-zcode-thread-id") ||
+    readHeader(headers, "x-zcode-account-id")
   );
 }
 

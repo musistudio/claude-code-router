@@ -12,7 +12,8 @@ const openRouterProviderAccountConfig: ProviderAccountConfig = {
             id: "balance",
             kind: "balance",
             label: "Balance",
-            remaining: "$.data.total_credits - $.data.total_usage",
+            limit: "$.data.total_credits",
+            used: "$.data.total_usage",
             unit: "USD"
           },
           {

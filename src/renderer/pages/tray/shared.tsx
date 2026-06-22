@@ -655,29 +655,34 @@ export function formatAccountMeterValue(meter: ProviderAccountMeter, translate: 
   if (value === undefined) {
     return "-";
   }
-  if (meter.unit === "USD") {
+  const unit = meter.unit.trim();
+  const normalizedUnit = unit.toUpperCase();
+  if (normalizedUnit === "USD") {
     return `$${formatMeterNumber(value)}`;
   }
-  if (meter.unit === "CNY") {
+  if (normalizedUnit === "CNY") {
     return `¥${formatMeterNumber(value)}`;
   }
-  if (meter.unit === "EUR") {
+  if (normalizedUnit === "EUR") {
     return `€${formatMeterNumber(value)}`;
   }
-  if (meter.unit === "%") {
+  if (unit === "%") {
     return `${formatMeterNumber(value)}%`;
   }
-  if (meter.unit === "hours") {
+  if (unit === "hours") {
     return `${formatMeterNumber(value)}h`;
   }
-  if (meter.unit === "minutes") {
+  if (unit === "minutes") {
     return `${formatMeterNumber(value)}m`;
   }
-  return `${formatCompactNumber(value)} ${translate(meter.unit)}`;
+  if (meter.kind === "balance") {
+    return `${formatMeterNumber(value)} ${translate(unit)}`;
+  }
+  return `${formatCompactNumber(value)} ${translate(unit)}`;
 }
 
 export function formatMeterNumber(value: number): string {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: value >= 10 ? 1 : 2 }).format(value);
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 6 }).format(value);
 }
 
 export function formatAccountReset(value: string): string {

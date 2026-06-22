@@ -658,16 +658,19 @@ function normalizeMeter(value: unknown, source: ProviderAccountConnectorSource):
   if (!id || !label || !unit) {
     return undefined;
   }
+  const limit = normalizeNumber(value.limit);
+  const used = normalizeNumber(value.used);
+  const remaining = normalizeNumber(value.remaining) ?? (limit !== undefined && used !== undefined ? limit - used : undefined);
   return {
     id,
     kind: normalizeMeterKind(readString(value.kind)) ?? inferMeterKind(unit),
     label,
-    limit: normalizeNumber(value.limit),
-    remaining: normalizeNumber(value.remaining),
+    limit,
+    remaining,
     resetAt: readString(value.resetAt),
     source,
     unit,
-    used: normalizeNumber(value.used),
+    used,
     window: readString(value.window)
   };
 }
@@ -1031,7 +1034,7 @@ function readJsonPath(payload: unknown, path: string): unknown {
       if (!key || !isRecord(current)) {
         return undefined;
       }
-      current = current[key];
+      current = readJsonRecordValue(current, key);
       index = nextIndex;
       continue;
     }
@@ -1055,7 +1058,7 @@ function readJsonPath(payload: unknown, path: string): unknown {
         if (!isRecord(current)) {
           return undefined;
         }
-        current = current[parsed.key];
+        current = readJsonRecordValue(current, parsed.key);
       } else {
         return undefined;
       }
@@ -1074,6 +1077,34 @@ function nextJsonPathBoundary(path: string, startIndex: number): number {
     index += 1;
   }
   return index;
+}
+
+function readJsonRecordValue(record: Record<string, unknown>, key: string): unknown {
+  if (Object.prototype.hasOwnProperty.call(record, key)) {
+    return record[key];
+  }
+  for (const alternate of jsonPathKeyAlternates(key)) {
+    if (Object.prototype.hasOwnProperty.call(record, alternate)) {
+      return record[alternate];
+    }
+  }
+  return undefined;
+}
+
+function jsonPathKeyAlternates(key: string): string[] {
+  const alternates = new Set<string>();
+  const camel = key.replace(/[_-]([a-zA-Z0-9])/g, (_match, letter: string) => letter.toUpperCase());
+  if (camel !== key) {
+    alternates.add(camel);
+  }
+  const snake = key
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/-/g, "_")
+    .toLowerCase();
+  if (snake !== key) {
+    alternates.add(snake);
+  }
+  return [...alternates];
 }
 
 function readJsonPathBracket(path: string, startIndex: number): JsonPathBracketSelection | undefined {
@@ -1167,7 +1198,7 @@ function parseJsonPathFilterCondition(condition: string): JsonPathFilterConditio
 
 function jsonPathFilterMatches(value: unknown, conditions: JsonPathFilterCondition[]): boolean {
   return conditions.every((condition) => {
-    const actual = condition.path.reduce<unknown>((current, key) => isRecord(current) ? current[key] : undefined, value);
+    const actual = condition.path.reduce<unknown>((current, key) => isRecord(current) ? readJsonRecordValue(current, key) : undefined, value);
     if (typeof condition.expected === "number") {
       return normalizeNumber(actual) === condition.expected;
     }

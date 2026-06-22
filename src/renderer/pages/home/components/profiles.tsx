@@ -77,7 +77,7 @@ export function ProfileView({
             ) : null}
             {profiles.map((profile, index) => {
               const scope = normalizeProfileScope(profile.scope);
-              const surface = normalizeProfileSurface(profile.surface);
+              const surface = profile.agent === "zcode" ? "app" : normalizeProfileSurface(profile.surface);
               const openSurfaces = profileOpenSurfaces(profile);
               const summaryItems = profileSummaryItems(profile, config, t);
               const cliBusy = profileActionBusy?.profileId === profile.id && profileActionBusy.surface === "cli";
@@ -345,7 +345,7 @@ function ProfileAgentTabs({
   return (
     <div
       aria-label={t("Agent profiles")}
-      className="grid grid-cols-2 gap-1 rounded-md border border-border bg-muted/20 p-1"
+      className="grid grid-cols-1 gap-1 rounded-md border border-border bg-muted/20 p-1 sm:grid-cols-3"
       role="tablist"
     >
       {profileAgentOptions.map((option) => {
@@ -806,7 +806,12 @@ export function AddProfileForm({
                     surface: nextSurface
                   });
             }}
-            options={translateOptions(profileSurfaceOptions, t)}
+            options={translateOptions(
+              draft.agent === "zcode"
+                ? profileSurfaceOptions.filter((option) => option.value === "app")
+                : profileSurfaceOptions,
+              t
+            )}
             value={draft.surface}
           />
         </Field>
@@ -843,7 +848,7 @@ export function AddProfileForm({
               <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
               <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
             </div>
-            <Field className="sm:col-span-2" label={t("Codex model")}>
+            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : "Codex model")}>
               <ProfileModelSelector
 	                placeholder={providers[0]?.models[0] && providers[0]?.name ? `${providers[0].name}/${providers[0].models[0]}` : ""}
 	                providers={providers}

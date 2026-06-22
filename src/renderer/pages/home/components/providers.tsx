@@ -1489,8 +1489,14 @@ function ProviderUsageSettings({
                 />
               </Field>
 
-              <Field label={t("Balance field")}>
+              <Field label={t("Balance remaining field")}>
                 <Input placeholder="$.balance.remaining" value={draft.usageBalanceRemainingPath} onChange={(event) => onChange({ usageBalanceRemainingPath: event.target.value })} />
+              </Field>
+              <Field label={t("Balance total field")}>
+                <Input placeholder="$.totalCredits" value={draft.usageBalanceLimitPath} onChange={(event) => onChange({ usageBalanceLimitPath: event.target.value })} />
+              </Field>
+              <Field label={t("Balance used field")}>
+                <Input placeholder="$.totalUsage" value={draft.usageBalanceUsedPath} onChange={(event) => onChange({ usageBalanceUsedPath: event.target.value })} />
               </Field>
               <Field label={t("Balance unit")}>
                 <Input placeholder="USD" value={draft.usageBalanceUnit} onChange={(event) => onChange({ usageBalanceUnit: event.target.value })} />
@@ -1615,7 +1621,9 @@ function ProviderUsagePathRow({
       </div>
       <Badge className="justify-self-start" variant="outline">{item.type}</Badge>
       <div className="flex flex-wrap justify-end gap-1">
-        <Button className="h-6 px-1.5 text-[10px]" onClick={() => onSelectPath("balance", item.path)} type="button" variant="outline">{t("Balance")}</Button>
+        <Button className="h-6 px-1.5 text-[10px]" onClick={() => onSelectPath("balance", item.path)} type="button" variant="outline">{t("Balance rem")}</Button>
+        <Button className="h-6 px-1.5 text-[10px]" onClick={() => onSelectPath("balanceLimit", item.path)} type="button" variant="outline">{t("Balance total")}</Button>
+        <Button className="h-6 px-1.5 text-[10px]" onClick={() => onSelectPath("balanceUsed", item.path)} type="button" variant="outline">{t("Balance used")}</Button>
         <Button className="h-6 px-1.5 text-[10px]" onClick={() => onSelectPath("subscriptionRemaining", item.path)} type="button" variant="outline">{t("Sub rem")}</Button>
         <Button className="h-6 px-1.5 text-[10px]" onClick={() => onSelectPath("subscriptionLimit", item.path)} type="button" variant="outline">{t("Sub limit")}</Button>
         <Button className="h-6 px-1.5 text-[10px]" onClick={() => onSelectPath("subscriptionReset", item.path)} type="button" variant="outline">{t("Reset")}</Button>
@@ -1690,7 +1698,7 @@ export function AddProviderDialog({
   return (
     <>
       <Dialog className="items-start" onOpenChange={(open) => !open && onClose()}>
-        <DialogContent className="mt-[clamp(12px,4dvh,36px)] max-h-[calc(100dvh-1.5rem-clamp(12px,4dvh,36px))] max-w-[780px] origin-top sm:mt-[clamp(16px,6dvh,56px)] sm:max-h-[calc(100dvh-3rem-clamp(16px,6dvh,56px))]">
+        <DialogContent className="mt-[clamp(8px,2dvh,20px)] h-[calc(100dvh-1.5rem-clamp(8px,2dvh,20px))] max-w-[820px] origin-top sm:mt-[clamp(8px,3dvh,28px)] sm:h-[min(860px,calc(100dvh-3rem-clamp(8px,3dvh,28px)))]">
           <DialogHeader>
             <div className="min-w-0">
               <DialogTitle>{mode === "edit" ? t("Edit Provider") : t("Add Provider")}</DialogTitle>

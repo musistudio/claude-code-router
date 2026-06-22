@@ -168,7 +168,7 @@ export const fallbackConfig: AppConfig = {
       { host: "api.openai.com", paths: ["/v1/chat/completions", "/v1/responses", "/v1/models"] },
       { host: "generativelanguage.googleapis.com", paths: ["/v1beta/models", "/v1/models"] },
       { host: "openrouter.ai", paths: ["/api/v1/chat/completions", "/api/v1/responses", "/api/v1/models"] },
-      { host: "api.deepseek.com", paths: ["/chat/completions", "/v1/chat/completions"] },
+      { host: "api.deepseek.com", paths: ["/chat/completions", "/v1/chat/completions", "/models", "/v1/models"] },
       { host: "api.mistral.ai", paths: ["/v1/chat/completions", "/v1/models"] }
     ]
   },

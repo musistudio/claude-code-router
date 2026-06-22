@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { enforceSingleEnabledGlobalProfilePerAgent, type ApiKeyConfig, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileConfig } from "../shared/app";
+import { enforceSingleEnabledGlobalProfilePerAgent, type ApiKeyConfig, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "../shared/app";
 import { replacePersistedApiKeys } from "./api-key-store";
 import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
@@ -98,9 +98,10 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
 }
 
 function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
+  const clientName = codexCompatibleClientName(profile.agent);
   const configFile = resolveCodexConfigFile(profile);
   if (!profile.enabled) {
-    return disabledStatus("codex", configFile, "Codex profile is disabled.");
+    return disabledStatus(profile.agent, configFile, `${clientName} profile is disabled.`);
   }
 
   try {
@@ -147,17 +148,17 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
     return {
       appliedAt,
       backupFile: writeResult.backupFile,
-      client: "codex",
+      client: profile.agent,
       enabled: true,
       message: changed
-        ? `Codex config is managed by CCR${extras.length ? ` (${extras.join(", ")})` : ""}.`
-        : "Codex config already matches CCR.",
+        ? `${clientName} config is managed by CCR${extras.length ? ` (${extras.join(", ")})` : ""}.`
+        : `${clientName} config already matches CCR.`,
       ok: true,
       path: configFile
     };
   } catch (error) {
     return {
-      client: "codex",
+      client: profile.agent,
       enabled: true,
       message: formatError(error),
       ok: false,
@@ -243,13 +244,13 @@ function resolveClaudeCodeSettingsFile(profile: ProfileConfig): string {
 
 function resolveCodexConfigFile(profile: ProfileConfig): string {
   if (isGeneratedProfileScope(profile.scope)) {
-    return path.join(ccrManagedProfileDir(profile), "codex", "config.toml");
+    return path.join(ccrManagedProfileDir(profile), codexConfigSubdir(profile.agent), "config.toml");
   }
   const codexHome = profile.codexHome?.trim();
   if (codexHome) {
     return path.join(resolveUserPath(codexHome), "config.toml");
   }
-  return resolveUserPath(profile.configFile || "~/.codex/config.toml");
+  return resolveUserPath(profile.configFile || defaultCodexConfigFile(profile.agent));
 }
 
 function codexModelCatalogFile(configFile: string): string {
@@ -557,12 +558,37 @@ function codexMiddlewareShellScript(
   },
   runtimeFile: string
 ): string {
-  const codexCli = profile.codexCliPath?.trim() || "codex";
+  const codexCli = profile.codexCliPath?.trim() || defaultCodexCliCommand(profile.agent);
   const codexHome = profile.codexHome?.trim() || path.dirname(values.configFile);
   const remoteFrontendMode = normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode);
-  const surface = normalizeProfileSurface(profile.surface);
+  const surface = profile.agent === "zcode" ? "app" : normalizeProfileSurface(profile.surface);
   const envExports = Object.entries(profileEnv(profile)).map(([key, value]) => `export ${key}=${shellQuote(value)}`);
   const botEnvExports = shellBotGatewayEnvExports(config, profile);
+  const zcodeEnvExports = profile.agent === "zcode"
+    ? [
+        `export ZCODE_HOME=${shellQuote(resolveUserPath(codexHome))}`,
+        "if [ -z \"${CCR_REAL_ZCODE_CLI_PATH:-}\" ]; then",
+        "  CCR_REAL_ZCODE_CLI_PATH=$CCR_REAL_CODEX_CLI_PATH",
+        "fi",
+        "export CCR_REAL_ZCODE_CLI_PATH",
+        `export CCR_ZCODE_PROFILE=${shellQuote(values.providerId)}`,
+        `export CCR_ZCODE_MODEL=${shellQuote(values.model)}`,
+        `export CCR_ZCODE_MODEL_CATALOG_FILE=${shellQuote(values.modelCatalogFile)}`,
+        `export CCR_ZCODE_MODEL_PROVIDER=${shellQuote(values.providerId)}`
+      ]
+    : [];
+  const zcodeCodexlEnvExports = profile.agent === "zcode"
+    ? [
+        "if [ -z \"${CODEXL_REAL_ZCODE_CLI_PATH:-}\" ]; then",
+        "  CODEXL_REAL_ZCODE_CLI_PATH=$CCR_REAL_ZCODE_CLI_PATH",
+        "fi",
+        "export CODEXL_REAL_ZCODE_CLI_PATH",
+        `export CODEXL_ZCODE_PROFILE=${shellQuote(values.providerId)}`,
+        `export CODEXL_ZCODE_MODEL_CATALOG_FILE=${shellQuote(values.modelCatalogFile)}`,
+        `export CODEXL_ZCODE_MODEL_PROVIDER=${shellQuote(values.providerId)}`,
+        `export CODEXL_ZCODE_WORKSPACE_NAME=${shellQuote(profile.name || values.providerId)}`
+      ]
+    : [];
   return [
     "#!/bin/sh",
     ...envExports,
@@ -577,6 +603,7 @@ function codexMiddlewareShellScript(
     `export CCR_CODEX_MODEL_PROVIDER=${shellQuote(values.providerId)}`,
     `export CCR_CODEX_PROFILE_CONFIG_FORMAT=${shellQuote(values.configFormat)}`,
     `export CCR_PROFILE_SCOPE=${shellQuote(normalizeProfileScope(profile.scope))}`,
+    ...zcodeEnvExports,
     ...shellProfileSurfaceExports(surface),
     `export CCR_CODEX_REMOTE_FRONTEND_MODE=${shellQuote(remoteFrontendMode)}`,
     ...botEnvExports,
@@ -589,6 +616,7 @@ function codexMiddlewareShellScript(
     `export CODEXL_CODEX_MODEL_PROVIDER=${shellQuote(values.providerId)}`,
     `export CODEXL_CODEX_WORKSPACE_NAME=${shellQuote(profile.name || values.providerId)}`,
     `export CODEXL_CODEX_PROFILE_CONFIG_FORMAT=${shellQuote(values.configFormat)}`,
+    ...zcodeCodexlEnvExports,
     ...shellCodexlProfileSurfaceExports(),
     `export CODEXL_CODEX_CORE_MODE=${shellQuote(remoteFrontendMode)}`,
     ...nodeRuntimeShellExecLines(runtimeFile),
@@ -647,13 +675,32 @@ function codexMiddlewareCmdScript(
   },
   runtimeFile: string
 ): string {
-  const codexCli = profile.codexCliPath?.trim() || "codex";
+  const codexCli = profile.codexCliPath?.trim() || defaultCodexCliCommand(profile.agent);
   const codexHome = profile.codexHome?.trim() || path.dirname(values.configFile);
   const remoteFrontendMode = normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode);
-  const surface = normalizeProfileSurface(profile.surface);
+  const surface = profile.agent === "zcode" ? "app" : normalizeProfileSurface(profile.surface);
   const workspaceName = profile.name || values.providerId;
   const envExports = Object.entries(profileEnv(profile)).map(([key, value]) => cmdSetLine(key, value));
   const botEnvExports = cmdBotGatewayEnvExports(config, profile);
+  const zcodeEnvExports = profile.agent === "zcode"
+    ? [
+        cmdSetLine("ZCODE_HOME", resolveUserPath(codexHome)),
+        "if not defined CCR_REAL_ZCODE_CLI_PATH set \"CCR_REAL_ZCODE_CLI_PATH=%CCR_REAL_CODEX_CLI_PATH%\"",
+        cmdSetLine("CCR_ZCODE_PROFILE", values.providerId),
+        cmdSetLine("CCR_ZCODE_MODEL", values.model),
+        cmdSetLine("CCR_ZCODE_MODEL_CATALOG_FILE", values.modelCatalogFile),
+        cmdSetLine("CCR_ZCODE_MODEL_PROVIDER", values.providerId)
+      ]
+    : [];
+  const zcodeCodexlEnvExports = profile.agent === "zcode"
+    ? [
+        "if not defined CODEXL_REAL_ZCODE_CLI_PATH set \"CODEXL_REAL_ZCODE_CLI_PATH=%CCR_REAL_ZCODE_CLI_PATH%\"",
+        cmdSetLine("CODEXL_ZCODE_PROFILE", values.providerId),
+        cmdSetLine("CODEXL_ZCODE_MODEL_CATALOG_FILE", values.modelCatalogFile),
+        cmdSetLine("CODEXL_ZCODE_MODEL_PROVIDER", values.providerId),
+        cmdSetLine("CODEXL_ZCODE_WORKSPACE_NAME", workspaceName)
+      ]
+    : [];
   return [
     "@echo off",
     ...envExports,
@@ -665,6 +712,7 @@ function codexMiddlewareCmdScript(
     cmdSetLine("CCR_CODEX_MODEL_PROVIDER", values.providerId),
     cmdSetLine("CCR_CODEX_PROFILE_CONFIG_FORMAT", values.configFormat),
     cmdSetLine("CCR_PROFILE_SCOPE", normalizeProfileScope(profile.scope)),
+    ...zcodeEnvExports,
     ...cmdProfileSurfaceExports(surface),
     cmdSetLine("CCR_CODEX_REMOTE_FRONTEND_MODE", remoteFrontendMode),
     ...botEnvExports,
@@ -674,6 +722,7 @@ function codexMiddlewareCmdScript(
     cmdSetLine("CODEXL_CODEX_MODEL_PROVIDER", values.providerId),
     cmdSetLine("CODEXL_CODEX_WORKSPACE_NAME", workspaceName),
     cmdSetLine("CODEXL_CODEX_PROFILE_CONFIG_FORMAT", values.configFormat),
+    ...zcodeCodexlEnvExports,
     ...cmdCodexlProfileSurfaceExports(),
     cmdSetLine("CODEXL_CODEX_CORE_MODE", remoteFrontendMode),
     ...nodeRuntimeCmdExecLines(runtimeFile),
@@ -813,7 +862,7 @@ function backupFilePath(file: string): string {
   return `${file}.ccr-backup-${timestamp}`;
 }
 
-function disabledStatus(client: "claude-code" | "codex", file: string, message: string): ProfileClientApplyStatus {
+function disabledStatus(client: ProfileClientKind, file: string, message: string): ProfileClientApplyStatus {
   return {
     client,
     enabled: false,
@@ -882,6 +931,22 @@ function isGeneratedProfileScope(value: ProfileConfig["scope"]): boolean {
 
 function normalizeProfileSurface(value: ProfileConfig["surface"]): "auto" | "cli" | "app" {
   return value === "cli" || value === "app" ? value : "auto";
+}
+
+function codexCompatibleClientName(agent: ProfileConfig["agent"]): string {
+  return agent === "zcode" ? "ZCode" : "Codex";
+}
+
+function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
+  return agent === "zcode" ? "~/.zcode/config.toml" : "~/.codex/config.toml";
+}
+
+function codexConfigSubdir(agent: ProfileConfig["agent"]): string {
+  return agent === "zcode" ? "zcode" : "codex";
+}
+
+function defaultCodexCliCommand(agent: ProfileConfig["agent"]): string {
+  return agent === "zcode" ? "zcode" : "codex";
 }
 
 function profileEnv(profile: ProfileConfig): Record<string, string> {

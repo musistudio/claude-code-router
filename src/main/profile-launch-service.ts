@@ -6,7 +6,7 @@ import type { AppConfig, ProfileOpenCommandResult, ProfileOpenRequest, ProfileOp
 import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { applyClaudeAppGatewayConfig } from "./claude-app-gateway-service";
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "./claude-app-launch";
-import { launchCodexAppProfile } from "./codex-app-launch";
+import { launchCodexAppProfile, launchZcodeAppProfile } from "./codex-app-launch";
 import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
 import { CONFIGDIR } from "./constants";
 import { gatewayService } from "./gateway/service";
@@ -56,7 +56,7 @@ export async function openProfileFromCcr(config: AppConfig, request: ProfileOpen
   if (profile.agent === "claude-code" && surface === "app") {
     return openClaudeAppProfile(config, profile);
   }
-  if (profile.agent === "codex" && surface === "app") {
+  if ((profile.agent === "codex" || profile.agent === "zcode") && surface === "app") {
     return await openCodexAppProfile(config, profile);
   }
   const plan = buildProfileLaunchPlan(CONFIGDIR, profile, surface);
@@ -84,30 +84,34 @@ export async function openProfileFromCcr(config: AppConfig, request: ProfileOpen
 }
 
 async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): Promise<ProfileOpenResult> {
+  const appName = profile.agent === "zcode" ? "ZCode App" : "Codex App";
   const existing = runningProfileApp(profile.id, "app");
   if (existing) {
     activateProfileAppWindow(existing);
     return {
-      message: `Codex App is already running with ${profile.name || profile.id}.`,
+      message: `${appName} is already running with ${profile.name || profile.id}.`,
       profileId: profile.id,
       profileName: profile.name,
       surface: "app"
     };
   }
-  const entry = registerProfileApp(profile, "app", launchCodexAppProfile(CONFIGDIR, profile, config));
+  const launch = profile.agent === "zcode"
+    ? launchZcodeAppProfile(CONFIGDIR, profile, config)
+    : launchCodexAppProfile(CONFIGDIR, profile, config);
+  const entry = registerProfileApp(profile, "app", launch);
   const started = await waitForProfileAppStart(entry, 12000);
   if (!started) {
     cleanupProfileAppEntry(profileRuntimeKey(profile.id, "app"), entry);
     sendProfileProcessSignal(entry.pid, "SIGTERM");
     throw new Error([
-      `Codex App did not open a window for ${profile.name || profile.id}.`,
+      `${appName} did not open a window for ${profile.name || profile.id}.`,
       `Command: ${entry.command}`,
       `User data: ${entry.userDataDir}`
     ].join(" "));
   }
   activateProfileAppWindow(entry);
   return {
-    message: `Opened Codex App with ${profile.name || profile.id}.`,
+    message: `Opened ${appName} with ${profile.name || profile.id}.`,
     profileId: profile.id,
     profileName: profile.name,
     surface: "app"

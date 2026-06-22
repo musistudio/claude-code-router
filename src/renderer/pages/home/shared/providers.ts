@@ -1126,8 +1126,10 @@ export function createDefaultProviderAccountDraft(): Pick<
   | "accountEnabled"
   | "accountMode"
   | "accountRefreshIntervalMs"
+  | "usageBalanceLimitPath"
   | "usageBalanceRemainingPath"
   | "usageBalanceUnit"
+  | "usageBalanceUsedPath"
   | "usageMessagePath"
   | "usageRequestBodyText"
   | "usageRequestHeaders"
@@ -1144,8 +1146,10 @@ export function createDefaultProviderAccountDraft(): Pick<
     accountEnabled: defaultProviderAccountConfig.enabled !== false,
     accountMode: "standard",
     accountRefreshIntervalMs: "",
+    usageBalanceLimitPath: "",
     usageBalanceRemainingPath: "",
     usageBalanceUnit: "USD",
+    usageBalanceUsedPath: "",
     usageMessagePath: "",
     usageRequestBodyText: "",
     usageRequestHeaders: [],
@@ -1190,8 +1194,10 @@ export function createProviderAccountDraftFromConfig(account: ProviderAccountCon
     accountEnabled: account.enabled === true,
     accountMode: "http-json",
     accountRefreshIntervalMs: account.refreshIntervalMs ? String(account.refreshIntervalMs) : "",
+    usageBalanceLimitPath: stringValue(balanceMeter?.limit) || "",
     usageBalanceRemainingPath: stringValue(balanceMeter?.remaining) || "",
     usageBalanceUnit: stringValue(balanceMeter?.unit) || "USD",
+    usageBalanceUsedPath: stringValue(balanceMeter?.used) || "",
     usageMessagePath: httpJsonConnector.mapping.message ?? "",
     usageRequestBodyText: httpJsonConnector.body === undefined ? "" : formatEditableJson(httpJsonConnector.body),
     usageRequestHeaders: keyValueRowsFromRecord(httpJsonConnector.headers ?? {}),
@@ -1227,12 +1233,17 @@ export function providerHttpJsonConnectorFromDraft(draft: AddProviderDraft, opti
   }
 
   const meters: ProviderAccountHttpJsonConnectorConfig["mapping"]["meters"] = [];
-  if (draft.usageBalanceRemainingPath.trim()) {
+  const balanceLimitPath = draft.usageBalanceLimitPath.trim();
+  const balanceRemainingPath = draft.usageBalanceRemainingPath.trim();
+  const balanceUsedPath = draft.usageBalanceUsedPath.trim();
+  if (balanceLimitPath || balanceRemainingPath || balanceUsedPath) {
     meters.push({
       id: "balance",
       kind: "balance",
       label: "Balance",
-      remaining: draft.usageBalanceRemainingPath.trim(),
+      limit: balanceLimitPath || undefined,
+      remaining: balanceRemainingPath || undefined,
+      used: balanceUsedPath || undefined,
       unit: draft.usageBalanceUnit.trim() || "USD"
     });
   }
@@ -1364,6 +1375,12 @@ export function providerUsageFieldPatch(target: ProviderUsageFieldTarget, path: 
   if (target === "balance") {
     return { usageBalanceRemainingPath: path };
   }
+  if (target === "balanceLimit") {
+    return { usageBalanceLimitPath: path };
+  }
+  if (target === "balanceUsed") {
+    return { usageBalanceUsedPath: path };
+  }
   if (target === "message") {
     return { usageMessagePath: path };
   }
@@ -1456,8 +1473,9 @@ export function cloneProviderAccountConnectors(connectors: ProviderAccountConnec
   return JSON.parse(JSON.stringify(connectors)) as ProviderAccountConnectorConfig[];
 }
 
-export function defaultProviderAccountConfigForPreset(presetId: string | undefined): ProviderAccountConfig | undefined {
-  return cloneProviderAccountConfig(findProviderPreset(presetId)?.account ?? defaultProviderAccountConfig);
+export function defaultProviderAccountConfigForPreset(_presetId: string | undefined): ProviderAccountConfig | undefined {
+  // Keep the advanced settings default on the standard endpoint; main resolves preset-specific connectors at runtime.
+  return cloneProviderAccountConfig(defaultProviderAccountConfig);
 }
 
 export function defaultProviderAccountConfigForBaseUrl(baseUrl: string): ProviderAccountConfig | undefined {
@@ -1607,13 +1625,13 @@ export async function probeProviderCandidates(
   apiKey: string,
   models: string[],
   options: {
-    mode?: "connectivity" | "protocols";
+    mode?: "connectivity" | "models" | "protocols";
     protocols?: GatewayProviderProtocol[];
   } = {}
 ): Promise<ProviderProbeCandidateResult | undefined> {
   const mode = options.mode ?? "protocols";
   return await window.ccr?.probeProviderCandidates({
-    apiKey: mode === "connectivity" ? apiKey : undefined,
+    apiKey: mode === "connectivity" || mode === "models" ? apiKey : undefined,
     candidates,
     mode,
     models: mode === "connectivity" ? models : [],

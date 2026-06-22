@@ -1542,12 +1542,10 @@ function ProviderAccountsOverview({
   const t = useAppText();
   const selectedAccountProvider = accountProvider?.trim();
   const sortedAccounts = [...accounts].sort(compareProviderAccountSnapshots);
-  const accountLimit = selectedAccountProvider ? 1 : providerAccountVisibleLimit(dimensions, variant);
   const visibleAccounts = selectedAccountProvider
     ? sortedAccounts.filter((account) => providerAccountSelectionMatches(account, selectedAccountProvider)).slice(0, 1)
     : sortedAccounts
-      .filter((account) => account.meters.length > 0 || account.status === "error")
-      .slice(0, accountLimit);
+      .filter((account) => account.meters.length > 0 || account.status === "error");
   const isSingleAccount = visibleAccounts.length === 1;
 
   return (
@@ -1560,7 +1558,7 @@ function ProviderAccountsOverview({
         ) : isSingleAccount ? (
           <ProviderAccountSinglePanel account={visibleAccounts[0]} dimensions={dimensions} variant={variant} />
         ) : variant === "compact" ? (
-          <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-hidden", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions))}>
+          <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions))}>
             {visibleAccounts.map((account) => {
               const meter = primaryProviderAccountDisplayMeter(account);
               return (
@@ -1578,7 +1576,7 @@ function ProviderAccountsOverview({
             })}
           </div>
         ) : variant === "bars" ? (
-          <div className={cn("h-full min-h-0 overflow-hidden", providerAccountStackClass(dimensions))}>
+          <div className={cn("h-full min-h-0 overflow-y-auto pr-1", providerAccountStackClass(dimensions))}>
             {visibleAccounts.map((account) => {
               const meter = primaryProviderAccountDisplayMeter(account);
               const progress = meter && isProviderAccountQuotaMeter(meter) ? providerAccountMeterProgress(meter) : undefined;
@@ -1601,7 +1599,7 @@ function ProviderAccountsOverview({
             })}
           </div>
         ) : (
-          <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-hidden", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions))}>
+          <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions))}>
             {visibleAccounts.map((account) => {
               return <ProviderAccountSummaryCard account={account} dimensions={dimensions} key={providerAccountSnapshotKey(account)} variant={variant} />;
             })}
@@ -1990,25 +1988,6 @@ function svgPolarToCartesian(cx: number, cy: number, radius: number, angleInDegr
     x: cx + radius * Math.cos(angleInRadians),
     y: cy + radius * Math.sin(angleInRadians)
   };
-}
-
-function providerAccountVisibleLimit(dimensions: OverviewWidgetDimensions, variant: OverviewAccountVariant): number {
-  if (variant === "compact") {
-    if (dimensions.height <= 1) {
-      return dimensions.width >= 3 ? 3 : dimensions.width >= 2 ? 2 : 1;
-    }
-    return Math.min(6, dimensions.width * dimensions.height);
-  }
-  if (variant === "bars") {
-    return dimensions.height <= 1 ? 2 : Math.min(6, dimensions.height * 2);
-  }
-  if (dimensions.height <= 1) {
-    return dimensions.width >= 3 ? 2 : 1;
-  }
-  if (dimensions.height === 2) {
-    return dimensions.width >= 4 ? 3 : Math.min(2, dimensions.width);
-  }
-  return Math.min(6, dimensions.width * 2);
 }
 
 function providerAccountMeterLimit(dimensions: OverviewWidgetDimensions, single: boolean, variant: OverviewAccountVariant): number {

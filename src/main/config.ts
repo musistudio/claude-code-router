@@ -77,7 +77,7 @@ const DEFAULT_PROXY_TARGETS: ProxyRouteTarget[] = [
   { host: "api.openai.com", paths: ["/v1/chat/completions", "/v1/responses", "/v1/models"] },
   { host: "generativelanguage.googleapis.com", paths: ["/v1beta/models", "/v1/models"] },
   { host: "openrouter.ai", paths: ["/api/v1/chat/completions", "/api/v1/responses", "/api/v1/models"] },
-  { host: "api.deepseek.com", paths: ["/chat/completions", "/v1/chat/completions"] },
+  { host: "api.deepseek.com", paths: ["/chat/completions", "/v1/chat/completions", "/models", "/v1/models"] },
   { host: "api.mistral.ai", paths: ["/v1/chat/completions", "/v1/models"] }
 ];
 
@@ -598,7 +598,7 @@ function sanitizeProfileConfigForDisk(profile: AppConfig["profile"]): AppConfig[
     ...profile,
     codex,
     profiles: profile.profiles.map((profileItem) => {
-      if (profileItem.agent !== "codex") {
+      if (profileItem.agent !== "codex" && profileItem.agent !== "zcode") {
         return profileItem;
       }
       const {
@@ -2117,10 +2117,11 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       }
       const enabled = typeof item.enabled === "boolean" ? item.enabled : true;
       const id = readString(item.id) || `profile-${index + 1}`;
-      const name = readString(item.name) || (agent === "claude-code" ? "Claude Code" : "Codex");
+      const name = readString(item.name) || defaultProfileAgentName(agent);
       const model = readString(item.model) ?? "";
       const env = parseStringRecord(item.env) ?? {};
-      const surface = parseProfileSurface(readString(item.surface) || readString(item.entry) || readString(item.frontend)) || "auto";
+      const parsedSurface = parseProfileSurface(readString(item.surface) || readString(item.entry) || readString(item.frontend)) || "auto";
+      const surface = agent === "zcode" ? "app" : parsedSurface;
       const botConfigId = surface !== "cli"
         ? readString(item.botConfigId) || readString(item.bot_config_id) || readString(item.savedBotConfigId) || readString(item.saved_bot_config_id)
         : "";
@@ -2152,7 +2153,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         codexCliPath: readString(item.codexCliPath) || readString(item.cliPath) || readString(item.codexPath) || "",
         codexHome: readString(item.codexHome) || readString(item.home) || "",
         configFormat: parseCodexProfileConfigFormat(readString(item.configFormat) || readString(item.profileConfigFormat)) || "separate_profile_files",
-        configFile: readString(item.configFile) || readString(item.settingsFile) || "~/.codex/config.toml",
+        configFile: readString(item.configFile) || readString(item.settingsFile) || defaultCodexConfigFile(agent),
         enabled,
         env,
         id,
@@ -2184,7 +2185,24 @@ function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
   if (normalized === "codex") {
     return "codex";
   }
+  if (normalized === "zcode" || normalized === "z-code" || normalized === "z code") {
+    return "zcode";
+  }
   return undefined;
+}
+
+function defaultProfileAgentName(agent: ProfileConfig["agent"]): string {
+  if (agent === "claude-code") {
+    return "Claude Code";
+  }
+  if (agent === "zcode") {
+    return "ZCode";
+  }
+  return "Codex";
+}
+
+function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
+  return agent === "zcode" ? "~/.zcode/config.toml" : "~/.codex/config.toml";
 }
 
 function profileFromClaudeCodeConfig(config: ClaudeCodeProfileConfig): ProfileConfig {

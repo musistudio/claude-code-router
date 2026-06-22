@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AppConfig, ProfileOpenSurface } from "../shared/app";
 import { botGatewayProfileEnv } from "./bot-gateway-env";
-import { launchCodexAppProfile } from "./codex-app-launch";
+import { launchCodexAppProfile, launchZcodeAppProfile } from "./codex-app-launch";
 import { buildProfileLaunchPlan, findProfileForOpen, resolveProfileOpenSurface } from "./profile-launch-core";
 
 type CliOptions = {
@@ -26,11 +26,19 @@ async function main(): Promise<void> {
   const configDir = path.dirname(configFile);
   const config = readConfig(configFile);
   const profile = findProfileForOpen(config, options.profileRef);
-  const surface = options.surface ?? (profile.surface === "app" ? "app" : "cli");
+  const surface = options.surface ?? (profile.agent === "zcode" || profile.surface === "app" ? "app" : "cli");
   const resolvedSurface = resolveProfileOpenSurface(profile, surface);
-  if (profile.agent === "codex" && resolvedSurface === "app" && options.agentArgs.length === 0) {
-    launchCodexAppProfile(configDir, profile, config);
-    process.stdout.write(`Opened Codex App with ${profile.name || profile.id}.\n`);
+  if (profile.agent === "zcode" && options.agentArgs.length > 0) {
+    throw new Error("ZCode profiles can only open the app; agent arguments are not supported.");
+  }
+  if ((profile.agent === "codex" || profile.agent === "zcode") && resolvedSurface === "app" && options.agentArgs.length === 0) {
+    if (profile.agent === "zcode") {
+      launchZcodeAppProfile(configDir, profile, config);
+      process.stdout.write(`Opened ZCode App with ${profile.name || profile.id}.\n`);
+    } else {
+      launchCodexAppProfile(configDir, profile, config);
+      process.stdout.write(`Opened Codex App with ${profile.name || profile.id}.\n`);
+    }
     return;
   }
 
@@ -129,7 +137,8 @@ function printHelp(exitCode: number): void {
     "Examples:",
     "  ccr Codex",
     "  ccr default-codex -- --model gpt-5-codex",
-    "  ccr default-codex --app"
+    "  ccr default-codex --app",
+    "  ccr ZCode"
   ].join("\n");
   const stream = exitCode === 0 ? process.stdout : process.stderr;
   stream.write(`${output}\n`);

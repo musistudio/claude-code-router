@@ -90,9 +90,16 @@ function defaultCodexArgs() {
 }
 
 async function runCodexCliMiddleware(args) {
-  const realCli = expandHome(nonEmptyEnv("CCR_REAL_CODEX_CLI_PATH") || nonEmptyEnv("CODEXL_REAL_CODEX_CLI_PATH") || nonEmptyEnv("CODEX_CLI_PATH") || "codex");
-  const profile = nonEmptyEnv("CCR_CODEX_PROFILE") || nonEmptyEnv("CODEXL_CODEX_PROFILE");
-  const modelProvider = nonEmptyEnv("CCR_CODEX_MODEL_PROVIDER") || nonEmptyEnv("CODEXL_CODEX_MODEL_PROVIDER") || profile;
+  const realCli = expandHome(
+    nonEmptyEnv("CCR_REAL_ZCODE_CLI_PATH") ||
+    nonEmptyEnv("CODEXL_REAL_ZCODE_CLI_PATH") ||
+    nonEmptyEnv("CCR_REAL_CODEX_CLI_PATH") ||
+    nonEmptyEnv("CODEXL_REAL_CODEX_CLI_PATH") ||
+    nonEmptyEnv("CODEX_CLI_PATH") ||
+    "codex"
+  );
+  const profile = nonEmptyEnv("CCR_ZCODE_PROFILE") || nonEmptyEnv("CODEXL_ZCODE_PROFILE") || nonEmptyEnv("CCR_CODEX_PROFILE") || nonEmptyEnv("CODEXL_CODEX_PROFILE");
+  const modelProvider = nonEmptyEnv("CCR_ZCODE_MODEL_PROVIDER") || nonEmptyEnv("CODEXL_ZCODE_MODEL_PROVIDER") || nonEmptyEnv("CCR_CODEX_MODEL_PROVIDER") || nonEmptyEnv("CODEXL_CODEX_MODEL_PROVIDER") || profile;
   const configFormat = normalizeConfigFormat(nonEmptyEnv("CCR_CODEX_PROFILE_CONFIG_FORMAT") || nonEmptyEnv("CODEXL_CODEX_PROFILE_CONFIG_FORMAT"));
   const realArgs = realCliArgs(profile, modelProvider, configFormat, args);
   log("codex_cli_start", { realCli, realArgs });
@@ -103,7 +110,7 @@ async function runCodexCliMiddleware(args) {
   }
 
   const child = childProcess.spawn(realCli, realArgs, {
-    env: withoutKeys(process.env, ["CODEX_CLI_PATH", "CCR_REAL_CODEX_CLI_PATH", "CODEXL_REAL_CODEX_CLI_PATH"]),
+    env: withoutKeys(process.env, ["CODEX_CLI_PATH", "ZCODE_CLI_PATH", "CCR_REAL_CODEX_CLI_PATH", "CODEXL_REAL_CODEX_CLI_PATH", "CCR_REAL_ZCODE_CLI_PATH", "CODEXL_REAL_ZCODE_CLI_PATH"]),
     stdio: ["pipe", "pipe", "inherit"]
   });
   child.on("error", (error) => {
@@ -141,7 +148,7 @@ async function runCodexCliMiddleware(args) {
 
 async function runDirectCodexCli(realCli, realArgs) {
   const child = childProcess.spawn(realCli, realArgs, {
-    env: withoutKeys(process.env, ["CODEX_CLI_PATH", "CCR_REAL_CODEX_CLI_PATH", "CODEXL_REAL_CODEX_CLI_PATH"]),
+    env: withoutKeys(process.env, ["CODEX_CLI_PATH", "ZCODE_CLI_PATH", "CCR_REAL_CODEX_CLI_PATH", "CODEXL_REAL_CODEX_CLI_PATH", "CCR_REAL_ZCODE_CLI_PATH", "CODEXL_REAL_ZCODE_CLI_PATH"]),
     stdio: "inherit"
   });
   child.on("error", (error) => {

@@ -121,7 +121,7 @@ export async function probeGatewayProviderCandidates(
 
     try {
       const probe = await probeGatewayProvider({
-        apiKey: mode === "connectivity" ? request.apiKey : undefined,
+        apiKey: mode === "connectivity" || mode === "models" ? request.apiKey : undefined,
         baseUrl: candidate.baseUrl,
         forceRefresh: request.forceRefresh,
         mode,
@@ -204,7 +204,7 @@ export async function checkGatewayProviderConnectivity(
 async function resolveGatewayProviderProbe(request: GatewayProviderProbeRequest): Promise<GatewayProviderProbeResult> {
   const mode = request.mode ?? "protocols";
   const safetyIssue = providerApiKeySafetyIssue({
-    apiKey: mode === "connectivity" ? request.apiKey : undefined,
+    apiKey: mode === "connectivity" || mode === "models" ? request.apiKey : undefined,
     baseUrl: request.baseUrl
   });
   if (safetyIssue) {
@@ -214,11 +214,11 @@ async function resolveGatewayProviderProbe(request: GatewayProviderProbeRequest)
   const parsed = parseProviderUrl(request.baseUrl);
   const protocols = uniqueProtocols(request.protocols ?? []);
   const typedModels = uniqueStrings(request.models ?? []);
-  const modelProbe = mode === "protocols" || mode === "connectivity" || request.skipModelDiscovery
+  const modelProbe = mode !== "models" || request.skipModelDiscovery
     ? { models: [] }
     : await probeModels(parsed, request.apiKey, protocols);
   const models = mode === "connectivity" && modelProbe.models.length > 0 ? modelProbe.models : typedModels;
-  const protocolResults = await probeProtocols(parsed, request.apiKey, models, protocols, mode);
+  const protocolResults = mode === "models" ? [] : await probeProtocols(parsed, request.apiKey, models, protocols, mode);
   const detectedProtocol = detectProtocol(parsed, protocolResults, modelProbe.source, protocols);
 
   return {

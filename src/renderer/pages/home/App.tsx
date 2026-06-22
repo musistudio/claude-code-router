@@ -7,7 +7,7 @@ import {
   createApiKeyList, createClaudeDesignRoutingDraft, createClaudeDesignRoutingRuleDraft, createCursorProxyRoutingDraft, createCursorProxyRoutingRuleDraft, createEmptyAgentAnalysis,
   copyTextToClipboard, createEmptyRequestLogPage, createEmptyUsageStats, createExtensionInstallDraft, createGeneratedApiKey, createPluginSettingsDraft, createProfileDraft,
   createProfileDraftFromProfile, createProviderConfigFromDeepLink, createProviderDraft, createProviderDraftFromProvider, createRoutingRuleDraft, createRoutingRuleDraftFromRule,
-  createVirtualModelDraft, createVirtualModelDraftFromProfile, DEFAULT_TRAY_WIDGETS, detectSystemLanguage, detectSystemTheme,
+  createVirtualModelDraft, createVirtualModelDraftFromProfile, customProviderPresetId, DEFAULT_TRAY_WIDGETS, detectSystemLanguage, detectSystemTheme,
   enforceSingleEnabledGlobalProfilePerAgent,
   ExtensionConfigTarget, ExtensionDeleteTarget, ExtensionInstallDraft, ExtensionSource, fallbackAgentAnalysis, fallbackConfig,
   fallbackGatewayStatus, fallbackInfo, fallbackProxyCertificateStatus, fallbackProxyNetworkSnapshot, fallbackProxyStatus, fallbackRequestLogPage,
@@ -909,7 +909,14 @@ function App() {
     providerProbeRequestId.current += 1;
     const requestId = providerProbeRequestId.current;
     const candidates = providerProbeCandidates(providerDraft).filter(isProviderProbeCandidateReady);
-    const inputKey = providerProbeInputKey(candidates, "", []);
+    const shouldDiscoverPresetModels = Boolean(
+      providerDraft.presetId &&
+      providerDraft.presetId !== customProviderPresetId &&
+      providerDraft.apiKey.trim()
+    );
+    const probeMode = shouldDiscoverPresetModels ? "models" : "protocols";
+    const probeApiKey = shouldDiscoverPresetModels ? providerDraft.apiKey.trim() : "";
+    const inputKey = providerProbeInputKey(candidates, probeApiKey, []);
 
     setProviderProbeError("");
     if (candidates.length === 0) {
@@ -919,7 +926,7 @@ function App() {
     setProviderProbeLoading(true);
 
     const timer = window.setTimeout(() => {
-      void probeProviderCandidates(candidates, "", [], { mode: "protocols" })
+      void probeProviderCandidates(candidates, probeApiKey, [], { mode: probeMode })
         .then((result) => {
           if (providerProbeRequestId.current !== requestId) {
             return;
@@ -933,14 +940,20 @@ function App() {
           setProviderProbe(result.probe);
           setProviderDraft((current) => {
             const currentCandidates = providerProbeCandidates(current).filter(isProviderProbeCandidateReady);
-            const currentKey = providerProbeInputKey(currentCandidates, "", []);
+            const currentShouldDiscoverPresetModels = Boolean(
+              current.presetId &&
+              current.presetId !== customProviderPresetId &&
+              current.apiKey.trim()
+            );
+            const currentProbeApiKey = currentShouldDiscoverPresetModels ? current.apiKey.trim() : "";
+            const currentKey = providerProbeInputKey(currentCandidates, currentProbeApiKey, []);
             if (currentKey !== inputKey) {
               return current;
             }
             return applyProviderProbeResult(current, result.probe);
           });
 
-          if (!providerProbeHasSupportedProtocol(result.probe)) {
+          if (probeMode !== "models" && !providerProbeHasSupportedProtocol(result.probe)) {
             const message = result.probe.protocols.find((item) => item.message)?.message || "Request failed.";
             setProviderProbeError(message);
           }
@@ -965,7 +978,7 @@ function App() {
         setProviderProbeLoading(false);
       }
     };
-  }, [activeView, onboardingStep, providerAddOpen, providerDraft.baseUrl, providerDraft.presetId, providerDraft.protocol]);
+  }, [activeView, onboardingStep, providerAddOpen, providerDraft.apiKey, providerDraft.baseUrl, providerDraft.presetId, providerDraft.protocol]);
 
   async function checkProviderDraft(modelsToCheck?: string[]): Promise<ProviderConnectivityCheckReport> {
     const emptyReport: ProviderConnectivityCheckReport = { failed: [], passed: [], results: [] };

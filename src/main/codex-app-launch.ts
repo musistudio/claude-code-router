@@ -13,6 +13,25 @@ type CodexAppLookupResult = {
   executable?: string;
 };
 
+type CodexCompatibleAppKind = "codex" | "zcode";
+
+type CodexCompatibleAppSpec = {
+  bundledCliNames: string[];
+  defaultCliCommand: string;
+  displayName: string;
+  envPathKeys: string[];
+  kind: CodexCompatibleAppKind;
+  linuxCandidates: string[];
+  macAppNames: string[];
+  modelCatalogFilename: string;
+  userDataDirName: string;
+  windowsAppDirs: string[];
+  windowsExeNames: string[];
+  windowsPackageKeywords: string[];
+  windowsVendorDirs: string[];
+  windowsWhereNames: string[];
+};
+
 export type CodexAppLaunchResult = {
   child: ChildProcess;
   command: string;
@@ -21,24 +40,108 @@ export type CodexAppLaunchResult = {
   userDataDir: string;
 };
 
-const macCodexAppNames = ["Codex.app", "OpenAI Codex.app"];
-const windowsCodexAppDirs = ["Codex", "OpenAI Codex", "OpenAICodex"];
-const windowsCodexExeNames = [
-  "Codex.exe",
-  "codex.exe",
-  "OpenAI Codex.exe",
-  "OpenAICodex.exe",
-  "OpenAICodexApp.exe",
-  "codex-app.exe",
-  "openai-codex.exe"
-];
-const windowsCodexPackageKeywords = ["codex", "openaicodex"];
+const codexAppSpec: CodexCompatibleAppSpec = {
+  bundledCliNames: ["codex", "Codex", "OpenAI Codex"],
+  defaultCliCommand: "codex",
+  displayName: "Codex App",
+  envPathKeys: ["CCR_CODEX_APP_PATH", "CODEX_APP_PATH", "CODEXL_CODEX_PATH"],
+  kind: "codex",
+  linuxCandidates: [
+    "/opt/Codex/codex",
+    "/opt/Codex/Codex",
+    "/opt/OpenAI Codex/codex",
+    "/opt/OpenAI Codex/Codex",
+    "/usr/local/bin/codex-app",
+    "/usr/bin/codex-app"
+  ],
+  macAppNames: ["Codex.app", "OpenAI Codex.app"],
+  modelCatalogFilename: "ccr-codex-model-catalog.json",
+  userDataDirName: "codex-app-user-data",
+  windowsAppDirs: ["Codex", "OpenAI Codex", "OpenAICodex"],
+  windowsExeNames: [
+    "Codex.exe",
+    "codex.exe",
+    "OpenAI Codex.exe",
+    "OpenAICodex.exe",
+    "OpenAICodexApp.exe",
+    "codex-app.exe",
+    "openai-codex.exe"
+  ],
+  windowsPackageKeywords: ["codex", "openaicodex"],
+  windowsVendorDirs: ["OpenAI"],
+  windowsWhereNames: [
+    "Codex",
+    "codex",
+    "OpenAI Codex",
+    "OpenAICodex",
+    "OpenAICodexApp",
+    "codex-app",
+    "openai-codex"
+  ]
+};
+
+const zcodeAppSpec: CodexCompatibleAppSpec = {
+  bundledCliNames: ["glm/zcode.cjs", "zcode", "ZCode", "Z Code", "z-code", "zai-code", "codex", "Codex"],
+  defaultCliCommand: "zcode",
+  displayName: "ZCode App",
+  envPathKeys: ["CCR_ZCODE_APP_PATH", "ZCODE_APP_PATH", "CODEXL_ZCODE_PATH"],
+  kind: "zcode",
+  linuxCandidates: [
+    "/opt/ZCode/zcode",
+    "/opt/ZCode/ZCode",
+    "/opt/Z Code/zcode",
+    "/opt/Z.AI Code/zcode",
+    "/usr/local/bin/zcode",
+    "/usr/bin/zcode",
+    "/usr/local/bin/z-code",
+    "/usr/bin/z-code",
+    "/usr/local/bin/zai-code",
+    "/usr/bin/zai-code"
+  ],
+  macAppNames: ["ZCode.app", "Z Code.app", "Z.AI Code.app", "ZAI Code.app"],
+  modelCatalogFilename: "ccr-zcode-model-catalog.json",
+  userDataDirName: "zcode-app-user-data",
+  windowsAppDirs: ["ZCode", "Z Code", "ZAI Code", "Z.AI Code", "Zhipu ZCode"],
+  windowsExeNames: [
+    "ZCode.exe",
+    "zcode.exe",
+    "Z Code.exe",
+    "ZAI Code.exe",
+    "ZAICode.exe",
+    "z-code.exe",
+    "zai-code.exe"
+  ],
+  windowsPackageKeywords: ["zcode", "z-code", "zaicode", "zai-code"],
+  windowsVendorDirs: ["ZCode", "Z.AI", "ZAI", "Zhipu", "ZhipuAI"],
+  windowsWhereNames: [
+    "ZCode",
+    "zcode",
+    "Z Code",
+    "ZAI Code",
+    "ZAICode",
+    "z-code",
+    "zai-code"
+  ]
+};
 
 export function launchCodexAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): CodexAppLaunchResult {
-  const lookup = findInstalledCodexAppExecutable();
+  return launchCodexCompatibleAppProfile(configDir, profile, codexAppSpec, config);
+}
+
+export function launchZcodeAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): CodexAppLaunchResult {
+  return launchCodexCompatibleAppProfile(configDir, profile, zcodeAppSpec, config);
+}
+
+function launchCodexCompatibleAppProfile(
+  configDir: string,
+  profile: ProfileConfig,
+  spec: CodexCompatibleAppSpec,
+  config?: AppConfig
+): CodexAppLaunchResult {
+  const lookup = findInstalledCodexAppExecutable(spec);
   if (!lookup.executable) {
     throw new Error([
-      "Codex App was not found. Install Codex App or set CODEX_APP_PATH to its executable, then try again.",
+      `${spec.displayName} was not found. Install ${spec.displayName} or set ${spec.envPathKeys[1]} to its executable, then try again.`,
       lookup.checked.length ? `Checked: ${lookup.checked.join(", ")}` : ""
     ].filter(Boolean).join(" "));
   }
@@ -50,15 +153,15 @@ export function launchCodexAppProfile(configDir: string, profile: ProfileConfig,
 
   const configFile = resolveCodexConfigFile(configDir, profile);
   const codexHome = path.dirname(configFile);
-  const userDataDir = codexElectronUserDataDir(codexHome, profile);
+  const userDataDir = codexElectronUserDataDir(codexHome, profile, spec);
   mkdirSync(userDataDir, { recursive: true });
-  const modelCatalogFile = codexAppModelCatalogFile(userDataDir);
+  const modelCatalogFile = codexAppModelCatalogFile(userDataDir, spec);
   writeFileSync(modelCatalogFile, codexModelCatalogJson(config, profile.model), "utf8");
 
   const appEnv: Record<string, string> = {
     ...plan.env,
     ...(config ? botGatewayProfileEnv(config, profile, "app") : {}),
-    ...codexProfileEnv(profile, lookup.executable),
+    ...codexProfileEnv(profile, lookup.executable, spec),
     CODEX_CLI_PATH: plan.command,
     CODEX_ELECTRON_USER_DATA_PATH: userDataDir,
     CODEX_HOME: codexHome,
@@ -66,6 +169,15 @@ export function launchCodexAppProfile(configDir: string, profile: ProfileConfig,
     CODEXL_CODEX_MODEL_CATALOG_FILE: modelCatalogFile,
     CCR_PROFILE_SURFACE: "app",
     CCR_CODEX_MODEL_CATALOG_FILE: modelCatalogFile,
+    ...(spec.kind === "zcode"
+      ? {
+          ZCODE_CLI_PATH: plan.command,
+          ZCODE_ELECTRON_USER_DATA_PATH: userDataDir,
+          ZCODE_HOME: codexHome,
+          CODEXL_ZCODE_MODEL_CATALOG_FILE: modelCatalogFile,
+          CCR_ZCODE_MODEL_CATALOG_FILE: modelCatalogFile
+        }
+      : {}),
     ELECTRON_ENABLE_LOGGING: "1"
   };
   const env: NodeJS.ProcessEnv = {
@@ -75,6 +187,8 @@ export function launchCodexAppProfile(configDir: string, profile: ProfileConfig,
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.CCR_CODEX_MODEL_CATALOG_B64;
   delete env.CODEXL_CODEX_MODEL_CATALOG_B64;
+  delete env.CCR_ZCODE_MODEL_CATALOG_B64;
+  delete env.CODEXL_ZCODE_MODEL_CATALOG_B64;
 
   const launch = codexAppLaunchCommand(lookup.executable, userDataDir, appEnv);
   const child = spawn(launch.command, launch.args, {
@@ -93,9 +207,9 @@ export function launchCodexAppProfile(configDir: string, profile: ProfileConfig,
   };
 }
 
-function codexProfileEnv(profile: ProfileConfig, appExecutable: string): Record<string, string> {
+function codexProfileEnv(profile: ProfileConfig, appExecutable: string, spec: CodexCompatibleAppSpec): Record<string, string> {
   const providerId = sanitizeCodexProviderId(profile.providerId || "") || "claude-code-router";
-  const realCliPath = profile.codexCliPath?.trim() || bundledCodexCliPath(appExecutable) || "codex";
+  const realCliPath = profile.codexCliPath?.trim() || bundledCodexCliPath(appExecutable, spec) || spec.defaultCliCommand;
   const remoteFrontendMode = normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode);
   return {
     ...(profile.model.trim() ? { CCR_CODEX_MODEL: profile.model.trim() } : {}),
@@ -107,17 +221,29 @@ function codexProfileEnv(profile: ProfileConfig, appExecutable: string): Record<
     CODEXL_CODEX_MODEL_PROVIDER: providerId,
     CODEXL_CODEX_PROFILE: providerId,
     CODEXL_CODEX_WORKSPACE_NAME: profile.name || providerId,
-    CODEXL_REAL_CODEX_CLI_PATH: realCliPath
+    CODEXL_REAL_CODEX_CLI_PATH: realCliPath,
+    ...(spec.kind === "zcode"
+      ? {
+          ...(profile.model.trim() ? { CCR_ZCODE_MODEL: profile.model.trim() } : {}),
+          CCR_REAL_ZCODE_CLI_PATH: realCliPath,
+          CCR_ZCODE_MODEL_PROVIDER: providerId,
+          CCR_ZCODE_PROFILE: providerId,
+          CODEXL_REAL_ZCODE_CLI_PATH: realCliPath,
+          CODEXL_ZCODE_MODEL_PROVIDER: providerId,
+          CODEXL_ZCODE_PROFILE: providerId,
+          CODEXL_ZCODE_WORKSPACE_NAME: profile.name || providerId
+        }
+      : {})
   };
 }
 
-function bundledCodexCliPath(appExecutable: string): string | undefined {
+function bundledCodexCliPath(appExecutable: string, spec: CodexCompatibleAppSpec): string | undefined {
   if (process.platform === "darwin") {
     const appBundle = macAppBundleFromExecutable(appExecutable);
     if (!appBundle) {
       return undefined;
     }
-    for (const name of ["codex", "Codex", "OpenAI Codex"]) {
+    for (const name of spec.bundledCliNames) {
       const candidate = path.join(appBundle, "Contents", "Resources", name);
       if (isFile(candidate)) {
         return candidate;
@@ -129,7 +255,7 @@ function bundledCodexCliPath(appExecutable: string): string | undefined {
   if (process.platform === "win32") {
     const appDir = path.dirname(appExecutable);
     const resourceDir = path.join(appDir, "resources");
-    for (const name of windowsCodexExeNames) {
+    for (const name of spec.windowsExeNames) {
       const candidate = path.join(resourceDir, name);
       if (isFile(candidate)) {
         return candidate;
@@ -193,42 +319,42 @@ function isEnvName(value: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
 }
 
-function codexElectronUserDataDir(codexHome: string, profile: ProfileConfig): string {
+function codexElectronUserDataDir(codexHome: string, profile: ProfileConfig, spec: CodexCompatibleAppSpec): string {
   return path.join(
     codexHome,
     ".claude-code-router",
-    "codex-app-user-data",
+    spec.userDataDirName,
     sanitizeProfilePathSegment(profile.id || profile.name || "default") || "default"
   );
 }
 
-function codexAppModelCatalogFile(userDataDir: string): string {
-  return path.join(userDataDir, "ccr-codex-model-catalog.json");
+function codexAppModelCatalogFile(userDataDir: string, spec: CodexCompatibleAppSpec): string {
+  return path.join(userDataDir, spec.modelCatalogFilename);
 }
 
-function findInstalledCodexAppExecutable(): CodexAppLookupResult {
+function findInstalledCodexAppExecutable(spec: CodexCompatibleAppSpec): CodexAppLookupResult {
   const checked: string[] = [];
-  const envCandidate = findFirstExecutable(envCodexAppPathCandidates(), checked);
+  const envCandidate = findFirstExecutable(envCodexAppPathCandidates(spec), checked, spec);
   if (envCandidate) {
     return { checked, executable: envCandidate };
   }
 
   if (process.platform === "darwin") {
-    return { checked, executable: findFirstExecutable(macCodexAppCandidates(), checked) };
+    return { checked, executable: findFirstExecutable(macCodexAppCandidates(spec), checked, spec) };
   }
   if (process.platform === "win32") {
-    return { checked, executable: findFirstExecutable(windowsCodexAppCandidates(), checked) };
+    return { checked, executable: findFirstExecutable(windowsCodexAppCandidates(spec), checked, spec) };
   }
-  return { checked, executable: findFirstExecutable(linuxCodexAppCandidates(), checked) };
+  return { checked, executable: findFirstExecutable(linuxCodexAppCandidates(spec), checked, spec) };
 }
 
-function findFirstExecutable(candidates: string[], checked: string[]): string | undefined {
+function findFirstExecutable(candidates: string[], checked: string[], spec: CodexCompatibleAppSpec): string | undefined {
   for (const candidate of candidates) {
     if (!candidate || checked.includes(candidate)) {
       continue;
     }
     checked.push(candidate);
-    const executable = normalizeCodexAppCandidate(candidate);
+    const executable = normalizeCodexAppCandidate(candidate, spec);
     if (executable) {
       return executable;
     }
@@ -236,64 +362,49 @@ function findFirstExecutable(candidates: string[], checked: string[]): string | 
   return undefined;
 }
 
-function envCodexAppPathCandidates(): string[] {
-  return ["CCR_CODEX_APP_PATH", "CODEX_APP_PATH", "CODEXL_CODEX_PATH"]
+function envCodexAppPathCandidates(spec: CodexCompatibleAppSpec): string[] {
+  return spec.envPathKeys
     .map((key) => process.env[key]?.trim() || "")
     .filter(Boolean)
     .map(resolveUserPath);
 }
 
-function macCodexAppCandidates(): string[] {
+function macCodexAppCandidates(spec: CodexCompatibleAppSpec): string[] {
   const roots = [
     "/Applications",
     path.join(os.homedir(), "Applications")
   ];
-  return roots.flatMap((root) => macCodexAppNames.map((name) => path.join(root, name)));
+  return roots.flatMap((root) => spec.macAppNames.map((name) => path.join(root, name)));
 }
 
-function windowsCodexAppCandidates(): string[] {
+function windowsCodexAppCandidates(spec: CodexCompatibleAppSpec): string[] {
   return windowsDesktopAppCandidates({
-    appDirs: windowsCodexAppDirs,
-    exeNames: windowsCodexExeNames,
-    packageKeywords: windowsCodexPackageKeywords,
-    vendorDirs: ["OpenAI"],
-    whereNames: [
-      "Codex",
-      "codex",
-      "OpenAI Codex",
-      "OpenAICodex",
-      "OpenAICodexApp",
-      "codex-app",
-      "openai-codex"
-    ]
+    appDirs: spec.windowsAppDirs,
+    exeNames: spec.windowsExeNames,
+    packageKeywords: spec.windowsPackageKeywords,
+    vendorDirs: spec.windowsVendorDirs,
+    whereNames: spec.windowsWhereNames
   });
 }
 
-function linuxCodexAppCandidates(): string[] {
-  return [
-    "/opt/Codex/codex",
-    "/opt/Codex/Codex",
-    "/opt/OpenAI Codex/codex",
-    "/opt/OpenAI Codex/Codex",
-    "/usr/local/bin/codex-app",
-    "/usr/bin/codex-app"
-  ];
+function linuxCodexAppCandidates(spec: CodexCompatibleAppSpec): string[] {
+  return spec.linuxCandidates;
 }
 
-function normalizeCodexAppCandidate(candidate: string): string | undefined {
+function normalizeCodexAppCandidate(candidate: string, spec: CodexCompatibleAppSpec): string | undefined {
   if (process.platform === "darwin") {
     if (candidate.endsWith(".app")) {
-      return executableFromMacAppBundle(candidate);
+      return executableFromMacAppBundle(candidate, spec);
     }
     return isFile(candidate) ? candidate : undefined;
   }
   if (process.platform === "win32") {
-    return normalizeWindowsCodexAppCandidate(candidate);
+    return normalizeWindowsCodexAppCandidate(candidate, spec);
   }
   return isFile(candidate) ? candidate : undefined;
 }
 
-function executableFromMacAppBundle(appPath: string): string | undefined {
+function executableFromMacAppBundle(appPath: string, spec: CodexCompatibleAppSpec): string | undefined {
   if (!isDirectory(appPath)) {
     return undefined;
   }
@@ -308,7 +419,7 @@ function executableFromMacAppBundle(appPath: string): string | undefined {
   }
 
   const appName = path.basename(appPath, ".app");
-  for (const name of [appName, "Codex", "OpenAI Codex", "codex"]) {
+  for (const name of [appName, ...spec.bundledCliNames]) {
     const executable = path.join(macosDir, name);
     if (isFile(executable)) {
       return executable;
@@ -336,10 +447,10 @@ function readBundleExecutable(infoPath: string): string | undefined {
   }
 }
 
-function normalizeWindowsCodexAppCandidate(candidate: string): string | undefined {
+function normalizeWindowsCodexAppCandidate(candidate: string, spec: CodexCompatibleAppSpec): string | undefined {
   return normalizeWindowsDesktopAppCandidate(candidate, {
-    exeNames: windowsCodexExeNames,
-    packageKeywords: windowsCodexPackageKeywords
+    exeNames: spec.windowsExeNames,
+    packageKeywords: spec.windowsPackageKeywords
   });
 }
 

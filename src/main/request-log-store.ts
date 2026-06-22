@@ -885,6 +885,14 @@ function inferAgentFromText(value: string): AgentKind | undefined {
     return "claude-design";
   }
   if (
+    normalized.includes("zcode") ||
+    normalized.includes("z-code") ||
+    normalized.includes("z code") ||
+    /(^|[^a-z0-9])zcode([/_\s-]|$)/.test(normalized)
+  ) {
+    return "zcode";
+  }
+  if (
     normalized.includes("openai-codex") ||
     normalized.includes("codex_cli") ||
     normalized.includes("codex-cli") ||
@@ -950,11 +958,23 @@ function readAgentSessionHeader(headers: Record<string, string | string[]>, agen
     "x-openai-thread-id",
     "openai-thread-id"
   ];
-  const orderedHeaders = agent === "codex"
+  const zcodeHeaders = [
+    "x-zcode-session-id",
+    "zcode-session-id",
+    "x-zcode-conversation-id",
+    "zcode-conversation-id",
+    "x-zcode-thread-id",
+    "zcode-thread-id",
+    "x-z-code-session-id",
+    "z-code-session-id"
+  ];
+  const orderedHeaders = agent === "zcode"
+    ? [...zcodeHeaders, ...codexHeaders, ...commonHeaders, ...claudeCodeHeaders]
+    : agent === "codex"
     ? [...codexHeaders, ...commonHeaders, ...claudeCodeHeaders]
     : agent === "claude-code"
-      ? [...claudeCodeHeaders, ...commonHeaders, ...codexHeaders]
-      : [...claudeCodeHeaders, ...codexHeaders, ...commonHeaders];
+      ? [...claudeCodeHeaders, ...commonHeaders, ...codexHeaders, ...zcodeHeaders]
+      : [...claudeCodeHeaders, ...codexHeaders, ...zcodeHeaders, ...commonHeaders];
 
   for (const name of orderedHeaders) {
     const value = readHeaderValue(headers, name);
@@ -1650,11 +1670,11 @@ function normalizeAgentAnalysisRange(value: UsageStatsRange | undefined): UsageS
 }
 
 function normalizeAgentFilter(value: AgentAnalysisFilter["agent"] | undefined): AgentKind | "all" {
-  return value === "claude-code" || value === "codex" || value === "claude-design" || value === "unknown" ? value : "all";
+  return value === "claude-code" || value === "codex" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
 }
 
 function normalizeSessionAgentFilter(value: AgentAnalysisFilter["sessionAgent"] | undefined): AgentKind | undefined {
-  return value === "claude-code" || value === "codex" || value === "claude-design" || value === "unknown" ? value : undefined;
+  return value === "claude-code" || value === "codex" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
 }
 
 function agentDisplayName(agent: AgentKind): string {
@@ -1666,6 +1686,9 @@ function agentDisplayName(agent: AgentKind): string {
   }
   if (agent === "codex") {
     return "Codex";
+  }
+  if (agent === "zcode") {
+    return "ZCode";
   }
   return "Unknown";
 }

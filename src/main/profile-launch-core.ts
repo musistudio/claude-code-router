@@ -38,6 +38,9 @@ export function findProfileForOpen(config: Pick<AppConfig, "profile">, profileRe
 }
 
 export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[] {
+  if (profile.agent === "zcode") {
+    return ["app"];
+  }
   const surface = normalizeProfileSurface(profile.surface);
   if (surface === "cli") {
     return ["cli"];
@@ -61,7 +64,7 @@ export function resolveProfileOpenSurface(profile: ProfileConfig, surface?: Prof
 
 export function profileOpenCommand(
   profile: ProfileConfig,
-  surface: ProfileOpenSurface = "cli",
+  surface: ProfileOpenSurface = profile.agent === "zcode" ? "app" : "cli",
   command = "ccr",
   profileRef = profile.name?.trim() || profile.id
 ): string {
@@ -76,7 +79,7 @@ export function buildProfileLaunchPlan(
   extraArgs: string[] = []
 ): ProfileLaunchPlan {
   const resolvedSurface = resolveProfileOpenSurface(profile, surface);
-  if (profile.agent === "codex") {
+  if (isCodexCompatibleAgent(profile.agent)) {
     return buildCodexLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
   }
   return buildClaudeCodeLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
@@ -97,13 +100,13 @@ export function resolveClaudeCodeSettingsFile(configDir: string, profile: Profil
 
 export function resolveCodexConfigFile(configDir: string, profile: ProfileConfig): string {
   if (isGeneratedProfileScope(profile.scope)) {
-    return path.join(ccrManagedProfileDir(configDir, profile), "codex", "config.toml");
+    return path.join(ccrManagedProfileDir(configDir, profile), codexConfigSubdir(profile.agent), "config.toml");
   }
   const codexHome = profile.codexHome?.trim();
   if (codexHome) {
     return path.join(resolveUserPath(codexHome), "config.toml");
   }
-  return resolveUserPath(profile.configFile || "~/.codex/config.toml");
+  return resolveUserPath(profile.configFile || defaultCodexConfigFile(profile.agent));
 }
 
 function buildCodexLaunchPlan(
@@ -146,6 +149,18 @@ function buildClaudeCodeLaunchPlan(
     profile,
     surface
   };
+}
+
+function isCodexCompatibleAgent(agent: ProfileConfig["agent"]): boolean {
+  return agent === "codex" || agent === "zcode";
+}
+
+function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
+  return agent === "zcode" ? "~/.zcode/config.toml" : "~/.codex/config.toml";
+}
+
+function codexConfigSubdir(agent: ProfileConfig["agent"]): string {
+  return agent === "zcode" ? "zcode" : "codex";
 }
 
 function claudeCodeWrapperFilename(profile: ProfileConfig): string {

@@ -104,13 +104,15 @@ export const agentFilterOptions: Array<{ label: string; value: AgentFilterValue 
   { label: "All agents", value: "all" },
   { label: "Claude Code", value: "claude-code" },
   { label: "Codex", value: "codex" },
+  { label: "ZCode", value: "zcode" },
   { label: "Claude Design", value: "claude-design" },
   { label: "Unknown", value: "unknown" }
 ];
 
 export const profileAgentOptions: Array<{ label: string; value: ProfileConfig["agent"] }> = [
   { label: "Claude Code", value: "claude-code" },
-  { label: "Codex", value: "codex" }
+  { label: "Codex", value: "codex" },
+  { label: "ZCode", value: "zcode" }
 ];
 
 export const profileScopeOptions: Array<{ label: string; value: ProfileScope }> = [
