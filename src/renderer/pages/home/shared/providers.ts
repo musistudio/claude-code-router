@@ -742,6 +742,51 @@ export async function probeProviderDeepLinkPayload(payload: ProviderDeepLinkPayl
   }
 }
 
+export type ProviderDeepLinkIconResolution = {
+  displayIcon?: string;
+  persistentIcon?: string;
+  preset?: ProviderPreset;
+};
+
+export function resolveProviderDeepLinkPreset(payload: ProviderDeepLinkPayload): ProviderPreset | undefined {
+  return findProviderPresetByBaseUrl(payload.baseUrl);
+}
+
+export function providerDeepLinkDisplayIcon(payload: ProviderDeepLinkPayload): string {
+  const preset = resolveProviderDeepLinkPreset(payload);
+  const presetIcon = preset ? providerPresetIconUrls[preset.id] ?? "" : "";
+  return presetIcon || payload.icon?.trim() || "";
+}
+
+export async function resolveProviderDeepLinkIcon(payload: ProviderDeepLinkPayload): Promise<ProviderDeepLinkIconResolution> {
+  const existingIcon = payload.icon?.trim();
+  const preset = resolveProviderDeepLinkPreset(payload);
+  const presetIcon = preset ? providerPresetIconUrls[preset.id] ?? "" : "";
+  if (existingIcon || presetIcon) {
+    return {
+      displayIcon: presetIcon || existingIcon || undefined,
+      persistentIcon: existingIcon || undefined,
+      preset
+    };
+  }
+
+  const ccr = window.ccr;
+  if (!ccr?.detectProviderIcon) {
+    return {};
+  }
+
+  try {
+    const result = await ccr.detectProviderIcon({ baseUrl: payload.baseUrl });
+    const detectedIcon = result.icon?.trim();
+    return {
+      displayIcon: detectedIcon || undefined,
+      persistentIcon: detectedIcon || undefined
+    };
+  } catch {
+    return {};
+  }
+}
+
 export function createProviderConfigFromDeepLink(
   payload: ProviderDeepLinkPayload,
   providers: GatewayProviderConfig[],
