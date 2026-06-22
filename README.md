@@ -20,7 +20,7 @@ The wrapper reads `~/.claude-code-router/config.json`, preserves the old CCR `Pr
 Supplier websites can open CCR and import a model provider with a custom protocol link:
 
 ```text
-ccr://provider?name=Example%20AI&base_url=https%3A%2F%2Fapi.example.com%2Fv1&api_key=sk-example&models=example-chat%2Cexample-coder&protocol=openai_chat_completions&set_default=1
+ccr://provider?name=Example%20AI&base_url=https%3A%2F%2Fapi.example.com%2Fv1&api_key=sk-example&models=example-chat%2Cexample-coder&protocol=openai_chat_completions
 ```
 
 Supported query parameters:
@@ -30,8 +30,6 @@ Supported query parameters:
 - `api_key`: optional provider API key. Aliases: `apiKey`, `apikey`, `key`, `token`.
 - `models`: comma-separated or newline-separated model list. You can also repeat `model=...`.
 - `protocol`: one of `openai_chat_completions`, `openai_responses`, `anthropic_messages`, or `gemini_generate_content`. Aliases such as `openai`, `responses`, `anthropic`, and `gemini` are accepted.
-- `set_default=1`: make the imported provider the preferred provider.
-- `replace=1`: replace an existing provider with the same name or normalized base URL.
 
 For larger payloads, pass `payload` as URL-encoded JSON or base64url JSON with the same fields:
 
@@ -41,8 +39,7 @@ For larger payloads, pass `payload` as URL-encoded JSON or base64url JSON with t
   "baseUrl": "https://api.example.com/v1",
   "apiKey": "sk-example",
   "models": ["example-chat", "example-coder"],
-  "protocol": "openai_chat_completions",
-  "setDefault": true
+  "protocol": "openai_chat_completions"
 }
 ```
 

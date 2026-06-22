@@ -790,8 +790,7 @@ export async function resolveProviderDeepLinkIcon(payload: ProviderDeepLinkPaylo
 export function createProviderConfigFromDeepLink(
   payload: ProviderDeepLinkPayload,
   providers: GatewayProviderConfig[],
-  probe: GatewayProviderProbeResult | undefined,
-  replaceIndex: number
+  probe: GatewayProviderProbeResult | undefined
 ): GatewayProviderConfig {
   const protocol = probe?.detectedProtocol ?? payload.protocol ?? "openai_chat_completions";
   const baseUrl = probe?.normalizedBaseUrl || payload.baseUrl;
@@ -802,9 +801,8 @@ export function createProviderConfigFromDeepLink(
     throw new Error("Models are required. Ask the provider to include models=... in the link.");
   }
 
-  const existingName = replaceIndex >= 0 ? providers[replaceIndex]?.name : undefined;
-  const baseName = payload.name?.trim() || existingName || inferProviderNameFromBaseUrl(baseUrl);
-  const name = replaceIndex >= 0 ? baseName : uniqueProviderName(providers, baseName);
+  const baseName = payload.name?.trim() || inferProviderNameFromBaseUrl(baseUrl);
+  const name = uniqueProviderName(providers, baseName);
   const keySafetyIssue = providerApiKeySafetyIssue({ apiKey: payload.apiKey, baseUrl, name });
   if (keySafetyIssue) {
     throw new Error(keySafetyIssue.message);
@@ -837,23 +835,6 @@ export function createProviderConfigFromDeepLink(
     name,
     type: protocol
   };
-}
-
-export function findProviderDeepLinkReplacementIndex(
-  providers: GatewayProviderConfig[],
-  payload: ProviderDeepLinkPayload,
-  baseUrl: string
-): number {
-  const name = payload.name?.trim();
-  if (name) {
-    const namedIndex = providers.findIndex((provider) => provider.name === name);
-    if (namedIndex >= 0) {
-      return namedIndex;
-    }
-  }
-
-  const normalizedBaseUrl = normalizeProviderBaseUrl(baseUrl).toLowerCase();
-  return providers.findIndex((provider) => normalizeProviderBaseUrl(providerBaseUrl(provider)).toLowerCase() === normalizedBaseUrl);
 }
 
 export function inferProviderNameFromBaseUrl(baseUrl: string): string {
@@ -1445,9 +1426,7 @@ export function createProviderInstallLinkFromDraft(draft: AddProviderDraft, prob
     ...(draft.icon.trim() ? { icon: draft.icon.trim() } : {}),
     models,
     name: providerName,
-    protocol,
-    replaceExisting: false,
-    setDefault: false
+    protocol
   };
   return `ccr://provider?payload=${base64UrlEncodeText(JSON.stringify(payload))}`;
 }

@@ -160,8 +160,6 @@ export function parseProviderDeepLinkPayload(rawUrl: string): ProviderDeepLinkPa
     firstStringParam(params, ["protocol", "type"]) ?? firstPayloadString(payload, ["protocol", "type"])
   );
   const models = readDeepLinkModels(params, payload);
-  const setDefault = readDeepLinkBoolean(params, payload, ["set_default", "setDefault", "default", "preferred"]);
-  const replaceExisting = readDeepLinkBoolean(params, payload, ["replace", "replace_existing", "replaceExisting", "update"]);
   const account = readDeepLinkAccount(params, payload);
   const source = boundedString(
     firstStringParam(params, ["source", "source_url", "sourceUrl"]) ??
@@ -176,8 +174,6 @@ export function parseProviderDeepLinkPayload(rawUrl: string): ProviderDeepLinkPa
     models,
     ...(name ? { name } : {}),
     ...(protocol ? { protocol } : {}),
-    replaceExisting,
-    setDefault,
     ...(source ? { source } : {})
   };
 }
@@ -232,8 +228,6 @@ function parseProviderPayloadFields(
     firstStringParam(params, ["protocol", "type"]) ?? firstPayloadString(payload, ["protocol", "type"])
   );
   const models = readDeepLinkModels(params, payload);
-  const setDefault = readDeepLinkBoolean(params, payload, ["set_default", "setDefault", "default", "preferred"]);
-  const replaceExisting = readDeepLinkBoolean(params, payload, ["replace", "replace_existing", "replaceExisting", "update"]);
   const account = readDeepLinkAccount(params, payload);
   const source = boundedString(
     firstStringParam(params, ["source", "source_url", "sourceUrl"]) ??
@@ -251,8 +245,6 @@ function parseProviderPayloadFields(
     models,
     ...(name ? { name } : {}),
     ...(protocol ? { protocol } : {}),
-    replaceExisting,
-    setDefault,
     ...(source ? { source } : {})
   };
 }

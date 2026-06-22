@@ -215,8 +215,6 @@ export type ProviderDeepLinkPayload = {
   models: string[];
   name?: string;
   protocol?: GatewayProviderProtocol;
-  replaceExisting: boolean;
-  setDefault: boolean;
   source?: string;
 };
 

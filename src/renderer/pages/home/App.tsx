@@ -11,7 +11,7 @@ import {
   enforceSingleEnabledGlobalProfilePerAgent,
   ExtensionConfigTarget, ExtensionDeleteTarget, ExtensionInstallDraft, ExtensionSource, fallbackAgentAnalysis, fallbackConfig,
   fallbackGatewayStatus, fallbackInfo, fallbackProxyCertificateStatus, fallbackProxyNetworkSnapshot, fallbackProxyStatus, fallbackRequestLogPage,
-  fallbackUpdateStatus, fallbackUsageStats, findProviderDeepLinkReplacementIndex, formatJson, formatProxyCertificateInstallMessage, GatewayProviderConfig,
+  fallbackUpdateStatus, fallbackUsageStats, formatJson, formatProxyCertificateInstallMessage, GatewayProviderConfig,
   fusionCustomMcpServerFromDraft, fusionCustomToolConfigFromProfile,
   GatewayProviderProbeResult, gatewayServiceMessage, GatewayStatus, getDefaultOnboardingStep, isClaudeDesignPluginConfig, isClaudeDesignRoutingDraftValid,
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
@@ -1231,17 +1231,10 @@ function App() {
       const probe = await probeProviderDeepLinkPayload(payload);
       let importedProviderName = payload.name?.trim() || "";
       const next = buildConfigUpdate((config) => {
-        const replaceIndex = payload.replaceExisting
-          ? findProviderDeepLinkReplacementIndex(config.Providers, payload, probe?.normalizedBaseUrl || payload.baseUrl)
-          : -1;
-        const provider = createProviderConfigFromDeepLink(payload, config.Providers, probe, replaceIndex);
+        const provider = createProviderConfigFromDeepLink(payload, config.Providers, probe);
         importedProviderName = provider.name;
-        if (replaceIndex >= 0) {
-          config.Providers[replaceIndex] = provider;
-        } else {
-          config.Providers.push(provider);
-        }
-        if (payload.setDefault || !config.preferredProvider) {
+        config.Providers.push(provider);
+        if (!config.preferredProvider) {
           config.preferredProvider = provider.name;
         }
         return config;
