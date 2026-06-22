@@ -948,6 +948,28 @@ export type ProfileOpenResult = {
   surface: ProfileOpenSurface;
 };
 
+export type ProfileRuntimeEntry = {
+  agent: AgentKind;
+  pid?: number;
+  profileId: string;
+  profileName: string;
+  startedAt: string;
+  state: "running";
+  surface: ProfileOpenSurface;
+};
+
+export type ProfileRuntimeStatus = {
+  profiles: ProfileRuntimeEntry[];
+};
+
+export type ProfileStopResult = {
+  message: string;
+  profileId: string;
+  profileName: string;
+  stopped: boolean;
+  surface: ProfileOpenSurface;
+};
+
 export type ApiKeyLimitConfig = {
   ipd?: number;
   iph?: number;

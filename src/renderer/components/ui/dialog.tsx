@@ -12,6 +12,18 @@ type MotionSafeSectionAttributes = Omit<
   "onAnimationStart" | "onDrag" | "onDragCapture" | "onDragEnd" | "onDragEndCapture" | "onDragStart" | "onDragStartCapture"
 >;
 
+const DialogStackContext = React.createContext(0);
+
+function DialogStackLayer({
+  children,
+  depth = 0
+}: {
+  children: React.ReactNode;
+  depth?: number;
+}) {
+  return <DialogStackContext.Provider value={depth}>{children}</DialogStackContext.Provider>;
+}
+
 export interface DialogProps extends MotionSafeDivAttributes {
   onOpenChange?: (open: boolean) => void;
   open?: boolean;
@@ -56,11 +68,14 @@ export interface DialogContentProps extends MotionSafeSectionAttributes {}
 const DialogContent = React.forwardRef<HTMLElement, DialogContentProps>(
   ({ className, ...props }, ref) => {
     const shouldReduceMotion = useReducedMotion();
+    const stackDepth = React.useContext(DialogStackContext);
+    const stackedScale = Math.max(0.96, 1 - stackDepth * 0.015);
 
     return (
       <motion.section
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        aria-modal="true"
+        animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: stackDepth > 0 ? stackedScale : 1, y: 0 }}
+        aria-hidden={stackDepth > 0 ? true : undefined}
+        aria-modal={stackDepth > 0 ? undefined : true}
         className={cn("flex max-h-[calc(100dvh-1.5rem)] w-full max-w-[680px] flex-col overflow-hidden rounded-md border border-border bg-card shadow-xl", className)}
         exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98, y: 10 }}
         initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98, y: 14 }}
@@ -123,4 +138,4 @@ const DialogDescription = React.forwardRef<HTMLDivElement, React.HTMLAttributes<
 
 DialogDescription.displayName = "DialogDescription";
 
-export { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle };
+export { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogStackLayer, DialogTitle };

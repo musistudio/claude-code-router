@@ -23,7 +23,7 @@ import {
   OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parseProviderAccountDraft,
   providerCredentialsFromDraft,
   persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
-  probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, ProfileConfig, ProfileOpenSurface, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
+  probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
   providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
@@ -78,6 +78,7 @@ function App() {
   const [profileEditIndex, setProfileEditIndex] = useState<number>();
   const [profileOpenDialog, setProfileOpenDialog] = useState<ProfileOpenDialogState>();
   const [profileActionBusy, setProfileActionBusy] = useState<ProfileActionBusy>();
+  const [profileRuntimeStatus, setProfileRuntimeStatus] = useState<ProfileRuntimeStatus>({ profiles: [] });
   const [profileSubmitBusy, setProfileSubmitBusy] = useState<"" | "add" | "edit">("");
   const [apiKeyAddOpen, setApiKeyAddOpen] = useState(false);
   const [apiKeyDraft, setApiKeyDraft] = useState<AddApiKeyDraft>(() => createApiKeyDraft());
@@ -213,6 +214,7 @@ function App() {
     const refreshRuntimeStatus = () => {
       void window.ccr?.getGatewayStatus().then(setGatewayStatus);
       void window.ccr?.getProxyStatus().then(setProxyStatus);
+      void refreshProfileRuntimeStatus();
     };
     refreshRuntimeStatus();
     const timer = window.setInterval(refreshRuntimeStatus, 2000);
@@ -2074,6 +2076,32 @@ function App() {
         return;
       }
       const result = await window.ccr.openProfile({ profileId: profile.id, surface: "app" });
+      await refreshProfileRuntimeStatus();
+      showToast(result.message);
+    } catch (error) {
+      setProfileActionError(formatUnknownError(error));
+    } finally {
+      setProfileActionBusy((current) =>
+        current?.profileId === profile.id && current.surface === "app" ? undefined : current
+      );
+    }
+  }
+
+  async function stopProfileAppFromList(index: number) {
+    const profile = draftConfig.profile.profiles[index];
+    if (!profile?.enabled || !profileOpenSurfaces(profile).includes("app") || profileActionBusy) {
+      return;
+    }
+
+    setProfileActionError("");
+    setProfileActionBusy({ profileId: profile.id, surface: "app" });
+    try {
+      if (!window.ccr?.stopProfile) {
+        setProfileActionError("Profile stopping is only available in the Electron app.");
+        return;
+      }
+      const result = await window.ccr.stopProfile({ profileId: profile.id, surface: "app" });
+      await refreshProfileRuntimeStatus();
       showToast(result.message);
     } catch (error) {
       setProfileActionError(formatUnknownError(error));
@@ -2127,12 +2155,47 @@ function App() {
     }
     try {
       const result = await window.ccr.openProfile({ profileId: profile.id, surface: "app" });
+      await refreshProfileRuntimeStatus();
       setProfileOpenDialog(undefined);
       showToast(result.message);
     } catch (error) {
       setProfileOpenDialog((current) => current?.profile.id === profile.id
         ? { ...current, busy: "", error: error instanceof Error ? error.message : String(error) }
         : current);
+    }
+  }
+
+  async function stopProfileApp(profile: ProfileConfig) {
+    setProfileOpenDialog((current) => current?.profile.id === profile.id
+      ? { ...current, busy: "app", error: "" }
+      : current);
+    if (!window.ccr?.stopProfile) {
+      setProfileOpenDialog((current) => current?.profile.id === profile.id
+        ? { ...current, busy: "", error: "Profile stopping is only available in the Electron app." }
+        : current);
+      return;
+    }
+    try {
+      const result = await window.ccr.stopProfile({ profileId: profile.id, surface: "app" });
+      await refreshProfileRuntimeStatus();
+      setProfileOpenDialog(undefined);
+      showToast(result.message);
+    } catch (error) {
+      setProfileOpenDialog((current) => current?.profile.id === profile.id
+        ? { ...current, busy: "", error: error instanceof Error ? error.message : String(error) }
+        : current);
+    }
+  }
+
+  async function refreshProfileRuntimeStatus(): Promise<void> {
+    if (!window.ccr?.getProfileRuntimeStatus) {
+      setProfileRuntimeStatus({ profiles: [] });
+      return;
+    }
+    try {
+      setProfileRuntimeStatus(await window.ccr.getProfileRuntimeStatus());
+    } catch {
+      setProfileRuntimeStatus({ profiles: [] });
     }
   }
 
@@ -2395,7 +2458,9 @@ function App() {
                   editProfile: openEditProfileDialog,
                   openProfileApp: (index) => void openProfileAppFromList(index),
                   profileActionBusy,
+                  profileRuntimeStatus,
                   removeProfile,
+                  stopProfileApp: (index) => void stopProfileAppFromList(index),
                   updateProfileItem
                 },
                 providers: {
@@ -2546,12 +2611,16 @@ function App() {
 	              onSubmit: submitProfileEditDraft
 	            } : undefined}
             profileOpen={profileOpenDialog ? {
+              appRunning: profileRuntimeStatus.profiles.some((entry) =>
+                entry.profileId === profileOpenDialog.profile.id && entry.surface === "app" && entry.state === "running"
+              ),
               busy: profileOpenDialog.busy,
               command: profileOpenDialog.command,
               error: profileOpenDialog.error,
               mode: profileOpenDialog.mode,
               onChooseApp: () => void openProfileApp(profileOpenDialog.profile),
               onClose: () => setProfileOpenDialog(undefined),
+              onStopApp: () => void stopProfileApp(profileOpenDialog.profile),
               profile: profileOpenDialog.profile
             } : undefined}
             providerDeepLink={providerDeepLinkRequest ? {

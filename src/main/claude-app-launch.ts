@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -12,6 +12,7 @@ type ClaudeAppLookupResult = {
 };
 
 export type ClaudeAppLaunchResult = {
+  child: ChildProcess;
   command: string;
   pid?: number;
   userDataDir: string;
@@ -55,6 +56,7 @@ export function launchClaudeAppProfile(configDir: string, profile: ProfileConfig
   child.unref();
 
   return {
+    child,
     command: lookup.executable,
     pid: child.pid,
     userDataDir

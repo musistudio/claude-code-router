@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react";
 import {
-  AnimatePresence, AppConfig, AppCopy, AppUpdateStatus, Button, Check, cn, EndpointTitleBar,
+  AnimatedIconSwap, AnimatePresence, AppConfig, AppCopy, AppUpdateStatus, Button, Check, cn, EndpointTitleBar,
   GatewayStatus, listSpringTransition, LucideIcon, motion, motionEase,
   LoaderCircle, NavigationId, PanelLeftClose, PanelLeftOpen, ProxyStatus,
   reducedMotionTransition, RefreshCw, ServiceControlButton, Settings, ViewId,
@@ -120,7 +120,9 @@ export function MainLayout({
           type="button"
           unstyled
         >
-          {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+          <AnimatedIconSwap iconKey={sidebarOpen ? "close" : "open"}>
+            {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+          </AnimatedIconSwap>
         </Button>
         <ServiceControlButton
           busy={gatewayActionBusy}
@@ -284,7 +286,9 @@ function SidebarUpdateButton({
       unstyled
     >
       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/10">
-        {busy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : canInstall ? <Check className="h-3.5 w-3.5" /> : <RefreshCw className="h-3.5 w-3.5" />}
+        <AnimatedIconSwap iconKey={busy ? "busy" : canInstall ? "install" : "refresh"}>
+          {busy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : canInstall ? <Check className="h-3.5 w-3.5" /> : <RefreshCw className="h-3.5 w-3.5" />}
+        </AnimatedIconSwap>
       </span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {detail ? <span className="max-w-[72px] shrink-0 truncate text-[11px] text-primary/75">{detail}</span> : null}

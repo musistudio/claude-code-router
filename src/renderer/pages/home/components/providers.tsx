@@ -1,21 +1,21 @@
 import {
-  AddProviderDraft, AnimatedDisclosure, AnimatedListItem, AnimatePresence, AppConfig, Badge,
+  AddProviderDraft, AnimatedDisclosure, AnimatedIconSwap, AnimatedListItem, AnimatedPopover, AnimatePresence, AppConfig, Badge,
   Box, Braces, Button, Card, CardContent, CardHeader, CardTitle,
   Check, Checkbox, ChevronDown, ChevronRight, CircleAlert, cn,
   compareProviderAccountSnapshots, Copy, copyTextToClipboard, createDefaultProviderAccountDraft, createModelCatalogItems, createProviderAccountDraftFromConfig, createProviderCredentialDraft, createProviderInstallLinkFromDraft,
   customProviderPresetId, defaultProviderAccountConfigForPreset, Dialog, DialogBody, DialogContent, DialogFooter,
   DialogHeader, DialogTitle, Field, findProviderPreset, formatProviderAccountMeterValue, GatewayProviderConfig,
   GatewayProviderProbeResult, getProviderPresets, Globe, inferProviderNameFromBaseUrl, Input, KeyValueRowsControl, Label,
-  Layers3, LoaderCircle, mergeProviderModelLists, modelCatalogItemMatchesQuery, motion, motionEase,
+  Layers3, LoaderCircle, mergeProviderModelLists, modelCatalogItemMatchesQuery, motion,
   Pencil, Plus, PopoverContent, primaryProviderAccountMeter, primaryProviderPresetEndpoint, providerAccountBadgeVariant,
   providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountSnapshot,
   providerAccountSnapshotCredentialLabel, providerAccountSnapshotLabel, ProviderAccountTestPath,
   ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
   ProviderConnectivityCheckReport, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
-  providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, reducedMotionTransition, Search, SelectControl,
+  providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
   ShieldCheck, splitLines, splitModelTagInput, Switch, Textarea, translatedProviderProtocolLabel, translateOptions,
   translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppText, useEffect, useMemo,
-  useReducedMotion, useRef, useState, X
+  useRef, useState, X
 } from "../shared";
 export function ProvidersView({ accountSnapshots, addProvider, editProvider, notify, providers, removeProvider }: {
   accountSnapshots: ProviderAccountSnapshot[];
@@ -543,7 +543,9 @@ export function ProviderDeepLinkDialog({
           </Button>
           {provider || manifest ? (
             <Button disabled={busy} onClick={() => void onSubmit()} type="button">
-              {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              <AnimatedIconSwap iconKey={busy ? "busy" : "plus"}>
+                {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              </AnimatedIconSwap>
               {provider ? t("Import") : t("Fetch manifest")}
             </Button>
           ) : null}
@@ -659,13 +661,7 @@ function ProviderPresetCombobox({
 
       <AnimatePresence initial={false}>
         {open ? (
-          <motion.div
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="absolute left-0 right-0 top-full z-50 mt-1"
-            exit={{ opacity: 0, scale: 0.98, y: -4 }}
-            initial={{ opacity: 0, scale: 0.98, y: -4 }}
-            transition={{ duration: 0.12, ease: "easeOut" }}
-          >
+          <AnimatedPopover className="absolute left-0 right-0 top-full z-50 mt-1">
             <PopoverContent className="overflow-hidden p-1">
               <div className="relative mb-1">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -714,7 +710,7 @@ function ProviderPresetCombobox({
                 )}
               </div>
             </PopoverContent>
-          </motion.div>
+          </AnimatedPopover>
         ) : null}
       </AnimatePresence>
     </div>
@@ -792,7 +788,6 @@ export function AddProviderForm({
   providers: GatewayProviderConfig[];
 }) {
   const t = useAppText();
-  const shouldReduceMotion = useReducedMotion();
   const [advancedOpen, setAdvancedOpen] = useState(mode === "edit");
   const [iconDetecting, setIconDetecting] = useState(false);
   const iconDetectionRequestRef = useRef(0);
@@ -1020,7 +1015,9 @@ export function AddProviderForm({
                 type="button"
                 variant="outline"
               >
-                {connectivityLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                <AnimatedIconSwap iconKey={connectivityLoading ? "checking" : "check"}>
+                  {connectivityLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                </AnimatedIconSwap>
                 {t("Check Connection")}
               </Button>
             ) : null}
@@ -1041,13 +1038,7 @@ export function AddProviderForm({
 
         <AnimatePresence initial={false}>
           {advancedOpen ? (
-            <motion.div
-              animate={{ height: "auto", opacity: 1 }}
-              className="sm:col-span-2 overflow-hidden"
-              exit={{ height: 0, opacity: 0 }}
-              initial={{ height: 0, opacity: 0 }}
-              transition={shouldReduceMotion ? reducedMotionTransition : { duration: 0.18, ease: motionEase }}
-            >
+            <AnimatedDisclosure className="sm:col-span-2" key="provider-advanced">
               <div className="grid grid-cols-1 gap-3 rounded-md border border-border bg-muted/20 p-3 sm:grid-cols-2">
                 {selectedPreset && !customEndpoint && mode === "add" ? (
                   <Field className="sm:col-span-2" label={t("API endpoint")}>
@@ -1111,7 +1102,7 @@ export function AddProviderForm({
                   </div>
                 </Field>
               </div>
-            </motion.div>
+            </AnimatedDisclosure>
           ) : null}
         </AnimatePresence>
       </div>
@@ -1421,7 +1412,9 @@ function ProviderUsageSettings({
           <span className="min-w-0 truncate">{t("Fetch usage")}</span>
         </Label>
         <Button className="h-8 shrink-0 px-2" onClick={() => void copyProviderPluginLink()} type="button" variant="outline">
-          {copiedLink ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          <AnimatedIconSwap iconKey={copiedLink ? "copied" : "copy"}>
+            {copiedLink ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          </AnimatedIconSwap>
           {copiedLink ? t("Copied") : t("Copy provider plugin link")}
         </Button>
       </div>
@@ -1511,7 +1504,9 @@ function ProviderUsageSettings({
 
               <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
                 <Button disabled={testLoading} onClick={() => void testUsageRequest()} size="sm" type="button" variant="outline">
-                  {testLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                  <AnimatedIconSwap iconKey={testLoading ? "testing" : "check"}>
+                    {testLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                  </AnimatedIconSwap>
                   {t("Test usage request")}
                 </Button>
                 {testResult ? <Badge variant={testResult.meters.length > 0 ? "success" : "outline"}>{testResult.meters.length} {t("meters")}</Badge> : null}
@@ -1792,7 +1787,9 @@ export function AddProviderDialog({
                 {checkResult ? t("Close") : t("Cancel")}
               </Button>
               <Button disabled={checkConfirmBusy || connectivityLoading || checkModelSelection.length === 0} onClick={() => void confirmCheck()} type="button">
-                {checkConfirmBusy || connectivityLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                <AnimatedIconSwap iconKey={checkConfirmBusy || connectivityLoading ? "checking" : "start"}>
+                  {checkConfirmBusy || connectivityLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                </AnimatedIconSwap>
                 {t("Start check")}
               </Button>
             </DialogFooter>

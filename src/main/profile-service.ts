@@ -6,7 +6,7 @@ import { enforceSingleEnabledGlobalProfilePerAgent, type ApiKeyConfig, type AppC
 import { replacePersistedApiKeys } from "./api-key-store";
 import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
-import { codexModelCatalogBase64, codexModelCatalogJson } from "./codex-model-catalog";
+import { codexModelCatalogJson } from "./codex-model-catalog";
 import { CONFIGDIR } from "./constants";
 import { normalizeRouteSelector } from "./gateway/claude-code-router-plugin";
 
@@ -133,7 +133,7 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
       ? writeCodexCliMiddleware(config, profile, {
           configFormat,
           configFile,
-          modelCatalogBase64: codexModelCatalogBase64(config, model),
+          modelCatalogFile,
           model,
           providerId
         })
@@ -444,8 +444,7 @@ function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig,
     `export CCR_CLAUDE_CODE_WRAPPER=1`,
     `export CCR_REAL_CLAUDE_CODE_BIN=${shellQuote(realClaude)}`,
     `export CODEXL_CLAUDE_CODE_BIN=${shellQuote(realClaude)}`,
-    "NODE_BIN=${CCR_NODE_BIN:-node}",
-    `exec "$NODE_BIN" ${shellQuote(runtimeFile)} "$@"`,
+    ...nodeRuntimeShellExecLines(runtimeFile),
     ""
   ].join("\n");
 }
@@ -465,13 +464,7 @@ function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, r
     `set "CCR_CLAUDE_CODE_WRAPPER=1"`,
     `set "CCR_REAL_CLAUDE_CODE_BIN=${realClaude.replace(/"/g, '\\"')}"`,
     `set "CODEXL_CLAUDE_CODE_BIN=${realClaude.replace(/"/g, '\\"')}"`,
-    "if not defined CCR_NODE_BIN set \"CCR_NODE_BIN=node\"",
-    "if \"%~1\"==\"\" (",
-    `  "%CCR_NODE_BIN%" "${runtimeFile.replace(/"/g, '\\"')}"`,
-    ") else (",
-    `  "%CCR_NODE_BIN%" "${runtimeFile.replace(/"/g, '\\"')}" %*`,
-    ")",
-    "exit /b %ERRORLEVEL%",
+    ...nodeRuntimeCmdExecLines(runtimeFile),
     ""
   ].join("\r\n");
 }
@@ -482,7 +475,7 @@ function writeCodexCliMiddleware(
   values: {
     configFormat: "legacy" | "separate_profile_files";
     configFile: string;
-    modelCatalogBase64: string;
+    modelCatalogFile: string;
     model: string;
     providerId: string;
   }
@@ -519,13 +512,46 @@ function codexMiddlewareFilename(profile: ProfileConfig, providerId: string): st
     : `ccr-codex-cli-stdio-${slug}`;
 }
 
+function shellProfileSurfaceExports(surface: "auto" | "cli" | "app"): string[] {
+  return [
+    "if [ -z \"${CCR_PROFILE_SURFACE:-}\" ]; then",
+    "  case \"${1:-}\" in",
+    "    app|app-server) CCR_PROFILE_SURFACE=app ;;",
+    `    *) CCR_PROFILE_SURFACE=${shellQuote(surface)} ;;`,
+    "  esac",
+    "fi",
+    "export CCR_PROFILE_SURFACE"
+  ];
+}
+
+function shellCodexlProfileSurfaceExports(): string[] {
+  return [
+    "if [ -z \"${CODEXL_PROFILE_SURFACE:-}\" ]; then",
+    "  CODEXL_PROFILE_SURFACE=$CCR_PROFILE_SURFACE",
+    "fi",
+    "export CODEXL_PROFILE_SURFACE"
+  ];
+}
+
+function nodeRuntimeShellExecLines(runtimeFile: string): string[] {
+  return [
+    "if [ -n \"${CCR_NODE_BIN:-}\" ]; then",
+    `  exec "$CCR_NODE_BIN" ${shellQuote(runtimeFile)} "$@"`,
+    "fi",
+    "if command -v node >/dev/null 2>&1; then",
+    `  exec node ${shellQuote(runtimeFile)} "$@"`,
+    "fi",
+    `ELECTRON_RUN_AS_NODE=1 exec ${shellQuote(process.execPath)} ${shellQuote(runtimeFile)} "$@"`
+  ];
+}
+
 function codexMiddlewareShellScript(
   config: AppConfig,
   profile: ProfileConfig,
   values: {
     configFormat: "legacy" | "separate_profile_files";
     configFile: string;
-    modelCatalogBase64: string;
+    modelCatalogFile: string;
     model: string;
     providerId: string;
   },
@@ -541,30 +567,72 @@ function codexMiddlewareShellScript(
     "#!/bin/sh",
     ...envExports,
     `export CODEX_HOME=${shellQuote(resolveUserPath(codexHome))}`,
-    `export CCR_REAL_CODEX_CLI_PATH=${shellQuote(codexCli)}`,
+    "if [ -z \"${CCR_REAL_CODEX_CLI_PATH:-}\" ]; then",
+    `  CCR_REAL_CODEX_CLI_PATH=${shellQuote(codexCli)}`,
+    "fi",
+    "export CCR_REAL_CODEX_CLI_PATH",
     `export CCR_CODEX_PROFILE=${shellQuote(values.providerId)}`,
     `export CCR_CODEX_MODEL=${shellQuote(values.model)}`,
-    `export CCR_CODEX_MODEL_CATALOG_B64=${shellQuote(values.modelCatalogBase64)}`,
+    `export CCR_CODEX_MODEL_CATALOG_FILE=${shellQuote(values.modelCatalogFile)}`,
     `export CCR_CODEX_MODEL_PROVIDER=${shellQuote(values.providerId)}`,
-    `export CCR_CODEX_REMOTE_FRONTEND_MODE=${shellQuote(remoteFrontendMode)}`,
     `export CCR_CODEX_PROFILE_CONFIG_FORMAT=${shellQuote(values.configFormat)}`,
     `export CCR_PROFILE_SCOPE=${shellQuote(normalizeProfileScope(profile.scope))}`,
-    `: "\${CCR_PROFILE_SURFACE:=${surface}}"`,
-    "export CCR_PROFILE_SURFACE",
+    ...shellProfileSurfaceExports(surface),
+    `export CCR_CODEX_REMOTE_FRONTEND_MODE=${shellQuote(remoteFrontendMode)}`,
     ...botEnvExports,
-    `export CODEXL_REAL_CODEX_CLI_PATH=${shellQuote(codexCli)}`,
+    "if [ -z \"${CODEXL_REAL_CODEX_CLI_PATH:-}\" ]; then",
+    "  CODEXL_REAL_CODEX_CLI_PATH=$CCR_REAL_CODEX_CLI_PATH",
+    "fi",
+    "export CODEXL_REAL_CODEX_CLI_PATH",
     `export CODEXL_CODEX_PROFILE=${shellQuote(values.providerId)}`,
-    `export CODEXL_CODEX_MODEL_CATALOG_B64=${shellQuote(values.modelCatalogBase64)}`,
+    `export CODEXL_CODEX_MODEL_CATALOG_FILE=${shellQuote(values.modelCatalogFile)}`,
     `export CODEXL_CODEX_MODEL_PROVIDER=${shellQuote(values.providerId)}`,
     `export CODEXL_CODEX_WORKSPACE_NAME=${shellQuote(profile.name || values.providerId)}`,
-    `export CODEXL_CODEX_CORE_MODE=${shellQuote(remoteFrontendMode)}`,
     `export CODEXL_CODEX_PROFILE_CONFIG_FORMAT=${shellQuote(values.configFormat)}`,
-    ": \"${CODEXL_PROFILE_SURFACE:=$CCR_PROFILE_SURFACE}\"",
-    "export CODEXL_PROFILE_SURFACE",
-    "NODE_BIN=${CCR_NODE_BIN:-node}",
-    `exec "$NODE_BIN" ${shellQuote(runtimeFile)} "$@"`,
+    ...shellCodexlProfileSurfaceExports(),
+    `export CODEXL_CODEX_CORE_MODE=${shellQuote(remoteFrontendMode)}`,
+    ...nodeRuntimeShellExecLines(runtimeFile),
     ""
   ].join("\n");
+}
+
+function cmdProfileSurfaceExports(surface: "auto" | "cli" | "app"): string[] {
+  return [
+    "if not defined CCR_PROFILE_SURFACE (",
+    "  if \"%~1\"==\"app\" (",
+    "    set \"CCR_PROFILE_SURFACE=app\"",
+    "  ) else if \"%~1\"==\"app-server\" (",
+    "    set \"CCR_PROFILE_SURFACE=app\"",
+    "  ) else (",
+    `    set "CCR_PROFILE_SURFACE=${surface}"`,
+    "  )",
+    ")"
+  ];
+}
+
+function cmdCodexlProfileSurfaceExports(): string[] {
+  return [
+    "if not defined CODEXL_PROFILE_SURFACE set \"CODEXL_PROFILE_SURFACE=%CCR_PROFILE_SURFACE%\""
+  ];
+}
+
+function nodeRuntimeCmdExecLines(runtimeFile: string): string[] {
+  const quotedRuntime = runtimeFile.replace(/"/g, '\\"');
+  const quotedHost = process.execPath.replace(/"/g, '\\"');
+  return [
+    "if defined CCR_NODE_BIN (",
+    `  "%CCR_NODE_BIN%" "${quotedRuntime}" %*`,
+    "  exit /b %ERRORLEVEL%",
+    ")",
+    "where node >nul 2>nul",
+    "if %ERRORLEVEL%==0 (",
+    `  node "${quotedRuntime}" %*`,
+    "  exit /b %ERRORLEVEL%",
+    ")",
+    "set \"ELECTRON_RUN_AS_NODE=1\"",
+    `"${quotedHost}" "${quotedRuntime}" %*`,
+    "exit /b %ERRORLEVEL%"
+  ];
 }
 
 function codexMiddlewareCmdScript(
@@ -573,7 +641,7 @@ function codexMiddlewareCmdScript(
   values: {
     configFormat: "legacy" | "separate_profile_files";
     configFile: string;
-    modelCatalogBase64: string;
+    modelCatalogFile: string;
     model: string;
     providerId: string;
   },
@@ -591,31 +659,25 @@ function codexMiddlewareCmdScript(
     "@echo off",
     ...envExports,
     `set "CODEX_HOME=${resolveUserPath(codexHome).replace(/"/g, '\\"')}"`,
-    `set "CCR_REAL_CODEX_CLI_PATH=${codexCli.replace(/"/g, '\\"')}"`,
+    `if not defined CCR_REAL_CODEX_CLI_PATH set "CCR_REAL_CODEX_CLI_PATH=${codexCli.replace(/"/g, '\\"')}"`,
     `set "CCR_CODEX_PROFILE=${providerId}"`,
     `set "CCR_CODEX_MODEL=${values.model.replace(/"/g, '\\"')}"`,
-    `set "CCR_CODEX_MODEL_CATALOG_B64=${values.modelCatalogBase64}"`,
+    `set "CCR_CODEX_MODEL_CATALOG_FILE=${values.modelCatalogFile.replace(/"/g, '\\"')}"`,
     `set "CCR_CODEX_MODEL_PROVIDER=${providerId}"`,
-    `set "CCR_CODEX_REMOTE_FRONTEND_MODE=${remoteFrontendMode}"`,
     `set "CCR_CODEX_PROFILE_CONFIG_FORMAT=${values.configFormat}"`,
     `set "CCR_PROFILE_SCOPE=${normalizeProfileScope(profile.scope)}"`,
-    `if not defined CCR_PROFILE_SURFACE set "CCR_PROFILE_SURFACE=${surface}"`,
+    ...cmdProfileSurfaceExports(surface),
+    `set "CCR_CODEX_REMOTE_FRONTEND_MODE=${remoteFrontendMode}"`,
     ...botEnvExports,
-    `set "CODEXL_REAL_CODEX_CLI_PATH=${codexCli.replace(/"/g, '\\"')}"`,
+    "if not defined CODEXL_REAL_CODEX_CLI_PATH set \"CODEXL_REAL_CODEX_CLI_PATH=%CCR_REAL_CODEX_CLI_PATH%\"",
     `set "CODEXL_CODEX_PROFILE=${providerId}"`,
-    `set "CODEXL_CODEX_MODEL_CATALOG_B64=${values.modelCatalogBase64}"`,
+    `set "CODEXL_CODEX_MODEL_CATALOG_FILE=${values.modelCatalogFile.replace(/"/g, '\\"')}"`,
     `set "CODEXL_CODEX_MODEL_PROVIDER=${providerId}"`,
     `set "CODEXL_CODEX_WORKSPACE_NAME=${workspaceName}"`,
-    `set "CODEXL_CODEX_CORE_MODE=${remoteFrontendMode}"`,
     `set "CODEXL_CODEX_PROFILE_CONFIG_FORMAT=${values.configFormat}"`,
-    "if not defined CODEXL_PROFILE_SURFACE set \"CODEXL_PROFILE_SURFACE=%CCR_PROFILE_SURFACE%\"",
-    "if not defined CCR_NODE_BIN set \"CCR_NODE_BIN=node\"",
-    "if \"%~1\"==\"\" (",
-    `  "%CCR_NODE_BIN%" "${runtimeFile.replace(/"/g, '\\"')}"`,
-    ") else (",
-    `  "%CCR_NODE_BIN%" "${runtimeFile.replace(/"/g, '\\"')}" %*`,
-    ")",
-    "exit /b %ERRORLEVEL%",
+    ...cmdCodexlProfileSurfaceExports(),
+    `set "CODEXL_CODEX_CORE_MODE=${remoteFrontendMode}"`,
+    ...nodeRuntimeCmdExecLines(runtimeFile),
     ""
   ].join("\r\n");
 }

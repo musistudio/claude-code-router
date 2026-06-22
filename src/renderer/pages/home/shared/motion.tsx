@@ -1,5 +1,5 @@
 import type { HTMLAttributes, ReactNode } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
 import type { ViewId } from "./types";
 
@@ -79,5 +79,57 @@ export function AnimatedFieldSlot({ children, className }: { children: ReactNode
     >
       {children}
     </motion.div>
+  );
+}
+
+export function AnimatedPopover({
+  children,
+  className,
+  placement = "below",
+  ...props
+}: MotionSafeDivAttributes & { placement?: "above" | "below" }) {
+  const shouldReduceMotion = useReducedMotion();
+  const y = placement === "above" ? 4 : -4;
+
+  return (
+    <motion.div
+      animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
+      className={className}
+      exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98, y }}
+      initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98, y }}
+      transition={shouldReduceMotion ? reducedMotionTransition : { duration: 0.12, ease: "easeOut" }}
+      {...props}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+export function AnimatedIconSwap({
+  children,
+  className,
+  iconKey
+}: {
+  children: ReactNode;
+  className?: string;
+  iconKey: string | number | boolean;
+}) {
+  const shouldReduceMotion = useReducedMotion();
+
+  return (
+    <span className={cn("inline-flex shrink-0 items-center justify-center", className)}>
+      <AnimatePresence initial={false} mode="wait">
+        <motion.span
+          animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1 }}
+          className="inline-flex items-center justify-center"
+          exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.85 }}
+          initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.85 }}
+          key={String(iconKey)}
+          transition={shouldReduceMotion ? reducedMotionTransition : { duration: 0.12, ease: "easeOut" }}
+        >
+          {children}
+        </motion.span>
+      </AnimatePresence>
+    </span>
   );
 }

@@ -123,9 +123,9 @@ async function runCodexCliMiddleware(args) {
     }
   });
 
-  const code = await waitForChild(child);
-  log("codex_cli_exit", { code });
-  process.exitCode = code;
+  const exit = await waitForChildResult(child);
+  log("codex_cli_exit", { code: exit.code, signal: exit.signal, exitCode: exit.exitCode });
+  process.exitCode = exit.exitCode;
 }
 
 async function runDirectCodexCli(realCli, realArgs) {
@@ -136,9 +136,9 @@ async function runDirectCodexCli(realCli, realArgs) {
   child.on("error", (error) => {
     log("codex_cli_spawn_error", { error: formatError(error) });
   });
-  const code = await waitForChild(child);
-  log("codex_cli_exit", { code });
-  process.exitCode = code;
+  const exit = await waitForChildResult(child);
+  log("codex_cli_exit", { code: exit.code, signal: exit.signal, exitCode: exit.exitCode });
+  process.exitCode = exit.exitCode;
 }
 
 function shouldRunDirectCodexCli(args) {
@@ -1989,6 +1989,14 @@ function catalogModelIds() {
 }
 
 function parseModelCatalogEnv() {
+  const file = modelCatalogFileEnv();
+  if (file) {
+    const parsed = readJsonFile(file);
+    if (parsed) {
+      return modelIdsFromJson(parsed);
+    }
+    log("model_catalog_parse_error", { source: "file", file });
+  }
   const encoded = nonEmptyEnv("CCR_CODEX_MODEL_CATALOG_B64") || nonEmptyEnv("CODEXL_CODEX_MODEL_CATALOG_B64");
   if (encoded) {
     try {
@@ -2153,6 +2161,14 @@ function configRead(params, values) {
 }
 
 function modelCatalogConfigValue() {
+  const file = modelCatalogFileEnv();
+  if (file) {
+    const parsed = readJsonFile(file);
+    if (parsed && typeof parsed === "object") {
+      return parsed;
+    }
+    log("model_catalog_parse_error", { source: "file-config", file });
+  }
   const encoded = nonEmptyEnv("CCR_CODEX_MODEL_CATALOG_B64") || nonEmptyEnv("CODEXL_CODEX_MODEL_CATALOG_B64");
   if (encoded) {
     try {
@@ -2163,6 +2179,13 @@ function modelCatalogConfigValue() {
     }
   }
   return { models: catalogModelIds().map((model, index) => modelCatalogConfigItem(model, index)) };
+}
+
+function modelCatalogFileEnv() {
+  return nonEmptyEnv("CCR_CODEX_MODEL_CATALOG_FILE") ||
+    nonEmptyEnv("CODEXL_CODEX_MODEL_CATALOG_FILE") ||
+    nonEmptyEnv("CCR_CODEX_MODEL_CATALOG_PATH") ||
+    nonEmptyEnv("CODEXL_CODEX_MODEL_CATALOG_PATH");
 }
 
 function modelCatalogConfigItem(model, priority) {
@@ -3576,10 +3599,25 @@ function safePathSegment(value) {
 }
 
 function waitForChild(child) {
+  return waitForChildResult(child).then((result) => result.exitCode);
+}
+
+function waitForChildResult(child) {
   return new Promise((resolve) => {
-    child.on("exit", (code, signal) => resolve(code ?? (signal === "SIGINT" ? 130 : 1)));
-    child.on("error", () => resolve(1));
+    child.on("exit", (code, signal) => resolve({
+      code,
+      signal,
+      exitCode: code ?? signalExitCode(signal)
+    }));
+    child.on("error", () => resolve({ code: 1, signal: null, exitCode: 1 }));
   });
+}
+
+function signalExitCode(signal) {
+  if (signal === "SIGINT") return 130;
+  if (signal === "SIGTERM") return 143;
+  if (signal === "SIGKILL") return 137;
+  return 1;
 }
 
 function activeKey(threadId, turnId) {

@@ -838,6 +838,20 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .onboarding-step-panel,
+    .onboarding-step-panel-active {
+      transform: none;
+      transition:
+        opacity 120ms ease-out,
+        visibility 0ms linear 120ms;
+    }
+
+    .onboarding-step-panel-active {
+      transition:
+        opacity 120ms ease-out,
+        visibility 0ms;
+    }
+
     .onboarding-mascot-sprite {
       animation-duration: 1ms;
     }

@@ -1,10 +1,10 @@
-import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AppConfig, ProfileConfig } from "../shared/app";
 import { botGatewayProfileEnv } from "./bot-gateway-env";
-import { codexModelCatalogBase64 } from "./codex-model-catalog";
+import { codexModelCatalogJson } from "./codex-model-catalog";
 import { buildProfileLaunchPlan, resolveCodexConfigFile } from "./profile-launch-core";
 
 type CodexAppLookupResult = {
@@ -13,7 +13,9 @@ type CodexAppLookupResult = {
 };
 
 export type CodexAppLaunchResult = {
+  child: ChildProcess;
   command: string;
+  pidIsLauncher?: boolean;
   pid?: number;
   userDataDir: string;
 };
@@ -40,25 +42,32 @@ export function launchCodexAppProfile(configDir: string, profile: ProfileConfig,
   const codexHome = path.dirname(configFile);
   const userDataDir = codexElectronUserDataDir(codexHome, profile);
   mkdirSync(userDataDir, { recursive: true });
-  const modelCatalogBase64 = codexModelCatalogBase64(config, profile.model);
+  const modelCatalogFile = codexAppModelCatalogFile(userDataDir);
+  writeFileSync(modelCatalogFile, codexModelCatalogJson(config, profile.model), "utf8");
 
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
+  const appEnv: Record<string, string> = {
     ...plan.env,
     ...(config ? botGatewayProfileEnv(config, profile, "app") : {}),
-    ...codexProfileEnv(profile),
+    ...codexProfileEnv(profile, lookup.executable),
     CODEX_CLI_PATH: plan.command,
     CODEX_ELECTRON_USER_DATA_PATH: userDataDir,
     CODEX_HOME: codexHome,
     CODEXL_PROFILE_SURFACE: "app",
-    CODEXL_CODEX_MODEL_CATALOG_B64: modelCatalogBase64,
+    CODEXL_CODEX_MODEL_CATALOG_FILE: modelCatalogFile,
     CCR_PROFILE_SURFACE: "app",
-    CCR_CODEX_MODEL_CATALOG_B64: modelCatalogBase64,
+    CCR_CODEX_MODEL_CATALOG_FILE: modelCatalogFile,
     ELECTRON_ENABLE_LOGGING: "1"
   };
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...appEnv
+  };
   delete env.ELECTRON_RUN_AS_NODE;
+  delete env.CCR_CODEX_MODEL_CATALOG_B64;
+  delete env.CODEXL_CODEX_MODEL_CATALOG_B64;
 
-  const child = spawn(lookup.executable, codexElectronArgs(userDataDir), {
+  const launch = codexAppLaunchCommand(lookup.executable, userDataDir, appEnv);
+  const child = spawn(launch.command, launch.args, {
     detached: true,
     env,
     stdio: "ignore"
@@ -66,15 +75,17 @@ export function launchCodexAppProfile(configDir: string, profile: ProfileConfig,
   child.unref();
 
   return {
-    command: lookup.executable,
+    child,
+    command: launch.command,
+    pidIsLauncher: launch.pidIsLauncher,
     pid: child.pid,
     userDataDir
   };
 }
 
-function codexProfileEnv(profile: ProfileConfig): Record<string, string> {
+function codexProfileEnv(profile: ProfileConfig, appExecutable: string): Record<string, string> {
   const providerId = sanitizeCodexProviderId(profile.providerId || "") || "claude-code-router";
-  const realCliPath = profile.codexCliPath?.trim() || "codex";
+  const realCliPath = profile.codexCliPath?.trim() || bundledCodexCliPath(appExecutable) || "codex";
   const remoteFrontendMode = normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode);
   return {
     ...(profile.model.trim() ? { CCR_CODEX_MODEL: profile.model.trim() } : {}),
@@ -90,6 +101,35 @@ function codexProfileEnv(profile: ProfileConfig): Record<string, string> {
   };
 }
 
+function bundledCodexCliPath(appExecutable: string): string | undefined {
+  if (process.platform === "darwin") {
+    const appBundle = macAppBundleFromExecutable(appExecutable);
+    if (!appBundle) {
+      return undefined;
+    }
+    for (const name of ["codex", "Codex", "OpenAI Codex"]) {
+      const candidate = path.join(appBundle, "Contents", "Resources", name);
+      if (isFile(candidate)) {
+        return candidate;
+      }
+    }
+    return undefined;
+  }
+
+  if (process.platform === "win32") {
+    const appDir = path.dirname(appExecutable);
+    const resourceDir = path.join(appDir, "resources");
+    for (const name of windowsCodexExeNames) {
+      const candidate = path.join(resourceDir, name);
+      if (isFile(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  return undefined;
+}
+
 function codexElectronArgs(userDataDir: string): string[] {
   return [
     "--remote-debugging-port=0",
@@ -101,6 +141,48 @@ function codexElectronArgs(userDataDir: string): string[] {
   ];
 }
 
+function codexAppLaunchCommand(executable: string, userDataDir: string, env: Record<string, string>): { args: string[]; command: string; pidIsLauncher?: boolean } {
+  const appBundle = process.platform === "darwin" ? macAppBundleFromExecutable(executable) : undefined;
+  if (appBundle) {
+    return {
+      command: "/usr/bin/open",
+      pidIsLauncher: true,
+      args: [
+        "-W",
+        "-n",
+        ...macOpenEnvArgs(env),
+        appBundle,
+        "--args",
+        ...codexElectronArgs(userDataDir)
+      ]
+    };
+  }
+  return {
+    command: executable,
+    args: codexElectronArgs(userDataDir)
+  };
+}
+
+function macOpenEnvArgs(env: Record<string, string>): string[] {
+  return Object.entries(env)
+    .filter(([key, value]) => isEnvName(key) && typeof value === "string")
+    .flatMap(([key, value]) => ["--env", `${key}=${value}`]);
+}
+
+function macAppBundleFromExecutable(executable: string): string | undefined {
+  const marker = ".app/Contents/MacOS/";
+  const index = executable.indexOf(marker);
+  if (index < 0) {
+    return undefined;
+  }
+  const appBundle = executable.slice(0, index + ".app".length);
+  return isDirectory(appBundle) ? appBundle : undefined;
+}
+
+function isEnvName(value: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
+}
+
 function codexElectronUserDataDir(codexHome: string, profile: ProfileConfig): string {
   return path.join(
     codexHome,
@@ -108,6 +190,10 @@ function codexElectronUserDataDir(codexHome: string, profile: ProfileConfig): st
     "codex-app-user-data",
     sanitizeProfilePathSegment(profile.id || profile.name || "default") || "default"
   );
+}
+
+function codexAppModelCatalogFile(userDataDir: string): string {
+  return path.join(userDataDir, "ccr-codex-model-catalog.json");
 }
 
 function findInstalledCodexAppExecutable(): CodexAppLookupResult {

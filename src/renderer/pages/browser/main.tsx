@@ -473,6 +473,12 @@ style.textContent = `
     animation: spin 0.9s linear infinite;
   }
 
+  @media (prefers-reduced-motion: reduce) {
+    .spin {
+      animation: none;
+    }
+  }
+
   @media (max-width: 720px) {
     .home-page {
       padding: 48px 16px 40px;

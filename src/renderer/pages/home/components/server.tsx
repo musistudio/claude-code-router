@@ -1,5 +1,5 @@
 import {
-  AppConfig, Badge, Button, Card, CardContent, CardHeader,
+  AnimatedIconSwap, AppConfig, Badge, Button, Card, CardContent, CardHeader,
   CardTitle, certificateStatusLabel, certificateStatusVariant, cn, endpointFromHostPort, Field,
   Input, LoaderCircle, motion, numberValue, ProxyCertificateStatus, proxyCertificateTrustSteps,
   ProxyStatus, RefreshCw, ServerActionBusy, ShieldCheck, StatusBadge, Toggle,
@@ -142,16 +142,22 @@ export function ServerView({
               ) : null}
               <div className="flex flex-wrap items-center gap-2">
                 <Button disabled={Boolean(actionBusy) || !proxyCertificateStatus.canInstall} onClick={installProxyCertificate} size="sm" type="button" variant="outline">
-                  {actionBusy === "cert" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                  <AnimatedIconSwap iconKey={actionBusy === "cert" ? "installing" : "cert"}>
+                    {actionBusy === "cert" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                  </AnimatedIconSwap>
                   {t("Install CA")}
                 </Button>
                 <Button disabled={Boolean(actionBusy) || proxyCertificateChecking} onClick={refreshProxyCertificateStatus} size="sm" type="button" variant="outline">
-                  {proxyCertificateChecking ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  <AnimatedIconSwap iconKey={proxyCertificateChecking ? "checking" : "refresh"}>
+                    {proxyCertificateChecking ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  </AnimatedIconSwap>
                   {t("Check Trust")}
                 </Button>
                 {config.proxy.enabled ? (
                   <Button disabled={Boolean(actionBusy)} onClick={restartProxy} size="sm" type="button" variant="outline">
-                    {actionBusy === "proxy" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    <AnimatedIconSwap iconKey={actionBusy === "proxy" ? "restarting" : "refresh"}>
+                      {actionBusy === "proxy" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    </AnimatedIconSwap>
                     {t("Restart Proxy")}
                   </Button>
                 ) : null}

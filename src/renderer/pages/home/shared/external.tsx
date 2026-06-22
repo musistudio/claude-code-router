@@ -90,6 +90,7 @@ import {
   DialogContent,
   DialogFooter,
   DialogHeader,
+  DialogStackLayer,
   DialogTitle
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -190,6 +191,7 @@ import type {
   ProviderDeepLinkRequest,
   ProfileConfig,
   ProfileOpenSurface,
+  ProfileRuntimeStatus,
   CodexProfileConfigFormat,
   ProfileScope,
   ProfileSurface,
@@ -547,7 +549,7 @@ export {
   Terminal, Trash2, UserRound, X, Area, Bar, BarChart, CartesianGrid,
   Cell, ComposedChart, LabelList, Line, Pie, PieChart, Tooltip,
   XAxis, YAxis, Badge, Button, Card, CardContent, CardHeader,
-  CardTitle, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader,
+  CardTitle, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogStackLayer,
   DialogTitle, Input, Label, PopoverContent, Select, Switch, Textarea,
   cn, appLogoUrl, claudeCodeLogoUrl, codexLogoUrl, onboardingMascotSpriteUrl, anthropicProviderIconUrl, bailianProviderIconUrl, deepseekProviderIconUrl,
   geminiProviderIconUrl, mistralProviderIconUrl, moonshotProviderIconUrl, openaiProviderIconUrl, openrouterProviderIconUrl, siliconflowProviderIconUrl, zaiGlobalCodingProviderIconUrl,
@@ -564,7 +566,7 @@ export type {
   OverviewWidgetVariant, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProviderAccountConfig, ProviderAccountConnectorConfig, ProviderAccountHttpJsonConnectorConfig,
   ProviderAccountMeter, ProviderAccountStandardConnectorConfig, ProviderAccountSnapshot, ProviderAccountTestPath, ProviderAccountTestResult, ProviderDeepLinkPayload, ProviderDeepLinkRequest,
   ProviderCredentialConfig,
-  ProfileConfig, ProfileOpenSurface, CodexProfileConfigFormat, ProfileScope, ProfileSurface, ProxyCertificateInstallResult, ProxyCertificateStatus, ProxyNetworkBody,
+  ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, CodexProfileConfigFormat, ProfileScope, ProfileSurface, ProxyCertificateInstallResult, ProxyCertificateStatus, ProxyNetworkBody,
   ProxyNetworkExchange, ProxyNetworkSnapshot, ProxyStatus, RequestLogBody, RequestLogEntry, RequestLogListFilter, RequestLogPage,
   RequestLogStatusFilter, RouterConfig, RouterFallbackConfig, RouterFallbackMode, RouterRule, RouterRuleType, TrayComponentVariants,
   TrayBalanceProgressConfig, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant, TrayWindowModuleId, UsageComparisonRow, UsageSeriesPoint, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, UsageTotals,

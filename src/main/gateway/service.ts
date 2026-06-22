@@ -51,6 +51,7 @@ import {
   type ModelCatalogCapabilities,
   type ModelCatalogEntry
 } from "./model-catalog";
+import { createResponseProtocolAdapter } from "./response-protocol-adapter";
 
 type CoreGatewayProvider = {
   apikey?: string;
@@ -636,12 +637,22 @@ class GatewayService {
 
     bodyToForward = upstreamResult.attempt.body ?? bodyToForward;
     routedModel = upstreamResult.attempt.model ?? routedModel;
-    const responseHeaders = rewriteCapabilityResponseHeaders(
+    let responseHeaders = rewriteCapabilityResponseHeaders(
       mergeFallbackResponseHeaders(upstreamResponseHeaders(upstreamResult), upstreamResult),
       this.config
     );
     const upstreamResponse = upstreamResult.response;
     recordProviderCredentialOutcome(this.config, method, upstreamResult.attempt, upstreamResponse.status, responseHeaders);
+    const providerProtocol = resolveResponseProviderProtocol(responseHeaders, this.config);
+    const responseAdapter = createResponseProtocolAdapter({
+      clientProtocol: requestProtocolForPath(path),
+      providerProtocol,
+      responseHeaders,
+      statusCode: upstreamResponse.status
+    });
+    if (responseAdapter) {
+      responseHeaders = responseAdapter.headers;
+    }
     response.writeHead(upstreamResponse.status, Object.fromEntries(filteredResponseHeaders(responseHeaders)));
     if (!upstreamResponse.body) {
       if (shouldCaptureUsage) {
@@ -663,7 +674,32 @@ class GatewayService {
       return;
     }
 
-    const responseBody = Readable.fromWeb(upstreamResponse.body as unknown as import("node:stream/web").ReadableStream);
+    if (responseAdapter?.transformText) {
+      const upstreamText = await upstreamResponse.text();
+      const responseText = responseAdapter.transformText(upstreamText);
+      response.end(responseText);
+      if (shouldCaptureUsage) {
+        void recordGatewayUsageCapture({
+          bodyText: responseText,
+          client,
+          durationMs: Date.now() - startedAt,
+          fallbackModel: routedModel,
+          method,
+          path,
+          providerProtocol: resolveResponseProviderProtocol(responseHeaders, this.config),
+          requestId,
+          responseHeaders,
+          statusCode: upstreamResponse.status
+        });
+      }
+      writeRequestLog(upstreamResponse.status, responseHeaders, responseText);
+      return;
+    }
+
+    const upstreamBody = Readable.fromWeb(upstreamResponse.body as unknown as import("node:stream/web").ReadableStream);
+    const responseBody = responseAdapter?.createStreamTransform
+      ? upstreamBody.pipe(responseAdapter.createStreamTransform())
+      : upstreamBody;
     const sampler = createBodySampler();
     let logRecorded = false;
     const writeStreamLog = (error?: string) => {
@@ -1433,7 +1469,7 @@ function rewriteProviderListHeader(
 
 function rewriteProviderSelectorForProtocol(value: string, config: AppConfig, protocol: GatewayProviderProtocol): string {
   const provider = findProviderByPublicOrInternalName(config, value);
-  const capability = provider ? providerCapabilityForProtocol(provider, protocol) : undefined;
+  const capability = provider ? providerCapabilityForClientProtocol(provider, protocol) : undefined;
   return provider && capability ? providerCapabilityInternalName(provider.name, capability.type) : value;
 }
 
@@ -1477,15 +1513,46 @@ function rewriteModelSelectorForProtocol(
   const providerName = normalized.slice(0, separator).trim();
   const targetModel = normalized.slice(separator + 1).trim();
   const provider = findProviderByPublicOrInternalName(config, providerName);
-  const capability = provider ? providerCapabilityForProtocol(provider, protocol) : undefined;
+  const capability = provider ? providerCapabilityForClientProtocol(provider, protocol) : undefined;
   return provider && capability ? `${providerCapabilityInternalName(provider.name, capability.type)}/${targetModel}` : model;
 }
 
-function providerCapabilityForProtocol(
+function providerCapabilityForClientProtocol(
   provider: GatewayProviderConfig,
-  protocol: GatewayProviderProtocol
+  clientProtocol: GatewayProviderProtocol
 ): GatewayProviderCapability | undefined {
-  return normalizedProviderCapabilities(provider).find((capability) => capability.type === protocol);
+  const capabilities = normalizedProviderCapabilities(provider);
+  for (const protocol of providerProtocolPreferenceForClient(clientProtocol)) {
+    const capability = capabilities.find((item) => item.type === protocol);
+    if (capability) {
+      return capability;
+    }
+  }
+  return undefined;
+}
+
+function providerProtocolForClientProtocol(
+  provider: GatewayProviderConfig,
+  clientProtocol: GatewayProviderProtocol
+): GatewayProviderProtocol | undefined {
+  const capability = providerCapabilityForClientProtocol(provider, clientProtocol);
+  if (capability) {
+    return capability.type;
+  }
+  const directProtocol =
+    normalizeProviderProtocol(provider.type) ??
+    normalizeProviderProtocol(provider.provider) ??
+    inferProtocol(provider);
+  return providerProtocolPreferenceForClient(clientProtocol).includes(directProtocol)
+    ? directProtocol
+    : undefined;
+}
+
+function providerProtocolPreferenceForClient(clientProtocol: GatewayProviderProtocol): GatewayProviderProtocol[] {
+  if (clientProtocol === "openai_responses") {
+    return ["openai_responses", "openai_chat_completions", "anthropic_messages"];
+  }
+  return [clientProtocol];
 }
 
 function findProviderByPublicOrInternalName(config: AppConfig, name: string): GatewayProviderConfig | undefined {
@@ -1683,12 +1750,13 @@ function resolveProviderCredentialRoutingTarget(
   const parsedModel = parseProviderModelSelector(bodyModel);
   if (parsedModel) {
     const provider = findProviderByPublicOrInternalName(config, parsedModel.provider);
-    if (provider && activeProviderCredentials(provider).length > 0) {
+    const providerProtocol = provider ? providerProtocolForClientProtocol(provider, protocol) : undefined;
+    if (provider && providerProtocol && activeProviderCredentials(provider).length > 0) {
       return {
         body: parsedBody ? serializeJsonBodyWithModel(parsedBody, parsedModel.model) : body,
         model: parsedModel.model,
         provider,
-        protocol
+        protocol: providerProtocol
       };
     }
   }
@@ -1702,12 +1770,16 @@ function resolveProviderCredentialRoutingTarget(
   if (!provider || activeProviderCredentials(provider).length === 0) {
     return undefined;
   }
+  const providerProtocol = providerProtocolForClientProtocol(provider, protocol);
+  if (!providerProtocol) {
+    return undefined;
+  }
 
   return {
     body,
     model: bodyModel,
     provider,
-    protocol
+    protocol: providerProtocol
   };
 }
 

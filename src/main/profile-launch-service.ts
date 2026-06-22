@@ -2,7 +2,7 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { AppConfig, ProfileOpenCommandResult, ProfileOpenRequest, ProfileOpenResult } from "../shared/app";
+import type { AppConfig, ProfileOpenCommandResult, ProfileOpenRequest, ProfileOpenResult, ProfileRuntimeEntry, ProfileRuntimeStatus, ProfileStopResult } from "../shared/app";
 import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { applyClaudeAppGatewayConfig } from "./claude-app-gateway-service";
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "./claude-app-launch";
@@ -16,8 +16,25 @@ import { applyProfileConfig } from "./profile-service";
 const ccrPathBlockStart = "# >>> Claude Code Router CLI >>>";
 const ccrPathBlockEnd = "# <<< Claude Code Router CLI <<<";
 let claudeAppBotWorker: ChildProcess | undefined;
+let claudeAppBotWorkerProfileId: string | undefined;
 
-process.once("exit", stopClaudeAppBotWorker);
+type ProfileAppLaunchResult = {
+  child: ChildProcess;
+  command: string;
+  pidIsLauncher?: boolean;
+  pid?: number;
+  userDataDir: string;
+};
+
+type RunningProfileApp = ProfileRuntimeEntry & {
+  child: ChildProcess;
+  command: string;
+  pidIsLauncher?: boolean;
+  stopRequested?: boolean;
+  userDataDir: string;
+};
+
+process.once("exit", () => stopClaudeAppBotWorker());
 
 export async function getProfileOpenCommand(config: AppConfig, request: ProfileOpenRequest): Promise<ProfileOpenCommandResult> {
   await applyProfileConfig(config);
@@ -40,7 +57,7 @@ export async function openProfileFromCcr(config: AppConfig, request: ProfileOpen
     return openClaudeAppProfile(config, profile);
   }
   if (profile.agent === "codex" && surface === "app") {
-    return openCodexAppProfile(config, profile);
+    return await openCodexAppProfile(config, profile);
   }
   const plan = buildProfileLaunchPlan(CONFIGDIR, profile, surface);
   if (path.isAbsolute(plan.command) && !existsSync(plan.command)) {
@@ -66,8 +83,29 @@ export async function openProfileFromCcr(config: AppConfig, request: ProfileOpen
   };
 }
 
-function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): ProfileOpenResult {
-  launchCodexAppProfile(CONFIGDIR, profile, config);
+async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): Promise<ProfileOpenResult> {
+  const existing = runningProfileApp(profile.id, "app");
+  if (existing) {
+    activateProfileAppWindow(existing);
+    return {
+      message: `Codex App is already running with ${profile.name || profile.id}.`,
+      profileId: profile.id,
+      profileName: profile.name,
+      surface: "app"
+    };
+  }
+  const entry = registerProfileApp(profile, "app", launchCodexAppProfile(CONFIGDIR, profile, config));
+  const started = await waitForProfileAppStart(entry, 12000);
+  if (!started) {
+    cleanupProfileAppEntry(profileRuntimeKey(profile.id, "app"), entry);
+    sendProfileProcessSignal(entry.pid, "SIGTERM");
+    throw new Error([
+      `Codex App did not open a window for ${profile.name || profile.id}.`,
+      `Command: ${entry.command}`,
+      `User data: ${entry.userDataDir}`
+    ].join(" "));
+  }
+  activateProfileAppWindow(entry);
   return {
     message: `Opened Codex App with ${profile.name || profile.id}.`,
     profileId: profile.id,
@@ -77,6 +115,17 @@ function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof findP
 }
 
 async function openClaudeAppProfile(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): Promise<ProfileOpenResult> {
+  const existing = runningProfileApp(profile.id, "app");
+  if (existing) {
+    activateProfileAppWindow(existing);
+    return {
+      message: `Claude App is already running with ${profile.name || profile.id}.`,
+      profileId: profile.id,
+      profileName: profile.name,
+      surface: "app"
+    };
+  }
+
   const token = findProfileApiKey(config, profile);
   if (!token) {
     throw new Error(`No CCR API key was found for profile "${profile.name || profile.id}". Re-save the profile and try again.`);
@@ -112,7 +161,7 @@ async function openClaudeAppProfile(config: AppConfig, profile: ReturnType<typeo
       throw new Error(startedStatus.lastError || "CCR gateway did not start.");
     }
   }
-  launchClaudeAppProfile(CONFIGDIR, profile, config);
+  activateProfileAppWindow(registerProfileApp(profile, "app", launchClaudeAppProfile(CONFIGDIR, profile, config)));
   startClaudeAppBotWorker(config, profile);
   return {
     message: `Opened Claude App with ${profile.name || profile.id}.`,
@@ -120,6 +169,302 @@ async function openClaudeAppProfile(config: AppConfig, profile: ReturnType<typeo
     profileName: profile.name,
     surface: "app"
   };
+}
+
+export function getProfileRuntimeStatus(): ProfileRuntimeStatus {
+  cleanupExitedProfileApps();
+  return {
+    profiles: [...runningProfileApps.values()].map((entry) => ({
+      agent: entry.agent,
+      pid: entry.pid,
+      profileId: entry.profileId,
+      profileName: entry.profileName,
+      startedAt: entry.startedAt,
+      state: entry.state,
+      surface: entry.surface
+    }))
+  };
+}
+
+export async function stopProfileFromCcr(config: AppConfig, request: ProfileOpenRequest): Promise<ProfileStopResult> {
+  const profile = findProfileForOpen(config, request.profileId);
+  const surface = resolveProfileOpenSurface(profile, request.surface);
+  if (surface !== "app") {
+    throw new Error(`${profile.name || profile.id} does not support stopping ${surface.toUpperCase()} from CCR.`);
+  }
+
+  const key = profileRuntimeKey(profile.id, surface);
+  const entry = runningProfileApps.get(key);
+  if (!entry) {
+    return {
+      message: `No running app was found for ${profile.name || profile.id}.`,
+      profileId: profile.id,
+      profileName: profile.name,
+      stopped: false,
+      surface
+    };
+  }
+
+  const stopped = await stopRunningProfileApp(key, entry);
+  if (stopped && profile.agent === "claude-code") {
+    stopClaudeAppBotWorker(profile.id);
+  }
+  return {
+    message: stopped
+      ? `Stopped ${profile.name || profile.id}.`
+      : `Stop requested for ${profile.name || profile.id}. It may take a moment to close.`,
+    profileId: profile.id,
+    profileName: profile.name,
+    stopped,
+    surface
+  };
+}
+
+const runningProfileApps = new Map<string, RunningProfileApp>();
+
+function registerProfileApp(
+  profile: ReturnType<typeof findProfileForOpen>,
+  surface: ProfileOpenRequest["surface"],
+  launch: ProfileAppLaunchResult
+): RunningProfileApp {
+  const key = profileRuntimeKey(profile.id, surface);
+  const existing = runningProfileApps.get(key);
+  if (existing && isProcessAlive(existing.pid)) {
+    sendProfileProcessSignal(existing.pid, "SIGTERM");
+  }
+
+  const entry: RunningProfileApp = {
+    agent: profile.agent,
+    child: launch.child,
+    command: launch.command,
+    pid: launch.pid,
+    pidIsLauncher: launch.pidIsLauncher,
+    profileId: profile.id,
+    profileName: profile.name,
+    startedAt: new Date().toISOString(),
+    state: "running",
+    surface,
+    userDataDir: launch.userDataDir
+  };
+  runningProfileApps.set(key, entry);
+
+  launch.child.once("exit", () => {
+    if (entry.pidIsLauncher && isProfileAppRunning(entry)) {
+      return;
+    }
+    cleanupProfileAppEntry(key, entry);
+  });
+  launch.child.once("error", () => cleanupProfileAppEntry(key, entry));
+  return entry;
+}
+
+function activateProfileAppWindow(entry: Pick<RunningProfileApp, "pid" | "userDataDir">): void {
+  if (process.platform !== "darwin") {
+    return;
+  }
+  for (const delayMs of [250, 1200]) {
+    setTimeout(() => {
+      const pid = profileAppMainPid(entry) ?? entry.pid;
+      if (!isProcessAlive(pid)) {
+        return;
+      }
+      try {
+        const child = spawn("/usr/bin/osascript", [
+          "-e",
+          `tell application "System Events" to set frontmost of the first process whose unix id is ${pid} to true`
+        ], {
+          detached: true,
+          stdio: "ignore"
+        });
+        child.unref();
+      } catch {
+        // Activation is best-effort; the app process itself has already been started.
+      }
+    }, delayMs).unref();
+  }
+}
+
+function runningProfileApp(profileId: string, surface: ProfileOpenRequest["surface"]): RunningProfileApp | undefined {
+  const key = profileRuntimeKey(profileId, surface);
+  const entry = runningProfileApps.get(key);
+  if (!entry) {
+    return undefined;
+  }
+  if (isProfileAppRunning(entry)) {
+    return entry;
+  }
+  cleanupProfileAppEntry(key, entry);
+  return undefined;
+}
+
+function cleanupExitedProfileApps(): void {
+  for (const [key, entry] of runningProfileApps) {
+    if (!isProfileAppRunning(entry)) {
+      cleanupProfileAppEntry(key, entry);
+    }
+  }
+}
+
+function cleanupProfileAppEntry(key: string, entry: RunningProfileApp): void {
+  if (runningProfileApps.get(key) !== entry) {
+    return;
+  }
+  runningProfileApps.delete(key);
+  if (entry.stopRequested && entry.agent === "claude-code") {
+    stopClaudeAppBotWorker(entry.profileId);
+  }
+}
+
+async function stopRunningProfileApp(key: string, entry: RunningProfileApp): Promise<boolean> {
+  if (!isProfileAppRunning(entry)) {
+    runningProfileApps.delete(key);
+    return false;
+  }
+
+  entry.stopRequested = true;
+  sendProfileProcessSignal(profileAppMainPid(entry) ?? entry.pid, "SIGTERM");
+  if (await waitForProfileAppExit(entry, 5000)) {
+    runningProfileApps.delete(key);
+    return true;
+  }
+
+  return false;
+}
+
+function profileRuntimeKey(profileId: string, surface: ProfileOpenRequest["surface"]): string {
+  return `${surface}:${profileId}`;
+}
+
+function isProcessAlive(pid: number | undefined): boolean {
+  if (!pid) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return nodeErrorCode(error) === "EPERM";
+  }
+}
+
+function isProfileAppRunning(entry: Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "userDataDir">): boolean {
+  if (profileAppMainPid(entry)) {
+    return true;
+  }
+  return !entry.pidIsLauncher && isProcessAlive(entry.pid);
+}
+
+function profileAppMainPid(entry: Pick<RunningProfileApp, "userDataDir">): number | undefined {
+  if (!entry.userDataDir) {
+    return undefined;
+  }
+  const marker = normalizeProcessPath(entry.userDataDir);
+  try {
+    const result = spawnSync("ps", ["-Ao", "pid=,command="], {
+      encoding: "utf8"
+    });
+    if (result.error || result.status !== 0) {
+      return undefined;
+    }
+    for (const line of result.stdout.split(/\r?\n/)) {
+      const match = line.match(/^\s*(\d+)\s+(.+)$/);
+      if (!match) {
+        continue;
+      }
+      const pid = Number(match[1]);
+      const command = match[2];
+      if (!Number.isFinite(pid) || pid <= 0 || pid === process.pid) {
+        continue;
+      }
+      if (path.basename(command.trim().split(/\s+/)[0] || "") === "open") {
+        continue;
+      }
+      if (command.includes(" --type=")) {
+        continue;
+      }
+      if (normalizeProcessPath(command).includes(marker)) {
+        return pid;
+      }
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+function normalizeProcessPath(value: string): string {
+  return process.platform === "win32" ? value.replace(/\\/g, "/").toLowerCase() : value;
+}
+
+function sendProfileProcessSignal(pid: number | undefined, signal: NodeJS.Signals): void {
+  if (!pid) {
+    return;
+  }
+  if (process.platform === "win32") {
+    spawnSync("taskkill.exe", ["/PID", String(pid)], {
+      stdio: "ignore",
+      windowsHide: true
+    });
+    return;
+  }
+
+  try {
+    process.kill(pid, signal);
+  } catch {
+    // The app process may have already exited.
+  }
+}
+
+async function waitForProcessExit(pid: number | undefined, timeoutMs: number): Promise<boolean> {
+  if (!pid) {
+    return true;
+  }
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (!isProcessAlive(pid)) {
+      return true;
+    }
+    await sleep(100);
+  }
+  return !isProcessAlive(pid);
+}
+
+async function waitForProfileAppStart(entry: Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "userDataDir">, timeoutMs: number): Promise<boolean> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (profileAppMainPid(entry)) {
+      return true;
+    }
+    if (!entry.pidIsLauncher && isProcessAlive(entry.pid)) {
+      return true;
+    }
+    if (!entry.pidIsLauncher && !isProcessAlive(entry.pid)) {
+      return false;
+    }
+    await sleep(100);
+  }
+  return Boolean(profileAppMainPid(entry)) || (!entry.pidIsLauncher && isProcessAlive(entry.pid));
+}
+
+async function waitForProfileAppExit(entry: Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "userDataDir">, timeoutMs: number): Promise<boolean> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (!isProfileAppRunning(entry)) {
+      return true;
+    }
+    await sleep(100);
+  }
+  return !isProfileAppRunning(entry);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function nodeErrorCode(error: unknown): string | undefined {
+  return typeof error === "object" && error !== null && "code" in error
+    ? String((error as { code?: unknown }).code)
+    : undefined;
 }
 
 function startClaudeAppBotWorker(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): void {
@@ -163,12 +508,14 @@ function startClaudeAppBotWorker(config: AppConfig, profile: ReturnType<typeof f
     windowsHide: true
   });
   claudeAppBotWorker = child;
+  claudeAppBotWorkerProfileId = profile.id;
   child.stderr?.on("data", (chunk) => {
     console.warn(`[profile] Claude App bot worker stderr: ${chunk.toString("utf8").trim()}`);
   });
   child.once("exit", (code, signal) => {
     if (claudeAppBotWorker === child) {
       claudeAppBotWorker = undefined;
+      claudeAppBotWorkerProfileId = undefined;
     }
     if (code && code !== 0) {
       console.warn(`[profile] Claude App bot worker exited: code=${code}${signal ? ` signal=${signal}` : ""}`);
@@ -177,6 +524,7 @@ function startClaudeAppBotWorker(config: AppConfig, profile: ReturnType<typeof f
   child.once("error", (error) => {
     if (claudeAppBotWorker === child) {
       claudeAppBotWorker = undefined;
+      claudeAppBotWorkerProfileId = undefined;
     }
     console.warn(`[profile] Claude App bot worker failed: ${formatError(error)}`);
   });
@@ -226,9 +574,13 @@ function ensureClaudeBotWorkerRuntime(runtimeFile: string): void {
   }
 }
 
-function stopClaudeAppBotWorker(): void {
+function stopClaudeAppBotWorker(profileId?: string): void {
+  if (profileId && claudeAppBotWorkerProfileId && claudeAppBotWorkerProfileId !== profileId) {
+    return;
+  }
   const child = claudeAppBotWorker;
   claudeAppBotWorker = undefined;
+  claudeAppBotWorkerProfileId = undefined;
   if (!child || child.killed) {
     return;
   }

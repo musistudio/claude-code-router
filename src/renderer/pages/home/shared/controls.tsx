@@ -18,7 +18,7 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove, rectSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, LayoutGroup } from "motion/react";
 import {
   Activity,
   ArrowDown,
@@ -273,11 +273,10 @@ import {
   AnimatedDisclosure,
   AnimatedFieldSlot,
   AnimatedListItem,
+  AnimatedPopover,
   disclosureSpringTransition,
   listSpringTransition,
-  motionEase,
   pageSpringTransition,
-  reducedMotionTransition,
   ViewMotionShell
 } from "./motion";
 import {
@@ -675,7 +674,6 @@ export function EndpointTitleBar({
   proxyStatus: ProxyStatus;
 }) {
   const t = useAppText();
-  const shouldReduceMotion = useReducedMotion();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const running = gatewayStatus.state === "running";
@@ -742,13 +740,7 @@ export function EndpointTitleBar({
 
       <AnimatePresence initial={false}>
         {open ? (
-          <motion.div
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="absolute left-1/2 top-full z-50 mt-2 w-[288px] max-w-[calc(100vw-24px)] -translate-x-1/2"
-            exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98, y: -6 }}
-            initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98, y: -6 }}
-            transition={shouldReduceMotion ? reducedMotionTransition : { damping: 34, mass: 0.68, stiffness: 520, type: "spring" }}
-          >
+          <AnimatedPopover className="absolute left-1/2 top-full z-50 mt-2 w-[288px] max-w-[calc(100vw-24px)] -translate-x-1/2">
             <PopoverContent
               aria-label={t("Endpoint information")}
               className="p-3"
@@ -786,7 +778,7 @@ export function EndpointTitleBar({
                 {t("Advanced Settings...")}
               </Button>
             </PopoverContent>
-          </motion.div>
+          </AnimatedPopover>
         ) : null}
       </AnimatePresence>
     </div>

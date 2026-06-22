@@ -1,5 +1,5 @@
-import type { ComponentProps } from "react";
-import { AnimatePresence } from "../shared";
+import type { ComponentProps, ReactElement } from "react";
+import { AnimatePresence, DialogStackLayer } from "../shared";
 import { AddApiKeyDialog, EditApiKeyDialog } from "./api-keys";
 import { ConfigureClaudeDesignDialog, DeleteExtensionDialog, PluginSettingsDialog } from "./extensions";
 import { AddProfileDialog, ProfileOpenDialog } from "./profiles";
@@ -45,25 +45,33 @@ export function AppDialogStack({
   settings?: ComponentProps<typeof AppSettingsDialog>;
   virtualModelUpsert?: ComponentProps<typeof VirtualModelDialog>;
 }) {
+  const dialogs = [
+    apiKeyAdd ? { key: "api-key-add", node: <AddApiKeyDialog {...apiKeyAdd} /> } : null,
+    profileAdd ? { key: "profile-add", node: <AddProfileDialog {...profileAdd} /> } : null,
+    profileEdit ? { key: "profile-edit", node: <AddProfileDialog {...profileEdit} /> } : null,
+    profileOpen ? { key: "profile-open", node: <ProfileOpenDialog {...profileOpen} /> } : null,
+    apiKeyEdit ? { key: "api-key-edit", node: <EditApiKeyDialog {...apiKeyEdit} /> } : null,
+    providerDeepLink ? { key: "provider-deep-link", node: <ProviderDeepLinkDialog {...providerDeepLink} /> } : null,
+    providerUpsert ? { key: "provider-upsert", node: <AddProviderDialog {...providerUpsert} /> } : null,
+    providerDelete ? { key: "provider-delete", node: <DeleteProviderDialog {...providerDelete} /> } : null,
+    routingUpsert ? { key: "routing-upsert", node: <AddRoutingRuleDialog {...routingUpsert} /> } : null,
+    routingDelete ? { key: "routing-delete", node: <DeleteRoutingRuleDialog {...routingDelete} /> } : null,
+    virtualModelUpsert ? { key: "virtual-model-upsert", node: <VirtualModelDialog {...virtualModelUpsert} /> } : null,
+    extensionInstall ? { key: "extension-install", node: <InstallExtensionDialog {...extensionInstall} /> } : null,
+    extensionDelete ? { key: "extension-delete", node: <DeleteExtensionDialog {...extensionDelete} /> } : null,
+    extensionSettings ? { key: "extension-settings", node: <PluginSettingsDialog {...extensionSettings} /> } : null,
+    claudeDesignConfig ? { key: "extension-config", node: <ConfigureClaudeDesignDialog {...claudeDesignConfig} /> } : null,
+    cursorProxyConfig ? { key: "cursor-proxy-config", node: <ConfigureClaudeDesignDialog {...cursorProxyConfig} /> } : null,
+    settings ? { key: "settings", node: <AppSettingsDialog {...settings} /> } : null
+  ].filter((dialog): dialog is { key: string; node: ReactElement } => Boolean(dialog));
+
   return (
     <AnimatePresence initial={false}>
-      {apiKeyAdd ? <AddApiKeyDialog {...apiKeyAdd} key="api-key-add" /> : null}
-      {profileAdd ? <AddProfileDialog {...profileAdd} key="profile-add" /> : null}
-      {profileEdit ? <AddProfileDialog {...profileEdit} key="profile-edit" /> : null}
-      {profileOpen ? <ProfileOpenDialog {...profileOpen} key="profile-open" /> : null}
-      {apiKeyEdit ? <EditApiKeyDialog {...apiKeyEdit} key="api-key-edit" /> : null}
-      {providerDeepLink ? <ProviderDeepLinkDialog {...providerDeepLink} key="provider-deep-link" /> : null}
-      {providerUpsert ? <AddProviderDialog {...providerUpsert} key="provider-upsert" /> : null}
-      {providerDelete ? <DeleteProviderDialog {...providerDelete} key="provider-delete" /> : null}
-      {routingUpsert ? <AddRoutingRuleDialog {...routingUpsert} key="routing-upsert" /> : null}
-      {routingDelete ? <DeleteRoutingRuleDialog {...routingDelete} key="routing-delete" /> : null}
-      {virtualModelUpsert ? <VirtualModelDialog {...virtualModelUpsert} key="virtual-model-upsert" /> : null}
-      {extensionInstall ? <InstallExtensionDialog {...extensionInstall} key="extension-install" /> : null}
-      {extensionDelete ? <DeleteExtensionDialog {...extensionDelete} key="extension-delete" /> : null}
-      {extensionSettings ? <PluginSettingsDialog {...extensionSettings} key="extension-settings" /> : null}
-      {claudeDesignConfig ? <ConfigureClaudeDesignDialog {...claudeDesignConfig} key="extension-config" /> : null}
-      {cursorProxyConfig ? <ConfigureClaudeDesignDialog {...cursorProxyConfig} key="cursor-proxy-config" /> : null}
-      {settings ? <AppSettingsDialog {...settings} key="settings" /> : null}
+      {dialogs.map((dialog, index) => (
+        <DialogStackLayer depth={dialogs.length - index - 1} key={dialog.key}>
+          {dialog.node}
+        </DialogStackLayer>
+      ))}
     </AnimatePresence>
   );
 }

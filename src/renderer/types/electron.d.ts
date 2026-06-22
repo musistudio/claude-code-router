@@ -33,6 +33,8 @@ import type {
   ProfileOpenCommandResult,
   ProfileOpenRequest,
   ProfileOpenResult,
+  ProfileRuntimeStatus,
+  ProfileStopResult,
   ProviderAccountSnapshotRequestOptions,
   ProviderAccountTestRequest,
   ProviderAccountTestResult,
@@ -74,6 +76,7 @@ declare global {
       getOnboardingFinished: () => Promise<boolean>;
       getPendingProviderDeepLinks: () => Promise<ProviderDeepLinkRequest[]>;
       getProfileOpenCommand: (request: ProfileOpenRequest) => Promise<ProfileOpenCommandResult>;
+      getProfileRuntimeStatus: () => Promise<ProfileRuntimeStatus>;
       getProviderAccountSnapshots: (provider?: string, options?: ProviderAccountSnapshotRequestOptions) => Promise<ProviderAccountSnapshot[]>;
       getProviderPresets: () => Promise<ProviderPreset[]>;
       getPluginMarketplace: () => Promise<PluginMarketplaceEntry[]>;
@@ -105,6 +108,7 @@ declare global {
       startGateway: () => Promise<GatewayStatus>;
       startBotGatewayQrLogin: (request: BotGatewayQrLoginStartRequest) => Promise<BotGatewayQrLoginStartResult>;
       stopGateway: () => Promise<GatewayStatus>;
+      stopProfile: (request: ProfileOpenRequest) => Promise<ProfileStopResult>;
       scanBotHandoffBluetoothTargets: () => Promise<BotHandoffScanTarget[]>;
       scanBotHandoffWifiTargets: () => Promise<BotHandoffScanTarget[]>;
       testProviderAccountConnector: (request: ProviderAccountTestRequest) => Promise<ProviderAccountTestResult>;

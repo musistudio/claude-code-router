@@ -1,5 +1,5 @@
 import {
-  AnimatedDisclosure, AnimatedListItem, AnimatePresence, Check, ChevronDown, ChevronLeft,
+  AnimatedDisclosure, AnimatedIconSwap, AnimatedListItem, AnimatePresence, Check, ChevronDown, ChevronLeft,
   ChevronRight, clampNumber, clientInitial, cn, Copy, copyTextToClipboard,
   createInitialLogJsonExpandedPaths, Database, filterLogText, formatBytes, formatCompactNumber, formatDuration,
   formatLogBodyView, formatLogDateTime, formatLogTokenSummary, formatNetworkRequestRaw, formatNetworkResponseRaw, formatUsdCost,
@@ -689,31 +689,9 @@ function LogBodyViewer({
         title={copied ? t("Copied") : t("复制")}
         type="button"
       >
-        <AnimatePresence initial={false} mode="wait">
-          {copied ? (
-            <motion.span
-              animate={{ opacity: 1, scale: 1 }}
-              className="flex items-center justify-center"
-              exit={{ opacity: 0, scale: 0.85 }}
-              initial={{ opacity: 0, scale: 0.85 }}
-              key="copied"
-              transition={{ duration: 0.12 }}
-            >
-              <Check className="h-3.5 w-3.5" />
-            </motion.span>
-          ) : (
-            <motion.span
-              animate={{ opacity: 1, scale: 1 }}
-              className="flex items-center justify-center"
-              exit={{ opacity: 0, scale: 0.85 }}
-              initial={{ opacity: 0, scale: 0.85 }}
-              key="copy"
-              transition={{ duration: 0.12 }}
-            >
-              <Copy className="h-3.5 w-3.5" />
-            </motion.span>
-          )}
-        </AnimatePresence>
+        <AnimatedIconSwap iconKey={copied ? "copied" : "copy"}>
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        </AnimatedIconSwap>
       </button>
       {children}
     </div>

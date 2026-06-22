@@ -1,12 +1,12 @@
 import {
-  AddProfileDraft, AgentLogo, AnimatePresence, AppConfig, Badge, BotGatewaySavedConfig, botGatewaySavedConfigLabel, BotHandoffScanTarget, Button,
+  AddProfileDraft, AgentLogo, AnimatedIconSwap, AnimatedPopover, AnimatePresence, AppConfig, Badge, BotGatewaySavedConfig, botGatewaySavedConfigLabel, BotHandoffScanTarget, Button,
 	  Card, CardContent, CardHeader, CardTitle, Check, ChevronDown, Copy,
 	  cn, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader,
 	  DialogTitle, Field, GatewayProviderConfig, Info, Input, KeyValueRowsControl, LoaderCircle, motion,
   normalizeProfileScope, normalizeProfileSurface, parseProfileModelValue, Pencil, Plus, PopoverContent,
   profileAgentLabel, profileAgentOptions, ProfileConfig, profileModelDisplayValue, profileModelMatchesQuery, profileModelProviderMatchesQuery,
   profileModelProviderOptions, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
-  Play, RefreshCw, Search, Select, SelectControl, Terminal, Toggle, translateOptions, Trash2, useAppText, type ProfileOpenSurface, type VirtualModelProfileConfig,
+  Play, Power, RefreshCw, Search, Select, SelectControl, Terminal, Toggle, translateOptions, Trash2, useAppText, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactNode, type VirtualModelProfileConfig,
   copyTextToClipboard,
   useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, X
 } from "../shared";
@@ -24,7 +24,9 @@ export function ProfileView({
   editProfile,
   openProfileApp,
   profileActionBusy,
+  profileRuntimeStatus,
   removeProfile,
+  stopProfileApp,
   updateProfileItem
 }: {
   addProfile: (agent?: ProfileConfig["agent"]) => void;
@@ -34,7 +36,9 @@ export function ProfileView({
   editProfile: (index: number) => void;
   openProfileApp: (index: number) => void;
   profileActionBusy?: ProfileActionBusy;
+  profileRuntimeStatus: ProfileRuntimeStatus;
   removeProfile: (index: number) => void;
+  stopProfileApp: (index: number) => void;
   updateProfileItem: (index: number, patch: Partial<ProfileConfig>) => void;
 }) {
   const t = useAppText();
@@ -78,6 +82,12 @@ export function ProfileView({
               const summaryItems = profileSummaryItems(profile, config, t);
               const cliBusy = profileActionBusy?.profileId === profile.id && profileActionBusy.surface === "cli";
               const appBusy = profileActionBusy?.profileId === profile.id && profileActionBusy.surface === "app";
+              const appRunning = profileRuntimeStatus.profiles.some((entry) =>
+                entry.profileId === profile.id && entry.surface === "app" && entry.state === "running"
+              );
+              const appActionLabel = appRunning ? "Stop" : "Start";
+              const appActionTooltip = `${t(appActionLabel)} ${t("App")}`;
+              const cliActionTooltip = `${t("Copy")} ${t("CLI command")}`;
               const showProfileLaunchActions = profile.enabled;
               const profileActionDisabled = Boolean(profileActionBusy);
 
@@ -111,30 +121,36 @@ export function ProfileView({
                     <div className="flex shrink-0 items-center gap-2">
                       <Toggle checked={profile.enabled} onChange={(enabled) => updateProfileItem(index, { enabled })} />
                       {showProfileLaunchActions && openSurfaces.includes("cli") ? (
-                        <Button
-                          aria-label={`${t("Copy")} ${t("CLI command")} ${profile.name || t("Profile")}`}
-                          disabled={profileActionDisabled}
-                          onClick={() => copyProfileCliCommand(index)}
-                          size="iconSm"
-                          title={t("CLI command")}
-                          type="button"
-                          variant="ghost"
-                        >
-                          {cliBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Terminal className="h-3.5 w-3.5" />}
-                        </Button>
+                        <ProfileActionTooltip label={cliActionTooltip}>
+                          <Button
+                            aria-label={`${cliActionTooltip} ${profile.name || t("Profile")}`}
+                            disabled={profileActionDisabled}
+                            onClick={() => copyProfileCliCommand(index)}
+                            size="iconSm"
+                            type="button"
+                            variant="ghost"
+                          >
+	                            <AnimatedIconSwap iconKey={cliBusy ? "busy" : "terminal"}>
+	                              {cliBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Terminal className="h-3.5 w-3.5" />}
+	                            </AnimatedIconSwap>
+                          </Button>
+                        </ProfileActionTooltip>
                       ) : null}
                       {showProfileLaunchActions && openSurfaces.includes("app") ? (
-                        <Button
-                          aria-label={`${t("Open")} ${t("App")} ${profile.name || t("Profile")}`}
-                          disabled={profileActionDisabled}
-                          onClick={() => openProfileApp(index)}
-                          size="iconSm"
-                          title={t("Open")}
-                          type="button"
-                          variant="ghost"
-                        >
-                          {appBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-                        </Button>
+                        <ProfileActionTooltip label={appActionTooltip}>
+                          <Button
+                            aria-label={`${appActionTooltip} ${profile.name || t("Profile")}`}
+                            disabled={profileActionDisabled}
+                            onClick={() => appRunning ? stopProfileApp(index) : openProfileApp(index)}
+                            size="iconSm"
+                            type="button"
+                            variant={appRunning ? "outline" : "ghost"}
+                          >
+	                            <AnimatedIconSwap iconKey={appBusy ? "busy" : appRunning ? "stop" : "play"}>
+	                              {appBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : appRunning ? <Power className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+	                            </AnimatedIconSwap>
+                          </Button>
+                        </ProfileActionTooltip>
                       ) : null}
                       <Button aria-label={`${t("Edit")} ${profile.name || t("Profile")}`} onClick={() => editProfile(index)} size="iconSm" title={t("Edit")} type="button" variant="ghost">
                         <Pencil className="h-3.5 w-3.5" />
@@ -161,24 +177,29 @@ export function ProfileView({
 }
 
 export function ProfileOpenDialog({
+  appRunning = false,
   busy,
   command,
   error,
   mode,
   onChooseApp,
   onClose,
+  onStopApp,
   profile
 }: {
+  appRunning?: boolean;
   busy?: ProfileOpenSurface | "";
   command?: string;
   error?: string;
   mode: "choose" | "cli";
   onChooseApp: () => void;
   onClose: () => void;
+  onStopApp: () => void;
   profile: ProfileConfig;
 }) {
   const t = useAppText();
   const surfaces = profileOpenSurfaces(profile);
+  const appActionLabel = appRunning ? "Stop" : "App";
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<number>();
 
@@ -218,9 +239,11 @@ export function ProfileOpenDialog({
               <AgentLogo agent={profile.agent} className="h-6 w-6 rounded-[5px]" />
               <div className="min-w-0 flex-1 truncate text-[13px] font-semibold">{profile.name || profile.id}</div>
               {mode === "choose" && surfaces.includes("app") ? (
-                <Button className="shrink-0" disabled={Boolean(busy)} onClick={onChooseApp} size="sm" type="button" variant="outline">
-                  {busy === "app" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                  {t("App")}
+                <Button className="shrink-0" disabled={Boolean(busy)} onClick={appRunning ? onStopApp : onChooseApp} size="sm" type="button" variant="outline">
+	                  <AnimatedIconSwap iconKey={busy === "app" ? "busy" : appRunning ? "stop" : "play"}>
+	                    {busy === "app" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : appRunning ? <Power className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+	                  </AnimatedIconSwap>
+                  {t(appActionLabel)}
                 </Button>
               ) : null}
             </div>
@@ -260,6 +283,26 @@ export function ProfileOpenDialog({
   );
 }
 
+function ProfileActionTooltip({
+  children,
+  label
+}: {
+  children: ReactNode;
+  label: string;
+}) {
+  return (
+    <span className="group relative inline-flex shrink-0">
+      {children}
+      <span
+        className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 max-w-[180px] -translate-x-1/2 rounded-md border border-border bg-popover px-2 py-1 text-[11px] font-medium leading-4 text-popover-foreground opacity-0 shadow-card transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+        role="tooltip"
+      >
+        <span className="block truncate whitespace-nowrap">{label}</span>
+      </span>
+    </span>
+  );
+}
+
 function ProfileCliCommandBlock({
   command,
   copied,
@@ -279,7 +322,9 @@ function ProfileCliCommandBlock({
           {command || t("Loading")}
         </code>
         <Button aria-label={copied ? t("Copied") : t("Copy")} disabled={!command} onClick={onCopy} size="iconSm" title={copied ? t("Copied") : t("Copy")} type="button" variant={copied ? "default" : "outline"}>
-          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+	          <AnimatedIconSwap iconKey={copied ? "copied" : "copy"}>
+	            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+	          </AnimatedIconSwap>
         </Button>
       </div>
     </div>
@@ -395,13 +440,7 @@ function AgentSelectControl({
 
       <AnimatePresence initial={false}>
         {open ? (
-          <motion.div
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="absolute left-0 right-0 top-full z-50 mt-1"
-            exit={{ opacity: 0, scale: 0.98, y: -4 }}
-            initial={{ opacity: 0, scale: 0.98, y: -4 }}
-            transition={{ duration: 0.12, ease: "easeOut" }}
-          >
+          <AnimatedPopover className="absolute left-0 right-0 top-full z-50 mt-1">
             <PopoverContent
               className="overflow-hidden p-1"
               id="profile-agent-select-options"
@@ -433,7 +472,7 @@ function AgentSelectControl({
                 );
               })}
             </PopoverContent>
-          </motion.div>
+          </AnimatedPopover>
         ) : null}
       </AnimatePresence>
     </div>
@@ -623,11 +662,9 @@ function ProfileModelSelector({
 
       <AnimatePresence initial={false}>
         {open ? (
-          <motion.div
-            animate={{ opacity: 1, scale: 1, y: 0 }}
+          <AnimatedPopover
             className="fixed z-[70]"
-            exit={{ opacity: 0, scale: 0.98, y: -4 }}
-            initial={{ opacity: 0, scale: 0.98, y: -4 }}
+            placement={popoverLayout?.placement ?? "below"}
             style={popoverLayout
               ? {
                 left: `${popoverLayout.left}px`,
@@ -638,7 +675,6 @@ function ProfileModelSelector({
                   : { top: `${popoverLayout.offset}px` })
               }
               : undefined}
-            transition={{ duration: 0.12, ease: "easeOut" }}
           >
             <PopoverContent className="w-full overflow-hidden p-2">
               <div className="relative">
@@ -712,7 +748,7 @@ function ProfileModelSelector({
                 </div>
               )}
             </PopoverContent>
-          </motion.div>
+          </AnimatedPopover>
         ) : null}
       </AnimatePresence>
     </div>
@@ -1184,7 +1220,11 @@ export function AddProfileDialog({
 	              {t("Cancel")}
 	            </Button>
 	            <Button disabled={!canSubmit || submitting} onClick={() => void onSubmit()} type="button">
-	              {submitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : mode === "add" ? <Plus className="h-4 w-4" /> : null}
+		              {submitting || mode === "add" ? (
+		                <AnimatedIconSwap iconKey={submitting ? "submitting" : "add"}>
+		                  {submitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+		                </AnimatedIconSwap>
+		              ) : null}
 	              {mode === "edit" ? t("Save") : t("Add")}
 	            </Button>
           </div>

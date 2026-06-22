@@ -17,7 +17,7 @@ import { fetchProviderManifest } from "./provider-manifest-service";
 import { getProviderPresets } from "./presets";
 import { checkGatewayProviderConnectivity, probeGatewayProvider, probeGatewayProviderCandidates } from "./provider-probe";
 import { applyProfileConfig } from "./profile-service";
-import { getProfileOpenCommand, openProfileFromCcr } from "./profile-launch-service";
+import { getProfileOpenCommand, getProfileRuntimeStatus, openProfileFromCcr, stopProfileFromCcr } from "./profile-launch-service";
 import { ensureProxyCertificateAuthority } from "./proxy/certificates";
 import { proxyService } from "./proxy/service";
 import { listMcpServerTools } from "./mcp/tool-discovery";
@@ -75,6 +75,9 @@ ipcMain.handle(IPC_CHANNELS.appGetOnboardingFinished, () => existsSync(ONBOARDIN
 ipcMain.handle(IPC_CHANNELS.appGetPendingProviderDeepLinks, () => deepLinkService.consumePendingProviderRequests());
 ipcMain.handle(IPC_CHANNELS.appGetProfileOpenCommand, async (_event, request: ProfileOpenRequest) => {
   return getProfileOpenCommand(await loadAppConfig(), request);
+});
+ipcMain.handle(IPC_CHANNELS.appGetProfileRuntimeStatus, () => {
+  return getProfileRuntimeStatus();
 });
 ipcMain.handle(IPC_CHANNELS.appGetProviderAccountSnapshots, (_event, provider?: string, options?: ProviderAccountSnapshotRequestOptions) => getProviderAccountSnapshots(provider, options));
 ipcMain.handle(IPC_CHANNELS.appGetProviderPresets, () => getProviderPresets());
@@ -268,6 +271,9 @@ ipcMain.handle(IPC_CHANNELS.appStopGateway, async () => {
   const status = await gatewayService.stop();
   await builtInBrowserService.clearProxy();
   return status;
+});
+ipcMain.handle(IPC_CHANNELS.appStopProfile, async (_event, request: ProfileOpenRequest) => {
+  return stopProfileFromCcr(await loadAppConfig(), request);
 });
 ipcMain.handle(IPC_CHANNELS.appSetTrayDetailOpen, (_event, open: boolean, provider?: string) => {
   trayController.setDetailOpen(Boolean(open), provider);

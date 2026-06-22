@@ -1,5 +1,5 @@
 import {
-  AnimatedListItem, AnimatePresence, Boxes, Button,
+  AnimatedListItem, AnimatedPopover, AnimatePresence, Boxes, Button,
   Card, CardContent, CardHeader, CardTitle, Check, ChevronDown, ChevronRight,
   cn, createMcpServerDraftFromConfig, createRouteModelOptions, defaultFusionWebSearchProvider, Dialog, DialogBody, DialogContent, DialogFooter,
   DialogHeader, DialogTitle, ExtensionInstallDraft, Field, FolderOpen, formatPluginDependencies,
@@ -674,11 +674,9 @@ function FusionToolSelectControl({
 
       <AnimatePresence initial={false}>
         {open ? (
-          <motion.div
-            animate={{ opacity: 1, scale: 1, y: 0 }}
+          <AnimatedPopover
             className="fixed z-[70]"
-            exit={{ opacity: 0, scale: 0.98, y: popoverLayout?.placement === "above" ? 4 : -4 }}
-            initial={{ opacity: 0, scale: 0.98, y: popoverLayout?.placement === "above" ? 4 : -4 }}
+            placement={popoverLayout?.placement ?? "below"}
             style={popoverLayout
               ? {
                 left: `${popoverLayout.left}px`,
@@ -688,7 +686,6 @@ function FusionToolSelectControl({
                   : { top: `${popoverLayout.offset}px` })
               }
               : undefined}
-            transition={{ duration: 0.12, ease: "easeOut" }}
           >
             <PopoverContent
               className="w-full overflow-y-auto p-1"
@@ -805,7 +802,7 @@ function FusionToolSelectControl({
 	                <span className="min-w-0 truncate">{t("Add custom MCP")}</span>
 	              </button>
 	            </PopoverContent>
-	          </motion.div>
+          </AnimatedPopover>
         ) : null}
       </AnimatePresence>
     </div>
