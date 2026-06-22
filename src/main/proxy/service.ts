@@ -31,7 +31,6 @@ import {
   proxyCertificateAuthorityExists,
   proxyCaCertFile,
   readProxyCertificateFingerprintSha256,
-  readProxyCertificateSerialNumber,
   readProxyCertificateAuthority,
   type CertificateAuthority
 } from "./certificates";
@@ -227,7 +226,7 @@ class ProxyService {
     this.upstreamProxy = undefined;
 
     const systemProxyStatus = await withTimeout(systemProxyManager.restore(), systemProxyRestoreTimeoutMs, {
-      lastError: "Timed out while restoring the previous system proxy. Check macOS Network proxy settings if traffic does not recover.",
+      lastError: "Timed out while restoring the previous system proxy. Check system proxy settings if traffic does not recover.",
       state: "error"
     });
 
@@ -419,12 +418,27 @@ class ProxyService {
     }
 
     if (process.platform === "win32") {
-      await execFilePromise("certutil", ["-user", "-addstore", "Root", PROXY_CA_CERT_FILE]);
+      try {
+        await execFilePromise("certutil.exe", ["-user", "-addstore", "Root", PROXY_CA_CERT_FILE]);
+      } catch (error) {
+        const status = await this.getCertificateStatus();
+        return {
+          caCertFile: proxyCaCertFile(),
+          manualCommand: windowsManualCertificateInstallCommand(),
+          message: `Windows could not install the proxy CA certificate: ${formatError(error)}`,
+          ok: false,
+          status
+        };
+      }
+
       const status = await this.getCertificateStatus();
       return {
         caCertFile: proxyCaCertFile(),
-        message: "Certificate installed into the current user's Root store.",
-        ok: true,
+        manualCommand: status.trusted ? undefined : windowsManualCertificateInstallCommand(),
+        message: status.trusted
+          ? "Certificate installed into the current user's Root store."
+          : `Certificate import completed, but Windows trust verification did not find the certificate: ${status.message}`,
+        ok: status.trusted,
         status
       };
     }
@@ -517,22 +531,33 @@ class ProxyService {
     }
 
     if (process.platform === "win32") {
-      const serialNumber = readProxyCertificateSerialNumber();
-      if (!serialNumber) {
+      if (!base.caFingerprintSha256) {
         return {
           ...base,
           canInstall: true,
-          message: "Proxy CA certificate could not be read. Reinstall the CA certificate.",
+          message: "Proxy CA certificate fingerprint could not be read. Reinstall the CA certificate.",
           state: "unknown",
           trusted: false
         };
       }
+
       try {
-        await execFilePromise("certutil", ["-user", "-verifystore", "Root", serialNumber]);
+        const trusted = await windowsCurrentUserRootContainsCertificateFingerprint(base.caFingerprintSha256);
+        if (!trusted) {
+          return {
+            ...base,
+            canInstall: true,
+            message:
+              "Proxy CA certificate is not installed in the current user's Windows Root store. Install this exact CA certificate before enabling HTTPS proxying.",
+            state: "untrusted",
+            trusted: false
+          };
+        }
+
         return {
           ...base,
           canInstall: true,
-          message: "Proxy CA certificate is trusted by the system trust store.",
+          message: "Proxy CA certificate is installed in the current user's Windows Root store.",
           state: "trusted",
           trusted: true
         };
@@ -1500,6 +1525,19 @@ function macosManualCertificateInstallCommand(): string {
   ].join("\n");
 }
 
+function windowsManualCertificateInstallCommand(): string {
+  return `certutil.exe -user -addstore Root ${quoteWindowsCmdArg(PROXY_CA_CERT_FILE)}`;
+}
+
+async function windowsCurrentUserRootContainsCertificateFingerprint(fingerprint: string | undefined): Promise<boolean> {
+  if (!fingerprint) {
+    return false;
+  }
+
+  const output = await execFileText("certutil.exe", ["-user", "-store", "Root"]);
+  return normalizeFingerprint(output).includes(normalizeFingerprint(fingerprint));
+}
+
 async function openMacosTerminalCertificateInstaller(): Promise<string> {
   const installerFile = path.join(os.tmpdir(), `ccr-install-proxy-ca-${randomUUID()}.command`);
   writeFileSync(installerFile, `${macosTerminalCertificateInstallScript()}\n`, "utf8");
@@ -1533,6 +1571,10 @@ function quoteAppleScriptString(value: string): string {
 
 function quoteShellArg(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function quoteWindowsCmdArg(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`;
 }
 
 function readHeader(value: string | string[] | undefined): string | undefined {

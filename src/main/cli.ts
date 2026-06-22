@@ -22,7 +22,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const configFile = process.env.CCR_CONFIG_FILE?.trim() || path.join(os.homedir(), ".claude-code-router", "config.json");
+  const configFile = process.env.CCR_CONFIG_FILE?.trim() || defaultConfigFile();
   const configDir = path.dirname(configFile);
   const config = readConfig(configFile);
   const profile = findProfileForOpen(config, options.profileRef);
@@ -103,6 +103,22 @@ function readConfig(file: string): AppConfig {
       profiles: parsed.profile.profiles
     } as AppConfig["profile"]
   } as AppConfig;
+}
+
+function defaultConfigFile(): string {
+  return path.join(defaultConfigDir(), "config.json");
+}
+
+function defaultConfigDir(): string {
+  if (process.platform === "win32") {
+    return path.join(
+      process.env.APPDATA ||
+        process.env.LOCALAPPDATA ||
+        (process.env.USERPROFILE ? path.join(process.env.USERPROFILE, "AppData", "Roaming") : path.join(os.homedir(), "AppData", "Roaming")),
+      "Claude Code Router"
+    );
+  }
+  return path.join(os.homedir(), ".claude-code-router");
 }
 
 function printHelp(exitCode: number): void {

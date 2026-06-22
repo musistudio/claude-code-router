@@ -1,6 +1,7 @@
 import { app, BrowserWindow, screen } from "electron";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { APP_NAME, IPC_CHANNELS, ONBOARDING_FINISHED_FILE } from "./constants";
 
 type WindowName = "main" | string;
@@ -106,7 +107,7 @@ class WindowsManager {
   }
 
   private resolveRendererUrl(relativeHtmlPath: string): string {
-    return `file://${path.join(__dirname, "../renderer", relativeHtmlPath)}`;
+    return pathToFileURL(path.join(__dirname, "../renderer", relativeHtmlPath)).toString();
   }
 }
 

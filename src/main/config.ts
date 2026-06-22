@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { loadPersistedApiKeys, replacePersistedApiKeys } from "./api-key-store";
-import { CONFIGDIR, CONFIG_FILE, GATEWAY_CONFIG_FILE } from "./constants";
+import { CONFIGDIR, CONFIG_FILE, GATEWAY_CONFIG_FILE, LEGACY_CONFIGDIR, LEGACY_CONFIG_FILE } from "./constants";
 import { CLAUDE_CODE_DEFAULT_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "../shared/app";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "./presets";
 import type {
@@ -558,10 +558,23 @@ export async function saveApiKeysConfig(apiKeys: ApiKeyConfig[]): Promise<AppCon
 }
 
 function ensureConfigFile() {
+  migrateLegacyWindowsConfigDir();
   mkdirSync(CONFIGDIR, { recursive: true });
   if (!existsSync(CONFIG_FILE)) {
     writeFileSync(CONFIG_FILE, `${JSON.stringify(DEFAULT_CONFIG, null, 2)}\n`, "utf8");
   }
+}
+
+function migrateLegacyWindowsConfigDir() {
+  if (process.platform !== "win32" || CONFIGDIR === LEGACY_CONFIGDIR || existsSync(CONFIG_FILE) || !existsSync(LEGACY_CONFIG_FILE)) {
+    return;
+  }
+  mkdirSync(CONFIGDIR, { recursive: true });
+  cpSync(LEGACY_CONFIGDIR, CONFIGDIR, {
+    errorOnExist: false,
+    force: false,
+    recursive: true
+  });
 }
 
 function writeSanitizedConfig(config: AppConfig) {

@@ -16,9 +16,20 @@ const PROTOCOL_VERSION = "2025-06-18";
 const BOT_SESSION_ENTRY_VERSION = 2;
 const REQUEST_TIMEOUT_MS = numberEnv("CCR_CODEX_APP_REQUEST_TIMEOUT_MS", 10 * 60 * 1000);
 const TURN_IDLE_TIMEOUT_MS = numberEnv("CCR_CODEX_CLAUDE_TURN_IDLE_TIMEOUT_MS", 10 * 60 * 1000);
-const CONFIG_DIR = path.join(os.homedir(), ".claude-code-router");
+const CONFIG_DIR = resolveConfigDir();
 const LOG_PATH = process.env.CCR_CODEX_CLI_MIDDLEWARE_LOG || "";
 let BOT_BRIDGE_INSTANCE = null;
+
+function resolveConfigDir() {
+  const configured = nonEmptyEnv("CODEXL_HOME") || nonEmptyEnv("CCR_CONFIG_DIR");
+  if (configured) {
+    return expandHome(configured);
+  }
+  if (process.platform === "win32") {
+    return path.join(process.env.APPDATA || process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Roaming"), "Claude Code Router");
+  }
+  return path.join(os.homedir(), ".claude-code-router");
+}
 
 function botBridge() {
   if (!BOT_BRIDGE_INSTANCE) {

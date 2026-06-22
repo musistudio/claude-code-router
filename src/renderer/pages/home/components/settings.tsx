@@ -20,7 +20,6 @@ export function AppSettingsDialog({
   botConfigs,
   copy,
   initialPage = "appearance",
-  isMac,
   languagePreference,
   onChangeBotConfigs,
   onChangeObservability,
@@ -36,6 +35,7 @@ export function AppSettingsDialog({
   systemLanguage,
   systemTheme,
   themePreference,
+  traySupported,
   trayBalanceProgress,
   trayIconPreference,
   trayWidgets
@@ -44,7 +44,6 @@ export function AppSettingsDialog({
   botConfigs: BotGatewaySavedConfig[];
   copy: AppCopy;
   initialPage?: SettingsPageId;
-  isMac: boolean;
   languagePreference: AppLanguagePreference;
   onChangeBotConfigs: (configs: BotGatewaySavedConfig[]) => void;
   onChangeObservability: (patch: Partial<AppConfig["observability"]>) => void;
@@ -60,6 +59,7 @@ export function AppSettingsDialog({
   systemLanguage: ResolvedLanguage;
   systemTheme: ResolvedTheme;
   themePreference: AppConfig["theme"];
+  traySupported: boolean;
   trayBalanceProgress?: TrayBalanceProgressConfig;
   trayIconPreference: AppConfig["trayIcon"];
   trayWidgets: TrayWidgetConfig[];
@@ -68,7 +68,6 @@ export function AppSettingsDialog({
     <SettingsLayout
       copy={copy}
       initialPage={initialPage}
-      isMac={isMac}
       onClose={onClose}
       renderPage={(activePage) => {
         if (activePage === "appearance") {
@@ -120,6 +119,7 @@ export function AppSettingsDialog({
         }
         return null;
       }}
+      traySupported={traySupported}
     />
   );
 }
@@ -127,18 +127,18 @@ export function AppSettingsDialog({
 function SettingsLayout({
   copy,
   initialPage,
-  isMac,
   onClose,
-  renderPage
+  renderPage,
+  traySupported
 }: {
   copy: AppCopy;
   initialPage: SettingsPageId;
-  isMac: boolean;
   onClose: () => void;
   renderPage: (activePage: SettingsPageId) => ReactNode;
+  traySupported: boolean;
 }) {
   const [activePage, setActivePage] = useState<SettingsPageId>(initialPage);
-  const visiblePage = activePage === "tray" && !isMac ? "appearance" : activePage;
+  const visiblePage = activePage === "tray" && !traySupported ? "appearance" : activePage;
 
   useEffect(() => {
     setActivePage(initialPage);
@@ -178,7 +178,7 @@ function SettingsLayout({
               label={copy.settings.bots}
               onClick={() => setActivePage("bots")}
             />
-            {isMac ? (
+            {traySupported ? (
               <SettingsPageButton
                 active={visiblePage === "tray"}
                 className="mt-1"

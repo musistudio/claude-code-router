@@ -15,6 +15,7 @@ import {
   fusionCustomMcpServerFromDraft, fusionCustomToolConfigFromProfile,
   GatewayProviderProbeResult, gatewayServiceMessage, GatewayStatus, getDefaultOnboardingStep, isClaudeDesignPluginConfig, isClaudeDesignRoutingDraftValid,
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
+  isTraySupportedPlatform,
   isRoutingRewriteDraftRowValid,
   LayoutGroup, mergeProviderCapabilities, mergeProviderModelLists,
   navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets,
@@ -534,6 +535,7 @@ function App() {
 
   const shouldReduceMotion = useReducedMotion();
   const isMac = isMacPlatform(appInfo.platform);
+  const traySupported = isTraySupportedPlatform(appInfo.platform);
   const needsTrafficLightSafeArea = isMac && !sidebarOpen;
   const providerTypedModels = splitLines(providerDraft.modelsText);
   const providerDialogModels = mergeProviderModelLists(providerDraft.selectedModels, providerTypedModels);
@@ -2789,7 +2791,7 @@ function App() {
               botConfigs: draftConfig.botConfigs,
               copy,
               initialPage: settingsInitialPage,
-              isMac,
+              traySupported,
               languagePreference,
               onChangeBotConfigs: changeBotConfigs,
               onChangeLanguage: changeLanguagePreference,

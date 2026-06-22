@@ -411,6 +411,11 @@ export function isMacPlatform(platform: string): boolean {
   return normalized === "darwin" || normalized.includes("mac");
 }
 
+export function isTraySupportedPlatform(platform: string): boolean {
+  const normalized = platform.toLowerCase();
+  return isMacPlatform(normalized) || normalized === "win32" || normalized.includes("windows");
+}
+
 export function readLanguagePreference(): AppLanguagePreference {
   try {
     return normalizeLanguagePreference(window.localStorage.getItem(languagePreferenceStorageKey));

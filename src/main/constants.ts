@@ -6,19 +6,27 @@ export { IPC_CHANNELS } from "../shared/ipc-channels";
 export const APP_NAME = "Claude Code Router";
 
 const electronApp = typeof electron.app?.getPath === "function" ? electron.app : undefined;
-const fallbackConfigDir = path.join(os.homedir(), ".claude-code-router");
+export const LEGACY_CONFIGDIR = path.join(os.homedir(), ".claude-code-router");
+export const LEGACY_CONFIG_FILE = path.join(LEGACY_CONFIGDIR, "config.json");
 
-function appPath(name: "home" | "userData"): string {
+function appPath(name: "appData" | "home" | "userData"): string {
   if (electronApp) {
     return electronApp.getPath(name);
   }
   if (name === "home") {
     return os.homedir();
   }
-  return path.join(fallbackConfigDir, "app-data");
+  if (name === "appData") {
+    return process.env.APPDATA ||
+      process.env.LOCALAPPDATA ||
+      (process.env.USERPROFILE ? path.join(process.env.USERPROFILE, "AppData", "Roaming") : path.join(os.homedir(), "AppData", "Roaming"));
+  }
+  return path.join(LEGACY_CONFIGDIR, "app-data");
 }
 
-export const CONFIGDIR = path.join(appPath("home"), ".claude-code-router");
+export const CONFIGDIR = process.platform === "win32"
+  ? path.join(appPath("appData"), APP_NAME)
+  : LEGACY_CONFIGDIR;
 export const CONFIG_FILE = path.join(CONFIGDIR, "config.json");
 export const ONBOARDING_FINISHED_FILE = path.join(CONFIGDIR, ".onboard_finished");
 export const DATADIR = appPath("userData");

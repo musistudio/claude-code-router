@@ -65,7 +65,8 @@ export function profileOpenCommand(
   command = "ccr",
   profileRef = profile.name?.trim() || profile.id
 ): string {
-  return [shellQuote(command), shellQuote(profileRef), ...(surface === "app" ? ["--app"] : [])].join(" ");
+  const quote = process.platform === "win32" ? windowsCommandQuote : shellQuote;
+  return [quote(command), quote(profileRef), ...(surface === "app" ? ["--app"] : [])].join(" ");
 }
 
 export function buildProfileLaunchPlan(
@@ -200,4 +201,11 @@ function shellQuote(value: string): string {
   return /^[A-Za-z0-9_./:-]+$/.test(value)
     ? value
     : `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function windowsCommandQuote(value: string): string {
+  const normalized = value.replace(/\r?\n/g, " ");
+  return /^[A-Za-z0-9_.:/\\-]+$/.test(normalized)
+    ? normalized
+    : `"${normalized.replace(/"/g, '\\"')}"`;
 }

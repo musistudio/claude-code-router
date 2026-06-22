@@ -251,6 +251,15 @@ function registerProfileApp(
   runningProfileApps.set(key, entry);
 
   launch.child.once("exit", () => {
+    if (process.platform === "win32" && entry.userDataDir) {
+      setTimeout(() => {
+        if (isProfileAppRunning(entry)) {
+          return;
+        }
+        cleanupProfileAppEntry(key, entry);
+      }, 1500).unref();
+      return;
+    }
     if (entry.pidIsLauncher && isProfileAppRunning(entry)) {
       return;
     }
@@ -362,6 +371,13 @@ function profileAppMainPid(entry: Pick<RunningProfileApp, "userDataDir">): numbe
     return undefined;
   }
   const marker = normalizeProcessPath(entry.userDataDir);
+  if (process.platform === "win32") {
+    return windowsProfileAppMainPid(marker);
+  }
+  return posixProfileAppMainPid(marker);
+}
+
+function posixProfileAppMainPid(marker: string): number | undefined {
   try {
     const result = spawnSync("ps", ["-Ao", "pid=,command="], {
       encoding: "utf8"
@@ -399,12 +415,56 @@ function normalizeProcessPath(value: string): string {
   return process.platform === "win32" ? value.replace(/\\/g, "/").toLowerCase() : value;
 }
 
+function windowsProfileAppMainPid(marker: string): number | undefined {
+  const script = [
+    "$ErrorActionPreference = 'SilentlyContinue'",
+    `$marker = ${powershellString(marker)}`,
+    `$hostPid = ${process.pid}`,
+    "$selfPid = $PID",
+    "Get-CimInstance Win32_Process | Where-Object {",
+    "  $_.ProcessId -ne $selfPid -and",
+    "  $_.ProcessId -ne $hostPid -and",
+    "  $_.CommandLine -and",
+    "  (($_.CommandLine -replace '\\\\', '/').ToLowerInvariant().Contains($marker)) -and",
+    "  ($_.CommandLine -notmatch '\\s--type=')",
+    "} | Sort-Object ProcessId | Select-Object -First 1 -ExpandProperty ProcessId"
+  ].join("\n");
+  try {
+    const result = spawnSync("powershell.exe", [
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      script
+    ], {
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+      windowsHide: true
+    });
+    if (result.error || result.status !== 0) {
+      return undefined;
+    }
+    const pid = result.stdout
+      .split(/\r?\n/)
+      .map((line) => Number(line.trim()))
+      .find((value) => Number.isFinite(value) && value > 0 && value !== process.pid);
+    return pid;
+  } catch {
+    return undefined;
+  }
+}
+
 function sendProfileProcessSignal(pid: number | undefined, signal: NodeJS.Signals): void {
   if (!pid) {
     return;
   }
   if (process.platform === "win32") {
-    spawnSync("taskkill.exe", ["/PID", String(pid)], {
+    const args = ["/PID", String(pid), "/T"];
+    if (signal === "SIGKILL") {
+      args.push("/F");
+    }
+    spawnSync("taskkill.exe", args, {
       stdio: "ignore",
       windowsHide: true
     });
@@ -441,7 +501,7 @@ async function waitForProfileAppStart(entry: Pick<RunningProfileApp, "pid" | "pi
     if (!entry.pidIsLauncher && isProcessAlive(entry.pid)) {
       return true;
     }
-    if (!entry.pidIsLauncher && !isProcessAlive(entry.pid)) {
+    if (process.platform !== "win32" && !entry.pidIsLauncher && !isProcessAlive(entry.pid)) {
       return false;
     }
     await sleep(100);
@@ -887,11 +947,20 @@ function shQuote(value: string): string {
 }
 
 function cmdQuote(value: string): string {
-  return `"${value.replace(/"/g, '""')}"`;
+  return `"${cmdValue(value)}"`;
 }
 
 function cmdEnvValue(value: string): string {
-  return value.replace(/%/g, "%%").replace(/"/g, '""');
+  return cmdValue(value);
+}
+
+function cmdValue(value: string): string {
+  return value
+    .replace(/\r?\n/g, " ")
+    .replace(/\^/g, "^^")
+    .replace(/%/g, "%%")
+    .replace(/"/g, '^"')
+    .replace(/[&|<>()]/g, "^$&");
 }
 
 function powershellString(value: string): string {

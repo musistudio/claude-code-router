@@ -38,12 +38,24 @@ type MacSystemProxySnapshot = {
 };
 
 type WindowsProxySettings = {
+  autoConfigUrl?: string;
+  autoDetect?: number;
+  hadAutoConfigUrl: boolean;
+  hadAutoDetect: boolean;
   hadProxyEnable: boolean;
   hadProxyOverride: boolean;
   hadProxyServer: boolean;
   proxyEnable?: number;
   proxyOverride?: string;
   proxyServer?: string;
+  winHttp?: WindowsWinHttpProxySettings;
+};
+
+type WindowsWinHttpProxySettings = {
+  bypassList?: string;
+  direct: boolean;
+  proxyServer?: string;
+  raw: string;
 };
 
 type WindowsSystemProxySnapshot = {
@@ -376,7 +388,7 @@ async function restoreMacSystemProxy(snapshot: MacSystemProxySnapshot): Promise<
 
 async function applySystemProxy(snapshot: SystemProxySnapshot, managedEndpoint: ManagedProxyEndpoint): Promise<void> {
   if (snapshot.platform === "win32") {
-    await applyWindowsSystemProxy(managedEndpoint);
+    await applyWindowsSystemProxy(snapshot, managedEndpoint);
     return;
   }
   await applyMacSystemProxy(snapshot, managedEndpoint);
@@ -411,24 +423,39 @@ async function setMacProxySettings(
 }
 
 async function readWindowsProxySettings(): Promise<WindowsProxySettings> {
+  const autoConfigUrl = await queryWindowsRegistryValue("AutoConfigURL");
+  const autoDetect = await queryWindowsRegistryValue("AutoDetect");
   const proxyEnable = await queryWindowsRegistryValue("ProxyEnable");
   const proxyServer = await queryWindowsRegistryValue("ProxyServer");
   const proxyOverride = await queryWindowsRegistryValue("ProxyOverride");
+  const winHttp = await readWindowsWinHttpProxySettings();
   return {
+    autoConfigUrl: autoConfigUrl?.value,
+    autoDetect: autoDetect ? parseWindowsRegistryDword(autoDetect.value) : undefined,
+    hadAutoConfigUrl: Boolean(autoConfigUrl),
+    hadAutoDetect: Boolean(autoDetect),
     hadProxyEnable: Boolean(proxyEnable),
     hadProxyOverride: Boolean(proxyOverride),
     hadProxyServer: Boolean(proxyServer),
     proxyEnable: proxyEnable ? parseWindowsRegistryDword(proxyEnable.value) : undefined,
     proxyOverride: proxyOverride?.value,
-    proxyServer: proxyServer?.value
+    proxyServer: proxyServer?.value,
+    winHttp
   };
 }
 
-async function applyWindowsSystemProxy(managedEndpoint: ManagedProxyEndpoint): Promise<void> {
+async function applyWindowsSystemProxy(snapshot: WindowsSystemProxySnapshot, managedEndpoint: ManagedProxyEndpoint): Promise<void> {
   const proxyServer = `http=${formatProxyServer(managedEndpoint)};https=${formatProxyServer(managedEndpoint)}`;
+  await deleteWindowsRegistryValue("AutoConfigURL");
+  await setWindowsRegistryDword("AutoDetect", 0);
   await setWindowsRegistryDword("ProxyEnable", 1);
   await setWindowsRegistryString("ProxyServer", proxyServer);
   await setWindowsRegistryString("ProxyOverride", "<local>");
+  if (snapshot.settings.winHttp) {
+    await applyWindowsWinHttpProxy(managedEndpoint).catch((error) => {
+      console.warn(`[proxy] Failed to set Windows WinHTTP proxy: ${formatError(error)}`);
+    });
+  }
   await notifyWindowsSystemProxyChanged();
 }
 
@@ -452,6 +479,21 @@ async function restoreWindowsSystemProxy(snapshot: WindowsSystemProxySnapshot): 
     await deleteWindowsRegistryValue("ProxyOverride");
   }
 
+  if (settings.hadAutoConfigUrl && settings.autoConfigUrl !== undefined) {
+    await setWindowsRegistryString("AutoConfigURL", settings.autoConfigUrl);
+  } else {
+    await deleteWindowsRegistryValue("AutoConfigURL");
+  }
+
+  if (settings.hadAutoDetect && settings.autoDetect !== undefined) {
+    await setWindowsRegistryDword("AutoDetect", settings.autoDetect);
+  } else {
+    await deleteWindowsRegistryValue("AutoDetect");
+  }
+
+  await restoreWindowsWinHttpProxy(settings.winHttp).catch((error) => {
+    console.warn(`[proxy] Failed to restore Windows WinHTTP proxy: ${formatError(error)}`);
+  });
   await notifyWindowsSystemProxyChanged();
 }
 
@@ -496,10 +538,13 @@ function readMacUpstreamProxy(snapshot: MacSystemProxySnapshot, managedEndpoint:
 }
 
 function readWindowsUpstreamProxy(snapshot: WindowsSystemProxySnapshot, managedEndpoint: ManagedProxyEndpoint): UpstreamProxyConfig | undefined {
-  if (snapshot.settings.proxyEnable !== 1 || !snapshot.settings.proxyServer) {
-    return undefined;
+  if (snapshot.settings.proxyEnable === 1 && snapshot.settings.proxyServer) {
+    const winInetProxy = parseWindowsProxyServer(snapshot.settings.proxyServer, managedEndpoint);
+    if (winInetProxy) {
+      return winInetProxy;
+    }
   }
-  return parseWindowsProxyServer(snapshot.settings.proxyServer, managedEndpoint);
+  return readWindowsWinHttpUpstreamProxy(snapshot.settings.winHttp, managedEndpoint);
 }
 
 async function currentProxyUsesManagedEndpoint(snapshot: SystemProxySnapshot): Promise<boolean> {
@@ -528,10 +573,10 @@ async function currentMacProxyUsesManagedEndpoint(snapshot: MacSystemProxySnapsh
 async function currentWindowsProxyUsesManagedEndpoint(snapshot: WindowsSystemProxySnapshot): Promise<boolean> {
   const managedEndpoint = parseManagedEndpoint(snapshot.managedEndpoint);
   const current = await readWindowsProxySettings();
-  if (current.proxyEnable !== 1 || !current.proxyServer) {
-    return false;
+  if (current.proxyEnable === 1 && current.proxyServer && windowsProxyServerUsesManagedEndpoint(current.proxyServer, managedEndpoint)) {
+    return true;
   }
-  return windowsProxyServerUsesManagedEndpoint(current.proxyServer, managedEndpoint);
+  return windowsWinHttpProxyUsesManagedEndpoint(current.winHttp, managedEndpoint);
 }
 
 function parseWindowsProxyServer(proxyServer: string, managedEndpoint: ManagedProxyEndpoint): UpstreamProxyConfig | undefined {
@@ -638,6 +683,86 @@ function safeParseProxyServerUrl(value: string): URL | undefined {
       return undefined;
     }
   }
+}
+
+async function readWindowsWinHttpProxySettings(): Promise<WindowsWinHttpProxySettings | undefined> {
+  try {
+    return parseWindowsWinHttpProxySettings(await runCommand("netsh.exe", ["winhttp", "show", "proxy"]));
+  } catch (error) {
+    console.warn(`[proxy] Failed to read Windows WinHTTP proxy: ${formatError(error)}`);
+    return undefined;
+  }
+}
+
+function parseWindowsWinHttpProxySettings(output: string): WindowsWinHttpProxySettings {
+  const proxyServer = normalizeWindowsNetshValue(readWindowsNetshProxyLine(output, "Proxy Server"));
+  const bypassList = normalizeWindowsNetshValue(readWindowsNetshProxyLine(output, "Bypass List"));
+  return {
+    bypassList,
+    direct: /Direct access\s*\(no proxy server\)/i.test(output) || !proxyServer,
+    proxyServer,
+    raw: output
+  };
+}
+
+function readWindowsNetshProxyLine(output: string, label: "Bypass List" | "Proxy Server"): string | undefined {
+  const pattern = label === "Proxy Server"
+    ? /^\s*Proxy Server(?:\(s\))?\s*:\s*(.+?)\s*$/im
+    : /^\s*Bypass List\s*:\s*(.+?)\s*$/im;
+  return pattern.exec(output)?.[1]?.trim();
+}
+
+function normalizeWindowsNetshValue(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return !trimmed || /^\(none\)$/i.test(trimmed) ? undefined : trimmed;
+}
+
+async function applyWindowsWinHttpProxy(managedEndpoint: ManagedProxyEndpoint): Promise<void> {
+  const proxyServer = `http=${formatProxyServer(managedEndpoint)};https=${formatProxyServer(managedEndpoint)}`;
+  await runCommand("netsh.exe", [
+    "winhttp",
+    "set",
+    "proxy",
+    `proxy-server=${proxyServer}`,
+    "bypass-list=<local>"
+  ]);
+}
+
+async function restoreWindowsWinHttpProxy(settings: WindowsWinHttpProxySettings | undefined): Promise<void> {
+  if (!settings) {
+    return;
+  }
+  if (settings.direct || !settings.proxyServer) {
+    await runCommand("netsh.exe", ["winhttp", "reset", "proxy"]);
+    return;
+  }
+  await runCommand("netsh.exe", [
+    "winhttp",
+    "set",
+    "proxy",
+    `proxy-server=${settings.proxyServer}`,
+    ...(settings.bypassList ? [`bypass-list=${settings.bypassList}`] : [])
+  ]);
+}
+
+function readWindowsWinHttpUpstreamProxy(
+  settings: WindowsWinHttpProxySettings | undefined,
+  managedEndpoint: ManagedProxyEndpoint
+): UpstreamProxyConfig | undefined {
+  if (!settings || settings.direct || !settings.proxyServer) {
+    return undefined;
+  }
+  return parseWindowsProxyServer(settings.proxyServer, managedEndpoint);
+}
+
+function windowsWinHttpProxyUsesManagedEndpoint(
+  settings: WindowsWinHttpProxySettings | undefined,
+  managedEndpoint: ManagedProxyEndpoint
+): boolean {
+  return Boolean(settings && !settings.direct && settings.proxyServer && windowsProxyServerUsesManagedEndpoint(settings.proxyServer, managedEndpoint));
 }
 
 function isUsableUpstreamProxy(settings: MacProxySettings, managedEndpoint: ManagedProxyEndpoint): boolean {

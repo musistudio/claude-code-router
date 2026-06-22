@@ -393,7 +393,7 @@ function claudeCodeApiKeyHelperShellScript(token: string): string {
 function claudeCodeApiKeyHelperCmdScript(token: string): string {
   return [
     "@echo off",
-    `echo ${token.replace(/"/g, '\\"')}`,
+    `echo ${cmdValue(token)}`,
     ""
   ].join("\r\n");
 }
@@ -454,16 +454,16 @@ function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, r
   const surface = normalizeProfileSurface(profile.surface);
   const envExports = Object.entries(profileEnv(profile))
     .filter(([key]) => key !== "CCR_CLAUDE_CODE_BIN")
-    .map(([key, value]) => `set "${key}=${value.replace(/"/g, '\\"')}"`);
+    .map(([key, value]) => cmdSetLine(key, value));
   const botEnvExports = cmdBotGatewayEnvExports(config, profile);
   return [
     "@echo off",
     ...envExports,
-    `if not defined CCR_PROFILE_SURFACE set "CCR_PROFILE_SURFACE=${surface}"`,
+    `if not defined CCR_PROFILE_SURFACE ${cmdSetLine("CCR_PROFILE_SURFACE", surface)}`,
     ...botEnvExports,
-    `set "CCR_CLAUDE_CODE_WRAPPER=1"`,
-    `set "CCR_REAL_CLAUDE_CODE_BIN=${realClaude.replace(/"/g, '\\"')}"`,
-    `set "CODEXL_CLAUDE_CODE_BIN=${realClaude.replace(/"/g, '\\"')}"`,
+    cmdSetLine("CCR_CLAUDE_CODE_WRAPPER", "1"),
+    cmdSetLine("CCR_REAL_CLAUDE_CODE_BIN", realClaude),
+    cmdSetLine("CODEXL_CLAUDE_CODE_BIN", realClaude),
     ...nodeRuntimeCmdExecLines(runtimeFile),
     ""
   ].join("\r\n");
@@ -600,11 +600,11 @@ function cmdProfileSurfaceExports(surface: "auto" | "cli" | "app"): string[] {
   return [
     "if not defined CCR_PROFILE_SURFACE (",
     "  if \"%~1\"==\"app\" (",
-    "    set \"CCR_PROFILE_SURFACE=app\"",
+    cmdSetLine("CCR_PROFILE_SURFACE", "app", "    "),
     "  ) else if \"%~1\"==\"app-server\" (",
-    "    set \"CCR_PROFILE_SURFACE=app\"",
+    cmdSetLine("CCR_PROFILE_SURFACE", "app", "    "),
     "  ) else (",
-    `    set "CCR_PROFILE_SURFACE=${surface}"`,
+    cmdSetLine("CCR_PROFILE_SURFACE", surface, "    "),
     "  )",
     ")"
   ];
@@ -617,20 +617,20 @@ function cmdCodexlProfileSurfaceExports(): string[] {
 }
 
 function nodeRuntimeCmdExecLines(runtimeFile: string): string[] {
-  const quotedRuntime = runtimeFile.replace(/"/g, '\\"');
-  const quotedHost = process.execPath.replace(/"/g, '\\"');
+  const quotedRuntime = cmdQuote(runtimeFile);
+  const quotedHost = cmdQuote(process.execPath);
   return [
     "if defined CCR_NODE_BIN (",
-    `  "%CCR_NODE_BIN%" "${quotedRuntime}" %*`,
+    `  "%CCR_NODE_BIN%" ${quotedRuntime} %*`,
     "  exit /b %ERRORLEVEL%",
     ")",
     "where node >nul 2>nul",
     "if %ERRORLEVEL%==0 (",
-    `  node "${quotedRuntime}" %*`,
+    `  node ${quotedRuntime} %*`,
     "  exit /b %ERRORLEVEL%",
     ")",
     "set \"ELECTRON_RUN_AS_NODE=1\"",
-    `"${quotedHost}" "${quotedRuntime}" %*`,
+    `${quotedHost} ${quotedRuntime} %*`,
     "exit /b %ERRORLEVEL%"
   ];
 }
@@ -651,32 +651,31 @@ function codexMiddlewareCmdScript(
   const codexHome = profile.codexHome?.trim() || path.dirname(values.configFile);
   const remoteFrontendMode = normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode);
   const surface = normalizeProfileSurface(profile.surface);
-  const providerId = values.providerId.replace(/"/g, '\\"');
-  const workspaceName = (profile.name || values.providerId).replace(/"/g, '\\"');
-  const envExports = Object.entries(profileEnv(profile)).map(([key, value]) => `set "${key}=${value.replace(/"/g, '\\"')}"`);
+  const workspaceName = profile.name || values.providerId;
+  const envExports = Object.entries(profileEnv(profile)).map(([key, value]) => cmdSetLine(key, value));
   const botEnvExports = cmdBotGatewayEnvExports(config, profile);
   return [
     "@echo off",
     ...envExports,
-    `set "CODEX_HOME=${resolveUserPath(codexHome).replace(/"/g, '\\"')}"`,
-    `if not defined CCR_REAL_CODEX_CLI_PATH set "CCR_REAL_CODEX_CLI_PATH=${codexCli.replace(/"/g, '\\"')}"`,
-    `set "CCR_CODEX_PROFILE=${providerId}"`,
-    `set "CCR_CODEX_MODEL=${values.model.replace(/"/g, '\\"')}"`,
-    `set "CCR_CODEX_MODEL_CATALOG_FILE=${values.modelCatalogFile.replace(/"/g, '\\"')}"`,
-    `set "CCR_CODEX_MODEL_PROVIDER=${providerId}"`,
-    `set "CCR_CODEX_PROFILE_CONFIG_FORMAT=${values.configFormat}"`,
-    `set "CCR_PROFILE_SCOPE=${normalizeProfileScope(profile.scope)}"`,
+    cmdSetLine("CODEX_HOME", resolveUserPath(codexHome)),
+    `if not defined CCR_REAL_CODEX_CLI_PATH ${cmdSetLine("CCR_REAL_CODEX_CLI_PATH", codexCli)}`,
+    cmdSetLine("CCR_CODEX_PROFILE", values.providerId),
+    cmdSetLine("CCR_CODEX_MODEL", values.model),
+    cmdSetLine("CCR_CODEX_MODEL_CATALOG_FILE", values.modelCatalogFile),
+    cmdSetLine("CCR_CODEX_MODEL_PROVIDER", values.providerId),
+    cmdSetLine("CCR_CODEX_PROFILE_CONFIG_FORMAT", values.configFormat),
+    cmdSetLine("CCR_PROFILE_SCOPE", normalizeProfileScope(profile.scope)),
     ...cmdProfileSurfaceExports(surface),
-    `set "CCR_CODEX_REMOTE_FRONTEND_MODE=${remoteFrontendMode}"`,
+    cmdSetLine("CCR_CODEX_REMOTE_FRONTEND_MODE", remoteFrontendMode),
     ...botEnvExports,
     "if not defined CODEXL_REAL_CODEX_CLI_PATH set \"CODEXL_REAL_CODEX_CLI_PATH=%CCR_REAL_CODEX_CLI_PATH%\"",
-    `set "CODEXL_CODEX_PROFILE=${providerId}"`,
-    `set "CODEXL_CODEX_MODEL_CATALOG_FILE=${values.modelCatalogFile.replace(/"/g, '\\"')}"`,
-    `set "CODEXL_CODEX_MODEL_PROVIDER=${providerId}"`,
-    `set "CODEXL_CODEX_WORKSPACE_NAME=${workspaceName}"`,
-    `set "CODEXL_CODEX_PROFILE_CONFIG_FORMAT=${values.configFormat}"`,
+    cmdSetLine("CODEXL_CODEX_PROFILE", values.providerId),
+    cmdSetLine("CODEXL_CODEX_MODEL_CATALOG_FILE", values.modelCatalogFile),
+    cmdSetLine("CODEXL_CODEX_MODEL_PROVIDER", values.providerId),
+    cmdSetLine("CODEXL_CODEX_WORKSPACE_NAME", workspaceName),
+    cmdSetLine("CODEXL_CODEX_PROFILE_CONFIG_FORMAT", values.configFormat),
     ...cmdCodexlProfileSurfaceExports(),
-    `set "CODEXL_CODEX_CORE_MODE=${remoteFrontendMode}"`,
+    cmdSetLine("CODEXL_CODEX_CORE_MODE", remoteFrontendMode),
     ...nodeRuntimeCmdExecLines(runtimeFile),
     ""
   ].join("\r\n");
@@ -695,9 +694,9 @@ function shellBotGatewayEnvExports(config: AppConfig, profile: ProfileConfig): s
 function cmdBotGatewayEnvExports(config: AppConfig, profile: ProfileConfig): string[] {
   return [
     `if /I "%CCR_PROFILE_SURFACE%"=="app" (`,
-    ...Object.entries(botGatewayProfileEnv(config, profile, "app")).map(([key, value]) => `  set "${key}=${value.replace(/"/g, '\\"')}"`),
+    ...Object.entries(botGatewayProfileEnv(config, profile, "app")).map(([key, value]) => cmdSetLine(key, value, "  ")),
     ") else (",
-    ...Object.entries(botGatewayProfileEnv(config, profile, "cli")).map(([key, value]) => `  set "${key}=${value.replace(/"/g, '\\"')}"`),
+    ...Object.entries(botGatewayProfileEnv(config, profile, "cli")).map(([key, value]) => cmdSetLine(key, value, "  ")),
     ")"
   ];
 }
@@ -923,6 +922,23 @@ function tomlStringContent(value: string): string {
 
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function cmdSetLine(key: string, value: string, indent = ""): string {
+  return `${indent}set "${key}=${cmdValue(value)}"`;
+}
+
+function cmdQuote(value: string): string {
+  return `"${cmdValue(value)}"`;
+}
+
+function cmdValue(value: string): string {
+  return value
+    .replace(/\r?\n/g, " ")
+    .replace(/\^/g, "^^")
+    .replace(/%/g, "%%")
+    .replace(/"/g, '^"')
+    .replace(/[&|<>()]/g, "^$&");
 }
 
 function trimLeadingBlankLines(value: string): string {

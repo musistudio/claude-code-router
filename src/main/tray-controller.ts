@@ -44,14 +44,13 @@ class TrayController {
   private unsubscribeUsageUpdates?: () => void;
 
   start(): void {
-    if (process.platform !== "darwin" || this.tray) {
+    if (!supportsTrayPlatform() || this.tray) {
       return;
     }
 
     const icon = createTrayIcon(this.resolveTrayIconId("random"));
     this.tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
-    this.tray.setTitle(trayTokenFallbackTitle);
-    this.tray.setToolTip(`${APP_NAME} Usage`);
+    this.applyTrayTitle(trayTokenFallbackTitle);
     this.tray.on("click", () => this.togglePopover());
     this.tray.on("right-click", () => this.showContextMenu());
     void this.refreshIconFromConfig();
@@ -103,7 +102,7 @@ class TrayController {
   }
 
   async refreshIconFromConfig(config?: AppConfig): Promise<void> {
-    if (process.platform !== "darwin" || !this.tray) {
+    if (!supportsTrayPlatform() || !this.tray) {
       return;
     }
 
@@ -249,6 +248,11 @@ class TrayController {
   private showContextMenu(): void {
     const menu = Menu.buildFromTemplate([
       {
+        enabled: false,
+        label: formatTokenTitle(this.trayTotalTokens)
+      },
+      { type: "separator" },
+      {
         click: () => this.showPopover(),
         label: "Show Usage"
       },
@@ -346,10 +350,20 @@ class TrayController {
       if (this.trayIconPreference === "progress" && this.trayBalanceProgress) {
         await this.refreshBalanceProgressTrayIcon();
       }
-      this.tray.setTitle(formatTokenTitle(totals.totalTokens));
+      this.applyTrayTitle(formatTokenTitle(totals.totalTokens));
     } catch {
-      this.tray.setTitle(trayTokenFallbackTitle);
+      this.applyTrayTitle(trayTokenFallbackTitle);
     }
+  }
+
+  private applyTrayTitle(title: string): void {
+    if (!this.tray) {
+      return;
+    }
+    if (supportsTrayTitle()) {
+      this.tray.setTitle(title);
+    }
+    this.tray.setToolTip(`${APP_NAME} Usage\n${title}`);
   }
 
   private applyTrayIcon(iconId: TrayMascotIconId): void {
@@ -414,12 +428,20 @@ const trayController = new TrayController();
 
 export default trayController;
 
+function supportsTrayPlatform(): boolean {
+  return process.platform === "darwin" || process.platform === "win32";
+}
+
+function supportsTrayTitle(): boolean {
+  return process.platform === "darwin";
+}
+
 function resolvePopoverLayout(
   trayBounds: Electron.Rectangle | undefined,
   detailOpen: boolean
 ): { detail: Electron.Rectangle; menu: Electron.Rectangle } {
   const anchor = trayBounds
-    ? { x: trayBounds.x + trayBounds.width / 2, y: trayBounds.y + trayBounds.height }
+    ? { x: trayBounds.x + trayBounds.width / 2, y: trayBounds.y + trayBounds.height / 2 }
     : screen.getCursorScreenPoint();
   const display = screen.getDisplayNearestPoint(anchor);
   const workArea = display.workArea;
@@ -431,11 +453,7 @@ function resolvePopoverLayout(
   const height = Math.min(popoverPreferredHeight, Math.max(460, workArea.height - popoverMargin * 2));
   const menuX = Math.round(anchor.x - menuWidth / 2);
   const x = clamp(menuX, workArea.x + popoverMargin, workArea.x + workArea.width - groupWidth - popoverMargin);
-  const y = clamp(
-    Math.round(Math.max(workArea.y + popoverMargin, anchor.y + popoverMargin)),
-    workArea.y + popoverMargin,
-    workArea.y + workArea.height - height - popoverMargin
-  );
+  const y = resolvePopoverY(trayBounds, workArea, height);
 
   return {
     detail: {
@@ -453,6 +471,44 @@ function resolvePopoverLayout(
   };
 }
 
+function resolvePopoverY(
+  trayBounds: Electron.Rectangle | undefined,
+  workArea: Electron.Rectangle,
+  height: number
+): number {
+  if (!trayBounds) {
+    const cursor = screen.getCursorScreenPoint();
+    return clamp(
+      cursor.y + popoverMargin,
+      workArea.y + popoverMargin,
+      workArea.y + workArea.height - height - popoverMargin
+    );
+  }
+
+  const taskbarIsVertical = trayBounds.x + trayBounds.width <= workArea.x ||
+    trayBounds.x >= workArea.x + workArea.width;
+  if (taskbarIsVertical) {
+    return clamp(
+      Math.round(trayBounds.y + trayBounds.height / 2 - height / 2),
+      workArea.y + popoverMargin,
+      workArea.y + workArea.height - height - popoverMargin
+    );
+  }
+
+  const topSpace = trayBounds.y - workArea.y;
+  const bottomSpace = workArea.y + workArea.height - (trayBounds.y + trayBounds.height);
+  const placeBelow = bottomSpace >= height + popoverMargin || bottomSpace > topSpace;
+  const preferredY = placeBelow
+    ? trayBounds.y + trayBounds.height + popoverMargin
+    : trayBounds.y - height - popoverMargin;
+
+  return clamp(
+    Math.round(preferredY),
+    workArea.y + popoverMargin,
+    workArea.y + workArea.height - height - popoverMargin
+  );
+}
+
 function createTrayPageUrl(mode: "detail" | "menu", provider?: string): string {
   const url = new URL(pathToFileURL(path.join(__dirname, "../renderer/pages/tray/index.html")).toString());
   url.searchParams.set("mode", mode);
@@ -468,30 +524,36 @@ function normalizeDetailProvider(provider?: string): string | undefined {
 }
 
 function createTrayIcon(iconId: TrayMascotIconId): Electron.NativeImage {
+  const size = trayIconPixelSize();
   const image = nativeImage.createFromPath(trayMascotIconPaths[iconId]);
   if (image.isEmpty()) {
     const fallback = nativeImage.createFromPath(trayIconFallbackPath);
     if (fallback.isEmpty()) {
       return nativeImage.createEmpty();
     }
-    const fallbackIcon = fallback.resize({ height: trayMenuBarIconSize, width: trayMenuBarIconSize });
-    fallbackIcon.setTemplateImage(true);
+    const fallbackIcon = fallback.resize({ height: size, width: size });
+    fallbackIcon.setTemplateImage(process.platform === "darwin");
     return fallbackIcon;
   }
-  const resized = image.resize({ height: trayMenuBarIconSize, width: trayMenuBarIconSize });
+  const resized = image.resize({ height: size, width: size });
   resized.setTemplateImage(false);
   return resized;
 }
 
 function createTrayProgressIcon(progress: number): Electron.NativeImage {
+  const size = trayIconPixelSize();
   const clamped = Math.max(0, Math.min(1, progress));
   const image = nativeImage.createFromBuffer(createBalanceProgressBarPng(clamped));
   if (image.isEmpty()) {
     return nativeImage.createEmpty();
   }
-  const resized = image.resize({ height: trayMenuBarIconSize, width: trayMenuBarIconSize });
+  const resized = image.resize({ height: size, width: size });
   resized.setTemplateImage(false);
   return resized;
+}
+
+function trayIconPixelSize(): number {
+  return process.platform === "win32" ? 16 : trayMenuBarIconSize;
 }
 
 function normalizeTrayIconPreference(value: unknown): TrayIconPreference {

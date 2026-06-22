@@ -1,10 +1,11 @@
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AppConfig, ProfileConfig } from "../shared/app";
 import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { resolveClaudeCodeSettingsFile } from "./profile-launch-core";
+import { normalizeWindowsDesktopAppCandidate, windowsDesktopAppCandidates } from "./windows-app-discovery";
 
 type ClaudeAppLookupResult = {
   checked: string[];
@@ -20,7 +21,15 @@ export type ClaudeAppLaunchResult = {
 
 const macClaudeAppNames = ["Claude.app", "Claude Desktop.app"];
 const windowsClaudeAppDirs = ["Claude", "Claude Desktop", "ClaudeDesktop", "AnthropicClaude"];
-const windowsClaudeExeNames = ["Claude.exe", "claude.exe", "Claude Desktop.exe"];
+const windowsClaudeExeNames = [
+  "Claude.exe",
+  "claude.exe",
+  "Claude Desktop.exe",
+  "ClaudeDesktop.exe",
+  "AnthropicClaude.exe",
+  "claude-desktop.exe"
+];
+const windowsClaudePackageKeywords = ["claude", "anthropic"];
 
 export function launchClaudeAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): ClaudeAppLaunchResult {
   const lookup = findInstalledClaudeAppExecutable();
@@ -133,43 +142,20 @@ function macClaudeAppCandidates(): string[] {
 }
 
 function windowsClaudeAppCandidates(): string[] {
-  const roots = [
-    process.env.LOCALAPPDATA,
-    process.env.APPDATA,
-    process.env.ProgramFiles,
-    process.env["ProgramFiles(x86)"],
-    process.env.ProgramW6432,
-    path.join(os.homedir(), "AppData", "Local"),
-    path.join(os.homedir(), "AppData", "Roaming")
-  ].filter((value): value is string => Boolean(value?.trim()));
-
-  const candidates: string[] = [];
-  for (const root of roots) {
-    const installRoots = [
-      root,
-      path.join(root, "Programs"),
-      path.join(root, "Programs", "Anthropic"),
-      path.join(root, "Anthropic"),
-      path.join(root, "Microsoft", "WindowsApps")
-    ];
-    for (const installRoot of installRoots) {
-      for (const exeName of windowsClaudeExeNames) {
-        pushUnique(candidates, path.join(installRoot, exeName));
-      }
-      for (const dirName of windowsClaudeAppDirs) {
-        const appDir = path.join(installRoot, dirName);
-        pushUnique(candidates, appDir);
-        for (const exeName of windowsClaudeExeNames) {
-          pushUnique(candidates, path.join(appDir, exeName));
-        }
-      }
-    }
-  }
-
-  for (const whereCandidate of windowsWhereClaudeCandidates()) {
-    pushUnique(candidates, whereCandidate);
-  }
-  return candidates;
+  return windowsDesktopAppCandidates({
+    appDirs: windowsClaudeAppDirs,
+    exeNames: windowsClaudeExeNames,
+    packageKeywords: windowsClaudePackageKeywords,
+    vendorDirs: ["Anthropic"],
+    whereNames: [
+      "Claude",
+      "claude",
+      "Claude Desktop",
+      "ClaudeDesktop",
+      "AnthropicClaude",
+      "claude-desktop"
+    ]
+  });
 }
 
 function linuxClaudeAppCandidates(): string[] {
@@ -238,83 +224,10 @@ function readBundleExecutable(infoPath: string): string | undefined {
 }
 
 function normalizeWindowsClaudeAppCandidate(candidate: string): string | undefined {
-  if (isDirectory(candidate)) {
-    return windowsClaudeExecutableInDir(candidate);
-  }
-  if (!isFile(candidate)) {
-    return undefined;
-  }
-  const fileName = path.basename(candidate).toLowerCase();
-  if (windowsClaudeExeNames.some((name) => name.toLowerCase() === fileName)) {
-    return candidate;
-  }
-
-  const parent = path.basename(path.dirname(candidate)).toLowerCase();
-  if (parent === "resources") {
-    const appDir = path.dirname(path.dirname(candidate));
-    return windowsClaudeExecutableInDir(appDir);
-  }
-  return undefined;
-}
-
-function windowsClaudeExecutableInDir(dir: string): string | undefined {
-  if (!isDirectory(dir)) {
-    return undefined;
-  }
-
-  for (const exeName of windowsClaudeExeNames) {
-    const candidate = path.join(dir, exeName);
-    if (isFile(candidate)) {
-      return candidate;
-    }
-  }
-
-  for (const nested of ["app", "current", "Current"]) {
-    const candidate = windowsClaudeExecutableInDir(path.join(dir, nested));
-    if (candidate) {
-      return candidate;
-    }
-  }
-
-  try {
-    const versionedDirs = readdirSync(dir)
-      .filter((entry) => entry.toLowerCase().startsWith("app-"))
-      .map((entry) => path.join(dir, entry))
-      .filter(isDirectory)
-      .sort()
-      .reverse();
-    for (const versionedDir of versionedDirs) {
-      const candidate = windowsClaudeExecutableInDir(versionedDir);
-      if (candidate) {
-        return candidate;
-      }
-    }
-  } catch {
-    return undefined;
-  }
-  return undefined;
-}
-
-function windowsWhereClaudeCandidates(): string[] {
-  if (process.platform !== "win32") {
-    return [];
-  }
-  const candidates: string[] = [];
-  for (const name of ["Claude", "claude", "Claude Desktop"]) {
-    const result = spawnSync("where.exe", [name], {
-      encoding: "utf8",
-      windowsHide: true
-    });
-    if (result.status !== 0) {
-      continue;
-    }
-    for (const line of result.stdout.split(/\r?\n/)) {
-      if (line.trim()) {
-        pushUnique(candidates, line.trim());
-      }
-    }
-  }
-  return candidates;
+  return normalizeWindowsDesktopAppCandidate(candidate, {
+    exeNames: windowsClaudeExeNames,
+    packageKeywords: windowsClaudePackageKeywords
+  });
 }
 
 function profileEnv(profile: ProfileConfig): Record<string, string> {
@@ -358,11 +271,5 @@ function isDirectory(file: string): boolean {
     return statSync(file).isDirectory();
   } catch {
     return false;
-  }
-}
-
-function pushUnique(values: string[], value: string): void {
-  if (!values.includes(value)) {
-    values.push(value);
   }
 }

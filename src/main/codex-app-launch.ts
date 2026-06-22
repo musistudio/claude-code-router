@@ -1,4 +1,4 @@
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -6,6 +6,7 @@ import type { AppConfig, ProfileConfig } from "../shared/app";
 import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { codexModelCatalogJson } from "./codex-model-catalog";
 import { buildProfileLaunchPlan, resolveCodexConfigFile } from "./profile-launch-core";
+import { normalizeWindowsDesktopAppCandidate, windowsDesktopAppCandidates } from "./windows-app-discovery";
 
 type CodexAppLookupResult = {
   checked: string[];
@@ -22,7 +23,16 @@ export type CodexAppLaunchResult = {
 
 const macCodexAppNames = ["Codex.app", "OpenAI Codex.app"];
 const windowsCodexAppDirs = ["Codex", "OpenAI Codex", "OpenAICodex"];
-const windowsCodexExeNames = ["Codex.exe", "codex.exe", "OpenAI Codex.exe", "OpenAICodex.exe"];
+const windowsCodexExeNames = [
+  "Codex.exe",
+  "codex.exe",
+  "OpenAI Codex.exe",
+  "OpenAICodex.exe",
+  "OpenAICodexApp.exe",
+  "codex-app.exe",
+  "openai-codex.exe"
+];
+const windowsCodexPackageKeywords = ["codex", "openaicodex"];
 
 export function launchCodexAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): CodexAppLaunchResult {
   const lookup = findInstalledCodexAppExecutable();
@@ -242,43 +252,21 @@ function macCodexAppCandidates(): string[] {
 }
 
 function windowsCodexAppCandidates(): string[] {
-  const roots = [
-    process.env.LOCALAPPDATA,
-    process.env.APPDATA,
-    process.env.ProgramFiles,
-    process.env["ProgramFiles(x86)"],
-    process.env.ProgramW6432,
-    path.join(os.homedir(), "AppData", "Local"),
-    path.join(os.homedir(), "AppData", "Roaming")
-  ].filter((value): value is string => Boolean(value?.trim()));
-
-  const candidates: string[] = [];
-  for (const root of roots) {
-    const installRoots = [
-      root,
-      path.join(root, "Programs"),
-      path.join(root, "Programs", "OpenAI"),
-      path.join(root, "OpenAI"),
-      path.join(root, "Microsoft", "WindowsApps")
-    ];
-    for (const installRoot of installRoots) {
-      for (const exeName of windowsCodexExeNames) {
-        pushUnique(candidates, path.join(installRoot, exeName));
-      }
-      for (const dirName of windowsCodexAppDirs) {
-        const appDir = path.join(installRoot, dirName);
-        pushUnique(candidates, appDir);
-        for (const exeName of windowsCodexExeNames) {
-          pushUnique(candidates, path.join(appDir, exeName));
-        }
-      }
-    }
-  }
-
-  for (const whereCandidate of windowsWhereCodexCandidates()) {
-    pushUnique(candidates, whereCandidate);
-  }
-  return candidates;
+  return windowsDesktopAppCandidates({
+    appDirs: windowsCodexAppDirs,
+    exeNames: windowsCodexExeNames,
+    packageKeywords: windowsCodexPackageKeywords,
+    vendorDirs: ["OpenAI"],
+    whereNames: [
+      "Codex",
+      "codex",
+      "OpenAI Codex",
+      "OpenAICodex",
+      "OpenAICodexApp",
+      "codex-app",
+      "openai-codex"
+    ]
+  });
 }
 
 function linuxCodexAppCandidates(): string[] {
@@ -349,83 +337,10 @@ function readBundleExecutable(infoPath: string): string | undefined {
 }
 
 function normalizeWindowsCodexAppCandidate(candidate: string): string | undefined {
-  if (isDirectory(candidate)) {
-    return windowsCodexExecutableInDir(candidate);
-  }
-  if (!isFile(candidate)) {
-    return undefined;
-  }
-  const fileName = path.basename(candidate).toLowerCase();
-  if (windowsCodexExeNames.some((name) => name.toLowerCase() === fileName)) {
-    return candidate;
-  }
-
-  const parent = path.basename(path.dirname(candidate)).toLowerCase();
-  if (parent === "resources") {
-    const appDir = path.dirname(path.dirname(candidate));
-    return windowsCodexExecutableInDir(appDir);
-  }
-  return undefined;
-}
-
-function windowsCodexExecutableInDir(dir: string): string | undefined {
-  if (!isDirectory(dir)) {
-    return undefined;
-  }
-
-  for (const exeName of windowsCodexExeNames) {
-    const candidate = path.join(dir, exeName);
-    if (isFile(candidate)) {
-      return candidate;
-    }
-  }
-
-  for (const nested of ["app", "current", "Current"]) {
-    const candidate = windowsCodexExecutableInDir(path.join(dir, nested));
-    if (candidate) {
-      return candidate;
-    }
-  }
-
-  try {
-    const versionedDirs = readdirSync(dir)
-      .filter((entry) => entry.toLowerCase().startsWith("app-"))
-      .map((entry) => path.join(dir, entry))
-      .filter(isDirectory)
-      .sort()
-      .reverse();
-    for (const versionedDir of versionedDirs) {
-      const candidate = windowsCodexExecutableInDir(versionedDir);
-      if (candidate) {
-        return candidate;
-      }
-    }
-  } catch {
-    return undefined;
-  }
-  return undefined;
-}
-
-function windowsWhereCodexCandidates(): string[] {
-  if (process.platform !== "win32") {
-    return [];
-  }
-  const candidates: string[] = [];
-  for (const name of ["Codex", "codex", "OpenAI Codex"]) {
-    const result = spawnSync("where.exe", [name], {
-      encoding: "utf8",
-      windowsHide: true
-    });
-    if (result.status !== 0) {
-      continue;
-    }
-    for (const line of result.stdout.split(/\r?\n/)) {
-      if (line.trim()) {
-        pushUnique(candidates, line.trim());
-      }
-    }
-  }
-  return candidates;
+  return normalizeWindowsDesktopAppCandidate(candidate, {
+    exeNames: windowsCodexExeNames,
+    packageKeywords: windowsCodexPackageKeywords
+  });
 }
 
 function normalizeCodexRemoteFrontendMode(value: ProfileConfig["remoteFrontendMode"]): "app" | "cli" | "claude-code" {
@@ -464,11 +379,5 @@ function isDirectory(file: string): boolean {
     return statSync(file).isDirectory();
   } catch {
     return false;
-  }
-}
-
-function pushUnique(values: string[], value: string): void {
-  if (!values.includes(value)) {
-    values.push(value);
   }
 }
