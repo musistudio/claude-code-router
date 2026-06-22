@@ -20,6 +20,7 @@ import type {
   GatewayProviderCapability,
   GatewayProviderConfig,
   GatewayProviderProtocol,
+  ObservabilityConfig,
   OverviewMetricKind,
   OverviewWidgetConfig,
   OverviewWidgetSize,
@@ -60,12 +61,13 @@ type LoadedBotGatewayConfig = Partial<Omit<BotGatewayRuntimeConfig, "handoff">> 
   handoff?: Partial<BotGatewayRuntimeConfig["handoff"]>;
 };
 
-type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway" | "gateway" | "profile" | "proxy">> & {
+type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway" | "gateway" | "observability" | "profile" | "proxy">> & {
   Router?: Partial<RouterConfig>;
   agent?: Partial<GatewayAgentConfig>;
   botConfigs?: BotGatewaySavedConfig[];
   botGateway?: LoadedBotGatewayConfig;
   gateway?: Partial<AppConfig["gateway"]>;
+  observability?: Partial<ObservabilityConfig>;
   profile?: LoadedProfileConfig;
   proxy?: Partial<ProxyRuntimeConfig>;
 };
@@ -145,6 +147,10 @@ const DEFAULT_CONFIG: AppConfig = {
     generatedConfigFile: GATEWAY_CONFIG_FILE,
     host: "127.0.0.1",
     port: 3456
+  },
+  observability: {
+    agentAnalysis: false,
+    requestLogs: false
   },
   preferredProvider: "",
   plugins: [],
@@ -369,6 +375,10 @@ export async function loadAppConfig(): Promise<AppConfig> {
         generatedConfigFile: GATEWAY_CONFIG_FILE,
         host: gatewayConfig.host ?? host,
         port: gatewayConfig.port ?? port
+      },
+      observability: {
+        ...DEFAULT_CONFIG.observability,
+        ...(picked.observability ?? {})
       },
       preferredProvider:
         picked.preferredProvider || providers[0]?.name || DEFAULT_CONFIG.preferredProvider,
@@ -679,6 +689,10 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   if (proxy) {
     config.proxy = proxy;
   }
+  const observability = parseObservability((value as Record<string, unknown>).observability);
+  if (observability) {
+    config.observability = observability;
+  }
   if (typeof value.preferredProvider === "string" && value.preferredProvider.trim()) {
     config.preferredProvider = value.preferredProvider.trim();
   }
@@ -723,6 +737,21 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   }
 
   return config;
+}
+
+function parseObservability(value: unknown): Partial<ObservabilityConfig> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const observability: Partial<ObservabilityConfig> = {};
+  if (typeof value.requestLogs === "boolean") {
+    observability.requestLogs = value.requestLogs;
+  }
+  if (typeof value.agentAnalysis === "boolean") {
+    observability.agentAnalysis = value.agentAnalysis;
+  }
+  return Object.keys(observability).length ? observability : undefined;
 }
 
 function parseOverviewWidgets(value: unknown): OverviewWidgetConfig[] | undefined {

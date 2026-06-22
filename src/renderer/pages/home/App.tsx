@@ -17,7 +17,7 @@ import {
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
   isRoutingRewriteDraftRowValid,
   LayoutGroup, mergeProviderCapabilities, mergeProviderModelLists,
-  navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeOverviewWidgets,
+  navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets,
   normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
   normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingStepId, onboardingStepOrder,
   OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parseProviderAccountDraft,
@@ -353,6 +353,8 @@ function App() {
     };
   }, [draftConfig.Providers]);
 
+  const requestLogsEnabled = Boolean(draftConfig.observability.requestLogs);
+  const agentAnalysisEnabled = Boolean(draftConfig.observability.agentAnalysis);
   const agentAnalysisFilterKey = JSON.stringify({
     agent: agentAnalysisAgent,
     range: agentAnalysisRange,
@@ -362,6 +364,12 @@ function App() {
 
   useEffect(() => {
     if (activeView !== "observability") {
+      return;
+    }
+    if (!agentAnalysisEnabled) {
+      setAgentAnalysis(createEmptyAgentAnalysis(agentAnalysisRange));
+      setAgentAnalysisError("");
+      setAgentAnalysisLoading(false);
       return;
     }
     if (!window.ccr) {
@@ -404,12 +412,18 @@ function App() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [activeView, agentAnalysisFilterKey]);
+  }, [activeView, agentAnalysisEnabled, agentAnalysisFilterKey]);
 
   const requestLogFilterKey = JSON.stringify(requestLogFilter);
 
   useEffect(() => {
     if (activeView !== "logs") {
+      return;
+    }
+    if (!requestLogsEnabled) {
+      setRequestLogPage(createEmptyRequestLogPage(requestLogFilter));
+      setRequestLogError("");
+      setRequestLogLoading(false);
       return;
     }
     if (!window.ccr) {
@@ -447,7 +461,7 @@ function App() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [activeView, requestLogFilterKey]);
+  }, [activeView, requestLogsEnabled, requestLogFilterKey]);
 
   useEffect(() => {
     if (activeView !== "networking" || !draftConfig.proxy.captureNetwork) {
@@ -505,8 +519,12 @@ function App() {
   const gatewayEndpoint = gatewayStatus.endpoint || draftConfig.routerEndpoint;
   const networkCaptureEnabled = draftConfig.proxy.enabled && draftConfig.proxy.captureNetwork;
   const visibleNavigation = useMemo(
-    () => navigation.filter((item) => item.id !== "networking" || networkCaptureEnabled),
-    [networkCaptureEnabled]
+    () => navigation.filter((item) =>
+      (item.id !== "networking" || networkCaptureEnabled) &&
+      (item.id !== "logs" || requestLogsEnabled) &&
+      (item.id !== "observability" || agentAnalysisEnabled)
+    ),
+    [agentAnalysisEnabled, networkCaptureEnabled, requestLogsEnabled]
   );
   const autoSaveRequestId = useRef(0);
   const providerProbeRequestId = useRef(0);
@@ -542,6 +560,15 @@ function App() {
       setActiveView("server");
     }
   }, [activeView, networkCaptureEnabled]);
+
+  useEffect(() => {
+    if (
+      (activeView === "logs" && !requestLogsEnabled) ||
+      (activeView === "observability" && !agentAnalysisEnabled)
+    ) {
+      setActiveView("overview");
+    }
+  }, [activeView, agentAnalysisEnabled, requestLogsEnabled]);
 
   useEffect(() => {
     if (activeView !== "onboarding" || !configLoaded || !onboardingStatusLoaded || !providerPresetsLoaded) {
@@ -1767,6 +1794,16 @@ function App() {
     }));
   }
 
+  function changeObservabilityConfig(patch: Partial<AppConfig["observability"]>) {
+    updateConfig((config) => ({
+      ...config,
+      observability: normalizeObservabilityConfig({
+        ...config.observability,
+        ...patch
+      })
+    }));
+  }
+
   function openBotSettingsWithAddDialog() {
     setSettingsInitialPage("bots");
     setSettingsBotAddRequestKey((current) => current + 1);
@@ -1940,6 +1977,12 @@ function App() {
   }
 
   async function refreshRequestLogs() {
+    if (!requestLogsEnabled) {
+      setRequestLogPage(createEmptyRequestLogPage(requestLogFilter));
+      setRequestLogError("");
+      setRequestLogLoading(false);
+      return;
+    }
     if (!window.ccr) {
       setRequestLogPage(createEmptyRequestLogPage(requestLogFilter));
       return;
@@ -1957,6 +2000,12 @@ function App() {
   }
 
   async function refreshAgentAnalysis() {
+    if (!agentAnalysisEnabled) {
+      setAgentAnalysis(createEmptyAgentAnalysis(agentAnalysisRange));
+      setAgentAnalysisError("");
+      setAgentAnalysisLoading(false);
+      return;
+    }
     if (!window.ccr) {
       setAgentAnalysis(createEmptyAgentAnalysis(agentAnalysisRange));
       return;
@@ -2151,6 +2200,7 @@ function App() {
         return;
       }
       const result = await window.ccr.stopProfile({ profileId: profile.id, surface: "app" });
+      removeProfileRuntimeEntry(result.profileId, result.surface);
       await refreshProfileRuntimeStatus();
       showToast(result.message);
     } catch (error) {
@@ -2227,6 +2277,7 @@ function App() {
     }
     try {
       const result = await window.ccr.stopProfile({ profileId: profile.id, surface: "app" });
+      removeProfileRuntimeEntry(result.profileId, result.surface);
       await refreshProfileRuntimeStatus();
       setProfileOpenDialog(undefined);
       showToast(result.message);
@@ -2247,6 +2298,12 @@ function App() {
     } catch {
       setProfileRuntimeStatus({ profiles: [] });
     }
+  }
+
+  function removeProfileRuntimeEntry(profileId: string, surface: ProfileOpenSurface) {
+    setProfileRuntimeStatus((current) => ({
+      profiles: current.profiles.filter((entry) => entry.profileId !== profileId || entry.surface !== surface)
+    }));
   }
 
   function updateProfileDraft(patch: Partial<AddProfileDraft>) {
@@ -2425,6 +2482,7 @@ function App() {
           ) : (
             <MainLayout
               activeView={activeView}
+              agentAnalysisEnabled={agentAnalysisEnabled}
               compactLayout={compactLayout}
               copy={copy}
               gatewayActionBusy={gatewayActionBusy}
@@ -2440,6 +2498,7 @@ function App() {
               onSelectNavigationItem={selectNavigationItem}
               onToggleSidebar={() => setSidebarOpen((current) => !current)}
               proxyStatus={proxyStatus}
+              requestLogsEnabled={requestLogsEnabled}
               shouldReduceMotion={shouldReduceMotion}
               sidebarOpen={sidebarOpen}
               toggleGatewayService={toggleGatewayService}
@@ -2734,11 +2793,13 @@ function App() {
               languagePreference,
               onChangeBotConfigs: changeBotConfigs,
               onChangeLanguage: changeLanguagePreference,
+              onChangeObservability: changeObservabilityConfig,
               onChangeTheme: changeThemePreference,
               onChangeTrayBalanceProgress: changeTrayBalanceProgress,
               onChangeTrayIcon: changeTrayIconPreference,
               onChangeTrayWidgets: changeTrayWidgets,
               onClose: () => setSettingsOpen(false),
+              observability: draftConfig.observability,
               profiles: draftConfig.profile.profiles,
               systemLanguage,
               systemTheme,

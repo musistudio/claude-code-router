@@ -406,6 +406,7 @@ export function normalizeConfig(config: AppConfig): AppConfig {
       ...fallbackConfig.gateway,
       ...(config.gateway || {})
     },
+    observability: normalizeObservabilityConfig(config.observability),
     proxy: {
       ...fallbackConfig.proxy,
       ...(config.proxy || {}),
@@ -438,5 +439,14 @@ export function normalizeConfig(config: AppConfig): AppConfig {
     trayWidgets: normalizeTrayWidgets(config.trayWidgets, config.trayWindowModules, config.trayComponentVariants),
     trayWindowModules: normalizeTrayWindowModules(config.trayWindowModules),
     virtualModelProfiles: Array.isArray(config.virtualModelProfiles) ? config.virtualModelProfiles : []
+  };
+}
+
+export function normalizeObservabilityConfig(config: Partial<AppConfig["observability"]> | undefined): AppConfig["observability"] {
+  return {
+    ...fallbackConfig.observability,
+    ...(config || {}),
+    agentAnalysis: Boolean(config?.agentAnalysis),
+    requestLogs: Boolean(config?.requestLogs)
   };
 }

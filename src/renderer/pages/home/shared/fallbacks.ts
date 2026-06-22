@@ -96,6 +96,10 @@ export const fallbackConfig: AppConfig = {
     host: "127.0.0.1",
     port: 3456
   },
+  observability: {
+    agentAnalysis: false,
+    requestLogs: false
+  },
   preferredProvider: "",
   plugins: [],
   profile: {

@@ -392,6 +392,10 @@ class GatewayService {
 
     const path = request.url ? new URL(request.url, this.status.endpoint || "http://127.0.0.1").pathname : "/";
     if (path === rawTraceSyncPath) {
+      if (!shouldRecordRequestLogs(this.config)) {
+        sendJson(response, 202, { applied: false, disabled: true, ok: true });
+        return;
+      }
       await this.handleRawTraceSync(request, response);
       return;
     }
@@ -526,6 +530,10 @@ class GatewayService {
       responseBodyTruncated = false,
       error?: string
     ) => {
+      const config = this.config;
+      if (!config || !shouldRecordRequestLogs(config)) {
+        return;
+      }
       void (async () => {
         await recordGatewayRequestLog({
           client,
@@ -1197,7 +1205,7 @@ function sanitizeMcpServerName(value: string): string {
 }
 
 function buildRawTraceConfig(config: AppConfig, rawTraceSyncToken: string): Record<string, unknown> {
-  const enabled = rawTraceEnabledFromEnv();
+  const enabled = rawTraceEnabledFromEnv() && shouldRecordRequestLogs(config);
   return {
     deleteLocalAfterUpload: false,
     enabled,
@@ -1213,6 +1221,10 @@ function buildRawTraceConfig(config: AppConfig, rawTraceSyncToken: string): Reco
       timeoutMs: 5000
     }
   };
+}
+
+function shouldRecordRequestLogs(config: AppConfig): boolean {
+  return Boolean(config.observability?.requestLogs || config.observability?.agentAnalysis);
 }
 
 function rawTraceEnabledFromEnv(): boolean {

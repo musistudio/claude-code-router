@@ -174,15 +174,17 @@ async function openClaudeAppProfile(config: AppConfig, profile: ReturnType<typeo
 export function getProfileRuntimeStatus(): ProfileRuntimeStatus {
   cleanupExitedProfileApps();
   return {
-    profiles: [...runningProfileApps.values()].map((entry) => ({
-      agent: entry.agent,
-      pid: entry.pid,
-      profileId: entry.profileId,
-      profileName: entry.profileName,
-      startedAt: entry.startedAt,
-      state: entry.state,
-      surface: entry.surface
-    }))
+    profiles: [...runningProfileApps.values()]
+      .filter((entry) => !entry.stopRequested)
+      .map((entry) => ({
+        agent: entry.agent,
+        pid: entry.pid,
+        profileId: entry.profileId,
+        profileName: entry.profileName,
+        startedAt: entry.startedAt,
+        state: entry.state,
+        surface: entry.surface
+      }))
   };
 }
 
@@ -291,6 +293,7 @@ function runningProfileApp(profileId: string, surface: ProfileOpenRequest["surfa
     return undefined;
   }
   if (isProfileAppRunning(entry)) {
+    entry.stopRequested = false;
     return entry;
   }
   cleanupProfileAppEntry(key, entry);

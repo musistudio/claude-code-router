@@ -663,6 +663,11 @@ export type ProxyRuntimeConfig = {
   targets: ProxyRouteTarget[];
 };
 
+export type ObservabilityConfig = {
+  agentAnalysis: boolean;
+  requestLogs: boolean;
+};
+
 export type TrayIconPreference = "random" | "violet" | "orange" | "cyan" | "progress";
 
 export type TrayBalanceProgressConfig = {
@@ -1146,6 +1151,7 @@ export type AppConfig = {
   botConfigs: BotGatewaySavedConfig[];
   botGateway: BotGatewayRuntimeConfig;
   gateway: GatewayRuntimeConfig;
+  observability: ObservabilityConfig;
   preferredProvider: string;
   plugins: GatewayPluginConfig[];
   profile: ProfileRuntimeConfig;

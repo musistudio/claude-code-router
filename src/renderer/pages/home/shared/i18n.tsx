@@ -6,6 +6,8 @@ type ResolvedLanguage = "en" | "zh";
 export type AppCopy = {
   navigation: Record<NavigationId, string>;
   settings: {
+    agentAnalysis: string;
+    agentAnalysisDescription: string;
     appearance: string;
     bots: string;
     button: string;
@@ -15,6 +17,9 @@ export type AppCopy = {
     languageChinese: string;
     languageEnglish: string;
     languageSystem: string;
+    observability: string;
+    requestLogs: string;
+    requestLogsDescription: string;
     theme: string;
     themeDark: string;
     themeLight: string;
@@ -99,6 +104,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "virtual-models": "Fusion"
     },
     settings: {
+      agentAnalysis: "Agent observability",
+      agentAnalysisDescription: "Record request metadata needed for the observability page.",
       appearance: "Appearance",
       bots: "Bots",
       button: "Settings",
@@ -108,6 +115,9 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       languageChinese: "Chinese",
       languageEnglish: "English",
       languageSystem: "System",
+      observability: "Logs & Observability",
+      requestLogs: "Request logs",
+      requestLogsDescription: "Record gateway requests and show the Logs page.",
       theme: "Theme",
       themeDark: "Dark",
       themeLight: "Light",
@@ -370,6 +380,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "virtual-models": "Fusion"
     },
     settings: {
+      agentAnalysis: "Agent 观测",
+      agentAnalysisDescription: "记录观测页所需的请求元数据。",
       appearance: "外观",
       bots: "Bot 管理",
       button: "设置",
@@ -379,6 +391,9 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       languageChinese: "中文",
       languageEnglish: "英文",
       languageSystem: "跟随系统",
+      observability: "日志与观测",
+      requestLogs: "请求日志",
+      requestLogsDescription: "记录网关请求并显示日志页。",
       theme: "主题",
       themeDark: "暗色",
       themeLight: "亮色",

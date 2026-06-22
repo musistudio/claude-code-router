@@ -63,6 +63,7 @@ export function MainLayout({
   gatewayStatus,
   isMac,
   needsTrafficLightSafeArea,
+  agentAnalysisEnabled,
   networkCaptureEnabled,
   onDownloadUpdate,
   onInstallUpdate,
@@ -77,9 +78,11 @@ export function MainLayout({
   updateActionBusy,
   updateStatus,
   viewProps,
+  requestLogsEnabled,
   visibleNavigation
 }: {
   activeView: ViewId;
+  agentAnalysisEnabled: boolean;
   compactLayout: boolean;
   copy: AppCopy;
   gatewayActionBusy: boolean;
@@ -101,6 +104,7 @@ export function MainLayout({
   updateActionBusy: UpdateActionBusy;
   updateStatus: AppUpdateStatus;
   viewProps: MainViewProps;
+  requestLogsEnabled: boolean;
   visibleNavigation: MainNavigationItem[];
 }) {
   const windowControlSafeAreaWidth = isMac ? 152 : 88;
@@ -242,7 +246,13 @@ export function MainLayout({
             viewUsesInternalScroll(activeView) ? "overflow-hidden" : "overflow-auto"
           )}
         >
-          <MainViewSwitch activeView={activeView} networkCaptureEnabled={networkCaptureEnabled} viewProps={viewProps} />
+          <MainViewSwitch
+            activeView={activeView}
+            agentAnalysisEnabled={agentAnalysisEnabled}
+            networkCaptureEnabled={networkCaptureEnabled}
+            requestLogsEnabled={requestLogsEnabled}
+            viewProps={viewProps}
+          />
         </div>
       </main>
     </>
@@ -317,23 +327,27 @@ function updateButtonLabel(status: AppUpdateStatus, t: (value: string) => string
 
 function MainViewSwitch({
   activeView,
+  agentAnalysisEnabled,
   networkCaptureEnabled,
+  requestLogsEnabled,
   viewProps
 }: {
   activeView: ViewId;
+  agentAnalysisEnabled: boolean;
   networkCaptureEnabled: boolean;
+  requestLogsEnabled: boolean;
   viewProps: MainViewProps;
 }) {
   return (
     <AnimatePresence initial={false} mode="wait">
       <ViewMotionShell key={activeView} view={activeView}>
         {activeView === "overview" ? <OverviewView {...viewProps.overview} /> : null}
-        {activeView === "observability" ? <AgentAnalysisView {...viewProps.observability} /> : null}
+        {activeView === "observability" && agentAnalysisEnabled ? <AgentAnalysisView {...viewProps.observability} /> : null}
         {activeView === "api-keys" ? <ApiKeysView {...viewProps.apiKeys} /> : null}
         {activeView === "server" ? <ServerView {...viewProps.server} /> : null}
         {activeView === "profile" ? <ProfileView {...viewProps.profile} /> : null}
         {activeView === "networking" && networkCaptureEnabled ? <NetworkingView {...viewProps.networking} /> : null}
-        {activeView === "logs" ? <LogsView {...viewProps.logs} /> : null}
+        {activeView === "logs" && requestLogsEnabled ? <LogsView {...viewProps.logs} /> : null}
         {activeView === "providers" ? <ProvidersView {...viewProps.providers} /> : null}
         {activeView === "models" ? <ModelsView {...viewProps.models} /> : null}
         {activeView === "routing" ? <RoutingView {...viewProps.routing} /> : null}

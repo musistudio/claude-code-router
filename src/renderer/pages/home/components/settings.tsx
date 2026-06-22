@@ -13,6 +13,8 @@ import {
   X
 } from "../shared";
 
+const settingsPageContentWidthClassName = "mx-auto w-full max-w-[900px]";
+
 export function AppSettingsDialog({
   botAddRequestKey,
   botConfigs,
@@ -21,12 +23,14 @@ export function AppSettingsDialog({
   isMac,
   languagePreference,
   onChangeBotConfigs,
+  onChangeObservability,
   onChangeTrayBalanceProgress,
   onChangeLanguage,
   onChangeTheme,
   onChangeTrayIcon,
   onChangeTrayWidgets,
   onClose,
+  observability,
   profiles,
   providerAccountSnapshots,
   systemLanguage,
@@ -43,12 +47,14 @@ export function AppSettingsDialog({
   isMac: boolean;
   languagePreference: AppLanguagePreference;
   onChangeBotConfigs: (configs: BotGatewaySavedConfig[]) => void;
+  onChangeObservability: (patch: Partial<AppConfig["observability"]>) => void;
   onChangeTrayBalanceProgress: (config: TrayBalanceProgressConfig) => void;
   onChangeLanguage: (value: string) => void;
   onChangeTheme: (value: string) => void;
   onChangeTrayIcon: (value: string) => void;
   onChangeTrayWidgets: (widgets: TrayWidgetConfig[]) => void;
   onClose: () => void;
+  observability: AppConfig["observability"];
   profiles: ProfileConfig[];
   providerAccountSnapshots: ProviderAccountSnapshot[];
   systemLanguage: ResolvedLanguage;
@@ -89,6 +95,15 @@ export function AppSettingsDialog({
               trayBalanceProgress={trayBalanceProgress}
               trayIconPreference={trayIconPreference}
               trayWidgets={trayWidgets}
+            />
+          );
+        }
+        if (activePage === "observability") {
+          return (
+            <ObservabilitySettingsPage
+              copy={copy}
+              observability={observability}
+              onChange={onChangeObservability}
             />
           );
         }
@@ -148,6 +163,13 @@ function SettingsLayout({
               icon={Palette}
               label={copy.settings.appearance}
               onClick={() => setActivePage("appearance")}
+            />
+            <SettingsPageButton
+              active={visiblePage === "observability"}
+              className="mt-1"
+              icon={Activity}
+              label={copy.settings.observability}
+              onClick={() => setActivePage("observability")}
             />
             <SettingsPageButton
               active={visiblePage === "bots"}
@@ -248,7 +270,7 @@ function AppearanceSettingsPage({
   ];
 
   return (
-    <div className="mx-auto grid max-w-[520px] grid-cols-1 gap-5">
+    <div className={cn(settingsPageContentWidthClassName, "grid grid-cols-1 gap-5")}>
       <h3 className="text-[15px] font-semibold text-foreground">{copy.settings.appearance}</h3>
       <div className="grid grid-cols-1 gap-4">
         <Field label={copy.settings.theme}>
@@ -258,6 +280,68 @@ function AppearanceSettingsPage({
           <SelectControl onChange={onChangeLanguage} options={languageOptions} value={languagePreference} />
         </Field>
       </div>
+    </div>
+  );
+}
+
+function ObservabilitySettingsPage({
+  copy,
+  observability,
+  onChange
+}: {
+  copy: AppCopy;
+  observability: AppConfig["observability"];
+  onChange: (patch: Partial<AppConfig["observability"]>) => void;
+}) {
+  return (
+    <div className={cn(settingsPageContentWidthClassName, "grid grid-cols-1 gap-5")}>
+      <h3 className="text-[15px] font-semibold text-foreground">{copy.settings.observability}</h3>
+      <div className="grid grid-cols-1 gap-3">
+        <ObservabilitySwitchRow
+          checked={observability.requestLogs}
+          description={copy.settings.requestLogsDescription}
+          icon={Database}
+          label={copy.settings.requestLogs}
+          onChange={(requestLogs) => onChange({ requestLogs })}
+        />
+        <ObservabilitySwitchRow
+          checked={observability.agentAnalysis}
+          description={copy.settings.agentAnalysisDescription}
+          icon={Activity}
+          label={copy.settings.agentAnalysis}
+          onChange={(agentAnalysis) => onChange({ agentAnalysis })}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ObservabilitySwitchRow({
+  checked,
+  description,
+  icon: Icon,
+  label,
+  onChange
+}: {
+  checked: boolean;
+  description: string;
+  icon: typeof Activity;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-3 rounded-md border border-border bg-muted/20 px-3 py-3">
+      <span className={cn(
+        "flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
+        checked ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+      )}>
+        <Icon className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[13px] font-semibold text-foreground">{label}</div>
+        <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{description}</div>
+      </div>
+      <Switch checked={checked} onCheckedChange={onChange} />
     </div>
   );
 }
@@ -305,7 +389,7 @@ function BotSettingsPage({
   }
 
   return (
-    <div className="mx-auto grid max-w-[760px] grid-cols-1 gap-5">
+    <div className={cn(settingsPageContentWidthClassName, "grid grid-cols-1 gap-5")}>
       <div className="flex min-w-0 items-center justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-[15px] font-semibold text-foreground">{copy.settings.bots}</h3>
@@ -1079,7 +1163,7 @@ function TraySettingsPage({
   }, [selectedWidget, selectedWidgetIndex, widgets]);
 
   return (
-    <div className="grid min-h-[520px] grid-rows-[auto_auto_auto] gap-4" ref={pageRef}>
+    <div className={cn(settingsPageContentWidthClassName, "grid min-h-[520px] grid-rows-[auto_auto_auto] gap-4")} ref={pageRef}>
       <h3 className="text-[15px] font-semibold text-foreground">{copy.settings.tray}</h3>
       <div className="flex flex-wrap items-end gap-3 rounded-md border border-border bg-background p-3">
         <Field className="min-w-[220px] flex-1" label={copy.settings.trayIcon}>
@@ -1120,7 +1204,7 @@ function TraySettingsPage({
           )
         ) : null}
       </div>
-      <div className="grid min-h-0 grid-cols-[220px_minmax(320px,1fr)_260px] gap-4 max-[1100px]:grid-cols-1">
+      <div className="grid min-h-0 grid-cols-[220px_minmax(320px,1fr)_260px] gap-4 max-[1140px]:grid-cols-1">
         <div className="flex min-h-0 flex-col overflow-hidden rounded-md border border-border bg-background">
           <div className="shrink-0 border-b border-border/70 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             {copy.settings.trayComponents}
