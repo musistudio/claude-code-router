@@ -11,9 +11,9 @@ import {
   providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountSnapshot,
   providerAccountSnapshotCredentialLabel, providerAccountSnapshotLabel, ProviderAccountTestPath,
   ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
-  ProviderConnectivityCheckReport, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
+  ProviderConnectivityCheckReport, providerDeepLinkDisplayIcon, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
   providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
-  ShieldCheck, splitLines, splitModelTagInput, Switch, Textarea, translatedProviderProtocolLabel, translateOptions,
+  resolveProviderDeepLinkPreset, ShieldCheck, splitLines, splitModelTagInput, Switch, Textarea, translatedProviderProtocolLabel, translateOptions,
   translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppText, useEffect, useMemo,
   useRef, useState, X
 } from "../shared";
@@ -418,12 +418,14 @@ export function DeleteProviderDialog({
 export function ProviderDeepLinkDialog({
   busy,
   error,
+  iconLoading = false,
   onClose,
   onSubmit,
   request
 }: {
   busy: boolean;
   error: string;
+  iconLoading?: boolean;
   onClose: () => void;
   onSubmit: () => Promise<void>;
   request: ProviderDeepLinkRequest;
@@ -432,6 +434,8 @@ export function ProviderDeepLinkDialog({
   const provider = request.provider;
   const manifest = request.manifest;
   const displayName = provider ? provider.name?.trim() || inferProviderNameFromBaseUrl(provider.baseUrl) : "";
+  const providerPreset = provider ? resolveProviderDeepLinkPreset(provider) : undefined;
+  const providerIconUrl = provider ? providerDeepLinkDisplayIcon(provider) : "";
   const modelPreview = provider?.models.slice(0, 8) ?? [];
 
   return (
@@ -461,6 +465,20 @@ export function ProviderDeepLinkDialog({
               <div className="flex items-start gap-2 rounded-md border border-border bg-background px-3 py-2 text-[11px] leading-4 text-muted-foreground">
                 <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span>{t("Only enter an API key issued for this endpoint. Official provider keys must only be used with official endpoints.")}</span>
+              </div>
+              <div className="flex min-w-0 items-center gap-3 rounded-md border border-border bg-background px-3 py-2.5">
+                <div className="relative shrink-0">
+                  <ProviderPresetIcon className="h-10 w-10 rounded-md" iconUrl={providerIconUrl} preset={providerPreset} />
+                  {iconLoading ? (
+                    <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full border border-border bg-background">
+                      <LoaderCircle className="h-2.5 w-2.5 animate-spin text-muted-foreground" />
+                    </span>
+                  ) : null}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[13px] font-semibold text-foreground">{displayName}</div>
+                  <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground" title={provider.baseUrl}>{provider.baseUrl}</div>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 gap-2 text-[12px] sm:grid-cols-2">
@@ -500,12 +518,6 @@ export function ProviderDeepLinkDialog({
                 </div>
               ) : null}
 
-              {(provider.setDefault || provider.replaceExisting) ? (
-                <div className="flex flex-wrap gap-2">
-                  {provider.setDefault ? <Badge variant="secondary">{t("Set as default provider")}</Badge> : null}
-                  {provider.replaceExisting ? <Badge variant="secondary">{t("Replace existing provider")}</Badge> : null}
-                </div>
-              ) : null}
             </div>
           ) : manifest ? (
             <div className="space-y-3">

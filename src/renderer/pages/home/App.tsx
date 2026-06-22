@@ -24,10 +24,11 @@ import {
   providerCredentialsFromDraft,
   persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
+  providerDeepLinkDisplayIcon,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
   providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
-  ResolvedTheme, resolvePluginInstallPlan, RouterRule, ServerActionBusy, SettingsPageId,
+  ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkIcon, RouterRule, ServerActionBusy, SettingsPageId,
   routingRewriteFromDraftRow, setProviderPresets, splitLines, translateProxyCertificateMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
   uniqueRoutingRuleId, updateApiKeyEditableConfig, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, useEffect,
   useMemo, useReducedMotion, useRef, useState, validateVirtualModelDraft, ViewId,
@@ -96,6 +97,7 @@ function App() {
   const [providerDeepLinkRequest, setProviderDeepLinkRequest] = useState<ProviderDeepLinkRequest>();
   const [providerDeepLinkBusy, setProviderDeepLinkBusy] = useState(false);
   const [providerDeepLinkError, setProviderDeepLinkError] = useState("");
+  const [providerDeepLinkIconLoading, setProviderDeepLinkIconLoading] = useState(false);
   const [proxyCertificateChecking, setProxyCertificateChecking] = useState(false);
   const [proxyEnablePending, setProxyEnablePending] = useState(false);
   const [providerProbeError, setProviderProbeError] = useState("");
@@ -259,6 +261,46 @@ function App() {
 
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    const request = providerDeepLinkRequest;
+    const payload = request?.provider;
+    providerDeepLinkIconRequestId.current += 1;
+    const requestId = providerDeepLinkIconRequestId.current;
+
+    if (!request || !payload || !providerPresetsLoaded || providerDeepLinkDisplayIcon(payload)) {
+      setProviderDeepLinkIconLoading(false);
+      return;
+    }
+
+    setProviderDeepLinkIconLoading(true);
+    void resolveProviderDeepLinkIcon(payload)
+      .then((resolution) => {
+        if (providerDeepLinkIconRequestId.current !== requestId || !resolution.persistentIcon) {
+          return;
+        }
+        setProviderDeepLinkRequest((current) => {
+          if (!current?.provider || current.id !== request.id) {
+            return current;
+          }
+          if (current.provider.icon?.trim()) {
+            return current;
+          }
+          return {
+            ...current,
+            provider: {
+              ...current.provider,
+              icon: resolution.persistentIcon
+            }
+          };
+        });
+      })
+      .finally(() => {
+        if (providerDeepLinkIconRequestId.current === requestId) {
+          setProviderDeepLinkIconLoading(false);
+        }
+      });
+  }, [providerDeepLinkRequest?.id, providerDeepLinkRequest?.provider?.baseUrl, providerDeepLinkRequest?.provider?.icon, providerPresetsLoaded]);
 
   useEffect(() => {
     if (!window.ccr) {
@@ -469,6 +511,7 @@ function App() {
   const autoSaveRequestId = useRef(0);
   const providerProbeRequestId = useRef(0);
   const providerConnectivityRequestId = useRef(0);
+  const providerDeepLinkIconRequestId = useRef(0);
   const toastTimer = useRef<number>();
 
   const shouldReduceMotion = useReducedMotion();
@@ -1121,7 +1164,7 @@ function App() {
         return;
       }
 
-      const payload = request.provider;
+      let payload = request.provider;
       if (!payload) {
         setProviderDeepLinkBusy(false);
         return;
@@ -1135,6 +1178,13 @@ function App() {
       });
       if (identityIssue) {
         throw new Error(identityIssue.message);
+      }
+      const iconResolution = await resolveProviderDeepLinkIcon(payload);
+      if (iconResolution.persistentIcon && iconResolution.persistentIcon !== payload.icon?.trim()) {
+        payload = {
+          ...payload,
+          icon: iconResolution.persistentIcon
+        };
       }
       const probe = await probeProviderDeepLinkPayload(payload);
       let importedProviderName = payload.name?.trim() || "";
@@ -2626,6 +2676,7 @@ function App() {
             providerDeepLink={providerDeepLinkRequest ? {
               busy: providerDeepLinkBusy,
               error: providerDeepLinkError,
+              iconLoading: providerDeepLinkIconLoading,
               onClose: () => {
                 if (!providerDeepLinkBusy) {
                   setProviderDeepLinkRequest(undefined);
