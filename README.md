@@ -192,6 +192,12 @@ Here is a comprehensive example:
         "claude-opus-4-20250514",
         "gemini-2.5-pro"
       ]
+    },
+    {
+      "name": "atlascloud",
+      "api_base_url": "https://api.atlascloud.ai/v1/chat/completions",
+      "api_key": "sk-xxx",
+      "models": ["deepseek-ai/deepseek-v3.2", "Qwen/Qwen3-Coder-480B-A35B-Instruct"]
     }
   ],
   "Router": {
