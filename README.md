@@ -1,23 +1,92 @@
-# Claude Code Router Desktop
+<h1 align="center">Claude Code Router Desktop</h1>
 
-Electron desktop wrapper for Claude Code Router. The core gateway runtime is provided by the local `next-ai/gateway` project and installed as:
+<p align="center">
+  <a href="README_zh.md"><img alt="Chinese README" src="https://img.shields.io/badge/%F0%9F%87%A8%F0%9F%87%B3-%E4%B8%AD%E6%96%87%E7%89%88-ff0000?style=flat" /></a>
+  <a href="https://discord.gg/rdftVMaUcS"><img alt="Discord" src="https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white" /></a>
+  <a href="https://github.com/musistudio/claude-code-router/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/musistudio/claude-code-router" /></a>
+</p>
 
-```json
-"gateway": "file:../../next-ai/gateway"
-```
+<p align="center">
+  <img src="blog/images/sponsors/glm-en.jpg" alt="GLM CODING PLAN sponsor" />
+</p>
 
-At runtime this app starts two local services:
+> **Sponsored by Z.ai.** This project is sponsored by Z.ai, supporting us with their GLM CODING PLAN.
 
-- CCR wrapper: `http://127.0.0.1:3456`
-- next-ai core gateway: `http://127.0.0.1:3457`
+> GLM CODING PLAN is a subscription service designed for AI coding, starting at just $10/month. It provides access to their flagship GLM-4.7 & (GLM-5 Only Available for Pro Users) model across 10+ popular AI coding tools (Claude Code, Cline, Roo Code, etc.), offering developers top-tier, fast, and stable coding experiences.
 
-The wrapper also owns an internal backend service for local HTTP backend lifecycles and scoped SQLite stores.
+> Get 10% OFF GLM CODING PLAN: https://z.ai/subscribe?ic=8JVLJQFSKB
 
-The wrapper reads `~/.claude-code-router/config.json`, preserves the old CCR `Providers` / `Router` format, generates `~/.claude-code-router/gateway.config.json`, and routes Claude Code `POST /v1/messages` requests into the core gateway.
+Claude Code Router Desktop is a local gateway and desktop control panel for routing agent requests from Claude Code, Codex, ZCode, and compatible clients to the model provider you actually want to use.
+
+CCR runs on your machine, keeps provider configuration in your local config directory, and exposes a local gateway at `http://127.0.0.1:3456`.
+
+## Why Use CCR
+
+- Use one local endpoint for multiple agent tools instead of configuring every client separately.
+- Route different workloads to different models, such as fast background work, reasoning tasks, long-context requests, image tasks, or web-search-capable models.
+- Mix providers without changing your workflow. CCR supports OpenAI-compatible APIs, Anthropic Messages, Gemini Generate Content, OpenRouter, DeepSeek, SiliconFlow, Moonshot, Mistral, Z.AI, Bailian, and custom providers.
+- Control cost and reliability with fallback routing, API key rotation, usage statistics, and request logs.
+- Manage everything from a desktop UI instead of editing JSON by hand.
+- Extend the gateway with plugins, proxy routes, local HTTP backends, and provider deeplinks.
+
+## Features
+
+- **Desktop dashboard**: start or stop the local gateway, inspect usage, configure the tray window, and manage runtime settings.
+- **Provider management**: add provider presets or custom endpoints, test connectivity, manage credentials, and monitor supported account balances where available.
+- **Routing rules**: set default, background, thinking, long-context, image, web-search, subagent, model-prefix, and conditional routing rules.
+- **Agent profiles**: configure Claude Code, Codex, and ZCode profiles that point to the CCR gateway.
+- **Gateway compatibility**: translate client requests through the local CCR wrapper and the core gateway runtime.
+- **Proxy mode**: capture supported API traffic through a local proxy with optional system proxy integration and network capture.
+- **Plugins**: install or load wrapper plugins, including routes for Claude Design and Cursor Proxy style integrations.
+- **Virtual models**: expose aliases or composed model profiles for clients that expect a specific model name.
+- **Provider deeplinks**: import provider configuration through `ccr://provider?...` links after user confirmation.
+
+## Download And Install
+
+1. Open the [GitHub Releases page](https://github.com/musistudio/claude-code-router/releases).
+2. Download the package for your platform:
+   - macOS: `Claude Code Router_<version>.dmg` or `.zip`
+   - Windows: `Claude Code Router_<version>.exe`
+   - Linux: `Claude Code Router_<version>.AppImage`
+3. Install and launch **Claude Code Router**.
+4. On first launch, CCR creates its local configuration:
+   - macOS/Linux: `~/.claude-code-router/config.json`
+   - Windows: `%APPDATA%\Claude Code Router\config.json`
+
+CCR starts two local services when the gateway is enabled:
+
+- CCR wrapper gateway: `http://127.0.0.1:3456`
+- Core gateway runtime: `http://127.0.0.1:3457`
+
+## Quick Start
+
+CCR can be configured entirely from the desktop UI. Use this setup order for a clean first run.
+
+### 1. Add a provider
+
+Open **Providers**, click **Add Provider**, then choose a built-in preset or create a custom provider. Fill in the provider name, endpoint, protocol, API key, and model list in the form. Use the connectivity check when available, then save the provider.
+
+### 2. Configure routing
+
+Open **Routing** and select which provider/model should handle the default route. Then fill optional routes for background work, thinking requests, long-context requests, image tasks, and web search if you want different models for those scenarios.
+
+Use **Add Routing Rule** when you need more control, such as model-prefix routing, subagent routing, request conditions, or fallback behavior.
+
+### 3. Start the gateway
+
+Open **Server** and click **Start**. Enable auto start if you want CCR to start the local gateway whenever the desktop app opens.
+
+### 4. Connect your agent tool
+
+Open **Profiles** and choose the client you want to use. Configure the Claude Code, Codex, or ZCode profile from the form, select the target model, and apply the profile. For app-based profiles, use the profile action button to open the target app through CCR.
+
+### 5. Monitor and adjust
+
+Use **Dashboard** for usage and provider health, the tray window for quick token and account status, **Network Logs** for debugging provider behavior, and **Extensions** for plugin configuration.
 
 ## Provider Deeplink
 
-Supplier websites can open CCR and import a model provider with a custom protocol link:
+Provider websites can open CCR and import a model provider with a custom protocol link:
 
 ```text
 ccr://provider?name=Example%20AI&base_url=https%3A%2F%2Fapi.example.com%2Fv1&api_key=sk-example&models=example-chat%2Cexample-coder&protocol=openai_chat_completions
@@ -29,32 +98,18 @@ Supported query parameters:
 - `base_url`: provider API base URL. Aliases: `baseUrl`, `api_base_url`, `url`, `endpoint`.
 - `api_key`: optional provider API key. Aliases: `apiKey`, `apikey`, `key`, `token`.
 - `models`: comma-separated or newline-separated model list. You can also repeat `model=...`.
-- `protocol`: one of `openai_chat_completions`, `openai_responses`, `anthropic_messages`, or `gemini_generate_content`. Aliases such as `openai`, `responses`, `anthropic`, and `gemini` are accepted.
+- `protocol`: one of `openai_chat_completions`, `openai_responses`, `anthropic_messages`, or `gemini_generate_content`.
 
-For larger payloads, pass `payload` as URL-encoded JSON or base64url JSON with the same fields:
+For larger payloads, pass `payload` as URL-encoded JSON or base64url JSON with the same fields. CCR always opens a confirmation dialog before writing a provider imported from an external link.
 
-```json
-{
-  "name": "Example AI",
-  "baseUrl": "https://api.example.com/v1",
-  "apiKey": "sk-example",
-  "models": ["example-chat", "example-coder"],
-  "protocol": "openai_chat_completions"
-}
-```
+## Plugins
 
-CCR always opens a confirmation dialog before writing a provider imported from an external link.
+CCR has two plugin layers:
 
-## Plugin Architecture
-
-CCR now has two plugin layers:
-
-- Core gateway plugins: keep using `providerPlugins` and `virtualModelProfiles`. They are passed through to `next-ai/gateway`.
+- Core gateway plugins: use `providerPlugins` and `virtualModelProfiles`; these are passed through to the core gateway.
 - Wrapper plugins: use top-level `plugins` to extend the Electron wrapper, register local HTTP backends, add gateway routes, and route proxy-mode traffic to plugin backends.
 
-SQLite-backed local backend resources are managed by the wrapper's base backend service. They are not installed as a separate marketplace plugin.
-
-Declarative proxy route to an existing backend:
+Example wrapper plugin route:
 
 ```json
 {
@@ -78,176 +133,6 @@ Declarative proxy route to an existing backend:
 }
 ```
 
-Executable plugin module paths are resolved from `~/.claude-code-router`; absolute paths and package names are also supported.
-
-Claude Design plugin routing:
-
-The marketplace Claude Design plugin adapts Claude Design chat RPCs into CCR `/v1/messages` calls. Configure upstream APIs through CCR `Providers` as usual, then set Claude Design model routing from the Extensions page with the plugin's configure button. Routes created by the plugin are also shown on the Routing page as plugin-owned rows; they are read-only there and must be edited from the extension configuration dialog.
-
-```json
-{
-  "Providers": [
-    {
-      "name": "anthropic-main",
-      "type": "anthropic_messages",
-      "baseUrl": "https://api.anthropic.com",
-      "apiKey": "sk-ant-...",
-      "models": ["claude-sonnet-4-20250514"]
-    }
-  ],
-  "plugins": [
-    {
-      "id": "claude-design",
-      "enabled": true,
-      "module": "./plugins/claude-design-plugin.cjs",
-      "config": {
-        "routing": {
-          "enabled": true,
-          "default": "anthropic-main,claude-sonnet-4-20250514",
-          "rules": [
-            {
-              "id": "design-opus",
-              "name": "Claude Design Opus",
-              "type": "model",
-              "model": "claude-opus-4-8",
-              "target": "anthropic-main,claude-sonnet-4-20250514",
-              "enabled": true
-            }
-          ]
-        }
-      }
-    }
-  ]
-}
-```
-
-Cursor proxy plugin:
-
-The marketplace Cursor Proxy plugin registers proxy-mode routes for all paths on `api*.cursor.sh`, forwards OpenAI/Anthropic/Gemini-compatible JSON LLM requests to the local CCR gateway, and uses the configured CCR API key automatically. For Cursor Agent traffic, it bridges the private protobuf `BidiAppend` + `AgentService/RunSSE` flow into CCR's `/v1/chat/completions` gateway and streams the gateway response back as Cursor `AgentServerMessage` events. It also attempts to decode Cursor native Connect JSON/protobuf LLM RPCs under `aiserver.v1.*` and `agent.v1.*`, preserving decoded system prompts, tools, tool choices, tool calls, and tool results when those fields are present in the native payload.
-
-Cursor often sends Agent requests with `model: "default"` or another Cursor-local model name. Configure Cursor Proxy model routing from the Extensions page with the plugin's configure button, or set `config.routing` manually. Route targets use the same provider/model selector format as Claude Design plugin routing. The plugin rewrites Cursor's source model to the selected CCR target model before forwarding it to the gateway, so the core gateway does not need a model literally named `default`.
-
-```json
-{
-  "Providers": [
-    {
-      "name": "openrouter",
-      "type": "openai_chat_completions",
-      "baseUrl": "https://openrouter.ai/api/v1",
-      "apiKey": "sk-or-...",
-      "models": ["anthropic/claude-sonnet-4.5", "google/gemini-3-pro-preview"]
-    }
-  ],
-  "proxy": {
-    "enabled": true,
-    "mode": "gateway"
-  },
-  "plugins": [
-    {
-      "id": "cursor-proxy",
-      "enabled": true,
-      "module": "./plugins/cursor-proxy-plugin.cjs",
-      "config": {
-        "routing": {
-          "enabled": true,
-          "default": "openrouter,anthropic/claude-sonnet-4.5",
-          "rules": [
-            {
-              "id": "cursor-default",
-              "name": "Cursor default",
-              "type": "model",
-              "model": "default",
-              "target": "openrouter,anthropic/claude-sonnet-4.5",
-              "enabled": true
-            }
-          ]
-        }
-      }
-    }
-  ]
-}
-```
-
-Other unsupported native Cursor RPC traffic is passed through to Cursor by default; set `"fallbackToCursor": false` to fail unsupported requests instead. Set `paths` only if you intentionally want to restrict which Cursor paths the plugin captures.
-
-`cursorBidiProto`, `cursorConnectJson`, and `cursorNativeProto` are enabled by default. Set them to `false` only when you want Cursor's private Agent protobuf, Connect JSON, or generic native LLM RPC traffic to pass through untouched. `bidiWaitMs`, `bidiSessionTtlMs`, and `gatewayTimeoutMs` can be tuned for slow clients or slow upstream providers.
-Generic native RPC decoding is intentionally limited to Cursor methods that look like generation or streaming LLM calls. Metadata and status calls such as model pickers, repository sync, analytics, dashboards, and file sync are passed through to Cursor. If a new Cursor LLM method is not detected yet, add its method name or full RPC path to `cursorNativeLlmMethods`.
-
-If Cursor sends an OpenAI-compatible `*/chat/completions` request that already includes `system` messages or `tools`, Cursor Proxy and the CCR gateway preserve them. Some Cursor custom-provider flows send only user messages; the proxy cannot recover system/tool context that is not present in the incoming request. For those flows, configure fallback context explicitly:
-
-```json
-{
-  "plugins": [
-    {
-      "id": "cursor-proxy",
-      "config": {
-        "systemPrompt": "You are Cursor in agent mode.",
-        "tools": [
-          {
-            "name": "read_file",
-            "description": "Read a file from the workspace.",
-            "input_schema": {
-              "type": "object",
-              "properties": {
-                "path": { "type": "string" }
-              },
-              "required": ["path"]
-            }
-          }
-        ],
-        "toolChoice": "auto"
-      }
-    }
-  ]
-}
-```
-
-The plugin does not define a separate provider format. Configure upstream APIs through CCR's existing `Providers`, `Router`, `providerPlugins`, and `virtualModelProfiles`; Cursor Proxy only adapts Cursor-compatible request paths and forwards them to the local CCR gateway. Legacy `targetProvider`, `targetProviders`, and `targetModel` are still accepted and converted into a routing target when `routing.default` is not set, but `config.routing` is preferred:
-
-```json
-{
-  "Providers": [
-    {
-      "name": "anthropic-main",
-      "type": "anthropic_messages",
-      "baseUrl": "https://api.anthropic.com",
-      "apiKey": "sk-ant-...",
-      "models": ["claude-sonnet-4-20250514"]
-    }
-  ],
-  "Router": {
-    "default": "anthropic-main,claude-sonnet-4-20250514"
-  },
-  "plugins": [
-    {
-      "id": "cursor-proxy",
-      "module": "./plugins/cursor-proxy-plugin.cjs",
-      "config": {
-        "routing": {
-          "enabled": true,
-          "default": "anthropic-main,claude-sonnet-4-20250514"
-        }
-      }
-    }
-  ]
-}
-```
-
-Local plugin directories can declare dependencies in `plugin.json`, `ccr-plugin.json`, `.ccr-plugin/plugin.json`, `.codex-plugin/plugin.json`, or under `ccr.dependencies` / `ccrPlugin.dependencies` in `package.json`:
-
-```json
-{
-  "id": "my-plugin",
-  "module": "./index.cjs",
-  "dependencies": [
-    "claude-design",
-    { "id": "local-helper", "module": "../local-helper/index.cjs" }
-  ]
-}
-```
-
-Dependencies declared by ID are resolved from the marketplace; dependencies with `module`, `path`, or `modulePath` are installed from that local path.
-
 Plugin modules export a function or object with `setup(ctx)`. The context supports:
 
 - `ctx.registerGatewayRoute({ method, path, auth, handler })`
@@ -257,9 +142,9 @@ Plugin modules export a function or object with `setup(ctx)`. The context suppor
 - `ctx.registerCoreGatewayProviderPlugin(plugin)`
 - `ctx.registerCoreGatewayVirtualModelProfile(profile)`
 
-`ctx.registerHttpBackend` and `ctx.openSqliteStore` are backed by the wrapper's base backend service, so plugin modules do not need to ship or install a SQLite backend plugin.
+Local plugin examples are available in [examples/plugins](examples/plugins).
 
-## Scripts
+## Development
 
 ```bash
 npm install
@@ -273,10 +158,117 @@ npm run build:app
 
 `npm run build` packages the app for the current platform and writes installer artifacts to `release/`.
 
-`npm run build:app` packages both macOS and Windows artifacts with `electron-builder --mac --win`. You can also run `npm run build:app:mac` or `npm run build:app:win` for a single platform. Cross-building Windows installers from macOS may require Wine; otherwise run the Windows build command on Windows.
+`npm run build:app` packages macOS and Windows artifacts with `electron-builder --mac --win`. You can also run `npm run build:app:mac` or `npm run build:app:win` for a single platform. Linux AppImage packaging is configured in `electron-builder.json`.
 
-## Online Updates
+Packaged builds check GitHub Releases for updates through `electron-updater`. For local update feed testing, set `CCR_UPDATE_FEED_URL` to a generic electron-updater feed URL before starting the app. `CCR_UPDATE_ALLOW_PRERELEASE=1` enables prerelease updates.
 
-Packaged builds check GitHub Releases for updates through `electron-updater`. The builder config publishes update metadata for `musistudio/claude-code-router`; attach the generated installer artifacts and `latest*.yml` files to each release. macOS builds include both `dmg` and `zip` targets because the updater requires the zip artifact.
+## Further Reading
 
-For local update feed testing, set `CCR_UPDATE_FEED_URL` to a generic electron-updater feed URL before starting the app. `CCR_UPDATE_ALLOW_PRERELEASE=1` enables prerelease updates.
+- [Project Motivation and How It Works](blog/en/project-motivation-and-how-it-works.md)
+- [Maybe We Can Do More with the Router](blog/en/maybe-we-can-do-more-with-the-route.md)
+
+## Support & Sponsoring
+
+If you find this project helpful, please consider sponsoring its development. Your support is greatly appreciated.
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/F1F31GN2GM)
+
+[Paypal](https://paypal.me/musistudio1999)
+
+<table>
+  <tr>
+    <td><img src="/blog/images/alipay.jpg" width="200" alt="Alipay" /></td>
+    <td><img src="/blog/images/wechat.jpg" width="200" alt="WeChat Pay" /></td>
+  </tr>
+</table>
+
+### Our Sponsors
+
+A huge thank you to all our sponsors for their generous support.
+
+- [AIHubmix](https://aihubmix.com/)
+- [BurnCloud](https://ai.burncloud.com)
+- @Simon Leischnig
+- [@duanshuaimin](https://github.com/duanshuaimin)
+- [@vrgitadmin](https://github.com/vrgitadmin)
+- @\*o
+- [@ceilwoo](https://github.com/ceilwoo)
+- @\*说
+- @\*更
+- @K\*g
+- @R\*R
+- [@bobleer](https://github.com/bobleer)
+- @\*苗
+- @\*划
+- [@Clarence-pan](https://github.com/Clarence-pan)
+- [@carter003](https://github.com/carter003)
+- @S\*r
+- @\*晖
+- @\*敏
+- @Z\*z
+- @\*然
+- [@cluic](https://github.com/cluic)
+- @\*苗
+- [@PromptExpert](https://github.com/PromptExpert)
+- @\*应
+- [@yusnake](https://github.com/yusnake)
+- @\*飞
+- @董\*
+- @\*汀
+- @\*涯
+- @\*:-）
+- @\*\*磊
+- @\*琢
+- @\*成
+- @Z\*o
+- @\*琨
+- [@congzhangzh](https://github.com/congzhangzh)
+- @\*\_
+- @Z\*m
+- @\*鑫
+- @c\*y
+- @\*昕
+- [@witsice](https://github.com/witsice)
+- @b\*g
+- @\*亿
+- @\*辉
+- @JACK
+- @\*光
+- @W\*l
+- [@kesku](https://github.com/kesku)
+- [@biguncle](https://github.com/biguncle)
+- @二吉吉
+- @a\*g
+- @\*林
+- @\*咸
+- @\*明
+- @S\*y
+- @f\*o
+- @\*智
+- @F\*t
+- @r\*c
+- [@qierkang](http://github.com/qierkang)
+- @\*军
+- [@snrise-z](http://github.com/snrise-z)
+- @\*王
+- [@greatheart1000](http://github.com/greatheart1000)
+- @\*王
+- @zcutlip
+- [@Peng-YM](http://github.com/Peng-YM)
+- @\*更
+- @\*.
+- @F\*t
+- @\*政
+- @\*铭
+- @\*叶
+- @七\*o
+- @\*青
+- @\*\*晨
+- @\*远
+- @\*霄
+- @\*\*吉
+- @\*\*飞
+- @\*\*驰
+- @x\*g
+
+(If your name is masked, please contact me via my homepage email to update it with your GitHub username.)

@@ -2,7 +2,8 @@ import {
   AddProfileDraft, AddProviderDraft, AppConfig, Button, Check, ChevronLeft,
   ChevronRight, cn, GatewayProviderProbeResult, GatewayStatus, Gauge, getNextOnboardingStep,
   isOnboardingProfileReady, isOnboardingProviderReady, Layers3, LucideIcon, motion, motionEase,
-  onboardingMascotSpriteUrl, OnboardingStepId, onboardingStepOrder, ProviderConnectivityCheckReport, reducedMotionTransition, useAppText, useReducedMotion,
+  LoaderCircle, onboardingMascotSpriteUrl, OnboardingStepId, onboardingStepOrder, ProviderConnectivityCheckReport, reducedMotionTransition, useAppText, useReducedMotion,
+  useState,
   UserRound, X
 } from "../shared";
 import { AddProviderForm } from "./providers";
@@ -104,6 +105,7 @@ export function OnboardingView({
 }) {
   const t = useAppText();
   const shouldReduceMotion = useReducedMotion();
+  const [providerIconDetecting, setProviderIconDetecting] = useState(false);
   const providerReady = isOnboardingProviderReady(config);
   const profileReady = isOnboardingProfileReady(config);
   const serviceReady = gatewayStatus.state === "running";
@@ -112,8 +114,9 @@ export function OnboardingView({
   const activeDetails = onboardingStepDetails[activeStep];
   const previousStep = onboardingStepOrder[activeIndex - 1];
   const nextStep = getNextOnboardingStep(activeStep, config);
+  const providerSubmitLoading = activeStep === "provider" && (providerProbeLoading || providerConnectivityLoading || providerIconDetecting);
   const nextDisabled = activeStep === "provider"
-    ? !(providerReady || canSubmitProvider)
+    ? providerSubmitLoading || !(providerReady || canSubmitProvider)
     : activeStep === "profile"
       ? !(profileReady || (providerReady && canSubmitProfile))
       : !routeReady;
@@ -133,6 +136,9 @@ export function OnboardingView({
     }
 
     if (activeStep === "provider") {
+      if (providerSubmitLoading) {
+        return;
+      }
       if (canSubmitProvider) {
         const saved = await onSubmitProvider();
         if (saved) {
@@ -208,6 +214,7 @@ export function OnboardingView({
                       mode={providerReady ? "edit" : "add"}
                       onCheck={onCheckProvider}
                       onChange={onChangeProvider}
+                      onIconDetectingChange={setProviderIconDetecting}
                       probe={providerProbe}
                       probeLoading={providerProbeLoading}
                       providerPlugins={config.providerPlugins ?? []}
@@ -260,9 +267,9 @@ export function OnboardingView({
 
               <div className="mt-5 flex shrink-0 items-center justify-end gap-3 border-t border-border/60 pt-4">
                 <Button disabled={nextDisabled} onClick={() => void goToNextStep()} type="button">
-                  {activeStep === "enter" ? <Check className="h-4 w-4" /> : null}
-                  {activeStep === "enter" ? t("Let's start") : t("Next step")}
-                  {activeStep !== "enter" ? <ChevronRight className="h-4 w-4" /> : null}
+                  {providerSubmitLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : activeStep === "enter" ? <Check className="h-4 w-4" /> : null}
+                  {providerSubmitLoading ? t("Loading") : activeStep === "enter" ? t("Let's start") : t("Next step")}
+                  {!providerSubmitLoading && activeStep !== "enter" ? <ChevronRight className="h-4 w-4" /> : null}
                 </Button>
               </div>
             </div>

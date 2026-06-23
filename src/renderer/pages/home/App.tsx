@@ -195,6 +195,7 @@ function App() {
   const [providerDeepLinkBusy, setProviderDeepLinkBusy] = useState(false);
   const [providerDeepLinkError, setProviderDeepLinkError] = useState("");
   const [providerDeepLinkIconLoading, setProviderDeepLinkIconLoading] = useState(false);
+  const [providerDeepLinkModelsLoading, setProviderDeepLinkModelsLoading] = useState(false);
   const [proxyCertificateChecking, setProxyCertificateChecking] = useState(false);
   const [proxyEnablePending, setProxyEnablePending] = useState(false);
   const [providerProbeError, setProviderProbeError] = useState("");
@@ -342,6 +343,7 @@ function App() {
       setProviderDeepLinkRequest(request);
       setProviderDeepLinkError("");
       setProviderDeepLinkBusy(false);
+      setProviderDeepLinkModelsLoading(false);
       setActiveView("providers");
     };
 
@@ -407,6 +409,7 @@ function App() {
     const hasApiKey = Boolean(payload?.apiKey?.trim());
 
     if (!request || !payload || (!hasApiKey && payload.models.length > 0) || !providerPresetsLoaded) {
+      setProviderDeepLinkModelsLoading(false);
       return;
     }
 
@@ -414,6 +417,7 @@ function App() {
       ? probeProviderDeepLinkPayload(payload).then((probe) => mergeProviderModelLists(probe?.models ?? []))
       : resolveProviderDeepLinkCatalogModels(payload);
 
+    setProviderDeepLinkModelsLoading(true);
     void modelsPromise
       .then((models) => {
         if (providerDeepLinkCatalogModelsRequestId.current !== requestId || models.length === 0) {
@@ -431,6 +435,14 @@ function App() {
             }
           };
         });
+      })
+      .catch(() => {
+        // Model discovery is optional; importing performs the same resolution again.
+      })
+      .finally(() => {
+        if (providerDeepLinkCatalogModelsRequestId.current === requestId) {
+          setProviderDeepLinkModelsLoading(false);
+        }
       });
   }, [providerDeepLinkRequest?.id, providerDeepLinkRequest?.provider?.apiKey, providerDeepLinkRequest?.provider?.baseUrl, providerDeepLinkRequest?.provider?.name, providerPresetsLoaded]);
 
@@ -1182,6 +1194,10 @@ function App() {
   }
 
   async function submitProviderDraft(): Promise<boolean> {
+    if (providerProbeLoading || providerConnectivityLoading) {
+      return false;
+    }
+
     const probe = providerProbe;
 
     const usesCatalog = Boolean(probe?.models.length);
@@ -2895,6 +2911,7 @@ function App() {
                 }
               },
               onSubmit: confirmProviderDeepLinkImport,
+              modelsLoading: providerDeepLinkModelsLoading,
               request: providerDeepLinkRequest
             } : undefined}
             providerDelete={providerDeleteItem ? {

@@ -420,6 +420,7 @@ export function ProviderDeepLinkDialog({
   busy,
   error,
   iconLoading = false,
+  modelsLoading = false,
   onClose,
   onSubmit,
   request
@@ -427,6 +428,7 @@ export function ProviderDeepLinkDialog({
   busy: boolean;
   error: string;
   iconLoading?: boolean;
+  modelsLoading?: boolean;
   onClose: () => void;
   onSubmit: () => Promise<void>;
   request: ProviderDeepLinkRequest;
@@ -438,6 +440,7 @@ export function ProviderDeepLinkDialog({
   const providerPreset = provider ? resolveProviderDeepLinkPreset(provider) : undefined;
   const providerIconUrl = provider ? providerDeepLinkDisplayIcon(provider) : "";
   const modelPreview = provider?.models.slice(0, 8) ?? [];
+  const actionLoading = busy || Boolean(provider && (iconLoading || modelsLoading));
 
   return (
     <Dialog onOpenChange={(open) => !open && onClose()}>
@@ -555,11 +558,11 @@ export function ProviderDeepLinkDialog({
             {t("Cancel")}
           </Button>
           {provider || manifest ? (
-            <Button disabled={busy} onClick={() => void onSubmit()} type="button">
-              <AnimatedIconSwap iconKey={busy ? "busy" : "plus"}>
-                {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            <Button disabled={actionLoading} onClick={() => void onSubmit()} type="button">
+              <AnimatedIconSwap iconKey={actionLoading ? "busy" : "plus"}>
+                {actionLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               </AnimatedIconSwap>
-              {provider ? t("Import") : t("Fetch manifest")}
+              {actionLoading ? t("Loading") : provider ? t("Import") : t("Fetch manifest")}
             </Button>
           ) : null}
         </DialogFooter>
@@ -984,6 +987,7 @@ export function AddProviderForm({
   mode,
   onCheck,
   onChange,
+  onIconDetectingChange,
   probe,
   probeLoading,
   providerPlugins = [],
@@ -996,6 +1000,7 @@ export function AddProviderForm({
   mode: "add" | "edit";
   onCheck?: () => Promise<unknown>;
   onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
+  onIconDetectingChange?: (detecting: boolean) => void;
   probe?: GatewayProviderProbeResult;
   probeLoading: boolean;
   providerPlugins?: unknown[];
@@ -1030,6 +1035,15 @@ export function AddProviderForm({
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  useEffect(() => {
+    onIconDetectingChange?.(iconDetecting);
+    return () => {
+      if (iconDetecting) {
+        onIconDetectingChange?.(false);
+      }
+    };
+  }, [iconDetecting, onIconDetectingChange]);
 
   useEffect(() => {
     const requestId = iconDetectionRequestRef.current + 1;
@@ -1881,9 +1895,12 @@ export function AddProviderDialog({
   const t = useAppText();
   const [checkConfirmOpen, setCheckConfirmOpen] = useState(false);
   const [checkConfirmBusy, setCheckConfirmBusy] = useState(false);
+  const [iconDetecting, setIconDetecting] = useState(false);
   const [checkModelSelection, setCheckModelSelection] = useState<string[]>([]);
   const [checkResult, setCheckResult] = useState<ProviderConnectivityCheckReport>();
   const checkModels = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
+  const submitLoading = probeLoading || connectivityLoading || iconDetecting;
+  const submitDisabled = !canSubmit || submitLoading;
 
   function openCheckConfirm() {
     setCheckModelSelection(checkModels);
@@ -1912,6 +1929,13 @@ export function AddProviderDialog({
     setCheckResult(undefined);
   }
 
+  function submit() {
+    if (submitDisabled) {
+      return;
+    }
+    void onSubmit();
+  }
+
   return (
     <>
       <Dialog className="items-start" onOpenChange={(open) => !open && onClose()}>
@@ -1934,6 +1958,7 @@ export function AddProviderDialog({
               mode={mode}
               onCheck={onCheck ? async () => openCheckConfirm() : undefined}
               onChange={onChange}
+              onIconDetectingChange={setIconDetecting}
               probe={probe}
               probeLoading={probeLoading}
               providerPlugins={providerPlugins}
@@ -1945,9 +1970,11 @@ export function AddProviderDialog({
             <Button onClick={onClose} type="button" variant="outline">
               {t("Cancel")}
             </Button>
-            <Button disabled={!canSubmit} onClick={() => void onSubmit()} type="button">
-              {mode === "edit" ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-              {mode === "edit" ? t("Save") : t("Add")}
+            <Button disabled={submitDisabled} onClick={submit} type="button">
+              <AnimatedIconSwap iconKey={submitLoading ? "loading" : mode}>
+                {submitLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : mode === "edit" ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+              </AnimatedIconSwap>
+              {submitLoading ? t("Loading") : mode === "edit" ? t("Save") : t("Add")}
             </Button>
           </DialogFooter>
         </DialogContent>
