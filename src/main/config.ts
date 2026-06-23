@@ -2153,7 +2153,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         codexCliPath: readString(item.codexCliPath) || readString(item.cliPath) || readString(item.codexPath) || "",
         codexHome: readString(item.codexHome) || readString(item.home) || "",
         configFormat: parseCodexProfileConfigFormat(readString(item.configFormat) || readString(item.profileConfigFormat)) || "separate_profile_files",
-        configFile: readString(item.configFile) || readString(item.settingsFile) || defaultCodexConfigFile(agent),
+        configFile: normalizeCodexConfigFileForAgent(agent, readString(item.configFile) || readString(item.settingsFile)),
         enabled,
         env: codexCompatibleProfileEnv(env),
         id,
@@ -2204,7 +2204,15 @@ function defaultProfileAgentName(agent: ProfileConfig["agent"]): string {
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "~/.zcode/config.toml" : "~/.codex/config.toml";
+  return agent === "zcode" ? "~/.zcode/cli/config.json" : "~/.codex/config.toml";
+}
+
+function normalizeCodexConfigFileForAgent(agent: ProfileConfig["agent"], value: string | undefined): string {
+  const trimmed = value?.trim();
+  if (!trimmed || (agent === "zcode" && trimmed === "~/.zcode/config.toml")) {
+    return defaultCodexConfigFile(agent);
+  }
+  return trimmed;
 }
 
 function profileFromClaudeCodeConfig(config: ClaudeCodeProfileConfig): ProfileConfig {

@@ -1427,7 +1427,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
     codexCliPath: "",
     codexHome: "",
     configFormat: "separate_profile_files",
-    configFile: profile.configFile?.trim() || defaultCodexConfigFile(profile.agent),
+    configFile: normalizeCodexConfigFileForAgent(agent, profile.configFile),
     enabled: profile.enabled,
     env: codexCompatibleProfileEnv(env),
     id: profile.id || `profile-${index + 1}`,
@@ -1618,5 +1618,13 @@ function normalizeProfileSurfaceForAgent(agent: ProfileConfig["agent"], surface:
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "~/.zcode/config.toml" : "~/.codex/config.toml";
+  return agent === "zcode" ? "~/.zcode/cli/config.json" : "~/.codex/config.toml";
+}
+
+function normalizeCodexConfigFileForAgent(agent: ProfileConfig["agent"], value: string | undefined): string {
+  const trimmed = value?.trim();
+  if (!trimmed || (agent === "zcode" && trimmed === "~/.zcode/config.toml")) {
+    return defaultCodexConfigFile(agent);
+  }
+  return trimmed;
 }

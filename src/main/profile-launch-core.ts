@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { AppConfig, ProfileConfig, ProfileOpenSurface } from "../shared/app";
+import { resolveZcodeConfigFile } from "./zcode-profile-config";
 
 export type ProfileLaunchPlan = {
   args: string[];
@@ -99,6 +100,9 @@ export function resolveClaudeCodeSettingsFile(configDir: string, profile: Profil
 }
 
 export function resolveCodexConfigFile(configDir: string, profile: ProfileConfig): string {
+  if (profile.agent === "zcode") {
+    return resolveZcodeConfigFile(profile);
+  }
   if (isGeneratedProfileScope(profile.scope)) {
     return path.join(ccrManagedProfileDir(configDir, profile), codexConfigSubdir(profile.agent), "config.toml");
   }
@@ -156,7 +160,7 @@ function isCodexCompatibleAgent(agent: ProfileConfig["agent"]): boolean {
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "~/.zcode/config.toml" : "~/.codex/config.toml";
+  return agent === "zcode" ? "~/.zcode/cli/config.json" : "~/.codex/config.toml";
 }
 
 function codexConfigSubdir(agent: ProfileConfig["agent"]): string {

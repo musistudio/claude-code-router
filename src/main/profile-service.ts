@@ -8,6 +8,7 @@ import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
 import { codexModelCatalogJson } from "./codex-model-catalog";
 import { CONFIGDIR } from "./constants";
+import { resolveZcodeConfigFile, writeZcodeGatewayConfig, zcodeHomeFromConfigFile } from "./zcode-profile-config";
 import { normalizeRouteSelector } from "../server/gateway/claude-code-router-plugin";
 
 const managedRootStart = "# BEGIN CCR managed profile";
@@ -31,7 +32,9 @@ export async function applyProfileConfig(config: AppConfig): Promise<ProfileAppl
     result.clients.push(
       profile.agent === "claude-code"
         ? applyClaudeCodeProfile(config, profile, token, appliedAt)
-        : applyCodexProfile(config, profile, token, appliedAt)
+        : profile.agent === "zcode"
+          ? applyZcodeProfile(config, profile, token, appliedAt)
+          : applyCodexProfile(config, profile, token, appliedAt)
     );
   }
   return result;
@@ -168,6 +171,51 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
   }
 }
 
+function applyZcodeProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
+  const configFile = resolveZcodeConfigFile(profile);
+  if (!profile.enabled) {
+    return disabledStatus("zcode", configFile, "ZCode profile is disabled.");
+  }
+
+  try {
+    const providerId = sanitizeCodexProviderId(profile.providerId || "") || "claude-code-router";
+    const model = normalizeClientModel(profile.model) || defaultClientModel(config);
+    const configResult = writeZcodeGatewayConfig(config, profile, token, { backup: true });
+    const middlewareResult = profile.cliMiddleware
+      ? writeCodexCliMiddleware(config, profile, {
+          configFile,
+          configFormat: normalizeCodexConfigFormat(profile.configFormat),
+          model,
+          modelCatalogFile: zcodeMiddlewareModelCatalogFile(configFile),
+          providerId
+        })
+      : undefined;
+    const changed = configResult.changed || Boolean(middlewareResult?.changed);
+    const extras = [
+      middlewareResult?.file ? `middleware ${middlewareResult.file}` : ""
+    ].filter(Boolean);
+    return {
+      appliedAt,
+      backupFile: configResult.backupFile,
+      client: "zcode",
+      enabled: true,
+      message: changed
+        ? `ZCode config is managed by CCR${extras.length ? ` (${extras.join(", ")})` : ""}.`
+        : "ZCode config already matches CCR.",
+      ok: true,
+      path: configResult.file
+    };
+  } catch (error) {
+    return {
+      client: "zcode",
+      enabled: true,
+      message: formatError(error),
+      ok: false,
+      path: configFile
+    };
+  }
+}
+
 function profileEntries(config: AppConfig): ProfileConfig[] {
   return enforceSingleEnabledGlobalProfilePerAgent(config.profile.profiles);
 }
@@ -244,6 +292,9 @@ function resolveClaudeCodeSettingsFile(profile: ProfileConfig): string {
 }
 
 function resolveCodexConfigFile(profile: ProfileConfig): string {
+  if (profile.agent === "zcode") {
+    return resolveZcodeConfigFile(profile);
+  }
   if (isGeneratedProfileScope(profile.scope)) {
     return path.join(ccrManagedProfileDir(profile), codexConfigSubdir(profile.agent), "config.toml");
   }
@@ -256,6 +307,10 @@ function resolveCodexConfigFile(profile: ProfileConfig): string {
 
 function codexModelCatalogFile(configFile: string): string {
   return path.join(path.dirname(configFile), "ccr-model-catalog.json");
+}
+
+function zcodeMiddlewareModelCatalogFile(configFile: string): string {
+  return path.join(path.dirname(configFile), "ccr-zcode-middleware-model-catalog.json");
 }
 
 function ccrManagedProfileDir(profile: ProfileConfig): string {
@@ -560,26 +615,27 @@ function codexMiddlewareShellScript(
   runtimeFile: string
 ): string {
   const codexCli = profile.codexCliPath?.trim() || defaultCodexCliCommand(profile.agent);
-  const codexHome = profile.codexHome?.trim() || path.dirname(values.configFile);
+  const codexHome = profile.codexHome?.trim() || defaultCodexCompatibleHome(profile.agent, values.configFile);
+  const resolvedCodexHome = resolveUserPath(codexHome);
   const remoteFrontendMode = normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode);
   const surface = profile.agent === "zcode" ? "app" : normalizeProfileSurface(profile.surface);
   const envExports = Object.entries(profileEnv(profile)).map(([key, value]) => `export ${key}=${shellQuote(value)}`);
   const botEnvExports = shellBotGatewayEnvExports(config, profile);
-  const zcodeEnvExports = profile.agent === "zcode"
+  const agentEnvExports = profile.agent === "zcode"
     ? [
-        `export ZCODE_HOME=${shellQuote(resolveUserPath(codexHome))}`,
+        `export ZCODE_HOME=${shellQuote(resolvedCodexHome)}`,
+        `export ZCODE_STORAGE_DIR=${shellQuote(resolvedCodexHome)}`,
         "if [ -z \"${CCR_REAL_ZCODE_CLI_PATH:-}\" ]; then",
-        "  CCR_REAL_ZCODE_CLI_PATH=$CCR_REAL_CODEX_CLI_PATH",
+        `  CCR_REAL_ZCODE_CLI_PATH=${shellQuote(codexCli)}`,
         "fi",
         "export CCR_REAL_ZCODE_CLI_PATH",
         `export CCR_ZCODE_PROFILE=${shellQuote(values.providerId)}`,
         `export CCR_ZCODE_MODEL=${shellQuote(values.model)}`,
         `export CCR_ZCODE_MODEL_CATALOG_FILE=${shellQuote(values.modelCatalogFile)}`,
-        `export CCR_ZCODE_MODEL_PROVIDER=${shellQuote(values.providerId)}`
-      ]
-    : [];
-  const zcodeCodexlEnvExports = profile.agent === "zcode"
-    ? [
+        `export CCR_ZCODE_MODEL_PROVIDER=${shellQuote(values.providerId)}`,
+        `export CCR_ZCODE_PROFILE_CONFIG_FORMAT=${shellQuote(values.configFormat)}`,
+        `export CCR_PROFILE_SCOPE=${shellQuote(normalizeProfileScope(profile.scope))}`,
+        `export CCR_ZCODE_REMOTE_FRONTEND_MODE=${shellQuote(remoteFrontendMode)}`,
         "if [ -z \"${CODEXL_REAL_ZCODE_CLI_PATH:-}\" ]; then",
         "  CODEXL_REAL_ZCODE_CLI_PATH=$CCR_REAL_ZCODE_CLI_PATH",
         "fi",
@@ -587,39 +643,41 @@ function codexMiddlewareShellScript(
         `export CODEXL_ZCODE_PROFILE=${shellQuote(values.providerId)}`,
         `export CODEXL_ZCODE_MODEL_CATALOG_FILE=${shellQuote(values.modelCatalogFile)}`,
         `export CODEXL_ZCODE_MODEL_PROVIDER=${shellQuote(values.providerId)}`,
-        `export CODEXL_ZCODE_WORKSPACE_NAME=${shellQuote(profile.name || values.providerId)}`
+        `export CODEXL_ZCODE_WORKSPACE_NAME=${shellQuote(profile.name || values.providerId)}`,
+        `export CODEXL_ZCODE_PROFILE_CONFIG_FORMAT=${shellQuote(values.configFormat)}`,
+        `export CODEXL_ZCODE_CORE_MODE=${shellQuote(remoteFrontendMode)}`
       ]
-    : [];
+    : [
+        `export CODEX_HOME=${shellQuote(resolvedCodexHome)}`,
+        "if [ -z \"${CCR_REAL_CODEX_CLI_PATH:-}\" ]; then",
+        `  CCR_REAL_CODEX_CLI_PATH=${shellQuote(codexCli)}`,
+        "fi",
+        "export CCR_REAL_CODEX_CLI_PATH",
+        `export CCR_CODEX_PROFILE=${shellQuote(values.providerId)}`,
+        `export CCR_CODEX_MODEL=${shellQuote(values.model)}`,
+        `export CCR_CODEX_MODEL_CATALOG_FILE=${shellQuote(values.modelCatalogFile)}`,
+        `export CCR_CODEX_MODEL_PROVIDER=${shellQuote(values.providerId)}`,
+        `export CCR_CODEX_PROFILE_CONFIG_FORMAT=${shellQuote(values.configFormat)}`,
+        `export CCR_PROFILE_SCOPE=${shellQuote(normalizeProfileScope(profile.scope))}`,
+        `export CCR_CODEX_REMOTE_FRONTEND_MODE=${shellQuote(remoteFrontendMode)}`,
+        "if [ -z \"${CODEXL_REAL_CODEX_CLI_PATH:-}\" ]; then",
+        "  CODEXL_REAL_CODEX_CLI_PATH=$CCR_REAL_CODEX_CLI_PATH",
+        "fi",
+        "export CODEXL_REAL_CODEX_CLI_PATH",
+        `export CODEXL_CODEX_PROFILE=${shellQuote(values.providerId)}`,
+        `export CODEXL_CODEX_MODEL_CATALOG_FILE=${shellQuote(values.modelCatalogFile)}`,
+        `export CODEXL_CODEX_MODEL_PROVIDER=${shellQuote(values.providerId)}`,
+        `export CODEXL_CODEX_WORKSPACE_NAME=${shellQuote(profile.name || values.providerId)}`,
+        `export CODEXL_CODEX_PROFILE_CONFIG_FORMAT=${shellQuote(values.configFormat)}`,
+        `export CODEXL_CODEX_CORE_MODE=${shellQuote(remoteFrontendMode)}`
+      ];
   return [
     "#!/bin/sh",
     ...envExports,
-    `export CODEX_HOME=${shellQuote(resolveUserPath(codexHome))}`,
-    "if [ -z \"${CCR_REAL_CODEX_CLI_PATH:-}\" ]; then",
-    `  CCR_REAL_CODEX_CLI_PATH=${shellQuote(codexCli)}`,
-    "fi",
-    "export CCR_REAL_CODEX_CLI_PATH",
-    `export CCR_CODEX_PROFILE=${shellQuote(values.providerId)}`,
-    `export CCR_CODEX_MODEL=${shellQuote(values.model)}`,
-    `export CCR_CODEX_MODEL_CATALOG_FILE=${shellQuote(values.modelCatalogFile)}`,
-    `export CCR_CODEX_MODEL_PROVIDER=${shellQuote(values.providerId)}`,
-    `export CCR_CODEX_PROFILE_CONFIG_FORMAT=${shellQuote(values.configFormat)}`,
-    `export CCR_PROFILE_SCOPE=${shellQuote(normalizeProfileScope(profile.scope))}`,
-    ...zcodeEnvExports,
+    ...agentEnvExports,
     ...shellProfileSurfaceExports(surface),
-    `export CCR_CODEX_REMOTE_FRONTEND_MODE=${shellQuote(remoteFrontendMode)}`,
     ...botEnvExports,
-    "if [ -z \"${CODEXL_REAL_CODEX_CLI_PATH:-}\" ]; then",
-    "  CODEXL_REAL_CODEX_CLI_PATH=$CCR_REAL_CODEX_CLI_PATH",
-    "fi",
-    "export CODEXL_REAL_CODEX_CLI_PATH",
-    `export CODEXL_CODEX_PROFILE=${shellQuote(values.providerId)}`,
-    `export CODEXL_CODEX_MODEL_CATALOG_FILE=${shellQuote(values.modelCatalogFile)}`,
-    `export CODEXL_CODEX_MODEL_PROVIDER=${shellQuote(values.providerId)}`,
-    `export CODEXL_CODEX_WORKSPACE_NAME=${shellQuote(profile.name || values.providerId)}`,
-    `export CODEXL_CODEX_PROFILE_CONFIG_FORMAT=${shellQuote(values.configFormat)}`,
-    ...zcodeCodexlEnvExports,
     ...shellCodexlProfileSurfaceExports(),
-    `export CODEXL_CODEX_CORE_MODE=${shellQuote(remoteFrontendMode)}`,
     ...nodeRuntimeShellExecLines(runtimeFile),
     ""
   ].join("\n");
@@ -677,55 +735,58 @@ function codexMiddlewareCmdScript(
   runtimeFile: string
 ): string {
   const codexCli = profile.codexCliPath?.trim() || defaultCodexCliCommand(profile.agent);
-  const codexHome = profile.codexHome?.trim() || path.dirname(values.configFile);
+  const codexHome = profile.codexHome?.trim() || defaultCodexCompatibleHome(profile.agent, values.configFile);
+  const resolvedCodexHome = resolveUserPath(codexHome);
   const remoteFrontendMode = normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode);
   const surface = profile.agent === "zcode" ? "app" : normalizeProfileSurface(profile.surface);
   const workspaceName = profile.name || values.providerId;
   const envExports = Object.entries(profileEnv(profile)).map(([key, value]) => cmdSetLine(key, value));
   const botEnvExports = cmdBotGatewayEnvExports(config, profile);
-  const zcodeEnvExports = profile.agent === "zcode"
+  const agentEnvExports = profile.agent === "zcode"
     ? [
-        cmdSetLine("ZCODE_HOME", resolveUserPath(codexHome)),
-        "if not defined CCR_REAL_ZCODE_CLI_PATH set \"CCR_REAL_ZCODE_CLI_PATH=%CCR_REAL_CODEX_CLI_PATH%\"",
+        cmdSetLine("ZCODE_HOME", resolvedCodexHome),
+        cmdSetLine("ZCODE_STORAGE_DIR", resolvedCodexHome),
+        `if not defined CCR_REAL_ZCODE_CLI_PATH ${cmdSetLine("CCR_REAL_ZCODE_CLI_PATH", codexCli)}`,
         cmdSetLine("CCR_ZCODE_PROFILE", values.providerId),
         cmdSetLine("CCR_ZCODE_MODEL", values.model),
         cmdSetLine("CCR_ZCODE_MODEL_CATALOG_FILE", values.modelCatalogFile),
-        cmdSetLine("CCR_ZCODE_MODEL_PROVIDER", values.providerId)
-      ]
-    : [];
-  const zcodeCodexlEnvExports = profile.agent === "zcode"
-    ? [
+        cmdSetLine("CCR_ZCODE_MODEL_PROVIDER", values.providerId),
+        cmdSetLine("CCR_ZCODE_PROFILE_CONFIG_FORMAT", values.configFormat),
+        cmdSetLine("CCR_PROFILE_SCOPE", normalizeProfileScope(profile.scope)),
+        cmdSetLine("CCR_ZCODE_REMOTE_FRONTEND_MODE", remoteFrontendMode),
         "if not defined CODEXL_REAL_ZCODE_CLI_PATH set \"CODEXL_REAL_ZCODE_CLI_PATH=%CCR_REAL_ZCODE_CLI_PATH%\"",
         cmdSetLine("CODEXL_ZCODE_PROFILE", values.providerId),
         cmdSetLine("CODEXL_ZCODE_MODEL_CATALOG_FILE", values.modelCatalogFile),
         cmdSetLine("CODEXL_ZCODE_MODEL_PROVIDER", values.providerId),
-        cmdSetLine("CODEXL_ZCODE_WORKSPACE_NAME", workspaceName)
+        cmdSetLine("CODEXL_ZCODE_WORKSPACE_NAME", workspaceName),
+        cmdSetLine("CODEXL_ZCODE_PROFILE_CONFIG_FORMAT", values.configFormat),
+        cmdSetLine("CODEXL_ZCODE_CORE_MODE", remoteFrontendMode)
       ]
-    : [];
+    : [
+        cmdSetLine("CODEX_HOME", resolvedCodexHome),
+        `if not defined CCR_REAL_CODEX_CLI_PATH ${cmdSetLine("CCR_REAL_CODEX_CLI_PATH", codexCli)}`,
+        cmdSetLine("CCR_CODEX_PROFILE", values.providerId),
+        cmdSetLine("CCR_CODEX_MODEL", values.model),
+        cmdSetLine("CCR_CODEX_MODEL_CATALOG_FILE", values.modelCatalogFile),
+        cmdSetLine("CCR_CODEX_MODEL_PROVIDER", values.providerId),
+        cmdSetLine("CCR_CODEX_PROFILE_CONFIG_FORMAT", values.configFormat),
+        cmdSetLine("CCR_PROFILE_SCOPE", normalizeProfileScope(profile.scope)),
+        cmdSetLine("CCR_CODEX_REMOTE_FRONTEND_MODE", remoteFrontendMode),
+        "if not defined CODEXL_REAL_CODEX_CLI_PATH set \"CODEXL_REAL_CODEX_CLI_PATH=%CCR_REAL_CODEX_CLI_PATH%\"",
+        cmdSetLine("CODEXL_CODEX_PROFILE", values.providerId),
+        cmdSetLine("CODEXL_CODEX_MODEL_CATALOG_FILE", values.modelCatalogFile),
+        cmdSetLine("CODEXL_CODEX_MODEL_PROVIDER", values.providerId),
+        cmdSetLine("CODEXL_CODEX_WORKSPACE_NAME", workspaceName),
+        cmdSetLine("CODEXL_CODEX_PROFILE_CONFIG_FORMAT", values.configFormat),
+        cmdSetLine("CODEXL_CODEX_CORE_MODE", remoteFrontendMode)
+      ];
   return [
     "@echo off",
     ...envExports,
-    cmdSetLine("CODEX_HOME", resolveUserPath(codexHome)),
-    `if not defined CCR_REAL_CODEX_CLI_PATH ${cmdSetLine("CCR_REAL_CODEX_CLI_PATH", codexCli)}`,
-    cmdSetLine("CCR_CODEX_PROFILE", values.providerId),
-    cmdSetLine("CCR_CODEX_MODEL", values.model),
-    cmdSetLine("CCR_CODEX_MODEL_CATALOG_FILE", values.modelCatalogFile),
-    cmdSetLine("CCR_CODEX_MODEL_PROVIDER", values.providerId),
-    cmdSetLine("CCR_CODEX_PROFILE_CONFIG_FORMAT", values.configFormat),
-    cmdSetLine("CCR_PROFILE_SCOPE", normalizeProfileScope(profile.scope)),
-    ...zcodeEnvExports,
+    ...agentEnvExports,
     ...cmdProfileSurfaceExports(surface),
-    cmdSetLine("CCR_CODEX_REMOTE_FRONTEND_MODE", remoteFrontendMode),
     ...botEnvExports,
-    "if not defined CODEXL_REAL_CODEX_CLI_PATH set \"CODEXL_REAL_CODEX_CLI_PATH=%CCR_REAL_CODEX_CLI_PATH%\"",
-    cmdSetLine("CODEXL_CODEX_PROFILE", values.providerId),
-    cmdSetLine("CODEXL_CODEX_MODEL_CATALOG_FILE", values.modelCatalogFile),
-    cmdSetLine("CODEXL_CODEX_MODEL_PROVIDER", values.providerId),
-    cmdSetLine("CODEXL_CODEX_WORKSPACE_NAME", workspaceName),
-    cmdSetLine("CODEXL_CODEX_PROFILE_CONFIG_FORMAT", values.configFormat),
-    ...zcodeCodexlEnvExports,
     ...cmdCodexlProfileSurfaceExports(),
-    cmdSetLine("CODEXL_CODEX_CORE_MODE", remoteFrontendMode),
     ...nodeRuntimeCmdExecLines(runtimeFile),
     ""
   ].join("\r\n");
@@ -939,7 +1000,7 @@ function codexCompatibleClientName(agent: ProfileConfig["agent"]): string {
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "~/.zcode/config.toml" : "~/.codex/config.toml";
+  return agent === "zcode" ? "~/.zcode/cli/config.json" : "~/.codex/config.toml";
 }
 
 function codexConfigSubdir(agent: ProfileConfig["agent"]): string {
@@ -948,6 +1009,10 @@ function codexConfigSubdir(agent: ProfileConfig["agent"]): string {
 
 function defaultCodexCliCommand(agent: ProfileConfig["agent"]): string {
   return agent === "zcode" ? "zcode" : "codex";
+}
+
+function defaultCodexCompatibleHome(agent: ProfileConfig["agent"], configFile: string): string {
+  return agent === "zcode" ? zcodeHomeFromConfigFile(configFile) : path.dirname(configFile);
 }
 
 function profileEnv(profile: ProfileConfig): Record<string, string> {

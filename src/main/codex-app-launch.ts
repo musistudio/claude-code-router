@@ -7,6 +7,7 @@ import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { codexModelCatalogJson } from "./codex-model-catalog";
 import { buildProfileLaunchPlan, resolveCodexConfigFile } from "./profile-launch-core";
 import { normalizeWindowsDesktopAppCandidate, windowsDesktopAppCandidates } from "./windows-app-discovery";
+import { writeZcodeGatewayConfig, zcodeHomeFromConfigFile } from "./zcode-profile-config";
 
 type CodexAppLookupResult = {
   checked: string[];
@@ -132,6 +133,24 @@ export function launchZcodeAppProfile(configDir: string, profile: ProfileConfig,
   return launchCodexCompatibleAppProfile(configDir, profile, zcodeAppSpec, config);
 }
 
+export function refreshCodexCompatibleAppProfileFiles(
+  configDir: string,
+  profile: ProfileConfig,
+  config?: AppConfig
+): { modelCatalogFile: string; userDataDir: string } {
+  const spec = profile.agent === "zcode" ? zcodeAppSpec : codexAppSpec;
+  const configFile = resolveCodexConfigFile(configDir, profile);
+  if (spec.kind === "zcode" && config?.APIKEY) {
+    writeZcodeGatewayConfig(config, profile, config.APIKEY, { backup: false });
+  }
+  const codexHome = codexCompatibleHomeFromConfigFile(spec, configFile);
+  const userDataDir = codexElectronUserDataDir(codexHome, profile, spec);
+  mkdirSync(userDataDir, { recursive: true });
+  const modelCatalogFile = codexAppModelCatalogFile(userDataDir, spec);
+  writeFileSync(modelCatalogFile, codexModelCatalogJson(config, profile.model), "utf8");
+  return { modelCatalogFile, userDataDir };
+}
+
 function launchCodexCompatibleAppProfile(
   configDir: string,
   profile: ProfileConfig,
@@ -152,32 +171,16 @@ function launchCodexCompatibleAppProfile(
   }
 
   const configFile = resolveCodexConfigFile(configDir, profile);
-  const codexHome = path.dirname(configFile);
-  const userDataDir = codexElectronUserDataDir(codexHome, profile, spec);
-  mkdirSync(userDataDir, { recursive: true });
-  const modelCatalogFile = codexAppModelCatalogFile(userDataDir, spec);
-  writeFileSync(modelCatalogFile, codexModelCatalogJson(config, profile.model), "utf8");
+  const codexHome = codexCompatibleHomeFromConfigFile(spec, configFile);
+  const { modelCatalogFile, userDataDir } = refreshCodexCompatibleAppProfileFiles(configDir, profile, config);
 
   const appEnv: Record<string, string> = {
     ...plan.env,
     ...(config ? botGatewayProfileEnv(config, profile, "app") : {}),
     ...codexProfileEnv(profile, lookup.executable, spec),
-    CODEX_CLI_PATH: plan.command,
-    CODEX_ELECTRON_USER_DATA_PATH: userDataDir,
-    CODEX_HOME: codexHome,
     CODEXL_PROFILE_SURFACE: "app",
-    CODEXL_CODEX_MODEL_CATALOG_FILE: modelCatalogFile,
     CCR_PROFILE_SURFACE: "app",
-    CCR_CODEX_MODEL_CATALOG_FILE: modelCatalogFile,
-    ...(spec.kind === "zcode"
-      ? {
-          ZCODE_CLI_PATH: plan.command,
-          ZCODE_ELECTRON_USER_DATA_PATH: userDataDir,
-          ZCODE_HOME: codexHome,
-          CODEXL_ZCODE_MODEL_CATALOG_FILE: modelCatalogFile,
-          CCR_ZCODE_MODEL_CATALOG_FILE: modelCatalogFile
-        }
-      : {}),
+    ...codexAppAgentEnv(spec, plan.command, codexHome, userDataDir, modelCatalogFile),
     ELECTRON_ENABLE_LOGGING: "1"
   };
   const env: NodeJS.ProcessEnv = {
@@ -189,6 +192,7 @@ function launchCodexCompatibleAppProfile(
   delete env.CODEXL_CODEX_MODEL_CATALOG_B64;
   delete env.CCR_ZCODE_MODEL_CATALOG_B64;
   delete env.CODEXL_ZCODE_MODEL_CATALOG_B64;
+  sanitizeCodexCompatibleAppEnv(env, spec.kind);
 
   const launch = codexAppLaunchCommand(lookup.executable, userDataDir, appEnv);
   const child = spawn(launch.command, launch.args, {
@@ -211,6 +215,20 @@ function codexProfileEnv(profile: ProfileConfig, appExecutable: string, spec: Co
   const providerId = sanitizeCodexProviderId(profile.providerId || "") || "claude-code-router";
   const realCliPath = profile.codexCliPath?.trim() || bundledCodexCliPath(appExecutable, spec) || spec.defaultCliCommand;
   const remoteFrontendMode = normalizeCodexRemoteFrontendMode(profile.remoteFrontendMode);
+  if (spec.kind === "zcode") {
+    return {
+      ...(profile.model.trim() ? { CCR_ZCODE_MODEL: profile.model.trim() } : {}),
+      CCR_ZCODE_MODEL_PROVIDER: providerId,
+      CCR_ZCODE_PROFILE: providerId,
+      CCR_ZCODE_REMOTE_FRONTEND_MODE: remoteFrontendMode,
+      CCR_REAL_ZCODE_CLI_PATH: realCliPath,
+      CODEXL_REAL_ZCODE_CLI_PATH: realCliPath,
+      CODEXL_ZCODE_CORE_MODE: remoteFrontendMode,
+      CODEXL_ZCODE_MODEL_PROVIDER: providerId,
+      CODEXL_ZCODE_PROFILE: providerId,
+      CODEXL_ZCODE_WORKSPACE_NAME: profile.name || providerId
+    };
+  }
   return {
     ...(profile.model.trim() ? { CCR_CODEX_MODEL: profile.model.trim() } : {}),
     CCR_CODEX_MODEL_PROVIDER: providerId,
@@ -221,20 +239,52 @@ function codexProfileEnv(profile: ProfileConfig, appExecutable: string, spec: Co
     CODEXL_CODEX_MODEL_PROVIDER: providerId,
     CODEXL_CODEX_PROFILE: providerId,
     CODEXL_CODEX_WORKSPACE_NAME: profile.name || providerId,
-    CODEXL_REAL_CODEX_CLI_PATH: realCliPath,
-    ...(spec.kind === "zcode"
-      ? {
-          ...(profile.model.trim() ? { CCR_ZCODE_MODEL: profile.model.trim() } : {}),
-          CCR_REAL_ZCODE_CLI_PATH: realCliPath,
-          CCR_ZCODE_MODEL_PROVIDER: providerId,
-          CCR_ZCODE_PROFILE: providerId,
-          CODEXL_REAL_ZCODE_CLI_PATH: realCliPath,
-          CODEXL_ZCODE_MODEL_PROVIDER: providerId,
-          CODEXL_ZCODE_PROFILE: providerId,
-          CODEXL_ZCODE_WORKSPACE_NAME: profile.name || providerId
-        }
-      : {})
+    CODEXL_REAL_CODEX_CLI_PATH: realCliPath
   };
+}
+
+function codexAppAgentEnv(
+  spec: CodexCompatibleAppSpec,
+  launcher: string,
+  home: string,
+  userDataDir: string,
+  modelCatalogFile: string
+): Record<string, string> {
+  return spec.kind === "zcode"
+    ? {
+        CCR_ZCODE_MODEL_CATALOG_FILE: modelCatalogFile,
+        CODEXL_ZCODE_MODEL_CATALOG_FILE: modelCatalogFile,
+        ZCODE_CLI_PATH: launcher,
+        ZCODE_ELECTRON_USER_DATA_PATH: userDataDir,
+        ZCODE_HOME: home,
+        ZCODE_STORAGE_DIR: home
+      }
+    : {
+        CCR_CODEX_MODEL_CATALOG_FILE: modelCatalogFile,
+        CODEX_CLI_PATH: launcher,
+        CODEX_ELECTRON_USER_DATA_PATH: userDataDir,
+        CODEX_HOME: home,
+        CODEXL_CODEX_MODEL_CATALOG_FILE: modelCatalogFile
+      };
+}
+
+function sanitizeCodexCompatibleAppEnv(env: NodeJS.ProcessEnv, kind: CodexCompatibleAppKind): void {
+  const blockedPrefixes = kind === "zcode" ? ["CCR_CODEX_", "CODEXL_CODEX_"] : ["CCR_ZCODE_", "CODEXL_ZCODE_"];
+  for (const key of Object.keys(env)) {
+    if (blockedPrefixes.some((prefix) => key.startsWith(prefix))) {
+      delete env[key];
+    }
+  }
+  if (kind === "zcode") {
+    delete env.CODEX_CLI_PATH;
+    delete env.CODEX_ELECTRON_USER_DATA_PATH;
+    delete env.CODEX_HOME;
+    return;
+  }
+  delete env.ZCODE_CLI_PATH;
+  delete env.ZCODE_ELECTRON_USER_DATA_PATH;
+  delete env.ZCODE_HOME;
+  delete env.ZCODE_STORAGE_DIR;
 }
 
 function bundledCodexCliPath(appExecutable: string, spec: CodexCompatibleAppSpec): string | undefined {
@@ -330,6 +380,10 @@ function codexElectronUserDataDir(codexHome: string, profile: ProfileConfig, spe
 
 function codexAppModelCatalogFile(userDataDir: string, spec: CodexCompatibleAppSpec): string {
   return path.join(userDataDir, spec.modelCatalogFilename);
+}
+
+function codexCompatibleHomeFromConfigFile(spec: CodexCompatibleAppSpec, configFile: string): string {
+  return spec.kind === "zcode" ? zcodeHomeFromConfigFile(configFile) : path.dirname(configFile);
 }
 
 function findInstalledCodexAppExecutable(spec: CodexCompatibleAppSpec): CodexAppLookupResult {

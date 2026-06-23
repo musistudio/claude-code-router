@@ -90,19 +90,13 @@ function defaultCodexArgs() {
 }
 
 async function runCodexCliMiddleware(args) {
-  const realCli = expandHome(
-    nonEmptyEnv("CCR_REAL_ZCODE_CLI_PATH") ||
-    nonEmptyEnv("CODEXL_REAL_ZCODE_CLI_PATH") ||
-    nonEmptyEnv("CCR_REAL_CODEX_CLI_PATH") ||
-    nonEmptyEnv("CODEXL_REAL_CODEX_CLI_PATH") ||
-    nonEmptyEnv("CODEX_CLI_PATH") ||
-    "codex"
-  );
-  const profile = nonEmptyEnv("CCR_ZCODE_PROFILE") || nonEmptyEnv("CODEXL_ZCODE_PROFILE") || nonEmptyEnv("CCR_CODEX_PROFILE") || nonEmptyEnv("CODEXL_CODEX_PROFILE");
-  const modelProvider = nonEmptyEnv("CCR_ZCODE_MODEL_PROVIDER") || nonEmptyEnv("CODEXL_ZCODE_MODEL_PROVIDER") || nonEmptyEnv("CCR_CODEX_MODEL_PROVIDER") || nonEmptyEnv("CODEXL_CODEX_MODEL_PROVIDER") || profile;
-  const configFormat = normalizeConfigFormat(nonEmptyEnv("CCR_CODEX_PROFILE_CONFIG_FORMAT") || nonEmptyEnv("CODEXL_CODEX_PROFILE_CONFIG_FORMAT"));
+  const runtimeAgent = codexRuntimeAgent();
+  const realCli = expandHome(codexRuntimeRealCli(runtimeAgent));
+  const profile = agentEnv(runtimeAgent, "PROFILE");
+  const modelProvider = agentEnv(runtimeAgent, "MODEL_PROVIDER") || profile;
+  const configFormat = normalizeConfigFormat(agentEnv(runtimeAgent, "PROFILE_CONFIG_FORMAT"));
   const realArgs = realCliArgs(profile, modelProvider, configFormat, args);
-  log("codex_cli_start", { realCli, realArgs });
+  log("codex_cli_start", { realCli, realArgs, runtimeAgent });
 
   if (shouldRunDirectCodexCli(args)) {
     await runDirectCodexCli(realCli, realArgs);
@@ -110,7 +104,7 @@ async function runCodexCliMiddleware(args) {
   }
 
   const child = childProcess.spawn(realCli, realArgs, {
-    env: withoutKeys(process.env, ["CODEX_CLI_PATH", "ZCODE_CLI_PATH", "CCR_REAL_CODEX_CLI_PATH", "CODEXL_REAL_CODEX_CLI_PATH", "CCR_REAL_ZCODE_CLI_PATH", "CODEXL_REAL_ZCODE_CLI_PATH"]),
+    env: childEnvForAgent(runtimeAgent),
     stdio: ["pipe", "pipe", "inherit"]
   });
   child.on("error", (error) => {
@@ -147,8 +141,9 @@ async function runCodexCliMiddleware(args) {
 }
 
 async function runDirectCodexCli(realCli, realArgs) {
+  const runtimeAgent = codexRuntimeAgent();
   const child = childProcess.spawn(realCli, realArgs, {
-    env: withoutKeys(process.env, ["CODEX_CLI_PATH", "ZCODE_CLI_PATH", "CCR_REAL_CODEX_CLI_PATH", "CODEXL_REAL_CODEX_CLI_PATH", "CCR_REAL_ZCODE_CLI_PATH", "CODEXL_REAL_ZCODE_CLI_PATH"]),
+    env: childEnvForAgent(runtimeAgent),
     stdio: "inherit"
   });
   child.on("error", (error) => {
@@ -750,7 +745,10 @@ function waitForTerminationSignal() {
 }
 
 function parseAppServerOptions(args) {
-  let workspaceName = nonEmptyEnv("CCR_CODEX_WORKSPACE_NAME") || nonEmptyEnv("CODEXL_CODEX_WORKSPACE_NAME") || nonEmptyEnv("CODEXL_CODEX_INSTANCE_NAME") || "Claude Code";
+  const runtimeAgent = codexRuntimeAgent();
+  let workspaceName = agentEnv(runtimeAgent, "WORKSPACE_NAME") ||
+    (runtimeAgent === "codex" ? nonEmptyEnv("CODEXL_CODEX_INSTANCE_NAME") : "") ||
+    (runtimeAgent === "zcode" ? "ZCode" : "Claude Code");
   for (let i = 0; i < args.length; i += 1) {
     if (args[i] === "--workspace-name" && args[i + 1]) {
       workspaceName = args[i + 1];
@@ -761,7 +759,7 @@ function parseAppServerOptions(args) {
 }
 
 function shouldRunClaudeCodeAppServer(args) {
-  const mode = normalizeRemoteFrontendMode(nonEmptyEnv("CCR_CODEX_REMOTE_FRONTEND_MODE") || nonEmptyEnv("CODEXL_CODEX_CORE_MODE"));
+  const mode = normalizeRemoteFrontendMode(agentEnv(codexRuntimeAgent(), "REMOTE_FRONTEND_MODE", "CORE_MODE"));
   const nextArgs = args.length === 0 ? ["app-server"] : args;
   return mode === "claude-code" && nextArgs[0] === "app-server";
 }
@@ -839,7 +837,7 @@ class ClaudeCodeAppServer {
           capabilities: { experimentalApi: true },
           serverInfo: { name: "ccr-claude-code-app-server", version: VERSION },
           userAgent: "ccr-claude-code-app-server/" + VERSION,
-          codexHome: process.env.CODEX_HOME || path.join(os.homedir(), ".codex"),
+          codexHome: codexRuntimeHome(),
           platformFamily: process.platform === "win32" ? "windows" : "unix",
           platformOs: process.platform
         });
@@ -1351,7 +1349,7 @@ class ClaudeCodeAppServer {
       developerInstructions: combinedDeveloperInstructions(params),
       personality: params.personality ?? null,
       persistExtendedHistory: params.persistExtendedHistory ?? null,
-      model: params.model || nonEmptyEnv("CCR_CODEX_MODEL") || DEFAULT_MODEL,
+      model: params.model || agentEnv(codexRuntimeAgent(), "MODEL") || DEFAULT_MODEL,
       reasoningEffort: params.reasoningEffort ?? params.reasoning_effort ?? null,
       serviceTier: params.serviceTier ?? params.service_tier ?? null,
       collaborationMode: params.collaborationMode || { mode: "default", model: params.model || DEFAULT_MODEL, reasoning_effort: null },
@@ -1984,8 +1982,9 @@ function collaborationModes() {
 }
 
 function modelList(params, existingResult) {
-  const isClaudeCodeRuntime = normalizeRemoteFrontendMode(nonEmptyEnv("CCR_CODEX_REMOTE_FRONTEND_MODE") || nonEmptyEnv("CODEXL_CODEX_CORE_MODE")) === "claude-code";
-  const configured = normalizeModelSelector(nonEmptyEnv("CCR_CODEX_MODEL") || nonEmptyEnv("CODEXL_CLAUDE_CODE_MODEL") || (isClaudeCodeRuntime ? DEFAULT_MODEL : ""));
+  const runtimeAgent = codexRuntimeAgent();
+  const isClaudeCodeRuntime = normalizeRemoteFrontendMode(agentEnv(runtimeAgent, "REMOTE_FRONTEND_MODE", "CORE_MODE")) === "claude-code";
+  const configured = normalizeModelSelector(agentEnv(runtimeAgent, "MODEL") || nonEmptyEnv("CODEXL_CLAUDE_CODE_MODEL") || (isClaudeCodeRuntime ? DEFAULT_MODEL : ""));
   const fallbackIds = isClaudeCodeRuntime
     ? [configured, DEFAULT_MODEL, "claude-opus-4-5", "claude-haiku-4-5"].filter(Boolean)
     : [configured].filter((model) => model && !isClaudeCodeOnlyModel(model));
@@ -2015,7 +2014,7 @@ function parseModelCatalogEnv() {
     }
     log("model_catalog_parse_error", { source: "file", file });
   }
-  const encoded = nonEmptyEnv("CCR_CODEX_MODEL_CATALOG_B64") || nonEmptyEnv("CODEXL_CODEX_MODEL_CATALOG_B64");
+  const encoded = agentEnv(codexRuntimeAgent(), "MODEL_CATALOG_B64");
   if (encoded) {
     try {
       return modelIdsFromJson(JSON.parse(Buffer.from(encoded, "base64").toString("utf8")));
@@ -2023,7 +2022,7 @@ function parseModelCatalogEnv() {
       log("model_catalog_parse_error", { source: "base64", error: formatError(error) });
     }
   }
-  const raw = nonEmptyEnv("CCR_CODEX_MODEL_CATALOG") || nonEmptyEnv("CODEXL_CODEX_MODEL_CATALOG");
+  const raw = agentEnv(codexRuntimeAgent(), "MODEL_CATALOG");
   if (raw) {
     try {
       return modelIdsFromJson(JSON.parse(raw));
@@ -2106,7 +2105,7 @@ function modelItemId(item) {
 }
 
 function codexModelItem(model, selectedModel) {
-  const provider = modelProviderFromSelector(model) || nonEmptyEnv("CCR_CODEX_MODEL_PROVIDER") || "claude-code-router";
+  const provider = modelProviderFromSelector(model) || agentEnv(codexRuntimeAgent(), "MODEL_PROVIDER") || "claude-code-router";
   const displayName = modelDisplayName(model);
   return {
     id: model,
@@ -2165,13 +2164,14 @@ function isClaudeCodeOnlyModel(model) {
 
 function configRead(params, values) {
   const cwd = params.cwd || process.cwd();
+  const runtimeAgent = codexRuntimeAgent();
   return {
     config: {
       ...values,
       cwd,
-      model: nonEmptyEnv("CCR_CODEX_MODEL") || DEFAULT_MODEL,
+      model: agentEnv(runtimeAgent, "MODEL") || DEFAULT_MODEL,
       model_catalog_json: JSON.stringify(modelCatalogConfigValue()),
-      model_provider: nonEmptyEnv("CCR_CODEX_MODEL_PROVIDER") || "claude-code",
+      model_provider: agentEnv(runtimeAgent, "MODEL_PROVIDER") || "claude-code",
       approval_policy: "default",
       sandbox_mode: "workspace-write"
     }
@@ -2187,7 +2187,7 @@ function modelCatalogConfigValue() {
     }
     log("model_catalog_parse_error", { source: "file-config", file });
   }
-  const encoded = nonEmptyEnv("CCR_CODEX_MODEL_CATALOG_B64") || nonEmptyEnv("CODEXL_CODEX_MODEL_CATALOG_B64");
+  const encoded = agentEnv(codexRuntimeAgent(), "MODEL_CATALOG_B64");
   if (encoded) {
     try {
       const parsed = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
@@ -2200,10 +2200,9 @@ function modelCatalogConfigValue() {
 }
 
 function modelCatalogFileEnv() {
-  return nonEmptyEnv("CCR_CODEX_MODEL_CATALOG_FILE") ||
-    nonEmptyEnv("CODEXL_CODEX_MODEL_CATALOG_FILE") ||
-    nonEmptyEnv("CCR_CODEX_MODEL_CATALOG_PATH") ||
-    nonEmptyEnv("CODEXL_CODEX_MODEL_CATALOG_PATH");
+  const runtimeAgent = codexRuntimeAgent();
+  return agentEnv(runtimeAgent, "MODEL_CATALOG_FILE") ||
+    agentEnv(runtimeAgent, "MODEL_CATALOG_PATH");
 }
 
 function modelCatalogConfigItem(model, priority) {
@@ -2258,7 +2257,8 @@ function configWriteResponse(params) {
 }
 
 function mockAccountRead() {
-  const email = nonEmptyEnv("CCR_CODEX_WORKSPACE_NAME") || nonEmptyEnv("CODEXL_CODEX_WORKSPACE_NAME") || "Claude Code";
+  const runtimeAgent = codexRuntimeAgent();
+  const email = agentEnv(runtimeAgent, "WORKSPACE_NAME") || (runtimeAgent === "zcode" ? "ZCode" : "Claude Code");
   return { account: { type: "chatgpt", email, planType: "unknown" }, requiresOpenaiAuth: false };
 }
 
@@ -2411,8 +2411,8 @@ function readBotGatewayBridgeConfig() {
     integrationId: nonEmptyEnv("CCR_BOT_GATEWAY_INTEGRATION_ID") || nonEmptyEnv("CODEXL_BOT_GATEWAY_INTEGRATION_ID") || "",
     platform,
     pollIntervalMs: numberEnv("CCR_BOT_GATEWAY_POLL_INTERVAL_MS", 2000),
-    profileId: nonEmptyEnv("CCR_BOT_PROFILE_ID") || nonEmptyEnv("CCR_CODEX_PROFILE") || nonEmptyEnv("CODEXL_CODEX_PROFILE") || "default",
-    profileName: nonEmptyEnv("CCR_BOT_PROFILE_NAME") || nonEmptyEnv("CODEXL_CODEX_WORKSPACE_NAME") || "CCR",
+    profileId: nonEmptyEnv("CCR_BOT_PROFILE_ID") || agentEnv(codexRuntimeAgent(), "PROFILE") || "default",
+    profileName: nonEmptyEnv("CCR_BOT_PROFILE_NAME") || agentEnv(codexRuntimeAgent(), "WORKSPACE_NAME") || "CCR",
     requestTimeoutMs: numberEnv("CCR_BOT_GATEWAY_REQUEST_TIMEOUT_MS", 600000),
     sourceDir: nonEmptyEnv("CCR_BOT_GATEWAY_SOURCE_DIR") || "",
     startupTimeoutMs: numberEnv("CCR_BOT_GATEWAY_STARTUP_TIMEOUT_MS", 10000),
@@ -3253,7 +3253,7 @@ function createClaudeAppLocalAgentSession(text) {
     userSelectedFolders: [],
     createdAt: now,
     lastActivityAt: now,
-    model: nonEmptyEnv("CCR_CLAUDE_CODE_MODEL") || nonEmptyEnv("CODEXL_CLAUDE_CODE_MODEL") || nonEmptyEnv("CCR_CODEX_MODEL") || DEFAULT_MODEL,
+    model: nonEmptyEnv("CCR_CLAUDE_CODE_MODEL") || nonEmptyEnv("CODEXL_CLAUDE_CODE_MODEL") || agentEnv(codexRuntimeAgent(), "MODEL") || DEFAULT_MODEL,
     isArchived: false,
     title,
     vmProcessName: "ccr-bot-" + sessionId.slice(6, 14),
@@ -3805,9 +3805,75 @@ function withoutKeys(env, keys) {
   return next;
 }
 
+function childEnvForAgent(agent) {
+  const next = withoutKeys(process.env, ["CODEX_CLI_PATH", "ZCODE_CLI_PATH", "CCR_REAL_CODEX_CLI_PATH", "CODEXL_REAL_CODEX_CLI_PATH", "CCR_REAL_ZCODE_CLI_PATH", "CODEXL_REAL_ZCODE_CLI_PATH"]);
+  const blockedPrefixes = agent === "zcode" ? ["CCR_CODEX_", "CODEXL_CODEX_"] : ["CCR_ZCODE_", "CODEXL_ZCODE_"];
+  for (const key of Object.keys(next)) {
+    if (blockedPrefixes.some((prefix) => key.startsWith(prefix))) {
+      delete next[key];
+    }
+  }
+  if (agent === "zcode") {
+    delete next.CODEX_HOME;
+    delete next.CODEX_ELECTRON_USER_DATA_PATH;
+  } else {
+    delete next.ZCODE_HOME;
+    delete next.ZCODE_STORAGE_DIR;
+    delete next.ZCODE_ELECTRON_USER_DATA_PATH;
+  }
+  return next;
+}
+
 function nonEmptyEnv(name) {
   const value = process.env[name];
   return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function codexRuntimeAgent() {
+  return nonEmptyEnv("CCR_ZCODE_PROFILE") ||
+    nonEmptyEnv("CODEXL_ZCODE_PROFILE") ||
+    nonEmptyEnv("CCR_REAL_ZCODE_CLI_PATH") ||
+    nonEmptyEnv("CODEXL_REAL_ZCODE_CLI_PATH") ||
+    nonEmptyEnv("ZCODE_CLI_PATH") ||
+    nonEmptyEnv("ZCODE_STORAGE_DIR") ||
+    nonEmptyEnv("ZCODE_HOME")
+    ? "zcode"
+    : "codex";
+}
+
+function codexRuntimeRealCli(agent) {
+  if (agent === "zcode") {
+    return nonEmptyEnv("CCR_REAL_ZCODE_CLI_PATH") ||
+      nonEmptyEnv("CODEXL_REAL_ZCODE_CLI_PATH") ||
+      nonEmptyEnv("ZCODE_CLI_PATH") ||
+      "zcode";
+  }
+  return nonEmptyEnv("CCR_REAL_CODEX_CLI_PATH") ||
+    nonEmptyEnv("CODEXL_REAL_CODEX_CLI_PATH") ||
+    nonEmptyEnv("CODEX_CLI_PATH") ||
+    "codex";
+}
+
+function codexRuntimeHome() {
+  const agent = codexRuntimeAgent();
+  if (agent === "zcode") {
+    return process.env.ZCODE_STORAGE_DIR || process.env.ZCODE_HOME || path.join(os.homedir(), ".zcode");
+  }
+  return process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
+}
+
+function agentEnv(agent, primarySuffix, secondarySuffix) {
+  const suffixes = [primarySuffix, secondarySuffix].filter(Boolean);
+  const prefixes = agent === "zcode"
+    ? ["CCR_ZCODE_", "CODEXL_ZCODE_"]
+    : ["CCR_CODEX_", "CODEXL_CODEX_"];
+  for (const suffix of suffixes) {
+    for (const prefix of prefixes) {
+      const value = nonEmptyEnv(prefix + suffix);
+      if (value) return value;
+    }
+  }
+  return "";
 }
 
 function numberEnv(name, fallback) {

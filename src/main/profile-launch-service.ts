@@ -6,7 +6,7 @@ import type { AppConfig, ProfileOpenCommandResult, ProfileOpenRequest, ProfileOp
 import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { applyClaudeAppGatewayConfig } from "./claude-app-gateway-service";
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "./claude-app-launch";
-import { launchCodexAppProfile, launchZcodeAppProfile } from "./codex-app-launch";
+import { launchCodexAppProfile, launchZcodeAppProfile, refreshCodexCompatibleAppProfileFiles } from "./codex-app-launch";
 import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
 import { CONFIGDIR } from "./constants";
 import { gatewayService } from "../server/gateway/service";
@@ -85,8 +85,10 @@ export async function openProfileFromCcr(config: AppConfig, request: ProfileOpen
 
 async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): Promise<ProfileOpenResult> {
   const appName = profile.agent === "zcode" ? "ZCode App" : "Codex App";
+  const profileGatewayConfig = await ensureProfileGateway(config, profile, appName);
   const existing = runningProfileApp(profile.id, "app");
   if (existing) {
+    refreshCodexCompatibleAppProfileFiles(CONFIGDIR, profile, profileGatewayConfig);
     activateProfileAppWindow(existing);
     return {
       message: `${appName} is already running with ${profile.name || profile.id}.`,
@@ -96,8 +98,8 @@ async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof
     };
   }
   const launch = profile.agent === "zcode"
-    ? launchZcodeAppProfile(CONFIGDIR, profile, config)
-    : launchCodexAppProfile(CONFIGDIR, profile, config);
+    ? launchZcodeAppProfile(CONFIGDIR, profile, profileGatewayConfig)
+    : launchCodexAppProfile(CONFIGDIR, profile, profileGatewayConfig);
   const entry = registerProfileApp(profile, "app", launch);
   const started = await waitForProfileAppStart(entry, 12000);
   if (!started) {
@@ -130,12 +132,46 @@ async function openClaudeAppProfile(config: AppConfig, profile: ReturnType<typeo
     };
   }
 
+  const profileGatewayConfig = profileGatewayConfigFor(config, profile);
+  applyClaudeAppGatewayConfig(profileGatewayConfig);
+  applyClaudeAppGatewayConfig(profileGatewayConfig, {
+    backup: false,
+    dataDir: resolveClaudeAppProfileUserDataDir(CONFIGDIR, profile)
+  });
+  await ensureGatewayConfigRunning(profileGatewayConfig, "Claude App");
+  activateProfileAppWindow(registerProfileApp(profile, "app", launchClaudeAppProfile(CONFIGDIR, profile, config)));
+  startClaudeAppBotWorker(config, profile);
+  return {
+    message: `Opened Claude App with ${profile.name || profile.id}.`,
+    profileId: profile.id,
+    profileName: profile.name,
+    surface: "app"
+  };
+}
+
+async function ensureProfileGateway(
+  config: AppConfig,
+  profile: ReturnType<typeof findProfileForOpen>,
+  appName: string
+): Promise<AppConfig> {
+  const profileGatewayConfig = profileGatewayConfigFor(config, profile);
+  await ensureGatewayConfigRunning(profileGatewayConfig, appName);
+  return profileGatewayConfig;
+}
+
+async function ensureGatewayConfigRunning(config: AppConfig, appName: string): Promise<void> {
+  const startedStatus = await gatewayService.start(config);
+  if (startedStatus.state !== "running") {
+    throw new Error(startedStatus.lastError || `CCR gateway did not start for ${appName}.`);
+  }
+}
+
+function profileGatewayConfigFor(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): AppConfig {
   const token = findProfileApiKey(config, profile);
   if (!token) {
     throw new Error(`No CCR API key was found for profile "${profile.name || profile.id}". Re-save the profile and try again.`);
   }
-
-  const profileGatewayConfig = {
+  return {
     ...config,
     APIKEY: token,
     APIKEYS: [
@@ -150,28 +186,6 @@ async function openClaudeAppProfile(config: AppConfig, profile: ReturnType<typeo
       ...config.Router,
       ...(profile.model.trim() ? { default: profile.model.trim() } : {})
     }
-  };
-  applyClaudeAppGatewayConfig(profileGatewayConfig);
-  applyClaudeAppGatewayConfig(profileGatewayConfig, {
-    backup: false,
-    dataDir: resolveClaudeAppProfileUserDataDir(CONFIGDIR, profile)
-  });
-  const gatewayStatus = gatewayService.getStatus();
-  if (gatewayStatus.state === "running") {
-    gatewayService.updateConfig(profileGatewayConfig);
-  } else {
-    const startedStatus = await gatewayService.start(profileGatewayConfig);
-    if (startedStatus.state !== "running") {
-      throw new Error(startedStatus.lastError || "CCR gateway did not start.");
-    }
-  }
-  activateProfileAppWindow(registerProfileApp(profile, "app", launchClaudeAppProfile(CONFIGDIR, profile, config)));
-  startClaudeAppBotWorker(config, profile);
-  return {
-    message: `Opened Claude App with ${profile.name || profile.id}.`,
-    profileId: profile.id,
-    profileName: profile.name,
-    surface: "app"
   };
 }
 
