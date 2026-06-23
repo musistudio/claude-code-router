@@ -1,7 +1,7 @@
 ---
 title: Slack Bot 配置
 pageTitle: Slack Bot
-eyebrow: Bot 平台
+eyebrow: Bot 与 IM 接力 Agent
 lead: 把 Agent 的消息接入 Slack 的频道或私聊，并在电脑锁屏后把新消息接力到 Slack。这一页从创建 Slack 应用开始，一直带你走到在 CCR 里跑通。
 ---
 

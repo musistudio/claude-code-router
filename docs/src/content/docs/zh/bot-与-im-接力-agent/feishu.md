@@ -1,7 +1,7 @@
 ---
 title: 飞书 Bot 配置
 pageTitle: 飞书 Bot
-eyebrow: Bot 平台
+eyebrow: Bot 与 IM 接力 Agent
 lead: 把 Agent 的消息接入飞书的群或应用会话，并在电脑锁屏后接力。这一页从飞书开放平台创建企业自建应用开始，带你走到在 CCR 里跑通。
 ---
 

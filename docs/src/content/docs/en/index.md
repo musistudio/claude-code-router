@@ -7,25 +7,18 @@ lead: A hands-on, step-by-step guide to getting Claude Code Router running. We s
 
 If this is your first time with CCR, read it top to bottom — about ten minutes and the whole pipeline will be live. If you already know the basics, jump straight to the section you need. Every step includes a "how to tell it worked" check so you never have to guess whether you did it right.
 
-## What CCR Actually Does For You
+## What CCR Helps You Do
 
-In one sentence: **it funnels every AI agent on your machine (Claude Code, Codex, ZCode, and friends) through a single local entrypoint, and you decide which model each request uses.**
+In one sentence: **it lets you manage the models and keys used by Claude Code, Codex, ZCode, and other agents in one place, then choose the right model for each kind of work.**
 
 Why that's worth it:
 
-- No more configuring the model and key in every single agent. CCR manages it once.
-- Different work can hit different models — cheap fast models for grunt work, strong models for hard problems, multimodal models for images, search-capable models when you need fresh info.
-- When one model fails, CCR can fall back to another automatically. No manual config surgery.
-- Every request is logged, so you can see where the money goes, which model is slow, and which key is erroring.
+- No more configuring the model and key in every single agent.
+- Different work can use different models: cheap fast models for simple tasks, stronger models for hard problems, multimodal models for images, and search-capable models when you need fresh info.
+- When one model fails, CCR can switch to a backup automatically.
+- Logs show which model each request used, whether it succeeded, and where your spend is going.
 
-CCR runs locally on your machine and keeps everything in a local config file. It exposes two local addresses, but day to day you only care about one:
-
-| Purpose | Address | Notes |
-| --- | --- | --- |
-| Agent entrypoint | `http://127.0.0.1:3456` | Your agents connect here |
-| Internal CCR service | `http://127.0.0.1:3457` | Internal — you can ignore it |
-
-Everything that follows is about getting your agents to send traffic to that `3456` entrypoint.
+The steps below walk you through three things: connecting a model provider, setting up routing, and making your agents use those CCR settings. For normal use, you can stay in the app and follow the steps without editing config files by hand.
 
 ## Step 1: Install And Start CCR
 
@@ -38,18 +31,13 @@ Everything that follows is about getting your agents to send traffic to that `34
    - Linux: `.AppImage`
 3. Install and launch **Claude Code Router** like any normal app.
 
-On first launch, CCR creates its local config file (handy for backup and troubleshooting — you won't normally edit it by hand):
+### Start CCR
 
-- macOS / Linux: `~/.claude-code-router/config.json`
-- Windows: `%APPDATA%\Claude Code Router\config.json`
+Once the app is open, go to the **Server** page and click **Start**.
 
-### Start The Local Gateway
+> **How to tell it worked:** The Server page shows CCR running. If you want it to start automatically whenever the app opens, turn on **Auto start**.
 
-Once the app is open, go to the **Server** page and click **Start** to bring up the local gateway.
-
-> **How to tell it worked:** The Server page shows the gateway running and port `3456` listening. If you want the gateway to start automatically whenever the app opens, turn on **Auto start**.
-
-CCR itself is now alive — but it can't do anything useful yet, because it doesn't know where to forward requests. That's the next step.
+CCR itself is now running, but it cannot handle requests yet because you have not connected a model provider. That's the next step.
 
 ## Step 2: Connect Your First Provider
 
@@ -152,7 +140,7 @@ CCR now knows both *which models exist* and *which one each request should use*.
 
 ## Step 4: Point Your Agent At CCR (Profiles)
 
-Go to the **Profiles** page. A Profile takes a chosen agent (Claude Code / Codex / ZCode) and points it at CCR's entrypoint `http://127.0.0.1:3456`, so its requests get routed and recorded.
+Go to the **Profiles** page. A Profile lets a chosen agent (Claude Code / Codex / ZCode) use the models and routing settings you configured in CCR, so its requests can be recorded and managed there.
 
 Before you start, two options that apply to every profile:
 
@@ -319,14 +307,14 @@ A Bot forwards an agent's messages into IM, and can hand the task off to your ph
 
 Every platform has its own page with the full walk-through (how to create the app on the platform, a field-by-field mapping, and a troubleshooting FAQ):
 
-- [Slack](/en/bots/slack)
-- [Discord](/en/bots/discord)
-- [Telegram](/en/bots/telegram)
-- [LINE](/en/bots/line)
-- [Weixin](/en/bots/weixin-ilink)
-- [WeCom](/en/bots/wecom)
-- [Feishu](/en/bots/feishu)
-- [DingTalk](/en/bots/dingtalk)
+- [Slack](/en/relay-agents-in-im-with-bots/slack)
+- [Discord](/en/relay-agents-in-im-with-bots/discord)
+- [Telegram](/en/relay-agents-in-im-with-bots/telegram)
+- [LINE](/en/relay-agents-in-im-with-bots/line)
+- [Weixin](/en/relay-agents-in-im-with-bots/weixin-ilink)
+- [WeCom](/en/relay-agents-in-im-with-bots/wecom)
+- [Feishu](/en/relay-agents-in-im-with-bots/feishu)
+- [DingTalk](/en/relay-agents-in-im-with-bots/dingtalk)
 
 ## When Something Goes Wrong, Look Here
 

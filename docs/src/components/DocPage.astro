@@ -3,6 +3,7 @@ import DocsLayout from "../layouts/DocsLayout.astro";
 import { docsContent, type Locale } from "../i18n/content";
 import * as enDoc from "../content/docs/en/index.md";
 import * as zhDoc from "../content/docs/zh/index.md";
+import { Check, Copy } from "lucide-astro";
 
 interface Props {
   locale: Locale;
@@ -44,10 +45,7 @@ const pageMarkdown = doc.rawContent();
         <p class="lead">{frontmatter.lead}</p>
       </div>
       <button class="copy-page" type="button" data-copy-page>
-        <svg viewBox="0 0 20 20" aria-hidden="true">
-          <rect x="7" y="7" width="9" height="9" rx="2" />
-          <path d="M4 13V5a1 1 0 0 1 1-1h8" />
-        </svg>
+        <Copy size={18} aria-hidden="true" />
         <span data-copy-label>{content.ui.copyPage}</span>
       </button>
     </header>
@@ -56,6 +54,15 @@ const pageMarkdown = doc.rawContent();
       <Content />
     </div>
   </article>
+
+  <template data-code-icon-template>
+    <span class="copy-icon" aria-hidden="true">
+      <Copy size={18} />
+    </span>
+    <span class="success-icon" aria-hidden="true">
+      <Check size={18} />
+    </span>
+  </template>
 
   <script define:vars={{
     pageMarkdown,
@@ -101,15 +108,10 @@ const pageMarkdown = doc.rawContent();
       }, 1800);
     });
 
-    const buildCopyIcon = () => `
-      <svg class="copy-icon" viewBox="0 0 20 20" aria-hidden="true">
-        <rect x="7" y="7" width="9" height="9" rx="2"></rect>
-        <path d="M4 13V5a1 1 0 0 1 1-1h8"></path>
-      </svg>
-      <svg class="success-icon" viewBox="0 0 20 20" aria-hidden="true">
-        <path d="M4 10.5l4 4L16 6"></path>
-      </svg>
-    `;
+    const codeIconTemplate = document.querySelector("[data-code-icon-template]");
+    const buildCopyIcon = () => codeIconTemplate instanceof HTMLTemplateElement
+      ? codeIconTemplate.innerHTML
+      : "";
 
     document.querySelectorAll("[data-markdown-content] pre.astro-code").forEach((pre) => {
       if (!(pre instanceof HTMLElement) || pre.closest(".code-panel")) return;

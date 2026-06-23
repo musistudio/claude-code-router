@@ -1,7 +1,7 @@
 ---
 title: WeCom Bot Setup
 pageTitle: WeCom Bot
-eyebrow: Bot Platforms
+eyebrow: Relay Agents In IM With Bots
 lead: Route agent messages into WeCom (Enterprise WeChat) so your team can receive and reply in WeCom, with relay after your screen locks. This page walks you from creating a self-built app in the WeCom admin console to a working setup in CCR.
 ---
 

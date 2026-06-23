@@ -1,7 +1,7 @@
 ---
 title: LINE Bot Setup
 pageTitle: LINE Bot
-eyebrow: Bot Platforms
+eyebrow: Relay Agents In IM With Bots
 lead: Route agent messages into LINE friends, groups, or an Official Account, and relay them after your screen locks. This page walks you from creating a LINE Messaging API channel to a working setup in CCR.
 ---
 

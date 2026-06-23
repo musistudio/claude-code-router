@@ -12,12 +12,12 @@ export type BotPlatformModule = {
 };
 
 export const zhBotDocs = import.meta.glob<BotPlatformModule>(
-  "./content/docs/zh/bots/*.md",
+  "./content/docs/zh/bot-与-im-接力-agent/*.md",
   { eager: true }
 );
 
 export const enBotDocs = import.meta.glob<BotPlatformModule>(
-  "./content/docs/en/bots/*.md",
+  "./content/docs/en/relay-agents-in-im-with-bots/*.md",
   { eager: true }
 );
 

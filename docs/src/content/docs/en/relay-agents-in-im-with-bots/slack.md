@@ -1,7 +1,7 @@
 ---
 title: Slack Bot Setup
 pageTitle: Slack Bot
-eyebrow: Bot Platforms
+eyebrow: Relay Agents In IM With Bots
 lead: Route agent messages into Slack channels or DMs, and relay them to Slack after your screen locks. This page walks you from creating the Slack app all the way to a working setup in CCR.
 ---
 

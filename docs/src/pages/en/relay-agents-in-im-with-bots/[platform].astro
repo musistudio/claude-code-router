@@ -1,6 +1,6 @@
 ---
-import DocPage from "../../components/DocPage.astro";
-import { enBotDocs, botPlatformFromPath } from "../../bot-platforms";
+import DocPage from "../../../components/DocPage.astro";
+import { enBotDocs, botPlatformFromPath } from "../../../bot-platforms";
 
 export function getStaticPaths() {
   return Object.entries(enBotDocs).map(([filePath, mod]) => ({

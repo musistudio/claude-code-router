@@ -1,7 +1,7 @@
 ---
 title: 企业微信 Bot 配置
 pageTitle: 企业微信 Bot
-eyebrow: Bot 平台
+eyebrow: Bot 与 IM 接力 Agent
 lead: 把 Agent 的消息接入企业微信，让团队成员在企业微信里接收并回复，并在电脑锁屏后接力。这一页从企业微信管理后台创建自建应用开始，带你走到在 CCR 里跑通。
 ---
 

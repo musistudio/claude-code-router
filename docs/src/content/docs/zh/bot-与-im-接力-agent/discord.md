@@ -1,7 +1,7 @@
 ---
 title: Discord Bot 配置
 pageTitle: Discord Bot
-eyebrow: Bot 平台
+eyebrow: Bot 与 IM 接力 Agent
 lead: 把 Agent 的消息接入 Discord 的服务器频道或私聊，并在电脑锁屏后把新消息接力到 Discord。这一页从创建 Discord 应用开始，带你一直走到在 CCR 里跑通。
 ---
 

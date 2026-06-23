@@ -1,7 +1,7 @@
 ---
 title: Feishu Bot Setup
 pageTitle: Feishu Bot
-eyebrow: Bot Platforms
+eyebrow: Relay Agents In IM With Bots
 lead: Route agent messages into Feishu (Lark) groups or app chats, with relay after your screen locks. This page walks you from creating an enterprise self-built app on the Feishu Open Platform to a working setup in CCR.
 ---
 

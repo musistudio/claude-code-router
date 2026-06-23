@@ -10,6 +10,7 @@
     "astro": "astro"
   },
   "devDependencies": {
-    "astro": "7.0.0"
+    "astro": "7.0.0",
+    "lucide-astro": "^0.556.0"
   }
 }

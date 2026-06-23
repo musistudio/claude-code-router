@@ -1,7 +1,7 @@
 ---
 title: LINE Bot 配置
 pageTitle: LINE Bot
-eyebrow: Bot 平台
+eyebrow: Bot 与 IM 接力 Agent
 lead: 把 Agent 的消息接入 LINE 的好友、群聊或 Official Account，并在电脑锁屏后把新消息接力过去。这一页从创建 LINE Messaging API channel 开始，带你走到在 CCR 里跑通。
 ---
 

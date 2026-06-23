@@ -1,7 +1,7 @@
 ---
 title: Weixin Bot Setup
 pageTitle: Weixin Bot
-eyebrow: Bot Platforms
+eyebrow: Relay Agents In IM With Bots
 lead: Route agent messages into WeChat (Weixin) and relay them after your screen locks. The easiest path is QR Login — you scan a code and you're in, no token copying required.
 ---
 

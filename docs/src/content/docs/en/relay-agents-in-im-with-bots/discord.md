@@ -1,7 +1,7 @@
 ---
 title: Discord Bot Setup
 pageTitle: Discord Bot
-eyebrow: Bot Platforms
+eyebrow: Relay Agents In IM With Bots
 lead: Route agent messages into Discord server channels or DMs, and relay them after your screen locks. This page walks you from creating the Discord app to a working setup in CCR.
 ---
 

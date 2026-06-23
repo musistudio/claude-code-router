@@ -1,7 +1,7 @@
 ---
 title: 钉钉 Bot 配置
 pageTitle: 钉钉 Bot
-eyebrow: Bot 平台
+eyebrow: Bot 与 IM 接力 Agent
 lead: 把 Agent 的消息接入钉钉的企业协作环境，并在电脑锁屏后接力。这一页从钉钉开发者后台创建应用开始，带你走到在 CCR 里跑通。
 ---
 

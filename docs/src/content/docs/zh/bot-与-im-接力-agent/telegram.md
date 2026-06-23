@@ -1,7 +1,7 @@
 ---
 title: Telegram Bot 配置
 pageTitle: Telegram Bot
-eyebrow: Bot 平台
+eyebrow: Bot 与 IM 接力 Agent
 lead: 把 Agent 的消息接入 Telegram，并在电脑锁屏后把新消息接力过去。Telegram 是所有平台里配置最简单的——只需要一个 Bot Token，几分钟就能跑通。
 ---
 

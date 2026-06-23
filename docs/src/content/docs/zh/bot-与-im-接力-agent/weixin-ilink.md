@@ -1,7 +1,7 @@
 ---
 title: 微信 Bot 配置
 pageTitle: 微信 Bot
-eyebrow: Bot 平台
+eyebrow: Bot 与 IM 接力 Agent
 lead: 把 Agent 的消息接入微信，并在电脑锁屏后把新消息接力过去。微信最简单的接法是二维码登录，不用手动复制任何 token，扫一下就行。
 ---
 

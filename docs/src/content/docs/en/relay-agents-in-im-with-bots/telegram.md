@@ -1,7 +1,7 @@
 ---
 title: Telegram Bot Setup
 pageTitle: Telegram Bot
-eyebrow: Bot Platforms
+eyebrow: Relay Agents In IM With Bots
 lead: Route agent messages into Telegram and relay them after your screen locks. Telegram is the simplest platform of all — you only need a Bot Token, and you can be live in minutes.
 ---
 

@@ -1,7 +1,7 @@
 ---
 title: DingTalk Bot Setup
 pageTitle: DingTalk Bot
-eyebrow: Bot Platforms
+eyebrow: Relay Agents In IM With Bots
 lead: Route agent messages into DingTalk's enterprise collaboration environment, with relay after your screen locks. This page walks you from creating an app in the DingTalk developer backend to a working setup in CCR.
 ---
 
