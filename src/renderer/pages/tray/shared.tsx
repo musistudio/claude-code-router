@@ -74,6 +74,7 @@ export const trayText: Record<ResolvedLanguage, Record<string, string>> = {
     "No usage captured yet": "暂无用量记录",
     "Output": "输出",
     "Overview": "概览",
+    "Open CCR": "打开 CCR",
     "Quit": "退出",
     "Subscription": "订阅",
     "Success": "成功",

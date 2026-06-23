@@ -3,6 +3,8 @@ import { IPC_CHANNELS } from "../shared/ipc-channels";
 import type {
   AgentAnalysisFilter,
   AgentAnalysisSnapshot,
+  AgentAnalysisTracePayloadFullResult,
+  AgentAnalysisTracePayloadRequest,
   AppConfig,
   AppInfo,
   AppUpdateStatus,
@@ -73,6 +75,7 @@ contextBridge.exposeInMainWorld("ccr", {
   detectProviderIcon: (request: ProviderIconDetectionRequest) => ipcRenderer.invoke(IPC_CHANNELS.appDetectProviderIcon, request) as Promise<ProviderIconDetectionResult>,
   fetchProviderManifest: (request: ProviderManifestFetchRequest) => ipcRenderer.invoke(IPC_CHANNELS.appFetchProviderManifest, request) as Promise<ProviderManifestFetchResult>,
   getAgentAnalysis: (filter?: AgentAnalysisFilter) => ipcRenderer.invoke(IPC_CHANNELS.appGetAgentAnalysis, filter) as Promise<AgentAnalysisSnapshot>,
+  getAgentTracePayload: (request: AgentAnalysisTracePayloadRequest) => ipcRenderer.invoke(IPC_CHANNELS.appGetAgentTracePayload, request) as Promise<AgentAnalysisTracePayloadFullResult>,
   getAppInfo: () => ipcRenderer.invoke(IPC_CHANNELS.appGetInfo) as Promise<AppInfo>,
   getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.appGetConfig) as Promise<AppConfig>,
   getGatewayStatus: () => ipcRenderer.invoke(IPC_CHANNELS.appGetGatewayStatus) as Promise<GatewayStatus>,

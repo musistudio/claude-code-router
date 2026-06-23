@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { createServer, type IncomingHttpHeaders, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import { networkInterfaces } from "node:os";
@@ -42,7 +42,7 @@ import { fetchWithSystemProxy, getSystemProxyUrlForProtocol } from "../../main/s
 import { handleNetworkCaptureMcpRequest, isNetworkCaptureMcpPath } from "../mcp/network-capture-mcp";
 import { pluginService } from "../../main/plugins/service";
 import { proxyService } from "../proxy/service";
-import { recordGatewayRequestLog, updateGatewayRequestLogFromRawTrace, type RequestLogRawTraceUpdateInput } from "../../main/request-log-store";
+import { createSseErrorDetector, recordGatewayRequestLog, updateGatewayRequestLogFromRawTrace, type RequestLogRawTraceUpdateInput } from "../../main/request-log-store";
 import { recordGatewayUsageCapture } from "../../main/usage-store";
 import { ClaudeCodeRouterPlugin, normalizeRouteSelector } from "./claude-code-router-plugin";
 import {
@@ -173,6 +173,8 @@ class UpstreamRequestError extends Error {
 }
 
 const requireFromHere = createRequire(__filename);
+const coreGatewayAuthHeader = "x-ccr-core-auth";
+const coreGatewayAuthTokenEnv = "CCR_CORE_GATEWAY_AUTH_TOKEN";
 const localObservabilityHeaderNames = new Set([
   "x-ccr-claude-app-model-rewrite",
   "x-ccr-claude-model-discovery",
@@ -181,7 +183,7 @@ const localObservabilityHeaderNames = new Set([
   "x-ccr-provider-credential-chain",
   "x-ccr-provider-credential-saturated"
 ]);
-const proxyHeaderDenyList = new Set(["connection", "host", "upgrade"]);
+const proxyHeaderDenyList = new Set(["connection", coreGatewayAuthHeader, "host", "upgrade"]);
 const responseHeaderDenyList = new Set(["connection", "content-encoding", "transfer-encoding"]);
 const maxUsageCaptureBytes = 8 * 1024 * 1024;
 const maxPendingRawTraceUpdates = 200;
@@ -228,6 +230,7 @@ const gatewayProviderProtocolFallbackOrder: GatewayProviderProtocol[] = [
 class GatewayService {
   private child?: ChildProcess;
   private config?: AppConfig;
+  private coreAuthToken = "";
   private plugin?: ClaudeCodeRouterPlugin;
   private readonly pendingRawTraceUpdates = new Map<string, PendingRawTraceUpdate>();
   private readonly rawTraceSyncToken = randomUUID();
@@ -241,8 +244,17 @@ class GatewayService {
   };
 
   async start(config: AppConfig): Promise<GatewayStatus> {
+    const coreHostError = loopbackCoreHostError(config.gateway.coreHost);
+    if (coreHostError) {
+      return {
+        ...this.getStatus(),
+        lastError: coreHostError,
+        state: "error"
+      };
+    }
     await this.stop();
     this.config = config;
+    this.coreAuthToken = generateCoreGatewayAuthToken();
     this.plugin = new ClaudeCodeRouterPlugin(config);
     this.status = {
       coreEndpoint: endpoint(config.gateway.coreHost, config.gateway.corePort),
@@ -259,6 +271,7 @@ class GatewayService {
       if (!shouldRunServer) {
         await pluginService.stop();
         await backendService.stopAll();
+        this.coreAuthToken = "";
         this.status = {
           ...this.status,
           state: "stopped"
@@ -278,24 +291,18 @@ class GatewayService {
         writeCoreGatewayConfig(config, this.rawTraceSyncToken);
         await stopPreviousManagedCoreGateway(config, this.status.coreEndpoint);
         if (await isCoreGatewayHealthy(this.status.coreEndpoint)) {
-          this.status = {
-            ...this.status,
-            coreManagedExternally: true,
-            lastError: undefined,
-            pid: undefined
-          };
-        } else {
-          await proxyService.refreshUpstreamProxyFromCurrentSystem();
-          const runtimeId = randomUUID();
-          const upstreamProxyUrl = proxyService.getUpstreamProxyUrl("https") ?? await getSystemProxyUrlForProtocol("https");
-          this.child = spawnGatewayProcess(config, upstreamProxyUrl, runtimeId);
-          writeManagedCoreGatewayMarker(config, this.child, runtimeId);
-          this.child.stdout?.on("data", (chunk) => console.info(`[gateway] ${chunk.toString().trimEnd()}`));
-          this.child.stderr?.on("data", (chunk) => console.warn(`[gateway] ${chunk.toString().trimEnd()}`));
-          this.child.on("exit", (code, signal) => {
-            void this.handleCoreGatewayExit(code, signal);
-          });
+          throw new Error(`Core gateway endpoint is already in use: ${this.status.coreEndpoint}`);
         }
+        await proxyService.refreshUpstreamProxyFromCurrentSystem();
+        const runtimeId = randomUUID();
+        const upstreamProxyUrl = proxyService.getUpstreamProxyUrl("https") ?? await getSystemProxyUrlForProtocol("https");
+        this.child = spawnGatewayProcess(config, upstreamProxyUrl, runtimeId, this.coreAuthToken);
+        writeManagedCoreGatewayMarker(config, this.child, runtimeId);
+        this.child.stdout?.on("data", (chunk) => console.info(`[gateway] ${chunk.toString().trimEnd()}`));
+        this.child.stderr?.on("data", (chunk) => console.warn(`[gateway] ${chunk.toString().trimEnd()}`));
+        this.child.on("exit", (code, signal) => {
+          void this.handleCoreGatewayExit(code, signal);
+        });
       }
 
       this.status = {
@@ -321,6 +328,7 @@ class GatewayService {
     const child = this.child;
     const config = this.config;
     this.child = undefined;
+    this.coreAuthToken = "";
     if (child && !child.killed) {
       child.kill();
     }
@@ -355,6 +363,7 @@ class GatewayService {
   }
 
   updateConfig(config: AppConfig): void {
+    assertLoopbackCoreHost(config.gateway.coreHost);
     this.config = config;
     this.plugin = new ClaudeCodeRouterPlugin(config);
     proxyService.updateConfig(config);
@@ -397,16 +406,6 @@ class GatewayService {
       return;
     }
     removeManagedCoreGatewayMarker(this.config);
-    if (await isCoreGatewayHealthy(this.status.coreEndpoint)) {
-      this.status = {
-        ...this.status,
-        coreManagedExternally: true,
-        lastError: undefined,
-        pid: undefined,
-        state: "running"
-      };
-      return;
-    }
     this.status = {
       ...this.status,
       coreManagedExternally: undefined,
@@ -645,6 +644,7 @@ class GatewayService {
         method,
         path,
         routedModel,
+        coreAuthToken: this.coreAuthToken,
         upstreamUrl
       });
     } catch (error) {
@@ -703,17 +703,34 @@ class GatewayService {
     const upstreamBody = Readable.fromWeb(upstreamResponse.body as unknown as import("node:stream/web").ReadableStream);
     const responseBody = upstreamBody;
     const sampler = createBodySampler();
+    const sseErrorDetector = createSseErrorDetector(responseHeaders.get("content-type") ?? undefined);
+    let streamDetectedError: string | undefined;
     let logRecorded = false;
     const writeStreamLog = (error?: string) => {
       if (logRecorded) {
         return;
       }
       logRecorded = true;
-      writeRequestLog(upstreamResponse.status, responseHeaders, sampler.read(), sampler.isTruncated(), error);
+      writeRequestLog(
+        upstreamResponse.status,
+        responseHeaders,
+        sampler.read(),
+        sampler.isTruncated(),
+        error ?? streamDetectedError
+      );
     };
-    responseBody.on("data", (chunk) => sampler.append(chunk));
-    responseBody.once("end", () => writeStreamLog());
-    responseBody.once("error", (error) => writeStreamLog(formatError(error)));
+    responseBody.on("data", (chunk) => {
+      sampler.append(chunk);
+      streamDetectedError ??= sseErrorDetector.append(chunk);
+    });
+    responseBody.once("end", () => {
+      streamDetectedError ??= sseErrorDetector.finish();
+      writeStreamLog();
+    });
+    responseBody.once("error", (error) => {
+      streamDetectedError ??= sseErrorDetector.finish();
+      writeStreamLog(formatError(error));
+    });
     if (shouldCaptureUsage) {
       responseBody.once("end", () => {
         void recordGatewayUsageCapture({
@@ -796,6 +813,7 @@ class GatewayService {
 export const gatewayService = new GatewayService();
 
 function writeCoreGatewayConfig(config: AppConfig, rawTraceSyncToken: string): void {
+  assertLoopbackCoreHost(config.gateway.coreHost);
   mkdirSync(dirname(config.gateway.generatedConfigFile), { recursive: true });
   const pluginCoreGatewayConfig = pluginService.getCoreGatewayConfig();
   const providerPlugins = withCodexOauthRuntimeDefaults([
@@ -823,8 +841,16 @@ function writeCoreGatewayConfig(config: AppConfig, rawTraceSyncToken: string): v
     ...(config.agent?.mcpServers ?? [])
   ];
   const payload = {
+    ...pluginCoreGatewayConfig,
     auth: {
-      enabled: false
+      enabled: true,
+      mode: "static_api_key",
+      required: true,
+      staticApiKeys: {
+        keyBearerOnly: false,
+        keyEnv: coreGatewayAuthTokenEnv,
+        keyHeader: coreGatewayAuthHeader
+      }
     },
     billing: {
       enabled: true
@@ -842,7 +868,6 @@ function writeCoreGatewayConfig(config: AppConfig, rawTraceSyncToken: string): v
     },
     port: config.gateway.corePort,
     upstreamTimeoutMs: Number(config.API_TIMEOUT_MS) || 0,
-    ...pluginCoreGatewayConfig,
     agent: {
       ...pluginAgentConfig,
       mcpServers
@@ -1754,6 +1779,7 @@ function rewriteCapabilityResponseHeaders(headers: Headers, config: AppConfig): 
 async function fetchUpstreamWithFallback(input: {
   body?: Buffer;
   config: AppConfig;
+  coreAuthToken: string;
   fallback: RouterFallbackConfig;
   headers: Record<string, string>;
   method: string;
@@ -1778,7 +1804,7 @@ async function fetchUpstreamWithFallback(input: {
     try {
       const response = await fetchWithSystemProxy(input.upstreamUrl, {
         body: shouldSendBody(input.method) ? attempt.body?.toString("utf8") : undefined,
-        headers: omitLocalObservabilityHeaders(attempt.headers ?? input.headers),
+        headers: withCoreGatewayAuthHeader(omitLocalObservabilityHeaders(attempt.headers ?? input.headers), input.coreAuthToken),
         method: input.method
       });
 
@@ -2147,10 +2173,10 @@ function uniqueStrings(values: Array<string | undefined>): string[] {
   return result;
 }
 
-function spawnGatewayProcess(config: AppConfig, upstreamProxyUrl: string | undefined, runtimeId: string): ChildProcess {
+function spawnGatewayProcess(config: AppConfig, upstreamProxyUrl: string | undefined, runtimeId: string, coreAuthToken: string): ChildProcess {
   const gatewayEntry = resolveGatewayEntry();
   const patchedGatewayEntry = writePatchedGatewayRuntimeEntry(config, gatewayEntry);
-  const env = createGatewayProcessEnv(config, upstreamProxyUrl, runtimeId);
+  const env = createGatewayProcessEnv(config, upstreamProxyUrl, runtimeId, coreAuthToken);
   return spawn(process.execPath, [patchedGatewayEntry], {
     cwd: dirname(config.gateway.generatedConfigFile),
     env,
@@ -2210,10 +2236,17 @@ function buildGatewayRuntimePatchEntry(gatewayEntry: string): string {
   ].join("\n");
 }
 
-function createGatewayProcessEnv(config: AppConfig, upstreamProxyUrl: string | undefined, runtimeId: string): NodeJS.ProcessEnv {
+function createGatewayProcessEnv(config: AppConfig, upstreamProxyUrl: string | undefined, runtimeId: string, coreAuthToken: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
+    AUTH_ENABLED: "true",
+    AUTH_MODE: "static_api_key",
+    AUTH_REQUIRED: "true",
+    AUTH_STATIC_API_KEY_BEARER_ONLY: "false",
+    AUTH_STATIC_API_KEY_ENV: coreGatewayAuthTokenEnv,
+    AUTH_STATIC_API_KEY_HEADER: coreGatewayAuthHeader,
     CCR_GATEWAY_RUNTIME_ID: runtimeId,
+    [coreGatewayAuthTokenEnv]: coreAuthToken,
     ELECTRON_RUN_AS_NODE: "1",
     GATEWAY_CONFIG_PATH: config.gateway.generatedConfigFile,
     HOST: config.gateway.coreHost,
@@ -2750,6 +2783,24 @@ function isProcessAlive(pid: number): boolean {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function assertLoopbackCoreHost(host: string): void {
+  const error = loopbackCoreHostError(host);
+  if (error) {
+    throw new Error(error);
+  }
+}
+
+function loopbackCoreHostError(host: string): string | undefined {
+  const normalized = host.trim().toLowerCase();
+  return normalized === "127.0.0.1" || normalized === "::1"
+    ? undefined
+    : "Core gateway host must be 127.0.0.1 or ::1.";
+}
+
+function generateCoreGatewayAuthToken(): string {
+  return randomBytes(32).toString("base64url");
 }
 
 async function isCoreGatewayHealthy(coreEndpoint: string): Promise<boolean> {
@@ -3849,6 +3900,16 @@ function omitLocalObservabilityHeaders(headers: Record<string, string>): Record<
     delete forwarded[name];
   }
   return forwarded;
+}
+
+function withCoreGatewayAuthHeader(headers: Record<string, string>, token: string): Record<string, string> {
+  if (!token) {
+    throw new Error("Core gateway auth token is not initialized.");
+  }
+  return {
+    ...headers,
+    [coreGatewayAuthHeader]: token
+  };
 }
 
 function filteredResponseHeaders(headers: Headers): Array<[string, string]> {

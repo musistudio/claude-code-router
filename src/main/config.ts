@@ -88,6 +88,7 @@ const REMOVED_LEGACY_ROUTER_RULE_IDS = new Set([
   "legacy-web-search",
   "legacy-image"
 ]);
+const INTERNAL_GATEWAY_CORE_HOST = "127.0.0.1";
 
 const DEFAULT_CONFIG: AppConfig = {
   APIKEY: "",
@@ -141,7 +142,7 @@ const DEFAULT_CONFIG: AppConfig = {
     tenantId: "ccr"
   },
   gateway: {
-    coreHost: "127.0.0.1",
+    coreHost: INTERNAL_GATEWAY_CORE_HOST,
     corePort: 3457,
     enabled: true,
     generatedConfigFile: GATEWAY_CONFIG_FILE,
@@ -371,6 +372,7 @@ export async function loadAppConfig(): Promise<AppConfig> {
       gateway: {
         ...DEFAULT_CONFIG.gateway,
         ...gatewayConfig,
+        coreHost: INTERNAL_GATEWAY_CORE_HOST,
         corePort,
         generatedConfigFile: GATEWAY_CONFIG_FILE,
         host: gatewayConfig.host ?? host,
@@ -586,6 +588,10 @@ function sanitizeConfigForDisk(config: AppConfig): AppConfig {
     ...config,
     APIKEY: "",
     APIKEYS: [],
+    gateway: {
+      ...config.gateway,
+      coreHost: INTERNAL_GATEWAY_CORE_HOST
+    },
     profile: sanitizeProfileConfigForDisk(config.profile)
   };
 }
@@ -684,9 +690,6 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
     const gatewayPort = readPort(gateway.port);
     if (gatewayPort) {
       gatewayConfig.port = gatewayPort;
-    }
-    if (typeof gateway.coreHost === "string" && gateway.coreHost.trim()) {
-      gatewayConfig.coreHost = gateway.coreHost.trim();
     }
     const gatewayCorePort = readPort(gateway.corePort);
     if (gatewayCorePort) {

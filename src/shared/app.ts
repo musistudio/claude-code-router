@@ -1541,6 +1541,89 @@ export type AgentAnalysisSubagentRow = {
   totalTokens: number;
 };
 
+export type AgentAnalysisTraceRunKind = "agent" | "llm" | "route" | "subagent" | "tool";
+
+export type AgentAnalysisTraceRunStatus = "error" | "success";
+
+export type AgentAnalysisTracePayloadPreview = {
+  kind: "empty" | "json" | "text";
+  preview: string;
+  sizeBytes: number;
+  truncated: boolean;
+};
+
+export type AgentAnalysisTracePayloadPart = "tool-input" | "tool-result";
+
+export type AgentAnalysisTracePayloadRequest = {
+  callId?: string;
+  part: AgentAnalysisTracePayloadPart;
+  requestLogId: number;
+};
+
+export type AgentAnalysisTracePayloadFullResult = {
+  content: string;
+  found: boolean;
+  kind: "empty" | "json" | "text";
+  sizeBytes: number;
+  sourceTruncated: boolean;
+};
+
+export type AgentAnalysisTraceToolDetail = {
+  callId?: string;
+  input?: AgentAnalysisTracePayloadPreview;
+  result?: AgentAnalysisTracePayloadPreview;
+  resultRequestId?: string;
+  resultRequestLogId?: number;
+};
+
+export type AgentAnalysisTraceRun = {
+  agent: AgentKind;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  concurrentRequests: number;
+  depth: number;
+  durationMs: number;
+  endedAt: string;
+  error?: string;
+  id: string;
+  inputTokens: number;
+  kind: AgentAnalysisTraceRunKind;
+  model?: string;
+  name: string;
+  offsetMs: number;
+  outputTokens: number;
+  parentId?: string;
+  path?: string;
+  provider?: string;
+  requestId?: string;
+  requestLogId?: number;
+  routeReason?: string;
+  sessionId: string;
+  startedAt: string;
+  status: AgentAnalysisTraceRunStatus;
+  statusCode?: number;
+  tool?: AgentAnalysisTraceToolDetail;
+  toolName?: string;
+  totalTokens: number;
+};
+
+export type AgentAnalysisTrace = {
+  agent: AgentKind;
+  durationMs: number;
+  endedAt: string;
+  errorCount: number;
+  id: string;
+  llmRunCount: number;
+  maxDepth: number;
+  rootRunId: string;
+  runCount: number;
+  runs: AgentAnalysisTraceRun[];
+  sessionId: string;
+  startedAt: string;
+  subagentRunCount: number;
+  toolRunCount: number;
+};
+
 export type AgentObservabilityClientRow = AgentAnalysisTotals & {
   agent: AgentKind;
   key: string;
@@ -1604,6 +1687,7 @@ export type AgentAnalysisSessionDetail = {
   subagents: AgentAnalysisSubagentRow[];
   tools: AgentAnalysisToolRow[];
   totals: AgentAnalysisTotals;
+  trace: AgentAnalysisTrace;
 };
 
 export type AgentAnalysisSnapshot = {

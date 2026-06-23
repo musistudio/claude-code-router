@@ -1,10 +1,11 @@
 import {
-  agentAnalysisRangeOptions, AgentAnalysisSessionSelection, AgentAnalysisSnapshot, agentFilterOptions, AgentFilterValue, agentKindLabel,
+  agentAnalysisRangeOptions, AgentAnalysisSessionSelection, AgentAnalysisSnapshot, AgentAnalysisTracePayloadFullResult, AgentAnalysisTracePayloadRequest, AgentAnalysisTraceRun, agentFilterOptions, AgentFilterValue, agentKindLabel,
   Area, arrayMove, Badge, Bar, BarChart, Button,
   Card, CardContent, CardHeader, CardTitle, CartesianGrid, Cell, constrainOverviewWidgetSize,
-  Check, ChevronLeft, ChevronRight, CircleAlert, cn, compactId,
+  Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, cn, compactId,
   compactUserAgent, compareProviderAccountSnapshots, ComposedChart, CSS, DEFAULT_OVERVIEW_WIDGETS, DndContext,
-  DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent, Field, formatAxisNumber,
+  Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle,
+  DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent, Field, formatAxisNumber, formatBytes,
   formatCompactNumber, formatDuration, formatLogDateTime, formatPercent, formatProviderAccountMeterTitle, formatProviderAccountMeterValue,
   formatStatusBucketDate, formatStatusCodeCounts, formatSystemStatusRange, formatToolCounts, formatUsdCost, KeyboardSensor,
   LabelList, LayoutGroup, Line, MeasuringStrategy, MetricCard, MetricTone,
@@ -2215,16 +2216,29 @@ export function AgentAnalysisView({
   snapshot: AgentAnalysisSnapshot;
 }) {
   const t = useAppText();
-  const totals = snapshot.totals;
 
   return (
     <motion.div
       animate={{ opacity: 1 }}
-      className="flex h-full min-h-0 min-w-0 flex-col gap-4 overflow-auto pr-1"
+      className="flex h-full min-h-0 min-w-0 flex-col gap-4 pr-1"
       initial={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
     >
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-2">
+        <div className="min-w-0">
+          <div className="text-[13px] font-semibold">{t("Sessions")}</div>
+          <div className="mt-0.5 text-[11px] text-muted-foreground">
+            {formatCompactNumber(snapshot.sessions.length)} {t("Sessions")} / {formatCompactNumber(snapshot.scannedRequestCount)} {t("Requests")}
+          </div>
+        </div>
+        <div className="min-w-0 flex-1" />
+        <Select
+          aria-label={t("Filter agent")}
+          className="h-8 w-[160px] bg-[length:14px] px-2 pr-7 text-[12px]"
+          onValueChange={(value) => setAgentFilter(normalizeAgentFilterValue(value))}
+          options={translateOptions(agentFilterOptions, t)}
+          value={agentFilter}
+        />
         <div className="flex rounded-md border border-border bg-background p-0.5">
           {agentAnalysisRangeOptions.map((option) => (
             <Button
@@ -2241,108 +2255,18 @@ export function AgentAnalysisView({
             </Button>
           ))}
         </div>
-        <Select
-          aria-label={t("Filter agent")}
-          className="h-8 w-[160px] bg-[length:14px] px-2 pr-7 text-[12px]"
-          onValueChange={(value) => setAgentFilter(normalizeAgentFilterValue(value))}
-          options={translateOptions(agentFilterOptions, t)}
-          value={agentFilter}
-        />
-        {selectedSession ? (
-          <div className="flex h-8 max-w-full items-center gap-1.5 rounded-md border border-border bg-card px-2 text-[11px]">
-            <span className="shrink-0 text-muted-foreground">{t("Session")}</span>
-            <span className="min-w-0 max-w-[160px] truncate font-mono font-semibold" title={selectedSession.id}>{compactId(selectedSession.id)}</span>
-            <Button aria-label={t("Clear session")} onClick={() => setSelectedSession(undefined)} size="iconSm" title={t("Clear session")} type="button" variant="ghost">
-              <X className="h-3 w-3" />
-            </Button>
-          </div>
-        ) : null}
-        <div className="min-w-0 flex-1" />
-        <Button aria-label={t("Refresh observability")} onClick={refreshAnalysis} size="iconSm" title={t("Refresh observability")} type="button" variant="outline">
+        <Button aria-label={t("Refresh observability")} className="h-8 gap-1.5 px-2.5 text-[12px]" onClick={refreshAnalysis} title={t("Refresh observability")} type="button" variant="outline">
           <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+          {t("Refresh")}
         </Button>
       </div>
 
       {error ? (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive flex items-start gap-2">
+        <div className="flex shrink-0 items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
           <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>{error}</span>
         </div>
       ) : null}
-
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        <MetricCard label={t("Requests")} tone="teal" value={formatCompactNumber(totals.requestCount)} />
-        <MetricCard label={t("Success rate")} tone="blue" value={formatPercent(totals.successRate)} />
-        <MetricCard label={t("P95")} tone="amber" value={formatDuration(totals.p95DurationMs)} />
-        <MetricCard label={t("Errors")} tone="rose" value={formatCompactNumber(totals.errorCount)} />
-        <MetricCard label={t("Max concurrency")} tone="indigo" value={formatCompactNumber(totals.maxConcurrentRequests)} />
-        <MetricCard label={t("Cache ratio")} tone="rose" value={formatPercent(totals.cacheRatio)} />
-      </section>
-
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,.85fr)]">
-        <Card className="min-w-0">
-          <CardHeader className="flex-row items-center justify-between">
-            <CardTitle>{t("Concurrency")}</CardTitle>
-            <Badge variant="outline">{formatCompactNumber(totals.errorCount)} {t("Errors")}</Badge>
-          </CardHeader>
-          <CardContent>
-            <ChartFrame>
-              {({ height, width }) => (
-                <ComposedChart data={snapshot.concurrency} height={height} margin={{ bottom: 4, left: 0, right: 8, top: 8 }} width={width}>
-                  <CartesianGrid stroke="#dfe3e8" strokeDasharray="3 3" vertical={false} />
-                  <XAxis axisLine={false} dataKey="label" tick={{ fill: "#5f6b7a", fontSize: 11 }} tickLine={false} />
-                  <YAxis axisLine={false} tick={{ fill: "#5f6b7a", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} yAxisId="requests" />
-                  <YAxis axisLine={false} hide orientation="right" yAxisId="concurrency" />
-                  <Tooltip content={<UsageTooltip />} />
-                  <Bar barSize={12} dataKey="requestCount" fill="#2563eb" name={t("Requests")} radius={[3, 3, 0, 0]} yAxisId="requests" />
-                  <Line dataKey="maxConcurrentRequests" dot={false} name={t("Max concurrent")} stroke="#0f766e" strokeWidth={2} type="monotone" yAxisId="concurrency" />
-                </ComposedChart>
-              )}
-            </ChartFrame>
-          </CardContent>
-        </Card>
-
-        <Card className="min-w-0">
-          <CardHeader className="flex-row items-center justify-between">
-            <CardTitle>{t("Agent Mix")}</CardTitle>
-            <Badge variant="outline">{snapshot.agents.length}</Badge>
-          </CardHeader>
-          <CardContent>
-            {snapshot.agents.length === 0 ? (
-              <AnalysisEmptyState label={t("No agent activity")} />
-            ) : (
-              <div className="space-y-3">
-                {snapshot.agents.map((agent) => (
-                  <div className="min-w-0" key={agent.key}>
-                    <div className="mb-1 flex items-center justify-between gap-3 text-[12px]">
-                      <span className="truncate font-semibold">{t(agent.label)}</span>
-                      <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{formatCompactNumber(agent.totalTokens)} tokens</span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-muted">
-                      <div className="h-full rounded-full bg-teal-500" style={{ width: `${Math.max(2, Math.round(agent.maxShare * 100))}%` }} />
-                    </div>
-                    <div className="mt-1 grid grid-cols-3 gap-2 text-[11px] text-muted-foreground">
-                      <span>{formatCompactNumber(agent.sessionCount)} {t("Sessions")}</span>
-                      <span>{formatCompactNumber(agent.toolCallCount)} {t("Tools")}</span>
-                      <span>{formatPercent(agent.cacheRatio)} {t("Cache")}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,.8fr)]">
-        <AgentEndpointsCard endpoints={snapshot.endpoints} />
-        <AgentClientsCard clients={snapshot.clients} />
-      </section>
-
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(360px,.85fr)_minmax(0,1.15fr)]">
-        <AgentRoutesCard routes={snapshot.routes} />
-        <AgentErrorsCard errors={snapshot.errors} />
-      </section>
 
       {selectedSession || snapshot.selectedSession ? (
         <AgentSessionDetailCard
@@ -2352,18 +2276,12 @@ export function AgentAnalysisView({
         />
       ) : null}
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,.8fr)]">
+      <section className="min-h-0 flex-1">
         <AgentSessionsCard
           onSelectSession={setSelectedSession}
           selectedSession={selectedSession}
           sessions={snapshot.sessions}
         />
-        <AgentToolsCard tools={snapshot.tools} />
-      </section>
-
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(360px,.8fr)_minmax(0,1.2fr)]">
-        <AgentSubagentsCard subagents={snapshot.subagents} />
-        <AgentRecentRequestsCard requests={snapshot.recentRequests} />
       </section>
     </motion.div>
   );
@@ -2382,9 +2300,9 @@ function AgentEndpointsCard({ endpoints }: { endpoints: AgentAnalysisSnapshot["e
         {endpoints.length === 0 ? (
           <AnalysisEmptyState label={t("No endpoint activity")} />
         ) : (
-          <div className="max-h-[380px] overflow-auto rounded-lg border border-border/60">
-            <table className="min-w-[980px] w-full border-collapse text-left text-[11px]">
-              <thead className="sticky top-0 z-10 bg-muted text-muted-foreground">
+          <div className={cn("max-h-[380px]", agentListFrameClassName)}>
+            <table className={cn("min-w-[980px]", agentListTableClassName)}>
+              <thead className={agentListHeadClassName}>
                 <tr>
                   <th className="px-3 py-2 font-semibold">{t("Path")}</th>
                   <th className="px-3 py-2 font-semibold">{t("Agent")}</th>
@@ -2396,9 +2314,9 @@ function AgentEndpointsCard({ endpoints }: { endpoints: AgentAnalysisSnapshot["e
                   <th className="px-3 py-2 font-semibold">{t("Status codes")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/60">
+              <tbody className={agentListBodyClassName}>
                 {endpoints.map((endpoint) => (
-                  <tr className="bg-card/40 hover:bg-muted/30" key={endpoint.key}>
+                  <tr className={agentListRowClassName()} key={endpoint.key}>
                     <td className="max-w-[260px] px-3 py-2" title={`${endpoint.method} ${endpoint.path}`}>
                       <span className="font-mono font-semibold">{endpoint.method}</span> {endpoint.path}
                     </td>
@@ -2433,9 +2351,9 @@ function AgentClientsCard({ clients }: { clients: AgentAnalysisSnapshot["clients
         {clients.length === 0 ? (
           <AnalysisEmptyState label={t("No client signals")} />
         ) : (
-          <div className="max-h-[380px] overflow-auto rounded-lg border border-border/60">
-            <table className="min-w-[720px] w-full border-collapse text-left text-[11px]">
-              <thead className="sticky top-0 z-10 bg-muted text-muted-foreground">
+          <div className={cn("max-h-[380px]", agentListFrameClassName)}>
+            <table className={cn("min-w-[720px]", agentListTableClassName)}>
+              <thead className={agentListHeadClassName}>
                 <tr>
                   <th className="px-3 py-2 font-semibold">{t("Client")}</th>
                   <th className="px-3 py-2 font-semibold">{t("Agent")}</th>
@@ -2446,9 +2364,9 @@ function AgentClientsCard({ clients }: { clients: AgentAnalysisSnapshot["clients
                   <th className="px-3 py-2 font-semibold">{t("UA")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/60">
+              <tbody className={agentListBodyClassName}>
                 {clients.map((client) => (
-                  <tr className="bg-card/40 hover:bg-muted/30" key={client.key}>
+                  <tr className={agentListRowClassName()} key={client.key}>
                     <td className="max-w-[160px] px-3 py-2 font-semibold" title={client.label}>{client.label}</td>
                     <td className="px-3 py-2">{t(agentKindLabel(client.agent))}</td>
                     <td className="px-3 py-2 text-right">{formatCompactNumber(client.sessionCount)}</td>
@@ -2480,9 +2398,9 @@ function AgentRoutesCard({ routes }: { routes: AgentAnalysisSnapshot["routes"] }
         {routes.length === 0 ? (
           <AnalysisEmptyState label={t("No route activity")} />
         ) : (
-          <div className="max-h-[360px] overflow-auto rounded-lg border border-border/60">
-            <table className="min-w-[700px] w-full border-collapse text-left text-[11px]">
-              <thead className="sticky top-0 z-10 bg-muted text-muted-foreground">
+          <div className={cn("max-h-[360px]", agentListFrameClassName)}>
+            <table className={cn("min-w-[700px]", agentListTableClassName)}>
+              <thead className={agentListHeadClassName}>
                 <tr>
                   <th className="px-3 py-2 font-semibold">{t("Route")}</th>
                   <th className="px-3 py-2 font-semibold">{t("Agent")}</th>
@@ -2492,10 +2410,10 @@ function AgentRoutesCard({ routes }: { routes: AgentAnalysisSnapshot["routes"] }
                   <th className="px-3 py-2 text-right font-semibold">{t("P95")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/60">
+              <tbody className={agentListBodyClassName}>
                 {routes.map((route) => (
-                  <tr className="bg-card/40 hover:bg-muted/30" key={route.key}>
-                    <td className="max-w-[180px] px-3 py-2 font-semibold" title={route.routeReason}>{route.routeReason}</td>
+                  <tr className={agentListRowClassName()} key={route.key}>
+                    <td className="max-w-[180px] px-3 py-2 font-semibold" title={formatRouteReason(route.routeReason)}>{formatRouteReason(route.routeReason)}</td>
                     <td className="px-3 py-2">{t(agentKindLabel(route.agent))}</td>
                     <td className="max-w-[220px] px-3 py-2" title={`${route.provider}/${route.model}`}>{route.provider}/{route.model}</td>
                     <td className="px-3 py-2 text-right">{formatCompactNumber(route.requestCount)}</td>
@@ -2525,9 +2443,9 @@ function AgentErrorsCard({ errors }: { errors: AgentAnalysisSnapshot["errors"] }
         {errors.length === 0 ? (
           <AnalysisEmptyState label={t("No errors")} />
         ) : (
-          <div className="max-h-[360px] overflow-auto rounded-lg border border-border/60">
-            <table className="min-w-[900px] w-full border-collapse text-left text-[11px]">
-              <thead className="sticky top-0 z-10 bg-muted text-muted-foreground">
+          <div className={cn("max-h-[360px]", agentListFrameClassName)}>
+            <table className={cn("min-w-[900px]", agentListTableClassName)}>
+              <thead className={agentListHeadClassName}>
                 <tr>
                   <th className="px-3 py-2 font-semibold">{t("Time")}</th>
                   <th className="px-3 py-2 font-semibold">{t("Status")}</th>
@@ -2537,14 +2455,14 @@ function AgentErrorsCard({ errors }: { errors: AgentAnalysisSnapshot["errors"] }
                   <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/60">
+              <tbody className={agentListBodyClassName}>
                 {errors.map((error) => (
-                  <tr className="bg-card/40 hover:bg-muted/30" key={error.id}>
+                  <tr className={agentListRowClassName({ danger: true })} key={error.id}>
                     <td className="px-3 py-2 font-mono">{formatLogDateTime(error.createdAt)}</td>
                     <td className="px-3 py-2 font-semibold" title={error.error}>{error.statusCode || "-"}</td>
                     <td className="max-w-[260px] px-3 py-2" title={`${error.method} ${error.path}`}>{error.method} {error.path}</td>
                     <td className="px-3 py-2">{t(agentKindLabel(error.agent))}</td>
-                    <td className="max-w-[140px] px-3 py-2" title={error.routeReason}>{error.routeReason || "-"}</td>
+                    <td className="max-w-[140px] px-3 py-2" title={formatRouteReason(error.routeReason)}>{formatRouteReason(error.routeReason)}</td>
                     <td className="px-3 py-2 text-right">{formatDuration(error.durationMs)}</td>
                   </tr>
                 ))}
@@ -2575,122 +2493,531 @@ function AgentSessionDetailCard({
       : t("Session");
 
   return (
-    <Card className="min-w-0">
-      <CardHeader className="flex-row items-start justify-between gap-3">
-        <div className="min-w-0">
-          <CardTitle>{t("Session Detail")}</CardTitle>
-          <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground" title={session?.id ?? selectedSession?.id}>
-            {headerLabel}
+    <Dialog className="items-start" onOpenChange={(open) => !open && clearSession()} open>
+      <DialogContent className="h-[calc(100dvh-1.5rem)] max-w-[1200px] origin-top sm:h-[min(900px,calc(100dvh-3rem))]">
+        <DialogHeader>
+          <div className="min-w-0">
+            <DialogTitle>{t("Trace Detail")}</DialogTitle>
+            <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground" title={session?.id ?? selectedSession?.id}>
+              {headerLabel}
+            </div>
           </div>
-        </div>
-        <Button aria-label={t("Clear session")} onClick={clearSession} size="iconSm" title={t("Clear session")} type="button" variant="outline">
-          <X className="h-3.5 w-3.5" />
-        </Button>
-      </CardHeader>
-      <CardContent>
+          <Button aria-label={t("Close")} onClick={clearSession} size="iconSm" title={t("Close")} type="button" variant="ghost">
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </DialogHeader>
+        <DialogBody>
         {!detail ? (
           <AnalysisEmptyState label={t("Loading session metrics")} />
         ) : (
           <div className="space-y-4">
-            <div className="grid overflow-hidden rounded-md border border-border/60 bg-card text-[11px] sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-              <SessionMetricCell label={t("Requests")} value={formatCompactNumber(detail.totals.requestCount)} />
-              <SessionMetricCell label={t("Success rate")} value={formatPercent(detail.totals.successRate)} />
-              <SessionMetricCell label={t("P95")} value={formatDuration(detail.totals.p95DurationMs)} />
-              <SessionMetricCell label={t("Max concurrency")} value={formatCompactNumber(detail.totals.maxConcurrentRequests)} />
-              <SessionMetricCell label={t("Tokens")} value={formatCompactNumber(detail.totals.totalTokens)} />
-              <SessionMetricCell label={t("Cache ratio")} value={formatPercent(detail.totals.cacheRatio)} />
-              <SessionMetricCell label={t("Cost")} value={formatUsdCost(detail.totals.costUsd)} />
-              <SessionMetricCell label={t("Status codes")} value={formatStatusCodeCounts(detail.statusCodes) || "-"} />
-            </div>
+            <AgentTracePanel trace={detail.trace} />
 
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,.95fr)_minmax(0,1.05fr)]">
-              <div className="min-w-0">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="text-[12px] font-semibold">{t("Models")}</div>
-                  <Badge variant="outline">{detail.models.length}</Badge>
-                </div>
-                {detail.models.length === 0 ? (
-                  <AnalysisEmptyState label={t("No model activity")} />
-                ) : (
-                  <div className="max-h-[260px] overflow-auto rounded-lg border border-border/60">
-                    <table className="min-w-[720px] w-full border-collapse text-left text-[11px]">
-                      <thead className="sticky top-0 z-10 bg-muted text-muted-foreground">
-                        <tr>
-                          <th className="px-3 py-2 font-semibold">{t("Model")}</th>
-                          <th className="px-3 py-2 text-right font-semibold">{t("Requests")}</th>
-                          <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
-                          <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th>
-                          <th className="px-3 py-2 text-right font-semibold">{t("P95")}</th>
-                          <th className="px-3 py-2 text-right font-semibold">{t("Cost")}</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border/60">
-                        {detail.models.map((model) => (
-                          <tr className="bg-card/40 hover:bg-muted/30" key={model.key}>
-                            <td className="max-w-[280px] px-3 py-2" title={`${model.provider}/${model.model}`}>{model.provider}/{model.model}</td>
-                            <td className="px-3 py-2 text-right">{formatCompactNumber(model.requestCount)}</td>
-                            <td className="px-3 py-2 text-right">{formatCompactNumber(model.totalTokens)}</td>
-                            <td className="px-3 py-2 text-right">{formatCompactNumber(model.cacheTokens)}</td>
-                            <td className="px-3 py-2 text-right">{formatDuration(model.p95DurationMs)}</td>
-                            <td className="px-3 py-2 text-right">{formatUsdCost(model.costUsd)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+            <div className="min-w-0">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="text-[12px] font-semibold">{t("Session Requests")}</div>
               </div>
-
-              <div className="min-w-0">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="text-[12px] font-semibold">{t("Session Requests")}</div>
-                  <Badge variant="outline">{detail.requests.length}</Badge>
-                </div>
-                {detail.requests.length === 0 ? (
-                  <AnalysisEmptyState label={t("No session requests")} />
-                ) : (
-                  <div className="max-h-[260px] overflow-auto rounded-lg border border-border/60">
-                    <table className="min-w-[980px] w-full border-collapse text-left text-[11px]">
-                      <thead className="sticky top-0 z-10 bg-muted text-muted-foreground">
-                        <tr>
-                          <th className="px-3 py-2 font-semibold">{t("Time")}</th>
-                          <th className="px-3 py-2 font-semibold">{t("Status")}</th>
-                          <th className="px-3 py-2 font-semibold">{t("Route")}</th>
-                          <th className="px-3 py-2 font-semibold">{t("Model")}</th>
-                          <th className="px-3 py-2 text-right font-semibold">{t("Tools")}</th>
-                          <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
-                          <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
+              {detail.requests.length === 0 ? (
+                <AnalysisEmptyState label={t("No session requests")} />
+              ) : (
+                <div className={cn("max-h-[260px]", agentListFrameClassName)}>
+                  <table className={cn("min-w-[980px]", agentListTableClassName)}>
+                    <thead className={agentListHeadClassName}>
+                      <tr>
+                        <th className="px-3 py-2 font-semibold">{t("Time")}</th>
+                        <th className="px-3 py-2 font-semibold">{t("Status")}</th>
+                        <th className="px-3 py-2 font-semibold">{t("Route")}</th>
+                        <th className="px-3 py-2 font-semibold">{t("Model")}</th>
+                        <th className="px-3 py-2 text-right font-semibold">{t("Tools")}</th>
+                        <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
+                        <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
+                      </tr>
+                    </thead>
+                    <tbody className={agentListBodyClassName}>
+                      {detail.requests.map((request) => (
+                        <tr className={agentListRowClassName()} key={request.id}>
+                          <td className="px-3 py-2 font-mono">{formatLogDateTime(request.createdAt)}</td>
+                          <td className="px-3 py-2 font-semibold">{request.statusCode || "-"}</td>
+                          <td className="max-w-[140px] px-3 py-2" title={formatRouteReason(request.routeReason)}>{formatRouteReason(request.routeReason)}</td>
+                          <td className="max-w-[300px] px-3 py-2" title={`${request.provider}/${request.model}`}>{request.provider}/{request.model}</td>
+                          <td className="px-3 py-2 text-right" title={request.tools.join(", ")}>{formatCompactNumber(request.toolCallCount)}</td>
+                          <td className="px-3 py-2 text-right">{formatCompactNumber(request.totalTokens)}</td>
+                          <td className="px-3 py-2 text-right">{formatDuration(request.durationMs)}</td>
                         </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border/60">
-                        {detail.requests.map((request) => (
-                          <tr className="bg-card/40 hover:bg-muted/30" key={request.id}>
-                            <td className="px-3 py-2 font-mono">{formatLogDateTime(request.createdAt)}</td>
-                            <td className="px-3 py-2 font-semibold">{request.statusCode || "-"}</td>
-                            <td className="max-w-[140px] px-3 py-2" title={request.routeReason}>{request.routeReason || "-"}</td>
-                            <td className="max-w-[300px] px-3 py-2" title={`${request.provider}/${request.model}`}>{request.provider}/{request.model}</td>
-                            <td className="px-3 py-2 text-right" title={request.tools.join(", ")}>{formatCompactNumber(request.toolCallCount)}</td>
-                            <td className="px-3 py-2 text-right">{formatCompactNumber(request.totalTokens)}</td>
-                            <td className="px-3 py-2 text-right">{formatDuration(request.durationMs)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-              <SessionInlineList title={t("Top tools")} value={formatToolRows(detail.tools)} />
-              <SessionInlineList title={t("Routes")} value={formatRouteRows(detail.routes)} />
-              <SessionInlineList title={t("Errors")} value={detail.errors.length ? `${formatCompactNumber(detail.errors.length)} ${t("Errors")}` : t("No errors")} />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
   );
+}
+
+const agentListSurfaceClassName = "rounded-md border border-border/70 bg-card/70 shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
+const agentListFrameClassName = cn("overflow-auto", agentListSurfaceClassName);
+const agentListTableClassName = "w-full border-collapse text-left text-[11px]";
+const agentListHeadClassName = "sticky top-0 z-10 border-b border-border/70 bg-muted/80 text-muted-foreground backdrop-blur";
+const agentListBodyClassName = "divide-y divide-border/50";
+
+function agentListRowClassName({
+  danger,
+  selected
+}: {
+  danger?: boolean;
+  selected?: boolean;
+} = {}) {
+  return cn(
+    "bg-card/40 transition-colors hover:bg-muted/30",
+    danger && "bg-rose-500/5 hover:bg-rose-500/10",
+    selected && "bg-teal-500/10 shadow-[inset_2px_0_0_rgba(20,184,166,0.7)] hover:bg-teal-500/15"
+  );
+}
+
+type AgentTraceDetail = NonNullable<AgentAnalysisSnapshot["selectedSession"]>["trace"];
+type TracePayloadPreviewValue = NonNullable<NonNullable<AgentAnalysisTraceRun["tool"]>["input"]>;
+
+function AgentTracePanel({ trace }: { trace: AgentTraceDetail }) {
+  const t = useAppText();
+  const durationMs = Math.max(trace.durationMs, 1);
+  const [selectedToolRun, setSelectedToolRun] = useState<AgentAnalysisTraceRun>();
+
+  return (
+    <div className="min-w-0">
+      <div className="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[12px] font-semibold">{t("Call chain")}</div>
+          <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground" title={trace.sessionId}>
+            {compactId(trace.sessionId)} - {formatLogDateTime(trace.startedAt)}{" -> "}{formatLogDateTime(trace.endedAt)}
+          </div>
+        </div>
+        <Badge variant="outline">{formatCompactNumber(trace.runCount)} {t("Runs")}</Badge>
+      </div>
+
+      {trace.runs.length === 0 ? (
+        <AnalysisEmptyState label={t("No trace runs")} />
+      ) : (
+        <div className={cn("max-h-[420px]", agentListFrameClassName)}>
+          <table className={cn("min-w-[1180px]", agentListTableClassName)}>
+            <thead className={agentListHeadClassName}>
+              <tr>
+                <th className="px-3 py-2 font-semibold">{t("Run")}</th>
+                <th className="px-3 py-2 font-semibold">{t("Timeline")}</th>
+                <th className="px-3 py-2 font-semibold">{t("Status")}</th>
+                <th className="px-3 py-2 font-semibold">{t("Target")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Tokens")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Concurrency")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
+              </tr>
+            </thead>
+            <tbody className={agentListBodyClassName}>
+              {trace.runs.map((run) => (
+                <tr className={agentListRowClassName({ danger: run.status === "error" })} key={run.id}>
+                  <td className="max-w-[360px] px-3 py-2">
+                    <div className="flex min-w-0 items-center gap-2" style={{ paddingLeft: `${Math.min(run.depth, 8) * 16}px` }}>
+                      <span className={cn("h-2 w-2 shrink-0 rounded-full", traceRunDotClass(run))} />
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold" title={run.name}>{run.name}</div>
+                        <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10px] text-muted-foreground">
+                          <span className="font-mono uppercase">{t(traceRunKindLabel(run.kind))}</span>
+                          {run.requestId ? <span className="truncate font-mono" title={run.requestId}>{compactId(run.requestId)}</span> : null}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="relative h-5 min-w-[260px] rounded bg-muted/50">
+                      <div
+                        className={cn("absolute top-1/2 h-2 -translate-y-1/2 rounded-full", traceRunBarClass(run))}
+                        style={traceRunBarStyle(run, durationMs)}
+                        title={`${formatDuration(run.durationMs)} | +${formatDuration(run.offsetMs)}`}
+                      />
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <Badge className={cn("border", run.status === "error" ? "border-rose-200 bg-rose-50 text-rose-700" : "border-emerald-200 bg-emerald-50 text-emerald-700")} variant="outline">
+                      {t(run.status === "error" ? "Error" : "Success")}
+                    </Badge>
+                  </td>
+                  <td className="max-w-[260px] px-3 py-2" title={traceRunTarget(run)}>
+                    <TraceRunTarget run={run} onOpenTool={() => setSelectedToolRun(run)} />
+                  </td>
+                  <td className="px-3 py-2 text-right">{run.totalTokens > 0 ? formatCompactNumber(run.totalTokens) : "-"}</td>
+                  <td className="px-3 py-2 text-right">{run.cacheReadTokens + run.cacheWriteTokens > 0 ? formatCompactNumber(run.cacheReadTokens + run.cacheWriteTokens) : "-"}</td>
+                  <td className="px-3 py-2 text-right">{formatCompactNumber(run.concurrentRequests)}</td>
+                  <td className="px-3 py-2 text-right">{formatDuration(run.durationMs)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {selectedToolRun ? (
+        <ToolPayloadDialog
+          run={selectedToolRun}
+          onClose={() => setSelectedToolRun(undefined)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function traceRunKindLabel(kind: AgentAnalysisTraceRun["kind"]): string {
+  if (kind === "agent") return "Agent";
+  if (kind === "llm") return "LLM";
+  if (kind === "route") return "Route";
+  if (kind === "subagent") return "Subagent";
+  return "Tool";
+}
+
+function TraceRunTarget({
+  onOpenTool,
+  run
+}: {
+  onOpenTool: () => void;
+  run: AgentAnalysisTraceRun;
+}) {
+  const t = useAppText();
+  if (run.kind !== "tool") {
+    return <span>{traceRunTarget(run)}</span>;
+  }
+
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <span className="min-w-0 truncate" title={traceRunTarget(run)}>{traceRunTarget(run)}</span>
+      {run.tool ? (
+        <Button className="h-6 shrink-0 border-border bg-transparent px-2 text-[10px] shadow-none hover:bg-transparent active:bg-transparent" onClick={onOpenTool} type="button" variant="outline">
+          {t("Parameters")} / {t("Result")}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+function ToolPayloadDialog({
+  onClose,
+  run
+}: {
+  onClose: () => void;
+  run: AgentAnalysisTraceRun;
+}) {
+  const t = useAppText();
+  const tool = run.tool;
+  const inputRequest = tool && run.requestLogId
+    ? { callId: tool.callId, part: "tool-input" as const, requestLogId: run.requestLogId }
+    : undefined;
+  const resultRequest = tool?.resultRequestLogId
+    ? { callId: tool.callId, part: "tool-result" as const, requestLogId: tool.resultRequestLogId }
+    : undefined;
+
+  return (
+    <Dialog className="z-[70] items-start" onOpenChange={(open) => !open && onClose()} open>
+      <DialogContent className="h-[calc(100dvh-1.5rem)] max-w-[1180px] origin-top sm:h-[min(820px,calc(100dvh-3rem))]">
+        <DialogHeader>
+          <div className="min-w-0">
+            <DialogTitle>{run.toolName || run.name}</DialogTitle>
+            <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground" title={tool?.callId}>
+              {tool?.callId ? compactId(tool.callId) : t("Tool")}
+            </div>
+          </div>
+          <Button aria-label={t("Close")} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </DialogHeader>
+        <DialogBody className="overflow-hidden">
+          <div className="grid h-full min-h-0 grid-cols-1 gap-3 xl:grid-cols-2">
+            <TracePayloadPane
+              fallback={tool?.input}
+              label={t("Parameters")}
+              request={inputRequest}
+            />
+            <TracePayloadPane
+              fallback={tool?.result}
+              label={t("Result")}
+              request={resultRequest}
+            />
+          </div>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function TracePayloadPane({
+  fallback,
+  label,
+  request
+}: {
+  fallback?: TracePayloadPreviewValue;
+  label: string;
+  request?: AgentAnalysisTracePayloadRequest;
+}) {
+  const t = useAppText();
+  const requestCallId = request?.callId;
+  const requestLogId = request?.requestLogId;
+  const requestPart = request?.part;
+  const [full, setFull] = useState<AgentAnalysisTracePayloadFullResult>();
+  const [loading, setLoading] = useState(Boolean(request));
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFull(undefined);
+    setLoadFailed(false);
+
+    if (typeof requestLogId !== "number" || !requestPart || !window.ccr?.getAgentTracePayload) {
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setLoading(true);
+    const payloadRequest: AgentAnalysisTracePayloadRequest = {
+      callId: requestCallId,
+      part: requestPart,
+      requestLogId
+    };
+    window.ccr.getAgentTracePayload(payloadRequest)
+      .then((result) => {
+        if (!cancelled) {
+          setFull(result);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLoadFailed(true);
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [requestCallId, requestLogId, requestPart]);
+
+  const fullPayload = full?.found ? full : undefined;
+  const content = fullPayload?.content ?? fallback?.preview ?? "";
+  const kind = fullPayload?.kind ?? fallback?.kind ?? "empty";
+  const sizeBytes = fullPayload?.sizeBytes ?? fallback?.sizeBytes ?? 0;
+  const truncated = fullPayload?.sourceTruncated ?? fallback?.truncated ?? false;
+  const previewOnly = !fullPayload && Boolean(fallback);
+  const unavailable = !loading && Boolean(request) && full !== undefined && !full.found;
+
+  return (
+    <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border/60 bg-muted/20">
+      <div className="flex min-h-11 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/60 px-3 py-2">
+        <div className="text-[12px] font-semibold">{label}</div>
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5 text-[10px] text-muted-foreground">
+          {loading ? <Badge variant="outline">{t("Loading")}</Badge> : null}
+          {sizeBytes > 0 ? <Badge variant="outline">{formatBytes(sizeBytes)}</Badge> : null}
+          {previewOnly && !loading ? <Badge variant="outline">{t("Preview")}</Badge> : null}
+          {truncated ? <Badge className="border-amber-200 bg-amber-50 text-amber-700" variant="outline">{t("Source truncated")}</Badge> : null}
+          {loadFailed || unavailable ? <Badge className="border-rose-200 bg-rose-50 text-rose-700" variant="outline">{t("Full content unavailable")}</Badge> : null}
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto">
+        {loading && !content ? (
+          <div className="px-3 py-4 text-[11px] text-muted-foreground">{t("Loading")}</div>
+        ) : (
+          <TracePayloadContent content={content} kind={kind} />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function TracePayloadContent({
+  content,
+  kind
+}: {
+  content: string;
+  kind: AgentAnalysisTracePayloadFullResult["kind"];
+}) {
+  const t = useAppText();
+  const parsed = useMemo<{ value: unknown } | undefined>(() => {
+    if (kind !== "json") {
+      return undefined;
+    }
+    try {
+      return { value: JSON.parse(content) };
+    } catch {
+      return undefined;
+    }
+  }, [content, kind]);
+
+  if (!content.trim() || kind === "empty") {
+    return <div className="px-3 py-4 text-[11px] text-muted-foreground">{t("No data")}</div>;
+  }
+
+  if (parsed) {
+    return (
+      <div className="min-w-max p-3 font-mono text-[11px] leading-5">
+        <JsonTreeNode root value={parsed.value} />
+      </div>
+    );
+  }
+
+  return (
+    <pre className="min-h-full whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-5 text-foreground">
+      <code>{content}</code>
+    </pre>
+  );
+}
+
+function JsonTreeNode({
+  name,
+  root,
+  value
+}: {
+  name?: string;
+  root?: boolean;
+  value: unknown;
+}) {
+  if (Array.isArray(value)) {
+    return <JsonComplexNode closeToken="]" entries={value.map((entry, index) => [String(index), entry])} name={name} openToken="[" root={root} />;
+  }
+  if (isJsonObject(value)) {
+    return <JsonComplexNode closeToken="}" entries={Object.entries(value)} name={name} openToken="{" root={root} />;
+  }
+
+  return (
+    <div className="flex min-w-0 items-start gap-1">
+      {name !== undefined ? <JsonPropertyName name={name} /> : null}
+      <JsonPrimitive value={value} />
+    </div>
+  );
+}
+
+function JsonComplexNode({
+  closeToken,
+  entries,
+  name,
+  openToken,
+  root
+}: {
+  closeToken: string;
+  entries: Array<[string, unknown]>;
+  name?: string;
+  openToken: string;
+  root?: boolean;
+}) {
+  const t = useAppText();
+  const [expanded, setExpanded] = useState(false);
+  const empty = entries.length === 0;
+
+  return (
+    <div className={cn("min-w-0", !root && "py-0.5")}>
+      <div className="flex min-w-0 items-center gap-1">
+        {empty ? (
+          <span className="h-4 w-4 shrink-0" />
+        ) : (
+          <button
+            aria-label={t(expanded ? "Collapse" : "Expand")}
+            className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+            onClick={() => setExpanded((current) => !current)}
+            type="button"
+          >
+            {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          </button>
+        )}
+        {name !== undefined ? <JsonPropertyName name={name} /> : null}
+        <span className="text-muted-foreground">{openToken}</span>
+        {!expanded ? (
+          <>
+            {!empty ? <span className="text-muted-foreground/70"> ... {entries.length}</span> : null}
+            <span className="text-muted-foreground">{closeToken}</span>
+          </>
+        ) : null}
+      </div>
+      {expanded ? (
+        <div className="ml-4 border-l border-border/60 pl-3">
+          {entries.map(([entryName, entryValue]) => (
+            <JsonTreeNode key={entryName} name={entryName} value={entryValue} />
+          ))}
+          <div className="text-muted-foreground">{closeToken}</div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function JsonPropertyName({ name }: { name: string }) {
+  const displayName = /^\d+$/.test(name) ? name : JSON.stringify(name);
+  return (
+    <>
+      <span className={cn("shrink-0", /^\d+$/.test(name) ? "text-slate-500" : "text-sky-700")}>{displayName}</span>
+      <span className="text-muted-foreground">:</span>
+    </>
+  );
+}
+
+function JsonPrimitive({ value }: { value: unknown }) {
+  if (value === null) {
+    return <span className="text-muted-foreground">null</span>;
+  }
+  if (typeof value === "string") {
+    return <span className="text-emerald-700">{JSON.stringify(value)}</span>;
+  }
+  if (typeof value === "number") {
+    return <span className="text-amber-700">{String(value)}</span>;
+  }
+  if (typeof value === "boolean") {
+    return <span className="text-violet-700">{String(value)}</span>;
+  }
+  return <span className="text-muted-foreground">{String(value)}</span>;
+}
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function traceRunTarget(run: AgentAnalysisTraceRun): string {
+  if (run.kind === "tool") {
+    return run.toolName || run.name;
+  }
+  if (run.provider && run.model) {
+    return `${run.provider}/${run.model}`;
+  }
+  if (run.routeReason) {
+    return run.routeReason;
+  }
+  return run.path || "-";
+}
+
+function traceRunBarStyle(run: AgentAnalysisTraceRun, traceDurationMs: number): { left: string; width: string } {
+  const left = Math.max(0, Math.min(99.2, (run.offsetMs / traceDurationMs) * 100));
+  const rawWidth = (run.durationMs / traceDurationMs) * 100;
+  const minWidth = run.kind === "tool" ? 0.7 : 1.2;
+  const width = Math.max(minWidth, Math.min(100 - left, rawWidth));
+  return {
+    left: `${left}%`,
+    width: `${width}%`
+  };
+}
+
+function traceRunDotClass(run: AgentAnalysisTraceRun): string {
+  if (run.status === "error") return "bg-rose-500";
+  if (run.kind === "agent") return "bg-teal-500";
+  if (run.kind === "route") return "bg-cyan-500";
+  if (run.kind === "subagent") return "bg-amber-500";
+  if (run.kind === "tool") return "bg-emerald-500";
+  return "bg-blue-500";
+}
+
+function traceRunBarClass(run: AgentAnalysisTraceRun): string {
+  if (run.status === "error") return "bg-rose-500";
+  if (run.kind === "agent") return "bg-teal-500";
+  if (run.kind === "route") return "bg-cyan-500";
+  if (run.kind === "subagent") return "bg-amber-500";
+  if (run.kind === "tool") return "bg-emerald-500";
+  return "bg-blue-500";
 }
 
 function SessionMetricCell({ label, value }: { label: string; value: string }) {
@@ -2716,7 +3043,15 @@ function formatToolRows(tools: AgentAnalysisSnapshot["tools"]): string {
 }
 
 function formatRouteRows(routes: AgentAnalysisSnapshot["routes"]): string {
-  return routes.slice(0, 5).map((route) => `${route.routeReason}: ${formatCompactNumber(route.requestCount)}`).join(", ");
+  return routes.slice(0, 5).map((route) => `${formatRouteReason(route.routeReason)}: ${formatCompactNumber(route.requestCount)}`).join(", ");
+}
+
+function formatRouteReason(value: string | undefined): string {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return "-";
+  }
+  return trimmed.toLowerCase() === "inline-model" ? "none" : trimmed;
 }
 
 function AgentSessionsCard({
@@ -2731,65 +3066,63 @@ function AgentSessionsCard({
   const t = useAppText();
 
   return (
-    <Card className="min-w-0">
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>{t("Sessions")}</CardTitle>
-        <Badge variant="outline">{sessions.length}</Badge>
-      </CardHeader>
-      <CardContent>
-        {sessions.length === 0 ? (
-          <AnalysisEmptyState label={t("No session activity")} />
-        ) : (
-          <div className="max-h-[380px] overflow-auto rounded-lg border border-border/60">
-            <table className="min-w-[1120px] w-full border-collapse text-left text-[11px]">
-              <thead className="sticky top-0 z-10 bg-muted text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2 font-semibold">{t("Session")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Agent")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Client")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Requests")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Tools")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Subagents")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th>
-                  <th className="px-3 py-2 text-right font-semibold">{t("Max concurrent")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Top tools")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("UA")}</th>
-                  <th className="px-3 py-2 font-semibold">{t("Last seen")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/60">
-                {sessions.map((session) => {
-                  const selected = selectedSession?.agent === session.agent && selectedSession.id === session.id;
-                  return (
-                    <tr className={cn("bg-card/40 hover:bg-muted/30", selected && "bg-teal-500/10 hover:bg-teal-500/15")} key={`${session.agent}:${session.id}`}>
-                      <td className="max-w-[180px] px-3 py-2" title={session.id}>
-                        <button
-                          className="max-w-full truncate font-mono font-semibold text-foreground underline-offset-2 hover:underline"
-                          onClick={() => onSelectSession({ agent: session.agent, id: session.id })}
-                          type="button"
-                        >
-                          {compactId(session.id)}
-                        </button>
-                      </td>
-                      <td className="px-3 py-2">{t(agentKindLabel(session.agent))}</td>
-                      <td className="max-w-[150px] px-3 py-2" title={session.client}>{session.client}</td>
-                      <td className="px-3 py-2 text-right">{formatCompactNumber(session.requestCount)}</td>
-                      <td className="px-3 py-2 text-right">{formatCompactNumber(session.toolCallCount)}</td>
-                      <td className="px-3 py-2 text-right">{formatCompactNumber(session.subagentCallCount)}</td>
-                      <td className="px-3 py-2 text-right">{formatCompactNumber(session.cacheTokens)}</td>
-                      <td className="px-3 py-2 text-right">{formatCompactNumber(session.maxConcurrentRequests)}</td>
-                      <td className="max-w-[220px] px-3 py-2" title={formatToolCounts(session.topTools)}>{formatToolCounts(session.topTools) || "-"}</td>
-                      <td className="max-w-[220px] px-3 py-2 font-mono" title={session.userAgent}>{compactUserAgent(session.userAgent)}</td>
-                      <td className="px-3 py-2 font-mono">{formatLogDateTime(session.lastSeenAt)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
+      {sessions.length === 0 ? (
+        <AnalysisEmptyState label={t("No session activity")} />
+      ) : (
+        <div className={cn("h-full", agentListFrameClassName)}>
+          <table className={cn("min-w-[1260px]", agentListTableClassName)}>
+            <thead className={agentListHeadClassName}>
+              <tr>
+                <th className="px-3 py-2 font-semibold">{t("Session")}</th>
+                <th className="px-3 py-2 font-semibold">{t("Agent")}</th>
+                <th className="px-3 py-2 font-semibold">{t("Client")}</th>
+                <th className="px-3 py-2 font-semibold">{t("Started")}</th>
+                <th className="px-3 py-2 font-semibold">{t("Last seen")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Requests")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Tools")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Subagents")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Errors")}</th>
+                <th className="px-3 py-2 font-semibold">{t("Models")}</th>
+                <th className="px-3 py-2 font-semibold">{t("Providers")}</th>
+                <th className="px-3 py-2 font-semibold">{t("UA")}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t("Action")}</th>
+              </tr>
+            </thead>
+            <tbody className={agentListBodyClassName}>
+              {sessions.map((session) => {
+                const selected = selectedSession?.agent === session.agent && selectedSession.id === session.id;
+                return (
+                  <tr className={agentListRowClassName({ selected })} key={`${session.agent}:${session.id}`}>
+                    <td className="max-w-[180px] px-3 py-2" title={session.id}>
+                      <span className="block truncate font-mono font-semibold">{compactId(session.id)}</span>
+                    </td>
+                    <td className="px-3 py-2">{t(agentKindLabel(session.agent))}</td>
+                    <td className="max-w-[150px] px-3 py-2" title={session.client}>{session.client}</td>
+                    <td className="px-3 py-2 font-mono">{formatLogDateTime(session.startedAt)}</td>
+                    <td className="px-3 py-2 font-mono">{formatLogDateTime(session.lastSeenAt)}</td>
+                    <td className="px-3 py-2 text-right">{formatDuration(session.durationMs)}</td>
+                    <td className="px-3 py-2 text-right">{formatCompactNumber(session.requestCount)}</td>
+                    <td className="px-3 py-2 text-right">{formatCompactNumber(session.toolCallCount)}</td>
+                    <td className="px-3 py-2 text-right">{formatCompactNumber(session.subagentCallCount)}</td>
+                    <td className="px-3 py-2 text-right">{formatCompactNumber(session.errorCount)}</td>
+                    <td className="max-w-[240px] px-3 py-2" title={session.models.join(", ")}>{session.models.join(", ") || "-"}</td>
+                    <td className="max-w-[220px] px-3 py-2" title={session.providers.join(", ")}>{session.providers.join(", ") || "-"}</td>
+                    <td className="max-w-[220px] px-3 py-2 font-mono" title={session.userAgent}>{compactUserAgent(session.userAgent)}</td>
+                    <td className="px-3 py-2 text-right">
+                      <Button className="h-7 border-border bg-transparent px-2 text-[11px] shadow-none hover:bg-transparent active:bg-transparent" onClick={() => onSelectSession({ agent: session.agent, id: session.id })} type="button" variant="outline">
+                        {t("Details")}
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2806,9 +3139,9 @@ function AgentToolsCard({ tools }: { tools: AgentAnalysisSnapshot["tools"] }) {
         {tools.length === 0 ? (
           <AnalysisEmptyState label={t("No tool calls")} />
         ) : (
-          <div className="max-h-[380px] overflow-auto rounded-lg border border-border/60">
-            <table className="min-w-[560px] w-full border-collapse text-left text-[11px]">
-              <thead className="sticky top-0 z-10 bg-muted text-muted-foreground">
+          <div className={cn("max-h-[380px]", agentListFrameClassName)}>
+            <table className={cn("min-w-[560px]", agentListTableClassName)}>
+              <thead className={agentListHeadClassName}>
                 <tr>
                   <th className="px-3 py-2 font-semibold">{t("Tool")}</th>
                   <th className="px-3 py-2 text-right font-semibold">{t("Tool calls")}</th>
@@ -2817,9 +3150,9 @@ function AgentToolsCard({ tools }: { tools: AgentAnalysisSnapshot["tools"] }) {
                   <th className="px-3 py-2 font-semibold">{t("Agent")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/60">
+              <tbody className={agentListBodyClassName}>
                 {tools.map((tool) => (
-                  <tr className="bg-card/40 hover:bg-muted/30" key={tool.name}>
+                  <tr className={agentListRowClassName()} key={tool.name}>
                     <td className="max-w-[220px] px-3 py-2 font-semibold" title={tool.name}>{tool.name}</td>
                     <td className="px-3 py-2 text-right">{formatCompactNumber(tool.count)}</td>
                     <td className="px-3 py-2 text-right">{formatCompactNumber(tool.requestCount)}</td>
@@ -2849,9 +3182,9 @@ function AgentSubagentsCard({ subagents }: { subagents: AgentAnalysisSnapshot["s
         {subagents.length === 0 ? (
           <AnalysisEmptyState label={t("No subagent calls")} />
         ) : (
-          <div className="max-h-[360px] overflow-auto rounded-lg border border-border/60">
-            <table className="min-w-[620px] w-full border-collapse text-left text-[11px]">
-              <thead className="sticky top-0 z-10 bg-muted text-muted-foreground">
+          <div className={cn("max-h-[360px]", agentListFrameClassName)}>
+            <table className={cn("min-w-[620px]", agentListTableClassName)}>
+              <thead className={agentListHeadClassName}>
                 <tr>
                   <th className="px-3 py-2 font-semibold">{t("Session")}</th>
                   <th className="px-3 py-2 font-semibold">{t("Model")}</th>
@@ -2860,9 +3193,9 @@ function AgentSubagentsCard({ subagents }: { subagents: AgentAnalysisSnapshot["s
                   <th className="px-3 py-2 text-right font-semibold">{t("Cache")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/60">
+              <tbody className={agentListBodyClassName}>
                 {subagents.map((subagent) => (
-                  <tr className="bg-card/40 hover:bg-muted/30" key={`${subagent.agent}:${subagent.sessionId}:${subagent.provider}:${subagent.model}`}>
+                  <tr className={agentListRowClassName()} key={`${subagent.agent}:${subagent.sessionId}:${subagent.provider}:${subagent.model}`}>
                     <td className="max-w-[160px] px-3 py-2 font-mono font-semibold" title={subagent.sessionId}>{compactId(subagent.sessionId)}</td>
                     <td className="max-w-[240px] px-3 py-2" title={`${subagent.provider}/${subagent.model}`}>{subagent.provider}/{subagent.model}</td>
                     <td className="px-3 py-2 text-right">{formatCompactNumber(subagent.count)}</td>
@@ -2892,9 +3225,9 @@ function AgentRecentRequestsCard({ requests }: { requests: AgentAnalysisSnapshot
         {requests.length === 0 ? (
           <AnalysisEmptyState label={t("No recent agent requests")} />
         ) : (
-          <div className="max-h-[360px] overflow-auto rounded-lg border border-border/60">
-            <table className="min-w-[1240px] w-full border-collapse text-left text-[11px]">
-              <thead className="sticky top-0 z-10 bg-muted text-muted-foreground">
+          <div className={cn("max-h-[360px]", agentListFrameClassName)}>
+            <table className={cn("min-w-[1240px]", agentListTableClassName)}>
+              <thead className={agentListHeadClassName}>
                 <tr>
                   <th className="px-3 py-2 font-semibold">{t("Time")}</th>
                   <th className="px-3 py-2 font-semibold">{t("Agent")}</th>
@@ -2910,15 +3243,15 @@ function AgentRecentRequestsCard({ requests }: { requests: AgentAnalysisSnapshot
                   <th className="px-3 py-2 text-right font-semibold">{t("Duration")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/60">
+              <tbody className={agentListBodyClassName}>
                 {requests.map((request) => (
-                  <tr className="bg-card/40 hover:bg-muted/30" key={request.id}>
+                  <tr className={agentListRowClassName()} key={request.id}>
                     <td className="px-3 py-2 font-mono">{formatLogDateTime(request.createdAt)}</td>
                     <td className="px-3 py-2">{t(agentKindLabel(request.agent))}</td>
                     <td className="max-w-[160px] px-3 py-2" title={request.userAgent || request.client}>{request.client}</td>
                     <td className="px-3 py-2 font-semibold">{request.statusCode || "-"}</td>
                     <td className="max-w-[150px] px-3 py-2 font-mono font-semibold" title={request.sessionId}>{compactId(request.sessionId)}</td>
-                    <td className="max-w-[130px] px-3 py-2" title={request.routeReason}>{request.routeReason || "-"}</td>
+                    <td className="max-w-[130px] px-3 py-2" title={formatRouteReason(request.routeReason)}>{formatRouteReason(request.routeReason)}</td>
                     <td className="max-w-[240px] px-3 py-2" title={`${request.provider}/${request.model}`}>{request.provider}/{request.model}</td>
                     <td className="px-3 py-2 text-right" title={request.tools.join(", ")}>{formatCompactNumber(request.toolCallCount)}</td>
                     <td className="px-3 py-2 text-right">{request.subagentModel ? request.subagentModel : "-"}</td>
@@ -2979,9 +3312,9 @@ function UsageAnalysisCard({
         {rows.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-[12px] text-muted-foreground">{emptyLabel}</div>
         ) : (
-          <div className="h-full overflow-hidden rounded-lg border border-border/60">
-            <table className="w-full table-fixed border-collapse text-left text-[11px]">
-              <thead className="bg-muted text-muted-foreground">
+          <div className={cn("h-full overflow-hidden", agentListSurfaceClassName)}>
+            <table className={cn("table-fixed", agentListTableClassName)}>
+              <thead className="border-b border-border/70 bg-muted/80 text-muted-foreground">
                 <tr>
                   {visibleColumns.map((column) => (
                     <th className="px-3 py-2 font-semibold" key={column.key}>{column.label}</th>
@@ -2995,9 +3328,9 @@ function UsageAnalysisCard({
                   {showCacheRate ? <th className="px-3 py-2 text-right font-semibold">{t("Cache rate")}</th> : null}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/60">
+              <tbody className={agentListBodyClassName}>
                 {visibleRows.map((row) => (
-                  <tr className="bg-card/40 hover:bg-muted/30" key={row.key}>
+                  <tr className={agentListRowClassName()} key={row.key}>
                     {visibleColumns.map((column) => (
                       <td className="max-w-[180px] px-3 py-2 font-medium" key={column.key}>
                         <span className="block truncate" title={row[column.key] || "-"}>{row[column.key] || "-"}</span>

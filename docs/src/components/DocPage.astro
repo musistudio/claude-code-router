@@ -1,0 +1,174 @@
+---
+import DocsLayout from "../layouts/DocsLayout.astro";
+import { docsContent, type Locale } from "../i18n/content";
+import * as enDoc from "../content/docs/en/index.md";
+import * as zhDoc from "../content/docs/zh/index.md";
+
+interface Props {
+  locale: Locale;
+  doc?: any;
+}
+
+const { locale, doc: docProp } = Astro.props;
+const content = docsContent[locale];
+const doc = docProp ?? (locale === "en" ? enDoc : zhDoc);
+const { Content, frontmatter } = doc;
+const headings = doc.getHeadings().filter((heading) => heading.depth === 2);
+const tocItems = headings.map((heading) => ({
+  label: heading.text,
+  href: `#${heading.slug}`,
+}));
+const pageMarkdown = doc.rawContent();
+---
+
+<DocsLayout
+  title={frontmatter.pageTitle ?? content.pageTitle}
+  htmlLang={content.htmlLang}
+  locale={locale}
+  languageLabel={content.languageLabel}
+  languageOptions={content.languageOptions}
+  navItems={content.navItems}
+  sidebarGroups={content.sidebarGroups}
+  expandableSidebarItems={content.expandableSidebarItems}
+  sidebarChildren={content.sidebarChildren}
+  sidebarLinks={content.sidebarLinks}
+  tocTitle={content.tocTitle}
+  tocItems={tocItems}
+  ui={content.ui}
+>
+  <article class="doc-article">
+    <header class="article-header">
+      <div>
+        <p class="eyebrow">{frontmatter.eyebrow}</p>
+        <h1>{frontmatter.title}</h1>
+        <p class="lead">{frontmatter.lead}</p>
+      </div>
+      <button class="copy-page" type="button" data-copy-page>
+        <svg viewBox="0 0 20 20" aria-hidden="true">
+          <rect x="7" y="7" width="9" height="9" rx="2" />
+          <path d="M4 13V5a1 1 0 0 1 1-1h8" />
+        </svg>
+        <span data-copy-label>{content.ui.copyPage}</span>
+      </button>
+    </header>
+
+    <div class="doc-markdown" data-markdown-content>
+      <Content />
+    </div>
+  </article>
+
+  <script define:vars={{
+    pageMarkdown,
+    copyPageLabel: content.ui.copyPage,
+    copiedLabel: content.ui.copied,
+    copyFailedLabel: content.ui.copyFailed,
+    copyCodeLabel: content.ui.copyCode,
+    copiedCodeLabel: content.ui.copiedCode,
+    copyCodeFailedLabel: content.ui.copyCodeFailed,
+  }}>
+    const copyButton = document.querySelector("[data-copy-page]");
+    const copyLabel = document.querySelector("[data-copy-label]");
+
+    const writeClipboard = async (text) => {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      document.body.append(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    };
+
+    copyButton?.addEventListener("click", async () => {
+      try {
+        await writeClipboard(pageMarkdown);
+        copyButton.classList.add("copied");
+        if (copyLabel) copyLabel.textContent = copiedLabel;
+      } catch {
+        if (copyLabel) copyLabel.textContent = copyFailedLabel;
+      }
+
+      window.setTimeout(() => {
+        copyButton.classList.remove("copied");
+        if (copyLabel) copyLabel.textContent = copyPageLabel;
+      }, 1800);
+    });
+
+    const buildCopyIcon = () => `
+      <svg class="copy-icon" viewBox="0 0 20 20" aria-hidden="true">
+        <rect x="7" y="7" width="9" height="9" rx="2"></rect>
+        <path d="M4 13V5a1 1 0 0 1 1-1h8"></path>
+      </svg>
+      <svg class="success-icon" viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M4 10.5l4 4L16 6"></path>
+      </svg>
+    `;
+
+    document.querySelectorAll("[data-markdown-content] pre.astro-code").forEach((pre) => {
+      if (!(pre instanceof HTMLElement) || pre.closest(".code-panel")) return;
+
+      const language = pre.dataset.language || "text";
+      const panel = document.createElement("div");
+      panel.className = "code-panel markdown-code-panel";
+      panel.setAttribute("aria-label", language);
+
+      const toolbar = document.createElement("div");
+      toolbar.className = "code-toolbar";
+
+      const title = document.createElement("span");
+      title.textContent = language === "text" ? "text" : language;
+
+      const button = document.createElement("button");
+      button.className = "code-copy";
+      button.type = "button";
+      button.dataset.copyCode = "";
+      button.setAttribute("aria-label", copyCodeLabel);
+      button.innerHTML = buildCopyIcon();
+
+      const template = document.createElement("template");
+      template.dataset.codeSource = "";
+      template.textContent = pre.innerText.trimEnd();
+
+      toolbar.append(title, button);
+      panel.append(toolbar, template);
+      pre.replaceWith(panel);
+      panel.append(pre);
+    });
+
+    document.addEventListener("click", async (event) => {
+      const button = event.target instanceof Element
+        ? event.target.closest("[data-copy-code]")
+        : null;
+
+      if (!(button instanceof HTMLButtonElement)) return;
+
+      const panel = button.closest(".code-panel");
+      const source = panel?.querySelector("[data-code-source]");
+      const text = source instanceof HTMLTemplateElement
+        ? source.content.textContent ?? ""
+        : source?.textContent ?? "";
+
+      try {
+        if (!text) throw new Error("No code content to copy");
+        await writeClipboard(text);
+        button.classList.add("copied");
+        button.setAttribute("aria-label", copiedCodeLabel);
+      } catch {
+        button.classList.add("copy-failed");
+        button.setAttribute("aria-label", copyCodeFailedLabel);
+      }
+
+      window.setTimeout(() => {
+        button.classList.remove("copied", "copy-failed");
+        button.setAttribute("aria-label", copyCodeLabel);
+      }, 1600);
+    });
+  </script>
+</DocsLayout>

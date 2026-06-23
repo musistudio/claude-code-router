@@ -4,6 +4,7 @@ export const IPC_CHANNELS = {
   appDetectProviderIcon: "ccr:app:detect-provider-icon",
   appGetConfig: "ccr:app:get-config",
   appGetAgentAnalysis: "ccr:app:get-agent-analysis",
+  appGetAgentTracePayload: "ccr:app:get-agent-trace-payload",
   appGetGatewayStatus: "ccr:app:get-gateway-status",
   appGetInfo: "ccr:app:get-info",
   appGetOnboardingFinished: "ccr:app:get-onboarding-finished",

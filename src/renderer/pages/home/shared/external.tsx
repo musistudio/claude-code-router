@@ -140,6 +140,11 @@ import type {
   AgentAnalysisFilter,
   AgentAnalysisSessionSelection,
   AgentAnalysisSnapshot,
+  AgentAnalysisTrace,
+  AgentAnalysisTracePayloadFullResult,
+  AgentAnalysisTracePayloadRequest,
+  AgentAnalysisTraceRun,
+  AgentAnalysisTraceRunKind,
   AgentKind,
   AppConfig,
   AppInfo,
@@ -560,7 +565,7 @@ export {
 };
 export type {
   HTMLAttributes, ReactPointerEvent, ReactNode, CollisionDetection, DragEndEvent, DragOverEvent, DragStartEvent,
-  LucideIcon, AgentAnalysisFilter, AgentAnalysisSessionSelection, AgentAnalysisSnapshot, AgentKind, AppConfig, AppInfo, AppUpdateStatus, ApiKeyConfig,
+  LucideIcon, AgentAnalysisFilter, AgentAnalysisSessionSelection, AgentAnalysisSnapshot, AgentAnalysisTrace, AgentAnalysisTracePayloadFullResult, AgentAnalysisTracePayloadRequest, AgentAnalysisTraceRun, AgentAnalysisTraceRunKind, AgentKind, AppConfig, AppInfo, AppUpdateStatus, ApiKeyConfig,
   ApiKeyLimitConfig, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginCancelResult, BotGatewayQrLoginStartRequest, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitRequest, BotGatewayQrLoginWaitResult, BotGatewayQrWindowOpenResult, BotGatewayRuntimeConfig, BotGatewaySavedConfig, BotHandoffScanTarget, GatewayProviderConfig, GatewayProviderCapability, GatewayPluginAppConfig, GatewayProviderProbeResult, GatewayProviderProtocol, GatewayMcpServerConfig,
   GatewayMcpServerTransport, GatewayMcpStdioMessageMode, GatewayMcpToolInfo, GatewayStatus, OverviewMetricKind, OverviewWidgetConfig, OverviewWidgetSize, OverviewWidgetType,
   OverviewWidgetVariant, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProviderAccountConfig, ProviderAccountConnectorConfig, ProviderAccountHttpJsonConnectorConfig,

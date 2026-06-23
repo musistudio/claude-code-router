@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { REQUEST_LOGS_DB_FILE } from "./constants";
 import { estimateUsageCostUsd } from "./model-pricing-service";
 import { createBetterSqliteDatabase, type BetterSqliteDatabase } from "./sqlite-native";
@@ -13,6 +14,13 @@ import type {
   AgentAnalysisSessionRow,
   AgentAnalysisSnapshot,
   AgentAnalysisSubagentRow,
+  AgentAnalysisTrace,
+  AgentAnalysisTracePayloadFullResult,
+  AgentAnalysisTracePayloadPreview,
+  AgentAnalysisTracePayloadRequest,
+  AgentAnalysisTraceRun,
+  AgentAnalysisTraceRunKind,
+  AgentAnalysisTraceToolDetail,
   AgentAnalysisToolRow,
   AgentAnalysisTotals,
   AgentObservabilityClientRow,
@@ -130,6 +138,8 @@ type AnalyzedAgentRequest = AgentAnalysisRequestRow & {
   completedAt: string;
   endedAtMs: number;
   startedAtMs: number;
+  toolCalls: AgentToolCallDetail[];
+  toolResults: AgentToolResultDetail[];
 };
 
 type AgentLogDetails = {
@@ -137,13 +147,47 @@ type AgentLogDetails = {
   routeReason?: string;
   sessionId: string;
   subagentModel?: string;
+  toolCalls: AgentToolCallDetail[];
+  toolResults: AgentToolResultDetail[];
   tools: string[];
   userAgent?: string;
+};
+
+type AgentToolCallDetail = {
+  id?: string;
+  input?: AgentAnalysisTracePayloadPreview;
+  name: string;
+};
+
+type AgentToolResultDetail = {
+  id: string;
+  requestId?: string;
+  requestLogId: number;
+  result?: AgentAnalysisTracePayloadPreview;
+};
+
+type StreamedToolCallInput = {
+  fragments: string[];
+  id: string;
+  input?: unknown;
+  name?: string;
+};
+
+export type SseErrorDetector = {
+  append: (chunk: Buffer | string) => string | undefined;
+  finish: () => string | undefined;
+  read: () => string | undefined;
+};
+
+type ToolCallStreamState = {
+  calls: Map<string, StreamedToolCallInput>;
+  indexToId: Map<string, string>;
 };
 
 const maxBodyBytes = 2 * 1024 * 1024;
 const maxAgentAnalysisRows = 5000;
 const maxAgentSessionDetailRequests = 250;
+const maxTracePayloadPreviewChars = 1600;
 const emptyAgentAnalysisTotals: AgentAnalysisTotals = {
   avgDurationMs: 0,
   cacheRatio: 0,
@@ -189,6 +233,8 @@ class RequestLogStore {
     const requestHeaders = sanitizeHeaders(input.requestHeaders);
     const responseHeaders = sanitizeHeaders(headersToRecord(input.responseHeaders));
     const responseBodyText = input.responseBodyText ?? "";
+    const responseError = normalizeFilterValue(input.error) ??
+      detectSseError(responseBodyText, headerValue(responseHeaders, "content-type"));
     const bodyUsage = extractUsageFromBody(responseBodyText);
     const usage: UsageSnapshot = normalizeUsageInputTokens(extractUsageFromBillingHeaders(input.responseHeaders) ?? bodyUsage, {
       path: input.path,
@@ -294,7 +340,7 @@ class RequestLogStore {
       model,
       isStream ? 1 : 0,
       normalizeCount(input.statusCode),
-      isSuccessStatus(input.statusCode, input.error) ? 1 : 0,
+      isSuccessStatus(input.statusCode, responseError) ? 1 : 0,
       normalizeCount(input.durationMs),
       inputTokens,
       outputTokens,
@@ -315,7 +361,7 @@ class RequestLogStore {
       responseBody.contentType ?? "",
       responseBody.sizeBytes,
       responseBody.truncated ? 1 : 0,
-      input.error ?? ""
+      responseError ?? ""
     );
   }
 
@@ -350,6 +396,10 @@ class RequestLogStore {
     const statusCode = input.statusCode === undefined ? undefined : normalizeCount(input.statusCode);
     const requestHeaders = input.requestHeaders === undefined ? undefined : sanitizeHeaders(input.requestHeaders);
     const responseHeaders = input.responseHeaders === undefined ? undefined : sanitizeHeaders(input.responseHeaders);
+    const responseBodyContentType = input.responseBodyContentType ?? headerValue(responseHeaders ?? {}, "content-type");
+    const sseError = input.responseBodyText === undefined
+      ? undefined
+      : detectSseError(input.responseBodyText, responseBodyContentType);
     const mergedRequestHeaders = requestHeaders
       ? mergeRequestHeadersForRawTrace(readRequestHeadersForRequestId(database, requestId), requestHeaders)
       : undefined;
@@ -361,7 +411,13 @@ class RequestLogStore {
     pushValue("model", modelFromTrace);
     if (statusCode !== undefined && statusCode > 0) {
       pushValue("status_code", statusCode);
-      pushValue("ok", isSuccessStatus(statusCode, undefined) ? 1 : 0);
+      pushValue("ok", isSuccessStatus(statusCode, sseError) ? 1 : 0);
+    }
+    if (sseError) {
+      pushValue("error", sseError);
+      if (statusCode === undefined) {
+        pushValue("ok", 0);
+      }
     }
     if (mergedRequestHeaders) {
       pushValue("request_headers", JSON.stringify(mergedRequestHeaders));
@@ -445,7 +501,7 @@ class RequestLogStore {
     if (input.responseBodyText !== undefined) {
       const responseBody = bodyFromText(
         input.responseBodyText,
-        input.responseBodyContentType ?? headerValue(responseHeaders ?? {}, "content-type"),
+        responseBodyContentType,
         Boolean(input.responseBodyTruncated)
       );
       pushBodyValues(sets, params, "response", responseBody);
@@ -620,6 +676,32 @@ class RequestLogStore {
     };
   }
 
+  async getTracePayload(request: AgentAnalysisTracePayloadRequest): Promise<AgentAnalysisTracePayloadFullResult> {
+    const database = await this.getDatabase();
+    const requestLogId = normalizeCount(request.requestLogId);
+    if (requestLogId <= 0) {
+      return emptyTracePayloadResult();
+    }
+    const entry = readRequestLogById(database, requestLogId);
+    if (!entry) {
+      return emptyTracePayloadResult();
+    }
+
+    const body = request.part === "tool-input" ? entry.responseBody : entry.requestBody;
+    if (!body || body.encoding !== "utf8") {
+      return emptyTracePayloadResult(Boolean(body?.truncated));
+    }
+
+    const payloads = parseLogBodyPayloads(body);
+    const found = request.part === "tool-input"
+      ? findToolCallPayload(payloads, request.callId)
+      : findToolResultPayload(payloads, request.callId);
+    if (!found.found) {
+      return emptyTracePayloadResult(body.truncated);
+    }
+    return fullPayloadResult(found.value, body.truncated);
+  }
+
   private async getFilterOptions(): Promise<RequestLogFilterOptions> {
     const database = await this.getDatabase();
     return {
@@ -759,6 +841,15 @@ export async function getAgentAnalysis(filter?: AgentAnalysisFilter): Promise<Ag
   }
 }
 
+export async function getAgentTracePayload(request: AgentAnalysisTracePayloadRequest): Promise<AgentAnalysisTracePayloadFullResult> {
+  try {
+    return await requestLogStore.getTracePayload(request);
+  } catch (error) {
+    console.warn(`[request-log] Failed to read agent trace payload: ${formatError(error)}`);
+    throw error;
+  }
+}
+
 function toAnalyzedAgentRequest(entry: StoredRequestLogEntry): AnalyzedAgentRequest {
   const details = extractAgentLogDetails(entry);
   const startedAtMs = parseDateMs(entry.createdAt);
@@ -795,6 +886,8 @@ function toAnalyzedAgentRequest(entry: StoredRequestLogEntry): AnalyzedAgentRequ
     statusCode: entry.statusCode,
     subagentModel: details.subagentModel,
     toolCallCount: details.tools.length,
+    toolCalls: details.toolCalls,
+    toolResults: details.toolResults,
     tools: details.tools,
     totalTokens: entry.totalTokens,
     userAgent: details.userAgent
@@ -808,13 +901,17 @@ function extractAgentLogDetails(entry: StoredRequestLogEntry): AgentLogDetails {
   const routedModel = readHeaderValue(entry.requestHeaders, "x-ccr-routed-model");
   const subagentModel = extractSubagentModel(entry, requestPayloads, routeReason, routedModel);
   const agent = inferAgentKind(entry, requestPayloads, responsePayloads);
+  const toolCalls = extractToolCalls(responsePayloads);
+  const toolResults = extractToolResults(requestPayloads, entry);
 
   return {
     agent,
     routeReason,
     sessionId: extractAgentSessionId(entry, requestPayloads, agent),
     subagentModel,
-    tools: extractToolCallNames(responsePayloads),
+    toolCalls,
+    toolResults,
+    tools: toolCalls.map((tool) => tool.name),
     userAgent: readAgentUserAgent(entry.requestHeaders)
   };
 }
@@ -1135,15 +1232,24 @@ function parseLogBodyPayloads(body: RequestLogBody | undefined): unknown[] {
   return parseStreamPayloads(body.text);
 }
 
-function extractToolCallNames(payloads: unknown[]): string[] {
-  const calls = new Map<string, string>();
+function extractToolCalls(payloads: unknown[]): AgentToolCallDetail[] {
+  const calls = new Map<string, AgentToolCallDetail>();
   for (const payload of payloads) {
     collectToolCalls(payload, calls);
+  }
+  for (const [id, tool] of collectStreamedToolCallInputs(payloads)) {
+    const input = payloadPreview(tool.input);
+    const existing = calls.get(id);
+    calls.set(id, {
+      id,
+      input: input ?? existing?.input,
+      name: existing?.name || tool.name || "tool"
+    });
   }
   return Array.from(calls.values());
 }
 
-function collectToolCalls(value: unknown, calls: Map<string, string>): void {
+function collectToolCalls(value: unknown, calls: Map<string, AgentToolCallDetail>): void {
   if (Array.isArray(value)) {
     for (const item of value) {
       collectToolCalls(item, calls);
@@ -1156,6 +1262,9 @@ function collectToolCalls(value: unknown, calls: Map<string, string>): void {
 
   const type = asString(value.type);
   const functionRecord = isRecord(value.function) ? value.function : undefined;
+  const functionArguments = functionRecord
+    ? functionRecord.arguments ?? functionRecord.parameters ?? functionRecord.input
+    : undefined;
   const name =
     asString(value.name) ||
     asString(value.tool) ||
@@ -1163,6 +1272,330 @@ function collectToolCalls(value: unknown, calls: Map<string, string>): void {
     asString(functionRecord?.name);
   const looksLikeToolCall =
     type === "tool_use" ||
+    type === "server_tool_use" ||
+    type === "mcp_tool_use" ||
+    type === "function_call" ||
+    type === "tool_call" ||
+    type === "tool_block_complete" ||
+    type === "tool_delta" ||
+    Boolean(functionRecord?.name);
+
+  if (looksLikeToolCall && name) {
+    const explicitKey =
+      asString(value.id) ||
+      asString(value.call_id) ||
+      asString(value.tool_call_id);
+    if (!explicitKey && functionRecord && streamIndexKey(value.index)) {
+      return;
+    }
+    const key = explicitKey || `${name}:${calls.size}`;
+    calls.set(key, {
+      id: key,
+      input: payloadPreview(value.input ?? value.arguments ?? value.parameters ?? functionArguments),
+      name
+    });
+  }
+
+  for (const item of Object.values(value)) {
+    collectToolCalls(item, calls);
+  }
+}
+
+function collectStreamedToolCallInputs(payloads: unknown[]): Map<string, StreamedToolCallInput> {
+  const state: ToolCallStreamState = {
+    calls: new Map(),
+    indexToId: new Map()
+  };
+  for (const payload of payloads) {
+    collectStreamedToolCallInput(payload, state);
+  }
+
+  const resolved = new Map<string, StreamedToolCallInput>();
+  for (const [id, tool] of state.calls) {
+    const joined = tool.fragments.join("");
+    const input = joined.trim()
+      ? parseJsonLikeValue(joined)
+      : tool.input;
+    if (input === undefined) {
+      continue;
+    }
+    resolved.set(id, {
+      ...tool,
+      input
+    });
+  }
+  return resolved;
+}
+
+function collectStreamedToolCallInput(value: unknown, state: ToolCallStreamState): void {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectStreamedToolCallInput(item, state);
+    }
+    return;
+  }
+  if (!isRecord(value)) {
+    return;
+  }
+
+  collectAnthropicStreamToolInput(value, state);
+  collectOpenAiStreamToolInput(value, state);
+
+  for (const item of Object.values(value)) {
+    collectStreamedToolCallInput(item, state);
+  }
+}
+
+function collectAnthropicStreamToolInput(value: Record<string, unknown>, state: ToolCallStreamState): void {
+  const type = asString(value.type);
+  const index = streamIndexKey(value.index);
+  if (type === "content_block_start" && index && isRecord(value.content_block)) {
+    const block = value.content_block;
+    const blockType = asString(block.type);
+    if (blockType === "tool_use" || blockType === "server_tool_use" || blockType === "mcp_tool_use") {
+      const id = asString(block.id);
+      if (id) {
+        state.indexToId.set(index, id);
+        const tool = ensureStreamedToolCall(state, id, asString(block.name));
+        if (block.input !== undefined) {
+          tool.input = block.input;
+        }
+      }
+    }
+    return;
+  }
+
+  if (type !== "content_block_delta" || !index || !isRecord(value.delta)) {
+    return;
+  }
+
+  const delta = value.delta;
+  if (asString(delta.type) !== "input_json_delta" || typeof delta.partial_json !== "string") {
+    return;
+  }
+
+  const id = state.indexToId.get(index);
+  if (!id) {
+    return;
+  }
+  ensureStreamedToolCall(state, id).fragments.push(delta.partial_json);
+}
+
+function collectOpenAiStreamToolInput(value: Record<string, unknown>, state: ToolCallStreamState): void {
+  const functionRecord = isRecord(value.function) ? value.function : undefined;
+  if (!functionRecord) {
+    return;
+  }
+
+  const rawIndex = streamIndexKey(value.index);
+  const id = asString(value.id) || asString(value.call_id) || asString(value.tool_call_id);
+  const mappedId = rawIndex ? state.indexToId.get(rawIndex) : undefined;
+  const key = id || mappedId || (rawIndex ? `tool-index:${rawIndex}` : undefined);
+  if (!key) {
+    return;
+  }
+
+  if (rawIndex && !id && !mappedId) {
+    state.indexToId.set(rawIndex, key);
+  }
+  if (id && rawIndex) {
+    remapStreamedToolCall(state, rawIndex, id);
+  }
+
+  const tool = ensureStreamedToolCall(state, id || key, asString(functionRecord.name) || asString(value.name));
+  const argumentsValue = functionRecord.arguments ?? functionRecord.parameters ?? functionRecord.input;
+  if (typeof argumentsValue === "string") {
+    tool.fragments.push(argumentsValue);
+  } else if (argumentsValue !== undefined) {
+    tool.input = argumentsValue;
+  }
+}
+
+function ensureStreamedToolCall(state: ToolCallStreamState, id: string, name?: string): StreamedToolCallInput {
+  const existing = state.calls.get(id);
+  if (existing) {
+    if (!existing.name && name) {
+      existing.name = name;
+    }
+    return existing;
+  }
+
+  const tool: StreamedToolCallInput = {
+    fragments: [],
+    id,
+    name
+  };
+  state.calls.set(id, tool);
+  return tool;
+}
+
+function remapStreamedToolCall(state: ToolCallStreamState, index: string, id: string): void {
+  const previousId = state.indexToId.get(index);
+  state.indexToId.set(index, id);
+  if (!previousId || previousId === id) {
+    return;
+  }
+
+  const previous = state.calls.get(previousId);
+  if (!previous) {
+    return;
+  }
+
+  const next = ensureStreamedToolCall(state, id, previous.name);
+  next.fragments.push(...previous.fragments);
+  if (next.input === undefined) {
+    next.input = previous.input;
+  }
+  state.calls.delete(previousId);
+}
+
+function extractToolResults(payloads: unknown[], entry: StoredRequestLogEntry): AgentToolResultDetail[] {
+  const results = new Map<string, AgentToolResultDetail>();
+  for (const payload of payloads) {
+    collectToolResults(payload, entry, results);
+  }
+  return Array.from(results.values());
+}
+
+function collectToolResults(
+  value: unknown,
+  entry: StoredRequestLogEntry,
+  results: Map<string, AgentToolResultDetail>
+): void {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectToolResults(item, entry, results);
+    }
+    return;
+  }
+  if (!isRecord(value)) {
+    return;
+  }
+
+  const type = asString(value.type);
+  const role = asString(value.role);
+  const id =
+    asString(value.tool_use_id) ||
+    asString(value.tool_call_id) ||
+    asString(value.call_id) ||
+    asString(value.id);
+  const looksLikeToolResult =
+    type === "tool_result" ||
+    type === "function_call_output" ||
+    type === "tool_call_output" ||
+    (role === "tool" && Boolean(value.tool_call_id));
+
+  if (looksLikeToolResult && id) {
+    results.set(id, {
+      id,
+      requestId: entry.requestId,
+      requestLogId: entry.id,
+      result: payloadPreview(value.content ?? value.output ?? value.result ?? value.text)
+    });
+  }
+
+  for (const item of Object.values(value)) {
+    collectToolResults(item, entry, results);
+  }
+}
+
+function payloadPreview(value: unknown): AgentAnalysisTracePayloadPreview | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const normalized = parseJsonLikeValue(value);
+  const isText = typeof normalized === "string";
+  const kind = isText ? "text" : "json";
+  const text = isText ? normalized : stringifyPretty(normalized);
+  const sizeBytes = Buffer.byteLength(text, "utf8");
+  const truncated = text.length > maxTracePayloadPreviewChars;
+  return {
+    kind,
+    preview: truncated ? `${text.slice(0, maxTracePayloadPreviewChars)}\n...` : text,
+    sizeBytes,
+    truncated
+  };
+}
+
+function emptyTracePayloadResult(sourceTruncated = false): AgentAnalysisTracePayloadFullResult {
+  return {
+    content: "",
+    found: false,
+    kind: "empty",
+    sizeBytes: 0,
+    sourceTruncated
+  };
+}
+
+function fullPayloadResult(value: unknown, sourceTruncated: boolean): AgentAnalysisTracePayloadFullResult {
+  if (value === undefined || value === null) {
+    return {
+      content: "",
+      found: true,
+      kind: "empty",
+      sizeBytes: 0,
+      sourceTruncated
+    };
+  }
+  const normalized = parseJsonLikeValue(value);
+  const isText = typeof normalized === "string";
+  const content = isText ? normalized : stringifyPretty(normalized);
+  return {
+    content,
+    found: true,
+    kind: isText ? "text" : "json",
+    sizeBytes: Buffer.byteLength(content, "utf8"),
+    sourceTruncated
+  };
+}
+
+function findToolCallPayload(payloads: unknown[], callId: string | undefined): { found: boolean; value?: unknown } {
+  const streamedCalls = collectStreamedToolCallInputs(payloads);
+  if (callId && streamedCalls.has(callId)) {
+    return { found: true, value: streamedCalls.get(callId)?.input };
+  }
+  if (!callId && streamedCalls.size === 1) {
+    return { found: true, value: Array.from(streamedCalls.values())[0].input };
+  }
+
+  const calls = new Map<string, unknown>();
+  for (const payload of payloads) {
+    collectToolCallPayloads(payload, calls);
+  }
+  if (callId && calls.has(callId)) {
+    return { found: true, value: calls.get(callId) };
+  }
+  if (!callId && calls.size === 1) {
+    return { found: true, value: Array.from(calls.values())[0] };
+  }
+  return { found: false };
+}
+
+function collectToolCallPayloads(value: unknown, calls: Map<string, unknown>): void {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectToolCallPayloads(item, calls);
+    }
+    return;
+  }
+  if (!isRecord(value)) {
+    return;
+  }
+
+  const type = asString(value.type);
+  const functionRecord = isRecord(value.function) ? value.function : undefined;
+  const functionArguments = functionRecord
+    ? functionRecord.arguments ?? functionRecord.parameters ?? functionRecord.input
+    : undefined;
+  const name =
+    asString(value.name) ||
+    asString(value.tool) ||
+    asString(value.tool_name) ||
+    asString(functionRecord?.name);
+  const looksLikeToolCall =
+    type === "tool_use" ||
+    type === "server_tool_use" ||
+    type === "mcp_tool_use" ||
     type === "function_call" ||
     type === "tool_call" ||
     type === "tool_block_complete" ||
@@ -1175,11 +1608,89 @@ function collectToolCalls(value: unknown, calls: Map<string, string>): void {
       asString(value.call_id) ||
       asString(value.tool_call_id) ||
       `${name}:${calls.size}`;
-    calls.set(key, name);
+    calls.set(key, value.input ?? value.arguments ?? value.parameters ?? functionArguments);
   }
 
   for (const item of Object.values(value)) {
-    collectToolCalls(item, calls);
+    collectToolCallPayloads(item, calls);
+  }
+}
+
+function findToolResultPayload(payloads: unknown[], callId: string | undefined): { found: boolean; value?: unknown } {
+  const results = new Map<string, unknown>();
+  for (const payload of payloads) {
+    collectToolResultPayloads(payload, results);
+  }
+  if (callId && results.has(callId)) {
+    return { found: true, value: results.get(callId) };
+  }
+  if (!callId && results.size === 1) {
+    return { found: true, value: Array.from(results.values())[0] };
+  }
+  return { found: false };
+}
+
+function collectToolResultPayloads(value: unknown, results: Map<string, unknown>): void {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectToolResultPayloads(item, results);
+    }
+    return;
+  }
+  if (!isRecord(value)) {
+    return;
+  }
+
+  const type = asString(value.type);
+  const role = asString(value.role);
+  const id =
+    asString(value.tool_use_id) ||
+    asString(value.tool_call_id) ||
+    asString(value.call_id) ||
+    asString(value.id);
+  const looksLikeToolResult =
+    type === "tool_result" ||
+    type === "function_call_output" ||
+    type === "tool_call_output" ||
+    (role === "tool" && Boolean(value.tool_call_id));
+
+  if (looksLikeToolResult && id) {
+    results.set(id, value.content ?? value.output ?? value.result ?? value.text);
+  }
+
+  for (const item of Object.values(value)) {
+    collectToolResultPayloads(item, results);
+  }
+}
+
+function parseJsonLikeValue(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed || !/^[{\[]/.test(trimmed)) {
+    return value;
+  }
+
+  return parseJson(trimmed) ?? value;
+}
+
+function streamIndexKey(value: unknown): string | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  return undefined;
+}
+
+function stringifyPretty(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2) ?? "";
+  } catch {
+    return stringifyForSearch(value);
   }
 }
 
@@ -1364,7 +1875,232 @@ function buildAgentSessionDetail(
     statusCodes: buildStatusCodeCounts(sessionRequests),
     subagents: buildAgentSubagentRows(sessionRequests),
     tools: buildAgentToolRows(sessionRequests),
-    totals: buildAgentAnalysisTotals(sessionRequests)
+    totals: buildAgentAnalysisTotals(sessionRequests),
+    trace: buildAgentTrace(sessionRequests)
+  };
+}
+
+function buildAgentTrace(requests: AnalyzedAgentRequest[]): AgentAnalysisTrace {
+  const ordered = [...requests].sort((a, b) => a.startedAtMs - b.startedAtMs || a.id - b.id);
+  const first = ordered[0];
+  const sessionId = first.sessionId;
+  const startMs = Math.min(...ordered.map((request) => request.startedAtMs));
+  const endMs = Math.max(...ordered.map((request) => request.endedAtMs));
+  const durationMs = Math.max(0, endMs - startMs);
+  const totals = buildAgentAnalysisTotals(ordered);
+  const rootRunId = `agent:${first.agent}:${sessionId}`;
+  const toolResults = buildToolResultMap(ordered);
+  const runs: AgentAnalysisTraceRun[] = [
+    {
+      agent: first.agent,
+      cacheReadTokens: totals.cacheReadTokens,
+      cacheWriteTokens: totals.cacheWriteTokens,
+      concurrentRequests: totals.maxConcurrentRequests,
+      depth: 0,
+      durationMs,
+      endedAt: isoFromMs(endMs),
+      id: rootRunId,
+      inputTokens: totals.inputTokens,
+      kind: "agent",
+      name: `${agentDisplayName(first.agent)} session`,
+      offsetMs: 0,
+      outputTokens: totals.outputTokens,
+      sessionId,
+      startedAt: isoFromMs(startMs),
+      status: totals.errorCount > 0 ? "error" : "success",
+      totalTokens: totals.totalTokens
+    }
+  ];
+
+  for (const request of ordered) {
+    let parentId = rootRunId;
+    let depth = 1;
+
+    if (request.subagentModel) {
+      const run = requestTraceRun({
+        depth,
+        kind: "subagent",
+        name: `Subagent: ${request.subagentModel}`,
+        parentId,
+        request,
+        startMs
+      });
+      runs.push(run);
+      parentId = run.id;
+      depth += 1;
+    }
+
+    if (request.routeReason && !isInlineModelRouteReason(request.routeReason)) {
+      const run = requestTraceRun({
+        depth,
+        kind: "route",
+        name: `Route: ${request.routeReason}`,
+        parentId,
+        request,
+        startMs
+      });
+      runs.push(run);
+      parentId = run.id;
+      depth += 1;
+    }
+
+    const llmRun = requestTraceRun({
+      depth,
+      kind: "llm",
+      name: request.model && request.model !== "unknown" ? request.model : request.path,
+      parentId,
+      request,
+      startMs
+    });
+    runs.push(llmRun);
+
+    request.toolCalls.forEach((toolCall, index) => {
+      runs.push(toolTraceRun({
+        depth: depth + 1,
+        index,
+        parentId: llmRun.id,
+        request,
+        startMs,
+        tool: toolDetailForCall(toolCall, toolResults)
+      }));
+    });
+  }
+
+  return {
+    agent: first.agent,
+    durationMs,
+    endedAt: isoFromMs(endMs),
+    errorCount: runs.filter((run) => run.status === "error").length,
+    id: `${first.agent}:${sessionId}`,
+    llmRunCount: runs.filter((run) => run.kind === "llm").length,
+    maxDepth: Math.max(...runs.map((run) => run.depth), 0),
+    rootRunId,
+    runCount: runs.length,
+    runs,
+    sessionId,
+    startedAt: isoFromMs(startMs),
+    subagentRunCount: runs.filter((run) => run.kind === "subagent").length,
+    toolRunCount: runs.filter((run) => run.kind === "tool").length
+  };
+}
+
+function isInlineModelRouteReason(value: string | undefined): boolean {
+  return value?.trim().toLowerCase() === "inline-model";
+}
+
+function buildToolResultMap(requests: AnalyzedAgentRequest[]): Map<string, AgentToolResultDetail> {
+  const results = new Map<string, AgentToolResultDetail>();
+  for (const request of requests) {
+    for (const result of request.toolResults) {
+      results.set(result.id, result);
+    }
+  }
+  return results;
+}
+
+function toolDetailForCall(
+  call: AgentToolCallDetail,
+  results: Map<string, AgentToolResultDetail>
+): AgentAnalysisTraceToolDetail {
+  const result = call.id ? results.get(call.id) : undefined;
+  return {
+    callId: call.id,
+    input: call.input,
+    result: result?.result,
+    resultRequestId: result?.requestId,
+    resultRequestLogId: result?.requestLogId
+  };
+}
+
+function requestTraceRun({
+  depth,
+  kind,
+  name,
+  parentId,
+  request,
+  startMs
+}: {
+  depth: number;
+  kind: AgentAnalysisTraceRunKind;
+  name: string;
+  parentId: string;
+  request: AnalyzedAgentRequest;
+  startMs: number;
+}): AgentAnalysisTraceRun {
+  return {
+    agent: request.agent,
+    cacheReadTokens: request.cacheReadTokens,
+    cacheWriteTokens: request.cacheWriteTokens,
+    concurrentRequests: request.concurrentRequests,
+    depth,
+    durationMs: request.durationMs,
+    endedAt: isoFromMs(request.endedAtMs),
+    error: request.error,
+    id: `${kind}:${request.id}`,
+    inputTokens: request.inputTokens,
+    kind,
+    model: request.model,
+    name,
+    offsetMs: Math.max(0, request.startedAtMs - startMs),
+    outputTokens: request.outputTokens,
+    parentId,
+    path: request.path,
+    provider: request.provider,
+    requestId: request.requestId,
+    requestLogId: request.id,
+    routeReason: request.routeReason,
+    sessionId: request.sessionId,
+    startedAt: request.createdAt,
+    status: request.ok && !request.error ? "success" : "error",
+    statusCode: request.statusCode,
+    totalTokens: request.totalTokens
+  };
+}
+
+function toolTraceRun({
+  depth,
+  index,
+  parentId,
+  request,
+  startMs,
+  tool
+}: {
+  depth: number;
+  index: number;
+  parentId: string;
+  request: AnalyzedAgentRequest;
+  startMs: number;
+  tool: AgentAnalysisTraceToolDetail;
+}): AgentAnalysisTraceRun {
+  const timestampMs = request.endedAtMs;
+  const toolName = request.toolCalls[index]?.name || "tool";
+  return {
+    agent: request.agent,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    concurrentRequests: request.concurrentRequests,
+    depth,
+    durationMs: 0,
+    endedAt: isoFromMs(timestampMs),
+    id: `tool:${request.id}:${index}:${toolName}`,
+    inputTokens: 0,
+    kind: "tool",
+    model: request.model,
+    name: toolName,
+    offsetMs: Math.max(0, timestampMs - startMs),
+    outputTokens: 0,
+    parentId,
+    path: request.path,
+    provider: request.provider,
+    requestId: request.requestId,
+    requestLogId: request.id,
+    routeReason: request.routeReason,
+    sessionId: request.sessionId,
+    startedAt: isoFromMs(timestampMs),
+    status: "success",
+    tool,
+    toolName,
+    totalTokens: 0
   };
 }
 
@@ -1570,6 +2306,8 @@ function stripAnalysisInternals(request: AnalyzedAgentRequest): AgentAnalysisReq
     completedAt: _completedAt,
     endedAtMs: _endedAtMs,
     startedAtMs: _startedAtMs,
+    toolCalls: _toolCalls,
+    toolResults: _toolResults,
     ...row
   } = request;
   return row;
@@ -1648,6 +2386,10 @@ function formatLocalDayKey(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function isoFromMs(value: number): string {
+  return new Date(value).toISOString();
 }
 
 function getAgentAnalysisSince(range: UsageStatsRange, now: Date): Date {
@@ -2017,6 +2759,57 @@ function firstNumber(rows: Record<string, SqlValue>[], column: string): number {
   return normalizeCount(row?.[column]);
 }
 
+function readRequestLogById(database: SqlDatabase, id: number): StoredRequestLogEntry | undefined {
+  const row = queryRows(
+    database,
+    `
+      SELECT
+        rowid AS id,
+        created_at,
+        completed_at,
+        request_id,
+        client,
+        method,
+        path,
+        url,
+        provider,
+        credential_id,
+        credential_chain,
+        credential_saturated,
+        model,
+        is_stream,
+        status_code,
+        ok,
+        duration_ms,
+        input_tokens,
+        output_tokens,
+        reasoning_tokens,
+        cache_read_tokens,
+        cache_write_tokens,
+        total_tokens,
+        cost_usd,
+        request_headers,
+        response_headers,
+        request_body_text,
+        request_body_encoding,
+        request_body_content_type,
+        request_body_size_bytes,
+        request_body_truncated,
+        response_body_text,
+        response_body_encoding,
+        response_body_content_type,
+        response_body_size_bytes,
+        response_body_truncated,
+        error
+      FROM request_logs
+      WHERE rowid = ?
+      LIMIT 1
+    `,
+    [id]
+  )[0];
+  return row ? toRequestLogEntry(row) : undefined;
+}
+
 function toRequestLogEntry(row: Record<string, SqlValue>): StoredRequestLogEntry {
   const costUsd = asFloat(row.cost_usd);
   const requestBody = bodyFromRow(row, "request") ?? emptyBody();
@@ -2326,6 +3119,192 @@ function parseStreamPayloads(text: string): unknown[] {
     }
   }
   return payloads;
+}
+
+export function detectSseError(text: string, contentType?: string): string | undefined {
+  if (!text || (!contentTypeLooksSse(contentType) && !textLooksSse(text))) {
+    return undefined;
+  }
+  const detector = createSseErrorDetector(contentType, true);
+  detector.append(text);
+  return detector.finish();
+}
+
+export function createSseErrorDetector(contentType?: string, force = false): SseErrorDetector {
+  const active = force || contentTypeLooksSse(contentType);
+  const decoder = new StringDecoder("utf8");
+  let currentEvent = "";
+  let dataLines: string[] = [];
+  let detectedError: string | undefined;
+  let pendingLine = "";
+
+  const read = () => detectedError;
+  const flushEvent = () => {
+    if (!detectedError) {
+      detectedError = detectSseEventError(currentEvent, dataLines);
+    }
+    currentEvent = "";
+    dataLines = [];
+  };
+  const processLine = (line: string) => {
+    if (!active || detectedError) {
+      return;
+    }
+    if (line === "") {
+      flushEvent();
+      return;
+    }
+    if (line.startsWith(":")) {
+      return;
+    }
+    const separator = line.indexOf(":");
+    const field = separator === -1 ? line : line.slice(0, separator);
+    const rawValue = separator === -1 ? "" : line.slice(separator + 1);
+    const value = rawValue.startsWith(" ") ? rawValue.slice(1) : rawValue;
+    if (field === "event") {
+      currentEvent = value.trim();
+    } else if (field === "data") {
+      dataLines.push(value);
+    }
+  };
+  const processText = (textChunk: string) => {
+    pendingLine += textChunk;
+    while (true) {
+      const newlineIndex = pendingLine.indexOf("\n");
+      if (newlineIndex === -1) {
+        break;
+      }
+      const rawLine = pendingLine.slice(0, newlineIndex);
+      pendingLine = pendingLine.slice(newlineIndex + 1);
+      processLine(rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine);
+    }
+  };
+
+  return {
+    append(chunk: Buffer | string) {
+      if (!active || detectedError) {
+        return detectedError;
+      }
+      processText(Buffer.isBuffer(chunk) ? decoder.write(chunk) : chunk);
+      return detectedError;
+    },
+    finish() {
+      if (!active || detectedError) {
+        return detectedError;
+      }
+      processText(decoder.end());
+      if (pendingLine) {
+        processLine(pendingLine.endsWith("\r") ? pendingLine.slice(0, -1) : pendingLine);
+        pendingLine = "";
+      }
+      if (currentEvent || dataLines.length > 0) {
+        flushEvent();
+      }
+      return detectedError;
+    },
+    read
+  };
+}
+
+function detectSseEventError(eventName: string, dataLines: string[]): string | undefined {
+  const event = eventName.trim().toLowerCase();
+  const data = dataLines.join("\n").trim();
+  const payload = data && data !== "[DONE]" ? parseJson(data) : undefined;
+  if (event === "error") {
+    return formatSseErrorPayload(payload, data || "SSE error event");
+  }
+  if (event === "response.failed" || event === "response.error") {
+    return formatSseErrorPayload(payload, event);
+  }
+  if (isRecord(payload)) {
+    const payloadType = asString(payload.type)?.toLowerCase();
+    if (payloadType === "error" || payloadType === "response.failed" || payloadType === "response.error") {
+      return formatSseErrorPayload(payload, payloadType);
+    }
+    if (payload.error !== undefined && payload.error !== null) {
+      return formatSseErrorPayload(payload, event || "SSE error");
+    }
+    const response = isRecord(payload.response) ? payload.response : undefined;
+    const responseStatus = asString(response?.status)?.toLowerCase();
+    if (
+      (responseStatus === "failed" || responseStatus === "error") &&
+      response?.error !== undefined &&
+      response.error !== null
+    ) {
+      return formatSseErrorPayload(response, responseStatus);
+    }
+  }
+  return undefined;
+}
+
+function formatSseErrorPayload(payload: unknown, fallback: string): string {
+  if (isRecord(payload)) {
+    const response = isRecord(payload.response) ? payload.response : undefined;
+    const error = payload.error ?? response?.error;
+    const message = sseErrorMessage(error) ?? sseErrorMessage(payload);
+    const type = sseErrorType(error) ?? sseErrorType(payload);
+    const code = isRecord(error) ? asString(error.code) : undefined;
+    const label = uniqueStrings([type, code]).join(" ");
+    if (message && label && message !== label) {
+      return `${label}: ${message}`;
+    }
+    if (message) {
+      return message;
+    }
+    if (label) {
+      return label;
+    }
+  }
+  if (typeof payload === "string" && payload.trim()) {
+    return payload.trim();
+  }
+  return fallback;
+}
+
+function sseErrorMessage(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return normalizeFilterValue(value);
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  return (
+    asString(value.message) ??
+    asString(value.detail) ??
+    asString(value.reason) ??
+    asString(value.error_description) ??
+    asString(value.error)
+  );
+}
+
+function sseErrorType(value: unknown): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  return asString(value.type) ?? asString(value.code) ?? asString(value.status);
+}
+
+function contentTypeLooksSse(contentType: string | undefined): boolean {
+  return Boolean(contentType?.toLowerCase().includes("event-stream"));
+}
+
+function textLooksSse(text: string): boolean {
+  const trimmed = text.trimStart();
+  return trimmed.startsWith("event:") || trimmed.startsWith("data:");
+}
+
+function uniqueStrings(values: Array<string | undefined>): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result;
 }
 
 function extractUsageSnapshot(payload: unknown): UsageSnapshot | undefined {

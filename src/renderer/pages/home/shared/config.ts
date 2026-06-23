@@ -404,7 +404,8 @@ export function normalizeConfig(config: AppConfig): AppConfig {
     botGateway: normalizeBotGatewayRuntimeConfig(config.botGateway) ?? fallbackConfig.botGateway,
     gateway: {
       ...fallbackConfig.gateway,
-      ...(config.gateway || {})
+      ...(config.gateway || {}),
+      coreHost: fallbackConfig.gateway.coreHost
     },
     observability: normalizeObservabilityConfig(config.observability),
     proxy: {

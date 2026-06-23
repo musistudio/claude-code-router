@@ -3,6 +3,8 @@ export {};
 import type {
   AgentAnalysisFilter,
   AgentAnalysisSnapshot,
+  AgentAnalysisTracePayloadFullResult,
+  AgentAnalysisTracePayloadRequest,
   AppConfig,
   AppInfo,
   AppUpdateStatus,
@@ -75,6 +77,7 @@ declare global {
       detectProviderIcon: (request: ProviderIconDetectionRequest) => Promise<ProviderIconDetectionResult>;
       fetchProviderManifest: (request: ProviderManifestFetchRequest) => Promise<ProviderManifestFetchResult>;
       getAgentAnalysis: (filter?: AgentAnalysisFilter) => Promise<AgentAnalysisSnapshot>;
+      getAgentTracePayload: (request: AgentAnalysisTracePayloadRequest) => Promise<AgentAnalysisTracePayloadFullResult>;
       getAppInfo: () => Promise<AppInfo>;
       getConfig: () => Promise<AppConfig>;
       getGatewayStatus: () => Promise<GatewayStatus>;
