@@ -24,7 +24,7 @@ import {
   OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parseProviderAccountDraft,
   providerCredentialsFromDraft,
   persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
-  probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
+  probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   providerDeepLinkDisplayIcon,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
   providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
@@ -2361,7 +2361,7 @@ function App() {
         const name = current.name === profileAgentLabel(current.agent) ? undefined : next.name;
         return {
           ...createProfileDraft(patch.agent, name),
-          envRows: current.envRows
+          envRows: profileEnvRowsForAgent(patch.agent, current.envRows)
         };
       }
       return next;
@@ -2376,7 +2376,7 @@ function App() {
         const name = current.name === profileAgentLabel(current.agent) ? undefined : next.name;
         return {
           ...createProfileDraft(patch.agent, name),
-          envRows: current.envRows
+          envRows: profileEnvRowsForAgent(patch.agent, current.envRows)
         };
       }
       return next;

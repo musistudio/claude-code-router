@@ -1,7 +1,7 @@
 import {
   agentAnalysisRangeOptions, AgentAnalysisSessionSelection, AgentAnalysisSnapshot, agentFilterOptions, AgentFilterValue, agentKindLabel,
   Area, arrayMove, Badge, Bar, BarChart, Button,
-  Card, CardContent, CardHeader, CardTitle, CartesianGrid, Cell,
+  Card, CardContent, CardHeader, CardTitle, CartesianGrid, Cell, constrainOverviewWidgetSize,
   Check, ChevronLeft, ChevronRight, CircleAlert, cn, compactId,
   compactUserAgent, compareProviderAccountSnapshots, ComposedChart, CSS, DEFAULT_OVERVIEW_WIDGETS, DndContext,
   DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent, Field, formatAxisNumber,
@@ -205,6 +205,18 @@ export function OverviewView({
     });
   }
 
+  function changeWidgetBreakdownData(id: string, type: "model-distribution" | "token-mix") {
+    const current = widgets.find((widget) => widget.id === id);
+    if (!current) {
+      return;
+    }
+    const variants = overviewWidgetVariantOptions(type).map((option) => option.value);
+    updateWidget(id, {
+      type,
+      variant: variants.includes(current.variant) ? current.variant : overviewWidgetVariantOptions(type)[0]?.value ?? current.variant
+    });
+  }
+
   function resetLayout() {
     onWidgetsChange(DEFAULT_OVERVIEW_WIDGETS.map((widget) => ({ ...widget })));
     setSelectedWidgetId(undefined);
@@ -320,6 +332,7 @@ export function OverviewView({
               widget={selectedWidget}
               onChangeAccountProvider={(accountProvider) => selectedWidget ? updateWidget(selectedWidget.id, { accountProvider }) : undefined}
               onChangeAnalysisData={(type) => selectedWidget ? changeWidgetAnalysisData(selectedWidget.id, type) : undefined}
+              onChangeBreakdownData={(type) => selectedWidget ? changeWidgetBreakdownData(selectedWidget.id, type) : undefined}
               onChangeCategory={(category) => selectedWidget ? changeWidgetCategory(selectedWidget.id, category) : undefined}
               onChangeMetric={(metric) => selectedWidget ? updateWidget(selectedWidget.id, { metric }) : undefined}
               onChangeSize={(size) => selectedWidget ? updateWidget(selectedWidget.id, { size }) : undefined}
@@ -410,6 +423,7 @@ function OverviewWidgetProperties({
   widget,
   onChangeAccountProvider,
   onChangeAnalysisData,
+  onChangeBreakdownData,
   onChangeCategory,
   onChangeMetric,
   onChangeSize,
@@ -420,6 +434,7 @@ function OverviewWidgetProperties({
   widget: OverviewWidgetConfig | undefined;
   onChangeAccountProvider: (accountProvider: string | undefined) => void;
   onChangeAnalysisData: (type: "client-analysis" | "provider-analysis") => void;
+  onChangeBreakdownData: (type: "model-distribution" | "token-mix") => void;
   onChangeCategory: (category: OverviewWidgetCategory) => void;
   onChangeMetric: (metric: OverviewMetricKind) => void;
   onChangeSize: (size: OverviewWidgetSize) => void;
@@ -439,6 +454,9 @@ function OverviewWidgetProperties({
   const category = overviewWidgetCategory(widget.type);
   const dataOptions = overviewWidgetDataOptions(widget, providerAccounts);
   const dataValue = overviewWidgetDataValue(widget);
+  const sizeOptions = overviewWidgetSizeOptions.filter((option) => (
+    constrainOverviewWidgetSize(option.value, widget.type, widget.variant, widget.accountProvider) === option.value
+  ));
   const changeData = (value: string) => {
     if (category === "account-balance") {
       onChangeAccountProvider(value || undefined);
@@ -448,6 +466,9 @@ function OverviewWidgetProperties({
     }
     if (category === "analysis") {
       onChangeAnalysisData(value as "client-analysis" | "provider-analysis");
+    }
+    if (category === "breakdown") {
+      onChangeBreakdownData(value as "model-distribution" | "token-mix");
     }
   };
 
@@ -467,7 +488,7 @@ function OverviewWidgetProperties({
       </Field>
 
       <Field label={t("Widget size")}>
-        <SelectControl onChange={(value) => onChangeSize(value as OverviewWidgetSize)} options={translateOptions(overviewWidgetSizeOptions, t)} value={widget.size} />
+        <SelectControl onChange={(value) => onChangeSize(value as OverviewWidgetSize)} options={translateOptions(sizeOptions, t)} value={widget.size} />
       </Field>
 
       <Field label={t("Style")}>
@@ -800,6 +821,8 @@ function OverviewWidgetRenderer({
     content = <UsageTrendWidget dimensions={dimensions} usageRange={usageRange} usageStats={usageStats} variant={overviewTrendVariant(widget.variant)} />;
   } else if (widget.type === "token-mix") {
     content = <TokenMixOverviewWidget dimensions={dimensions} totals={usageStats.totals} variant={overviewTokenMixVariant(widget.variant)} />;
+  } else if (widget.type === "model-distribution") {
+    content = <ModelDistributionOverviewWidget dimensions={dimensions} rows={usageStats.models} variant={overviewTokenMixVariant(widget.variant)} />;
   } else if (widget.type === "client-analysis") {
     content = <OverviewAnalysisWidget dimensions={dimensions} kind="client" rows={usageStats.clientModels} variant={widget.variant === "compact" ? "compact" : "table"} />;
   } else {
@@ -1037,6 +1060,111 @@ function TokenMixOverviewWidget({
   );
 }
 
+function ModelDistributionOverviewWidget({
+  dimensions,
+  rows,
+  variant
+}: {
+  dimensions: OverviewWidgetDimensions;
+  rows: UsageComparisonRow[];
+  variant: "bars" | "donut" | "pie" | "stacked";
+}) {
+  const t = useAppText();
+  const modelRows = overviewModelDistributionRows(rows, t);
+  const total = modelRows.reduce((sum, item) => sum + item.value, 0);
+  const showLegend = dimensions.height >= 2 && dimensions.width >= 2;
+  const chartMargin = dimensions.height <= 1
+    ? { bottom: 2, left: 0, right: 8, top: 2 }
+    : { bottom: 8, left: 8, right: 12, top: 8 };
+
+  return (
+    <Card className="flex h-full min-h-0 min-w-0 flex-col">
+      <CardHeader className="shrink-0 flex-row items-center justify-between">
+        <CardTitle>{t("Model Distribution")}</CardTitle>
+        <Badge variant="outline">{formatCompactNumber(total)}</Badge>
+      </CardHeader>
+      <CardContent className="min-h-0 flex-1 overflow-hidden">
+        {modelRows.length === 0 ? (
+          <div className="flex h-full min-h-0 items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 px-3 py-4 text-center text-[12px] text-muted-foreground">
+            {t("No model activity")}
+          </div>
+        ) : variant === "stacked" ? (
+          <div className="space-y-3">
+            <div className="flex h-3 overflow-hidden rounded-full bg-muted">
+              {modelRows.map((item) => (
+                <div key={item.name} style={{ backgroundColor: item.color, width: `${total > 0 ? Math.max(2, (item.value / total) * 100) : 100 / modelRows.length}%` }} />
+              ))}
+            </div>
+            {showLegend ? <OverviewTokenLegend rows={modelRows} /> : null}
+          </div>
+        ) : variant === "donut" || variant === "pie" ? (
+          <div className={cn("grid h-full min-h-0 items-center gap-3", showLegend && "grid-cols-[minmax(96px,1fr)_minmax(0,1fr)]")}>
+            <ChartFrame fill>
+              {({ height, width }) => (
+                <PieChart height={height} width={width}>
+                  <Tooltip content={<TokenTooltip />} />
+                  <Pie
+                    cx="50%"
+                    cy="50%"
+                    data={modelRows}
+                    dataKey="value"
+                    innerRadius={variant === "donut" ? Math.min(height, width) * 0.22 : 0}
+                    nameKey="name"
+                    outerRadius={Math.min(height, width) * 0.34}
+                    paddingAngle={variant === "donut" ? 2 : 0}
+                  >
+                    {modelRows.map((item) => (
+                      <Cell fill={item.color} key={item.name} />
+                    ))}
+                  </Pie>
+                </PieChart>
+              )}
+            </ChartFrame>
+            {showLegend ? <OverviewTokenLegend rows={modelRows} /> : null}
+          </div>
+        ) : (
+          <ChartFrame fill>
+            {({ height, width }) => (
+              <BarChart data={modelRows} height={height} layout="vertical" margin={chartMargin} width={width}>
+                <CartesianGrid stroke="#dfe3e8" strokeDasharray="3 3" horizontal={false} />
+                <XAxis axisLine={false} hide={dimensions.height <= 1} tick={{ fill: "#5f6b7a", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} type="number" />
+                <YAxis axisLine={false} dataKey="name" tick={{ fill: "#5f6b7a", fontSize: 11 }} tickLine={false} type="category" width={dimensions.width <= 1 ? 58 : 88} />
+                <Tooltip content={<TokenTooltip />} />
+                <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                  {modelRows.map((item) => (
+                    <Cell fill={item.color} key={item.name} />
+                  ))}
+                </Bar>
+              </BarChart>
+            )}
+          </ChartFrame>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function overviewModelDistributionRows(rows: UsageComparisonRow[], translate: (value: string) => string): Array<{ color: string; name: string; value: number }> {
+  const colors = ["#2563eb", "#0f766e", "#d97706", "#be123c", "#7c3aed", "#64748b"];
+  const positiveRows = rows
+    .filter((row) => row.totalTokens > 0)
+    .sort((a, b) => b.totalTokens - a.totalTokens);
+  const topRows = positiveRows.slice(0, 5).map((row, index) => ({
+    color: colors[index] ?? "#64748b",
+    name: row.label,
+    value: row.totalTokens
+  }));
+  const otherValue = positiveRows.slice(5).reduce((sum, row) => sum + row.totalTokens, 0);
+  if (otherValue > 0) {
+    topRows.push({
+      color: colors[5],
+      name: translate("Other"),
+      value: otherValue
+    });
+  }
+  return topRows;
+}
+
 function OverviewTokenLegend({ rows }: { rows: Array<{ color: string; name: string; value: number }> }) {
   return (
     <div className="grid grid-cols-1 gap-2">
@@ -1126,7 +1254,7 @@ function overviewWidgetTemplates(): OverviewWidgetConfig[] {
   ];
 }
 
-type OverviewWidgetCategory = "account-balance" | "analysis" | "metric" | "system-status" | "token-mix" | "usage-trend";
+type OverviewWidgetCategory = "account-balance" | "analysis" | "breakdown" | "metric" | "system-status" | "usage-trend";
 
 function overviewWidgetCategoryOptions(): Array<{ label: string; value: OverviewWidgetCategory }> {
   return [
@@ -1134,7 +1262,7 @@ function overviewWidgetCategoryOptions(): Array<{ label: string; value: Overview
     "account-balance",
     "metric",
     "usage-trend",
-    "token-mix",
+    "breakdown",
     "analysis"
   ].map((category) => ({
     label: overviewWidgetCategoryLabel(category as OverviewWidgetCategory),
@@ -1146,6 +1274,13 @@ function overviewAnalysisDataOptions(): Array<{ label: string; value: "client-an
   return [
     { label: "Client Analysis", value: "client-analysis" },
     { label: "Provider Analysis", value: "provider-analysis" }
+  ];
+}
+
+function overviewBreakdownDataOptions(): Array<{ label: string; value: "model-distribution" | "token-mix" }> {
+  return [
+    { label: "Token distribution", value: "token-mix" },
+    { label: "Model distribution", value: "model-distribution" }
   ];
 }
 
@@ -1170,8 +1305,8 @@ function overviewWidgetDataOptions(widget: OverviewWidgetConfig, providerAccount
   if (category === "system-status") {
     return [{ label: "System status", value: "system-status" }];
   }
-  if (category === "token-mix") {
-    return [{ label: "Token distribution", value: "token-mix" }];
+  if (category === "breakdown") {
+    return overviewBreakdownDataOptions();
   }
   return [{ label: "Usage over time", value: "usage-trend" }];
 }
@@ -1184,6 +1319,9 @@ function overviewWidgetDataValue(widget: OverviewWidgetConfig): string {
   if (category === "analysis") {
     return widget.type;
   }
+  if (category === "breakdown") {
+    return widget.type;
+  }
   if (category === "account-balance") {
     return widget.accountProvider ?? "";
   }
@@ -1191,12 +1329,21 @@ function overviewWidgetDataValue(widget: OverviewWidgetConfig): string {
 }
 
 function overviewWidgetCategory(type: OverviewWidgetType): OverviewWidgetCategory {
-  return type === "client-analysis" || type === "provider-analysis" ? "analysis" : type;
+  if (type === "client-analysis" || type === "provider-analysis") {
+    return "analysis";
+  }
+  if (type === "model-distribution" || type === "token-mix") {
+    return "breakdown";
+  }
+  return type;
 }
 
 function overviewWidgetTypeForCategory(category: OverviewWidgetCategory, currentType: OverviewWidgetType): OverviewWidgetType {
   if (category === "analysis") {
     return currentType === "provider-analysis" ? "provider-analysis" : "client-analysis";
+  }
+  if (category === "breakdown") {
+    return currentType === "model-distribution" ? "model-distribution" : "token-mix";
   }
   return category;
 }
@@ -1210,7 +1357,7 @@ function overviewWidgetCategoryLabel(category: OverviewWidgetCategory): string {
   if (category === "analysis") return "Analysis component";
   if (category === "metric") return "Metric component";
   if (category === "system-status") return "Status component";
-  if (category === "token-mix") return "Breakdown component";
+  if (category === "breakdown") return "Breakdown component";
   return "Trend component";
 }
 
@@ -1219,7 +1366,7 @@ function overviewWidgetCategoryDescription(category: OverviewWidgetCategory): st
   if (category === "analysis") return "Client or provider";
   if (category === "metric") return "Requests, tokens, cost";
   if (category === "system-status") return "Status timeline";
-  if (category === "token-mix") return "Token distribution";
+  if (category === "breakdown") return "Token or model distribution";
   return "Usage over time";
 }
 
@@ -1234,6 +1381,7 @@ function overviewWidgetTypeLabel(type: OverviewWidgetType): string {
   if (type === "account-balance") return "Account Balance";
   if (type === "client-analysis") return "Client Analysis";
   if (type === "metric") return "Metric";
+  if (type === "model-distribution") return "Model Distribution";
   if (type === "provider-analysis") return "Provider Analysis";
   if (type === "system-status") return "System status";
   if (type === "token-mix") return "Token Mix";
@@ -1268,7 +1416,7 @@ function overviewWidgetVariantOptions(type: OverviewWidgetType): Array<{ label: 
       { label: "Bar", value: "bar" }
     ];
   }
-  if (type === "token-mix") {
+  if (type === "model-distribution" || type === "token-mix") {
     return [
       { label: "Bars", value: "bars" },
       { label: "Stacked", value: "stacked" },
@@ -3008,15 +3156,16 @@ function TokenTooltip({
 }: {
   active?: boolean;
   label?: string;
-  payload?: Array<{ value?: number | string }>;
+  payload?: Array<{ name?: string; value?: number | string }>;
 }) {
   if (!active || !payload?.length) {
     return null;
   }
+  const title = label || payload[0]?.name || "";
 
   return (
     <div className="rounded-lg border border-border/60 bg-card/95 glass-surface px-3 py-2.5 text-[11px] shadow-card-elevated">
-      <div className="font-semibold">{label}</div>
+      <div className="font-semibold">{title}</div>
       <div className="mt-1 text-muted-foreground">{formatCompactNumber(Number(payload[0]?.value) || 0)} tokens</div>
     </div>
   );

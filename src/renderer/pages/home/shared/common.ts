@@ -656,19 +656,25 @@ export function normalizeOverviewWidget(value: unknown): OverviewWidgetConfig | 
   const metric = type === "metric" ? normalizeOverviewMetricKind(value.metric) ?? "requests" : undefined;
   const variant = normalizeOverviewWidgetVariant(type, value.variant);
   const accountProvider = type === "account-balance" ? stringValue(value.accountProvider) : undefined;
+  const size = constrainOverviewWidgetSize(
+    normalizeOverviewWidgetSize(value.size, type) ?? defaultOverviewWidgetSize(type),
+    type,
+    variant,
+    accountProvider
+  );
   return {
     ...(accountProvider ? { accountProvider } : {}),
     enabled: typeof value.enabled === "boolean" ? value.enabled : true,
     id: stringValue(value.id) || overviewWidgetId(type, metric),
     ...(metric ? { metric } : {}),
-    size: normalizeOverviewWidgetSize(value.size, type) ?? defaultOverviewWidgetSize(type),
+    size,
     type,
     variant
   };
 }
 
 export function normalizeOverviewWidgetType(value: unknown): OverviewWidgetType | undefined {
-  return typeof value === "string" && ["account-balance", "client-analysis", "metric", "provider-analysis", "system-status", "token-mix", "usage-trend"].includes(value)
+  return typeof value === "string" && ["account-balance", "client-analysis", "metric", "model-distribution", "provider-analysis", "system-status", "token-mix", "usage-trend"].includes(value)
     ? value as OverviewWidgetType
     : undefined;
 }
@@ -729,7 +735,7 @@ export function overviewWidgetVariantOptions(type: OverviewWidgetType): Array<{ 
       { label: "Bar", value: "bar" }
     ];
   }
-  if (type === "token-mix") {
+  if (type === "model-distribution" || type === "token-mix") {
     return [
       { label: "Bars", value: "bars" },
       { label: "Stacked", value: "stacked" },
@@ -758,6 +764,7 @@ export function normalizeOverviewWidgetVariant(type: OverviewWidgetType, value: 
 
 export function defaultOverviewWidgetSize(type: OverviewWidgetType): OverviewWidgetSize {
   if (type === "metric") return "1:1";
+  if (type === "model-distribution") return "2:2";
   if (type === "token-mix") return "1:2";
   if (type === "client-analysis" || type === "provider-analysis") return "2:2";
   if (type === "usage-trend") return "3:2";
@@ -768,10 +775,39 @@ export function defaultOverviewWidgetSize(type: OverviewWidgetType): OverviewWid
 export function defaultOverviewWidgetVariant(type: OverviewWidgetType): OverviewWidgetVariant {
   if (type === "account-balance") return "cards";
   if (type === "metric") return "card";
+  if (type === "model-distribution") return "pie";
   if (type === "token-mix") return "bars";
   if (type === "usage-trend") return "composed";
   if (type === "system-status") return "timeline";
   return "table";
+}
+
+export function constrainOverviewWidgetSize(
+  size: OverviewWidgetSize,
+  type: OverviewWidgetType,
+  variant: OverviewWidgetVariant,
+  accountProvider?: string
+): OverviewWidgetSize {
+  if (type !== "account-balance" || variant !== "compact" || accountProvider?.trim()) {
+    return size;
+  }
+  return overviewWidgetSizeAtLeast(size, 2, 2);
+}
+
+function overviewWidgetSizeAtLeast(size: OverviewWidgetSize, minWidth: 1 | 2 | 3 | 4, minHeight: 1 | 2 | 3 | 4): OverviewWidgetSize {
+  const [widthText, heightText] = size.split(":");
+  const width = overviewWidgetDimensionAtLeast(widthText, minWidth);
+  const height = overviewWidgetDimensionAtLeast(heightText, minHeight);
+  return `${width}:${height}` as OverviewWidgetSize;
+}
+
+function overviewWidgetDimensionAtLeast(value: string | undefined, minimum: 1 | 2 | 3 | 4): 1 | 2 | 3 | 4 {
+  const parsed = Number.parseInt(value ?? "", 10);
+  const clamped = Number.isFinite(parsed) ? Math.max(minimum, Math.min(4, parsed)) : minimum;
+  if (clamped >= 4) return 4;
+  if (clamped >= 3) return 3;
+  if (clamped >= 2) return 2;
+  return 1;
 }
 
 export function overviewWidgetId(type: OverviewWidgetType, metric?: OverviewMetricKind): string {

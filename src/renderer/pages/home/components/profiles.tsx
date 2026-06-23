@@ -844,10 +844,12 @@ export function AddProfileForm({
             <Field label={t("Provider name")}>
               <Input value={draft.providerName} onChange={(event) => onChange({ providerName: event.target.value })} />
             </Field>
-            <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
-              <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
-              <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
-            </div>
+            {draft.agent !== "zcode" ? (
+              <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
+                <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
+                <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
+              </div>
+            ) : null}
             <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : "Codex model")}>
               <ProfileModelSelector
 	                placeholder={providers[0]?.models[0] && providers[0]?.name ? `${providers[0].name}/${providers[0].models[0]}` : ""}

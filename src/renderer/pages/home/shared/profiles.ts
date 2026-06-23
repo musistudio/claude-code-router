@@ -125,6 +125,7 @@ import {
   BUILTIN_FUSION_VISION_TOOL_NAME,
   BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME,
   CLAUDE_CODE_DEFAULT_ENV,
+  CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV,
   DEFAULT_OVERVIEW_WIDGETS,
   DEFAULT_TRAY_COMPONENT_VARIANTS,
   DEFAULT_TRAY_WIDGETS,
@@ -775,12 +776,12 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
     botConfigId,
     botEnabled: surface !== "cli" && Boolean(selectedBot || profile.botGateway?.enabled),
     configFile: profile.configFile ?? defaultCodexConfigFile(profile.agent),
-    envRows: keyValueRowsFromRecord(profile.env ?? {}),
+    envRows: keyValueRowsFromRecord(codexCompatibleProfileEnv(profile.env ?? {})),
     model: profile.model,
     providerId: profile.providerId ?? "claude-code-router",
     providerName: profile.providerName ?? "Claude Code Router",
     scope: normalizeProfileFormScope(profile.scope),
-    showAllSessions: Boolean(profile.showAllSessions),
+    showAllSessions: profile.agent === "zcode" ? false : Boolean(profile.showAllSessions),
     surface
   };
 }
@@ -846,7 +847,7 @@ export function profileConfigFromDraft(
     ...botGateway,
     configFile: draft.configFile,
     enabled: existingProfile?.enabled ?? true,
-    env: recordFromKeyValueRows(draft.envRows),
+    env: draft.agent === "claude-code" ? recordFromKeyValueRows(draft.envRows) : codexCompatibleProfileEnv(recordFromKeyValueRows(draft.envRows)),
     id,
     model: draft.model,
     name: draft.name,
@@ -854,7 +855,7 @@ export function profileConfigFromDraft(
     providerName: draft.providerName,
     scope: draft.scope,
     settingsFile: draft.settingsFile,
-    showAllSessions: draft.showAllSessions,
+    showAllSessions: draft.agent === "zcode" ? false : draft.showAllSessions,
     smallFastModel: draft.smallFastModel,
     surface: draft.surface
   }, existingProfiles.length);
@@ -1135,6 +1136,18 @@ export function claudeCodeProfileEnv(env: Record<string, string> = {}): Record<s
   };
 }
 
+function codexCompatibleProfileEnv(env: Record<string, string>): Record<string, string> {
+  const { [CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV]: _ignored, ...result } = env;
+  return result;
+}
+
+export function profileEnvRowsForAgent(agent: ProfileConfig["agent"], envRows: AddProfileDraft["envRows"]): AddProfileDraft["envRows"] {
+  if (agent === "claude-code") {
+    return envRows;
+  }
+  return envRows.filter((row) => row.key.trim() !== CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV);
+}
+
 export function normalizeBotGatewayPlatform(value: unknown): string {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
   if (!normalized || normalized === "off" || normalized === "disabled") {
@@ -1375,7 +1388,7 @@ export function profileSummaryItems(
   return [
     { label: t("Model"), value: modelValue },
     { label: t("Provider ID"), value: profile.providerId ?? "claude-code-router" },
-    { label: t("Show all sessions"), value: profile.showAllSessions ? t("Enabled") : t("Disabled") },
+    ...(profile.agent === "zcode" ? [] : [{ label: t("Show all sessions"), value: profile.showAllSessions ? t("Enabled") : t("Disabled") }]),
     ...botSummaryItems,
     ...envSummaryItems
   ];
@@ -1416,14 +1429,14 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
     configFormat: "separate_profile_files",
     configFile: profile.configFile?.trim() || defaultCodexConfigFile(profile.agent),
     enabled: profile.enabled,
-    env,
+    env: codexCompatibleProfileEnv(env),
     id: profile.id || `profile-${index + 1}`,
     model,
     name,
     providerId: profile.providerId?.trim() || "claude-code-router",
     providerName: profile.providerName?.trim() || "Claude Code Router",
     scope,
-    showAllSessions: Boolean(profile.showAllSessions),
+    showAllSessions: agent === "zcode" ? false : Boolean(profile.showAllSessions),
     surface
   };
 }

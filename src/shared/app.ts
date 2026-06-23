@@ -724,6 +724,7 @@ export type OverviewWidgetType =
   | "account-balance"
   | "client-analysis"
   | "metric"
+  | "model-distribution"
   | "provider-analysis"
   | "system-status"
   | "token-mix"

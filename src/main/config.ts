@@ -1,7 +1,7 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { loadPersistedApiKeys, replacePersistedApiKeys } from "./api-key-store";
 import { CONFIGDIR, CONFIG_FILE, GATEWAY_CONFIG_FILE, LEGACY_CONFIGDIR, LEGACY_CONFIG_FILE } from "./constants";
-import { CLAUDE_CODE_DEFAULT_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "../shared/app";
+import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "../shared/app";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "./presets";
 import type {
   AppConfig,
@@ -2155,7 +2155,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         configFormat: parseCodexProfileConfigFormat(readString(item.configFormat) || readString(item.profileConfigFormat)) || "separate_profile_files",
         configFile: readString(item.configFile) || readString(item.settingsFile) || defaultCodexConfigFile(agent),
         enabled,
-        env,
+        env: codexCompatibleProfileEnv(env),
         id,
         model,
         name,
@@ -2163,11 +2163,13 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         providerName: readString(item.providerName) || "Claude Code Router",
         remoteFrontendMode: parseCodexRemoteFrontendMode(readString(item.remoteFrontendMode) || readString(item.frontendMode) || readString(item.coreMode)) || "app",
         scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
-        showAllSessions: typeof item.showAllSessions === "boolean"
-          ? item.showAllSessions
-          : typeof item.show_all_sessions === "boolean"
-            ? item.show_all_sessions
-            : false,
+        showAllSessions: agent === "zcode"
+          ? false
+          : typeof item.showAllSessions === "boolean"
+            ? item.showAllSessions
+            : typeof item.show_all_sessions === "boolean"
+              ? item.show_all_sessions
+              : false,
         surface
       };
     })
@@ -2225,6 +2227,11 @@ function claudeCodeProfileEnv(env: Record<string, string> = {}): Record<string, 
     ...CLAUDE_CODE_DEFAULT_ENV,
     ...env
   };
+}
+
+function codexCompatibleProfileEnv(env: Record<string, string>): Record<string, string> {
+  const { [CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV]: _ignored, ...result } = env;
+  return result;
 }
 
 function profileFromCodexConfig(config: CodexProfileConfig): ProfileConfig {

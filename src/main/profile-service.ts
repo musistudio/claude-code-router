@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { enforceSingleEnabledGlobalProfilePerAgent, type ApiKeyConfig, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "../shared/app";
+import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, enforceSingleEnabledGlobalProfilePerAgent, type ApiKeyConfig, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "../shared/app";
 import { replacePersistedApiKeys } from "./api-key-store";
 import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
@@ -113,6 +113,7 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
     const configFormat = normalizeCodexConfigFormat(profile.configFormat);
     const modelCatalogFile = codexModelCatalogFile(configFile);
     const modelCatalogResult = writeFileWithBackup(modelCatalogFile, codexModelCatalogJson(config, model));
+    const showAllSessions = profile.agent === "zcode" ? false : Boolean(profile.showAllSessions);
     const nextConfig = buildCodexConfigToml(source, {
       baseUrl: endpoint,
       modelCatalogFile,
@@ -120,7 +121,7 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
       model,
       providerId,
       providerName,
-      showAllSessions: Boolean(profile.showAllSessions),
+      showAllSessions,
       token
     });
     const writeResult = writeFileWithBackup(configFile, nextConfig);
@@ -128,7 +129,7 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
       configFormat,
       model,
       providerId,
-      showAllSessions: Boolean(profile.showAllSessions)
+      showAllSessions
     });
     const middlewareResult = profile.cliMiddleware
       ? writeCodexCliMiddleware(config, profile, {
@@ -951,6 +952,9 @@ function defaultCodexCliCommand(agent: ProfileConfig["agent"]): string {
 
 function profileEnv(profile: ProfileConfig): Record<string, string> {
   return stringRecord(profile.env).filter(([key]) => isEnvName(key)).reduce<Record<string, string>>((result, [key, value]) => {
+    if (profile.agent !== "claude-code" && key === CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV) {
+      return result;
+    }
     result[key] = value;
     return result;
   }, {});
