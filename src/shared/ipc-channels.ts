@@ -11,6 +11,7 @@ export const IPC_CHANNELS = {
   appGetProfileOpenCommand: "ccr:app:get-profile-open-command",
   appGetProfileRuntimeStatus: "ccr:app:get-profile-runtime-status",
   appGetProviderAccountSnapshots: "ccr:app:get-provider-account-snapshots",
+  appGetProviderCatalogModels: "ccr:app:get-provider-catalog-models",
   appGetProviderPresets: "ccr:app:get-provider-presets",
   appGetProxyCertificateStatus: "ccr:app:get-proxy-certificate-status",
   appGetProxyNetworkCaptures: "ccr:app:get-proxy-network-captures",

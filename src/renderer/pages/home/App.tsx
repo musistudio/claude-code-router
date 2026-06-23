@@ -29,7 +29,7 @@ import {
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
   providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
-  ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkIcon, RouterRule, ServerActionBusy, SettingsPageId,
+  ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkCatalogModels, resolveProviderDeepLinkIcon, RouterRule, ServerActionBusy, SettingsPageId,
   routingRewriteFromDraftRow, setProviderPresets, splitLines, translateProxyCertificateMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
   uniqueRoutingRuleId, updateApiKeyEditableConfig, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, useEffect,
   useMemo, useReducedMotion, useRef, useState, validateVirtualModelDraft, ViewId,
@@ -304,6 +304,41 @@ function App() {
   }, [providerDeepLinkRequest?.id, providerDeepLinkRequest?.provider?.baseUrl, providerDeepLinkRequest?.provider?.icon, providerPresetsLoaded]);
 
   useEffect(() => {
+    const request = providerDeepLinkRequest;
+    const payload = request?.provider;
+    providerDeepLinkCatalogModelsRequestId.current += 1;
+    const requestId = providerDeepLinkCatalogModelsRequestId.current;
+    const hasApiKey = Boolean(payload?.apiKey?.trim());
+
+    if (!request || !payload || (!hasApiKey && payload.models.length > 0) || !providerPresetsLoaded) {
+      return;
+    }
+
+    const modelsPromise = hasApiKey
+      ? probeProviderDeepLinkPayload(payload).then((probe) => mergeProviderModelLists(probe?.models ?? []))
+      : resolveProviderDeepLinkCatalogModels(payload);
+
+    void modelsPromise
+      .then((models) => {
+        if (providerDeepLinkCatalogModelsRequestId.current !== requestId || models.length === 0) {
+          return;
+        }
+        setProviderDeepLinkRequest((current) => {
+          if (!current?.provider || current.id !== request.id || (!hasApiKey && current.provider.models.length > 0)) {
+            return current;
+          }
+          return {
+            ...current,
+            provider: {
+              ...current.provider,
+              models
+            }
+          };
+        });
+      });
+  }, [providerDeepLinkRequest?.id, providerDeepLinkRequest?.provider?.apiKey, providerDeepLinkRequest?.provider?.baseUrl, providerDeepLinkRequest?.provider?.name, providerPresetsLoaded]);
+
+  useEffect(() => {
     if (!window.ccr) {
       setUsageStats(createEmptyUsageStats(usageRange));
       return;
@@ -530,6 +565,7 @@ function App() {
   const autoSaveRequestId = useRef(0);
   const providerProbeRequestId = useRef(0);
   const providerConnectivityRequestId = useRef(0);
+  const providerDeepLinkCatalogModelsRequestId = useRef(0);
   const providerDeepLinkIconRequestId = useRef(0);
   const toastTimer = useRef<number>();
 
@@ -909,13 +945,9 @@ function App() {
     providerProbeRequestId.current += 1;
     const requestId = providerProbeRequestId.current;
     const candidates = providerProbeCandidates(providerDraft).filter(isProviderProbeCandidateReady);
-    const shouldDiscoverPresetModels = Boolean(
-      providerDraft.presetId &&
-      providerDraft.presetId !== customProviderPresetId &&
-      providerDraft.apiKey.trim()
-    );
-    const probeMode = shouldDiscoverPresetModels ? "models" : "protocols";
-    const probeApiKey = shouldDiscoverPresetModels ? providerDraft.apiKey.trim() : "";
+    const shouldDiscoverModels = Boolean(providerDraft.apiKey.trim());
+    const probeMode = shouldDiscoverModels ? "models" : "protocols";
+    const probeApiKey = shouldDiscoverModels ? providerDraft.apiKey.trim() : "";
     const inputKey = providerProbeInputKey(candidates, probeApiKey, []);
 
     setProviderProbeError("");
@@ -940,12 +972,8 @@ function App() {
           setProviderProbe(result.probe);
           setProviderDraft((current) => {
             const currentCandidates = providerProbeCandidates(current).filter(isProviderProbeCandidateReady);
-            const currentShouldDiscoverPresetModels = Boolean(
-              current.presetId &&
-              current.presetId !== customProviderPresetId &&
-              current.apiKey.trim()
-            );
-            const currentProbeApiKey = currentShouldDiscoverPresetModels ? current.apiKey.trim() : "";
+            const currentShouldDiscoverModels = Boolean(current.apiKey.trim());
+            const currentProbeApiKey = currentShouldDiscoverModels ? current.apiKey.trim() : "";
             const currentKey = providerProbeInputKey(currentCandidates, currentProbeApiKey, []);
             if (currentKey !== inputKey) {
               return current;
@@ -1211,9 +1239,6 @@ function App() {
         setProviderDeepLinkBusy(false);
         return;
       }
-      if (payload.apiKey?.trim()) {
-        throw new Error("Provider links cannot include API keys. Add the key manually after verifying the endpoint.");
-      }
       const identityIssue = providerIdentitySafetyIssue({
         baseUrl: payload.baseUrl,
         name: payload.name
@@ -1228,7 +1253,22 @@ function App() {
           icon: iconResolution.persistentIcon
         };
       }
+      if (payload.models.length === 0) {
+        const catalogModels = await resolveProviderDeepLinkCatalogModels(payload);
+        if (catalogModels.length > 0) {
+          payload = {
+            ...payload,
+            models: catalogModels
+          };
+        }
+      }
       const probe = await probeProviderDeepLinkPayload(payload);
+      if (payload.apiKey?.trim() && probe?.models.length) {
+        payload = {
+          ...payload,
+          models: probe.models
+        };
+      }
       let importedProviderName = payload.name?.trim() || "";
       const next = buildConfigUpdate((config) => {
         const provider = createProviderConfigFromDeepLink(payload, config.Providers, probe);

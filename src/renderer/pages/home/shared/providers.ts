@@ -729,12 +729,13 @@ export async function probeProviderDeepLinkPayload(payload: ProviderDeepLinkPayl
     return undefined;
   }
 
+  const apiKey = payload.apiKey?.trim();
   try {
     return await window.ccr.probeProvider({
-      apiKey: undefined,
+      apiKey: apiKey || undefined,
       baseUrl: payload.baseUrl,
-      mode: "protocols",
-      models: payload.models,
+      mode: apiKey ? "models" : "protocols",
+      models: apiKey ? [] : payload.models,
       protocols: payload.protocol ? [payload.protocol] : providerProtocolOptions.map((option) => option.value)
     });
   } catch {
@@ -756,6 +757,25 @@ export function providerDeepLinkDisplayIcon(payload: ProviderDeepLinkPayload): s
   const preset = resolveProviderDeepLinkPreset(payload);
   const presetIcon = preset ? providerPresetIconUrls[preset.id] ?? "" : "";
   return presetIcon || payload.icon?.trim() || "";
+}
+
+export async function resolveProviderDeepLinkCatalogModels(payload: ProviderDeepLinkPayload): Promise<string[]> {
+  const ccr = window.ccr;
+  if (!ccr?.getProviderCatalogModels) {
+    return [];
+  }
+
+  const preset = resolveProviderDeepLinkPreset(payload);
+  try {
+    const result = await ccr.getProviderCatalogModels({
+      baseUrl: payload.baseUrl,
+      name: payload.name,
+      providerPresetId: preset?.id
+    });
+    return mergeProviderModelLists(result.models);
+  } catch {
+    return [];
+  }
 }
 
 export async function resolveProviderDeepLinkIcon(payload: ProviderDeepLinkPayload): Promise<ProviderDeepLinkIconResolution> {
@@ -794,7 +814,10 @@ export function createProviderConfigFromDeepLink(
 ): GatewayProviderConfig {
   const protocol = probe?.detectedProtocol ?? payload.protocol ?? "openai_chat_completions";
   const baseUrl = probe?.normalizedBaseUrl || payload.baseUrl;
-  const models = payload.models.length > 0
+  const apiKey = payload.apiKey?.trim() || "";
+  const models = apiKey && probe?.models.length
+    ? mergeProviderModelLists(probe.models)
+    : payload.models.length > 0
     ? mergeProviderModelLists(payload.models)
     : mergeProviderModelLists(probe?.models ?? []);
   if (models.length === 0) {
@@ -828,7 +851,7 @@ export function createProviderConfigFromDeepLink(
   return {
     account: payload.account ? cloneProviderAccountConfig(payload.account) : defaultProviderAccountConfigForBaseUrl(baseUrl),
     api_base_url: normalizeProviderBaseUrl(baseUrl, protocol),
-    api_key: "",
+    api_key: apiKey,
     capabilities: capabilities.length > 0 ? capabilities : undefined,
     icon: payload.icon?.trim() || undefined,
     models,

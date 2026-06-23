@@ -232,6 +232,21 @@ export type ProviderManifestFetchResult = {
   url: string;
 };
 
+export type ProviderCatalogModelsRequest = {
+  baseUrl?: string;
+  name?: string;
+  providerIds?: string[];
+  providerPresetId?: string;
+};
+
+export type ProviderCatalogModelsResult = {
+  loadedFrom?: string;
+  matchedBy?: "base-url" | "provider-id" | "provider-name";
+  models: string[];
+  provider?: string;
+  providerName?: string;
+};
+
 export type ProviderAccountTestRequest = {
   apiKey?: string;
   baseUrl: string;

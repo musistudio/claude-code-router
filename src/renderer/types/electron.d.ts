@@ -41,6 +41,8 @@ import type {
   ProviderIconDetectionRequest,
   ProviderIconDetectionResult,
   ProviderAccountSnapshot,
+  ProviderCatalogModelsRequest,
+  ProviderCatalogModelsResult,
   ProviderDeepLinkRequest,
   ProviderManifestFetchRequest,
   ProviderManifestFetchResult,
@@ -78,6 +80,7 @@ declare global {
       getProfileOpenCommand: (request: ProfileOpenRequest) => Promise<ProfileOpenCommandResult>;
       getProfileRuntimeStatus: () => Promise<ProfileRuntimeStatus>;
       getProviderAccountSnapshots: (provider?: string, options?: ProviderAccountSnapshotRequestOptions) => Promise<ProviderAccountSnapshot[]>;
+      getProviderCatalogModels: (request: ProviderCatalogModelsRequest) => Promise<ProviderCatalogModelsResult>;
       getProviderPresets: () => Promise<ProviderPreset[]>;
       getPluginMarketplace: () => Promise<PluginMarketplaceEntry[]>;
       getProxyCertificateStatus: () => Promise<ProxyCertificateStatus>;

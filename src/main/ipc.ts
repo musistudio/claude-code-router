@@ -14,6 +14,7 @@ import { gatewayService } from "../server/gateway/service";
 import { getProviderAccountSnapshots, invalidateProviderAccountSnapshotCache, testProviderAccountConnector } from "./provider-account-service";
 import { detectProviderIcon } from "./provider-icons";
 import { fetchProviderManifest } from "./provider-manifest-service";
+import { getProviderCatalogModels } from "./provider-model-catalog";
 import { getProviderPresets } from "./presets";
 import { checkGatewayProviderConnectivity, probeGatewayProvider, probeGatewayProviderCandidates } from "./provider-probe";
 import { applyProfileConfig } from "./profile-service";
@@ -26,7 +27,7 @@ import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
 import { getUsageStats } from "./usage-store";
 import windowsManager from "./windows";
-import type { AgentAnalysisFilter, ApiKeyConfig, AppConfig, AppInfo, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayMcpServerConfig, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
+import type { AgentAnalysisFilter, ApiKeyConfig, AppConfig, AppInfo, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayMcpServerConfig, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
 
 const pluginMarketplace: PluginMarketplaceEntry[] = [
   {
@@ -80,6 +81,7 @@ ipcMain.handle(IPC_CHANNELS.appGetProfileRuntimeStatus, () => {
   return getProfileRuntimeStatus();
 });
 ipcMain.handle(IPC_CHANNELS.appGetProviderAccountSnapshots, (_event, provider?: string, options?: ProviderAccountSnapshotRequestOptions) => getProviderAccountSnapshots(provider, options));
+ipcMain.handle(IPC_CHANNELS.appGetProviderCatalogModels, (_event, request: ProviderCatalogModelsRequest) => getProviderCatalogModels(request));
 ipcMain.handle(IPC_CHANNELS.appGetProviderPresets, () => getProviderPresets());
 ipcMain.handle(IPC_CHANNELS.appGetAgentAnalysis, (_event, filter?: AgentAnalysisFilter) => getAgentAnalysis(filter));
 ipcMain.handle(IPC_CHANNELS.appGetGatewayStatus, () => gatewayService.getStatus());
