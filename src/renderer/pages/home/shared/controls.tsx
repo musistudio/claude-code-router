@@ -271,6 +271,7 @@ import {
 } from "./i18n";
 import {
   AnimatedDisclosure,
+  AnimatedIconSwap,
   AnimatedFieldSlot,
   AnimatedListItem,
   AnimatedPopover,
@@ -372,9 +373,8 @@ import type { MotionSafeDivAttributes } from "./motion";
 
 
 import { metricToneBar } from "./common";
-import { gatewayEndpointFromConfig, profileAgentLabel, profileAgentLogoUrl } from "./profiles";
+import { profileAgentLabel, profileAgentLogoUrl } from "./profiles";
 import { routeTargetOptions } from "./providers";
-import { endpointDetails } from "./services";
 import { createKeyValueDraftRow } from "./virtual-models";
 import type { KeyValueDraftRow } from "./types";
 
@@ -663,24 +663,31 @@ export function ServiceControlButton({
 export function EndpointTitleBar({
   config,
   endpoint,
-  gatewayStatus,
-  onOpenSettings,
-  proxyStatus
+  gatewayStatus
 }: {
   config: AppConfig;
   endpoint: string;
   gatewayStatus: GatewayStatus;
-  onOpenSettings: () => void;
-  proxyStatus: ProxyStatus;
 }) {
   const t = useAppText();
   const [open, setOpen] = useState(false);
+  const [copiedKey, setCopiedKey] = useState("");
+  const copyResetTimer = useRef<number>();
   const rootRef = useRef<HTMLDivElement>(null);
   const running = gatewayStatus.state === "running";
   const statusLabel = running ? t("running") : t("not running");
   const value = endpoint.trim() || t("Not configured");
-  const endpointInfo = endpointDetails(value, config);
-  const proxyEndpoint = proxyStatus.endpoint || gatewayEndpointFromConfig(config);
+  const loopbackEndpoint = loopbackEndpointFromStatus(value, config);
+  const networkEndpoints = running ? gatewayStatus.networkEndpoints ?? [] : [];
+
+  async function copyEndpoint(valueToCopy: string, key: string) {
+    await copyEndpointTextToClipboard(valueToCopy);
+    setCopiedKey(key);
+    if (copyResetTimer.current) {
+      window.clearTimeout(copyResetTimer.current);
+    }
+    copyResetTimer.current = window.setTimeout(() => setCopiedKey(""), 1300);
+  }
 
   useEffect(() => {
     if (!open) {
@@ -706,6 +713,14 @@ export function EndpointTitleBar({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [open]);
+
+  useEffect(() => {
+    return () => {
+      if (copyResetTimer.current) {
+        window.clearTimeout(copyResetTimer.current);
+      }
+    };
+  }, []);
 
   return (
     <div
@@ -740,43 +755,32 @@ export function EndpointTitleBar({
 
       <AnimatePresence initial={false}>
         {open ? (
-          <AnimatedPopover className="absolute left-1/2 top-full z-50 mt-2 w-[288px] max-w-[calc(100vw-24px)] -translate-x-1/2">
+          <AnimatedPopover className="absolute left-1/2 top-full z-50 mt-2 w-[340px] max-w-[calc(100vw-24px)] -translate-x-1/2">
             <PopoverContent
               aria-label={t("Endpoint information")}
               className="p-3"
               id="endpoint-info-panel"
               role="dialog"
             >
-              <div className="mb-2 flex items-center gap-2 border-b border-border/60 pb-2">
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "h-2.5 w-2.5 shrink-0 rounded-full",
-                    running ? "bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.16)]" : "bg-muted-foreground/45"
-                  )}
-                />
-                <span className="min-w-0 flex-1 truncate text-[12px] font-medium">{t("Endpoint")}</span>
-                <Badge variant={running ? "success" : "outline"}>{statusLabel}</Badge>
-              </div>
-
               <div className="space-y-1.5">
-                <EndpointInfoRow label="IP" value={endpointInfo.host} />
-                <EndpointInfoRow label={t("Port")} value={endpointInfo.port} />
-                <EndpointInfoRow label="Loopback" value={config.gateway.host || "127.0.0.1"} />
-                <EndpointInfoRow label={t("Proxy")} value={proxyEndpoint} />
+                <EndpointInfoRow
+                  copied={copiedKey === `loopback:${loopbackEndpoint}`}
+                  label="Loopback"
+                  value={loopbackEndpoint}
+                  onCopy={(valueToCopy) => void copyEndpoint(valueToCopy, `loopback:${loopbackEndpoint}`)}
+                />
+                {networkEndpoints.map((entry, index) => (
+                  <EndpointInfoRow
+                    copied={copiedKey === `network:${entry.interfaceName}:${entry.address}`}
+                    key={`${entry.interfaceName}-${entry.address}`}
+                    label={index === 0 ? "Network" : ""}
+                    meta={entry.interfaceName}
+                    value={entry.endpoint}
+                    onCopy={(valueToCopy) => void copyEndpoint(valueToCopy, `network:${entry.interfaceName}:${entry.address}`)}
+                  />
+                ))}
               </div>
 
-              <Button
-                className="mt-3 h-7 w-full rounded-md border border-border bg-background px-2 text-center text-[12px] font-medium text-foreground outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/25"
-                onClick={() => {
-                  setOpen(false);
-                  onOpenSettings();
-                }}
-                type="button"
-                unstyled
-              >
-                {t("Advanced Settings...")}
-              </Button>
             </PopoverContent>
           </AnimatedPopover>
         ) : null}
@@ -785,11 +789,78 @@ export function EndpointTitleBar({
   );
 }
 
-export function EndpointInfoRow({ label, value }: { label: string; value: string }) {
+export function EndpointInfoRow({
+  copied,
+  label,
+  meta,
+  value,
+  onCopy
+}: {
+  copied: boolean;
+  label: string;
+  meta?: string;
+  value: string;
+  onCopy: (value: string) => void;
+}) {
+  const t = useAppText();
+
   return (
-    <div className="grid grid-cols-[84px_minmax(0,1fr)] items-baseline gap-2 text-[12px]">
-      <span className="text-right text-muted-foreground">{label}:</span>
-      <span className="min-w-0 truncate font-medium text-foreground">{value}</span>
+    <div className="grid grid-cols-[76px_minmax(0,1fr)_24px] items-center gap-2 text-[12px]">
+      <span className="text-right text-muted-foreground">{label ? `${label}:` : null}</span>
+      <span className="min-w-0 truncate font-medium text-foreground">
+        {value}
+        {meta ? <span className="ml-1 text-[11px] font-normal text-muted-foreground">({meta})</span> : null}
+      </span>
+      <Button
+        aria-label={copied ? t("Copied") : t("Copy")}
+        className={cn(
+          "flex h-6 w-6 shrink-0 items-center justify-center rounded-md border outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
+          copied
+            ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600"
+            : "border-transparent bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
+        )}
+        title={copied ? t("Copied") : t("Copy")}
+        type="button"
+        unstyled
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          onCopy(value);
+        }}
+      >
+        <AnimatedIconSwap iconKey={copied ? "copied" : "copy"}>
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        </AnimatedIconSwap>
+      </Button>
     </div>
   );
+}
+
+function loopbackEndpointFromStatus(endpoint: string, config: AppConfig): string {
+  try {
+    const parsed = new URL(endpoint);
+    return `http://127.0.0.1:${parsed.port || config.gateway.port}`;
+  } catch {
+    return `http://127.0.0.1:${config.gateway.port}`;
+  }
+}
+
+async function copyEndpointTextToClipboard(value: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return;
+    } catch {
+      // Fall back to a temporary textarea for Electron/file contexts where clipboard permissions vary.
+    }
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.left = "-9999px";
+  textarea.style.position = "fixed";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
 }

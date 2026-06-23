@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { fetchWithSystemProxy } from "../../main/system-proxy-fetch";
 import type {
   GatewayMcpRemoteServerConfig,
   GatewayMcpServerConfig,
@@ -200,7 +201,7 @@ async function listLegacySseMcpServerTools(
   let nextId = 1;
 
   try {
-    const response = await fetch(server.url, {
+    const response = await fetchWithSystemProxy(server.url, {
       headers: mcpHttpHeaders(server, "", false),
       method: "GET",
       signal: controller.signal
@@ -306,7 +307,7 @@ async function postJsonRpc(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), mcpTimeoutMs(server));
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithSystemProxy(url, {
       body: JSON.stringify(message),
       headers: mcpHttpHeaders(server, sessionId, true),
       method: "POST",

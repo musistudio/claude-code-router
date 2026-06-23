@@ -6,7 +6,7 @@ import {
   customProviderPresetId, defaultProviderAccountConfigForPreset, Dialog, DialogBody, DialogContent, DialogFooter,
   DialogHeader, DialogTitle, Field, findProviderPreset, formatProviderAccountMeterValue, GatewayProviderConfig,
   GatewayProviderProbeResult, getProviderPresets, Globe, inferProviderNameFromBaseUrl, Input, KeyValueRowsControl, Label,
-  Layers3, LoaderCircle, mergeProviderModelLists, modelCatalogItemMatchesQuery, motion,
+  Layers3, LoaderCircle, localAgentProviderIconUrls, mergeProviderModelLists, modelCatalogItemMatchesQuery, motion,
   Pencil, Plus, PopoverContent, primaryProviderAccountMeter, primaryProviderPresetEndpoint, providerAccountBadgeVariant,
   providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountSnapshot,
   providerAccountSnapshotCredentialLabel, providerAccountSnapshotLabel, ProviderAccountTestPath,
@@ -15,8 +15,9 @@ import {
   providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
   resolveProviderDeepLinkPreset, ShieldCheck, splitLines, splitModelTagInput, Switch, Textarea, translatedProviderProtocolLabel, translateOptions,
   translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppText, useEffect, useMemo,
-  useRef, useState, X
+  useRef, useState, X, isPlainRecord
 } from "../shared";
+import type { LocalAgentProviderCandidate } from "../../../../shared/app";
 export function ProvidersView({ accountSnapshots, addProvider, editProvider, notify, providers, removeProvider }: {
   accountSnapshots: ProviderAccountSnapshot[];
   addProvider: () => void;
@@ -776,6 +777,205 @@ function providerPresetOptionMatchesQuery(
   return haystack.includes(query);
 }
 
+function LocalAgentProviderImportPanel({
+  mode,
+  onChange,
+  providerPlugins,
+  providers
+}: {
+  mode: "add" | "edit";
+  onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
+  providerPlugins: unknown[];
+  providers: GatewayProviderConfig[];
+}) {
+  const t = useAppText();
+  const [candidates, setCandidates] = useState<LocalAgentProviderCandidate[]>([]);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [importingId, setImportingId] = useState("");
+
+  useEffect(() => {
+    if (mode !== "add" || !window.ccr?.getLocalAgentProviderCandidates) {
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    void window.ccr.getLocalAgentProviderCandidates()
+      .then((items) => {
+        if (!cancelled) {
+          setCandidates(items.filter((item) =>
+            item.status !== "missing" &&
+            !localAgentProviderAlreadyImported(item, providers, providerPlugins)
+          ));
+        }
+      })
+      .catch((scanError) => {
+        if (!cancelled) {
+          setError(scanError instanceof Error ? scanError.message : String(scanError));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, providerPlugins, providers]);
+
+  if (mode !== "add" || (!loading && candidates.length === 0 && !error)) {
+    return null;
+  }
+
+  async function importCandidate(candidate: LocalAgentProviderCandidate) {
+    if (!window.ccr?.importLocalAgentProvider || !candidate.importable) {
+      return;
+    }
+    setImportingId(candidate.id);
+    setError("");
+    try {
+      const result = await window.ccr.importLocalAgentProvider({
+        id: candidate.id,
+        providerNames: providers.map((provider) => provider.name)
+      });
+      const accountDraft = createProviderAccountDraftFromConfig(result.provider.account);
+      const protocol = result.provider.protocol ?? "openai_chat_completions";
+      onChange({
+        ...accountDraft,
+        apiKey: result.provider.apiKey ?? "",
+        baseUrl: result.provider.baseUrl,
+        credentials: [],
+        icon: result.provider.icon ?? "",
+        modelSearch: "",
+        modelsText: result.provider.models.join("\n"),
+        name: result.provider.name?.trim() || inferProviderNameFromBaseUrl(result.provider.baseUrl),
+        presetId: customProviderPresetId,
+        providerPlugins: result.providerPlugins,
+        protocol,
+        selectedModels: [],
+        selectedProtocols: [protocol]
+      }, true);
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : String(importError));
+    } finally {
+      setImportingId("");
+    }
+  }
+
+  return (
+    <div className="sm:col-span-2 rounded-md border border-border bg-muted/20 p-3">
+      <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="truncate text-[12px] font-semibold text-foreground">{t("Import local agent login")}</div>
+          <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t("CCR scanned this computer for Claude Code, Codex, and ZCode login states. Click Import to add one as a gateway provider.")}</div>
+        </div>
+        {loading ? <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" /> : null}
+      </div>
+
+      {candidates.length > 0 ? (
+        <div className="grid grid-cols-1 gap-2">
+          {candidates.map((candidate) => {
+            const iconUrl = localAgentProviderIconUrls[candidate.kind];
+            const importing = importingId === candidate.id;
+            return (
+              <div
+                className="grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-border bg-background px-2.5 py-2"
+                key={candidate.id}
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted">
+                    <img alt="" className="h-full w-full object-cover" draggable={false} src={iconUrl} />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="min-w-0 truncate text-[12px] font-semibold">{candidate.name}</span>
+                      <Badge variant={candidate.importable ? "success" : candidate.status === "locked" ? "warning" : "outline"}>
+                        {candidate.importable ? t("Ready") : candidate.status === "locked" ? t("Locked") : t("Not found")}
+                      </Badge>
+                    </div>
+                    <div className="mt-0.5 truncate text-[10px] text-muted-foreground" title={candidate.sourceFile || candidate.detail}>
+                      {candidate.detail ? t(candidate.detail) : candidate.sourceFile || t("No local login state was found for this agent.")}
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  className="h-8 px-2"
+                  disabled={!candidate.importable || Boolean(importingId)}
+                  onClick={() => void importCandidate(candidate)}
+                  type="button"
+                  variant={candidate.importable ? "default" : "outline"}
+                >
+                  <AnimatedIconSwap iconKey={importing ? "importing" : "import"}>
+                    {importing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                  </AnimatedIconSwap>
+                  {t("Import")}
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      ) : loading ? (
+        <div className="rounded-md border border-dashed border-border bg-background px-3 py-4 text-center text-[12px] text-muted-foreground">
+          {t("Scanning local agent logins")}
+        </div>
+      ) : null}
+
+      {error ? (
+        <div className="mt-2 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
+          <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{t(error)}</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const localAgentProviderApiKey = "ccr-local-agent-login";
+const localAgentProviderPluginSuffixes: Record<LocalAgentProviderCandidate["kind"], string[]> = {
+  "claude-code": ["-claude-code-oauth", "-claude-code-oauth-internal"],
+  codex: ["-codex-oauth", "-codex-oauth-internal"],
+  zcode: ["-zcode-api-key", "-zcode-api-key-internal"]
+};
+
+function localAgentProviderAlreadyImported(
+  candidate: LocalAgentProviderCandidate,
+  providers: GatewayProviderConfig[],
+  providerPlugins: unknown[]
+): boolean {
+  const suffixes = localAgentProviderPluginSuffixes[candidate.kind];
+  const localProviderNames = new Set(providers
+    .filter((provider) => provider.api_key === localAgentProviderApiKey)
+    .flatMap((provider) => [
+      provider.name,
+      provider.type ? `${provider.name}::${provider.type}` : ""
+    ])
+    .map((name) => name.trim().toLowerCase())
+    .filter(Boolean));
+  if (localProviderNames.size === 0) {
+    return false;
+  }
+
+  const candidateProviderExists = providers.some((provider) =>
+    provider.api_key === localAgentProviderApiKey &&
+    provider.name.trim().toLowerCase().startsWith(candidate.name.toLowerCase())
+  );
+  if (candidateProviderExists) {
+    return true;
+  }
+
+  return providerPlugins.some((plugin) => {
+    const key = isPlainRecord(plugin) && typeof plugin.key === "string" ? plugin.key : "";
+    const providerName = isPlainRecord(plugin) && typeof plugin.providerName === "string" ? plugin.providerName : "";
+    return (
+      key.startsWith("ccr-local-agent-") &&
+      suffixes.some((suffix) => key.endsWith(suffix)) &&
+      localProviderNames.has(providerName.trim().toLowerCase())
+    );
+  });
+}
+
 export function AddProviderForm({
   draft,
   error,
@@ -786,6 +986,7 @@ export function AddProviderForm({
   onChange,
   probe,
   probeLoading,
+  providerPlugins = [],
   providers
 }: {
   connectivityLoading?: boolean;
@@ -797,6 +998,7 @@ export function AddProviderForm({
   onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
   probe?: GatewayProviderProbeResult;
   probeLoading: boolean;
+  providerPlugins?: unknown[];
   providers: GatewayProviderConfig[];
 }) {
   const t = useAppText();
@@ -811,6 +1013,7 @@ export function AddProviderForm({
   const detectedProtocol = probe?.detectedProtocol ?? draft.protocol;
   const detectedBaseUrl = probe?.normalizedBaseUrl || draft.baseUrl;
   const safetyIssue = providerDraftSafetyIssue(draft, detectedBaseUrl);
+  const localAgentImport = draft.providerPlugins.length > 0;
   const providerPresetOptions = [
     { label: t("Select preset provider"), value: "" },
     ...getProviderPresets().map((preset) => ({ label: t(preset.name), preset, value: preset.id })),
@@ -818,6 +1021,7 @@ export function AddProviderForm({
   ];
   const selectableProtocols = providerSelectableProtocolsFromProbe(probe);
   const hasConnectivityCheckInputs = Boolean(
+    !localAgentImport &&
     draft.baseUrl.trim() &&
     draft.apiKey.trim() &&
     mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText)).length > 0
@@ -867,6 +1071,7 @@ export function AddProviderForm({
         icon: "",
         modelSearch: "",
         presetId,
+        providerPlugins: [],
         selectedModels: [],
         selectedProtocols: []
       }, true);
@@ -880,6 +1085,7 @@ export function AddProviderForm({
         icon: "",
         modelSearch: "",
         presetId,
+        providerPlugins: [],
         selectedModels: [],
         selectedProtocols: []
       }, true);
@@ -898,6 +1104,7 @@ export function AddProviderForm({
       modelsText: draft.modelsText.trim() || preset?.defaultModels?.join("\n") || "",
       name: mode === "add" && preset && generatedName ? uniqueProviderName(providers, t(preset.name)) : draft.name,
       presetId,
+      providerPlugins: [],
       protocol: endpoint?.protocols[0] ?? draft.protocol,
       selectedModels: [],
       selectedProtocols: uniqueProviderProtocols(preset?.endpoints.flatMap((item) => item.protocols) ?? endpoint?.protocols ?? [])
@@ -907,6 +1114,12 @@ export function AddProviderForm({
   return (
     <>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <LocalAgentProviderImportPanel
+          mode={mode}
+          onChange={onChange}
+          providerPlugins={[...providerPlugins, ...draft.providerPlugins]}
+          providers={providers}
+        />
         <Field label={t("Preset provider")}>
           <ProviderPresetCombobox
             value={draft.presetId}
@@ -992,6 +1205,8 @@ export function AddProviderForm({
                 <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                 {t("Checking connection")}
               </span>
+            ) : localAgentImport ? (
+              <span>{t("Local agent login will be connected after saving this provider.")}</span>
             ) : providerProbeHasSupportedProtocol(connectivityProbe) ? (
               <span className="inline-flex items-center gap-1.5 text-foreground">
                 <Check className="h-3.5 w-3.5" />
@@ -1645,6 +1860,7 @@ export function AddProviderDialog({
   onSubmit,
   probe,
   probeLoading,
+  providerPlugins = [],
   providers
 }: {
   canSubmit: boolean;
@@ -1659,6 +1875,7 @@ export function AddProviderDialog({
   onSubmit: () => Promise<boolean>;
   probe?: GatewayProviderProbeResult;
   probeLoading: boolean;
+  providerPlugins?: unknown[];
   providers: GatewayProviderConfig[];
 }) {
   const t = useAppText();
@@ -1719,6 +1936,7 @@ export function AddProviderDialog({
               onChange={onChange}
               probe={probe}
               probeLoading={probeLoading}
+              providerPlugins={providerPlugins}
               providers={providers}
             />
           </DialogBody>

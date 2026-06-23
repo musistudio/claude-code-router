@@ -2,7 +2,7 @@ import type { ComponentProps } from "react";
 import {
   AnimatedIconSwap, AnimatePresence, AppConfig, AppCopy, AppUpdateStatus, Button, Check, cn, EndpointTitleBar,
   GatewayStatus, listSpringTransition, LucideIcon, motion, motionEase,
-  LoaderCircle, NavigationId, PanelLeftClose, PanelLeftOpen, ProxyStatus,
+  LoaderCircle, NavigationId, PanelLeftClose, PanelLeftOpen,
   reducedMotionTransition, RefreshCw, ServiceControlButton, Settings, ViewId,
   ViewMotionShell, viewUsesInternalScroll
 } from "../shared";
@@ -67,11 +67,9 @@ export function MainLayout({
   networkCaptureEnabled,
   onDownloadUpdate,
   onInstallUpdate,
-  onOpenServerView,
   onOpenSettings,
   onSelectNavigationItem,
   onToggleSidebar,
-  proxyStatus,
   shouldReduceMotion,
   sidebarOpen,
   toggleGatewayService,
@@ -93,11 +91,9 @@ export function MainLayout({
   networkCaptureEnabled: boolean;
   onDownloadUpdate: () => Promise<void>;
   onInstallUpdate: () => Promise<void>;
-  onOpenServerView: () => void;
   onOpenSettings: () => void;
   onSelectNavigationItem: (id: NavigationId) => void;
   onToggleSidebar: () => void;
-  proxyStatus: ProxyStatus;
   shouldReduceMotion: boolean | null;
   sidebarOpen: boolean;
   toggleGatewayService: () => void;
@@ -236,8 +232,6 @@ export function MainLayout({
             config={viewProps.server.config as AppConfig}
             endpoint={gatewayEndpoint}
             gatewayStatus={gatewayStatus}
-            onOpenSettings={onOpenServerView}
-            proxyStatus={proxyStatus}
           />
         </div>
         <div

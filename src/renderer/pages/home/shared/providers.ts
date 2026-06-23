@@ -102,6 +102,7 @@ import { cn } from "@/lib/utils";
 import appLogoUrl from "../../../../../assets/logo.png";
 import claudeCodeLogoUrl from "@/assets/agent-logos/claude-code.png";
 import codexLogoUrl from "@/assets/agent-logos/codex.png";
+import zcodeLogoUrl from "@/assets/agent-logos/zcode.png";
 import onboardingMascotSpriteUrl from "@/assets/onboarding/mascot-transition.svg";
 import anthropicProviderIconUrl from "@/assets/provider-icons/anthropic.png";
 import bailianProviderIconUrl from "@/assets/provider-icons/bailian.ico";
@@ -169,6 +170,7 @@ import type {
   GatewayMcpStdioMessageMode,
   GatewayMcpToolInfo,
   GatewayStatus,
+  LocalAgentProviderKind,
   OverviewMetricKind,
   OverviewWidgetConfig,
   OverviewWidgetSize,
@@ -380,6 +382,12 @@ import { fusionModelProviderName } from "./profiles";
 import { normalizeRouterFallbackConfig } from "./routing";
 import { keyValueRowsFromRecord, recordFromKeyValueRows, validateKeyValueRows, virtualModelMatchSummary } from "./virtual-models";
 import type { AddProviderDraft, AddRoutingRuleDraft, ModelCatalogItem, ProviderCredentialDraft, ProviderProbeCandidate, ProviderProbeCandidateResult, ProviderUsageFieldTarget, RoutingRewriteDraftRow, RoutingRuleRow, ViewId } from "./types";
+
+export const localAgentProviderIconUrls: Record<LocalAgentProviderKind, string> = {
+  "claude-code": claudeCodeLogoUrl,
+  codex: codexLogoUrl,
+  zcode: zcodeLogoUrl
+};
 
 export function createModelCatalogItems(config: AppConfig): ModelCatalogItem[] {
   const providerModels = config.Providers.flatMap((provider) => mergeProviderModelLists(provider.models));
@@ -882,6 +890,7 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
     modelsText: "",
     name: uniqueProviderName(providers),
     presetId: "",
+    providerPlugins: [],
     protocol: "openai_chat_completions",
     selectedModels: [],
     selectedProtocols: []
@@ -903,6 +912,7 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
     modelsText: provider.models.join("\n"),
     name: provider.name,
     presetId: preset?.id ?? customProviderPresetId,
+    providerPlugins: [],
     protocol,
     selectedModels: [],
     selectedProtocols: selectedProviderProtocolsFromCapabilities(provider.capabilities, protocol)

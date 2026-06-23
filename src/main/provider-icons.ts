@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { PROVIDER_ICON_CACHE_DIR } from "./constants";
+import { fetchWithSystemProxy } from "./system-proxy-fetch";
 import type { ProviderIconDetectionRequest, ProviderIconDetectionResult } from "../shared/app";
 import { compactProviderUrl, providerUrlWithDefaultScheme } from "../shared/provider-url";
 
@@ -199,7 +200,7 @@ async function fetchWithTimeout(url: string): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), providerIconFetchTimeoutMs);
   try {
-    return await fetch(url, {
+    return await fetchWithSystemProxy(url, {
       headers: {
         "User-Agent": providerIconUserAgent,
         Accept: "image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.9,text/html;q=0.6,*/*;q=0.1"

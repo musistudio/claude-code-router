@@ -290,6 +290,19 @@
     background: transparent;
   }
 
+  body.tray-window,
+  body.tray-window * {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  body.tray-window::-webkit-scrollbar,
+  body.tray-window *::-webkit-scrollbar {
+    display: none;
+    height: 0;
+    width: 0;
+  }
+
   button,
   input {
     font: inherit;

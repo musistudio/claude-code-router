@@ -188,6 +188,7 @@ export const fallbackGatewayStatus: GatewayStatus = {
   coreEndpoint: "http://127.0.0.1:3457",
   endpoint: "http://127.0.0.1:3456",
   generatedConfigFile: "Browser preview",
+  networkEndpoints: [],
   state: "stopped"
 };
 

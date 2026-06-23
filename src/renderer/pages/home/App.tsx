@@ -54,6 +54,102 @@ type ProfileActionBusy = {
 
 type UpdateActionBusy = "" | "download" | "install";
 
+const providerNamePlaceholder = "__CCR_PROVIDER_NAME__";
+const providerNameSlugPlaceholder = "__CCR_PROVIDER_NAME_SLUG__";
+const providerInternalNamePlaceholder = "__CCR_PROVIDER_INTERNAL_NAME__";
+const localAgentProviderApiKey = "ccr-local-agent-login";
+
+function materializeProviderPluginTemplates(
+  templates: unknown[],
+  providerName: string,
+  protocol: GatewayProviderConfig["type"]
+): unknown[] {
+  if (templates.length === 0) {
+    return [];
+  }
+  const internalName = protocol ? `${providerName}::${protocol}` : providerName;
+  const replacements: Record<string, string> = {
+    [providerInternalNamePlaceholder]: internalName,
+    [providerNamePlaceholder]: providerName,
+    [providerNameSlugPlaceholder]: providerNameSlug(providerName)
+  };
+  return templates.map((template) => replaceProviderPluginPlaceholders(template, replacements));
+}
+
+function replaceProviderPluginPlaceholders(value: unknown, replacements: Record<string, string>): unknown {
+  if (typeof value === "string") {
+    return Object.entries(replacements).reduce((result, [search, replacement]) => result.split(search).join(replacement), value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => replaceProviderPluginPlaceholders(item, replacements));
+  }
+  if (isPlainRecord(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, replaceProviderPluginPlaceholders(item, replacements)])
+    );
+  }
+  return value;
+}
+
+function mergeProviderPlugins(current: unknown[] | undefined, additions: unknown[]): unknown[] | undefined {
+  if (additions.length === 0) {
+    return current;
+  }
+  const addedKeys = new Set(additions.map(providerPluginKey).filter((key): key is string => Boolean(key)));
+  const retained = (current ?? []).filter((plugin) => {
+    const key = providerPluginKey(plugin);
+    return !key || !addedKeys.has(key);
+  });
+  return [...retained, ...additions];
+}
+
+function providerPluginKey(value: unknown): string | undefined {
+  return isPlainRecord(value) && typeof value.key === "string" && value.key.trim() ? value.key.trim() : undefined;
+}
+
+function removeLocalAgentProviderPluginsForProvider(
+  current: unknown[] | undefined,
+  provider: GatewayProviderConfig | undefined
+): unknown[] | undefined {
+  if (!provider || providerApiKeyValue(provider) !== localAgentProviderApiKey) {
+    return current;
+  }
+
+  const providerNames = new Set([
+    provider.name,
+    provider.type ? `${provider.name}::${provider.type}` : ""
+  ].map((value) => value.trim().toLowerCase()).filter(Boolean));
+  return (current ?? []).filter((plugin) => !localAgentProviderPluginMatchesProvider(plugin, providerNames));
+}
+
+function localAgentProviderPluginMatchesProvider(plugin: unknown, providerNames: Set<string>): boolean {
+  if (!isPlainRecord(plugin)) {
+    return false;
+  }
+  const key = typeof plugin.key === "string" ? plugin.key.trim().toLowerCase() : "";
+  if (!key.startsWith("ccr-local-agent-")) {
+    return false;
+  }
+  const pluginProviderName = typeof plugin.providerName === "string"
+    ? plugin.providerName
+    : typeof plugin.provider === "string"
+      ? plugin.provider
+      : "";
+  return providerNames.has(pluginProviderName.trim().toLowerCase());
+}
+
+function providerApiKeyValue(provider: GatewayProviderConfig): string {
+  return provider.api_key || provider.apiKey || provider.apikey || "";
+}
+
+function providerNameSlug(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "provider";
+}
+
 function App() {
   const [activeView, setActiveView] = useState<ViewId>("onboarding");
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStepId>(() => getDefaultOnboardingStep(fallbackConfig));
@@ -941,6 +1037,13 @@ function App() {
     if (!window.ccr || !providerFormVisible) {
       return;
     }
+    if (providerDraft.providerPlugins.length > 0) {
+      providerProbeRequestId.current += 1;
+      setProviderProbe(undefined);
+      setProviderProbeError("");
+      setProviderProbeLoading(false);
+      return;
+    }
 
     providerProbeRequestId.current += 1;
     const requestId = providerProbeRequestId.current;
@@ -1006,7 +1109,7 @@ function App() {
         setProviderProbeLoading(false);
       }
     };
-  }, [activeView, onboardingStep, providerAddOpen, providerDraft.apiKey, providerDraft.baseUrl, providerDraft.presetId, providerDraft.protocol]);
+  }, [activeView, onboardingStep, providerAddOpen, providerDraft.apiKey, providerDraft.baseUrl, providerDraft.presetId, providerDraft.protocol, providerDraft.providerPlugins]);
 
   async function checkProviderDraft(modelsToCheck?: string[]): Promise<ProviderConnectivityCheckReport> {
     const emptyReport: ProviderConnectivityCheckReport = { failed: [], passed: [], results: [] };
@@ -1188,6 +1291,7 @@ function App() {
       name: providerName,
       type: protocol
     };
+    const importedProviderPlugins = materializeProviderPluginTemplates(providerDraft.providerPlugins, providerName, protocol);
 
     const next = buildConfigUpdate((config) => {
       if (providerEditIndex === undefined) {
@@ -1195,6 +1299,7 @@ function App() {
       } else {
         config.Providers[providerEditIndex] = provider;
       }
+      config.providerPlugins = mergeProviderPlugins(config.providerPlugins, importedProviderPlugins);
       if (!config.preferredProvider) {
         config.preferredProvider = provider.name;
       }
@@ -1297,7 +1402,9 @@ function App() {
 
   async function removeProvider(index: number): Promise<boolean> {
     const next = buildConfigUpdate((config) => {
+      const removedProvider = config.Providers[index];
       config.Providers.splice(index, 1);
+      config.providerPlugins = removeLocalAgentProviderPluginsForProvider(config.providerPlugins, removedProvider);
       return config;
     });
     setConfigDraft(next);
@@ -2541,11 +2648,9 @@ function App() {
               networkCaptureEnabled={networkCaptureEnabled}
               onDownloadUpdate={downloadAppUpdate}
               onInstallUpdate={installAppUpdate}
-              onOpenServerView={() => setActiveView("server")}
               onOpenSettings={openSettingsDialog}
               onSelectNavigationItem={selectNavigationItem}
               onToggleSidebar={() => setSidebarOpen((current) => !current)}
-              proxyStatus={proxyStatus}
               requestLogsEnabled={requestLogsEnabled}
               shouldReduceMotion={shouldReduceMotion}
               sidebarOpen={sidebarOpen}
@@ -2813,6 +2918,7 @@ function App() {
               onSubmit: submitProviderDraft,
               probe: providerProbe,
               probeLoading: providerProbeLoading,
+              providerPlugins: draftConfig.providerPlugins ?? [],
               providers: draftConfig.Providers
             } : undefined}
             routingDelete={routingDeleteRule ? {

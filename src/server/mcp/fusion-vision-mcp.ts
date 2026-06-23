@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
+import { fetchWithSystemProxy } from "../../main/system-proxy-fetch";
 
 type JsonPrimitive = boolean | null | number | string;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -250,7 +251,7 @@ async function analyzeVision(args: Record<string, unknown>): Promise<string> {
     }
   ];
   const timeoutMs = clampInteger(readNumber(args.timeoutMs) ?? readNumber(env("VISION_TIMEOUT_MS")) ?? defaultTimeoutMs, 100, 600000);
-  const response = await fetch(resolveChatCompletionsUrl(baseUrl), {
+  const response = await fetchWithSystemProxy(resolveChatCompletionsUrl(baseUrl), {
     body: JSON.stringify({ model, messages }),
     headers: {
       ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
@@ -613,7 +614,7 @@ function requireEnv(name: string, label: string): string {
 }
 
 async function fetchJson(url: string, init: RequestInit): Promise<unknown> {
-  const response = await fetch(url, init);
+  const response = await fetchWithSystemProxy(url, init);
   const rawText = await response.text();
   const payload = rawText ? parseJson(rawText) : {};
   if (!response.ok) {

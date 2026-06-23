@@ -28,6 +28,9 @@ import type {
   GatewayProviderProbeRequest,
   GatewayProviderProbeResult,
   GatewayStatus,
+  LocalAgentProviderCandidate,
+  LocalAgentProviderImportRequest,
+  LocalAgentProviderImportResult,
   PluginDirectorySelection,
   PluginMarketplaceEntry,
   ProfileOpenCommandResult,
@@ -75,6 +78,7 @@ declare global {
       getAppInfo: () => Promise<AppInfo>;
       getConfig: () => Promise<AppConfig>;
       getGatewayStatus: () => Promise<GatewayStatus>;
+      getLocalAgentProviderCandidates: () => Promise<LocalAgentProviderCandidate[]>;
       getOnboardingFinished: () => Promise<boolean>;
       getPendingProviderDeepLinks: () => Promise<ProviderDeepLinkRequest[]>;
       getProfileOpenCommand: (request: ProfileOpenRequest) => Promise<ProfileOpenCommandResult>;
@@ -90,6 +94,7 @@ declare global {
       getUpdateStatus: () => Promise<AppUpdateStatus>;
       getUsageStats: (range?: UsageStatsRange, filter?: UsageStatsFilter) => Promise<UsageStatsSnapshot>;
       installProxyCertificate: () => Promise<ProxyCertificateInstallResult>;
+      importLocalAgentProvider: (request: LocalAgentProviderImportRequest) => Promise<LocalAgentProviderImportResult>;
       listMcpServerTools: (server: GatewayMcpServerConfig) => Promise<GatewayMcpToolInfo[]>;
       openBuiltInBrowser: () => Promise<void>;
       openBotGatewayQrWindow: (request: BotGatewayQrWindowOpenRequest) => Promise<BotGatewayQrWindowOpenResult>;

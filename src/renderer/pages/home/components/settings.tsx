@@ -2005,9 +2005,12 @@ function TrayPreviewRings({
     <div className="min-w-0 rounded-[8px] border border-white/10 bg-white/[.04] p-2">
       <div className="mb-2 truncate text-[11px] font-bold text-slate-100">{title}</div>
       <div className="grid grid-cols-2 gap-2">
-        {[74, 91].map((value) => (
-          <div className="relative aspect-square min-w-0" key={value}>
-            <PreviewRadialMetric color={value > 80 ? "rgb(45,212,191)" : "rgb(129,140,248)"} label={`${value}%`} value={value / 100} variant={variant === "rings" ? "ring" : variant === "arcs" ? "arc" : "gauge"} />
+        {[
+          { centerUnit: "requests", centerValue: "38", label: "74%", value: 74 },
+          { centerUnit: "tokens", centerValue: "9.1K", label: "91%", value: 91 }
+        ].map((item) => (
+          <div className="relative aspect-square min-w-0" key={item.centerUnit}>
+            <PreviewRadialMetric centerUnit={item.centerUnit} centerValue={item.centerValue} color={item.value > 80 ? "rgb(45,212,191)" : "rgb(129,140,248)"} label={item.label} value={item.value / 100} variant={variant === "rings" ? "ring" : variant === "arcs" ? "arc" : "gauge"} />
           </div>
         ))}
       </div>
@@ -2063,11 +2066,15 @@ function TrayPreviewModelShare({
 }
 
 function PreviewRadialMetric({
+  centerUnit,
+  centerValue,
   color,
   label,
   value,
   variant
 }: {
+  centerUnit?: string;
+  centerValue?: string;
   color: string;
   label: string;
   value: number;
@@ -2106,7 +2113,10 @@ function PreviewRadialMetric({
           transform={`rotate(${rotation} 20 20)`}
         />
       </svg>
-      <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-slate-100">{label}</div>
+      <div className="absolute inset-0 flex min-w-0 flex-col items-center justify-center px-1 text-center leading-none">
+        <div className="max-w-full truncate text-[11px] font-bold text-slate-100">{centerValue ?? label}</div>
+        {centerUnit ? <div className="mt-0.5 max-w-full truncate text-[8px] font-semibold uppercase text-slate-400">{centerUnit}</div> : null}
+      </div>
     </div>
   );
 }

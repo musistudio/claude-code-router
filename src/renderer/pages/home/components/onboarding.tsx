@@ -210,6 +210,7 @@ export function OnboardingView({
                       onChange={onChangeProvider}
                       probe={providerProbe}
                       probeLoading={providerProbeLoading}
+                      providerPlugins={config.providerPlugins ?? []}
                       providers={config.Providers}
                     />
                   </div>

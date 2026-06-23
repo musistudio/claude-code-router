@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createServer, type IncomingHttpHeaders, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
+import { networkInterfaces } from "node:os";
 import { Readable } from "node:stream";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join as pathJoin, resolve as pathResolve, sep as pathSep } from "node:path";
@@ -10,6 +11,7 @@ import type {
   ApiKeyLimitConfig,
   AppConfig,
   GatewayMcpServerConfig,
+  GatewayNetworkEndpoint,
   GatewayProviderCapability,
   GatewayProviderConfig,
   GatewayProviderProtocol,
@@ -35,6 +37,8 @@ import { providerApiKeySafetyIssue } from "../../main/presets";
 import { normalizeProviderBaseUrl as normalizeProviderBaseUrlInput } from "../../shared/provider-url";
 import { backendService } from "../backend-service";
 import { RAW_TRACE_SPOOL_DIR } from "../../main/constants";
+import { codexDefaultBaseUrl, readCodexAuth } from "../../main/local-agent-provider-service";
+import { fetchWithSystemProxy, getSystemProxyUrlForProtocol } from "../../main/system-proxy-fetch";
 import { handleNetworkCaptureMcpRequest, isNetworkCaptureMcpPath } from "../mcp/network-capture-mcp";
 import { pluginService } from "../../main/plugins/service";
 import { proxyService } from "../proxy/service";
@@ -187,10 +191,39 @@ const rawTraceSyncHeader = "x-ccr-raw-trace-token";
 let warnedMissingCursorOpenAICompatContext = false;
 const rawTraceSyncPath = "/__ccr/raw-trace-sync";
 const gatewayPackageCandidates = ["@the-next-ai/ai-gateway", "gateway"];
+const gatewayRuntimePatchEntryFile = "next-ai-gateway.ccr-patch.cjs";
+const gatewayRuntimePatches = [
+  {
+    label: "collect-openai-sse-in-buffered-conversion",
+    search: 'ro({sourceAdapter:t.adapterKey,targetProvider:R,targetProviderName:_?.name,mode:"buffered"});let on=await Vn(e,R,xe),We=await wo(tt,oe,xe,on,Ke);',
+    replacement: 'ro({sourceAdapter:t.adapterKey,targetProvider:R,targetProviderName:_?.name,mode:"buffered"});let on=Gn(xe)&&R==="openai"?await yr(xe):await Vn(e,R,xe),We=await wo(tt,oe,xe,on,Ke);'
+  },
+  {
+    label: "track-openai-responses-output-items",
+    search: 'return{id:`chatcmpl_${(0,pe.randomUUID)()}`,model:"unknown",outputText:"",usage:{},toolCalls:new Map,reasoning:{text:"",summary:"",rawDetails:[]}}',
+    replacement: 'return{id:`chatcmpl_${(0,pe.randomUUID)()}`,model:"unknown",outputText:"",usage:{},outputItems:[],toolCalls:new Map,reasoning:{text:"",summary:"",rawDetails:[]}}'
+  },
+  {
+    label: "collect-openai-responses-output-item-done",
+    search: 'if(t==="response.output_text.done"){let r=f(n.text);r&&(e.outputText=r);return}if(t==="response.completed"){',
+    replacement: 'if(t==="response.output_text.done"){let r=f(n.text);r&&(e.outputText=r);return}if(t==="response.output_item.done"){let r=l(n.item)?n.item:void 0;r&&(e.outputItems||(e.outputItems=[]),e.outputItems.push(r));return}if(t==="response.completed"){'
+  },
+  {
+    label: "merge-empty-completed-openai-response",
+    search: 'function tp(e){return e.completedResponse?dr({...e.completedResponse}):{id:e.id,object:"chat.completion",model:e.model,choices:[{index:0,message:{role:"assistant",content:e.outputText,...e.reasoning.text?{reasoning_content:e.reasoning.text}:{},...e.reasoning.rawDetails.length>0?{reasoning_details:e.reasoning.rawDetails}:e.reasoning.summary||e.reasoning.encryptedContent?{reasoning_details:UC(e.reasoning)}:{},...e.toolCalls.size>0?{tool_calls:LC(e.toolCalls)}:{}},finish_reason:e.finishReason}],usage:e.usage}}',
+    replacement: 'function tp(e){if(e.completedResponse){let n={...e.completedResponse},t=Array.isArray(n.output)?n.output:[];if(t.length===0&&Array.isArray(e.outputItems)&&e.outputItems.length>0)n.output=e.outputItems;if(!f(n.output_text)&&e.outputText)n.output_text=e.outputText;if(l(n.usage))n.usage={...e.usage,...n.usage};else n.usage=e.usage;return dr(n)}return{id:e.id,object:"chat.completion",model:e.model,choices:[{index:0,message:{role:"assistant",content:e.outputText,...e.reasoning.text?{reasoning_content:e.reasoning.text}:{},...e.reasoning.rawDetails.length>0?{reasoning_details:e.reasoning.rawDetails}:e.reasoning.summary||e.reasoning.encryptedContent?{reasoning_details:UC(e.reasoning)}:{},...e.toolCalls.size>0?{tool_calls:LC(e.toolCalls)}:{}},finish_reason:e.finishReason}],usage:e.usage}}'
+  }
+] as const;
 const apiKeyLimitCounters = new Map<string, ApiKeyWindowCounter>();
 const providerCredentialCooldowns = new Map<string, { reason: string; until: number }>();
 const providerCredentialCooldownMs = 60_000;
 const providerCredentialSpilloverThreshold = 0.8;
+const gatewayProviderProtocolFallbackOrder: GatewayProviderProtocol[] = [
+  "anthropic_messages",
+  "openai_chat_completions",
+  "openai_responses",
+  "gemini_generate_content"
+];
 
 class GatewayService {
   private child?: ChildProcess;
@@ -203,6 +236,7 @@ class GatewayService {
     coreEndpoint: "",
     endpoint: "",
     generatedConfigFile: "",
+    networkEndpoints: [],
     state: "stopped"
   };
 
@@ -214,6 +248,7 @@ class GatewayService {
       coreEndpoint: endpoint(config.gateway.coreHost, config.gateway.corePort),
       endpoint: endpoint(config.gateway.host, config.gateway.port),
       generatedConfigFile: config.gateway.generatedConfigFile,
+      networkEndpoints: gatewayNetworkEndpoints(config.gateway.host, config.gateway.port),
       state: "starting"
     };
 
@@ -250,8 +285,10 @@ class GatewayService {
             pid: undefined
           };
         } else {
+          await proxyService.refreshUpstreamProxyFromCurrentSystem();
           const runtimeId = randomUUID();
-          this.child = spawnGatewayProcess(config, proxyService.getUpstreamProxyUrl("https"), runtimeId);
+          const upstreamProxyUrl = proxyService.getUpstreamProxyUrl("https") ?? await getSystemProxyUrlForProtocol("https");
+          this.child = spawnGatewayProcess(config, upstreamProxyUrl, runtimeId);
           writeManagedCoreGatewayMarker(config, this.child, runtimeId);
           this.child.stdout?.on("data", (chunk) => console.info(`[gateway] ${chunk.toString().trimEnd()}`));
           this.child.stderr?.on("data", (chunk) => console.warn(`[gateway] ${chunk.toString().trimEnd()}`));
@@ -309,7 +346,12 @@ class GatewayService {
   }
 
   getStatus(): GatewayStatus {
-    return { ...this.status };
+    return {
+      ...this.status,
+      networkEndpoints: this.config
+        ? gatewayNetworkEndpoints(this.config.gateway.host, this.config.gateway.port)
+        : this.status.networkEndpoints
+    };
   }
 
   updateConfig(config: AppConfig): void {
@@ -320,7 +362,8 @@ class GatewayService {
       ...this.status,
       coreEndpoint: endpoint(config.gateway.coreHost, config.gateway.corePort),
       endpoint: endpoint(config.gateway.host, config.gateway.port),
-      generatedConfigFile: config.gateway.generatedConfigFile
+      generatedConfigFile: config.gateway.generatedConfigFile,
+      networkEndpoints: gatewayNetworkEndpoints(config.gateway.host, config.gateway.port)
     };
   }
 
@@ -755,10 +798,11 @@ export const gatewayService = new GatewayService();
 function writeCoreGatewayConfig(config: AppConfig, rawTraceSyncToken: string): void {
   mkdirSync(dirname(config.gateway.generatedConfigFile), { recursive: true });
   const pluginCoreGatewayConfig = pluginService.getCoreGatewayConfig();
-  const providerPlugins = [
+  const providerPlugins = withCodexOauthRuntimeDefaults([
     ...(config.providerPlugins ?? []),
     ...pluginService.getCoreProviderPlugins()
-  ];
+  ]);
+  const codexOauthProviderNames = codexOauthLocalProviderNames(providerPlugins);
   const virtualModelProfiles = withOptimisticVirtualModelStreams(withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases([
     ...(config.virtualModelProfiles ?? []),
     ...pluginService.getVirtualModelProfiles()
@@ -767,7 +811,7 @@ function writeCoreGatewayConfig(config: AppConfig, rawTraceSyncToken: string): v
   const builtinToolArtifacts = fusionBuiltinToolArtifacts(virtualModelProfiles, coreEndpoint);
   const providers = [
     ...config.Providers
-      .flatMap(toCoreGatewayProviders)
+      .flatMap((provider) => toCoreGatewayProviders(withCodexOauthProviderBaseUrl(provider, codexOauthProviderNames)))
       .filter((provider): provider is CoreGatewayProvider => Boolean(provider)),
     ...builtinToolArtifacts.providers
   ];
@@ -810,6 +854,125 @@ function writeCoreGatewayConfig(config: AppConfig, rawTraceSyncToken: string): v
   };
 
   writeFileSync(config.gateway.generatedConfigFile, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+}
+
+function withCodexOauthRuntimeDefaults(providerPlugins: unknown[]): unknown[] {
+  const codexAuth = readCodexAuth();
+  return providerPlugins.map((plugin) => {
+    if (!isLocalCodexOauthProviderPlugin(plugin)) {
+      return plugin;
+    }
+
+    const codexOauth = plugin.codexOauth;
+    const nextCodexOauth = {
+      ...codexOauth,
+      ...(!hasOwn(codexOauth, "accountId") && !hasOwn(codexOauth, "account_id") && codexAuth?.accountId
+        ? { accountId: codexAuth.accountId }
+        : {})
+    };
+    const nextPlugin: Record<string, unknown> = {
+      ...plugin,
+      codexOauth: nextCodexOauth,
+      request: withCodexBackendRequestTransform(plugin.request)
+    };
+
+    if (codexAuth?.isFedrampAccount) {
+      const currentAuth = isRecord(plugin.auth) ? plugin.auth : {};
+      const currentHeaders = isRecord(currentAuth.headers) ? currentAuth.headers : {};
+      nextPlugin.auth = {
+        ...currentAuth,
+        headers: {
+          ...currentHeaders,
+          "X-OpenAI-Fedramp": "true"
+        }
+      };
+    }
+
+    return nextPlugin;
+  });
+}
+
+function codexOauthLocalProviderNames(providerPlugins: unknown[]): Set<string> {
+  const names = new Set<string>();
+  for (const plugin of providerPlugins) {
+    if (!isLocalCodexOauthProviderPlugin(plugin)) {
+      continue;
+    }
+    addProviderNameVariants(names, stringValue(plugin.providerName));
+  }
+  return names;
+}
+
+function withCodexOauthProviderBaseUrl(
+  provider: GatewayProviderConfig,
+  codexOauthProviderNames: Set<string>
+): GatewayProviderConfig {
+  if (!codexOauthProviderNames.has(provider.name)) {
+    return provider;
+  }
+
+  const protocol =
+    normalizeProviderProtocol(provider.type) ??
+    normalizeProviderProtocol(provider.provider) ??
+    inferProtocol(provider);
+  if (protocol !== "openai_responses") {
+    return provider;
+  }
+
+  const capabilities = Array.isArray(provider.capabilities)
+    ? provider.capabilities.map((capability) => {
+        const capabilityProtocol = normalizeProviderProtocol(capability.type);
+        if (capabilityProtocol !== "openai_responses") {
+          return capability;
+        }
+        return {
+          ...capability,
+          baseUrl: codexDefaultBaseUrl
+        };
+      })
+    : provider.capabilities;
+
+  return {
+    ...provider,
+    api_base_url: codexDefaultBaseUrl,
+    baseUrl: codexDefaultBaseUrl,
+    baseurl: codexDefaultBaseUrl,
+    capabilities
+  };
+}
+
+function isLocalCodexOauthProviderPlugin(value: unknown): value is Record<string, unknown> & { codexOauth: Record<string, unknown> } {
+  if (!isRecord(value) || !isRecord(value.codexOauth)) {
+    return false;
+  }
+  const key = stringValue(value.key)?.toLowerCase() ?? "";
+  return key.startsWith("ccr-local-agent-") && key.includes("codex-oauth");
+}
+
+function withCodexBackendRequestTransform(request: unknown): Record<string, unknown> {
+  const currentRequest = isRecord(request) ? request : {};
+  const bodyRemove = Array.isArray(currentRequest.bodyRemove)
+    ? currentRequest.bodyRemove.map((item) => stringValue(item)).filter((item): item is string => Boolean(item))
+    : [];
+  return {
+    ...currentRequest,
+    bodyRemove: uniqueStrings([...bodyRemove, "max_output_tokens"])
+  };
+}
+
+function addProviderNameVariants(names: Set<string>, providerName: string | undefined): void {
+  if (!providerName) {
+    return;
+  }
+  names.add(providerName);
+  const capabilitySeparatorIndex = providerName.indexOf("::");
+  if (capabilitySeparatorIndex > 0) {
+    names.add(providerName.slice(0, capabilitySeparatorIndex));
+  }
+}
+
+function hasOwn(value: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
 }
 
 function fusionBuiltinToolArtifacts(
@@ -1516,9 +1679,22 @@ function providerProtocolPreferenceForClient(clientProtocol: GatewayProviderProt
     return ["openai_responses", "openai_chat_completions", "anthropic_messages"];
   }
   if (clientProtocol === "anthropic_messages") {
-    return ["anthropic_messages", "openai_chat_completions"];
+    return uniqueProviderProtocols([clientProtocol, ...gatewayProviderProtocolFallbackOrder]);
   }
   return [clientProtocol];
+}
+
+function uniqueProviderProtocols(protocols: GatewayProviderProtocol[]): GatewayProviderProtocol[] {
+  const seen = new Set<GatewayProviderProtocol>();
+  const output: GatewayProviderProtocol[] = [];
+  for (const protocol of protocols) {
+    if (seen.has(protocol)) {
+      continue;
+    }
+    seen.add(protocol);
+    output.push(protocol);
+  }
+  return output;
 }
 
 function findProviderByPublicOrInternalName(config: AppConfig, name: string): GatewayProviderConfig | undefined {
@@ -1600,7 +1776,7 @@ async function fetchUpstreamWithFallback(input: {
     const hasNextAttempt = index < attempts.length - 1;
 
     try {
-      const response = await fetch(input.upstreamUrl, {
+      const response = await fetchWithSystemProxy(input.upstreamUrl, {
         body: shouldSendBody(input.method) ? attempt.body?.toString("utf8") : undefined,
         headers: omitLocalObservabilityHeaders(attempt.headers ?? input.headers),
         method: input.method
@@ -1973,8 +2149,9 @@ function uniqueStrings(values: Array<string | undefined>): string[] {
 
 function spawnGatewayProcess(config: AppConfig, upstreamProxyUrl: string | undefined, runtimeId: string): ChildProcess {
   const gatewayEntry = resolveGatewayEntry();
+  const patchedGatewayEntry = writePatchedGatewayRuntimeEntry(config, gatewayEntry);
   const env = createGatewayProcessEnv(config, upstreamProxyUrl, runtimeId);
-  return spawn(process.execPath, [gatewayEntry], {
+  return spawn(process.execPath, [patchedGatewayEntry], {
     cwd: dirname(config.gateway.generatedConfigFile),
     env,
     stdio: ["ignore", "pipe", "pipe"]
@@ -1990,6 +2167,47 @@ function resolveGatewayEntry(): string {
     }
   }
   return requireFromHere.resolve(gatewayPackageCandidates[0]);
+}
+
+function writePatchedGatewayRuntimeEntry(config: AppConfig, gatewayEntry: string): string {
+  const source = readFileSync(gatewayEntry, "utf8");
+  const matchingPatches = gatewayRuntimePatches.filter((patch) => source.includes(patch.search));
+  if (matchingPatches.length === 0) {
+    return gatewayEntry;
+  }
+  if (matchingPatches.length !== gatewayRuntimePatches.length) {
+    const matchedLabels = matchingPatches.map((patch) => patch.label).join(", ");
+    const expectedLabels = gatewayRuntimePatches.map((patch) => patch.label).join(", ");
+    throw new Error(`ai-gateway runtime patch mismatch. Matched: ${matchedLabels || "none"}. Expected: ${expectedLabels}.`);
+  }
+
+  const outputFile = pathJoin(dirname(config.gateway.generatedConfigFile), gatewayRuntimePatchEntryFile);
+  mkdirSync(dirname(outputFile), { recursive: true });
+  writeFileSync(outputFile, buildGatewayRuntimePatchEntry(gatewayEntry), "utf8");
+  return outputFile;
+}
+
+function buildGatewayRuntimePatchEntry(gatewayEntry: string): string {
+  return [
+    '"use strict";',
+    'const fs = require("node:fs");',
+    'const Module = require("node:module");',
+    'const path = require("node:path");',
+    `const gatewayEntry = ${JSON.stringify(gatewayEntry)};`,
+    `const patches = ${JSON.stringify(gatewayRuntimePatches)};`,
+    'let source = fs.readFileSync(gatewayEntry, "utf8");',
+    'for (const patch of patches) {',
+    '  if (!source.includes(patch.search)) {',
+    '    throw new Error(`Unable to apply CCR ai-gateway runtime patch: ${patch.label}`);',
+    '  }',
+    '  source = source.replace(patch.search, patch.replacement);',
+    '}',
+    'const patchedModule = new Module(gatewayEntry, module.parent);',
+    'patchedModule.filename = gatewayEntry;',
+    'patchedModule.paths = Module._nodeModulePaths(path.dirname(gatewayEntry));',
+    'patchedModule._compile(source, gatewayEntry);',
+    ""
+  ].join("\n");
 }
 
 function createGatewayProcessEnv(config: AppConfig, upstreamProxyUrl: string | undefined, runtimeId: string): NodeJS.ProcessEnv {
@@ -2321,6 +2539,104 @@ function endpoint(host: string, port: number): string {
   return `http://${endpointHost}:${port}`;
 }
 
+function gatewayNetworkEndpoints(host: string, port: number): GatewayNetworkEndpoint[] {
+  const normalizedHost = normalizeBindHost(host);
+  const lanAddresses = physicalLanAddresses();
+  const addresses = isWildcardBindHost(normalizedHost)
+    ? lanAddresses
+    : lanAddresses.filter((entry) => entry.address === normalizedHost);
+
+  return addresses.map((entry) => ({
+    address: entry.address,
+    endpoint: endpoint(entry.address, port),
+    interfaceName: entry.interfaceName
+  }));
+}
+
+function physicalLanAddresses(): Array<{ address: string; interfaceName: string }> {
+  const seen = new Set<string>();
+  const result: Array<{ address: string; interfaceName: string }> = [];
+
+  for (const [interfaceName, entries] of Object.entries(networkInterfaces())) {
+    if (!entries || isVirtualNetworkInterface(interfaceName)) {
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (entry.internal || entry.family !== "IPv4" || !isPrivateIpv4(entry.address)) {
+        continue;
+      }
+
+      const key = `${interfaceName}:${entry.address}`;
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      result.push({ address: entry.address, interfaceName });
+    }
+  }
+
+  return result.sort((left, right) =>
+    left.interfaceName.localeCompare(right.interfaceName) ||
+    left.address.localeCompare(right.address, undefined, { numeric: true })
+  );
+}
+
+function normalizeBindHost(host: string): string {
+  return host.trim().replace(/^\[|\]$/g, "").toLowerCase();
+}
+
+function isWildcardBindHost(host: string): boolean {
+  return host === "" || host === "0.0.0.0" || host === "::" || host === "::0";
+}
+
+function isPrivateIpv4(address: string): boolean {
+  const parts = address.split(".").map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return false;
+  }
+
+  return parts[0] === 10 ||
+    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+    (parts[0] === 192 && parts[1] === 168);
+}
+
+function isVirtualNetworkInterface(interfaceName: string): boolean {
+  const normalized = interfaceName.toLowerCase();
+  return [
+    /^lo\d*$/,
+    /^awdl\d*$/,
+    /^llw\d*$/,
+    /^utun\d*$/,
+    /^gif\d*$/,
+    /^stf\d*$/,
+    /^bridge\d*$/,
+    /^br-/,
+    /^docker/,
+    /^veth/,
+    /^vmnet/,
+    /^vbox/,
+    /^tun\d*$/,
+    /^tap\d*$/,
+    /^wg\d*$/,
+    /\bloopback\b/,
+    /\bvirtual\b/,
+    /\bvirtualbox\b/,
+    /\bvmware\b/,
+    /\bhyper-v\b/,
+    /\bvethernet\b/,
+    /\bwsl\b/,
+    /\btunnel\b/,
+    /\btailscale\b/,
+    /\bzerotier\b/,
+    /\bwireguard\b/,
+    /\bhamachi\b/,
+    /\bparallels\b/,
+    /\bvpn\b/
+  ].some((pattern) => pattern.test(normalized));
+}
+
 async function stopPreviousManagedCoreGateway(config: AppConfig, coreEndpoint: string): Promise<void> {
   const marker = readManagedCoreGatewayMarker(config);
   const markerRuntimeId = stringValue(marker?.runtimeId);
@@ -2449,7 +2765,7 @@ async function readCoreGatewayHealth(coreEndpoint: string): Promise<CoreGatewayH
   const timer = setTimeout(() => controller.abort(), 500);
   try {
     const healthUrl = new URL("/health", coreEndpoint);
-    const response = await fetch(healthUrl, { signal: controller.signal });
+    const response = await fetchWithSystemProxy(healthUrl, { signal: controller.signal });
     if (!response.ok) {
       return undefined;
     }

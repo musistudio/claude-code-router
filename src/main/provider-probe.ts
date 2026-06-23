@@ -12,6 +12,7 @@ import type {
   GatewayProviderProtocol
 } from "../shared/app";
 import { providerApiKeySafetyIssue } from "./presets";
+import { fetchWithSystemProxy } from "./system-proxy-fetch";
 import {
   compactProviderUrl,
   parseProviderBaseUrl,
@@ -632,7 +633,7 @@ async function requestJson(url: string, init: RequestInit): Promise<FetchJsonRes
   const timer = setTimeout(() => controller.abort(), probeTimeoutMs);
 
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithSystemProxy(url, {
       ...init,
       signal: controller.signal
     });

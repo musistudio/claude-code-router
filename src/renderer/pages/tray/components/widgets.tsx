@@ -202,23 +202,28 @@ export function RingMetrics({
   variant: TrayComponentVariants["rings"];
 }) {
   const t = useTrayText();
+  const successRequests = Math.round(totals.requestCount * Math.max(0, Math.min(1, totals.successRate)));
 
   return (
     <div className="min-w-0 rounded-[8px] border border-white/10 bg-white/[.04] p-2">
       <div className="mb-2 truncate text-[11px] font-bold text-slate-100">{t("Circular metrics")}</div>
       <div className="grid grid-cols-2 gap-2">
-        <RingMetric label={t("Success")} value={totals.successRate} variant={variant} />
-        <RingMetric label={t("Cache")} value={totals.cacheRatio} variant={variant} />
+        <RingMetric centerUnit={t("requests")} centerValue={formatCompactNumber(successRequests)} label={t("Success")} value={totals.successRate} variant={variant} />
+        <RingMetric centerUnit={t("tokens")} centerValue={formatCompactNumber(totals.cacheTokens)} label={t("Cache")} value={totals.cacheRatio} variant={variant} />
       </div>
     </div>
   );
 }
 
 function RingMetric({
+  centerUnit,
+  centerValue,
   label,
   value,
   variant
 }: {
+  centerUnit: string;
+  centerValue: string;
   label: string;
   value: number;
   variant: TrayComponentVariants["rings"];
@@ -228,7 +233,14 @@ function RingMetric({
   return (
     <div className="flex min-w-0 flex-col items-center text-center">
       <div className="aspect-square w-full min-w-0">
-        <RadialMetric color={stroke} label={formatPercent(clamped)} value={clamped} variant={variant === "rings" ? "ring" : variant === "arcs" ? "arc" : "gauge"} />
+        <RadialMetric
+          centerUnit={centerUnit}
+          centerValue={centerValue}
+          color={stroke}
+          label={`${label} ${formatPercent(clamped)}, ${centerValue} ${centerUnit}`}
+          value={clamped}
+          variant={variant === "rings" ? "ring" : variant === "arcs" ? "arc" : "gauge"}
+        />
       </div>
       <div className="mt-1 w-full truncate px-1 text-[10px] font-semibold leading-none text-slate-300">{label}</div>
     </div>
@@ -377,11 +389,15 @@ function StackedShareBar({ rows }: { rows: ShareChartRow[] }) {
 }
 
 export function RadialMetric({
+  centerUnit,
+  centerValue,
   color,
   label,
   value,
   variant
 }: {
+  centerUnit?: string;
+  centerValue?: string;
   color: string;
   label: string;
   value: number;
@@ -420,7 +436,10 @@ export function RadialMetric({
           transform={`rotate(${rotation} 20 20)`}
         />
       </svg>
-      <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-slate-100">{label}</div>
+      <div className="absolute inset-0 flex min-w-0 flex-col items-center justify-center px-1 text-center leading-none">
+        <div className="max-w-full truncate text-[11px] font-bold text-slate-100">{centerValue ?? label}</div>
+        {centerUnit ? <div className="mt-0.5 max-w-full truncate text-[8px] font-semibold uppercase text-slate-400">{centerUnit}</div> : null}
+      </div>
     </div>
   );
 }

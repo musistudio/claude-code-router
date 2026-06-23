@@ -1,3 +1,5 @@
+import { fetchWithSystemProxy } from "./system-proxy-fetch";
+
 type ModelPricingSource = "litellm" | "models.dev" | "openrouter";
 
 export type UsageCostInput = {
@@ -313,7 +315,7 @@ async function fetchJson(url: string): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), fetchTimeoutMs);
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithSystemProxy(url, {
       headers: { accept: "application/json" },
       signal: controller.signal
     });

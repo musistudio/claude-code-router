@@ -232,6 +232,33 @@ export type ProviderManifestFetchResult = {
   url: string;
 };
 
+export type LocalAgentProviderKind = "claude-code" | "codex" | "zcode";
+
+export type LocalAgentProviderStatus = "available" | "locked" | "missing";
+
+export type LocalAgentProviderCandidate = {
+  detail?: string;
+  id: string;
+  importable: boolean;
+  kind: LocalAgentProviderKind;
+  models: string[];
+  name: string;
+  protocol: GatewayProviderProtocol;
+  sourceFile?: string;
+  status: LocalAgentProviderStatus;
+};
+
+export type LocalAgentProviderImportRequest = {
+  id: string;
+  providerNames?: string[];
+};
+
+export type LocalAgentProviderImportResult = {
+  candidate: LocalAgentProviderCandidate;
+  provider: ProviderDeepLinkPayload;
+  providerPlugins: unknown[];
+};
+
 export type ProviderCatalogModelsRequest = {
   baseUrl?: string;
   name?: string;
@@ -1194,6 +1221,12 @@ export type ClaudeAppGatewayApplyResult = {
   requiresRestart: boolean;
 };
 
+export type GatewayNetworkEndpoint = {
+  address: string;
+  interfaceName: string;
+  endpoint: string;
+};
+
 export type GatewayStatus = {
   coreEndpoint: string;
   coreManagedExternally?: boolean;
@@ -1201,6 +1234,7 @@ export type GatewayStatus = {
   generatedConfigFile: string;
   lastError?: string;
   lastStartedAt?: string;
+  networkEndpoints: GatewayNetworkEndpoint[];
   pid?: number;
   state: "stopped" | "starting" | "running" | "error";
 };

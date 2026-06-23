@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import { loadAppConfig } from "./config";
+import { localAgentProviderApiKey, readCodexAuth } from "./local-agent-provider-service";
 import { pluginService } from "./plugins/service";
 import { getUsageTotalsSince } from "./usage-store";
 import { findProviderPresetByBaseUrl, providerEndpointCanReceiveProviderApiKey } from "./presets";
+import { fetchWithSystemProxy } from "./system-proxy-fetch";
 import { normalizeProviderBaseUrl, providerUrlWithDefaultScheme } from "../shared/provider-url";
 import type {
   AppConfig,
@@ -47,6 +49,11 @@ type ConnectorResult = {
 type ProviderAccountTarget = {
   account: ProviderAccountConfig;
   credential?: ProviderCredentialConfig;
+  provider: GatewayProviderConfig;
+};
+
+type MaterializedProviderAccountRequest = {
+  headers?: Record<string, string>;
   provider: GatewayProviderConfig;
 };
 
@@ -376,10 +383,10 @@ async function resolveConnector(
 ): Promise<ConnectorResult> {
   try {
     if (connector.type === "standard") {
-      return await resolveStandardConnector(provider, connector);
+      return await resolveStandardConnector(config, provider, connector);
     }
     if (connector.type === "http-json") {
-      return await resolveHttpJsonConnector(provider, connector);
+      return await resolveHttpJsonConnector(config, provider, connector);
     }
     if (connector.type === "plugin") {
       return await resolvePluginConnector(config, provider, connector, now);
@@ -394,6 +401,7 @@ async function resolveConnector(
 }
 
 async function resolveStandardConnector(
+  config: AppConfig,
   provider: GatewayProviderConfig,
   connector: ProviderAccountStandardConnectorConfig
 ): Promise<ConnectorResult> {
@@ -402,7 +410,13 @@ async function resolveStandardConnector(
 
   for (const endpoint of endpoints) {
     try {
-      const payload = await fetchJson(endpoint, provider, connector.auth, connector.headers);
+      const request = providerAccountConnectorUsesProviderApiKey(connector)
+        ? materializeProviderAccountRequest(config, provider)
+        : { provider };
+      const payload = await fetchJson(endpoint, request.provider, connector.auth, {
+        ...(connector.headers ?? {}),
+        ...(request.headers ?? {})
+      });
       const snapshot = normalizeRemoteSnapshot(provider.name, payload, "standard");
       if (snapshot.meters.length > 0 || snapshot.status !== "unsupported") {
         return {
@@ -422,10 +436,17 @@ async function resolveStandardConnector(
 }
 
 async function resolveHttpJsonConnector(
+  config: AppConfig,
   provider: GatewayProviderConfig,
   connector: ProviderAccountHttpJsonConnectorConfig
 ): Promise<ConnectorResult> {
-  const payload = await fetchJson(connector.endpoint, provider, connector.auth, connector.headers, connector.method, connector.body);
+  const request = providerAccountConnectorUsesProviderApiKey(connector)
+    ? materializeProviderAccountRequest(config, provider)
+    : { provider };
+  const payload = await fetchJson(connector.endpoint, request.provider, connector.auth, {
+    ...(connector.headers ?? {}),
+    ...(request.headers ?? {})
+  }, connector.method, connector.body);
   const meters = connector.mapping.meters
     .map((meter) => mappedMeterFromPayload(meter, payload))
     .filter((meter): meter is ProviderAccountMeter => Boolean(meter));
@@ -675,6 +696,140 @@ function normalizeMeter(value: unknown, source: ProviderAccountConnectorSource):
   };
 }
 
+function materializeProviderAccountRequest(
+  config: AppConfig,
+  provider: GatewayProviderConfig
+): MaterializedProviderAccountRequest {
+  if (providerApiKey(provider) !== localAgentProviderApiKey) {
+    return { provider };
+  }
+
+  const credential = localAgentProviderAccountCredential(config, provider);
+  if (!credential?.apiKey) {
+    throw new Error("Local agent account credential was not found. Sign in again, then re-import the local login provider.");
+  }
+
+  return {
+    headers: credential.headers,
+    provider: {
+      ...provider,
+      api_key: credential.apiKey,
+      apiKey: undefined,
+      apikey: undefined
+    }
+  };
+}
+
+function providerAccountConnectorUsesProviderApiKey(
+  connector: ProviderAccountStandardConnectorConfig | ProviderAccountHttpJsonConnectorConfig
+): boolean {
+  return (connector.auth ?? "provider-api-key") !== "none";
+}
+
+function localAgentProviderAccountCredential(
+  config: AppConfig,
+  provider: GatewayProviderConfig
+): { apiKey?: string; headers?: Record<string, string> } | undefined {
+  for (const plugin of config.providerPlugins ?? []) {
+    if (!localAgentProviderPluginMatches(plugin, provider)) {
+      continue;
+    }
+
+    const key = readString((plugin as { key?: unknown }).key)?.toLowerCase() ?? "";
+    if (key.includes("codex-oauth")) {
+      return localCodexAccountCredential(plugin);
+    }
+    if (key.includes("claude-code-oauth")) {
+      return localBearerAccountCredential(plugin);
+    }
+    if (key.includes("zcode-api-key")) {
+      return localApiKeyHeaderAccountCredential(plugin);
+    }
+  }
+  return undefined;
+}
+
+function localAgentProviderPluginMatches(plugin: unknown, provider: GatewayProviderConfig): plugin is Record<string, unknown> {
+  if (!isRecord(plugin)) {
+    return false;
+  }
+  const key = readString(plugin.key)?.toLowerCase() ?? "";
+  if (!key.startsWith("ccr-local-agent-")) {
+    return false;
+  }
+
+  const pluginProviderName = readString(plugin.providerName) || readString(plugin.provider);
+  if (!pluginProviderName) {
+    return false;
+  }
+
+  const providerNames = new Set([
+    provider.name,
+    provider.type ? `${provider.name}::${provider.type}` : ""
+  ].map((value) => value.trim().toLowerCase()).filter(Boolean));
+  return providerNames.has(pluginProviderName.trim().toLowerCase());
+}
+
+function localCodexAccountCredential(plugin: Record<string, unknown>): { apiKey?: string; headers?: Record<string, string> } {
+  const codexOauth = isRecord(plugin.codexOauth) ? plugin.codexOauth : {};
+  const codexAuth = readCodexAuth();
+  const apiKey =
+    readString(codexOauth.accessToken) ||
+    readString(codexOauth.access_token) ||
+    codexAuth?.accessToken;
+  const accountId =
+    readString(codexOauth.accountId) ||
+    readString(codexOauth.account_id) ||
+    codexAuth?.accountId;
+  const headers = {
+    ...localProviderPluginAuthHeaders(plugin),
+    ...(accountId ? { "ChatGPT-Account-Id": accountId } : {}),
+    ...(codexAuth?.isFedrampAccount ? { "X-OpenAI-Fedramp": "true" } : {})
+  };
+  return {
+    apiKey,
+    headers
+  };
+}
+
+function localBearerAccountCredential(plugin: Record<string, unknown>): { apiKey?: string; headers?: Record<string, string> } {
+  const headers = localProviderPluginAuthHeaders(plugin);
+  const apiKey = readBearerToken(headers.authorization || headers.Authorization);
+  return {
+    apiKey,
+    headers: withoutHeader(headers, "authorization")
+  };
+}
+
+function localApiKeyHeaderAccountCredential(plugin: Record<string, unknown>): { apiKey?: string; headers?: Record<string, string> } {
+  const headers = localProviderPluginAuthHeaders(plugin);
+  const apiKey = headers["x-api-key"] || headers["X-API-Key"];
+  return {
+    apiKey,
+    headers: withoutHeader(headers, "x-api-key")
+  };
+}
+
+function localProviderPluginAuthHeaders(plugin: Record<string, unknown>): Record<string, string> {
+  const auth = isRecord(plugin.auth) ? plugin.auth : {};
+  const headers = isRecord(auth.headers) ? auth.headers : {};
+  return Object.fromEntries(
+    Object.entries(headers)
+      .map(([key, value]) => [key, readString(value)] as const)
+      .filter((entry): entry is readonly [string, string] => Boolean(entry[1]))
+  );
+}
+
+function withoutHeader(headers: Record<string, string>, header: string): Record<string, string> {
+  const normalized = header.toLowerCase();
+  return Object.fromEntries(Object.entries(headers).filter(([key]) => key.toLowerCase() !== normalized));
+}
+
+function readBearerToken(value: string | undefined): string | undefined {
+  const match = value?.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || undefined;
+}
+
 async function fetchJson(
   endpoint: string,
   provider: GatewayProviderConfig,
@@ -704,7 +859,7 @@ async function fetchJson(
     requestHeaders["content-type"] = requestHeaders["content-type"] ?? "application/json";
   }
 
-  const response = await fetch(endpoint, {
+  const response = await fetchWithSystemProxy(endpoint, {
     body: method === "POST" ? JSON.stringify(body ?? {}) : undefined,
     headers: requestHeaders,
     method
