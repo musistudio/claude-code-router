@@ -255,7 +255,7 @@ function resolveUserPath(value: string): string {
   if (trimmed === "~") {
     return os.homedir();
   }
-  if (trimmed.startsWith("~/")) {
+  if (trimmed.startsWith("~/") || trimmed.startsWith("~\\")) {
     return path.join(os.homedir(), trimmed.slice(2));
   }
   return path.resolve(trimmed || ".");

@@ -1,9 +1,9 @@
 import type { ComponentProps } from "react";
 import {
-  AnimatedIconSwap, AnimatePresence, AppConfig, AppCopy, AppUpdateStatus, Button, Check, CircleAlert, cn, EndpointTitleBar,
+  AnimatedIconSwap, AnimatePresence, AppConfig, AppCopy, Button, cn, EndpointTitleBar,
   GatewayStatus, listSpringTransition, LucideIcon, motion, motionEase,
-  LoaderCircle, NavigationId, PanelLeftClose, PanelLeftOpen,
-  reducedMotionTransition, RefreshCw, ServiceControlButton, Settings, ViewId,
+  NavigationId, PanelLeftClose, PanelLeftOpen,
+  reducedMotionTransition, ServiceControlButton, Settings, ViewId,
   ViewMotionShell, viewUsesInternalScroll
 } from "../shared";
 import { ApiKeysView } from "./api-keys";
@@ -21,8 +21,6 @@ type MainNavigationItem = {
   icon: LucideIcon;
   id: NavigationId;
 };
-
-type UpdateActionBusy = "" | "check" | "download" | "install";
 
 type MainViewProps = {
   apiKeys: ComponentProps<typeof ApiKeysView>;
@@ -65,17 +63,12 @@ export function MainLayout({
   needsTrafficLightSafeArea,
   agentAnalysisEnabled,
   networkCaptureEnabled,
-  onCheckUpdate,
-  onDownloadUpdate,
-  onInstallUpdate,
   onOpenSettings,
   onSelectNavigationItem,
   onToggleSidebar,
   shouldReduceMotion,
   sidebarOpen,
   toggleGatewayService,
-  updateActionBusy,
-  updateStatus,
   viewProps,
   requestLogsEnabled,
   visibleNavigation
@@ -90,23 +83,17 @@ export function MainLayout({
   isMac: boolean;
   needsTrafficLightSafeArea: boolean;
   networkCaptureEnabled: boolean;
-  onCheckUpdate: () => Promise<void>;
-  onDownloadUpdate: () => Promise<void>;
-  onInstallUpdate: () => Promise<void>;
   onOpenSettings: () => void;
   onSelectNavigationItem: (id: NavigationId) => void;
   onToggleSidebar: () => void;
   shouldReduceMotion: boolean | null;
   sidebarOpen: boolean;
   toggleGatewayService: () => void;
-  updateActionBusy: UpdateActionBusy;
-  updateStatus: AppUpdateStatus;
   viewProps: MainViewProps;
   requestLogsEnabled: boolean;
   visibleNavigation: MainNavigationItem[];
 }) {
   const windowControlSafeAreaWidth = isMac ? 152 : 88;
-  const showUpdateButton = isUpdateButtonVisible(updateStatus);
 
   return (
     <>
@@ -158,19 +145,6 @@ export function MainLayout({
               <div className="app-no-drag shrink-0" style={{ width: windowControlSafeAreaWidth }} />
               <div className="app-drag min-w-0 flex-1" />
             </div>
-
-            {showUpdateButton ? (
-              <div className="shrink-0 px-2 pb-2">
-                <SidebarUpdateButton
-                  actionBusy={updateActionBusy}
-                  copy={copy}
-                  onCheck={onCheckUpdate}
-                  onDownload={onDownloadUpdate}
-                  onInstall={onInstallUpdate}
-                  status={updateStatus}
-                />
-              </div>
-            ) : null}
 
             <nav className="flex min-h-0 flex-1 flex-col gap-1 px-2 py-3 max-[720px]:flex-none max-[720px]:flex-row max-[720px]:overflow-x-auto max-[720px]:py-2" aria-label={copy.sidebar.primaryNavigation}>
               {visibleNavigation.map((item) => (
@@ -254,95 +228,6 @@ export function MainLayout({
       </main>
     </>
   );
-}
-
-function SidebarUpdateButton({
-  actionBusy,
-  copy,
-  onCheck,
-  onDownload,
-  onInstall,
-  status
-}: {
-  actionBusy: UpdateActionBusy;
-  copy: AppCopy;
-  onCheck: () => Promise<void>;
-  onDownload: () => Promise<void>;
-  onInstall: () => Promise<void>;
-  status: AppUpdateStatus;
-}) {
-  const t = (value: string) => copy.text[value] ?? value;
-  const busy = Boolean(actionBusy) || status.state === "checking" || status.state === "downloading" || status.state === "installing";
-  const canInstall = status.canInstall || status.state === "downloaded";
-  const canDownload = status.canDownload || status.state === "available";
-  const canCheck = status.canCheck || status.state === "error" || status.state === "not-available" || status.state === "idle";
-  const label = updateButtonLabel(status, t);
-  const detail = status.state === "downloading" && typeof status.progress?.percent === "number"
-    ? `${Math.max(0, Math.min(100, status.progress.percent)).toFixed(0)}%`
-    : status.state === "error" ? t("Check for updates")
-      : status.state === "not-available" ? t("No updates available")
-        : status.availableVersion ? `v${status.availableVersion}` : "";
-  const title = status.state === "error" && status.lastError ? `${label}: ${status.lastError}` : detail ? `${label} ${detail}` : label;
-
-  return (
-    <Button
-      className={cn(
-        "flex min-h-10 w-full min-w-0 items-center gap-2 rounded-md border px-2 py-2 text-left text-[12px] font-medium transition-colors disabled:cursor-default disabled:opacity-80",
-        status.state === "error"
-          ? "border-destructive/25 bg-destructive/10 text-destructive hover:bg-destructive/15"
-          : status.state === "not-available" || status.state === "idle"
-            ? "border-border bg-muted/55 text-muted-foreground hover:bg-muted"
-            : "border-primary/20 bg-primary/10 text-primary hover:bg-primary/15"
-      )}
-      disabled={busy || (!canDownload && !canInstall && !canCheck)}
-      onClick={() => {
-        if (canInstall) {
-          void onInstall();
-          return;
-        }
-        if (canDownload) {
-          void onDownload();
-          return;
-        }
-        void onCheck();
-      }}
-      title={title}
-      type="button"
-      unstyled
-    >
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-current/10">
-        <AnimatedIconSwap iconKey={busy ? "busy" : status.state === "error" ? "error" : canInstall ? "install" : "refresh"}>
-          {busy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : status.state === "error" ? <CircleAlert className="h-3.5 w-3.5" /> : canInstall ? <Check className="h-3.5 w-3.5" /> : <RefreshCw className="h-3.5 w-3.5" />}
-        </AnimatedIconSwap>
-      </span>
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {detail ? <span className="max-w-[92px] shrink-0 truncate text-[11px] opacity-75">{detail}</span> : null}
-    </Button>
-  );
-}
-
-function isUpdateButtonVisible(status: AppUpdateStatus): boolean {
-  return (
-    status.supported ||
-    status.state === "available" ||
-    status.state === "downloaded" ||
-    status.state === "downloading" ||
-    status.state === "installing" ||
-    status.state === "error" ||
-    status.canDownload ||
-    status.canCheck ||
-    status.canInstall
-  );
-}
-
-function updateButtonLabel(status: AppUpdateStatus, t: (value: string) => string): string {
-  if (status.state === "checking") return t("Checking for updates");
-  if (status.state === "downloading") return t("Downloading update");
-  if (status.state === "installing") return t("Install and restart");
-  if (status.canInstall || status.state === "downloaded") return t("Install and restart");
-  if (status.canDownload || status.state === "available") return t("Download update");
-  if (status.state === "error") return t("Update failed");
-  return t("Check for updates");
 }
 
 function MainViewSwitch({

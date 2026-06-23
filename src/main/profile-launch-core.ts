@@ -10,6 +10,11 @@ export type ProfileLaunchPlan = {
   surface: ProfileOpenSurface;
 };
 
+export type ProfileLaunchSpawnCommand = {
+  args: string[];
+  command: string;
+};
+
 export function findProfileForOpen(config: Pick<AppConfig, "profile">, profileRef: string): ProfileConfig {
   const needle = profileRef.trim();
   if (!needle) {
@@ -84,6 +89,25 @@ export function buildProfileLaunchPlan(
     return buildCodexLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
   }
   return buildClaudeCodeLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
+}
+
+export function profileLaunchSpawnCommand(plan: Pick<ProfileLaunchPlan, "args" | "command">): ProfileLaunchSpawnCommand {
+  if (!isWindowsCommandScript(plan.command)) {
+    return {
+      args: plan.args,
+      command: plan.command
+    };
+  }
+  return {
+    args: [
+      "/d",
+      "/s",
+      "/v:off",
+      "/c",
+      windowsCommandScriptInvocation(plan.command, plan.args)
+    ],
+    command: process.env.ComSpec || process.env.COMSPEC || "cmd.exe"
+  };
 }
 
 export function ccrManagedProfileDir(configDir: string, profile: ProfileConfig): string {
@@ -194,7 +218,7 @@ function resolveUserPath(value: string): string {
   if (trimmed === "~") {
     return homeDir();
   }
-  if (trimmed.startsWith("~/")) {
+  if (trimmed.startsWith("~/") || trimmed.startsWith("~\\")) {
     return path.join(homeDir(), trimmed.slice(2));
   }
   return path.resolve(trimmed || ".");
@@ -227,4 +251,24 @@ function windowsCommandQuote(value: string): string {
   return /^[A-Za-z0-9_.:/\\-]+$/.test(normalized)
     ? normalized
     : `"${normalized.replace(/"/g, '\\"')}"`;
+}
+
+function isWindowsCommandScript(command: string): boolean {
+  return process.platform === "win32" && /\.(?:bat|cmd)$/i.test(path.basename(command));
+}
+
+function windowsCommandScriptInvocation(command: string, args: string[]): string {
+  return [
+    "call",
+    windowsCommandInvocationArg(command),
+    ...args.map(windowsCommandInvocationArg)
+  ].join(" ");
+}
+
+function windowsCommandInvocationArg(value: string): string {
+  const normalized = value.replace(/\r?\n/g, " ");
+  if (!normalized) {
+    return "\"\"";
+  }
+  return `"${normalized.replace(/[\^"%&|<>()]/g, "^$&")}"`;
 }

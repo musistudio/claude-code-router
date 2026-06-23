@@ -6,7 +6,7 @@ import path from "node:path";
 import type { AppConfig, ProfileOpenSurface } from "../shared/app";
 import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { launchCodexAppProfile, launchZcodeAppProfile } from "./codex-app-launch";
-import { buildProfileLaunchPlan, findProfileForOpen, resolveProfileOpenSurface } from "./profile-launch-core";
+import { buildProfileLaunchPlan, findProfileForOpen, profileLaunchSpawnCommand, resolveProfileOpenSurface } from "./profile-launch-core";
 
 type CliOptions = {
   agentArgs: string[];
@@ -55,7 +55,8 @@ async function main(): Promise<void> {
   };
   delete childEnv.ELECTRON_RUN_AS_NODE;
 
-  const child = spawn(plan.command, plan.args, {
+  const launch = profileLaunchSpawnCommand(plan);
+  const child = spawn(launch.command, launch.args, {
     env: childEnv,
     stdio: "inherit"
   });

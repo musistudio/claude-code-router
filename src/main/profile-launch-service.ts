@@ -10,7 +10,7 @@ import { launchCodexAppProfile, launchZcodeAppProfile, refreshCodexCompatibleApp
 import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
 import { CONFIGDIR } from "./constants";
 import { gatewayService } from "../server/gateway/service";
-import { buildProfileLaunchPlan, findProfileForOpen, profileOpenCommand, resolveClaudeCodeSettingsFile, resolveProfileOpenSurface } from "./profile-launch-core";
+import { buildProfileLaunchPlan, findProfileForOpen, profileLaunchSpawnCommand, profileOpenCommand, resolveClaudeCodeSettingsFile, resolveProfileOpenSurface } from "./profile-launch-core";
 import { applyProfileConfig } from "./profile-service";
 
 const ccrPathBlockStart = "# >>> Claude Code Router CLI >>>";
@@ -64,7 +64,8 @@ export async function openProfileFromCcr(config: AppConfig, request: ProfileOpen
     throw new Error(`Profile launcher was not found: ${plan.command}. Re-save the profile and try again.`);
   }
 
-  const child = spawn(plan.command, plan.args, {
+  const launch = profileLaunchSpawnCommand(plan);
+  const child = spawn(launch.command, launch.args, {
     detached: true,
     env: {
       ...process.env,

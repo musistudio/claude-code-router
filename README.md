@@ -151,18 +151,19 @@ npm install
 npm run dev
 npm run typecheck
 npm run build:assets
-npm run build:app
+npm run build:app:mac
+npm run build:app:win
 ```
 
 `npm run build:assets` compiles the Electron main process and renderer assets into `dist/`.
 
 `npm run build` packages the app for the current platform and writes installer artifacts to `release/`.
 
-`npm run build:app` packages macOS and Windows artifacts with `electron-builder --mac --win`. You can also run `npm run build:app:mac` or `npm run build:app:win` for a single platform. Linux AppImage packaging is configured in `electron-builder.json`.
+`npm run build:app:mac` and `npm run build:app:win` package platform-specific app artifacts. Linux AppImage packaging is configured in `electron-builder.json`.
 
 `npm run build:app:mac` creates a local macOS test package in `release-local/` using ad-hoc signing. It is useful with a free Apple Account or Apple Development certificate, but it is not suitable for public distribution because downloaded copies will not pass Gatekeeper notarization checks.
 
-macOS release builds are signed and notarized for distribution. Before running `npm run build:app` or `npm run build:app:mac:release`, the build machine must have a `Developer ID Application` certificate available through the keychain or `CSC_LINK`/`CSC_KEY_PASSWORD`, full Xcode selected with `xcode-select`, and one notarization credential set:
+macOS release builds are signed and notarized for distribution. Before running `npm run build:app:mac:release`, the build machine must have a `Developer ID Application` certificate available through the keychain or `CSC_LINK`/`CSC_KEY_PASSWORD`, full Xcode selected with `xcode-select`, and one notarization credential set:
 
 - `APPLE_API_KEY`, `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER`
 - `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`

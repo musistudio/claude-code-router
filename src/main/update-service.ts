@@ -5,10 +5,14 @@ import windowsManager from "./windows";
 import type { AppUpdateStatus } from "../shared/app";
 
 type InstallPreparation = () => Promise<void>;
+type UpdateCheckOptions = {
+  silentFailure?: boolean;
+};
 
 const startupCheckDelayMs = 12_000;
 
 class AppUpdateService {
+  private activeSilentCheckFailureRestoreStatus?: AppUpdateStatus;
   private initialized = false;
   private installingUpdate = false;
   private prepareInstall?: InstallPreparation;
@@ -49,7 +53,7 @@ class AppUpdateService {
     return this.installingUpdate;
   }
 
-  async checkForUpdates(): Promise<AppUpdateStatus> {
+  async checkForUpdates(options: UpdateCheckOptions = {}): Promise<AppUpdateStatus> {
     this.start();
     if (!this.isUpdaterSupported()) {
       return this.publishStatus({
@@ -58,6 +62,8 @@ class AppUpdateService {
       });
     }
 
+    const restoreStatus = options.silentFailure ? this.status : undefined;
+    this.activeSilentCheckFailureRestoreStatus = restoreStatus;
     this.publishStatus({
       lastError: undefined,
       progress: undefined,
@@ -96,11 +102,18 @@ class AppUpdateService {
         progress: undefined
       });
     } catch (error) {
+      if (options.silentFailure && restoreStatus) {
+        return this.publishSilentCheckFailure(error, restoreStatus);
+      }
       return this.publishStatus({
         lastError: formatError(error),
         progress: undefined,
         state: "error"
       });
+    } finally {
+      if (this.activeSilentCheckFailureRestoreStatus === restoreStatus) {
+        this.activeSilentCheckFailureRestoreStatus = undefined;
+      }
     }
   }
 
@@ -232,6 +245,10 @@ class AppUpdateService {
       });
     });
     autoUpdater.on("error", (error) => {
+      if (this.activeSilentCheckFailureRestoreStatus) {
+        this.publishSilentCheckFailure(error, this.activeSilentCheckFailureRestoreStatus);
+        return;
+      }
       this.publishStatus({
         lastError: formatError(error),
         progress: undefined,
@@ -246,9 +263,24 @@ class AppUpdateService {
     }
     this.startupCheckTimer = setTimeout(() => {
       this.startupCheckTimer = undefined;
-      void this.checkForUpdates();
+      void this.checkForUpdates({ silentFailure: true });
     }, readEnvNumber("CCR_UPDATE_STARTUP_DELAY_MS") ?? startupCheckDelayMs);
     this.startupCheckTimer.unref?.();
+  }
+
+  private publishSilentCheckFailure(error: unknown, restoreStatus: AppUpdateStatus): AppUpdateStatus {
+    const state = restoreStatus.state === "checking" || restoreStatus.state === "error" ? "idle" : restoreStatus.state;
+    return this.publishStatus({
+      availableVersion: restoreStatus.availableVersion,
+      downloadedAt: restoreStatus.downloadedAt,
+      lastCheckedAt: restoreStatus.lastCheckedAt,
+      lastError: formatError(error),
+      progress: restoreStatus.progress,
+      releaseDate: restoreStatus.releaseDate,
+      releaseName: restoreStatus.releaseName,
+      releaseNotes: restoreStatus.releaseNotes,
+      state
+    });
   }
 
   private publishUpdateInfo(

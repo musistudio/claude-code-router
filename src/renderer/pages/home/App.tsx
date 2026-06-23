@@ -1,6 +1,6 @@
 import {
   AddApiKeyDraft, AddProfileDraft, AddProviderDraft, AddRoutingRuleDraft, AgentAnalysisSessionSelection, AgentAnalysisSnapshot, AgentFilterValue,
-  ApiKeyConfig, AppConfig, appCopy, AppI18nContext, AppInfo, AppUpdateStatus,
+  ApiKeyConfig, AppConfig, appCopy, AppI18nContext, AppInfo,
   AppLanguagePreference, applyProviderProbeResult, AppToast, BotGatewaySavedConfig, buildExtensionList, claudeDesignRoutingConfigFromDraft,
   buildRouterConditionPath,
   ClaudeDesignRoutingDraft, ClaudeDesignRoutingRuleDraft, cloneConfig, createApiKeyDraft, createApiKeyEditDraft,
@@ -11,7 +11,7 @@ import {
   enforceSingleEnabledGlobalProfilePerAgent,
   ExtensionConfigTarget, ExtensionDeleteTarget, ExtensionInstallDraft, ExtensionSource, fallbackAgentAnalysis, fallbackConfig,
   fallbackGatewayStatus, fallbackInfo, fallbackProxyCertificateStatus, fallbackProxyNetworkSnapshot, fallbackProxyStatus, fallbackRequestLogPage,
-  fallbackUpdateStatus, fallbackUsageStats, formatJson, formatProxyCertificateInstallMessage, GatewayProviderConfig,
+  fallbackUsageStats, formatJson, formatProxyCertificateInstallMessage, GatewayProviderConfig,
   fusionCustomMcpServerFromDraft, fusionCustomToolConfigFromProfile,
   GatewayProviderProbeResult, gatewayServiceMessage, GatewayStatus, getDefaultOnboardingStep, isClaudeDesignPluginConfig, isClaudeDesignRoutingDraftValid,
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
@@ -51,8 +51,6 @@ type ProfileActionBusy = {
   profileId: string;
   surface: ProfileOpenSurface;
 };
-
-type UpdateActionBusy = "" | "check" | "download" | "install";
 
 const providerNamePlaceholder = "__CCR_PROVIDER_NAME__";
 const providerNameSlugPlaceholder = "__CCR_PROVIDER_NAME_SLUG__";
@@ -162,8 +160,6 @@ function App() {
   const [proxyCertificateStatus, setProxyCertificateStatus] = useState<ProxyCertificateStatus>(fallbackProxyCertificateStatus);
   const [proxyNetworkSnapshot, setProxyNetworkSnapshot] = useState<ProxyNetworkSnapshot>(fallbackProxyNetworkSnapshot);
   const [proxyStatus, setProxyStatus] = useState<ProxyStatus>(fallbackProxyStatus);
-  const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus>(fallbackUpdateStatus);
-  const [updateActionBusy, setUpdateActionBusy] = useState<UpdateActionBusy>("");
   const [actionBusy, setActionBusy] = useState<ServerActionBusy>("");
   const [gatewayActionBusy, setGatewayActionBusy] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
@@ -308,9 +304,7 @@ function App() {
       .finally(() => setOnboardingStatusLoaded(true));
     void window.ccr.getPluginMarketplace().then(setPluginMarketplace).catch(() => setPluginMarketplace([]));
     void window.ccr.getProxyCertificateStatus().then(setProxyCertificateStatus);
-    void window.ccr.getUpdateStatus().then(setUpdateStatus).catch(() => setUpdateStatus(fallbackUpdateStatus));
     const unsubscribeOpenSettings = window.ccr.onOpenSettingsRequest(openSettingsDialog);
-    const unsubscribeUpdateStatus = window.ccr.onUpdateStatusChanged(setUpdateStatus);
     const refreshRuntimeStatus = () => {
       void window.ccr?.getGatewayStatus().then(setGatewayStatus);
       void window.ccr?.getProxyStatus().then(setProxyStatus);
@@ -321,7 +315,6 @@ function App() {
     return () => {
       window.clearInterval(timer);
       unsubscribeOpenSettings();
-      unsubscribeUpdateStatus();
     };
   }, []);
 
@@ -799,62 +792,6 @@ function App() {
       setToast(undefined);
       toastTimer.current = undefined;
     }, 1800);
-  }
-
-  async function checkAppUpdate() {
-    if (!window.ccr) {
-      showToast(t("Updates are only available in packaged builds."));
-      return;
-    }
-    setUpdateActionBusy("check");
-    try {
-      const status = await window.ccr.updateCheck();
-      setUpdateStatus(status);
-      if (status.state === "error" && status.lastError) {
-        showToast(status.lastError);
-      } else if (status.state === "not-available") {
-        showToast(t("No updates available"));
-      }
-    } catch (error) {
-      showToast(formatUnknownError(error));
-    } finally {
-      setUpdateActionBusy("");
-    }
-  }
-
-  async function downloadAppUpdate() {
-    if (!window.ccr) {
-      showToast(t("Updates are only available in packaged builds."));
-      return;
-    }
-    setUpdateActionBusy("download");
-    try {
-      const status = await window.ccr.updateDownload();
-      setUpdateStatus(status);
-      if (status.state === "error" && status.lastError) {
-        showToast(status.lastError);
-      } else if (status.state === "not-available") {
-        showToast(t("No updates available"));
-      }
-    } catch (error) {
-      showToast(formatUnknownError(error));
-    } finally {
-      setUpdateActionBusy("");
-    }
-  }
-
-  async function installAppUpdate() {
-    if (!window.ccr) {
-      showToast(t("Updates are only available in packaged builds."));
-      return;
-    }
-    setUpdateActionBusy("install");
-    try {
-      await window.ccr.updateInstall();
-    } catch (error) {
-      showToast(formatUnknownError(error));
-      setUpdateActionBusy("");
-    }
   }
 
   function updateConfig(mutator: (config: AppConfig) => AppConfig) {
@@ -2689,9 +2626,6 @@ function App() {
               isMac={isMac}
               needsTrafficLightSafeArea={needsTrafficLightSafeArea}
               networkCaptureEnabled={networkCaptureEnabled}
-              onCheckUpdate={checkAppUpdate}
-              onDownloadUpdate={downloadAppUpdate}
-              onInstallUpdate={installAppUpdate}
               onOpenSettings={openSettingsDialog}
               onSelectNavigationItem={selectNavigationItem}
               onToggleSidebar={() => setSidebarOpen((current) => !current)}
@@ -2699,8 +2633,6 @@ function App() {
               shouldReduceMotion={shouldReduceMotion}
               sidebarOpen={sidebarOpen}
               toggleGatewayService={toggleGatewayService}
-              updateActionBusy={updateActionBusy}
-              updateStatus={updateStatus}
               visibleNavigation={visibleNavigation}
               viewProps={{
                 apiKeys: {
