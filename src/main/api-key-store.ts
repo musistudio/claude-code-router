@@ -1,4 +1,3 @@
-import { safeStorage } from "electron";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { API_KEYS_DB_FILE } from "./constants";
@@ -19,7 +18,6 @@ type StoredApiKeyRow = {
 };
 
 const plainStorage = "plain";
-const safeStorageEncryption = "electron-safe-storage";
 
 class ApiKeyStore {
   private database?: SqlDatabase;
@@ -174,13 +172,6 @@ function toStoredApiKeyRow(row: Record<string, SqlValue>): StoredApiKeyRow | und
 }
 
 function encryptApiKey(key: string): { encryption: string; value: string } {
-  if (safeStorage.isEncryptionAvailable()) {
-    return {
-      encryption: safeStorageEncryption,
-      value: safeStorage.encryptString(key).toString("base64")
-    };
-  }
-
   return {
     encryption: plainStorage,
     value: key
@@ -188,15 +179,11 @@ function encryptApiKey(key: string): { encryption: string; value: string } {
 }
 
 function decryptApiKey(value: string, encryption: string): string | undefined {
-  try {
-    if (encryption === safeStorageEncryption) {
-      return safeStorage.decryptString(Buffer.from(value, "base64")).trim() || undefined;
-    }
-    return value.trim() || undefined;
-  } catch (error) {
-    console.warn(`[api-keys] Failed to decrypt stored API key: ${formatError(error)}`);
+  if (encryption !== plainStorage) {
+    console.warn(`[api-keys] Stored API key uses unsupported encryption "${encryption}". Re-save the API key to store it as plain text.`);
     return undefined;
   }
+  return value.trim() || undefined;
 }
 
 function parseApiKeyLimits(value: string): ApiKeyLimitConfig | undefined {
@@ -278,8 +265,4 @@ function readString(value: unknown): string | undefined {
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function formatError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

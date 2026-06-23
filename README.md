@@ -160,6 +160,16 @@ npm run build:app
 
 `npm run build:app` packages macOS and Windows artifacts with `electron-builder --mac --win`. You can also run `npm run build:app:mac` or `npm run build:app:win` for a single platform. Linux AppImage packaging is configured in `electron-builder.json`.
 
+`npm run build:app:mac` creates a local macOS test package in `release-local/` using ad-hoc signing. It is useful with a free Apple Account or Apple Development certificate, but it is not suitable for public distribution because downloaded copies will not pass Gatekeeper notarization checks.
+
+macOS release builds are signed and notarized for distribution. Before running `npm run build:app` or `npm run build:app:mac:release`, the build machine must have a `Developer ID Application` certificate available through the keychain or `CSC_LINK`/`CSC_KEY_PASSWORD`, full Xcode selected with `xcode-select`, and one notarization credential set:
+
+- `APPLE_API_KEY`, `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER`
+- `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`
+- `APPLE_KEYCHAIN_PROFILE`, optionally with `APPLE_KEYCHAIN`
+
+The macOS packaging hook validates codesigning, the stapled notarization ticket, and Gatekeeper assessment before writing distributable artifacts.
+
 Packaged builds check GitHub Releases for updates through `electron-updater`. For local update feed testing, set `CCR_UPDATE_FEED_URL` to a generic electron-updater feed URL before starting the app. `CCR_UPDATE_ALLOW_PRERELEASE=1` enables prerelease updates.
 
 ## Further Reading

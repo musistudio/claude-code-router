@@ -11,3 +11,4 @@ release
 .bot-gateway-state
 .agent-data
 tmp
+release-local

@@ -160,6 +160,16 @@ npm run build:app
 
 `npm run build:app` 会通过 `electron-builder --mac --win` 打包 macOS 和 Windows 产物。你也可以使用 `npm run build:app:mac` 或 `npm run build:app:win` 单独打包一个平台。Linux AppImage 打包配置在 `electron-builder.json` 中。
 
+`npm run build:app:mac` 会在 `release-local/` 生成本地测试用 macOS 包，使用 ad-hoc 签名。它适合免费 Apple Account 或只有 Apple Development 证书的本机测试，但不适合公开分发，因为用户下载后仍无法通过 Gatekeeper 公证检查。
+
+macOS 发布包会使用 Developer ID 签名并提交 Apple 公证。运行 `npm run build:app` 或 `npm run build:app:mac:release` 前，打包机器必须具备：可用的 `Developer ID Application` 证书（在 keychain 中，或通过 `CSC_LINK`/`CSC_KEY_PASSWORD` 提供）、已通过 `xcode-select` 选择完整 Xcode，以及下面任意一组公证凭据：
+
+- `APPLE_API_KEY`、`APPLE_API_KEY_ID`、`APPLE_API_ISSUER`
+- `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID`
+- `APPLE_KEYCHAIN_PROFILE`，可选 `APPLE_KEYCHAIN`
+
+macOS 打包 hook 会在产物生成前验证代码签名、公证票据 stapling 和 Gatekeeper 评估，避免发布未公证的安装包。
+
 打包后的应用会通过 `electron-updater` 检查 GitHub Releases。测试本地更新源时，可以在启动应用前设置 `CCR_UPDATE_FEED_URL` 为 generic electron-updater feed URL。`CCR_UPDATE_ALLOW_PRERELEASE=1` 可以启用 prerelease 更新。
 
 ## 深入阅读

@@ -124,10 +124,11 @@ class AppUpdateService {
       await autoUpdater.downloadUpdate();
       return this.status;
     } catch (error) {
-      return this.publishStatus({
+      const status = this.publishStatus({
         lastError: formatError(error),
         state: "error"
       });
+      throw new Error(status.lastError);
     }
   }
 

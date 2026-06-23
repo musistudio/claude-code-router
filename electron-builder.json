@@ -16,6 +16,7 @@
   "directories": {
     "output": "release/${version}"
   },
+  "afterAllArtifactBuild": "build/verify-update-metadata.cjs",
   "protocols": [
     {
       "name": "Claude Code Router Provider Import",
@@ -28,9 +29,16 @@
   ],
   "mac": {
     "icon": "build/icon.icns",
+    "type": "distribution",
+    "hardenedRuntime": true,
+    "forceCodeSigning": true,
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+    "notarize": true,
     "target": ["dmg", "zip"],
-    "artifactName": "${productName}_${version}.${ext}"
+    "artifactName": "Claude-Code-Router_${version}.${ext}"
   },
+  "afterSign": "build/verify-macos-notarization.cjs",
   "win": {
     "icon": "build/icon.ico",
     "target": [
@@ -39,11 +47,11 @@
         "arch": ["x64"]
       }
     ],
-    "artifactName": "${productName}_${version}.${ext}"
+    "artifactName": "Claude-Code-Router_${version}.${ext}"
   },
   "linux": {
     "target": ["AppImage"],
-    "artifactName": "${productName}_${version}.${ext}"
+    "artifactName": "Claude-Code-Router_${version}.${ext}"
   },
   "nsis": {
     "oneClick": false,

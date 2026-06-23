@@ -52,7 +52,7 @@ type ProfileActionBusy = {
   surface: ProfileOpenSurface;
 };
 
-type UpdateActionBusy = "" | "download" | "install";
+type UpdateActionBusy = "" | "check" | "download" | "install";
 
 const providerNamePlaceholder = "__CCR_PROVIDER_NAME__";
 const providerNameSlugPlaceholder = "__CCR_PROVIDER_NAME_SLUG__";
@@ -801,6 +801,27 @@ function App() {
     }, 1800);
   }
 
+  async function checkAppUpdate() {
+    if (!window.ccr) {
+      showToast(t("Updates are only available in packaged builds."));
+      return;
+    }
+    setUpdateActionBusy("check");
+    try {
+      const status = await window.ccr.updateCheck();
+      setUpdateStatus(status);
+      if (status.state === "error" && status.lastError) {
+        showToast(status.lastError);
+      } else if (status.state === "not-available") {
+        showToast(t("No updates available"));
+      }
+    } catch (error) {
+      showToast(formatUnknownError(error));
+    } finally {
+      setUpdateActionBusy("");
+    }
+  }
+
   async function downloadAppUpdate() {
     if (!window.ccr) {
       showToast(t("Updates are only available in packaged builds."));
@@ -808,7 +829,13 @@ function App() {
     }
     setUpdateActionBusy("download");
     try {
-      setUpdateStatus(await window.ccr.updateDownload());
+      const status = await window.ccr.updateDownload();
+      setUpdateStatus(status);
+      if (status.state === "error" && status.lastError) {
+        showToast(status.lastError);
+      } else if (status.state === "not-available") {
+        showToast(t("No updates available"));
+      }
     } catch (error) {
       showToast(formatUnknownError(error));
     } finally {
@@ -2662,6 +2689,7 @@ function App() {
               isMac={isMac}
               needsTrafficLightSafeArea={needsTrafficLightSafeArea}
               networkCaptureEnabled={networkCaptureEnabled}
+              onCheckUpdate={checkAppUpdate}
               onDownloadUpdate={downloadAppUpdate}
               onInstallUpdate={installAppUpdate}
               onOpenSettings={openSettingsDialog}
