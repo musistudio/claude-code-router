@@ -31,17 +31,16 @@ import {
   BUILTIN_FUSION_VISION_TOOL_NAME,
   BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME
 } from "../../shared/app";
-import { providerApiKeySafetyIssue } from "../presets";
+import { providerApiKeySafetyIssue } from "../../main/presets";
 import { normalizeProviderBaseUrl as normalizeProviderBaseUrlInput } from "../../shared/provider-url";
 import { backendService } from "../backend-service";
-import { RAW_TRACE_SPOOL_DIR } from "../constants";
+import { RAW_TRACE_SPOOL_DIR } from "../../main/constants";
 import { handleNetworkCaptureMcpRequest, isNetworkCaptureMcpPath } from "../mcp/network-capture-mcp";
-import { pluginService } from "../plugins/service";
+import { pluginService } from "../../main/plugins/service";
 import { proxyService } from "../proxy/service";
-import { recordGatewayRequestLog, updateGatewayRequestLogFromRawTrace, type RequestLogRawTraceUpdateInput } from "../request-log-store";
-import { recordGatewayUsageCapture } from "../usage-store";
+import { recordGatewayRequestLog, updateGatewayRequestLogFromRawTrace, type RequestLogRawTraceUpdateInput } from "../../main/request-log-store";
+import { recordGatewayUsageCapture } from "../../main/usage-store";
 import { ClaudeCodeRouterPlugin, normalizeRouteSelector } from "./claude-code-router-plugin";
-import { prepareCodexAppRequest } from "./codex-app-adapter";
 import {
   claudeCodeEffectiveMaxInputTokens,
   findModelCatalogEntry,
@@ -173,7 +172,6 @@ const requireFromHere = createRequire(__filename);
 const localObservabilityHeaderNames = new Set([
   "x-ccr-claude-app-model-rewrite",
   "x-ccr-claude-model-discovery",
-  "x-ccr-codex-model-rewrite",
   "x-ccr-cursor-openai-compat",
   "x-ccr-logical-provider",
   "x-ccr-provider-credential-chain",
@@ -490,18 +488,6 @@ class GatewayService {
     let bodyToForward: Buffer | undefined = cursorCompatPreparation?.body ?? requestBody;
     let routeFallback = this.config.Router.fallback;
     let routedModel: string | undefined;
-    const codexAppPreparation = prepareCodexAppRequest({
-      body: bodyToForward,
-      client,
-      config: this.config,
-      headers,
-      path
-    });
-    if (codexAppPreparation) {
-      headers["x-ccr-codex-model-rewrite"] = codexAppPreparation.diagnostic;
-      bodyToForward = codexAppPreparation.body ?? bodyToForward;
-      routedModel = codexAppPreparation.routedModel ?? routedModel;
-    }
     const claudeModelRewrite = prepareClaudeCodeDiscoveredModelRequest(this.config, request.headers, method, path, bodyToForward);
     if (claudeModelRewrite) {
       headers["x-ccr-claude-model-discovery"] = claudeModelRewrite.diagnostic;

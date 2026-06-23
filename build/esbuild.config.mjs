@@ -111,7 +111,7 @@ export function createMainBuildOptions({ mode = "production", plugins = [] } = {
       path.join(projectRoot, "src", "main", "main.ts"),
       path.join(projectRoot, "src", "main", "browser-preload.ts"),
       path.join(projectRoot, "src", "main", "cli.ts"),
-      path.join(projectRoot, "src", "main", "mcp", "fusion-vision-mcp.ts"),
+      path.join(projectRoot, "src", "server", "mcp", "fusion-vision-mcp.ts"),
       path.join(projectRoot, "src", "main", "preload.ts")
     ],
     external: nodeExternals,

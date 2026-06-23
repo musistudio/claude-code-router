@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import http, { type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import path from "node:path";
-import { createBetterSqliteDatabase, type BetterSqliteDatabase, type BetterSqliteStatement } from "./sqlite-native";
+import { createBetterSqliteDatabase, type BetterSqliteDatabase, type BetterSqliteStatement } from "../main/sqlite-native";
 
 type MaybePromise<T> = T | Promise<T>;
 export type SqliteValue = bigint | Buffer | number | string | Uint8Array | null;

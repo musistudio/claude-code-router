@@ -15,7 +15,7 @@ import type {
   ProviderAccountPluginConnectorConfig,
   ProviderAccountSnapshot
 } from "../../shared/app";
-import { backendService, type RegisteredHttpBackend, type SqliteStore, type SqliteStoreOptions } from "../backend-service";
+import { backendService, type RegisteredHttpBackend, type SqliteStore, type SqliteStoreOptions } from "../../server/backend-service";
 import { CONFIGDIR, DATADIR } from "../constants";
 
 type MaybePromise<T> = T | Promise<T>;

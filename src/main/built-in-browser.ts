@@ -18,7 +18,7 @@ import type { AppConfig, BuiltInBrowserState, BuiltInBrowserTabState, GatewayPlu
 import { IPC_CHANNELS } from "../shared/ipc-channels";
 import { APP_NAME } from "./constants";
 import { pluginService } from "./plugins/service";
-import { proxyService } from "./proxy/service";
+import { proxyService } from "../server/proxy/service";
 
 type BrowserTab = BuiltInBrowserTabState & {
   view: WebContentsView;

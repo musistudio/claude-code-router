@@ -22,8 +22,8 @@ import type {
   ProxyRouteTarget,
   ProxyStatus
 } from "../../shared/app";
-import { PROXY_CA_CERT_FILE } from "../constants";
-import { pluginService, type GatewayPluginProxyRouteMatch } from "../plugins/service";
+import { PROXY_CA_CERT_FILE } from "../../main/constants";
+import { pluginService, type GatewayPluginProxyRouteMatch } from "../../main/plugins/service";
 import {
   createCertificateForHost,
   ensureProxyCertificateAuthority,

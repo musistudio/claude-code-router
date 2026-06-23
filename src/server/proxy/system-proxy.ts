@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { ProxySystemStatus } from "../../shared/app";
-import { DATADIR } from "../constants";
+import { DATADIR } from "../../main/constants";
 
 export type UpstreamProxyServer = {
   host: string;

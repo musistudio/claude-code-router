@@ -9,7 +9,7 @@ import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "./cl
 import { launchCodexAppProfile, launchZcodeAppProfile } from "./codex-app-launch";
 import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
 import { CONFIGDIR } from "./constants";
-import { gatewayService } from "./gateway/service";
+import { gatewayService } from "../server/gateway/service";
 import { buildProfileLaunchPlan, findProfileForOpen, profileOpenCommand, resolveClaudeCodeSettingsFile, resolveProfileOpenSurface } from "./profile-launch-core";
 import { applyProfileConfig } from "./profile-service";
 

@@ -8,7 +8,7 @@ import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
 import { codexModelCatalogJson } from "./codex-model-catalog";
 import { CONFIGDIR } from "./constants";
-import { normalizeRouteSelector } from "./gateway/claude-code-router-plugin";
+import { normalizeRouteSelector } from "../server/gateway/claude-code-router-plugin";
 
 const managedRootStart = "# BEGIN CCR managed profile";
 const managedRootEnd = "# END CCR managed profile";
