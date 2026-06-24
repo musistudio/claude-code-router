@@ -193,29 +193,6 @@ const rawTraceSyncHeader = "x-ccr-raw-trace-token";
 let warnedMissingCursorOpenAICompatContext = false;
 const rawTraceSyncPath = "/__ccr/raw-trace-sync";
 const gatewayPackageCandidates = ["@the-next-ai/ai-gateway", "gateway"];
-const gatewayRuntimePatchEntryFile = "next-ai-gateway.ccr-patch.cjs";
-const gatewayRuntimePatches = [
-  {
-    label: "collect-openai-sse-in-buffered-conversion",
-    search: 'ro({sourceAdapter:t.adapterKey,targetProvider:R,targetProviderName:_?.name,mode:"buffered"});let on=await Vn(e,R,xe),We=await wo(tt,oe,xe,on,Ke);',
-    replacement: 'ro({sourceAdapter:t.adapterKey,targetProvider:R,targetProviderName:_?.name,mode:"buffered"});let on=Gn(xe)&&R==="openai"?await yr(xe):await Vn(e,R,xe),We=await wo(tt,oe,xe,on,Ke);'
-  },
-  {
-    label: "track-openai-responses-output-items",
-    search: 'return{id:`chatcmpl_${(0,pe.randomUUID)()}`,model:"unknown",outputText:"",usage:{},toolCalls:new Map,reasoning:{text:"",summary:"",rawDetails:[]}}',
-    replacement: 'return{id:`chatcmpl_${(0,pe.randomUUID)()}`,model:"unknown",outputText:"",usage:{},outputItems:[],toolCalls:new Map,reasoning:{text:"",summary:"",rawDetails:[]}}'
-  },
-  {
-    label: "collect-openai-responses-output-item-done",
-    search: 'if(t==="response.output_text.done"){let r=f(n.text);r&&(e.outputText=r);return}if(t==="response.completed"){',
-    replacement: 'if(t==="response.output_text.done"){let r=f(n.text);r&&(e.outputText=r);return}if(t==="response.output_item.done"){let r=l(n.item)?n.item:void 0;r&&(e.outputItems||(e.outputItems=[]),e.outputItems.push(r));return}if(t==="response.completed"){'
-  },
-  {
-    label: "merge-empty-completed-openai-response",
-    search: 'function tp(e){return e.completedResponse?dr({...e.completedResponse}):{id:e.id,object:"chat.completion",model:e.model,choices:[{index:0,message:{role:"assistant",content:e.outputText,...e.reasoning.text?{reasoning_content:e.reasoning.text}:{},...e.reasoning.rawDetails.length>0?{reasoning_details:e.reasoning.rawDetails}:e.reasoning.summary||e.reasoning.encryptedContent?{reasoning_details:UC(e.reasoning)}:{},...e.toolCalls.size>0?{tool_calls:LC(e.toolCalls)}:{}},finish_reason:e.finishReason}],usage:e.usage}}',
-    replacement: 'function tp(e){if(e.completedResponse){let n={...e.completedResponse},t=Array.isArray(n.output)?n.output:[];if(t.length===0&&Array.isArray(e.outputItems)&&e.outputItems.length>0)n.output=e.outputItems;if(!f(n.output_text)&&e.outputText)n.output_text=e.outputText;if(l(n.usage))n.usage={...e.usage,...n.usage};else n.usage=e.usage;return dr(n)}return{id:e.id,object:"chat.completion",model:e.model,choices:[{index:0,message:{role:"assistant",content:e.outputText,...e.reasoning.text?{reasoning_content:e.reasoning.text}:{},...e.reasoning.rawDetails.length>0?{reasoning_details:e.reasoning.rawDetails}:e.reasoning.summary||e.reasoning.encryptedContent?{reasoning_details:UC(e.reasoning)}:{},...e.toolCalls.size>0?{tool_calls:LC(e.toolCalls)}:{}},finish_reason:e.finishReason}],usage:e.usage}}'
-  }
-] as const;
 const apiKeyLimitCounters = new Map<string, ApiKeyWindowCounter>();
 const providerCredentialCooldowns = new Map<string, { reason: string; until: number }>();
 const providerCredentialCooldownMs = 60_000;
@@ -2175,9 +2152,8 @@ function uniqueStrings(values: Array<string | undefined>): string[] {
 
 function spawnGatewayProcess(config: AppConfig, upstreamProxyUrl: string | undefined, runtimeId: string, coreAuthToken: string): ChildProcess {
   const gatewayEntry = resolveGatewayEntry();
-  const patchedGatewayEntry = writePatchedGatewayRuntimeEntry(config, gatewayEntry);
   const env = createGatewayProcessEnv(config, upstreamProxyUrl, runtimeId, coreAuthToken);
-  return spawn(process.execPath, [patchedGatewayEntry], {
+  return spawn(process.execPath, [gatewayEntry], {
     cwd: dirname(config.gateway.generatedConfigFile),
     env,
     stdio: ["ignore", "pipe", "pipe"]
@@ -2193,47 +2169,6 @@ function resolveGatewayEntry(): string {
     }
   }
   return requireFromHere.resolve(gatewayPackageCandidates[0]);
-}
-
-function writePatchedGatewayRuntimeEntry(config: AppConfig, gatewayEntry: string): string {
-  const source = readFileSync(gatewayEntry, "utf8");
-  const matchingPatches = gatewayRuntimePatches.filter((patch) => source.includes(patch.search));
-  if (matchingPatches.length === 0) {
-    return gatewayEntry;
-  }
-  if (matchingPatches.length !== gatewayRuntimePatches.length) {
-    const matchedLabels = matchingPatches.map((patch) => patch.label).join(", ");
-    const expectedLabels = gatewayRuntimePatches.map((patch) => patch.label).join(", ");
-    throw new Error(`ai-gateway runtime patch mismatch. Matched: ${matchedLabels || "none"}. Expected: ${expectedLabels}.`);
-  }
-
-  const outputFile = pathJoin(dirname(config.gateway.generatedConfigFile), gatewayRuntimePatchEntryFile);
-  mkdirSync(dirname(outputFile), { recursive: true });
-  writeFileSync(outputFile, buildGatewayRuntimePatchEntry(gatewayEntry), "utf8");
-  return outputFile;
-}
-
-function buildGatewayRuntimePatchEntry(gatewayEntry: string): string {
-  return [
-    '"use strict";',
-    'const fs = require("node:fs");',
-    'const Module = require("node:module");',
-    'const path = require("node:path");',
-    `const gatewayEntry = ${JSON.stringify(gatewayEntry)};`,
-    `const patches = ${JSON.stringify(gatewayRuntimePatches)};`,
-    'let source = fs.readFileSync(gatewayEntry, "utf8");',
-    'for (const patch of patches) {',
-    '  if (!source.includes(patch.search)) {',
-    '    throw new Error(`Unable to apply CCR ai-gateway runtime patch: ${patch.label}`);',
-    '  }',
-    '  source = source.replace(patch.search, patch.replacement);',
-    '}',
-    'const patchedModule = new Module(gatewayEntry, module.parent);',
-    'patchedModule.filename = gatewayEntry;',
-    'patchedModule.paths = Module._nodeModulePaths(path.dirname(gatewayEntry));',
-    'patchedModule._compile(source, gatewayEntry);',
-    ""
-  ].join("\n");
 }
 
 function createGatewayProcessEnv(config: AppConfig, upstreamProxyUrl: string | undefined, runtimeId: string, coreAuthToken: string): NodeJS.ProcessEnv {

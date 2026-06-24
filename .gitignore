@@ -12,3 +12,4 @@ release
 .agent-data
 tmp
 release-local
+logs
