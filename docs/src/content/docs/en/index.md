@@ -1,354 +1,353 @@
 ---
-title: Claude Code Router Guide
-pageTitle: Guide
-eyebrow: Getting Started
-lead: A hands-on, step-by-step guide to getting Claude Code Router running. We start from the download, add your first model, wire an agent into CCR, and actually watch a request flow through it. You will not need to edit any config file by hand.
+title: Claude Code Router
+pageTitle: Documentation
+eyebrow: Product Documentation
+lead: Claude Code Router (CCR) is a local gateway that sits between coding agents and model providers. It manages credentials, routes requests according to configurable rules, provides observability, and supports multi-model fusion and IM bot relay — all through a single control plane.
 ---
 
-If this is your first time with CCR, read it top to bottom — about ten minutes and the whole pipeline will be live. If you already know the basics, jump straight to the section you need. Every step includes a "how to tell it worked" check so you never have to guess whether you did it right.
+## Architecture Overview
 
-## What CCR Helps You Do
+CCR operates as a local HTTP server (default port `8080`). It receives LLM API requests from coding agents and forwards them to configured model providers. All traffic passes through a single process, making routing, credential management, and observability accessible in one place.
 
-In one sentence: **it lets you manage the models and keys used by Claude Code, Codex, ZCode, and other agents in one place, then choose the right model for each kind of work.**
+```
+Agent (Claude Code / Codex / ZCode / …)
+        │
+        ▼
+   CCR (localhost:8080)
+        │
+        ├──► Provider A (e.g. Anthropic)
+        ├──► Provider B (e.g. OpenAI)
+        └──► Provider C (e.g. custom OpenAI-compatible endpoint)
+```
 
-Why that's worth it:
+CCR supports the following provider protocols:
 
-- No more configuring the model and key in every single agent.
-- Different work can use different models: cheap fast models for simple tasks, stronger models for hard problems, multimodal models for images, and search-capable models when you need fresh info.
-- When one model fails, CCR can switch to a backup automatically.
-- Logs show which model each request used, whether it succeeded, and where your spend is going.
+| Protocol | Use case |
+|---|---|
+| Anthropic Messages API | Anthropic models through native protocol |
+| OpenAI-compatible | OpenAI, third-party providers, and self-hosted models that expose an `/v1/chat/completions` endpoint |
 
-The steps below walk you through three things: connecting a model provider, setting up routing, and making your agents use those CCR settings. For normal use, you can stay in the app and follow the steps without editing config files by hand.
+Fusion models, described later in this document, allow a base model to be augmented with tools such as web search, vision, or custom MCP tools.
 
-## Step 1: Install And Start CCR
+## Prerequisites
 
-### Download And Install
+Before installing CCR, verify the following:
 
-1. Open the [GitHub Releases](https://github.com/musistudio/claude-code-router/releases) page.
-2. Grab the package for your platform:
-   - macOS: `.dmg` or `.zip`
-   - Windows: `.exe`
-   - Linux: `.AppImage`
-3. Install and launch **Claude Code Router** like any normal app.
+- **Operating system**: macOS 12+, Windows 10/11, or Linux (x86_64, arm64)
+- **Network**: Outbound HTTPS access to model provider APIs (Anthropic, OpenAI, or custom endpoints)
+- **Port**: TCP `8080` available on localhost (configurable)
+- **Memory**: ~200 MB RAM for the CCR process under typical load
+- **Node.js** (optional): Required only when running CCR via CLI (`npx`). The desktop application bundles its own runtime.
 
-### Start CCR
+## Installation
 
-Once the app is open, go to the **Server** page and click **Start**.
+### Desktop Application
 
-> **How to tell it worked:** The Server page shows CCR running. If you want it to start automatically whenever the app opens, turn on **Auto start**.
+Download the installer for your platform from the [releases page](https://github.com/musistudio/claude-code-router/releases).
 
-CCR itself is now running, but it cannot handle requests yet because you have not connected a model provider. That's the next step.
+- **macOS**: `.dmg` for Intel, `.dmg` for Apple Silicon
+- **Windows**: `.exe` installer
+- **Linux**: `.AppImage`
 
-## Step 2: Connect Your First Provider
+After installation, launch CCR. The **Server** page displays the process status. Enable **Auto start** on that page if the process should launch at login.
 
-A Provider is the upstream model service that CCR forwards requests to — OpenRouter, DeepSeek, Z.AI, or anything that speaks the OpenAI / Anthropic / Gemini protocols.
+### Headless / CLI (Alternative)
 
-### Add A Provider
+For server or CI/CD environments, CCR can be installed via npm:
 
-1. Go to **Providers** and click **Add Provider**.
-2. First, pick a **Provider preset** from the built-in list. Presets are nice because they auto-fill the common Base URL, icon, and protocol so you don't have to look them up. If your service isn't listed, choose **Other / custom API endpoint**.
-3. Fill in the fields:
-   - **Name**: the label shown inside CCR. Keep it short and recognizable, like `openrouter` or `deepseek`.
-   - **Base URL**: the upstream endpoint. For custom providers, double-check this includes the correct API path.
-   - **Protocol**: the protocol the upstream actually supports. Get this wrong and the connectivity check usually fails. If you're unsure, run the protocol probe below.
-   - **API Key**: your key. One key lives here; use Credentials only when you need several.
-   - **Models**: list the models this provider should expose to CCR. The model picker reads from here.
-4. Don't save just yet — run the connectivity checks first.
+```bash
+npm install -g claude-code-router
+ccr start
+```
 
-### Picking A Protocol
+When running headless, configuration is managed through the config file (see [Configuration File Format](#configuration-file-format)).
 
-| Protocol | When to use it |
-| --- | --- |
-| OpenAI Chat Completions | Almost any OpenAI-compatible service (most common) |
-| OpenAI Responses | Services that support the Responses API |
-| Anthropic Messages | Anthropic itself, or services compatible with it |
-| Gemini Generate Content | Gemini itself, or services compatible with it |
+### Configuration File Format
 
-> **Not sure which protocol?** Run the built-in Protocol probe and let it scan the Base URL. The result is a hint, not a verdict — confirm against the provider's docs and the connectivity check.
+CCR stores its configuration as a JSON file. The default location is:
 
-### Three Checks Before You Save
+- **macOS**: `~/Library/Application Support/claude-code-router/config.json`
+- **Windows**: `%APPDATA%/claude-code-router/config.json`
+- **Linux**: `~/.config/claude-code-router/config.json`
 
-Catching problems here keeps them from masquerading as Routing or Agent issues later:
+The file is maintained by the desktop UI and can also be edited directly when running headless. Back up this file to version control or a secrets manager for team deployment.
 
-1. **Protocol probe**: confirm which protocols the Base URL actually supports.
-2. **Model connectivity check**: send a test request to one or two models and see if they respond.
-3. **Account usage test** (optional): if you've enabled usage meters, confirm balance and quota come back correctly.
+## Quick Start
 
-When all three are green, hit save.
+A minimal working configuration requires three steps:
 
-> **How to tell it worked:** The provider appears in your list and at least one model shows as available. Fire off a test request and you should get a normal response back.
+1. **Add a provider** with valid credentials
+2. **Set a default route** pointing to that provider
+3. **Point an agent** at `http://localhost:8080`
 
-### Want Multiple Keys? (Optional)
+An agent that sends a request to `http://localhost:8080` will reach the provider selected by the routing rules.
 
-A single key is fine for personal use. For a team or high-volume traffic, open **Credentials** and add several — CCR rotates them for you:
+## Configuration
 
-1. Open **Credentials** in the provider form.
-2. Click **Add credential**.
-3. Give each key a **Label** so you can recognize it in Logs.
-4. Set **Priority**: lower numbers are tried first.
-5. Set **Weight**: at the same priority, higher weight gets more requests.
-6. If a key has quota limits, fill in **Limits** so you can see when it's near the cap.
-7. Save, send a few test requests, then filter Logs by Credential to confirm rotation behaves as expected.
+### Providers
 
-### Want To See Balance In The Dashboard? (Optional)
+A provider is an upstream model service that CCR forwards requests to. CCR needs at least one provider configured.
 
-If you'd like Overview to display a provider's balance and remaining quota, turn on **Account / Usage**:
+**Adding a provider:**
 
-1. Pick a usage connector. Prefer a built-in standard endpoint when one exists; fall back to HTTP JSON or a plugin otherwise.
-2. Fill in auth mode and endpoint.
-3. Click **Test** to pull one reading.
-4. From the result, select the fields you care about (balance, remaining quota, used amount, reset time, etc.).
-5. Back in Overview, add an **Account balance** widget.
+1. Open **Providers** from the sidebar.
+2. Click **Add Provider**.
+3. Select a protocol preset from the dropdown. Presets auto-fill the Base URL for common services:
+   - Anthropic (Messages API)
+   - OpenAI (`/v1` compatible)
+4. Enter the provider URL if not using a preset.
+5. (Optional) Add a custom name.
 
-> **Security note:** Never send your provider API key to an untrusted usage endpoint. Verify the domain and permission scope of any custom endpoint before filling it in.
+After the provider entry is created, supply credentials.
 
-CCR now knows which models are available. What it doesn't know yet is which one to use — that's routing.
+#### Credentials
 
-## Step 3: Configure Routing (Which Model Handles What)
+Navigate to the **Credentials** tab for the provider. Enter at least one API key.
 
-Go to the **Routing** page. This is where you decide **which model handles which kind of request.**
+CCR checks each credential against the provider endpoint and shows a green indicator when the key validates. Validation covers:
 
-The one item that matters most is **Default route** — the fallback model used when no special rule matches. Set this and you already have a working minimal config.
+- Network reachability of the provider URL
+- API key format and authentication response
+- Protocol compatibility (HTTP status / JSON structure)
 
-### Recommended Order
+Save only after all listed checks show green.
 
-1. **Default**: a stable model that can carry the main workload. This is your workhorse.
-2. **Background**: a cheap, fast model for summaries, context compaction, and other low-priority work.
-3. **Thinking**: a strong reasoning model for tasks that need depth.
-4. **Long context**: a large-context model plus the threshold (how many tokens trigger the switch).
-5. **Image**: a multimodal or Fusion model for image tasks, if you want those routed separately.
-6. **Web search**: a Fusion model for search-augmented work, if applicable.
-7. **Fallback**: what happens when the chosen model fails. A common pattern is to retry first, then walk a model chain of backups.
+**Multiple keys**: Add more than one credential to enable round-robin or fallback across keys. CCR cycles through keys on rate-limit responses and provider errors.
 
-> **For your first setup:** Just set Default. You can come back and add Background, Thinking, and the rest whenever you actually need them.
+**Account page**: The **Account** tab on a provider shows quota and usage when the provider exposes that information through its API. Availability depends on the provider implementation.
 
-### Want Finer Control? (Optional)
+#### Provider Options Reference
 
-Click **Add Routing Rule**. What each rule type is for:
+| Option | Required | Description |
+|---|---|---|
+| Protocol | Yes | Anthropic Messages or OpenAI-compatible |
+| Base URL | Yes | Provider endpoint URL |
+| API Key | Yes | Authentication key for the provider |
+| Custom Name | No | Display name in the UI and routing rules |
 
-| Rule type | Use when |
-| --- | --- |
-| model-prefix | The client sends a specific model-name prefix and you want to route those requests apart |
-| subagent | You want to route by subagent signal |
-| thinking / long-context / image / web-search | You want to route by workload type |
-| condition | You want to match on request fields, headers, or body content |
-| rewrite | You need to adjust request-body fields for a compatibility edge case |
+### Routing
 
-> **How to tell it worked:** Save, send any request, then open **Logs** and read the `request model`, `resolved provider`, `resolved model`, and status code on that row. If it didn't hit the model you expected, check rule order, match conditions, and fallback first.
+Routing rules determine which provider handles each request. CCR evaluates rules in order; the first matching rule wins. If no rule matches, the **Default** route is used.
 
-CCR now knows both *which models exist* and *which one each request should use*. The last step is making your agent actually send its traffic through CCR.
+**Default route** — the fallback model used when no other rule applies. Setting a Default is sufficient for a single-provider setup.
 
-## Step 4: Point Your Agent At CCR (Profiles)
+**Rule types:**
 
-Go to the **Profiles** page. A Profile lets a chosen agent (Claude Code / Codex / ZCode) use the models and routing settings you configured in CCR, so its requests can be recorded and managed there.
+| Rule type | Matches on | Example use |
+|---|---|---|
+| Model name | Exact or prefix match on the `model` field | Route `claude-sonnet-4-*` to Anthropic, `gpt-*` to OpenAI |
+| Agent | The agent profile that originated the request | Use a cheaper model for a documentation agent, a larger model for a coding agent |
+| Tool | Match requests coming from a specific MCP tool | Route search-tool requests to a provider with web-search capability |
+| Fusion | Route based on whether a Fusion model is in use | Direct vision-augmented requests to a multimodal provider |
 
-Before you start, two options that apply to every profile:
+**Evaluation order**: Rules are evaluated top-to-bottom. Reorder rules by dragging. The Default route is always evaluated last.
 
-- **Scope**:
-  - **Only opened from CCR**: traffic only goes through CCR when you launch the agent from inside CCR. Your system's default agent setup is untouched. **Strongly recommended for your first try** — easy to experiment, easy to walk back.
-  - **System default**: the agent uses CCR by default. Switch to this once you're confident the setup is stable.
-- **Surface**: APP, CLI, or automatic — pick based on how you intend to start the agent.
-- **Model**: can be a provider model or a Fusion model.
+**Verification**: After saving a routing configuration, send a request from any connected agent. Open **Logs** and confirm the request appears with the expected provider and model.
 
-> **One habit to keep:** After you Apply, launch the agent from CCR's "open agent" button. That's what lets Bot and app-related features work.
+### Profiles
 
-### Claude Code
+A Profile packages an agent's connection settings — endpoint URL, API key, and optional capabilities such as Bot relay.
 
-1. Select **Claude Code** in Profiles.
-2. Pick the **Model** for normal requests.
-3. If you want a cheaper model for lightweight background work, set **Small fast model**.
-4. Confirm **Settings file** points at your local Claude Code settings path (the default is usually right).
-5. Add **Env** variables if you need any.
-6. Click **Apply**.
-7. Launch Claude Code via **Open Agent** from CCR.
+**Supported agents:**
 
-> **Verify:** Send one request, then open **Logs**. The Client should read Claude Code, and the provider/model should match your Routing. If so, the whole chain is live.
+- **Claude Code**: Set the environment variable `ANTHROPIC_BASE_URL=http://localhost:8080` before launching Claude Code. CCR provides a one-click import that writes this configuration.
+- **Codex (OpenAI Codex CLI)**: Set `OPENAI_BASE_URL=http://localhost:8080` and `OPENAI_API_KEY=ccr` (or any non-empty value — CCR authenticates by credential, not by agent key).
+- **ZCode**: Configure the base URL to `http://localhost:8080` in ZCode settings.
+- **Generic OpenAI-compatible agent**: Any tool that accepts a custom base URL and API key.
 
-### Codex
+**Profile options:**
 
-1. Select **Codex** in Profiles.
-2. Confirm **Provider ID** and **Provider Name** (defaults are usually fine).
-3. Pick the **Model** — a provider model or a Fusion model.
-4. Confirm **Config file** (the default is Codex's config path).
-5. If you use a specific Codex CLI build, fill in **Codex CLI path** and **Codex home**; otherwise leave them.
-6. Toggle **CLI middleware** and **Show all sessions** as needed.
-7. Click **Apply** and open Codex from CCR.
+| Option | Description |
+|---|---|
+| Base URL | Must point to `http://localhost:8080` (or the host/port where CCR is listening) |
+| API Key | For CCR, any non-empty value. CCR does not authenticate agents by this key — credentials are managed on the provider side |
+| Bot | Enable to relay agent messages to IM platforms |
 
-Use **Only opened from CCR** while trialing. Switch to **System default** once you're happy.
+After applying a Profile, launch the agent through CCR's **Open Agent** button. This ensures Bot and other CCR-managed capabilities are injected correctly.
 
-### ZCode
+## Observability
 
-ZCode uses the app surface. Focus on **Model**, **Provider ID**, **Provider Name**, and whether you open it from CCR. The Codex-CLI-only fields don't apply here.
+### Overview
 
-### Reuse An Agent You're Already Logged Into (Optional)
+The **Overview** page displays aggregate metrics for traffic passing through CCR:
 
-If your machine is already logged into Claude Code, Codex, or ZCode, you can import it from **Providers** as a **Local Agent Provider**. It then shows up in the model picker like any normal provider — handy for reusing an existing local authorization instead of fetching a new key.
+| Widget | What it shows |
+|---|---|
+| Request volume | Total requests, grouped by time window |
+| Latency distribution | P50 / P95 / P99 response times per provider |
+| Token usage | Input and output token counts, per provider and model |
+| Error rate | Percentage of non-2xx responses, per provider |
+| Cost estimate | Approximate spend based on provider pricing tables |
 
-At this point you have a **complete, working minimal system**: providers connected → routing set → agent wired in. Next, let's open the observability panels and confirm everything really is behaving the way you configured.
+Overview widgets are intended for monitoring trends and spotting anomalies. For investigating a single failed request, use Logs.
 
-## Step 5: Open The Observability Panels And Confirm Traffic
+### Logs
 
-The goal of this step is to make things *visible* — whether requests are arriving, which model they hit, how much they cost, and whether anything errored.
+The **Logs** page records every request and response that passes through CCR. Each entry includes:
 
-### Turn The Switches On First
+- Timestamp
+- Agent that sent the request
+- Provider and model that served it
+- Request payload (truncatable)
+- Response payload (truncatable)
+- HTTP status code
+- Latency in milliseconds
 
-Overview can't show data until CCR is allowed to record it. Go to **Settings → Observability**:
+**Filtering**: Filter by time range, agent, provider, model, or status code.
 
-1. Turn on **Request logs** — this feeds Logs and most Overview widgets. **Turn it on.**
-2. Turn on **Agent analysis** if you want agent-level summaries in Observability.
-3. **Capture network** (under Server → Proxy) is only for inspecting raw traffic. Turn it on solely while debugging, and turn it off when you're done — it records more complete, and therefore more sensitive, information.
+**Network capture**: Enable **Capture network** in Logs settings to record raw HTTP exchanges. This is useful for debugging protocol-level issues with custom providers. Disable capture when not actively debugging — captured payloads include API keys in headers.
 
-### What To Look At: Overview
+## Fusion Models
 
-Go to **Overview** and click **Edit widgets** to add components. The most useful ones:
+A Fusion model combines a base model with one or more tool capabilities to create a new model option that appears in the routing model picker.
 
-| Widget | The question it answers |
-| --- | --- |
-| System status | Is the gateway running, is there recent activity |
-| Requests / Success rate | How much traffic, what's the success rate |
-| Estimated cost | How much money have I spent |
-| Token mix | Input / output / cache / reasoning token split |
-| Model distribution | Which models get used the most |
-| Provider analysis | Which provider has the most traffic, highest latency, most errors |
-| Account balance | How much balance and quota is left per provider |
+**Available augmentations:**
 
-You can drag widgets around, resize them, switch display variants, delete, or reset to the default layout. A few ready-made layouts:
+| Augmentation | Description |
+|---|---|
+| Vision | Adds image understanding via screen capture or file attachment |
+| Web search | Adds live web search results to model context |
+| MCP tool | Attaches a custom MCP server tool to the model |
 
-- **Daily glance:** System status, Requests, Success rate, Usage trend, Provider analysis.
-- **Cost watch:** Estimated cost, Token mix, Model distribution, Account balance.
-- **Performance hunt:** Average latency, Errors, Provider analysis, Logs.
+**Creating a Fusion model:**
 
-> **What Overview is for:** It answers "is the overall trend healthy." When a number looks off (a model's cost suddenly spikes, say), jump to Logs to inspect the individual requests. Don't try to diagnose a single failure from Overview alone.
+1. Open **Fusion** from the sidebar.
+2. Select a base model — the provider and model that will handle the core request.
+3. Add one or more augmentations.
+4. Name the resulting Fusion model.
+5. Save.
 
-### What To Look At: Logs
+The Fusion model appears as a selectable model in routing rules. When an agent requests that model, CCR invokes the base model with the attached tools, combining outputs into a single response.
 
-**Logs** is your main tool for debugging individual requests. It requires Request logs to be on.
+**Validation**: Test a Fusion model with a dedicated Profile before using it in production routing. For vision Fusion, verify with a screenshot. For web search, verify with a query whose answer depends on current information.
 
-The moves you'll use most:
+## Bots (IM Relay)
 
-- Filter by **status** to isolate successes or failures.
-- Filter by **Provider / Model** to focus on one upstream.
-- Filter by **Credential** to focus on one API key.
-- Use the search box for request id, model name, request content, or response content.
-- Click any row to drill into headers, request body, response body, errors, duration, tokens, and cost.
+Bots forward agent messages to instant-messaging platforms and can hand off active tasks to a mobile device when the desktop is idle.
 
-That's the full usage loop. You're now a competent CCR user. Everything below is "advanced" — come back to it when you need it.
+### Modes
 
-## Advanced: Compose A Model With Tools Using Fusion
+| Mode | Behavior |
+|---|---|
+| **Forward** | Every agent message is forwarded to the configured IM channel |
+| **Handoff** | Messages are forwarded only after the desktop has been idle for the configured duration (see **Idle seconds** in Profile settings) |
 
-Go to the **Fusion** page. Its job: **bundle a base model with a tool capability into a new model option** you can then select in Routing or Profiles just like any normal model.
+### Setup
 
-Typical use cases: give a model the ability to see images, search the web, or call an MCP tool.
+1. Open **Bots** from the sidebar.
+2. Click **Add Bot** and select the target platform.
+3. Provide the required credentials for that platform.
+4. Save the Bot.
+5. Open the target Agent Profile, enable **Bot**, select the Bot, and choose Forward or Handoff.
+6. Reopen the agent from CCR.
 
-### Create A Fusion Model
+### Supported Platforms
 
-1. Click **Add Fusion**.
-2. Enter a **New model** alias. Name it after the capability — something with a `vision`, `search`, or `tool` suffix.
-3. Pick the **Base model** — the one that gives the final answer.
-4. Pick a built-in tool or a custom MCP tool under **Tools**.
-5. If you chose the image tool, configure the **Vision model**; if you chose search, configure the **Search provider** and its environment variables.
-6. Save, then select this Fusion model in Routing or Profiles.
+CCR supports the following IM platforms for Bot relay. Each requires platform-specific setup described in its dedicated page:
 
-> **Play it safe:** Validate a Fusion model in a dedicated profile first. Once you're sure it behaves, promote it into global Default or a special route.
-
-### Built-In Vision
-
-Select `ccr-fusion-builtins / vision_understand`. Good for screenshot diagnosis, OCR, UI comparison, chart reading, and multi-image analysis.
-
-Key points:
-
-- The **Vision model** must genuinely support image understanding — it's the one that "reads" the image.
-- The **Base model** is the one that "answers."
-- Test with a single screenshot before dropping it into a complex agent workflow.
-
-### Built-In Web Search
-
-Select `ccr-fusion-builtins / web_search`. Supported providers: Brave, Bing, Google CSE, Serper, SerpAPI, Tavily, and Exa.
-
-Key points:
-
-- Pick a **Search provider** you've actually enabled.
-- Fill the API key or environment variables it requires under **Provider configuration**.
-- Test with a question that needs current information (today's weather somewhere, for instance).
-- If search fails, check the search API key first, then look at Fusion tool errors in Logs.
-
-### Custom MCP Tools
-
-Click **Add custom MCP** and choose a transport:
-
-- **stdio**: a local command-line tool. Fill Command, Arguments, Working directory, and Environment variables.
-- **streamable-http / sse**: a remote MCP service. Fill URL and Headers.
-- **Discover tools**: lists the tools the MCP server exposes.
-- **Request timeout / Startup timeout**: bump these up if the tool or server is slow.
-
-> **Tip:** Only wire stable, predictably-fast MCP tools into Fusion. Validate anything risky in a separate profile first.
-
-## Advanced: Relay Agent Messages Into IM With Bots
-
-Go to **Bots**, configure one, then attach it in **Profiles**.
-
-A Bot forwards an agent's messages into IM, and can hand the task off to your phone after you've been idle for a while. Great for long-running jobs, checking progress remotely, or letting a human take over.
-
-### Setup Steps
-
-1. Open **Bots** and click **Add Bot**.
-2. Pick a platform. Supported: Weixin iLink, WeCom, Slack, Discord, Telegram, LINE, Feishu, DingTalk.
-3. Pick an auth method — the fields differ by platform (Bot Token, OAuth, App Secret, QR Login, and so on).
-4. Fill in whatever the platform asks for: IDs, tokens, secrets, signing secrets, or robot code.
-5. Save the bot.
-6. Open **Profiles** and edit the agent profile you want to attach it to.
-7. Turn on **Bot** and select the bot you just created.
-8. Turn on **Forward agent messages** if you want the agent's output relayed too.
-9. Turn on **Handoff**, set **Idle seconds**, and pick a scanned Wi-Fi or Bluetooth target if you want phone handoff.
-
-> **Note:** Bots currently only forward agent messages produced inside an app opened through CCR. Messages from the CLI are not forwarded. Handoff target scanning is available in the Electron desktop app.
-
-### Per-Platform Guides
-
-Every platform has its own page with the full walk-through (how to create the app on the platform, a field-by-field mapping, and a troubleshooting FAQ):
-
-- [Slack](/en/relay-agents-in-im-with-bots/slack)
-- [Discord](/en/relay-agents-in-im-with-bots/discord)
-- [Telegram](/en/relay-agents-in-im-with-bots/telegram)
-- [LINE](/en/relay-agents-in-im-with-bots/line)
-- [Weixin](/en/relay-agents-in-im-with-bots/weixin-ilink)
-- [WeCom](/en/relay-agents-in-im-with-bots/wecom)
-- [Feishu](/en/relay-agents-in-im-with-bots/feishu)
 - [DingTalk](/en/relay-agents-in-im-with-bots/dingtalk)
+- [Discord](/en/relay-agents-in-im-with-bots/discord)
+- [Feishu (Lark)](/en/relay-agents-in-im-with-bots/feishu)
+- [LINE](/en/relay-agents-in-im-with-bots/line)
+- [Slack](/en/relay-agents-in-im-with-bots/slack)
+- [Telegram](/en/relay-agents-in-im-with-bots/telegram)
+- [WeCom (Enterprise WeChat)](/en/relay-agents-in-im-with-bots/wecom)
+- [Weixin (iLink)](/en/relay-agents-in-im-with-bots/weixin-ilink)
 
-## When Something Goes Wrong, Look Here
+Each platform page covers: required credentials, where to obtain them in the platform's developer console, and common troubleshooting steps.
 
-CCR gives you three debugging surfaces: **Logs** (request history), **Observability** (agent summaries), and **Networking** (temporary raw captures).
+## Troubleshooting
 
-### Quick Reference
+### Diagnostic Entry Points
 
-| Symptom | Check first |
-| --- | --- |
-| Agent isn't using CCR | Is the Server running, did you Apply the profile, did you open the agent from CCR, is the Scope right |
-| Request hits the wrong model | Routing Default, rule order, match conditions, fallback — then resolved model in Logs |
-| Provider auth fails (401/403) | API key, credential, Base URL, protocol, extra headers |
-| model not found (404) | Is the model in the provider's list, does the model Routing selected actually exist |
-| Fusion tool never gets called | Fusion tool selection, does the Vision model support images, is the search key right, MCP Discover tools and timeout |
-| Requests time out | Is the upstream itself slow, is a Fusion tool slow, did you set timeout too low |
-| Cost suddenly spikes | Filter by model, then look at token mix and request body size |
-| One key keeps failing | Filter by Credential; if it's really that key, disable it if needed |
-| Bot receives no messages | Is Bot enabled in the profile, was the app opened from CCR, is Forward agent messages on, is the platform token still valid |
-| Overview has no data | Are Request logs and Agent analysis on, have any new requests actually come in since |
+When a request does not behave as expected, investigate in the following order:
 
-### About Network Capture
+1. **Logs** — confirm the request reached CCR, identify the provider and model it was routed to, and check the HTTP status code
+2. **Overview** — check error rate and latency for the provider to see if the issue is systemic
+3. **Network capture** — enable for raw request/response inspection when Logs do not contain enough detail
 
-If you need to inspect the rawest possible exchange (request/response summary, headers, query, body, raw), turn on **Server → Capture network** and open **Networking**. You can pause, resume, refresh, and clear captures.
+### Common Symptoms
 
-> **Reminder:** Network capture records very complete — and therefore sensitive — information. **Turn it on only while debugging, and off when you're done.** Don't leave it running long-term.
+| Symptom | Likely cause | Check |
+|---|---|---|
+| Agent cannot connect to CCR | CCR process not running, port conflict, or firewall | Confirm the Server page shows "Running". Verify port `8080` is not in use by another process. Check firewall rules. |
+| Request reaches CCR but returns 5xx | Provider credentials invalid or expired | Open the provider's **Credentials** tab and verify the key validates (green indicator). Rotate the key if needed. |
+| Request returns 4xx | Model name not recognized by provider, or protocol mismatch | Verify the model name in the request matches a model the provider supports. Confirm the provider protocol is correct. |
+| Request routed to unexpected provider | Routing rule order or Default route misconfigured | Open **Routing** and review rule order. Check that no higher-priority rule matches the request unintentionally. |
+| High latency | Provider overloaded, network path, or large payload | Check latency distribution in **Overview**. Test the provider directly (outside CCR) to isolate the issue. |
+| Bot does not receive messages | Bot credentials invalid, platform-side configuration incomplete, or agent not reopened after Bot toggle | Verify Bot fields in **Bots** page. Revisit the platform-specific setup guide. Reopen the agent from CCR. |
+| Fusion model error | Base model does not support the augmentation, or augmentation tool unavailable | Test the base model directly first. For web search, verify the search service is reachable. For MCP Fusion, confirm the MCP server is running. |
+| Handoff does not trigger | Idle detection not working, or Handoff selected but Forward intended | Verify **Idle seconds** is set. Confirm Handoff vs Forward setting in the Profile. |
+| Rate limiting from provider | Too many concurrent requests on a single key | Add additional credentials to the provider for CCR to cycle through. |
 
-## A Few Habits Worth Keeping
+### Network Capture
 
-- **Treat secrets as secrets.** API keys, bot tokens, secrets, and usage endpoints are sensitive. Configure them only in a trusted environment, and never send them to an unverified service.
-- **Test before you change globals.** Before touching global Routing or Default, validate the change in a separate profile first. Saves you from disrupting an agent that's actively in use.
-- **Skim Logs now and then.** A periodic glance at errors, tokens, cost, and latency catches problems before they grow.
-- **Keep backup keys for important providers.** Give critical providers several Credentials with priority, weight, and limits, so one dead key doesn't take everything down.
-- **Verify deeplinks before importing.** Before importing a provider via a `ccr://provider?...` link, glance at the source, Base URL, protocol, and model list, then confirm.
+Network capture records every HTTP request and response at the wire level. Enable it in **Logs settings** → **Capture network**.
 
----
+**Security note**: Captured data includes API keys in request headers. Delete capture files after debugging and do not commit them to version control.
 
-That's the whole loop: **connect providers → set routing → wire in an agent → turn on observability → extend as needed.** From here it's just usage — come back to whichever section matches the problem in front of you. Enjoy.
+## Operational Best Practices
+
+- **Rotate API keys regularly.** Use provider dashboards to issue new keys and retire old ones. Update CCR credentials immediately.
+- **Test routing changes with a dedicated Profile** before modifying the Default route or rules used by production agents.
+- **Review Logs periodically** even when nothing is broken — it surfaces slow providers, unexpected model usage, and credential issues before they escalate.
+- **Maintain spare credentials.** Having a second key for each provider prevents a single key rotation from blocking all traffic.
+- **Back up the config file.** The config JSON contains all provider entries, routing rules, and Bot configurations. Store it securely.
+- **Audit Fusion and Bot configurations** after CCR upgrades. New versions may introduce additional capabilities or change default behavior.
+
+## Reference
+
+### Configuration File Format
+
+CCR stores its configuration as a JSON file at the OS-specific path listed in [Configuration File Format](#configuration-file-format). The file is structured as follows:
+
+```json
+{
+  "version": 3,
+  "port": 8080,
+  "providers": [
+    {
+      "id": "uuid",
+      "name": "Anthropic",
+      "protocol": "anthropic",
+      "baseUrl": "https://api.anthropic.com",
+      "credentials": [
+        { "key": "sk-ant-...", "label": "primary" }
+      ]
+    }
+  ],
+  "routing": {
+    "default": "claude-sonnet-4-20250514",
+    "rules": []
+  },
+  "profiles": [],
+  "bots": [],
+  "fusionModels": []
+}
+```
+
+When editing the file directly, restart CCR for changes to take effect. The desktop UI writes changes back to this file on every **Save** or **Apply** action.
+
+### Environment Variables
+
+| Variable | Purpose |
+|---|---|
+| `CCR_PORT` | Override the default listen port (default: `8080`) |
+| `CCR_CONFIG_PATH` | Override the config file location |
+| `CCR_LOG_LEVEL` | Set log verbosity: `debug`, `info`, `warn`, `error` (default: `info`) |
+
+### Supported Model Providers
+
+CCR is compatible with any provider that exposes an Anthropic Messages API or OpenAI-compatible `/v1/chat/completions` endpoint. This includes, but is not limited to:
+
+- Anthropic
+- OpenAI
+- Azure OpenAI
+- Google Vertex AI (via OpenAI-compatible adapter)
+- AWS Bedrock (via OpenAI-compatible adapter)
+- OpenRouter
+- Self-hosted models (vLLM, Ollama, llama.cpp server)
+
+### Version
+
+This documentation applies to CCR v3.0.0 and later. Refer to the [GitHub releases page](https://github.com/musistudio/claude-code-router/releases) for changelogs and upgrade notes.
