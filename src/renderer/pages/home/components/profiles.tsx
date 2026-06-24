@@ -6,7 +6,7 @@ import {
   normalizeProfileScope, normalizeProfileSurface, parseProfileModelValue, Pencil, Plus, PopoverContent,
   profileAgentLabel, profileAgentOptions, ProfileConfig, profileModelDisplayValue, profileModelMatchesQuery, profileModelProviderMatchesQuery,
   profileModelProviderOptions, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
-  Play, Power, RefreshCw, Search, Select, SelectControl, Terminal, Toggle, translateOptions, Trash2, useAppText, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactNode, type VirtualModelProfileConfig,
+  Play, Power, RefreshCw, Search, Select, SelectControl, Terminal, Toggle, translateOptions, Trash2, useAppErrorText, useAppText, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactNode, type VirtualModelProfileConfig,
   copyTextToClipboard,
   useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, X
 } from "../shared";
@@ -910,6 +910,7 @@ function BotGatewaySelectForm({
   onCreateBot: () => void;
 }) {
   const t = useAppText();
+  const formatError = useAppErrorText();
   const options = [
     { label: t("None"), value: "none" },
     ...botConfigs.map((config) => ({ label: botGatewaySavedConfigLabel(config, t), value: config.id })),
@@ -946,12 +947,12 @@ function BotGatewaySelectForm({
       });
     } catch (error) {
       setScan({
-        error: error instanceof Error ? error.message : String(error),
+        error: formatError(error),
         loading: false,
         results: []
       });
     }
-  }, [t]);
+  }, [formatError, t]);
 
   useEffect(() => {
     if (!draft.botEnabled || !draft.botHandoffEnabled || !selectedBot) {

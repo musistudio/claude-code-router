@@ -3,7 +3,7 @@ import {
   botGatewayDefaultAuthType, botGatewayFieldsForAuth, botGatewayPickAuthFields, botGatewayPlatformLabel, botGatewayPlatformOptions,
   botGatewaySavedConfigFromDraft, botGatewaySavedConfigLabel, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitResult, BotGatewayQrWindowOpenResult, BotGatewaySavedConfig, Button,
   CircleAlert, closestCenter, cn, CSS, Database, Dialog, DialogBody, DialogContent,
-  DialogFooter, DialogHeader, DialogTitle, Field, formatProviderAccountMeterValue, formatSystemOption, Gauge,
+  DialogFooter, DialogHeader, DialogTitle, Field, formatAppError, formatProviderAccountMeterValue, formatSystemOption, Gauge,
   createBotGatewayConfigDraft, DndContext, DragEndEvent, Input, isBotGatewayConfigDraftSubmittable, KeyboardSensor, languageDisplayName, Layers3, LoaderCircle,
   normalizeBotGatewayAuthType, normalizeBotGatewayPlatform, Palette, ProfileConfig, profileAgentLabel,
   PanelLeftOpen, Power, ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ResolvedLanguage, ResolvedTheme, Select, SelectControl,
@@ -747,7 +747,7 @@ function BotConfigDialog({
       onSave(configWithQrLoginResult(savedConfig, start, wait));
     } catch (error) {
       if (qrMountedRef.current && generation === qrStartGenerationRef.current) {
-        const message = formatBotQrError(error);
+        const message = formatAppError(copy, error);
         setError(message);
         setQrLogin((current) => ({
           ...current,
@@ -965,10 +965,6 @@ function botQrLoginStatusLabel(status: string): string {
     default:
       return "Waiting for QR code";
   }
-}
-
-function formatBotQrError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function authMethodLabel(platform: string, authType: string): string {

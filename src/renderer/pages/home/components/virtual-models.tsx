@@ -8,7 +8,7 @@ import {
   mcpServerConfigFromDraft, mcpServerEndpointSummary, mcpServerTransportOptions,
   mcpStdioMessageModeOptions, motion, normalizeFusionToolName, Pencil,
   PluginMarketplaceEntry, Plus, PopoverContent, RouteTargetControl, Search, selectedFusionToolName,
-  SelectControl, Toggle, Trash2, translateOptions, useAppText, useEffect, useLayoutEffect, useMemo,
+  SelectControl, Toggle, Trash2, translateOptions, useAppErrorText, useAppText, useEffect, useLayoutEffect, useMemo,
   useRef, useState, validateMcpServerDraft, virtualModelBaseModelSummary, VirtualModelDraft, virtualModelMatchesQuery, virtualModelMatchSummary,
   VirtualModelProfileConfig, virtualModelToolSummary, X
 } from "../shared";
@@ -155,6 +155,7 @@ export function VirtualModelDialog({
   providers: GatewayProviderConfig[];
 }) {
   const t = useAppText();
+  const formatError = useAppErrorText();
   const modelOptions = useMemo(() => createRouteModelOptions(providers), [providers]);
   const selectedTool = selectedFusionToolName(draft.toolsText);
   const selectedToolFlags = fusionToolExecutionFlags(selectedTool);
@@ -253,10 +254,10 @@ export function VirtualModelDialog({
       }));
       return tools;
     } catch (discoverError) {
-      const message = discoverError instanceof Error ? discoverError.message : String(discoverError);
+      const message = formatError(discoverError);
       setMcpToolStateByServer((current) => ({
         ...current,
-        [server.name]: { error: message || "Tool discovery failed.", loading: false, tools: current[server.name]?.tools ?? [] }
+        [server.name]: { error: message || t("Tool discovery failed"), loading: false, tools: current[server.name]?.tools ?? [] }
       }));
       return [];
     }
@@ -271,7 +272,7 @@ export function VirtualModelDialog({
   async function submitCustomMcpDialog() {
     const validationError = validateMcpServerDraft(customMcpDialogDraft);
     if (validationError) {
-      setCustomMcpDialogError(validationError);
+      setCustomMcpDialogError(formatError(new Error(validationError)));
       return;
     }
     const normalizedDraft = customMcpDialogDraft.transport === "stdio"

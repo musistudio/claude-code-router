@@ -6,6 +6,7 @@ import trayCyanIconUrl from "../../../../assets/tray-cyan.png";
 import trayOrangeIconUrl from "../../../../assets/tray-orange.png";
 import trayVioletIconUrl from "../../../../assets/tray-violet.png";
 import { DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS } from "../../../shared/app";
+import { formatLocalizedErrorMessage } from "../../../shared/i18n";
 import type {
   AppConfig,
   ProviderAccountMeter,
@@ -125,6 +126,11 @@ export const TrayI18nContext = createContext<(value: string) => string>((value) 
 
 export function useTrayText() {
   return useContext(TrayI18nContext);
+}
+
+export function useTrayErrorText() {
+  const language = useResolvedTrayLanguage();
+  return useMemo(() => (error: unknown) => formatLocalizedErrorMessage(language, error), [language]);
 }
 
 export const ranges: UsageStatsRange[] = ["today", "24h", "7d", "30d"];

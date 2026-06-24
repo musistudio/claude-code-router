@@ -2,7 +2,7 @@ import {
   AppConfig, createSourceTabs, DEFAULT_TRAY_WIDGETS, defaultTrayWidgetVariant, emptySnapshots, formatCompactNumber, formatProviderName,
   formatPercent, formatUpdated, formatUsdCost, normalizeTrayWidgets, ProviderAccountSnapshot, rangeLabel,
   SnapshotMap, SourceTab, TrayComponentVariants, TrayWidgetConfig, UsageComparisonRow, UsageStatsFilter, UsageStatsRange, UsageTotals, useCallback, useEffect,
-  useMemo, useState, useTrayText
+  useMemo, useState, useTrayErrorText, useTrayText
 } from "./shared";
 import {
   AccountSummaryPanel, AnimatedUsageChart, ChartShell, ModelShareChart, RingMetrics,
@@ -15,6 +15,7 @@ const trayHeaderRanges: TrayHeaderRange[] = ["24h", "7d", "30d"];
 
 export function TrayApp() {
   const t = useTrayText();
+  const formatError = useTrayErrorText();
   const [allSnapshots, setAllSnapshots] = useState<SnapshotMap>(emptySnapshots);
   const [configuredProviders, setConfiguredProviders] = useState<string[]>([]);
   const [error, setError] = useState("");
@@ -53,11 +54,11 @@ export function TrayApp() {
       setConfiguredProviders(config.Providers.map((provider) => provider.name.trim()).filter(Boolean));
       setTrayWidgets(normalizeTrayWidgets(config.trayWidgets, config.trayWindowModules, config.trayComponentVariants));
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError));
+      setError(formatError(nextError));
     } finally {
       setLoading(false);
     }
-  }, [selectedProvider]);
+  }, [formatError, selectedProvider]);
 
   useEffect(() => {
     document.body.classList.add("tray-window");

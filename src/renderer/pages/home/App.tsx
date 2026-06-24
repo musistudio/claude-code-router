@@ -11,7 +11,7 @@ import {
   enforceSingleEnabledGlobalProfilePerAgent,
   ExtensionConfigTarget, ExtensionDeleteTarget, ExtensionInstallDraft, ExtensionSource, fallbackAgentAnalysis, fallbackConfig,
   fallbackGatewayStatus, fallbackInfo, fallbackProxyCertificateStatus, fallbackProxyNetworkSnapshot, fallbackProxyStatus, fallbackRequestLogPage,
-  fallbackUsageStats, formatJson, formatProxyCertificateInstallMessage, GatewayProviderConfig,
+  fallbackUsageStats, formatAppError, formatJson, formatProxyCertificateInstallMessage, GatewayProviderConfig,
   fusionCustomMcpServerFromDraft, fusionCustomToolConfigFromProfile,
   GatewayProviderProbeResult, gatewayServiceMessage, GatewayStatus, getDefaultOnboardingStep, isClaudeDesignPluginConfig, isClaudeDesignRoutingDraftValid,
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
@@ -30,7 +30,7 @@ import {
   providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
   ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkCatalogModels, resolveProviderDeepLinkIcon, RouterRule, ServerActionBusy, SettingsPageId,
-  routingRewriteFromDraftRow, setProviderPresets, splitLines, translateProxyCertificateMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
+  routingRewriteFromDraftRow, setProviderPresets, splitLines, translateAppErrorMessage, translateProxyCertificateMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
   uniqueRoutingRuleId, updateApiKeyEditableConfig, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, useEffect,
   useMemo, useReducedMotion, useRef, useState, validateVirtualModelDraft, ViewId,
   VirtualModelDraft, virtualModelProfileFromDraft
@@ -250,6 +250,7 @@ function App() {
   const resolvedLanguage = languagePreference === "system" ? systemLanguage : languagePreference;
   const copy = appCopy[resolvedLanguage];
   const t = useMemo(() => (value: string) => translateText(copy, value), [copy]);
+  const formatError = useMemo(() => (error: unknown) => formatAppError(copy, error), [copy]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(max-width: 720px)");
@@ -539,7 +540,7 @@ function App() {
         })
         .catch((error) => {
           if (!cancelled) {
-            setAgentAnalysisError(error instanceof Error ? error.message : String(error));
+            setAgentAnalysisError(formatError(error));
           }
         })
         .finally(() => {
@@ -588,7 +589,7 @@ function App() {
         })
         .catch((error) => {
           if (!cancelled) {
-            setRequestLogError(error instanceof Error ? error.message : String(error));
+            setRequestLogError(formatError(error));
           }
         })
         .finally(() => {
@@ -697,6 +698,10 @@ function App() {
   const canSubmitClaudeDesignRouting = isClaudeDesignRoutingDraftValid(claudeDesignRoutingDraft);
   const canSubmitCursorProxyRouting = isClaudeDesignRoutingDraftValid(cursorProxyRoutingDraft);
   const virtualModelValidationError = useMemo(() => validateVirtualModelDraft(virtualModelDraft), [virtualModelDraft]);
+  const translatedVirtualModelValidationError = useMemo(
+    () => virtualModelValidationError ? translateAppErrorMessage(copy, virtualModelValidationError) : "",
+    [copy, virtualModelValidationError]
+  );
   const canSubmitVirtualModel = !virtualModelValidationError;
   const canInstallExtension = Boolean(extensionInstallDraft.key.trim() && extensionInstallDraft.modulePath.trim());
 
@@ -775,7 +780,7 @@ function App() {
         })
         .catch((error) => {
           if (autoSaveRequestId.current === requestId) {
-            setActionError(error instanceof Error ? error.message : String(error));
+            setActionError(formatError(error));
           }
         });
     }, 400);
@@ -830,14 +835,14 @@ function App() {
       setError("");
       return true;
     } catch (error) {
-      setError(error instanceof Error ? error.message : String(error));
+      setError(formatError(error));
       return false;
     }
   }
 
   async function persistApiKeys(apiKeys: ApiKeyConfig[], setError: (message: string) => void): Promise<boolean> {
     if (!window.ccr) {
-      setError("API key persistence is only available in the Electron app.");
+      setError(t("API key persistence is only available in the Electron app."));
       return false;
     }
 
@@ -850,7 +855,7 @@ function App() {
       setError("");
       return true;
     } catch (error) {
-      setError(error instanceof Error ? error.message : String(error));
+      setError(formatError(error));
       return false;
     }
   }
@@ -884,11 +889,11 @@ function App() {
 
   async function submitApiKeyDraft() {
     if (!apiKeyDraft.name.trim()) {
-      setApiKeyError("Name is required.");
+      setApiKeyError(t("Name is required."));
       return;
     }
     if (!canSubmitApiKey) {
-      setApiKeyError("Expiration is required.");
+      setApiKeyError(t("Expiration is required."));
       return;
     }
     const apiKey = createGeneratedApiKey(apiKeyDraft);
@@ -911,7 +916,7 @@ function App() {
       return;
     }
     if (!canSubmitApiKeyEdit) {
-      setApiKeyError("Expiration is required.");
+      setApiKeyError(t("Expiration is required."));
       return;
     }
 
@@ -1052,7 +1057,7 @@ function App() {
           }
           if (!result) {
             setProviderProbe(undefined);
-            setProviderProbeError("Request failed.");
+            setProviderProbeError(t("Request failed."));
             return;
           }
 
@@ -1070,13 +1075,13 @@ function App() {
 
           if (probeMode !== "models" && !providerProbeHasSupportedProtocol(result.probe)) {
             const message = result.probe.protocols.find((item) => item.message)?.message || "Request failed.";
-            setProviderProbeError(message);
+            setProviderProbeError(translateAppErrorMessage(copy, message));
           }
         })
         .catch((error) => {
           if (providerProbeRequestId.current === requestId) {
             setProviderProbe(undefined);
-            setProviderProbeError(error instanceof Error ? error.message : String(error));
+            setProviderProbeError(formatError(error));
           }
         })
         .finally(() => {
@@ -1111,15 +1116,15 @@ function App() {
 
     setProviderProbeError("");
     if (!window.ccr) {
-      setProviderProbeError("Request failed.");
+      setProviderProbeError(t("Request failed."));
       return emptyReport;
     }
     if (candidates.length === 0) {
-      setProviderProbeError("No endpoint candidates available.");
+      setProviderProbeError(t("No endpoint candidates available."));
       return emptyReport;
     }
     if (models.length === 0) {
-      setProviderProbeError("Select or enter at least one model.");
+      setProviderProbeError(t("Select or enter at least one model."));
       return emptyReport;
     }
     const safetyIssue = providerProbeCandidatesApiKeySafetyIssue(
@@ -1129,7 +1134,7 @@ function App() {
       providerDraft.presetId
     );
     if (safetyIssue) {
-      setProviderProbeError(safetyIssue.message);
+      setProviderProbeError(translateAppErrorMessage(copy, safetyIssue.message));
       return emptyReport;
     }
 
@@ -1149,13 +1154,13 @@ function App() {
       setProviderConnectivityProbe(report.probe);
 
       if (report.passed.length === 0) {
-        setProviderProbeError(report.failed[0]?.message || "Request failed.");
+        setProviderProbeError(translateAppErrorMessage(copy, report.failed[0]?.message || "Request failed."));
       }
       return report;
     } catch (error) {
       if (providerConnectivityRequestId.current === requestId) {
         setProviderConnectivityProbe(undefined);
-        setProviderProbeError(error instanceof Error ? error.message : String(error));
+        setProviderProbeError(formatError(error));
       }
       return emptyReport;
     } finally {
@@ -1176,24 +1181,24 @@ function App() {
     const typedModels = splitLines(providerDraft.modelsText);
     const models = mergeProviderModelLists(providerDraft.selectedModels, typedModels);
     if (models.length === 0) {
-      setProviderProbeError(usesCatalog ? "Select or enter at least one model." : "Enter at least one model.");
+      setProviderProbeError(t(usesCatalog ? "Select or enter at least one model." : "Enter at least one model."));
       return false;
     }
 
     const providerName = providerDraft.name.trim();
     if (isProviderNameDuplicate(draftConfig.Providers, providerName, providerEditIndex)) {
-      setProviderProbeError("Provider name already exists.");
+      setProviderProbeError(t("Provider name already exists."));
       return false;
     }
 
     const accountConfig = parseProviderAccountDraft(providerDraft);
     if (typeof accountConfig === "string") {
-      setProviderProbeError(accountConfig);
+      setProviderProbeError(translateAppErrorMessage(copy, accountConfig));
       return false;
     }
     const credentials = providerCredentialsFromDraft(providerDraft);
     if (typeof credentials === "string") {
-      setProviderProbeError(credentials);
+      setProviderProbeError(translateAppErrorMessage(copy, credentials));
       return false;
     }
     const fallbackProtocol = probe?.detectedProtocol ?? providerDraft.protocol;
@@ -1203,7 +1208,7 @@ function App() {
       ? providerDraft.selectedProtocols.filter((protocol) => selectableProtocols.length === 0 || selectableProtocols.includes(protocol))
       : [];
     if (selectableProtocols.length > 0 && selectedProtocols.length === 0) {
-      setProviderProbeError("Select at least one protocol.");
+      setProviderProbeError(t("Select at least one protocol."));
       return false;
     }
 
@@ -1232,7 +1237,7 @@ function App() {
       presetId: providerDraft.presetId
     });
     if (keySafetyIssue) {
-      setProviderProbeError(keySafetyIssue.message);
+      setProviderProbeError(translateAppErrorMessage(copy, keySafetyIssue.message));
       return false;
     }
     for (const credential of credentials) {
@@ -1243,7 +1248,7 @@ function App() {
         presetId: providerDraft.presetId
       });
       if (credentialKeySafetyIssue) {
-        setProviderProbeError(credentialKeySafetyIssue.message);
+        setProviderProbeError(translateAppErrorMessage(copy, credentialKeySafetyIssue.message));
         return false;
       }
     }
@@ -1253,7 +1258,7 @@ function App() {
       presetId: providerDraft.presetId
     });
     if (identityIssue) {
-      setProviderProbeError(identityIssue.message);
+      setProviderProbeError(translateAppErrorMessage(copy, identityIssue.message));
       return false;
     }
 
@@ -1264,7 +1269,7 @@ function App() {
       providerPresetId: providerDraft.presetId
     });
     if (accountKeySafetyIssue) {
-      setProviderProbeError(accountKeySafetyIssue.message);
+      setProviderProbeError(translateAppErrorMessage(copy, accountKeySafetyIssue.message));
       return false;
     }
 
@@ -1383,7 +1388,7 @@ function App() {
         }
       }
     } catch (error) {
-      setProviderDeepLinkError(error instanceof Error ? error.message : String(error));
+      setProviderDeepLinkError(formatError(error));
       setProviderDeepLinkBusy(false);
     }
   }
@@ -1526,7 +1531,7 @@ function App() {
 
   function submitVirtualModelDraft() {
     if (virtualModelValidationError) {
-      setVirtualModelError(virtualModelValidationError);
+      setVirtualModelError(translatedVirtualModelValidationError);
       return;
     }
 
@@ -1599,7 +1604,7 @@ function App() {
 
   async function chooseLocalExtensionDirectory() {
     if (!window.ccr?.selectPluginDirectory) {
-      setActionError("Local plugin selection is available in the Electron app.");
+      setActionError(t("Local plugin selection is available in the Electron app."));
       return;
     }
 
@@ -1620,7 +1625,7 @@ function App() {
       setExtensionInstallError("");
       setActionError("");
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : String(error));
+      setActionError(formatError(error));
     }
   }
 
@@ -1979,7 +1984,7 @@ function App() {
 
   async function restartProxy() {
     if (!window.ccr) {
-      setActionError("Proxy restart is available in the Electron app.");
+      setActionError(t("Proxy restart is available in the Electron app."));
       return;
     }
 
@@ -1989,9 +1994,9 @@ function App() {
     try {
       const status = await window.ccr.restartProxy();
       setProxyStatus(status);
-      setActionMessage(proxyRestartMessage(status));
+      setActionMessage(translateAppErrorMessage(copy, proxyRestartMessage(status)));
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : String(error));
+      setActionError(formatError(error));
     } finally {
       setActionBusy("");
     }
@@ -2002,7 +2007,7 @@ function App() {
       try {
         await window.ccr.setOnboardingFinished();
       } catch (error) {
-        setActionError(error instanceof Error ? error.message : String(error));
+        setActionError(formatError(error));
         return;
       }
     }
@@ -2031,7 +2036,7 @@ function App() {
       const status = await refreshProxyCertificateStatus();
       setActionMessage(status?.trusted ? t("Proxy CA certificate is trusted.") : translateProxyCertificateMessage(status?.message, t) || t("Proxy CA certificate is not trusted."));
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : String(error));
+      setActionError(formatError(error));
     } finally {
       setProxyCertificateChecking(false);
     }
@@ -2061,7 +2066,7 @@ function App() {
       setProxyEnablePending(true);
       setActionMessage(translateProxyCertificateMessage(status?.message, t) || t("Install and trust the proxy CA certificate before enabling proxy mode."));
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : String(error));
+      setActionError(formatError(error));
     } finally {
       setProxyCertificateChecking(false);
     }
@@ -2069,7 +2074,7 @@ function App() {
 
   async function toggleGatewayService() {
     if (!window.ccr) {
-      setActionError("Service control is available in the Electron app.");
+      setActionError(t("Service control is available in the Electron app."));
       return;
     }
 
@@ -2082,9 +2087,9 @@ function App() {
       setGatewayStatus(status);
       const nextProxyStatus = await window.ccr.getProxyStatus();
       setProxyStatus(nextProxyStatus);
-      setActionMessage(gatewayServiceMessage(status, shouldStop));
+      setActionMessage(translateAppErrorMessage(copy, gatewayServiceMessage(status, shouldStop)));
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : String(error));
+      setActionError(formatError(error));
     } finally {
       setGatewayActionBusy(false);
     }
@@ -2111,7 +2116,7 @@ function App() {
       }
       setActionMessage(formatProxyCertificateInstallMessage(result, status, t));
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : String(error));
+      setActionError(formatError(error));
     } finally {
       setActionBusy("");
     }
@@ -2142,7 +2147,7 @@ function App() {
       setRequestLogPage(await window.ccr.getRequestLogs(requestLogFilter));
       setRequestLogError("");
     } catch (error) {
-      setRequestLogError(error instanceof Error ? error.message : String(error));
+      setRequestLogError(formatError(error));
     } finally {
       setRequestLogLoading(false);
     }
@@ -2170,7 +2175,7 @@ function App() {
       }));
       setAgentAnalysisError("");
     } catch (error) {
-      setAgentAnalysisError(error instanceof Error ? error.message : String(error));
+      setAgentAnalysisError(formatError(error));
     } finally {
       setAgentAnalysisLoading(false);
     }
@@ -2215,7 +2220,7 @@ function App() {
       setProxyNetworkSnapshot(await window.ccr.setProxyNetworkCaptureEnabled(enabled));
       setActionError("");
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : String(error));
+      setActionError(formatError(error));
     }
   }
 
@@ -2276,7 +2281,7 @@ function App() {
       };
       if (!(await persistConfig(draftConfig, setSaveError))) {
         if (!saveError) {
-          setProfileActionError("Failed to save profile before copying.");
+          setProfileActionError(t("Failed to save profile before copying."));
         }
         return;
       }
@@ -2290,7 +2295,7 @@ function App() {
       setProfileActionError("");
       showToast(t("Copied"));
     } catch (error) {
-      setProfileActionError(formatUnknownError(error));
+      setProfileActionError(formatError(error));
     } finally {
       setProfileActionBusy((current) =>
         current?.profileId === profile.id && current.surface === "cli" ? undefined : current
@@ -2314,20 +2319,20 @@ function App() {
       };
       if (!(await persistConfig(draftConfig, setSaveError))) {
         if (!saveError) {
-          setProfileActionError("Failed to save profile before opening.");
+          setProfileActionError(t("Failed to save profile before opening."));
         }
         return;
       }
 
       if (!window.ccr?.openProfile) {
-        setProfileActionError("Profile opening is only available in the Electron app.");
+        setProfileActionError(t("Profile opening is only available in the Electron app."));
         return;
       }
       const result = await window.ccr.openProfile({ profileId: profile.id, surface: "app" });
       await refreshProfileRuntimeStatus();
-      showToast(result.message);
+      showToast(translateAppErrorMessage(copy, result.message));
     } catch (error) {
-      setProfileActionError(formatUnknownError(error));
+      setProfileActionError(formatError(error));
     } finally {
       setProfileActionBusy((current) =>
         current?.profileId === profile.id && current.surface === "app" ? undefined : current
@@ -2345,15 +2350,15 @@ function App() {
     setProfileActionBusy({ profileId: profile.id, surface: "app" });
     try {
       if (!window.ccr?.stopProfile) {
-        setProfileActionError("Profile stopping is only available in the Electron app.");
+        setProfileActionError(t("Profile stopping is only available in the Electron app."));
         return;
       }
       const result = await window.ccr.stopProfile({ profileId: profile.id, surface: "app" });
       removeProfileRuntimeEntry(result.profileId, result.surface);
       await refreshProfileRuntimeStatus();
-      showToast(result.message);
+      showToast(translateAppErrorMessage(copy, result.message));
     } catch (error) {
-      setProfileActionError(formatUnknownError(error));
+      setProfileActionError(formatError(error));
     } finally {
       setProfileActionBusy((current) =>
         current?.profileId === profile.id && current.surface === "app" ? undefined : current
@@ -2366,7 +2371,7 @@ function App() {
     setProfileOpenDialog({ busy: "cli", command: fallbackCommand, mode, profile });
     if (!(await persistConfig(draftConfig, setProfileActionError))) {
       setProfileOpenDialog((current) => current?.profile.id === profile.id
-        ? { ...current, busy: "", error: profileActionError || "Failed to save profile before opening." }
+        ? { ...current, busy: "", error: profileActionError || t("Failed to save profile before opening.") }
         : current);
       return;
     }
@@ -2381,7 +2386,7 @@ function App() {
         : current);
     } catch (error) {
       setProfileOpenDialog((current) => current?.profile.id === profile.id
-        ? { ...current, busy: "", error: error instanceof Error ? error.message : String(error) }
+        ? { ...current, busy: "", error: formatError(error) }
         : current);
     }
   }
@@ -2392,13 +2397,13 @@ function App() {
       : { busy: "app", mode: "choose", profile });
     if (!(await persistConfig(draftConfig, setProfileActionError))) {
       setProfileOpenDialog((current) => current?.profile.id === profile.id
-        ? { ...current, busy: "", error: profileActionError || "Failed to save profile before opening." }
+        ? { ...current, busy: "", error: profileActionError || t("Failed to save profile before opening.") }
         : current);
       return;
     }
     if (!window.ccr?.openProfile) {
       setProfileOpenDialog((current) => current?.profile.id === profile.id
-        ? { ...current, busy: "", error: "Profile opening is only available in the Electron app." }
+        ? { ...current, busy: "", error: t("Profile opening is only available in the Electron app.") }
         : current);
       return;
     }
@@ -2406,10 +2411,10 @@ function App() {
       const result = await window.ccr.openProfile({ profileId: profile.id, surface: "app" });
       await refreshProfileRuntimeStatus();
       setProfileOpenDialog(undefined);
-      showToast(result.message);
+      showToast(translateAppErrorMessage(copy, result.message));
     } catch (error) {
       setProfileOpenDialog((current) => current?.profile.id === profile.id
-        ? { ...current, busy: "", error: error instanceof Error ? error.message : String(error) }
+        ? { ...current, busy: "", error: formatError(error) }
         : current);
     }
   }
@@ -2420,7 +2425,7 @@ function App() {
       : current);
     if (!window.ccr?.stopProfile) {
       setProfileOpenDialog((current) => current?.profile.id === profile.id
-        ? { ...current, busy: "", error: "Profile stopping is only available in the Electron app." }
+        ? { ...current, busy: "", error: t("Profile stopping is only available in the Electron app.") }
         : current);
       return;
     }
@@ -2429,10 +2434,10 @@ function App() {
       removeProfileRuntimeEntry(result.profileId, result.surface);
       await refreshProfileRuntimeStatus();
       setProfileOpenDialog(undefined);
-      showToast(result.message);
+      showToast(translateAppErrorMessage(copy, result.message));
     } catch (error) {
       setProfileOpenDialog((current) => current?.profile.id === profile.id
-        ? { ...current, busy: "", error: error instanceof Error ? error.message : String(error) }
+        ? { ...current, busy: "", error: formatError(error) }
         : current);
     }
   }
@@ -2490,7 +2495,7 @@ function App() {
 	      return false;
 	    }
 	    if (!canSubmitProfile) {
-	      setProfileActionError("Profile name, required target settings, and environment variable keys are required.");
+	      setProfileActionError(t("Profile name, required target settings, and environment variable keys are required."));
 	      return false;
 	    }
 	    setProfileSubmitBusy("add");
@@ -2532,14 +2537,14 @@ function App() {
 	      return false;
 	    }
 	    if (!canSubmitProfileEdit) {
-	      setProfileActionError("Profile name, required target settings, and environment variable keys are required.");
+	      setProfileActionError(t("Profile name, required target settings, and environment variable keys are required."));
 	      return false;
 	    }
 	    setProfileSubmitBusy("edit");
 	    const currentProfile = draftConfig.profile.profiles[profileEditIndex];
 	    if (!currentProfile) {
 	      setProfileSubmitBusy("");
-	      setProfileActionError("Profile no longer exists.");
+	      setProfileActionError(t("Profile no longer exists."));
 	      return false;
 	    }
     const nextProfile = profileConfigFromDraft(profileEditDraft, draftConfig.profile.profiles, currentProfile, draftConfig.botConfigs);
@@ -2962,7 +2967,7 @@ function App() {
             virtualModelUpsert={virtualModelDialogOpen ? {
               canSubmit: canSubmitVirtualModel,
               draft: virtualModelDraft,
-              error: virtualModelError || virtualModelValidationError,
+              error: virtualModelError || translatedVirtualModelValidationError,
               mcpServers: draftConfig.agent?.mcpServers ?? [],
               mode: virtualModelEditIndex === undefined ? "add" : "edit",
               onChange: updateVirtualModelDraft,
@@ -2988,10 +2993,6 @@ function removeProfileBotReference(profile: ProfileConfig): ProfileConfig {
 
 function isProfileBotSelectionValid(draft: AddProfileDraft, botConfigs: BotGatewaySavedConfig[]): boolean {
   return !draft.botEnabled || botConfigs.some((config) => config.id === draft.botConfigId.trim());
-}
-
-function formatUnknownError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export default App;

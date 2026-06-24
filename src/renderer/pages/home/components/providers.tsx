@@ -14,7 +14,7 @@ import {
   ProviderConnectivityCheckReport, providerDeepLinkDisplayIcon, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
   providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
   resolveProviderDeepLinkPreset, ShieldCheck, splitLines, splitModelTagInput, Switch, Textarea, translatedProviderProtocolLabel, translateOptions,
-  translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppText, useEffect, useMemo,
+  translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppErrorText, useAppText, useEffect, useMemo,
   useRef, useState, X, isPlainRecord
 } from "../shared";
 import type { LocalAgentProviderCandidate } from "../../../../shared/app";
@@ -791,6 +791,7 @@ function LocalAgentProviderImportPanel({
   providers: GatewayProviderConfig[];
 }) {
   const t = useAppText();
+  const formatError = useAppErrorText();
   const [candidates, setCandidates] = useState<LocalAgentProviderCandidate[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -814,7 +815,7 @@ function LocalAgentProviderImportPanel({
       })
       .catch((scanError) => {
         if (!cancelled) {
-          setError(scanError instanceof Error ? scanError.message : String(scanError));
+          setError(formatError(scanError));
         }
       })
       .finally(() => {
@@ -860,7 +861,7 @@ function LocalAgentProviderImportPanel({
         selectedProtocols: [protocol]
       }, true);
     } catch (importError) {
-      setError(importError instanceof Error ? importError.message : String(importError));
+      setError(formatError(importError));
     } finally {
       setImportingId("");
     }
@@ -1360,6 +1361,7 @@ function ProviderCredentialSettings({
   onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
 }) {
   const t = useAppText();
+  const formatError = useAppErrorText();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [importError, setImportError] = useState("");
@@ -1396,13 +1398,13 @@ function ProviderCredentialSettings({
       const text = await file.text();
       const patch = providerCredentialDraftPatchFromJson(text);
       if (typeof patch === "string") {
-        setImportError(patch);
+        setImportError(formatError(new Error(patch)));
         return;
       }
       onChange(patch);
       setImportError("");
     } catch (error) {
-      setImportError(error instanceof Error ? error.message : String(error));
+      setImportError(formatError(error));
     } finally {
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -1568,6 +1570,7 @@ function ProviderUsageSettings({
   probe?: GatewayProviderProbeResult;
 }) {
   const t = useAppText();
+  const formatError = useAppErrorText();
   const [testLoading, setTestLoading] = useState(false);
   const [testResult, setTestResult] = useState<ProviderAccountTestResult>();
   const [testError, setTestError] = useState("");
@@ -1589,12 +1592,12 @@ function ProviderUsageSettings({
 
   async function testUsageRequest() {
     if (!window.ccr?.testProviderAccountConnector) {
-      setTestError("Request failed.");
+      setTestError(t("Request failed."));
       return;
     }
     const connector = providerHttpJsonConnectorFromDraft(draft, { requireMeters: false });
     if (typeof connector === "string") {
-      setTestError(connector);
+      setTestError(formatError(new Error(connector)));
       return;
     }
     const safetyIssue = providerAccountConnectorApiKeySafetyIssue(connector, {
@@ -1604,7 +1607,7 @@ function ProviderUsageSettings({
       providerPresetId: draft.presetId
     });
     if (safetyIssue) {
-      setTestError(safetyIssue.message);
+      setTestError(formatError(new Error(safetyIssue.message)));
       return;
     }
 
@@ -1620,7 +1623,7 @@ function ProviderUsageSettings({
       setTestResult(result);
     } catch (error) {
       setTestResult(undefined);
-      setTestError(error instanceof Error ? error.message : String(error));
+      setTestError(formatError(error));
     } finally {
       setTestLoading(false);
     }
@@ -1634,7 +1637,7 @@ function ProviderUsageSettings({
       setTestError("");
       return;
     }
-    setTestError(link);
+    setTestError(formatError(new Error(link)));
   }
 
   function selectPath(target: ProviderUsageFieldTarget, path: string) {

@@ -1,7 +1,7 @@
 import {
   DEFAULT_TRAY_WIDGETS, emptySnapshots,
   normalizeTrayWidgets, ProviderAccountSnapshot, SnapshotMap, TrayWidgetConfig, UsageStatsFilter,
-  UsageStatsRange, useCallback, useEffect, useState, useTrayText
+  UsageStatsRange, useCallback, useEffect, useState, useTrayErrorText, useTrayText
 } from "./shared";
 import {
   TrayStatusStrip, UsageDetailPanel
@@ -9,6 +9,7 @@ import {
 
 export function TrayDetailApp({ provider }: { provider?: string }) {
   const t = useTrayText();
+  const formatError = useTrayErrorText();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [range, setRange] = useState<UsageStatsRange>("30d");
@@ -39,11 +40,11 @@ export function TrayDetailApp({ provider }: { provider?: string }) {
       setAccountSnapshots(accounts);
       setTrayWidgets(normalizeTrayWidgets(config.trayWidgets, config.trayWindowModules, config.trayComponentVariants));
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError));
+      setError(formatError(nextError));
     } finally {
       setLoading(false);
     }
-  }, [provider]);
+  }, [formatError, provider]);
 
   useEffect(() => {
     document.body.classList.add("tray-window");

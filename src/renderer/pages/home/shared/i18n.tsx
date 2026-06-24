@@ -1,4 +1,5 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useMemo } from "react";
+import { translateErrorMessage } from "../../../../shared/i18n";
 
 type NavigationId = "onboarding" | "overview" | "observability" | "api-keys" | "server" | "profile" | "networking" | "logs" | "providers" | "models" | "routing" | "virtual-models" | "extensions";
 type ResolvedLanguage = "en" | "zh";
@@ -526,6 +527,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "API Keys": "API 密钥",
       "API key included": "已包含 API 密钥",
       "API key not included": "未包含 API 密钥",
+      "API key persistence is only available in the Electron app.": "API Key 持久化仅在 Electron App 中可用。",
       "Acknowledge events": "确认事件",
       "Auth type": "认证类型",
       "Auth method": "认证方式",
@@ -702,10 +704,13 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Environment variables": "环境变量",
       "Endpoint Health": "端点健康",
       "Endpoint information": "端点信息",
+      "Expiration is required.": "过期时间不能为空。",
       "Let's start": "开始吧",
       "Error": "错误",
       "Errors": "错误数",
       "Failed requests": "失败请求",
+      "Failed to save profile before copying.": "复制前保存配置档案失败。",
+      "Failed to save profile before opening.": "打开前保存配置档案失败。",
       "Expiration": "过期时间",
       "Expires at": "过期于",
       "Exact model": "精确模型",
@@ -831,6 +836,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Plugin apps must be a JSON array.": "插件 App 必须是 JSON 数组。",
       "Plugin config JSON": "插件配置 JSON",
       "Plugin config must be a JSON object.": "插件配置必须是 JSON 对象。",
+      "Local plugin selection is available in the Electron app.": "本地插件选择仅在 Electron App 中可用。",
       "Plugin route": "插件路由",
       "Plugin Settings": "插件设置",
       "Port": "端口",
@@ -870,6 +876,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Profile name and required target settings are missing.": "请填写配置档案名称和必需的接入目标设置。",
       "Profile name, required target settings, and environment variable keys are required.": "请填写配置档案名称、必需的接入目标设置和环境变量 Key。",
       "Profile no longer exists.": "配置档案已不存在。",
+      "Profile opening is only available in the Electron app.": "配置档案打开功能仅在 Electron App 中可用。",
+      "Profile stopping is only available in the Electron app.": "配置档案停止功能仅在 Electron App 中可用。",
       "Profile ready": "配置档案已就绪",
       "Recent Errors": "最近错误",
       "Recent Requests": "最近请求",
@@ -1308,6 +1316,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "No protocol detection yet": "尚未检测协议",
       "No response fields": "没有响应字段",
       "No unavailable models": "没有不可用模型",
+      "Name is required.": "名称不能为空。",
       "OpenAI Chat": "OpenAI Chat",
       "OpenAI Responses": "OpenAI Responses",
       "Anthropic Messages": "Anthropic Messages",
@@ -1315,6 +1324,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Model required before protocol verification.": "需要先填写模型，才能验证协议。",
       "No endpoint candidates available.": "没有可用的端点候选。",
       "Request failed.": "请求失败。",
+      "Select or enter at least one model.": "请选择或输入至少一个模型。",
+      "Enter at least one model.": "请输入至少一个模型。",
       "Generated output is limited to 1 token for connectivity checks.": "连通性检测会把生成输出限制为 1 个 token。",
       "Check results": "检测结果",
       "Models to check": "要检测的模型",
@@ -1432,10 +1443,12 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Response": "响应",
       "Refresh targets": "刷新目标",
       "Restart Proxy": "重启代理",
+      "Proxy restart is available in the Electron app.": "代理重启仅在 Electron App 中可用。",
       "Select provider": "选择供应商",
       "Select a scanned target": "选择扫描到的目标",
       "Selected": "已选择",
       "Service": "服务",
+      "Service control is available in the Electron app.": "服务控制仅在 Electron App 中可用。",
       "Scanning targets": "正在扫描目标",
       "Service status": "服务状态",
       "Step": "步骤",
@@ -1518,11 +1531,24 @@ export const AppI18nContext = createContext<AppCopy>(appCopy.en);
 
 export function useAppText() {
   const copy = useContext(AppI18nContext);
-  return (value: string) => translateText(copy, value);
+  return useMemo(() => (value: string) => translateText(copy, value), [copy]);
 }
 
 export function translateText(copy: AppCopy, value: string): string {
   return copy.text[value] ?? value;
+}
+
+export function translateAppErrorMessage(copy: AppCopy, value: string): string {
+  return translateErrorMessage(copy === appCopy.zh ? "zh" : "en", translateText(copy, value));
+}
+
+export function formatAppError(copy: AppCopy, error: unknown): string {
+  return translateAppErrorMessage(copy, error instanceof Error ? error.message : String(error));
+}
+
+export function useAppErrorText() {
+  const copy = useContext(AppI18nContext);
+  return useMemo(() => (error: unknown) => formatAppError(copy, error), [copy]);
 }
 
 export function translateOptions<T extends { label: string; value: string }>(options: T[], t: (value: string) => string): T[] {
