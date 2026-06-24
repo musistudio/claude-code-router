@@ -31,6 +31,7 @@ const BOOTSTRAP_ROUTE_PATHS = ["/_bootstrap", "/api/bootstrap", "/edge-api/boots
 const REQUIRED_ROUTE_PATHS = ["/", OMELETTE_RPC_PATH_PREFIX, "/v1/design", ...CLAUDE_APP_SPA_ROUTE_PATHS, ...BOOTSTRAP_ROUTE_PATHS, ...AUTH_ESCAPE_ROUTE_PATHS];
 const DEFAULT_ROUTE_PATHS = ["/design", "/v1/design", "/api", "/organizations", "/cdn-cgi", ...BOOTSTRAP_ROUTE_PATHS, ...AUTH_ESCAPE_ROUTE_PATHS];
 const FALLBACK_ROUTE_PATHS = ["/app-unavailable-in-region", "/cdn-cgi", "/design", ...AUTH_ESCAPE_ROUTE_PATHS];
+const DEFAULT_DIRECT_GATEWAY_ROUTE_PATHS = ["/design", "/v1/design", "/api", "/organizations", "/assets", "/cdn-cgi", "/app-unavailable-in-region", ...BOOTSTRAP_ROUTE_PATHS, ...AUTH_ESCAPE_ROUTE_PATHS];
 const DEFAULT_SCRIPT_PATH = "/design/assets/v1/index-C0BEUHEw.js";
 const DEFAULT_STYLE_PATH = "/design/assets/v1/index-CqhNJH1o.css";
 const DEFAULT_DESIGN_CRITICAL_MODULE_PRELOAD_PATHS = [
@@ -254,12 +255,15 @@ module.exports = {
     const routing = normalizeClaudeDesignRouting(options.routing, options);
     const upstreamOrigins = normalizeUpstreamOrigins(options.upstreamOrigins, upstreamOrigin);
     const me = normalizeMe(options.me, frontendDefaultModel, gatewayModelPresets);
+    const browserAppUrl = claudeDesignBrowserAppUrl(routeHost, usingClaudeAppAssets);
 
     ctx.registerApp({
-      description: "Open Claude Design through the CCR browser proxy.",
+      description: usingClaudeAppAssets
+        ? "Open Claude Design UI through the Claude App shell and CCR gateway."
+        : "Open Claude Design through the CCR browser proxy.",
       id: "claude-design",
       name: "Claude Design",
-      url: `https://${routeHost}/design`
+      url: browserAppUrl
     });
 
     const store = await ctx.openSqliteStore({
@@ -388,6 +392,20 @@ module.exports = {
         preserveHost: false,
         upstream: upstreamOrigin
       });
+    }
+
+    if (options.directGatewayRoutes !== false) {
+      for (const pathPrefix of normalizeDirectGatewayRoutePaths(options.directGatewayPaths)) {
+        ctx.registerGatewayRoute({
+          auth: "none",
+          handler(request, response) {
+            return handleMockRequest(runtime, request, response);
+          },
+          id: `claude-design-ui-${sanitizeRouteId(pathPrefix)}`,
+          methods: ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"],
+          pathPrefix
+        });
+      }
     }
 
     ctx.registerProxyRoute({
@@ -1073,6 +1091,27 @@ function normalizeFallbackRouteHosts(value, primaryHost) {
     addHost(value);
   }
   return hosts;
+}
+
+function claudeDesignBrowserAppUrl(routeHost, usingClaudeAppAssets) {
+  if (!usingClaudeAppAssets) {
+    return `https://${routeHost}/design`;
+  }
+  const targetPath = withClaudeAppDesignIframeMarker("/design");
+  return `https://${routeHost}${CLAUDE_APP_DESIGN_SHELL_PATH}?${CLAUDE_APP_DESIGN_PATH_QUERY}=${encodeURIComponent(targetPath)}`;
+}
+
+function normalizeDirectGatewayRoutePaths(value) {
+  const configured = stringArray(value);
+  const paths = configured?.length ? configured : DEFAULT_DIRECT_GATEWAY_ROUTE_PATHS;
+  return Array.from(new Set(paths.map(normalizePath).filter(Boolean).filter((path) => path !== "/")));
+}
+
+function sanitizeRouteId(value) {
+  return String(value || "")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    || "root";
 }
 
 async function resolveDesignIndexAssets(runtime, request, options = {}) {

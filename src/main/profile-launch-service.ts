@@ -140,7 +140,7 @@ async function openClaudeAppProfile(config: AppConfig, profile: ReturnType<typeo
     dataDir: resolveClaudeAppProfileUserDataDir(CONFIGDIR, profile)
   });
   await ensureGatewayConfigRunning(profileGatewayConfig, "Claude App");
-  activateProfileAppWindow(registerProfileApp(profile, "app", launchClaudeAppProfile(CONFIGDIR, profile, config)));
+  activateProfileAppWindow(registerProfileApp(profile, "app", await launchClaudeAppProfile(CONFIGDIR, profile, profileGatewayConfig)));
   startClaudeAppBotWorker(config, profile);
   return {
     message: `Opened Claude App with ${profile.name || profile.id}.`,

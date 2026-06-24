@@ -7,7 +7,7 @@ import {
   DialogHeader, DialogTitle, Field, findProviderPreset, formatProviderAccountMeterValue, GatewayProviderConfig,
   GatewayProviderProbeResult, getProviderPresets, Globe, inferProviderNameFromBaseUrl, Input, KeyValueRowsControl, Label,
   Layers3, LoaderCircle, localAgentProviderIconUrls, mergeProviderModelLists, modelCatalogItemMatchesQuery, motion,
-  Pencil, Plus, PopoverContent, primaryProviderAccountMeter, primaryProviderPresetEndpoint, providerAccountBadgeVariant,
+  Pencil, Plus, PopoverContent, primaryProviderAccountMeter, primaryProviderPresetEndpoint,
   providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountSnapshot,
   providerAccountSnapshotCredentialLabel, providerAccountSnapshotLabel, ProviderAccountTestPath,
   ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
@@ -340,10 +340,9 @@ function ProviderAccountListCell({ provider, snapshots }: { provider: GatewayPro
 
   return (
     <div className="min-w-0">
-      <div className="flex min-w-0 items-center gap-1.5">
-        {snapshot.status === "ok" ? null : <Badge variant={providerAccountBadgeVariant(snapshot.status)}>{snapshot.status}</Badge>}
+      <div className="flex min-w-0 items-center gap-1.5 text-[11px]">
         {meter ? <span className="min-w-0 truncate text-[11px] font-medium">{formatProviderAccountMeterValue(meter)}</span> : null}
-        {sortedSnapshots.length > 1 ? <Badge variant="outline">{sortedSnapshots.length} {t("keys")}</Badge> : null}
+        {sortedSnapshots.length > 1 ? <span className="shrink-0 text-muted-foreground">{sortedSnapshots.length} {t("keys")}</span> : null}
       </div>
       {providerAccountSnapshotCredentialLabel(snapshot) ? (
         <div className="mt-0.5 truncate text-[10px] font-semibold text-muted-foreground" title={providerAccountSnapshotLabel(snapshot)}>

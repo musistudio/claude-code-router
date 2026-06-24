@@ -3,8 +3,6 @@ import { normalizeProfileScopeValue } from "./app";
 
 export const CLAUDE_APP_FALLBACK_MODEL = "claude-sonnet-4-5";
 export const CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX = "[1m]";
-const CLAUDE_APP_CCR_ROUTE_PREFIX = "claude-ccr-";
-const CLAUDE_APP_CCR_ROUTE_SLUG_MAX_LENGTH = 72;
 
 const CLAUDE_APP_ROUTE_NAMES = [
   "claude-sonnet-4-5",
@@ -42,15 +40,15 @@ export function buildClaudeAppGatewayModelRoutes(
   config: Pick<AppConfig, "Providers" | "Router" | "profile" | "virtualModelProfiles">,
   options: ClaudeAppGatewayModelRouteOptions = {}
 ): ClaudeAppGatewayModelRoute[] {
-  const targetModels = claudeAppGatewayTargetModels(config);
+  const targetModels = claudeAppGatewayTargetModels(config).slice(0, CLAUDE_APP_ROUTE_NAMES.length);
   const displayNames = claudeAppGatewayDisplayNames(targetModels);
   return targetModels.map((rawTargetModel, index) => {
     const targetModel = stripClaudeAppGatewayOneMillionContextSuffix(rawTargetModel);
     const oneMillionContext = claudeAppGatewaySupportsOneMillionContext(rawTargetModel, options);
-    const routeId = claudeAppGatewayRouteId(targetModel, index);
+    const routeId = claudeAppGatewayRouteId(index);
     return {
       displayName: oneMillionContext ? `${displayNames[index]} (1M context)` : displayNames[index],
-      id: oneMillionContext ? claudeAppGatewayOneMillionContextModelId(routeId) : routeId,
+      id: routeId,
       oneMillionContext,
       targetModel
     };
@@ -155,34 +153,8 @@ function claudeAppGatewaySupportsOneMillionContext(
     Boolean(options.supportsOneMillionContext?.(baseModel));
 }
 
-function claudeAppGatewayRouteId(targetModel: string, index: number): string {
-  return CLAUDE_APP_ROUTE_NAMES[index] ??
-    `${CLAUDE_APP_CCR_ROUTE_PREFIX}${claudeAppGatewayRouteSlug(targetModel)}-${claudeAppGatewayRouteHash(targetModel)}`;
-}
-
-function claudeAppGatewayRouteSlug(value: string): string {
-  const slug = value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, CLAUDE_APP_CCR_ROUTE_SLUG_MAX_LENGTH)
-    .replace(/-+$/g, "");
-  return slug || "model";
-}
-
-function claudeAppGatewayRouteHash(value: string): string {
-  let hash = 0x811c9dc5;
-  for (const char of value.trim().toLowerCase()) {
-    hash ^= char.charCodeAt(0);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return hash.toString(36).padStart(6, "0").slice(0, 6);
-}
-
-function claudeAppGatewayOneMillionContextModelId(id: string): string {
-  return hasClaudeAppGatewayOneMillionContextSuffix(id) ? id : `${id}${CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX}`;
+function claudeAppGatewayRouteId(index: number): string {
+  return CLAUDE_APP_ROUTE_NAMES[index] ?? CLAUDE_APP_FALLBACK_MODEL;
 }
 
 function claudeAppGatewayDisplayNames(models: string[]): string[] {

@@ -575,14 +575,26 @@ function defaultBrowserAppsForPlugin(plugin: AppConfig["plugins"][number]): Gate
   }
   const config = isPlainRecord(plugin.config) ? plugin.config : {};
   const host = stringValue(config.host) || "claude.ai";
+  const url = usesClaudeAppDesignShell(config)
+    ? claudeAppDesignShellUrl(host)
+    : `https://${host}/design`;
   return [
     {
       description: "Open Claude Design through the CCR browser proxy.",
       id: "claude-design",
       name: "Claude Design",
-      url: `https://${host}/design`
+      url
     }
   ];
+}
+
+function usesClaudeAppDesignShell(config: Record<string, unknown>): boolean {
+  return config.claudeAppAssets !== false && !stringValue(config.assetDir);
+}
+
+function claudeAppDesignShellUrl(host: string): string {
+  const path = encodeURIComponent("/design?__ccr_design_iframe=1");
+  return `https://${host}/desktop-design?path=${path}`;
 }
 
 function normalizeConfiguredBrowserApp(pluginId: string, app: GatewayPluginAppConfig, index: number): InstalledBrowserApp | undefined {

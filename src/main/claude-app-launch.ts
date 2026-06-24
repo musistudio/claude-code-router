@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AppConfig, ProfileConfig } from "../shared/app";
 import { botGatewayProfileEnv } from "./bot-gateway-env";
+import { prepareClaudeAppCdpUserDataDir, reserveClaudeAppCdpPort, scheduleClaudeAppDesignCdp } from "./claude-app-cdp";
 import { resolveClaudeCodeSettingsFile } from "./profile-launch-core";
 import { normalizeWindowsDesktopAppCandidate, windowsDesktopAppCandidates } from "./windows-app-discovery";
 
@@ -15,6 +16,7 @@ type ClaudeAppLookupResult = {
 export type ClaudeAppLaunchResult = {
   child: ChildProcess;
   command: string;
+  cdpPort?: number;
   pid?: number;
   userDataDir: string;
 };
@@ -31,7 +33,7 @@ const windowsClaudeExeNames = [
 ];
 const windowsClaudePackageKeywords = ["claude", "anthropic"];
 
-export function launchClaudeAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): ClaudeAppLaunchResult {
+export async function launchClaudeAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): Promise<ClaudeAppLaunchResult> {
   const lookup = findInstalledClaudeAppExecutable();
   if (!lookup.executable) {
     throw new Error([
@@ -44,6 +46,8 @@ export function launchClaudeAppProfile(configDir: string, profile: ProfileConfig
   const settingsDir = path.dirname(settingsFile);
   const userDataDir = resolveClaudeAppProfileUserDataDir(configDir, profile);
   mkdirSync(userDataDir, { recursive: true });
+  prepareClaudeAppCdpUserDataDir(userDataDir);
+  const cdpPort = await reserveClaudeAppCdpPort(console);
 
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -57,16 +61,23 @@ export function launchClaudeAppProfile(configDir: string, profile: ProfileConfig
   };
   delete env.ELECTRON_RUN_AS_NODE;
 
-  const child = spawn(lookup.executable, claudeElectronArgs(userDataDir), {
+  const designUrl = claudeAppDesignUrl(config);
+  const child = spawn(lookup.executable, claudeElectronArgs(userDataDir, cdpPort), {
     detached: true,
     env,
     stdio: "ignore"
   });
   child.unref();
+  scheduleClaudeAppDesignCdp({
+    cdpPort,
+    designUrl,
+    logger: console
+  });
 
   return {
     child,
     command: lookup.executable,
+    ...(cdpPort ? { cdpPort } : {}),
     pid: child.pid,
     userDataDir
   };
@@ -77,8 +88,41 @@ export function resolveClaudeAppProfileUserDataDir(configDir: string, profile: P
   return claudeElectronUserDataDir(path.dirname(settingsFile), profile);
 }
 
-function claudeElectronArgs(userDataDir: string): string[] {
+function claudeAppDesignUrl(config: AppConfig | undefined): string | undefined {
+  if (!config) {
+    return undefined;
+  }
+  const port = Number.isInteger(config.gateway?.port) && config.gateway.port > 0
+    ? config.gateway.port
+    : Number.isInteger(config.PORT) && config.PORT > 0
+      ? config.PORT
+      : undefined;
+  if (!port) {
+    return undefined;
+  }
+  const host = formatLoopbackGatewayHost(config.gateway?.host || "127.0.0.1");
+  return `http://${host}:${port}/design`;
+}
+
+function formatLoopbackGatewayHost(host: string): string {
+  const trimmed = host.trim();
+  if (!trimmed || trimmed === "0.0.0.0" || trimmed === "::" || trimmed === "[::]") {
+    return "127.0.0.1";
+  }
+  if (trimmed.includes(":") && !trimmed.startsWith("[")) {
+    return `[${trimmed}]`;
+  }
+  return trimmed;
+}
+
+function claudeElectronArgs(userDataDir: string, cdpPort?: number): string[] {
   return [
+    ...(cdpPort
+      ? [
+          `--remote-debugging-port=${cdpPort}`,
+          "--remote-debugging-address=127.0.0.1"
+        ]
+      : []),
     `--user-data-dir=${userDataDir}`,
     "--remote-allow-origins=*",
     "--disable-renderer-backgrounding",

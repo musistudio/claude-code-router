@@ -3197,17 +3197,17 @@ function prepareClaudeAppFallbackModelRequest(
   const parsedBody = parseJsonObjectSafe(body);
   const model = stringValue(parsedBody?.model);
   const normalizedModel = normalizeRouteSelector(model);
-  if (
-    !parsedBody ||
-    !normalizedModel ||
-    isConfiguredGatewayModelSelector(normalizedModel, config)
-  ) {
+  if (!parsedBody || !normalizedModel) {
     return undefined;
   }
 
-  const routedModel = resolveClaudeAppGatewayRouteModel(normalizedModel, config, claudeAppGatewayModelRouteOptions) ??
+  const routeModel = resolveClaudeAppGatewayRouteModel(normalizedModel, config, claudeAppGatewayModelRouteOptions);
+  const routedModel = routeModel ??
     (normalizedModel.toLowerCase() === CLAUDE_APP_FALLBACK_MODEL ? inferClaudeAppGatewayTargetModel(config) : undefined);
   if (!routedModel || routedModel.toLowerCase() === normalizedModel.toLowerCase()) {
+    return undefined;
+  }
+  if (isConfiguredGatewayModelSelector(normalizedModel, config) && !routeModel) {
     return undefined;
   }
 
