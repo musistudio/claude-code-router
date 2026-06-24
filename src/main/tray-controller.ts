@@ -15,6 +15,7 @@ const popoverDetailTopOffset = 0;
 const popoverDetailWidth = 420;
 const popoverMargin = 8;
 const trayMenuBarIconSize = 20;
+const trayWindowBackgroundColor = "#020617";
 const trayTokenFallbackTitle = "0 tokens";
 const trayIconFallbackPath = path.join(__dirname, "../assets/tray.png");
 const trayMascotIconIds = ["violet", "orange", "cyan"] as const;
@@ -162,7 +163,7 @@ class TrayController {
     this.popover = new BrowserWindow({
       acceptFirstMouse: true,
       alwaysOnTop: true,
-      backgroundColor: "#00000000",
+      backgroundColor: trayWindowBackgroundColor,
       frame: false,
       fullscreenable: false,
       hasShadow: true,
@@ -175,19 +176,19 @@ class TrayController {
       show: false,
       skipTaskbar: true,
       title: `${APP_NAME} Usage`,
-      transparent: true,
-      vibrancy: "hud",
-      visualEffectState: "active",
+      transparent: false,
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
         preload: path.join(__dirname, "preload.js"),
         sandbox: true,
-        webSecurity: true
+        webSecurity: true,
+        zoomFactor: 1
       },
       width: popoverMenuWidth
     });
 
+    prepareTrayWindowForSharpRendering(this.popover);
     this.popover.setAlwaysOnTop(true, "pop-up-menu");
     this.popover.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     this.popover.on("blur", () => this.handlePopoverBlur());
@@ -207,7 +208,7 @@ class TrayController {
     this.detailPopover = new BrowserWindow({
       acceptFirstMouse: true,
       alwaysOnTop: true,
-      backgroundColor: "#00000000",
+      backgroundColor: trayWindowBackgroundColor,
       frame: false,
       fullscreenable: false,
       hasShadow: true,
@@ -220,19 +221,19 @@ class TrayController {
       show: false,
       skipTaskbar: true,
       title: `${APP_NAME} Usage Detail`,
-      transparent: true,
-      vibrancy: "hud",
-      visualEffectState: "active",
+      transparent: false,
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
         preload: path.join(__dirname, "preload.js"),
         sandbox: true,
-        webSecurity: true
+        webSecurity: true,
+        zoomFactor: 1
       },
       width: popoverDetailWidth
     });
 
+    prepareTrayWindowForSharpRendering(this.detailPopover);
     this.detailPopover.setAlwaysOnTop(true, "pop-up-menu");
     this.detailPopover.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     this.detailPopover.on("blur", () => this.handlePopoverBlur());
@@ -455,20 +456,23 @@ function resolvePopoverLayout(
   const x = clamp(menuX, workArea.x + popoverMargin, workArea.x + workArea.width - groupWidth - popoverMargin);
   const y = resolvePopoverY(trayBounds, workArea, height);
 
-  return {
-    detail: {
-      height: Math.max(260, height - popoverDetailTopOffset),
+  const menu = alignBoundsToDevicePixels({
+    height,
+    width: menuWidth,
+    x,
+    y
+  }, display.scaleFactor);
+  const detail = alignBoundsToDevicePixels(
+    {
+      height: Math.max(260, menu.height - popoverDetailTopOffset),
       width: detailWidth,
-      x: x + menuWidth + popoverDetailGap,
-      y: y + popoverDetailTopOffset
+      x: menu.x + menu.width + popoverDetailGap,
+      y: menu.y + popoverDetailTopOffset
     },
-    menu: {
-      height,
-      width: menuWidth,
-      x,
-      y
-    }
-  };
+    display.scaleFactor
+  );
+
+  return { detail, menu };
 }
 
 function resolvePopoverY(
@@ -521,6 +525,46 @@ function createTrayPageUrl(mode: "detail" | "menu", provider?: string): string {
 function normalizeDetailProvider(provider?: string): string | undefined {
   const trimmed = provider?.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function prepareTrayWindowForSharpRendering(window: BrowserWindow): void {
+  const resetZoom = () => {
+    if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+      window.webContents.setZoomFactor(1);
+    }
+  };
+
+  resetZoom();
+  void window.webContents.setVisualZoomLevelLimits(1, 1).catch(() => undefined);
+  window.webContents.on("did-finish-load", resetZoom);
+  window.webContents.on("zoom-changed", (event) => {
+    event.preventDefault();
+    resetZoom();
+  });
+}
+
+function alignBoundsToDevicePixels(
+  bounds: Electron.Rectangle,
+  scaleFactor: number
+): Electron.Rectangle {
+  const scale = Number.isFinite(scaleFactor) && scaleFactor > 0 ? scaleFactor : 1;
+  return {
+    height: alignDimensionToDevicePixel(bounds.height, scale),
+    width: alignDimensionToDevicePixel(bounds.width, scale),
+    x: alignCoordinateToDevicePixel(bounds.x, scale),
+    y: alignCoordinateToDevicePixel(bounds.y, scale)
+  };
+}
+
+function alignCoordinateToDevicePixel(value: number, scaleFactor: number): number {
+  return Math.round(value * scaleFactor) / scaleFactor;
+}
+
+function alignDimensionToDevicePixel(value: number, scaleFactor: number): number {
+  if (value <= 0) {
+    return 0;
+  }
+  return Math.max(1, Math.round(value * scaleFactor) / scaleFactor);
 }
 
 function createTrayIcon(iconId: TrayMascotIconId): Electron.NativeImage {

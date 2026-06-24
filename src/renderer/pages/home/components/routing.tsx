@@ -9,6 +9,7 @@ import {
   RouteTargetControl, routingRuleRowMatchesQuery, Search, SelectControl, Toggle, translateOptions,
   Trash2, uniqueStrings, useAppText, useMemo, useState, X
 } from "../shared";
+import { ROUTER_FALLBACK_MAX_RETRY_COUNT } from "../../../../shared/app";
 export function RoutingView({
   addRule,
   config,
@@ -222,9 +223,9 @@ function RouterFallbackControl({
         {fallback.mode === "retry" ? (
           <Field label={t("Retries")}>
             <Input
-              max={5}
+              max={ROUTER_FALLBACK_MAX_RETRY_COUNT}
               min={0}
-              onChange={(event) => updateFallbackPatch({ retryCount: clampNumber(Number(event.target.value), 0, 5) })}
+              onChange={(event) => updateFallbackPatch({ retryCount: clampNumber(Number(event.target.value), 0, ROUTER_FALLBACK_MAX_RETRY_COUNT) })}
               type="number"
               value={String(fallback.retryCount)}
             />

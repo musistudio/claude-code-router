@@ -510,7 +510,7 @@ export function normalizeTrayWidget(value: unknown): TrayWidgetConfig | undefine
 }
 
 export function normalizeTrayWidgetType(value: unknown): TrayWidgetType | undefined {
-  return typeof value === "string" && ["account", "header", "model-share", "rings", "source-tabs", "stats", "token-flow", "token-mix"].includes(value)
+  return typeof value === "string" && ["account", "activity", "header", "model-share", "rings", "source-tabs", "stats", "token-flow", "token-mix"].includes(value)
     ? value as TrayWidgetType
     : undefined;
 }
@@ -674,7 +674,7 @@ export function normalizeOverviewWidget(value: unknown): OverviewWidgetConfig | 
 }
 
 export function normalizeOverviewWidgetType(value: unknown): OverviewWidgetType | undefined {
-  return typeof value === "string" && ["account-balance", "client-analysis", "metric", "model-distribution", "provider-analysis", "system-status", "token-mix", "usage-trend"].includes(value)
+  return typeof value === "string" && ["account-balance", "client-analysis", "metric", "model-distribution", "provider-analysis", "system-status", "token-activity", "token-mix", "usage-trend"].includes(value)
     ? value as OverviewWidgetType
     : undefined;
 }
@@ -735,6 +735,11 @@ export function overviewWidgetVariantOptions(type: OverviewWidgetType): Array<{ 
       { label: "Bar", value: "bar" }
     ];
   }
+  if (type === "token-activity") {
+    return [
+      { label: "Heatmap", value: "heatmap" }
+    ];
+  }
   if (type === "model-distribution" || type === "token-mix") {
     return [
       { label: "Bars", value: "bars" },
@@ -766,6 +771,7 @@ export function defaultOverviewWidgetSize(type: OverviewWidgetType): OverviewWid
   if (type === "metric") return "1:1";
   if (type === "model-distribution") return "2:2";
   if (type === "token-mix") return "1:2";
+  if (type === "token-activity") return "4:2";
   if (type === "client-analysis" || type === "provider-analysis") return "2:2";
   if (type === "usage-trend") return "3:2";
   if (type === "system-status") return "4:1";
@@ -777,6 +783,7 @@ export function defaultOverviewWidgetVariant(type: OverviewWidgetType): Overview
   if (type === "metric") return "card";
   if (type === "model-distribution") return "pie";
   if (type === "token-mix") return "bars";
+  if (type === "token-activity") return "heatmap";
   if (type === "usage-trend") return "composed";
   if (type === "system-status") return "timeline";
   return "table";

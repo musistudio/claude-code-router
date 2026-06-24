@@ -52,7 +52,12 @@ async function systemProxyUrlForRequest(url: URL): Promise<string | undefined> {
 
 async function readSystemProxy(): Promise<SystemProxyCache> {
   const now = Date.now();
-  if (systemProxyCache && systemProxyCache.expiresAt > now) {
+  const activeManagedEndpointUrl = systemProxyManager.getManagedEndpointUrl();
+  if (
+    systemProxyCache &&
+    systemProxyCache.expiresAt > now &&
+    (!activeManagedEndpointUrl || systemProxyCache.managedEndpointUrl === activeManagedEndpointUrl)
+  ) {
     return systemProxyCache;
   }
   if (systemProxyReadPromise) {
@@ -98,14 +103,20 @@ async function readSystemProxyUncached(): Promise<Omit<SystemProxyCache, "expire
 }
 
 async function readManagedProxyEndpoint(): Promise<{ managedEndpointUrl: string; systemProxyActive: boolean }> {
+  const activeManagedEndpointUrl = systemProxyManager.getManagedEndpointUrl();
+  if (activeManagedEndpointUrl) {
+    return {
+      managedEndpointUrl: activeManagedEndpointUrl,
+      systemProxyActive: true
+    };
+  }
+
   try {
     const config = await loadAppConfig();
-    if (config.proxy.enabled && config.proxy.systemProxy) {
-      return {
-        managedEndpointUrl: managedProxyEndpointUrl(config),
-        systemProxyActive: true
-      };
-    }
+    return {
+      managedEndpointUrl: managedProxyEndpointUrl(config),
+      systemProxyActive: config.proxy.enabled && config.proxy.systemProxy
+    };
   } catch (error) {
     console.warn(`[network] Failed to read proxy config: ${formatError(error)}`);
   }
@@ -116,8 +127,8 @@ async function readManagedProxyEndpoint(): Promise<{ managedEndpointUrl: string;
 }
 
 function managedProxyEndpointUrl(config: AppConfig): string {
-  const host = normalizeManagedProxyHost(config.proxy.host);
-  return `http://${formatProxyHost(host)}:${config.proxy.port}`;
+  const host = normalizeManagedProxyHost(config.gateway.host);
+  return `http://${formatProxyHost(host)}:${config.gateway.port}`;
 }
 
 function normalizeManagedProxyHost(host: string): string {

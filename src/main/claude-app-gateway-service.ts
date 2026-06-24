@@ -5,8 +5,9 @@ import path from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 import { saveAppConfig } from "./config";
 import { CONFIGDIR } from "./constants";
-import { buildClaudeAppGatewayInferenceModels } from "../shared/claude-app-gateway";
+import { buildClaudeAppGatewayInferenceModels, type ClaudeAppGatewayModelRouteOptions } from "../shared/claude-app-gateway";
 import type { ApiKeyConfig, AppConfig, ClaudeAppGatewayApplyResult } from "../shared/app";
+import { findModelCatalogEntry } from "../server/gateway/model-catalog";
 
 const CLAUDE_APP_CONFIG_ID = "8f69f2f1-3275-4ad8-9317-4aa7e972f311";
 const CLAUDE_APP_CONFIG_NAME = "Claude Code Router";
@@ -14,6 +15,9 @@ const CLAUDE_APP_CONFIG_FILE = "claude_desktop_config.json";
 const CLAUDE_APP_CONFIG_LIBRARY_DIR = "configLibrary";
 const CLAUDE_APP_CONFIG_META_FILE = "_meta.json";
 const CLAUDE_APP_GATEWAY_BACKUP_FILE = path.join(CONFIGDIR, "claude-app-gateway-backup.json");
+const claudeAppGatewayModelRouteOptions: ClaudeAppGatewayModelRouteOptions = {
+  supportsOneMillionContext: (model) => Boolean(findModelCatalogEntry(model)?.limits?.supports1MContext)
+};
 
 type ClaudeAppGatewayConfig = {
   inferenceCredentialKind: "static";
@@ -85,7 +89,7 @@ export function applyClaudeAppGatewayConfig(config: AppConfig, options: ClaudeAp
   const state = ensureClaudeAppGatewayState(config);
   const paths = getClaudeAppGatewayPaths(options.dataDir);
   const endpoint = gatewayEndpoint(state.config);
-  const models = buildClaudeAppGatewayInferenceModels(state.config);
+  const models = buildClaudeAppGatewayInferenceModels(state.config, claudeAppGatewayModelRouteOptions);
   const model = models[0]?.name ?? "";
   const gatewayConfig: ClaudeAppGatewayConfig = {
     inferenceCredentialKind: "static",

@@ -475,8 +475,75 @@ export function sanitizeConfigId(value: string): string {
 export function buildExtensionList(config: AppConfig): ExtensionListItem[] {
   return [
     ...(config.plugins ?? []).map((item, index) => extensionListItem("plugins", item, index)),
-    ...(config.providerPlugins ?? []).map((item, index) => extensionListItem("providerPlugins", item, index))
+    ...providerPluginExtensionList(config.providerPlugins ?? [])
   ];
+}
+
+function providerPluginExtensionList(providerPlugins: unknown[]): ExtensionListItem[] {
+  const internalIndexesByBaseKey = new Map<string, number[]>();
+  const visibleKeys = new Set<string>();
+
+  providerPlugins.forEach((item, index) => {
+    const internalBaseKey = localAgentInternalProviderPluginBaseKey(item);
+    if (internalBaseKey) {
+      internalIndexesByBaseKey.set(internalBaseKey, [...(internalIndexesByBaseKey.get(internalBaseKey) ?? []), index]);
+      return;
+    }
+
+    const key = extensionKeyValue(item);
+    if (key) {
+      visibleKeys.add(key);
+    }
+  });
+
+  return providerPlugins.flatMap((item, index) => {
+    const internalBaseKey = localAgentInternalProviderPluginBaseKey(item);
+    if (internalBaseKey && visibleKeys.has(internalBaseKey)) {
+      return [];
+    }
+
+    const extension = extensionListItem("providerPlugins", item, index);
+    const key = extensionKeyValue(item);
+    const foldedIndexes = key ? internalIndexesByBaseKey.get(key) ?? [] : [];
+    if (foldedIndexes.length === 0) {
+      return [extension];
+    }
+
+    const groupIndexes = uniqueIndexes([index, ...foldedIndexes]);
+    const enabled = groupIndexes.every((itemIndex) => pluginEnabled(providerPlugins[itemIndex]));
+    return [{
+      ...extension,
+      enabled,
+      groupIndexes,
+      status: enabled ? "enabled" : "disabled"
+    }];
+  });
+}
+
+function localAgentInternalProviderPluginBaseKey(item: unknown): string | undefined {
+  if (!isPlainRecord(item)) {
+    return undefined;
+  }
+
+  const key = stringValue(item.key);
+  if (!key?.startsWith("ccr-local-agent-") || !key.endsWith("-internal")) {
+    return undefined;
+  }
+
+  const providerName = stringValue(item.providerName) || stringValue(item.provider);
+  if (!providerName?.includes("::")) {
+    return undefined;
+  }
+
+  return key.slice(0, -"-internal".length) || undefined;
+}
+
+function pluginEnabled(item: unknown): boolean {
+  return !isPlainRecord(item) || item.enabled !== false;
+}
+
+function uniqueIndexes(indexes: number[]): number[] {
+  return [...new Set(indexes.filter((index) => Number.isInteger(index) && index >= 0))];
 }
 
 export function resolvePluginInstallPlan(
@@ -557,6 +624,7 @@ export function extensionListItem(source: ExtensionSource, item: unknown, index:
       canToggle: false,
       capability: "Unsupported format",
       enabled: false,
+      groupIndexes: [index],
       index,
       name: stringValue(item) || `Plugin ${index + 1}`,
       source,
@@ -572,6 +640,7 @@ export function extensionListItem(source: ExtensionSource, item: unknown, index:
       canToggle: true,
       capability: wrapperPluginCapability(item),
       enabled,
+      groupIndexes: [index],
       index,
       name: stringValue(item.id) || stringValue(item.key) || `wrapper-plugin-${index + 1}`,
       source,
@@ -586,6 +655,7 @@ export function extensionListItem(source: ExtensionSource, item: unknown, index:
     canToggle: true,
     capability: providerPluginCapability(item),
     enabled,
+    groupIndexes: [index],
     index,
     name: stringValue(item.key) || `provider-plugin-${index + 1}`,
     source,

@@ -452,6 +452,8 @@ export type RouterRule = {
 
 export type RouterFallbackMode = "off" | "retry" | "model-chain";
 
+export const ROUTER_FALLBACK_MAX_RETRY_COUNT = 9999;
+
 export type RouterFallbackConfig = {
   mode: RouterFallbackMode;
   models: string[];
@@ -754,6 +756,7 @@ export type OverviewWidgetType =
   | "model-distribution"
   | "provider-analysis"
   | "system-status"
+  | "token-activity"
   | "token-mix"
   | "usage-trend";
 
@@ -786,6 +789,7 @@ export type OverviewWidgetVariant =
   | "compact"
   | "composed"
   | "donut"
+  | "heatmap"
   | "line"
   | "arc"
   | "nested-rings"
@@ -828,6 +832,7 @@ export const DEFAULT_OVERVIEW_WIDGETS: OverviewWidgetConfig[] = [
   { enabled: true, id: "metric-cache-ratio", metric: "cache-ratio", size: "1:1", type: "metric", variant: "card" },
   { enabled: true, id: "metric-estimated-cost", metric: "estimated-cost", size: "1:1", type: "metric", variant: "card" },
   { enabled: true, id: "usage-trend", size: "3:2", type: "usage-trend", variant: "composed" },
+  { enabled: true, id: "token-activity", size: "4:2", type: "token-activity", variant: "heatmap" },
   { enabled: true, id: "token-mix", size: "1:2", type: "token-mix", variant: "bars" },
   { enabled: true, id: "client-analysis", size: "2:2", type: "client-analysis", variant: "table" },
   { enabled: true, id: "provider-analysis", size: "2:2", type: "provider-analysis", variant: "table" }
@@ -838,6 +843,7 @@ export const TRAY_WINDOW_MODULE_IDS = [
   "header",
   "account",
   "token-flow",
+  "activity",
   "stats",
   "token-mix",
   "rings",
@@ -862,6 +868,7 @@ export const DEFAULT_TRAY_WIDGETS: TrayWidgetConfig[] = [
   { id: "header", type: "header" },
   { id: "account", type: "account", variant: DEFAULT_TRAY_COMPONENT_VARIANTS.account },
   { id: "token-flow", type: "token-flow", variant: DEFAULT_TRAY_COMPONENT_VARIANTS.tokenFlow },
+  { id: "activity", type: "activity" },
   { id: "stats", type: "stats", variant: DEFAULT_TRAY_COMPONENT_VARIANTS.stats },
   { id: "token-mix", type: "token-mix", variant: DEFAULT_TRAY_COMPONENT_VARIANTS.tokenMix },
   { id: "rings", type: "rings", variant: DEFAULT_TRAY_COMPONENT_VARIANTS.rings },

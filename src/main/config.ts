@@ -1,7 +1,7 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { loadPersistedApiKeys, replacePersistedApiKeys } from "./api-key-store";
 import { CONFIGDIR, CONFIG_FILE, GATEWAY_CONFIG_FILE, LEGACY_CONFIGDIR, LEGACY_CONFIG_FILE } from "./constants";
-import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "../shared/app";
+import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "../shared/app";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "./presets";
 import type {
   AppConfig,
@@ -89,6 +89,8 @@ const REMOVED_LEGACY_ROUTER_RULE_IDS = new Set([
   "legacy-image"
 ]);
 const INTERNAL_GATEWAY_CORE_HOST = "127.0.0.1";
+const privateDirMode = 0o700;
+const privateFileMode = 0o600;
 
 const DEFAULT_CONFIG: AppConfig = {
   APIKEY: "",
@@ -561,9 +563,9 @@ export async function saveApiKeysConfig(apiKeys: ApiKeyConfig[]): Promise<AppCon
 
 function ensureConfigFile() {
   migrateLegacyWindowsConfigDir();
-  mkdirSync(CONFIGDIR, { recursive: true });
+  mkdirSync(CONFIGDIR, { mode: privateDirMode, recursive: true });
   if (!existsSync(CONFIG_FILE)) {
-    writeFileSync(CONFIG_FILE, `${JSON.stringify(DEFAULT_CONFIG, null, 2)}\n`, "utf8");
+    writePrivateTextFile(CONFIG_FILE, `${JSON.stringify(DEFAULT_CONFIG, null, 2)}\n`);
   }
 }
 
@@ -580,7 +582,18 @@ function migrateLegacyWindowsConfigDir() {
 }
 
 function writeSanitizedConfig(config: AppConfig) {
-  writeFileSync(CONFIG_FILE, `${JSON.stringify(sanitizeConfigForDisk(config), null, 2)}\n`, "utf8");
+  writePrivateTextFile(CONFIG_FILE, `${JSON.stringify(sanitizeConfigForDisk(config), null, 2)}\n`);
+}
+
+function writePrivateTextFile(file: string, content: string): void {
+  writeFileSync(file, content, { encoding: "utf8", mode: privateFileMode });
+  if (process.platform !== "win32") {
+    try {
+      chmodSync(file, privateFileMode);
+    } catch {
+      // Best effort for filesystems that do not support chmod.
+    }
+  }
 }
 
 function sanitizeConfigForDisk(config: AppConfig): AppConfig {
@@ -802,7 +815,7 @@ function parseOverviewWidget(value: unknown): OverviewWidgetConfig | undefined {
 }
 
 function parseOverviewWidgetType(value: unknown): OverviewWidgetType | undefined {
-  return parseEnumValue(value, ["account-balance", "client-analysis", "metric", "provider-analysis", "system-status", "token-mix", "usage-trend"], undefined);
+  return parseEnumValue(value, ["account-balance", "client-analysis", "metric", "model-distribution", "provider-analysis", "system-status", "token-activity", "token-mix", "usage-trend"], undefined);
 }
 
 function parseOverviewWidgetSize(value: unknown, type: OverviewWidgetType): OverviewWidgetSize | undefined {
@@ -826,7 +839,7 @@ function parseOverviewWidgetSize(value: unknown, type: OverviewWidgetType): Over
 }
 
 function parseOverviewWidgetVariant(value: unknown): OverviewWidgetVariant | undefined {
-  return parseEnumValue(value, ["arc", "area", "bar", "bars", "card", "cards", "compact", "composed", "donut", "line", "nested-rings", "pie", "ring", "semicircle", "stacked", "table", "timeline"], undefined);
+  return parseEnumValue(value, ["arc", "area", "bar", "bars", "card", "cards", "compact", "composed", "donut", "heatmap", "line", "nested-rings", "pie", "ring", "semicircle", "stacked", "table", "timeline"], undefined);
 }
 
 function parseOverviewMetricKind(value: unknown): OverviewMetricKind | undefined {
@@ -837,8 +850,14 @@ function defaultOverviewWidgetSize(type: OverviewWidgetType): OverviewWidgetSize
   if (type === "metric") {
     return "1:1";
   }
+  if (type === "model-distribution") {
+    return "2:2";
+  }
   if (type === "token-mix") {
     return "1:2";
+  }
+  if (type === "token-activity") {
+    return "4:2";
   }
   if (type === "client-analysis" || type === "provider-analysis") {
     return "2:2";
@@ -859,8 +878,14 @@ function defaultOverviewWidgetVariant(type: OverviewWidgetType): OverviewWidgetV
   if (type === "metric") {
     return "card";
   }
+  if (type === "model-distribution") {
+    return "pie";
+  }
   if (type === "token-mix") {
     return "bars";
+  }
+  if (type === "token-activity") {
+    return "heatmap";
   }
   if (type === "usage-trend") {
     return "composed";
@@ -926,7 +951,7 @@ function parseTrayWidget(value: unknown): TrayWidgetConfig | undefined {
 }
 
 function parseTrayWidgetType(value: unknown): TrayWidgetType | undefined {
-  return parseEnumValue(value, ["account", "header", "model-share", "rings", "source-tabs", "stats", "token-flow", "token-mix"], undefined);
+  return parseEnumValue(value, ["account", "activity", "header", "model-share", "rings", "source-tabs", "stats", "token-flow", "token-mix"], undefined);
 }
 
 function parseTrayWidgetVariant(type: TrayWidgetType, value: unknown): TrayWidgetVariant | undefined {
@@ -1217,7 +1242,7 @@ function parseRouterFallback(value: unknown): RouterFallbackConfig | undefined {
     parseRouterFallbackMode(value.mode) ??
     parseRouterFallbackMode(value.strategy) ??
     inferRouterFallbackMode(value);
-  const retryCount = clampNumber(readNumber(value.retryCount ?? value.retries ?? value.maxRetries) ?? 1, 0, 5);
+  const retryCount = clampNumber(readNumber(value.retryCount ?? value.retries ?? value.maxRetries) ?? 1, 0, ROUTER_FALLBACK_MAX_RETRY_COUNT);
   const models = parseStringList(value.models ?? value.chain ?? value.fallbackModels)
     .map((model) => model.trim())
     .filter(Boolean);

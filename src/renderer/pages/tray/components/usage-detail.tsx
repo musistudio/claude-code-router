@@ -3,7 +3,7 @@ import {
   TrayComponentVariants, TrayWidgetConfig, UsageStatsRange, UsageStatsSnapshot, useTrayText
 } from "../shared";
 import { AccountSummaryPanel } from "./account-panel";
-import { AnimatedUsageChart, ChartShell, ModelShareChart, RangeSwitch, RingMetrics, StatsGrid, TokenMixPanel } from "./widgets";
+import { AnimatedUsageChart, ChartShell, ModelShareChart, RangeSwitch, RingMetrics, StatsGrid, TokenActivityPanel, TokenMixPanel } from "./widgets";
 
 export function UsageDetailPanel({
   activeStats,
@@ -65,6 +65,9 @@ export function UsageDetailPanel({
                 <AnimatedUsageChart chartId={`detail-flow-${index}`} series={activeStats.series} variant={(widget.variant ?? defaultTrayWidgetVariant("token-flow")) as TrayComponentVariants["tokenFlow"]} />
               </ChartShell>
             );
+          }
+          if (widget.type === "activity") {
+            return <TokenActivityPanel key={`${widget.id}-${index}`} series={activeStats.series} />;
           }
           if (widget.type === "token-mix") {
             return <TokenMixPanel key={`${widget.id}-${index}`} totals={totals} variant={(widget.variant ?? defaultTrayWidgetVariant("token-mix")) as TrayComponentVariants["tokenMix"]} />;

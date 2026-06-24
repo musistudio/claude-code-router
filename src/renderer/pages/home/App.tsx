@@ -148,6 +148,11 @@ function providerNameSlug(value: string): string {
     .replace(/^-+|-+$/g, "") || "provider";
 }
 
+function extensionActionIndexes(index: number, groupIndexes?: number[]): number[] {
+  const indexes = groupIndexes?.length ? groupIndexes : [index];
+  return [...new Set(indexes.filter((item) => Number.isInteger(item) && item >= 0))];
+}
+
 function App() {
   const [activeView, setActiveView] = useState<ViewId>("onboarding");
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStepId>(() => getDefaultOnboardingStep(fallbackConfig));
@@ -179,6 +184,7 @@ function App() {
   const [apiKeyEditDraft, setApiKeyEditDraft] = useState<AddApiKeyDraft>(() => createApiKeyDraft());
   const [apiKeyEditIndex, setApiKeyEditIndex] = useState<number>();
   const [apiKeyError, setApiKeyError] = useState("");
+  const [createdApiKey, setCreatedApiKey] = useState<ApiKeyConfig>();
   const [providerAddOpen, setProviderAddOpen] = useState(false);
   const [providerDeleteIndex, setProviderDeleteIndex] = useState<number>();
   const [providerEditIndex, setProviderEditIndex] = useState<number>();
@@ -850,6 +856,7 @@ function App() {
   }
 
   function openAddApiKeyDialog() {
+    setCreatedApiKey(undefined);
     setApiKeyDraft(createApiKeyDraft());
     setApiKeyError("");
     setApiKeyAddOpen(true);
@@ -895,6 +902,7 @@ function App() {
     setConfigDraft(next);
     if (await persistApiKeys(next.APIKEYS, setApiKeyError)) {
       setApiKeyAddOpen(false);
+      setCreatedApiKey(apiKey);
     }
   }
 
@@ -1656,12 +1664,13 @@ function App() {
     setExtensionInstallOpen(false);
   }
 
-  function removeExtension(source: ExtensionSource, index: number) {
+  function removeExtension(source: ExtensionSource, index: number, groupIndexes?: number[]) {
+    const indexes = new Set(extensionActionIndexes(index, groupIndexes));
     updateConfig((config) => {
       if (source === "plugins") {
-        config.plugins = (config.plugins ?? []).filter((_, itemIndex) => itemIndex !== index);
+        config.plugins = (config.plugins ?? []).filter((_, itemIndex) => !indexes.has(itemIndex));
       } else {
-        config.providerPlugins = (config.providerPlugins ?? []).filter((_, itemIndex) => itemIndex !== index);
+        config.providerPlugins = (config.providerPlugins ?? []).filter((_, itemIndex) => !indexes.has(itemIndex));
       }
       return config;
     });
@@ -1671,7 +1680,7 @@ function App() {
     if (!extensionDeleteTarget) {
       return;
     }
-    removeExtension(extensionDeleteTarget.source, extensionDeleteTarget.index);
+    removeExtension(extensionDeleteTarget.source, extensionDeleteTarget.index, extensionDeleteTarget.groupIndexes);
     setExtensionDeleteTarget(undefined);
   }
 
@@ -1848,26 +1857,31 @@ function App() {
     setPluginRoutingConfigTarget(undefined);
   }
 
-  function setExtensionEnabled(source: ExtensionSource, index: number, enabled: boolean) {
+  function setExtensionEnabled(source: ExtensionSource, index: number, enabled: boolean, groupIndexes?: number[]) {
+    const indexes = new Set(extensionActionIndexes(index, groupIndexes));
     updateConfig((config) => {
       if (source === "plugins") {
         const values = [...(config.plugins ?? [])];
-        const item = values[index];
-        if (!item) {
-          return config;
+        for (const itemIndex of indexes) {
+          const item = values[itemIndex];
+          if (!item) {
+            continue;
+          }
+          values[itemIndex] = { ...item, enabled };
         }
-        values[index] = { ...item, enabled };
         config.plugins = values;
         return config;
       }
 
       if (source === "providerPlugins") {
         const values = [...(config.providerPlugins ?? [])];
-        const item = values[index];
-        if (!isPlainRecord(item)) {
-          return config;
+        for (const itemIndex of indexes) {
+          const item = values[itemIndex];
+          if (!isPlainRecord(item)) {
+            continue;
+          }
+          values[itemIndex] = { ...item, enabled };
         }
-        values[index] = { ...item, enabled };
         config.providerPlugins = values;
         return config;
       }
@@ -2647,7 +2661,7 @@ function App() {
                   configureExtension: openConfigureExtension,
                   config: draftConfig,
                   installExtension: openInstallExtensionDialog,
-                  removeExtension: (source, index) => setExtensionDeleteTarget({ index, source }),
+                  removeExtension: (source, index, groupIndexes) => setExtensionDeleteTarget({ groupIndexes: extensionActionIndexes(index, groupIndexes), index, source }),
                   setExtensionEnabled
                 },
                 logs: {
@@ -2757,6 +2771,11 @@ function App() {
               onChange: updateApiKeyDraft,
               onClose: () => setApiKeyAddOpen(false),
               onSubmit: submitApiKeyDraft
+            } : undefined}
+            apiKeyCreated={createdApiKey ? {
+              apiKeyName: createdApiKey.name?.trim() || t("API key"),
+              apiKeyValue: createdApiKey.key,
+              onClose: () => setCreatedApiKey(undefined)
             } : undefined}
             apiKeyEdit={apiKeyEditItem ? {
               canSubmit: canSubmitApiKeyEdit,

@@ -18,8 +18,8 @@ export function ExtensionsView({
   configureExtension: (source: ExtensionSource, index: number) => void;
   config: AppConfig;
   installExtension: () => void;
-  removeExtension: (source: ExtensionSource, index: number) => void;
-  setExtensionEnabled: (source: ExtensionSource, index: number, enabled: boolean) => void;
+  removeExtension: (source: ExtensionSource, index: number, groupIndexes: number[]) => void;
+  setExtensionEnabled: (source: ExtensionSource, index: number, enabled: boolean, groupIndexes: number[]) => void;
 }) {
   const t = useAppText();
   const [query, setQuery] = useState("");
@@ -93,7 +93,7 @@ export function ExtensionsView({
                       </div>
                       <div className="flex min-w-0 items-center gap-2">
                         {extension.canToggle ? (
-                          <Toggle checked={extension.enabled} onChange={(enabled) => setExtensionEnabled(extension.source, extension.index, enabled)} />
+                          <Toggle checked={extension.enabled} onChange={(enabled) => setExtensionEnabled(extension.source, extension.index, enabled, extension.groupIndexes)} />
                         ) : null}
                       </div>
                       <div className="flex items-center justify-end gap-1">
@@ -108,7 +108,7 @@ export function ExtensionsView({
                         >
                           <Settings className="h-3.5 w-3.5" />
                         </Button>
-                        <Button aria-label={`${t("Remove")} ${extension.name}`} onClick={() => removeExtension(extension.source, extension.index)} size="iconSm" title={t("Remove extension")} type="button" variant="ghost">
+                        <Button aria-label={`${t("Remove")} ${extension.name}`} onClick={() => removeExtension(extension.source, extension.index, extension.groupIndexes)} size="iconSm" title={t("Remove extension")} type="button" variant="ghost">
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>

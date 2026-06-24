@@ -1,19 +1,26 @@
+import { memo } from "react";
 import {
-  AnimatedDisclosure, AnimatedIconSwap, AnimatedListItem, AnimatePresence, Check, ChevronDown, ChevronLeft,
+  AnimatedIconSwap, Check, ChevronDown, ChevronLeft,
   ChevronRight, clampNumber, clientInitial, cn, Copy, copyTextToClipboard,
-  createInitialLogJsonExpandedPaths, Database, filterLogText, formatBytes, formatCompactNumber, formatDuration,
+  Database, filterLogText, formatBytes, formatCompactNumber, formatDuration,
   formatLogBodyView, formatLogDateTime, formatLogTokenSummary, formatNetworkRequestRaw, formatNetworkResponseRaw, formatUsdCost,
-  isJsonContainer, jsonChildPath, jsonContainerEntries, jsonContainerSummary, logBodyKey, logRequestModel,
+  isJsonContainer, jsonChildPath, logRequestModel,
   logResponseModel, logSelectOptions, motion, MoveRight, Network, networkCodeLabel,
   networkExchangeMatchesQuery, networkHeaderRows, networkLifecycleLabel, networkQueryRows, networkRowId, networkSummaryRows,
   Pause, Play, ProxyNetworkBody, ProxyNetworkExchange, ProxyNetworkSnapshot, ProxyStatus,
   ReactNode, ReactPointerEvent, RefreshCw, RequestLogBody, RequestLogEntry, RequestLogListFilter,
   RequestLogPage, requestLogPageSizeOptions, RequestLogStatusFilter, requestLogStatusOptions, Search, Select,
-  translateOptions, Trash2, useAppText, useEffect, useMemo, useRef,
+  translateOptions, Trash2, useAppText, useCallback, useEffect, useMemo, useRef,
   useState
 } from "../shared";
 type NetworkRequestTab = "body" | "header" | "query" | "raw" | "summary";
 type NetworkResponseTab = "body" | "header" | "raw";
+
+const logBodyViewCacheLimit = 12;
+const logJsonAutoExpandEntryLimit = 60;
+const logJsonContainerPreviewLimit = 80;
+const logJsonAutoExpandTextLimit = 160 * 1024;
+const logBodyViewCache = new Map<string, ReturnType<typeof formatLogBodyView>>();
 
 export function NetworkingView({
   clearCaptures,
@@ -285,6 +292,9 @@ export function LogsView({
   const logTableGridClass = hasAnyCredentialInfo
     ? "grid-cols-[minmax(0,0.8fr)_minmax(92px,0.38fr)_minmax(98px,0.4fr)_minmax(0,0.78fr)_minmax(120px,0.42fr)_minmax(0,0.68fr)_82px]"
     : "grid-cols-[minmax(0,0.8fr)_minmax(92px,0.38fr)_minmax(98px,0.4fr)_minmax(0,0.9fr)_minmax(0,0.74fr)_82px]";
+  const toggleExpandedLog = useCallback((id: number) => {
+    setExpandedId((current) => current === id ? undefined : id);
+  }, []);
 
   useEffect(() => {
     if (!expandedId || page.items.some((item) => item.id === expandedId)) {
@@ -408,41 +418,17 @@ export function LogsView({
                 </div>
               ) : null}
 
-              {page.items.map((item, index) => {
-                const expanded = expandedId === item.id;
-                return (
-                  <AnimatedListItem key={item.id}>
-                    <button
-                      aria-expanded={expanded}
-                      className={cn(
-                        "network-row grid h-10 w-full items-center border-0 px-0 text-left text-[12px] font-semibold outline-none transition-colors",
-                        logTableGridClass,
-                        index % 2 === 0 ? "network-row-even" : "network-row-odd",
-                        expanded && "network-row-selected"
-                      )}
-                      onClick={() => setExpandedId((current) => current === item.id ? undefined : item.id)}
-                      type="button"
-                    >
-                      <div className="truncate px-3 font-mono text-[11px]" title={formatLogDateTime(item.createdAt)}>
-                        {formatLogDateTime(item.createdAt)}
-                      </div>
-                      <div className="flex min-w-0 items-center gap-2 px-2">
-                        <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 transition-transform", expanded && "rotate-180")} />
-                        <LogStatusDot entry={item} />
-                        <span className="network-row-secondary truncate">{item.statusCode || "-"}</span>
-                      </div>
-                      <LogStreamCell entry={item} />
-                      <LogModelRouteCell entry={item} />
-                      {hasAnyCredentialInfo ? <LogCredentialCell entry={item} /> : null}
-                      <div className="network-row-secondary truncate px-2" title={formatLogTokenSummary(item, t)}>{formatLogTokenSummary(item, t)}</div>
-                      <div className="network-row-secondary truncate px-2">{formatDuration(item.durationMs)}</div>
-                    </button>
-                    <AnimatePresence initial={false}>
-                      {expanded ? <LogExpandedDetails entry={item} /> : null}
-                    </AnimatePresence>
-                  </AnimatedListItem>
-                );
-              })}
+              {page.items.map((item, index) => (
+                <LogRow
+                  expanded={expandedId === item.id}
+                  hasCredentialInfo={hasAnyCredentialInfo}
+                  index={index}
+                  item={item}
+                  key={item.id}
+                  logTableGridClass={logTableGridClass}
+                  onToggle={toggleExpandedLog}
+                />
+              ))}
             </div>
           </div>
         </div>
@@ -451,12 +437,63 @@ export function LogsView({
   );
 }
 
+const LogRow = memo(function LogRow({
+  expanded,
+  hasCredentialInfo,
+  index,
+  item,
+  logTableGridClass,
+  onToggle
+}: {
+  expanded: boolean;
+  hasCredentialInfo: boolean;
+  index: number;
+  item: RequestLogEntry;
+  logTableGridClass: string;
+  onToggle: (id: number) => void;
+}) {
+  const t = useAppText();
+  const createdAt = useMemo(() => formatLogDateTime(item.createdAt), [item.createdAt]);
+  const tokenSummary = useMemo(() => formatLogTokenSummary(item, t), [item, t]);
+
+  return (
+    <div>
+      <button
+        aria-expanded={expanded}
+        className={cn(
+          "network-row grid h-10 w-full items-center border-0 px-0 text-left text-[12px] font-semibold outline-none transition-colors",
+          logTableGridClass,
+          index % 2 === 0 ? "network-row-even" : "network-row-odd",
+          expanded && "network-row-selected"
+        )}
+        onClick={() => onToggle(item.id)}
+        type="button"
+      >
+        <div className="truncate px-3 font-mono text-[11px]" title={createdAt}>
+          {createdAt}
+        </div>
+        <div className="flex min-w-0 items-center gap-2 px-2">
+          <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 transition-transform", expanded && "rotate-180")} />
+          <LogStatusDot entry={item} />
+          <span className="network-row-secondary truncate">{item.statusCode || "-"}</span>
+        </div>
+        <LogStreamCell entry={item} />
+        <LogModelRouteCell entry={item} />
+        {hasCredentialInfo ? <LogCredentialCell entry={item} /> : null}
+        <div className="network-row-secondary truncate px-2" title={tokenSummary}>{tokenSummary}</div>
+        <div className="network-row-secondary truncate px-2">{formatDuration(item.durationMs)}</div>
+      </button>
+      {expanded ? <LogExpandedDetails entry={item} /> : null}
+    </div>
+  );
+});
+
 function LogExpandedDetails({ entry }: { entry: RequestLogEntry }) {
   const t = useAppText();
   const hasCredentialInfo = logHasCredentialInfo(entry);
 
   return (
-    <AnimatedDisclosure className="network-detail border-b">
+    <div className="network-detail border-b">
       <div className="network-detail-bar flex min-h-10 min-w-0 items-center gap-2 border-b px-3 py-1.5">
         <span className={cn(
           "rounded-full px-3 py-1 text-[12px] font-bold uppercase",
@@ -493,7 +530,7 @@ function LogExpandedDetails({ entry }: { entry: RequestLogEntry }) {
           title={t("响应")}
         />
       </div>
-    </AnimatedDisclosure>
+    </div>
   );
 }
 
@@ -571,17 +608,19 @@ function LogJsonPanel({
 }) {
   const t = useAppText();
   const [selectedTab, setSelectedTab] = useState<LogPayloadTab>("body");
+  const [preferTextBody, setPreferTextBody] = useState(false);
   const [query, setQuery] = useState("");
-  const bodyKey = logBodyKey(body);
-  const bodyView = useMemo(() => formatLogBodyView(body), [bodyKey]);
+  const bodyKey = logBodyCacheKey(body);
+  const bodyView = useMemo(() => cachedFormatLogBodyView(bodyKey, body), [bodyKey]);
   const formatted = bodyView.text;
   const visible = useMemo(() => filterLogText(formatted, query), [formatted, query]);
   const headerRows = useMemo(() => networkHeaderRows(headers ?? {}), [headers]);
-  const [expandedJsonPaths, setExpandedJsonPaths] = useState<Set<string>>(() => createInitialLogJsonExpandedPaths(bodyView.json));
-  const showJsonTree = bodyView.json !== undefined && query.trim() === "";
+  const [expandedJsonPaths, setExpandedJsonPaths] = useState<Set<string>>(() => createInitialVisibleJsonPaths(bodyView));
+  const showJsonTree = bodyView.json !== undefined && query.trim() === "" && !preferTextBody;
 
   useEffect(() => {
-    setExpandedJsonPaths(createInitialLogJsonExpandedPaths(bodyView.json));
+    setExpandedJsonPaths(createInitialVisibleJsonPaths(bodyView));
+    setPreferTextBody(false);
   }, [bodyKey]);
 
   function toggleJsonPath(path: string) {
@@ -631,6 +670,15 @@ function LogJsonPanel({
                   value={query}
                 />
               </div>
+              {bodyView.json !== undefined && query.trim() === "" ? (
+                <button
+                  className="network-tab shrink-0 border-0 bg-transparent p-0 text-[11px] font-semibold outline-none"
+                  onClick={() => setPreferTextBody((current) => !current)}
+                  type="button"
+                >
+                  {preferTextBody ? "JSON" : t("Show full content")}
+                </button>
+              ) : null}
               {body?.contentType ? <span className="network-muted hidden shrink-0 text-[11px] font-semibold sm:inline">{body.contentType}</span> : null}
               {body?.truncated ? <span className="network-service-paused rounded-full px-2 py-0.5 text-[11px] font-semibold">{t("truncated")}</span> : null}
             </div>
@@ -650,6 +698,106 @@ function LogJsonPanel({
       </div>
     </div>
   );
+}
+
+function logBodyCacheKey(body: RequestLogBody | undefined): string {
+  if (!body) {
+    return "missing";
+  }
+  const text = body.text ?? "";
+  return [
+    body.encoding ?? "",
+    body.contentType ?? "",
+    body.sizeBytes,
+    body.truncated ? "truncated" : "complete",
+    text.length,
+    text.slice(0, 96),
+    text.slice(-96)
+  ].join("\u001f");
+}
+
+function cachedFormatLogBodyView(key: string, body: RequestLogBody | undefined): ReturnType<typeof formatLogBodyView> {
+  const cached = logBodyViewCache.get(key);
+  if (cached) {
+    logBodyViewCache.delete(key);
+    logBodyViewCache.set(key, cached);
+    return cached;
+  }
+
+  const value = formatLogBodyView(body);
+  logBodyViewCache.set(key, value);
+  while (logBodyViewCache.size > logBodyViewCacheLimit) {
+    const oldest = logBodyViewCache.keys().next().value;
+    if (!oldest) {
+      break;
+    }
+    logBodyViewCache.delete(oldest);
+  }
+  return value;
+}
+
+function createInitialVisibleJsonPaths(bodyView: ReturnType<typeof formatLogBodyView>): Set<string> {
+  if (!isJsonContainer(bodyView.json)) {
+    return new Set();
+  }
+  if (
+    bodyView.text.length > logJsonAutoExpandTextLimit ||
+    jsonContainerEntryCount(bodyView.json, logJsonAutoExpandEntryLimit + 1) > logJsonAutoExpandEntryLimit
+  ) {
+    return new Set();
+  }
+  return new Set(["$"]);
+}
+
+function jsonContainerEntryCount(value: Record<string, unknown> | unknown[], limit = Number.POSITIVE_INFINITY): number {
+  if (Array.isArray(value)) {
+    return value.length;
+  }
+
+  let count = 0;
+  for (const key in value) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) {
+      continue;
+    }
+    count += 1;
+    if (count >= limit) {
+      return count;
+    }
+  }
+  return count;
+}
+
+function jsonContainerPreviewEntries(value: Record<string, unknown> | unknown[]): Array<[string, unknown]> {
+  if (Array.isArray(value)) {
+    return value.slice(0, logJsonContainerPreviewLimit).map((item, index) => [String(index), item]);
+  }
+
+  const entries: Array<[string, unknown]> = [];
+  for (const key in value) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) {
+      continue;
+    }
+    entries.push([key, value[key]]);
+    if (entries.length >= logJsonContainerPreviewLimit) {
+      break;
+    }
+  }
+  return entries;
+}
+
+function jsonContainerPreviewSummary(value: Record<string, unknown> | unknown[]): string {
+  if (Array.isArray(value)) {
+    return `Array(${value.length})`;
+  }
+  const count = jsonContainerEntryCount(value, logJsonContainerPreviewLimit + 1);
+  return count > logJsonContainerPreviewLimit ? `Object(${logJsonContainerPreviewLimit}+)` : `Object(${count})`;
+}
+
+function jsonContainerHiddenSummary(value: Record<string, unknown> | unknown[], visibleCount: number): string {
+  if (Array.isArray(value)) {
+    return `... ${formatCompactNumber(Math.max(0, value.length - visibleCount))}`;
+  }
+  return "...";
 }
 
 function LogBodyViewer({
@@ -745,12 +893,14 @@ function JsonTreeNode({
     );
   }
 
-  const entries = jsonContainerEntries(value);
   const expanded = expandedPaths.has(path);
   const open = Array.isArray(value) ? "[" : "{";
   const close = Array.isArray(value) ? "]" : "}";
+  const entryCount = jsonContainerEntryCount(value, 1);
+  const visibleEntries = expanded ? jsonContainerPreviewEntries(value) : [];
+  const hasHiddenEntries = expanded && jsonContainerEntryCount(value, logJsonContainerPreviewLimit + 1) > visibleEntries.length;
 
-  if (entries.length === 0) {
+  if (entryCount === 0) {
     return (
       <div className="min-w-0 whitespace-pre-wrap break-words" style={{ paddingLeft: depth * 16 }}>
         <span className="inline-block w-4" />
@@ -778,7 +928,7 @@ function JsonTreeNode({
         <span>{open}</span>
         {!expanded ? (
           <>
-            <span className="network-muted"> {jsonContainerSummary(value)} </span>
+            <span className="network-muted"> {jsonContainerPreviewSummary(value)} </span>
             <span>{close}</span>
             {trailingComma ? <span>,</span> : null}
           </>
@@ -786,7 +936,7 @@ function JsonTreeNode({
       </div>
       {expanded ? (
         <>
-          {entries.map(([key, childValue], index) => (
+          {visibleEntries.map(([key, childValue], index) => (
             <JsonTreeNode
               depth={depth + 1}
               expandedPaths={expandedPaths}
@@ -795,10 +945,16 @@ function JsonTreeNode({
               labelKind={Array.isArray(value) ? "index" : "key"}
               onToggle={onToggle}
               path={jsonChildPath(path, key)}
-              trailingComma={index < entries.length - 1}
+              trailingComma={index < visibleEntries.length - 1 || hasHiddenEntries}
               value={childValue}
             />
           ))}
+          {hasHiddenEntries ? (
+            <div className="network-muted min-w-0 whitespace-pre-wrap break-words" style={{ paddingLeft: (depth + 1) * 16 }}>
+              <span className="inline-block w-4" />
+              <span>{jsonContainerHiddenSummary(value, visibleEntries.length)}</span>
+            </div>
+          ) : null}
           <div className="min-w-0 whitespace-pre-wrap break-words" style={{ paddingLeft: depth * 16 }}>
             <span className="inline-block w-4" />
             <span>{close}</span>

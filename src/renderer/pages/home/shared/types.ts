@@ -674,6 +674,7 @@ export type ExtensionConfigTarget = {
 };
 
 export type ExtensionDeleteTarget = {
+  groupIndexes: number[];
   index: number;
   source: ExtensionSource;
 };
@@ -683,6 +684,7 @@ export type ExtensionListItem = {
   canToggle: boolean;
   capability: string;
   enabled: boolean;
+  groupIndexes: number[];
   index: number;
   name: string;
   source: ExtensionSource;

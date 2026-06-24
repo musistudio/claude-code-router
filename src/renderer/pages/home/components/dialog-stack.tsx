@@ -1,6 +1,6 @@
 import type { ComponentProps, ReactElement } from "react";
 import { AnimatePresence, DialogStackLayer } from "../shared";
-import { AddApiKeyDialog, EditApiKeyDialog } from "./api-keys";
+import { AddApiKeyDialog, ApiKeyCreatedDialog, EditApiKeyDialog } from "./api-keys";
 import { ConfigureClaudeDesignDialog, DeleteExtensionDialog, PluginSettingsDialog } from "./extensions";
 import { AddProfileDialog, ProfileOpenDialog } from "./profiles";
 import { AddProviderDialog, DeleteProviderDialog, ProviderDeepLinkDialog } from "./providers";
@@ -10,6 +10,7 @@ import { InstallExtensionDialog, VirtualModelDialog } from "./virtual-models";
 
 export function AppDialogStack({
   apiKeyAdd,
+  apiKeyCreated,
   apiKeyEdit,
   claudeDesignConfig,
   cursorProxyConfig,
@@ -28,6 +29,7 @@ export function AppDialogStack({
   virtualModelUpsert
 }: {
   apiKeyAdd?: ComponentProps<typeof AddApiKeyDialog>;
+  apiKeyCreated?: ComponentProps<typeof ApiKeyCreatedDialog>;
   apiKeyEdit?: ComponentProps<typeof EditApiKeyDialog>;
   claudeDesignConfig?: ComponentProps<typeof ConfigureClaudeDesignDialog>;
   cursorProxyConfig?: ComponentProps<typeof ConfigureClaudeDesignDialog>;
@@ -47,6 +49,7 @@ export function AppDialogStack({
 }) {
   const dialogs = [
     apiKeyAdd ? { key: "api-key-add", node: <AddApiKeyDialog {...apiKeyAdd} /> } : null,
+    apiKeyCreated ? { key: "api-key-created", node: <ApiKeyCreatedDialog {...apiKeyCreated} /> } : null,
     profileAdd ? { key: "profile-add", node: <AddProfileDialog {...profileAdd} /> } : null,
     profileEdit ? { key: "profile-edit", node: <AddProfileDialog {...profileEdit} /> } : null,
     profileOpen ? { key: "profile-open", node: <ProfileOpenDialog {...profileOpen} /> } : null,

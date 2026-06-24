@@ -16,6 +16,10 @@ const managedRootEnd = "# END CCR managed profile";
 const managedProviderStart = "# BEGIN CCR managed Codex provider";
 const managedProviderEnd = "# END CCR managed Codex provider";
 const fallbackClientToken = "ccr-local";
+const privateDirMode = 0o700;
+const privateExecutableMode = 0o700;
+const privateFileMode = 0o600;
+const publicExecutableMode = 0o755;
 
 export async function applyProfileConfig(config: AppConfig): Promise<ProfileApplyResult> {
   const appliedAt = new Date().toISOString();
@@ -76,7 +80,7 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
       apiKeyHelper: helperResult.file,
       env
     };
-    const writeResult = writeFileWithBackup(settingsFile, `${JSON.stringify(nextSettings, null, 2)}\n`);
+    const writeResult = writeFileWithBackup(settingsFile, `${JSON.stringify(nextSettings, null, 2)}\n`, { mode: privateFileMode });
     const changed = writeResult.changed || helperResult.changed || wrapperResult.changed;
     return {
       appliedAt,
@@ -127,7 +131,7 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
       showAllSessions,
       token
     });
-    const writeResult = writeFileWithBackup(configFile, nextConfig);
+    const writeResult = writeFileWithBackup(configFile, nextConfig, { mode: privateFileMode });
     const separateProfileResult = maybeWriteSeparateCodexProfileFile(configFile, source, {
       configFormat,
       model,
@@ -385,7 +389,7 @@ function maybeWriteSeparateCodexProfileFile(
     ? readFileSync(file, "utf8")
     : legacyCodexProfileTableBody(source, values.providerId);
   const next = buildSeparateCodexProfileToml(previous, values);
-  const writeResult = writeFileWithBackup(file, next);
+  const writeResult = writeFileWithBackup(file, next, { mode: privateFileMode });
   return {
     changed: writeResult.changed,
     file
@@ -416,14 +420,14 @@ function buildSeparateCodexProfileToml(
 
 function writeClaudeCodeApiKeyHelper(profile: ProfileConfig, token: string): { backupFile?: string; changed: boolean; file: string } {
   const binDir = path.join(CONFIGDIR, "bin");
-  mkdirSync(binDir, { recursive: true });
+  mkdirSync(binDir, { mode: privateDirMode, recursive: true });
   const file = path.join(binDir, claudeCodeApiKeyHelperFilename(profile));
   const content = process.platform === "win32"
     ? claudeCodeApiKeyHelperCmdScript(token)
     : claudeCodeApiKeyHelperShellScript(token);
-  const writeResult = writeFileWithBackup(file, content);
+  const writeResult = writeFileWithBackup(file, content, { mode: privateExecutableMode });
   if (process.platform !== "win32") {
-    chmodSync(file, 0o755);
+    chmodSync(file, privateExecutableMode);
   }
   return {
     backupFile: writeResult.backupFile,
@@ -457,19 +461,19 @@ function claudeCodeApiKeyHelperCmdScript(token: string): string {
 
 function writeClaudeCodeWrapper(config: AppConfig, profile: ProfileConfig): { backupFile?: string; changed: boolean; file: string } {
   const binDir = path.join(CONFIGDIR, "bin");
-  mkdirSync(binDir, { recursive: true });
+  mkdirSync(binDir, { mode: privateDirMode, recursive: true });
   const runtimeFile = path.join(binDir, codexMiddlewareRuntimeFilename());
   const runtimeResult = writeFileWithBackup(runtimeFile, codexCliMiddlewareRuntimeScript());
   if (process.platform !== "win32") {
-    chmodSync(runtimeFile, 0o755);
+    chmodSync(runtimeFile, publicExecutableMode);
   }
   const file = path.join(binDir, claudeCodeWrapperFilename(profile));
   const content = process.platform === "win32"
     ? claudeCodeWrapperCmdScript(config, profile, runtimeFile)
     : claudeCodeWrapperShellScript(config, profile, runtimeFile);
-  const writeResult = writeFileWithBackup(file, content);
+  const writeResult = writeFileWithBackup(file, content, { mode: privateExecutableMode });
   if (process.platform !== "win32") {
-    chmodSync(file, 0o755);
+    chmodSync(file, privateExecutableMode);
   }
   return {
     backupFile: writeResult.backupFile ?? runtimeResult.backupFile,
@@ -538,19 +542,19 @@ function writeCodexCliMiddleware(
   }
 ): { changed: boolean; file: string } {
   const binDir = path.join(CONFIGDIR, "bin");
-  mkdirSync(binDir, { recursive: true });
+  mkdirSync(binDir, { mode: privateDirMode, recursive: true });
   const runtimeFile = path.join(binDir, codexMiddlewareRuntimeFilename());
   const runtimeResult = writeFileWithBackup(runtimeFile, codexCliMiddlewareRuntimeScript());
   if (process.platform !== "win32") {
-    chmodSync(runtimeFile, 0o755);
+    chmodSync(runtimeFile, publicExecutableMode);
   }
   const file = path.join(binDir, codexMiddlewareFilename(profile, values.providerId));
   const content = process.platform === "win32"
     ? codexMiddlewareCmdScript(config, profile, values, runtimeFile)
     : codexMiddlewareShellScript(config, profile, values, runtimeFile);
-  const writeResult = writeFileWithBackup(file, content);
+  const writeResult = writeFileWithBackup(file, content, { mode: privateExecutableMode });
   if (process.platform !== "win32") {
-    chmodSync(file, 0o755);
+    chmodSync(file, privateExecutableMode);
   }
   return {
     changed: writeResult.changed || runtimeResult.changed,
@@ -905,18 +909,36 @@ function readJsonObject(file: string): Record<string, unknown> {
   }
 }
 
-function writeFileWithBackup(file: string, content: string): { backupFile?: string; changed: boolean } {
+function writeFileWithBackup(
+  file: string,
+  content: string,
+  options: { mode?: number } = {}
+): { backupFile?: string; changed: boolean } {
   mkdirSync(path.dirname(file), { recursive: true });
   const previous = existsSync(file) ? readFileSync(file, "utf8") : undefined;
   if (previous === content) {
+    chmodFileIfRequested(file, options.mode);
     return { changed: false };
   }
   const backupFile = previous === undefined ? undefined : backupFilePath(file);
   if (backupFile) {
     copyFileSync(file, backupFile);
+    chmodFileIfRequested(backupFile, options.mode);
   }
-  writeFileSync(file, content, "utf8");
+  writeFileSync(file, content, options.mode === undefined ? "utf8" : { encoding: "utf8", mode: options.mode });
+  chmodFileIfRequested(file, options.mode);
   return { backupFile, changed: true };
+}
+
+function chmodFileIfRequested(file: string, mode: number | undefined): void {
+  if (mode === undefined || process.platform === "win32") {
+    return;
+  }
+  try {
+    chmodSync(file, mode);
+  } catch {
+    // Best effort; the write itself should still succeed on filesystems without chmod.
+  }
 }
 
 function backupFilePath(file: string): string {

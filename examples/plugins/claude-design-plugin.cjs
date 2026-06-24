@@ -5,9 +5,11 @@ const fs = require("node:fs");
 const http = require("node:http");
 const https = require("node:https");
 const pathModule = require("node:path");
+const zlib = require("node:zlib");
 
 const DEFAULT_HOST = "claude.ai";
 const DEFAULT_GATEWAY_URL = "http://127.0.0.1:3456";
+const DEFAULT_GATEWAY_MODEL = "claude-sonnet-4-20250514";
 const DEFAULT_UPSTREAM_ORIGIN = "https://claude.ai";
 const DEFAULT_DESIGN_ORIGIN = "https://claude.ai";
 const DEFAULT_DESIGN_REFERRER = "https://claude.ai/design";
@@ -18,8 +20,57 @@ const BOOTSTRAP_ROUTE_PATHS = ["/_bootstrap", "/api/bootstrap"];
 const REQUIRED_ROUTE_PATHS = ["/", OMELETTE_RPC_PATH_PREFIX, "/v1/design", ...BOOTSTRAP_ROUTE_PATHS, ...AUTH_ESCAPE_ROUTE_PATHS];
 const DEFAULT_ROUTE_PATHS = ["/design", "/v1/design", "/api", "/organizations", "/cdn-cgi", ...BOOTSTRAP_ROUTE_PATHS, ...AUTH_ESCAPE_ROUTE_PATHS];
 const FALLBACK_ROUTE_PATHS = ["/app-unavailable-in-region", "/cdn-cgi", "/design", ...AUTH_ESCAPE_ROUTE_PATHS];
-const DEFAULT_SCRIPT_PATH = "";
-const DEFAULT_STYLE_PATH = "";
+const DEFAULT_SCRIPT_PATH = "/design/assets/v1/index-C0BEUHEw.js";
+const DEFAULT_STYLE_PATH = "/design/assets/v1/index-CqhNJH1o.css";
+const DEFAULT_DESIGN_CRITICAL_MODULE_PRELOAD_PATHS = [
+  "/design/assets/v1/rolldown-runtime-CMxvf4Kt.js",
+  "/design/assets/v1/preload-helper-7XptfjGJ.js",
+  "/design/assets/v1/react-BthIFXYf.js",
+  "/design/assets/v1/client-lite-CK-dmuh6.js",
+  "/design/assets/v1/useOrg-DmMewMgN.js",
+  "/design/assets/v1/cn-BvRk9kiK.js",
+  "/design/assets/v1/cn-D-uX0T7P.js",
+  "/design/assets/v1/Button-XfKvB69T.js"
+];
+const DEFAULT_DESIGN_LAZY_MODULE_PRELOAD_PATHS = [
+  "/design/assets/v1/Button-BtUXY0oi.js",
+  "/design/assets/v1/DsBrowseModal-hSTModTp.js",
+  "/design/assets/v1/Form-B3y7m-2_.js",
+  "/design/assets/v1/FormList-Bv2urBSD.js",
+  "/design/assets/v1/Kbd-CLyZAmwA.js",
+  "/design/assets/v1/MetaText-DDKRoRv8.js",
+  "/design/assets/v1/ModalHeader-Jq2fIJBg.js",
+  "/design/assets/v1/ProjectsPage-PDmge7e_.js",
+  "/design/assets/v1/SegmentedControl-oWx7ZWcd.js",
+  "/design/assets/v1/SpinnerCursorContext-FnwGR7gg.js",
+  "/design/assets/v1/Switch-C1hJI3Wa.js",
+  "/design/assets/v1/TextInput-DBxrS72B.js",
+  "/design/assets/v1/TextLink-CSMbfMRn.js",
+  "/design/assets/v1/Tooltip-DkOyUUQf.js",
+  "/design/assets/v1/client-CoyioTSK.js",
+  "/design/assets/v1/client-event-bus-CUOhmLFi.js",
+  "/design/assets/v1/completion-BAv5dQBO.js",
+  "/design/assets/v1/components-CiWVw_5Z.js",
+  "/design/assets/v1/connectrpc-B0zPEr5l.js",
+  "/design/assets/v1/data-C1nvXn42.js",
+  "/design/assets/v1/ds-contract-C8bG_fzg.js",
+  "/design/assets/v1/ds-manifest-guards-CDOctgob.js",
+  "/design/assets/v1/home-analytics-EoW6gFrM.js",
+  "/design/assets/v1/host-BwlQdwMG.js",
+  "/design/assets/v1/platform-BJ0ekVkb.js",
+  "/design/assets/v1/registry-DDfaFazS.js",
+  "/design/assets/v1/useLabelableId-YQk8Dx5K.js",
+  "/design/assets/v1/useModelSelection-DahB-QBH.js",
+  "/design/assets/v1/useMutation-ndQNPSAH.js",
+  "/design/assets/v1/viewer-handle-BbaClWB_.js"
+];
+const DEFAULT_DESIGN_STYLE_PRELOAD_PATHS = [
+  "/design/assets/v1/Button-C3hHoRdu.css",
+  "/design/assets/v1/FormList-DPI5FmbR.css",
+  "/design/assets/v1/ProjectsPage-CRTuKvXp.css",
+  "/design/assets/v1/components-DnFFPXN_.css",
+  "/design/assets/v1/home-analytics-DAgH1hGY.css"
+];
 const LEGACY_SCRIPT_PATHS = new Set([
   "/design/assets/index-DWa5J5J9.js",
   "/design/assets/index-DYd5ifc6.js",
@@ -45,6 +96,13 @@ const PROJECT_TYPE_DESIGN_SYSTEM = 3;
 const TRANSPARENT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1" viewBox="0 0 1 1" aria-hidden="true"></svg>\n`;
 const QUESTION_TOOL_NAMES = new Set(["questions", "questions_v2"]);
 const CLAUDE_DESIGN_ROUTE_TYPES = new Set(["always", "image", "long-context", "model", "model-prefix", "thinking", "web-search"]);
+const CLAUDE_DESIGN_MODEL_ALIASES = new Map([
+  ["claude-haiku-4-5-20251001", DEFAULT_GATEWAY_MODEL],
+  ["claude-opus-4-6", DEFAULT_GATEWAY_MODEL],
+  ["claude-opus-4-7", DEFAULT_GATEWAY_MODEL],
+  ["claude-opus-4-8", DEFAULT_GATEWAY_MODEL],
+  ["claude-sonnet-4-6", DEFAULT_GATEWAY_MODEL]
+]);
 const FALLBACK_ASSET_CACHE_PREFIX = "fallback:claude-design-v1:";
 const FALLBACK_ASSET_CACHE_TTL_MS = 60 * 60 * 1000;
 const OMELETTE_PREVIEW_EVAL_BRIDGE_SCRIPT = `(function(){
@@ -90,47 +148,34 @@ const DEFAULT_ME = {
   growthbookPayload: "{}",
   modelPresets: [
     {
-      id: "claude-haiku-4-5-20251001",
-      label: "Claude Haiku 4.5",
-      maxTokens: 200000,
-      description: "Fastest for quick answers"
-    },
-    {
-      id: "claude-opus-4-8",
-      label: "Claude Opus 4.8",
-      maxTokens: 1000000,
-      supportsAdaptiveThinking: true,
-      description: "Most capable for ambitious work"
-    },
-    {
-      id: "claude-sonnet-4-6",
-      label: "Claude Sonnet 4.6",
+      id: DEFAULT_GATEWAY_MODEL,
+      label: "Claude Sonnet 4",
       maxTokens: 1000000,
       supportsAdaptiveThinking: true,
       description: "Most efficient for everyday tasks"
     },
     {
-      id: "claude-3-opus-20240229",
-      label: "Claude Opus 3",
+      id: "claude-3-5-haiku-20241022",
+      label: "Claude Haiku 3.5",
       maxTokens: 200000,
-      overflow: true
+      description: "Fast for quick answers"
     },
     {
-      id: "claude-opus-4-6",
-      label: "Claude Opus 4.6",
-      maxTokens: 1000000,
+      id: "claude-3-5-sonnet-20241022",
+      label: "Claude Sonnet 3.5",
+      maxTokens: 200000,
       supportsAdaptiveThinking: true,
       overflow: true
     },
     {
-      id: "claude-opus-4-7",
-      label: "Claude Opus 4.7",
-      maxTokens: 1000000,
+      id: "claude-3-opus-20240229",
+      label: "Claude Opus 3",
+      maxTokens: 200000,
       supportsAdaptiveThinking: true,
       overflow: true
     }
   ],
-  defaultModelId: "claude-opus-4-8",
+  defaultModelId: DEFAULT_GATEWAY_MODEL,
   overrideStickyModel: true,
   isPersonalOrg: true,
   accessLevel: "ACCESS_LEVEL_FULL",
@@ -154,6 +199,8 @@ module.exports = {
     const upstreamOrigin = stringValue(options.upstreamOrigin) || DEFAULT_UPSTREAM_ORIGIN;
     const assetProxy = options.assetProxy !== false;
     const assetDir = stringValue(options.assetDir);
+    const assetPassthrough = options.assetPassthrough === true ||
+      (options.assetPassthrough !== false && !localAssetDirExists(assetDir));
     const configuredScriptPath = normalizePath(stringValue(options.scriptPath) || DEFAULT_SCRIPT_PATH);
     const configuredStylePath = normalizePath(stringValue(options.stylePath) || DEFAULT_STYLE_PATH);
     const scriptPath = shouldKeepCurrentScriptPath(configuredScriptPath) ? configuredScriptPath : DEFAULT_SCRIPT_PATH;
@@ -162,9 +209,28 @@ module.exports = {
     const autoAnswerQuestions = options.autoAnswerQuestions !== false;
     const gatewayUrl = stringValue(options.gatewayUrl) || DEFAULT_GATEWAY_URL;
     const gatewayApiKey = stringValue(options.gatewayApiKey) || configuredGatewayApiKey(ctx.config);
+    const gatewayConfigPath = stringValue(options.gatewayConfigPath) ||
+      stringValue(ctx.config?.gateway?.generatedConfigFile) ||
+      defaultClaudeDesignGatewayConfigPath();
+    const gatewayConfig = loadClaudeDesignGatewayConfig(gatewayConfigPath, ctx.logger);
+    const modelSourceConfig = claudeDesignModelSourceConfig(ctx.config, gatewayConfig);
+    const configuredDefaultGatewayModel = normalizeRouteTarget(
+      stringValue(options.defaultGatewayModel) ||
+      stringValue(options.gatewayModel)
+    );
+    const defaultGatewayModel = configuredDefaultGatewayModel ||
+      normalizeRouteTarget(stringValue(ctx.config?.Router?.default)) ||
+      DEFAULT_GATEWAY_MODEL;
+    const frontendDefaultModel = normalizeRouteTarget(
+      stringValue(options.frontendDefaultModel) ||
+      stringValue(options.defaultModelId) ||
+      configuredDefaultGatewayModel
+    ) || DEFAULT_GATEWAY_MODEL;
+    const availableProviderNames = claudeDesignProviderSelectorNames(modelSourceConfig);
+    const gatewayModelPresets = claudeDesignGatewayModelPresets(modelSourceConfig, frontendDefaultModel);
     const routing = normalizeClaudeDesignRouting(options.routing, options);
     const upstreamOrigins = normalizeUpstreamOrigins(options.upstreamOrigins, upstreamOrigin);
-    const me = normalizeMe(options.me);
+    const me = normalizeMe(options.me, frontendDefaultModel, gatewayModelPresets);
 
     ctx.registerApp({
       description: "Open Claude Design through the CCR browser proxy.",
@@ -247,6 +313,7 @@ module.exports = {
       assetProxy,
       assetAutoUpdate,
       assetDir,
+      assetPassthrough,
       designIndexAssets: {
         checkedAt: 0,
         html: "",
@@ -255,10 +322,16 @@ module.exports = {
         stylePath
       },
       gatewayApiKey,
+      gatewayConfigPath,
+      defaultGatewayModel,
+      frontendDefaultModel,
+      gatewayModelPresets,
       gatewayUrl,
       logger: ctx.logger,
       me,
       routing,
+      availableProviderNames,
+      unavailableRouteTargetWarnings: new Set(),
       routeHost,
       fallbackRouteHosts,
       routePaths,
@@ -275,6 +348,16 @@ module.exports = {
         await handleMockRequest(runtime, request, response);
       }
     });
+
+    if (assetPassthrough) {
+      ctx.registerProxyRoute({
+        host: routeHost,
+        id: "claude-design-assets-passthrough",
+        paths: ["/design/assets", "/assets"],
+        preserveHost: false,
+        upstream: upstreamOrigin
+      });
+    }
 
     ctx.registerProxyRoute({
       host: routeHost,
@@ -861,7 +944,7 @@ function isUsableServedAssetBody(path, contentType, body) {
     return false;
   }
   if (isDesignIndexScriptPath(path)) {
-    return isDesignEntryScriptBuffer(path, body);
+    return isUsableDesignIndexScriptBody(path, contentType, body);
   }
   return true;
 }
@@ -1291,7 +1374,7 @@ function isUsableDesignIndexAssetResponse(path, contentType, body) {
     return false;
   }
   if (isDesignIndexScriptPath(path)) {
-    return isDesignEntryScriptBuffer(path, body);
+    return isUsableDesignIndexScriptBody(path, contentType, body);
   }
   return isDesignIndexStylePath(path);
 }
@@ -1302,6 +1385,7 @@ function discoverRequestedDesignIndexAssets(store) {
     `SELECT path
        FROM claude_design_requests
       WHERE path LIKE '/design/assets/index-%'
+         OR path LIKE '/design/assets/%/index-%'
       ORDER BY id DESC
       LIMIT 100`,
     []
@@ -1328,6 +1412,7 @@ function discoverCachedDesignIndexAssets(store) {
     `SELECT path, content_type, body_base64, fetched_at
        FROM claude_design_assets
       WHERE path LIKE '/design/assets/index-%'
+         OR path LIKE '/design/assets/%/index-%'
       ORDER BY fetched_at DESC`,
     []
   );
@@ -1338,7 +1423,7 @@ function discoverCachedDesignIndexAssets(store) {
     if (!isUsableAssetBody(requestPath, row.content_type, body)) {
       continue;
     }
-    if (!assets.scriptPath && isDesignEntryScriptBuffer(requestPath, body)) {
+    if (!assets.scriptPath && isUsableDesignIndexScriptBody(requestPath, row.content_type, body)) {
       assets.scriptPath = requestPath;
     }
     if (!assets.stylePath && isDesignIndexStylePath(requestPath)) {
@@ -1356,44 +1441,28 @@ function discoverLocalDesignIndexAssets(assetDir) {
     return undefined;
   }
   const assetRoot = pathModule.resolve(assetDir);
-  let files;
-  try {
-    files = fs.readdirSync(assetRoot);
-  } catch {
-    return undefined;
-  }
   const scripts = [];
   const styles = [];
-  for (const name of files) {
-    const requestPath = `/design/assets/${name}`;
+  for (const entry of listLocalAssetFiles(assetRoot)) {
+    const requestPath = `/design/assets/${entry.relativePath}`;
     if (!isDesignIndexScriptPath(requestPath) && !isDesignIndexStylePath(requestPath)) {
       continue;
     }
-    const file = pathModule.join(assetRoot, name);
-    let stat;
-    try {
-      stat = fs.statSync(file);
-    } catch {
-      continue;
-    }
-    if (!stat.isFile()) {
-      continue;
-    }
     if (isDesignIndexStylePath(requestPath)) {
-      styles.push({ mtimeMs: stat.mtimeMs, path: requestPath, size: stat.size });
+      styles.push({ mtimeMs: entry.stat.mtimeMs, path: requestPath, size: entry.stat.size });
       continue;
     }
     let body;
     try {
-      body = fs.readFileSync(file);
+      body = fs.readFileSync(entry.file);
     } catch {
       continue;
     }
     scripts.push({
-      mtimeMs: stat.mtimeMs,
+      mtimeMs: entry.stat.mtimeMs,
       path: requestPath,
-      score: designEntryScriptScore(requestPath, body, stat),
-      size: stat.size
+      score: designEntryScriptScore(requestPath, body, entry.stat),
+      size: entry.stat.size
     });
   }
   scripts.sort((a, b) => b.score - a.score || b.mtimeMs - a.mtimeMs || b.size - a.size);
@@ -1406,12 +1475,61 @@ function discoverLocalDesignIndexAssets(assetDir) {
   return assets.scriptPath || assets.stylePath ? assets : undefined;
 }
 
+function localAssetDirExists(assetDir) {
+  if (!assetDir) {
+    return false;
+  }
+  try {
+    return fs.statSync(pathModule.resolve(assetDir)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function listLocalAssetFiles(assetRoot) {
+  const files = [];
+  const stack = [""];
+  while (stack.length) {
+    const relativeDir = stack.pop();
+    const absoluteDir = pathModule.join(assetRoot, relativeDir);
+    let entries;
+    try {
+      entries = fs.readdirSync(absoluteDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const relativePath = pathModule.join(relativeDir, entry.name);
+      const file = pathModule.join(assetRoot, relativePath);
+      if (entry.isDirectory()) {
+        stack.push(relativePath);
+        continue;
+      }
+      if (!entry.isFile()) {
+        continue;
+      }
+      let stat;
+      try {
+        stat = fs.statSync(file);
+      } catch {
+        continue;
+      }
+      files.push({
+        file,
+        relativePath: relativePath.split(pathModule.sep).join("/"),
+        stat
+      });
+    }
+  }
+  return files;
+}
+
 function isDesignIndexScriptPath(path) {
-  return /^\/design\/assets\/index-[^/]+\.js$/i.test(path);
+  return /^\/design\/assets\/(?:v\d+\/)?index-[^/]+\.js$/i.test(path);
 }
 
 function isDesignIndexStylePath(path) {
-  return /^\/design\/assets\/[^/]+\.css$/i.test(path);
+  return /^\/design\/assets\/(?:v\d+\/)?index-[^/]+\.css$/i.test(path);
 }
 
 function shouldKeepCurrentScriptPath(path) {
@@ -1458,7 +1576,7 @@ function isUsableCachedEntryScript(store, path) {
     return false;
   }
   const body = Buffer.from(cached.bodyBase64 || "", "base64");
-  return !isFallbackAsset(cached) && isUsableAssetBody(path, cached.contentType, body) && isDesignEntryScriptBuffer(path, body);
+  return !isFallbackAsset(cached) && isUsableDesignIndexScriptBody(path, cached.contentType, body);
 }
 
 function isUsableCachedEntryStyle(store, path) {
@@ -1472,7 +1590,7 @@ function isUsableCachedEntryStyle(store, path) {
 
 function isUsableLocalEntryScript(assetDir, path) {
   const localAsset = readLocalAsset(assetDir, path);
-  return Boolean(localAsset && isDesignEntryScriptBuffer(path, localAsset.body));
+  return Boolean(localAsset && isUsableDesignIndexScriptBody(path, localAsset.contentType, localAsset.body));
 }
 
 function isAcceptableRequestedEntryScript(runtime, path) {
@@ -1484,7 +1602,11 @@ function isAcceptableRequestedEntryScript(runtime, path) {
   if (!isUsableAssetBody(path, cached.contentType, body)) {
     return true;
   }
-  return isDesignEntryScriptBuffer(path, body);
+  return isUsableDesignIndexScriptBody(path, cached.contentType, body);
+}
+
+function isUsableDesignIndexScriptBody(path, contentType, body) {
+  return isDesignIndexScriptPath(path) && isUsableAssetBody(path, contentType, body);
 }
 
 function isDesignEntryScriptBuffer(path, body) {
@@ -1604,20 +1726,20 @@ function normalizeDesignAssetRequestPath(value) {
   if (normalizedPath.startsWith("/assets/")) {
     return `/design${normalizedPath}`;
   }
-  const assetName = designAssetFileName(normalizedPath);
-  if (assetName) {
-    return `/design/assets/${assetName}`;
+  const assetPath = designAssetFileName(normalizedPath);
+  if (assetPath) {
+    return `/design/assets/${assetPath}`;
   }
   return normalizedPath;
 }
 
 function designAssetFileName(path) {
-  const match = normalizePath(path).match(/\/assets\/(?:v\d+\/)?([^/?#]+\.(?:css|js|mjs|avif|gif|ico|jpe?g|json|png|svg|webp|woff2?))$/i);
+  const match = normalizePath(path).match(/\/assets\/((?:v\d+\/)?[^/?#]+\.(?:css|js|mjs|avif|gif|ico|jpe?g|json|png|svg|webp|woff2?))$/i);
   return match?.[1];
 }
 
 function isDesignAssetFilePath(path) {
-  return /^\/design\/assets\/[^/?#]+\.(?:css|js|mjs|avif|gif|ico|jpe?g|json|png|svg|webp|woff2?)$/i.test(normalizePath(path));
+  return /^\/design\/assets\/(?:[^/?#]+\/)*[^/?#]+\.(?:css|js|mjs|avif|gif|ico|jpe?g|json|png|svg|webp|woff2?)$/i.test(normalizePath(path));
 }
 
 function questionsViewerFallbackModule() {
@@ -1928,9 +2050,14 @@ async function handleAdminRequest(runtime, backend, request, response, helpers) 
       autoAnswerQuestions: runtime.autoAnswerQuestions,
       backend: backend.url,
       dbFile: runtime.store.dbFile,
+      defaultGatewayModel: runtime.defaultGatewayModel,
       designIndexAssets: runtime.designIndexAssets,
+      frontendDefaultModel: runtime.frontendDefaultModel,
+      gatewayConfigPath: runtime.gatewayConfigPath,
+      gatewayModels: runtime.gatewayModelPresets,
       plugin: "claude-design",
       proxy: {
+        assetPassthrough: runtime.assetPassthrough,
         fallbackHosts: runtime.fallbackRouteHosts,
         host: runtime.routeHost,
         paths: runtime.routePaths
@@ -3738,7 +3865,9 @@ function sendCommentsToChat(runtime, requestBody) {
 function sendMultiplayerMessage(runtime, requestBody) {
   const projectId = decodeProtoStringField(requestBody, 1) || "";
   const chatId = decodeProtoStringField(requestBody, 2) || randomUuid();
-  const content = decodeProtoStringField(requestBody, 3) || "";
+  const embeddedRequest = extractGatewayMessagesRequestFromProto(requestBody);
+  const embeddedUserText = cleanVisibleUserText(textFromMessageContent(lastGatewayUserMessage(embeddedRequest)?.content));
+  const content = decodeProtoStringField(requestBody, 3) || embeddedUserText || "";
   const role = decodeProtoStringField(requestBody, 4) || "user";
   const clientMessageId = decodeProtoStringField(requestBody, 7) || randomUuid();
   const epoch = Date.now();
@@ -3951,6 +4080,55 @@ function encodeTokenResponse() {
   return Buffer.concat([protoString(1, randomUuid()), protoInt64(2, Math.floor(Date.now() / 1000) + 3600)]);
 }
 
+function designSettingsPayload(runtime) {
+  const item = getExistingItem(runtime.store, "settings", runtime.me.organizationUuid, "default");
+  const model = normalizeClaudeDesignSelectableModel(runtime, stringValue(item?.model) || stringValue(item?.selected_model)) ||
+    runtime.me.defaultModelId;
+  return {
+    defaultModelId: model,
+    default_model_id: model,
+    model,
+    selectedModel: model,
+    selected_model: model
+  };
+}
+
+function persistDesignSelectedModel(runtime, modelValue) {
+  const model = normalizeClaudeDesignSelectableModel(runtime, modelValue) || runtime.me.defaultModelId;
+  runtime.me.defaultModelId = model;
+  upsertGenericRecord(runtime.store, "settings", "default", "Claude Design Settings", model, {
+    default_model_id: model,
+    defaultModelId: model,
+    model,
+    selected_model: model,
+    selectedModel: model
+  });
+  return designSettingsPayload(runtime);
+}
+
+function normalizeClaudeDesignSelectableModel(runtime, value) {
+  const normalized = normalizeRouteTarget(value);
+  if (!normalized) {
+    return undefined;
+  }
+  const presets = Array.isArray(runtime?.gatewayModelPresets) ? runtime.gatewayModelPresets : [];
+  const direct = findGatewayModelPresetId(presets, normalized);
+  if (direct) {
+    return direct;
+  }
+  const publicModel = publicGatewayModelSelector(normalized);
+  return findGatewayModelPresetId(presets, publicModel) || publicModel || normalized;
+}
+
+function findGatewayModelPresetId(presets, model) {
+  const normalized = stringValue(model)?.toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  const preset = presets.find((preset) => isRecord(preset) && stringValue(preset.id)?.toLowerCase() === normalized);
+  return stringValue(preset?.id);
+}
+
 function upsertGenericRecord(store, collection, uuid, title, model, data) {
   const now = new Date().toISOString();
   const existing = queryRows(
@@ -3970,6 +4148,19 @@ async function handleDesignRestApi(runtime, method, path, request, requestBody) 
 
   if (method === "POST" && restPath === "/v1/design/telemetry") {
     return jsonResponse(200, { ok: true });
+  }
+
+  if (method === "GET" && (restPath === "/v1/design/settings" || restPath === "/v1/design/model-selection")) {
+    return jsonResponse(200, designSettingsPayload(runtime));
+  }
+
+  if (method === "POST" && (restPath === "/v1/design/settings" || restPath === "/v1/design/model-selection")) {
+    const payload = parseJsonBody(requestBody);
+    const settings = persistDesignSelectedModel(runtime, stringValue(payload.model) || stringValue(payload.defaultModelId));
+    return jsonResponse(200, {
+      ok: true,
+      ...settings
+    });
   }
 
   if (method === "POST" && restPath === "/v1/design/turn-title") {
@@ -4248,7 +4439,9 @@ function titleFromTurnMessage(message) {
 
 async function countGatewayTokens(runtime, requestBody) {
   const messagesRequest = decodeProtoBytesField(requestBody, 1) || Buffer.alloc(0);
-  const body = parseMaybeJson(messagesRequest.toString("utf8"), {});
+  const body = parseGatewayMessagesRequestBuffer(messagesRequest) ||
+    extractGatewayMessagesRequestFromProto(requestBody) ||
+    {};
   const normalized = normalizeGatewayMessagesRequest(runtime, body);
   const routingDecision = applyClaudeDesignRouting(runtime, normalized);
   try {
@@ -4272,7 +4465,16 @@ async function chatWithGateway(runtime, requestBody) {
     messagesRequest: decodeProtoBytesField(requestBody, 2) || Buffer.alloc(0),
     projectId
   };
-  const originalBody = parseMaybeJson(request.messagesRequest.toString("utf8"), {});
+  const originalBody = parseGatewayMessagesRequestBuffer(request.messagesRequest) ||
+    extractGatewayMessagesRequestFromProto(requestBody) ||
+    gatewayMessagesRequestFromProjectChat(runtime, request) ||
+    {};
+  if (!hasGatewayMessagesInput(originalBody)) {
+    return connectStreamResponse([
+      encodeChatResponseMessageStart(request.assistantMessageId),
+      encodeChatResponseError("Claude Design chat request did not include a messages payload.")
+    ]);
+  }
   const gatewayBody = normalizeGatewayMessagesRequest(runtime, {
     ...originalBody,
     stream: false
@@ -4306,7 +4508,7 @@ async function chatWithGateway(runtime, requestBody) {
     }
     stopReason = toolCalls.length > 0 ? "tool_use" : gatewayStopReason === "tool_use" ? "end_turn" : gatewayStopReason;
     messageId = stringValue(payload.id) || messageId;
-    model = stringValue(payload.model) || model;
+    model = publicGatewayModelSelector(routingDecision.routedModel || gatewayBody.model || model) || model;
   } catch (error) {
     events.push(encodeChatResponseError(error instanceof Error ? error.message : String(error)));
     return connectStreamResponse(events);
@@ -4356,11 +4558,164 @@ async function chatWithGateway(runtime, requestBody) {
   return connectStreamResponse(events);
 }
 
+function parseGatewayMessagesRequestBuffer(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    return undefined;
+  }
+  const text = buffer.toString("utf8").trim();
+  if (!text || !text.startsWith("{")) {
+    return undefined;
+  }
+  const body = parseMaybeJson(text, undefined);
+  return hasGatewayMessagesInput(body) ? body : undefined;
+}
+
+function extractGatewayMessagesRequestFromProto(buffer, depth = 0, seen = new Set()) {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0 || depth > 6 || seen.has(buffer)) {
+    return undefined;
+  }
+  seen.add(buffer);
+
+  const direct = parseGatewayMessagesRequestBuffer(buffer);
+  if (direct) {
+    return direct;
+  }
+
+  let found;
+  forEachProtoField(buffer, (field) => {
+    if (found || field.wireType !== 2 || !Buffer.isBuffer(field.value) || field.value.length === 0) {
+      return;
+    }
+    const directValue = parseGatewayMessagesRequestBuffer(field.value);
+    if (directValue) {
+      found = directValue;
+      return;
+    }
+    const textValue = field.value.toString("utf8");
+    const embeddedValue = extractGatewayMessagesRequestFromText(textValue);
+    if (embeddedValue) {
+      found = embeddedValue;
+      return;
+    }
+    if (field.value.length <= 512 * 1024) {
+      found = extractGatewayMessagesRequestFromProto(field.value, depth + 1, seen);
+    }
+  });
+  return found;
+}
+
+function extractGatewayMessagesRequestFromText(text) {
+  if (typeof text !== "string" || !text.includes("messages")) {
+    return undefined;
+  }
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start < 0 || end <= start) {
+    return undefined;
+  }
+  const body = parseMaybeJson(text.slice(start, end + 1), undefined);
+  return hasGatewayMessagesInput(body) ? body : undefined;
+}
+
+function hasGatewayMessagesInput(body) {
+  if (!isRecord(body)) {
+    return false;
+  }
+  if (stringValue(body.message) || stringValue(body.prompt)) {
+    return true;
+  }
+  if (!Array.isArray(body.messages) || body.messages.length === 0) {
+    return false;
+  }
+  return body.messages.some((message) => {
+    if (!isRecord(message)) {
+      return false;
+    }
+    return Boolean(stringValue(message.content) || storedProjectMessageText(message) ||
+      (Array.isArray(message.content) && message.content.some((block) =>
+        typeof block === "string" ||
+        (isRecord(block) && (stringValue(block.text) || stringValue(block.content) || stringValue(block.output_text)))
+      )));
+  });
+}
+
+function gatewayMessagesRequestFromProjectChat(runtime, request) {
+  const row = getProjectRow(runtime, request.projectId);
+  if (!row) {
+    return undefined;
+  }
+  const data = normalizedProjectDataFromRow(runtime, row);
+  const chatId = request.chatId || stringValue(data.viewState?.activeChatId) || defaultProjectChatId(row.uuid);
+  const chat = isRecord(data.chats) ? data.chats[chatId] : undefined;
+  const messages = Array.isArray(chat?.messages) ? chat.messages : [];
+  const gatewayMessages = messages
+    .map(gatewayMessageFromStoredProjectMessage)
+    .filter(Boolean);
+  return gatewayMessages.length > 0 ? { messages: gatewayMessages, model: runtime.me.defaultModelId } : undefined;
+}
+
+function normalizedProjectDataFromRow(runtime, row) {
+  const record = parseMaybeJson(row?.data_json, {});
+  const base64 = stringValue(record.project_data_base64);
+  const decoded = base64 ? parseMaybeJson(Buffer.from(base64, "base64").toString("utf8"), record) : record;
+  return normalizeProjectStoreData(runtime, row, decoded);
+}
+
+function gatewayMessageFromStoredProjectMessage(message) {
+  if (!isRecord(message)) {
+    return undefined;
+  }
+  const role = stringValue(message.role);
+  if (role !== "user" && role !== "assistant") {
+    return undefined;
+  }
+  const content = cleanVisibleUserText(storedProjectMessageText(message));
+  if (!content) {
+    return undefined;
+  }
+  return {
+    content,
+    role
+  };
+}
+
+function storedProjectMessageText(message) {
+  const parts = [];
+  const content = stringValue(message.content);
+  if (content) {
+    parts.push(content);
+  }
+  const blocks = Array.isArray(message.contentBlocks)
+    ? message.contentBlocks
+    : Array.isArray(message.content_blocks)
+      ? message.content_blocks
+      : undefined;
+  const blockText = textFromMessageContent(blocks);
+  if (blockText) {
+    parts.push(blockText);
+  }
+  if (Array.isArray(message.attachments)) {
+    for (const attachment of message.attachments) {
+      if (!isRecord(attachment)) {
+        continue;
+      }
+      const attachmentContent = stringValue(attachment.content) || stringValue(attachment.text);
+      if (!attachmentContent) {
+        continue;
+      }
+      const attachmentName = stringValue(attachment.name);
+      parts.push(attachmentName ? `${attachmentName}\n${attachmentContent}` : attachmentContent);
+    }
+  }
+  return parts.join("\n\n");
+}
+
 function normalizeGatewayMessagesRequest(runtime, body) {
   const record = isRecord(body) ? body : {};
   const text = stringValue(record.message) || stringValue(record.prompt) || "";
-  const messages = Array.isArray(record.messages)
-    ? record.messages
+  const normalizedMessages = Array.isArray(record.messages) ? normalizeGatewayMessagesForRequest(record.messages) : [];
+  const messages = normalizedMessages.length > 0
+    ? normalizedMessages
     : text
       ? [{ content: text, role: "user" }]
       : [{ content: "Continue.", role: "user" }];
@@ -4369,9 +4724,31 @@ function normalizeGatewayMessagesRequest(runtime, body) {
     ...record,
     max_tokens: maxTokens,
     messages,
-    model: stringValue(record.model) || runtime.me.defaultModelId,
+    model: publicGatewayModelSelector(stringValue(record.model) || runtime.me.defaultModelId) || runtime.me.defaultModelId,
     stream: false
   };
+}
+
+function normalizeGatewayMessagesForRequest(messages) {
+  return messages
+    .map((message) => {
+      if (!isRecord(message)) {
+        return undefined;
+      }
+      const role = stringValue(message.role) || "user";
+      if (role !== "system" && role !== "user" && role !== "assistant") {
+        return undefined;
+      }
+      if (stringValue(message.content) || Array.isArray(message.content)) {
+        return {
+          ...message,
+          role
+        };
+      }
+      const content = cleanVisibleUserText(storedProjectMessageText(message));
+      return content ? { content, role } : undefined;
+    })
+    .filter(Boolean);
 }
 
 function applyClaudeDesignRouting(runtime, body) {
@@ -4381,20 +4758,25 @@ function applyClaudeDesignRouting(runtime, body) {
     return { requestedModel };
   }
 
-  const route = resolveClaudeDesignRoute(routing, body, requestedModel);
+  const route = resolveClaudeDesignRoute(routing, body, requestedModel, runtime.defaultGatewayModel, runtime.gatewayModelPresets);
   if (!route?.target) {
     return { requestedModel };
   }
 
-  body.model = route.target;
+  const target = usableClaudeDesignRouteTarget(runtime, route.target);
+  if (!target) {
+    return { requestedModel };
+  }
+
+  body.model = target;
   return {
     requestedModel,
-    reason: route.reason,
-    routedModel: route.target
+    reason: target === route.target ? route.reason : `${route.reason}:fallback`,
+    routedModel: target
   };
 }
 
-function resolveClaudeDesignRoute(routing, body, requestedModel) {
+function resolveClaudeDesignRoute(routing, body, requestedModel, defaultGatewayModel, gatewayModelPresets) {
   for (const rule of routing.rules || []) {
     if (rule.enabled === false || !rule.target) {
       continue;
@@ -4407,7 +4789,15 @@ function resolveClaudeDesignRoute(routing, body, requestedModel) {
     }
   }
 
-  if (routing.defaultTarget) {
+  const aliasedModel = claudeDesignModelAliasTarget(requestedModel, defaultGatewayModel);
+  if (aliasedModel) {
+    return {
+      reason: "plugin-model-alias",
+      target: aliasedModel
+    };
+  }
+
+  if (routing.defaultTarget && !isKnownClaudeDesignGatewayModel(gatewayModelPresets, requestedModel)) {
     return {
       reason: "plugin-default",
       target: routing.defaultTarget
@@ -4415,6 +4805,79 @@ function resolveClaudeDesignRoute(routing, body, requestedModel) {
   }
 
   return undefined;
+}
+
+function claudeDesignModelAliasTarget(requestedModel, defaultGatewayModel) {
+  const normalizedModel = stringValue(requestedModel);
+  if (!normalizedModel) {
+    return undefined;
+  }
+  const target = CLAUDE_DESIGN_MODEL_ALIASES.get(normalizedModel);
+  if (!target) {
+    return undefined;
+  }
+  return normalizeRouteTarget(defaultGatewayModel) || target;
+}
+
+function isKnownClaudeDesignGatewayModel(gatewayModelPresets, requestedModel) {
+  const publicModel = publicGatewayModelSelector(requestedModel);
+  if (!publicModel || !Array.isArray(gatewayModelPresets)) {
+    return false;
+  }
+  return gatewayModelPresets.some((preset) => isRecord(preset) && stringValue(preset.id)?.toLowerCase() === publicModel.toLowerCase());
+}
+
+function usableClaudeDesignRouteTarget(runtime, target) {
+  const normalized = normalizeRouteTarget(target);
+  if (!normalized) {
+    return undefined;
+  }
+  if (routeTargetProviderAvailable(runtime.availableProviderNames, normalized)) {
+    return normalized;
+  }
+
+  const fallback = usableClaudeDesignFallbackTarget(runtime);
+  warnUnavailableClaudeDesignRouteTarget(runtime, normalized, fallback);
+  return fallback;
+}
+
+function usableClaudeDesignFallbackTarget(runtime) {
+  const configured = normalizeRouteTarget(runtime?.defaultGatewayModel);
+  if (configured && routeTargetProviderAvailable(runtime?.availableProviderNames, configured)) {
+    return configured;
+  }
+  return DEFAULT_GATEWAY_MODEL;
+}
+
+function routeTargetProviderAvailable(availableProviderNames, target) {
+  if (!(availableProviderNames instanceof Set) || availableProviderNames.size === 0) {
+    return true;
+  }
+  const provider = routeTargetProviderName(target);
+  return !provider || availableProviderNames.has(provider.toLowerCase());
+}
+
+function routeTargetProviderName(target) {
+  const normalized = normalizeRouteTarget(target);
+  if (!normalized) {
+    return undefined;
+  }
+  const separator = normalized.indexOf("/");
+  if (separator <= 0 || separator >= normalized.length - 1) {
+    return undefined;
+  }
+  return normalized.slice(0, separator).trim();
+}
+
+function warnUnavailableClaudeDesignRouteTarget(runtime, target, fallback) {
+  const key = `${target}\n${fallback}`;
+  if (runtime?.unavailableRouteTargetWarnings?.has(key)) {
+    return;
+  }
+  runtime?.unavailableRouteTargetWarnings?.add(key);
+  runtime?.logger?.warn?.(
+    `Claude Design routing target "${target}" references a provider that is not configured in CCR; using "${fallback}" instead.`
+  );
 }
 
 function matchesClaudeDesignRouteRule(rule, body, requestedModel) {
@@ -4535,6 +4998,381 @@ function composeRouteTarget(providerValue, modelValue) {
     return `${provider}/${model}`;
   }
   return model || provider;
+}
+
+function claudeDesignProviderSelectorNames(config) {
+  const names = new Set();
+  const providers = claudeDesignProviderConfigs(config);
+  for (const provider of providers) {
+    if (!isRecord(provider)) {
+      continue;
+    }
+    const name = stringValue(provider.name);
+    if (!name) {
+      continue;
+    }
+    addProviderSelectorName(names, name);
+    addProviderSelectorName(names, provider.provider);
+
+    const capabilities = Array.isArray(provider.capabilities) ? provider.capabilities : [];
+    for (const capability of capabilities) {
+      if (!isRecord(capability)) {
+        continue;
+      }
+      const protocol = normalizeGatewayProviderProtocol(capability.type || capability.protocol);
+      if (protocol && stringValue(capability.baseUrl || capability.base_url)) {
+        addProviderSelectorName(names, `${name}::${protocol}`);
+      }
+    }
+
+    const credentialProtocols = claudeDesignProviderProtocols(provider);
+    providerCredentials(provider).forEach((credential, index) => {
+      if (!providerCredentialApiKey(credential)) {
+        return;
+      }
+      const credentialSlug = providerCredentialSlug(providerCredentialRuntimeId(credential, index));
+      for (const protocol of credentialProtocols) {
+        addProviderSelectorName(names, `${name}::${protocol}::cred:${credentialSlug}`);
+      }
+    });
+  }
+  return names;
+}
+
+function defaultClaudeDesignGatewayConfigPath() {
+  const home = stringValue(process.env.HOME) || stringValue(process.env.USERPROFILE);
+  return home ? pathModule.join(home, ".claude-code-router", "gateway.config.json") : undefined;
+}
+
+function loadClaudeDesignGatewayConfig(file, logger) {
+  const configFile = stringValue(file);
+  if (!configFile || !fs.existsSync(configFile)) {
+    return {};
+  }
+  try {
+    return parseMaybeJson(fs.readFileSync(configFile, "utf8"), {});
+  } catch (error) {
+    logger?.warn?.(`Claude Design could not read gateway config ${configFile}: ${error?.message || error}`);
+    return {};
+  }
+}
+
+function claudeDesignModelSourceConfig(config, gatewayConfig) {
+  return {
+    ...(isRecord(config) ? config : {}),
+    Providers: uniqueProviderRecords([
+      ...claudeDesignProviderConfigs(config),
+      ...claudeDesignProviderConfigs(gatewayConfig)
+    ]),
+    virtualModelProfiles: uniqueVirtualModelProfiles([
+      ...claudeDesignVirtualModelProfilesForConfig(config),
+      ...claudeDesignVirtualModelProfilesForConfig(gatewayConfig)
+    ])
+  };
+}
+
+function claudeDesignProviderConfigs(config) {
+  if (!isRecord(config)) {
+    return [];
+  }
+  return [
+    ...(Array.isArray(config.Providers) ? config.Providers : []),
+    ...(Array.isArray(config.providers) ? config.providers : [])
+  ].filter(isRecord);
+}
+
+function claudeDesignVirtualModelProfilesForConfig(config) {
+  if (!isRecord(config)) {
+    return [];
+  }
+  return [
+    ...(Array.isArray(config.virtualModelProfiles) ? config.virtualModelProfiles : []),
+    ...(Array.isArray(config.virtual_model_profiles) ? config.virtual_model_profiles : [])
+  ].filter(isRecord);
+}
+
+function uniqueProviderRecords(providers) {
+  const seen = new Set();
+  const result = [];
+  for (const provider of providers) {
+    const name = stringValue(provider.name);
+    const key = `${name}\n${JSON.stringify(Array.isArray(provider.models) ? provider.models : [])}`;
+    if (!name || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(provider);
+  }
+  return result;
+}
+
+function uniqueVirtualModelProfiles(profiles) {
+  const seen = new Set();
+  const result = [];
+  for (const profile of profiles) {
+    const key = stringValue(profile.id) || stringValue(profile.name) || JSON.stringify(profile.match || profile);
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(profile);
+  }
+  return result;
+}
+
+function claudeDesignGatewayModelPresets(config, defaultGatewayModel) {
+  const defaultModel = publicGatewayModelSelector(defaultGatewayModel) || DEFAULT_GATEWAY_MODEL;
+  const selectors = uniqueCaseInsensitiveStrings([
+    defaultModel,
+    ...claudeDesignProviderModelSelectors(config),
+    ...claudeDesignVirtualModelSelectors(config),
+    ...DEFAULT_ME.modelPresets.map((preset) => preset.id)
+  ]);
+  return selectors.map((selector, index) => claudeDesignGatewayModelPreset(selector, index === 0));
+}
+
+function claudeDesignProviderModelSelectors(config) {
+  const providers = claudeDesignProviderConfigs(config);
+  const selectors = [];
+  for (const provider of providers) {
+    if (!Array.isArray(provider.models)) {
+      continue;
+    }
+    const providerSelectors = claudeDesignProviderModelProviderSelectors(provider);
+    for (const model of provider.models) {
+      const modelName = stringValue(model);
+      if (!modelName) {
+        continue;
+      }
+      for (const providerSelector of providerSelectors) {
+        selectors.push(normalizeRouteTarget(`${providerSelector}/${modelName}`));
+      }
+    }
+  }
+  return selectors.filter(Boolean);
+}
+
+function claudeDesignProviderModelProviderSelectors(provider) {
+  const selectors = [];
+  addProviderModelSelector(selectors, publicGatewayProviderName(provider.name));
+  addProviderModelSelector(selectors, provider.name);
+  addProviderModelSelector(selectors, provider.provider);
+
+  const name = stringValue(provider.name);
+  const publicName = publicGatewayProviderName(name);
+  const capabilities = Array.isArray(provider.capabilities) ? provider.capabilities : [];
+  for (const capability of capabilities) {
+    const protocol = isRecord(capability) ? normalizeGatewayProviderProtocol(capability.type || capability.protocol) : undefined;
+    if (publicName && protocol) {
+      addProviderModelSelector(selectors, `${publicName}::${protocol}`);
+    }
+    if (name && protocol) {
+      addProviderModelSelector(selectors, `${name}::${protocol}`);
+    }
+  }
+
+  providerCredentials(provider).forEach((credential, index) => {
+    if (!providerCredentialApiKey(credential)) {
+      return;
+    }
+    const credentialSlug = providerCredentialSlug(providerCredentialRuntimeId(credential, index));
+    for (const protocol of claudeDesignProviderProtocols(provider)) {
+      if (publicName) {
+        addProviderModelSelector(selectors, `${publicName}::${protocol}::cred:${credentialSlug}`);
+      }
+      if (name) {
+        addProviderModelSelector(selectors, `${name}::${protocol}::cred:${credentialSlug}`);
+      }
+    }
+  });
+
+  return uniqueCaseInsensitiveStrings(selectors);
+}
+
+function addProviderModelSelector(selectors, value) {
+  const normalized = stringValue(value);
+  if (normalized) {
+    selectors.push(normalized);
+  }
+}
+
+function claudeDesignVirtualModelSelectors(config) {
+  const profiles = claudeDesignVirtualModelProfilesForConfig(config);
+  const selectors = [];
+  for (const profile of profiles) {
+    if (!isRecord(profile) || profile.enabled === false) {
+      continue;
+    }
+    const materialization = isRecord(profile.materialization) ? profile.materialization : {};
+    if (materialization.enabled === false || materialization.includeInGatewayModels === false) {
+      continue;
+    }
+    const match = isRecord(profile.match) ? profile.match : {};
+    const aliases = Array.isArray(match.exactAliases) ? match.exactAliases : [];
+    for (const alias of aliases) {
+      const normalizedAlias = stringValue(alias);
+      if (!normalizedAlias) {
+        continue;
+      }
+      selectors.push(normalizedAlias.toLowerCase().startsWith("fusion/") ? normalizedAlias : `Fusion/${normalizedAlias}`);
+    }
+  }
+  return selectors;
+}
+
+function claudeDesignGatewayModelPreset(selector, isDefault) {
+  return {
+    id: selector,
+    label: gatewayModelPresetLabel(selector),
+    maxTokens: 1000000,
+    supportsAdaptiveThinking: true,
+    description: isDefault ? "CCR gateway default" : "CCR gateway model"
+  };
+}
+
+function gatewayModelPresetLabel(selector) {
+  const value = stringValue(selector) || DEFAULT_GATEWAY_MODEL;
+  const separator = value.indexOf("/");
+  if (separator <= 0 || separator >= value.length - 1) {
+    return value;
+  }
+  const provider = value.slice(0, separator);
+  const model = value.slice(separator + 1);
+  return `${model} (${provider})`;
+}
+
+function publicGatewayModelSelector(value) {
+  const normalized = normalizeRouteTarget(value);
+  if (!normalized) {
+    return undefined;
+  }
+  const separator = normalized.indexOf("/");
+  if (separator <= 0 || separator >= normalized.length - 1) {
+    return normalized;
+  }
+  const provider = normalized.slice(0, separator).trim();
+  const model = normalized.slice(separator + 1).trim();
+  const protocolSeparator = provider.indexOf("::");
+  const publicProvider = protocolSeparator > 0 ? provider.slice(0, protocolSeparator) : provider;
+  return publicProvider && model ? `${publicProvider}/${model}` : normalized;
+}
+
+function publicGatewayProviderName(value) {
+  const name = stringValue(value);
+  if (!name) {
+    return undefined;
+  }
+  const protocolSeparator = name.indexOf("::");
+  return protocolSeparator > 0 ? name.slice(0, protocolSeparator) : name;
+}
+
+function uniqueCaseInsensitiveStrings(values) {
+  const seen = new Set();
+  const result = [];
+  for (const value of values) {
+    const normalized = stringValue(value);
+    if (!normalized) {
+      continue;
+    }
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function addProviderSelectorName(names, value) {
+  const name = stringValue(value);
+  if (name) {
+    names.add(name.toLowerCase());
+    const publicName = publicGatewayProviderName(name);
+    if (publicName) {
+      names.add(publicName.toLowerCase());
+    }
+  }
+}
+
+function claudeDesignProviderProtocols(provider) {
+  const protocols = [];
+  const seen = new Set();
+  const capabilities = Array.isArray(provider.capabilities) ? provider.capabilities : [];
+  for (const capability of capabilities) {
+    if (!isRecord(capability)) {
+      continue;
+    }
+    const protocol = normalizeGatewayProviderProtocol(capability.type || capability.protocol);
+    if (protocol && stringValue(capability.baseUrl || capability.base_url) && !seen.has(protocol)) {
+      seen.add(protocol);
+      protocols.push(protocol);
+    }
+  }
+
+  const direct = normalizeGatewayProviderProtocol(provider.type) ||
+    normalizeGatewayProviderProtocol(provider.provider) ||
+    inferGatewayProviderProtocol(provider);
+  if (direct && !seen.has(direct)) {
+    protocols.push(direct);
+  }
+  return protocols;
+}
+
+function normalizeGatewayProviderProtocol(value) {
+  const normalized = stringValue(value)?.toLowerCase();
+  if (normalized === "openai" || normalized === "openai_responses") {
+    return "openai_responses";
+  }
+  if (normalized === "openai_chat" || normalized === "openai_chat_completions") {
+    return "openai_chat_completions";
+  }
+  if (normalized === "anthropic" || normalized === "anthropic_messages") {
+    return "anthropic_messages";
+  }
+  if (normalized === "gemini" || normalized === "gemini_generate_content") {
+    return "gemini_generate_content";
+  }
+  return undefined;
+}
+
+function inferGatewayProviderProtocol(provider) {
+  const url = stringValue(provider.baseurl || provider.baseUrl || provider.api_base_url)?.toLowerCase() || "";
+  const transformerNames = JSON.stringify(provider.transformer ?? "").toLowerCase();
+  if (url.includes("generativelanguage.googleapis.com") || transformerNames.includes("gemini")) {
+    return "gemini_generate_content";
+  }
+  if (url.includes("anthropic") || transformerNames.includes("anthropic")) {
+    return "anthropic_messages";
+  }
+  return "openai_chat_completions";
+}
+
+function providerCredentials(provider) {
+  return Array.isArray(provider?.credentials)
+    ? provider.credentials.filter((credential) => isRecord(credential) && credential.enabled !== false)
+    : [];
+}
+
+function providerCredentialApiKey(credential) {
+  return stringValue(credential.api_key) || stringValue(credential.apiKey) || stringValue(credential.apikey);
+}
+
+function providerCredentialRuntimeId(credential, index) {
+  const explicitId = stringValue(credential.id);
+  if (explicitId) {
+    return explicitId;
+  }
+  const oneBasedIndex = index >= 0 ? index + 1 : 1;
+  const label = stringValue(credential.name) || stringValue(credential.label);
+  return label ? `${providerCredentialSlug(label)}-${oneBasedIndex}` : `key-${oneBasedIndex}`;
+}
+
+function providerCredentialSlug(value) {
+  return stringValue(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "key";
 }
 
 function positiveNumber(value) {
@@ -5182,7 +6020,7 @@ function sanitizeStoredMessageDisplayContent(message) {
   }
   const role = stringValue(message.role);
   if (role === "user") {
-    const content = cleanVisibleUserText(textFromMessageContent(message.content));
+    const content = cleanVisibleUserText(storedProjectMessageText(message));
     const sanitized = {
       ...message,
       content
@@ -5251,16 +6089,7 @@ function storedMessageDisplayText(message) {
   if (!isRecord(message)) {
     return "";
   }
-  const content = stringValue(message.content);
-  if (content) {
-    return content;
-  }
-  const blocks = Array.isArray(message.contentBlocks)
-    ? message.contentBlocks
-    : Array.isArray(message.content_blocks)
-      ? message.content_blocks
-      : [];
-  return textFromMessageContent(blocks);
+  return storedProjectMessageText(message);
 }
 
 function cleanVisibleUserText(text) {
@@ -5364,7 +6193,7 @@ function appendChatExchange(runtime, request, gatewayBody, assistantText, assist
 }
 
 function lastGatewayUserMessage(gatewayBody) {
-  if (!Array.isArray(gatewayBody.messages)) {
+  if (!isRecord(gatewayBody) || !Array.isArray(gatewayBody.messages)) {
     return undefined;
   }
   let sawNonHumanTail = false;
@@ -6396,21 +7225,67 @@ function readRequestBody(request) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     request.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
-    request.once("end", () => resolve(Buffer.concat(chunks)));
+    request.once("end", () => resolve(decodeRequestBodyEncoding(Buffer.concat(chunks), request.headers?.["content-encoding"])));
     request.once("error", reject);
   });
+}
+
+function decodeRequestBodyEncoding(body, encodingValue) {
+  if (!Buffer.isBuffer(body) || body.length === 0) {
+    return body;
+  }
+  const encodings = stringValue(headerValue(encodingValue))?.toLowerCase()
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean) || [];
+  if (encodings.length === 0 && body[0] === 0x1f && body[1] === 0x8b) {
+    encodings.push("gzip");
+  }
+  if (encodings.length === 0 || encodings.every((encoding) => encoding === "identity")) {
+    return body;
+  }
+
+  try {
+    return encodings
+      .reverse()
+      .reduce((current, encoding) => decodeSingleRequestBodyEncoding(current, encoding), body);
+  } catch {
+    return body;
+  }
+}
+
+function decodeSingleRequestBodyEncoding(body, encoding) {
+  if (encoding === "gzip" || encoding === "x-gzip") {
+    return zlib.gunzipSync(body);
+  }
+  if (encoding === "br") {
+    return zlib.brotliDecompressSync(body);
+  }
+  if (encoding === "deflate") {
+    try {
+      return zlib.inflateSync(body);
+    } catch {
+      return zlib.inflateRawSync(body);
+    }
+  }
+  return body;
 }
 
 function renderDesignIndex(me, scriptPath, stylePath, html) {
   if (isUsableDesignShellHtml(html)) {
     return injectDesignMeIntoHtml(String(html), me);
   }
-  const scriptTag = scriptPath
-    ? `        <script type="module" crossorigin src="${escapeHtmlAttribute(scriptPath)}"></script>\n`
-    : "";
-  const styleTag = stylePath
-    ? `        <link rel="stylesheet" crossorigin href="${escapeHtmlAttribute(stylePath)}">\n`
-    : "";
+  return renderDefaultDesignIndex(me, scriptPath, stylePath);
+}
+
+function renderDefaultDesignIndex(me, scriptPath, stylePath) {
+  const normalizedScriptPath = normalizePath(scriptPath) || DEFAULT_SCRIPT_PATH;
+  const normalizedStylePath = normalizePath(stylePath) || DEFAULT_STYLE_PATH;
+  const criticalModulePreloads = renderModulePreloadLinks(DEFAULT_DESIGN_CRITICAL_MODULE_PRELOAD_PATHS);
+  const lazyModulePreloads = renderModulePreloadLinks(DEFAULT_DESIGN_LAZY_MODULE_PRELOAD_PATHS, true);
+  const stylePreloads = DEFAULT_DESIGN_STYLE_PRELOAD_PATHS
+    .map((href) => `        <link rel="preload" as="style" crossorigin fetchpriority="low" href="${escapeHtmlAttribute(href)}">`)
+    .join("\n");
   return `<!doctype html>
 <html lang="en">
     <head>
@@ -6418,26 +7293,102 @@ function renderDesignIndex(me, scriptPath, stylePath, html) {
         <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
         <title>Claude Design</title>
         <link rel="icon" type="image/png" href="/design/favicon.png"/>
-${scriptTag}${styleTag}    </head>
-    <body>
         <script>
-            window.__OMELETTE_ME__ = ${escapeJsonForScript(me)}
+            // FOUC guard: set data-theme before any stylesheet loads so the first
+            // paint uses the right palette. Mirrors hooks/useTheme.ts. The stored
+            // value is JSON (usehooks-ts useLocalStorage). When no preference is
+            // stored we paint light - the dark-mode flag is not known until React
+            // mounts, and a flag-off user with OS dark mode should not see a dark
+            // flash. useTheme's effect corrects this on mount for flag-on users.
+            try {
+                var raw = localStorage.getItem('om:theme');
+                // Mirror useTheme's default: usehooks-ts does not persist 'system'
+                // until the toggle is used, so absent = 'system' (gated on flagOn).
+                var pref = raw ? JSON.parse(raw) : 'system';
+                // The flag is not known at first paint. The hook persists its last
+                // known state here so a user whose flag was turned off after picking
+                // Dark does not see a dark-to-light flash on every load.
+                var flagOn = localStorage.getItem('om:dark-mode-enabled') === '1';
+                var dark = flagOn && (pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches));
+                document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+            } catch (e) {
+                document.documentElement.dataset.theme = 'light';
+            }
         </script>
+        <script type="module" crossorigin src="${escapeHtmlAttribute(normalizedScriptPath)}"></script>
+${criticalModulePreloads}
+        <link rel="stylesheet" crossorigin href="${escapeHtmlAttribute(normalizedStylePath)}">
+${lazyModulePreloads}
+${stylePreloads}
+    </head>
+    <body>
+        ${designMeJsonScript(me)}
+        ${designModelPreferenceResetScript(me)}
+        ${designMeGlobalScript(me)}
         <div id="root"></div>
     </body>
 </html>
 `;
 }
 
+function renderModulePreloadLinks(paths, lowPriority = false) {
+  return paths
+    .map((href) => {
+      const priority = lowPriority ? " fetchpriority=\"low\"" : "";
+      return `        <link rel="modulepreload" crossorigin${priority} href="${escapeHtmlAttribute(href)}">`;
+    })
+    .join("\n");
+}
+
 function injectDesignMeIntoHtml(html, me) {
-  if (html.includes("__OMELETTE_ME__")) {
-    return html;
+  let nextHtml = html;
+  const meJsonScript = designMeJsonScript(me);
+  const meJsonPattern = /<script\b(?=[^>]*\bid=["']omelette-me["'])[^>]*>[\s\S]*?<\/script>/i;
+  if (meJsonPattern.test(nextHtml)) {
+    nextHtml = nextHtml.replace(meJsonPattern, meJsonScript);
   }
-  const meScript = `<script>window.__OMELETTE_ME__ = ${escapeJsonForScript(me)}</script>`;
+
+  const snippets = [];
+  if (!meJsonPattern.test(nextHtml)) {
+    snippets.push(meJsonScript);
+  }
+  if (!nextHtml.includes("ccr-claude-design-model-reset")) {
+    snippets.push(designModelPreferenceResetScript(me));
+  }
+  if (!nextHtml.includes("__OMELETTE_ME__")) {
+    snippets.push(designMeGlobalScript(me));
+  }
+  if (!snippets.length) {
+    return nextHtml;
+  }
+  return injectHtmlAfterBodyOpen(nextHtml, snippets.join("\n        "));
+}
+
+function injectHtmlAfterBodyOpen(html, snippet) {
   if (/<body\b[^>]*>/i.test(html)) {
-    return html.replace(/<body\b([^>]*)>/i, `<body$1>\n        ${meScript}`);
+    return html.replace(/<body\b([^>]*)>/i, `<body$1>\n        ${snippet}`);
   }
-  return `${meScript}\n${html}`;
+  return `${snippet}\n${html}`;
+}
+
+function designMeJsonScript(me) {
+  return `<script type="application/json" id="omelette-me">${escapeJsonForScript(designMePayload(me))}</script>`;
+}
+
+function designMeGlobalScript(me) {
+  return `<script>window.__OMELETTE_ME__ = ${escapeJsonForScript(me)}</script>`;
+}
+
+function designModelPreferenceResetScript(me) {
+  const defaultModelId = stringValue(me?.defaultModelId) || DEFAULT_GATEWAY_MODEL;
+  return `<script id="ccr-claude-design-model-reset">(function(){try{var defaultModelId=${escapeJsonForScript(defaultModelId)};if(!defaultModelId||String(defaultModelId).toLowerCase().indexOf('deepseek')!==-1){return;}var marker='ccr:claude-design:model-default-reset:'+defaultModelId;if(localStorage.getItem(marker)==='1'){return;}function shouldClear(key,value){var keyText=String(key||'').toLowerCase();var valueText=String(value||'').toLowerCase();if(valueText.indexOf('deepseek')===-1){return false;}return keyText.indexOf('model')!==-1||keyText.indexOf('omelette')!==-1||keyText.indexOf('om:')===0||keyText.indexOf('claude')!==-1||valueText.indexOf('model')!==-1||valueText.indexOf('deepseek::')!==-1||valueText.indexOf('deepseek/')!==-1;}function clearStorage(storage){if(!storage){return;}var keys=[];for(var i=0;i<storage.length;i++){keys.push(storage.key(i));}for(var j=0;j<keys.length;j++){var key=keys[j];if(shouldClear(key,storage.getItem(key))){storage.removeItem(key);}}}clearStorage(localStorage);clearStorage(sessionStorage);localStorage.setItem(marker,'1');}catch(e){}})();</script>`;
+}
+
+function designMePayload(me) {
+  return {
+    ...me,
+    canManageBilling: true
+  };
 }
 
 function isUsableDesignShellHtml(value) {
@@ -6455,12 +7406,16 @@ function isUsableDesignShellHtml(value) {
     /anthropic\.omelette|OmeletteService|__OMELETTE_ME__|\/v1\/design/i.test(html);
 }
 
-function normalizeMe(value) {
+function normalizeMe(value, defaultGatewayModel = DEFAULT_GATEWAY_MODEL, gatewayModelPresets = undefined) {
   const overrides = isRecord(value) ? value : {};
+  const defaultModelId = publicGatewayModelSelector(defaultGatewayModel) || DEFAULT_GATEWAY_MODEL;
   const me = {
     ...DEFAULT_ME,
     ...overrides
   };
+  if (!stringValue(overrides.defaultModelId)) {
+    me.defaultModelId = defaultModelId;
+  }
   if (!Array.isArray(me.memberships) || me.memberships.length === 0) {
     me.memberships = [
       {
@@ -6469,10 +7424,38 @@ function normalizeMe(value) {
       }
     ];
   }
-  if (!Array.isArray(me.modelPresets)) {
-    me.modelPresets = DEFAULT_ME.modelPresets;
+  if (!Array.isArray(overrides.modelPresets)) {
+    me.modelPresets = Array.isArray(gatewayModelPresets) && gatewayModelPresets.length > 0
+      ? gatewayModelPresets
+      : defaultClaudeDesignModelPresets(me.defaultModelId);
+  } else if (!me.modelPresets.some((preset) => isRecord(preset) && stringValue(preset.id) === me.defaultModelId)) {
+    me.modelPresets = [defaultClaudeDesignModelPreset(me.defaultModelId), ...me.modelPresets];
   }
   return me;
+}
+
+function defaultClaudeDesignModelPresets(defaultModelId) {
+  const presets = DEFAULT_ME.modelPresets.map((preset) => ({ ...preset }));
+  if (defaultModelId === DEFAULT_GATEWAY_MODEL) {
+    return presets;
+  }
+  return [
+    defaultClaudeDesignModelPreset(defaultModelId),
+    ...presets.filter((preset) => preset.id !== defaultModelId)
+  ];
+}
+
+function defaultClaudeDesignModelPreset(defaultModelId) {
+  if (defaultModelId === DEFAULT_GATEWAY_MODEL) {
+    return { ...DEFAULT_ME.modelPresets[0] };
+  }
+  return {
+    id: defaultModelId,
+    label: "Default Gateway Model",
+    maxTokens: 1000000,
+    supportsAdaptiveThinking: true,
+    description: "Uses the CCR gateway default"
+  };
 }
 
 function stringArray(value) {

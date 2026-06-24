@@ -131,6 +131,7 @@ import {
   enforceSingleEnabledGlobalProfilePerAgent,
   normalizeProfileScopeValue,
   OVERVIEW_WIDGET_SIZE_VALUES,
+  ROUTER_FALLBACK_MAX_RETRY_COUNT,
   TRAY_SINGLETON_WIDGET_TYPES,
   TRAY_TOP_WIDGET_TYPES,
   TRAY_WINDOW_MODULE_IDS
@@ -396,7 +397,7 @@ export function normalizeRouterConfig(value: Partial<RouterConfig> | undefined):
 export function normalizeRouterFallbackConfig(value: Partial<RouterFallbackConfig> | unknown): RouterFallbackConfig {
   const record = isPlainRecord(value) ? value : {};
   const mode = parseRouterFallbackMode(record.mode) ?? fallbackConfig.Router.fallback.mode;
-  const retryCount = clampNumber(Number(record.retryCount), 0, 5);
+  const retryCount = clampNumber(Number(record.retryCount), 0, ROUTER_FALLBACK_MAX_RETRY_COUNT);
   const models = Array.isArray(record.models)
     ? uniqueStrings(record.models.map((model) => stringValue(model)).filter((model): model is string => Boolean(model)))
     : [];

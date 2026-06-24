@@ -1,6 +1,9 @@
 import type { AppConfig, VirtualModelProfileConfig } from "../shared/app";
+import { findModelCatalogEntry, modelCatalogMaxInputTokens } from "../server/gateway/model-catalog";
 
 const fusionModelProviderName = "Fusion";
+const codexDefaultContextWindow = 128_000;
+const codexEffectiveContextWindowPercent = 95;
 
 export type CodexModelCatalog = {
   models: CodexModelCatalogItem[];
@@ -99,20 +102,21 @@ export function codexModelCatalogBase64(config?: Partial<Pick<AppConfig, "Provid
 }
 
 function codexModelCatalogItem(model: string, priority: number): CodexModelCatalogItem {
+  const contextWindow = codexModelContextWindow(model);
   return {
     additional_speed_tiers: [],
     apply_patch_tool_type: "freeform",
     availability_nux: null,
     base_instructions: "You are Codex, a coding agent.",
-    context_window: 128_000,
+    context_window: contextWindow,
     default_reasoning_level: "medium",
     default_reasoning_summary: "none",
     description: `CCR gateway model ${model}`,
     display_name: model,
-    effective_context_window_percent: 95,
+    effective_context_window_percent: codexEffectiveContextWindowPercent,
     experimental_supported_tools: [],
     input_modalities: ["text", "image"],
-    max_context_window: 128_000,
+    max_context_window: contextWindow,
     priority,
     service_tiers: [],
     shell_type: "shell_command",
@@ -134,6 +138,11 @@ function codexModelCatalogItem(model: string, priority: number): CodexModelCatal
     visibility: "list",
     web_search_tool_type: "text_and_image"
   };
+}
+
+function codexModelContextWindow(model: string): number {
+  const entry = findModelCatalogEntry(model);
+  return modelCatalogMaxInputTokens(entry) || codexDefaultContextWindow;
 }
 
 function virtualModelIsCatalogVisible(profile: VirtualModelProfileConfig): boolean {

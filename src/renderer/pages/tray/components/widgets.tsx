@@ -2,6 +2,7 @@ import {
   buildChartGeometry, formatCompactNumber, formatPercent, rangeLabel, ranges, ReactNode,
   TrayComponentVariants, UsageComparisonRow, UsageStatsRange, UsageStatsSnapshot, UsageTotals, useTrayText
 } from "../shared";
+import { buildTokenActivity, type TokenActivityCell } from "../../../lib/usage-activity";
 export function RangeSwitch({ range, onChange }: { range: UsageStatsRange; onChange: (range: UsageStatsRange) => void }) {
   const t = useTrayText();
 
@@ -137,6 +138,164 @@ export function AnimatedUsageChart({
       </svg>
     </div>
   );
+}
+
+export function TokenActivityPanel({
+  series
+}: {
+  series: UsageStatsSnapshot["series"];
+}) {
+  const t = useTrayText();
+  const activity = buildTokenActivity(series, { maxWeeks: 14, minWeeks: 10 });
+
+  return (
+    <div className="min-w-0 rounded-[8px] border border-white/10 bg-white/[.04] p-2">
+      <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+        <div className="truncate text-[11px] font-bold text-slate-100">{t("Activity")}</div>
+        <div className="shrink-0 text-[10px] font-medium text-slate-400">{t("Tokens")}</div>
+      </div>
+
+      <div className="mb-2 grid grid-cols-4 gap-px overflow-hidden rounded-[7px] border border-white/8 bg-white/[.08]">
+        <TokenActivityStat label={t("Longest streak")} value={formatCompactNumber(activity.longestStreak)} unit={t(activity.longestStreak === 1 ? "day" : "days")} />
+        <TokenActivityStat label={t("Avg / day")} value={formatCompactNumber(Math.round(activity.avgPerDay))} />
+        <TokenActivityStat label={t("Avg / week")} value={formatCompactNumber(Math.round(activity.avgPerWeek))} />
+        <TokenActivityStat label={t("Total")} value={formatCompactNumber(activity.totalTokens)} />
+      </div>
+
+      <TokenActivityGrid activity={activity} />
+
+      <div className="mt-2 flex min-w-0 items-center gap-1.5 text-[10px] font-medium text-slate-400">
+        <span>{t("Less")}</span>
+        {[0, 1, 2, 3, 4].map((intensity) => (
+          <span
+            aria-hidden="true"
+            className="h-2.5 w-2.5 rounded-[3px]"
+            key={intensity}
+            style={{ backgroundColor: trayActivityColor(intensity as TokenActivityCell["intensity"], true) }}
+          />
+        ))}
+        <span>{t("More")}</span>
+      </div>
+    </div>
+  );
+}
+
+function TokenActivityStat({
+  label,
+  unit,
+  value
+}: {
+  label: string;
+  unit?: string;
+  value: string;
+}) {
+  return (
+    <div className="min-w-0 bg-slate-950/35 px-1.5 py-1">
+      <div className="truncate text-[8px] font-semibold text-slate-400">{label}</div>
+      <div className="flex min-w-0 items-baseline gap-1">
+        <span className="truncate text-[11px] font-bold text-slate-50">{value}</span>
+        {unit ? <span className="shrink-0 text-[8px] font-medium text-slate-500">{unit}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+function TokenActivityGrid({
+  activity
+}: {
+  activity: ReturnType<typeof buildTokenActivity>;
+}) {
+  const t = useTrayText();
+  const dayLabels = [t("M"), "", t("W"), "", t("F"), "", ""];
+  const cellGap = 3;
+  const cellSize = 9;
+  const labelColumnWidth = 14;
+
+  return (
+    <div className="min-w-0 overflow-visible">
+      <div className="w-max">
+        <div
+          className="mb-1 grid text-[8px] font-medium text-slate-500"
+          style={{
+            columnGap: `${cellGap}px`,
+            gridTemplateColumns: `repeat(${activity.weekCount}, ${cellSize}px)`,
+            marginLeft: `${labelColumnWidth + cellGap}px`
+          }}
+        >
+          {activity.months.map((month) => (
+            <span
+              className="truncate"
+              key={`${month.label}-${month.weekIndex}`}
+              style={{ gridColumn: `${month.weekIndex + 1} / span ${Math.min(3, activity.weekCount - month.weekIndex)}` }}
+            >
+              {month.label}
+            </span>
+          ))}
+        </div>
+        <div
+          className="grid"
+          role="img"
+          aria-label={`${t("Activity")} ${t("Tokens")}`}
+          style={{
+            gap: `${cellGap}px`,
+            gridTemplateColumns: `${labelColumnWidth}px repeat(${activity.weekCount}, ${cellSize}px)`,
+            gridTemplateRows: `repeat(7, ${cellSize}px)`
+          }}
+        >
+          {dayLabels.map((label, index) => (
+            <span
+              className="self-center truncate text-[8px] font-medium leading-none text-slate-500"
+              key={`${label}-${index}`}
+              style={{ gridColumn: 1, gridRow: index + 1 }}
+            >
+              {label}
+            </span>
+          ))}
+        {activity.cells.map((cell) => (
+          <span
+            aria-label={`${cell.dateLabel}: ${formatActivityTokenCount(cell.totalTokens)} ${t("tokens")}`}
+            className="group relative rounded-[3px]"
+            key={cell.dateKey}
+            style={{
+              backgroundColor: trayActivityColor(cell.intensity, cell.inObservedRange),
+              gridColumn: cell.weekIndex + 2,
+              gridRow: cell.dayIndex + 1
+            }}
+          >
+            <span className={`pointer-events-none absolute z-30 hidden min-w-[96px] rounded-md border border-white/10 bg-slate-950/95 px-2 py-1.5 text-left text-[10px] text-slate-100 shadow-[0_10px_24px_rgba(0,0,0,.32)] group-hover:block ${trayActivityTooltipPositionClass(cell, activity.weekCount)}`}>
+              <span className="block font-bold">{cell.dateLabel}</span>
+              <span className="mt-0.5 block font-medium text-slate-400">{formatActivityTokenCount(cell.totalTokens)} {t("tokens")}</span>
+            </span>
+          </span>
+        ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatActivityTokenCount(value: number): string {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Math.round(Math.max(0, value)));
+}
+
+function trayActivityTooltipPositionClass(cell: TokenActivityCell, weekCount: number): string {
+  const verticalClass = cell.dayIndex <= 1 ? "top-full mt-1" : "bottom-full mb-1";
+  if (cell.weekIndex <= 1) {
+    return `${verticalClass} left-0`;
+  }
+  if (cell.weekIndex >= weekCount - 2) {
+    return `${verticalClass} right-0`;
+  }
+  return `${verticalClass} left-1/2 -translate-x-1/2`;
+}
+
+function trayActivityColor(intensity: TokenActivityCell["intensity"], inRange: boolean): string {
+  if (!inRange) return "rgba(129,140,248,.06)";
+  if (intensity === 0) return "rgba(129,140,248,.14)";
+  if (intensity === 1) return "rgba(129,140,248,.32)";
+  if (intensity === 2) return "rgba(129,140,248,.52)";
+  if (intensity === 3) return "rgba(129,140,248,.72)";
+  return "rgba(129,140,248,.94)";
 }
 
 export function TokenMixPanel({

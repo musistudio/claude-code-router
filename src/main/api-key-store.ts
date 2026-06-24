@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { API_KEYS_DB_FILE } from "./constants";
 import { createBetterSqliteDatabase, type BetterSqliteDatabase } from "./sqlite-native";
@@ -9,15 +9,17 @@ type SqlValue = bigint | Buffer | number | string | null;
 
 type StoredApiKeyRow = {
   createdAt: string;
-  encryptedKey: string;
   encryption: string;
   expiresAt: string;
   id: string;
   limitsJson: string;
   name: string;
+  storedKey: string;
 };
 
 const plainStorage = "plain";
+const privateDirMode = 0o700;
+const privateFileMode = 0o600;
 
 class ApiKeyStore {
   private database?: SqlDatabase;
@@ -65,7 +67,7 @@ class ApiKeyStore {
       database.exec("BEGIN TRANSACTION");
       database.exec("DELETE FROM api_keys");
       for (const apiKey of normalized) {
-        const stored = encryptApiKey(apiKey.key);
+        const stored = storeApiKey(apiKey.key);
         statement.run(
           apiKey.id,
           apiKey.name ?? "",
@@ -77,6 +79,7 @@ class ApiKeyStore {
         );
       }
       database.exec("COMMIT");
+      secureDatabaseFilePermissions(this.dbFile);
       return normalized;
     } catch (error) {
       try {
@@ -84,6 +87,7 @@ class ApiKeyStore {
       } catch {
         // Ignore rollback errors; the original write error is more useful.
       }
+      secureDatabaseFilePermissions(this.dbFile);
       throw error;
     }
   }
@@ -98,7 +102,9 @@ class ApiKeyStore {
   }
 
   private async open(): Promise<SqlDatabase> {
-    mkdirSync(dirname(this.dbFile), { recursive: true });
+    const dbDir = dirname(this.dbFile);
+    mkdirSync(dbDir, { mode: privateDirMode, recursive: true });
+    securePathPermissions(dbDir, privateDirMode);
     const database = createBetterSqliteDatabase(this.dbFile);
     configureSqliteDatabase(database);
 
@@ -116,6 +122,7 @@ class ApiKeyStore {
     `);
 
     this.database = database;
+    secureDatabaseFilePermissions(this.dbFile);
     return database;
   }
 }
@@ -136,7 +143,7 @@ function toApiKeyConfig(row: Record<string, SqlValue>): ApiKeyConfig | undefined
     return undefined;
   }
 
-  const key = decryptApiKey(stored.encryptedKey, stored.encryption);
+  const key = readStoredApiKey(stored.storedKey, stored.encryption);
   if (!key) {
     return undefined;
   }
@@ -154,36 +161,56 @@ function toApiKeyConfig(row: Record<string, SqlValue>): ApiKeyConfig | undefined
 
 function toStoredApiKeyRow(row: Record<string, SqlValue>): StoredApiKeyRow | undefined {
   const id = readString(row.id);
-  const encryptedKey = readString(row.encrypted_key);
+  const storedKey = readString(row.encrypted_key);
   const createdAt = readString(row.created_at) || new Date(0).toISOString();
-  if (!id || !encryptedKey) {
+  if (!id || !storedKey) {
     return undefined;
   }
 
   return {
     createdAt,
-    encryptedKey,
     encryption: readString(row.encryption) || plainStorage,
     expiresAt: readString(row.expires_at) || "",
     id,
     limitsJson: readString(row.limits_json) || "",
-    name: readString(row.name) || ""
+    name: readString(row.name) || "",
+    storedKey
   };
 }
 
-function encryptApiKey(key: string): { encryption: string; value: string } {
+function storeApiKey(key: string): { encryption: string; value: string } {
   return {
     encryption: plainStorage,
     value: key
   };
 }
 
-function decryptApiKey(value: string, encryption: string): string | undefined {
+function readStoredApiKey(value: string, encryption: string): string | undefined {
   if (encryption !== plainStorage) {
-    console.warn(`[api-keys] Stored API key uses unsupported encryption "${encryption}". Re-save the API key to store it as plain text.`);
+    console.warn(`[api-keys] Stored API key uses unsupported storage "${encryption}". Re-save the API key to migrate it.`);
     return undefined;
   }
   return value.trim() || undefined;
+}
+
+function secureDatabaseFilePermissions(file: string): void {
+  securePathPermissions(file, privateFileMode);
+  securePathPermissions(`${file}-wal`, privateFileMode);
+  securePathPermissions(`${file}-shm`, privateFileMode);
+}
+
+function securePathPermissions(file: string, mode: number): void {
+  if (process.platform === "win32") {
+    return;
+  }
+  if (!existsSync(file)) {
+    return;
+  }
+  try {
+    chmodSync(file, mode);
+  } catch {
+    // Best effort for filesystems that do not support chmod.
+  }
 }
 
 function parseApiKeyLimits(value: string): ApiKeyLimitConfig | undefined {

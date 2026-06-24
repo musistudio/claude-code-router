@@ -4,7 +4,7 @@ import { createServer, type IncomingHttpHeaders, type IncomingMessage, type Serv
 import { createRequire } from "node:module";
 import { networkInterfaces } from "node:os";
 import { Readable } from "node:stream";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join as pathJoin, resolve as pathResolve, sep as pathSep } from "node:path";
 import type {
   ApiKeyConfig,
@@ -27,11 +27,13 @@ import {
   CLAUDE_APP_FALLBACK_MODEL,
   buildClaudeAppGatewayModelRoutes,
   inferClaudeAppGatewayTargetModel,
-  resolveClaudeAppGatewayRouteModel
+  resolveClaudeAppGatewayRouteModel,
+  type ClaudeAppGatewayModelRouteOptions
 } from "../../shared/claude-app-gateway";
 import {
   BUILTIN_FUSION_VISION_TOOL_NAME,
-  BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME
+  BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME,
+  ROUTER_FALLBACK_MAX_RETRY_COUNT
 } from "../../shared/app";
 import { providerApiKeySafetyIssue } from "../../main/presets";
 import { normalizeProviderBaseUrl as normalizeProviderBaseUrlInput } from "../../shared/provider-url";
@@ -69,6 +71,9 @@ type CoreGatewayProvider = {
 const defaultFusionWebSearchProvider: VirtualModelFusionWebSearchProvider = "brave";
 const fusionModelProviderName = "Fusion";
 const claudeCodeOneMillionContextSuffix = "[1m]";
+const claudeAppGatewayModelRouteOptions: ClaudeAppGatewayModelRouteOptions = {
+  supportsOneMillionContext: (model) => Boolean(findModelCatalogEntry(model)?.limits?.supports1MContext)
+};
 
 type ApiKeyAuthorizationResult =
   | { ok: true; apiKey?: ApiKeyConfig }
@@ -203,6 +208,8 @@ const gatewayProviderProtocolFallbackOrder: GatewayProviderProtocol[] = [
   "openai_responses",
   "gemini_generate_content"
 ];
+const privateDirMode = 0o700;
+const privateFileMode = 0o600;
 
 class GatewayService {
   private child?: ChildProcess;
@@ -791,7 +798,7 @@ export const gatewayService = new GatewayService();
 
 function writeCoreGatewayConfig(config: AppConfig, rawTraceSyncToken: string): void {
   assertLoopbackCoreHost(config.gateway.coreHost);
-  mkdirSync(dirname(config.gateway.generatedConfigFile), { recursive: true });
+  mkdirSync(dirname(config.gateway.generatedConfigFile), { mode: privateDirMode, recursive: true });
   const pluginCoreGatewayConfig = pluginService.getCoreGatewayConfig();
   const providerPlugins = withCodexOauthRuntimeDefaults([
     ...(config.providerPlugins ?? []),
@@ -855,7 +862,18 @@ function writeCoreGatewayConfig(config: AppConfig, rawTraceSyncToken: string): v
     virtualModelProfiles
   };
 
-  writeFileSync(config.gateway.generatedConfigFile, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  writePrivateTextFile(config.gateway.generatedConfigFile, `${JSON.stringify(payload, null, 2)}\n`);
+}
+
+function writePrivateTextFile(file: string, content: string): void {
+  writeFileSync(file, content, { encoding: "utf8", mode: privateFileMode });
+  if (process.platform !== "win32") {
+    try {
+      chmodSync(file, privateFileMode);
+    } catch {
+      // Best effort for filesystems that do not support chmod.
+    }
+  }
 }
 
 function withCodexOauthRuntimeDefaults(providerPlugins: unknown[]): unknown[] {
@@ -2038,7 +2056,7 @@ function buildUpstreamAttempts(fallback: RouterFallbackConfig, method: string, b
   }
 
   if (fallback.mode === "retry") {
-    const retryCount = clampNumber(fallback.retryCount, 0, 5);
+    const retryCount = clampNumber(fallback.retryCount, 0, ROUTER_FALLBACK_MAX_RETRY_COUNT);
     return Array.from({ length: retryCount + 1 }, (_unused, index) => ({
       body,
       index,
@@ -3187,7 +3205,7 @@ function prepareClaudeAppFallbackModelRequest(
     return undefined;
   }
 
-  const routedModel = resolveClaudeAppGatewayRouteModel(normalizedModel, config) ??
+  const routedModel = resolveClaudeAppGatewayRouteModel(normalizedModel, config, claudeAppGatewayModelRouteOptions) ??
     (normalizedModel.toLowerCase() === CLAUDE_APP_FALLBACK_MODEL ? inferClaudeAppGatewayTargetModel(config) : undefined);
   if (!routedModel || routedModel.toLowerCase() === normalizedModel.toLowerCase()) {
     return undefined;
@@ -3207,17 +3225,17 @@ function createGatewayModelsResponse(config: AppConfig, headers: IncomingHttpHea
 }
 
 function createClaudeAppGatewayModelsResponse(config: AppConfig): Record<string, unknown> {
-  const routes = buildClaudeAppGatewayModelRoutes(config);
+  const routes = buildClaudeAppGatewayModelRoutes(config, claudeAppGatewayModelRouteOptions);
   const data = routes.map((route) => {
     const catalogId = stripClaudeCodeOneMillionContextSuffix(route.targetModel);
     const catalogEntry = findModelCatalogEntry(catalogId);
-    const maxInputTokens = claudeCodeEffectiveMaxInputTokens(catalogEntry, false);
+    const maxInputTokens = claudeCodeEffectiveMaxInputTokens(catalogEntry, route.oneMillionContext);
     const maxOutputTokens = modelCatalogMaxOutputTokens(catalogEntry);
     return {
       id: route.id,
       capabilities: createClaudeCodeModelCapabilities(catalogEntry, {
         maxInputTokens,
-        oneMillionContext: false
+        oneMillionContext: route.oneMillionContext
       }),
       catalog_id: catalogEntry?.id,
       context_window: maxInputTokens,
@@ -3226,7 +3244,7 @@ function createClaudeAppGatewayModelsResponse(config: AppConfig): Record<string,
       input_modalities: catalogEntry?.modalities?.input ?? ["text"],
       max_input_tokens: maxInputTokens,
       max_tokens: maxOutputTokens,
-      one_million_context_variant: false,
+      one_million_context_variant: route.oneMillionContext,
       output_modalities: catalogEntry?.modalities?.output ?? ["text"],
       supports_1m_context: Boolean(catalogEntry?.limits?.supports1MContext),
       target_model: route.targetModel,

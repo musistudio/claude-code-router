@@ -29,40 +29,33 @@
           "/oauth"
         ],
         "assetProxy": true,
+        // Optional. Leave enabled to let CCR proxy static /design/assets files directly to Claude.
+        // Set to false when serving all assets from assetDir.
+        "assetPassthrough": true,
         "assetAutoUpdate": true,
         "autoAnswerQuestions": true,
         "assetDir": "/absolute/path/to/claude-design-assets",
         // Optional. Leave unset to auto-discover the current hashed entry assets.
-        // "scriptPath": "/design/assets/index-<hash>.js",
-        // "stylePath": "/design/assets/index-<hash>.css",
+        // "scriptPath": "/design/assets/v1/index-<hash>.js",
+        // "stylePath": "/design/assets/v1/index-<hash>.css",
         "upstreamOrigin": "https://claude.ai",
         // Optional. Missing lazy-loaded assets are fetched from these origins in order.
         "upstreamOrigins": ["https://claude.ai"],
         "gatewayUrl": "http://127.0.0.1:3456",
         // Optional. Required only when CCR has API keys configured.
         "gatewayApiKey": "",
+        // Optional. Used when old Claude Design model ids need a gateway-safe fallback.
+        // Defaults to Router.default, then claude-sonnet-4-20250514.
+        "defaultGatewayModel": "claude-sonnet-4-20250514",
+        // Optional. Controls the model selected by Claude Design on first load.
+        // Defaults to claude-sonnet-4-20250514 instead of Router.default.
+        "frontendDefaultModel": "claude-sonnet-4-20250514",
         // Optional. Also configurable from the Extensions page. Targets use CCR provider/model selectors.
         "routing": {
           "enabled": true,
-          "default": "anthropic-main,claude-sonnet-4-20250514",
-          "rules": [
-            {
-              "id": "design-opus",
-              "name": "Claude Design Opus",
-              "type": "model",
-              "model": "claude-opus-4-8",
-              "target": "openrouter,anthropic/claude-opus-4.1",
-              "enabled": true
-            },
-            {
-              "id": "design-long-context",
-              "name": "Long design context",
-              "type": "long-context",
-              "threshold": 180000,
-              "target": "anthropic-main,claude-sonnet-4-20250514",
-              "enabled": true
-            }
-          ]
+          // Add rules here only when the target provider name exists in your Providers config.
+          // Example target formats: "your-provider,model-id" or "your-provider/model-id".
+          "rules": []
         },
         "me": {
           "accountUuid": "12345678",

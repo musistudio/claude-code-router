@@ -21,7 +21,6 @@ import type {
   BotGatewayQrWindowOpenResult,
   BotHandoffScanTarget,
   ClaudeAppGatewayApplyResult,
-  GatewayMcpServerConfig,
   GatewayMcpToolInfo,
   GatewayProviderConnectivityCheckReport,
   GatewayProviderConnectivityCheckRequest,
@@ -98,7 +97,7 @@ declare global {
       getUsageStats: (range?: UsageStatsRange, filter?: UsageStatsFilter) => Promise<UsageStatsSnapshot>;
       installProxyCertificate: () => Promise<ProxyCertificateInstallResult>;
       importLocalAgentProvider: (request: LocalAgentProviderImportRequest) => Promise<LocalAgentProviderImportResult>;
-      listMcpServerTools: (server: GatewayMcpServerConfig) => Promise<GatewayMcpToolInfo[]>;
+      listMcpServerTools: (serverName: string) => Promise<GatewayMcpToolInfo[]>;
       openBuiltInBrowser: () => Promise<void>;
       openBotGatewayQrWindow: (request: BotGatewayQrWindowOpenRequest) => Promise<BotGatewayQrWindowOpenResult>;
       openExternal: (url: string) => Promise<void>;

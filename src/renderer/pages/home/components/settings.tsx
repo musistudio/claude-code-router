@@ -1340,7 +1340,7 @@ function TraySettingsPage({
   );
 }
 
-type TrayComponentCategory = "account" | "breakdown" | "header" | "metrics" | "provider-tabs" | "trend";
+type TrayComponentCategory = "account" | "activity" | "breakdown" | "header" | "metrics" | "provider-tabs" | "trend";
 
 type TrayWidgetPaletteItem = {
   dataOptions: Array<{ label: string; value: TrayWidgetType }>;
@@ -1393,6 +1393,15 @@ function trayWidgetPalette(copy: AppCopy): TrayWidgetPaletteItem[] {
       value: "trend"
     },
     {
+      dataOptions: [{ label: copy.settings.trayModuleActivity, value: "activity" }],
+      description: copy.settings.trayModuleActivity,
+      icon: Activity,
+      label: t("Activity component"),
+      repeatable: true,
+      template: { id: "activity", type: "activity" },
+      value: "activity"
+    },
+    {
       dataOptions: [{ label: copy.settings.trayModuleStats, value: "stats" }],
       description: copy.settings.trayModuleStats,
       icon: Gauge,
@@ -1421,6 +1430,7 @@ function trayComponentCategoryForType(type: TrayWidgetType): TrayComponentCatego
   if (type === "source-tabs") return "provider-tabs";
   if (type === "header") return "header";
   if (type === "account") return "account";
+  if (type === "activity") return "activity";
   if (type === "token-flow") return "trend";
   if (type === "stats") return "metrics";
   return "breakdown";
@@ -1428,6 +1438,7 @@ function trayComponentCategoryForType(type: TrayWidgetType): TrayComponentCatego
 
 function trayWidgetTypeLabel(type: TrayWidgetType, copy: AppCopy): string {
   if (type === "account") return copy.settings.trayModuleAccount;
+  if (type === "activity") return copy.settings.trayModuleActivity;
   if (type === "header") return copy.settings.trayModuleHeader;
   if (type === "model-share") return copy.settings.trayModuleModelShare;
   if (type === "rings") return copy.settings.trayModuleRings;
@@ -1704,6 +1715,8 @@ function TrayPreviewWidget({
     content = <TrayPreviewAccount copy={copy} title={copy.settings.trayModuleAccount} variant={(widget.variant ?? defaultTrayWidgetVariant("account")) as TrayComponentVariants["account"]} />;
   } else if (widget.type === "token-flow") {
     content = <TrayPreviewTokenFlow copy={copy} title={copy.settings.trayModuleTokenFlow} variant={(widget.variant ?? defaultTrayWidgetVariant("token-flow")) as TrayComponentVariants["tokenFlow"]} />;
+  } else if (widget.type === "activity") {
+    content = <TrayPreviewActivity copy={copy} />;
   } else if (widget.type === "stats") {
     content = <TrayPreviewStats copy={copy} variant={(widget.variant ?? defaultTrayWidgetVariant("stats")) as TrayComponentVariants["stats"]} />;
   } else if (widget.type === "token-mix") {
@@ -1890,6 +1903,110 @@ function TrayPreviewTokenFlow({
       </svg>
     </div>
   );
+}
+
+function TrayPreviewActivity({ copy }: { copy: AppCopy }) {
+  const t = (value: string) => trayPreviewText(copy, value, value);
+  const values = [
+    0, 1, 0, 0, 2, 0, 0,
+    0, 0, 2, 0, 3, 1, 0,
+    1, 0, 0, 4, 0, 0, 0,
+    0, 2, 0, 0, 0, 3, 0,
+    0, 0, 1, 0, 4, 2, 0,
+    2, 0, 3, 4, 1, 0, 0,
+    0, 1, 0, 2, 0, 0, 0,
+    0, 0, 0, 1, 3, 0, 2,
+    1, 0, 0, 0, 0, 2, 0,
+    0, 0, 1, 0, 0, 0, 0
+  ];
+  const months = [
+    { label: "Apr", weekIndex: 0 },
+    { label: "May", weekIndex: 4 },
+    { label: "Jun", weekIndex: 8 }
+  ];
+  const dayLabels = [t("M"), "", t("W"), "", t("F"), "", ""];
+  const cellGap = 3;
+  const cellSize = 9;
+  const labelColumnWidth = 14;
+
+  return (
+    <div className="min-w-0 rounded-[8px] border border-white/10 bg-white/[.04] p-2">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="truncate text-[11px] font-bold text-slate-100">{copy.settings.trayModuleActivity}</div>
+        <div className="shrink-0 text-[10px] font-medium text-slate-400">{t("Tokens")}</div>
+      </div>
+      <div className="mb-2 grid grid-cols-4 gap-px overflow-hidden rounded-[7px] border border-white/8 bg-white/[.08]">
+        {[
+          { label: t("Longest streak"), value: "8", unit: t("days") },
+          { label: t("Avg / day"), value: "44K" },
+          { label: t("Avg / week"), value: "309K" },
+          { label: t("Total"), value: "23.1M" }
+        ].map((item) => (
+          <div className="min-w-0 bg-slate-950/35 px-1.5 py-1" key={item.label}>
+            <div className="truncate text-[8px] font-semibold text-slate-400">{item.label}</div>
+            <div className="flex min-w-0 items-baseline gap-1">
+              <span className="truncate text-[11px] font-bold text-slate-50">{item.value}</span>
+              {item.unit ? <span className="shrink-0 text-[8px] font-medium text-slate-500">{item.unit}</span> : null}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="min-w-0 overflow-x-auto overflow-y-hidden">
+        <div className="w-max">
+          <div
+            className="mb-1 grid text-[8px] font-medium text-slate-500"
+            style={{
+              columnGap: `${cellGap}px`,
+              gridTemplateColumns: `repeat(10, ${cellSize}px)`,
+              marginLeft: `${labelColumnWidth + cellGap}px`
+            }}
+          >
+            {months.map((month) => (
+              <span className="truncate" key={month.label} style={{ gridColumn: `${month.weekIndex + 1} / span 2` }}>{month.label}</span>
+            ))}
+          </div>
+          <div
+            className="grid"
+            style={{
+              gap: `${cellGap}px`,
+              gridTemplateColumns: `${labelColumnWidth}px repeat(10, ${cellSize}px)`,
+              gridTemplateRows: `repeat(7, ${cellSize}px)`
+            }}
+          >
+            {dayLabels.map((label, index) => (
+              <span className="self-center truncate text-[8px] font-medium leading-none text-slate-500" key={`${label}-${index}`} style={{ gridColumn: 1, gridRow: index + 1 }}>{label}</span>
+            ))}
+            {values.map((value, index) => (
+              <span
+                className="rounded-[3px]"
+                key={index}
+                style={{
+                  backgroundColor: previewActivityColor(value),
+                  gridColumn: Math.floor(index / 7) + 2,
+                  gridRow: index % 7 + 1
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="mt-2 flex items-center gap-1.5 text-[10px] font-medium text-slate-400">
+        <span>{t("Less")}</span>
+        {[0, 1, 2, 3, 4].map((value) => (
+          <span aria-hidden="true" className="h-2.5 w-2.5 rounded-[3px]" key={value} style={{ backgroundColor: previewActivityColor(value) }} />
+        ))}
+        <span>{t("More")}</span>
+      </div>
+    </div>
+  );
+}
+
+function previewActivityColor(value: number): string {
+  if (value <= 0) return "rgba(129,140,248,.14)";
+  if (value === 1) return "rgba(129,140,248,.32)";
+  if (value === 2) return "rgba(129,140,248,.52)";
+  if (value === 3) return "rgba(129,140,248,.72)";
+  return "rgba(129,140,248,.94)";
 }
 
 function TrayPreviewStats({

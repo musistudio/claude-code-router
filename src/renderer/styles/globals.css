@@ -231,10 +231,13 @@
   body.tray-window {
     background: transparent;
     overflow: hidden;
+    -webkit-font-smoothing: subpixel-antialiased;
+    text-rendering: geometricPrecision;
   }
 
   body.tray-window #root {
     background: transparent;
+    isolation: isolate;
   }
 
   body.tray-window {
@@ -247,6 +250,17 @@
 
   body.tray-window * {
     user-select: none;
+    -webkit-font-smoothing: inherit;
+    text-rendering: inherit;
+  }
+
+  body.tray-window svg {
+    shape-rendering: geometricPrecision;
+    text-rendering: geometricPrecision;
+  }
+
+  body.tray-window img {
+    image-rendering: auto;
   }
 
   * {

@@ -2,6 +2,7 @@ import type { AppConfig } from "./app";
 import { normalizeProfileScopeValue } from "./app";
 
 export const CLAUDE_APP_FALLBACK_MODEL = "claude-sonnet-4-5";
+export const CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX = "[1m]";
 
 const CLAUDE_APP_ROUTE_NAMES = [
   "claude-sonnet-4-5",
@@ -21,7 +22,12 @@ const CLAUDE_APP_ROUTE_NAMES = [
 export type ClaudeAppGatewayModelRoute = {
   displayName: string;
   id: string;
+  oneMillionContext: boolean;
   targetModel: string;
+};
+
+export type ClaudeAppGatewayModelRouteOptions = {
+  supportsOneMillionContext?: (model: string) => boolean;
 };
 
 export function inferClaudeAppGatewayTargetModel(config: Pick<AppConfig, "Router" | "profile">): string {
@@ -30,25 +36,53 @@ export function inferClaudeAppGatewayTargetModel(config: Pick<AppConfig, "Router
     CLAUDE_APP_FALLBACK_MODEL;
 }
 
-export function buildClaudeAppGatewayModelRoutes(config: Pick<AppConfig, "Providers" | "Router" | "profile" | "virtualModelProfiles">): ClaudeAppGatewayModelRoute[] {
+export function buildClaudeAppGatewayModelRoutes(
+  config: Pick<AppConfig, "Providers" | "Router" | "profile" | "virtualModelProfiles">,
+  options: ClaudeAppGatewayModelRouteOptions = {}
+): ClaudeAppGatewayModelRoute[] {
   const targetModels = claudeAppGatewayTargetModels(config);
-  return targetModels.slice(0, CLAUDE_APP_ROUTE_NAMES.length).map((targetModel, index) => ({
-    displayName: claudeAppGatewayDisplayName(targetModel),
-    id: CLAUDE_APP_ROUTE_NAMES[index],
-    targetModel
-  }));
+  return targetModels.slice(0, CLAUDE_APP_ROUTE_NAMES.length).map((rawTargetModel, index) => {
+    const targetModel = stripClaudeAppGatewayOneMillionContextSuffix(rawTargetModel);
+    const oneMillionContext = claudeAppGatewaySupportsOneMillionContext(rawTargetModel, options);
+    const routeId = CLAUDE_APP_ROUTE_NAMES[index];
+    return {
+      displayName: claudeAppGatewayDisplayName(targetModel, oneMillionContext),
+      id: oneMillionContext ? claudeAppGatewayOneMillionContextModelId(routeId) : routeId,
+      oneMillionContext,
+      targetModel
+    };
+  });
 }
 
-export function resolveClaudeAppGatewayRouteModel(model: string, config: Pick<AppConfig, "Providers" | "Router" | "profile" | "virtualModelProfiles">): string | undefined {
+export function resolveClaudeAppGatewayRouteModel(
+  model: string,
+  config: Pick<AppConfig, "Providers" | "Router" | "profile" | "virtualModelProfiles">,
+  options: ClaudeAppGatewayModelRouteOptions = {}
+): string | undefined {
   const normalized = model.trim().toLowerCase();
-  return buildClaudeAppGatewayModelRoutes(config).find((route) => route.id.toLowerCase() === normalized)?.targetModel;
+  return buildClaudeAppGatewayModelRoutes(config, options).find((route) => {
+    const routeId = route.id.toLowerCase();
+    return routeId === normalized ||
+      stripClaudeAppGatewayOneMillionContextSuffix(routeId).toLowerCase() === normalized;
+  })?.targetModel;
 }
 
-export function buildClaudeAppGatewayInferenceModels(config: Pick<AppConfig, "Providers" | "Router" | "profile" | "virtualModelProfiles">): Array<{ displayName: string; name: string }> {
-  const routes = buildClaudeAppGatewayModelRoutes(config);
+export function buildClaudeAppGatewayInferenceModels(
+  config: Pick<AppConfig, "Providers" | "Router" | "profile" | "virtualModelProfiles">,
+  options: ClaudeAppGatewayModelRouteOptions = {}
+): Array<{ displayName: string; name: string }> {
+  const routes = buildClaudeAppGatewayModelRoutes(config, options);
   return routes.length
     ? routes.map((route) => ({ displayName: route.displayName, name: route.id }))
     : [{ displayName: "Claude Sonnet 4.5", name: CLAUDE_APP_FALLBACK_MODEL }];
+}
+
+export function hasClaudeAppGatewayOneMillionContextSuffix(id: string): boolean {
+  return id.trim().toLowerCase().endsWith(CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX);
+}
+
+export function stripClaudeAppGatewayOneMillionContextSuffix(id: string): string {
+  return id.trim().replace(/\[1m\]$/i, "").trim();
 }
 
 function inferGlobalClaudeProfileModel(config: Pick<AppConfig, "profile">): string {
@@ -85,9 +119,23 @@ function claudeAppGatewayTargetModels(config: Pick<AppConfig, "Providers" | "Rou
   ]);
 }
 
-function claudeAppGatewayDisplayName(model: string): string {
+function claudeAppGatewayOneMillionContextModelId(id: string): string {
+  return hasClaudeAppGatewayOneMillionContextSuffix(id) ? id : `${id}${CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX}`;
+}
+
+function claudeAppGatewaySupportsOneMillionContext(
+  model: string,
+  options: ClaudeAppGatewayModelRouteOptions
+): boolean {
+  const baseModel = stripClaudeAppGatewayOneMillionContextSuffix(model);
+  return hasClaudeAppGatewayOneMillionContextSuffix(model) ||
+    Boolean(options.supportsOneMillionContext?.(baseModel));
+}
+
+function claudeAppGatewayDisplayName(model: string, oneMillionContext = false): string {
   const trimmed = model.trim();
-  return trimmed.includes("/") ? trimmed.slice(trimmed.lastIndexOf("/") + 1) : trimmed;
+  const displayName = trimmed.includes("/") ? trimmed.slice(trimmed.lastIndexOf("/") + 1) : trimmed;
+  return oneMillionContext ? `${displayName} (1M context)` : displayName;
 }
 
 function uniqueStrings(values: string[]): string[] {

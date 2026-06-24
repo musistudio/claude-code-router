@@ -153,6 +153,10 @@ type AgentLogDetails = {
   userAgent?: string;
 };
 
+type AgentTextSignalOptions = {
+  allowStandaloneCodex?: boolean;
+};
+
 type AgentToolCallDetail = {
   id?: string;
   input?: AgentAnalysisTracePayloadPreview;
@@ -927,7 +931,6 @@ function inferAgentKind(
   }
 
   const haystack = [
-    entry.client,
     entry.path,
     entry.url,
     JSON.stringify(entry.responseHeaders),
@@ -935,7 +938,7 @@ function inferAgentKind(
     stringifyForSearch(responsePayloads)
   ].join(" ").toLowerCase();
 
-  const bodyAgent = inferAgentFromText(haystack);
+  const bodyAgent = inferAgentFromText(haystack, { allowStandaloneCodex: false });
   if (bodyAgent) {
     return bodyAgent;
   }
@@ -976,8 +979,9 @@ function readAgentUserAgent(headers: Record<string, string | string[]>): string 
   );
 }
 
-function inferAgentFromText(value: string): AgentKind | undefined {
+function inferAgentFromText(value: string, options: AgentTextSignalOptions = {}): AgentKind | undefined {
   const normalized = value.toLowerCase();
+  const allowStandaloneCodex = options.allowStandaloneCodex ?? true;
   if (normalized.includes("claude design") || normalized.includes("claude-design") || normalized.includes("claude.ai/design")) {
     return "claude-design";
   }
@@ -993,7 +997,7 @@ function inferAgentFromText(value: string): AgentKind | undefined {
     normalized.includes("openai-codex") ||
     normalized.includes("codex_cli") ||
     normalized.includes("codex-cli") ||
-    /(^|[^a-z0-9])codex([/_\s-]|$)/.test(normalized)
+    (allowStandaloneCodex && /(^|[^a-z0-9])codex([/_\s-]|$)/.test(normalized))
   ) {
     return "codex";
   }

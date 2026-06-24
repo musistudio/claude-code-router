@@ -6,7 +6,7 @@ import {
 } from "./shared";
 import {
   AccountSummaryPanel, AnimatedUsageChart, ChartShell, ModelShareChart, RingMetrics,
-  SourceGrid, StatsGrid, TokenMixPanel, TrayStatusStrip
+  SourceGrid, StatsGrid, TokenActivityPanel, TokenMixPanel, TrayStatusStrip
 } from "./components";
 
 type TrayHeaderRange = Exclude<UsageStatsRange, "today">;
@@ -198,6 +198,10 @@ function TrayRuntimeWidget({
         <AnimatedUsageChart chartId={`overview-flow-${index}`} series={activeStats.series} variant={(widget.variant ?? defaultTrayWidgetVariant("token-flow")) as TrayComponentVariants["tokenFlow"]} />
       </ChartShell>
     );
+  }
+
+  if (widget.type === "activity") {
+    return <TokenActivityPanel series={activeStats.series} />;
   }
 
   if (widget.type === "stats") {

@@ -54,6 +54,9 @@ export const trayText: Record<ResolvedLanguage, Record<string, string>> = {
     "All": "全部",
     "Account": "账户",
     "All providers": "全部供应商",
+    "Activity": "活跃度",
+    "Avg / day": "日均",
+    "Avg / week": "周均",
     "Avg latency": "平均延迟",
     "Balance": "余额",
     "Cache": "缓存",
@@ -64,10 +67,15 @@ export const trayText: Record<ResolvedLanguage, Record<string, string>> = {
     "Credit balance": "信用余额",
     "Current balance": "当前余额",
     "5h quota": "5 小时额度",
+    "F": "五",
     "Granted balance": "赠送余额",
     "Input": "输入",
+    "Less": "少",
+    "Longest streak": "最长连续",
+    "M": "一",
     "Monthly budget": "月度预算",
     "Model Share": "模型占比",
+    "More": "多",
     "No account data configured": "未配置账户数据",
     "No model yet": "暂无模型",
     "No tray modules enabled": "未启用 Tray 模块",
@@ -85,6 +93,8 @@ export const trayText: Record<ResolvedLanguage, Record<string, string>> = {
     "Today tokens": "今日令牌",
     "Token Flow": "Token 趋势",
     "Token Mix": "令牌构成",
+    "Tokens": "令牌",
+    "Total": "总计",
     "Topped-up balance": "充值余额",
     "Total credits": "总额度",
     "Total usage": "总用量",
@@ -92,10 +102,13 @@ export const trayText: Record<ResolvedLanguage, Record<string, string>> = {
     "Updated just now": "刚刚更新",
     "Voucher balance": "代金券余额",
     "Weekly quota": "周额度",
+    "W": "三",
     "Usage Detail": "用量详情",
     "Usage Overview": "用量概览",
     "Usage chart": "用量图表",
     "critical": "严重",
+    "day": "天",
+    "days": "天",
     "error": "错误",
     "hours": "小时",
     "minutes": "分钟",
@@ -268,7 +281,7 @@ export function normalizeTrayWidget(value: unknown): TrayWidgetConfig | undefine
 }
 
 export function normalizeTrayWidgetType(value: unknown): TrayWidgetType | undefined {
-  return typeof value === "string" && ["account", "header", "model-share", "rings", "source-tabs", "stats", "token-flow", "token-mix"].includes(value)
+  return typeof value === "string" && ["account", "activity", "header", "model-share", "rings", "source-tabs", "stats", "token-flow", "token-mix"].includes(value)
     ? value as TrayWidgetType
     : undefined;
 }

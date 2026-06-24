@@ -3,7 +3,7 @@ import {
   UsageStatsSnapshot, UsageTotals, useTrayText
 } from "../shared";
 import { AccountSummaryPanel } from "./account-panel";
-import { AnimatedUsageChart, ChartShell, ModelShareChart, RingMetrics, StatsGrid, TokenMixPanel } from "./widgets";
+import { AnimatedUsageChart, ChartShell, ModelShareChart, RingMetrics, StatsGrid, TokenActivityPanel, TokenMixPanel } from "./widgets";
 
 export function UsageOverviewPanel({
   activeStats,
@@ -42,6 +42,8 @@ export function UsageOverviewPanel({
         <AnimatedUsageChart chartId="overview-flow" series={activeStats.series} variant={componentVariants.tokenFlow} />
       </ChartShell>
       ) : null}
+
+      {modules.has("activity") ? <TokenActivityPanel series={activeStats.series} /> : null}
 
       {modules.has("stats") ? (
       <StatsGrid

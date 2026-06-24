@@ -21,6 +21,7 @@ import {
   useEffect, useMemo, useRef, useSensor, useSensors, useSortable,
   useState, X, XAxis, YAxis
 } from "../shared";
+import { buildTokenActivity, type TokenActivityCell } from "@/lib/usage-activity";
 export function OverviewView({
   onWidgetsChange,
   overviewWidgets,
@@ -820,6 +821,8 @@ function OverviewWidgetRenderer({
     content = <OverviewMetricWidget metric={widget.metric ?? "requests"} totals={usageStats.totals} variant={overviewMetricVariant(widget.variant)} />;
   } else if (widget.type === "usage-trend") {
     content = <UsageTrendWidget dimensions={dimensions} usageRange={usageRange} usageStats={usageStats} variant={overviewTrendVariant(widget.variant)} />;
+  } else if (widget.type === "token-activity") {
+    content = <TokenActivityOverviewWidget dimensions={dimensions} usageStats={usageStats} />;
   } else if (widget.type === "token-mix") {
     content = <TokenMixOverviewWidget dimensions={dimensions} totals={usageStats.totals} variant={overviewTokenMixVariant(widget.variant)} />;
   } else if (widget.type === "model-distribution") {
@@ -976,6 +979,197 @@ function UsageTrendWidget({
       </CardContent>
     </Card>
   );
+}
+
+function TokenActivityOverviewWidget({
+  dimensions,
+  usageStats
+}: {
+  dimensions: OverviewWidgetDimensions;
+  usageStats: UsageStatsSnapshot;
+}) {
+  const t = useAppText();
+  const weekCount = overviewActivityWeekCount(dimensions);
+  const activity = buildTokenActivity(usageStats.series, {
+    maxWeeks: weekCount,
+    minWeeks: weekCount
+  });
+  const showSummary = dimensions.height >= 2;
+  const showLegend = dimensions.height >= 2 && dimensions.width >= 2;
+
+  return (
+    <Card className="flex h-full min-h-0 min-w-0 flex-col">
+      <CardHeader className="shrink-0 flex-row items-center justify-between">
+        <CardTitle>{t("Activity")}</CardTitle>
+        <Badge variant="outline">{t("Tokens")}</Badge>
+      </CardHeader>
+      <CardContent className="flex min-h-0 flex-1 flex-col overflow-visible p-3">
+        {showSummary ? (
+          <div className={cn("mb-3 grid overflow-hidden rounded-lg border border-border bg-muted/20", dimensions.width >= 2 ? "grid-cols-4" : "grid-cols-2")}>
+            <OverviewActivityStat label={t("Longest streak")} value={formatCompactNumber(activity.longestStreak)} unit={t(activity.longestStreak === 1 ? "day" : "days")} />
+            <OverviewActivityStat label={t("Avg / day")} value={formatCompactNumber(Math.round(activity.avgPerDay))} />
+            <OverviewActivityStat label={t("Avg / week")} value={formatCompactNumber(Math.round(activity.avgPerWeek))} />
+            <OverviewActivityStat label={t("Total")} value={formatCompactNumber(activity.totalTokens)} />
+          </div>
+        ) : null}
+
+        <OverviewActivityGrid activity={activity} dimensions={dimensions} />
+
+        {showLegend ? (
+          <div className="mt-2 flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+            <span>{t("Less")}</span>
+            {[0, 1, 2, 3, 4].map((intensity) => (
+              <span
+                aria-hidden="true"
+                className="h-3 w-3 rounded-[3px]"
+                key={intensity}
+                style={{ backgroundColor: overviewActivityColor(intensity as TokenActivityCell["intensity"], true) }}
+              />
+            ))}
+            <span>{t("More")}</span>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function overviewActivityWeekCount(dimensions: OverviewWidgetDimensions): number {
+  if (dimensions.height <= 1) {
+    if (dimensions.width >= 4) return 72;
+    if (dimensions.width >= 3) return 56;
+    if (dimensions.width >= 2) return 42;
+    return 28;
+  }
+  if (dimensions.width >= 4) return 53;
+  if (dimensions.width >= 3) return 40;
+  if (dimensions.width >= 2) return 26;
+  return 18;
+}
+
+function OverviewActivityStat({
+  label,
+  unit,
+  value
+}: {
+  label: string;
+  unit?: string;
+  value: string;
+}) {
+  return (
+    <div className="min-w-0 border-r border-border bg-card/60 px-3 py-2 last:border-r-0">
+      <div className="truncate text-[11px] font-medium text-muted-foreground">{label}</div>
+      <div className="mt-0.5 flex min-w-0 items-baseline gap-1">
+        <span className="truncate text-[17px] font-semibold tracking-tight text-foreground">{value}</span>
+        {unit ? <span className="shrink-0 text-[11px] text-muted-foreground">{unit}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+function OverviewActivityGrid({
+  activity,
+  dimensions
+}: {
+  activity: ReturnType<typeof buildTokenActivity>;
+  dimensions: OverviewWidgetDimensions;
+}) {
+  const t = useAppText();
+  const showDayLabels = dimensions.width >= 2;
+  const showMonthLabels = dimensions.height >= 2;
+  const dayLabels = [t("M"), "", t("W"), "", t("F"), "", ""];
+  const cellGap = dimensions.height <= 1 ? 2 : dimensions.width >= 3 ? 4 : 3;
+  const labelColumnWidth = showDayLabels ? 20 : 0;
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="min-w-0 overflow-visible">
+        <div className="w-full">
+          {showMonthLabels ? (
+            <div
+              className="mb-1 grid text-[10px] font-medium text-muted-foreground"
+              style={{
+                columnGap: `${cellGap}px`,
+                gridTemplateColumns: `repeat(${activity.weekCount}, minmax(0, 1fr))`,
+                marginLeft: `${labelColumnWidth ? labelColumnWidth + cellGap : 0}px`
+              }}
+            >
+              {activity.months.map((month) => (
+                <span
+                  className="truncate"
+                  key={`${month.label}-${month.weekIndex}`}
+                  style={{ gridColumn: `${month.weekIndex + 1} / span ${Math.min(4, activity.weekCount - month.weekIndex)}` }}
+                >
+                  {month.label}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <div
+            className="grid min-h-[64px]"
+            role="img"
+            aria-label={`${t("Activity")} ${t("Tokens")}`}
+            style={{
+              gap: `${cellGap}px`,
+              gridTemplateColumns: `${showDayLabels ? `${labelColumnWidth}px ` : ""}repeat(${activity.weekCount}, minmax(0, 1fr))`,
+              gridTemplateRows: "repeat(7, auto)"
+            }}
+          >
+            {showDayLabels ? dayLabels.map((label, index) => (
+              <span
+                className="self-center truncate text-[10px] font-medium leading-none text-muted-foreground"
+                key={`${label}-${index}`}
+                style={{ gridColumn: 1, gridRow: index + 1 }}
+              >
+                {label}
+              </span>
+            )) : null}
+            {activity.cells.map((cell) => (
+              <span
+                aria-label={`${cell.dateLabel}: ${formatActivityTokenCount(cell.totalTokens)} ${t("tokens")}`}
+                className="group relative aspect-square w-full rounded-[4px]"
+                key={cell.dateKey}
+                style={{
+                  backgroundColor: overviewActivityColor(cell.intensity, cell.inObservedRange),
+                  gridColumn: cell.weekIndex + (showDayLabels ? 2 : 1),
+                  gridRow: cell.dayIndex + 1
+                }}
+              >
+                <span className={`pointer-events-none absolute z-30 hidden min-w-[112px] rounded-md border border-border/70 bg-popover px-2 py-1.5 text-left text-[11px] text-popover-foreground shadow-card-elevated group-hover:block ${overviewActivityTooltipPositionClass(cell, activity.weekCount)}`}>
+                  <span className="block font-semibold">{cell.dateLabel}</span>
+                  <span className="mt-0.5 block text-muted-foreground">{formatActivityTokenCount(cell.totalTokens)} {t("tokens")}</span>
+                </span>
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatActivityTokenCount(value: number): string {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Math.round(Math.max(0, value)));
+}
+
+function overviewActivityTooltipPositionClass(cell: TokenActivityCell, weekCount: number): string {
+  const verticalClass = cell.dayIndex <= 1 ? "top-full mt-1" : "bottom-full mb-1";
+  if (cell.weekIndex <= 1) {
+    return `${verticalClass} left-0`;
+  }
+  if (cell.weekIndex >= weekCount - 2) {
+    return `${verticalClass} right-0`;
+  }
+  return `${verticalClass} left-1/2 -translate-x-1/2`;
+}
+
+function overviewActivityColor(intensity: TokenActivityCell["intensity"], inRange: boolean): string {
+  if (!inRange) return "rgba(99,102,241,.06)";
+  if (intensity === 0) return "rgba(99,102,241,.12)";
+  if (intensity === 1) return "rgba(99,102,241,.30)";
+  if (intensity === 2) return "rgba(99,102,241,.50)";
+  if (intensity === 3) return "rgba(99,102,241,.70)";
+  return "rgba(99,102,241,.92)";
 }
 
 function TokenMixOverviewWidget({
@@ -1250,12 +1444,13 @@ function overviewWidgetTemplates(): OverviewWidgetConfig[] {
     { enabled: true, id: "account-balance", size: "4:2", type: "account-balance", variant: "cards" },
     { enabled: true, id: "metric-requests", metric: "requests", size: "1:1", type: "metric", variant: "card" },
     { enabled: true, id: "usage-trend", size: "3:2", type: "usage-trend", variant: "composed" },
+    { enabled: true, id: "token-activity", size: "4:2", type: "token-activity", variant: "heatmap" },
     { enabled: true, id: "token-mix", size: "1:2", type: "token-mix", variant: "bars" },
     { enabled: true, id: "client-analysis", size: "2:2", type: "client-analysis", variant: "table" }
   ];
 }
 
-type OverviewWidgetCategory = "account-balance" | "analysis" | "breakdown" | "metric" | "system-status" | "usage-trend";
+type OverviewWidgetCategory = "account-balance" | "activity" | "analysis" | "breakdown" | "metric" | "system-status" | "usage-trend";
 
 function overviewWidgetCategoryOptions(): Array<{ label: string; value: OverviewWidgetCategory }> {
   return [
@@ -1263,6 +1458,7 @@ function overviewWidgetCategoryOptions(): Array<{ label: string; value: Overview
     "account-balance",
     "metric",
     "usage-trend",
+    "activity",
     "breakdown",
     "analysis"
   ].map((category) => ({
@@ -1306,6 +1502,9 @@ function overviewWidgetDataOptions(widget: OverviewWidgetConfig, providerAccount
   if (category === "system-status") {
     return [{ label: "System status", value: "system-status" }];
   }
+  if (category === "activity") {
+    return [{ label: "Token activity", value: "token-activity" }];
+  }
   if (category === "breakdown") {
     return overviewBreakdownDataOptions();
   }
@@ -1326,6 +1525,9 @@ function overviewWidgetDataValue(widget: OverviewWidgetConfig): string {
   if (category === "account-balance") {
     return widget.accountProvider ?? "";
   }
+  if (category === "activity") {
+    return "token-activity";
+  }
   return category;
 }
 
@@ -1335,6 +1537,9 @@ function overviewWidgetCategory(type: OverviewWidgetType): OverviewWidgetCategor
   }
   if (type === "model-distribution" || type === "token-mix") {
     return "breakdown";
+  }
+  if (type === "token-activity") {
+    return "activity";
   }
   return type;
 }
@@ -1346,6 +1551,9 @@ function overviewWidgetTypeForCategory(category: OverviewWidgetCategory, current
   if (category === "breakdown") {
     return currentType === "model-distribution" ? "model-distribution" : "token-mix";
   }
+  if (category === "activity") {
+    return "token-activity";
+  }
   return category;
 }
 
@@ -1356,6 +1564,7 @@ function overviewWidgetTemplateKey(widget: OverviewWidgetConfig): string {
 function overviewWidgetCategoryLabel(category: OverviewWidgetCategory): string {
   if (category === "account-balance") return "Account component";
   if (category === "analysis") return "Analysis component";
+  if (category === "activity") return "Activity component";
   if (category === "metric") return "Metric component";
   if (category === "system-status") return "Status component";
   if (category === "breakdown") return "Breakdown component";
@@ -1365,6 +1574,7 @@ function overviewWidgetCategoryLabel(category: OverviewWidgetCategory): string {
 function overviewWidgetCategoryDescription(category: OverviewWidgetCategory): string {
   if (category === "account-balance") return "Account Balance";
   if (category === "analysis") return "Client or provider";
+  if (category === "activity") return "Token activity heatmap";
   if (category === "metric") return "Requests, tokens, cost";
   if (category === "system-status") return "Status timeline";
   if (category === "breakdown") return "Token or model distribution";
@@ -1385,6 +1595,7 @@ function overviewWidgetTypeLabel(type: OverviewWidgetType): string {
   if (type === "model-distribution") return "Model Distribution";
   if (type === "provider-analysis") return "Provider Analysis";
   if (type === "system-status") return "System status";
+  if (type === "token-activity") return "Activity";
   if (type === "token-mix") return "Token Mix";
   return "Usage Trend";
 }
@@ -1415,6 +1626,11 @@ function overviewWidgetVariantOptions(type: OverviewWidgetType): Array<{ label: 
       { label: "Area", value: "area" },
       { label: "Line", value: "line" },
       { label: "Bar", value: "bar" }
+    ];
+  }
+  if (type === "token-activity") {
+    return [
+      { label: "Heatmap", value: "heatmap" }
     ];
   }
   if (type === "model-distribution" || type === "token-mix") {

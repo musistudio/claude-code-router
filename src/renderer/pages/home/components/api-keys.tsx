@@ -1,5 +1,5 @@
 import {
-  AddApiKeyDraft, AnimatedDisclosure, AnimatedListItem, AnimatePresence, apiKeyExpirationOptions, ApiKeyExpirationPreset,
+  AddApiKeyDraft, AnimatedDisclosure, AnimatedIconSwap, AnimatedListItem, AnimatePresence, apiKeyExpirationOptions, ApiKeyExpirationPreset,
   ApiKeyLimitDraftRow, ApiKeyLimitMetric, apiKeyLimitMetricOptions, ApiKeyListItem, apiKeyMatchesQuery, Button,
   Card, CardContent, CardHeader, Check, ChevronDown, CircleAlert,
   cn, Copy, copyTextToClipboard, createApiKeyLimitDraftRow, Dialog, DialogBody,
@@ -195,6 +195,79 @@ export function AddApiKeyDialog({
           <Button disabled={!canSubmit} onClick={onSubmit} type="button">
             <Plus className="h-4 w-4" />
             {t("Add")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function ApiKeyCreatedDialog({
+  apiKeyName,
+  apiKeyValue,
+  onClose
+}: {
+  apiKeyName: string;
+  apiKeyValue: string;
+  onClose: () => void;
+}) {
+  const t = useAppText();
+  const [copied, setCopied] = useState(false);
+
+  async function copyApiKey() {
+    await copyTextToClipboard(apiKeyValue);
+    setCopied(true);
+  }
+
+  return (
+    <Dialog onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-[560px]">
+        <DialogHeader>
+          <div className="min-w-0">
+            <DialogTitle>{t("API key created")}</DialogTitle>
+          </div>
+          <Button aria-label={t("Close dialog")} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
+            <X className="h-4 w-4" />
+          </Button>
+        </DialogHeader>
+
+        <DialogBody>
+          <div className="flex items-start gap-3 rounded-md border border-emerald-500/25 bg-emerald-500/10 px-3 py-3 text-[12px] text-emerald-700">
+            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
+              <Check className="h-3.5 w-3.5" />
+            </span>
+            <div className="min-w-0">
+              <div className="font-semibold">{t("API key created")}</div>
+              <div className="mt-0.5 text-emerald-700/80">{t("Copy this key now. It may not be shown again.")}</div>
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{apiKeyName || t("API key")}</div>
+            <div className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-muted/30 p-2">
+              <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded bg-background px-2 py-1.5 font-mono text-[12px] text-foreground">
+                {apiKeyValue}
+              </code>
+              <Button
+                aria-label={copied ? t("Copied") : t("Copy API key")}
+                className="shrink-0"
+                onClick={() => void copyApiKey()}
+                title={copied ? t("Copied") : t("Copy API key")}
+                type="button"
+                variant={copied ? "secondary" : "default"}
+              >
+                <AnimatedIconSwap iconKey={copied ? "copied" : "copy"}>
+                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                </AnimatedIconSwap>
+                {copied ? t("Copied") : t("Copy")}
+              </Button>
+            </div>
+          </div>
+        </DialogBody>
+
+        <DialogFooter>
+          <Button onClick={onClose} type="button">
+            {t("Done")}
           </Button>
         </DialogFooter>
       </DialogContent>

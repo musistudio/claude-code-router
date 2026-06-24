@@ -183,6 +183,10 @@ class SystemProxyManager {
     return { ...this.status };
   }
 
+  getManagedEndpointUrl(): string | undefined {
+    return this.status.state === "active" ? this.snapshot?.managedEndpoint : undefined;
+  }
+
   getUpstreamProxy(): UpstreamProxyConfig | undefined {
     if (!this.upstreamProxy) {
       return undefined;

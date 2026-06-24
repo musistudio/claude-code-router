@@ -225,6 +225,15 @@ export function VirtualModelDialog({
       }));
       return [];
     }
+    const savedServer = mcpServers.find((candidate) => candidate.name === server.name);
+    if (!savedServer) {
+      const message = "MCP server must be saved before tool discovery.";
+      setMcpToolStateByServer((current) => ({
+        ...current,
+        [server.name]: { error: message, loading: false, tools: current[server.name]?.tools ?? [] }
+      }));
+      return [];
+    }
     const currentState = mcpToolStateByServer[server.name];
     if (!force && currentState?.tools) {
       return currentState.tools;
@@ -237,7 +246,7 @@ export function VirtualModelDialog({
       [server.name]: { ...current[server.name], error: "", loading: true }
     }));
     try {
-      const tools = await window.ccr.listMcpServerTools(server);
+      const tools = await window.ccr.listMcpServerTools(savedServer.name);
       setMcpToolStateByServer((current) => ({
         ...current,
         [server.name]: { loading: false, tools }
