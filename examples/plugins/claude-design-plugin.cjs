@@ -4,6 +4,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
 const https = require("node:https");
+const os = require("node:os");
 const pathModule = require("node:path");
 const zlib = require("node:zlib");
 
@@ -14,10 +15,20 @@ const DEFAULT_UPSTREAM_ORIGIN = "https://claude.ai";
 const DEFAULT_DESIGN_ORIGIN = "https://claude.ai";
 const DEFAULT_DESIGN_REFERRER = "https://claude.ai/design";
 const DEFAULT_FALLBACK_ROUTE_HOSTS = ["claude.com", "www.anthropic.com", "anthropic.com"];
+const CLAUDE_APP_ION_DIST_ENV_KEYS = ["CCR_CLAUDE_APP_ION_DIST_DIR", "CLAUDE_APP_ION_DIST_DIR"];
+const CLAUDE_APP_PATH_ENV_KEYS = ["CCR_CLAUDE_APP_PATH", "CLAUDE_APP_PATH"];
+const CLAUDE_APP_DESIGN_IFRAME_QUERY = "__ccr_design_iframe";
+const CLAUDE_APP_DESIGN_PATH_QUERY = "path";
+const CLAUDE_APP_DESIGN_SHELL_PATH = "/desktop-design";
+const CLAUDE_APP_SPA_ROUTE_PATHS = [
+  CLAUDE_APP_DESIGN_SHELL_PATH,
+  "/discover/design",
+  "/admin-settings/claude-design"
+];
 const OMELETTE_RPC_PATH_PREFIX = "/design/anthropic.omelette.api.v1alpha.OmeletteService";
 const AUTH_ESCAPE_ROUTE_PATHS = ["/login", "/auth", "/oauth"];
-const BOOTSTRAP_ROUTE_PATHS = ["/_bootstrap", "/api/bootstrap"];
-const REQUIRED_ROUTE_PATHS = ["/", OMELETTE_RPC_PATH_PREFIX, "/v1/design", ...BOOTSTRAP_ROUTE_PATHS, ...AUTH_ESCAPE_ROUTE_PATHS];
+const BOOTSTRAP_ROUTE_PATHS = ["/_bootstrap", "/api/bootstrap", "/edge-api/bootstrap"];
+const REQUIRED_ROUTE_PATHS = ["/", OMELETTE_RPC_PATH_PREFIX, "/v1/design", ...CLAUDE_APP_SPA_ROUTE_PATHS, ...BOOTSTRAP_ROUTE_PATHS, ...AUTH_ESCAPE_ROUTE_PATHS];
 const DEFAULT_ROUTE_PATHS = ["/design", "/v1/design", "/api", "/organizations", "/cdn-cgi", ...BOOTSTRAP_ROUTE_PATHS, ...AUTH_ESCAPE_ROUTE_PATHS];
 const FALLBACK_ROUTE_PATHS = ["/app-unavailable-in-region", "/cdn-cgi", "/design", ...AUTH_ESCAPE_ROUTE_PATHS];
 const DEFAULT_SCRIPT_PATH = "/design/assets/v1/index-C0BEUHEw.js";
@@ -198,9 +209,21 @@ module.exports = {
     const fallbackRouteHosts = normalizeFallbackRouteHosts(options.fallbackHosts, routeHost);
     const upstreamOrigin = stringValue(options.upstreamOrigin) || DEFAULT_UPSTREAM_ORIGIN;
     const assetProxy = options.assetProxy !== false;
-    const assetDir = stringValue(options.assetDir);
-    const assetPassthrough = options.assetPassthrough === true ||
-      (options.assetPassthrough !== false && !localAssetDirExists(assetDir));
+    const configuredAssetDir = stringValue(options.assetDir);
+    const claudeAppAssetDir = (configuredAssetDir || options.claudeAppAssets === false)
+      ? ""
+      : resolveClaudeAppIonDistDir(options, ctx.logger);
+    const assetDir = configuredAssetDir || claudeAppAssetDir;
+    const usingClaudeAppAssets = Boolean(claudeAppAssetDir) ||
+      Boolean(configuredAssetDir && isClaudeAppIonDistDir(expandHomePath(configuredAssetDir)));
+    const assetSource = usingClaudeAppAssets ? "claude-app" : configuredAssetDir ? "configured" : "none";
+    const assetPassthrough = usingClaudeAppAssets
+      ? false
+      : options.assetPassthrough === true ||
+        (options.assetPassthrough !== false && !localAssetDirExists(assetDir));
+    if (usingClaudeAppAssets && options.assetPassthrough === true) {
+      ctx.logger.info("Claude Design disabled assetPassthrough because Claude app ion-dist assets must be served locally.");
+    }
     const configuredScriptPath = normalizePath(stringValue(options.scriptPath) || DEFAULT_SCRIPT_PATH);
     const configuredStylePath = normalizePath(stringValue(options.stylePath) || DEFAULT_STYLE_PATH);
     const scriptPath = shouldKeepCurrentScriptPath(configuredScriptPath) ? configuredScriptPath : DEFAULT_SCRIPT_PATH;
@@ -313,6 +336,7 @@ module.exports = {
       assetProxy,
       assetAutoUpdate,
       assetDir,
+      assetSource,
       assetPassthrough,
       designIndexAssets: {
         checkedAt: 0,
@@ -320,6 +344,13 @@ module.exports = {
         scriptPath,
         source: "configured",
         stylePath
+      },
+      standaloneDesignIndexAssets: {
+        checkedAt: 0,
+        html: "",
+        scriptPath: DEFAULT_SCRIPT_PATH,
+        source: "default",
+        stylePath: DEFAULT_STYLE_PATH
       },
       gatewayApiKey,
       gatewayConfigPath,
@@ -444,6 +475,22 @@ async function routeMockRequest(runtime, method, url, request, requestBody) {
     return jsonResponse(200, authSessionPayload(runtime.me));
   }
 
+  if (method === "GET" && runtime.assetSource === "claude-app" && isDesignSpaRoute(path)) {
+    if (isClaudeAppDesignIframeRequest(url, request)) {
+      const assets = await resolveStandaloneDesignIndexAssets(runtime, request);
+      return htmlResponse(renderDefaultDesignIndex(runtime.me, assets.scriptPath, assets.stylePath));
+    }
+    const redirectUrl = claudeAppDesignEntrypointRedirectUrl(url);
+    if (redirectUrl) {
+      return redirectResponse(302, redirectUrl);
+    }
+  }
+
+  if (method === "GET" && runtime.assetSource === "claude-app" && isClaudeAppSpaRoute(path)) {
+    const assets = await resolveDesignIndexAssets(runtime, request);
+    return htmlResponse(renderDesignIndex(runtime.me, assets.scriptPath, assets.stylePath, assets.html));
+  }
+
   if (method === "GET" && (path === "/" || isDesignSpaRoute(path))) {
     const assets = await resolveDesignIndexAssets(runtime, request);
     return htmlResponse(renderDesignIndex(runtime.me, assets.scriptPath, assets.stylePath, assets.html));
@@ -473,6 +520,10 @@ async function routeMockRequest(runtime, method, url, request, requestBody) {
     return serveAsset(runtime, path, request);
   }
 
+  if (method === "GET" && isClaudeAppStaticRoutePath(path)) {
+    return serveAsset(runtime, path, request);
+  }
+
   if (method === "GET" && isDesignStaticAsset(path)) {
     return serveAsset(runtime, path, request);
   }
@@ -497,8 +548,13 @@ async function routeMockRequest(runtime, method, url, request, requestBody) {
     return await handleDesignRestApi(runtime, method, path, request, requestBody);
   }
 
-  if (BOOTSTRAP_ROUTE_PATHS.includes(path)) {
+  if (isBootstrapRoutePath(path)) {
     return jsonResponse(200, bootstrapPayload(runtime.me));
+  }
+
+  const bootstrapSubresource = handleBootstrapSubresource(runtime, method, path);
+  if (bootstrapSubresource) {
+    return bootstrapSubresource;
   }
 
   if (path === "/api/auth/session" || path === "/api/session") {
@@ -1038,21 +1094,63 @@ async function resolveDesignIndexAssets(runtime, request, options = {}) {
     return current;
   }
 
-  const fromRemote = await discoverRemoteDesignIndexAssets(runtime, request);
-  const fromRemoteCache = await cacheRemoteDesignIndexAssets(runtime, fromRemote, request);
   const fromRequests = discoverRequestedDesignIndexAssets(runtime.store);
   const fromLocal = discoverLocalDesignIndexAssets(runtime.assetDir);
   const fromCache = discoverCachedDesignIndexAssets(runtime.store);
+  const shouldDiscoverRemote = runtime.assetSource !== "claude-app";
+  const fromRemote = shouldDiscoverRemote ? await discoverRemoteDesignIndexAssets(runtime, request) : undefined;
+  const fromRemoteCache = shouldDiscoverRemote ? await cacheRemoteDesignIndexAssets(runtime, fromRemote, request) : undefined;
   const fallback = mergeDesignIndexAssetPartials(fromLocal, fromCache) || {};
   const seeded = {
-    html: current.html,
+    html: isUsableDesignShellHtml(fromLocal?.html) ? fromLocal.html : current.html,
     scriptPath: fallback.scriptPath || current.scriptPath,
     source: fallback.source || current.source || "current",
     stylePath: fallback.stylePath || current.stylePath
   };
-  const discovered = mergeDesignIndexAssets(seeded, fromRequests, fromRemoteCache || fromRemote);
+  const discovered = mergeDesignIndexAssets(seeded, fromRequests, fromRemoteCache || fromRemote, fromLocal);
   const safeDiscovered = selectUsableDesignIndexAssets(runtime, discovered, fallback, current);
   return updateDesignIndexAssets(runtime, safeDiscovered, safeDiscovered.source || "discovered", { checkedAt: now });
+}
+
+async function resolveStandaloneDesignIndexAssets(runtime, request) {
+  if (runtime.assetSource !== "claude-app") {
+    return resolveDesignIndexAssets(runtime, request);
+  }
+
+  const current = runtime.standaloneDesignIndexAssets || {
+    checkedAt: 0,
+    html: "",
+    scriptPath: DEFAULT_SCRIPT_PATH,
+    source: "default",
+    stylePath: DEFAULT_STYLE_PATH
+  };
+  if (!runtime.assetAutoUpdate) {
+    return current;
+  }
+
+  const now = Date.now();
+  const forceRefresh = requestHasNoCache(request);
+  if (!forceRefresh && current.checkedAt && now - current.checkedAt < DESIGN_INDEX_ASSET_DISCOVERY_TTL_MS) {
+    return current;
+  }
+
+  const fromCache = discoverCachedStandaloneDesignIndexAssets(runtime.store);
+  const fromRemote = await discoverRemoteDesignIndexAssets(runtime, request);
+  const fromRemoteCache = await cacheRemoteDesignIndexAssets(runtime, fromRemote, request);
+  const discovered = mergeDesignIndexAssets(current, fromCache, fromRemoteCache || fromRemote);
+  const assets = {
+    checkedAt: now,
+    html: "",
+    scriptPath: shouldKeepCurrentScriptPath(discovered.scriptPath) ? discovered.scriptPath : DEFAULT_SCRIPT_PATH,
+    source: discovered.source || current.source || "standalone",
+    stylePath: shouldKeepCurrentStylePath(discovered.stylePath) ? discovered.stylePath : DEFAULT_STYLE_PATH,
+    upstreamUrls: {
+      ...(current.upstreamUrls || {}),
+      ...(discovered.upstreamUrls || {})
+    }
+  };
+  runtime.standaloneDesignIndexAssets = assets;
+  return assets;
 }
 
 function requestHasNoCache(request) {
@@ -1292,6 +1390,101 @@ function upstreamDesignShellUrlCandidates(origin, runtime) {
   });
 }
 
+function resolveClaudeAppIonDistDir(options, logger) {
+  const configured = [
+    stringValue(options.claudeAppIonDistDir),
+    stringValue(options.claudeAppAssetDir),
+    stringValue(options.claudeAppPath),
+    ...CLAUDE_APP_ION_DIST_ENV_KEYS.map((key) => stringValue(process.env[key])),
+    ...CLAUDE_APP_PATH_ENV_KEYS.map((key) => stringValue(process.env[key])),
+    ...defaultClaudeAppPathCandidates()
+  ].filter(Boolean);
+
+  const checked = [];
+  for (const candidate of configured) {
+    for (const ionDistDir of claudeAppIonDistCandidates(candidate)) {
+      if (checked.includes(ionDistDir)) {
+        continue;
+      }
+      checked.push(ionDistDir);
+      if (isClaudeAppIonDistDir(ionDistDir)) {
+        logger?.info?.(`Claude Design using Claude app assets from ${ionDistDir}`);
+        return ionDistDir;
+      }
+    }
+  }
+  return "";
+}
+
+function defaultClaudeAppPathCandidates() {
+  if (process.platform === "darwin") {
+    return [
+      "/Applications/Claude.app",
+      "/Applications/Claude Desktop.app",
+      pathModule.join(os.homedir(), "Applications", "Claude.app"),
+      pathModule.join(os.homedir(), "Applications", "Claude Desktop.app")
+    ];
+  }
+  if (process.platform === "win32") {
+    const localAppData = process.env.LOCALAPPDATA || pathModule.join(os.homedir(), "AppData", "Local");
+    const programFiles = [process.env.ProgramFiles, process.env["ProgramFiles(x86)"]].filter(Boolean);
+    return [
+      pathModule.join(localAppData, "Programs", "Claude"),
+      pathModule.join(localAppData, "Programs", "Claude Desktop"),
+      ...programFiles.flatMap((root) => [
+        pathModule.join(root, "Claude"),
+        pathModule.join(root, "Claude Desktop")
+      ])
+    ];
+  }
+  return [
+    "/opt/Claude",
+    "/opt/Claude/resources",
+    pathModule.join(os.homedir(), ".local", "share", "Claude")
+  ];
+}
+
+function claudeAppIonDistCandidates(candidate) {
+  const expanded = expandHomePath(candidate);
+  const resolved = pathModule.resolve(expanded);
+  const candidates = [
+    resolved,
+    pathModule.join(resolved, "ion-dist"),
+    pathModule.join(resolved, "resources", "ion-dist"),
+    pathModule.join(resolved, "Resources", "ion-dist"),
+    pathModule.join(resolved, "Contents", "Resources", "ion-dist")
+  ];
+  if (resolved.includes(`${pathModule.sep}Contents${pathModule.sep}MacOS${pathModule.sep}`)) {
+    candidates.push(pathModule.resolve(resolved, "..", "..", "Resources", "ion-dist"));
+  }
+  if (resolved.endsWith(".app")) {
+    candidates.push(pathModule.join(resolved, "Contents", "Resources", "ion-dist"));
+  }
+  return Array.from(new Set(candidates));
+}
+
+function expandHomePath(value) {
+  const trimmed = stringValue(value);
+  if (trimmed === "~") {
+    return os.homedir();
+  }
+  if (trimmed.startsWith("~/") || trimmed.startsWith("~\\")) {
+    return pathModule.join(os.homedir(), trimmed.slice(2));
+  }
+  return trimmed;
+}
+
+function isClaudeAppIonDistDir(dir) {
+  try {
+    const root = pathModule.resolve(dir);
+    return fs.statSync(root).isDirectory() &&
+      fs.statSync(pathModule.join(root, "index.html")).isFile() &&
+      fs.statSync(pathModule.join(root, "assets")).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 async function cacheRemoteDesignIndexAssets(runtime, assets, request) {
   if (!assets || !runtime.assetProxy) {
     return undefined;
@@ -1436,11 +1629,44 @@ function discoverCachedDesignIndexAssets(store) {
   return assets.scriptPath || assets.stylePath ? assets : undefined;
 }
 
+function discoverCachedStandaloneDesignIndexAssets(store) {
+  const rows = queryRows(
+    store.database,
+    `SELECT path, content_type, body_base64, fetched_at
+       FROM claude_design_assets
+      WHERE path LIKE '/design/assets/index-%'
+         OR path LIKE '/design/assets/%/index-%'
+      ORDER BY fetched_at DESC`,
+    []
+  );
+  const assets = { source: "standalone-cache" };
+  for (const row of rows) {
+    const requestPath = normalizePath(row.path);
+    const body = Buffer.from(row.body_base64 || "", "base64");
+    if (!isUsableAssetBody(requestPath, row.content_type, body)) {
+      continue;
+    }
+    if (!assets.scriptPath && isStandaloneDesignIndexScriptBody(requestPath, row.content_type, body)) {
+      assets.scriptPath = requestPath;
+    }
+    if (!assets.stylePath && isDesignIndexStylePath(requestPath)) {
+      assets.stylePath = requestPath;
+    }
+    if (assets.scriptPath && assets.stylePath) {
+      return assets;
+    }
+  }
+  return assets.scriptPath || assets.stylePath ? assets : undefined;
+}
+
 function discoverLocalDesignIndexAssets(assetDir) {
   if (!assetDir) {
     return undefined;
   }
-  const assetRoot = pathModule.resolve(assetDir);
+  const localRoot = localAssetRootInfo(assetDir);
+  const assetRoot = localRoot.kind === "claude-app-ion-dist"
+    ? pathModule.join(localRoot.root, "assets")
+    : localRoot.root;
   const scripts = [];
   const styles = [];
   for (const entry of listLocalAssetFiles(assetRoot)) {
@@ -1468,11 +1694,12 @@ function discoverLocalDesignIndexAssets(assetDir) {
   scripts.sort((a, b) => b.score - a.score || b.mtimeMs - a.mtimeMs || b.size - a.size);
   styles.sort((a, b) => b.mtimeMs - a.mtimeMs || b.size - a.size);
   const assets = {
+    html: localRoot.kind === "claude-app-ion-dist" ? readLocalClaudeAppShellHtml(localRoot.root) : "",
     scriptPath: scripts[0]?.path,
-    source: "local",
+    source: localRoot.kind === "claude-app-ion-dist" ? "claude-app" : "local",
     stylePath: styles[0]?.path
   };
-  return assets.scriptPath || assets.stylePath ? assets : undefined;
+  return assets.html || assets.scriptPath || assets.stylePath ? assets : undefined;
 }
 
 function localAssetDirExists(assetDir) {
@@ -1480,9 +1707,26 @@ function localAssetDirExists(assetDir) {
     return false;
   }
   try {
-    return fs.statSync(pathModule.resolve(assetDir)).isDirectory();
+    return fs.statSync(pathModule.resolve(expandHomePath(assetDir))).isDirectory();
   } catch {
     return false;
+  }
+}
+
+function localAssetRootInfo(assetDir) {
+  const root = pathModule.resolve(expandHomePath(assetDir));
+  return isClaudeAppIonDistDir(root)
+    ? { kind: "claude-app-ion-dist", root }
+    : { kind: "design-assets", root };
+}
+
+function readLocalClaudeAppShellHtml(root) {
+  const indexPath = pathModule.join(root, "index.html");
+  try {
+    const html = fs.readFileSync(indexPath, "utf8");
+    return isUsableDesignShellHtml(html) ? html : "";
+  } catch {
+    return "";
   }
 }
 
@@ -1609,6 +1853,19 @@ function isUsableDesignIndexScriptBody(path, contentType, body) {
   return isDesignIndexScriptPath(path) && isUsableAssetBody(path, contentType, body);
 }
 
+function isStandaloneDesignIndexScriptBody(path, contentType, body) {
+  if (!isUsableDesignIndexScriptBody(path, contentType, body)) {
+    return false;
+  }
+  const text = body.toString("utf8", 0, Math.min(body.length, 2 * 1024 * 1024));
+  return [
+    "anthropic.omelette.api.v1alpha.OmeletteService",
+    "/v1/design",
+    "/design/v1/design",
+    "__OMELETTE_ME__"
+  ].some((marker) => text.includes(marker));
+}
+
 function isDesignEntryScriptBuffer(path, body) {
   return isDesignIndexScriptPath(path) && designEntryScriptScore(path, body, { mtimeMs: 0, size: body.length }) > 1_000_000;
 }
@@ -1623,6 +1880,10 @@ function designEntryScriptScore(path, body, stat) {
     "/v1/design",
     "/design/v1/design",
     "__OMELETTE_ME__",
+    "desktop_design_entrypoint",
+    "DiscoverDesignRoute",
+    "claude_ai_omelette_enabled",
+    "path:\"design\"",
     "OmeletteService"
   ];
   if (!designMarkers.some((marker) => text.includes(marker))) {
@@ -2057,7 +2318,9 @@ async function handleAdminRequest(runtime, backend, request, response, helpers) 
       gatewayModels: runtime.gatewayModelPresets,
       plugin: "claude-design",
       proxy: {
+        assetDir: runtime.assetDir,
         assetPassthrough: runtime.assetPassthrough,
+        assetSource: runtime.assetSource,
         fallbackHosts: runtime.fallbackRouteHosts,
         host: runtime.routeHost,
         paths: runtime.routePaths
@@ -2162,26 +2425,49 @@ async function handleAdminRequest(runtime, backend, request, response, helpers) 
 }
 
 function bootstrapPayload(me) {
+  const account = accountPayload(me);
+  const organization = organizationPayload(me, me.organizationUuid);
+  const featureFlags = featureFlagsPayload(me);
+  const growthbook = featureFlags.growthbook;
+  const statsig = statsigPayload();
   return {
-    account: accountPayload(me),
+    account,
     accountUuid: me.accountUuid,
     activeOrganizationUuid: me.organizationUuid,
     canManageDs: me.canManageDs,
+    cowork_sysprompt_map: null,
+    current_user_access: currentUserAccessPayload(me),
     defaultModelId: me.defaultModelId,
     displayName: me.displayName,
     email: me.email,
-    growthbookPayload: parseMaybeJson(me.growthbookPayload, {}),
+    featureFlagsOrgUuid: me.organizationUuid,
+    features: featureFlags.features,
+    gated_imports: {},
+    gated_imports_build_id: "",
+    gated_messages: null,
+    growthbook,
+    growthbookPayload: growthbook,
     me,
     memberships: me.memberships || [],
+    memory_mode: "off",
+    model_selector_config: {},
+    model_selector_state: {},
     modelPresets: me.modelPresets || [],
-    organization: organizationPayload(me, me.organizationUuid),
+    org_growthbook: growthbook,
+    org_statsig: statsig,
+    organization,
     organizationUuid: me.organizationUuid,
     organizations: organizationsPayload(me),
-    user: accountPayload(me)
+    server_localizations: {},
+    settings: organization.settings,
+    statsig,
+    system_prompts: {},
+    user: account
   };
 }
 
 function accountPayload(me) {
+  const organizations = organizationsPayload(me);
   return {
     account_uuid: me.accountUuid,
     accountUuid: me.accountUuid,
@@ -2190,7 +2476,14 @@ function accountPayload(me) {
     email: me.email,
     has_oauth_tokens: me.hasOauthTokens,
     hasOauthTokens: me.hasOauthTokens,
+    memberships: organizations.map((organization) => ({
+      organization,
+      organization_uuid: organization.uuid,
+      organizationUuid: organization.uuid,
+      role: "owner"
+    })),
     name: me.displayName,
+    settings: accountSettingsPayload(),
     uuid: me.accountUuid
   };
 }
@@ -2220,17 +2513,43 @@ function authSessionPayload(me) {
 }
 
 function organizationPayload(me, organizationUuid) {
+  const settings = organizationSettingsPayload(me);
   return {
     access_level: me.accessLevel,
     accessLevel: me.accessLevel,
+    capabilities: ["chat", "omelette", "raven"],
     default_model_id: me.defaultModelId,
     defaultModelId: me.defaultModelId,
+    entitlements: ["omelette"],
+    features: {
+      claude_design: true,
+      design: true,
+      omelette: true
+    },
     is_personal: me.isPersonalOrg,
     isPersonalOrg: me.isPersonalOrg,
     name: me.orgName,
     organization_uuid: organizationUuid,
     orgName: me.orgName,
+    rbac_entitlements: ["omelette"],
+    rbacEntitlements: ["omelette"],
+    settings,
     uuid: organizationUuid
+  };
+}
+
+function accountSettingsPayload() {
+  return {
+    preview_feature_uses_artifacts: true
+  };
+}
+
+function organizationSettingsPayload(me) {
+  return {
+    claude_ai_omelette_enabled: true,
+    default_model_id: me.defaultModelId,
+    defaultModelId: me.defaultModelId,
+    omelette: true
   };
 }
 
@@ -2247,15 +2566,142 @@ function organizationsPayload(me) {
 }
 
 function featureFlagsPayload(me) {
+  const features = claudeDesignFeatureValues();
+  const growthbook = claudeDesignGrowthbookPayload(me, features);
   return {
     experiments: {},
-    features: {
-      claude_design: true,
-      design: true,
-      omelette: true
-    },
-    growthbookPayload: parseMaybeJson(me.growthbookPayload, {})
+    feature_flags: features,
+    features,
+    growthbook,
+    growthbookPayload: growthbook
   };
+}
+
+function claudeDesignFeatureValues() {
+  return {
+    admin_settings_chicago: true,
+    claude_ai_omelette_enabled: true,
+    claude_design: true,
+    design: true,
+    desktop_design_entrypoint: {
+      openBehavior: "embed",
+      showOnTabs: ["chat", "cowork"]
+    },
+    omelette: true,
+    omelette_admin_settings: true,
+    trellis: true
+  };
+}
+
+function claudeDesignGrowthbookPayload(me, featureValues = claudeDesignFeatureValues()) {
+  const configured = parseMaybeJson(me?.growthbookPayload, {});
+  const configuredFeatures = isRecord(configured.features) ? configured.features : {};
+  const features = { ...configuredFeatures };
+  for (const [name, value] of Object.entries(featureValues)) {
+    features[growthbookFeatureKey(name)] = growthbookFeatureDefinition(value);
+  }
+  return {
+    ...configured,
+    features
+  };
+}
+
+function growthbookFeatureDefinition(value) {
+  return {
+    defaultValue: value
+  };
+}
+
+function growthbookFeatureKey(name) {
+  const value = stringValue(name) || "";
+  if (value.startsWith("__gb__")) {
+    return value.slice(6);
+  }
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(index);
+    hash &= hash;
+  }
+  return String((0xffffffff & hash) >>> 0);
+}
+
+function statsigPayload() {
+  return {
+    dynamic_configs: {},
+    feature_gates: {},
+    layer_configs: {},
+    sdkParams: {}
+  };
+}
+
+function currentUserAccessPayload(me) {
+  return {
+    account_uuid: me.accountUuid,
+    accountUuid: me.accountUuid,
+    account_permissions: claudeDesignAccountPermissions(),
+    features: claudeDesignAccessFeatures(),
+    organization_uuid: me.organizationUuid,
+    organizationUuid: me.organizationUuid,
+    permissions: ["admin", "owner", "omelette", "claude_design:manage"],
+    role: "owner"
+  };
+}
+
+function claudeDesignAccessFeatures() {
+  return [
+    "chat",
+    "claude_api_in_artifacts",
+    "claude_code",
+    "claude_code_desktop",
+    "claude_code_web",
+    "cowork",
+    "interactive_content",
+    "mcp_artifacts",
+    "omelette",
+    "skills",
+    "wiggle",
+    "work_across_apps"
+  ].map((feature) => ({
+    feature,
+    status: "available"
+  }));
+}
+
+function claudeDesignAccountPermissions() {
+  return [
+    "admin",
+    "claude_design:manage",
+    "members:view",
+    "organization:manage_settings",
+    "owner",
+    "workspaces:view"
+  ];
+}
+
+function handleBootstrapSubresource(runtime, method, path) {
+  if (method !== "GET") {
+    return undefined;
+  }
+  const match = path.match(/^\/(?:api|edge-api)\/bootstrap\/[^/]+\/([^/]+)\/?$/) ||
+    path.match(/^\/_bootstrap\/[^/]+\/([^/]+)\/?$/);
+  if (!match) {
+    return undefined;
+  }
+  switch (match[1]) {
+    case "current_user_access":
+      return jsonResponse(200, currentUserAccessPayload(runtime.me));
+    case "cowork_sysprompt_map":
+      return jsonResponse(200, null);
+    case "gated_messages":
+      return jsonResponse(200, null);
+    case "model_selector_config":
+    case "model_selector_state":
+    case "server_localizations":
+    case "system_prompts":
+      return jsonResponse(200, {});
+    default:
+      return undefined;
+  }
 }
 
 function canonicalCollection(value) {
@@ -6882,29 +7328,139 @@ function readLocalAsset(assetDir, requestPath) {
     return undefined;
   }
 
-  const relativePath = requestPath.replace(/^\/design\/assets\//, "").replace(/^\/design\//, "");
-  if (!relativePath || relativePath.includes("\0")) {
-    return undefined;
+  const localRoot = localAssetRootInfo(assetDir);
+  for (const relativePath of localAssetRelativePathCandidates(localRoot, requestPath)) {
+    if (!relativePath || relativePath.includes("\0")) {
+      continue;
+    }
+
+    const file = pathModule.resolve(localRoot.root, relativePath);
+    if (file !== localRoot.root && !file.startsWith(`${localRoot.root}${pathModule.sep}`)) {
+      continue;
+    }
+    if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+      continue;
+    }
+
+    return {
+      body: fs.readFileSync(file),
+      contentType: guessContentType(file),
+      source: file
+    };
+  }
+  return undefined;
+}
+
+function localAssetRelativePathCandidates(localRoot, requestPath) {
+  const normalizedPath = normalizePath(requestPath);
+  if (localRoot.kind === "claude-app-ion-dist") {
+    if (normalizedPath.startsWith("/design/assets/")) {
+      return [`assets/${normalizedPath.slice("/design/assets/".length)}`];
+    }
+    if (normalizedPath.startsWith("/assets/")) {
+      return [normalizedPath.slice(1)];
+    }
+    if (normalizedPath === "/design" || normalizedPath === "/design/") {
+      return ["index.html"];
+    }
+    if (normalizedPath.startsWith("/design/")) {
+      return [normalizedPath.slice("/design/".length)];
+    }
+    if (isClaudeAppStaticRoutePath(normalizedPath)) {
+      return [normalizedPath.slice(1)];
+    }
+    return [];
   }
 
-  const assetRoot = pathModule.resolve(assetDir);
-  const file = pathModule.resolve(assetRoot, relativePath);
-  if (file !== assetRoot && !file.startsWith(`${assetRoot}${pathModule.sep}`)) {
-    return undefined;
-  }
-  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
-    return undefined;
-  }
+  return [
+    normalizedPath
+      .replace(/^\/design\/assets\//, "")
+      .replace(/^\/assets\//, "")
+      .replace(/^\/design\//, "")
+  ];
+}
 
-  return {
-    body: fs.readFileSync(file),
-    contentType: guessContentType(file),
-    source: file
-  };
+function isClaudeAppStaticRoutePath(path) {
+  return path === "/favicon.ico" ||
+    path === "/manifest.json" ||
+    path === "/robots.txt" ||
+    path === "/frame-shell.html" ||
+    path.startsWith("/assets/") ||
+    path.startsWith("/images/") ||
+    path.startsWith("/i18n/") ||
+    path.startsWith("/captions/") ||
+    path.startsWith("/descriptions/");
 }
 
 function isDesignStaticAsset(path) {
   return /^\/design\/[^/?#]+\.(?:avif|gif|html|ico|jpeg|jpg|json|png|svg|webp|woff2?)$/i.test(path);
+}
+
+function isClaudeAppSpaRoute(path) {
+  return CLAUDE_APP_SPA_ROUTE_PATHS.includes(path) ||
+    CLAUDE_APP_SPA_ROUTE_PATHS.includes(path.replace(/\/$/, ""));
+}
+
+function isClaudeAppDesignIframeRequest(url, request) {
+  if (url.searchParams.get(CLAUDE_APP_DESIGN_IFRAME_QUERY) === "1") {
+    return true;
+  }
+  const fetchDest = (stringValue(headerValue(request?.headers?.["sec-fetch-dest"])) || "").toLowerCase();
+  if (fetchDest === "iframe" || fetchDest === "frame") {
+    return true;
+  }
+  return refererIsClaudeAppDesignShell(request?.headers?.referer);
+}
+
+function refererIsClaudeAppDesignShell(value) {
+  const referer = stringValue(value);
+  if (!referer) {
+    return false;
+  }
+  try {
+    const parsed = new URL(referer, "https://claude.ai");
+    return isClaudeAppSpaRoute(normalizePath(parsed.pathname)) &&
+      parsed.searchParams.has(CLAUDE_APP_DESIGN_PATH_QUERY);
+  } catch {
+    return false;
+  }
+}
+
+function claudeAppDesignEntrypointRedirectUrl(url) {
+  const path = normalizePath(url.pathname);
+  if (!isDesignSpaRoute(path)) {
+    return "";
+  }
+  if (path === "/design" && url.searchParams.get(CLAUDE_APP_DESIGN_IFRAME_QUERY) === "1") {
+    return "";
+  }
+
+  const pathParam = stringValue(url.searchParams.get(CLAUDE_APP_DESIGN_PATH_QUERY));
+  if (path === "/design" && pathParam) {
+    const markedPath = withClaudeAppDesignIframeMarker(pathParam);
+    return `${CLAUDE_APP_DESIGN_SHELL_PATH}?${CLAUDE_APP_DESIGN_PATH_QUERY}=${encodeURIComponent(markedPath)}`;
+  }
+
+  const targetPath = withClaudeAppDesignIframeMarker(`${path}${url.search || ""}${url.hash || ""}`);
+  return `${CLAUDE_APP_DESIGN_SHELL_PATH}?${CLAUDE_APP_DESIGN_PATH_QUERY}=${encodeURIComponent(targetPath)}`;
+}
+
+function withClaudeAppDesignIframeMarker(value) {
+  const raw = stringValue(value) || "/design";
+  let parsed;
+  try {
+    parsed = new URL(raw, "https://claude.ai");
+  } catch {
+    return raw;
+  }
+  const path = normalizePath(parsed.pathname);
+  if (!isDesignSpaRoute(path)) {
+    return raw;
+  }
+  if (parsed.searchParams.get(CLAUDE_APP_DESIGN_IFRAME_QUERY) !== "1") {
+    parsed.searchParams.set(CLAUDE_APP_DESIGN_IFRAME_QUERY, "1");
+  }
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`;
 }
 
 function isDesignSpaRoute(path) {
@@ -6912,6 +7468,12 @@ function isDesignSpaRoute(path) {
     return true;
   }
   return /^\/design\/(?:p|fromcc)(?:\/|$)/.test(path);
+}
+
+function isBootstrapRoutePath(path) {
+  return BOOTSTRAP_ROUTE_PATHS.includes(path) ||
+    /^\/(?:api|edge-api)\/bootstrap(?:\/[^/]+\/app_start)?\/?$/.test(path) ||
+    /^\/_bootstrap(?:\/[^/]+\/app_start)?\/?$/.test(path);
 }
 
 function isDesignAuthEscapeRoute(path) {
@@ -7278,14 +7840,24 @@ function renderDesignIndex(me, scriptPath, stylePath, html) {
   return renderDefaultDesignIndex(me, scriptPath, stylePath);
 }
 
-function renderDefaultDesignIndex(me, scriptPath, stylePath) {
+function renderDefaultDesignIndex(me, scriptPath, stylePath, options = {}) {
+  const defaultAssetPreloads = options.defaultAssetPreloads !== false;
   const normalizedScriptPath = normalizePath(scriptPath) || DEFAULT_SCRIPT_PATH;
-  const normalizedStylePath = normalizePath(stylePath) || DEFAULT_STYLE_PATH;
-  const criticalModulePreloads = renderModulePreloadLinks(DEFAULT_DESIGN_CRITICAL_MODULE_PRELOAD_PATHS);
-  const lazyModulePreloads = renderModulePreloadLinks(DEFAULT_DESIGN_LAZY_MODULE_PRELOAD_PATHS, true);
-  const stylePreloads = DEFAULT_DESIGN_STYLE_PRELOAD_PATHS
-    .map((href) => `        <link rel="preload" as="style" crossorigin fetchpriority="low" href="${escapeHtmlAttribute(href)}">`)
-    .join("\n");
+  const normalizedStylePath = normalizePath(stylePath) || (defaultAssetPreloads ? DEFAULT_STYLE_PATH : "");
+  const criticalModulePreloads = defaultAssetPreloads
+    ? renderModulePreloadLinks(DEFAULT_DESIGN_CRITICAL_MODULE_PRELOAD_PATHS)
+    : "";
+  const lazyModulePreloads = defaultAssetPreloads
+    ? renderModulePreloadLinks(DEFAULT_DESIGN_LAZY_MODULE_PRELOAD_PATHS, true)
+    : "";
+  const stylePreloads = defaultAssetPreloads
+    ? DEFAULT_DESIGN_STYLE_PRELOAD_PATHS
+      .map((href) => `        <link rel="preload" as="style" crossorigin fetchpriority="low" href="${escapeHtmlAttribute(href)}">`)
+      .join("\n")
+    : "";
+  const stylesheetLink = normalizedStylePath
+    ? `        <link rel="stylesheet" crossorigin href="${escapeHtmlAttribute(normalizedStylePath)}">`
+    : "";
   return `<!doctype html>
 <html lang="en">
     <head>
@@ -7317,13 +7889,14 @@ function renderDefaultDesignIndex(me, scriptPath, stylePath) {
         </script>
         <script type="module" crossorigin src="${escapeHtmlAttribute(normalizedScriptPath)}"></script>
 ${criticalModulePreloads}
-        <link rel="stylesheet" crossorigin href="${escapeHtmlAttribute(normalizedStylePath)}">
+${stylesheetLink}
 ${lazyModulePreloads}
 ${stylePreloads}
     </head>
     <body>
         ${designMeJsonScript(me)}
         ${designModelPreferenceResetScript(me)}
+        ${claudeAppDesktopFeaturesScript()}
         ${designMeGlobalScript(me)}
         <div id="root"></div>
     </body>
@@ -7355,6 +7928,9 @@ function injectDesignMeIntoHtml(html, me) {
   if (!nextHtml.includes("ccr-claude-design-model-reset")) {
     snippets.push(designModelPreferenceResetScript(me));
   }
+  if (!nextHtml.includes("ccr-claude-app-desktop-features")) {
+    snippets.push(claudeAppDesktopFeaturesScript());
+  }
   if (!nextHtml.includes("__OMELETTE_ME__")) {
     snippets.push(designMeGlobalScript(me));
   }
@@ -7377,6 +7953,10 @@ function designMeJsonScript(me) {
 
 function designMeGlobalScript(me) {
   return `<script>window.__OMELETTE_ME__ = ${escapeJsonForScript(me)}</script>`;
+}
+
+function claudeAppDesktopFeaturesScript() {
+  return `<script id="ccr-claude-app-desktop-features">(function(){try{var forced={claudeDesignWindow:{status:'supported'}};function merge(value){var next=Object.assign({},value||window.desktopBootFeatures||{},forced);window.desktopBootFeatures=next;return next;}merge(window.desktopBootFeatures);window.claude=window.claude||{};window.claude.settings=window.claude.settings||{};var existing=window.claude.settings.AppFeatures||{};if(existing.__ccrClaudeDesignPatched){return;}var previous=existing.getSupportedFeatures;window.claude.settings.AppFeatures=Object.assign({},existing,{__ccrClaudeDesignPatched:true,getSupportedFeatures:function(){if(typeof previous==='function'){return Promise.resolve(previous.call(existing)).then(merge,function(){return merge();});}return Promise.resolve(merge());}});}catch(e){}})();</script>`;
 }
 
 function designModelPreferenceResetScript(me) {
@@ -7402,8 +7982,12 @@ function isUsableDesignShellHtml(value) {
   if (/\bJust a moment\b|cf_chl|Performing security verification|App unavailable in region/i.test(html)) {
     return false;
   }
-  return /(?:src|href)=["'][^"']*(?:\/design)?\/assets\//i.test(html) ||
-    /anthropic\.omelette|OmeletteService|__OMELETTE_ME__|\/v1\/design/i.test(html);
+  const hasAssetReferences = /(?:src|href)=["'][^"']*(?:\/design)?\/assets\//i.test(html);
+  const hasDesignShellMarkers = /anthropic\.omelette|OmeletteService|__OMELETTE_ME__|\/v1\/design/i.test(html);
+  const hasClaudeAppShellMarkers = /<div\b[^>]*\bid=["']root["'][^>]*>/i.test(html) &&
+    /\/assets\/v\d+\/index-[^"']+\.js/i.test(html) &&
+    /data-build-id=|data-color-version=|Claude is Anthropic/i.test(html);
+  return hasAssetReferences && (hasDesignShellMarkers || hasClaudeAppShellMarkers);
 }
 
 function normalizeMe(value, defaultGatewayModel = DEFAULT_GATEWAY_MODEL, gatewayModelPresets = undefined) {

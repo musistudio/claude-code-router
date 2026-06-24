@@ -3,6 +3,8 @@ import { normalizeProfileScopeValue } from "./app";
 
 export const CLAUDE_APP_FALLBACK_MODEL = "claude-sonnet-4-5";
 export const CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX = "[1m]";
+const CLAUDE_APP_CCR_ROUTE_PREFIX = "claude-ccr-";
+const CLAUDE_APP_CCR_ROUTE_SLUG_MAX_LENGTH = 72;
 
 const CLAUDE_APP_ROUTE_NAMES = [
   "claude-sonnet-4-5",
@@ -41,12 +43,13 @@ export function buildClaudeAppGatewayModelRoutes(
   options: ClaudeAppGatewayModelRouteOptions = {}
 ): ClaudeAppGatewayModelRoute[] {
   const targetModels = claudeAppGatewayTargetModels(config);
-  return targetModels.slice(0, CLAUDE_APP_ROUTE_NAMES.length).map((rawTargetModel, index) => {
+  const displayNames = claudeAppGatewayDisplayNames(targetModels);
+  return targetModels.map((rawTargetModel, index) => {
     const targetModel = stripClaudeAppGatewayOneMillionContextSuffix(rawTargetModel);
     const oneMillionContext = claudeAppGatewaySupportsOneMillionContext(rawTargetModel, options);
-    const routeId = CLAUDE_APP_ROUTE_NAMES[index];
+    const routeId = claudeAppGatewayRouteId(targetModel, index);
     return {
-      displayName: claudeAppGatewayDisplayName(targetModel, oneMillionContext),
+      displayName: oneMillionContext ? `${displayNames[index]} (1M context)` : displayNames[index],
       id: oneMillionContext ? claudeAppGatewayOneMillionContextModelId(routeId) : routeId,
       oneMillionContext,
       targetModel
@@ -95,9 +98,20 @@ function inferGlobalClaudeProfileModel(config: Pick<AppConfig, "profile">): stri
 }
 
 function claudeAppGatewayTargetModels(config: Pick<AppConfig, "Providers" | "Router" | "profile" | "virtualModelProfiles">): string[] {
+  const baseEntries = config.Providers.flatMap((provider) => {
+    const providerName = provider.name?.trim();
+    if (!providerName || !Array.isArray(provider.models)) {
+      return [];
+    }
+    return provider.models.flatMap((rawModel) => {
+      const modelName = rawModel.trim();
+      return modelName ? [{ modelName, providerName }] : [];
+    });
+  });
+
   return uniqueStrings([
     inferClaudeAppGatewayTargetModel(config),
-    ...config.Providers.flatMap((provider) => provider.models.map((model) => `${provider.name}/${model}`)),
+    ...baseEntries.map((entry) => `${entry.providerName}/${entry.modelName}`),
     ...(config.virtualModelProfiles ?? []).flatMap((profile) => {
       if (
         profile.enabled === false ||
@@ -106,21 +120,30 @@ function claudeAppGatewayTargetModels(config: Pick<AppConfig, "Providers" | "Rou
       ) {
         return [];
       }
-      return (profile.match?.exactAliases ?? []).flatMap((alias) => {
-        const normalizedAlias = alias.trim();
-        if (!normalizedAlias) {
-          return [];
-        }
-        return normalizedAlias.toLowerCase().startsWith("fusion/")
-          ? [normalizedAlias]
-          : [`Fusion/${normalizedAlias}`];
-      });
+      const derivedModels = baseEntries.flatMap((entry) => [
+        ...(profile.match?.prefixes ?? []).flatMap((prefix) => {
+          const normalizedPrefix = prefix.trim();
+          return normalizedPrefix ? [`${entry.providerName}/${normalizedPrefix}${entry.modelName}`] : [];
+        }),
+        ...(profile.match?.suffixes ?? []).flatMap((suffix) => {
+          const normalizedSuffix = suffix.trim();
+          return normalizedSuffix ? [`${entry.providerName}/${entry.modelName}${normalizedSuffix}`] : [];
+        })
+      ]);
+      return [
+        ...derivedModels,
+        ...(profile.match?.exactAliases ?? []).flatMap((alias) => {
+          const normalizedAlias = alias.trim();
+          if (!normalizedAlias) {
+            return [];
+          }
+          return normalizedAlias.toLowerCase().startsWith("fusion/")
+            ? [normalizedAlias]
+            : [`Fusion/${normalizedAlias}`];
+        })
+      ];
     })
   ]);
-}
-
-function claudeAppGatewayOneMillionContextModelId(id: string): string {
-  return hasClaudeAppGatewayOneMillionContextSuffix(id) ? id : `${id}${CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX}`;
 }
 
 function claudeAppGatewaySupportsOneMillionContext(
@@ -132,10 +155,51 @@ function claudeAppGatewaySupportsOneMillionContext(
     Boolean(options.supportsOneMillionContext?.(baseModel));
 }
 
-function claudeAppGatewayDisplayName(model: string, oneMillionContext = false): string {
+function claudeAppGatewayRouteId(targetModel: string, index: number): string {
+  return CLAUDE_APP_ROUTE_NAMES[index] ??
+    `${CLAUDE_APP_CCR_ROUTE_PREFIX}${claudeAppGatewayRouteSlug(targetModel)}-${claudeAppGatewayRouteHash(targetModel)}`;
+}
+
+function claudeAppGatewayRouteSlug(value: string): string {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, CLAUDE_APP_CCR_ROUTE_SLUG_MAX_LENGTH)
+    .replace(/-+$/g, "");
+  return slug || "model";
+}
+
+function claudeAppGatewayRouteHash(value: string): string {
+  let hash = 0x811c9dc5;
+  for (const char of value.trim().toLowerCase()) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(36).padStart(6, "0").slice(0, 6);
+}
+
+function claudeAppGatewayOneMillionContextModelId(id: string): string {
+  return hasClaudeAppGatewayOneMillionContextSuffix(id) ? id : `${id}${CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX}`;
+}
+
+function claudeAppGatewayDisplayNames(models: string[]): string[] {
+  const baseNames = models.map((model) => claudeAppGatewayBaseDisplayName(stripClaudeAppGatewayOneMillionContextSuffix(model)));
+  const counts = new Map<string, number>();
+  for (const baseName of baseNames) {
+    const key = baseName.toLowerCase();
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return models.map((model, index) => counts.get(baseNames[index].toLowerCase()) === 1
+    ? baseNames[index]
+    : stripClaudeAppGatewayOneMillionContextSuffix(model));
+}
+
+function claudeAppGatewayBaseDisplayName(model: string): string {
   const trimmed = model.trim();
-  const displayName = trimmed.includes("/") ? trimmed.slice(trimmed.lastIndexOf("/") + 1) : trimmed;
-  return oneMillionContext ? `${displayName} (1M context)` : displayName;
+  return trimmed.includes("/") ? trimmed.slice(trimmed.lastIndexOf("/") + 1) : trimmed;
 }
 
 function uniqueStrings(values: string[]): string[] {

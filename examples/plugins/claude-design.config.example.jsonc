@@ -29,12 +29,21 @@
           "/oauth"
         ],
         "assetProxy": true,
-        // Optional. Leave enabled to let CCR proxy static /design/assets files directly to Claude.
-        // Set to false when serving all assets from assetDir.
-        "assetPassthrough": true,
+        // Optional. Keep false when using Claude Desktop's local ion-dist assets.
+        // Set true only when intentionally proxying /design/assets and /assets to upstream Claude.
+        "assetPassthrough": false,
         "assetAutoUpdate": true,
         "autoAnswerQuestions": true,
-        "assetDir": "/absolute/path/to/claude-design-assets",
+        // Optional. When assetDir is omitted, the plugin will auto-detect Claude Desktop's
+        // bundled ion-dist assets, e.g. /Applications/Claude.app/Contents/Resources/ion-dist.
+        // Set claudeAppAssets to false to disable that auto-detection.
+        "claudeAppAssets": true,
+        // Optional. Override auto-detection. You can point this at Claude.app, its executable,
+        // or directly at Contents/Resources/ion-dist.
+        // "claudeAppPath": "/Applications/Claude.app",
+        // Optional. Leave unset for Claude Desktop auto-detection, or point at a standalone
+        // Claude Design asset directory.
+        // "assetDir": "/absolute/path/to/claude-design-assets",
         // Optional. Leave unset to auto-discover the current hashed entry assets.
         // "scriptPath": "/design/assets/v1/index-<hash>.js",
         // "stylePath": "/design/assets/v1/index-<hash>.css",
