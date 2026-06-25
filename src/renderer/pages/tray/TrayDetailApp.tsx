@@ -15,6 +15,7 @@ export function TrayDetailApp({ provider }: { provider?: string }) {
   const [range, setRange] = useState<UsageStatsRange>("30d");
   const [snapshots, setSnapshots] = useState<SnapshotMap>(emptySnapshots);
   const [accountSnapshots, setAccountSnapshots] = useState<ProviderAccountSnapshot[]>([]);
+  const [accountRefreshing, setAccountRefreshing] = useState(false);
   const [trayWidgets, setTrayWidgets] = useState<TrayWidgetConfig[]>(DEFAULT_TRAY_WIDGETS);
 
   const refresh = useCallback(async () => {
@@ -43,6 +44,24 @@ export function TrayDetailApp({ provider }: { provider?: string }) {
       setError(formatError(nextError));
     } finally {
       setLoading(false);
+    }
+  }, [formatError, provider]);
+
+  const refreshAccountSnapshots = useCallback(async () => {
+    if (!window.ccr) {
+      setAccountSnapshots([]);
+      return;
+    }
+
+    setAccountRefreshing(true);
+    setError("");
+    try {
+      const accounts = await window.ccr.getProviderAccountSnapshots(provider, { forceRefresh: true });
+      setAccountSnapshots(accounts);
+    } catch (nextError) {
+      setError(formatError(nextError));
+    } finally {
+      setAccountRefreshing(false);
     }
   }, [formatError, provider]);
 
@@ -75,7 +94,7 @@ export function TrayDetailApp({ provider }: { provider?: string }) {
       className="h-screen w-screen overflow-y-auto rounded-[14px] border border-slate-950/15 bg-slate-950 p-3 text-slate-100 shadow-[0_18px_42px_rgba(15,23,42,.28)]"
     >
       <TrayStatusStrip totalTokens={snapshots[range].totals.totalTokens} />
-      <UsageDetailPanel activeStats={snapshots[range]} accountSnapshots={accountSnapshots} provider={provider} range={range} widgets={trayWidgets} onRangeChange={setRange} />
+      <UsageDetailPanel activeStats={snapshots[range]} accountRefreshing={accountRefreshing} accountSnapshots={accountSnapshots} provider={provider} range={range} widgets={trayWidgets} onRefreshAccount={refreshAccountSnapshots} onRangeChange={setRange} />
       {loading ? <div className="mt-2 text-[11px] font-medium text-slate-200/60">{t("Syncing usage...")}</div> : null}
       {error ? <div className="mt-3 rounded-lg border border-rose-400/24 bg-rose-500/18 px-3 py-2 text-[12px] font-medium text-rose-100">{error}</div> : null}
     </main>

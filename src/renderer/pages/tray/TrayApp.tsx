@@ -23,6 +23,7 @@ export function TrayApp() {
   const [selectedProvider, setSelectedProvider] = useState<string>();
   const [snapshots, setSnapshots] = useState<SnapshotMap>(emptySnapshots);
   const [accountSnapshots, setAccountSnapshots] = useState<ProviderAccountSnapshot[]>([]);
+  const [accountRefreshing, setAccountRefreshing] = useState(false);
   const [trayWidgets, setTrayWidgets] = useState<TrayWidgetConfig[]>(DEFAULT_TRAY_WIDGETS);
   const [selectedRange, setSelectedRange] = useState<TrayHeaderRange>("30d");
 
@@ -57,6 +58,24 @@ export function TrayApp() {
       setError(formatError(nextError));
     } finally {
       setLoading(false);
+    }
+  }, [formatError, selectedProvider]);
+
+  const refreshAccountSnapshots = useCallback(async () => {
+    if (!window.ccr) {
+      setAccountSnapshots([]);
+      return;
+    }
+
+    setAccountRefreshing(true);
+    setError("");
+    try {
+      const accounts = await window.ccr.getProviderAccountSnapshots(selectedProvider, { forceRefresh: true });
+      setAccountSnapshots(accounts);
+    } catch (nextError) {
+      setError(formatError(nextError));
+    } finally {
+      setAccountRefreshing(false);
     }
   }, [formatError, selectedProvider]);
 
@@ -117,6 +136,7 @@ export function TrayApp() {
           {trayWidgets.map((widget, index) => (
             <TrayRuntimeWidget
               accountSnapshots={accountSnapshots}
+              accountRefreshing={accountRefreshing}
               activeStats={activeStats}
               activeTotals={activeTotals}
               index={index}
@@ -127,6 +147,7 @@ export function TrayApp() {
               topModel={topModel}
               widget={widget}
               onChangeRange={setSelectedRange}
+              onRefreshAccount={refreshAccountSnapshots}
               onSelectProvider={setSelectedProvider}
             />
           ))}
@@ -148,6 +169,7 @@ export function TrayApp() {
 
 function TrayRuntimeWidget({
   accountSnapshots,
+  accountRefreshing,
   activeStats,
   activeTotals,
   index,
@@ -157,9 +179,11 @@ function TrayRuntimeWidget({
   topModel,
   widget,
   onChangeRange,
+  onRefreshAccount,
   onSelectProvider
 }: {
   accountSnapshots: ProviderAccountSnapshot[];
+  accountRefreshing: boolean;
   activeStats: SnapshotMap["30d"];
   activeTotals: UsageTotals;
   index: number;
@@ -169,6 +193,7 @@ function TrayRuntimeWidget({
   topModel?: UsageComparisonRow;
   widget: TrayWidgetConfig;
   onChangeRange: (range: TrayHeaderRange) => void;
+  onRefreshAccount: () => void | Promise<void>;
   onSelectProvider: (provider?: string) => void;
 }) {
   const t = useTrayText();
@@ -190,7 +215,7 @@ function TrayRuntimeWidget({
   }
 
   if (widget.type === "account") {
-    return <AccountSummaryPanel snapshots={accountSnapshots} variant={(widget.variant ?? defaultTrayWidgetVariant("account")) as TrayComponentVariants["account"]} />;
+    return <AccountSummaryPanel refreshing={accountRefreshing} snapshots={accountSnapshots} variant={(widget.variant ?? defaultTrayWidgetVariant("account")) as TrayComponentVariants["account"]} onRefresh={onRefreshAccount} />;
   }
 
   if (widget.type === "token-flow") {

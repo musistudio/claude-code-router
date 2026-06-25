@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { Power } from "lucide-react";
+import { LoaderCircle, Power, RefreshCw } from "lucide-react";
 import appLogoUrl from "../../../../assets/logo.png";
 import trayCyanIconUrl from "../../../../assets/tray-cyan.png";
 import trayOrangeIconUrl from "../../../../assets/tray-orange.png";
@@ -26,7 +26,7 @@ import type {
 
 export  {
   createContext, useCallback, useContext, useEffect, useMemo, useState, createRoot,
-  Power, appLogoUrl, trayCyanIconUrl, trayOrangeIconUrl, trayVioletIconUrl, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS
+  LoaderCircle, Power, RefreshCw, appLogoUrl, trayCyanIconUrl, trayOrangeIconUrl, trayVioletIconUrl, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS
 };
 export type {
   ReactNode, AppConfig, ProviderAccountMeter, ProviderAccountSnapshot, TrayBalanceProgressConfig, TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant, TrayWindowModuleId, UsageComparisonRow,
@@ -85,6 +85,7 @@ export const trayText: Record<ResolvedLanguage, Record<string, string>> = {
     "Overview": "概览",
     "Open CCR": "打开 CCR",
     "Quit": "退出",
+    "Refresh": "刷新",
     "Subscription": "订阅",
     "Success": "成功",
     "Success rate": "成功率",

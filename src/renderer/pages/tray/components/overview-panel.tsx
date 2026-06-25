@@ -8,16 +8,19 @@ import { AnimatedUsageChart, ChartShell, ModelShareChart, RingMetrics, StatsGrid
 export function UsageOverviewPanel({
   activeStats,
   accountSnapshots,
+  accountRefreshing,
   componentVariants,
   loading,
   modules,
   monthTotals,
   todayTotals,
   topModel,
-  weekTotals
+  weekTotals,
+  onRefreshAccount
 }: {
   activeStats: UsageStatsSnapshot;
   accountSnapshots: ProviderAccountSnapshot[];
+  accountRefreshing?: boolean;
   componentVariants: TrayComponentVariants;
   loading: boolean;
   modules: ReadonlySet<TrayWindowModuleId>;
@@ -25,6 +28,7 @@ export function UsageOverviewPanel({
   todayTotals: UsageTotals;
   topModel?: UsageComparisonRow;
   weekTotals: UsageTotals;
+  onRefreshAccount?: () => void | Promise<void>;
 }) {
   const t = useTrayText();
   const showTokenMix = modules.has("token-mix");
@@ -32,7 +36,7 @@ export function UsageOverviewPanel({
 
   return (
     <section className="space-y-2">
-      {modules.has("account") ? <AccountSummaryPanel snapshots={accountSnapshots} variant={componentVariants.account} /> : null}
+      {modules.has("account") ? <AccountSummaryPanel refreshing={accountRefreshing} snapshots={accountSnapshots} variant={componentVariants.account} onRefresh={onRefreshAccount} /> : null}
 
       {modules.has("token-flow") ? (
       <ChartShell

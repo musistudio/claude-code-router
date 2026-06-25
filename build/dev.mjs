@@ -229,7 +229,8 @@ await buildStyles({ minify: false });
 
 const tailwindProcess = spawn(binPath("tailwindcss"), ["-i", cssInput, "-o", cssOutput, "--watch"], {
   cwd: projectRoot,
-  stdio: "inherit"
+  stdio: "inherit",
+  shell: process.platform === "win32"
 });
 logDev(`Tailwind watcher started pid=${tailwindProcess.pid ?? "unknown"} input=${relativePath(cssInput)} output=${relativePath(cssOutput)}`);
 tailwindProcess.on("exit", (code, signal) => {

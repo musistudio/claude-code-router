@@ -1,14 +1,18 @@
 import {
   accountMetersForDisplay, accountProgressClass, accountProgressColor, accountSnapshotLabel, accountStatusClass, compareAccountSnapshots, formatAccountMeterTitle, formatAccountMeterValue,
-  meterProgress, meterRemainingRatio, ProviderAccountMeter, ProviderAccountSnapshot, TrayComponentVariants,
+  LoaderCircle, meterProgress, meterRemainingRatio, ProviderAccountMeter, ProviderAccountSnapshot, RefreshCw, TrayComponentVariants,
   useTrayText
 } from "../shared";
 import { RadialMetric } from "./widgets";
 
 export function AccountSummaryPanel({
+  onRefresh,
+  refreshing = false,
   snapshots,
   variant
 }: {
+  onRefresh?: () => void | Promise<void>;
+  refreshing?: boolean;
   snapshots: ProviderAccountSnapshot[];
   variant: TrayComponentVariants["account"];
 }) {
@@ -32,9 +36,18 @@ export function AccountSummaryPanel({
     <div className="rounded-[8px] border border-white/10 bg-white/[.04] p-2">
       <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
         <h3 className="truncate text-[11px] font-bold text-slate-100">{accountSnapshotLabel(snapshot)}</h3>
-        <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${accountStatusClass(snapshot.status)}`}>
-          {t(snapshot.status)}
-        </span>
+        <button
+          aria-label={t("Refresh")}
+          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition disabled:cursor-not-allowed disabled:opacity-50 ${accountStatusButtonClass(snapshot.status)}`}
+          disabled={refreshing || !onRefresh}
+          onClick={() => {
+            void onRefresh?.();
+          }}
+          title={t("Refresh")}
+          type="button"
+        >
+          {refreshing ? <LoaderCircle className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+        </button>
       </div>
       {meters.length > 0 ? (
         <AccountMeters meters={meters} status={snapshot.status} variant={variant} />
@@ -43,6 +56,10 @@ export function AccountSummaryPanel({
       )}
     </div>
   );
+}
+
+function accountStatusButtonClass(status: ProviderAccountSnapshot["status"]): string {
+  return `${accountStatusClass(status)} hover:border-white/20 hover:bg-white/[.08] hover:text-slate-50`;
 }
 
 function AccountMeters({

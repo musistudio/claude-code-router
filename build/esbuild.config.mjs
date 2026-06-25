@@ -223,6 +223,7 @@ export function runCommand(command, args, options = {}) {
     const child = spawn(command, args, {
       cwd: projectRoot,
       stdio: "inherit",
+      shell: process.platform === "win32",
       ...options
     });
 

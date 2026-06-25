@@ -8,16 +8,20 @@ import { AnimatedUsageChart, ChartShell, ModelShareChart, RangeSwitch, RingMetri
 export function UsageDetailPanel({
   activeStats,
   accountSnapshots,
+  accountRefreshing,
   provider,
   range,
   widgets,
+  onRefreshAccount,
   onRangeChange
 }: {
   activeStats: UsageStatsSnapshot;
   accountSnapshots: ProviderAccountSnapshot[];
+  accountRefreshing?: boolean;
   provider?: string;
   range: UsageStatsRange;
   widgets: TrayWidgetConfig[];
+  onRefreshAccount?: () => void | Promise<void>;
   onRangeChange: (range: UsageStatsRange) => void;
 }) {
   const t = useTrayText();
@@ -57,7 +61,7 @@ export function UsageDetailPanel({
             );
           }
           if (widget.type === "account") {
-            return <AccountSummaryPanel key={`${widget.id}-${index}`} snapshots={accountSnapshots} variant={(widget.variant ?? defaultTrayWidgetVariant("account")) as TrayComponentVariants["account"]} />;
+            return <AccountSummaryPanel key={`${widget.id}-${index}`} refreshing={accountRefreshing} snapshots={accountSnapshots} variant={(widget.variant ?? defaultTrayWidgetVariant("account")) as TrayComponentVariants["account"]} onRefresh={onRefreshAccount} />;
           }
           if (widget.type === "token-flow") {
             return (
