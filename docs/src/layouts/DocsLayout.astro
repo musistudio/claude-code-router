@@ -41,7 +41,37 @@ const {
   },
 } = Astro.props;
 
-const homeHref = locale === "en" ? "/en/" : "/";
+const baseUrl = import.meta.env.BASE_URL ?? "/";
+const absoluteUrlPattern = /^[a-z][a-z\d+.-]*:/i;
+const withBase = (href) => {
+  if (!href || href.startsWith("#") || href.startsWith("//") || absoluteUrlPattern.test(href)) {
+    return href;
+  }
+
+  const basePath = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  if (href === "/") {
+    return basePath;
+  }
+
+  const normalizedHref = href.startsWith("/") ? href.slice(1) : href;
+  return `${basePath}${normalizedHref}`;
+};
+const absoluteHref = (href) => {
+  const resolvedHref = withBase(href);
+  if (absoluteUrlPattern.test(resolvedHref) || !Astro.site) {
+    return resolvedHref;
+  }
+
+  return new URL(resolvedHref, Astro.site).toString();
+};
+const resolvedLanguageOptions = languageOptions.map((option) => ({
+  ...option,
+  href: withBase(option.href),
+  absoluteHref: absoluteHref(option.href),
+}));
+const homeHref = withBase(locale === "en" ? "/en/" : "/");
+const faviconHref = withBase("/favicon.svg");
+const logoSrc = withBase("/logo.png");
 const sidebarIcons = {
   rocket: Rocket,
   book: BookOpen,
@@ -81,13 +111,13 @@ const sidebarIcons = {
         }
       })();
     </script>
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href={faviconHref} type="image/svg+xml" />
     {
-      languageOptions.map((option) => (
+      resolvedLanguageOptions.map((option) => (
         <link
           rel="alternate"
           hreflang={option.locale === "zh" ? "zh-CN" : "en"}
-          href={option.href}
+          href={option.absoluteHref}
         />
       ))
     }
@@ -97,7 +127,7 @@ const sidebarIcons = {
     <div class="shell">
       <header class="topbar">
         <a class="brand" href={homeHref} aria-label="Claude Code Router Docs">
-          <img src="/logo.png" alt="" class="brand-logo" />
+          <img src={logoSrc} alt="" class="brand-logo" />
           <span>CCR docs</span>
         </a>
 
@@ -108,7 +138,7 @@ const sidebarIcons = {
           </summary>
           <div class="language-menu">
             {
-              languageOptions.map((option) => (
+              resolvedLanguageOptions.map((option) => (
                 <a
                   class:list={{ active: option.locale === locale }}
                   href={option.href}
@@ -192,7 +222,7 @@ const sidebarIcons = {
                                 <ul class="sidebar-children">
                                   {childItems.map((child) => (
                                     <li>
-                                      <a class="sidebar-child-link" href={sidebarLinks[child] ?? "#"}>
+                                      <a class="sidebar-child-link" href={withBase(sidebarLinks[child] ?? "#")}>
                                         {child}
                                       </a>
                                     </li>
@@ -202,7 +232,7 @@ const sidebarIcons = {
                             ) : (
                               <a
                                 class:list={["sidebar-link", { active: group.active === item }]}
-                                href={sidebarLinks[item] ?? "#"}
+                                href={withBase(sidebarLinks[item] ?? "#")}
                               >
                                 <span>{item}</span>
                               </a>

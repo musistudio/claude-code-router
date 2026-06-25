@@ -307,14 +307,14 @@ Bot 能把 Agent 的消息转发到 IM，还能在你空闲一段时间后，把
 
 每个平台的完整步骤（平台后台怎么建应用、字段对照、排查 FAQ）都有单独一篇：
 
-- [Slack](/bot-与-im-接力-agent/slack)
-- [Discord](/bot-与-im-接力-agent/discord)
-- [Telegram](/bot-与-im-接力-agent/telegram)
-- [LINE](/bot-与-im-接力-agent/line)
-- [微信](/bot-与-im-接力-agent/weixin-ilink)
-- [企业微信](/bot-与-im-接力-agent/wecom)
-- [飞书](/bot-与-im-接力-agent/feishu)
-- [钉钉](/bot-与-im-接力-agent/dingtalk)
+- [Slack](bot-与-im-接力-agent/slack)
+- [Discord](bot-与-im-接力-agent/discord)
+- [Telegram](bot-与-im-接力-agent/telegram)
+- [LINE](bot-与-im-接力-agent/line)
+- [微信](bot-与-im-接力-agent/weixin-ilink)
+- [企业微信](bot-与-im-接力-agent/wecom)
+- [飞书](bot-与-im-接力-agent/feishu)
+- [钉钉](bot-与-im-接力-agent/dingtalk)
 
 ## 遇到问题时，照着这个查
 

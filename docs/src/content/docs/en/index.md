@@ -245,14 +245,14 @@ Bots forward agent messages to instant-messaging platforms and can hand off acti
 
 CCR supports the following IM platforms for Bot relay. Each requires platform-specific setup described in its dedicated page:
 
-- [DingTalk](/en/relay-agents-in-im-with-bots/dingtalk)
-- [Discord](/en/relay-agents-in-im-with-bots/discord)
-- [Feishu (Lark)](/en/relay-agents-in-im-with-bots/feishu)
-- [LINE](/en/relay-agents-in-im-with-bots/line)
-- [Slack](/en/relay-agents-in-im-with-bots/slack)
-- [Telegram](/en/relay-agents-in-im-with-bots/telegram)
-- [WeCom (Enterprise WeChat)](/en/relay-agents-in-im-with-bots/wecom)
-- [Weixin (iLink)](/en/relay-agents-in-im-with-bots/weixin-ilink)
+- [DingTalk](relay-agents-in-im-with-bots/dingtalk)
+- [Discord](relay-agents-in-im-with-bots/discord)
+- [Feishu (Lark)](relay-agents-in-im-with-bots/feishu)
+- [LINE](relay-agents-in-im-with-bots/line)
+- [Slack](relay-agents-in-im-with-bots/slack)
+- [Telegram](relay-agents-in-im-with-bots/telegram)
+- [WeCom (Enterprise WeChat)](relay-agents-in-im-with-bots/wecom)
+- [Weixin (iLink)](relay-agents-in-im-with-bots/weixin-ilink)
 
 Each platform page covers: required credentials, where to obtain them in the platform's developer console, and common troubleshooting steps.
 
