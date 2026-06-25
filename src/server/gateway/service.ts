@@ -3574,13 +3574,7 @@ function isClaudeCodeUserAgent(headers: IncomingHttpHeaders): boolean {
     return false;
   }
   const normalized = userAgent.toLowerCase();
-  return normalized.includes("@anthropic-ai/claude-code") ||
-    normalized.includes("claudecode") ||
-    normalized.includes("claude_code") ||
-    normalized.includes("claude-code") ||
-    normalized.includes("claude_cli") ||
-    normalized.includes("claude-cli") ||
-    normalized.includes("claude cli");
+  return normalized.includes("claude");
 }
 
 function prepareCursorOpenAICompatChatBody(

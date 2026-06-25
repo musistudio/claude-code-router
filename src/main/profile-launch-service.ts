@@ -140,7 +140,18 @@ async function openClaudeAppProfile(config: AppConfig, profile: ReturnType<typeo
     dataDir: resolveClaudeAppProfileUserDataDir(CONFIGDIR, profile)
   });
   await ensureGatewayConfigRunning(profileGatewayConfig, "Claude App");
-  activateProfileAppWindow(registerProfileApp(profile, "app", await launchClaudeAppProfile(CONFIGDIR, profile, profileGatewayConfig)));
+  const entry = registerProfileApp(profile, "app", await launchClaudeAppProfile(CONFIGDIR, profile, profileGatewayConfig));
+  const started = await waitForProfileAppStart(entry, 12000);
+  if (!started) {
+    cleanupProfileAppEntry(profileRuntimeKey(profile.id, "app"), entry);
+    sendProfileProcessSignal(entry.pid, "SIGTERM");
+    throw new Error([
+      `Claude App did not open a window for ${profile.name || profile.id}.`,
+      `Command: ${entry.command}`,
+      `User data: ${entry.userDataDir}`
+    ].join(" "));
+  }
+  activateProfileAppWindow(entry);
   startClaudeAppBotWorker(config, profile);
   return {
     message: `Opened Claude App with ${profile.name || profile.id}.`,

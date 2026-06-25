@@ -39,23 +39,12 @@ jobs:
             exit 1
           fi
 
-      - name: Build and publish macOS artifacts
+      - name: Build and publish ad-hoc macOS artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_KEYCHAIN: ${{ secrets.APPLE_KEYCHAIN }}
-          APPLE_KEYCHAIN_PROFILE: ${{ secrets.APPLE_KEYCHAIN_PROFILE }}
         run: |
-          node build/macos-release-preflight.mjs
           npm run build:assets
-          npx electron-builder --mac --publish always
+          npx electron-builder --config build/electron-builder.local.cjs --mac --publish always
 
   windows:
     name: Windows

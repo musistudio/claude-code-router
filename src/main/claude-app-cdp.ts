@@ -45,7 +45,14 @@ const claudeAppDesignCdpConnectTimeoutMs = 15_000;
 const claudeAppDesignCdpKeepAliveMs = 45_000;
 const claudeAppDesignCdpPollIntervalMs = 250;
 
+export function shouldEnableClaudeAppDesignCdp(): boolean {
+  return process.env.CCR_CLAUDE_APP_DESIGN_CDP?.trim().toLowerCase() === "true";
+}
+
 export async function reserveClaudeAppCdpPort(logger: ClaudeAppCdpLogger = console): Promise<number | undefined> {
+  if (!shouldEnableClaudeAppDesignCdp()) {
+    return undefined;
+  }
   const configured = Number(process.env.CCR_CLAUDE_APP_CDP_PORT);
   if (Number.isInteger(configured) && configured > 0 && configured <= 65535) {
     return configured;
@@ -63,7 +70,7 @@ export function prepareClaudeAppCdpUserDataDir(userDataDir: string): void {
 }
 
 export function scheduleClaudeAppDesignCdp(options: ClaudeAppDesignCdpOptions): void {
-  if (process.env.CCR_CLAUDE_APP_DESIGN_CDP?.trim().toLowerCase() === "false") {
+  if (!shouldEnableClaudeAppDesignCdp()) {
     return;
   }
   const logger = options.logger || console;
@@ -215,19 +222,30 @@ function claudeAppDesignFeatureScript(): string {
     } catch (_) {
       globalThis.desktopBootFeatures = bootFeatures;
     }
+    function patchAppFeatures(container) {
+      if (!container) {
+        return;
+      }
+      const existing = container.AppFeatures || {};
+      if (existing.__ccrClaudeDesignPatched) {
+        return;
+      }
+      const previous = existing.getSupportedFeatures;
+      container.AppFeatures = Object.assign({}, existing, {
+        __ccrClaudeDesignPatched: true,
+        getSupportedFeatures() {
+          if (typeof previous === "function") {
+            return Promise.resolve(previous.call(existing)).then(merge, () => merge());
+          }
+          return Promise.resolve(merge());
+        }
+      });
+    }
+    globalThis["claude.settings"] = globalThis["claude.settings"] || {};
+    patchAppFeatures(globalThis["claude.settings"]);
     globalThis.claude = globalThis.claude || {};
     globalThis.claude.settings = globalThis.claude.settings || {};
-    const existing = globalThis.claude.settings.AppFeatures || {};
-    const previous = existing.getSupportedFeatures;
-    globalThis.claude.settings.AppFeatures = Object.assign({}, existing, {
-      __ccrClaudeDesignPatched: true,
-      getSupportedFeatures() {
-        if (typeof previous === "function") {
-          return Promise.resolve(previous.call(existing)).then(merge, () => merge());
-        }
-        return Promise.resolve(merge());
-      }
-    });
+    patchAppFeatures(globalThis.claude.settings);
   })();`;
 }
 

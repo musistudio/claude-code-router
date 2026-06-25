@@ -1984,11 +1984,12 @@ function collaborationModes() {
 function modelList(params, existingResult) {
   const runtimeAgent = codexRuntimeAgent();
   const isClaudeCodeRuntime = normalizeRemoteFrontendMode(agentEnv(runtimeAgent, "REMOTE_FRONTEND_MODE", "CORE_MODE")) === "claude-code";
-  const configured = normalizeModelSelector(agentEnv(runtimeAgent, "MODEL") || nonEmptyEnv("CODEXL_CLAUDE_CODE_MODEL") || (isClaudeCodeRuntime ? DEFAULT_MODEL : ""));
+  const configured = normalizeModelSelector(agentEnv(runtimeAgent, "MODEL") || nonEmptyEnv("CODEXL_CLAUDE_CODE_MODEL"));
+  const selected = configured || (isClaudeCodeRuntime ? DEFAULT_MODEL : "");
   const fallbackIds = isClaudeCodeRuntime
-    ? [configured, DEFAULT_MODEL, "claude-opus-4-5", "claude-haiku-4-5"].filter(Boolean)
+    ? [configured].filter(Boolean)
     : [configured].filter((model) => model && !isClaudeCodeOnlyModel(model));
-  const models = mergeModelListItems(extractModelListItems(existingResult), [...catalogModelIds(), ...fallbackIds], configured);
+  const models = mergeModelListItems(extractModelListItems(existingResult), [...catalogModelIds(), ...fallbackIds], selected);
   const offset = Number(params.cursor || 0) || 0;
   const limit = Number(params.limit || models.length) || models.length;
   const data = models.slice(offset, offset + limit);

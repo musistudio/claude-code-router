@@ -7904,6 +7904,7 @@ function renderDefaultDesignIndex(me, scriptPath, stylePath, options = {}) {
         <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
         <title>Claude Design</title>
         <link rel="icon" type="image/png" href="/design/favicon.png"/>
+        ${claudeAppDesktopFeaturesScript()}
         <script>
             // FOUC guard: set data-theme before any stylesheet loads so the first
             // paint uses the right palette. Mirrors hooks/useTheme.ts. The stored
@@ -7935,7 +7936,6 @@ ${stylePreloads}
     <body>
         ${designMeJsonScript(me)}
         ${designModelPreferenceResetScript(me)}
-        ${claudeAppDesktopFeaturesScript()}
         ${designMeGlobalScript(me)}
         <div id="root"></div>
     </body>
@@ -7960,23 +7960,34 @@ function injectDesignMeIntoHtml(html, me) {
     nextHtml = nextHtml.replace(meJsonPattern, meJsonScript);
   }
 
+  const earlySnippets = [];
   const snippets = [];
+  if (!nextHtml.includes("ccr-claude-app-desktop-features")) {
+    earlySnippets.push(claudeAppDesktopFeaturesScript());
+  }
   if (!meJsonPattern.test(nextHtml)) {
     snippets.push(meJsonScript);
   }
   if (!nextHtml.includes("ccr-claude-design-model-reset")) {
     snippets.push(designModelPreferenceResetScript(me));
   }
-  if (!nextHtml.includes("ccr-claude-app-desktop-features")) {
-    snippets.push(claudeAppDesktopFeaturesScript());
-  }
   if (!nextHtml.includes("__OMELETTE_ME__")) {
     snippets.push(designMeGlobalScript(me));
+  }
+  if (earlySnippets.length) {
+    nextHtml = injectHtmlAfterHeadOpen(nextHtml, earlySnippets.join("\n        "));
   }
   if (!snippets.length) {
     return nextHtml;
   }
   return injectHtmlAfterBodyOpen(nextHtml, snippets.join("\n        "));
+}
+
+function injectHtmlAfterHeadOpen(html, snippet) {
+  if (/<head\b[^>]*>/i.test(html)) {
+    return html.replace(/<head\b([^>]*)>/i, `<head$1>\n        ${snippet}`);
+  }
+  return injectHtmlAfterBodyOpen(html, snippet);
 }
 
 function injectHtmlAfterBodyOpen(html, snippet) {
@@ -7995,7 +8006,7 @@ function designMeGlobalScript(me) {
 }
 
 function claudeAppDesktopFeaturesScript() {
-  return `<script id="ccr-claude-app-desktop-features">(function(){try{var forced={claudeDesignWindow:{status:'supported'}};function merge(value){var next=Object.assign({},value||window.desktopBootFeatures||{},forced);window.desktopBootFeatures=next;return next;}merge(window.desktopBootFeatures);window.claude=window.claude||{};window.claude.settings=window.claude.settings||{};var existing=window.claude.settings.AppFeatures||{};if(existing.__ccrClaudeDesignPatched){return;}var previous=existing.getSupportedFeatures;window.claude.settings.AppFeatures=Object.assign({},existing,{__ccrClaudeDesignPatched:true,getSupportedFeatures:function(){if(typeof previous==='function'){return Promise.resolve(previous.call(existing)).then(merge,function(){return merge();});}return Promise.resolve(merge());}});}catch(e){}})();</script>`;
+  return `<script id="ccr-claude-app-desktop-features">(function(){try{var root=globalThis;var forced={claudeDesignWindow:{status:'supported'}};function merge(value){return Object.assign({},value||{},forced);}var bootFeatures=merge(root.desktopBootFeatures);try{Object.defineProperty(root,'desktopBootFeatures',{configurable:true,get:function(){return bootFeatures;},set:function(value){bootFeatures=merge(value);}});}catch(e){root.desktopBootFeatures=bootFeatures;}function patch(container){if(!container){return;}var existing=container.AppFeatures||{};if(existing.__ccrClaudeDesignPatched){return;}var previous=existing.getSupportedFeatures;container.AppFeatures=Object.assign({},existing,{__ccrClaudeDesignPatched:true,getSupportedFeatures:function(){if(typeof previous==='function'){return Promise.resolve(previous.call(existing)).then(merge,function(){return merge();});}return Promise.resolve(merge());}});}root["claude.settings"]=root["claude.settings"]||{};patch(root["claude.settings"]);root.claude=root.claude||{};root.claude.settings=root.claude.settings||{};patch(root.claude.settings);}catch(e){}})();</script>`;
 }
 
 function designModelPreferenceResetScript(me) {

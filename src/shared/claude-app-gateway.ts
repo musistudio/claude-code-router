@@ -4,7 +4,7 @@ import { normalizeProfileScopeValue } from "./app";
 export const CLAUDE_APP_FALLBACK_MODEL = "claude-sonnet-4-5";
 export const CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX = "[1m]";
 
-const CLAUDE_APP_ROUTE_NAMES = [
+const CLAUDE_APP_LEGACY_ROUTE_NAMES = [
   "claude-sonnet-4-5",
   "claude-haiku-4-5",
   "claude-opus-4-5",
@@ -22,6 +22,7 @@ const CLAUDE_APP_ROUTE_NAMES = [
 export type ClaudeAppGatewayModelRoute = {
   displayName: string;
   id: string;
+  legacyId?: string;
   oneMillionContext: boolean;
   targetModel: string;
 };
@@ -40,15 +41,16 @@ export function buildClaudeAppGatewayModelRoutes(
   config: Pick<AppConfig, "Providers" | "Router" | "profile" | "virtualModelProfiles">,
   options: ClaudeAppGatewayModelRouteOptions = {}
 ): ClaudeAppGatewayModelRoute[] {
-  const targetModels = claudeAppGatewayTargetModels(config).slice(0, CLAUDE_APP_ROUTE_NAMES.length);
+  const targetModels = claudeAppGatewayTargetModels(config);
   const displayNames = claudeAppGatewayDisplayNames(targetModels);
   return targetModels.map((rawTargetModel, index) => {
     const targetModel = stripClaudeAppGatewayOneMillionContextSuffix(rawTargetModel);
     const oneMillionContext = claudeAppGatewaySupportsOneMillionContext(rawTargetModel, options);
-    const routeId = claudeAppGatewayRouteId(index);
+    const routeId = claudeAppGatewayRouteId(rawTargetModel);
     return {
       displayName: oneMillionContext ? `${displayNames[index]} (1M context)` : displayNames[index],
       id: routeId,
+      legacyId: claudeAppGatewayLegacyRouteId(index),
       oneMillionContext,
       targetModel
     };
@@ -63,8 +65,11 @@ export function resolveClaudeAppGatewayRouteModel(
   const normalized = model.trim().toLowerCase();
   return buildClaudeAppGatewayModelRoutes(config, options).find((route) => {
     const routeId = route.id.toLowerCase();
+    const legacyRouteId = route.legacyId?.toLowerCase();
     return routeId === normalized ||
-      stripClaudeAppGatewayOneMillionContextSuffix(routeId).toLowerCase() === normalized;
+      stripClaudeAppGatewayOneMillionContextSuffix(routeId).toLowerCase() === normalized ||
+      legacyRouteId === normalized ||
+      (legacyRouteId ? stripClaudeAppGatewayOneMillionContextSuffix(legacyRouteId).toLowerCase() === normalized : false);
   })?.targetModel;
 }
 
@@ -153,8 +158,13 @@ function claudeAppGatewaySupportsOneMillionContext(
     Boolean(options.supportsOneMillionContext?.(baseModel));
 }
 
-function claudeAppGatewayRouteId(index: number): string {
-  return CLAUDE_APP_ROUTE_NAMES[index] ?? CLAUDE_APP_FALLBACK_MODEL;
+function claudeAppGatewayLegacyRouteId(index: number): string | undefined {
+  return CLAUDE_APP_LEGACY_ROUTE_NAMES[index];
+}
+
+function claudeAppGatewayRouteId(model: string): string {
+  const normalized = model.trim();
+  return normalized.toLowerCase().startsWith("claude-") ? normalized : `claude-${normalized}`;
 }
 
 function claudeAppGatewayDisplayNames(models: string[]): string[] {
