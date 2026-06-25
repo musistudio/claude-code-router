@@ -1,0 +1,398 @@
+---
+import "../styles/global.css";
+import {
+  BookOpen,
+  ChevronDown,
+  ChevronRight,
+  Download,
+  Github,
+  List,
+  Moon,
+  PenLine,
+  Rocket,
+  Search,
+  Sun,
+  WandSparkles,
+} from "lucide-astro";
+
+const {
+  title = "Documentation",
+  htmlLang = "zh-CN",
+  locale = "zh",
+  languageLabel = "中文",
+  languageOptions = [
+    { locale: "zh", label: "中文", href: "/" },
+    { locale: "en", label: "English", href: "/en/" },
+  ],
+  navItems = ["Documentation", "Guides", "API reference", "Changelog"],
+  sidebarGroups = [],
+  expandableSidebarItems = [],
+  sidebarChildren = {},
+  sidebarLinks = {},
+  tocTitle = "On this page",
+  tocItems = [],
+  ui = {
+    searchLabel: "Search docs",
+    searchPlaceholder: "Search...",
+    downloadLabel: "Download",
+    githubLabel: "GitHub repository",
+    themeLabel: "Theme",
+    starsFallback: "Stars",
+  },
+} = Astro.props;
+
+const homeHref = locale === "en" ? "/en/" : "/";
+const sidebarIcons = {
+  rocket: Rocket,
+  book: BookOpen,
+  wand: WandSparkles,
+  pen: PenLine,
+};
+---
+
+<!doctype html>
+<html lang={htmlLang}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Claude Code Router documentation site built with Astro."
+    />
+    <script is:inline>
+      (() => {
+        const storageKey = "ccr-docs-theme";
+
+        try {
+          const storedTheme = localStorage.getItem(storageKey);
+          const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          const theme = storedTheme === "light" || storedTheme === "dark"
+            ? storedTheme
+            : prefersDark
+              ? "dark"
+              : "light";
+
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.dataset.themeSource = storedTheme ? "user" : "system";
+        } catch {
+          const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          document.documentElement.dataset.theme = prefersDark ? "dark" : "light";
+          document.documentElement.dataset.themeSource = "system";
+        }
+      })();
+    </script>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    {
+      languageOptions.map((option) => (
+        <link
+          rel="alternate"
+          hreflang={option.locale === "zh" ? "zh-CN" : "en"}
+          href={option.href}
+        />
+      ))
+    }
+    <title>{title} | Claude Code Router Docs</title>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href={homeHref} aria-label="Claude Code Router Docs">
+          <img src="/logo.png" alt="" class="brand-logo" />
+          <span>CCR docs</span>
+        </a>
+
+        <details class="language-switcher">
+          <summary>
+            <span>{languageLabel}</span>
+            <ChevronDown size={16} aria-hidden="true" />
+          </summary>
+          <div class="language-menu">
+            {
+              languageOptions.map((option) => (
+                <a
+                  class:list={{ active: option.locale === locale }}
+                  href={option.href}
+                  hreflang={option.locale === "zh" ? "zh-CN" : "en"}
+                >
+                  {option.label}
+                </a>
+              ))
+            }
+          </div>
+        </details>
+
+        <nav class="main-nav" aria-label="Primary navigation">
+          {
+            navItems.map((item, index) => (
+              <a class:list={["nav-link", { active: index === 0 }]} href="#">
+                {item}
+              </a>
+            ))
+          }
+        </nav>
+
+        <div class="top-actions">
+          <label class="search" aria-label={ui.searchLabel}>
+            <Search size={18} aria-hidden="true" />
+            <input type="search" placeholder={ui.searchPlaceholder} />
+            <kbd>⌘K</kbd>
+          </label>
+          <a
+            class="soft-button icon-link"
+            href="https://github.com/musistudio/claude-code-router/releases"
+            aria-label={ui.downloadLabel}
+          >
+            <Download size={18} aria-hidden="true" />
+          </a>
+          <a
+            class="soft-button github-button hide-small"
+            href="https://github.com/musistudio/claude-code-router"
+            aria-label={ui.githubLabel}
+          >
+            <Github size={18} aria-hidden="true" />
+            <strong id="github-stars" aria-label="GitHub stars">Stars</strong>
+          </a>
+          <button class="icon-button theme-toggle" type="button" aria-label={ui.themeLabel} data-theme-toggle>
+            <span class="theme-icon theme-icon-sun" aria-hidden="true">
+              <Sun size={19} />
+            </span>
+            <span class="theme-icon theme-icon-moon" aria-hidden="true">
+              <Moon size={19} />
+            </span>
+          </button>
+        </div>
+      </header>
+
+      <div class="content-grid">
+        <aside class="sidebar" aria-label="Documentation sidebar">
+          <div class="sidebar-inner">
+            {
+              sidebarGroups.map((group) => {
+                const GroupIcon = sidebarIcons[group.icon] ?? BookOpen;
+
+                return (
+                  <section class="sidebar-group">
+                    <h2>
+                      <GroupIcon class="group-icon" size={16} aria-hidden="true" />
+                      {group.label}
+                    </h2>
+                    <ul>
+                      {group.items.map((item) => {
+                        const childItems = sidebarChildren[item] ?? [];
+                        const isExpandable = expandableSidebarItems.includes(item) && childItems.length > 0;
+
+                        return (
+                          <li>
+                            {isExpandable ? (
+                              <details class="sidebar-details">
+                                <summary class="sidebar-link" aria-expanded="false">
+                                  <span>{item}</span>
+                                  <ChevronRight size={16} aria-hidden="true" />
+                                </summary>
+                                <ul class="sidebar-children">
+                                  {childItems.map((child) => (
+                                    <li>
+                                      <a class="sidebar-child-link" href={sidebarLinks[child] ?? "#"}>
+                                        {child}
+                                      </a>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </details>
+                            ) : (
+                              <a
+                                class:list={["sidebar-link", { active: group.active === item }]}
+                                href={sidebarLinks[item] ?? "#"}
+                              >
+                                <span>{item}</span>
+                              </a>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
+                );
+              })
+            }
+          </div>
+        </aside>
+
+        <main class="doc-main">
+          <slot />
+        </main>
+
+        <aside class="toc" aria-label={tocTitle}>
+          <div class="toc-card">
+            <h2>
+              <List size={18} aria-hidden="true" />
+              {tocTitle}
+            </h2>
+            <nav>
+              {
+                tocItems.map((item, index) => (
+                  <a
+                    class:list={{ active: index === 0 }}
+                    href={typeof item === "string" ? `#section-${index + 1}` : item.href}
+                  >
+                    {typeof item === "string" ? item : item.label}
+                  </a>
+                ))
+              }
+            </nav>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <script define:vars={{ starsFallback: ui.starsFallback }}>
+      const starBadge = document.querySelector("#github-stars");
+
+      const formatStars = (count) => {
+        if (!Number.isFinite(count)) return starsFallback;
+        if (count >= 1000) {
+          const rounded = Math.round(count / 100) / 10;
+          return `${rounded.toFixed(rounded % 1 === 0 ? 0 : 1)}k`;
+        }
+        return count.toLocaleString();
+      };
+
+      fetch("https://api.github.com/repos/musistudio/claude-code-router", {
+        headers: { Accept: "application/vnd.github+json" },
+      })
+        .then((response) => {
+          if (!response.ok) throw new Error("GitHub request failed");
+          return response.json();
+        })
+        .then((repo) => {
+          if (starBadge) {
+            starBadge.textContent = formatStars(repo.stargazers_count);
+          }
+        })
+        .catch(() => {
+          if (starBadge) {
+            starBadge.textContent = starsFallback;
+          }
+        });
+    </script>
+    <script>
+      const themeToggle = document.querySelector("[data-theme-toggle]");
+      const themeStorageKey = "ccr-docs-theme";
+      const themeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+      const getStoredTheme = () => {
+        try {
+          const storedTheme = localStorage.getItem(themeStorageKey);
+          return storedTheme === "light" || storedTheme === "dark" ? storedTheme : null;
+        } catch {
+          return null;
+        }
+      };
+
+      const getSystemTheme = () => (themeMediaQuery.matches ? "dark" : "light");
+
+      const applyTheme = (theme, source = "system") => {
+        const nextTheme = theme === "dark" ? "dark" : "light";
+        document.documentElement.dataset.theme = nextTheme;
+        document.documentElement.dataset.themeSource = source;
+        document.documentElement.style.colorScheme = nextTheme;
+
+        if (themeToggle instanceof HTMLButtonElement) {
+          themeToggle.setAttribute("aria-pressed", nextTheme === "dark" ? "true" : "false");
+        }
+      };
+
+      applyTheme(getStoredTheme() ?? getSystemTheme(), getStoredTheme() ? "user" : "system");
+
+      themeToggle?.addEventListener("click", () => {
+        const currentTheme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+        const nextTheme = currentTheme === "dark" ? "light" : "dark";
+
+        try {
+          localStorage.setItem(themeStorageKey, nextTheme);
+        } catch {}
+
+        applyTheme(nextTheme, "user");
+      });
+
+      themeMediaQuery.addEventListener("change", () => {
+        if (!getStoredTheme()) {
+          applyTheme(getSystemTheme(), "system");
+        }
+      });
+
+      const sidebarDetails = document.querySelectorAll(".sidebar-details");
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      sidebarDetails.forEach((details) => {
+        const summary = details.querySelector("summary");
+        const children = details.querySelector(".sidebar-children");
+
+        if (!(summary instanceof HTMLElement) || !(children instanceof HTMLElement)) {
+          return;
+        }
+
+        summary.setAttribute("aria-expanded", details.open ? "true" : "false");
+
+        summary.addEventListener("click", (event) => {
+          event.preventDefault();
+
+          if (details.dataset.animating === "true") return;
+
+          const isOpen = details.open;
+          details.dataset.animating = "true";
+
+          if (reduceMotion) {
+            details.open = !isOpen;
+            summary.setAttribute("aria-expanded", details.open ? "true" : "false");
+            delete details.dataset.animating;
+            return;
+          }
+
+          if (isOpen) {
+            children.style.height = `${children.scrollHeight}px`;
+            children.getBoundingClientRect();
+            details.classList.add("is-collapsing");
+            summary.setAttribute("aria-expanded", "false");
+
+            window.requestAnimationFrame(() => {
+              children.style.height = "0px";
+            });
+
+            const finishClose = (transitionEvent) => {
+              if (transitionEvent.propertyName !== "height") return;
+              children.removeEventListener("transitionend", finishClose);
+              details.open = false;
+              details.classList.remove("is-collapsing");
+              children.style.height = "";
+              delete details.dataset.animating;
+            };
+
+            children.addEventListener("transitionend", finishClose);
+            return;
+          }
+
+          details.open = true;
+          summary.setAttribute("aria-expanded", "true");
+          children.style.height = "0px";
+          children.style.opacity = "0";
+          children.getBoundingClientRect();
+
+          window.requestAnimationFrame(() => {
+            children.style.height = `${children.scrollHeight}px`;
+            children.style.opacity = "";
+          });
+
+          const finishOpen = (transitionEvent) => {
+            if (transitionEvent.propertyName !== "height") return;
+            children.removeEventListener("transitionend", finishOpen);
+            children.style.height = "";
+            delete details.dataset.animating;
+          };
+
+          children.addEventListener("transitionend", finishOpen);
+        });
+      });
+    </script>
+  </body>
+</html>

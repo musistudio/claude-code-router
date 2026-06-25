@@ -1,50 +1,59 @@
 {
-  "name": "@musistudio/claude-code-router",
-  "version": "2.0.0",
-  "description": "Use Claude Code without an Anthropics account and route it to another LLM provider",
-  "scripts": {
-    "build": "pnpm build:shared && pnpm build:core && pnpm build:server && pnpm build:cli && pnpm build:ui",
-    "build:core": "pnpm --filter @musistudio/llms build",
-    "build:shared": "pnpm --filter @CCR/shared build",
-    "build:cli": "pnpm --filter @CCR/cli build",
-    "build:server": "pnpm --filter @CCR/server build",
-    "build:ui": "pnpm --filter @CCR/ui build",
-    "build:docs": "pnpm --filter claude-code-router-docs build",
-    "release": "pnpm build && bash scripts/release.sh all",
-    "release:npm": "bash scripts/release.sh npm",
-    "release:docker": "bash scripts/release.sh docker",
-    "dev:cli": "pnpm --filter @CCR/cli dev",
-    "dev:server": "pnpm --filter @CCR/server dev",
-    "dev:ui": "pnpm --filter @CCR/ui dev",
-    "dev:core": "pnpm --filter @musistudio/llms dev",
-    "dev:docs": "pnpm --filter claude-code-router-docs start",
-    "serve:docs": "pnpm --filter claude-code-router-docs serve"
-  },
+  "name": "claude-code-router",
+  "private": true,
+  "version": "3.0.0",
+  "description": "Desktop scaffold for Claude Code Router.",
+  "main": "dist/main/main.js",
   "bin": {
-    "ccr": "dist/cli.js"
+    "ccr": "dist/main/cli.js"
   },
-  "keywords": [
-    "claude",
-    "code",
-    "router",
-    "llm",
-    "anthropic"
-  ],
-  "author": "musistudio",
-  "license": "MIT",
+  "scripts": {
+    "dev": "node build/dev.mjs",
+    "build": "npm run build:assets && electron-builder",
+    "build:assets": "node build/build.mjs",
+    "build:app:mac": "npm run build:app:mac:local",
+    "build:app:mac:local": "npm run build:assets && electron-builder --config build/electron-builder.local.cjs --mac --publish never",
+    "build:app:mac:release": "node build/macos-release-preflight.mjs && npm run build:assets && electron-builder --mac --publish never",
+    "build:app:win": "npm run build:assets && electron-builder --win",
+    "preview": "npm run build:assets && electron .",
+    "typecheck": "tsc --noEmit",
+    "rebuild:sqlite3": "electron-rebuild -f -w better-sqlite3"
+  },
+  "dependencies": {
+    "@the-next-ai/ai-gateway": "^1.0.1",
+    "@the-next-ai/bot-gateway-sdk": "^0.1.0",
+    "better-sqlite3": "^12.11.1",
+    "electron-updater": "^6.8.9",
+    "node-forge": "^1.4.0",
+    "undici": "^7.27.2"
+  },
   "devDependencies": {
-    "@types/node": "^24.0.15",
-    "esbuild": "^0.25.1",
-    "shx": "^0.4.0",
-    "typescript": "^5.8.2"
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@tailwindcss/cli": "^4.3.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.10.2",
+    "@types/node-forge": "^1.3.14",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "baseui": "^16.1.1",
+    "clsx": "^2.1.1",
+    "electron": "^42.3.3",
+    "electron-builder": "^26.8.1",
+    "esbuild": "^0.27.7",
+    "lucide-react": "^1.17.0",
+    "motion": "^12.40.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^3.8.1",
+    "styletron-engine-atomic": "^1.6.2",
+    "styletron-react": "^6.1.1",
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss": "^4.3.0",
+    "typescript": "^5.9.3"
   },
-  "pnpm": {
-    "overrides": {
-      "@types/react": "18"
-    }
-  },
-  "engines": {
-    "node": ">=20.0.0",
-    "pnpm": ">=8.0.0"
+  "overrides": {
+    "@types/react": "$@types/react"
   }
 }

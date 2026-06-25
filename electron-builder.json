@@ -1,0 +1,67 @@
+{
+  "appId": "com.claudecoderouter.desktop",
+  "productName": "Claude Code Router",
+  "asar": true,
+  "asarUnpack": [
+    "**/*.node"
+  ],
+  "npmRebuild": true,
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "musistudio",
+      "repo": "claude-code-router"
+    }
+  ],
+  "directories": {
+    "output": "release/${version}"
+  },
+  "afterAllArtifactBuild": "build/verify-update-metadata.cjs",
+  "protocols": [
+    {
+      "name": "Claude Code Router Provider Import",
+      "schemes": ["ccr"]
+    }
+  ],
+  "files": [
+    "dist",
+    "package.json"
+  ],
+  "mac": {
+    "icon": "build/icon.icns",
+    "type": "distribution",
+    "hardenedRuntime": true,
+    "forceCodeSigning": true,
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+    "notarize": true,
+    "target": ["dmg", "zip"],
+    "artifactName": "Claude-Code-Router_${version}.${ext}"
+  },
+  "afterSign": "build/verify-macos-notarization.cjs",
+  "win": {
+    "icon": "build/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "artifactName": "Claude-Code-Router_${version}.${ext}"
+  },
+  "linux": {
+    "target": ["AppImage"],
+    "artifactName": "Claude-Code-Router_${version}.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowElevation": true,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "runAfterFinish": true,
+    "shortcutName": "Claude Code Router"
+  }
+}

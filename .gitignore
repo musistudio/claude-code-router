@@ -1,12 +1,16 @@
-node_modules
-.env
-log.txt
-.idea
-dist
 .DS_Store
-.vscode
-tsconfig.tsbuildinfo
-
-# Documentation build output
-docs/build
-docs/.docusaurus
+node_modules
+dist
+release
+*.log
+.env
+.env.*
+!.env.example
+.idea
+.claude
+.bot-gateway-state
+.agent-data
+tmp
+release-local
+logs
+.opencat

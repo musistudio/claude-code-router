@@ -1,29 +1,5 @@
-# Docusaurus build output
-build/
-dist/
-
-# Docusaurus generated files
-.docusaurus/
-
-# Node modules
 node_modules/
-
-# Environment variables
+dist/
+.astro/
 .env
-.env.local
-.env.*.local
-
-# IDE
-.vscode/
-.idea/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-
-# Misc
-*.swp
-*.swo
+.env.*
