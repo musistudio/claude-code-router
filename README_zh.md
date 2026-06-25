@@ -7,14 +7,8 @@
 </p>
 
 <p align="center">
-  <img src="blog/images/sponsors/glm-zh.jpg" alt="GLM CODING PLAN 赞助" />
+  <img src="blog/images/claude-code-router.png" alt="Claude Code Router Desktop 项目截图" />
 </p>
-
-> **Z智谱赞助支持。** 本项目由 Z智谱提供赞助，他们通过 GLM CODING PLAN 对本项目提供技术支持。
-
-> GLM CODING PLAN 是专为 AI 编码打造的订阅套餐，每月最低仅需 20 元，即可在十余款主流 AI 编码工具如 Claude Code、Cline、Roo Code 中畅享智谱旗舰模型 GLM-4.7（受限于算力，目前仅限 Pro 用户开放），为开发者提供顶尖的编码体验。
-
-> 智谱 AI 为本产品提供了特别优惠，使用以下链接购买可以享受九折优惠：https://www.bigmodel.cn/claude-code?ic=RRVJPB5SII
 
 Claude Code Router Desktop 是一个本地网关和桌面控制台，用来把 Claude Code、Codex、ZCode 以及兼容客户端的 Agent 请求路由到你真正想使用的模型服务。
 
@@ -177,6 +171,10 @@ macOS 打包 hook 会在产物生成前验证代码签名、公证票据 staplin
 
 - [项目动机和工作原理](blog/zh/项目初衷及原理.md)
 - [也许我们可以用路由器做更多事情](blog/zh/或许我们能在Router中做更多事情.md)
+
+## 致谢
+
+对 Codex 的支持以及 Bot handoff 来自于 [musistudio/codexl](https://github.com/musistudio/codexl) 这个项目。
 
 ## 支持与赞助
 

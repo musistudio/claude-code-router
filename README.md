@@ -7,14 +7,8 @@
 </p>
 
 <p align="center">
-  <img src="blog/images/sponsors/glm-en.jpg" alt="GLM CODING PLAN sponsor" />
+  <img src="blog/images/claude-code-router.png" alt="Claude Code Router Desktop screenshot" />
 </p>
-
-> **Sponsored by Z.ai.** This project is sponsored by Z.ai, supporting us with their GLM CODING PLAN.
-
-> GLM CODING PLAN is a subscription service designed for AI coding, starting at just $10/month. It provides access to their flagship GLM-4.7 & (GLM-5 Only Available for Pro Users) model across 10+ popular AI coding tools (Claude Code, Cline, Roo Code, etc.), offering developers top-tier, fast, and stable coding experiences.
-
-> Get 10% OFF GLM CODING PLAN: https://z.ai/subscribe?ic=8JVLJQFSKB
 
 Claude Code Router Desktop is a local gateway and desktop control panel for routing agent requests from Claude Code, Codex, ZCode, and compatible clients to the model provider you actually want to use.
 
@@ -177,6 +171,10 @@ Packaged builds check GitHub Releases for updates through `electron-updater`. Fo
 
 - [Project Motivation and How It Works](blog/en/project-motivation-and-how-it-works.md)
 - [Maybe We Can Do More with the Router](blog/en/maybe-we-can-do-more-with-the-route.md)
+
+## Acknowledgements
+
+Codex support and Bot handoff are powered by [musistudio/codexl](https://github.com/musistudio/codexl).
 
 ## Support & Sponsoring
 
