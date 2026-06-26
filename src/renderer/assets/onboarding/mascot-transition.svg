@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="480" viewBox="0 0 1280 480">
+  <defs>
+    <linearGradient id="provider-body" x1="35" x2="125" y1="38" y2="122" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c4b5fd"/>
+      <stop offset=".56" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#6d28d9"/>
+    </linearGradient>
+    <linearGradient id="profile-body" x1="36" x2="124" y1="36" y2="124" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffd166"/>
+      <stop offset=".58" stop-color="#f97316"/>
+      <stop offset="1" stop-color="#c2410c"/>
+    </linearGradient>
+    <linearGradient id="enter-body" x1="36" x2="124" y1="33" y2="126" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8cf7ff"/>
+      <stop offset=".58" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#0891b2"/>
+    </linearGradient>
+
+    <g id="provider-mascot">
+      <ellipse cx="80" cy="123" rx="39" ry="9" fill="#4c1d95" opacity=".16"/>
+      <path d="M50 115c0 8 4 12 12 12h36c8 0 12-4 12-12H50Z" fill="url(#provider-body)"/>
+      <rect x="37" y="45" width="86" height="72" rx="26" fill="url(#provider-body)"/>
+      <path d="M50 53c14-11 48-13 63 0 8 7 11 17 10 30 5-23-4-40-21-47-17-6-45-4-57 6-8 7-10 19-8 32 1-9 5-16 13-21Z" fill="#fff" opacity=".18"/>
+      <rect x="55" y="64" width="50" height="31" rx="15" fill="#fff"/>
+      <ellipse cx="72" cy="79" rx="6" ry="10" fill="#151246"/>
+      <ellipse cx="89" cy="79" rx="6" ry="10" fill="#151246"/>
+      <rect x="24" y="72" width="18" height="9" rx="4.5" fill="#a78bfa"/>
+      <rect x="118" y="72" width="18" height="9" rx="4.5" fill="#a78bfa"/>
+      <path d="M66 108h28M70 113h20" stroke="#ddd6fe" stroke-width="4" stroke-linecap="round" opacity=".72"/>
+      <rect x="65" y="28" width="13" height="13" rx="3" fill="#c4b5fd"/>
+      <rect x="84" y="28" width="13" height="13" rx="3" fill="#7dd3fc"/>
+      <path d="M72 45V38M91 45V38" stroke="#a78bfa" stroke-width="4" stroke-linecap="round"/>
+    </g>
+
+    <g id="profile-mascot">
+      <ellipse cx="80" cy="124" rx="38" ry="9" fill="#7c2d12" opacity=".14"/>
+      <circle cx="80" cy="78" r="43" fill="url(#profile-body)"/>
+      <path d="M48 71c4-24 24-39 52-33 17 4 28 16 31 32 0-30-24-52-52-52-28 0-50 22-50 51 2-8 8-15 19-22Z" fill="#fff" opacity=".18"/>
+      <path d="M38 79c-8 1-14 8-14 17 0 9 6 16 14 17V79ZM122 79c8 1 14 8 14 17 0 9-6 16-14 17V79Z" fill="#fed7aa"/>
+      <rect x="54" y="61" width="52" height="36" rx="18" fill="#fff"/>
+      <ellipse cx="72" cy="78" rx="6" ry="9" fill="#431407"/>
+      <ellipse cx="89" cy="78" rx="6" ry="9" fill="#431407"/>
+      <path d="M69 96c7 5 17 5 24 0" fill="none" stroke="#431407" stroke-width="4" stroke-linecap="round"/>
+      <path d="M40 66c5-25 21-38 40-38s35 13 40 38" fill="none" stroke="#fb923c" stroke-width="6" stroke-linecap="round"/>
+      <path d="M113 103c10 0 15-6 16-15" fill="none" stroke="#fdba74" stroke-width="5" stroke-linecap="round"/>
+      <circle cx="130" cy="87" r="4" fill="#fff7ed"/>
+    </g>
+
+    <g id="enter-mascot">
+      <ellipse cx="80" cy="126" rx="39" ry="9" fill="#164e63" opacity=".14"/>
+      <path d="M41 96c-8 3-15 11-18 25 13-4 23-9 31-17l-13-8Z" fill="#67e8f9"/>
+      <path d="M119 96c8 3 15 11 18 25-13-4-23-9-31-17l13-8Z" fill="#67e8f9"/>
+      <path d="M80 26c25 17 39 43 35 74-2 17-15 28-35 28s-33-11-35-28c-4-31 10-57 35-74Z" fill="url(#enter-body)"/>
+      <path d="M80 35c-17 19-24 38-22 62 2 16 11 25 22 26-19 0-32-10-35-27-4-30 10-54 35-70v9Z" fill="#fff" opacity=".2"/>
+      <rect x="55" y="67" width="50" height="31" rx="15.5" fill="#fff"/>
+      <ellipse cx="72" cy="82" rx="6" ry="9" fill="#083344"/>
+      <ellipse cx="89" cy="82" rx="6" ry="9" fill="#083344"/>
+      <path d="M68 104c8 5 17 5 25 0" fill="none" stroke="#083344" stroke-width="4" stroke-linecap="round"/>
+      <circle cx="108" cy="48" r="15" fill="#ecfeff"/>
+      <path d="m101 48 5 5 10-11" fill="none" stroke="#0891b2" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M70 128h20l-10 20-10-20Z" fill="#facc15"/>
+    </g>
+  </defs>
+
+  <g transform="translate(0 0)"><use href="#provider-mascot" transform="translate(0 6)"/></g>
+  <g transform="translate(160 0)"><use href="#provider-mascot" transform="translate(0 1)"/></g>
+  <g transform="translate(320 0)"><use href="#provider-mascot" transform="translate(0 -5)"/></g>
+  <g transform="translate(480 0)"><use href="#provider-mascot" transform="rotate(-5 80 82) translate(-2 -1)"/></g>
+  <g transform="translate(640 0)"><use href="#provider-mascot" transform="rotate(5 80 82) translate(2 -3)"/></g>
+  <g transform="translate(800 0)">
+    <path d="M25 82H12M30 100H17" stroke="#8b5cf6" stroke-width="4" stroke-linecap="round" opacity=".32"/>
+    <use href="#provider-mascot" transform="translate(5 0)"/>
+  </g>
+  <g transform="translate(960 0)"><use href="#provider-mascot" transform="translate(0 2)"/></g>
+  <g transform="translate(1120 0)"><use href="#provider-mascot"/></g>
+
+  <g transform="translate(0 160)"><use href="#profile-mascot" transform="translate(0 5)"/></g>
+  <g transform="translate(160 160)"><use href="#profile-mascot" transform="translate(0 0)"/></g>
+  <g transform="translate(320 160)"><use href="#profile-mascot" transform="rotate(-4 80 84) translate(-2 -2)"/></g>
+  <g transform="translate(480 160)"><use href="#profile-mascot" transform="rotate(5 80 84) translate(2 -4)"/></g>
+  <g transform="translate(640 160)">
+    <path d="M131 63c8-3 13-8 16-15M133 75c9-1 16-5 22-11" stroke="#fb923c" stroke-width="4" stroke-linecap="round" opacity=".35"/>
+    <use href="#profile-mascot" transform="translate(-2 -3)"/>
+  </g>
+  <g transform="translate(800 160)"><use href="#profile-mascot" transform="translate(0 0)"/></g>
+  <g transform="translate(960 160)"><use href="#profile-mascot" transform="translate(0 3)"/></g>
+  <g transform="translate(1120 160)"><use href="#profile-mascot"/></g>
+
+  <g transform="translate(0 320)"><use href="#enter-mascot" transform="translate(0 7)"/></g>
+  <g transform="translate(160 320)"><use href="#enter-mascot" transform="translate(0 1)"/></g>
+  <g transform="translate(320 320)"><use href="#enter-mascot" transform="translate(0 -7)"/></g>
+  <g transform="translate(480 320)"><use href="#enter-mascot" transform="rotate(-6 80 84) translate(-2 -3)"/></g>
+  <g transform="translate(640 320)"><use href="#enter-mascot" transform="rotate(7 80 84) translate(2 -5)"/></g>
+  <g transform="translate(800 320)">
+    <path d="M42 116H22M50 132H30M116 120h20" stroke="#22d3ee" stroke-width="4" stroke-linecap="round" opacity=".38"/>
+    <use href="#enter-mascot" transform="translate(4 -1)"/>
+  </g>
+  <g transform="translate(960 320)"><use href="#enter-mascot" transform="translate(0 2)"/></g>
+  <g transform="translate(1120 320)"><use href="#enter-mascot"/></g>
+</svg>

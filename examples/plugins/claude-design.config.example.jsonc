@@ -1,0 +1,82 @@
+{
+  "proxy": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "mode": "transparent",
+    "port": 7890,
+    "targets": []
+  },
+  "plugins": [
+    {
+      "id": "claude-design",
+      "enabled": true,
+      "module": "./plugins/claude-design-plugin.cjs",
+      "config": {
+        "host": "claude.ai",
+        "fallbackHosts": ["claude.com", "www.anthropic.com", "anthropic.com"],
+        "paths": [
+          "/",
+          "/_bootstrap",
+          "/api/bootstrap",
+          "/design/anthropic.omelette.api.v1alpha.OmeletteService",
+          "/design",
+          "/v1/design",
+          "/api",
+          "/organizations",
+          "/cdn-cgi",
+          "/login",
+          "/auth",
+          "/oauth"
+        ],
+        "assetProxy": true,
+        // Optional. Keep false when using Claude Desktop's local ion-dist assets.
+        // Set true only when intentionally proxying /design/assets and /assets to upstream Claude.
+        "assetPassthrough": false,
+        "assetAutoUpdate": true,
+        "autoAnswerQuestions": true,
+        // Optional. Keep true so Claude App can iframe the local CCR-served
+        // Claude Design UI at http://127.0.0.1:<gatewayPort>/design.
+        "directGatewayRoutes": true,
+        // Optional. When assetDir is omitted, the plugin will auto-detect Claude Desktop's
+        // bundled ion-dist assets, e.g. /Applications/Claude.app/Contents/Resources/ion-dist.
+        // Set claudeAppAssets to false to disable that auto-detection.
+        "claudeAppAssets": true,
+        // Optional. Override auto-detection. You can point this at Claude.app, its executable,
+        // or directly at Contents/Resources/ion-dist.
+        // "claudeAppPath": "/Applications/Claude.app",
+        // Optional. Leave unset for Claude Desktop auto-detection, or point at a standalone
+        // Claude Design asset directory.
+        // "assetDir": "/absolute/path/to/claude-design-assets",
+        // Optional. Leave unset to auto-discover the current hashed entry assets.
+        // "scriptPath": "/design/assets/v1/index-<hash>.js",
+        // "stylePath": "/design/assets/v1/index-<hash>.css",
+        "upstreamOrigin": "https://claude.ai",
+        // Optional. Missing lazy-loaded assets are fetched from these origins in order.
+        "upstreamOrigins": ["https://claude.ai"],
+        "gatewayUrl": "http://127.0.0.1:3456",
+        // Optional. Required only when CCR has API keys configured.
+        "gatewayApiKey": "",
+        // Optional. Used when old Claude Design model ids need a gateway-safe fallback.
+        // Defaults to Router.default, then claude-sonnet-4-20250514.
+        "defaultGatewayModel": "claude-sonnet-4-20250514",
+        // Optional. Controls the model selected by Claude Design on first load.
+        // Defaults to claude-sonnet-4-20250514 instead of Router.default.
+        "frontendDefaultModel": "claude-sonnet-4-20250514",
+        // Optional. Also configurable from the Extensions page. Targets use CCR provider/model selectors.
+        "routing": {
+          "enabled": true,
+          // Add rules here only when the target provider name exists in your Providers config.
+          // Example target formats: "your-provider,model-id" or "your-provider/model-id".
+          "rules": []
+        },
+        "me": {
+          "accountUuid": "12345678",
+          "organizationUuid": "87654321",
+          "email": "aa@example.com",
+          "displayName": "aa",
+          "orgName": "aa's Organization"
+        }
+      }
+    }
+  ]
+}

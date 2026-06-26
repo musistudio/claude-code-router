@@ -1,12 +1,12 @@
-name: Deploy Docs to GitHub Pages
+name: Docs
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'docs/**'
-      - '.github/workflows/docs.yml'
+      - "docs/**"
+      - ".github/workflows/docs.yml"
   workflow_dispatch:
 
 permissions:
@@ -20,36 +20,29 @@ concurrency:
 
 jobs:
   build:
+    name: Build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Build and upload docs
+        uses: withastro/action@v6
+        env:
+          ASTRO_SITE: https://musistudio.github.io
+          ASTRO_BASE: /claude-code-router
         with:
-          node-version: 20
-
-      - name: Install dependencies
-        working-directory: ./docs
-        run: npm install
-
-      - name: Build Docusaurus
-        working-directory: ./docs
-        run: npm run build
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./docs/build
+          path: docs
+          node-version: 24
 
   deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
