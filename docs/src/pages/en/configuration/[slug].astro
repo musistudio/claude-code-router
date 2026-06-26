@@ -1,0 +1,33 @@
+---
+import DocPage from "../../../components/DocPage.astro";
+import { configurationSlugFromPath, enConfigurationDocs } from "../../../configuration-docs";
+
+export function getStaticPaths() {
+  const activeLabels: Record<string, string> = {
+    providers: "Provider Config",
+    routing: "Routing Config",
+    profiles: "Agent Config",
+    observability: "Logs & Observability",
+    "fusion-models": "Fusion Models",
+    "fusion-vision": "Built-In Vision",
+    "fusion-web-search": "Built-In Web Search",
+    "fusion-mcp-tool": "Custom MCP Tool",
+    bots: "Bots And IM Agent Relay",
+    "bot-setup": "Setup",
+    "configuration-file": "Config File Location",
+  };
+
+  return Object.entries(enConfigurationDocs).map(([filePath, mod]) => {
+    const slug = configurationSlugFromPath(filePath);
+
+    return {
+      params: { slug },
+      props: { mod, activeSidebarItem: activeLabels[slug] },
+    };
+  });
+}
+
+const { mod, activeSidebarItem } = Astro.props;
+---
+
+<DocPage locale="en" pageKey="configuration" doc={mod} activeSidebarItem={activeSidebarItem} />

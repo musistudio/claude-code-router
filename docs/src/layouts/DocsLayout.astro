@@ -25,6 +25,7 @@ const {
     { locale: "en", label: "English", href: "/en/" },
   ],
   navItems = ["Documentation", "Guides", "API reference", "Changelog"],
+  sidebarTree = [],
   sidebarGroups = [],
   expandableSidebarItems = [],
   sidebarChildren = {},
@@ -69,6 +70,15 @@ const resolvedLanguageOptions = languageOptions.map((option) => ({
   href: withBase(option.href),
   absoluteHref: absoluteHref(option.href),
 }));
+const resolvedNavItems = navItems.map((item, index) => {
+  const navItem = typeof item === "string" ? { label: item, href: "#" } : item;
+
+  return {
+    ...navItem,
+    href: withBase(navItem.href ?? "#"),
+    active: navItem.active ?? index === 0,
+  };
+});
 const homeHref = withBase(locale === "en" ? "/en/" : "/");
 const faviconHref = withBase("/favicon.svg");
 const logoSrc = withBase("/logo.png");
@@ -78,6 +88,62 @@ const sidebarIcons = {
   wand: WandSparkles,
   pen: PenLine,
 };
+const searchEntryKeys = new Set();
+const searchEntries = [];
+const addSearchEntry = (entry) => {
+  const label = String(entry.label ?? "").trim();
+  const href = String(entry.href ?? "").trim();
+
+  if (!label || !href || href === "#") return;
+
+  const resolvedHref = withBase(href);
+  const key = `${label}\n${resolvedHref}`;
+
+  if (searchEntryKeys.has(key)) return;
+
+  searchEntryKeys.add(key);
+  searchEntries.push({
+    label,
+    href: resolvedHref,
+    section: String(entry.section ?? "").trim(),
+  });
+};
+
+if (sidebarTree.length > 0) {
+  for (const section of sidebarTree) {
+    addSearchEntry({ label: section.label, href: section.href, section: section.label });
+
+    for (const group of section.groups ?? []) {
+      for (const item of group.items ?? []) {
+        addSearchEntry({ label: item.label, href: item.href, section: section.label });
+
+        for (const child of item.children ?? []) {
+          addSearchEntry({ label: child.label, href: child.href, section: `${section.label} / ${item.label}` });
+        }
+      }
+    }
+  }
+} else {
+  for (const group of sidebarGroups) {
+    for (const item of group.items ?? []) {
+      addSearchEntry({ label: item, href: sidebarLinks[item], section: group.label });
+
+      for (const child of sidebarChildren[item] ?? []) {
+        addSearchEntry({ label: child, href: sidebarLinks[child], section: `${group.label} / ${item}` });
+      }
+    }
+  }
+}
+
+for (const item of tocItems) {
+  if (typeof item !== "string") {
+    addSearchEntry({ label: item.label, href: item.href, section: tocTitle });
+  }
+}
+
+const searchNoResults = locale === "zh" ? "没有匹配结果" : "No results";
+const sidebarToggleLabel = locale === "zh" ? "打开目录" : "Open navigation";
+const sidebarCloseLabel = locale === "zh" ? "关闭目录" : "Close navigation";
 ---
 
 <!doctype html>
@@ -151,22 +217,33 @@ const sidebarIcons = {
           </div>
         </details>
 
-        <nav class="main-nav" aria-label="Primary navigation">
-          {
-            navItems.map((item, index) => (
-              <a class:list={["nav-link", { active: index === 0 }]} href="#">
-                {item}
-              </a>
-            ))
-          }
-        </nav>
-
         <div class="top-actions">
-          <label class="search" aria-label={ui.searchLabel}>
+          <button
+            class="icon-button sidebar-toggle"
+            type="button"
+            aria-label={sidebarToggleLabel}
+            aria-controls="docs-sidebar"
+            aria-expanded="false"
+            data-sidebar-toggle
+          >
+            <List size={19} aria-hidden="true" />
+          </button>
+          <div class="search" role="search" aria-label={ui.searchLabel}>
             <Search size={18} aria-hidden="true" />
-            <input type="search" placeholder={ui.searchPlaceholder} />
+            <input
+              type="search"
+              placeholder={ui.searchPlaceholder}
+              aria-label={ui.searchLabel}
+              autocomplete="off"
+              spellcheck="false"
+              role="combobox"
+              aria-expanded="false"
+              aria-controls="docs-search-results"
+              data-search-input
+            />
             <kbd>⌘K</kbd>
-          </label>
+            <div class="search-results" id="docs-search-results" role="listbox" hidden data-search-results></div>
+          </div>
           <a
             class="soft-button icon-link"
             href="https://github.com/musistudio/claude-code-router/releases"
@@ -193,57 +270,114 @@ const sidebarIcons = {
         </div>
       </header>
 
+      <button class="sidebar-backdrop" type="button" aria-label={sidebarCloseLabel} data-sidebar-backdrop></button>
+
       <div class="content-grid">
-        <aside class="sidebar" aria-label="Documentation sidebar">
+        <aside class="sidebar" id="docs-sidebar" aria-label="Documentation sidebar" data-sidebar>
           <div class="sidebar-inner">
             {
-              sidebarGroups.map((group) => {
-                const GroupIcon = sidebarIcons[group.icon] ?? BookOpen;
+              sidebarTree.length > 0 ? (
+                <nav class="sidebar-directory" aria-label="Documentation navigation">
+                  <ul class="directory-list">
+                    {sidebarTree.map((section) => (
+                      <li>
+                        <a
+                          class:list={["sidebar-link", "directory-summary", { active: section.active }]}
+                          href={withBase(section.href)}
+                        >
+                          <span>{section.label}</span>
+                        </a>
+                        {section.open && (
+                          <ul class="sidebar-children directory-children">
+                            {section.groups.map((group) => (
+                              <li class="directory-group">
+                                <ul>
+                                  {group.items.map((item) => {
+                                    const isExpandable = item.children.length > 0;
 
-                return (
-                  <section class="sidebar-group">
-                    <h2>
-                      <GroupIcon class="group-icon" size={16} aria-hidden="true" />
-                      {group.label}
-                    </h2>
-                    <ul>
-                      {group.items.map((item) => {
-                        const childItems = sidebarChildren[item] ?? [];
-                        const isExpandable = expandableSidebarItems.includes(item) && childItems.length > 0;
-
-                        return (
-                          <li>
-                            {isExpandable ? (
-                              <details class="sidebar-details">
-                                <summary class="sidebar-link" aria-expanded="false">
-                                  <span>{item}</span>
-                                  <ChevronRight size={16} aria-hidden="true" />
-                                </summary>
-                                <ul class="sidebar-children">
-                                  {childItems.map((child) => (
-                                    <li>
-                                      <a class="sidebar-child-link" href={withBase(sidebarLinks[child] ?? "#")}>
-                                        {child}
-                                      </a>
-                                    </li>
-                                  ))}
+                                    return (
+                                      <li>
+                                        <a
+                                          class:list={["sidebar-link", { active: item.active }]}
+                                          href={withBase(item.href)}
+                                        >
+                                          <span>{item.label}</span>
+                                        </a>
+                                        {isExpandable && (
+                                          <ul class="sidebar-children">
+                                            {item.children.map((child) => (
+                                              <li>
+                                                <a
+                                                  class:list={["sidebar-child-link", { active: child.active }]}
+                                                  href={withBase(child.href)}
+                                                >
+                                                  {child.label}
+                                                </a>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        )}
+                                      </li>
+                                    );
+                                  })}
                                 </ul>
-                              </details>
-                            ) : (
-                              <a
-                                class:list={["sidebar-link", { active: group.active === item }]}
-                                href={withBase(sidebarLinks[item] ?? "#")}
-                              >
-                                <span>{item}</span>
-                              </a>
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </section>
-                );
-              })
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </nav>
+              ) : (
+                sidebarGroups.map((group) => {
+                  const GroupIcon = sidebarIcons[group.icon] ?? BookOpen;
+
+                  return (
+                    <section class="sidebar-group">
+                      <h2>
+                        <GroupIcon class="group-icon" size={16} aria-hidden="true" />
+                        {group.label}
+                      </h2>
+                      <ul>
+                        {group.items.map((item) => {
+                          const childItems = sidebarChildren[item] ?? [];
+                          const isExpandable = expandableSidebarItems.includes(item) && childItems.length > 0;
+
+                          return (
+                            <li>
+                              {isExpandable ? (
+                                <details class="sidebar-details">
+                                  <summary class="sidebar-link" aria-expanded="false">
+                                    <span>{item}</span>
+                                    <ChevronRight size={16} aria-hidden="true" />
+                                  </summary>
+                                  <ul class="sidebar-children">
+                                    {childItems.map((child) => (
+                                      <li>
+                                        <a class="sidebar-child-link" href={withBase(sidebarLinks[child] ?? "#")}>
+                                          {child}
+                                        </a>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </details>
+                              ) : (
+                                <a
+                                  class:list={["sidebar-link", { active: group.active === item }]}
+                                  href={withBase(sidebarLinks[item] ?? "#")}
+                                >
+                                  <span>{item}</span>
+                                </a>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </section>
+                  );
+                })
+              )
             }
           </div>
         </aside>
@@ -305,7 +439,7 @@ const sidebarIcons = {
           }
         });
     </script>
-    <script>
+    <script define:vars={{ searchEntries, searchNoResults }}>
       const themeToggle = document.querySelector("[data-theme-toggle]");
       const themeStorageKey = "ccr-docs-theme";
       const themeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
@@ -351,78 +485,228 @@ const sidebarIcons = {
         }
       });
 
-      const sidebarDetails = document.querySelectorAll(".sidebar-details");
-      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-      sidebarDetails.forEach((details) => {
+      document.querySelectorAll(".sidebar-details").forEach((details) => {
         const summary = details.querySelector("summary");
-        const children = details.querySelector(".sidebar-children");
 
-        if (!(summary instanceof HTMLElement) || !(children instanceof HTMLElement)) {
+        if (!(details instanceof HTMLDetailsElement) || !(summary instanceof HTMLElement)) {
           return;
         }
 
-        summary.setAttribute("aria-expanded", details.open ? "true" : "false");
+        const syncExpandedState = () => {
+          summary.setAttribute("aria-expanded", details.open ? "true" : "false");
+        };
 
-        summary.addEventListener("click", (event) => {
-          event.preventDefault();
-
-          if (details.dataset.animating === "true") return;
-
-          const isOpen = details.open;
-          details.dataset.animating = "true";
-
-          if (reduceMotion) {
-            details.open = !isOpen;
-            summary.setAttribute("aria-expanded", details.open ? "true" : "false");
-            delete details.dataset.animating;
-            return;
-          }
-
-          if (isOpen) {
-            children.style.height = `${children.scrollHeight}px`;
-            children.getBoundingClientRect();
-            details.classList.add("is-collapsing");
-            summary.setAttribute("aria-expanded", "false");
-
-            window.requestAnimationFrame(() => {
-              children.style.height = "0px";
-            });
-
-            const finishClose = (transitionEvent) => {
-              if (transitionEvent.propertyName !== "height") return;
-              children.removeEventListener("transitionend", finishClose);
-              details.open = false;
-              details.classList.remove("is-collapsing");
-              children.style.height = "";
-              delete details.dataset.animating;
-            };
-
-            children.addEventListener("transitionend", finishClose);
-            return;
-          }
-
-          details.open = true;
-          summary.setAttribute("aria-expanded", "true");
-          children.style.height = "0px";
-          children.style.opacity = "0";
-          children.getBoundingClientRect();
-
-          window.requestAnimationFrame(() => {
-            children.style.height = `${children.scrollHeight}px`;
-            children.style.opacity = "";
-          });
-
-          const finishOpen = (transitionEvent) => {
-            if (transitionEvent.propertyName !== "height") return;
-            children.removeEventListener("transitionend", finishOpen);
-            children.style.height = "";
-            delete details.dataset.animating;
-          };
-
-          children.addEventListener("transitionend", finishOpen);
-        });
+        syncExpandedState();
+        details.addEventListener("toggle", syncExpandedState);
       });
+
+      const sidebarToggle = document.querySelector("[data-sidebar-toggle]");
+      const sidebarBackdrop = document.querySelector("[data-sidebar-backdrop]");
+      const docsSidebar = document.querySelector("[data-sidebar]");
+      const sidebarMediaQuery = window.matchMedia("(max-width: 920px)");
+
+      const setSidebarOpen = (open) => {
+        const nextOpen = Boolean(open) && sidebarMediaQuery.matches;
+
+        document.body.classList.toggle("sidebar-open", nextOpen);
+
+        if (sidebarToggle instanceof HTMLButtonElement) {
+          sidebarToggle.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+        }
+
+        if (docsSidebar instanceof HTMLElement) {
+          docsSidebar.setAttribute("aria-hidden", sidebarMediaQuery.matches && !nextOpen ? "true" : "false");
+        }
+      };
+
+      const syncSidebarForViewport = () => {
+        if (!sidebarMediaQuery.matches) {
+          setSidebarOpen(false);
+          if (docsSidebar instanceof HTMLElement) {
+            docsSidebar.setAttribute("aria-hidden", "false");
+          }
+          return;
+        }
+
+        setSidebarOpen(document.body.classList.contains("sidebar-open"));
+      };
+
+      sidebarToggle?.addEventListener("click", () => {
+        setSidebarOpen(!document.body.classList.contains("sidebar-open"));
+      });
+      sidebarBackdrop?.addEventListener("click", () => setSidebarOpen(false));
+      docsSidebar?.querySelectorAll("a").forEach((link) => {
+        link.addEventListener("click", () => setSidebarOpen(false));
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && document.body.classList.contains("sidebar-open")) {
+          setSidebarOpen(false);
+        }
+      });
+      sidebarMediaQuery.addEventListener("change", syncSidebarForViewport);
+      syncSidebarForViewport();
+
+      const searchInput = document.querySelector("[data-search-input]");
+      const searchResults = document.querySelector("[data-search-results]");
+      let activeSearchIndex = -1;
+      let visibleSearchEntries = [];
+
+      const normalizeSearchText = (value) =>
+        String(value ?? "")
+          .trim()
+          .toLocaleLowerCase();
+      const escapeSearchHtml = (value) =>
+        String(value ?? "").replace(/[&<>"']/g, (character) => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        })[character]);
+
+      const closeSearchResults = () => {
+        if (!(searchInput instanceof HTMLInputElement) || !(searchResults instanceof HTMLElement)) return;
+
+        searchResults.hidden = true;
+        searchResults.innerHTML = "";
+        searchInput.setAttribute("aria-expanded", "false");
+        searchInput.removeAttribute("aria-activedescendant");
+        activeSearchIndex = -1;
+        visibleSearchEntries = [];
+      };
+
+      const setActiveSearchIndex = (index) => {
+        if (!(searchInput instanceof HTMLInputElement) || !(searchResults instanceof HTMLElement)) return;
+
+        const options = Array.from(searchResults.querySelectorAll("[data-search-option]"));
+        activeSearchIndex = options.length === 0 ? -1 : Math.max(0, Math.min(index, options.length - 1));
+
+        options.forEach((option, optionIndex) => {
+          option.classList.toggle("active", optionIndex === activeSearchIndex);
+        });
+
+        const activeOption = options[activeSearchIndex];
+        if (activeOption instanceof HTMLElement) {
+          searchInput.setAttribute("aria-activedescendant", activeOption.id);
+          activeOption.scrollIntoView({ block: "nearest" });
+        }
+      };
+
+      const renderSearchResults = () => {
+        if (!(searchInput instanceof HTMLInputElement) || !(searchResults instanceof HTMLElement)) return;
+
+        const query = normalizeSearchText(searchInput.value);
+        const terms = query.split(/\s+/).filter(Boolean);
+
+        if (terms.length === 0) {
+          closeSearchResults();
+          return;
+        }
+
+        visibleSearchEntries = searchEntries
+          .map((entry) => {
+            const label = normalizeSearchText(entry.label);
+            const section = normalizeSearchText(entry.section);
+            const haystack = `${label} ${section}`;
+
+            if (!terms.every((term) => haystack.includes(term))) return null;
+
+            const score =
+              label.startsWith(query) ? 0 :
+              label.includes(query) ? 1 :
+              section.includes(query) ? 2 :
+              3;
+
+            return { ...entry, score };
+          })
+          .filter(Boolean)
+          .sort((left, right) => left.score - right.score || left.label.localeCompare(right.label))
+          .slice(0, 8);
+
+        searchResults.hidden = false;
+        searchInput.setAttribute("aria-expanded", "true");
+
+        if (visibleSearchEntries.length === 0) {
+          searchResults.innerHTML = `<div class="search-empty">${searchNoResults}</div>`;
+          activeSearchIndex = -1;
+          searchInput.removeAttribute("aria-activedescendant");
+          return;
+        }
+
+        searchResults.innerHTML = visibleSearchEntries
+          .map((entry, index) => `
+            <a
+              class="search-result"
+              id="docs-search-result-${index}"
+              role="option"
+              href="${escapeSearchHtml(entry.href)}"
+              data-search-option
+            >
+              <span>${escapeSearchHtml(entry.label)}</span>
+              ${entry.section ? `<small>${escapeSearchHtml(entry.section)}</small>` : ""}
+            </a>
+          `)
+          .join("");
+        setActiveSearchIndex(0);
+      };
+
+      if (searchInput instanceof HTMLInputElement && searchResults instanceof HTMLElement) {
+        searchInput.addEventListener("input", renderSearchResults);
+        searchInput.addEventListener("focus", () => {
+          if (searchInput.value.trim()) renderSearchResults();
+        });
+        searchInput.addEventListener("keydown", (event) => {
+          if (event.key === "Escape") {
+            closeSearchResults();
+            searchInput.blur();
+            return;
+          }
+
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            if (searchResults.hidden) {
+              renderSearchResults();
+            } else {
+              setActiveSearchIndex(activeSearchIndex + 1);
+            }
+            return;
+          }
+
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            setActiveSearchIndex(activeSearchIndex - 1);
+            return;
+          }
+
+          if (event.key === "Enter" && visibleSearchEntries[activeSearchIndex]) {
+            event.preventDefault();
+            window.location.href = visibleSearchEntries[activeSearchIndex].href;
+          }
+        });
+
+        searchResults.addEventListener("mousedown", (event) => {
+          event.preventDefault();
+        });
+        searchResults.addEventListener("click", (event) => {
+          const option = event.target instanceof Element ? event.target.closest("[data-search-option]") : null;
+
+          if (option instanceof HTMLAnchorElement) {
+            window.location.href = option.href;
+          }
+        });
+        document.addEventListener("click", (event) => {
+          if (!searchInput.closest(".search")?.contains(event.target)) {
+            closeSearchResults();
+          }
+        });
+        document.addEventListener("keydown", (event) => {
+          if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "k") {
+            event.preventDefault();
+            searchInput.focus();
+            searchInput.select();
+          }
+        });
+      }
     </script>
   </body>
 </html>

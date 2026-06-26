@@ -40,7 +40,7 @@ class WindowsManager {
               y: Math.round((titleBarHeight - 14) / 2)
             }
           }
-        : { titleBarStyle: "hidden" as const }),
+        : {}),
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,

@@ -1,20 +1,160 @@
 ---
 import DocsLayout from "../layouts/DocsLayout.astro";
-import { docsContent, type Locale } from "../i18n/content";
+import { docsContent, type DocPageKey, type Locale } from "../i18n/content";
+import * as enConfigurationDoc from "../content/docs/en/configuration.md";
+import * as enGuidesDoc from "../content/docs/en/guides.md";
 import * as enDoc from "../content/docs/en/index.md";
+import * as enTroubleshootingDoc from "../content/docs/en/troubleshooting.md";
+import * as zhConfigurationDoc from "../content/docs/zh/configuration.md";
+import * as zhGuidesDoc from "../content/docs/zh/guides.md";
 import * as zhDoc from "../content/docs/zh/index.md";
+import * as zhTroubleshootingDoc from "../content/docs/zh/troubleshooting.md";
 import { Check, Copy } from "lucide-astro";
 
 interface Props {
   locale: Locale;
+  pageKey?: DocPageKey;
   doc?: any;
+  activeSidebarItem?: string;
 }
 
-const { locale, doc: docProp } = Astro.props;
+const docsByLocale = {
+  zh: {
+    documentation: zhDoc,
+    guides: zhGuidesDoc,
+    configuration: zhConfigurationDoc,
+    troubleshooting: zhTroubleshootingDoc,
+  },
+  en: {
+    documentation: enDoc,
+    guides: enGuidesDoc,
+    configuration: enConfigurationDoc,
+    troubleshooting: enTroubleshootingDoc,
+  },
+} satisfies Record<Locale, Record<DocPageKey, any>>;
+
+const {
+  locale,
+  pageKey: pageKeyProp = "documentation",
+  doc: docProp,
+  activeSidebarItem: activeSidebarItemProp,
+} = Astro.props;
 const content = docsContent[locale];
-const doc = docProp ?? (locale === "en" ? enDoc : zhDoc);
+const pages = content.pages as Record<DocPageKey, any>;
+const pageKey = pageKeyProp;
+const pageContent = pages[pageKey] ?? pages.documentation;
+const sectionDoc = docsByLocale[locale][pageKey] ?? docsByLocale[locale].documentation;
+const sectionHref =
+  content.navItems.find((item) => item.pageKey === pageKey)?.href ??
+  (locale === "en" ? "/en/" : "/");
+const isSectionDoc = !docProp || docProp === sectionDoc;
+const doc = docProp ?? sectionDoc;
 const { Content, frontmatter } = doc;
-const headings = doc.getHeadings().filter((heading) => heading.depth === 2);
+const allHeadings = doc.getHeadings();
+const headings = allHeadings.filter((heading) => heading.depth === 2);
+const isExplicitHref = (value: string) =>
+  value.startsWith("#") ||
+  value.startsWith("/") ||
+  value.startsWith("//") ||
+  /^[a-z][a-z\d+.-]*:/i.test(value);
+
+const getHeadingLinks = (targetDoc: any, baseHref: string, useLocalHashes: boolean) => {
+  const links = new Map<string, string>();
+
+  for (const heading of targetDoc.getHeadings()) {
+    if (!links.has(heading.text)) {
+      links.set(
+        heading.text,
+        useLocalHashes ? `#${heading.slug}` : `${baseHref}#${heading.slug}`
+      );
+    }
+  }
+
+  return links;
+};
+const sectionHeadingLinks = getHeadingLinks(sectionDoc, sectionHref, isSectionDoc);
+const resolveDocTarget = (target?: string, headingLinks = sectionHeadingLinks) => {
+  if (!target) return "#";
+  if (isExplicitHref(target)) return target;
+  return headingLinks.get(target) ?? "#";
+};
+const navItems = content.navItems.map((item) => {
+  return {
+    ...item,
+    active: item.pageKey === pageKey,
+  };
+});
+const sidebarLabels = new Set<string>();
+
+for (const group of pageContent.sidebarGroups) {
+  for (const item of group.items) {
+    sidebarLabels.add(item);
+
+    for (const child of pageContent.sidebarChildren[item] ?? []) {
+      sidebarLabels.add(child);
+    }
+  }
+}
+
+const sidebarLinks = Object.fromEntries(
+  Array.from(sidebarLabels).map((label) => [
+    label,
+    resolveDocTarget(
+      pageContent.sidebarLinks[label] ??
+        pageContent.sidebarTargets[label] ??
+        label
+    ),
+  ])
+);
+const sidebarNavItems = content.navItems.filter((navItem) => navItem.pageKey !== "documentation");
+const sidebarTree = sidebarNavItems.map((navItem, index) => {
+  const navPageKey = navItem.pageKey as DocPageKey;
+  const navPageContent = pages[navPageKey] ?? pages.documentation;
+  const navSectionDoc = docsByLocale[locale][navPageKey] ?? docsByLocale[locale].documentation;
+  const navHref = navItem.href ?? "#";
+  const navIsCurrentSection = navPageKey === pageKey && isSectionDoc;
+  const navHeadingLinks = getHeadingLinks(navSectionDoc, navHref, navIsCurrentSection);
+  const navActive = navPageKey === pageKey;
+  const openByDefault = pageKey === "documentation" && index === 0;
+
+  return {
+    label: navItem.label,
+    href: navHref,
+    active: navActive,
+    open: navActive || openByDefault,
+    groups: navPageContent.sidebarGroups.map((group) => ({
+      ...group,
+      active: navActive && group.active,
+      items: group.items.map((item) => {
+        const childItems = navPageContent.sidebarChildren[item] ?? [];
+        const itemHref = resolveDocTarget(
+          navPageContent.sidebarLinks[item] ??
+            navPageContent.sidebarTargets[item] ??
+            item,
+          navHeadingLinks
+        );
+
+        const children = childItems.map((child) => ({
+          label: child,
+          href: resolveDocTarget(
+            navPageContent.sidebarLinks[child] ??
+              navPageContent.sidebarTargets[child] ??
+              child,
+            navHeadingLinks
+          ),
+          active: navActive && activeSidebarItemProp === child,
+        }));
+
+        return {
+          label: item,
+          href: itemHref,
+          active: navActive && (activeSidebarItemProp ? activeSidebarItemProp === item : group.active === item),
+          children,
+        };
+      }),
+    })),
+  };
+});
 const tocItems = headings.map((heading) => ({
   label: heading.text,
   href: `#${heading.slug}`,
@@ -28,11 +168,12 @@ const pageMarkdown = doc.rawContent();
   locale={locale}
   languageLabel={content.languageLabel}
   languageOptions={content.languageOptions}
-  navItems={content.navItems}
-  sidebarGroups={content.sidebarGroups}
-  expandableSidebarItems={content.expandableSidebarItems}
-  sidebarChildren={content.sidebarChildren}
-  sidebarLinks={content.sidebarLinks}
+  navItems={navItems}
+  sidebarTree={sidebarTree}
+  sidebarGroups={pageContent.sidebarGroups}
+  expandableSidebarItems={pageContent.expandableSidebarItems}
+  sidebarChildren={pageContent.sidebarChildren}
+  sidebarLinks={sidebarLinks}
   tocTitle={content.tocTitle}
   tocItems={tocItems}
   ui={content.ui}

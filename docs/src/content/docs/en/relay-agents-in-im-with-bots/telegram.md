@@ -1,7 +1,7 @@
 ---
 title: Telegram Bot Setup
 pageTitle: Telegram Bot
-eyebrow: Relay Agents In IM With Bots
+eyebrow: Bots And IM Agent Relay
 lead: Route agent messages into Telegram and relay them after your screen locks. Telegram is the simplest platform of all — you only need a Bot Token, and you can be live in minutes.
 ---
 
@@ -9,7 +9,7 @@ lead: Route agent messages into Telegram and relay them after your screen locks.
 
 Telegram is for individuals or small teams who want agent messages fast. It has the fewest fields — just a `Bot Token`. If you want the quickest possible bot, start here.
 
-> New to bots? Start with the "Relay Agent Messages Into IM With Bots" section of the main guide to understand the overall flow and the Forward/Handoff distinction, then come back here.
+> New to bots? Start with the "Bots And IM Agent Relay" section in Detailed Configuration to understand the overall flow and the Forward agent messages and Handoff modes, then come back here.
 
 ## The Fields You'll Use
 
@@ -47,22 +47,22 @@ To use it in groups:
 
 ## Wire It Up In CCR
 
-1. Open CCR's **Bots** page and click **Add Bot**.
+1. Open CCR's **Bot Management** page and click **Add Bot**.
 2. Pick **Telegram** as the platform.
 3. Auth is **Bot Token**.
 4. Paste the token into **Bot Token**.
 5. Save the bot.
-6. Open **Profiles** and edit the agent profile you want to attach it to.
+6. Open **Agent Config** and edit the Agent Config you want to attach it to.
 7. Turn on **Bot** and select the bot.
 8. Optionally enable **Forward agent messages** or **Handoff**.
 9. Reopen the agent from CCR.
 
-## Forward vs Handoff
+## Message Relay: Forward Or Handoff
 
 - **Forward agent messages**: forwards regardless of lock state. Good when you want full output in Telegram.
 - **Handoff**: only forwards after the screen locks. Pair with Idle seconds and a target device.
 
-> Only want lock-screen alerts? Skip Forward.
+> For lock-screen-only alerts, use **Handoff** without **Forward agent messages**.
 
 ## Test It
 
@@ -78,4 +78,4 @@ To use it in groups:
 - **DMs work but groups don't**: check that the bot is in the group and group permissions let it read.
 - **Only `/command` triggers the bot in a group**: check `/setprivacy` in `@BotFather`, or promote the bot to group admin.
 - **You reset the token**: the old token dies instantly — update CCR and restart.
-- **Too many messages**: turn off Forward, keep Handoff only.
+- **Too many messages**: use Handoff without Forward agent messages.

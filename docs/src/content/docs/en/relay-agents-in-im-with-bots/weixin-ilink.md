@@ -1,7 +1,7 @@
 ---
 title: Weixin Bot Setup
 pageTitle: Weixin Bot
-eyebrow: Relay Agents In IM With Bots
+eyebrow: Bots And IM Agent Relay
 lead: Route agent messages into WeChat (Weixin) and relay them after your screen locks. The easiest path is QR Login — you scan a code and you're in, no token copying required.
 ---
 
@@ -9,7 +9,7 @@ lead: Route agent messages into WeChat (Weixin) and relay them after your screen
 
 Weixin is for individuals who want agent messages in their everyday chat window. The simplest method is QR Login, which needs no manual token.
 
-> New to bots? Start with the "Relay Agent Messages Into IM With Bots" section of the main guide to understand the overall flow and the Forward/Handoff distinction, then come back here.
+> New to bots? Start with the "Bots And IM Agent Relay" section in Detailed Configuration to understand the overall flow and the Forward agent messages and Handoff modes, then come back here.
 
 ## Two Login Methods
 
@@ -22,7 +22,7 @@ Weixin is for individuals who want agent messages in their everyday chat window.
 
 ## Method 1: QR Login (Recommended)
 
-1. Open CCR's **Bots** page and click **Add Bot**.
+1. Open CCR's **Bot Management** page and click **Add Bot**.
 2. Pick **Weixin iLink** as the platform.
 3. Choose **QR Login** (the default).
 4. CCR opens a QR code window.
@@ -40,26 +40,26 @@ Use this only if you already have a token from an external WeChat bot service, a
 1. Copy the `Bot Token` from the provider's dashboard or local plugin output.
 2. If the provider also gave an `Account ID`, copy it.
 3. If it gave a `User ID`, copy that too.
-4. Open CCR's **Bots** page and click **Add Bot**.
+4. Open CCR's **Bot Management** page and click **Add Bot**.
 5. Pick **Weixin iLink** and choose **Bot Token** auth.
 6. Fill in **Bot Token**, and **Account ID** / **User ID** if you have them.
 7. Save the bot.
 
 ## Bind It To An Agent In CCR
 
-Whichever login you used, bind the bot to an agent profile:
+Whichever login you used, bind the bot to Agent Config:
 
-1. Open **Profiles** and edit the agent profile you want to attach it to.
+1. Open **Agent Config** and edit the Agent Config you want to attach it to.
 2. Turn on **Bot** and select the bot you just saved.
 3. Optionally enable **Forward agent messages** or **Handoff** (next section).
 4. Reopen the agent from CCR.
 
-## Forward vs Handoff
+## Message Relay: Forward Or Handoff
 
 - **Forward agent messages**: forwards every new agent message to WeChat regardless of lock state. Good when you want every line of output in WeChat.
 - **Handoff**: only forwards after the screen locks. Pair with **Idle seconds** and a Wi-Fi/Bluetooth target device.
 
-> Only want lock-screen alerts? Use Handoff, not Forward.
+> For lock-screen-only alerts, use **Handoff** without **Forward agent messages**.
 
 ## Test It
 
@@ -72,7 +72,7 @@ Whichever login you used, bind the bot to an agent profile:
 ## Common Issues
 
 - **QR code expired**: close the login window and scan again.
-- **Scan succeeded but nothing forwards**: confirm the agent profile was restarted and the Bot toggle is still on.
+- **Scan succeeded but nothing forwards**: confirm the agent was reopened from CCR after Agent Config changes and the Bot toggle is still on.
 - **Drops shortly after scanning**: check that phone and computer networks are stable; verify WeChat didn't log in elsewhere and invalidate the session.
 - **Token mode won't connect**: re-copy the Bot Token — avoid expired values or stray spaces.
 - **Third-party service needs Account ID / User ID**: make sure these come from the same account — don't mix a token and IDs from different accounts.

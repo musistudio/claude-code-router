@@ -1,0 +1,26 @@
+---
+import DocPage from "../../../components/DocPage.astro";
+import { enGuideDocs, sectionSlugFromPath } from "../../../section-docs";
+
+export function getStaticPaths() {
+  const activeLabels: Record<string, string> = {
+    install: "Install And Start CCR",
+    provider: "Add A Provider",
+    "agent-profile": "Connect Agent Config",
+    observability: "Logs & Observability",
+  };
+
+  return Object.entries(enGuideDocs).map(([filePath, mod]) => {
+    const slug = sectionSlugFromPath(filePath);
+
+    return {
+      params: { slug },
+      props: { mod, activeSidebarItem: activeLabels[slug] },
+    };
+  });
+}
+
+const { mod, activeSidebarItem } = Astro.props;
+---
+
+<DocPage locale="en" pageKey="guides" doc={mod} activeSidebarItem={activeSidebarItem} />

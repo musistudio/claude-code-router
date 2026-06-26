@@ -1,15 +1,22 @@
 ---
 import DocPage from "../../../components/DocPage.astro";
-import { enBotDocs, botPlatformFromPath } from "../../../bot-platforms";
+import { BOT_PLATFORM_LABELS_EN, enBotDocs, botPlatformFromPath } from "../../../bot-platforms";
 
 export function getStaticPaths() {
-  return Object.entries(enBotDocs).map(([filePath, mod]) => ({
-    params: { platform: botPlatformFromPath(filePath) },
-    props: { mod },
-  }));
+  return Object.entries(enBotDocs).map(([filePath, mod]) => {
+    const platform = botPlatformFromPath(filePath) as keyof typeof BOT_PLATFORM_LABELS_EN;
+
+    return {
+      params: { platform },
+      props: {
+        mod,
+        activeSidebarItem: BOT_PLATFORM_LABELS_EN[platform],
+      },
+    };
+  });
 }
 
-const { mod } = Astro.props;
+const { mod, activeSidebarItem } = Astro.props;
 ---
 
-<DocPage locale="en" doc={mod} />
+<DocPage locale="en" pageKey="configuration" doc={mod} activeSidebarItem={activeSidebarItem} />

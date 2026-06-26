@@ -574,7 +574,7 @@ class GatewayService {
 
     const shouldCaptureUsage = shouldCaptureGatewayUsage(method, path);
     if (shouldServeGatewayModelsResponse(method, path)) {
-      const responseText = `${JSON.stringify(createGatewayModelsResponse(this.config, request.headers))}\n`;
+      const responseText = `${JSON.stringify(createGatewayModelsResponse(this.config, request.headers, apiKey))}\n`;
       const modelHeaders = new Headers({
         "content-length": String(Buffer.byteLength(responseText)),
         "content-type": "application/json; charset=utf-8"
@@ -1651,16 +1651,17 @@ function rewriteModelSelectorForProtocol(
   if (!normalized) {
     return model;
   }
-  const separator = normalized.indexOf("/");
+  const publicModel = resolveGatewayPublicModelId(normalized, config) ?? normalized;
+  const separator = publicModel.indexOf("/");
   if (separator <= 0) {
-    return model;
+    return publicModel;
   }
 
-  const providerName = normalized.slice(0, separator).trim();
-  const targetModel = normalized.slice(separator + 1).trim();
+  const providerName = publicModel.slice(0, separator).trim();
+  const targetModel = publicModel.slice(separator + 1).trim();
   const provider = findProviderByPublicOrInternalName(config, providerName);
   const capability = provider ? providerCapabilityForClientProtocol(provider, protocol) : undefined;
-  return provider && capability ? `${providerCapabilityInternalName(provider.name, capability.type)}/${targetModel}` : model;
+  return provider && capability ? `${providerCapabilityInternalName(provider.name, capability.type)}/${targetModel}` : publicModel;
 }
 
 function providerCapabilityForClientProtocol(
@@ -3218,10 +3219,32 @@ function prepareClaudeAppFallbackModelRequest(
   };
 }
 
-function createGatewayModelsResponse(config: AppConfig, headers: IncomingHttpHeaders): Record<string, unknown> {
+function createGatewayModelsResponse(config: AppConfig, headers: IncomingHttpHeaders, apiKey?: ApiKeyConfig): Record<string, unknown> {
+  if (isClaudeAppApiKey(apiKey)) {
+    return createClaudeAppGatewayModelsResponse(config);
+  }
   return isClaudeCodeUserAgent(headers)
     ? createClaudeCodeModelsResponse(config)
-    : createClaudeAppGatewayModelsResponse(config);
+    : createOpenAICompatibleGatewayModelsResponse(config);
+}
+
+function createOpenAICompatibleGatewayModelsResponse(config: AppConfig): Record<string, unknown> {
+  const data = buildGatewayDiscoverableModelIds(config).map((id) => {
+    const catalogEntry = findModelCatalogEntry(id);
+    return {
+      id,
+      object: "model",
+      created: 0,
+      owned_by: gatewayModelOwner(id),
+      type: "model",
+      ...(catalogEntry?.displayName ? { display_name: catalogEntry.displayName } : {})
+    };
+  });
+
+  return {
+    object: "list",
+    data
+  };
 }
 
 function createClaudeAppGatewayModelsResponse(config: AppConfig): Record<string, unknown> {
@@ -3297,6 +3320,10 @@ function createClaudeCodeModelsResponse(config: AppConfig): Record<string, unkno
 }
 
 function buildClaudeCodeDiscoverableModelIds(config: AppConfig): string[] {
+  return buildGatewayDiscoverableModelIds(config);
+}
+
+function buildGatewayDiscoverableModelIds(config: AppConfig): string[] {
   const baseEntries: Array<{ modelName: string; providerName: string }> = [];
   for (const provider of config.Providers) {
     const providerName = provider.name?.trim();
@@ -3343,6 +3370,11 @@ function buildClaudeCodeDiscoverableModelIds(config: AppConfig): string[] {
   }
 
   return uniqueStrings(ids);
+}
+
+function gatewayModelOwner(id: string): string {
+  const separator = id.indexOf("/");
+  return separator > 0 ? id.slice(0, separator).trim() || "ccr" : "ccr";
 }
 
 function buildClaudeCodeDiscoverableModels(config: AppConfig): ClaudeCodeDiscoverableModel[] {
@@ -3399,6 +3431,18 @@ function resolveClaudeCodeDiscoveredModelId(model: string | undefined, config: A
     isConfiguredGatewayModelSelector(withoutOneMillionContextSuffix, config)
     ? withoutOneMillionContextSuffix
     : undefined;
+}
+
+function resolveGatewayPublicModelId(model: string | undefined, config: AppConfig): string | undefined {
+  const normalized = normalizeRouteSelector(model);
+  if (!normalized || !normalized.toLowerCase().startsWith("claude-")) {
+    return undefined;
+  }
+  if (isConfiguredGatewayModelSelector(normalized, config)) {
+    return undefined;
+  }
+  return resolveClaudeCodeDiscoveredModelId(normalized, config) ??
+    resolveClaudeAppGatewayRouteModel(normalized, config, claudeAppGatewayModelRouteOptions);
 }
 
 function isConfiguredGatewayModelSelector(model: string, config: AppConfig): boolean {
@@ -3575,6 +3619,11 @@ function isClaudeCodeUserAgent(headers: IncomingHttpHeaders): boolean {
   }
   const normalized = userAgent.toLowerCase();
   return normalized.includes("claude");
+}
+
+function isClaudeAppApiKey(apiKey: ApiKeyConfig | undefined): boolean {
+  const name = apiKey?.name?.trim().toLowerCase();
+  return name === "claude app";
 }
 
 function prepareCursorOpenAICompatChatBody(

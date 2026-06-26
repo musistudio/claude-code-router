@@ -1,7 +1,7 @@
 ---
 title: WeCom Bot Setup
 pageTitle: WeCom Bot
-eyebrow: Relay Agents In IM With Bots
+eyebrow: Bots And IM Agent Relay
 lead: Route agent messages into WeCom (Enterprise WeChat) so your team can receive and reply in WeCom, with relay after your screen locks. This page walks you from creating a self-built app in the WeCom admin console to a working setup in CCR.
 ---
 
@@ -9,7 +9,7 @@ lead: Route agent messages into WeCom (Enterprise WeChat) so your team can recei
 
 WeCom is for bringing the agent into an enterprise messaging environment, so team members can receive and reply to agent messages inside WeCom.
 
-> New to bots? Start with the "Relay Agent Messages Into IM With Bots" section of the main guide to understand the overall flow and the Forward/Handoff distinction, then come back here.
+> New to bots? Start with the "Bots And IM Agent Relay" section in Detailed Configuration to understand the overall flow and the Forward agent messages and Handoff modes, then come back here.
 
 ## The Fields You'll Use
 
@@ -51,22 +51,22 @@ WeCom is for bringing the agent into an enterprise messaging environment, so tea
 
 ## Wire It Up In CCR
 
-1. Open CCR's **Bots** page and click **Add Bot**.
+1. Open CCR's **Bot Management** page and click **Add Bot**.
 2. Pick **WeCom** as the platform.
 3. Auth is **App Secret**.
 4. Fill in **Corp ID**, **Agent ID**, and **Secret**.
 5. Save the bot.
-6. Open **Profiles** and edit the agent profile you want to attach it to.
+6. Open **Agent Config** and edit the Agent Config you want to attach it to.
 7. Turn on **Bot** and select the bot.
 8. Optionally enable **Forward agent messages** or **Handoff**.
 9. Reopen the agent from CCR.
 
-## Forward vs Handoff
+## Message Relay: Forward Or Handoff
 
 - **Forward agent messages**: forwards regardless of lock state. Increases message volume — use only for full logs or troubleshooting.
 - **Handoff**: only forwards after the screen locks. Pair with Idle seconds and a target device.
 
-> Only want lock-screen alerts? Skip Forward.
+> For lock-screen-only alerts, use **Handoff** without **Forward agent messages**.
 
 ## Test It
 

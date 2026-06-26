@@ -1,7 +1,7 @@
 ---
 title: LINE Bot Setup
 pageTitle: LINE Bot
-eyebrow: Relay Agents In IM With Bots
+eyebrow: Bots And IM Agent Relay
 lead: Route agent messages into LINE friends, groups, or an Official Account, and relay them after your screen locks. This page walks you from creating a LINE Messaging API channel to a working setup in CCR.
 ---
 
@@ -9,7 +9,7 @@ lead: Route agent messages into LINE friends, groups, or an Official Account, an
 
 LINE is for routing agent messages into an existing LINE friend list, group chat, or LINE Official Account. CCR uses a Channel Access Token as the primary auth field.
 
-> New to bots? Start with the "Relay Agent Messages Into IM With Bots" section of the main guide to understand the overall flow and the Forward/Handoff distinction, then come back here.
+> New to bots? Start with the "Bots And IM Agent Relay" section in Detailed Configuration to understand the overall flow and the Forward agent messages and Handoff modes, then come back here.
 
 ## The Fields You'll Use
 
@@ -54,23 +54,23 @@ In CCR, LINE's auth type is labeled **Bot Token**, but you don't paste a Telegra
 
 ## Wire It Up In CCR
 
-1. Open CCR's **Bots** page and click **Add Bot**.
+1. Open CCR's **Bot Management** page and click **Add Bot**.
 2. Pick **LINE** as the platform.
 3. Auth is **Bot Token** (this is LINE's fixed auth type in CCR).
 4. Paste the token into **Channel Access Token**.
 5. Paste the secret into **Channel Secret**.
 6. Save the bot.
-7. Open **Profiles** and edit the agent profile you want to attach it to.
+7. Open **Agent Config** and edit the Agent Config you want to attach it to.
 8. Turn on **Bot** and select the bot.
 9. Optionally enable **Forward agent messages** or **Handoff**.
 10. Reopen the agent from CCR.
 
-## Forward vs Handoff
+## Message Relay: Forward Or Handoff
 
 - **Forward agent messages**: forwards regardless of lock state. Good when you want full output in LINE.
 - **Handoff**: only forwards after the screen locks. Pair with Idle seconds and a target device.
 
-> Only want lock-screen alerts? Skip Forward.
+> For lock-screen-only alerts, use **Handoff** without **Forward agent messages**.
 
 ## Test It
 
@@ -85,4 +85,4 @@ In CCR, LINE's auth type is labeled **Bot Token**, but you don't paste a Telegra
 - **Auth fails**: re-copy the Channel Access Token.
 - **Can send but can't receive**: confirm the Channel Access Token is valid and CCR is running and connected to LINE.
 - **Groups don't work**: confirm `Allow bot to join group chats` is on, then re-add the bot to the group.
-- **Only want lock-screen alerts**: skip Forward, use Handoff only.
+- **Lock-screen-only alerts**: use Handoff without Forward agent messages.

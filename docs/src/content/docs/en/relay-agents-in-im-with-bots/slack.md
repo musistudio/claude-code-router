@@ -1,7 +1,7 @@
 ---
 title: Slack Bot Setup
 pageTitle: Slack Bot
-eyebrow: Relay Agents In IM With Bots
+eyebrow: Bots And IM Agent Relay
 lead: Route agent messages into Slack channels or DMs, and relay them to Slack after your screen locks. This page walks you from creating the Slack app all the way to a working setup in CCR.
 ---
 
@@ -9,7 +9,7 @@ lead: Route agent messages into Slack channels or DMs, and relay them to Slack a
 
 Slack is for teams that want agent messages in an existing channel, DM, or workspace app. You need a Bot Token and an App Token.
 
-> New to bots? Start with the "Relay Agent Messages Into IM With Bots" section of the main guide to understand the overall flow and the difference between Forward and Handoff, then come back here for a single platform.
+> New to bots? Start with the "Bots And IM Agent Relay" section in Detailed Configuration to understand the overall flow and the Forward agent messages and Handoff modes, then come back here for a single platform.
 
 ## The Fields You'll Use
 
@@ -58,23 +58,23 @@ Skip this if you only use DMs.
 
 ## Wire It Up In CCR
 
-1. Open CCR's **Bots** page and click **Add Bot**.
+1. Open CCR's **Bot Management** page and click **Add Bot**.
 2. Pick **Slack** as the platform.
 3. Keep the default **Bot Token** auth (unless you specifically need OAuth).
 4. Paste `xoxb-...` into **Bot Token**.
 5. Paste `xapp-...` into **App Token**.
 6. Save the bot.
-8. Open **Profiles** and edit the agent profile you want to attach it to.
-9. Turn on **Bot** and select the bot you just saved.
-10. Optionally enable **Forward agent messages** or **Handoff** (next section).
-11. Reopen the agent from CCR.
+7. Open **Agent Config** and edit the Agent Config you want to attach it to.
+8. Turn on **Bot** and select the bot you just saved.
+9. Optionally enable **Forward agent messages** or **Handoff** (next section).
+10. Reopen the agent from CCR.
 
-## Forward vs Handoff
+## Message Relay: Forward Or Handoff
 
 - **Forward agent messages**: forwards every new agent message to Slack regardless of screen lock. Good for full logs or debugging.
 - **Handoff**: only forwards after the screen locks. Pair it with **Idle seconds** and a Wi-Fi/Bluetooth target device.
 
-> Only want lock-screen alerts? Use Handoff, not Forward — otherwise it gets noisy.
+> For lock-screen-only alerts, use **Handoff** without **Forward agent messages**.
 
 ## Test It
 
@@ -89,4 +89,4 @@ Skip this if you only use DMs.
 - **No messages reach Slack**: confirm the Bot Token is still valid and the app is in the target channel.
 - **Socket Mode won't connect**: check that the App Token starts with `xapp-` and has `connections:write`.
 - **Channel silent but DMs work**: the bot isn't in the channel, or it lacks `channels:*` / `groups:*` scopes. Reinstall to the workspace after adding scopes.
-- **Too many messages**: turn off Forward, keep Handoff only.
+- **Too many messages**: use Handoff without Forward agent messages.

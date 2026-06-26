@@ -1,7 +1,7 @@
 ---
 title: Discord Bot Setup
 pageTitle: Discord Bot
-eyebrow: Relay Agents In IM With Bots
+eyebrow: Bots And IM Agent Relay
 lead: Route agent messages into Discord server channels or DMs, and relay them after your screen locks. This page walks you from creating the Discord app to a working setup in CCR.
 ---
 
@@ -9,7 +9,7 @@ lead: Route agent messages into Discord server channels or DMs, and relay them a
 
 Discord is for routing agent messages into a server channel, a private collab server, or a personal DM. A Bot Token is the most common setup and is straightforward.
 
-> New to bots? Start with the "Relay Agent Messages Into IM With Bots" section of the main guide to understand the overall flow and the Forward/Handoff distinction, then come back here.
+> New to bots? Start with the "Bots And IM Agent Relay" section in Detailed Configuration to understand the overall flow and the Forward agent messages and Handoff modes, then come back here.
 
 ## The Fields You'll Use
 
@@ -65,23 +65,23 @@ If something asks for Application ID or Public Key:
 
 ## Wire It Up In CCR
 
-1. Open CCR's **Bots** page and click **Add Bot**.
+1. Open CCR's **Bot Management** page and click **Add Bot**.
 2. Pick **Discord** as the platform.
 3. Keep the default **Bot Token** auth.
 4. Paste the token into **Bot Token**.
 5. Add **Application ID** and **Public Key** if needed.
 6. Save the bot.
-7. Open **Profiles** and edit the agent profile you want to attach it to.
+7. Open **Agent Config** and edit the Agent Config you want to attach it to.
 8. Turn on **Bot** and select the bot.
 9. Optionally enable **Forward agent messages** or **Handoff**.
 10. Reopen the agent from CCR.
 
-## Forward vs Handoff
+## Message Relay: Forward Or Handoff
 
 - **Forward agent messages**: forwards regardless of lock state. Good for debugging or full-record channels.
 - **Handoff**: only forwards after the screen locks. Pair with Idle seconds and a target device.
 
-> Only want lock-screen alerts? Skip Forward.
+> For lock-screen-only alerts, use **Handoff** without **Forward agent messages**.
 
 ## Test It
 

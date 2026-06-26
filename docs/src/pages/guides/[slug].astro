@@ -1,0 +1,26 @@
+---
+import DocPage from "../../components/DocPage.astro";
+import { sectionSlugFromPath, zhGuideDocs } from "../../section-docs";
+
+export function getStaticPaths() {
+  const activeLabels: Record<string, string> = {
+    install: "安装并启动 CCR",
+    provider: "接入供应商",
+    "agent-profile": "接入 Agent配置",
+    observability: "日志&观测",
+  };
+
+  return Object.entries(zhGuideDocs).map(([filePath, mod]) => {
+    const slug = sectionSlugFromPath(filePath);
+
+    return {
+      params: { slug },
+      props: { mod, activeSidebarItem: activeLabels[slug] },
+    };
+  });
+}
+
+const { mod, activeSidebarItem } = Astro.props;
+---
+
+<DocPage locale="zh" pageKey="guides" doc={mod} activeSidebarItem={activeSidebarItem} />
