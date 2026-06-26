@@ -138,3 +138,85 @@ test("a disabled Morph router yields no decision", async () => {
   });
   assert.equal(decision, undefined);
 });
+
+test("array-form models config normalizes to targets", () => {
+  const config = normalizeMorphRouterConfig(
+    {
+      enabled: true,
+      api_key: "k",
+      default_model: "m1",
+      models: [{ name: "m1", route: "openrouter,anthropic/claude-sonnet-4.6" }]
+    },
+    providers
+  );
+  assert.deepEqual(config.errors, []);
+  assert.equal(config.models[0]?.name, "m1");
+  assert.equal(config.models[0]?.targets[0].route, "openrouter,anthropic/claude-sonnet-4.6");
+});
+
+test("an unresolved env placeholder in api_key is reported", () => {
+  const config = normalizeMorphRouterConfig(
+    {
+      enabled: true,
+      api_key: "$DEFINITELY_MISSING_VAR_X",
+      default_model: "m1",
+      models: { m1: "openrouter,anthropic/claude-sonnet-4.6" }
+    },
+    providers
+  );
+  assert.ok(config.errors.some((error) => error.includes("references an environment variable that is not set")));
+});
+
+test("an invalid policy is reported", () => {
+  const config = normalizeMorphRouterConfig(
+    {
+      enabled: true,
+      api_key: "k",
+      policy: "turbo" as never,
+      default_model: "m1",
+      models: { m1: "openrouter,anthropic/claude-sonnet-4.6" }
+    },
+    providers
+  );
+  assert.ok(config.errors.some((error) => error.includes("policy must be one of")));
+});
+
+test("duplicate model names are reported (case-insensitive)", () => {
+  const config = normalizeMorphRouterConfig(
+    {
+      enabled: true,
+      api_key: "k",
+      default_model: "m1",
+      models: [
+        { name: "m1", route: "openrouter,anthropic/claude-sonnet-4.6" },
+        { name: "M1", route: "openrouter,anthropic/claude-sonnet-4.6" }
+      ]
+    },
+    providers
+  );
+  assert.ok(config.errors.some((error) => error.includes("duplicate model")));
+});
+
+test("oversized input is truncated to the most recent characters", () => {
+  const input = extractMorphRouterInput(
+    { messages: [{ role: "user", content: `${"X".repeat(50)}TAIL1234567890` }] },
+    10
+  );
+  assert.equal(input, "1234567890");
+});
+
+test("an invalid config never calls the Morph API (fails closed to fallback)", async () => {
+  let calls = 0;
+  const countingFetch = (async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ model: "claude-sonnet-4-6" }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const decision = await getMorphRouterDecision({
+    rawConfig: { enabled: true, api_key: "k", default_model: "m1", models: { m1: "ghost,not-a-model" } },
+    providers,
+    requestBody: { messages: [{ role: "user", content: "x" }] },
+    fetchImpl: countingFetch
+  });
+  assert.equal(decision, undefined);
+  assert.equal(calls, 0);
+});
