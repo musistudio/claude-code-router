@@ -678,6 +678,7 @@ export function EndpointTitleBar({
   const statusLabel = running ? t("running") : t("not running");
   const value = endpoint.trim() || t("Not configured");
   const loopbackEndpoint = loopbackEndpointFromStatus(value, config);
+  const loopbackBaseUrl = gatewayBaseUrlFromEndpoint(loopbackEndpoint);
   const networkEndpoints = running ? gatewayStatus.networkEndpoints ?? [] : [];
 
   async function copyEndpoint(valueToCopy: string, key: string) {
@@ -764,21 +765,24 @@ export function EndpointTitleBar({
             >
               <div className="space-y-1.5">
                 <EndpointInfoRow
-                  copied={copiedKey === `loopback:${loopbackEndpoint}`}
+                  copied={copiedKey === `loopback:${loopbackBaseUrl}`}
                   label="Loopback"
-                  value={loopbackEndpoint}
-                  onCopy={(valueToCopy) => void copyEndpoint(valueToCopy, `loopback:${loopbackEndpoint}`)}
+                  value={loopbackBaseUrl}
+                  onCopy={(valueToCopy) => void copyEndpoint(valueToCopy, `loopback:${loopbackBaseUrl}`)}
                 />
-                {networkEndpoints.map((entry, index) => (
-                  <EndpointInfoRow
-                    copied={copiedKey === `network:${entry.interfaceName}:${entry.address}`}
-                    key={`${entry.interfaceName}-${entry.address}`}
-                    label={index === 0 ? "Network" : ""}
-                    meta={entry.interfaceName}
-                    value={entry.endpoint}
-                    onCopy={(valueToCopy) => void copyEndpoint(valueToCopy, `network:${entry.interfaceName}:${entry.address}`)}
-                  />
-                ))}
+                {networkEndpoints.map((entry, index) => {
+                  const baseUrl = gatewayBaseUrlFromEndpoint(entry.endpoint);
+                  return (
+                    <EndpointInfoRow
+                      copied={copiedKey === `network:${entry.interfaceName}:${entry.address}`}
+                      key={`${entry.interfaceName}-${entry.address}`}
+                      label={index === 0 ? "Network" : ""}
+                      meta={entry.interfaceName}
+                      value={baseUrl}
+                      onCopy={(valueToCopy) => void copyEndpoint(valueToCopy, `network:${entry.interfaceName}:${entry.address}`)}
+                    />
+                  );
+                })}
               </div>
 
             </PopoverContent>
@@ -843,6 +847,29 @@ function loopbackEndpointFromStatus(endpoint: string, config: AppConfig): string
   } catch {
     return `http://127.0.0.1:${config.gateway.port}`;
   }
+}
+
+function gatewayBaseUrlFromEndpoint(endpoint: string): string {
+  try {
+    const parsed = new URL(endpoint);
+    parsed.pathname = appendGatewayBasePath(parsed.pathname);
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString().replace(/\/$/, "");
+  } catch {
+    return `${endpoint.replace(/\/+$/, "")}/v1`;
+  }
+}
+
+function appendGatewayBasePath(pathname: string): string {
+  const normalized = pathname.replace(/\/+$/, "");
+  if (!normalized || normalized === "/") {
+    return "/v1";
+  }
+  if (normalized.endsWith("/v1")) {
+    return normalized;
+  }
+  return `${normalized}/v1`;
 }
 
 async function copyEndpointTextToClipboard(value: string): Promise<void> {
