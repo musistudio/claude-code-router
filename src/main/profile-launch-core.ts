@@ -13,6 +13,7 @@ export type ProfileLaunchPlan = {
 export type ProfileLaunchSpawnCommand = {
   args: string[];
   command: string;
+  windowsVerbatimArguments?: boolean;
 };
 
 export function findProfileForOpen(config: Pick<AppConfig, "profile">, profileRef: string): ProfileConfig {
@@ -98,15 +99,14 @@ export function profileLaunchSpawnCommand(plan: Pick<ProfileLaunchPlan, "args" |
       command: plan.command
     };
   }
+  let cmdLine = `"${plan.command}"`;
+  if (plan.args && plan.args.length > 0) {
+    cmdLine += " " + plan.args.join(" ");
+  }
   return {
-    args: [
-      "/d",
-      "/s",
-      "/v:off",
-      "/c",
-      windowsCommandScriptInvocation(plan.command, plan.args)
-    ],
-    command: process.env.ComSpec || process.env.COMSPEC || "cmd.exe"
+    args: ["/d", "/v:off", "/c", cmdLine],
+    command: process.env.ComSpec || process.env.COMSPEC || "cmd.exe",
+    windowsVerbatimArguments: true
   };
 }
 

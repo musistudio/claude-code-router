@@ -58,7 +58,8 @@ async function main(): Promise<void> {
   const launch = profileLaunchSpawnCommand(plan);
   const child = spawn(launch.command, launch.args, {
     env: childEnv,
-    stdio: "inherit"
+    stdio: "inherit",
+    windowsVerbatimArguments: !!launch.windowsVerbatimArguments
   });
   const code = await waitForChild(child);
   process.exitCode = code;

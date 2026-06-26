@@ -77,7 +77,7 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
     const wrapperResult = writeClaudeCodeWrapper(config, profile);
     const nextSettings = {
       ...settings,
-      apiKeyHelper: helperResult.file,
+      apiKeyHelper: process.platform === "win32" ? `"${helperResult.file}"` : helperResult.file,
       env
     };
     const writeResult = writeFileWithBackup(settingsFile, `${JSON.stringify(nextSettings, null, 2)}\n`, { mode: privateFileMode });
