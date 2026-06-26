@@ -2,7 +2,7 @@ import {
   AddProfileDraft, AddProviderDraft, AppConfig, Button, Check, ChevronLeft,
   ChevronRight, cn, GatewayProviderProbeResult, GatewayStatus, Gauge, getNextOnboardingStep,
   isOnboardingProfileReady, isOnboardingProviderReady, Layers3, LucideIcon, motion, motionEase,
-  LoaderCircle, onboardingMascotSpriteUrl, OnboardingStepId, onboardingStepOrder, ProviderConnectivityCheckReport, reducedMotionTransition, useAppText, useReducedMotion,
+  LoaderCircle, onboardingMascotSpriteUrl, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder, ProviderConnectivityCheckReport, reducedMotionTransition, useAppText, useReducedMotion,
   useState,
   UserRound, X
 } from "../shared";
@@ -79,7 +79,8 @@ export function OnboardingView({
   providerConnectivityLoading,
   providerConnectivityProbe,
   providerProbe,
-  providerProbeLoading
+  providerProbeLoading,
+  readiness
 }: {
   activeStep: OnboardingStepId;
   canSubmitProfile: boolean;
@@ -102,18 +103,19 @@ export function OnboardingView({
   providerConnectivityProbe?: GatewayProviderProbeResult;
   providerProbe?: GatewayProviderProbeResult;
   providerProbeLoading: boolean;
+  readiness?: OnboardingReadinessOptions;
 }) {
   const t = useAppText();
   const shouldReduceMotion = useReducedMotion();
   const [providerIconDetecting, setProviderIconDetecting] = useState(false);
   const providerReady = isOnboardingProviderReady(config);
-  const profileReady = isOnboardingProfileReady(config);
+  const profileReady = isOnboardingProfileReady(config, readiness);
   const serviceReady = gatewayStatus.state === "running";
   const routeReady = providerReady && profileReady;
   const activeIndex = Math.max(0, onboardingStepOrder.indexOf(activeStep));
   const activeDetails = onboardingStepDetails[activeStep];
   const previousStep = onboardingStepOrder[activeIndex - 1];
-  const nextStep = getNextOnboardingStep(activeStep, config);
+  const nextStep = getNextOnboardingStep(activeStep, config, readiness);
   const providerSubmitLoading = activeStep === "provider" && (providerProbeLoading || providerConnectivityLoading || providerIconDetecting);
   const nextDisabled = activeStep === "provider"
     ? providerSubmitLoading || !(providerReady || canSubmitProvider)

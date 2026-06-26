@@ -29,7 +29,7 @@ import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
 import { getUsageStats } from "./usage-store";
 import windowsManager from "./windows";
-import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfig, AppConfig, AppDataExportResult, AppInfo, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, LocalAgentProviderImportRequest, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
+import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfig, AppConfig, AppDataExportResult, AppInfo, AppSaveConfigOptions, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, LocalAgentProviderImportRequest, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
 
 const pluginMarketplace: PluginMarketplaceEntry[] = [
   {
@@ -240,7 +240,7 @@ ipcMain.handle(IPC_CHANNELS.appRevealProxyCertificate, () => {
   ensureProxyCertificateAuthority();
   shell.showItemInFolder(PROXY_CA_CERT_FILE);
 });
-ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig) => {
+ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig, options?: AppSaveConfigOptions) => {
   const previousConfig = await loadAppConfig();
   if (config.proxy.enabled) {
     const certificateStatus = await proxyService.getCertificateStatus();
@@ -257,7 +257,9 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig) => 
   } else {
     gatewayService.updateConfig(savedConfig);
   }
-  await applyProfileIfServiceRunning(savedConfig, runtimeStatus);
+  if (options?.applyProfile !== false) {
+    await applyProfileIfServiceRunning(savedConfig, runtimeStatus);
+  }
   await builtInBrowserService.syncProxy(savedConfig);
   await trayController.refreshIconFromConfig(savedConfig);
   invalidateProviderAccountSnapshotCache();

@@ -1224,6 +1224,10 @@ export type AppConfig = {
   virtualModelProfiles?: VirtualModelProfileConfig[];
 };
 
+export type AppSaveConfigOptions = {
+  applyProfile?: boolean;
+};
+
 export type ClaudeAppGatewayApplyResult = {
   apiKeyGenerated: boolean;
   configFile: string;

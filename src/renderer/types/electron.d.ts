@@ -8,6 +8,7 @@ import type {
   AppConfig,
   AppDataExportResult,
   AppInfo,
+  AppSaveConfigOptions,
   AppUpdateStatus,
   ApiKeyConfig,
   BotGatewayQrLoginCancelRequest,
@@ -111,7 +112,7 @@ declare global {
       restartGateway: () => Promise<GatewayStatus>;
       restartProxy: () => Promise<ProxyStatus>;
       saveApiKeys: (apiKeys: ApiKeyConfig[]) => Promise<AppConfig>;
-      saveConfig: (config: AppConfig) => Promise<AppConfig>;
+      saveConfig: (config: AppConfig, options?: AppSaveConfigOptions) => Promise<AppConfig>;
       selectPluginDirectory: () => Promise<PluginDirectorySelection | undefined>;
       setOnboardingFinished: () => Promise<boolean>;
       setProxyNetworkCaptureEnabled: (enabled: boolean) => Promise<ProxyNetworkSnapshot>;

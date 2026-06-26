@@ -1,6 +1,6 @@
 import {
   AddApiKeyDraft, AddProfileDraft, AddProviderDraft, AddRoutingRuleDraft, AgentAnalysisSessionSelection, AgentAnalysisSnapshot, AgentFilterValue,
-  ApiKeyConfig, AppConfig, appCopy, AppI18nContext, AppInfo,
+  ApiKeyConfig, AppConfig, appCopy, AppI18nContext, AppInfo, AppSaveConfigOptions,
   AppLanguagePreference, applyProviderProbeResult, AppToast, BotGatewaySavedConfig, buildExtensionList, claudeDesignRoutingConfigFromDraft,
   buildRouterConditionPath,
   ClaudeDesignRoutingDraft, ClaudeDesignRoutingRuleDraft, cloneConfig, createApiKeyDraft, createApiKeyEditDraft,
@@ -20,7 +20,7 @@ import {
   LayoutGroup, mergeProviderCapabilities, mergeProviderModelLists,
   navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets,
   normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
-  normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingStepId, onboardingStepOrder,
+  normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
   OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parseProviderAccountDraft,
   providerCredentialsFromDraft,
   persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
@@ -156,6 +156,8 @@ function extensionActionIndexes(index: number, groupIndexes?: number[]): number[
 function App() {
   const [activeView, setActiveView] = useState<ViewId>("onboarding");
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStepId>(() => getDefaultOnboardingStep(fallbackConfig));
+  const [onboardingFinished, setOnboardingFinished] = useState(() => !window.ccr);
+  const [onboardingProfileConfirmed, setOnboardingProfileConfirmed] = useState(() => !window.ccr);
   const [appInfo, setAppInfo] = useState<AppInfo>(fallbackInfo);
   const [draftConfig, setDraftConfig] = useState<AppConfig>(fallbackConfig);
   const [configLoaded, setConfigLoaded] = useState(() => !window.ccr);
@@ -306,7 +308,11 @@ function App() {
       })
       .finally(() => setConfigLoaded(true));
     void window.ccr.getOnboardingFinished()
-      .then((finished) => setActiveView(finished ? "overview" : "onboarding"))
+      .then((finished) => {
+        setOnboardingFinished(finished);
+        setOnboardingProfileConfirmed(finished);
+        setActiveView(finished ? "overview" : "onboarding");
+      })
       .catch(() => setActiveView("onboarding"))
       .finally(() => setOnboardingStatusLoaded(true));
     void window.ccr.getPluginMarketplace().then(setPluginMarketplace).catch(() => setPluginMarketplace([]));
@@ -671,6 +677,7 @@ function App() {
     [agentAnalysisEnabled, networkCaptureEnabled, requestLogsEnabled]
   );
   const autoSaveRequestId = useRef(0);
+  const onboardingProfileDraftSource = useRef("");
   const providerProbeRequestId = useRef(0);
   const providerConnectivityRequestId = useRef(0);
   const providerDeepLinkCatalogModelsRequestId = useRef(0);
@@ -704,6 +711,11 @@ function App() {
   );
   const canSubmitVirtualModel = !virtualModelValidationError;
   const canInstallExtension = Boolean(extensionInstallDraft.key.trim() && extensionInstallDraft.modulePath.trim());
+  const onboardingReadiness = useMemo<OnboardingReadinessOptions>(() => ({
+    profileConfirmed: onboardingProfileConfirmed,
+    requireProfileConfirmation: activeView === "onboarding" && !onboardingFinished
+  }), [activeView, onboardingFinished, onboardingProfileConfirmed]);
+  const deferProfileApplyOnSave = activeView === "onboarding" && !onboardingFinished && !onboardingProfileConfirmed;
 
   useEffect(() => {
     if (!networkCaptureEnabled && activeView === "networking") {
@@ -724,13 +736,39 @@ function App() {
     if (activeView !== "onboarding" || !configLoaded || !onboardingStatusLoaded || !providerPresetsLoaded) {
       return;
     }
-    const defaultStep = getDefaultOnboardingStep(draftConfig);
+    const defaultStep = getDefaultOnboardingStep(draftConfig, onboardingReadiness);
     const defaultIndex = onboardingStepOrder.indexOf(defaultStep);
     setOnboardingStep((current) => {
       const currentIndex = onboardingStepOrder.indexOf(current);
       return defaultIndex > currentIndex ? defaultStep : current;
     });
-  }, [activeView, configLoaded, onboardingStatusLoaded, providerPresetsLoaded, draftConfig]);
+  }, [activeView, configLoaded, onboardingStatusLoaded, providerPresetsLoaded, draftConfig, onboardingReadiness]);
+
+  useEffect(() => {
+    if (activeView !== "onboarding" || onboardingStep !== "profile" || onboardingProfileConfirmed || !configLoaded) {
+      return;
+    }
+
+    const sameAgentIndex = draftConfig.profile.profiles.findIndex((profile) => profile.enabled && profile.agent === profileDraft.agent);
+    const fallbackIndex = onboardingProfileDraftSource.current
+      ? -1
+      : draftConfig.profile.profiles.findIndex((profile) => profile.enabled);
+    const profileIndex = sameAgentIndex >= 0 ? sameAgentIndex : fallbackIndex;
+    const profile = profileIndex >= 0 ? draftConfig.profile.profiles[profileIndex] : undefined;
+    if (!profile) {
+      return;
+    }
+
+    const source = `${profile.agent}:${profile.id || profile.name || profileIndex}`;
+    if (onboardingProfileDraftSource.current === source) {
+      return;
+    }
+
+    onboardingProfileDraftSource.current = source;
+    setProfileAgentTab(profile.agent);
+    setProfileDraft(createProfileDraftFromProfile(profile, draftConfig.botConfigs));
+    setProfileActionError("");
+  }, [activeView, onboardingStep, onboardingProfileConfirmed, configLoaded, draftConfig.profile.profiles, draftConfig.botConfigs, profileDraft.agent]);
 
   useEffect(() => {
     if (activeView !== "onboarding" || !configLoaded || !onboardingStatusLoaded || !providerPresetsLoaded || providerAddOpen) {
@@ -770,8 +808,9 @@ function App() {
     const requestId = autoSaveRequestId.current + 1;
     autoSaveRequestId.current = requestId;
     const configToSave = draftConfig;
+    const options = deferProfileApplyOnSave ? { applyProfile: false } : undefined;
     const timer = window.setTimeout(() => {
-      void window.ccr?.saveConfig(configToSave)
+      void window.ccr?.saveConfig(configToSave, options)
         .then((saved) => {
           if (autoSaveRequestId.current === requestId) {
             syncConfigState(saved);
@@ -786,7 +825,7 @@ function App() {
     }, 400);
 
     return () => window.clearTimeout(timer);
-  }, [dirty, draftConfig]);
+  }, [dirty, draftConfig, deferProfileApplyOnSave]);
 
   function syncConfigState(config: AppConfig) {
     const normalized = normalizeConfig(config);
@@ -822,7 +861,7 @@ function App() {
     return normalized;
   }
 
-  async function persistConfig(config: AppConfig, setError: (message: string) => void): Promise<boolean> {
+  async function persistConfig(config: AppConfig, setError: (message: string) => void, options?: AppSaveConfigOptions): Promise<boolean> {
     autoSaveRequestId.current += 1;
     if (!window.ccr) {
       syncConfigState(config);
@@ -830,7 +869,8 @@ function App() {
     }
 
     try {
-      const saved = await window.ccr.saveConfig(config);
+      const saveOptions = options ?? (deferProfileApplyOnSave ? { applyProfile: false } : undefined);
+      const saved = await window.ccr.saveConfig(config, saveOptions);
       syncConfigState(saved);
       setError("");
       return true;
@@ -1303,7 +1343,7 @@ function App() {
       setProviderEditIndex(undefined);
       setProviderAddOpen(false);
       if (activeView === "onboarding") {
-        setOnboardingStep(getDefaultOnboardingStep(next));
+        setOnboardingStep(getDefaultOnboardingStep(next, onboardingReadiness));
       }
       return true;
     }
@@ -1384,7 +1424,7 @@ function App() {
         setProviderDeepLinkRequest(undefined);
         showToast(`${copy.text["Imported provider"] ?? "Imported provider"} ${importedProviderName}`.trim());
         if (activeView === "onboarding") {
-          setOnboardingStep(getDefaultOnboardingStep(next));
+          setOnboardingStep(getDefaultOnboardingStep(next, onboardingReadiness));
         }
       }
     } catch (error) {
@@ -2011,6 +2051,8 @@ function App() {
         return;
       }
     }
+    setOnboardingFinished(true);
+    setOnboardingProfileConfirmed(true);
     setActiveView("overview");
   }
 
@@ -2490,44 +2532,53 @@ function App() {
     setProfileActionError("");
   }
 
-	  async function submitProfileDraft(): Promise<boolean> {
-	    if (profileSubmitBusy) {
-	      return false;
-	    }
-	    if (!canSubmitProfile) {
-	      setProfileActionError(t("Profile name, required target settings, and environment variable keys are required."));
-	      return false;
-	    }
-	    setProfileSubmitBusy("add");
-	    const profile = profileConfigFromDraft(profileDraft, draftConfig.profile.profiles, undefined, draftConfig.botConfigs);
-	    setProfileAgentTab(profile.agent);
+  async function submitProfileDraft(): Promise<boolean> {
+    if (profileSubmitBusy) {
+      return false;
+    }
+    if (!canSubmitProfile) {
+      setProfileActionError(t("Profile name, required target settings, and environment variable keys are required."));
+      return false;
+    }
+    setProfileSubmitBusy("add");
+    const onboardingProfileIndex = activeView === "onboarding"
+      ? draftConfig.profile.profiles.findIndex((item) => item.enabled && item.agent === profileDraft.agent)
+      : -1;
+    const existingProfile = onboardingProfileIndex >= 0 ? draftConfig.profile.profiles[onboardingProfileIndex] : undefined;
+    const profile = profileConfigFromDraft(profileDraft, draftConfig.profile.profiles, existingProfile, draftConfig.botConfigs);
+    setProfileAgentTab(profile.agent);
     const next = buildConfigUpdate((config) => ({
       ...config,
       profile: {
         ...config.profile,
         enabled: true,
-        profiles: enforceSingleEnabledGlobalProfilePerAgent(
-          [...config.profile.profiles, profile],
-          config.profile.profiles.length
-        )
+        profiles: (() => {
+          const profiles = [...config.profile.profiles];
+          const profileIndex = onboardingProfileIndex >= 0 && profiles[onboardingProfileIndex]
+            ? onboardingProfileIndex
+            : profiles.length;
+          profiles[profileIndex] = profile;
+          return enforceSingleEnabledGlobalProfilePerAgent(profiles, profileIndex);
+        })()
       }
     }));
     setConfigDraft(next);
-	    try {
-	      if (!(await persistConfig(next, setProfileActionError))) {
-	        return false;
-	      }
-	      setProfileAddOpen(false);
-	      setProfileDraft(createProfileDraft());
-	      setProfileActionError("");
-	      if (activeView === "onboarding") {
-	        setOnboardingStep("enter");
-	      }
-	      return true;
-	    } finally {
-	      setProfileSubmitBusy("");
-	    }
-	  }
+    try {
+      if (!(await persistConfig(next, setProfileActionError, { applyProfile: true }))) {
+        return false;
+      }
+      setProfileAddOpen(false);
+      setProfileDraft(createProfileDraft());
+      setProfileActionError("");
+      if (activeView === "onboarding") {
+        setOnboardingProfileConfirmed(true);
+        setOnboardingStep("enter");
+      }
+      return true;
+    } finally {
+      setProfileSubmitBusy("");
+    }
+  }
 
 	  async function submitProfileEditDraft(): Promise<boolean> {
 	    if (profileSubmitBusy) {
@@ -2630,7 +2681,8 @@ function App() {
                 providerConnectivityLoading,
                 providerConnectivityProbe,
                 providerProbe,
-                providerProbeLoading
+                providerProbeLoading,
+                readiness: onboardingReadiness
               }}
             />
           ) : (

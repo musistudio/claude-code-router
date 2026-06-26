@@ -361,28 +361,34 @@ export const navigation: Array<{ icon: LucideIcon; id: NavigationId }> = [
 
 export const onboardingStepOrder: OnboardingStepId[] = ["provider", "profile", "enter"];
 
+export type OnboardingReadinessOptions = {
+  profileConfirmed?: boolean;
+  requireProfileConfirmation?: boolean;
+};
+
 export function isOnboardingProviderReady(config: AppConfig): boolean {
   return config.Providers.length > 0;
 }
 
-export function isOnboardingProfileReady(config: AppConfig): boolean {
-  return config.profile.profiles.some((profile) => profile.enabled);
+export function isOnboardingProfileReady(config: AppConfig, options: OnboardingReadinessOptions = {}): boolean {
+  const profileConfigured = config.profile.profiles.some((profile) => profile.enabled);
+  return profileConfigured && (!options.requireProfileConfirmation || Boolean(options.profileConfirmed));
 }
 
-export function getDefaultOnboardingStep(config: AppConfig): OnboardingStepId {
+export function getDefaultOnboardingStep(config: AppConfig, options: OnboardingReadinessOptions = {}): OnboardingStepId {
   if (!isOnboardingProviderReady(config)) {
     return "provider";
   }
-  if (!isOnboardingProfileReady(config)) {
+  if (!isOnboardingProfileReady(config, options)) {
     return "profile";
   }
   return "enter";
 }
 
-export function getNextOnboardingStep(activeStep: OnboardingStepId, config: AppConfig): OnboardingStepId | undefined {
+export function getNextOnboardingStep(activeStep: OnboardingStepId, config: AppConfig, options: OnboardingReadinessOptions = {}): OnboardingStepId | undefined {
   const activeIndex = onboardingStepOrder.indexOf(activeStep);
   for (const step of onboardingStepOrder.slice(activeIndex + 1)) {
-    if (step === "enter" || step === getDefaultOnboardingStep(config)) {
+    if (step === "enter" || step === getDefaultOnboardingStep(config, options)) {
       return step;
     }
   }
