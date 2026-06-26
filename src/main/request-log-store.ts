@@ -33,6 +33,7 @@ import type {
   RequestLogFilterOptions,
   RequestLogListFilter,
   RequestLogPage,
+  RequestLogRetryAttempt,
   RequestLogStatusFilter,
   UsageStatsRange
 } from "../shared/app";
@@ -126,6 +127,7 @@ type StoredRequestLogEntry = {
   requestBody: RequestLogBody;
   requestHeaders: Record<string, string | string[]>;
   requestId: string;
+  retryAttempts: RequestLogRetryAttempt[];
   responseBody?: RequestLogBody;
   responseHeaders: Record<string, string | string[]>;
   statusCode: number;
@@ -2507,6 +2509,45 @@ function readCredentialLogInfo(
   return { chain, id, saturated };
 }
 
+function parseRequestLogRetryAttempts(
+  responseHeaders: Record<string, string | string[]>,
+  finalStatusCode: number
+): RequestLogRetryAttempt[] {
+  const attemptCount = asNumber(readHeaderValue(responseHeaders, "x-ccr-fallback-attempts")) ?? 0;
+  if (attemptCount <= 1) {
+    return [];
+  }
+
+  const failures = splitHeaderCsv(readHeaderValue(responseHeaders, "x-ccr-fallback-failures"));
+  const delays = splitHeaderCsv(readHeaderValue(responseHeaders, "x-ccr-fallback-delays-ms"))
+    .map((value) => asNumber(value) ?? 0);
+  const attempts: RequestLogRetryAttempt[] = [];
+
+  for (let index = 0; index < attemptCount - 1; index += 1) {
+    attempts.push({
+      attempt: index + 1,
+      delayMs: delays[index] ?? 0,
+      final: false,
+      status: failures[index] || "failed"
+    });
+  }
+
+  attempts.push({
+    attempt: attemptCount,
+    delayMs: 0,
+    final: true,
+    status: finalStatusCode > 0 ? String(finalStatusCode) : undefined
+  });
+  return attempts;
+}
+
+function splitHeaderCsv(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function parseCredentialChain(value: string | undefined): string[] {
   return uniqueNonEmpty((value ?? "").split(","));
 }
@@ -2853,6 +2894,7 @@ function toRequestLogEntry(row: Record<string, SqlValue>): StoredRequestLogEntry
     requestBody,
     requestHeaders,
     requestId: String(row.request_id ?? ""),
+    retryAttempts: parseRequestLogRetryAttempts(responseHeaders, normalizeCount(row.status_code)),
     responseBody,
     responseHeaders,
     statusCode: normalizeCount(row.status_code),

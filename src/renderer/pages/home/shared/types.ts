@@ -378,7 +378,7 @@ export type OnboardingStepId = "provider" | "profile" | "enter";
 export type AppLanguagePreference = "system" | "en" | "zh";
 export type ResolvedLanguage = "en" | "zh";
 export type ResolvedTheme = "light" | "dark";
-export type SettingsPageId = "appearance" | "observability" | "bots" | "tray";
+export type SettingsPageId = "appearance" | "observability" | "bots" | "tray" | "data";
 export type TrayEditableModuleId = Exclude<TrayWindowModuleId, "footer">;
 export type TrayComponentOptionGroup = {
   key: keyof TrayComponentVariants;

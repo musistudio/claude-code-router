@@ -23,6 +23,7 @@ import type {
   ProxyStatus
 } from "../../shared/app";
 import { PROXY_CA_CERT_FILE } from "../../main/constants";
+import { windowsSystemCommand } from "../../main/windows-system";
 import { pluginService, type GatewayPluginProxyRouteMatch } from "../../main/plugins/service";
 import {
   createCertificateForHost,
@@ -30,6 +31,8 @@ import {
   proxyCertificateAuthorityKeyMatches,
   proxyCertificateAuthorityExists,
   proxyCaCertFile,
+  proxyCaCertInstallFile,
+  readProxyCertificateFingerprintSha1,
   readProxyCertificateFingerprintSha256,
   readProxyCertificateAuthority,
   type CertificateAuthority
@@ -419,7 +422,7 @@ class ProxyService {
 
     if (process.platform === "win32") {
       try {
-        await execFilePromise("certutil.exe", ["-user", "-addstore", "Root", PROXY_CA_CERT_FILE]);
+        await execFilePromise(windowsSystemCommand("certutil.exe"), ["-user", "-addstore", "Root", proxyCaCertInstallFile()]);
       } catch (error) {
         const status = await this.getCertificateStatus();
         return {
@@ -531,18 +534,19 @@ class ProxyService {
     }
 
     if (process.platform === "win32") {
-      if (!base.caFingerprintSha256) {
+      const caFingerprintSha1 = readProxyCertificateFingerprintSha1();
+      if (!caFingerprintSha1) {
         return {
           ...base,
           canInstall: true,
-          message: "Proxy CA certificate fingerprint could not be read. Reinstall the CA certificate.",
+          message: "Proxy CA certificate thumbprint could not be read. Reinstall the CA certificate.",
           state: "unknown",
           trusted: false
         };
       }
 
       try {
-        const trusted = await windowsCurrentUserRootContainsCertificateFingerprint(base.caFingerprintSha256);
+        const trusted = await windowsCurrentUserRootContainsCertificateThumbprint(caFingerprintSha1);
         if (!trusted) {
           return {
             ...base,
@@ -1455,7 +1459,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutValue: T)
 
 function execFilePromise(file: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    execFile(file, args, (error, stdout, stderr) => {
+    execFile(file, args, { windowsHide: process.platform === "win32" }, (error, stdout, stderr) => {
       if (error) {
         reject(new Error(stderr?.trim() || stdout?.trim() || error.message));
         return;
@@ -1483,7 +1487,7 @@ async function requestMacosCertificateInstallPermission(): Promise<boolean> {
 
 function execFileText(file: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(file, args, { maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile(file, args, { maxBuffer: 8 * 1024 * 1024, windowsHide: process.platform === "win32" }, (error, stdout, stderr) => {
       if (error) {
         reject(new Error(stderr?.trim() || stdout?.trim() || error.message));
         return;
@@ -1526,16 +1530,22 @@ function macosManualCertificateInstallCommand(): string {
 }
 
 function windowsManualCertificateInstallCommand(): string {
-  return `certutil.exe -user -addstore Root ${quoteWindowsCmdArg(PROXY_CA_CERT_FILE)}`;
+  return `${quoteWindowsCmdArg(windowsSystemCommand("certutil.exe"))} -user -addstore Root ${quoteWindowsCmdArg(proxyCaCertInstallFile())}`;
 }
 
-async function windowsCurrentUserRootContainsCertificateFingerprint(fingerprint: string | undefined): Promise<boolean> {
-  if (!fingerprint) {
+async function windowsCurrentUserRootContainsCertificateThumbprint(thumbprint: string | undefined): Promise<boolean> {
+  const normalizedThumbprint = normalizeFingerprint(thumbprint || "");
+  if (!normalizedThumbprint) {
     return false;
   }
 
-  const output = await execFileText("certutil.exe", ["-user", "-store", "Root"]);
-  return normalizeFingerprint(output).includes(normalizeFingerprint(fingerprint));
+  try {
+    const output = await execFileText(windowsSystemCommand("certutil.exe"), ["-user", "-store", "Root", normalizedThumbprint]);
+    return normalizeFingerprint(output).includes(normalizedThumbprint);
+  } catch {
+    const output = await execFileText(windowsSystemCommand("certutil.exe"), ["-user", "-store", "Root"]);
+    return normalizeFingerprint(output).includes(normalizedThumbprint);
+  }
 }
 
 async function openMacosTerminalCertificateInstaller(): Promise<string> {

@@ -12,6 +12,7 @@ import { CONFIGDIR } from "./constants";
 import { gatewayService } from "../server/gateway/service";
 import { buildProfileLaunchPlan, findProfileForOpen, profileLaunchSpawnCommand, profileOpenCommand, resolveClaudeCodeSettingsFile, resolveProfileOpenSurface } from "./profile-launch-core";
 import { applyProfileConfig } from "./profile-service";
+import { broadcastWindowsEnvironmentChanged, windowsSystemCommand } from "./windows-system";
 
 const ccrPathBlockStart = "# >>> Claude Code Router CLI >>>";
 const ccrPathBlockEnd = "# <<< Claude Code Router CLI <<<";
@@ -30,6 +31,7 @@ type RunningProfileApp = ProfileRuntimeEntry & {
   child: ChildProcess;
   command: string;
   pidIsLauncher?: boolean;
+  spawnError?: string;
   stopRequested?: boolean;
   userDataDir: string;
 };
@@ -74,6 +76,10 @@ export async function openProfileFromCcr(config: AppConfig, request: ProfileOpen
     },
     stdio: "ignore"
   });
+  const spawnError = await waitForImmediateSpawnError(child, 500);
+  if (spawnError) {
+    throw new Error(`Failed to open ${profile.name || profile.id}: ${spawnError}`);
+  }
   child.unref();
 
   return {
@@ -108,6 +114,7 @@ async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof
     sendProfileProcessSignal(entry.pid, "SIGTERM");
     throw new Error([
       `${appName} did not open a window for ${profile.name || profile.id}.`,
+      ...(entry.spawnError ? [`Error: ${entry.spawnError}`] : []),
       `Command: ${entry.command}`,
       `User data: ${entry.userDataDir}`
     ].join(" "));
@@ -147,6 +154,7 @@ async function openClaudeAppProfile(config: AppConfig, profile: ReturnType<typeo
     sendProfileProcessSignal(entry.pid, "SIGTERM");
     throw new Error([
       `Claude App did not open a window for ${profile.name || profile.id}.`,
+      ...(entry.spawnError ? [`Error: ${entry.spawnError}`] : []),
       `Command: ${entry.command}`,
       `User data: ${entry.userDataDir}`
     ].join(" "));
@@ -295,7 +303,10 @@ function registerProfileApp(
     }
     cleanupProfileAppEntry(key, entry);
   });
-  launch.child.once("error", () => cleanupProfileAppEntry(key, entry));
+  launch.child.once("error", (error) => {
+    entry.spawnError = formatError(error);
+    cleanupProfileAppEntry(key, entry);
+  });
   return entry;
 }
 
@@ -460,7 +471,7 @@ function windowsProfileAppMainPid(marker: string): number | undefined {
     "} | Sort-Object ProcessId | Select-Object -First 1 -ExpandProperty ProcessId"
   ].join("\n");
   try {
-    const result = spawnSync("powershell.exe", [
+    const result = spawnSync(windowsSystemCommand("powershell.exe"), [
       "-NoProfile",
       "-NonInteractive",
       "-ExecutionPolicy",
@@ -494,7 +505,7 @@ function sendProfileProcessSignal(pid: number | undefined, signal: NodeJS.Signal
     if (signal === "SIGKILL") {
       args.push("/F");
     }
-    spawnSync("taskkill.exe", args, {
+    spawnSync(windowsSystemCommand("taskkill.exe"), args, {
       stdio: "ignore",
       windowsHide: true
     });
@@ -522,9 +533,12 @@ async function waitForProcessExit(pid: number | undefined, timeoutMs: number): P
   return !isProcessAlive(pid);
 }
 
-async function waitForProfileAppStart(entry: Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "userDataDir">, timeoutMs: number): Promise<boolean> {
+async function waitForProfileAppStart(entry: Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "spawnError" | "userDataDir">, timeoutMs: number): Promise<boolean> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
+    if (entry.spawnError) {
+      return false;
+    }
     if (profileAppMainPid(entry)) {
       return true;
     }
@@ -536,7 +550,32 @@ async function waitForProfileAppStart(entry: Pick<RunningProfileApp, "pid" | "pi
     }
     await sleep(100);
   }
-  return Boolean(profileAppMainPid(entry)) || (!entry.pidIsLauncher && isProcessAlive(entry.pid));
+  return !entry.spawnError && (Boolean(profileAppMainPid(entry)) || (!entry.pidIsLauncher && isProcessAlive(entry.pid)));
+}
+
+function waitForImmediateSpawnError(child: ChildProcess, timeoutMs: number): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer: NodeJS.Timeout | undefined;
+    const finish = (message: string | undefined) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timer) {
+        clearTimeout(timer);
+      }
+      child.off("error", onError);
+      child.off("spawn", onSpawn);
+      resolve(message);
+    };
+    const onError = (error: Error) => finish(formatError(error));
+    const onSpawn = () => finish(undefined);
+    child.once("error", onError);
+    child.once("spawn", onSpawn);
+    timer = setTimeout(() => finish(undefined), timeoutMs);
+    timer.unref?.();
+  });
 }
 
 async function waitForProfileAppExit(entry: Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "userDataDir">, timeoutMs: number): Promise<boolean> {
@@ -829,7 +868,7 @@ function ensureWindowsUserPath(binDir: string): void {
     "  [Environment]::SetEnvironmentVariable('Path', ((@($bin) + $segments) -join ';'), 'User')",
     "}"
   ].join("\n");
-  const result = spawnSync("powershell.exe", [
+  const result = spawnSync(windowsSystemCommand("powershell.exe"), [
     "-NoProfile",
     "-NonInteractive",
     "-ExecutionPolicy",
@@ -846,6 +885,7 @@ function ensureWindowsUserPath(binDir: string): void {
   if (result.status !== 0) {
     throw new Error((result.stderr || result.stdout || `powershell.exe exited with ${result.status}`).trim());
   }
+  broadcastWindowsEnvironmentChanged();
 }
 
 function ensurePosixShellPath(binDir: string): void {

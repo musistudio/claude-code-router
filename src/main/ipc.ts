@@ -1,14 +1,15 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, type OpenDialogOptions } from "electron";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { app, BrowserWindow, dialog, ipcMain, shell, type OpenDialogOptions, type SaveDialogOptions } from "electron";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
+import { loadPersistedAppSetting, replacePersistedAppSetting } from "./app-config-store";
 import { builtInBrowserService } from "./built-in-browser";
 import { scanBotHandoffBluetoothTargets, scanBotHandoffWifiTargets } from "./bot-handoff-scan-service";
 import { cancelBotGatewayQrLogin, startBotGatewayQrLogin, waitBotGatewayQrLogin } from "./bot-gateway-qr-login-service";
 import { closeBotGatewayQrWindow, openBotGatewayQrWindow } from "./bot-gateway-qr-window-service";
 import { syncClaudeAppGatewayConfig } from "./claude-app-gateway-service";
 import { loadAppConfig, saveApiKeysConfig, saveAppConfig } from "./config";
-import { API_KEYS_DB_FILE, APP_NAME, CONFIGDIR, CONFIG_FILE, DATADIR, GATEWAY_CONFIG_FILE, IPC_CHANNELS, ONBOARDING_FINISHED_FILE, PROXY_CA_CERT_FILE, REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "./constants";
+import { API_KEYS_DB_FILE, APP_CONFIG_DB_FILE, APP_NAME, CONFIGDIR, CONFIG_FILE, DATADIR, GATEWAY_CONFIG_FILE, IPC_CHANNELS, LEGACY_CONFIG_FILE, ONBOARDING_FINISHED_FILE, PROXY_CA_CERT_FILE, REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "./constants";
 import { deepLinkService } from "./deep-link";
 import { gatewayService } from "../server/gateway/service";
 import { getProviderAccountSnapshots, invalidateProviderAccountSnapshotCache, testProviderAccountConnector } from "./provider-account-service";
@@ -28,7 +29,7 @@ import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
 import { getUsageStats } from "./usage-store";
 import windowsManager from "./windows";
-import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfig, AppConfig, AppInfo, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, LocalAgentProviderImportRequest, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
+import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfig, AppConfig, AppDataExportResult, AppInfo, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, LocalAgentProviderImportRequest, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
 
 const pluginMarketplace: PluginMarketplaceEntry[] = [
   {
@@ -56,9 +57,11 @@ const pluginMarketplace: PluginMarketplaceEntry[] = [
     name: "Cursor Proxy"
   }
 ];
+const onboardingFinishedAtSettingKey = "onboardingFinishedAt";
 
 ipcMain.handle(IPC_CHANNELS.appGetInfo, () => {
   return {
+    appConfigDbFile: APP_CONFIG_DB_FILE,
     apiKeysDbFile: API_KEYS_DB_FILE,
     configDir: CONFIGDIR,
     configFile: CONFIG_FILE,
@@ -72,8 +75,15 @@ ipcMain.handle(IPC_CHANNELS.appGetInfo, () => {
   } satisfies AppInfo;
 });
 
+ipcMain.handle(IPC_CHANNELS.appExportData, async (event): Promise<AppDataExportResult> => {
+  return exportAppData(BrowserWindow.fromWebContents(event.sender));
+});
+
 ipcMain.handle(IPC_CHANNELS.appGetConfig, () => loadAppConfig());
-ipcMain.handle(IPC_CHANNELS.appGetOnboardingFinished, () => existsSync(ONBOARDING_FINISHED_FILE));
+ipcMain.handle(IPC_CHANNELS.appGetOnboardingFinished, async () => {
+  const persisted = await loadPersistedAppSetting(onboardingFinishedAtSettingKey);
+  return Boolean(readString(persisted) || existsSync(ONBOARDING_FINISHED_FILE));
+});
 ipcMain.handle(IPC_CHANNELS.appGetPendingProviderDeepLinks, () => deepLinkService.consumePendingProviderRequests());
 ipcMain.handle(IPC_CHANNELS.appGetLocalAgentProviderCandidates, () => getLocalAgentProviderCandidates());
 ipcMain.handle(IPC_CHANNELS.appGetProfileOpenCommand, async (_event, request: ProfileOpenRequest) => {
@@ -262,9 +272,8 @@ ipcMain.handle(IPC_CHANNELS.appSaveApiKeys, async (_event, apiKeys: ApiKeyConfig
   invalidateProviderAccountSnapshotCache();
   return nextConfig;
 });
-ipcMain.handle(IPC_CHANNELS.appSetOnboardingFinished, () => {
-  mkdirSync(CONFIGDIR, { recursive: true });
-  writeFileSync(ONBOARDING_FINISHED_FILE, `${new Date().toISOString()}\n`, "utf8");
+ipcMain.handle(IPC_CHANNELS.appSetOnboardingFinished, async () => {
+  await replacePersistedAppSetting(onboardingFinishedAtSettingKey, new Date().toISOString());
   windowsManager.resizeMainWindowToScreenSize();
   return true;
 });
@@ -494,6 +503,126 @@ function shouldRestartForRuntimeChange(previousConfig: AppConfig, nextConfig: Ap
     JSON.stringify(previousConfig.providerPlugins) !== JSON.stringify(nextConfig.providerPlugins) ||
     JSON.stringify(previousConfig.virtualModelProfiles) !== JSON.stringify(nextConfig.virtualModelProfiles)
   );
+}
+
+async function exportAppData(window: BrowserWindow | null): Promise<AppDataExportResult> {
+  const exportedAt = new Date().toISOString();
+  const result = window
+    ? await dialog.showSaveDialog(window, dataExportSaveDialogOptions(exportedAt))
+    : await dialog.showSaveDialog(dataExportSaveDialogOptions(exportedAt));
+  if (result.canceled || !result.filePath) {
+    return { canceled: true };
+  }
+
+  assertExportTargetIsNotInternalDataFile(result.filePath);
+  const config = await loadAppConfig();
+  const onboardingFinished = Boolean(
+    readString(await loadPersistedAppSetting(onboardingFinishedAtSettingKey)) ||
+    existsSync(ONBOARDING_FINISHED_FILE)
+  );
+  const payload = {
+    app: {
+      name: APP_NAME,
+      platform: process.platform,
+      version: app.getVersion()
+    },
+    appState: {
+      onboardingFinished
+    },
+    config,
+    exportedAt,
+    files: readDataExportFiles(),
+    kind: "claude-code-router-data-export",
+    version: 1
+  };
+
+  writeFileSync(result.filePath, `${JSON.stringify(payload, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  return {
+    canceled: false,
+    exportedAt,
+    file: result.filePath
+  };
+}
+
+function dataExportSaveDialogOptions(exportedAt: string): SaveDialogOptions {
+  return {
+    buttonLabel: "Export",
+    defaultPath: path.join(app.getPath("downloads"), `claude-code-router-data-${fileSafeTimestamp(exportedAt)}.json`),
+    filters: [
+      { extensions: ["json"], name: "CCR data export" }
+    ],
+    title: "Export CCR data"
+  };
+}
+
+function readDataExportFiles(): Array<{ base64: string; name: string; path: string; sizeBytes: number }> {
+  const files: Array<{ base64: string; name: string; path: string; sizeBytes: number }> = [];
+  for (const file of dataExportCandidateFiles()) {
+    try {
+      if (!existsSync(file)) {
+        continue;
+      }
+      const stat = statSync(file);
+      if (!stat.isFile()) {
+        continue;
+      }
+      files.push({
+        base64: readFileSync(file).toString("base64"),
+        name: path.basename(file),
+        path: file,
+        sizeBytes: stat.size
+      });
+    } catch (error) {
+      console.warn(`[export] Failed to include ${file}: ${formatError(error)}`);
+    }
+  }
+  return files;
+}
+
+function dataExportCandidateFiles(): string[] {
+  return uniqueStrings([
+    ...sqliteDataFiles(APP_CONFIG_DB_FILE),
+    ...sqliteDataFiles(API_KEYS_DB_FILE),
+    ...sqliteDataFiles(REQUEST_LOGS_DB_FILE),
+    ...sqliteDataFiles(USAGE_DB_FILE)
+  ]);
+}
+
+function sqliteDataFiles(file: string): string[] {
+  return [file, `${file}-wal`, `${file}-shm`];
+}
+
+function assertExportTargetIsNotInternalDataFile(file: string): void {
+  const target = path.resolve(file);
+  const reserved = new Set([
+    CONFIG_FILE,
+    LEGACY_CONFIG_FILE,
+    APP_CONFIG_DB_FILE,
+    API_KEYS_DB_FILE,
+    REQUEST_LOGS_DB_FILE,
+    USAGE_DB_FILE,
+    ...dataExportCandidateFiles()
+  ].map((item) => path.resolve(item)));
+  if (reserved.has(target)) {
+    throw new Error("Choose a different export path. Internal CCR data files cannot be overwritten.");
+  }
+}
+
+function fileSafeTimestamp(value: string): string {
+  return value.replace(/[:.]/g, "-");
+}
+
+function uniqueStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    if (!value || seen.has(value)) {
+      continue;
+    }
+    seen.add(value);
+    result.push(value);
+  }
+  return result;
 }
 
 function inspectPluginDirectory(directory: string): PluginDirectorySelection {

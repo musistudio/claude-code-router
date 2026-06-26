@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { readdirSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { windowsSystemCommand } from "./windows-system";
 
 export type WindowsDesktopAppDiscoveryOptions = {
   appDirs: string[];
@@ -188,7 +189,7 @@ function windowsAppxPackageInstallLocations(packageKeywords: string[]): string[]
     "} | ForEach-Object { $_.InstallLocation }"
   ].join(" ");
 
-  const result = spawnSync("powershell.exe", [
+  const result = spawnSync(windowsSystemCommand("powershell.exe"), [
     "-NoProfile",
     "-NonInteractive",
     "-ExecutionPolicy",
@@ -230,7 +231,7 @@ function pushWindowsExecutableCandidates(
 function windowsWhereCandidates(names: string[]): string[] {
   const candidates: string[] = [];
   for (const name of names) {
-    const result = spawnSync("where.exe", [name], {
+    const result = spawnSync(windowsSystemCommand("where.exe"), [name], {
       encoding: "utf8",
       windowsHide: true
     });

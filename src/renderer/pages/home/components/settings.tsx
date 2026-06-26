@@ -1,5 +1,5 @@
 import {
-  Activity, AppConfig, AppCopy, AppLanguagePreference, Boxes, BotGatewayConfigDraft, botGatewayAuthSpecsForPlatform,
+  Activity, AppConfig, AppCopy, AppInfo, AppLanguagePreference, Boxes, BotGatewayConfigDraft, botGatewayAuthSpecsForPlatform,
   botGatewayDefaultAuthType, botGatewayFieldsForAuth, botGatewayPickAuthFields, botGatewayPlatformLabel, botGatewayPlatformOptions,
   botGatewaySavedConfigFromDraft, botGatewaySavedConfigLabel, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitResult, BotGatewayQrWindowOpenResult, BotGatewaySavedConfig, Button,
   CircleAlert, closestCenter, cn, CSS, Database, Dialog, DialogBody, DialogContent,
@@ -16,6 +16,7 @@ import {
 const settingsPageContentWidthClassName = "mx-auto w-full max-w-[900px]";
 
 export function AppSettingsDialog({
+  appInfo,
   botAddRequestKey,
   botConfigs,
   copy,
@@ -40,6 +41,7 @@ export function AppSettingsDialog({
   trayIconPreference,
   trayWidgets
 }: {
+  appInfo: AppInfo;
   botAddRequestKey?: number;
   botConfigs: BotGatewaySavedConfig[];
   copy: AppCopy;
@@ -117,6 +119,14 @@ export function AppSettingsDialog({
             />
           );
         }
+        if (activePage === "data") {
+          return (
+            <DataSettingsPage
+              appInfo={appInfo}
+              copy={copy}
+            />
+          );
+        }
         return null;
       }}
       traySupported={traySupported}
@@ -177,6 +187,13 @@ function SettingsLayout({
               icon={Boxes}
               label={copy.settings.bots}
               onClick={() => setActivePage("bots")}
+            />
+            <SettingsPageButton
+              active={visiblePage === "data"}
+              className="mt-1"
+              icon={Database}
+              label={copy.settings.data}
+              onClick={() => setActivePage("data")}
             />
             {traySupported ? (
               <SettingsPageButton
@@ -342,6 +359,101 @@ function ObservabilitySwitchRow({
         <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{description}</div>
       </div>
       <Switch checked={checked} onCheckedChange={onChange} />
+    </div>
+  );
+}
+
+function DataSettingsPage({
+  appInfo,
+  copy
+}: {
+  appInfo: AppInfo;
+  copy: AppCopy;
+}) {
+  const t = (value: string) => copy.text[value] ?? value;
+  const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState("");
+  const [exportedFile, setExportedFile] = useState("");
+
+  async function exportData() {
+    if (exporting) {
+      return;
+    }
+    if (!window.ccr?.exportData) {
+      setError(t("Data export is only available in the Electron app."));
+      return;
+    }
+    setExporting(true);
+    setError("");
+    setExportedFile("");
+    try {
+      const result = await window.ccr.exportData();
+      if (!result.canceled) {
+        setExportedFile(result.file || "");
+      }
+    } catch (exportError) {
+      setError(formatAppError(copy, exportError));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  return (
+    <div className={cn(settingsPageContentWidthClassName, "grid grid-cols-1 gap-5")}>
+      <div className="min-w-0">
+        <h3 className="text-[15px] font-semibold text-foreground">{copy.settings.data}</h3>
+        <div className="mt-1 text-[12px] text-muted-foreground">{t("Configuration is stored in SQLite. The legacy JSON file is only read once for migration.")}</div>
+      </div>
+
+      <div className="grid gap-2 rounded-md border border-border bg-background p-3">
+        <DataPathRow label={t("Config database")} value={appInfo.appConfigDbFile} />
+        <DataPathRow label={t("API key database")} value={appInfo.apiKeysDbFile} />
+        <DataPathRow label={t("Request log database")} value={appInfo.requestLogsDbFile} />
+        <DataPathRow label={t("Usage database")} value={appInfo.usageDbFile} />
+      </div>
+
+      <div className="rounded-md border border-border bg-muted/20 px-3 py-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <Database className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[13px] font-semibold text-foreground">{t("Export data")}</div>
+            <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+              {t("Export current configuration and SQLite data into a single JSON backup file. The export contains API keys and should be stored securely.")}
+            </div>
+          </div>
+          <Button disabled={exporting} onClick={exportData} size="sm" type="button">
+            {exporting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
+            {exporting ? t("Exporting") : t("Export")}
+          </Button>
+        </div>
+        {exportedFile ? (
+          <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200">
+            <span className="font-medium">{t("Exported")}:</span> <span className="break-all">{exportedFile}</span>
+          </div>
+        ) : null}
+        {error ? (
+          <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[11px] text-destructive">
+            {error}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function DataPathRow({
+  label,
+  value
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="grid min-w-0 gap-1 rounded-md bg-muted/20 px-2 py-2 sm:grid-cols-[160px_minmax(0,1fr)] sm:items-center">
+      <div className="text-[11px] font-medium text-muted-foreground">{label}</div>
+      <div className="min-w-0 break-all font-mono text-[11px] text-foreground">{value}</div>
     </div>
   );
 }

@@ -512,6 +512,7 @@ export function proxyCertificateTrustSteps(status: ProxyCertificateStatus): stri
     return [
       "Click Install CA, or open the CA file and import it manually.",
       "Place it under Current User > Trusted Root Certification Authorities > Certificates.",
+      "For Firefox, Java, Python, Node, or other clients with a private CA store, import the CA there as well.",
       "Restart the browser or client.",
       "Return here and click Check Trust."
     ];

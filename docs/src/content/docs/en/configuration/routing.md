@@ -41,6 +41,8 @@ Network errors move to the next attempt. Status-code fallback depends on the mod
 | Retry | `408`, `409`, `429`, `5xx` |
 | Fallback targets | Any `4xx` or `5xx` |
 
+For `429` rate-limit responses, CCR waits before the next attempt. It honors `Retry-After` when the upstream provides it; otherwise it uses exponential backoff starting at 1 second and capped at 30 seconds per attempt.
+
 **Fallback targets** also switches on `4xx` because model-not-found, auth, or provider-side rejection errors may only affect the current target. If the fallback model works, the request can still succeed.
 
 ## How To Configure
@@ -88,4 +90,4 @@ After saving, send a request and inspect Logs:
 - `resolved model`: the final model.
 - status code and error details.
 
-When Fallback runs, response headers include `x-ccr-fallback-attempts`, `x-ccr-fallback-failures`, and the final `x-ccr-fallback-model`.
+When Fallback runs, response headers include `x-ccr-fallback-attempts`, `x-ccr-fallback-failures`, `x-ccr-fallback-delays-ms` for delayed attempts, and the final `x-ccr-fallback-model`. Request log details also show the related retry attempt list.

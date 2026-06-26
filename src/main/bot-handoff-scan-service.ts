@@ -1,11 +1,12 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { BotHandoffScanTarget } from "../shared/app";
+import { windowsSystemCommand } from "./windows-system";
 
 const execFileAsync = promisify(execFile);
 
 export async function scanBotHandoffWifiTargets(): Promise<BotHandoffScanTarget[]> {
-  const output = await commandStdout("arp", ["-a"]);
+  const output = await commandStdout(process.platform === "win32" ? windowsSystemCommand("arp.exe") : "arp", ["-a"]);
   if (!output.trim()) {
     throw new Error("No Wi-Fi/LAN targets found.");
   }
@@ -22,7 +23,7 @@ export async function scanBotHandoffBluetoothTargets(): Promise<BotHandoffScanTa
     await collectBluetoothTargetsFromCommand(targets, "/usr/sbin/system_profiler", ["SPBluetoothDataType"], "system_profiler bluetooth");
     await collectBluetoothTargetsFromCommand(targets, "ioreg", ["-r", "-c", "IOBluetoothDevice", "-l"], "ioreg IOBluetoothDevice");
   } else if (process.platform === "win32") {
-    await collectBluetoothTargetsFromCommand(targets, "powershell.exe", [
+    await collectBluetoothTargetsFromCommand(targets, windowsSystemCommand("powershell.exe"), [
       "-NoProfile",
       "-Command",
       "Get-PnpDevice -Class Bluetooth | Where-Object { $_.FriendlyName } | ForEach-Object { $_.FriendlyName }"
@@ -52,7 +53,8 @@ async function collectBluetoothTargetsFromCommand(
 async function commandStdout(command: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync(command, args, {
     maxBuffer: 4 * 1024 * 1024,
-    timeout: 12_000
+    timeout: 12_000,
+    windowsHide: process.platform === "win32"
   });
   return stdout;
 }

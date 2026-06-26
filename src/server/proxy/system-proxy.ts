@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import path from "node:path";
 import type { ProxySystemStatus } from "../../shared/app";
 import { DATADIR } from "../../main/constants";
+import { windowsSystemCommand } from "../../main/windows-system";
 
 export type UpstreamProxyServer = {
   host: string;
@@ -691,7 +692,7 @@ function safeParseProxyServerUrl(value: string): URL | undefined {
 
 async function readWindowsWinHttpProxySettings(): Promise<WindowsWinHttpProxySettings | undefined> {
   try {
-    return parseWindowsWinHttpProxySettings(await runCommand("netsh.exe", ["winhttp", "show", "proxy"]));
+    return parseWindowsWinHttpProxySettings(await runCommand(windowsSystemCommand("netsh.exe"), ["winhttp", "show", "proxy"]));
   } catch (error) {
     console.warn(`[proxy] Failed to read Windows WinHTTP proxy: ${formatError(error)}`);
     return undefined;
@@ -701,9 +702,13 @@ async function readWindowsWinHttpProxySettings(): Promise<WindowsWinHttpProxySet
 function parseWindowsWinHttpProxySettings(output: string): WindowsWinHttpProxySettings {
   const proxyServer = normalizeWindowsNetshValue(readWindowsNetshProxyLine(output, "Proxy Server"));
   const bypassList = normalizeWindowsNetshValue(readWindowsNetshProxyLine(output, "Bypass List"));
+  const direct = /Direct access\s*\(no proxy server\)/i.test(output);
+  if (!direct && !proxyServer) {
+    throw new Error("Could not parse Windows WinHTTP proxy settings.");
+  }
   return {
     bypassList,
-    direct: /Direct access\s*\(no proxy server\)/i.test(output) || !proxyServer,
+    direct,
     proxyServer,
     raw: output
   };
@@ -726,7 +731,7 @@ function normalizeWindowsNetshValue(value: string | undefined): string | undefin
 
 async function applyWindowsWinHttpProxy(managedEndpoint: ManagedProxyEndpoint): Promise<void> {
   const proxyServer = `http=${formatProxyServer(managedEndpoint)};https=${formatProxyServer(managedEndpoint)}`;
-  await runCommand("netsh.exe", [
+  await runCommand(windowsSystemCommand("netsh.exe"), [
     "winhttp",
     "set",
     "proxy",
@@ -740,10 +745,10 @@ async function restoreWindowsWinHttpProxy(settings: WindowsWinHttpProxySettings 
     return;
   }
   if (settings.direct || !settings.proxyServer) {
-    await runCommand("netsh.exe", ["winhttp", "reset", "proxy"]);
+    await runCommand(windowsSystemCommand("netsh.exe"), ["winhttp", "reset", "proxy"]);
     return;
   }
-  await runCommand("netsh.exe", [
+  await runCommand(windowsSystemCommand("netsh.exe"), [
     "winhttp",
     "set",
     "proxy",
@@ -859,7 +864,7 @@ function formatProxyHost(host: string): string {
 
 async function queryWindowsRegistryValue(name: string): Promise<WindowsRegistryValue | undefined> {
   try {
-    const output = await runCommand("reg.exe", ["query", windowsInternetSettingsKey, "/v", name]);
+    const output = await runCommand(windowsSystemCommand("reg.exe"), ["query", windowsInternetSettingsKey, "/v", name]);
     return parseWindowsRegistryQueryOutput(output, name);
   } catch {
     return undefined;
@@ -886,7 +891,7 @@ function parseWindowsRegistryDword(value: string): number | undefined {
 }
 
 async function setWindowsRegistryDword(name: string, value: number): Promise<void> {
-  await runCommand("reg.exe", [
+  await runCommand(windowsSystemCommand("reg.exe"), [
     "add",
     windowsInternetSettingsKey,
     "/v",
@@ -900,7 +905,7 @@ async function setWindowsRegistryDword(name: string, value: number): Promise<voi
 }
 
 async function setWindowsRegistryString(name: string, value: string): Promise<void> {
-  await runCommand("reg.exe", [
+  await runCommand(windowsSystemCommand("reg.exe"), [
     "add",
     windowsInternetSettingsKey,
     "/v",
@@ -914,7 +919,7 @@ async function setWindowsRegistryString(name: string, value: string): Promise<vo
 }
 
 async function deleteWindowsRegistryValue(name: string): Promise<void> {
-  await runCommand("reg.exe", ["delete", windowsInternetSettingsKey, "/v", name, "/f"]).catch(() => undefined);
+  await runCommand(windowsSystemCommand("reg.exe"), ["delete", windowsInternetSettingsKey, "/v", name, "/f"]).catch(() => undefined);
 }
 
 async function notifyWindowsSystemProxyChanged(): Promise<void> {
@@ -924,7 +929,7 @@ async function notifyWindowsSystemProxyChanged(): Promise<void> {
     "[WinInet.NativeMethods]::InternetSetOption([IntPtr]::Zero, 39, [IntPtr]::Zero, 0) | Out-Null;",
     "[WinInet.NativeMethods]::InternetSetOption([IntPtr]::Zero, 37, [IntPtr]::Zero, 0) | Out-Null;"
   ].join(" ");
-  await runCommand("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script]).catch((error) => {
+  await runCommand(windowsSystemCommand("powershell.exe"), ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script]).catch((error) => {
     console.warn(`[proxy] Failed to notify Windows system proxy change: ${formatError(error)}`);
   });
 }
@@ -940,7 +945,7 @@ function runNetworkSetup(args: string[]): Promise<string> {
 
 function runCommand(file: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(file, args, (error, stdout, stderr) => {
+    execFile(file, args, { windowsHide: process.platform === "win32" }, (error, stdout, stderr) => {
       const message = stderr?.trim() || stdout?.trim();
       if (error) {
         reject(new Error(message || error.message));

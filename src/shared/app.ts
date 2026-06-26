@@ -1,4 +1,5 @@
 export type AppInfo = {
+  appConfigDbFile: string;
   apiKeysDbFile: string;
   configDir: string;
   configFile: string;
@@ -9,6 +10,12 @@ export type AppInfo = {
   platform: string;
   usageDbFile: string;
   version: string;
+};
+
+export type AppDataExportResult = {
+  canceled: boolean;
+  exportedAt?: string;
+  file?: string;
 };
 
 export type AppUpdateState =
@@ -1338,6 +1345,13 @@ export type RequestLogListFilter = {
 
 export type RequestLogBody = ProxyNetworkBody;
 
+export type RequestLogRetryAttempt = {
+  attempt: number;
+  delayMs: number;
+  final: boolean;
+  status?: string;
+};
+
 export type RequestLogEntry = {
   cacheReadTokens: number;
   cacheWriteTokens: number;
@@ -1363,6 +1377,7 @@ export type RequestLogEntry = {
   requestBody: RequestLogBody;
   requestHeaders: Record<string, string | string[]>;
   requestId: string;
+  retryAttempts: RequestLogRetryAttempt[];
   responseBody?: RequestLogBody;
   responseHeaders: Record<string, string | string[]>;
   statusCode: number;

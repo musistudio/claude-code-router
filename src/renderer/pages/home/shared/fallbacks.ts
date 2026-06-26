@@ -16,6 +16,7 @@ import type {
 } from "../../../../shared/app";
 
 export const fallbackInfo: AppInfo = {
+  appConfigDbFile: "Browser preview",
   apiKeysDbFile: "Browser preview",
   configDir: "Browser preview",
   configFile: "Browser preview",

@@ -13,6 +13,7 @@ export type AppCopy = {
     bots: string;
     button: string;
     close: string;
+    data: string;
     done: string;
     language: string;
     languageChinese: string;
@@ -112,6 +113,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       bots: "Bots",
       button: "Settings",
       close: "Close",
+      data: "Data",
       done: "Done",
       language: "Language",
       languageChinese: "Chinese",
@@ -411,6 +413,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       bots: "Bot 管理",
       button: "设置",
       close: "关闭",
+      data: "数据",
       done: "完成",
       language: "语言",
       languageChinese: "中文",
@@ -782,6 +785,16 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Max concurrency": "最大并发",
       "Max concurrent": "最大并发",
       "Manage bots used by agent profiles.": "管理 Agent 配置中可选择的 Bot。",
+      "API key database": "API 密钥数据库",
+      "Config database": "配置数据库",
+      "Configuration is stored in SQLite. The legacy JSON file is only read once for migration.": "配置已存储在 SQLite 中，旧 JSON 文件只会在迁移时读取一次。",
+      "Data export is only available in the Electron app.": "数据导出仅在 Electron 应用中可用。",
+      "Export": "导出",
+      "Export data": "导出数据",
+      "Export current configuration and SQLite data into a single JSON backup file. The export contains API keys and should be stored securely.": "将当前配置和 SQLite 数据导出为单个 JSON 备份文件。导出内容包含 API 密钥，请妥善保存。",
+      "Exported": "已导出",
+      "Exporting": "正在导出",
+      "Request log database": "请求日志数据库",
       "Method": "方法",
       "Model": "模型",
       "Model override": "模型覆盖",
@@ -909,8 +922,12 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "contains": "包含",
       "contains deep": "深度包含",
       "not contains": "不包含",
+      "Attempt": "尝试",
+      "Final attempt": "最终尝试",
+      "Next retry wait": "下次重试等待",
       "Retries": "重试次数",
       "Retry": "继续重试",
+      "Retry attempts": "重试尝试",
       "Weighted order": "按权重排序",
       "Ready to route": "可以开始路由",
       "Restart proxy": "重启代理",

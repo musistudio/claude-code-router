@@ -476,6 +476,14 @@ const LogRow = memo(function LogRow({
           <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 transition-transform", expanded && "rotate-180")} />
           <LogStatusDot entry={item} />
           <span className="network-row-secondary truncate">{item.statusCode || "-"}</span>
+          {item.retryAttempts.length > 0 ? (
+            <span
+              className="network-service-paused shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold"
+              title={`${t("Retry attempts")}: ${item.retryAttempts.length}`}
+            >
+              R{item.retryAttempts.length}
+            </span>
+          ) : null}
         </div>
         <LogStreamCell entry={item} />
         <LogModelRouteCell entry={item} />
@@ -511,6 +519,7 @@ function LogExpandedDetails({ entry }: { entry: RequestLogEntry }) {
         {entry.credentialId ? <LogMetric label={t("Credential")} value={entry.credentialId} /> : null}
         {entry.credentialChain.length ? <LogMetric label={t("Credential chain")} value={entry.credentialChain.join(" > ")} /> : null}
         {hasCredentialInfo ? <LogMetric label={t("Credential saturated")} value={entry.credentialSaturated ? t("Yes") : t("No")} /> : null}
+        {entry.retryAttempts.length > 0 ? <LogMetric label={t("Retry attempts")} value={String(entry.retryAttempts.length)} /> : null}
         <LogMetric label={t("输入")} value={formatCompactNumber(entry.inputTokens)} />
         <LogMetric label={t("输出")} value={formatCompactNumber(entry.outputTokens)} />
         <LogMetric label={t("Thinking")} value={formatCompactNumber(entry.reasoningTokens)} />
@@ -519,6 +528,7 @@ function LogExpandedDetails({ entry }: { entry: RequestLogEntry }) {
         <LogMetric label={t("总计")} value={formatCompactNumber(entry.totalTokens)} />
         <LogMetric label={t("Cost")} value={formatUsdCost(entry.costUsd ?? 0)} />
       </div>
+      {entry.retryAttempts.length > 0 ? <LogRetryAttempts attempts={entry.retryAttempts} /> : null}
       <div className="network-detail-panes grid h-[440px] min-h-0 grid-cols-1 lg:grid-cols-2">
         <LogJsonPanel body={entry.requestBody} headerEmptyLabel="No request headers" headers={entry.requestHeaders} title={t("请求")} />
         <LogJsonPanel
@@ -529,6 +539,43 @@ function LogExpandedDetails({ entry }: { entry: RequestLogEntry }) {
           subtitle={`HTTP ${entry.statusCode || "-"}`}
           title={t("响应")}
         />
+      </div>
+    </div>
+  );
+}
+
+function LogRetryAttempts({ attempts }: { attempts: RequestLogEntry["retryAttempts"] }) {
+  const t = useAppText();
+
+  return (
+    <div className="network-body-meta border-b px-3 py-2 text-[12px]">
+      <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
+        <div className="min-w-0 truncate font-semibold">{t("Retry attempts")}</div>
+        <div className="network-muted shrink-0 font-mono text-[11px]">{attempts.length}</div>
+      </div>
+      <div className="overflow-x-auto rounded border border-[color:var(--network-border)]">
+        <div className="network-kv-header grid min-w-[520px] grid-cols-[96px_1fr_140px_120px] border-b text-[11px] font-bold">
+          <div className="border-r border-[color:var(--network-border-strong)] px-3 py-2">{t("Attempt")}</div>
+          <div className="border-r border-[color:var(--network-border-strong)] px-3 py-2">{t("Result")}</div>
+          <div className="border-r border-[color:var(--network-border-strong)] px-3 py-2">{t("Next retry wait")}</div>
+          <div className="px-3 py-2">{t("Type")}</div>
+        </div>
+        {attempts.map((attempt, index) => (
+          <div
+            className={cn(
+              "network-kv-row grid min-w-[520px] grid-cols-[96px_1fr_140px_120px] text-[11px] font-semibold",
+              index % 2 === 0 ? "network-kv-row-even" : "network-kv-row-odd"
+            )}
+            key={`${attempt.attempt}-${attempt.final ? "final" : "retry"}`}
+          >
+            <div className="border-r border-[color:var(--network-border-strong)] px-3 py-2 font-mono">#{attempt.attempt}</div>
+            <div className="border-r border-[color:var(--network-border-strong)] px-3 py-2 font-mono">{attempt.status ?? "-"}</div>
+            <div className="border-r border-[color:var(--network-border-strong)] px-3 py-2 font-mono">
+              {attempt.final ? "-" : formatDuration(attempt.delayMs)}
+            </div>
+            <div className="px-3 py-2">{attempt.final ? t("Final attempt") : t("Retry")}</div>
+          </div>
+        ))}
       </div>
     </div>
   );

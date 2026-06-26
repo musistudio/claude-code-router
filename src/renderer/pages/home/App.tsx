@@ -2940,6 +2940,7 @@ function App() {
               providers: draftConfig.Providers
             } : undefined}
             settings={settingsOpen ? {
+              appInfo,
               botAddRequestKey: settingsBotAddRequestKey,
               botConfigs: draftConfig.botConfigs,
               copy,

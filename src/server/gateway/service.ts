@@ -153,6 +153,7 @@ type UpstreamAttempt = {
 type UpstreamFailedAttempt = {
   credentialChain?: string[];
   credentialIds?: string[];
+  delayMs?: number;
   error?: string;
   model?: string;
   statusCode?: number;
@@ -202,6 +203,9 @@ const apiKeyLimitCounters = new Map<string, ApiKeyWindowCounter>();
 const providerCredentialCooldowns = new Map<string, { reason: string; until: number }>();
 const providerCredentialCooldownMs = 60_000;
 const providerCredentialSpilloverThreshold = 0.8;
+const upstreamRetryBackoffBaseMs = 1_000;
+const upstreamRetryBackoffMaxMs = 30_000;
+const upstreamRetryAfterMaxMs = 60_000;
 const gatewayProviderProtocolFallbackOrder: GatewayProviderProtocol[] = [
   "anthropic_messages",
   "openai_chat_completions",
@@ -1805,13 +1809,19 @@ async function fetchUpstreamWithFallback(input: {
       });
 
       if (hasNextAttempt && shouldFallbackAfterStatus(response.status, fallbackMode)) {
+        const delayMs = retryDelayAfterStatus(response.status, response, failedAttempts.length);
         failedAttempts.push({
           credentialChain: attempt.credentialChain,
           credentialIds: attempt.credentialIds,
+          delayMs,
           model: attempt.model,
           statusCode: response.status
         });
+        recordProviderCredentialOutcome(input.config, input.method, attempt, response.status, response.headers);
         await drainResponseBody(response);
+        if (delayMs > 0) {
+          await delay(delayMs);
+        }
         continue;
       }
 
@@ -1825,6 +1835,7 @@ async function fetchUpstreamWithFallback(input: {
       failedAttempts.push({
         credentialChain: attempt.credentialChain,
         credentialIds: attempt.credentialIds,
+        delayMs: 0,
         error: message,
         model: attempt.model
       });
@@ -2094,6 +2105,37 @@ function shouldFallbackAfterStatus(statusCode: number, mode: RouterFallbackMode)
   return false;
 }
 
+function retryDelayAfterStatus(statusCode: number, response: Response, failedAttemptIndex: number): number {
+  if (statusCode !== 429) {
+    return 0;
+  }
+  const retryAfterMs = parseRetryAfterHeaderMs(response.headers.get("retry-after"));
+  if (retryAfterMs !== undefined) {
+    return clampNumber(retryAfterMs, 0, upstreamRetryAfterMaxMs);
+  }
+  return exponentialRetryBackoffMs(failedAttemptIndex);
+}
+
+function parseRetryAfterHeaderMs(value: string | null): number | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const seconds = Number(trimmed);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return seconds * 1000;
+  }
+
+  const retryAt = Date.parse(trimmed);
+  return Number.isFinite(retryAt) ? Math.max(0, retryAt - Date.now()) : undefined;
+}
+
+function exponentialRetryBackoffMs(failedAttemptIndex: number): number {
+  const exponent = Math.min(10, Math.max(0, failedAttemptIndex));
+  return Math.min(upstreamRetryBackoffMaxMs, upstreamRetryBackoffBaseMs * 2 ** exponent);
+}
+
 async function drainResponseBody(response: Response): Promise<void> {
   try {
     await response.arrayBuffer();
@@ -2128,6 +2170,9 @@ function mergeFallbackResponseHeaders(headers: Headers, result: UpstreamFetchRes
   if (result.failedAttempts.length > 0) {
     merged.set("x-ccr-fallback-attempts", String(result.failedAttempts.length + 1));
     merged.set("x-ccr-fallback-failures", formatFallbackFailures(result.failedAttempts));
+    if (result.failedAttempts.some((attempt) => (attempt.delayMs ?? 0) > 0)) {
+      merged.set("x-ccr-fallback-delays-ms", formatFallbackDelays(result.failedAttempts));
+    }
     if (result.attempt.model) {
       merged.set("x-ccr-fallback-model", result.attempt.model);
     }
@@ -2148,6 +2193,12 @@ function upstreamResponseHeaders(result: UpstreamFetchResult): Headers {
 function formatFallbackFailures(failedAttempts: UpstreamFailedAttempt[]): string {
   return failedAttempts
     .map((attempt) => attempt.statusCode ? String(attempt.statusCode) : attempt.error ? "network" : "failed")
+    .join(",");
+}
+
+function formatFallbackDelays(failedAttempts: UpstreamFailedAttempt[]): string {
+  return failedAttempts
+    .map((attempt) => String(Math.max(0, attempt.delayMs ?? 0)))
     .join(",");
 }
 

@@ -6,6 +6,7 @@ import path from "node:path";
 import type { AppConfig, ProfileOpenSurface } from "../shared/app";
 import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { launchCodexAppProfile, launchZcodeAppProfile } from "./codex-app-launch";
+import { createBetterSqliteDatabase } from "./sqlite-native";
 import { buildProfileLaunchPlan, findProfileForOpen, profileLaunchSpawnCommand, resolveProfileOpenSurface } from "./profile-launch-core";
 
 type CliOptions = {
@@ -24,7 +25,7 @@ async function main(): Promise<void> {
 
   const configFile = process.env.CCR_CONFIG_FILE?.trim() || defaultConfigFile();
   const configDir = path.dirname(configFile);
-  const config = readConfig(configFile);
+  const config = readConfig(configFile, process.env.CCR_CONFIG_DB_FILE?.trim() || defaultConfigDbFile(configFile));
   const profile = findProfileForOpen(config, options.profileRef);
   const surface = options.surface ?? (profile.agent === "zcode" || profile.surface === "app" ? "app" : "cli");
   const resolvedSurface = resolveProfileOpenSurface(profile, surface);
@@ -33,10 +34,18 @@ async function main(): Promise<void> {
   }
   if ((profile.agent === "codex" || profile.agent === "zcode") && resolvedSurface === "app" && options.agentArgs.length === 0) {
     if (profile.agent === "zcode") {
-      launchZcodeAppProfile(configDir, profile, config);
+      const launch = launchZcodeAppProfile(configDir, profile, config);
+      const spawnError = await waitForImmediateSpawnError(launch.child, 500);
+      if (spawnError) {
+        throw new Error(`Failed to open ZCode App: ${spawnError}`);
+      }
       process.stdout.write(`Opened ZCode App with ${profile.name || profile.id}.\n`);
     } else {
-      launchCodexAppProfile(configDir, profile, config);
+      const launch = launchCodexAppProfile(configDir, profile, config);
+      const spawnError = await waitForImmediateSpawnError(launch.child, 500);
+      if (spawnError) {
+        throw new Error(`Failed to open Codex App: ${spawnError}`);
+      }
       process.stdout.write(`Opened Codex App with ${profile.name || profile.id}.\n`);
     }
     return;
@@ -97,13 +106,39 @@ function parseArgs(args: string[]): CliOptions {
   return options;
 }
 
-function readConfig(file: string): AppConfig {
-  if (!existsSync(file)) {
-    throw new Error(`CCR config was not found: ${file}`);
+function readConfig(jsonFile: string, dbFile: string): AppConfig {
+  const sqliteConfig = readSqliteConfig(dbFile);
+  if (sqliteConfig) {
+    return normalizeCliConfig(sqliteConfig, dbFile);
   }
-  const parsed = JSON.parse(readFileSync(file, "utf8")) as Partial<AppConfig>;
+  if (!existsSync(jsonFile)) {
+    throw new Error(`CCR config was not found: ${dbFile}`);
+  }
+  const parsed = JSON.parse(readFileSync(jsonFile, "utf8")) as Partial<AppConfig>;
+  return normalizeCliConfig(parsed, jsonFile);
+}
+
+function readSqliteConfig(file: string): Partial<AppConfig> | undefined {
+  if (!existsSync(file)) {
+    return undefined;
+  }
+  let database: ReturnType<typeof createBetterSqliteDatabase> | undefined;
+  try {
+    database = createBetterSqliteDatabase(file);
+    const row = database.prepare("SELECT value_json FROM app_config WHERE key = ? LIMIT 1").get("default") as { value_json?: unknown } | undefined;
+    return typeof row?.value_json === "string"
+      ? JSON.parse(row.value_json) as Partial<AppConfig>
+      : undefined;
+  } catch {
+    return undefined;
+  } finally {
+    database?.close();
+  }
+}
+
+function normalizeCliConfig(parsed: Partial<AppConfig>, source: string): AppConfig {
   if (!parsed.profile || !Array.isArray(parsed.profile.profiles)) {
-    throw new Error(`CCR config has no profiles: ${file}`);
+    throw new Error(`CCR config has no profiles: ${source}`);
   }
   return {
     ...parsed,
@@ -112,6 +147,10 @@ function readConfig(file: string): AppConfig {
       profiles: parsed.profile.profiles
     } as AppConfig["profile"]
   } as AppConfig;
+}
+
+function defaultConfigDbFile(configFile: string): string {
+  return path.join(path.dirname(configFile), "config.sqlite");
 }
 
 function defaultConfigFile(): string {
@@ -153,6 +192,31 @@ function waitForChild(child: ReturnType<typeof spawn>): Promise<number> {
       process.stderr.write(`${formatError(error)}\n`);
       resolve(1);
     });
+  });
+}
+
+function waitForImmediateSpawnError(child: ReturnType<typeof spawn>, timeoutMs: number): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer: NodeJS.Timeout | undefined;
+    const finish = (message: string | undefined) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timer) {
+        clearTimeout(timer);
+      }
+      child.off("error", onError);
+      child.off("spawn", onSpawn);
+      resolve(message);
+    };
+    const onError = (error: Error) => finish(formatError(error));
+    const onSpawn = () => finish(undefined);
+    child.once("error", onError);
+    child.once("spawn", onSpawn);
+    timer = setTimeout(() => finish(undefined), timeoutMs);
+    timer.unref?.();
   });
 }
 

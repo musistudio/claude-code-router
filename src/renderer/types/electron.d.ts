@@ -6,6 +6,7 @@ import type {
   AgentAnalysisTracePayloadFullResult,
   AgentAnalysisTracePayloadRequest,
   AppConfig,
+  AppDataExportResult,
   AppInfo,
   AppUpdateStatus,
   ApiKeyConfig,
@@ -74,6 +75,7 @@ declare global {
       clearProxyNetworkCaptures: () => Promise<ProxyNetworkSnapshot>;
       closeTray: () => Promise<void>;
       detectProviderIcon: (request: ProviderIconDetectionRequest) => Promise<ProviderIconDetectionResult>;
+      exportData: () => Promise<AppDataExportResult>;
       fetchProviderManifest: (request: ProviderManifestFetchRequest) => Promise<ProviderManifestFetchResult>;
       getAgentAnalysis: (filter?: AgentAnalysisFilter) => Promise<AgentAnalysisSnapshot>;
       getAgentTracePayload: (request: AgentAnalysisTracePayloadRequest) => Promise<AgentAnalysisTracePayloadFullResult>;

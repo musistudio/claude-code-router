@@ -1,6 +1,7 @@
-import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { loadPersistedAppConfig, replacePersistedAppConfig } from "./app-config-store";
 import { loadPersistedApiKeys, replacePersistedApiKeys } from "./api-key-store";
-import { CONFIGDIR, CONFIG_FILE, GATEWAY_CONFIG_FILE, LEGACY_CONFIGDIR, LEGACY_CONFIG_FILE } from "./constants";
+import { CONFIG_FILE, GATEWAY_CONFIG_FILE, LEGACY_CONFIG_FILE } from "./constants";
 import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "../shared/app";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "./presets";
 import type {
@@ -72,6 +73,13 @@ type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway"
   proxy?: Partial<ProxyRuntimeConfig>;
 };
 
+type RawAppConfigSource = "default" | "legacy-json" | "sqlite";
+
+type RawAppConfigLoadResult = {
+  source: RawAppConfigSource;
+  value: Partial<AppConfig>;
+};
+
 const DEFAULT_PROXY_TARGETS: ProxyRouteTarget[] = [
   { host: "api.anthropic.com", paths: ["/v1/messages", "/v1/messages/count_tokens"] },
   { host: "api.openai.com", paths: ["/v1/chat/completions", "/v1/responses", "/v1/models"] },
@@ -89,8 +97,6 @@ const REMOVED_LEGACY_ROUTER_RULE_IDS = new Set([
   "legacy-image"
 ]);
 const INTERNAL_GATEWAY_CORE_HOST = "127.0.0.1";
-const privateDirMode = 0o700;
-const privateFileMode = 0o600;
 
 const DEFAULT_CONFIG: AppConfig = {
   APIKEY: "",
@@ -337,10 +343,9 @@ function isWebhookRelatedBotGatewayKey(key: string): boolean {
 }
 
 export async function loadAppConfig(): Promise<AppConfig> {
-  ensureConfigFile();
-
   try {
-    const rawValue = JSON.parse(readFileSync(CONFIG_FILE, "utf8")) as Partial<AppConfig>;
+    const loadedRawConfig = await loadRawAppConfig();
+    const rawValue = loadedRawConfig.value;
     const value = interpolateEnvVars(rawValue) as Partial<AppConfig>;
     const picked = pickConfig(value);
     const providers = picked.Providers ?? DEFAULT_CONFIG.Providers;
@@ -407,9 +412,12 @@ export async function loadAppConfig(): Promise<AppConfig> {
       },
       routerEndpoint: endpoint
     });
-    if (hasConfigFileApiKeys(rawValue) || configFileApiKeys.length > 0) {
+    const shouldMigrateApiKeys = hasConfigFileApiKeys(rawValue) || configFileApiKeys.length > 0;
+    if (shouldMigrateApiKeys) {
       await replacePersistedApiKeys(apiKeys);
-      writeSanitizedConfig(config);
+    }
+    if (loadedRawConfig.source !== "sqlite" || shouldMigrateApiKeys) {
+      await writeSanitizedConfig(config);
     }
     return config;
   } catch (error) {
@@ -429,10 +437,9 @@ export async function loadAppConfig(): Promise<AppConfig> {
 export async function saveAppConfig(config: AppConfig): Promise<AppConfig> {
   const normalizedConfig = withSingleEnabledGlobalProfiles(config);
   assertProviderApiKeysAreSafe(normalizedConfig);
-  mkdirSync(CONFIGDIR, { recursive: true });
   const apiKeys = normalizeApiKeys(normalizedConfig.APIKEYS, normalizedConfig.APIKEY).filter((apiKey) => !isDefaultSeedApiKey(apiKey));
   await replacePersistedApiKeys(apiKeys);
-  writeSanitizedConfig({
+  await writeSanitizedConfig({
     ...normalizedConfig,
     APIKEY: apiKeys[0]?.key ?? "",
     APIKEYS: apiKeys
@@ -561,39 +568,50 @@ export async function saveApiKeysConfig(apiKeys: ApiKeyConfig[]): Promise<AppCon
   return loadAppConfig();
 }
 
-function ensureConfigFile() {
-  migrateLegacyWindowsConfigDir();
-  mkdirSync(CONFIGDIR, { mode: privateDirMode, recursive: true });
-  if (!existsSync(CONFIG_FILE)) {
-    writePrivateTextFile(CONFIG_FILE, `${JSON.stringify(DEFAULT_CONFIG, null, 2)}\n`);
+async function loadRawAppConfig(): Promise<RawAppConfigLoadResult> {
+  const persistedConfig = await loadPersistedAppConfig();
+  if (isObject(persistedConfig)) {
+    return {
+      source: "sqlite",
+      value: persistedConfig as Partial<AppConfig>
+    };
   }
-}
 
-function migrateLegacyWindowsConfigDir() {
-  if (process.platform !== "win32" || CONFIGDIR === LEGACY_CONFIGDIR || existsSync(CONFIG_FILE) || !existsSync(LEGACY_CONFIG_FILE)) {
-    return;
+  const legacyConfig = readLegacyJsonConfig();
+  if (legacyConfig) {
+    return {
+      source: "legacy-json",
+      value: legacyConfig
+    };
   }
-  mkdirSync(CONFIGDIR, { recursive: true });
-  cpSync(LEGACY_CONFIGDIR, CONFIGDIR, {
-    errorOnExist: false,
-    force: false,
-    recursive: true
-  });
+
+  return {
+    source: "default",
+    value: {}
+  };
 }
 
-function writeSanitizedConfig(config: AppConfig) {
-  writePrivateTextFile(CONFIG_FILE, `${JSON.stringify(sanitizeConfigForDisk(config), null, 2)}\n`);
-}
-
-function writePrivateTextFile(file: string, content: string): void {
-  writeFileSync(file, content, { encoding: "utf8", mode: privateFileMode });
-  if (process.platform !== "win32") {
+function readLegacyJsonConfig(): Partial<AppConfig> | undefined {
+  const files = uniqueStrings([CONFIG_FILE, LEGACY_CONFIG_FILE]);
+  for (const file of files) {
+    if (!existsSync(file)) {
+      continue;
+    }
     try {
-      chmodSync(file, privateFileMode);
-    } catch {
-      // Best effort for filesystems that do not support chmod.
+      const parsed = JSON.parse(readFileSync(file, "utf8")) as unknown;
+      if (isObject(parsed)) {
+        return parsed as Partial<AppConfig>;
+      }
+      console.warn(`[config] Ignoring legacy config with non-object root: ${file}`);
+    } catch (error) {
+      console.warn(`[config] Failed to read legacy config ${file}: ${formatError(error)}`);
     }
   }
+  return undefined;
+}
+
+async function writeSanitizedConfig(config: AppConfig): Promise<void> {
+  await replacePersistedAppConfig(sanitizeConfigForDisk(config));
 }
 
 function sanitizeConfigForDisk(config: AppConfig): AppConfig {
