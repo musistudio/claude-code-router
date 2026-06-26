@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { EventEmitter } from "node:events";
 import type { AppConfig, RouterConfig, RouterFallbackConfig, RouterRule, RouterRuleCondition, RouterRuleRewrite } from "../../shared/app";
+import { getMorphRouterDecision } from "./morph-router";
 
 type HeaderValue = string | string[] | undefined;
 
@@ -58,8 +59,19 @@ export class ClaudeCodeRouterPlugin {
 
     const customModel = await this.resolveCustomRoute(request);
     const configuredDecision = resolveConfiguredRouteDecision(request, this.config, tokenCount);
+
+    // MorphRouter owns non-explicit routing when enabled. Explicit selections
+    // bypass it: a custom router file, an inline `provider,model`, or a subagent
+    // model tag. Any MorphRouter failure falls back to the configured decision.
+    const morphDecision =
+      customModel || configuredDecision.reason === "inline-model" || configuredDecision.reason === "subagent"
+        ? undefined
+        : await this.resolveMorphRoute(request);
+
     if (customModel) {
       body.model = customModel;
+    } else if (morphDecision) {
+      body.model = morphDecision.model;
     } else {
       if (configuredDecision.rewrites?.length) {
         for (const rewrite of configuredDecision.rewrites) {
@@ -72,18 +84,60 @@ export class ClaudeCodeRouterPlugin {
         body.model = configuredDecision.model;
       }
     }
-    const routedModel = customModel ?? configuredDecision.model ?? readString(body.model);
+    const routedModel = customModel ?? morphDecision?.model ?? configuredDecision.model ?? readString(body.model);
 
     return {
       body,
       decision: {
-        fallback: customModel ? this.config.Router.fallback : configuredDecision.fallback,
+        fallback: customModel
+          ? this.config.Router.fallback
+          : morphDecision?.fallback ?? configuredDecision.fallback,
         model: routedModel,
-        reason: customModel ? "custom-router" : configuredDecision.reason,
+        reason: customModel ? "custom-router" : morphDecision ? "morph-router" : configuredDecision.reason,
         sessionId,
         tokenCount
       }
     };
+  }
+
+  private async resolveMorphRoute(
+    request: MutableRequestLike
+  ): Promise<{ model: string; fallback: RouterFallbackConfig } | undefined> {
+    if (this.config.MorphRouter?.enabled !== true) {
+      return undefined;
+    }
+
+    const decision = await getMorphRouterDecision({
+      rawConfig: this.config.MorphRouter,
+      providers: this.config.Providers ?? [],
+      requestBody: request.body,
+      logger: request.log
+    });
+    if (!decision) {
+      return undefined;
+    }
+
+    const primary = normalizeRouteSelector(decision.target.route);
+    if (!primary) {
+      return undefined;
+    }
+
+    // Map MorphRouter's remaining targets onto the gateway's native model-chain
+    // fallback so each is tried in order before the global fallback kicks in.
+    const fallbackModels = decision.fallbackTargets
+      .map((target) => normalizeRouteSelector(target.route))
+      .filter((value): value is string => Boolean(value));
+    const baseFallback = this.config.Router.fallback;
+    const fallback: RouterFallbackConfig =
+      fallbackModels.length > 0
+        ? { mode: "model-chain", models: fallbackModels, retryCount: baseFallback?.retryCount ?? 1 }
+        : baseFallback;
+
+    request.log.info(
+      `MorphRouter selected ${decision.morphModel} -> ${primary}` +
+        (fallbackModels.length ? ` (fallback: ${fallbackModels.join(", ")})` : "")
+    );
+    return { model: primary, fallback };
   }
 
   countTokens(body: Record<string, unknown>) {

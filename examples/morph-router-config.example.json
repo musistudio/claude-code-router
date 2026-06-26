@@ -1,0 +1,45 @@
+{
+  "//": "Example ~/.claude-code-router/config.json showing the optional MorphRouter block. When MorphRouter.enabled is true, non-explicit requests are routed by the Morph Router API to the cheapest capable model and mapped onto a configured CCR route. Explicit `provider,model` requests, subagent model tags, and a custom router file all bypass MorphRouter. Any MorphRouter failure (disabled, misconfigured, timeout, unmapped model) falls back to the normal CCR routing below.",
+  "Providers": [
+    {
+      "name": "openrouter",
+      "type": "openai_chat_completions",
+      "api_base_url": "https://openrouter.ai/api/v1/chat/completions",
+      "api_key": "$OPENROUTER_API_KEY",
+      "models": [
+        "anthropic/claude-sonnet-4.6",
+        "anthropic/claude-opus-4.8",
+        "deepseek/deepseek-v4-flash"
+      ]
+    },
+    {
+      "name": "deepseek",
+      "type": "openai_chat_completions",
+      "api_base_url": "https://api.deepseek.com/v1/chat/completions",
+      "api_key": "$DEEPSEEK_API_KEY",
+      "models": ["deepseek-chat"]
+    }
+  ],
+  "Router": {
+    "default": "openrouter,anthropic/claude-sonnet-4.6",
+    "longContextThreshold": 200000
+  },
+  "MorphRouter": {
+    "enabled": true,
+    "api_key": "$MORPH_API_KEY",
+    "policy": "balanced",
+    "default_model": "claude-sonnet-4-6",
+    "timeout_ms": 1000,
+    "max_input_chars": 24000,
+    "models": {
+      "claude-sonnet-4-6": "openrouter,anthropic/claude-sonnet-4.6",
+      "claude-opus-4-8": "openrouter,anthropic/claude-opus-4.8",
+      "deepseek-v4-flash": {
+        "targets": [
+          "openrouter,deepseek/deepseek-v4-flash",
+          "deepseek,deepseek-chat"
+        ]
+      }
+    }
+  }
+}

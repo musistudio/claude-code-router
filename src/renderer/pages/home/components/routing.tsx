@@ -10,23 +10,65 @@ import {
   Trash2, uniqueStrings, useAppText, useMemo, useState, X
 } from "../shared";
 import { ROUTER_FALLBACK_MAX_RETRY_COUNT } from "../../../../shared/app";
+import type { MorphRouterConfig, MorphRouterModelConfig, MorphRouterPolicy } from "../../../../shared/app";
+
+const MORPH_ROUTER_POLICY_OPTIONS: Array<{ label: string; value: MorphRouterPolicy }> = [
+  { label: "Balanced", value: "balanced" },
+  { label: "Cost efficient", value: "cost_efficient" },
+  { label: "Capability heavy", value: "capability_heavy" },
+  { label: "Domain skills", value: "domain_skills" }
+];
+
+type MorphRouterModelRow = { name: string; route: string };
+
+function readMorphRouterModelRows(models: MorphRouterConfig["models"]): MorphRouterModelRow[] {
+  if (Array.isArray(models)) {
+    return models.map((entry) => ({
+      name: entry?.name ?? "",
+      route: firstMorphRouterRoute(entry)
+    }));
+  }
+  if (models && typeof models === "object") {
+    return Object.entries(models).map(([name, entry]) => ({
+      name,
+      route: typeof entry === "string" ? entry : firstMorphRouterRoute(entry)
+    }));
+  }
+  return [];
+}
+
+function firstMorphRouterRoute(entry: string | MorphRouterModelConfig | undefined): string {
+  if (!entry || typeof entry === "string") {
+    return typeof entry === "string" ? entry : "";
+  }
+  if (typeof entry.route === "string") {
+    return entry.route;
+  }
+  const list = entry.targets ?? entry.routes ?? [];
+  const first = list[0];
+  return typeof first === "string" ? first : first?.route ?? "";
+}
 export function RoutingView({
   addRule,
   config,
   editRule,
   moveRule,
+  morphRouter,
   providers,
   removeRule,
   updateFallback,
+  updateMorphRouter,
   updateRule
 }: {
   addRule: () => void;
   config: AppConfig;
   editRule: (index: number) => void;
   moveRule: (index: number, direction: -1 | 1) => void;
+  morphRouter: MorphRouterConfig | undefined;
   providers: GatewayProviderConfig[];
   removeRule: (index: number) => void;
   updateFallback: (fallback: RouterFallbackConfig) => void;
+  updateMorphRouter: (patch: Partial<MorphRouterConfig>) => void;
   updateRule: (index: number, patch: Partial<RouterRule>) => void;
 }) {
   const t = useAppText();
@@ -69,6 +111,13 @@ export function RoutingView({
               fallback={fallback}
               label={t("Default on failure")}
               onChange={updateFallback}
+              providers={providers}
+            />
+          </div>
+          <div className="border-b border-border/60 px-4 py-3">
+            <MorphRouterControl
+              morphRouter={morphRouter}
+              onChange={updateMorphRouter}
               providers={providers}
             />
           </div>
@@ -267,6 +316,137 @@ function RouterFallbackControl({
               </div>
             ))
           )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MorphRouterControl({
+  morphRouter,
+  onChange,
+  providers
+}: {
+  morphRouter: MorphRouterConfig | undefined;
+  onChange: (patch: Partial<MorphRouterConfig>) => void;
+  providers: GatewayProviderConfig[];
+}) {
+  const t = useAppText();
+  const config = morphRouter ?? {};
+  const enabled = config.enabled === true;
+  const modelOptions = useMemo(() => createRouteModelOptions(providers), [providers]);
+  const modelRows = useMemo(() => readMorphRouterModelRows(config.models), [config.models]);
+  const defaultModel = config.default_model ?? config.default ?? "";
+  const policy = config.policy ?? "balanced";
+  const [modelNameDraft, setModelNameDraft] = useState("");
+  const [modelRouteDraft, setModelRouteDraft] = useState("");
+
+  function writeModelRows(rows: MorphRouterModelRow[]) {
+    const models = rows
+      .filter((row) => row.name.trim())
+      .map((row) => ({ name: row.name.trim(), route: row.route.trim() }));
+    onChange({ models });
+  }
+
+  function addModelRow() {
+    const name = modelNameDraft.trim();
+    const route = modelRouteDraft.trim();
+    if (!name || !route) {
+      return;
+    }
+    const next = modelRows.filter((row) => row.name.toLowerCase() !== name.toLowerCase());
+    writeModelRows([...next, { name, route }]);
+    setModelNameDraft("");
+    setModelRouteDraft("");
+  }
+
+  function removeModelRow(index: number) {
+    writeModelRows(modelRows.filter((_, rowIndex) => rowIndex !== index));
+  }
+
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[12px] font-semibold">{t("Morph Router")}</div>
+          <div className="mt-0.5 text-[11px] text-muted-foreground">
+            {t("Auto-route non-explicit requests to the cheapest capable model")}
+          </div>
+        </div>
+        <Toggle checked={enabled} onChange={(value) => onChange({ enabled: value })} />
+      </div>
+      {enabled ? (
+        <div className="mt-3 space-y-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label={t("Morph API key")}>
+              <Input
+                autoComplete="off"
+                onChange={(event) => onChange({ api_key: event.target.value })}
+                placeholder="$MORPH_API_KEY"
+                type="password"
+                value={config.api_key ?? config.apiKey ?? ""}
+              />
+            </Field>
+            <Field label={t("Policy")}>
+              <SelectControl
+                onChange={(value) => onChange({ policy: value as MorphRouterPolicy })}
+                options={MORPH_ROUTER_POLICY_OPTIONS}
+                value={policy}
+              />
+            </Field>
+            <Field label={t("Default model")}>
+              <Input
+                onChange={(event) => onChange({ default_model: event.target.value })}
+                placeholder="claude-sonnet-4-6"
+                value={defaultModel}
+              />
+            </Field>
+            <Field label={t("Timeout (ms)")}>
+              <Input
+                min={1}
+                onChange={(event) => onChange({ timeout_ms: clampNumber(Number(event.target.value), 1, 600000) })}
+                type="number"
+                value={String(config.timeout_ms ?? config.timeoutMs ?? 1000)}
+              />
+            </Field>
+          </div>
+          <div className="grid min-w-0 grid-cols-[minmax(0,180px)_minmax(0,1fr)_auto] items-end gap-2">
+            <Field label={t("Morph model")}>
+              <Input
+                className="font-mono text-[12px]"
+                onChange={(event) => setModelNameDraft(event.target.value)}
+                placeholder="claude-opus-4-8"
+                value={modelNameDraft}
+              />
+            </Field>
+            <Field label={t("Route target")}>
+              <RouteTargetControl
+                modelOptions={modelOptions}
+                onChange={setModelRouteDraft}
+                value={modelRouteDraft}
+              />
+            </Field>
+            <Button disabled={!modelNameDraft.trim() || !modelRouteDraft.trim()} onClick={addModelRow} type="button">
+              <Plus className="h-4 w-4" />
+              {t("Add")}
+            </Button>
+          </div>
+          <div className="flex min-w-0 flex-wrap gap-2">
+            {modelRows.length === 0 ? (
+              <div className="text-[12px] text-muted-foreground">{t("No model mappings configured")}</div>
+            ) : (
+              modelRows.map((row, index) => (
+                <div className="flex max-w-full items-center gap-1 rounded-md border border-border bg-background px-2 py-1" key={`${row.name}-${index}`}>
+                  <span className="min-w-0 truncate font-mono text-[11px]" title={`${row.name} -> ${row.route}`}>
+                    {row.name} → {row.route}
+                  </span>
+                  <Button aria-label={`${t("Remove")} ${row.name}`} onClick={() => removeModelRow(index)} size="iconSm" title={t("Remove")} type="button" variant="ghost">
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       ) : null}
     </div>

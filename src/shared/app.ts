@@ -472,6 +472,43 @@ export type RouterConfig = {
   webSearch?: string;
 };
 
+export type MorphRouterPolicy =
+  | "balanced"
+  | "cost_efficient"
+  | "capability_heavy"
+  | "domain_skills";
+
+export type MorphRouterModelTarget = {
+  route?: string;
+};
+
+export type MorphRouterModelConfig = {
+  name?: string;
+  route?: string;
+  routes?: Array<string | MorphRouterModelTarget>;
+  targets?: Array<string | MorphRouterModelTarget>;
+};
+
+/**
+ * Optional Morph auto-router. When enabled, non-explicit requests are routed by
+ * the Morph Router API to the cheapest/fastest capable model, mapped onto a CCR
+ * route via `models`. The outbound api_key is stored like provider keys and may
+ * use `$ENV` placeholders. See examples/morph-router-config.example.json.
+ */
+export type MorphRouterConfig = {
+  enabled?: boolean;
+  api_key?: string;
+  apiKey?: string;
+  policy?: MorphRouterPolicy;
+  default?: string;
+  default_model?: string;
+  timeout_ms?: number;
+  timeoutMs?: number;
+  max_input_chars?: number;
+  maxInputChars?: number;
+  models?: Record<string, string | MorphRouterModelConfig> | MorphRouterModelConfig[];
+};
+
 export type GatewayRuntimeConfig = {
   coreHost: string;
   corePort: number;
@@ -1192,6 +1229,7 @@ export type AppConfig = {
   CUSTOM_ROUTER_PATH: string;
   HOST: string;
   PORT: number;
+  MorphRouter?: MorphRouterConfig;
   Providers: GatewayProviderConfig[];
   Router: RouterConfig;
   agent: GatewayAgentConfig;

@@ -78,6 +78,54 @@ Open **Profiles** and choose the client you want to use. Configure the Claude Co
 
 Use **Dashboard** for usage and provider health, the tray window for quick token and account status, **Network Logs** for debugging provider behavior, and **Extensions** for plugin configuration.
 
+## Morph Router (optional auto-routing)
+
+[Morph LLM](https://docs.morphllm.com/sdk/components/router) provides an auto-router: it reads your prompt, estimates difficulty/domain/ambiguity, and picks the cheapest, fastest model capable of the task. Some prompts need Opus; some only need a flash model. CCR can optionally delegate routing to Morph for **non-explicit** requests.
+
+**Routing behavior**
+
+- explicit `provider,model` selections bypass Morph Router
+- subagent model tags bypass Morph Router
+- a custom router file (`CUSTOM_ROUTER_PATH`) bypasses Morph Router
+- all other (non-explicit) requests use Morph Router when `MorphRouter.enabled` is true
+- if Morph Router is disabled, misconfigured, unavailable, times out, or returns an unmapped model, CCR falls back to your normal routing
+- if a Morph model maps to multiple targets, CCR tries them in order (via the gateway's native `model-chain` fallback) before falling back globally
+
+**Set it up**
+
+Enable it from the **Routing** screen (Morph Router section), or add a `MorphRouter` block to `~/.claude-code-router/config.json`:
+
+```json
+{
+  "MorphRouter": {
+    "enabled": true,
+    "api_key": "$MORPH_API_KEY",
+    "policy": "balanced",
+    "default_model": "claude-sonnet-4-6",
+    "timeout_ms": 1000,
+    "max_input_chars": 24000,
+    "models": {
+      "claude-sonnet-4-6": "openrouter,anthropic/claude-sonnet-4.6",
+      "claude-opus-4-8": "openrouter,anthropic/claude-opus-4.8",
+      "deepseek-v4-flash": {
+        "targets": [
+          "openrouter,deepseek/deepseek-v4-flash",
+          "deepseek,deepseek-chat"
+        ]
+      }
+    }
+  }
+}
+```
+
+Get a Morph API key at https://www.morphllm.com/. The `api_key` is stored like provider keys and supports `$ENV` placeholders.
+
+- `policy` — one of `balanced`, `cost_efficient`, `capability_heavy`, `domain_skills`
+- `default_model` — the Morph model used as a safe default; must be one of the keys in `models`
+- `models` — maps a Morph model name (left) to a CCR route `provider,model` (right). A model may map to multiple `targets`, tried in order on failure.
+
+A full config example lives at [`examples/morph-router-config.example.json`](examples/morph-router-config.example.json).
+
 ## Provider Deeplink
 
 Provider websites can open CCR and import a model provider with a custom protocol link:

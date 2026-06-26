@@ -2733,10 +2733,15 @@ function App() {
                   config: draftConfig,
                   editRule: openEditRoutingRuleDialog,
                   moveRule: moveRoutingRule,
+                  morphRouter: draftConfig.MorphRouter,
                   providers: draftConfig.Providers,
                   removeRule: setRoutingDeleteIndex,
                   updateFallback: (fallback) => updateConfig((config) => {
                     config.Router.fallback = normalizeRouterFallbackConfig(fallback);
+                    return config;
+                  }),
+                  updateMorphRouter: (patch) => updateConfig((config) => {
+                    config.MorphRouter = { ...(config.MorphRouter ?? {}), ...patch };
                     return config;
                   }),
                   updateRule: updateRoutingRule
