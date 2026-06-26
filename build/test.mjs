@@ -36,19 +36,21 @@ mkdirSync(outDir, { recursive: true });
 await build({
   bundle: true,
   entryPoints: tests,
-  format: "esm",
+  // CJS output so bundled modules that rely on __filename / require (e.g.
+  // createRequire) work without ESM shims.
+  format: "cjs",
   logLevel: "info",
   // Keep native / heavy runtime deps external; tests inject their own fakes.
   external: ["undici", "better-sqlite3", "electron", "node-forge", "electron-updater"],
   outbase: srcDir,
   outdir: outDir,
-  outExtension: { ".js": ".mjs" },
+  outExtension: { ".js": ".cjs" },
   platform: "node",
   sourcemap: "inline",
   target: "node20"
 });
 
-const compiled = tests.map((file) => join(outDir, relative(srcDir, file).replace(/\.ts$/, ".mjs")));
+const compiled = tests.map((file) => join(outDir, relative(srcDir, file).replace(/\.ts$/, ".cjs")));
 const child = spawn(process.execPath, ["--test", ...compiled], { stdio: "inherit" });
 child.on("exit", (code) => {
   rmSync(outDir, { force: true, recursive: true });
