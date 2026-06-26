@@ -10,44 +10,13 @@ import {
   Trash2, uniqueStrings, useAppText, useMemo, useState, X
 } from "../shared";
 import { ROUTER_FALLBACK_MAX_RETRY_COUNT } from "../../../../shared/app";
-import type { MorphRouterConfig, MorphRouterModelConfig, MorphRouterPolicy } from "../../../../shared/app";
-
-const MORPH_ROUTER_POLICY_OPTIONS: Array<{ label: string; value: MorphRouterPolicy }> = [
-  { label: "Balanced", value: "balanced" },
-  { label: "Cost efficient", value: "cost_efficient" },
-  { label: "Capability heavy", value: "capability_heavy" },
-  { label: "Domain skills", value: "domain_skills" }
-];
-
-type MorphRouterModelRow = { name: string; route: string };
-
-function readMorphRouterModelRows(models: MorphRouterConfig["models"]): MorphRouterModelRow[] {
-  if (Array.isArray(models)) {
-    return models.map((entry) => ({
-      name: entry?.name ?? "",
-      route: firstMorphRouterRoute(entry)
-    }));
-  }
-  if (models && typeof models === "object") {
-    return Object.entries(models).map(([name, entry]) => ({
-      name,
-      route: typeof entry === "string" ? entry : firstMorphRouterRoute(entry)
-    }));
-  }
-  return [];
-}
-
-function firstMorphRouterRoute(entry: string | MorphRouterModelConfig | undefined): string {
-  if (!entry || typeof entry === "string") {
-    return typeof entry === "string" ? entry : "";
-  }
-  if (typeof entry.route === "string") {
-    return entry.route;
-  }
-  const list = entry.targets ?? entry.routes ?? [];
-  const first = list[0];
-  return typeof first === "string" ? first : first?.route ?? "";
-}
+import type { MorphRouterConfig, MorphRouterPolicy } from "../../../../shared/app";
+import {
+  MORPH_ROUTER_POLICY_OPTIONS,
+  morphRowsToModels,
+  readMorphRouterModelRows,
+  type MorphRouterModelRow
+} from "../shared/morph-router-models";
 export function RoutingView({
   addRule,
   config,
@@ -342,10 +311,7 @@ function MorphRouterControl({
   const [modelRouteDraft, setModelRouteDraft] = useState("");
 
   function writeModelRows(rows: MorphRouterModelRow[]) {
-    const models = rows
-      .filter((row) => row.name.trim())
-      .map((row) => ({ name: row.name.trim(), route: row.route.trim() }));
-    onChange({ models });
+    onChange({ models: morphRowsToModels(rows) });
   }
 
   function addModelRow() {
@@ -355,7 +321,7 @@ function MorphRouterControl({
       return;
     }
     const next = modelRows.filter((row) => row.name.toLowerCase() !== name.toLowerCase());
-    writeModelRows([...next, { name, route }]);
+    writeModelRows([...next, { name, route, fallbackRoutes: [] }]);
     setModelNameDraft("");
     setModelRouteDraft("");
   }
@@ -437,9 +403,12 @@ function MorphRouterControl({
             ) : (
               modelRows.map((row, index) => (
                 <div className="flex max-w-full items-center gap-1 rounded-md border border-border bg-background px-2 py-1" key={`${row.name}-${index}`}>
-                  <span className="min-w-0 truncate font-mono text-[11px]" title={`${row.name} -> ${row.route}`}>
+                  <span className="min-w-0 truncate font-mono text-[11px]" title={[`${row.name} -> ${row.route}`, ...row.fallbackRoutes.map((value) => `   ↳ ${value}`)].join("\n")}>
                     {row.name} → {row.route}
                   </span>
+                  {row.fallbackRoutes.length > 0 ? (
+                    <Badge variant="outline">{`+${row.fallbackRoutes.length}`}</Badge>
+                  ) : null}
                   <Button aria-label={`${t("Remove")} ${row.name}`} onClick={() => removeModelRow(index)} size="iconSm" title={t("Remove")} type="button" variant="ghost">
                     <X className="h-3.5 w-3.5" />
                   </Button>

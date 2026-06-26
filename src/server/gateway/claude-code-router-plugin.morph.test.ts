@@ -1,5 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AppConfig } from "../../shared/app";
 import { ClaudeCodeRouterPlugin } from "./claude-code-router-plugin";
 
@@ -129,6 +132,57 @@ test("disabled MorphRouter falls through to the default route", async () => {
     assert.equal(decision.model, "openrouter/anthropic/claude-sonnet-4.6");
   } finally {
     fetchStub.restore();
+  }
+});
+
+test("an explicit provider,model selection bypasses Morph even if the provider is unconfigured", async () => {
+  const fetchStub = stubFetch("deepseek-v4-flash");
+  try {
+    const plugin = new ClaudeCodeRouterPlugin(baseConfig());
+    const { decision } = await plugin.routeRequest(userRequest("not-configured,some/model"));
+    assert.equal(fetchStub.callCount(), 0, "Morph must not be called for an explicit selector");
+    assert.notEqual(decision.reason, "morph-router");
+  } finally {
+    fetchStub.restore();
+  }
+});
+
+test("a subagent model tag bypasses Morph even without a configured subagent rule", async () => {
+  const fetchStub = stubFetch("deepseek-v4-flash");
+  try {
+    const plugin = new ClaudeCodeRouterPlugin(baseConfig()); // Router.rules is empty
+    const { decision } = await plugin.routeRequest({
+      body: {
+        model: "claude-3-5-sonnet",
+        system: [
+          { type: "text", text: "system" },
+          { type: "text", text: "<CCR-SUBAGENT-MODEL>openrouter,anthropic/claude-opus-4.8</CCR-SUBAGENT-MODEL>" }
+        ],
+        messages: [{ role: "user", content: "do a subtask" }]
+      },
+      headers: {},
+      method: "POST",
+      url: "/v1/messages"
+    });
+    assert.equal(fetchStub.callCount(), 0, "Morph must not be called when a subagent tag is present");
+    assert.notEqual(decision.reason, "morph-router");
+  } finally {
+    fetchStub.restore();
+  }
+});
+
+test("a configured custom router that returns undefined still bypasses Morph", async () => {
+  const fetchStub = stubFetch("deepseek-v4-flash");
+  const routerPath = join(tmpdir(), `ccr-noop-router-${process.pid}.cjs`);
+  writeFileSync(routerPath, "module.exports = async () => undefined;\n");
+  try {
+    const plugin = new ClaudeCodeRouterPlugin(baseConfig({ CUSTOM_ROUTER_PATH: routerPath } as Partial<AppConfig>));
+    const { decision } = await plugin.routeRequest(userRequest());
+    assert.equal(fetchStub.callCount(), 0, "Morph must not be called when a custom router is configured");
+    assert.notEqual(decision.reason, "morph-router");
+  } finally {
+    fetchStub.restore();
+    rmSync(routerPath, { force: true });
   }
 });
 

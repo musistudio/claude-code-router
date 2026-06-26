@@ -58,15 +58,24 @@ export class ClaudeCodeRouterPlugin {
     };
 
     const customModel = await this.resolveCustomRoute(request);
-    const configuredDecision = resolveConfiguredRouteDecision(request, this.config, tokenCount);
 
     // MorphRouter owns non-explicit routing when enabled. Explicit selections
-    // bypass it: a custom router file, an inline `provider,model`, or a subagent
-    // model tag. Any MorphRouter failure falls back to the configured decision.
-    const morphDecision =
-      customModel || configuredDecision.reason === "inline-model" || configuredDecision.reason === "subagent"
-        ? undefined
-        : await this.resolveMorphRoute(request);
+    // bypass it regardless of how the configured router would classify them:
+    //   - a custom router file is configured (the user owns routing),
+    //   - the request carries an explicit `provider,model` selector, or
+    //   - the request carries a `<CCR-SUBAGENT-MODEL>` tag.
+    // These are checked directly (not via configuredDecision.reason) so the
+    // bypass holds even when the matching provider/rule is not configured.
+    // IMPORTANT: capture these signals BEFORE resolveConfiguredRouteDecision(),
+    // whose subagent rule strips the tag from the body as a side effect.
+    const bypassMorph =
+      Boolean(this.config.CUSTOM_ROUTER_PATH) ||
+      hasExplicitRouteSelector(request.body.model) ||
+      hasSubagentModelTag(request.body.system);
+
+    const configuredDecision = resolveConfiguredRouteDecision(request, this.config, tokenCount);
+    // Any MorphRouter failure falls back to the configured decision.
+    const morphDecision = bypassMorph ? undefined : await this.resolveMorphRoute(request);
 
     if (customModel) {
       body.model = customModel;
@@ -723,6 +732,24 @@ function estimateTextTokens(text: string): number {
   const asciiWords = text.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
   const cjkChars = text.match(/[\u3400-\u9fff]/g)?.length ?? 0;
   return Math.max(1, Math.ceil((asciiWords + cjkChars) * 1.15));
+}
+
+// True when the request explicitly selects a `provider,model` route. CCR's
+// convention for an explicit selection is a comma between provider and model;
+// such requests must bypass MorphRouter even if the provider is not configured.
+function hasExplicitRouteSelector(model: unknown): boolean {
+  return typeof model === "string" && model.includes(",");
+}
+
+// Non-mutating check for a `<CCR-SUBAGENT-MODEL>` tag. extractSubagentModel()
+// strips the tag as a side effect, so detection for the MorphRouter bypass uses
+// this read-only peek instead.
+function hasSubagentModelTag(system: unknown): boolean {
+  if (!Array.isArray(system) || system.length < 2) {
+    return false;
+  }
+  const second = system[1];
+  return isRecord(second) && typeof second.text === "string" && /<CCR-SUBAGENT-MODEL>(.*?)<\/CCR-SUBAGENT-MODEL>/s.test(second.text);
 }
 
 function extractSubagentModel(system: unknown): string | undefined {
