@@ -34,9 +34,6 @@
         "assetPassthrough": false,
         "assetAutoUpdate": true,
         "autoAnswerQuestions": true,
-        // Optional. Keep true so Claude App can iframe the local CCR-served
-        // Claude Design UI at http://127.0.0.1:<gatewayPort>/design.
-        "directGatewayRoutes": true,
         // Optional. When assetDir is omitted, the plugin will auto-detect Claude Desktop's
         // bundled ion-dist assets, e.g. /Applications/Claude.app/Contents/Resources/ion-dist.
         // Set claudeAppAssets to false to disable that auto-detection.

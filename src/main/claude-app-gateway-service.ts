@@ -2,10 +2,14 @@ import { app } from "electron";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { saveAppConfig } from "./config";
 import { CONFIGDIR } from "./constants";
-import { buildClaudeAppGatewayInferenceModels, type ClaudeAppGatewayModelRouteOptions } from "../shared/claude-app-gateway";
+import {
+  buildClaudeAppGatewayInferenceModels,
+  type ClaudeAppGatewayInferenceModel,
+  type ClaudeAppGatewayModelRouteOptions
+} from "../shared/claude-app-gateway";
 import type { ApiKeyConfig, AppConfig, ClaudeAppGatewayApplyResult } from "../shared/app";
 import { findModelCatalogEntry } from "../server/gateway/model-catalog";
 
@@ -16,6 +20,7 @@ const CLAUDE_APP_CONFIG_LIBRARY_DIR = "configLibrary";
 const CLAUDE_APP_CONFIG_META_FILE = "_meta.json";
 const CLAUDE_APP_GATEWAY_BACKUP_FILE = path.join(CONFIGDIR, "claude-app-gateway-backup.json");
 const claudeAppGatewayModelRouteOptions: ClaudeAppGatewayModelRouteOptions = {
+  displayName: (model) => findModelCatalogEntry(model)?.displayName,
   supportsOneMillionContext: (model) => Boolean(findModelCatalogEntry(model)?.limits?.supports1MContext)
 };
 
@@ -24,7 +29,9 @@ type ClaudeAppGatewayConfig = {
   inferenceGatewayApiKey: string;
   inferenceGatewayAuthScheme: "x-api-key";
   inferenceGatewayBaseUrl: string;
-  inferenceModels: Array<{ displayName?: string; name: string }>;
+  inferenceModels: ClaudeAppGatewayInferenceModel[];
+  inferenceModelsUpdatedAt: string;
+  inferenceModelsVersion: string;
   inferenceProvider: "gateway";
   modelDiscoveryEnabled: true;
   unstableDisableModelVerification: true;
@@ -60,6 +67,7 @@ type ClaudeAppGatewayBackup = {
 type ClaudeAppGatewayApplyOptions = {
   backup?: boolean;
   dataDir?: string;
+  refreshModelDiscoveryCache?: boolean;
 };
 
 export type ClaudeAppGatewaySyncResult = {
@@ -91,12 +99,15 @@ export function applyClaudeAppGatewayConfig(config: AppConfig, options: ClaudeAp
   const endpoint = gatewayEndpoint(state.config);
   const models = buildClaudeAppGatewayInferenceModels(state.config, claudeAppGatewayModelRouteOptions);
   const model = models[0]?.name ?? "";
+  const modelsVersion = claudeAppGatewayModelsVersion(endpoint, models);
   const gatewayConfig: ClaudeAppGatewayConfig = {
     inferenceCredentialKind: "static",
     inferenceGatewayApiKey: state.apiKey,
     inferenceGatewayAuthScheme: "x-api-key",
     inferenceGatewayBaseUrl: endpoint,
     inferenceModels: models,
+    inferenceModelsUpdatedAt: new Date().toISOString(),
+    inferenceModelsVersion: modelsVersion,
     inferenceProvider: "gateway",
     modelDiscoveryEnabled: true,
     unstableDisableModelVerification: true
@@ -109,6 +120,9 @@ export function applyClaudeAppGatewayConfig(config: AppConfig, options: ClaudeAp
   writeJsonFile(paths.configLibraryFile, gatewayConfig);
   applyClaudeAppConfigMeta(paths.metaFile);
   applyClaudeAppDeploymentMode(paths.rootConfigFile);
+  if (options.refreshModelDiscoveryCache) {
+    refreshClaudeAppModelDiscoveryCache(paths.dataDir);
+  }
 
   return {
     config: state.config,
@@ -123,6 +137,28 @@ export function applyClaudeAppGatewayConfig(config: AppConfig, options: ClaudeAp
       requiresRestart: true
     }
   };
+}
+
+function claudeAppGatewayModelsVersion(endpoint: string, models: ClaudeAppGatewayInferenceModel[]): string {
+  return createHash("sha256")
+    .update(JSON.stringify({ endpoint, models }))
+    .digest("hex")
+    .slice(0, 16);
+}
+
+function refreshClaudeAppModelDiscoveryCache(dataDir: string): void {
+  for (const relativePath of [
+    "Cache",
+    "Code Cache",
+    "DawnCache",
+    "GPUCache",
+    "GrShaderCache",
+    "ShaderCache",
+    path.join("Service Worker", "CacheStorage"),
+    path.join("Service Worker", "ScriptCache")
+  ]) {
+    rmSync(path.join(dataDir, relativePath), { force: true, recursive: true });
+  }
 }
 
 export function restoreClaudeAppGatewayConfig(): void {

@@ -8,6 +8,7 @@ type ClaudeAppCdpLogger = Pick<Console, "info" | "warn">;
 type ClaudeAppDesignCdpOptions = {
   cdpPort?: number;
   designUrl?: string;
+  enabled?: boolean;
   logger?: ClaudeAppCdpLogger;
 };
 
@@ -45,12 +46,16 @@ const claudeAppDesignCdpConnectTimeoutMs = 15_000;
 const claudeAppDesignCdpKeepAliveMs = 45_000;
 const claudeAppDesignCdpPollIntervalMs = 250;
 
-export function shouldEnableClaudeAppDesignCdp(): boolean {
-  return process.env.CCR_CLAUDE_APP_DESIGN_CDP?.trim().toLowerCase() === "true";
+export function shouldEnableClaudeAppDesignCdp(enabledByConfig = false): boolean {
+  const configured = process.env.CCR_CLAUDE_APP_DESIGN_CDP?.trim().toLowerCase();
+  if (configured === "false" || configured === "0" || configured === "off") {
+    return false;
+  }
+  return enabledByConfig || configured === "true" || configured === "1" || configured === "on";
 }
 
-export async function reserveClaudeAppCdpPort(logger: ClaudeAppCdpLogger = console): Promise<number | undefined> {
-  if (!shouldEnableClaudeAppDesignCdp()) {
+export async function reserveClaudeAppCdpPort(logger: ClaudeAppCdpLogger = console, enabledByConfig = false): Promise<number | undefined> {
+  if (!shouldEnableClaudeAppDesignCdp(enabledByConfig)) {
     return undefined;
   }
   const configured = Number(process.env.CCR_CLAUDE_APP_CDP_PORT);
@@ -70,7 +75,7 @@ export function prepareClaudeAppCdpUserDataDir(userDataDir: string): void {
 }
 
 export function scheduleClaudeAppDesignCdp(options: ClaudeAppDesignCdpOptions): void {
-  if (!shouldEnableClaudeAppDesignCdp()) {
+  if (!shouldEnableClaudeAppDesignCdp(options.enabled === true)) {
     return;
   }
   const logger = options.logger || console;
@@ -87,7 +92,11 @@ export function scheduleClaudeAppDesignCdp(options: ClaudeAppDesignCdpOptions): 
   });
 }
 
-async function forceOpenClaudeAppDesignViaCdp(options: Required<ClaudeAppDesignCdpOptions>): Promise<void> {
+async function forceOpenClaudeAppDesignViaCdp(options: {
+  cdpPort: number;
+  designUrl: string;
+  logger: ClaudeAppCdpLogger;
+}): Promise<void> {
   const target = await waitForClaudeAppPageTarget(options.cdpPort, claudeAppDesignCdpConnectTimeoutMs);
   if (!target.webSocketDebuggerUrl) {
     throw new Error(`Claude App CDP page target was not available on port ${options.cdpPort}.`);
@@ -273,7 +282,7 @@ function normalizeClaudeAppDesignUrl(value: string | undefined): string {
   }
   try {
     const url = new URL(raw);
-    if (!isLocalHttpUrl(url)) {
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
       return "";
     }
     url.pathname = normalizeDesignPath(url.pathname);
@@ -282,17 +291,6 @@ function normalizeClaudeAppDesignUrl(value: string | undefined): string {
   } catch {
     return "";
   }
-}
-
-function isLocalHttpUrl(url: URL): boolean {
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    return false;
-  }
-  const hostname = url.hostname.toLowerCase();
-  return hostname === "127.0.0.1" ||
-    hostname === "localhost" ||
-    hostname === "::1" ||
-    hostname === "[::1]";
 }
 
 function normalizeDesignPath(value: string): string {

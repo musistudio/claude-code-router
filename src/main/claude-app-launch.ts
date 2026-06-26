@@ -17,6 +17,7 @@ export type ClaudeAppLaunchResult = {
   child: ChildProcess;
   command: string;
   cdpPort?: number;
+  claudeDesignProxy?: boolean;
   pid?: number;
   userDataDir: string;
 };
@@ -47,7 +48,8 @@ export async function launchClaudeAppProfile(configDir: string, profile: Profile
   const userDataDir = resolveClaudeAppProfileUserDataDir(configDir, profile);
   mkdirSync(userDataDir, { recursive: true });
   prepareClaudeAppCdpUserDataDir(userDataDir);
-  const cdpPort = await reserveClaudeAppCdpPort(console);
+  const shouldOpenDesign = shouldOpenClaudeAppDesign(config);
+  const cdpPort = await reserveClaudeAppCdpPort(console, shouldOpenDesign);
 
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -62,7 +64,8 @@ export async function launchClaudeAppProfile(configDir: string, profile: Profile
   delete env.ELECTRON_RUN_AS_NODE;
 
   const designUrl = claudeAppDesignUrl(config);
-  const child = spawn(lookup.executable, claudeElectronArgs(userDataDir, cdpPort), {
+  const proxyUrl = claudeAppProxyUrl(config);
+  const child = spawn(lookup.executable, claudeElectronArgs(userDataDir, cdpPort, proxyUrl), {
     detached: true,
     env,
     stdio: "ignore"
@@ -71,11 +74,13 @@ export async function launchClaudeAppProfile(configDir: string, profile: Profile
   scheduleClaudeAppDesignCdp({
     cdpPort,
     designUrl,
+    enabled: shouldOpenDesign,
     logger: console
   });
 
   return {
     child,
+    claudeDesignProxy: Boolean(proxyUrl),
     command: lookup.executable,
     ...(cdpPort ? { cdpPort } : {}),
     pid: child.pid,
@@ -88,8 +93,26 @@ export function resolveClaudeAppProfileUserDataDir(configDir: string, profile: P
   return claudeElectronUserDataDir(path.dirname(settingsFile), profile);
 }
 
+function shouldOpenClaudeAppDesign(config: AppConfig | undefined): boolean {
+  return Boolean(claudeDesignPluginConfig(config));
+}
+
 function claudeAppDesignUrl(config: AppConfig | undefined): string | undefined {
-  if (!config) {
+  const plugin = claudeDesignPluginConfig(config);
+  if (!plugin) {
+    return undefined;
+  }
+  const options = isRecord(plugin.config) ? plugin.config : {};
+  const host = typeof options.host === "string" && options.host.trim() ? options.host.trim() : "claude.ai";
+  return `https://${host}/design`;
+}
+
+function claudeDesignPluginConfig(config: AppConfig | undefined): AppConfig["plugins"][number] | undefined {
+  return config?.plugins.find((plugin) => plugin.enabled !== false && plugin.id === "claude-design");
+}
+
+function claudeAppProxyUrl(config: AppConfig | undefined): string | undefined {
+  if (!config?.proxy?.enabled) {
     return undefined;
   }
   const port = Number.isInteger(config.gateway?.port) && config.gateway.port > 0
@@ -101,7 +124,7 @@ function claudeAppDesignUrl(config: AppConfig | undefined): string | undefined {
     return undefined;
   }
   const host = formatLoopbackGatewayHost(config.gateway?.host || "127.0.0.1");
-  return `http://${host}:${port}/design`;
+  return `http://${host}:${port}`;
 }
 
 function formatLoopbackGatewayHost(host: string): string {
@@ -115,12 +138,18 @@ function formatLoopbackGatewayHost(host: string): string {
   return trimmed;
 }
 
-function claudeElectronArgs(userDataDir: string, cdpPort?: number): string[] {
+function claudeElectronArgs(userDataDir: string, cdpPort?: number, proxyUrl?: string): string[] {
   return [
     ...(cdpPort
       ? [
           `--remote-debugging-port=${cdpPort}`,
           "--remote-debugging-address=127.0.0.1"
+        ]
+      : []),
+    ...(proxyUrl
+      ? [
+          `--proxy-server=${proxyUrl}`,
+          "--proxy-bypass-list=localhost;127.0.0.1;[::1]"
         ]
       : []),
     `--user-data-dir=${userDataDir}`,
@@ -285,6 +314,10 @@ function profileEnv(profile: ProfileConfig): Record<string, string> {
 
 function isEnvName(value: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function sanitizeProfilePathSegment(value: string): string {

@@ -33,17 +33,9 @@ import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfi
 
 const pluginMarketplace: PluginMarketplaceEntry[] = [
   {
-    apps: [
-      {
-        description: "Open Claude Design through the CCR browser proxy.",
-        id: "claude-design",
-        name: "Claude Design",
-        url: "https://claude.ai/design"
-      }
-    ],
-    capabilities: ["Wrapper runtime", "Browser app", "Claude Design", "Model routing"],
+    capabilities: ["Wrapper runtime", "Claude App proxy", "Claude Design", "Model routing"],
     dependencies: [],
-    description: "Routes Claude Design traffic through the local CCR wrapper backend with configurable model routing.",
+    description: "Routes Claude App Design traffic through the local CCR wrapper backend with configurable model routing.",
     id: "claude-design",
     modulePath: path.join(__dirname, "..", "marketplace", "plugins", "claude-design-plugin.cjs"),
     name: "Claude Design"

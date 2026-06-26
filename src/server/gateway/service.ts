@@ -72,6 +72,7 @@ const defaultFusionWebSearchProvider: VirtualModelFusionWebSearchProvider = "bra
 const fusionModelProviderName = "Fusion";
 const claudeCodeOneMillionContextSuffix = "[1m]";
 const claudeAppGatewayModelRouteOptions: ClaudeAppGatewayModelRouteOptions = {
+  displayName: (model) => findModelCatalogEntry(model)?.displayName,
   supportsOneMillionContext: (model) => Boolean(findModelCatalogEntry(model)?.limits?.supports1MContext)
 };
 
@@ -580,8 +581,11 @@ class GatewayService {
     if (shouldServeGatewayModelsResponse(method, path)) {
       const responseText = `${JSON.stringify(createGatewayModelsResponse(this.config, request.headers, apiKey))}\n`;
       const modelHeaders = new Headers({
+        "cache-control": "no-store, max-age=0",
         "content-length": String(Buffer.byteLength(responseText)),
-        "content-type": "application/json; charset=utf-8"
+        "content-type": "application/json; charset=utf-8",
+        "expires": "0",
+        "pragma": "no-cache"
       });
       response.writeHead(200, Object.fromEntries(filteredResponseHeaders(modelHeaders)));
       response.end(responseText);
@@ -3271,12 +3275,10 @@ function prepareClaudeAppFallbackModelRequest(
 }
 
 function createGatewayModelsResponse(config: AppConfig, headers: IncomingHttpHeaders, apiKey?: ApiKeyConfig): Record<string, unknown> {
-  if (isClaudeAppApiKey(apiKey)) {
+  if (isClaudeAppApiKey(apiKey) || isClaudeCodeUserAgent(headers)) {
     return createClaudeAppGatewayModelsResponse(config);
   }
-  return isClaudeCodeUserAgent(headers)
-    ? createClaudeCodeModelsResponse(config)
-    : createOpenAICompatibleGatewayModelsResponse(config);
+  return createOpenAICompatibleGatewayModelsResponse(config);
 }
 
 function createOpenAICompatibleGatewayModelsResponse(config: AppConfig): Record<string, unknown> {
@@ -3303,7 +3305,7 @@ function createClaudeAppGatewayModelsResponse(config: AppConfig): Record<string,
   const data = routes.map((route) => {
     const catalogId = stripClaudeCodeOneMillionContextSuffix(route.targetModel);
     const catalogEntry = findModelCatalogEntry(catalogId);
-    const maxInputTokens = claudeCodeEffectiveMaxInputTokens(catalogEntry, route.oneMillionContext);
+    const maxInputTokens = claudeGatewayModelContextWindow(catalogEntry, route.oneMillionContext);
     const maxOutputTokens = modelCatalogMaxOutputTokens(catalogEntry);
     return {
       id: route.id,
@@ -3311,17 +3313,10 @@ function createClaudeAppGatewayModelsResponse(config: AppConfig): Record<string,
         maxInputTokens,
         oneMillionContext: route.oneMillionContext
       }),
-      catalog_id: catalogEntry?.id,
-      context_window: maxInputTokens,
       created_at: "1970-01-01T00:00:00Z",
       display_name: route.displayName,
-      input_modalities: catalogEntry?.modalities?.input ?? ["text"],
       max_input_tokens: maxInputTokens,
       max_tokens: maxOutputTokens,
-      one_million_context_variant: route.oneMillionContext,
-      output_modalities: catalogEntry?.modalities?.output ?? ["text"],
-      supports_1m_context: Boolean(catalogEntry?.limits?.supports1MContext),
-      target_model: route.targetModel,
       type: "model"
     };
   });
@@ -3340,7 +3335,7 @@ function createClaudeCodeModelsResponse(config: AppConfig): Record<string, unkno
     const claudeId = claudeCodeDiscoveryModelId(model.id);
     const catalogId = stripClaudeCodeOneMillionContextSuffix(model.id);
     const catalogEntry = findModelCatalogEntry(catalogId);
-    const maxInputTokens = claudeCodeEffectiveMaxInputTokens(catalogEntry, model.oneMillionContext);
+    const maxInputTokens = claudeGatewayModelContextWindow(catalogEntry, model.oneMillionContext);
     const maxOutputTokens = modelCatalogMaxOutputTokens(catalogEntry);
     return {
       id: claudeId,
@@ -3348,16 +3343,10 @@ function createClaudeCodeModelsResponse(config: AppConfig): Record<string, unkno
         maxInputTokens,
         oneMillionContext: model.oneMillionContext
       }),
-      catalog_id: catalogEntry?.id,
-      context_window: maxInputTokens,
       created_at: "1970-01-01T00:00:00Z",
       display_name: formatClaudeCodeModelDisplayName(claudeId, catalogEntry, model.oneMillionContext),
-      input_modalities: catalogEntry?.modalities?.input ?? ["text"],
       max_input_tokens: maxInputTokens,
       max_tokens: maxOutputTokens,
-      one_million_context_variant: model.oneMillionContext,
-      output_modalities: catalogEntry?.modalities?.output ?? ["text"],
-      supports_1m_context: Boolean(catalogEntry?.limits?.supports1MContext),
       type: "model"
     };
   });
@@ -3368,6 +3357,14 @@ function createClaudeCodeModelsResponse(config: AppConfig): Record<string, unkno
     has_more: false,
     last_id: data[data.length - 1]?.id ?? null
   };
+}
+
+function claudeGatewayModelContextWindow(entry: ModelCatalogEntry | undefined, oneMillionContext: boolean): number {
+  const contextWindow = modelCatalogMaxInputTokens(entry);
+  if (contextWindow > 0) {
+    return contextWindow;
+  }
+  return oneMillionContext ? 1_000_000 : 0;
 }
 
 function buildClaudeCodeDiscoverableModelIds(config: AppConfig): string[] {

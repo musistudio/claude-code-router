@@ -555,8 +555,10 @@ function resolveInstalledBrowserApps(config: AppConfig, runtimeApps: InstalledBr
     if (plugin.enabled === false) {
       continue;
     }
-    const configuredApps = plugin.apps?.length ? plugin.apps : defaultBrowserAppsForPlugin(plugin);
-    for (const app of configuredApps) {
+    if (plugin.id === "claude-design") {
+      continue;
+    }
+    for (const app of plugin.apps ?? []) {
       const normalized = normalizeConfiguredBrowserApp(plugin.id, app, apps.size + 1);
       if (normalized) {
         apps.set(`${normalized.pluginId}:${normalized.id}`, normalized);
@@ -564,37 +566,12 @@ function resolveInstalledBrowserApps(config: AppConfig, runtimeApps: InstalledBr
     }
   }
   for (const app of runtimeApps) {
+    if (app.pluginId === "claude-design") {
+      continue;
+    }
     apps.set(`${app.pluginId}:${app.id}`, { ...app });
   }
   return [...apps.values()];
-}
-
-function defaultBrowserAppsForPlugin(plugin: AppConfig["plugins"][number]): GatewayPluginAppConfig[] {
-  if (plugin.id !== "claude-design") {
-    return [];
-  }
-  const config = isPlainRecord(plugin.config) ? plugin.config : {};
-  const host = stringValue(config.host) || "claude.ai";
-  const url = usesClaudeAppDesignShell(config)
-    ? claudeAppDesignShellUrl(host)
-    : `https://${host}/design`;
-  return [
-    {
-      description: "Open Claude Design through the CCR browser proxy.",
-      id: "claude-design",
-      name: "Claude Design",
-      url
-    }
-  ];
-}
-
-function usesClaudeAppDesignShell(config: Record<string, unknown>): boolean {
-  return config.claudeAppAssets !== false && !stringValue(config.assetDir);
-}
-
-function claudeAppDesignShellUrl(host: string): string {
-  const path = encodeURIComponent("/design?__ccr_design_iframe=1");
-  return `https://${host}/desktop-design?path=${path}`;
 }
 
 function normalizeConfiguredBrowserApp(pluginId: string, app: GatewayPluginAppConfig, index: number): InstalledBrowserApp | undefined {

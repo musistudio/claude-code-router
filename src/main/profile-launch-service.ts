@@ -21,6 +21,7 @@ let claudeAppBotWorkerProfileId: string | undefined;
 
 type ProfileAppLaunchResult = {
   child: ChildProcess;
+  claudeDesignProxy?: boolean;
   command: string;
   pidIsLauncher?: boolean;
   pid?: number;
@@ -29,6 +30,7 @@ type ProfileAppLaunchResult = {
 
 type RunningProfileApp = ProfileRuntimeEntry & {
   child: ChildProcess;
+  claudeDesignProxy?: boolean;
   command: string;
   pidIsLauncher?: boolean;
   spawnError?: string;
@@ -129,22 +131,30 @@ async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof
 }
 
 async function openClaudeAppProfile(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): Promise<ProfileOpenResult> {
+  const profileGatewayConfig = claudeAppGatewayConfigFor(config, profile);
   const existing = runningProfileApp(profile.id, "app");
   if (existing) {
-    activateProfileAppWindow(existing);
-    return {
-      message: `Claude App is already running with ${profile.name || profile.id}.`,
-      profileId: profile.id,
-      profileName: profile.name,
-      surface: "app"
-    };
+    if (!claudeAppDesignProxyRequired(profileGatewayConfig) || existing.claudeDesignProxy) {
+      activateProfileAppWindow(existing);
+      return {
+        message: `Claude App is already running with ${profile.name || profile.id}.`,
+        profileId: profile.id,
+        profileName: profile.name,
+        surface: "app"
+      };
+    }
+    const stopped = await stopRunningProfileApp(profileRuntimeKey(profile.id, "app"), existing);
+    if (!stopped) {
+      throw new Error("Claude App is already running without the Claude Design proxy. Close Claude App and try again.");
+    }
+    stopClaudeAppBotWorker(profile.id);
   }
 
-  const profileGatewayConfig = profileGatewayConfigFor(config, profile);
   applyClaudeAppGatewayConfig(profileGatewayConfig);
   applyClaudeAppGatewayConfig(profileGatewayConfig, {
     backup: false,
-    dataDir: resolveClaudeAppProfileUserDataDir(CONFIGDIR, profile)
+    dataDir: resolveClaudeAppProfileUserDataDir(CONFIGDIR, profile),
+    refreshModelDiscoveryCache: true
   });
   await ensureGatewayConfigRunning(profileGatewayConfig, "Claude App");
   const entry = registerProfileApp(profile, "app", await launchClaudeAppProfile(CONFIGDIR, profile, profileGatewayConfig));
@@ -207,6 +217,26 @@ function profileGatewayConfigFor(config: AppConfig, profile: ReturnType<typeof f
       ...(profile.model.trim() ? { default: profile.model.trim() } : {})
     }
   };
+}
+
+function claudeAppGatewayConfigFor(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): AppConfig {
+  const profileGatewayConfig = profileGatewayConfigFor(config, profile);
+  if (!claudeAppDesignProxyRequired(profileGatewayConfig)) {
+    return profileGatewayConfig;
+  }
+  return {
+    ...profileGatewayConfig,
+    proxy: {
+      ...profileGatewayConfig.proxy,
+      enabled: true,
+      mode: "transparent",
+      systemProxy: false
+    }
+  };
+}
+
+function claudeAppDesignProxyRequired(config: AppConfig): boolean {
+  return config.plugins.some((plugin) => plugin.enabled !== false && plugin.id === "claude-design");
 }
 
 export function getProfileRuntimeStatus(): ProfileRuntimeStatus {
@@ -276,6 +306,7 @@ function registerProfileApp(
   const entry: RunningProfileApp = {
     agent: profile.agent,
     child: launch.child,
+    claudeDesignProxy: launch.claudeDesignProxy,
     command: launch.command,
     pid: launch.pid,
     pidIsLauncher: launch.pidIsLauncher,
