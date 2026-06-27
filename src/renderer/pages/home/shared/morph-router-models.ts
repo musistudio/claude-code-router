@@ -7,6 +7,19 @@ export const MORPH_ROUTER_POLICY_OPTIONS: Array<{ label: string; value: MorphRou
   { label: "Domain skills", value: "domain_skills" }
 ];
 
+// The Morph models the router can return. The UI shows one set/unset row per
+// model; any model the API may emit should be mappable here.
+export const DEFAULT_MORPH_MODELS = [
+  "gpt-5.5",
+  "claude-haiku-4-5-20251001",
+  "claude-sonnet-4-6",
+  "claude-opus-4-8",
+  "gemini-3.5-flash",
+  "gemini-3.1-pro-preview",
+  "deepseek-v4-flash",
+  "deepseek-v4-pro"
+] as const;
+
 // A row keeps every configured target so editing one mapping never silently
 // drops the fallback targets of another (multi-target chains are config-first
 // but must survive a round-trip through the UI).
@@ -38,6 +51,26 @@ export function allMorphRouterRoutes(entry: string | MorphRouterModelConfig | un
   }
   const list = entry.targets ?? entry.routes ?? [];
   return list.map((target) => (typeof target === "string" ? target : target?.route ?? "")).filter(Boolean);
+}
+
+// Build the rows shown in the mapping editor: every known Morph model (so each
+// can be set or left unset), plus any extra models already present in config.
+// Unset models get an empty route and are dropped on serialize.
+export function buildMorphRouterEditorRows(models: MorphRouterConfig["models"]): MorphRouterModelRow[] {
+  const configured = new Map(readMorphRouterModelRows(models).map((row) => [row.name, row]));
+  const ordered: MorphRouterModelRow[] = [];
+  const emit = (name: string) => {
+    ordered.push(configured.get(name) ?? { name, route: "", fallbackRoutes: [] });
+    configured.delete(name);
+  };
+  for (const name of DEFAULT_MORPH_MODELS) {
+    emit(name);
+  }
+  // Append any custom/configured models that are not in the default set.
+  for (const row of configured.values()) {
+    ordered.push(row);
+  }
+  return ordered;
 }
 
 // Serialize rows back to config, collapsing single-target rows to a plain route

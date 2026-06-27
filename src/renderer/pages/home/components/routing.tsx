@@ -12,9 +12,9 @@ import {
 import { ROUTER_FALLBACK_MAX_RETRY_COUNT } from "../../../../shared/app";
 import type { MorphRouterConfig, MorphRouterPolicy } from "../../../../shared/app";
 import {
+  buildMorphRouterEditorRows,
   MORPH_ROUTER_POLICY_OPTIONS,
   morphRowsToModels,
-  readMorphRouterModelRows,
   type MorphRouterModelRow
 } from "../shared/morph-router-models";
 export function RoutingView({
@@ -304,30 +304,17 @@ function MorphRouterControl({
   const config = morphRouter ?? {};
   const enabled = config.enabled === true;
   const modelOptions = useMemo(() => createRouteModelOptions(providers), [providers]);
-  const modelRows = useMemo(() => readMorphRouterModelRows(config.models), [config.models]);
+  const editorRows = useMemo(() => buildMorphRouterEditorRows(config.models), [config.models]);
   const defaultModel = config.default_model ?? config.default ?? "";
   const policy = config.policy ?? "balanced";
-  const [modelNameDraft, setModelNameDraft] = useState("");
-  const [modelRouteDraft, setModelRouteDraft] = useState("");
 
-  function writeModelRows(rows: MorphRouterModelRow[]) {
-    onChange({ models: morphRowsToModels(rows) });
-  }
-
-  function addModelRow() {
-    const name = modelNameDraft.trim();
-    const route = modelRouteDraft.trim();
-    if (!name || !route) {
-      return;
-    }
-    const next = modelRows.filter((row) => row.name.toLowerCase() !== name.toLowerCase());
-    writeModelRows([...next, { name, route, fallbackRoutes: [] }]);
-    setModelNameDraft("");
-    setModelRouteDraft("");
-  }
-
-  function removeModelRow(index: number) {
-    writeModelRows(modelRows.filter((_, rowIndex) => rowIndex !== index));
+  // Set or unset the primary route for a Morph model. Choosing "Unset" (empty
+  // route) drops the mapping; an existing multi-target fallback chain is kept.
+  function setModelRoute(name: string, route: string) {
+    const next: MorphRouterModelRow[] = editorRows.map((row) =>
+      row.name === name ? { ...row, route } : row
+    );
+    onChange({ models: morphRowsToModels(next) });
   }
 
   return (
@@ -376,46 +363,27 @@ function MorphRouterControl({
               />
             </Field>
           </div>
-          <div className="grid min-w-0 grid-cols-[minmax(0,180px)_minmax(0,1fr)_auto] items-end gap-2">
-            <Field label={t("Morph model")}>
-              <Input
-                className="font-mono text-[12px]"
-                onChange={(event) => setModelNameDraft(event.target.value)}
-                placeholder="claude-opus-4-8"
-                value={modelNameDraft}
-              />
-            </Field>
-            <Field label={t("Route target")}>
-              <RouteTargetControl
-                modelOptions={modelOptions}
-                onChange={setModelRouteDraft}
-                value={modelRouteDraft}
-              />
-            </Field>
-            <Button disabled={!modelNameDraft.trim() || !modelRouteDraft.trim()} onClick={addModelRow} type="button">
-              <Plus className="h-4 w-4" />
-              {t("Add")}
-            </Button>
-          </div>
-          <div className="flex min-w-0 flex-wrap gap-2">
-            {modelRows.length === 0 ? (
-              <div className="text-[12px] text-muted-foreground">{t("No model mappings configured")}</div>
-            ) : (
-              modelRows.map((row, index) => (
-                <div className="flex max-w-full items-center gap-1 rounded-md border border-border bg-background px-2 py-1" key={`${row.name}-${index}`}>
-                  <span className="min-w-0 truncate font-mono text-[11px]" title={[`${row.name} -> ${row.route}`, ...row.fallbackRoutes.map((value) => `   ↳ ${value}`)].join("\n")}>
-                    {row.name} → {row.route}
-                  </span>
-                  {row.fallbackRoutes.length > 0 ? (
-                    <Badge variant="outline">{`+${row.fallbackRoutes.length}`}</Badge>
-                  ) : null}
-                  <Button aria-label={`${t("Remove")} ${row.name}`} onClick={() => removeModelRow(index)} size="iconSm" title={t("Remove")} type="button" variant="ghost">
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ))
-            )}
-          </div>
+          <Field label={t("Model routing targets")}>
+            <div className="rounded-md border border-border bg-muted/20 p-2">
+              <div className="space-y-2">
+                {editorRows.map((row) => (
+                  <div className="grid min-w-0 grid-cols-[minmax(0,200px)_minmax(0,1fr)_auto] items-center gap-2" key={row.name}>
+                    <span className="min-w-0 truncate font-mono text-[12px]" title={row.name}>{row.name}</span>
+                    <RouteTargetControl
+                      modelOptions={modelOptions}
+                      onChange={(value) => setModelRoute(row.name, value)}
+                      value={row.route}
+                    />
+                    {row.fallbackRoutes.length > 0 ? (
+                      <Badge variant="outline" title={row.fallbackRoutes.map((value) => `↳ ${value}`).join("\n")}>{`+${row.fallbackRoutes.length}`}</Badge>
+                    ) : (
+                      <span aria-hidden="true" className="w-0" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Field>
         </div>
       ) : null}
     </div>

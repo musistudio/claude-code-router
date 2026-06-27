@@ -680,6 +680,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Timeout (ms)": "超时时间（毫秒）",
       "Morph model": "Morph 模型",
       "Route target": "路由目标",
+      "Model routing targets": "模型路由目标",
       "No model mappings configured": "未配置模型映射",
       "Description": "描述",
       "CCR scanned this computer for Claude Code, Codex, and ZCode login states. Click Import to add one as a gateway provider.": "CCR 已扫描本机的 Claude Code、Codex 和 ZCode 登录态。点击导入即可添加为网关供应商。",
