@@ -52,6 +52,41 @@ function stubFetch(morphModel: string) {
   };
 }
 
+// Captures what is actually POSTed to the Morph API so tests can assert the
+// request payload (e.g. that the prompt was sanitized before it left the box).
+function recordingFetch(morphModel: string) {
+  let calls = 0;
+  let lastBody: Record<string, unknown> | undefined;
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (_url: unknown, init: { body?: string } = {}) => {
+    calls += 1;
+    lastBody = init.body ? JSON.parse(init.body) : undefined;
+    return new Response(JSON.stringify({ model: morphModel, confidence: 0.9 }), { status: 200 });
+  }) as typeof fetch;
+  return {
+    callCount: () => calls,
+    lastBody: () => lastBody,
+    restore: () => {
+      globalThis.fetch = original;
+    }
+  };
+}
+
+// Captures console.info output (the plugin logs routing decisions via console).
+function captureInfo() {
+  const lines: string[] = [];
+  const original = console.info;
+  console.info = ((...args: unknown[]) => {
+    lines.push(args.map(String).join(" "));
+  }) as typeof console.info;
+  return {
+    lines: () => lines,
+    restore: () => {
+      console.info = original;
+    }
+  };
+}
+
 const userRequest = (model = "claude-3-5-sonnet") => ({
   body: { model, messages: [{ role: "user", content: "please refactor this gnarly function" }] },
   headers: {},
@@ -198,5 +233,98 @@ test("an unreachable MorphRouter falls back to the default route", async () => {
     assert.equal(decision.model, "openrouter/anthropic/claude-sonnet-4.6");
   } finally {
     globalThis.fetch = original;
+  }
+});
+
+test("Morph's fallback chain appends the configured global fallback after its own targets", async () => {
+  const fetchStub = recordingFetch("deepseek-v4-flash");
+  try {
+    const plugin = new ClaudeCodeRouterPlugin(
+      baseConfig({
+        Router: {
+          default: "openrouter,anthropic/claude-sonnet-4.6",
+          fallback: { mode: "model-chain", models: ["openrouter,anthropic/claude-sonnet-4.6"], retryCount: 2 },
+          longContextThreshold: 200000,
+          rules: []
+        }
+      })
+    );
+    const { decision } = await plugin.routeRequest(userRequest());
+    assert.equal(decision.fallback?.mode, "model-chain");
+    // Morph's remaining target first, then the user's configured global fallback.
+    assert.deepEqual(decision.fallback?.models, ["deepseek/deepseek-chat", "openrouter/anthropic/claude-sonnet-4.6"]);
+    assert.equal(decision.fallback?.retryCount, 2);
+  } finally {
+    fetchStub.restore();
+  }
+});
+
+test("the prompt sent to the Morph API is sanitized (system-reminder stripped) and the decision is logged", async () => {
+  const fetchStub = recordingFetch("deepseek-v4-flash");
+  const log = captureInfo();
+  try {
+    const plugin = new ClaudeCodeRouterPlugin(baseConfig());
+    await plugin.routeRequest({
+      body: {
+        model: "claude-3-5-sonnet",
+        messages: [
+          { role: "user", content: "refactor the auth module <system-reminder>SECRET_TOKEN_DO_NOT_LEAK</system-reminder>" }
+        ]
+      },
+      headers: {},
+      method: "POST",
+      url: "/v1/messages"
+    });
+
+    const sent = fetchStub.lastBody();
+    assert.ok(sent, "expected a payload to be sent to the Morph API");
+    const input = String(sent!.input ?? "");
+    assert.ok(input.includes("refactor the auth module"), "real prompt text should be present");
+    assert.ok(!input.includes("SECRET_TOKEN_DO_NOT_LEAK"), "system-reminder content must be stripped");
+    assert.ok(!/system-reminder/i.test(input), "system-reminder tags must be stripped");
+    // allowed_models / policy / default_model are part of the contract.
+    assert.ok(Array.isArray(sent!.allowed_models));
+    assert.equal(sent!.policy, "balanced");
+
+    const logged = log.lines().some((line) => /MorphRouter selected deepseek-v4-flash -> openrouter\/deepseek\/deepseek-v4-flash/.test(line));
+    assert.ok(logged, `expected a MorphRouter selection log line; got: ${log.lines().join(" | ")}`);
+  } finally {
+    log.restore();
+    fetchStub.restore();
+  }
+});
+
+test("a subagent tag is stripped from the returned body so it is not forwarded upstream", async () => {
+  const fetchStub = recordingFetch("deepseek-v4-flash");
+  try {
+    const config = baseConfig({
+      Router: {
+        default: "openrouter,anthropic/claude-sonnet-4.6",
+        fallback: { mode: "off", models: [], retryCount: 1 },
+        longContextThreshold: 200000,
+        rules: [{ id: "subagent", type: "subagent", enabled: true } as never]
+      }
+    });
+    const plugin = new ClaudeCodeRouterPlugin(config);
+    const { body, decision } = await plugin.routeRequest({
+      body: {
+        model: "claude-3-5-sonnet",
+        system: [
+          { type: "text", text: "system" },
+          { type: "text", text: "before <CCR-SUBAGENT-MODEL>openrouter,anthropic/claude-opus-4.8</CCR-SUBAGENT-MODEL> after" }
+        ],
+        messages: [{ role: "user", content: "subtask" }]
+      },
+      headers: {},
+      method: "POST",
+      url: "/v1/messages"
+    });
+    assert.equal(fetchStub.callCount(), 0, "Morph must not be called for subagent routing");
+    assert.equal(decision.reason, "subagent");
+    const system = body.system as Array<{ text?: string }>;
+    assert.ok(!system[1].text?.includes("<CCR-SUBAGENT-MODEL>"), "the subagent tag must be stripped from the body");
+    assert.ok(system[1].text?.includes("before") && system[1].text?.includes("after"), "surrounding text should remain");
+  } finally {
+    fetchStub.restore();
   }
 });

@@ -132,19 +132,24 @@ export class ClaudeCodeRouterPlugin {
     }
 
     // Map MorphRouter's remaining targets onto the gateway's native model-chain
-    // fallback so each is tried in order before the global fallback kicks in.
+    // fallback. The configured global fallback chain is APPENDED after Morph's
+    // own targets (not replaced), so requests try: primary -> Morph's remaining
+    // targets -> the user's configured fallback, matching the documented order.
     const fallbackModels = decision.fallbackTargets
       .map((target) => normalizeRouteSelector(target.route))
       .filter((value): value is string => Boolean(value));
     const baseFallback = this.config.Router.fallback;
+    const baseModels = baseFallback?.mode === "model-chain" ? baseFallback.models ?? [] : [];
+    const chainModels = uniqueRouteSelectors([...fallbackModels, ...baseModels.map((model) => normalizeRouteSelector(model) ?? model)], primary);
+
     const fallback: RouterFallbackConfig =
       fallbackModels.length > 0
-        ? { mode: "model-chain", models: fallbackModels, retryCount: baseFallback?.retryCount ?? 1 }
+        ? { mode: "model-chain", models: chainModels, retryCount: baseFallback?.retryCount ?? 1 }
         : baseFallback;
 
     request.log.info(
       `MorphRouter selected ${decision.morphModel} -> ${primary}` +
-        (fallbackModels.length ? ` (fallback: ${fallbackModels.join(", ")})` : "")
+        (fallback.mode === "model-chain" && fallback.models.length ? ` (fallback: ${fallback.models.join(", ")})` : "")
     );
     return { model: primary, fallback };
   }
@@ -732,6 +737,21 @@ function estimateTextTokens(text: string): number {
   const asciiWords = text.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
   const cjkChars = text.match(/[\u3400-\u9fff]/g)?.length ?? 0;
   return Math.max(1, Math.ceil((asciiWords + cjkChars) * 1.15));
+}
+
+// Dedupe a fallback model-chain and drop the primary route (already the first
+// upstream attempt), preserving order.
+function uniqueRouteSelectors(models: string[], primary: string): string[] {
+  const seen = new Set<string>([primary]);
+  const result: string[] = [];
+  for (const model of models) {
+    if (!model || seen.has(model)) {
+      continue;
+    }
+    seen.add(model);
+    result.push(model);
+  }
+  return result;
 }
 
 // True when the request explicitly selects a `provider,model` route. CCR's
