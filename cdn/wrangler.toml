@@ -1,0 +1,3 @@
+name = "claude-code-router-cdn"
+compatibility_date = "2026-06-28"
+pages_build_output_dir = "./public"

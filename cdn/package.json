@@ -1,0 +1,10 @@
+{
+  "name": "claude-code-router-cdn",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler pages deploy public --project-name=claude-code-router-cdn",
+    "deploy:preview": "wrangler pages deploy public --project-name=claude-code-router-cdn --branch=preview"
+  }
+}

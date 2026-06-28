@@ -89,9 +89,9 @@ ccr://provider?name=Example%20AI&base_url=https%3A%2F%2Fapi.example.com%2Fv1&api
 Supported query parameters:
 
 - `name`: display name for the provider.
-- `base_url`: provider API base URL. Aliases: `baseUrl`, `api_base_url`, `url`, `endpoint`.
-- `api_key`: optional provider API key. Aliases: `apiKey`, `apikey`, `key`, `token`.
-- `models`: comma-separated or newline-separated model list. You can also repeat `model=...`.
+- `base_url`: provider API base URL.
+- `api_key`: optional provider API key.
+- `models`: comma-separated or newline-separated model list. You can also repeat `models=...`.
 - `protocol`: one of `openai_chat_completions`, `openai_responses`, `anthropic_messages`, or `gemini_generate_content`.
 
 For larger payloads, pass `payload` as URL-encoded JSON or base64url JSON with the same fields. CCR always opens a confirmation dialog before writing a provider imported from an external link.
