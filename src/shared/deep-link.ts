@@ -21,23 +21,13 @@ const maxManifestUrlLength = 2_048;
 const maxSourceLength = 2_048;
 const maxModelLength = 256;
 const maxModels = 300;
-const providerLinkApiKeyError = "Provider links cannot include API keys. Add the key manually after verifying the endpoint.";
 
-const protocolAliases: Record<string, GatewayProviderProtocol> = {
-  anthropic: "anthropic_messages",
-  anthropic_messages: "anthropic_messages",
-  claude: "anthropic_messages",
-  gemini: "gemini_generate_content",
-  gemini_generate: "gemini_generate_content",
-  gemini_generate_content: "gemini_generate_content",
-  google: "gemini_generate_content",
-  openai: "openai_chat_completions",
-  openai_chat: "openai_chat_completions",
-  openai_chat_completions: "openai_chat_completions",
-  openai_response: "openai_responses",
-  openai_responses: "openai_responses",
-  responses: "openai_responses"
-};
+const providerProtocols = new Set<GatewayProviderProtocol>([
+  "anthropic_messages",
+  "gemini_generate_content",
+  "openai_chat_completions",
+  "openai_responses"
+]);
 
 export function isAppDeepLinkUrl(value: string): boolean {
   return value.trim().toLowerCase().startsWith(`${appDeepLinkProtocol}://`);
@@ -91,8 +81,8 @@ export function parseProviderManifestDeepLinkPayload(rawUrl: string): ProviderMa
 
   const payload = readPayloadRecord(url.searchParams);
   const manifestUrl = boundedString(
-    firstStringParam(url.searchParams, ["manifest_url", "manifestUrl", "manifest"]) ??
-      firstPayloadString(payload, ["manifest_url", "manifestUrl", "manifest"]),
+    firstStringParam(url.searchParams, ["manifest"]) ??
+      firstPayloadString(payload, ["manifest"]),
     maxManifestUrlLength,
     "Manifest URL"
   );
@@ -125,14 +115,14 @@ export function parseProviderDeepLinkPayload(rawUrl: string): ProviderDeepLinkPa
   const params = url.searchParams;
   const payload = readPayloadRecord(params);
   const name = boundedString(
-    firstStringParam(params, ["name", "provider_name", "providerName", "title"]) ??
-      firstPayloadString(payload, ["name", "provider_name", "providerName", "title"]),
+    firstStringParam(params, ["name"]) ??
+      firstPayloadString(payload, ["name"]),
     maxNameLength,
     "Provider name"
   );
   const baseUrl = boundedString(
-    firstStringParam(params, ["base_url", "baseUrl", "api_base_url", "apiBaseUrl", "url", "endpoint"]) ??
-      firstPayloadString(payload, ["base_url", "baseUrl", "api_base_url", "apiBaseUrl", "url", "endpoint"]),
+    firstStringParam(params, ["base_url"]) ??
+      firstPayloadString(payload, ["base_url"]),
     maxBaseUrlLength,
     "Base URL"
   );
@@ -142,33 +132,31 @@ export function parseProviderDeepLinkPayload(rawUrl: string): ProviderDeepLinkPa
   validateProviderBaseUrl(baseUrl);
 
   const apiKey = boundedString(
-    firstStringParam(params, ["api_key", "apiKey", "apikey", "key", "token"]) ??
-      firstPayloadString(payload, ["api_key", "apiKey", "apikey", "key", "token"]),
+    firstStringParam(params, ["api_key"]) ??
+      firstPayloadString(payload, ["api_key"]),
     maxApiKeyLength,
     "API key"
   );
-  if (apiKey) {
-    throw new Error(providerLinkApiKeyError);
-  }
   const icon = boundedString(
-    firstStringParam(params, ["icon", "icon_url", "iconUrl"]) ??
-      firstPayloadString(payload, ["icon", "icon_url", "iconUrl"]),
+    firstStringParam(params, ["icon"]) ??
+      firstPayloadString(payload, ["icon"]),
     maxIconLength,
     "Provider icon"
   );
   const protocol = normalizeProviderProtocol(
-    firstStringParam(params, ["protocol", "type"]) ?? firstPayloadString(payload, ["protocol", "type"])
+    firstStringParam(params, ["protocol"]) ?? firstPayloadString(payload, ["protocol"])
   );
   const models = readDeepLinkModels(params, payload);
   const account = readDeepLinkAccount(params, payload);
   const source = boundedString(
-    firstStringParam(params, ["source", "source_url", "sourceUrl"]) ??
-      firstPayloadString(payload, ["source", "source_url", "sourceUrl"]),
+    firstStringParam(params, ["source"]) ??
+      firstPayloadString(payload, ["source"]),
     maxSourceLength,
     "Source URL"
   );
   return {
     ...(account ? { account } : {}),
+    ...(apiKey ? { apiKey } : {}),
     baseUrl,
     ...(icon ? { icon } : {}),
     models,
@@ -196,14 +184,14 @@ function parseProviderPayloadFields(
   sourceFallback?: string
 ): ProviderDeepLinkPayload {
   const name = boundedString(
-    firstStringParam(params, ["name", "provider_name", "providerName", "title"]) ??
-      firstPayloadString(payload, ["name", "provider_name", "providerName", "title"]),
+    firstStringParam(params, ["name"]) ??
+      firstPayloadString(payload, ["name"]),
     maxNameLength,
     "Provider name"
   );
   const baseUrl = boundedString(
-    firstStringParam(params, ["base_url", "baseUrl", "api_base_url", "apiBaseUrl", "url", "endpoint"]) ??
-      firstPayloadString(payload, ["base_url", "baseUrl", "api_base_url", "apiBaseUrl", "url", "endpoint"]),
+    firstStringParam(params, ["base_url"]) ??
+      firstPayloadString(payload, ["base_url"]),
     maxBaseUrlLength,
     "Base URL"
   );
@@ -213,25 +201,25 @@ function parseProviderPayloadFields(
   validateProviderBaseUrl(baseUrl);
 
   const apiKey = boundedString(
-    firstStringParam(params, ["api_key", "apiKey", "apikey", "key", "token"]) ??
-      firstPayloadString(payload, ["api_key", "apiKey", "apikey", "key", "token"]),
+    firstStringParam(params, ["api_key"]) ??
+      firstPayloadString(payload, ["api_key"]),
     maxApiKeyLength,
     "API key"
   );
   const icon = boundedString(
-    firstStringParam(params, ["icon", "icon_url", "iconUrl"]) ??
-      firstPayloadString(payload, ["icon", "icon_url", "iconUrl"]),
+    firstStringParam(params, ["icon"]) ??
+      firstPayloadString(payload, ["icon"]),
     maxIconLength,
     "Provider icon"
   );
   const protocol = normalizeProviderProtocol(
-    firstStringParam(params, ["protocol", "type"]) ?? firstPayloadString(payload, ["protocol", "type"])
+    firstStringParam(params, ["protocol"]) ?? firstPayloadString(payload, ["protocol"])
   );
   const models = readDeepLinkModels(params, payload);
   const account = readDeepLinkAccount(params, payload);
   const source = boundedString(
-    firstStringParam(params, ["source", "source_url", "sourceUrl"]) ??
-      firstPayloadString(payload, ["source", "source_url", "sourceUrl"]) ??
+    firstStringParam(params, ["source"]) ??
+      firstPayloadString(payload, ["source"]) ??
       sourceFallback,
     maxSourceLength,
     "Source URL"
@@ -251,25 +239,20 @@ function parseProviderPayloadFields(
 
 function readDeepLinkAccount(params: URLSearchParams, payload: Record<string, unknown> | undefined): ProviderAccountConfig | undefined {
   const fetchUsage = readDeepLinkBoolean(params, payload, [
-    "fetch_usage",
-    "fetchUsage",
-    "usage_enabled",
-    "usageEnabled",
-    "account_enabled",
-    "accountEnabled"
+    "fetch_usage"
   ]);
   if (fetchUsage === false) {
     return { enabled: false };
   }
 
-  const payloadAccount = normalizeProviderAccountConfig(payload?.account ?? payload?.usage);
+  const payloadAccount = normalizeProviderAccountConfig(payload?.account);
   if (payloadAccount) {
     return payloadAccount;
   }
 
   const endpoint = boundedString(
-    firstStringParam(params, ["usage_url", "usageUrl", "account_url", "accountUrl"]) ??
-      firstPayloadString(payload, ["usage_url", "usageUrl", "account_url", "accountUrl"]),
+    firstStringParam(params, ["usage_url"]) ??
+      firstPayloadString(payload, ["usage_url"]),
     maxBaseUrlLength,
     "Usage URL"
   );
@@ -279,23 +262,23 @@ function readDeepLinkAccount(params: URLSearchParams, payload: Record<string, un
   validateProviderBaseUrl(endpoint);
 
   const method = normalizeUsageMethod(
-    firstStringParam(params, ["usage_method", "usageMethod", "account_method", "accountMethod"]) ??
-      firstPayloadString(payload, ["usage_method", "usageMethod", "account_method", "accountMethod"])
+    firstStringParam(params, ["usage_method"]) ??
+      firstPayloadString(payload, ["usage_method"])
   );
-  const headers = parseJsonRecordParam(params, payload, ["usage_headers", "usageHeaders", "account_headers", "accountHeaders"]);
-  const body = parseJsonValueParam(params, payload, ["usage_body", "usageBody", "account_body", "accountBody"]);
+  const headers = parseJsonRecordParam(params, payload, ["usage_headers"]);
+  const body = parseJsonValueParam(params, payload, ["usage_body"]);
   const balancePath =
-    firstStringParam(params, ["balance", "balance_remaining", "balanceRemaining"]) ??
-    firstPayloadString(payload, ["balance", "balance_remaining", "balanceRemaining"]);
+    firstStringParam(params, ["balance"]) ??
+    firstPayloadString(payload, ["balance"]);
   const subscriptionRemaining =
-    firstStringParam(params, ["subscription", "subscription_remaining", "subscriptionRemaining"]) ??
-    firstPayloadString(payload, ["subscription", "subscription_remaining", "subscriptionRemaining"]);
+    firstStringParam(params, ["subscription"]) ??
+    firstPayloadString(payload, ["subscription"]);
   const subscriptionLimit =
-    firstStringParam(params, ["subscription_limit", "subscriptionLimit"]) ??
-    firstPayloadString(payload, ["subscription_limit", "subscriptionLimit"]);
+    firstStringParam(params, ["subscription_limit"]) ??
+    firstPayloadString(payload, ["subscription_limit"]);
   const subscriptionReset =
-    firstStringParam(params, ["subscription_reset", "subscriptionReset", "reset_at", "resetAt"]) ??
-    firstPayloadString(payload, ["subscription_reset", "subscriptionReset", "reset_at", "resetAt"]);
+    firstStringParam(params, ["subscription_reset"]) ??
+    firstPayloadString(payload, ["subscription_reset"]);
 
   const meters: ProviderAccountMappedMeterConfig[] = [];
   if (balancePath) {
@@ -304,7 +287,7 @@ function readDeepLinkAccount(params: URLSearchParams, payload: Record<string, un
       kind: "balance",
       label: "Balance",
       remaining: balancePath,
-      unit: firstStringParam(params, ["balance_unit", "balanceUnit"]) ?? firstPayloadString(payload, ["balance_unit", "balanceUnit"]) ?? "USD"
+      unit: firstStringParam(params, ["balance_unit"]) ?? firstPayloadString(payload, ["balance_unit"]) ?? "USD"
     });
   }
   if (subscriptionRemaining || subscriptionLimit) {
@@ -315,8 +298,8 @@ function readDeepLinkAccount(params: URLSearchParams, payload: Record<string, un
       limit: subscriptionLimit,
       remaining: subscriptionRemaining,
       resetAt: subscriptionReset,
-      unit: firstStringParam(params, ["subscription_unit", "subscriptionUnit"]) ?? firstPayloadString(payload, ["subscription_unit", "subscriptionUnit"]) ?? "tokens",
-      window: firstStringParam(params, ["subscription_window", "subscriptionWindow"]) ?? firstPayloadString(payload, ["subscription_window", "subscriptionWindow"]) ?? "monthly"
+      unit: firstStringParam(params, ["subscription_unit"]) ?? firstPayloadString(payload, ["subscription_unit"]) ?? "tokens",
+      window: firstStringParam(params, ["subscription_window"]) ?? firstPayloadString(payload, ["subscription_window"]) ?? "monthly"
     });
   }
 
@@ -409,7 +392,7 @@ function parseJsonValueParam(
 }
 
 function readPayloadRecord(params: URLSearchParams): Record<string, unknown> | undefined {
-  const value = firstStringParam(params, ["payload", "config", "data"]);
+  const value = firstStringParam(params, ["payload"]);
   if (!value) {
     return undefined;
   }
@@ -492,19 +475,16 @@ function normalizeProviderProtocol(value: string | undefined): GatewayProviderPr
   if (!value) {
     return undefined;
   }
-  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
-  const protocol = protocolAliases[normalized];
-  if (!protocol) {
+  const protocol = value.trim();
+  if (!providerProtocols.has(protocol as GatewayProviderProtocol)) {
     throw new Error(`Unsupported provider protocol: ${value}`);
   }
-  return protocol;
+  return protocol as GatewayProviderProtocol;
 }
 
 function readDeepLinkModels(params: URLSearchParams, payload: Record<string, unknown> | undefined): string[] {
   const values = [
-    ...params.getAll("model"),
     ...params.getAll("models"),
-    ...params.getAll("models[]"),
     ...payloadModels(payload)
   ];
   const seen = new Set<string>();
@@ -533,7 +513,7 @@ function payloadModels(payload: Record<string, unknown> | undefined): string[] {
   if (!payload) {
     return [];
   }
-  const value = payload.models ?? payload.model;
+  const value = payload.models;
   if (Array.isArray(value)) {
     return value.filter((item): item is string => typeof item === "string");
   }

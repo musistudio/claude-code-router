@@ -872,7 +872,6 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Provider credential weight must be a positive number.": "供应商凭据权重必须是正数。",
       "Provider ID": "供应商 ID",
       "Provider link failed": "供应商链接失败",
-      "Provider links cannot include API keys. Add the key manually after verifying the endpoint.": "供应商链接不能包含 API 密钥。请核验端点后手动添加密钥。",
       "Provider middleware": "供应商中间件",
       "Provider name": "供应商名称",
       "Provider name and Base URL are required.": "供应商名称和基础 URL 不能为空。",

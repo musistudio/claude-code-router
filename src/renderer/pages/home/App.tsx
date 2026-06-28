@@ -1,6 +1,6 @@
 import {
   AddApiKeyDraft, AddProfileDraft, AddProviderDraft, AddRoutingRuleDraft, AgentAnalysisSessionSelection, AgentAnalysisSnapshot, AgentFilterValue,
-  ApiKeyConfig, AppConfig, appCopy, AppI18nContext, AppInfo, AppSaveConfigOptions,
+  ApiKeyConfig, AppConfig, appCopy, AppI18nContext, AppInfo, AppSaveConfigOptions, AppUpdateStatus,
   AppLanguagePreference, applyProviderProbeResult, AppToast, BotGatewaySavedConfig, buildExtensionList, claudeDesignRoutingConfigFromDraft,
   buildRouterConditionPath,
   ClaudeDesignRoutingDraft, ClaudeDesignRoutingRuleDraft, cloneConfig, createApiKeyDraft, createApiKeyEditDraft,
@@ -11,7 +11,7 @@ import {
   enforceSingleEnabledGlobalProfilePerAgent,
   ExtensionConfigTarget, ExtensionDeleteTarget, ExtensionInstallDraft, ExtensionSource, fallbackAgentAnalysis, fallbackConfig,
   fallbackGatewayStatus, fallbackInfo, fallbackProxyCertificateStatus, fallbackProxyNetworkSnapshot, fallbackProxyStatus, fallbackRequestLogPage,
-  fallbackUsageStats, formatAppError, formatJson, formatProxyCertificateInstallMessage, GatewayProviderConfig,
+  fallbackUpdateStatus, fallbackUsageStats, formatAppError, formatJson, formatProxyCertificateInstallMessage, GatewayProviderConfig,
   fusionCustomMcpServerFromDraft, fusionCustomToolConfigFromProfile,
   GatewayProviderProbeResult, gatewayServiceMessage, GatewayStatus, getDefaultOnboardingStep, isClaudeDesignPluginConfig, isClaudeDesignRoutingDraftValid,
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
@@ -168,6 +168,10 @@ function App() {
   const [proxyNetworkSnapshot, setProxyNetworkSnapshot] = useState<ProxyNetworkSnapshot>(fallbackProxyNetworkSnapshot);
   const [proxyStatus, setProxyStatus] = useState<ProxyStatus>(fallbackProxyStatus);
   const [actionBusy, setActionBusy] = useState<ServerActionBusy>("");
+  const [updateActionBusy, setUpdateActionBusy] = useState<"" | "check" | "download" | "install">("");
+  const [updateActionError, setUpdateActionError] = useState("");
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
+  const [updateDialogStatus, setUpdateDialogStatus] = useState<AppUpdateStatus>(fallbackUpdateStatus);
   const [gatewayActionBusy, setGatewayActionBusy] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
   const [actionError, setActionError] = useState("");
@@ -249,6 +253,7 @@ function App() {
   const [usageRange, setUsageRange] = useState<UsageStatsRange>("7d");
   const [usageStats, setUsageStats] = useState<UsageStatsSnapshot>(fallbackUsageStats);
   const [providerAccountSnapshots, setProviderAccountSnapshots] = useState<ProviderAccountSnapshot[]>([]);
+  const updateActionBusyRef = useRef(false);
   const resolvedLanguage = languagePreference === "system" ? systemLanguage : languagePreference;
   const copy = appCopy[resolvedLanguage];
   const t = useMemo(() => (value: string) => translateText(copy, value), [copy]);
@@ -318,6 +323,7 @@ function App() {
     void window.ccr.getPluginMarketplace().then(setPluginMarketplace).catch(() => setPluginMarketplace([]));
     void window.ccr.getProxyCertificateStatus().then(setProxyCertificateStatus);
     const unsubscribeOpenSettings = window.ccr.onOpenSettingsRequest(openSettingsDialog);
+    const unsubscribeOpenUpdate = window.ccr.onOpenUpdateRequest(openUpdateDialog);
     const refreshRuntimeStatus = () => {
       void window.ccr?.getGatewayStatus().then(setGatewayStatus);
       void window.ccr?.getProxyStatus().then(setProxyStatus);
@@ -328,8 +334,39 @@ function App() {
     return () => {
       window.clearInterval(timer);
       unsubscribeOpenSettings();
+      unsubscribeOpenUpdate();
     };
   }, []);
+
+  useEffect(() => {
+    if (!updateDialogOpen || !window.ccr) {
+      return;
+    }
+
+    let disposed = false;
+    void window.ccr.getUpdateStatus()
+      .then((status) => {
+        if (!disposed) {
+          setUpdateDialogStatus(status);
+        }
+      })
+      .catch(() => {
+        if (!disposed) {
+          setUpdateDialogStatus(fallbackUpdateStatus);
+        }
+      });
+
+    const unsubscribe = window.ccr.onUpdateStatusChanged((status) => {
+      if (!disposed) {
+        setUpdateDialogStatus(status);
+      }
+    });
+
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
+  }, [updateDialogOpen]);
 
   useEffect(() => {
     if (!window.ccr) {
@@ -842,6 +879,74 @@ function App() {
       setToast(undefined);
       toastTimer.current = undefined;
     }, 1800);
+  }
+
+  function openUpdateDialog() {
+    setUpdateDialogOpen(true);
+    setUpdateActionError("");
+    void checkForAppUpdate();
+  }
+
+  async function checkForAppUpdate() {
+    if (updateActionBusyRef.current) {
+      return;
+    }
+    if (!window.ccr?.updateCheck) {
+      setUpdateDialogStatus({
+        ...fallbackUpdateStatus,
+        currentVersion: appInfo.version,
+        lastError: t("Updates are only available in packaged builds."),
+        state: "error"
+      });
+      return;
+    }
+
+    updateActionBusyRef.current = true;
+    setUpdateActionBusy("check");
+    setUpdateActionError("");
+    try {
+      setUpdateDialogStatus(await window.ccr.updateCheck());
+    } catch (error) {
+      setUpdateActionError(formatError(error));
+    } finally {
+      updateActionBusyRef.current = false;
+      setUpdateActionBusy("");
+    }
+  }
+
+  async function downloadAppUpdate() {
+    if (updateActionBusyRef.current || !window.ccr?.updateDownload) {
+      return;
+    }
+
+    updateActionBusyRef.current = true;
+    setUpdateActionBusy("download");
+    setUpdateActionError("");
+    try {
+      setUpdateDialogStatus(await window.ccr.updateDownload());
+    } catch (error) {
+      setUpdateActionError(formatError(error));
+    } finally {
+      updateActionBusyRef.current = false;
+      setUpdateActionBusy("");
+    }
+  }
+
+  async function installAppUpdate() {
+    if (updateActionBusyRef.current || !window.ccr?.updateInstall) {
+      return;
+    }
+
+    updateActionBusyRef.current = true;
+    setUpdateActionBusy("install");
+    setUpdateActionError("");
+    try {
+      await window.ccr.updateInstall();
+    } catch (error) {
+      setUpdateActionError(formatError(error));
+      updateActionBusyRef.current = false;
+      setUpdateActionBusy("");
+    }
   }
 
   function updateConfig(mutator: (config: AppConfig) => AppConfig) {
@@ -2697,6 +2802,7 @@ function App() {
               isMac={isMac}
               needsTrafficLightSafeArea={needsTrafficLightSafeArea}
               networkCaptureEnabled={networkCaptureEnabled}
+              onCheckUpdate={openUpdateDialog}
               onOpenSettings={openSettingsDialog}
               onSelectNavigationItem={selectNavigationItem}
               onToggleSidebar={() => setSidebarOpen((current) => !current)}
@@ -2704,6 +2810,7 @@ function App() {
               shouldReduceMotion={shouldReduceMotion}
               sidebarOpen={sidebarOpen}
               toggleGatewayService={toggleGatewayService}
+              updateActionBusy={Boolean(updateActionBusy)}
               visibleNavigation={visibleNavigation}
               viewProps={{
                 apiKeys: {
@@ -3016,6 +3123,21 @@ function App() {
               trayBalanceProgress: normalizeTrayBalanceProgressConfig(draftConfig.trayBalanceProgress),
               trayIconPreference: draftConfig.trayIcon || "random",
               trayWidgets: normalizeTrayWidgets(draftConfig.trayWidgets ?? DEFAULT_TRAY_WIDGETS, draftConfig.trayWindowModules, draftConfig.trayComponentVariants)
+            } : undefined}
+            update={updateDialogOpen ? {
+              actionBusy: updateActionBusy,
+              actionError: updateActionError,
+              copy,
+              onCheck: checkForAppUpdate,
+              onClose: () => {
+                if (updateActionBusy !== "install") {
+                  setUpdateDialogOpen(false);
+                  setUpdateActionError("");
+                }
+              },
+              onDownload: downloadAppUpdate,
+              onInstall: installAppUpdate,
+              status: updateDialogStatus
             } : undefined}
             virtualModelUpsert={virtualModelDialogOpen ? {
               canSubmit: canSubmitVirtualModel,

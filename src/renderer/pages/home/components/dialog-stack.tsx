@@ -6,6 +6,7 @@ import { AddProfileDialog, ProfileOpenDialog } from "./profiles";
 import { AddProviderDialog, DeleteProviderDialog, ProviderDeepLinkDialog } from "./providers";
 import { AddRoutingRuleDialog, DeleteRoutingRuleDialog } from "./routing";
 import { AppSettingsDialog } from "./settings";
+import { UpdateDialog } from "./update";
 import { InstallExtensionDialog, VirtualModelDialog } from "./virtual-models";
 
 export function AppDialogStack({
@@ -26,6 +27,7 @@ export function AppDialogStack({
   routingDelete,
   routingUpsert,
   settings,
+  update,
   virtualModelUpsert
 }: {
   apiKeyAdd?: ComponentProps<typeof AddApiKeyDialog>;
@@ -45,6 +47,7 @@ export function AppDialogStack({
   routingDelete?: ComponentProps<typeof DeleteRoutingRuleDialog>;
   routingUpsert?: ComponentProps<typeof AddRoutingRuleDialog>;
   settings?: ComponentProps<typeof AppSettingsDialog>;
+  update?: ComponentProps<typeof UpdateDialog>;
   virtualModelUpsert?: ComponentProps<typeof VirtualModelDialog>;
 }) {
   const dialogs = [
@@ -65,7 +68,8 @@ export function AppDialogStack({
     extensionSettings ? { key: "extension-settings", node: <PluginSettingsDialog {...extensionSettings} /> } : null,
     claudeDesignConfig ? { key: "extension-config", node: <ConfigureClaudeDesignDialog {...claudeDesignConfig} /> } : null,
     cursorProxyConfig ? { key: "cursor-proxy-config", node: <ConfigureClaudeDesignDialog {...cursorProxyConfig} /> } : null,
-    settings ? { key: "settings", node: <AppSettingsDialog {...settings} /> } : null
+    settings ? { key: "settings", node: <AppSettingsDialog {...settings} /> } : null,
+    update ? { key: "update", node: <UpdateDialog {...update} /> } : null
   ].filter((dialog): dialog is { key: string; node: ReactElement } => Boolean(dialog));
 
   return (

@@ -1,0 +1,10 @@
+/*
+  Access-Control-Allow-Origin: *
+  X-Content-Type-Options: nosniff
+
+/ccr-provider-buttons.js
+  Cache-Control: public, max-age=300, s-maxage=86400
+  Content-Type: application/javascript; charset=utf-8
+
+/ccr-icon.png
+  Cache-Control: public, max-age=31536000, immutable

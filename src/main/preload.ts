@@ -157,6 +157,11 @@ contextBridge.exposeInMainWorld("ccr", {
     ipcRenderer.on(IPC_CHANNELS.appOpenSettings, handler);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.appOpenSettings, handler);
   },
+  onOpenUpdateRequest: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on(IPC_CHANNELS.appOpenUpdate, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.appOpenUpdate, handler);
+  },
   onUpdateStatusChanged: (callback: (status: AppUpdateStatus) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, status: AppUpdateStatus) => callback(status);
     ipcRenderer.on(IPC_CHANNELS.appUpdateStatusChanged, handler);

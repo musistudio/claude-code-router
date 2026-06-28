@@ -3,6 +3,7 @@ export { LightToast } from "./feedback";
 export { AppDialogStack } from "./dialog-stack";
 export { MainLayout, OnboardingLayout } from "./layout";
 export { AppSettingsDialog } from "./settings";
+export { UpdateDialog } from "./update";
 export { OverviewView, AgentAnalysisView } from "./dashboard";
 export { ApiKeysView, AddApiKeyDialog, EditApiKeyDialog } from "./api-keys";
 export { ServerView } from "./server";

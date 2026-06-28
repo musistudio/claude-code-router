@@ -1,7 +1,7 @@
 import { defineConfig } from "astro/config";
 
-const site = process.env.ASTRO_SITE ?? "https://musistudio.github.io";
-const base = process.env.ASTRO_BASE ?? "/claude-code-router";
+const site = process.env.ASTRO_SITE ?? "https://ccrdesk.top";
+const base = process.env.ASTRO_BASE ?? "/";
 
 export default defineConfig({
   site,
@@ -9,7 +9,11 @@ export default defineConfig({
   output: "static",
   markdown: {
     shikiConfig: {
-      theme: "github-light",
+      themes: {
+        light: "github-light",
+        dark: "github-dark",
+      },
+      defaultColor: false,
     },
   },
 });

@@ -18,10 +18,10 @@ The local development server runs from this `docs` directory.
 Docs are deployed from `.github/workflows/docs.yml` on pushes to `main` that change `docs/**` or the workflow itself. The default public URL is:
 
 ```text
-https://musistudio.github.io/claude-code-router/
+https://ccrdesk.top/
 ```
 
-The Astro build reads `ASTRO_SITE` and `ASTRO_BASE`, defaulting to `https://musistudio.github.io` and `/claude-code-router`.
+The Astro build reads `ASTRO_SITE` and `ASTRO_BASE`, defaulting to `https://ccrdesk.top` and `/`.
 
 ## Content
 

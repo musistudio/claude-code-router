@@ -89,9 +89,9 @@ ccr://provider?name=Example%20AI&base_url=https%3A%2F%2Fapi.example.com%2Fv1&api
 支持的 query 参数：
 
 - `name`：Provider 展示名称。
-- `base_url`：Provider API Base URL。别名：`baseUrl`、`api_base_url`、`url`、`endpoint`。
-- `api_key`：可选 Provider API Key。别名：`apiKey`、`apikey`、`key`、`token`。
-- `models`：逗号或换行分隔的模型列表，也可以重复传入 `model=...`。
+- `base_url`：Provider API Base URL。
+- `api_key`：可选 Provider API Key。
+- `models`：逗号或换行分隔的模型列表，也可以重复传入 `models=...`。
 - `protocol`：`openai_chat_completions`、`openai_responses`、`anthropic_messages` 或 `gemini_generate_content`。
 
 更大的 payload 可以通过 URL 编码 JSON 或 base64url JSON 传入 `payload` 字段。CCR 在写入外部链接导入的 Provider 前，总会弹出确认窗口。

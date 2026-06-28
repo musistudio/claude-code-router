@@ -29,8 +29,8 @@ jobs:
       - name: Build and upload docs
         uses: withastro/action@v6
         env:
-          ASTRO_SITE: https://musistudio.github.io
-          ASTRO_BASE: /claude-code-router
+          ASTRO_SITE: https://ccrdesk.top
+          ASTRO_BASE: /
         with:
           path: docs
           node-version: 24

@@ -29,6 +29,7 @@ export const IPC_CHANNELS = {
   appOpenBuiltInBrowser: "ccr:app:open-built-in-browser",
   appOpenExternal: "ccr:app:open-external",
   appOpenSettings: "ccr:app:open-settings",
+  appOpenUpdate: "ccr:app:open-update",
   appOpenProfile: "ccr:app:open-profile",
   appApplyClaudeAppGateway: "ccr:app:apply-claude-app-gateway",
   appApplyProfile: "ccr:app:apply-profile",
