@@ -4,6 +4,7 @@
   <a href="README.md"><img alt="English README" src="https://img.shields.io/badge/%F0%9F%87%AC%F0%9F%87%A7-English-000aff?style=flat" /></a>
   <a href="https://discord.gg/rdftVMaUcS"><img alt="Discord" src="https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white" /></a>
   <a href="https://github.com/musistudio/claude-code-router/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/musistudio/claude-code-router" /></a>
+  <a href="https://ccrdesk.top/"><img alt="文档" src="https://img.shields.io/badge/%E6%96%87%E6%A1%A3-ccrdesk.top-0ea5e9?style=flat" /></a>
 </p>
 
 <p align="center">
@@ -281,3 +282,7 @@ macOS 打包 hook 会在产物生成前验证代码签名、公证票据 staplin
 - @x\*g
 
 （如果你的名字被打码，请通过我的主页邮箱联系我更新为 GitHub 用户名。）
+
+## 许可证
+
+本项目基于 [MIT License](LICENSE) 发布。

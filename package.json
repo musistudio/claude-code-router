@@ -2,6 +2,7 @@
   "name": "claude-code-router",
   "private": true,
   "version": "3.0.2",
+  "license": "MIT",
   "description": "Desktop scaffold for Claude Code Router.",
   "main": "dist/main/main.js",
   "bin": {

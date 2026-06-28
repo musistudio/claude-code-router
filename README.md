@@ -4,6 +4,7 @@
   <a href="README_zh.md"><img alt="Chinese README" src="https://img.shields.io/badge/%F0%9F%87%A8%F0%9F%87%B3-%E4%B8%AD%E6%96%87%E7%89%88-ff0000?style=flat" /></a>
   <a href="https://discord.gg/rdftVMaUcS"><img alt="Discord" src="https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white" /></a>
   <a href="https://github.com/musistudio/claude-code-router/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/musistudio/claude-code-router" /></a>
+  <a href="https://ccrdesk.top/"><img alt="Documentation" src="https://img.shields.io/badge/Docs-ccrdesk.top-0ea5e9?style=flat" /></a>
 </p>
 
 <p align="center">
@@ -281,3 +282,7 @@ A huge thank you to all our sponsors for their generous support.
 - @x\*g
 
 (If your name is masked, please contact me via my homepage email to update it with your GitHub username.)
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).

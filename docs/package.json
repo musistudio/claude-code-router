@@ -2,6 +2,7 @@
   "name": "claude-code-router-docs",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "astro dev",

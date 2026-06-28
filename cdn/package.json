@@ -2,6 +2,7 @@
   "name": "claude-code-router-cdn",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "deploy": "wrangler pages deploy public --project-name=claude-code-router-cdn",
