@@ -76,7 +76,7 @@ export function profileOpenCommand(
   profileRef = profile.name?.trim() || profile.id
 ): string {
   const quote = process.platform === "win32" ? windowsCommandQuote : shellQuote;
-  return [quote(command), quote(profileRef), ...(surface === "app" ? ["--app"] : [])].join(" ");
+  return [quote(command), quote(profileRef), surface].join(" ");
 }
 
 export function buildProfileLaunchPlan(

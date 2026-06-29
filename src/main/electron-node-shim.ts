@@ -1,0 +1,14 @@
+export const app = undefined;
+export const BrowserWindow = undefined;
+export const clipboard = undefined;
+export const contextBridge = undefined;
+export const dialog = undefined;
+export const ipcMain = undefined;
+export const ipcRenderer = undefined;
+export const Menu = undefined;
+export const nativeImage = undefined;
+export const screen = undefined;
+export const session = undefined;
+export const shell = undefined;
+export const Tray = undefined;
+export const WebContentsView = undefined;

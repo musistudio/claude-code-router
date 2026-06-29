@@ -38,6 +38,28 @@ CCR runs on your machine, keeps provider configuration in your local config dire
 
 ## Download And Install
 
+### npm CLI
+
+Install the CLI package when you want to run CCR without the desktop tray or `ccr://` protocol integration:
+
+```bash
+npm install -g claude-code-router
+ccr start
+```
+
+Common commands:
+
+```bash
+ccr start                 # start the background CCR service and web management UI
+ccr stop                  # stop the background CCR service
+ccr <profile-name> cli    # launch the saved profile as a CLI
+ccr <profile-name> app    # launch the saved profile as an app
+```
+
+The web management UI listens on `http://127.0.0.1:3458` by default. Use `ccr start --host <host> --port <port>` to change it.
+
+### Desktop App
+
 1. Open the [GitHub Releases page](https://github.com/musistudio/claude-code-router/releases).
 2. Download the package for your platform:
    - macOS: `Claude Code Router_<version>.dmg` or `.zip`

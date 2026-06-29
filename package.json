@@ -1,12 +1,38 @@
 {
   "name": "claude-code-router",
-  "private": true,
   "version": "3.0.2",
   "license": "MIT",
-  "description": "Desktop scaffold for Claude Code Router.",
+  "description": "Local Claude Code Router gateway with CLI and web management UI.",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/musistudio/claude-code-router.git"
+  },
+  "bugs": {
+    "url": "https://github.com/musistudio/claude-code-router/issues"
+  },
+  "homepage": "https://github.com/musistudio/claude-code-router#readme",
+  "keywords": [
+    "claude-code",
+    "codex",
+    "llm",
+    "gateway",
+    "router"
+  ],
   "main": "dist/main/main.js",
   "bin": {
     "ccr": "dist/main/cli.js"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md",
+    "README_zh.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "dev": "node build/dev.mjs",
@@ -16,6 +42,8 @@
     "build:app:mac:local": "npm run build:assets && electron-builder --config build/electron-builder.local.cjs --mac --publish never",
     "build:app:mac:release": "node build/macos-release-preflight.mjs && npm run build:assets && electron-builder --mac --publish never",
     "build:app:win": "npm run build:assets && electron-builder --win",
+    "prepack": "npm run build:assets",
+    "prepublishOnly": "npm run typecheck",
     "preview": "npm run build:assets && electron .",
     "typecheck": "tsc --noEmit",
     "rebuild:sqlite3": "electron-rebuild -f -w better-sqlite3"

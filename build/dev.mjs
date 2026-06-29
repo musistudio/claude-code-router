@@ -16,9 +16,11 @@ import {
   copyRendererHtml,
   copyTrayRendererHtml,
   createBrowserRendererBuildOptions,
+  createCliBuildOptions,
   createMainBuildOptions,
   createRendererBuildOptions,
   createTrayRendererBuildOptions,
+  createWebClientBridgeBuildOptions,
   cssInput,
   cssOutput,
   appAssetsInput,
@@ -38,9 +40,11 @@ const restartDelayMs = 160;
 const ignoredSignatureEntries = new Set([".DS_Store"]);
 const ready = {
   browser: false,
+  cli: false,
   main: false,
   renderer: false,
-  tray: false
+  tray: false,
+  webBridge: false
 };
 
 function logDev(message) {
@@ -163,11 +167,11 @@ function handleWatchedInput(label, watchedPath, eventType, filename, options, on
 }
 
 function markReady(name, reason = `${name} esbuild completed`) {
-  if (name === "browser" || name === "main" || name === "renderer" || name === "tray") {
+  if (name === "browser" || name === "cli" || name === "main" || name === "renderer" || name === "tray" || name === "webBridge") {
     ready[name] = true;
   }
   logDev(`build ready: ${reason}; ${readyState()}`);
-  if (ready.browser && ready.main && ready.renderer && ready.tray) {
+  if (ready.browser && ready.cli && ready.main && ready.renderer && ready.tray && ready.webBridge) {
     scheduleRestart(reason);
   }
 }
@@ -274,6 +278,13 @@ const mainContext = await esbuild.context(
   })
 );
 
+const cliContext = await esbuild.context(
+  createCliBuildOptions({
+    mode: "development",
+    plugins: [watchPlugin("cli", (name) => markReady(name))]
+  })
+);
+
 const rendererContext = await esbuild.context(
   createRendererBuildOptions({
     mode: "development",
@@ -310,7 +321,14 @@ const browserRendererContext = await esbuild.context(
   })
 );
 
-await Promise.all([mainContext.watch(), rendererContext.watch(), trayRendererContext.watch(), browserRendererContext.watch()]);
+const webClientBridgeContext = await esbuild.context(
+  createWebClientBridgeBuildOptions({
+    mode: "development",
+    plugins: [watchPlugin("webBridge", (name) => markReady(name))]
+  })
+);
+
+await Promise.all([mainContext.watch(), cliContext.watch(), rendererContext.watch(), trayRendererContext.watch(), browserRendererContext.watch(), webClientBridgeContext.watch()]);
 logDev("watchers are active");
 
 async function shutdown() {
@@ -328,7 +346,7 @@ async function shutdown() {
   trayHtmlWatcher.close();
   appAssetsWatcher.close();
   modelCatalogWatcher.close();
-  await Promise.all([mainContext.dispose(), rendererContext.dispose(), trayRendererContext.dispose(), browserRendererContext.dispose()]);
+  await Promise.all([mainContext.dispose(), cliContext.dispose(), rendererContext.dispose(), trayRendererContext.dispose(), browserRendererContext.dispose(), webClientBridgeContext.dispose()]);
   process.exit(0);
 }
 

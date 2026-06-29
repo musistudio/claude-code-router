@@ -1,4 +1,4 @@
-import { app } from "electron";
+import * as electron from "electron";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -236,13 +236,30 @@ function getClaudeAppGatewayPaths(dataDir = getClaudeApp3pDataDir()): ClaudeAppG
 
 function getClaudeApp3pDataDir(): string {
   if (process.platform === "darwin") {
-    return path.join(app.getPath("home"), "Library", "Application Support", "Claude-3p");
+    return path.join(appPath("home"), "Library", "Application Support", "Claude-3p");
   }
   if (process.platform === "win32") {
-    const localAppData = process.env.LOCALAPPDATA || path.join(app.getPath("appData"), "..", "Local");
+    const localAppData = process.env.LOCALAPPDATA || path.join(appPath("appData"), "..", "Local");
     return path.join(localAppData, "Claude-3p");
   }
-  return path.join(app.getPath("appData") || os.homedir(), "Claude-3p");
+  return path.join(appPath("appData") || os.homedir(), "Claude-3p");
+}
+
+function appPath(name: "appData" | "home"): string {
+  const electronApp = electronAppOrUndefined();
+  if (electronApp) {
+    return electronApp.getPath(name);
+  }
+  if (name === "home") {
+    return os.homedir();
+  }
+  return process.env.APPDATA ||
+    process.env.LOCALAPPDATA ||
+    (process.env.USERPROFILE ? path.join(process.env.USERPROFILE, "AppData", "Roaming") : path.join(os.homedir(), ".config"));
+}
+
+function electronAppOrUndefined(): Electron.App | undefined {
+  return typeof electron.app?.getPath === "function" ? electron.app : undefined;
 }
 
 function backupClaudeAppGatewayConfig(paths: ClaudeAppGatewayPaths): void {

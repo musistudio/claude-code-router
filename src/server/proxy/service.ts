@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { BrowserWindow, dialog, shell } from "electron";
+import * as electron from "electron";
 import { chmodSync, writeFileSync } from "node:fs";
 import http, { type ClientRequest, type IncomingHttpHeaders, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import https from "node:https";
@@ -398,7 +398,7 @@ class ProxyService {
           const installerFile = await openMacosTerminalCertificateInstaller();
           terminalMessage = ` Opened Terminal installer: ${installerFile}`;
         } catch (terminalError) {
-          shell.showItemInFolder(PROXY_CA_CERT_FILE);
+          electron.shell?.showItemInFolder?.(PROXY_CA_CERT_FILE);
           terminalMessage = ` Could not open Terminal installer: ${formatError(terminalError)}`;
         }
         const status = await this.getCertificateStatus();
@@ -1470,7 +1470,10 @@ function execFilePromise(file: string, args: string[]): Promise<void> {
 }
 
 async function requestMacosCertificateInstallPermission(): Promise<boolean> {
-  const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  if (!electron.dialog || !electron.BrowserWindow) {
+    return true;
+  }
+  const window = electron.BrowserWindow.getFocusedWindow() ?? electron.BrowserWindow.getAllWindows()[0];
   const options = {
     buttons: ["Continue", "Cancel"],
     cancelId: 1,
@@ -1481,7 +1484,7 @@ async function requestMacosCertificateInstallPermission(): Promise<boolean> {
     noLink: true,
     type: "warning" as const
   };
-  const result = window ? await dialog.showMessageBox(window, options) : await dialog.showMessageBox(options);
+  const result = window ? await electron.dialog.showMessageBox(window, options) : await electron.dialog.showMessageBox(options);
   return result.response === 0;
 }
 
@@ -1552,10 +1555,14 @@ async function openMacosTerminalCertificateInstaller(): Promise<string> {
   const installerFile = path.join(os.tmpdir(), `ccr-install-proxy-ca-${randomUUID()}.command`);
   writeFileSync(installerFile, `${macosTerminalCertificateInstallScript()}\n`, "utf8");
   chmodSync(installerFile, 0o700);
-  const errorMessage = await shell.openPath(installerFile);
-  if (errorMessage) {
-    throw new Error(errorMessage);
+  if (electron.shell?.openPath) {
+    const errorMessage = await electron.shell.openPath(installerFile);
+    if (errorMessage) {
+      throw new Error(errorMessage);
+    }
+    return installerFile;
   }
+  await execFilePromise("/usr/bin/open", [installerFile]);
   return installerFile;
 }
 

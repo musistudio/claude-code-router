@@ -26,6 +26,7 @@ export const trayRendererHtmlInput = path.join(rendererRoot, "pages", "tray", "i
 export const trayRendererHtmlOutput = path.join(rendererOutDir, "pages", "tray", "index.html");
 export const cssInput = path.join(rendererRoot, "styles", "globals.css");
 export const cssOutput = path.join(rendererAssetsDir, "main.css");
+export const webClientBridgeOutput = path.join(rendererAssetsDir, "web-client-bridge.js");
 
 const nodeExternals = [
   "electron",
@@ -110,7 +111,6 @@ export function createMainBuildOptions({ mode = "production", plugins = [] } = {
     entryPoints: [
       path.join(projectRoot, "src", "main", "main.ts"),
       path.join(projectRoot, "src", "main", "browser-preload.ts"),
-      path.join(projectRoot, "src", "main", "cli.ts"),
       path.join(projectRoot, "src", "server", "mcp", "fusion-vision-mcp.ts"),
       path.join(projectRoot, "src", "main", "preload.ts")
     ],
@@ -122,6 +122,25 @@ export function createMainBuildOptions({ mode = "production", plugins = [] } = {
     outdir: mainOutDir,
     platform: "node",
     plugins,
+    sourcemap: mode !== "production",
+    target: "node22"
+  };
+}
+
+export function createCliBuildOptions({ mode = "production", plugins = [] } = {}) {
+  return {
+    absWorkingDir: projectRoot,
+    bundle: true,
+    entryNames: "[name]",
+    entryPoints: [path.join(projectRoot, "src", "main", "cli.ts")],
+    external: nodeExternals.filter((moduleName) => moduleName !== "electron"),
+    format: "cjs",
+    legalComments: "none",
+    logLevel: "info",
+    minify: mode === "production",
+    outdir: mainOutDir,
+    platform: "node",
+    plugins: [electronNodeShimPlugin(), ...plugins],
     sourcemap: mode !== "production",
     target: "node22"
   };
@@ -175,6 +194,23 @@ export function createBrowserRendererBuildOptions({ mode = "production", plugins
   };
 }
 
+export function createWebClientBridgeBuildOptions({ mode = "production", plugins = [] } = {}) {
+  return {
+    absWorkingDir: projectRoot,
+    bundle: true,
+    entryPoints: [path.join(projectRoot, "src", "main", "web-client-bridge.ts")],
+    format: "iife",
+    legalComments: "none",
+    logLevel: "info",
+    minify: mode === "production",
+    outfile: webClientBridgeOutput,
+    platform: "browser",
+    plugins,
+    sourcemap: mode !== "production",
+    target: "chrome120"
+  };
+}
+
 export function watchPlugin(name, onEnd) {
   return {
     name: `${name}-watch`,
@@ -189,7 +225,10 @@ export function watchPlugin(name, onEnd) {
 }
 
 export async function buildMain(options = {}) {
-  await esbuild.build(createMainBuildOptions(options));
+  await Promise.all([
+    esbuild.build(createMainBuildOptions(options)),
+    esbuild.build(createCliBuildOptions(options))
+  ]);
 }
 
 export async function buildRenderer(options = {}) {
@@ -202,6 +241,10 @@ export async function buildTrayRenderer(options = {}) {
 
 export async function buildBrowserRenderer(options = {}) {
   await esbuild.build(createBrowserRendererBuildOptions(options));
+}
+
+export async function buildWebClientBridge(options = {}) {
+  await esbuild.build(createWebClientBridgeBuildOptions(options));
 }
 
 export async function buildStyles({ minify = false } = {}) {
@@ -244,6 +287,17 @@ function rendererAliasPlugin() {
     setup(build) {
       build.onResolve({ filter: /^@\// }, (args) => {
         return { path: resolveRendererImport(args.path.slice(2)) };
+      });
+    }
+  };
+}
+
+function electronNodeShimPlugin() {
+  return {
+    name: "electron-node-shim",
+    setup(build) {
+      build.onResolve({ filter: /^electron$/ }, () => {
+        return { path: path.join(projectRoot, "src", "main", "electron-node-shim.ts") };
       });
     }
   };

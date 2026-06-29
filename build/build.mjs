@@ -1,4 +1,4 @@
-import { buildBrowserRenderer, buildMain, buildRenderer, buildStyles, buildTrayRenderer, cleanDist, copyAppAssets, copyBrowserRendererHtml, copyMarketplacePlugins, copyModelCatalog, copyRendererHtml, copyTrayRendererHtml } from "./esbuild.config.mjs";
+import { buildBrowserRenderer, buildMain, buildRenderer, buildStyles, buildTrayRenderer, buildWebClientBridge, cleanDist, copyAppAssets, copyBrowserRendererHtml, copyMarketplacePlugins, copyModelCatalog, copyRendererHtml, copyTrayRendererHtml } from "./esbuild.config.mjs";
 
 const mode = process.argv.includes("--dev") ? "development" : "production";
 
@@ -15,6 +15,7 @@ await Promise.all([
   buildBrowserRenderer({ mode }),
   buildRenderer({ mode }),
   buildTrayRenderer({ mode }),
+  buildWebClientBridge({ mode }),
   buildStyles({ minify: mode === "production" })
 ]);
 

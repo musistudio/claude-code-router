@@ -1,4 +1,5 @@
-import { app } from "electron";
+import * as electron from "electron";
+import packageJson from "../../../package.json";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ProxyNetworkExchange } from "../../shared/app";
 import { proxyService } from "../proxy/service";
@@ -151,7 +152,7 @@ async function handleJsonRpcRequest(payload: unknown): Promise<JsonRpcResponse |
           serverInfo: {
             name: "ccr-network-capture",
             title: "CCR Network Capture",
-            version: app.getVersion()
+            version: appVersion()
           }
         });
       case "ping":
@@ -166,6 +167,10 @@ async function handleJsonRpcRequest(payload: unknown): Promise<JsonRpcResponse |
   } catch (error) {
     return jsonRpcError(id, -32603, formatError(error));
   }
+}
+
+function appVersion(): string {
+  return typeof electron.app?.getVersion === "function" ? electron.app.getVersion() : packageJson.version;
 }
 
 async function callTool(params: unknown): Promise<JsonValue> {
