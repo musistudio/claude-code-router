@@ -2,7 +2,7 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { AppConfig, ProfileOpenCommandResult, ProfileOpenRequest, ProfileOpenResult, ProfileRuntimeEntry, ProfileRuntimeStatus, ProfileStopResult } from "../shared/app";
+import { assertAvailableGatewayModels, type AppConfig, type ProfileOpenCommandResult, type ProfileOpenRequest, type ProfileOpenResult, type ProfileRuntimeEntry, type ProfileRuntimeStatus, type ProfileStopResult } from "../shared/app";
 import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { applyClaudeAppGatewayConfig, readClaudeAppGatewayApiKeyCandidates } from "./claude-app-gateway-service";
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "./claude-app-launch";
@@ -41,6 +41,7 @@ type RunningProfileApp = ProfileRuntimeEntry & {
 process.once("exit", () => stopClaudeAppBotWorker());
 
 export async function getProfileOpenCommand(config: AppConfig, request: ProfileOpenRequest): Promise<ProfileOpenCommandResult> {
+  assertAvailableGatewayModels(config);
   await applyProfileConfig(config);
   const profile = findProfileForOpen(config, request.profileId);
   const surface = resolveProfileOpenSurface(profile, request.surface);
@@ -54,6 +55,7 @@ export async function getProfileOpenCommand(config: AppConfig, request: ProfileO
 }
 
 export async function openProfileFromCcr(config: AppConfig, request: ProfileOpenRequest): Promise<ProfileOpenResult> {
+  assertAvailableGatewayModels(config);
   await applyProfileConfig(config);
   const profile = findProfileForOpen(config, request.profileId);
   const surface = resolveProfileOpenSurface(profile, request.surface);

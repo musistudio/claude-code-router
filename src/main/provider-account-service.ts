@@ -82,9 +82,13 @@ export async function getProviderAccountSnapshots(
   });
 
   const snapshots = await Promise.all(
-    providers.flatMap((provider) =>
-      providerAccountTargets(provider).map((target) => resolveProviderAccountSnapshot(config, target, options))
-    )
+    providers.flatMap((provider) => {
+      const targets = providerAccountTargets(provider);
+      if (targets.length > 0) {
+        return targets.map((target) => resolveProviderAccountSnapshot(config, target, options));
+      }
+      return providerAccountUnavailableSnapshots(provider).map((snapshot) => Promise.resolve(snapshot));
+    })
   );
   return snapshots.filter((snapshot): snapshot is ProviderAccountSnapshot => Boolean(snapshot));
 }
@@ -125,6 +129,17 @@ export async function testProviderAccountConnector(request: ProviderAccountTestR
     type: "http-json"
   };
   const payload = await fetchJson(connector.endpoint, provider, connector.auth, connector.headers, connector.method, connector.body);
+  if (connector.parser === "kimi-code-usages") {
+    const meters = kimiCodeUsageMeters(payload);
+    return {
+      meters,
+      message: meters.length === 0 ? "No usage data available." : undefined,
+      paths: flattenJsonPaths(payload),
+      payload,
+      status: statusFromMeters(meters, [], 1)
+    };
+  }
+
   const meters = connector.mapping.meters
     .map((meter) => mappedMeterFromPayload(meter, payload))
     .filter((meter): meter is ProviderAccountMeter => Boolean(meter));
@@ -298,6 +313,50 @@ function providerAccountTargets(provider: GatewayProviderConfig): ProviderAccoun
   return providerAccount && providerApiKey(provider) ? [{ account: providerAccount, provider }] : [];
 }
 
+function providerAccountUnavailableSnapshots(provider: GatewayProviderConfig): ProviderAccountSnapshot[] {
+  const credentials = activeProviderCredentials(provider);
+  if (credentials.length > 0) {
+    return credentials
+      .map((credential) => providerAccountUnavailableSnapshot(provider, credential.account ?? provider.account, credential))
+      .filter((snapshot): snapshot is ProviderAccountSnapshot => Boolean(snapshot));
+  }
+
+  const snapshot = providerAccountUnavailableSnapshot(provider, provider.account);
+  return snapshot ? [snapshot] : [];
+}
+
+function providerAccountUnavailableSnapshot(
+  provider: GatewayProviderConfig,
+  account: ProviderAccountConfig | undefined,
+  credential?: ProviderCredentialConfig
+): ProviderAccountSnapshot | undefined {
+  const providerName = provider.name.trim();
+  if (!providerName || !account?.enabled || !providerAccountConnectorsAreDefaultStandard(account.connectors ?? [])) {
+    return undefined;
+  }
+  if (effectiveProviderAccountConfig(provider, account)) {
+    return undefined;
+  }
+
+  const message = "No supported account usage endpoint is available for this provider. Configure an HTTP JSON connector or disable account balance.";
+  return {
+    credentialId: credential ? providerCredentialRuntimeId(provider, credential) : undefined,
+    credentialLabel: credential?.name ?? credential?.label ?? credential?.id,
+    errors: [
+      {
+        message,
+        source: "unsupported"
+      }
+    ],
+    message,
+    meters: [],
+    provider: providerName,
+    source: "unsupported",
+    status: "unsupported",
+    updatedAt: new Date().toISOString()
+  };
+}
+
 function effectiveProviderAccount(provider: GatewayProviderConfig): ProviderAccountConfig | undefined {
   return effectiveProviderAccountConfig(provider, provider.account);
 }
@@ -447,6 +506,16 @@ async function resolveHttpJsonConnector(
     ...(connector.headers ?? {}),
     ...(request.headers ?? {})
   }, connector.method, connector.body);
+  if (connector.parser === "kimi-code-usages") {
+    const meters = kimiCodeUsageMeters(payload);
+    return {
+      errors: [],
+      message: meters.length === 0 ? "No usage data available." : undefined,
+      meters,
+      source: "http-json"
+    };
+  }
+
   const meters = connector.mapping.meters
     .map((meter) => mappedMeterFromPayload(meter, payload))
     .filter((meter): meter is ProviderAccountMeter => Boolean(meter));
@@ -620,6 +689,172 @@ function normalizeRemoteSnapshot(
   };
 }
 
+function kimiCodeUsageMeters(payload: unknown): ProviderAccountMeter[] {
+  if (!isRecord(payload)) {
+    return [];
+  }
+
+  const meters: ProviderAccountMeter[] = [];
+  const usage = isRecord(payload.usage) ? kimiCodeUsageMeter(payload.usage, "weekly_quota", "Weekly quota") : undefined;
+  if (usage) {
+    meters.push(usage);
+  }
+
+  if (Array.isArray(payload.limits)) {
+    const seenIds = new Set(meters.map((meter) => meter.id));
+    payload.limits.forEach((item, index) => {
+      if (!isRecord(item)) {
+        return;
+      }
+      const detail = isRecord(item.detail) ? item.detail : item;
+      const window = isRecord(item.window) ? item.window : {};
+      const label = kimiCodeUsageLimitLabel(item, detail, window, index);
+      const meter = kimiCodeUsageMeter(detail, uniqueKimiCodeUsageMeterId(kimiCodeUsageMeterId(item, detail, label, index), seenIds), label, item);
+      if (meter) {
+        seenIds.add(meter.id);
+        meters.push(meter);
+      }
+    });
+  }
+
+  return meters;
+}
+
+function kimiCodeUsageMeter(
+  data: Record<string, unknown>,
+  id: string,
+  defaultLabel: string,
+  fallbackData?: Record<string, unknown>
+): ProviderAccountMeter | undefined {
+  const limit = normalizeNumber(data.limit);
+  let used = normalizeNumber(data.used);
+  let remaining = normalizeNumber(data.remaining);
+  if (used === undefined && remaining !== undefined && limit !== undefined) {
+    used = limit - remaining;
+  }
+  if (remaining === undefined && used !== undefined && limit !== undefined) {
+    remaining = limit - used;
+  }
+  if (limit === undefined && used === undefined && remaining === undefined) {
+    return undefined;
+  }
+
+  const label = readString(data.name) || readString(data.title) || defaultLabel;
+  const resetAt = kimiCodeUsageResetAt(data) ?? (fallbackData ? kimiCodeUsageResetAt(fallbackData) : undefined);
+  if (limit !== undefined && limit > 0) {
+    const remainingRatio = remaining !== undefined
+      ? Math.max(0, Math.min(1, remaining / limit))
+      : used !== undefined
+        ? Math.max(0, Math.min(1, (limit - used) / limit))
+        : undefined;
+    const remainingPercent = remainingRatio === undefined ? undefined : remainingRatio * 100;
+    return {
+      id,
+      kind: "quota",
+      label,
+      limit: 100,
+      remaining: remainingPercent,
+      resetAt,
+      source: "http-json",
+      unit: "%",
+      used: remainingPercent === undefined ? undefined : 100 - remainingPercent
+    };
+  }
+
+  return {
+    id,
+    kind: "quota",
+    label,
+    limit,
+    remaining,
+    resetAt,
+    source: "http-json",
+    unit: "quota",
+    used
+  };
+}
+
+function kimiCodeUsageLimitLabel(
+  item: Record<string, unknown>,
+  detail: Record<string, unknown>,
+  window: Record<string, unknown>,
+  index: number
+): string {
+  const named = readString(item.name) || readString(detail.name) || readString(item.title) || readString(detail.title) || readString(item.scope) || readString(detail.scope);
+  if (named) {
+    return named;
+  }
+
+  const duration = normalizeNumber(window.duration) ?? normalizeNumber(item.duration) ?? normalizeNumber(detail.duration);
+  const timeUnit = (readString(window.timeUnit) || readString(item.timeUnit) || readString(detail.timeUnit) || "").toUpperCase();
+  if (duration && duration > 0) {
+    if (timeUnit.includes("MINUTE")) {
+      return duration >= 60 && duration % 60 === 0 ? `${duration / 60}h quota` : `${duration}m quota`;
+    }
+    if (timeUnit.includes("HOUR")) {
+      return `${duration}h quota`;
+    }
+    if (timeUnit.includes("DAY")) {
+      return `${duration}d quota`;
+    }
+    return `${duration}s quota`;
+  }
+
+  return `Limit #${index + 1}`;
+}
+
+function kimiCodeUsageMeterId(
+  item: Record<string, unknown>,
+  detail: Record<string, unknown>,
+  label: string,
+  index: number
+): string {
+  const explicit = readString(item.id) || readString(detail.id) || readString(item.name) || readString(detail.name) || readString(item.scope) || readString(detail.scope);
+  return providerCredentialSlug(explicit || label || `limit-${index + 1}`) || `limit-${index + 1}`;
+}
+
+function uniqueKimiCodeUsageMeterId(id: string, seenIds: Set<string>): string {
+  if (!seenIds.has(id)) {
+    return id;
+  }
+  let index = 2;
+  while (seenIds.has(`${id}-${index}`)) {
+    index += 1;
+  }
+  return `${id}-${index}`;
+}
+
+function kimiCodeUsageResetAt(data: Record<string, unknown>): string | undefined {
+  for (const key of ["reset_at", "resetAt", "reset_time", "resetTime"]) {
+    const value = data[key];
+    const timestamp = typeof value === "number"
+      ? value
+      : typeof value === "string" && /^\d+$/.test(value.trim())
+        ? Number(value)
+        : undefined;
+    if (timestamp !== undefined && Number.isFinite(timestamp)) {
+      const milliseconds = timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
+      const date = new Date(milliseconds);
+      return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+    }
+
+    const dateString = readString(value);
+    if (dateString) {
+      const date = new Date(dateString);
+      return Number.isNaN(date.getTime()) ? dateString : date.toISOString();
+    }
+  }
+
+  for (const key of ["reset_in", "resetIn", "ttl", "window"]) {
+    const seconds = normalizeNumber(data[key]);
+    if (seconds && seconds > 0) {
+      return new Date(Date.now() + seconds * 1000).toISOString();
+    }
+  }
+
+  return undefined;
+}
+
 function normalizeRemoteErrors(value: unknown, source: ProviderAccountConnectorSource): ProviderAccountConnectorError[] | undefined {
   if (!Array.isArray(value)) {
     return undefined;
@@ -773,14 +1008,16 @@ function localAgentProviderPluginMatches(plugin: unknown, provider: GatewayProvi
 function localCodexAccountCredential(plugin: Record<string, unknown>): { apiKey?: string; headers?: Record<string, string> } {
   const codexOauth = isRecord(plugin.codexOauth) ? plugin.codexOauth : {};
   const codexAuth = readCodexAuth();
+  // Imported plugins contain a point-in-time access token. Prefer the live Codex
+  // auth file so account checks follow tokens refreshed by Codex CLI/App.
   const apiKey =
+    codexAuth?.accessToken ||
     readString(codexOauth.accessToken) ||
-    readString(codexOauth.access_token) ||
-    codexAuth?.accessToken;
+    readString(codexOauth.access_token);
   const accountId =
+    codexAuth?.accountId ||
     readString(codexOauth.accountId) ||
-    readString(codexOauth.account_id) ||
-    codexAuth?.accountId;
+    readString(codexOauth.account_id);
   const headers = {
     ...localProviderPluginAuthHeaders(plugin),
     ...(accountId ? { "ChatGPT-Account-Id": accountId } : {}),

@@ -6,7 +6,7 @@ import {
   ClaudeDesignRoutingDraft, ClaudeDesignRoutingRuleDraft, cloneConfig, createApiKeyDraft, createApiKeyEditDraft,
   createApiKeyList, createClaudeDesignRoutingDraft, createClaudeDesignRoutingRuleDraft, createCursorProxyRoutingDraft, createCursorProxyRoutingRuleDraft, createEmptyAgentAnalysis,
   copyTextToClipboard, createEmptyRequestLogPage, createEmptyUsageStats, createExtensionInstallDraft, createGeneratedApiKey, createPluginSettingsDraft, createProfileDraft,
-  createProfileDraftFromProfile, createProviderConfigFromDeepLink, createProviderDraft, createProviderDraftFromProvider, createRoutingRuleDraft, createRoutingRuleDraftFromRule,
+  createProfileDraftFromProfile, createProviderDraft, createProviderDraftFromDeepLinkPayload, createProviderDraftFromProvider, createRoutingRuleDraft, createRoutingRuleDraftFromRule,
   createVirtualModelDraft, createVirtualModelDraftFromProfile, customProviderPresetId, DEFAULT_TRAY_WIDGETS, detectSystemLanguage, detectSystemTheme,
   enforceSingleEnabledGlobalProfilePerAgent,
   ExtensionConfigTarget, ExtensionDeleteTarget, ExtensionInstallDraft, ExtensionSource, fallbackAgentAnalysis, fallbackConfig,
@@ -17,7 +17,7 @@ import {
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
   isTraySupportedPlatform,
   isRoutingRewriteDraftRowValid,
-  LayoutGroup, mergeProviderCapabilities, mergeProviderModelLists,
+  LayoutGroup, mergeModelDisplayNames, mergeProviderCapabilities, mergeProviderModelLists,
   navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets,
   normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
   normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
@@ -25,11 +25,10 @@ import {
   providerCredentialsFromDraft,
   persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
-  providerDeepLinkDisplayIcon,
-  profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
+  profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
   providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
-  ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkCatalogModels, resolveProviderDeepLinkIcon, RouterRule, ServerActionBusy, SettingsPageId,
+  ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkCatalogModels, RouterRule, ServerActionBusy, SettingsPageId,
   routingRewriteFromDraftRow, setProviderPresets, splitLines, translateAppErrorMessage, translateProxyCertificateMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
   uniqueRoutingRuleId, updateApiKeyEditableConfig, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, useEffect,
   useMemo, useReducedMotion, useRef, useState, validateVirtualModelDraft, ViewId,
@@ -199,11 +198,11 @@ function App() {
   const [providerProbeLoading, setProviderProbeLoading] = useState(false);
   const [providerConnectivityProbe, setProviderConnectivityProbe] = useState<GatewayProviderProbeResult>();
   const [providerConnectivityLoading, setProviderConnectivityLoading] = useState(false);
+  const [providerImportOpen, setProviderImportOpen] = useState(false);
+  const [providerImportPayload, setProviderImportPayload] = useState<ProviderDeepLinkPayload>();
   const [providerDeepLinkRequest, setProviderDeepLinkRequest] = useState<ProviderDeepLinkRequest>();
   const [providerDeepLinkBusy, setProviderDeepLinkBusy] = useState(false);
   const [providerDeepLinkError, setProviderDeepLinkError] = useState("");
-  const [providerDeepLinkIconLoading, setProviderDeepLinkIconLoading] = useState(false);
-  const [providerDeepLinkModelsLoading, setProviderDeepLinkModelsLoading] = useState(false);
   const [proxyCertificateChecking, setProxyCertificateChecking] = useState(false);
   const [proxyEnablePending, setProxyEnablePending] = useState(false);
   const [providerProbeError, setProviderProbeError] = useState("");
@@ -339,7 +338,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!updateDialogOpen || !window.ccr) {
+    if (!window.ccr) {
       return;
     }
 
@@ -366,7 +365,7 @@ function App() {
       disposed = true;
       unsubscribe();
     };
-  }, [updateDialogOpen]);
+  }, [appInfo.version]);
 
   useEffect(() => {
     if (!window.ccr) {
@@ -377,6 +376,8 @@ function App() {
       providerProbeRequestId.current += 1;
       providerConnectivityRequestId.current += 1;
       setProviderAddOpen(false);
+      setProviderImportOpen(false);
+      setProviderImportPayload(undefined);
       setProviderEditIndex(undefined);
       setProviderProbe(undefined);
       setProviderConnectivityProbe(undefined);
@@ -386,7 +387,6 @@ function App() {
       setProviderDeepLinkRequest(request);
       setProviderDeepLinkError("");
       setProviderDeepLinkBusy(false);
-      setProviderDeepLinkModelsLoading(false);
       setActiveView("providers");
     };
 
@@ -405,89 +405,12 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const request = providerDeepLinkRequest;
-    const payload = request?.provider;
-    providerDeepLinkIconRequestId.current += 1;
-    const requestId = providerDeepLinkIconRequestId.current;
-
-    if (!request || !payload || !providerPresetsLoaded || providerDeepLinkDisplayIcon(payload)) {
-      setProviderDeepLinkIconLoading(false);
+    const payload = providerDeepLinkRequest?.provider;
+    if (!payload || !configLoaded || !providerPresetsLoaded) {
       return;
     }
-
-    setProviderDeepLinkIconLoading(true);
-    void resolveProviderDeepLinkIcon(payload)
-      .then((resolution) => {
-        if (providerDeepLinkIconRequestId.current !== requestId || !resolution.persistentIcon) {
-          return;
-        }
-        setProviderDeepLinkRequest((current) => {
-          if (!current?.provider || current.id !== request.id) {
-            return current;
-          }
-          if (current.provider.icon?.trim()) {
-            return current;
-          }
-          return {
-            ...current,
-            provider: {
-              ...current.provider,
-              icon: resolution.persistentIcon
-            }
-          };
-        });
-      })
-      .finally(() => {
-        if (providerDeepLinkIconRequestId.current === requestId) {
-          setProviderDeepLinkIconLoading(false);
-        }
-      });
-  }, [providerDeepLinkRequest?.id, providerDeepLinkRequest?.provider?.baseUrl, providerDeepLinkRequest?.provider?.icon, providerPresetsLoaded]);
-
-  useEffect(() => {
-    const request = providerDeepLinkRequest;
-    const payload = request?.provider;
-    providerDeepLinkCatalogModelsRequestId.current += 1;
-    const requestId = providerDeepLinkCatalogModelsRequestId.current;
-    const hasApiKey = Boolean(payload?.apiKey?.trim());
-
-    if (!request || !payload || (!hasApiKey && payload.models.length > 0) || !providerPresetsLoaded) {
-      setProviderDeepLinkModelsLoading(false);
-      return;
-    }
-
-    const modelsPromise = hasApiKey
-      ? probeProviderDeepLinkPayload(payload).then((probe) => mergeProviderModelLists(probe?.models ?? []))
-      : resolveProviderDeepLinkCatalogModels(payload);
-
-    setProviderDeepLinkModelsLoading(true);
-    void modelsPromise
-      .then((models) => {
-        if (providerDeepLinkCatalogModelsRequestId.current !== requestId || models.length === 0) {
-          return;
-        }
-        setProviderDeepLinkRequest((current) => {
-          if (!current?.provider || current.id !== request.id || (!hasApiKey && current.provider.models.length > 0)) {
-            return current;
-          }
-          return {
-            ...current,
-            provider: {
-              ...current.provider,
-              models
-            }
-          };
-        });
-      })
-      .catch(() => {
-        // Model discovery is optional; importing performs the same resolution again.
-      })
-      .finally(() => {
-        if (providerDeepLinkCatalogModelsRequestId.current === requestId) {
-          setProviderDeepLinkModelsLoading(false);
-        }
-      });
-  }, [providerDeepLinkRequest?.id, providerDeepLinkRequest?.provider?.apiKey, providerDeepLinkRequest?.provider?.baseUrl, providerDeepLinkRequest?.provider?.name, providerPresetsLoaded]);
+    void openImportProviderDialog(payload);
+  }, [configLoaded, providerDeepLinkRequest?.id, providerDeepLinkRequest?.provider, providerPresetsLoaded]);
 
   useEffect(() => {
     if (!window.ccr) {
@@ -717,8 +640,6 @@ function App() {
   const onboardingProfileDraftSource = useRef("");
   const providerProbeRequestId = useRef(0);
   const providerConnectivityRequestId = useRef(0);
-  const providerDeepLinkCatalogModelsRequestId = useRef(0);
-  const providerDeepLinkIconRequestId = useRef(0);
   const toastTimer = useRef<number>();
 
   const shouldReduceMotion = useReducedMotion();
@@ -885,6 +806,14 @@ function App() {
     setUpdateDialogOpen(true);
     setUpdateActionError("");
     void checkForAppUpdate();
+  }
+
+  function openUpdateDownloadDialog() {
+    setUpdateDialogOpen(true);
+    setUpdateActionError("");
+    if (updateDialogStatus.canDownload || updateDialogStatus.state === "available") {
+      void downloadAppUpdate();
+    }
   }
 
   async function checkForAppUpdate() {
@@ -1097,6 +1026,8 @@ function App() {
     providerProbeRequestId.current += 1;
     providerConnectivityRequestId.current += 1;
     setProviderEditIndex(undefined);
+    setProviderImportOpen(false);
+    setProviderImportPayload(undefined);
     setProviderDraft(createProviderDraft(draftConfig.Providers));
     setProviderProbe(undefined);
     setProviderConnectivityProbe(undefined);
@@ -1117,12 +1048,71 @@ function App() {
     providerProbeRequestId.current += 1;
     providerConnectivityRequestId.current += 1;
     setProviderEditIndex(index);
+    setProviderImportOpen(false);
+    setProviderImportPayload(undefined);
     setProviderDraft(createProviderDraftFromProvider(provider));
     setProviderProbe(undefined);
     setProviderConnectivityProbe(undefined);
     setProviderProbeError("");
     setProviderProbeLoading(false);
     setProviderConnectivityLoading(false);
+    setProviderAddOpen(true);
+  }
+
+  async function openImportProviderDialog(payload: ProviderDeepLinkPayload) {
+    if (!providerPresetsLoaded) {
+      return;
+    }
+    const requestId = providerProbeRequestId.current + 1;
+    providerProbeRequestId.current = requestId;
+    providerConnectivityRequestId.current += 1;
+    setProviderDeepLinkBusy(true);
+    let nextPayload = payload;
+    let catalogModelDisplayNames: Record<string, string> | undefined;
+    let probe: GatewayProviderProbeResult | undefined;
+    if (nextPayload.models.length === 0) {
+      const catalogModels = await resolveProviderDeepLinkCatalogModels(nextPayload);
+      if (providerProbeRequestId.current !== requestId) {
+        setProviderDeepLinkBusy(false);
+        return;
+      }
+      catalogModelDisplayNames = catalogModels.modelDisplayNames;
+      if (catalogModels.models.length > 0) {
+        nextPayload = {
+          ...nextPayload,
+          models: catalogModels.models
+        };
+      }
+    }
+    probe = await probeProviderDeepLinkPayload(nextPayload);
+    if (providerProbeRequestId.current !== requestId) {
+      setProviderDeepLinkBusy(false);
+      return;
+    }
+    if (nextPayload.apiKey?.trim() && probe?.models.length) {
+      nextPayload = {
+        ...nextPayload,
+        models: probe.models
+      };
+    }
+
+    const initialDraftFromPayload = createProviderDraftFromDeepLinkPayload(nextPayload, draftConfig.Providers);
+    const initialDraft = {
+      ...initialDraftFromPayload,
+      modelDisplayNames: mergeModelDisplayNames(initialDraftFromPayload.modelDisplayNames, catalogModelDisplayNames)
+    };
+    setProviderEditIndex(undefined);
+    setProviderImportOpen(true);
+    setProviderImportPayload(nextPayload);
+    setProviderDraft(probe ? applyProviderProbeResult(initialDraft, probe) : initialDraft);
+    setProviderProbe(probe);
+    setProviderConnectivityProbe(undefined);
+    setProviderProbeError("");
+    setProviderProbeLoading(false);
+    setProviderConnectivityLoading(false);
+    setProviderDeepLinkRequest(undefined);
+    setProviderDeepLinkError("");
+    setProviderDeepLinkBusy(false);
     setProviderAddOpen(true);
   }
 
@@ -1148,6 +1138,7 @@ function App() {
 
       return {
         ...next,
+        modelDisplayNames: patch.modelDisplayNames,
         modelsText: mergeProviderModelLists(current.selectedModels, splitLines(next.modelsText)).join("\n"),
         selectedModels: [],
         selectedProtocols: patch.selectedProtocols ?? current.selectedProtocols
@@ -1430,6 +1421,7 @@ function App() {
       type: protocol
     };
     const importedProviderPlugins = materializeProviderPluginTemplates(providerDraft.providerPlugins, providerName, protocol);
+    const wasImport = providerImportOpen;
 
     const next = buildConfigUpdate((config) => {
       if (providerEditIndex === undefined) {
@@ -1446,7 +1438,12 @@ function App() {
     setConfigDraft(next);
     if (await persistConfig(next, setProviderProbeError)) {
       setProviderEditIndex(undefined);
+      setProviderImportOpen(false);
+      setProviderImportPayload(undefined);
       setProviderAddOpen(false);
+      if (wasImport) {
+        showToast(`${copy.text["Imported provider"] ?? "Imported provider"} ${provider.name}`.trim());
+      }
       if (activeView === "onboarding") {
         setOnboardingStep(getDefaultOnboardingStep(next, onboardingReadiness));
       }
@@ -1461,10 +1458,15 @@ function App() {
       return;
     }
 
+    if (request.provider) {
+      await openImportProviderDialog(request.provider);
+      return;
+    }
+
     setProviderDeepLinkBusy(true);
     setProviderDeepLinkError("");
     try {
-      if (!request.provider && request.manifest) {
+      if (request.manifest) {
         if (!window.ccr?.fetchProviderManifest) {
           throw new Error("Request failed.");
         }
@@ -1477,61 +1479,7 @@ function App() {
         return;
       }
 
-      let payload = request.provider;
-      if (!payload) {
-        setProviderDeepLinkBusy(false);
-        return;
-      }
-      const identityIssue = providerIdentitySafetyIssue({
-        baseUrl: payload.baseUrl,
-        name: payload.name
-      });
-      if (identityIssue) {
-        throw new Error(identityIssue.message);
-      }
-      const iconResolution = await resolveProviderDeepLinkIcon(payload);
-      if (iconResolution.persistentIcon && iconResolution.persistentIcon !== payload.icon?.trim()) {
-        payload = {
-          ...payload,
-          icon: iconResolution.persistentIcon
-        };
-      }
-      if (payload.models.length === 0) {
-        const catalogModels = await resolveProviderDeepLinkCatalogModels(payload);
-        if (catalogModels.length > 0) {
-          payload = {
-            ...payload,
-            models: catalogModels
-          };
-        }
-      }
-      const probe = await probeProviderDeepLinkPayload(payload);
-      if (payload.apiKey?.trim() && probe?.models.length) {
-        payload = {
-          ...payload,
-          models: probe.models
-        };
-      }
-      let importedProviderName = payload.name?.trim() || "";
-      const next = buildConfigUpdate((config) => {
-        const provider = createProviderConfigFromDeepLink(payload, config.Providers, probe);
-        importedProviderName = provider.name;
-        config.Providers.push(provider);
-        if (!config.preferredProvider) {
-          config.preferredProvider = provider.name;
-        }
-        return config;
-      });
-      setConfigDraft(next);
-      const saved = await persistConfig(next, setProviderDeepLinkError);
       setProviderDeepLinkBusy(false);
-      if (saved) {
-        setProviderDeepLinkRequest(undefined);
-        showToast(`${copy.text["Imported provider"] ?? "Imported provider"} ${importedProviderName}`.trim());
-        if (activeView === "onboarding") {
-          setOnboardingStep(getDefaultOnboardingStep(next, onboardingReadiness));
-        }
-      }
     } catch (error) {
       setProviderDeepLinkError(formatError(error));
       setProviderDeepLinkBusy(false);
@@ -2802,7 +2750,7 @@ function App() {
               isMac={isMac}
               needsTrafficLightSafeArea={needsTrafficLightSafeArea}
               networkCaptureEnabled={networkCaptureEnabled}
-              onCheckUpdate={openUpdateDialog}
+              onDownloadUpdate={openUpdateDownloadDialog}
               onOpenSettings={openSettingsDialog}
               onSelectNavigationItem={selectNavigationItem}
               onToggleSidebar={() => setSidebarOpen((current) => !current)}
@@ -2811,6 +2759,7 @@ function App() {
               sidebarOpen={sidebarOpen}
               toggleGatewayService={toggleGatewayService}
               updateActionBusy={Boolean(updateActionBusy)}
+              updateStatus={updateDialogStatus}
               visibleNavigation={visibleNavigation}
               viewProps={{
                 apiKeys: {
@@ -3044,17 +2993,16 @@ function App() {
               onStopApp: () => void stopProfileApp(profileOpenDialog.profile),
               profile: profileOpenDialog.profile
             } : undefined}
-            providerDeepLink={providerDeepLinkRequest ? {
+            providerDeepLink={providerDeepLinkRequest && !providerDeepLinkRequest.provider ? {
               busy: providerDeepLinkBusy,
               error: providerDeepLinkError,
-              iconLoading: providerDeepLinkIconLoading,
               onClose: () => {
                 if (!providerDeepLinkBusy) {
                   setProviderDeepLinkRequest(undefined);
                 }
               },
               onSubmit: confirmProviderDeepLinkImport,
-              modelsLoading: providerDeepLinkModelsLoading,
+              presetsLoaded: providerPresetsLoaded,
               request: providerDeepLinkRequest
             } : undefined}
             providerDelete={providerDeleteItem ? {
@@ -3068,18 +3016,23 @@ function App() {
               connectivityProbe: providerConnectivityProbe,
               draft: providerDraft,
               error: providerProbeError,
+              importProvider: providerImportOpen ? providerImportPayload : undefined,
               onChange: updateProviderDraft,
               mode: providerEditIndex === undefined ? "add" : "edit",
               onClose: () => {
                 setProviderAddOpen(false);
                 setProviderEditIndex(undefined);
+                setProviderImportOpen(false);
+                setProviderImportPayload(undefined);
               },
               onCheck: checkProviderDraft,
               onSubmit: submitProviderDraft,
               probe: providerProbe,
               probeLoading: providerProbeLoading,
               providerPlugins: draftConfig.providerPlugins ?? [],
-              providers: draftConfig.Providers
+              providers: draftConfig.Providers,
+              submitLabel: providerImportOpen ? t("Import") : undefined,
+              title: providerImportOpen ? t("Import Provider") : undefined
             } : undefined}
             routingDelete={routingDeleteRule ? {
               onClose: () => setRoutingDeleteIndex(undefined),

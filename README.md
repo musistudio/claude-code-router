@@ -19,7 +19,7 @@ CCR runs on your machine, keeps provider configuration in your local config dire
 
 - Use one local endpoint for multiple agent tools instead of configuring every client separately.
 - Route different workloads to different models, such as fast background work, reasoning tasks, long-context requests, image tasks, or web-search-capable models.
-- Mix providers without changing your workflow. CCR supports OpenAI-compatible APIs, Anthropic Messages, Gemini Generate Content, OpenRouter, DeepSeek, SiliconFlow, Moonshot, Mistral, Z.AI, Bailian, and custom providers.
+- Mix providers without changing your workflow. CCR supports OpenAI-compatible APIs, Anthropic Messages, Gemini Generate Content, OpenRouter, DeepSeek, SiliconFlow, Moonshot, Kimi Code, Mistral, Z.AI, Bailian, and custom providers.
 - Control cost and reliability with fallback routing, API key rotation, usage statistics, and request logs.
 - Manage everything from a desktop UI instead of editing JSON by hand.
 - Extend the gateway with plugins, proxy routes, local HTTP backends, and provider deeplinks.

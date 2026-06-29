@@ -33,7 +33,9 @@ import {
 import {
   BUILTIN_FUSION_VISION_TOOL_NAME,
   BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME,
-  ROUTER_FALLBACK_MAX_RETRY_COUNT
+  NO_AVAILABLE_GATEWAY_MODELS_MESSAGE,
+  ROUTER_FALLBACK_MAX_RETRY_COUNT,
+  hasAvailableGatewayModels
 } from "../../shared/app";
 import { providerApiKeySafetyIssue } from "../../main/presets";
 import { normalizeProviderBaseUrl as normalizeProviderBaseUrlInput } from "../../shared/provider-url";
@@ -263,6 +265,9 @@ class GatewayService {
       await pluginService.start(config);
       const shouldRunServer = shouldRunUnifiedServer(config) || pluginService.hasGatewayRoutes();
       const shouldRunGateway = shouldRunGatewayRuntime(config);
+      if (shouldRunGateway && !hasAvailableGatewayModels(config)) {
+        throw new Error(NO_AVAILABLE_GATEWAY_MODELS_MESSAGE);
+      }
       if (!shouldRunServer) {
         await pluginService.stop();
         await backendService.stopAll();
@@ -858,6 +863,10 @@ function writeCoreGatewayConfig(config: AppConfig, rawTraceSyncToken: string): v
     ...pluginMcpServers,
     ...(config.agent?.mcpServers ?? [])
   ];
+  const fallbackMcpServer = fusionToolFallbackMcpServer(virtualModelProfiles, mcpServers);
+  if (fallbackMcpServer) {
+    mcpServers.push(fallbackMcpServer);
+  }
   const payload = {
     ...pluginCoreGatewayConfig,
     auth: {
@@ -1119,6 +1128,98 @@ function fusionBuiltinMcpServer({
 
 function bundledFusionBuiltinMcpEntryPath(): string {
   return pathJoin(__dirname, "fusion-vision-mcp.js");
+}
+
+function fusionToolFallbackMcpServer(
+  profiles: unknown[],
+  existingServers: unknown[]
+): GatewayMcpServerConfig | undefined {
+  const tools = fusionFallbackToolDefinitions(profiles);
+  if (tools.length === 0) {
+    return undefined;
+  }
+
+  return {
+    args: [bundledFusionToolFallbackMcpEntryPath()],
+    command: process.execPath,
+    env: {
+      ELECTRON_RUN_AS_NODE: "1",
+      FUSION_FALLBACK_TOOLS_JSON: JSON.stringify(tools)
+    },
+    name: uniqueMcpServerName("ccr-fusion-tool-fallback", existingServers),
+    protocolVersion: "2024-11-05",
+    requestTimeoutMs: 600000,
+    startupTimeoutMs: 600000,
+    stdioMessageMode: "content-length",
+    transport: "stdio"
+  };
+}
+
+function bundledFusionToolFallbackMcpEntryPath(): string {
+  return pathJoin(__dirname, "fusion-tool-fallback-mcp.js");
+}
+
+function fusionFallbackToolDefinitions(
+  profiles: unknown[]
+): Array<{ description?: string; inputSchema?: Record<string, unknown>; name: string }> {
+  const byName = new Map<string, { description?: string; inputSchema?: Record<string, unknown>; name: string }>();
+
+  for (const profile of profiles) {
+    if (!isRecord(profile) || profile.enabled === false || !Array.isArray(profile.tools)) {
+      continue;
+    }
+    for (const tool of profile.tools) {
+      if (!isRecord(tool)) {
+        continue;
+      }
+      const name = stringValue(tool.name);
+      if (!name) {
+        continue;
+      }
+
+      const existing = byName.get(name);
+      const description = stringValue(tool.description);
+      const inputSchema = isRecord(tool.inputSchema)
+        ? tool.inputSchema
+        : isRecord(tool.input_schema)
+          ? tool.input_schema
+          : undefined;
+      if (existing) {
+        if (!existing.description && description) {
+          existing.description = description;
+        }
+        if (!existing.inputSchema && inputSchema) {
+          existing.inputSchema = inputSchema;
+        }
+        continue;
+      }
+
+      byName.set(name, {
+        ...(description ? { description } : {}),
+        ...(inputSchema ? { inputSchema } : {}),
+        name
+      });
+    }
+  }
+
+  return [...byName.values()];
+}
+
+function uniqueMcpServerName(baseName: string, servers: unknown[]): string {
+  const used = new Set(
+    servers
+      .map((server) => isRecord(server) ? stringValue(server.name)?.toLowerCase() : undefined)
+      .filter((name): name is string => Boolean(name))
+  );
+  if (!used.has(baseName.toLowerCase())) {
+    return baseName;
+  }
+  for (let index = 2; ; index += 1) {
+    const candidate = `${baseName}-${index}`;
+    if (!used.has(candidate.toLowerCase())) {
+      return candidate;
+    }
+  }
 }
 
 function withFusionVirtualModelAliases(profiles: unknown[]): unknown[] {
@@ -1998,13 +2099,36 @@ function resolveProviderCredentialRoutingTarget(
   if (!providerProtocol) {
     return undefined;
   }
+  const providerModel = resolveModelForProvider(bodyModel, provider);
 
   return {
-    body,
-    model: bodyModel,
+    body: parsedBody && providerModel && providerModel !== bodyModel
+      ? serializeJsonBodyWithModel(parsedBody, providerModel)
+      : body,
+    model: providerModel ?? bodyModel,
     provider,
     protocol: providerProtocol
   };
+}
+
+function resolveModelForProvider(
+  value: string | undefined,
+  provider: GatewayProviderConfig
+): string | undefined {
+  const normalized = normalizeRouteSelector(value);
+  if (!normalized) {
+    return undefined;
+  }
+  if (providerHasModel(provider, normalized)) {
+    return normalized;
+  }
+  const parsed = parseProviderModelSelector(normalized);
+  return parsed && providerHasModel(provider, parsed.model) ? parsed.model : undefined;
+}
+
+function providerHasModel(provider: GatewayProviderConfig, model: string): boolean {
+  const normalized = model.trim().toLowerCase();
+  return Boolean(normalized) && provider.models.some((candidate) => candidate.trim().toLowerCase() === normalized);
 }
 
 function parseProviderModelSelector(value: string | undefined): { model: string; provider: string } | undefined {

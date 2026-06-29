@@ -14,11 +14,13 @@ export type ProviderOfficialKeyPattern = {
 export type ProviderPreset = {
   account?: ProviderAccountConfig;
   aliases: string[];
+  defaultModelDisplayNames?: Record<string, string>;
   defaultModels?: string[];
   endpoints: ProviderPresetEndpoint[];
   id: string;
   name: string;
   officialApiKeyPatterns?: ProviderOfficialKeyPattern[];
+  websiteUrl?: string;
 };
 
 export type ProviderIdentitySafetyIssue = {

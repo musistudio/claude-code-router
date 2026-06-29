@@ -34,12 +34,14 @@ type FetchJsonResult = {
 
 type ModelProbeResult = {
   baseUrl?: string;
+  modelDisplayNames?: Record<string, string>;
   models: string[];
   source?: ModelSource;
 };
 
 type ModelFetchResult = {
   baseUrl?: string;
+  modelDisplayNames?: Record<string, string>;
   models: string[];
 };
 
@@ -225,6 +227,7 @@ async function resolveGatewayProviderProbe(request: GatewayProviderProbeRequest)
   return {
     capabilities: capabilitiesFromProtocolResults(protocolResults),
     detectedProtocol,
+    modelDisplayNames: modelProbe.modelDisplayNames,
     modelSource: modelProbe.source,
     models: modelProbe.models,
     normalizedBaseUrl: detectedProtocol
@@ -402,11 +405,11 @@ async function fetchModelsForSource(parsed: ParsedProviderUrl, source: ModelSour
         },
         method: "GET"
       });
-      const models = parseModelIds(result.payload, "openai");
-      if (models.length > 0) {
+      const modelList = parseModelList(result.payload, "openai");
+      if (modelList.models.length > 0) {
         return {
           baseUrl,
-          models
+          ...modelList
         };
       }
     }
@@ -424,11 +427,11 @@ async function fetchModelsForSource(parsed: ParsedProviderUrl, source: ModelSour
         },
         method: "GET"
       });
-      const models = parseModelIds(result.payload, "anthropic");
-      if (models.length > 0) {
+      const modelList = parseModelList(result.payload, "anthropic");
+      if (modelList.models.length > 0) {
         return {
           baseUrl,
-          models
+          ...modelList
         };
       }
     }
@@ -446,7 +449,7 @@ async function fetchModelsForSource(parsed: ParsedProviderUrl, source: ModelSour
   });
   return {
     baseUrl: parsed.geminiBaseUrl,
-    models: parseModelIds(result.payload, "gemini")
+    ...parseModelList(result.payload, "gemini")
   };
 }
 
@@ -731,17 +734,41 @@ function geminiHeaders(apiKey: string | undefined): Record<string, string> {
     : {};
 }
 
-function parseModelIds(payload: unknown, source: ModelSource): string[] {
+function parseModelList(payload: unknown, source: ModelSource): Pick<ModelFetchResult, "modelDisplayNames" | "models"> {
   if (!isRecord(payload)) {
-    return [];
+    return {
+      models: []
+    };
   }
 
   const items = Array.isArray(payload.data) ? payload.data : Array.isArray(payload.models) ? payload.models : [];
-  const models = items
-    .map((item) => readModelId(item, source))
-    .filter((item): item is string => Boolean(item));
+  const models: string[] = [];
+  const modelDisplayNames: Record<string, string> = {};
 
-  return uniqueStrings(models);
+  for (const item of items) {
+    const model = readModelId(item, source);
+    if (!model) {
+      continue;
+    }
+    models.push(model);
+
+    const displayName = readModelDisplayName(item);
+    if (displayName && displayName !== model) {
+      modelDisplayNames[model] = displayName;
+    }
+  }
+
+  const uniqueModels = uniqueStrings(models);
+  const uniqueDisplayNames = Object.fromEntries(
+    uniqueModels
+      .map((model) => [model, modelDisplayNames[model]] as const)
+      .filter((entry): entry is [string, string] => Boolean(entry[1]))
+  );
+
+  return {
+    modelDisplayNames: Object.keys(uniqueDisplayNames).length > 0 ? uniqueDisplayNames : undefined,
+    models: uniqueModels
+  };
 }
 
 function readModelId(value: unknown, source: ModelSource): string | undefined {
@@ -769,6 +796,13 @@ function readModelId(value: unknown, source: ModelSource): string | undefined {
   }
 
   return rawId;
+}
+
+function readModelDisplayName(value: unknown): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  return readString(value.display_name) || readString(value.displayName) || readString(value.label);
 }
 
 function stripGeminiModelPrefix(value: string): string {

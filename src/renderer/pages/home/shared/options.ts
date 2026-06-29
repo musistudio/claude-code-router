@@ -325,6 +325,7 @@ export const providerPresetIconUrls: Record<string, string> = {
   bailian: bailianProviderIconUrl,
   deepseek: deepseekProviderIconUrl,
   gemini: geminiProviderIconUrl,
+  "kimi-coding": moonshotProviderIconUrl,
   mistral: mistralProviderIconUrl,
   moonshot: moonshotProviderIconUrl,
   openai: openaiProviderIconUrl,

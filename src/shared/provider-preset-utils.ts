@@ -25,6 +25,13 @@ export function findProviderPresetByBaseUrlInList(
   );
 }
 
+export function findProviderPresetByIdentityInList(
+  presets: ProviderPreset[],
+  name: string | undefined
+): ProviderPreset | undefined {
+  return findProviderPresetsByIdentity(presets, name)[0];
+}
+
 export function primaryProviderPresetEndpoint(preset: ProviderPreset): ProviderPresetEndpoint | undefined {
   return preset.endpoints[0];
 }

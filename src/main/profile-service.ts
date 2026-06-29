@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, enforceSingleEnabledGlobalProfilePerAgent, type ApiKeyConfig, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "../shared/app";
+import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, enforceSingleEnabledGlobalProfilePerAgent, hasAvailableGatewayModels, type ApiKeyConfig, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "../shared/app";
 import { replacePersistedApiKeys } from "./api-key-store";
 import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
@@ -15,6 +15,8 @@ const managedRootStart = "# BEGIN CCR managed profile";
 const managedRootEnd = "# END CCR managed profile";
 const managedProviderStart = "# BEGIN CCR managed Codex provider";
 const managedProviderEnd = "# END CCR managed Codex provider";
+const originalBackupSuffix = ".ccr-original";
+const originalMissingSuffix = ".ccr-original-missing";
 const fallbackClientToken = "ccr-local";
 const privateDirMode = 0o700;
 const privateExecutableMode = 0o700;
@@ -24,12 +26,27 @@ const publicExecutableMode = 0o755;
 export async function applyProfileConfig(config: AppConfig): Promise<ProfileApplyResult> {
   const appliedAt = new Date().toISOString();
   const profiles = profileEntries(config);
-  const profileApiKeys = await ensureProfileApiKeys(config, profiles);
   const result: ProfileApplyResult = {
     appliedAt,
     clients: [],
     enabled: profiles.some((profile) => profile.enabled)
   };
+
+  if (!result.enabled) {
+    result.clients = profiles.map(disabledProfileStatus);
+    return result;
+  }
+
+  if (!hasAvailableGatewayModels(config)) {
+    result.clients = profiles.map((profile) =>
+      profile.enabled
+        ? unavailableModelStatus(profile, profilePath(profile))
+        : disabledProfileStatus(profile)
+    );
+    return result;
+  }
+
+  const profileApiKeys = await ensureProfileApiKeys(config, profiles);
 
   for (const profile of profiles) {
     const token = profileApiKeys.get(profile.id) ?? fallbackClientToken;
@@ -56,7 +73,7 @@ export function applyProfileRuntimeConfig(config: AppConfig, profile: ProfileCon
 function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
   const settingsFile = resolveClaudeCodeSettingsFile(profile);
   if (!profile.enabled) {
-    return disabledStatus("claude-code", settingsFile, "Claude Code profile is disabled.");
+    return restoreDisabledGlobalProfile(profile, settingsFile, "Claude Code profile is disabled.", isManagedClaudeCodeSettingsContent);
   }
 
   try {
@@ -117,7 +134,12 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
   const clientName = codexCompatibleClientName(profile.agent);
   const configFile = resolveCodexConfigFile(profile);
   if (!profile.enabled) {
-    return disabledStatus(profile.agent, configFile, `${clientName} profile is disabled.`);
+    return restoreDisabledGlobalProfile(
+      profile,
+      configFile,
+      `${clientName} profile is disabled.`,
+      (content) => isManagedCodexConfigContent(content, sanitizeCodexProviderId(profile.providerId || "") || "claude-code-router")
+    );
   }
 
   try {
@@ -187,7 +209,7 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
 function applyZcodeProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
   const configFile = resolveZcodeConfigFile(profile);
   if (!profile.enabled) {
-    return disabledStatus("zcode", configFile, "ZCode profile is disabled.");
+    return restoreDisabledZcodeProfile(profile, configFile);
   }
 
   try {
@@ -942,6 +964,7 @@ function writeFileWithBackup(
     chmodFileIfRequested(file, options.mode);
     return { changed: false };
   }
+  ensureOriginalSnapshot(file, previous, options.mode);
   const backupFile = previous === undefined ? undefined : backupFilePath(file);
   if (backupFile) {
     copyFileSync(file, backupFile);
@@ -950,6 +973,200 @@ function writeFileWithBackup(
   writeFileSync(file, content, options.mode === undefined ? "utf8" : { encoding: "utf8", mode: options.mode });
   chmodFileIfRequested(file, options.mode);
   return { backupFile, changed: true };
+}
+
+type RestoreFileResult = {
+  backupFile?: string;
+  changed: boolean;
+  file: string;
+  missingBackup: boolean;
+  restored: boolean;
+};
+
+function restoreDisabledGlobalProfile(
+  profile: ProfileConfig,
+  file: string,
+  disabledMessage: string,
+  isManagedContent: (content: string) => boolean
+): ProfileClientApplyStatus {
+  if (!isGlobalProfile(profile)) {
+    return disabledStatus(profile.agent, file, disabledMessage);
+  }
+
+  const restoreResult = restoreGlobalConfigFile(file, { isManagedContent, mode: privateFileMode });
+  return disabledRestoreStatus(profile.agent, file, disabledMessage, restoreResult, profile.name || profile.id || profile.agent);
+}
+
+function disabledProfileStatus(profile: ProfileConfig): ProfileClientApplyStatus {
+  if (profile.agent === "claude-code") {
+    return restoreDisabledGlobalProfile(profile, resolveClaudeCodeSettingsFile(profile), "Claude Code profile is disabled.", isManagedClaudeCodeSettingsContent);
+  }
+  if (profile.agent === "zcode") {
+    return restoreDisabledZcodeProfile(profile, resolveZcodeConfigFile(profile));
+  }
+  const providerId = sanitizeCodexProviderId(profile.providerId || "") || "claude-code-router";
+  return restoreDisabledGlobalProfile(
+    profile,
+    resolveCodexConfigFile(profile),
+    "Codex profile is disabled.",
+    (content) => isManagedCodexConfigContent(content, providerId)
+  );
+}
+
+function restoreDisabledZcodeProfile(profile: ProfileConfig, configFile: string): ProfileClientApplyStatus {
+  const disabledMessage = "ZCode profile is disabled.";
+  if (!isGlobalProfile(profile)) {
+    return disabledStatus("zcode", configFile, disabledMessage);
+  }
+
+  const providerId = sanitizeCodexProviderId(profile.providerId || "") || "claude-code-router";
+  const storageRoot = zcodeHomeFromConfigFile(configFile);
+  const files = [
+    configFile,
+    path.join(storageRoot, "v2", "config.json"),
+    path.join(storageRoot, "v2", "bots-model-cache.v2.json")
+  ];
+  const results = files.map((file) =>
+    restoreGlobalConfigFile(file, {
+      isManagedContent: (content) => isManagedZcodeConfigContent(content, providerId),
+      mode: privateFileMode
+    })
+  );
+  const changed = results.some((result) => result.changed);
+  const restored = results.some((result) => result.restored);
+  const missingBackup = results.some((result) => result.missingBackup);
+  return {
+    backupFile: results.find((result) => result.backupFile)?.backupFile,
+    client: "zcode",
+    enabled: false,
+    message: missingBackup
+      ? `${disabledMessage} No original ZCode config backup was found for ${profile.name || profile.id || "this profile"}.`
+      : restored
+        ? changed
+          ? "ZCode config was restored from the CCR backup because the global profile is disabled."
+          : "ZCode config already matches the CCR backup; profile is disabled."
+        : disabledMessage,
+    ok: !missingBackup,
+    path: resolveUserPath(configFile)
+  };
+}
+
+function disabledRestoreStatus(
+  client: ProfileClientKind,
+  file: string,
+  disabledMessage: string,
+  restoreResult: RestoreFileResult,
+  profileName: string
+): ProfileClientApplyStatus {
+  return {
+    backupFile: restoreResult.backupFile,
+    client,
+    enabled: false,
+    message: restoreResult.missingBackup
+      ? `${disabledMessage} No original ${codexCompatibleClientName(client)} config backup was found for ${profileName}.`
+      : restoreResult.restored
+        ? restoreResult.changed
+          ? `${codexCompatibleClientName(client)} config was restored from the CCR backup because the global profile is disabled.`
+          : `${codexCompatibleClientName(client)} config already matches the CCR backup; profile is disabled.`
+        : disabledMessage,
+    ok: !restoreResult.missingBackup,
+    path: resolveUserPath(file)
+  };
+}
+
+function restoreGlobalConfigFile(
+  file: string,
+  options: {
+    isManagedContent: (content: string) => boolean;
+    mode?: number;
+  }
+): RestoreFileResult {
+  const current = existsSync(file) ? readFileSync(file, "utf8") : undefined;
+  const currentManaged = current !== undefined && options.isManagedContent(current);
+  if (current !== undefined && !currentManaged) {
+    return { changed: false, file, missingBackup: false, restored: false };
+  }
+
+  if (existsSync(originalMissingFilePath(file))) {
+    if (currentManaged) {
+      const backupFile = backupCurrentConfigFile(file, options.mode);
+      rmSync(file, { force: true });
+      return { backupFile, changed: true, file, missingBackup: false, restored: true };
+    }
+    return { changed: false, file, missingBackup: false, restored: current === undefined };
+  }
+
+  const snapshot = originalSnapshotCandidate(file, options.isManagedContent);
+  if (!snapshot) {
+    return {
+      changed: false,
+      file,
+      missingBackup: Boolean(currentManaged),
+      restored: false
+    };
+  }
+
+  if (current === snapshot.content) {
+    chmodFileIfRequested(file, options.mode);
+    return { changed: false, file, missingBackup: false, restored: true };
+  }
+
+  const backupFile = current === undefined ? undefined : backupCurrentConfigFile(file, options.mode);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, snapshot.content, options.mode === undefined ? "utf8" : { encoding: "utf8", mode: options.mode });
+  chmodFileIfRequested(file, options.mode);
+  return { backupFile, changed: true, file, missingBackup: false, restored: true };
+}
+
+function originalSnapshotCandidate(
+  file: string,
+  isManagedContent: (content: string) => boolean
+): { content: string; file: string } | undefined {
+  for (const candidate of [originalBackupFilePath(file), ...backupFiles(file)]) {
+    if (!existsSync(candidate)) {
+      continue;
+    }
+    const content = readFileSync(candidate, "utf8");
+    if (!isManagedContent(content)) {
+      return { content, file: candidate };
+    }
+  }
+  return undefined;
+}
+
+function backupCurrentConfigFile(file: string, mode: number | undefined): string {
+  const backupFile = backupFilePath(file);
+  copyFileSync(file, backupFile);
+  chmodFileIfRequested(backupFile, mode);
+  return backupFile;
+}
+
+function backupFiles(file: string): string[] {
+  const dir = path.dirname(file);
+  const prefix = `${path.basename(file)}.ccr-backup-`;
+  try {
+    return readdirSync(dir)
+      .filter((entry) => entry.startsWith(prefix))
+      .sort()
+      .map((entry) => path.join(dir, entry));
+  } catch {
+    return [];
+  }
+}
+
+function ensureOriginalSnapshot(file: string, previous: string | undefined, mode: number | undefined): void {
+  const originalBackup = originalBackupFilePath(file);
+  const originalMissing = originalMissingFilePath(file);
+  if (existsSync(originalBackup) || existsSync(originalMissing)) {
+    return;
+  }
+  if (previous === undefined) {
+    writeFileSync(originalMissing, "", "utf8");
+    chmodFileIfRequested(originalMissing, mode);
+    return;
+  }
+  copyFileSync(file, originalBackup);
+  chmodFileIfRequested(originalBackup, mode);
 }
 
 function chmodFileIfRequested(file: string, mode: number | undefined): void {
@@ -968,6 +1185,14 @@ function backupFilePath(file: string): string {
   return `${file}.ccr-backup-${timestamp}`;
 }
 
+function originalBackupFilePath(file: string): string {
+  return `${file}${originalBackupSuffix}`;
+}
+
+function originalMissingFilePath(file: string): string {
+  return `${file}${originalMissingSuffix}`;
+}
+
 function disabledStatus(client: ProfileClientKind, file: string, message: string): ProfileClientApplyStatus {
   return {
     client,
@@ -976,6 +1201,81 @@ function disabledStatus(client: ProfileClientKind, file: string, message: string
     ok: true,
     path: resolveUserPath(file)
   };
+}
+
+function unavailableModelStatus(profile: ProfileConfig, file: string): ProfileClientApplyStatus {
+  return {
+    client: profile.agent,
+    enabled: true,
+    message: NO_AVAILABLE_GATEWAY_MODELS_MESSAGE,
+    ok: false,
+    path: resolveUserPath(file)
+  };
+}
+
+function disabledProfileMessage(profile: ProfileConfig): string {
+  if (profile.agent === "claude-code") {
+    return "Claude Code profile is disabled.";
+  }
+  return `${codexCompatibleClientName(profile.agent)} profile is disabled.`;
+}
+
+function isGlobalProfile(profile: ProfileConfig): boolean {
+  return normalizeProfileScope(profile.scope) === "global";
+}
+
+function isManagedClaudeCodeSettingsContent(content: string): boolean {
+  const settings = parseJsonContent(content);
+  if (!settings) {
+    return false;
+  }
+  const apiKeyHelper = typeof settings.apiKeyHelper === "string" ? settings.apiKeyHelper : "";
+  if (apiKeyHelper.includes("ccr-claude-code-api-key-")) {
+    return true;
+  }
+  const env = isRecord(settings.env) ? settings.env : {};
+  return typeof env.ANTHROPIC_BASE_URL === "string" &&
+    typeof env.ANTHROPIC_API_BASE_URL === "string" &&
+    typeof env.CLAUDE_AGENT_API_BASE_URL === "string";
+}
+
+function isManagedCodexConfigContent(content: string, providerId: string): boolean {
+  if (content.includes(managedRootStart) || content.includes(managedProviderStart)) {
+    return true;
+  }
+  const escapedProvider = escapeRegExp(providerId);
+  return new RegExp(`^\\s*\\[model_providers\\.(?:${escapedProvider}|${escapeRegExp(tomlQuotedKey(providerId))})\\]`, "m").test(content);
+}
+
+function isManagedZcodeConfigContent(content: string, providerId: string): boolean {
+  const config = parseJsonContent(content);
+  if (!config) {
+    return false;
+  }
+  if (isRecord(config.provider) && hasOwn(config.provider, providerId)) {
+    return true;
+  }
+  if (isRecord(config.model) && typeof config.model.main === "string" && config.model.main.startsWith(`${providerId}/`)) {
+    return true;
+  }
+  for (const key of ["defaultModel", "lastUsed", "lastUsedModel"]) {
+    const modelRef = config[key];
+    if (isRecord(modelRef) && modelRef.providerId === providerId) {
+      return true;
+    }
+  }
+  return Array.isArray(config.providers) && config.providers.some((provider) =>
+    isRecord(provider) && provider.id === providerId
+  );
+}
+
+function parseJsonContent(content: string): Record<string, unknown> | undefined {
+  try {
+    const parsed = JSON.parse(content) as unknown;
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function gatewayEndpoint(config: AppConfig): string {
@@ -1040,6 +1340,9 @@ function normalizeProfileSurface(value: ProfileConfig["surface"]): "auto" | "cli
 }
 
 function codexCompatibleClientName(agent: ProfileConfig["agent"]): string {
+  if (agent === "claude-code") {
+    return "Claude Code";
+  }
   return agent === "zcode" ? "ZCode" : "Codex";
 }
 
@@ -1129,6 +1432,10 @@ function ensureTrailingNewline(value: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasOwn(value: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
 }
 
 function escapeRegExp(value: string): string {

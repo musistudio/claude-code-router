@@ -377,7 +377,7 @@ import type { MotionSafeDivAttributes } from "./motion";
 import { normalizeApiKeyLimits, positiveInteger } from "./api-keys";
 import { isPlainRecord, stringValue, uniqueStrings } from "./common";
 import { formatEditableJson } from "./extensions";
-import { findProviderPreset, findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey, providerIdentitySafetyIssue } from "./external";
+import { findProviderPreset, findProviderPresetByBaseUrl, findProviderPresetByIdentity, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey, providerIdentitySafetyIssue } from "./external";
 import { fusionModelProviderName } from "./profiles";
 import { normalizeRouterFallbackConfig } from "./routing";
 import { keyValueRowsFromRecord, recordFromKeyValueRows, validateKeyValueRows, virtualModelMatchSummary } from "./virtual-models";
@@ -758,7 +758,22 @@ export type ProviderDeepLinkIconResolution = {
 };
 
 export function resolveProviderDeepLinkPreset(payload: ProviderDeepLinkPayload): ProviderPreset | undefined {
-  return findProviderPresetByBaseUrl(payload.baseUrl);
+  const baseUrlPreset = findProviderPresetByBaseUrl(payload.baseUrl);
+  if (baseUrlPreset) {
+    return baseUrlPreset;
+  }
+
+  const identityPreset = findProviderPresetByIdentity(payload.name);
+  if (!identityPreset) {
+    return undefined;
+  }
+
+  const identityIssue = providerIdentitySafetyIssue({
+    baseUrl: payload.baseUrl,
+    name: payload.name,
+    presetId: identityPreset.id
+  });
+  return identityIssue ? undefined : identityPreset;
 }
 
 export function providerDeepLinkDisplayIcon(payload: ProviderDeepLinkPayload): string {
@@ -767,10 +782,17 @@ export function providerDeepLinkDisplayIcon(payload: ProviderDeepLinkPayload): s
   return presetIcon || payload.icon?.trim() || "";
 }
 
-export async function resolveProviderDeepLinkCatalogModels(payload: ProviderDeepLinkPayload): Promise<string[]> {
+export type ProviderDeepLinkCatalogModelsResolution = {
+  modelDisplayNames?: Record<string, string>;
+  models: string[];
+};
+
+export async function resolveProviderDeepLinkCatalogModels(payload: ProviderDeepLinkPayload): Promise<ProviderDeepLinkCatalogModelsResolution> {
   const ccr = window.ccr;
   if (!ccr?.getProviderCatalogModels) {
-    return [];
+    return {
+      models: []
+    };
   }
 
   const preset = resolveProviderDeepLinkPreset(payload);
@@ -780,10 +802,22 @@ export async function resolveProviderDeepLinkCatalogModels(payload: ProviderDeep
       name: payload.name,
       providerPresetId: preset?.id
     });
-    return mergeProviderModelLists(result.models);
+    return {
+      modelDisplayNames: mergeModelDisplayNames(result.modelDisplayNames),
+      models: mergeProviderModelLists(result.models)
+    };
   } catch {
-    return [];
+    return {
+      models: []
+    };
   }
+}
+
+function providerPresetModelDisplayNames(preset: ProviderPreset | undefined): Record<string, string> | undefined {
+  const entries = Object.entries(preset?.defaultModelDisplayNames ?? {})
+    .map(([model, displayName]) => [model.trim(), displayName.trim()] as const)
+    .filter(([model, displayName]) => model && displayName && model !== displayName);
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 export async function resolveProviderDeepLinkIcon(payload: ProviderDeepLinkPayload): Promise<ProviderDeepLinkIconResolution> {
@@ -813,6 +847,36 @@ export async function resolveProviderDeepLinkIcon(payload: ProviderDeepLinkPaylo
   } catch {
     return {};
   }
+}
+
+export function createProviderDraftFromDeepLinkPayload(
+  payload: ProviderDeepLinkPayload,
+  providers: GatewayProviderConfig[]
+): AddProviderDraft {
+  const baseUrl = payload.baseUrl.trim();
+  const preset = resolveProviderDeepLinkPreset(payload);
+  const endpoint = preset ? primaryProviderPresetEndpointFromPreset(preset) : undefined;
+  const protocol = payload.protocol ?? endpoint?.protocols[0] ?? "openai_chat_completions";
+  const accountDraft = createProviderAccountDraftFromConfig(payload.account ?? defaultProviderAccountConfigForBaseUrl(baseUrl));
+  const models = mergeProviderModelLists(payload.models.length > 0 ? payload.models : preset?.defaultModels ?? []);
+  const baseName = payload.name?.trim() || inferProviderNameFromBaseUrl(baseUrl);
+
+  return {
+    ...accountDraft,
+    apiKey: payload.apiKey?.trim() || "",
+    baseUrl,
+    credentials: [],
+    icon: payload.icon?.trim() || "",
+    modelDisplayNames: providerPresetModelDisplayNames(preset),
+    modelSearch: "",
+    modelsText: models.join("\n"),
+    name: uniqueProviderName(providers, baseName),
+    presetId: preset?.id ?? customProviderPresetId,
+    providerPlugins: [],
+    protocol,
+    selectedModels: [],
+    selectedProtocols: uniqueProviderProtocols(preset?.endpoints.flatMap((item) => item.protocols) ?? [protocol])
+  };
 }
 
 export function createProviderConfigFromDeepLink(
@@ -886,6 +950,7 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
     baseUrl: "",
     credentials: [],
     icon: "",
+    modelDisplayNames: undefined,
     modelSearch: "",
     modelsText: "",
     name: uniqueProviderName(providers),
@@ -908,6 +973,7 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
     baseUrl,
     credentials: (provider.credentials ?? []).map(providerCredentialDraftFromConfig),
     icon: provider.icon ?? "",
+    modelDisplayNames: providerPresetModelDisplayNames(preset),
     modelSearch: "",
     modelsText: provider.models.join("\n"),
     name: provider.name,
@@ -1751,11 +1817,13 @@ export function mergeProviderCapabilities(...groups: GatewayProviderCapability[]
 export function applyProviderProbeResult(draft: AddProviderDraft, probe: GatewayProviderProbeResult): AddProviderDraft {
   const protocol = probe.detectedProtocol ?? draft.protocol;
   const selectedProtocols = selectedProviderProtocolsForProbe(draft.selectedProtocols, probe, protocol);
+  const modelDisplayNames = mergeModelDisplayNames(draft.modelDisplayNames, probe.modelDisplayNames);
 
   if (probe.models.length === 0) {
     return {
       ...draft,
       baseUrl: probe.normalizedBaseUrl || draft.baseUrl,
+      modelDisplayNames,
       protocol,
       selectedModels: mergeProviderModelLists(draft.selectedModels),
       selectedProtocols
@@ -1777,11 +1845,29 @@ export function applyProviderProbeResult(draft: AddProviderDraft, probe: Gateway
   return {
     ...draft,
     baseUrl: probe.normalizedBaseUrl || draft.baseUrl,
+    modelDisplayNames,
     protocol,
     modelsText: customModels.join("\n"),
     selectedModels: nextSelectedModels,
     selectedProtocols
   };
+}
+
+export function mergeModelDisplayNames(
+  ...groups: Array<Record<string, string> | undefined>
+): Record<string, string> | undefined {
+  const merged: Record<string, string> = {};
+  for (const group of groups) {
+    for (const [rawModel, rawDisplayName] of Object.entries(group ?? {})) {
+      const model = rawModel.trim();
+      const displayName = rawDisplayName.trim();
+      if (!model || !displayName || model === displayName) {
+        continue;
+      }
+      merged[model] = displayName;
+    }
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
 export function pickRecommendedProviderModels(models: string[], protocol?: GatewayProviderProtocol): string[] {

@@ -4,19 +4,20 @@ import {
   Check, Checkbox, ChevronDown, ChevronRight, CircleAlert, cn,
   compareProviderAccountSnapshots, Copy, copyTextToClipboard, createDefaultProviderAccountDraft, createModelCatalogItems, createProviderAccountDraftFromConfig, createProviderCredentialDraft, createProviderInstallLinkFromDraft,
   customProviderPresetId, defaultProviderAccountConfigForPreset, Dialog, DialogBody, DialogContent, DialogFooter,
-  DialogHeader, DialogTitle, Field, findProviderPreset, formatProviderAccountMeterValue, GatewayProviderConfig,
+  DialogHeader, DialogTitle, ExternalLink, Field, findProviderPreset, formatProviderAccountMeterValue, GatewayProviderConfig,
   GatewayProviderProbeResult, getProviderPresets, Globe, inferProviderNameFromBaseUrl, Input, KeyValueRowsControl, Label,
   Layers3, LoaderCircle, localAgentProviderIconUrls, mergeProviderModelLists, modelCatalogItemMatchesQuery, motion,
   Pencil, Plus, PopoverContent, primaryProviderAccountMeter, primaryProviderPresetEndpoint,
   providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountSnapshot,
   providerAccountSnapshotCredentialLabel, providerAccountSnapshotLabel, ProviderAccountTestPath,
-  ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
+  ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
   ProviderConnectivityCheckReport, providerDeepLinkDisplayIcon, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
   providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
   resolveProviderDeepLinkPreset, ShieldCheck, splitLines, splitModelTagInput, Switch, Textarea, translatedProviderProtocolLabel, translateOptions,
   translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppErrorText, useAppText, useEffect, useMemo,
   useRef, useState, X, isPlainRecord
 } from "../shared";
+import { providerUrlWithDefaultScheme } from "../../../../shared/provider-url";
 import type { LocalAgentProviderCandidate } from "../../../../shared/app";
 export function ProvidersView({ accountSnapshots, addProvider, editProvider, notify, providers, removeProvider }: {
   accountSnapshots: ProviderAccountSnapshot[];
@@ -329,6 +330,7 @@ function ProviderAccountListCell({ provider, snapshots }: { provider: GatewayPro
   const sortedSnapshots = [...snapshots].sort(compareProviderAccountSnapshots);
   const snapshot = sortedSnapshots[0];
   const meter = snapshot ? primaryProviderAccountMeter(snapshot) : undefined;
+  const fallbackText = snapshot ? snapshot.message ?? snapshot.errors?.[0]?.message : undefined;
 
   if (!provider.account?.enabled && snapshots.length === 0) {
     return <div className="min-w-0 truncate text-[11px] text-muted-foreground">{t("Disabled")}</div>;
@@ -349,9 +351,9 @@ function ProviderAccountListCell({ provider, snapshots }: { provider: GatewayPro
           {providerAccountSnapshotCredentialLabel(snapshot)}
         </div>
       ) : null}
-      {!meter ? (
+      {!meter && fallbackText ? (
         <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
-          {snapshot.message ?? snapshot.errors?.[0]?.message ?? snapshot.source}
+          {t(fallbackText)}
         </div>
       ) : null}
     </div>
@@ -422,6 +424,7 @@ export function ProviderDeepLinkDialog({
   modelsLoading = false,
   onClose,
   onSubmit,
+  presetsLoaded = true,
   request
 }: {
   busy: boolean;
@@ -430,6 +433,7 @@ export function ProviderDeepLinkDialog({
   modelsLoading?: boolean;
   onClose: () => void;
   onSubmit: () => Promise<void>;
+  presetsLoaded?: boolean;
   request: ProviderDeepLinkRequest;
 }) {
   const t = useAppText();
@@ -437,6 +441,7 @@ export function ProviderDeepLinkDialog({
   const manifest = request.manifest;
   const displayName = provider ? provider.name?.trim() || inferProviderNameFromBaseUrl(provider.baseUrl) : "";
   const providerPreset = provider ? resolveProviderDeepLinkPreset(provider) : undefined;
+  const showExternalProviderWarnings = Boolean(provider && presetsLoaded && !providerPreset);
   const providerIconUrl = provider ? providerDeepLinkDisplayIcon(provider) : "";
   const modelPreview = provider?.models.slice(0, 8) ?? [];
   const actionLoading = busy || Boolean(provider && (iconLoading || modelsLoading));
@@ -456,19 +461,23 @@ export function ProviderDeepLinkDialog({
         <DialogBody>
           {provider ? (
             <div className="space-y-3">
-              <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5">
-                <div className="flex items-start gap-2 text-[12px] font-medium text-foreground">
-                  <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <span>{t("External provider link")}</span>
+              {showExternalProviderWarnings ? (
+                <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5">
+                  <div className="flex items-start gap-2 text-[12px] font-medium text-foreground">
+                    <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>{t("External provider link")}</span>
+                  </div>
+                  <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                    {t("This provider link came from an external website. Review details before importing.")}
+                  </div>
                 </div>
-                <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
-                  {t("This provider link came from an external website. Review details before importing.")}
+              ) : null}
+              {showExternalProviderWarnings ? (
+                <div className="flex items-start gap-2 rounded-md border border-border bg-background px-3 py-2 text-[11px] leading-4 text-muted-foreground">
+                  <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>{t("Only enter an API key issued for this endpoint. Official provider keys must only be used with official endpoints.")}</span>
                 </div>
-              </div>
-              <div className="flex items-start gap-2 rounded-md border border-border bg-background px-3 py-2 text-[11px] leading-4 text-muted-foreground">
-                <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <span>{t("Only enter an API key issued for this endpoint. Official provider keys must only be used with official endpoints.")}</span>
-              </div>
+              ) : null}
               <div className="flex min-w-0 items-center gap-3 rounded-md border border-border bg-background px-3 py-2.5">
                 <div className="relative shrink-0">
                   <ProviderPresetIcon className="h-10 w-10 rounded-md" iconUrl={providerIconUrl} preset={providerPreset} />
@@ -763,6 +772,89 @@ function ProviderPresetIcon({ className, iconUrl: explicitIconUrl, preset }: { c
   );
 }
 
+function ProviderImportHeader({
+  draft,
+  provider,
+  preset
+}: {
+  draft: AddProviderDraft;
+  provider: ProviderDeepLinkPayload;
+  preset?: ProviderPreset;
+}) {
+  const t = useAppText();
+  const baseUrl = draft.baseUrl.trim() || provider.baseUrl;
+  const displayName = draft.name.trim() || provider.name?.trim() || inferProviderNameFromBaseUrl(baseUrl);
+  const iconUrl = draft.icon.trim() || providerDeepLinkDisplayIcon(provider);
+  const platformUrl = providerImportPlatformUrl(provider, baseUrl, preset);
+
+  function openPlatform() {
+    if (!platformUrl) {
+      return;
+    }
+    if (window.ccr?.openExternal) {
+      void window.ccr.openExternal(platformUrl).catch(() => undefined);
+      return;
+    }
+    window.open(platformUrl, "_blank", "noopener,noreferrer");
+  }
+
+  return (
+    <div className="sm:col-span-2 flex min-w-0 items-center gap-3 rounded-md border border-border bg-background px-3 py-2.5">
+      <ProviderPresetIcon className="h-10 w-10 rounded-md" iconUrl={iconUrl} preset={preset} />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13px] font-semibold text-foreground">{displayName}</div>
+        <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground" title={baseUrl}>{baseUrl}</div>
+      </div>
+      {platformUrl ? (
+        <Button
+          aria-label={t("Open provider website")}
+          onClick={openPlatform}
+          size="iconSm"
+          title={t("Open provider website")}
+          type="button"
+          variant="ghost"
+        >
+          <ExternalLink className="h-4 w-4" />
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+function providerImportPlatformUrl(provider: ProviderDeepLinkPayload, baseUrl: string, preset: ProviderPreset | undefined): string | undefined {
+  return normalizedHttpUrl(provider.source) ?? normalizedHttpUrl(preset?.websiteUrl) ?? providerBaseOrigin(baseUrl || provider.baseUrl);
+}
+
+function providerBaseOrigin(value: string): string | undefined {
+  const url = normalizedHttpUrl(value);
+  if (!url) {
+    return undefined;
+  }
+
+  try {
+    return new URL(url).origin;
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizedHttpUrl(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(providerUrlWithDefaultScheme(trimmed));
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return undefined;
+    }
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
 function providerPresetOptionMatchesQuery(
   option: ProviderPresetComboboxOption,
   query: string
@@ -828,7 +920,7 @@ function LocalAgentProviderImportPanel({
     };
   }, [mode, providerPlugins, providers]);
 
-  if (mode !== "add" || (!loading && candidates.length === 0 && !error)) {
+  if (mode !== "add" || (candidates.length === 0 && !error)) {
     return null;
   }
 
@@ -984,6 +1076,7 @@ export function AddProviderForm({
   error,
   connectivityLoading = false,
   connectivityProbe,
+  importProvider,
   mode,
   onCheck,
   onChange,
@@ -997,6 +1090,7 @@ export function AddProviderForm({
   connectivityProbe?: GatewayProviderProbeResult;
   draft: AddProviderDraft;
   error: string;
+  importProvider?: ProviderDeepLinkPayload;
   mode: "add" | "edit";
   onCheck?: () => Promise<unknown>;
   onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
@@ -1014,6 +1108,7 @@ export function AddProviderForm({
   const hasModelCatalog = Boolean(probe?.models.length);
   const selectedPreset = findProviderPreset(draft.presetId);
   const customEndpoint = draft.presetId === customProviderPresetId;
+  const importMode = Boolean(importProvider);
   const showBaseUrl = customEndpoint || mode === "edit";
   const detectedProtocol = probe?.detectedProtocol ?? draft.protocol;
   const detectedBaseUrl = probe?.normalizedBaseUrl || draft.baseUrl;
@@ -1083,6 +1178,7 @@ export function AddProviderForm({
         ...createDefaultProviderAccountDraft(),
         baseUrl: "",
         icon: "",
+        modelDisplayNames: undefined,
         modelSearch: "",
         presetId,
         providerPlugins: [],
@@ -1097,6 +1193,7 @@ export function AddProviderForm({
         ...createDefaultProviderAccountDraft(),
         baseUrl: "",
         icon: "",
+        modelDisplayNames: undefined,
         modelSearch: "",
         presetId,
         providerPlugins: [],
@@ -1114,6 +1211,7 @@ export function AddProviderForm({
       ...accountDraft,
       baseUrl: endpoint?.baseUrl ?? "",
       icon: "",
+      modelDisplayNames: preset?.defaultModelDisplayNames,
       modelSearch: "",
       modelsText: draft.modelsText.trim() || preset?.defaultModels?.join("\n") || "",
       name: mode === "add" && preset && generatedName ? uniqueProviderName(providers, t(preset.name)) : draft.name,
@@ -1128,19 +1226,25 @@ export function AddProviderForm({
   return (
     <>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <LocalAgentProviderImportPanel
-          mode={mode}
-          onChange={onChange}
-          providerPlugins={[...providerPlugins, ...draft.providerPlugins]}
-          providers={providers}
-        />
-        <Field label={t("Preset provider")}>
-          <ProviderPresetCombobox
-            value={draft.presetId}
-            onChange={updatePreset}
-            options={providerPresetOptions}
-          />
-        </Field>
+        {importProvider ? (
+          <ProviderImportHeader draft={draft} provider={importProvider} preset={selectedPreset} />
+        ) : (
+          <>
+            <LocalAgentProviderImportPanel
+              mode={mode}
+              onChange={onChange}
+              providerPlugins={[...providerPlugins, ...draft.providerPlugins]}
+              providers={providers}
+            />
+            <Field label={t("Preset provider")}>
+              <ProviderPresetCombobox
+                value={draft.presetId}
+                onChange={updatePreset}
+                options={providerPresetOptions}
+              />
+            </Field>
+          </>
+        )}
         <Field label={t("Name")}>
           <Input value={draft.name} onChange={(event) => onChange({ name: event.target.value })} />
         </Field>
@@ -1172,7 +1276,7 @@ export function AddProviderForm({
             <span>{safetyIssue.message}</span>
           </div>
         ) : null}
-        {selectedPreset && !showBaseUrl ? (
+        {selectedPreset && !showBaseUrl && !importMode ? (
           <div className="sm:col-span-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[12px] text-muted-foreground">
             <div className="flex min-w-0 items-center gap-2">
               <Globe className="h-3.5 w-3.5 shrink-0" />
@@ -1184,6 +1288,7 @@ export function AddProviderForm({
           {hasModelCatalog && probe ? (
             <div className="space-y-2">
               <ModelMultiSelect
+                displayNames={draft.modelDisplayNames}
                 models={probe.models}
                 onQueryChange={(modelSearch) => onChange({ modelSearch })}
                 onSelectedChange={(selectedModels) => onChange({ selectedModels })}
@@ -1197,6 +1302,7 @@ export function AddProviderForm({
                 </div>
                 <ModelTagInput
                   ariaLabel={t("Custom models")}
+                  displayNames={draft.modelDisplayNames}
                   onChange={(models) => onChange({ modelsText: models.join("\n") })}
                   placeholder={t("Model name")}
                   value={splitLines(draft.modelsText)}
@@ -1206,6 +1312,7 @@ export function AddProviderForm({
           ) : (
             <ModelTagInput
               ariaLabel={t("Models")}
+              displayNames={draft.modelDisplayNames}
               onChange={(models) => onChange({ modelsText: models.join("\n") }, true)}
               placeholder={t("Model name")}
               value={splitLines(draft.modelsText)}
@@ -1869,6 +1976,7 @@ export function AddProviderDialog({
   connectivityProbe,
   draft,
   error,
+  importProvider,
   mode,
   onCheck,
   onChange,
@@ -1877,13 +1985,16 @@ export function AddProviderDialog({
   probe,
   probeLoading,
   providerPlugins = [],
-  providers
+  providers,
+  submitLabel,
+  title
 }: {
   canSubmit: boolean;
   connectivityLoading?: boolean;
   connectivityProbe?: GatewayProviderProbeResult;
   draft: AddProviderDraft;
   error: string;
+  importProvider?: ProviderDeepLinkPayload;
   mode: "add" | "edit";
   onCheck?: (models: string[]) => Promise<ProviderConnectivityCheckReport>;
   onChange: (patch: Partial<AddProviderDraft>, resetProbe?: boolean) => void;
@@ -1893,15 +2004,18 @@ export function AddProviderDialog({
   probeLoading: boolean;
   providerPlugins?: unknown[];
   providers: GatewayProviderConfig[];
+  submitLabel?: string;
+  title?: string;
 }) {
   const t = useAppText();
   const [checkConfirmOpen, setCheckConfirmOpen] = useState(false);
   const [checkConfirmBusy, setCheckConfirmBusy] = useState(false);
   const [iconDetecting, setIconDetecting] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [checkModelSelection, setCheckModelSelection] = useState<string[]>([]);
   const [checkResult, setCheckResult] = useState<ProviderConnectivityCheckReport>();
   const checkModels = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
-  const submitLoading = probeLoading || connectivityLoading || iconDetecting;
+  const submitLoading = probeLoading || connectivityLoading || iconDetecting || submitting;
   const submitDisabled = !canSubmit || submitLoading;
 
   function openCheckConfirm() {
@@ -1931,22 +2045,31 @@ export function AddProviderDialog({
     setCheckResult(undefined);
   }
 
-  function submit() {
+  async function submit() {
     if (submitDisabled) {
       return;
     }
-    void onSubmit();
+    setSubmitting(true);
+    try {
+      const saved = await onSubmit();
+      if (!saved) {
+        setSubmitting(false);
+      }
+    } catch (error) {
+      setSubmitting(false);
+      throw error;
+    }
   }
 
   return (
     <>
-      <Dialog className="items-start" onOpenChange={(open) => !open && onClose()}>
+      <Dialog className="items-start" onOpenChange={(open) => !open && !submitting && onClose()}>
         <DialogContent className="mt-[clamp(8px,2dvh,20px)] h-[calc(100dvh-1.5rem-clamp(8px,2dvh,20px))] max-w-[820px] origin-top sm:mt-[clamp(8px,3dvh,28px)] sm:h-[min(860px,calc(100dvh-3rem-clamp(8px,3dvh,28px)))]">
           <DialogHeader>
             <div className="min-w-0">
-              <DialogTitle>{mode === "edit" ? t("Edit Provider") : t("Add Provider")}</DialogTitle>
+              <DialogTitle>{title ?? (mode === "edit" ? t("Edit Provider") : t("Add Provider"))}</DialogTitle>
             </div>
-            <Button aria-label={t("Close dialog")} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
+            <Button aria-label={t("Close dialog")} disabled={submitting} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
               <X className="h-4 w-4" />
             </Button>
           </DialogHeader>
@@ -1957,6 +2080,7 @@ export function AddProviderDialog({
               connectivityProbe={connectivityProbe}
               draft={draft}
               error={error}
+              importProvider={importProvider}
               mode={mode}
               onCheck={onCheck ? async () => openCheckConfirm() : undefined}
               onChange={onChange}
@@ -1969,14 +2093,14 @@ export function AddProviderDialog({
           </DialogBody>
 
           <DialogFooter>
-            <Button onClick={onClose} type="button" variant="outline">
+            <Button disabled={submitting} onClick={onClose} type="button" variant="outline">
               {t("Cancel")}
             </Button>
-            <Button disabled={submitDisabled} onClick={submit} type="button">
+            <Button disabled={submitDisabled} onClick={() => void submit()} type="button">
               <AnimatedIconSwap iconKey={submitLoading ? "loading" : mode}>
                 {submitLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : mode === "edit" ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
               </AnimatedIconSwap>
-              {submitLoading ? t("Loading") : mode === "edit" ? t("Save") : t("Add")}
+              {submitLoading ? t("Loading") : submitLabel ?? (mode === "edit" ? t("Save") : t("Add"))}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2153,11 +2277,13 @@ function ProviderConnectivityResultGroup({
 
 function ModelTagInput({
   ariaLabel,
+  displayNames,
   onChange,
   placeholder,
   value
 }: {
   ariaLabel: string;
+  displayNames?: Record<string, string>;
   onChange: (value: string[]) => void;
   placeholder: string;
   value: string[];
@@ -2197,7 +2323,9 @@ function ModelTagInput({
         <div className="flex max-h-[120px] flex-wrap gap-1.5 overflow-auto">
           {models.map((model) => (
             <Badge className="max-w-full pr-1" key={model} variant="secondary">
-              <span className="min-w-0 max-w-[260px] truncate">{model}</span>
+              <span className="min-w-0 max-w-[260px] truncate" title={model}>
+                {displayNames?.[model] ?? model}
+              </span>
               <button
                 aria-label={`${t("Remove model")} ${model}`}
                 className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
@@ -2216,12 +2344,14 @@ function ModelTagInput({
 }
 
 function ModelMultiSelect({
+  displayNames,
   models,
   onQueryChange,
   onSelectedChange,
   query,
   selected
 }: {
+  displayNames?: Record<string, string>;
   models: string[];
   onQueryChange: (value: string) => void;
   onSelectedChange: (value: string[]) => void;
@@ -2230,7 +2360,9 @@ function ModelMultiSelect({
 }) {
   const t = useAppText();
   const normalized = query.trim().toLowerCase();
-  const visibleModels = normalized ? models.filter((model) => model.toLowerCase().includes(normalized)) : models;
+  const visibleModels = normalized
+    ? models.filter((model) => model.toLowerCase().includes(normalized) || (displayNames?.[model] ?? "").toLowerCase().includes(normalized))
+    : models;
 
   function toggleModel(model: string) {
     onSelectedChange(selected.includes(model) ? selected.filter((item) => item !== model) : [...selected, model]);
@@ -2261,6 +2393,7 @@ function ModelMultiSelect({
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {visibleModels.map((model) => {
             const checked = selected.includes(model);
+            const displayName = displayNames?.[model];
             return (
               <Label
                 className={cn(
@@ -2268,9 +2401,10 @@ function ModelMultiSelect({
                   checked && "border-primary bg-accent"
                 )}
                 key={model}
+                title={displayName ? `${displayName} (${model})` : model}
               >
                 <Checkbox checked={checked} onCheckedChange={() => toggleModel(model)} />
-                <span className="min-w-0 flex-1 truncate">{model}</span>
+                <span className="min-w-0 flex-1 truncate">{displayName ?? model}</span>
               </Label>
             );
           })}

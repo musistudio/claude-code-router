@@ -10,7 +10,7 @@ import {
   type ClaudeAppGatewayInferenceModel,
   type ClaudeAppGatewayModelRouteOptions
 } from "../shared/claude-app-gateway";
-import type { ApiKeyConfig, AppConfig, ClaudeAppGatewayApplyResult } from "../shared/app";
+import { NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, hasAvailableGatewayModels, type ApiKeyConfig, type AppConfig, type ClaudeAppGatewayApplyResult } from "../shared/app";
 import { findModelCatalogEntry } from "../server/gateway/model-catalog";
 
 const CLAUDE_APP_CONFIG_ID = "8f69f2f1-3275-4ad8-9317-4aa7e972f311";
@@ -77,6 +77,14 @@ export type ClaudeAppGatewaySyncResult = {
 };
 
 export async function syncClaudeAppGatewayConfig(config: AppConfig): Promise<ClaudeAppGatewaySyncResult> {
+  if (!hasAvailableGatewayModels(config)) {
+    return {
+      config,
+      configChanged: false,
+      result: skippedClaudeAppGatewayResult(config)
+    };
+  }
+
   const applied = applyClaudeAppGatewayConfig(config);
   if (applied.config === config) {
     return {
@@ -93,7 +101,25 @@ export async function syncClaudeAppGatewayConfig(config: AppConfig): Promise<Cla
   };
 }
 
+function skippedClaudeAppGatewayResult(config: AppConfig): ClaudeAppGatewayApplyResult {
+  const paths = getClaudeAppGatewayPaths();
+  return {
+    apiKeyGenerated: false,
+    configFile: paths.rootConfigFile,
+    configLibraryFile: paths.configLibraryFile,
+    dataDir: paths.dataDir,
+    endpoint: gatewayEndpoint(config),
+    message: NO_AVAILABLE_GATEWAY_MODELS_MESSAGE,
+    model: "",
+    requiresRestart: false
+  };
+}
+
 export function applyClaudeAppGatewayConfig(config: AppConfig, options: ClaudeAppGatewayApplyOptions = {}): { config: AppConfig; result: ClaudeAppGatewayApplyResult } {
+  if (!hasAvailableGatewayModels(config)) {
+    throw new Error(NO_AVAILABLE_GATEWAY_MODELS_MESSAGE);
+  }
+
   const state = ensureClaudeAppGatewayState(config);
   const paths = getClaudeAppGatewayPaths(options.dataDir);
   const endpoint = gatewayEndpoint(state.config);

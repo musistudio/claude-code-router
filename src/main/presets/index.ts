@@ -2,6 +2,7 @@ import { anthropicProviderPreset } from "./anthropic";
 import { bailianProviderPreset } from "./bailian";
 import { deepSeekProviderPreset } from "./deepseek";
 import { geminiProviderPreset } from "./gemini";
+import { kimiCodingProviderPreset } from "./kimi-coding";
 import { mistralProviderPreset } from "./mistral";
 import { moonshotProviderPreset } from "./moonshot";
 import { openaiProviderPreset } from "./openai";
@@ -28,6 +29,7 @@ export const providerPresets: ProviderPreset[] = [
   geminiProviderPreset,
   openRouterProviderPreset,
   deepSeekProviderPreset,
+  kimiCodingProviderPreset,
   zhipuCnCodingProviderPreset,
   zhipuCnGeneralProviderPreset,
   zaiGlobalCodingProviderPreset,

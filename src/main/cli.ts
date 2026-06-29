@@ -2,7 +2,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { accessSync, constants as fsConstants, existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import type { ProfileOpenSurface } from "../shared/app";
+import { assertAvailableGatewayModels, type ProfileOpenSurface } from "../shared/app";
 import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { launchCodexAppProfile, launchZcodeAppProfile } from "./codex-app-launch";
 import { loadAppConfig } from "./config";
@@ -90,6 +90,7 @@ async function main(): Promise<void> {
 
   const configDir = CONFIGDIR;
   const config = await loadAppConfig();
+  assertAvailableGatewayModels(config);
   await applyProfileConfig(config);
   const profile = findProfileForOpen(config, profileOptions.profileRef);
   const surface = profileOptions.surface ?? (profile.agent === "zcode" || profile.surface === "app" ? "app" : "cli");

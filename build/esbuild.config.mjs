@@ -27,6 +27,15 @@ export const trayRendererHtmlOutput = path.join(rendererOutDir, "pages", "tray",
 export const cssInput = path.join(rendererRoot, "styles", "globals.css");
 export const cssOutput = path.join(rendererAssetsDir, "main.css");
 export const webClientBridgeOutput = path.join(rendererAssetsDir, "web-client-bridge.js");
+const lightweightMcpBundleNames = ["fusion-vision-mcp.js", "fusion-tool-fallback-mcp.js"];
+const lightweightMcpBundleMaxBytes = 128 * 1024;
+const forbiddenLightweightMcpInputs = [
+  { prefix: "src/main/", reason: "main-process modules can pull in config, Electron, or native storage side effects" },
+  { prefix: "src/renderer/", reason: "renderer modules do not belong in stdio MCP subprocesses" },
+  { prefix: "node_modules/better-sqlite3/", reason: "native SQLite is not allowed in lightweight MCP subprocesses" },
+  { prefix: "node_modules/electron/", reason: "Electron runtime modules are not allowed in lightweight MCP subprocesses" }
+];
+const forbiddenLightweightMcpExternalImports = new Set(["better-sqlite3", "electron"]);
 
 const nodeExternals = [
   "electron",
@@ -112,12 +121,14 @@ export function createMainBuildOptions({ mode = "production", plugins = [] } = {
       path.join(projectRoot, "src", "main", "main.ts"),
       path.join(projectRoot, "src", "main", "browser-preload.ts"),
       path.join(projectRoot, "src", "server", "mcp", "fusion-vision-mcp.ts"),
+      path.join(projectRoot, "src", "server", "mcp", "fusion-tool-fallback-mcp.ts"),
       path.join(projectRoot, "src", "main", "preload.ts")
     ],
     external: nodeExternals,
     format: "cjs",
     legalComments: "none",
     logLevel: "info",
+    metafile: true,
     minify: mode === "production",
     outdir: mainOutDir,
     platform: "node",
@@ -225,10 +236,11 @@ export function watchPlugin(name, onEnd) {
 }
 
 export async function buildMain(options = {}) {
-  await Promise.all([
+  const [mainBuildResult] = await Promise.all([
     esbuild.build(createMainBuildOptions(options)),
     esbuild.build(createCliBuildOptions(options))
   ]);
+  validateLightweightMcpBundles(mainBuildResult.metafile);
 }
 
 export async function buildRenderer(options = {}) {
@@ -307,6 +319,54 @@ function forbidCliElectronPlugin() {
       });
     }
   };
+}
+
+function validateLightweightMcpBundles(metafile) {
+  if (!metafile) {
+    return;
+  }
+
+  const outputsByName = new Map(
+    Object.entries(metafile.outputs).map(([outputPath, output]) => [path.basename(outputPath), { output, outputPath }])
+  );
+
+  for (const bundleName of lightweightMcpBundleNames) {
+    const entry = outputsByName.get(bundleName);
+    if (!entry) {
+      continue;
+    }
+
+    const violations = [];
+    if (entry.output.bytes > lightweightMcpBundleMaxBytes) {
+      violations.push(`bundle size ${entry.output.bytes} bytes exceeds ${lightweightMcpBundleMaxBytes} bytes`);
+    }
+
+    for (const inputPath of Object.keys(entry.output.inputs ?? {})) {
+      const normalizedInput = normalizeBuildPath(inputPath);
+      for (const rule of forbiddenLightweightMcpInputs) {
+        if (normalizedInput.startsWith(rule.prefix)) {
+          violations.push(`${normalizedInput} (${rule.reason})`);
+        }
+      }
+    }
+
+    for (const imported of entry.output.imports ?? []) {
+      if (imported.external && forbiddenLightweightMcpExternalImports.has(imported.path)) {
+        violations.push(`${imported.path} (external native/runtime dependency is not allowed)`);
+      }
+    }
+
+    if (violations.length > 0) {
+      throw new Error([
+        `Lightweight MCP bundle ${bundleName} crossed its dependency boundary.`,
+        ...violations.map((violation) => `- ${violation}`)
+      ].join("\n"));
+    }
+  }
+}
+
+function normalizeBuildPath(value) {
+  return value.split(path.sep).join("/");
 }
 
 function resolveRendererImport(importPath) {

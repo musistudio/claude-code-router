@@ -34,6 +34,7 @@ import {
   CircleAlert,
   Copy,
   Database,
+  Download,
   ExternalLink,
   FolderOpen,
   Gauge,
@@ -252,6 +253,7 @@ import {
 } from "../../../../shared/provider-presets";
 import {
   findProviderPresetByBaseUrlInList,
+  findProviderPresetByIdentityInList,
   findProviderPresetInList,
   primaryProviderPresetEndpoint as primaryProviderPresetEndpointFromPreset,
   providerApiKeySafetyIssueInList,
@@ -512,6 +514,10 @@ function findProviderPresetByBaseUrl(baseUrl: string): ProviderPreset | undefine
   return findProviderPresetByBaseUrlInList(providerPresetCache, baseUrl);
 }
 
+function findProviderPresetByIdentity(name: string | undefined): ProviderPreset | undefined {
+  return findProviderPresetByIdentityInList(providerPresetCache, name);
+}
+
 function primaryProviderPresetEndpoint(preset: ProviderPreset): ProviderPresetEndpoint | undefined {
   return primaryProviderPresetEndpointFromPreset(preset);
 }
@@ -548,7 +554,7 @@ export {
   PointerSensor, rectIntersection, useSensor, useSensors, arrayMove, rectSortingStrategy, SortableContext,
   sortableKeyboardCoordinates, useSortable, CSS, AnimatePresence, LayoutGroup, motion, useReducedMotion,
   Activity, ArrowDown, ArrowUp, Box, Boxes, Braces, Check, CheckCircle2,
-  ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Copy, Database, FolderOpen,
+  ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Copy, Database, Download, FolderOpen,
   ExternalLink, Gauge, Globe, Info, KeyRound, Layers3, LoaderCircle, MoveRight, Network,
   Palette, PanelLeftClose, PanelLeftOpen, Pause, Pencil, Play, Plus,
   Power, QrCode, RefreshCw, Route, Search, Server, Settings, ShieldCheck,
@@ -561,7 +567,7 @@ export {
   geminiProviderIconUrl, mistralProviderIconUrl, moonshotProviderIconUrl, openaiProviderIconUrl, openrouterProviderIconUrl, siliconflowProviderIconUrl, zaiGlobalCodingProviderIconUrl,
   zaiGlobalGeneralProviderIconUrl, zhipuCnCodingProviderIconUrl, zhipuCnGeneralProviderIconUrl, trayCyanIconUrl, trayOrangeIconUrl, trayVioletIconUrl, BUILTIN_FUSION_TOOL_SERVER_NAME,
   BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, enforceSingleEnabledGlobalProfilePerAgent, OVERVIEW_WIDGET_SIZE_VALUES, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS,
-  customProviderPresetId, defaultProviderAccountConfig, findProviderPreset, findProviderPresetByBaseUrl, primaryProviderPresetEndpoint, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey,
+  customProviderPresetId, defaultProviderAccountConfig, findProviderPreset, findProviderPresetByBaseUrl, findProviderPresetByIdentity, primaryProviderPresetEndpoint, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey,
   providerIdentitySafetyIssue, getProviderPresets, setProviderPresets, standardProviderAccountConfig, normalizeProviderBaseUrl, providerUrlWithDefaultScheme
 };
 export type {

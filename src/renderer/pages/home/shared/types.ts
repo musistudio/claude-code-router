@@ -421,6 +421,7 @@ export type AddProviderDraft = {
   baseUrl: string;
   credentials: ProviderCredentialDraft[];
   icon: string;
+  modelDisplayNames?: Record<string, string>;
   modelSearch: string;
   modelsText: string;
   name: string;

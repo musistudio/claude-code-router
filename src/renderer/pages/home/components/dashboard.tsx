@@ -1930,7 +1930,7 @@ function ProviderAccountsOverview({
                 <div className="flex min-h-0 min-w-0 items-center justify-between gap-3 overflow-hidden rounded-lg border border-border bg-muted/20 px-3 py-2" key={providerAccountSnapshotKey(account)}>
                   <div className="min-w-0">
                     <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
-                    {providerAccountShowSource(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{meter ? t(meter.label) : account.source}</div> : null}
+                    {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
                   </div>
                   <div className="shrink-0 text-right">
                     {providerAccountShowStatus(dimensions) ? <Badge variant={providerAccountBadgeVariant(account.status)}>{account.status}</Badge> : null}
@@ -1950,7 +1950,7 @@ function ProviderAccountsOverview({
                   <div className="flex min-w-0 items-end justify-between gap-3">
                     <div className="min-w-0">
                       <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
-                      {providerAccountShowSource(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{meter ? t(meter.label) : account.source}</div> : null}
+                      {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
                     </div>
                     <div className="shrink-0 text-[12px] font-semibold">{meter ? formatProviderAccountMeterValue(meter) : account.status}</div>
                   </div>
@@ -1995,7 +1995,6 @@ function ProviderAccountSinglePanel({
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <div className={cn("truncate font-semibold", dimensions.height <= 1 ? "text-[12px]" : "text-[13px]")}>{providerAccountSnapshotLabel(account)}</div>
-          {providerAccountShowSource(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{account.source}</div> : null}
         </div>
         {providerAccountShowStatus(dimensions) ? <Badge variant={providerAccountBadgeVariant(account.status)}>{account.status}</Badge> : null}
       </div>
@@ -2039,7 +2038,6 @@ function ProviderAccountSummaryCard({
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate text-[13px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
-          {providerAccountShowSource(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{account.source}</div> : null}
         </div>
         {providerAccountShowStatus(dimensions) ? <Badge variant={providerAccountBadgeVariant(account.status)}>{account.status}</Badge> : null}
       </div>

@@ -742,7 +742,7 @@ export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code"
     name: name ?? profileAgentLabel(agent),
     providerId: "claude-code-router",
     providerName: "Claude Code Router",
-    scope: "global",
+    scope: "ccr",
     settingsFile: "~/.claude/settings.json",
     showAllSessions: false,
     smallFastModel: "",

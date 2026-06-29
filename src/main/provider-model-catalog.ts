@@ -35,6 +35,7 @@ const presetCatalogProviderIds: Record<string, string[]> = {
   bailian: ["alibaba-cn"],
   deepseek: ["deepseek"],
   gemini: ["google"],
+  "kimi-coding": ["kimi-for-coding"],
   mistral: ["mistral"],
   moonshot: ["moonshotai-cn"],
   openai: ["openai"],
@@ -46,10 +47,29 @@ const presetCatalogProviderIds: Record<string, string[]> = {
   "zhipu-cn-general": ["zhipuai"]
 };
 
+const presetCatalogModelOverrides: Record<string, { modelDisplayNames?: Record<string, string>; models: string[]; provider?: string; providerName?: string }> = {
+  "kimi-coding": {
+    modelDisplayNames: {
+      "kimi-for-coding": "K2.7 Code"
+    },
+    models: ["kimi-for-coding"],
+    provider: "kimi-for-coding",
+    providerName: "Kimi Code"
+  }
+};
+
 let catalogIndex: CatalogIndex | undefined;
 
 export function getProviderCatalogModels(request: ProviderCatalogModelsRequest): ProviderCatalogModelsResult {
   const index = loadCatalogIndex();
+  const modelOverride = providerCatalogModelOverride(request);
+  if (modelOverride) {
+    return {
+      loadedFrom: index.loadedFrom,
+      ...modelOverride
+    };
+  }
+
   const match = findBestCatalogProviderMatch(index.providers, request);
   if (!match) {
     return {
@@ -65,6 +85,34 @@ export function getProviderCatalogModels(request: ProviderCatalogModelsRequest):
     provider: match.entry.provider,
     providerName: match.entry.providerName
   };
+}
+
+function providerCatalogModelOverride(request: ProviderCatalogModelsRequest): ProviderCatalogModelsResult | undefined {
+  const providerPresetId = request.providerPresetId?.trim() || "";
+  const providerPresetOverride = presetCatalogModelOverrides[providerPresetId];
+  if (providerPresetOverride) {
+    return {
+      matchedBy: "provider-id",
+      modelDisplayNames: providerPresetOverride.modelDisplayNames,
+      models: providerPresetOverride.models,
+      provider: providerPresetOverride.provider,
+      providerName: providerPresetOverride.providerName
+    };
+  }
+
+  const baseUrlPresetId = request.baseUrl ? findProviderPresetByBaseUrl(request.baseUrl)?.id ?? "" : "";
+  const baseUrlOverride = presetCatalogModelOverrides[baseUrlPresetId];
+  if (baseUrlOverride) {
+    return {
+      matchedBy: "base-url",
+      modelDisplayNames: baseUrlOverride.modelDisplayNames,
+      models: baseUrlOverride.models,
+      provider: baseUrlOverride.provider,
+      providerName: baseUrlOverride.providerName
+    };
+  }
+
+  return undefined;
 }
 
 function loadCatalogIndex(): CatalogIndex {

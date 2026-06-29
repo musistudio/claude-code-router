@@ -10,55 +10,59 @@ lead: 使用 ccr://provider 链接把供应商配置带入 CCR，并通过现有
 下面的按钮会打开 CCR 桌面 App 的供应商导入确认页。预设按钮不会携带 API Key；自定义供应商链接可以携带 Key。导入前始终确认供应商名称、Base URL、协议和模型。
 
 <div class="provider-import-grid" aria-label="Preset provider import buttons">
-  <a class="provider-import-button provider-openai" href="ccr://provider?name=OpenAI&amp;base_url=https%3A%2F%2Fapi.openai.com%2Fv1&amp;protocol=openai_responses&amp;models=gpt-4o" aria-label="导入 OpenAI 官方供应商">
+  <a class="provider-import-button provider-openai" href="ccr://provider?name=OpenAI&amp;base_url=https%3A%2F%2Fapi.openai.com%2Fv1&amp;protocol=openai_responses&amp;models=gpt-5.5%2Cgpt-5.5-pro%2Cgpt-5.5-instant%2Cgpt-5.4-mini" aria-label="导入 OpenAI 官方供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/openai.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">OpenAI 官方</span><span class="provider-import-meta">Responses / Chat Completions</span></span>
   </a>
-  <a class="provider-import-button provider-anthropic" href="ccr://provider?name=Anthropic&amp;base_url=https%3A%2F%2Fapi.anthropic.com&amp;protocol=anthropic_messages&amp;models=claude-sonnet-4-20250514" aria-label="导入 Anthropic 官方供应商">
+  <a class="provider-import-button provider-anthropic" href="ccr://provider?name=Anthropic&amp;base_url=https%3A%2F%2Fapi.anthropic.com&amp;protocol=anthropic_messages&amp;models=claude-fable-5%2Cclaude-opus-4-8%2Cclaude-sonnet-4-6%2Cclaude-haiku-4-5" aria-label="导入 Anthropic 官方供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/anthropic.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">Anthropic 官方</span><span class="provider-import-meta">Anthropic Messages</span></span>
   </a>
-  <a class="provider-import-button provider-gemini" href="ccr://provider?name=Google+Gemini&amp;base_url=https%3A%2F%2Fgenerativelanguage.googleapis.com&amp;protocol=gemini_generate_content" aria-label="导入谷歌 Gemini 供应商">
+  <a class="provider-import-button provider-gemini" href="ccr://provider?name=Google+Gemini&amp;base_url=https%3A%2F%2Fgenerativelanguage.googleapis.com&amp;protocol=gemini_generate_content&amp;models=gemini-3.5-flash%2Cgemini-3.1-pro-preview%2Cgemini-3-flash-preview" aria-label="导入谷歌 Gemini 供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/gemini.svg" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">谷歌 Gemini</span><span class="provider-import-meta">Gemini Generate Content</span></span>
   </a>
-  <a class="provider-import-button provider-openrouter" href="ccr://provider?name=OpenRouter&amp;base_url=https%3A%2F%2Fopenrouter.ai%2Fapi%2Fv1&amp;protocol=openai_chat_completions" aria-label="导入 OpenRouter 路由供应商">
+  <a class="provider-import-button provider-openrouter" href="ccr://provider?name=OpenRouter&amp;base_url=https%3A%2F%2Fopenrouter.ai%2Fapi%2Fv1&amp;protocol=openai_chat_completions&amp;models=%7Eopenai%2Fgpt-latest%2C%7Eanthropic%2Fclaude-opus-latest%2C%7Eanthropic%2Fclaude-sonnet-latest%2Cgoogle%2Fgemini-3.5-flash%2Cz-ai%2Fglm-5.2" aria-label="导入 OpenRouter 路由供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/openrouter.ico" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">OpenRouter 路由</span><span class="provider-import-meta">OpenAI compatible gateway</span></span>
   </a>
-  <a class="provider-import-button provider-deepseek" href="ccr://provider?name=DeepSeek&amp;base_url=https%3A%2F%2Fapi.deepseek.com&amp;protocol=openai_chat_completions" aria-label="导入 DeepSeek 深度求索供应商">
+  <a class="provider-import-button provider-deepseek" href="ccr://provider?name=DeepSeek&amp;base_url=https%3A%2F%2Fapi.deepseek.com&amp;protocol=openai_chat_completions&amp;models=deepseek-v4-pro%2Cdeepseek-v4-flash%2Cdeepseek-v3.2%2Cdeepseek-reasoner%2Cdeepseek-chat" aria-label="导入 DeepSeek 深度求索供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/deepseek.ico" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">DeepSeek 深度求索</span><span class="provider-import-meta">Chat Completions</span></span>
   </a>
-  <a class="provider-import-button provider-zhipu-coding" href="ccr://provider?name=Zhipu+AI+%28China%29+-+Coding+Plan&amp;base_url=https%3A%2F%2Fopen.bigmodel.cn%2Fapi%2Fcoding%2Fpaas%2Fv4&amp;protocol=openai_chat_completions&amp;models=glm-5.2%2Cglm-5.1%2Cglm-4.7%2Cglm-4.5-air" aria-label="导入智谱 Coding 供应商">
+  <a class="provider-import-button provider-zhipu-coding" href="ccr://provider?name=Zhipu+AI+%28China%29+-+Coding+Plan&amp;base_url=https%3A%2F%2Fopen.bigmodel.cn%2Fapi%2Fcoding%2Fpaas%2Fv4&amp;protocol=openai_chat_completions&amp;models=glm-5.2%2Cglm-5.1%2Cglm-5-turbo%2Cglm-5v-turbo%2Cglm-4.7" aria-label="导入智谱 Coding 供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/zhipu-cn-coding.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">智谱 Coding</span><span class="provider-import-meta">中国 Coding 计划</span></span>
   </a>
-  <a class="provider-import-button provider-zhipu-general" href="ccr://provider?name=Zhipu+AI+%28China%29+-+General+Endpoint&amp;base_url=https%3A%2F%2Fopen.bigmodel.cn%2Fapi%2Fpaas%2Fv4&amp;protocol=openai_chat_completions&amp;models=glm-5.2%2Cglm-5.1%2Cglm-4.7%2Cglm-4.5-air" aria-label="导入智谱通用供应商">
+  <a class="provider-import-button provider-zhipu-general" href="ccr://provider?name=Zhipu+AI+%28China%29+-+General+Endpoint&amp;base_url=https%3A%2F%2Fopen.bigmodel.cn%2Fapi%2Fpaas%2Fv4&amp;protocol=openai_chat_completions&amp;models=glm-5.2%2Cglm-5.1%2Cglm-5%2Cglm-5v-turbo%2Cglm-4.7" aria-label="导入智谱通用供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/zhipu-cn-general.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">智谱通用</span><span class="provider-import-meta">中国通用端点</span></span>
   </a>
-  <a class="provider-import-button provider-zai-coding" href="ccr://provider?name=Z.ai+%28Global%29+-+Coding+Plan&amp;base_url=https%3A%2F%2Fapi.z.ai%2Fapi%2Fcoding%2Fpaas%2Fv4&amp;protocol=openai_chat_completions&amp;models=glm-5.2%2Cglm-5.1%2Cglm-4.7%2Cglm-4.5-air" aria-label="导入智谱国际 Coding 供应商">
+  <a class="provider-import-button provider-zai-coding" href="ccr://provider?name=Z.ai+%28Global%29+-+Coding+Plan&amp;base_url=https%3A%2F%2Fapi.z.ai%2Fapi%2Fcoding%2Fpaas%2Fv4&amp;protocol=openai_chat_completions&amp;models=glm-5.2%2Cglm-5.1%2Cglm-5-turbo%2Cglm-5v-turbo%2Cglm-4.7" aria-label="导入智谱国际 Coding 供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/zai-global-coding.svg" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">智谱国际 Coding</span><span class="provider-import-meta">全球 Coding 计划</span></span>
   </a>
-  <a class="provider-import-button provider-zai-general" href="ccr://provider?name=Z.ai+%28Global%29+-+General+Endpoint&amp;base_url=https%3A%2F%2Fapi.z.ai%2Fapi%2Fpaas%2Fv4&amp;protocol=openai_chat_completions&amp;models=glm-5.2%2Cglm-5.1%2Cglm-4.7%2Cglm-4.5-air" aria-label="导入智谱国际通用供应商">
+  <a class="provider-import-button provider-zai-general" href="ccr://provider?name=Z.ai+%28Global%29+-+General+Endpoint&amp;base_url=https%3A%2F%2Fapi.z.ai%2Fapi%2Fpaas%2Fv4&amp;protocol=openai_chat_completions&amp;models=glm-5.2%2Cglm-5.1%2Cglm-5%2Cglm-5v-turbo%2Cglm-4.7" aria-label="导入智谱国际通用供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/zai-global-general.svg" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">智谱国际通用</span><span class="provider-import-meta">全球通用端点</span></span>
   </a>
-  <a class="provider-import-button provider-mistral" href="ccr://provider?name=Mistral&amp;base_url=https%3A%2F%2Fapi.mistral.ai%2Fv1&amp;protocol=openai_chat_completions" aria-label="导入 Mistral 官方供应商">
+  <a class="provider-import-button provider-mistral" href="ccr://provider?name=Mistral&amp;base_url=https%3A%2F%2Fapi.mistral.ai%2Fv1&amp;protocol=openai_chat_completions&amp;models=mistral-medium-3-5%2Cmistral-large-3%2Cministral-3-14b-instruct-2512%2Cdevstral-2512" aria-label="导入 Mistral 官方供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/mistral.webp" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">Mistral 官方</span><span class="provider-import-meta">Chat Completions</span></span>
   </a>
-  <a class="provider-import-button provider-moonshot" href="ccr://provider?name=Moonshot+Kimi&amp;base_url=https%3A%2F%2Fapi.moonshot.cn%2Fv1&amp;protocol=openai_chat_completions&amp;models=moonshot-v1-8k" aria-label="导入月之暗面 Kimi 供应商">
+  <a class="provider-import-button provider-moonshot" href="ccr://provider?name=Moonshot+Kimi&amp;base_url=https%3A%2F%2Fapi.moonshot.cn%2Fv1&amp;protocol=openai_chat_completions&amp;models=kimi-k2.7-code%2Ckimi-k2.6%2Ckimi-latest%2Ckimi-thinking-preview" aria-label="导入月之暗面 Kimi 供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/moonshot.ico" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">月之暗面 Kimi</span><span class="provider-import-meta">Chat Completions</span></span>
   </a>
-  <a class="provider-import-button provider-bailian" href="ccr://provider?name=Alibaba+Bailian&amp;base_url=https%3A%2F%2Fdashscope.aliyuncs.com%2Fcompatible-mode%2Fv1&amp;protocol=openai_chat_completions" aria-label="导入阿里百炼供应商">
+  <a class="provider-import-button provider-kimi-coding" href="ccr://provider?name=Kimi+Code+-+Coding+Plan&amp;base_url=https%3A%2F%2Fapi.kimi.com%2Fcoding%2Fv1&amp;protocol=openai_chat_completions&amp;models=kimi-for-coding" aria-label="导入 Kimi Code Coding Plan 供应商">
+    <span class="provider-import-icon-shell"><img src="../../provider-icons/moonshot.ico" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">Kimi Code</span><span class="provider-import-meta">Coding Plan</span></span>
+  </a>
+  <a class="provider-import-button provider-bailian" href="ccr://provider?name=Alibaba+Bailian&amp;base_url=https%3A%2F%2Fdashscope.aliyuncs.com%2Fcompatible-mode%2Fv1&amp;protocol=openai_chat_completions&amp;models=qwen3.7-max%2Cqwen3.7-plus%2Cqwen3.6-max-preview%2Cqwen3-coder-plus%2Cqwen3-max" aria-label="导入阿里百炼供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/bailian.ico" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">阿里百炼</span><span class="provider-import-meta">DashScope 兼容</span></span>
   </a>
-  <a class="provider-import-button provider-siliconflow" href="ccr://provider?name=SiliconFlow&amp;base_url=https%3A%2F%2Fapi.siliconflow.cn%2Fv1&amp;protocol=openai_chat_completions" aria-label="导入硅基流动供应商">
+  <a class="provider-import-button provider-siliconflow" href="ccr://provider?name=SiliconFlow&amp;base_url=https%3A%2F%2Fapi.siliconflow.cn%2Fv1&amp;protocol=openai_chat_completions&amp;models=zai-org%2FGLM-5.2%2Cdeepseek-ai%2Fdeepseek-v4-pro%2Cdeepseek-ai%2Fdeepseek-v4-flash%2Czai-org%2FGLM-5.1%2Cdeepseek-ai%2FDeepSeek-V3.2" aria-label="导入硅基流动供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/siliconflow.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">硅基流动</span><span class="provider-import-meta">Chat Completions</span></span>
   </a>

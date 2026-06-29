@@ -5,7 +5,7 @@ const moonshotProviderAccountConfig: ProviderAccountConfig = {
   connectors: [
     {
       auth: "provider-api-key",
-      endpoint: "https://api.moonshot.cn/v1/users/me/balance",
+      endpoint: "https://api.moonshot.ai/v1/users/me/balance",
       mapping: {
         meters: [
           {
@@ -42,6 +42,10 @@ export const moonshotProviderPreset: ProviderPreset = {
   aliases: ["kimi", "moonshot"],
   defaultModels: ["moonshot-v1-8k"],
   endpoints: [
+    {
+      baseUrl: "https://api.moonshot.ai/v1",
+      protocols: ["openai_chat_completions"]
+    },
     {
       baseUrl: "https://api.moonshot.cn/v1",
       protocols: ["openai_chat_completions"]

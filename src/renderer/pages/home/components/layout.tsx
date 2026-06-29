@@ -1,9 +1,9 @@
 import type { ComponentProps } from "react";
 import {
   AnimatedIconSwap, AnimatePresence, AppConfig, AppCopy, Button, cn, EndpointTitleBar,
-  GatewayStatus, listSpringTransition, LucideIcon, motion, motionEase,
+  AppUpdateStatus, Download, GatewayStatus, listSpringTransition, LucideIcon, motion, motionEase,
   LoaderCircle, NavigationId, PanelLeftClose, PanelLeftOpen,
-  reducedMotionTransition, RefreshCw, ServiceControlButton, Settings, ViewId,
+  reducedMotionTransition, ServiceControlButton, Settings, ViewId,
   ViewMotionShell, viewUsesInternalScroll
 } from "../shared";
 import { ApiKeysView } from "./api-keys";
@@ -63,7 +63,7 @@ export function MainLayout({
   needsTrafficLightSafeArea,
   agentAnalysisEnabled,
   networkCaptureEnabled,
-  onCheckUpdate,
+  onDownloadUpdate,
   onOpenSettings,
   onSelectNavigationItem,
   onToggleSidebar,
@@ -71,6 +71,7 @@ export function MainLayout({
   sidebarOpen,
   toggleGatewayService,
   updateActionBusy,
+  updateStatus,
   viewProps,
   requestLogsEnabled,
   visibleNavigation
@@ -85,7 +86,7 @@ export function MainLayout({
   isMac: boolean;
   needsTrafficLightSafeArea: boolean;
   networkCaptureEnabled: boolean;
-  onCheckUpdate: () => void;
+  onDownloadUpdate: () => void;
   onOpenSettings: () => void;
   onSelectNavigationItem: (id: NavigationId) => void;
   onToggleSidebar: () => void;
@@ -93,13 +94,20 @@ export function MainLayout({
   sidebarOpen: boolean;
   toggleGatewayService: () => void;
   updateActionBusy: boolean;
+  updateStatus: AppUpdateStatus;
   viewProps: MainViewProps;
   requestLogsEnabled: boolean;
   visibleNavigation: MainNavigationItem[];
 }) {
   const windowControlSafeAreaWidth = isMac ? 152 : 88;
-  const checkForUpdatesLabel = copy.text["Check for updates"] ?? "Check for updates";
-  const checkingForUpdatesLabel = copy.text["Checking for updates"] ?? "Checking for updates";
+  const showUpdateDownloadButton =
+    updateStatus.supported &&
+    (updateStatus.state === "available" || updateStatus.state === "downloading" || updateStatus.state === "downloaded");
+  const updateDownloadLabel = updateStatus.state === "downloaded"
+    ? copy.text["Update ready to install"] ?? "Update ready to install"
+    : updateStatus.state === "downloading"
+      ? copy.text["Downloading update"] ?? "Downloading update"
+      : copy.text["Download update"] ?? "Download update";
 
   return (
     <>
@@ -124,6 +132,19 @@ export function MainLayout({
           onClick={toggleGatewayService}
           state={gatewayStatus.state}
         />
+        {showUpdateDownloadButton ? (
+          <Button
+            aria-label={updateDownloadLabel}
+            className="app-no-drag inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-primary outline-none transition-colors hover:bg-primary/10 hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/25"
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={onDownloadUpdate}
+            title={updateDownloadLabel}
+            type="button"
+            unstyled
+          >
+            {updateActionBusy || updateStatus.state === "downloading" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+          </Button>
+        ) : null}
       </div>
 
       <motion.aside
@@ -182,19 +203,6 @@ export function MainLayout({
             </nav>
 
             <div className="grid shrink-0 gap-1 border-t border-border/60 p-2 max-[720px]:border-t max-[720px]:pt-2">
-              <Button
-                className="flex h-9 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-[12px] font-medium text-muted-foreground transition-all duration-150 hover:bg-muted/80 hover:text-foreground disabled:cursor-default disabled:opacity-70"
-                disabled={updateActionBusy}
-                onClick={() => void onCheckUpdate()}
-                title={updateActionBusy ? checkingForUpdatesLabel : checkForUpdatesLabel}
-                type="button"
-                unstyled
-              >
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md">
-                  {updateActionBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                </span>
-                <span className="min-w-0 flex-1 truncate">{updateActionBusy ? checkingForUpdatesLabel : checkForUpdatesLabel}</span>
-              </Button>
               <Button
                 className="flex h-9 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-[12px] font-medium text-muted-foreground transition-all duration-150 hover:bg-muted/80 hover:text-foreground"
                 onClick={onOpenSettings}

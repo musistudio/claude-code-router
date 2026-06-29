@@ -1,6 +1,6 @@
 import {
   AppCopy, AppUpdateStatus, Button, Check, CircleAlert, cn, Dialog, DialogBody,
-  DialogContent, DialogFooter, DialogHeader, DialogTitle, LoaderCircle, RefreshCw, X
+  DialogContent, DialogFooter, DialogHeader, DialogTitle, Download, LoaderCircle, RefreshCw, X
 } from "../shared";
 
 export type UpdateActionBusy = "" | "check" | "download" | "install";
@@ -82,7 +82,7 @@ export function UpdateDialog({
 
           {canInstall ? (
             <div className="rounded-md border border-primary/20 bg-primary/10 px-3 py-2 text-[12px] text-primary">
-              {t("Update ready to install")}
+              {t("Update downloaded. Restart to finish updating.")}
             </div>
           ) : null}
 
@@ -116,7 +116,7 @@ export function UpdateDialog({
             {t("Check for updates")}
           </Button>
           <Button disabled={busy || !canDownload} onClick={() => void onDownload()} type="button" variant="outline">
-            {actionBusy === "download" || status.state === "downloading" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            {actionBusy === "download" || status.state === "downloading" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             {t("Download update")}
           </Button>
           <Button disabled={busy || !canInstall} onClick={() => void onInstall()} type="button">

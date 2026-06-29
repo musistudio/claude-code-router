@@ -1322,6 +1322,12 @@ h1 {
   --provider-brand-3: #e4ddff;
 }
 
+.doc-markdown a.provider-import-button.provider-kimi-coding {
+  --provider-brand: #111237;
+  --provider-brand-2: #5c6bff;
+  --provider-brand-3: #dfe4ff;
+}
+
 .doc-markdown a.provider-import-button.provider-bailian {
   --provider-brand: #5a2300;
   --provider-brand-2: #ff6a00;

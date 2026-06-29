@@ -23,6 +23,8 @@ type ZcodeGatewayConfigValues = {
 
 const legacyZcodeTomlConfigFile = "~/.zcode/config.toml";
 const defaultZcodeConfigFile = "~/.zcode/cli/config.json";
+const originalBackupSuffix = ".ccr-original";
+const originalMissingSuffix = ".ccr-original-missing";
 
 export function resolveZcodeConfigFile(profile: Pick<ProfileConfig, "codexHome" | "configFile">): string {
   const configured = profile.configFile?.trim();
@@ -227,6 +229,9 @@ function writeJsonFile(file: string, value: Record<string, unknown>, options: { 
   if (previous === content) {
     return { changed: false, file };
   }
+  if (options.backup !== false) {
+    ensureOriginalSnapshot(file, previous);
+  }
   const backupFile = options.backup === false || previous === undefined ? undefined : backupFilePath(file);
   if (backupFile) {
     copyFileSync(file, backupFile);
@@ -250,6 +255,19 @@ function readJsonObject(file: string): Record<string, unknown> {
 function backupFilePath(file: string): string {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   return `${file}.ccr-backup-${timestamp}`;
+}
+
+function ensureOriginalSnapshot(file: string, previous: string | undefined): void {
+  const originalBackup = `${file}${originalBackupSuffix}`;
+  const originalMissing = `${file}${originalMissingSuffix}`;
+  if (existsSync(originalBackup) || existsSync(originalMissing)) {
+    return;
+  }
+  if (previous === undefined) {
+    writeFileSync(originalMissing, "", "utf8");
+    return;
+  }
+  copyFileSync(file, originalBackup);
 }
 
 function isLegacyZcodeTomlConfigFile(value: string): boolean {

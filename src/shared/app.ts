@@ -138,6 +138,7 @@ export type ProviderAccountHttpJsonConnectorConfig = ProviderAccountConnectorBas
   headers?: Record<string, string>;
   mapping: ProviderAccountMappingConfig;
   method?: "GET" | "POST";
+  parser?: "kimi-code-usages";
   type: "http-json";
 };
 
@@ -277,6 +278,7 @@ export type ProviderCatalogModelsRequest = {
 export type ProviderCatalogModelsResult = {
   loadedFrom?: string;
   matchedBy?: "base-url" | "provider-id" | "provider-name";
+  modelDisplayNames?: Record<string, string>;
   models: string[];
   provider?: string;
   providerName?: string;
@@ -369,6 +371,7 @@ export type GatewayProviderProbeProtocolResult = {
 export type GatewayProviderProbeResult = {
   capabilities?: GatewayProviderCapability[];
   detectedProtocol?: GatewayProviderProtocol;
+  modelDisplayNames?: Record<string, string>;
   modelSource?: "anthropic" | "gemini" | "openai";
   models: string[];
   normalizedBaseUrl: string;
@@ -655,6 +658,88 @@ export type VirtualModelProfileConfig = {
   toolChoice?: unknown;
   tools: VirtualModelToolConfig[];
 };
+
+export const NO_AVAILABLE_GATEWAY_MODELS_MESSAGE =
+  "No available models. Configure at least one provider with a model before starting CCR Gateway or opening an agent through CCR.";
+
+export function assertAvailableGatewayModels(config: Pick<AppConfig, "Providers" | "virtualModelProfiles">): void {
+  if (!hasAvailableGatewayModels(config)) {
+    throw new Error(NO_AVAILABLE_GATEWAY_MODELS_MESSAGE);
+  }
+}
+
+export function hasAvailableGatewayModels(config: Pick<AppConfig, "Providers" | "virtualModelProfiles">): boolean {
+  return availableGatewayModelIds(config).length > 0;
+}
+
+export function availableGatewayModelIds(config: Pick<AppConfig, "Providers" | "virtualModelProfiles">): string[] {
+  const baseEntries = availableGatewayBaseModelEntries(config.Providers);
+  const ids = baseEntries.map((entry) => `${entry.providerName}/${entry.modelName}`);
+
+  for (const profile of config.virtualModelProfiles ?? []) {
+    if (!isGatewayModelVisibleVirtualProfile(profile)) {
+      continue;
+    }
+
+    for (const entry of baseEntries) {
+      for (const prefix of profile.match?.prefixes ?? []) {
+        const normalizedPrefix = prefix.trim();
+        if (normalizedPrefix) {
+          ids.push(`${entry.providerName}/${normalizedPrefix}${entry.modelName}`);
+        }
+      }
+      for (const suffix of profile.match?.suffixes ?? []) {
+        const normalizedSuffix = suffix.trim();
+        if (normalizedSuffix) {
+          ids.push(`${entry.providerName}/${entry.modelName}${normalizedSuffix}`);
+        }
+      }
+    }
+
+    for (const alias of profile.match?.exactAliases ?? []) {
+      const normalizedAlias = alias.trim();
+      if (normalizedAlias && baseEntries.length > 0) {
+        ids.push(normalizedAlias.toLowerCase().startsWith("fusion/") ? normalizedAlias : `Fusion/${normalizedAlias}`);
+      }
+    }
+  }
+
+  return uniqueGatewayModelIds(ids);
+}
+
+function availableGatewayBaseModelEntries(providers: GatewayProviderConfig[]): Array<{ modelName: string; providerName: string }> {
+  return providers.flatMap((provider) => {
+    const providerName = provider.name?.trim();
+    if (!providerName || !Array.isArray(provider.models)) {
+      return [];
+    }
+    return provider.models.flatMap((rawModel) => {
+      const modelName = rawModel.trim();
+      return modelName ? [{ modelName, providerName }] : [];
+    });
+  });
+}
+
+function isGatewayModelVisibleVirtualProfile(profile: VirtualModelProfileConfig): boolean {
+  return profile.enabled !== false &&
+    profile.materialization?.enabled !== false &&
+    profile.materialization?.includeInGatewayModels !== false;
+}
+
+function uniqueGatewayModelIds(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const normalized = value.trim();
+    const key = normalized.toLowerCase();
+    if (!normalized || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(normalized);
+  }
+  return result;
+}
 
 export type InstalledBrowserApp = GatewayPluginAppConfig & {
   id: string;
