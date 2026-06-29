@@ -44,6 +44,15 @@ export async function applyProfileConfig(config: AppConfig): Promise<ProfileAppl
   return result;
 }
 
+export function applyProfileRuntimeConfig(config: AppConfig, profile: ProfileConfig, token: string): ProfileClientApplyStatus {
+  const appliedAt = new Date().toISOString();
+  return profile.agent === "claude-code"
+    ? applyClaudeCodeProfile(config, profile, token, appliedAt)
+    : profile.agent === "zcode"
+      ? applyZcodeProfile(config, profile, token, appliedAt)
+      : applyCodexProfile(config, profile, token, appliedAt);
+}
+
 function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
   const settingsFile = resolveClaudeCodeSettingsFile(profile);
   if (!profile.enabled) {

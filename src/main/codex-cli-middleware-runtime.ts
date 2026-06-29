@@ -58,6 +58,7 @@ async function main() {
 async function runClaudeCodeCliWrapper(args) {
   const realCli = expandHome(nonEmptyEnv("CCR_REAL_CLAUDE_CODE_BIN") || nonEmptyEnv("CCR_CLAUDE_CODE_BIN") || nonEmptyEnv("CODEXL_CLAUDE_CODE_BIN") || "claude");
   log("claude_code_wrapper_start", { realCli, args });
+  const captureStdout = shouldCaptureClaudeCodeCliStdout(args);
   const remoteSync = createRemoteSyncClient({
     args,
     cwd: process.cwd(),
@@ -67,7 +68,7 @@ async function runClaudeCodeCliWrapper(args) {
   const injectRemoteStdin = boolEnv("CCR_REMOTE_SYNC_INJECT_STDIN");
   const child = childProcess.spawn(realCli, args, {
     env: withoutKeys(process.env, ["CCR_CLAUDE_CODE_WRAPPER", "CCR_REAL_CLAUDE_CODE_BIN"]),
-    stdio: [injectRemoteStdin ? "pipe" : "inherit", "pipe", "inherit"]
+    stdio: [injectRemoteStdin ? "pipe" : "inherit", captureStdout ? "pipe" : "inherit", "inherit"]
   });
   if (injectRemoteStdin && child.stdin) {
     process.stdin.pipe(child.stdin);
@@ -88,18 +89,20 @@ async function runClaudeCodeCliWrapper(args) {
     remoteSync.postEvent("claude.spawn.error", { error: formatError(error) }, { direction: "system" });
   });
   let pending = "";
-  child.stdout.on("data", (chunk) => {
-    process.stdout.write(chunk);
-    pending += chunk.toString("utf8");
-    const lines = pending.split(/\r?\n/g);
-    pending = lines.pop() || "";
-    for (const line of lines) {
-      botBridge().handleClaudeCliLine(line);
-      remoteSync.postEvent("claude.stdout", { line }, { text: line });
-    }
-  });
+  if (captureStdout && child.stdout) {
+    child.stdout.on("data", (chunk) => {
+      process.stdout.write(chunk);
+      pending += chunk.toString("utf8");
+      const lines = pending.split(/\r?\n/g);
+      pending = lines.pop() || "";
+      for (const line of lines) {
+        botBridge().handleClaudeCliLine(line);
+        remoteSync.postEvent("claude.stdout", { line }, { text: line });
+      }
+    });
+  }
   const code = await waitForChild(child);
-  if (pending.trim()) {
+  if (captureStdout && pending.trim()) {
     botBridge().handleClaudeCliLine(pending);
     remoteSync.postEvent("claude.stdout", { line: pending }, { text: pending });
   }
@@ -107,6 +110,26 @@ async function runClaudeCodeCliWrapper(args) {
   remoteSync.stop();
   log("claude_code_wrapper_exit", { code });
   process.exitCode = code;
+}
+
+function shouldCaptureClaudeCodeCliStdout(args) {
+  if (boolEnv("CCR_CLAUDE_CODE_CAPTURE_STDOUT") || boolEnv("CODEXL_CLAUDE_CODE_CAPTURE_STDOUT")) {
+    return true;
+  }
+  if (botGatewayCliCaptureEnabled()) {
+    return true;
+  }
+  return claudeCodeArgsUsePrintMode(args);
+}
+
+function botGatewayCliCaptureEnabled() {
+  const enabled = boolEnv("CCR_BOT_GATEWAY_ENABLED") || boolEnv("CODEXL_BOT_GATEWAY_ENABLED");
+  const platform = normalizeBotGatewayPlatform(nonEmptyEnv("CCR_BOT_GATEWAY_PLATFORM") || nonEmptyEnv("CODEXL_BOT_GATEWAY_PLATFORM") || "none");
+  return enabled && platform !== "none";
+}
+
+function claudeCodeArgsUsePrintMode(args) {
+  return args.some((arg) => arg === "--print" || arg === "-p");
 }
 
 function defaultCodexArgs() {

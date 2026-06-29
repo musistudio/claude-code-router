@@ -1,4 +1,3 @@
-import * as electron from "electron";
 import packageJson from "../../../package.json";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ProxyNetworkExchange } from "../../shared/app";
@@ -170,7 +169,7 @@ async function handleJsonRpcRequest(payload: unknown): Promise<JsonRpcResponse |
 }
 
 function appVersion(): string {
-  return typeof electron.app?.getVersion === "function" ? electron.app.getVersion() : packageJson.version;
+  return packageJson.version;
 }
 
 async function callTool(params: unknown): Promise<JsonValue> {

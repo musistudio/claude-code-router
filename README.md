@@ -62,7 +62,8 @@ The web management UI listens on `http://127.0.0.1:3458` by default. Use `ccr st
 
 1. Open the [GitHub Releases page](https://github.com/musistudio/claude-code-router/releases).
 2. Download the package for your platform:
-   - macOS: `Claude Code Router_<version>.dmg` or `.zip`
+   - macOS Apple Silicon: `Claude-Code-Router_<version>-mac-Apple-Silicon-arm64.dmg` or `.zip`
+   - macOS Intel: `Claude-Code-Router_<version>-mac-Intel-x64.dmg` or `.zip`
    - Windows: `Claude Code Router_<version>.exe`
    - Linux: `Claude Code Router_<version>.AppImage`
 3. Install and launch **Claude Code Router**.

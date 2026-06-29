@@ -1,8 +1,8 @@
-import * as electron from "electron";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { resolveRuntimeAppPath } from "./app-paths";
 import { saveAppConfig } from "./config";
 import { CONFIGDIR } from "./constants";
 import {
@@ -174,6 +174,33 @@ export function restoreClaudeAppGatewayConfig(): void {
   rmSync(CLAUDE_APP_GATEWAY_BACKUP_FILE, { force: true });
 }
 
+export function readClaudeAppGatewayApiKeyCandidates(): string[] {
+  return uniqueStrings([
+    readClaudeAppGatewayApiKey(getClaudeAppGatewayPaths().configLibraryFile)
+  ]);
+}
+
+function readClaudeAppGatewayApiKey(file: string): string {
+  const config = readJsonRecord(file);
+  return typeof config?.inferenceGatewayApiKey === "string"
+    ? config.inferenceGatewayApiKey.trim()
+    : "";
+}
+
+function uniqueStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const normalized = value.trim();
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
+}
+
 function ensureClaudeAppGatewayState(config: AppConfig): ClaudeAppApplyState {
   const currentApiKey = findReusableApiKey(config);
   const gatewayEnabledConfig = config.gateway.enabled
@@ -246,20 +273,7 @@ function getClaudeApp3pDataDir(): string {
 }
 
 function appPath(name: "appData" | "home"): string {
-  const electronApp = electronAppOrUndefined();
-  if (electronApp) {
-    return electronApp.getPath(name);
-  }
-  if (name === "home") {
-    return os.homedir();
-  }
-  return process.env.APPDATA ||
-    process.env.LOCALAPPDATA ||
-    (process.env.USERPROFILE ? path.join(process.env.USERPROFILE, "AppData", "Roaming") : path.join(os.homedir(), ".config"));
-}
-
-function electronAppOrUndefined(): Electron.App | undefined {
-  return typeof electron.app?.getPath === "function" ? electron.app : undefined;
+  return resolveRuntimeAppPath(name);
 }
 
 function backupClaudeAppGatewayConfig(paths: ClaudeAppGatewayPaths): void {

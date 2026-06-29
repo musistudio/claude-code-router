@@ -14,8 +14,24 @@ concurrency:
 
 jobs:
   macos:
-    name: macOS
-    runs-on: macos-14
+    name: macOS (${{ matrix.display_name }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            arch_flag: --arm64
+            runner: macos-14
+            display_name: Apple Silicon
+            release_label: Apple-Silicon
+            artifact_name: macos-apple-silicon-arm64
+          - arch: x64
+            arch_flag: --x64
+            runner: macos-15-intel
+            display_name: Intel
+            release_label: Intel
+            artifact_name: macos-intel-x64
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -39,16 +55,92 @@ jobs:
             exit 1
           fi
 
-      - name: Build and publish ad-hoc macOS artifacts
+      - name: Build ad-hoc macOS artifacts
+        run: |
+          npm run build:assets
+          npx electron-builder \
+            --config build/electron-builder.local.cjs \
+            --mac ${{ matrix.arch_flag }} \
+            --publish never \
+            -c.mac.artifactName='Claude-Code-Router_${version}-mac-${{ matrix.release_label }}-${arch}.${ext}'
+
+      - name: Upload macOS release files
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            release-local/Claude-Code-Router_*-mac-${{ matrix.release_label }}-${{ matrix.arch }}.*
+            release-local/latest-mac.yml
+          if-no-files-found: error
+
+  publish-macos:
+    name: Publish macOS
+    needs: macos
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install metadata merge dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Download macOS release files
+        uses: actions/download-artifact@v4
+        with:
+          pattern: macos-*
+          path: macos-release-artifacts
+
+      - name: Merge macOS update metadata
+        run: node build/merge-macos-update-metadata.mjs latest-mac.yml macos-release-artifacts/*/latest-mac.yml
+
+      - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          npm run build:assets
-          npx electron-builder --config build/electron-builder.local.cjs --mac --publish always
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
+
+      - name: Upload macOS release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          shopt -s nullglob
+          assets=(macos-release-artifacts/*/Claude-Code-Router_*-mac-*.*)
+          if (( ${#assets[@]} == 0 )); then
+            echo "No macOS release assets were found."
+            exit 1
+          fi
+
+          upload_args=()
+          for asset in "${assets[@]}"; do
+            name="$(basename "$asset")"
+            case "$name" in
+              *Apple-Silicon-arm64.dmg) label="macOS Apple Silicon DMG (arm64)" ;;
+              *Apple-Silicon-arm64.zip) label="macOS Apple Silicon ZIP (arm64)" ;;
+              *Apple-Silicon-arm64.dmg.blockmap) label="macOS Apple Silicon DMG blockmap (arm64)" ;;
+              *Apple-Silicon-arm64.zip.blockmap) label="macOS Apple Silicon ZIP blockmap (arm64)" ;;
+              *Intel-x64.dmg) label="macOS Intel DMG (x64)" ;;
+              *Intel-x64.zip) label="macOS Intel ZIP (x64)" ;;
+              *Intel-x64.dmg.blockmap) label="macOS Intel DMG blockmap (x64)" ;;
+              *Intel-x64.zip.blockmap) label="macOS Intel ZIP blockmap (x64)" ;;
+              *) label="$name" ;;
+            esac
+            upload_args+=("${asset}#${label}")
+          done
+          upload_args+=("latest-mac.yml#macOS update metadata")
+
+          gh release upload "$GITHUB_REF_NAME" "${upload_args[@]}" --clobber
 
   windows:
     name: Windows
-    needs: macos
+    needs: publish-macos
     runs-on: windows-latest
     steps:
       - name: Check out repository
@@ -82,7 +174,7 @@ jobs:
 
   linux:
     name: Linux
-    needs: macos
+    needs: publish-macos
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository

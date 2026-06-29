@@ -1,10 +1,10 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AppConfig, ProfileOpenCommandResult, ProfileOpenRequest, ProfileOpenResult, ProfileRuntimeEntry, ProfileRuntimeStatus, ProfileStopResult } from "../shared/app";
 import { botGatewayProfileEnv } from "./bot-gateway-env";
-import { applyClaudeAppGatewayConfig } from "./claude-app-gateway-service";
+import { applyClaudeAppGatewayConfig, readClaudeAppGatewayApiKeyCandidates } from "./claude-app-gateway-service";
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "./claude-app-launch";
 import { launchCodexAppProfile, launchZcodeAppProfile, refreshCodexCompatibleAppProfileFiles } from "./codex-app-launch";
 import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
@@ -156,7 +156,7 @@ async function openClaudeAppProfile(config: AppConfig, profile: ReturnType<typeo
     dataDir: resolveClaudeAppProfileUserDataDir(CONFIGDIR, profile),
     refreshModelDiscoveryCache: true
   });
-  await ensureGatewayConfigRunning(profileGatewayConfig, "Claude App");
+  await ensureGatewayConfigRunning(profileGatewayConfig, profile, "Claude App");
   const entry = registerProfileApp(profile, "app", await launchClaudeAppProfile(CONFIGDIR, profile, profileGatewayConfig));
   const started = await waitForProfileAppStart(entry, 12000);
   if (!started) {
@@ -179,21 +179,316 @@ async function openClaudeAppProfile(config: AppConfig, profile: ReturnType<typeo
   };
 }
 
-async function ensureProfileGateway(
+export async function ensureProfileGateway(
   config: AppConfig,
   profile: ReturnType<typeof findProfileForOpen>,
-  appName: string
+  appName: string,
+  options: { reuseExisting?: boolean; startIfMissing?: boolean } = {}
 ): Promise<AppConfig> {
   const profileGatewayConfig = profileGatewayConfigFor(config, profile);
-  await ensureGatewayConfigRunning(profileGatewayConfig, appName);
-  return profileGatewayConfig;
+  const result = await ensureGatewayConfigRunning(profileGatewayConfig, profile, appName, options, config);
+  return result.acceptedApiKey && result.acceptedApiKey !== result.config.APIKEY
+    ? profileGatewayConfigWithToken(result.config, profile, result.acceptedApiKey)
+    : result.config;
 }
 
-async function ensureGatewayConfigRunning(config: AppConfig, appName: string): Promise<void> {
-  const startedStatus = await gatewayService.start(config);
-  if (startedStatus.state !== "running") {
-    throw new Error(startedStatus.lastError || `CCR gateway did not start for ${appName}.`);
+type EnsureGatewayConfigRunningResult = {
+  acceptedApiKey?: string;
+  config: AppConfig;
+};
+
+async function ensureGatewayConfigRunning(
+  config: AppConfig,
+  profile: ReturnType<typeof findProfileForOpen>,
+  appName: string,
+  options: { reuseExisting?: boolean; startIfMissing?: boolean } = {},
+  candidateConfig: AppConfig = config
+): Promise<EnsureGatewayConfigRunningResult> {
+  const startIfMissing = options.startIfMissing !== false;
+  if (options.reuseExisting) {
+    const existingGateway = await probeExistingProfileGateway(config, profile, candidateConfig);
+    if (existingGateway.state === "usable") {
+      return { acceptedApiKey: existingGateway.apiKey, config };
+    }
+    if (existingGateway.state === "unavailable") {
+      if (!startIfMissing) {
+        throw new Error(`CCR gateway is not running at ${profileGatewayEndpoint(config)}. Start CCR Desktop or run ccr start before opening ${appName}.`);
+      }
+    } else {
+      throw new Error(existingGatewayConflictMessage(existingGateway, appName));
+    }
   }
+
+  if (!startIfMissing) {
+    throw new Error(`CCR gateway is not running at ${profileGatewayEndpoint(config)}. Start CCR Desktop or run ccr start before opening ${appName}.`);
+  }
+
+  const startedStatus = await gatewayService.start(config);
+  if (startedStatus.state === "running") {
+    return { config };
+  }
+
+  if (options.reuseExisting && isAddressInUseError(startedStatus.lastError)) {
+    const existingGateway = await probeExistingProfileGateway(config, profile, candidateConfig);
+    if (existingGateway.state === "usable") {
+      return { acceptedApiKey: existingGateway.apiKey, config };
+    }
+    throw new Error(existingGatewayConflictMessage(existingGateway, appName));
+  }
+
+  throw new Error(startedStatus.lastError || `CCR gateway did not start for ${appName}.`);
+}
+
+type ExistingProfileGatewayProbe =
+  | { endpoint: string; reason?: string; state: "unavailable" }
+  | { endpoint: string; status?: number; state: "not-ccr" }
+  | { endpoint: string; message?: string; status: number; state: "unauthorized" }
+  | { endpoint: string; status: number; state: "unusable" }
+  | { apiKey?: string; endpoint: string; state: "usable" };
+
+type ExistingGatewayHttpProbe = {
+  payload?: unknown;
+  reason?: string;
+  status?: number;
+};
+
+async function probeExistingProfileGateway(
+  config: AppConfig,
+  profile: ReturnType<typeof findProfileForOpen>,
+  candidateConfig: AppConfig = config
+): Promise<ExistingProfileGatewayProbe> {
+  const endpoint = profileGatewayEndpoint(config);
+  const root = await fetchExistingGateway(endpoint, "/");
+  if (root.status === undefined) {
+    return { endpoint, reason: root.reason, state: "unavailable" };
+  }
+
+  let ccrGateway = isCcrGatewayRoot(root.payload);
+  if (!ccrGateway) {
+    const health = await fetchExistingGateway(endpoint, "/health");
+    ccrGateway = isCcrGatewayHealth(health.payload);
+  }
+  if (!ccrGateway) {
+    return { endpoint, status: root.status, state: "not-ccr" };
+  }
+
+  let lastUnauthorized: ExistingGatewayHttpProbe | undefined;
+  for (const apiKey of existingGatewayApiKeyCandidates(config, profile, candidateConfig)) {
+    const headers: Record<string, string> = {
+      "user-agent": "Claude Code"
+    };
+    if (apiKey) {
+      headers.authorization = `Bearer ${apiKey}`;
+    }
+    const models = await fetchExistingGateway(endpoint, "/v1/models", { headers });
+    if (models.status === 200) {
+      return { apiKey, endpoint, state: "usable" };
+    }
+    if (models.status === 401 || models.status === 403) {
+      lastUnauthorized = models;
+      continue;
+    }
+    return { endpoint, status: models.status ?? 0, state: "unusable" };
+  }
+
+  if (lastUnauthorized?.status === 401 || lastUnauthorized?.status === 403) {
+    return {
+      endpoint,
+      message: readGatewayErrorMessage(lastUnauthorized.payload),
+      status: lastUnauthorized.status,
+      state: "unauthorized"
+    };
+  }
+  return { endpoint, status: 0, state: "unusable" };
+}
+
+async function fetchExistingGateway(
+  endpoint: string,
+  pathname: string,
+  init: RequestInit = {}
+): Promise<ExistingGatewayHttpProbe> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1200);
+  try {
+    const response = await fetch(new URL(pathname, endpoint).toString(), {
+      ...init,
+      signal: controller.signal
+    });
+    return {
+      payload: await readResponseJson(response),
+      status: response.status
+    };
+  } catch (error) {
+    return { reason: formatError(error) };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function readResponseJson(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!text.trim()) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+function isCcrGatewayRoot(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return value.name === "claude-code-router" || value.plugin === "claude-code-router";
+}
+
+function isCcrGatewayHealth(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return typeof value.core === "string" && typeof value.status === "string" && typeof value.timestamp === "string";
+}
+
+function readGatewayErrorMessage(value: unknown): string | undefined {
+  if (!isRecord(value) || !isRecord(value.error)) {
+    return undefined;
+  }
+  return typeof value.error.message === "string" ? value.error.message : undefined;
+}
+
+function existingGatewayApiKeyCandidates(
+  config: AppConfig,
+  profile: ReturnType<typeof findProfileForOpen>,
+  candidateConfig: AppConfig
+): Array<string | undefined> {
+  const values = [
+    config.APIKEY,
+    ...(Array.isArray(config.APIKEYS) ? config.APIKEYS.map((apiKey) => apiKey.key) : []),
+    candidateConfig.APIKEY,
+    ...(Array.isArray(candidateConfig.APIKEYS) ? candidateConfig.APIKEYS.map((apiKey) => apiKey.key) : []),
+    ...readClaudeAppGatewayApiKeyCandidates(),
+    ...readClaudeCodeApiKeyHelperCandidates(profile)
+  ];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const key = value?.trim();
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(key);
+  }
+  return result.length > 0 ? result : [undefined];
+}
+
+function readClaudeCodeApiKeyHelperCandidates(profile: ReturnType<typeof findProfileForOpen>): string[] {
+  const file = path.join(CONFIGDIR, "bin", claudeCodeApiKeyHelperFilename(profile));
+  const files = [
+    file,
+    ...readBackupFiles(file)
+  ];
+  return uniqueStrings(files.map(readClaudeCodeApiKeyHelperToken));
+}
+
+function claudeCodeApiKeyHelperFilename(profile: ReturnType<typeof findProfileForOpen>): string {
+  const slug = sanitizeProfilePathSegment(profile.id || profile.name || profile.agent) || "claude-code";
+  return process.platform === "win32"
+    ? `ccr-claude-code-api-key-${slug}.cmd`
+    : `ccr-claude-code-api-key-${slug}`;
+}
+
+function readBackupFiles(file: string): string[] {
+  const dir = path.dirname(file);
+  const prefix = `${path.basename(file)}.ccr-backup-`;
+  try {
+    return readdirSync(dir)
+      .filter((entry) => entry.startsWith(prefix))
+      .sort()
+      .reverse()
+      .map((entry) => path.join(dir, entry));
+  } catch {
+    return [];
+  }
+}
+
+function readClaudeCodeApiKeyHelperToken(file: string): string {
+  if (!existsSync(file)) {
+    return "";
+  }
+  try {
+    const content = readFileSync(file, "utf8");
+    for (const line of content.split(/\r?\n/g)) {
+      const token = parseClaudeCodeApiKeyHelperLine(line);
+      if (token) {
+        return token;
+      }
+    }
+  } catch {
+    return "";
+  }
+  return "";
+}
+
+function parseClaudeCodeApiKeyHelperLine(line: string): string {
+  const trimmed = line.trim();
+  const shellPrefix = "printf '%s\\n' ";
+  if (trimmed.startsWith(shellPrefix)) {
+    return unquoteShellValue(trimmed.slice(shellPrefix.length).trim());
+  }
+  if (/^echo\s+/i.test(trimmed)) {
+    return trimmed.replace(/^echo\s+/i, "").trim().replace(/^"|"$/g, "");
+  }
+  return "";
+}
+
+function unquoteShellValue(value: string): string {
+  if (value.startsWith("'") && value.endsWith("'")) {
+    return value.slice(1, -1).replace(/'\\''/g, "'");
+  }
+  return value.replace(/^"|"$/g, "");
+}
+
+function existingGatewayConflictMessage(probe: ExistingProfileGatewayProbe, appName: string): string {
+  if (probe.state === "unauthorized") {
+    const details = probe.message ? ` ${probe.message}` : "";
+    return `CCR gateway is already running at ${probe.endpoint}, but it does not accept the API key for ${appName}.${details} Restart CCR Desktop or run ccr start to refresh the gateway before opening this profile.`;
+  }
+  if (probe.state === "unusable") {
+    return `CCR gateway is already running at ${probe.endpoint}, but it cannot serve ${appName} right now (HTTP ${probe.status}). Restart CCR Desktop or run ccr start to refresh the gateway before opening this profile.`;
+  }
+  if (probe.state === "not-ccr") {
+    return `Port ${probe.endpoint} is already in use by a non-CCR service. Stop that process or change the CCR gateway port.`;
+  }
+  if (probe.state === "unavailable") {
+    return `CCR gateway is not reachable at ${probe.endpoint}${probe.reason ? `: ${probe.reason}` : ""}.`;
+  }
+  return `CCR gateway is already running at ${probe.endpoint}.`;
+}
+
+function isAddressInUseError(message: string | undefined): boolean {
+  return /\bEADDRINUSE\b/i.test(message || "");
+}
+
+function profileGatewayEndpoint(config: AppConfig): string {
+  const host = probeGatewayHost(config.gateway.host);
+  return `http://${formatEndpointHost(host)}:${config.gateway.port}/`;
+}
+
+function probeGatewayHost(host: string): string {
+  if (!host || host === "0.0.0.0") {
+    return "127.0.0.1";
+  }
+  if (host === "::") {
+    return "::1";
+  }
+  return host;
+}
+
+function formatEndpointHost(host: string): string {
+  return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
 }
 
 function profileGatewayConfigFor(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): AppConfig {
@@ -201,6 +496,10 @@ function profileGatewayConfigFor(config: AppConfig, profile: ReturnType<typeof f
   if (!token) {
     throw new Error(`No CCR API key was found for profile "${profile.name || profile.id}". Re-save the profile and try again.`);
   }
+  return profileGatewayConfigWithToken(config, profile, token);
+}
+
+function profileGatewayConfigWithToken(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>, token: string): AppConfig {
   return {
     ...config,
     APIKEY: token,
@@ -779,7 +1078,7 @@ function commandProfileRef(config: AppConfig, profile: ReturnType<typeof findPro
   return duplicateName ? profile.id : name;
 }
 
-function ensureCcrCliLauncher(): string {
+export function ensureCcrCliLauncher(): string {
   const binDir = path.join(CONFIGDIR, "bin");
   mkdirSync(binDir, { recursive: true });
 
@@ -819,36 +1118,71 @@ function findBundledCcrCliSource(): string {
 }
 
 function posixCcrLauncher(runtimeFile: string): string {
+  const nodePath = bundledNodePath();
   return [
     "#!/bin/sh",
+    `CCR_CLI_NODE_PATH=${shQuote(nodePath)}`,
+    'if [ -n "$NODE_PATH" ]; then',
+    '  export NODE_PATH="$CCR_CLI_NODE_PATH:$NODE_PATH"',
+    "else",
+    '  export NODE_PATH="$CCR_CLI_NODE_PATH"',
+    "fi",
     'if [ -n "$CCR_NODE_BIN" ]; then',
     `  exec "$CCR_NODE_BIN" ${shQuote(runtimeFile)} "$@"`,
-    "fi",
-    "if command -v node >/dev/null 2>&1; then",
-    `  exec node ${shQuote(runtimeFile)} "$@"`,
     "fi",
     `ELECTRON_RUN_AS_NODE=1 exec ${shQuote(process.execPath)} ${shQuote(runtimeFile)} "$@"`
   ].join("\n") + "\n";
 }
 
 function windowsCcrLauncher(runtimeFile: string): string {
+  const nodePath = bundledNodePath();
   return [
     "@echo off",
     "setlocal",
     `set "CCR_CLI_RUNTIME=${cmdEnvValue(runtimeFile)}"`,
+    `set "CCR_CLI_NODE_PATH=${cmdEnvValue(nodePath)}"`,
+    "if defined NODE_PATH (",
+    "  set \"NODE_PATH=%CCR_CLI_NODE_PATH%;%NODE_PATH%\"",
+    ") else (",
+    "  set \"NODE_PATH=%CCR_CLI_NODE_PATH%\"",
+    ")",
     "if defined CCR_NODE_BIN (",
     '  "%CCR_NODE_BIN%" "%CCR_CLI_RUNTIME%" %*',
-    "  exit /b %ERRORLEVEL%",
-    ")",
-    "where node >nul 2>nul",
-    "if %ERRORLEVEL%==0 (",
-    '  node "%CCR_CLI_RUNTIME%" %*',
     "  exit /b %ERRORLEVEL%",
     ")",
     "set \"ELECTRON_RUN_AS_NODE=1\"",
     `${cmdQuote(process.execPath)} "%CCR_CLI_RUNTIME%" %*`,
     "exit /b %ERRORLEVEL%"
   ].join("\r\n") + "\r\n";
+}
+
+function bundledNodePath(): string {
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+  const candidates = [
+    path.join(__dirname, "..", "..", "node_modules"),
+    ...(resourcesPath
+      ? [
+          path.join(resourcesPath, "app.asar", "node_modules"),
+          path.join(resourcesPath, "app.asar.unpacked", "node_modules"),
+          path.join(resourcesPath, "app", "node_modules")
+        ]
+      : []),
+    path.join(process.cwd(), "node_modules")
+  ];
+  return uniqueStrings(candidates).join(path.delimiter);
+}
+
+function uniqueStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    if (!value || seen.has(value)) {
+      continue;
+    }
+    seen.add(value);
+    result.push(value);
+  }
+  return result;
 }
 
 function writeFileIfChanged(file: string, content: string): void {

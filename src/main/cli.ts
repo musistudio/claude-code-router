@@ -7,6 +7,8 @@ import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { launchCodexAppProfile, launchZcodeAppProfile } from "./codex-app-launch";
 import { loadAppConfig } from "./config";
 import { CONFIGDIR } from "./constants";
+import { applyProfileConfig, applyProfileRuntimeConfig } from "./profile-service";
+import { ensureProfileGateway } from "./profile-launch-service";
 import { buildProfileLaunchPlan, findProfileForOpen, profileLaunchSpawnCommand, resolveProfileOpenSurface } from "./profile-launch-core";
 import { startWebManagementServer } from "./web-management-server";
 
@@ -88,9 +90,19 @@ async function main(): Promise<void> {
 
   const configDir = CONFIGDIR;
   const config = await loadAppConfig();
+  await applyProfileConfig(config);
   const profile = findProfileForOpen(config, profileOptions.profileRef);
   const surface = profileOptions.surface ?? (profile.agent === "zcode" || profile.surface === "app" ? "app" : "cli");
   const resolvedSurface = resolveProfileOpenSurface(profile, surface);
+  const launchConfig = resolvedSurface === "cli"
+    ? await ensureProfileGateway(config, profile, profile.name || profile.id || "profile", { reuseExisting: true, startIfMissing: false })
+    : config;
+  if (resolvedSurface === "cli") {
+    const runtimeResult = applyProfileRuntimeConfig(launchConfig, profile, launchConfig.APIKEY);
+    if (!runtimeResult.ok) {
+      throw new Error(runtimeResult.message);
+    }
+  }
   if (profile.agent === "zcode" && profileOptions.agentArgs.length > 0) {
     throw new Error("ZCode profiles can only open the app; agent arguments are not supported.");
   }
@@ -122,7 +134,7 @@ async function main(): Promise<void> {
   const childEnv = {
     ...process.env,
     ...plan.env,
-    ...botGatewayProfileEnv(config, profile, resolvedSurface)
+    ...botGatewayProfileEnv(launchConfig, profile, resolvedSurface)
   };
   delete childEnv.ELECTRON_RUN_AS_NODE;
 
@@ -275,10 +287,7 @@ async function startService(options: WebCliOptions): Promise<void> {
   ];
   const child = spawn(process.execPath, childArgs, {
     detached: true,
-    env: {
-      ...process.env,
-      ELECTRON_RUN_AS_NODE: undefined
-    },
+    env: serviceChildEnv(),
     stdio: "ignore",
     windowsHide: true
   });
@@ -293,6 +302,16 @@ async function startService(options: WebCliOptions): Promise<void> {
     throw new Error(`CCR service did not report ready within ${serviceStartTimeoutMs}ms.`);
   }
   process.stdout.write(`CCR service started at ${state.url} (pid ${state.pid}).\n`);
+}
+
+function serviceChildEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  if (process.versions.electron) {
+    env.ELECTRON_RUN_AS_NODE = "1";
+  } else {
+    delete env.ELECTRON_RUN_AS_NODE;
+  }
+  return env;
 }
 
 async function runWebServer(options: WebCliOptions): Promise<void> {

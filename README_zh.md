@@ -62,7 +62,8 @@ Web 管理端默认监听 `http://127.0.0.1:3458`。可以用 `ccr start --host 
 
 1. 打开 [GitHub Releases 页面](https://github.com/musistudio/claude-code-router/releases)。
 2. 按系统下载对应安装包：
-   - macOS：`Claude Code Router_<version>.dmg` 或 `.zip`
+   - macOS Apple 芯片：`Claude-Code-Router_<version>-mac-Apple-Silicon-arm64.dmg` 或 `.zip`
+   - macOS Intel 芯片：`Claude-Code-Router_<version>-mac-Intel-x64.dmg` 或 `.zip`
    - Windows：`Claude Code Router_<version>.exe`
    - Linux：`Claude Code Router_<version>.AppImage`
 3. 安装并启动 **Claude Code Router**。

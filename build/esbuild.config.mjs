@@ -140,7 +140,7 @@ export function createCliBuildOptions({ mode = "production", plugins = [] } = {}
     minify: mode === "production",
     outdir: mainOutDir,
     platform: "node",
-    plugins: [electronNodeShimPlugin(), ...plugins],
+    plugins: [forbidCliElectronPlugin(), ...plugins],
     sourcemap: mode !== "production",
     target: "node22"
   };
@@ -292,12 +292,18 @@ function rendererAliasPlugin() {
   };
 }
 
-function electronNodeShimPlugin() {
+function forbidCliElectronPlugin() {
   return {
-    name: "electron-node-shim",
+    name: "forbid-cli-electron",
     setup(build) {
       build.onResolve({ filter: /^electron$/ }, () => {
-        return { path: path.join(projectRoot, "src", "main", "electron-node-shim.ts") };
+        return {
+          errors: [
+            {
+              text: "CLI bundle must not import electron. Move the dependency behind a desktop-only boundary."
+            }
+          ]
+        };
       });
     }
   };

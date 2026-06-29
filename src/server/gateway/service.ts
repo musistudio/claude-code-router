@@ -39,6 +39,7 @@ import { providerApiKeySafetyIssue } from "../../main/presets";
 import { normalizeProviderBaseUrl as normalizeProviderBaseUrlInput } from "../../shared/provider-url";
 import { backendService } from "../backend-service";
 import { RAW_TRACE_SPOOL_DIR } from "../../main/constants";
+import { loadPersistedApiKeys } from "../../main/api-key-store";
 import { codexDefaultBaseUrl, readCodexAuth } from "../../main/local-agent-provider-service";
 import { fetchWithSystemProxy, getSystemProxyUrlForProtocol } from "../../main/system-proxy-fetch";
 import { handleNetworkCaptureMcpRequest, isNetworkCaptureMcpPath } from "../mcp/network-capture-mcp";
@@ -112,6 +113,7 @@ type ManagedGatewayRuntimeMarker = {
 };
 
 type ApiKeyWindowCounter = {
+  expiresAt: number;
   value: number;
   windowStart: number;
 };
@@ -196,6 +198,7 @@ const responseHeaderDenyList = new Set(["connection", "content-encoding", "trans
 const maxUsageCaptureBytes = 8 * 1024 * 1024;
 const maxPendingRawTraceUpdates = 200;
 const pendingRawTraceMaxAgeMs = 5 * 60 * 1000;
+const apiKeyLimitCounterRetentionWindows = 2;
 const gatewayRuntimeMarkerFile = "gateway-runtime.json";
 const rawTraceSyncHeader = "x-ccr-raw-trace-token";
 let warnedMissingCursorOpenAICompatContext = false;
@@ -216,6 +219,8 @@ const gatewayProviderProtocolFallbackOrder: GatewayProviderProtocol[] = [
 ];
 const privateDirMode = 0o700;
 const privateFileMode = 0o600;
+const persistedApiKeyCacheTtlMs = 1000;
+let persistedApiKeyCache: { loadedAt: number; values: ApiKeyConfig[] } | undefined;
 
 class GatewayService {
   private child?: ChildProcess;
@@ -430,7 +435,7 @@ class GatewayService {
     }
 
     if (path === ccrRemoteControlPathPrefix || path.startsWith(`${ccrRemoteControlPathPrefix}/`)) {
-      const authorization = authorize(request, response, this.config);
+      const authorization = await authorize(request, response, this.config);
       if (!authorization.ok) {
         return;
       }
@@ -450,7 +455,7 @@ class GatewayService {
         sendJson(response, 404, { error: { message: "Network capture MCP is disabled." } });
         return;
       }
-      const authorization = authorize(request, response, this.config);
+      const authorization = await authorize(request, response, this.config);
       if (!authorization.ok) {
         return;
       }
@@ -461,7 +466,7 @@ class GatewayService {
     const pluginRoute = pluginService.matchGatewayRoute(request.method, path);
     if (pluginRoute) {
       if (pluginRoute.auth !== "none") {
-        const authorization = authorize(request, response, this.config);
+        const authorization = await authorize(request, response, this.config);
         if (!authorization.ok) {
           return;
         }
@@ -496,7 +501,7 @@ class GatewayService {
       return;
     }
 
-    const authorization = authorize(request, response, this.config);
+    const authorization = await authorize(request, response, this.config);
     if (!authorization.ok) {
       return;
     }
@@ -1681,16 +1686,11 @@ function rewriteModelSelectorForProtocol(
     return model;
   }
   const publicModel = resolveGatewayPublicModelId(normalized, config) ?? normalized;
-  const separator = publicModel.indexOf("/");
-  if (separator <= 0) {
-    return publicModel;
-  }
-
-  const providerName = publicModel.slice(0, separator).trim();
-  const targetModel = publicModel.slice(separator + 1).trim();
-  const provider = findProviderByPublicOrInternalName(config, providerName);
-  const capability = provider ? providerCapabilityForClientProtocol(provider, protocol) : undefined;
-  return provider && capability ? `${providerCapabilityInternalName(provider, capability.type)}/${targetModel}` : publicModel;
+  const selector = resolveConfiguredProviderModelSelector(publicModel, config);
+  const capability = selector ? providerCapabilityForClientProtocol(selector.provider, protocol) : undefined;
+  return selector && capability
+    ? `${providerCapabilityInternalName(selector.provider, capability.type)}/${selector.model}`
+    : publicModel;
 }
 
 function providerCapabilityForClientProtocol(
@@ -1891,10 +1891,12 @@ function prepareUpstreamCredentialAttempt(input: {
   method: string;
   path: string;
 }): UpstreamAttempt {
+  const normalizedBody = normalizeConfiguredProviderModelBody(input.attempt.body, input.config);
   const target = resolveProviderCredentialRoutingTarget(input.config, input.headers, input.path, input.attempt.body);
   if (!target) {
     return {
       ...input.attempt,
+      body: normalizedBody?.body ?? input.attempt.body,
       headers: input.headers
     };
   }
@@ -1903,6 +1905,7 @@ function prepareUpstreamCredentialAttempt(input: {
   if (credentials.length === 0) {
     return {
       ...input.attempt,
+      body: target.body ?? normalizedBody?.body ?? input.attempt.body,
       headers: input.headers
     };
   }
@@ -1912,6 +1915,7 @@ function prepareUpstreamCredentialAttempt(input: {
   if (selection.credentials.length === 0) {
     return {
       ...input.attempt,
+      body: target.body ?? normalizedBody?.body ?? input.attempt.body,
       headers: input.headers
     };
   }
@@ -1929,12 +1933,28 @@ function prepareUpstreamCredentialAttempt(input: {
 
   return {
     ...input.attempt,
-    body: target.body ?? input.attempt.body,
+    body: target.body ?? normalizedBody?.body ?? input.attempt.body,
     credentialChain: selection.credentials.map((candidate) => candidate.internalName),
     credentialIds: selection.credentials.map((candidate) => candidate.credentialId),
     credentialProtocol: target.protocol,
     headers,
     logicalProvider: target.provider.name
+  };
+}
+
+function normalizeConfiguredProviderModelBody(
+  body: Buffer | undefined,
+  config: AppConfig
+): { body: Buffer; model: string } | undefined {
+  const parsedBody = parseJsonObjectSafe(body);
+  const model = stringValue(parsedBody?.model);
+  const selector = resolveConfiguredProviderModelSelector(model, config);
+  if (!parsedBody || !selector || selector.model === model) {
+    return undefined;
+  }
+  return {
+    body: serializeJsonBodyWithModel(parsedBody, selector.model),
+    model: selector.model
   };
 }
 
@@ -1951,14 +1971,14 @@ function resolveProviderCredentialRoutingTarget(
 
   const parsedBody = parseJsonObjectSafe(body);
   const bodyModel = stringValue(parsedBody?.model);
-  const parsedModel = parseProviderModelSelector(bodyModel);
-  if (parsedModel) {
-    const provider = findProviderByPublicOrInternalName(config, parsedModel.provider);
+  const modelSelector = resolveConfiguredProviderModelSelector(bodyModel, config);
+  if (modelSelector) {
+    const provider = modelSelector.provider;
     const providerProtocol = provider ? providerProtocolForClientProtocol(provider, protocol) : undefined;
     if (provider && providerProtocol && activeProviderCredentials(provider).length > 0) {
       return {
-        body: parsedBody ? serializeJsonBodyWithModel(parsedBody, parsedModel.model) : body,
-        model: parsedModel.model,
+        body: parsedBody ? serializeJsonBodyWithModel(parsedBody, modelSelector.model) : body,
+        model: modelSelector.model,
         provider,
         protocol: providerProtocol
       };
@@ -1999,6 +2019,44 @@ function parseProviderModelSelector(value: string | undefined): { model: string;
   const provider = normalized.slice(0, separator).trim();
   const model = normalized.slice(separator + 1).trim();
   return provider && model ? { model, provider } : undefined;
+}
+
+function resolveConfiguredProviderModelSelector(
+  value: string | undefined,
+  config: AppConfig
+): { model: string; provider: GatewayProviderConfig } | undefined {
+  let current = normalizeRouteSelector(value);
+  if (!current) {
+    return undefined;
+  }
+
+  let selectedProvider: GatewayProviderConfig | undefined;
+  for (let depth = 0; depth < 4; depth += 1) {
+    const parsed = parseProviderModelSelector(current);
+    if (!parsed) {
+      break;
+    }
+
+    const provider = findProviderByPublicOrInternalName(config, parsed.provider);
+    if (!provider) {
+      break;
+    }
+
+    selectedProvider = provider;
+    current = parsed.model;
+
+    const nested = parseProviderModelSelector(current);
+    if (!nested) {
+      return current ? { model: current, provider } : undefined;
+    }
+
+    const nestedProvider = findProviderByPublicOrInternalName(config, nested.provider);
+    if (!nestedProvider || providerRuntimeId(nestedProvider) !== providerRuntimeId(provider)) {
+      return current ? { model: current, provider } : undefined;
+    }
+  }
+
+  return selectedProvider && current ? { model: current, provider: selectedProvider } : undefined;
 }
 
 function firstTargetProviderHeader(headers: Record<string, string>): string | undefined {
@@ -2707,6 +2765,15 @@ function normalizeBindHost(host: string): string {
   return host.trim().replace(/^\[|\]$/g, "").toLowerCase();
 }
 
+function isLoopbackBindHost(host: string): boolean {
+  const normalized = normalizeBindHost(host).replace(/\.$/, "");
+  return normalized === "localhost" ||
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "0:0:0:0:0:0:0:1" ||
+    /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(normalized);
+}
+
 function isWildcardBindHost(host: string): boolean {
   return host === "" || host === "0.0.0.0" || host === "::" || host === "::0";
 }
@@ -2945,14 +3012,26 @@ function applyCors(response: ServerResponse, config?: AppConfig): void {
   response.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
 }
 
-function authorize(request: IncomingMessage, response: ServerResponse, config: AppConfig): ApiKeyAuthorizationResult {
-  const apiKeys = configuredApiKeys(config);
+async function authorize(request: IncomingMessage, response: ServerResponse, config: AppConfig): Promise<ApiKeyAuthorizationResult> {
+  let apiKeys = await configuredApiKeys(config);
   if (apiKeys.length === 0) {
-    return { ok: true };
+    if (isLoopbackBindHost(config.gateway.host)) {
+      return { ok: true };
+    }
+    sendJson(response, 403, {
+      error: {
+        message: "Configure at least one CCR API key before listening on a non-loopback gateway host."
+      }
+    });
+    return { ok: false };
   }
 
   const token = readAuthToken(request.headers) || readRemoteControlQueryAuthToken(request);
-  const apiKey = token ? apiKeys.find((item) => item.key === token) : undefined;
+  let apiKey = token ? apiKeys.find((item) => item.key === token) : undefined;
+  if (!apiKey && token) {
+    apiKeys = await configuredApiKeys(config, { refresh: true });
+    apiKey = apiKeys.find((item) => item.key === token);
+  }
   if (apiKey) {
     if (isApiKeyExpired(apiKey)) {
       sendJson(response, 401, { error: { message: "API key is expired." } });
@@ -2965,8 +3044,10 @@ function authorize(request: IncomingMessage, response: ServerResponse, config: A
   return { ok: false };
 }
 
-function configuredApiKeys(config: AppConfig): ApiKeyConfig[] {
+async function configuredApiKeys(config: AppConfig, options: { refresh?: boolean } = {}): Promise<ApiKeyConfig[]> {
+  const persistedApiKeys = await loadPersistedApiKeysCached(options);
   const values = [
+    ...persistedApiKeys,
     ...(Array.isArray(config.APIKEYS) ? config.APIKEYS : []),
     ...(config.APIKEY ? [{ createdAt: new Date(0).toISOString(), id: "legacy", key: config.APIKEY }] : [])
   ];
@@ -2981,6 +3062,24 @@ function configuredApiKeys(config: AppConfig): ApiKeyConfig[] {
     result.push({ ...value, key });
   }
   return result;
+}
+
+async function loadPersistedApiKeysCached(options: { refresh?: boolean } = {}): Promise<ApiKeyConfig[]> {
+  const now = Date.now();
+  if (!options.refresh && persistedApiKeyCache && now - persistedApiKeyCache.loadedAt < persistedApiKeyCacheTtlMs) {
+    return persistedApiKeyCache.values;
+  }
+  try {
+    const values = await loadPersistedApiKeys();
+    persistedApiKeyCache = {
+      loadedAt: now,
+      values
+    };
+    return values;
+  } catch (error) {
+    console.warn(`[gateway] Failed to load persisted API keys: ${formatError(error)}`);
+    return [];
+  }
 }
 
 function isApiKeyExpired(apiKey: ApiKeyConfig): boolean {
@@ -3009,7 +3108,7 @@ function reserveApiKeyLimits(apiKey: ApiKeyConfig | undefined, request: Incoming
   });
 
   for (const check of checks) {
-    const counter = readApiKeyWindowCounter(check.counterKey, check.windowStart);
+    const counter = readApiKeyWindowCounter(check.counterKey, check.windowStart, check.rule.windowMs, now);
     if (counter.value + check.rule.requested > check.rule.limit) {
       sendJson(response, 429, {
         error: {
@@ -3030,7 +3129,7 @@ function reserveApiKeyLimits(apiKey: ApiKeyConfig | undefined, request: Incoming
   }
 
   for (const check of checks) {
-    readApiKeyWindowCounter(check.counterKey, check.windowStart).value += check.rule.requested;
+    readApiKeyWindowCounter(check.counterKey, check.windowStart, check.rule.windowMs, now).value += check.rule.requested;
   }
   return true;
 }
@@ -3076,7 +3175,7 @@ function providerCredentialLimitState(
   let utilization = 0;
   for (const rule of rules) {
     const windowStart = Math.floor(now / rule.windowMs) * rule.windowMs;
-    const counter = readApiKeyWindowCounter(providerCredentialCounterKey(provider, credential, rule, windowStart), windowStart);
+    const counter = readApiKeyWindowCounter(providerCredentialCounterKey(provider, credential, rule, windowStart), windowStart, rule.windowMs, now);
     blocked = blocked || counter.value + rule.requested > rule.limit;
     utilization = Math.max(utilization, (counter.value + rule.requested) / rule.limit);
   }
@@ -3141,7 +3240,7 @@ function incrementProviderCredentialCounters(
   const now = Date.now();
   for (const rule of rules) {
     const windowStart = Math.floor(now / rule.windowMs) * rule.windowMs;
-    readApiKeyWindowCounter(providerCredentialCounterKey(provider, credential, rule, windowStart), windowStart).value += rule.requested;
+    readApiKeyWindowCounter(providerCredentialCounterKey(provider, credential, rule, windowStart), windowStart, rule.windowMs, now).value += rule.requested;
   }
 }
 
@@ -3202,14 +3301,27 @@ function addApiKeyLimitRule(
   });
 }
 
-function readApiKeyWindowCounter(key: string, windowStart: number): ApiKeyWindowCounter {
+function readApiKeyWindowCounter(key: string, windowStart: number, windowMs: number, now = Date.now()): ApiKeyWindowCounter {
+  pruneExpiredApiKeyLimitCounters(now);
   const existing = apiKeyLimitCounters.get(key);
   if (existing && existing.windowStart === windowStart) {
     return existing;
   }
-  const fresh = { value: 0, windowStart };
+  const fresh = {
+    expiresAt: windowStart + windowMs * apiKeyLimitCounterRetentionWindows,
+    value: 0,
+    windowStart
+  };
   apiKeyLimitCounters.set(key, fresh);
   return fresh;
+}
+
+function pruneExpiredApiKeyLimitCounters(now: number): void {
+  for (const [key, counter] of apiKeyLimitCounters) {
+    if (counter.expiresAt <= now) {
+      apiKeyLimitCounters.delete(key);
+    }
+  }
 }
 
 function estimateApiKeyLimitUsage(request: IncomingMessage, requestBody: Buffer): ApiKeyLimitUsage {
