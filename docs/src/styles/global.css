@@ -1322,6 +1322,12 @@ h1 {
   --provider-brand-3: #e4ddff;
 }
 
+.doc-markdown a.provider-import-button.provider-moonshot-global {
+  --provider-brand: #0f1f42;
+  --provider-brand-2: #4f7cff;
+  --provider-brand-3: #dce7ff;
+}
+
 .doc-markdown a.provider-import-button.provider-kimi-coding {
   --provider-brand: #111237;
   --provider-brand-2: #5c6bff;

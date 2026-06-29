@@ -2,12 +2,12 @@
 title: 一键导入供应商
 pageTitle: 一键导入供应商
 eyebrow: 详细配置
-lead: 使用 ccr://provider 链接把供应商配置带入 CCR，并通过现有 preset 供应商按钮快速打开导入确认页。
+lead: 快速添加常见模型供应商，确认无误后即可保存，减少手动配置的繁琐步骤。
 ---
 
 ## 一键导入
 
-下面的按钮会打开 CCR 桌面 App 的供应商导入确认页。预设按钮不会携带 API Key；自定义供应商链接可以携带 Key。导入前始终确认供应商名称、Base URL、协议和模型。
+选择下面的供应商即可开始添加。CCR 会先显示即将添加的内容，确认无误后再保存；使用自定义入口时，请确保来源可信。
 
 <div class="provider-import-grid" aria-label="Preset provider import buttons">
   <a class="provider-import-button provider-openai" href="ccr://provider?name=OpenAI&amp;base_url=https%3A%2F%2Fapi.openai.com%2Fv1&amp;protocol=openai_responses&amp;models=gpt-5.5%2Cgpt-5.5-pro%2Cgpt-5.5-instant%2Cgpt-5.4-mini" aria-label="导入 OpenAI 官方供应商">
@@ -50,9 +50,13 @@ lead: 使用 ccr://provider 链接把供应商配置带入 CCR，并通过现有
     <span class="provider-import-icon-shell"><img src="../../provider-icons/mistral.webp" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">Mistral 官方</span><span class="provider-import-meta">Chat Completions</span></span>
   </a>
-  <a class="provider-import-button provider-moonshot" href="ccr://provider?name=Moonshot+Kimi&amp;base_url=https%3A%2F%2Fapi.moonshot.cn%2Fv1&amp;protocol=openai_chat_completions&amp;models=kimi-k2.7-code%2Ckimi-k2.6%2Ckimi-latest%2Ckimi-thinking-preview" aria-label="导入月之暗面 Kimi 供应商">
+  <a class="provider-import-button provider-moonshot" href="ccr://provider?name=Kimi+API+%28China%29&amp;base_url=https%3A%2F%2Fapi.moonshot.cn%2Fv1&amp;protocol=openai_chat_completions&amp;models=kimi-k2.7-code%2Ckimi-k2.6%2Ckimi-latest%2Ckimi-thinking-preview" aria-label="导入 Kimi API 国内供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/moonshot.ico" alt="" loading="lazy" /></span>
-    <span class="provider-import-copy"><span class="provider-import-name">月之暗面 Kimi</span><span class="provider-import-meta">Chat Completions</span></span>
+    <span class="provider-import-copy"><span class="provider-import-name">Kimi API（国内）</span><span class="provider-import-meta">国内平台</span></span>
+  </a>
+  <a class="provider-import-button provider-moonshot-global" href="ccr://provider?name=Kimi+API+%28Global%29&amp;base_url=https%3A%2F%2Fapi.moonshot.ai%2Fv1&amp;protocol=openai_chat_completions&amp;models=kimi-k2.7-code%2Ckimi-k2.6%2Ckimi-latest%2Ckimi-thinking-preview" aria-label="导入 Kimi API 海外供应商">
+    <span class="provider-import-icon-shell"><img src="../../provider-icons/moonshot.ico" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">Kimi API（海外）</span><span class="provider-import-meta">海外平台</span></span>
   </a>
   <a class="provider-import-button provider-kimi-coding" href="ccr://provider?name=Kimi+Code+-+Coding+Plan&amp;base_url=https%3A%2F%2Fapi.kimi.com%2Fcoding%2Fv1&amp;protocol=openai_chat_completions&amp;models=kimi-for-coding" aria-label="导入 Kimi Code Coding Plan 供应商">
     <span class="provider-import-icon-shell"><img src="../../provider-icons/moonshot.ico" alt="" loading="lazy" /></span>

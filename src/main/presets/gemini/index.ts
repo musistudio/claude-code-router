@@ -13,5 +13,6 @@ export const geminiProviderPreset: ProviderPreset = {
   name: "Google Gemini",
   officialApiKeyPatterns: [
     { flags: "i", source: "^AIza[a-z0-9_-]{20,}$" }
-  ]
+  ],
+  websiteUrl: "https://gemini.google.com/"
 };

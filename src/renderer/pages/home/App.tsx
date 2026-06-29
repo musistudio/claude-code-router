@@ -147,6 +147,13 @@ function providerNameSlug(value: string): string {
     .replace(/^-+|-+$/g, "") || "provider";
 }
 
+async function loadProviderAccountSnapshots(forceRefresh = false): Promise<ProviderAccountSnapshot[]> {
+  if (!window.ccr) {
+    return [];
+  }
+  return window.ccr.getProviderAccountSnapshots(undefined, forceRefresh ? { forceRefresh: true } : undefined);
+}
+
 function extensionActionIndexes(index: number, groupIndexes?: number[]): number[] {
   const indexes = groupIndexes?.length ? groupIndexes : [index];
   return [...new Set(indexes.filter((item) => Number.isInteger(item) && item >= 0))];
@@ -252,6 +259,7 @@ function App() {
   const [usageRange, setUsageRange] = useState<UsageStatsRange>("7d");
   const [usageStats, setUsageStats] = useState<UsageStatsSnapshot>(fallbackUsageStats);
   const [providerAccountSnapshots, setProviderAccountSnapshots] = useState<ProviderAccountSnapshot[]>([]);
+  const [providerAccountRefreshing, setProviderAccountRefreshing] = useState(false);
   const updateActionBusyRef = useRef(false);
   const resolvedLanguage = languagePreference === "system" ? systemLanguage : languagePreference;
   const copy = appCopy[resolvedLanguage];
@@ -443,7 +451,7 @@ function App() {
 
     let cancelled = false;
     const refreshProviderAccounts = () => {
-      void window.ccr?.getProviderAccountSnapshots()
+      void loadProviderAccountSnapshots()
         .then((snapshots) => {
           if (!cancelled) {
             setProviderAccountSnapshots(snapshots);
@@ -462,6 +470,20 @@ function App() {
       window.clearInterval(timer);
     };
   }, [draftConfig.Providers]);
+
+  async function refreshProviderAccountsNow() {
+    if (providerAccountRefreshing) {
+      return;
+    }
+    setProviderAccountRefreshing(true);
+    try {
+      setProviderAccountSnapshots(await loadProviderAccountSnapshots(true));
+    } catch {
+      setProviderAccountSnapshots([]);
+    } finally {
+      setProviderAccountRefreshing(false);
+    }
+  }
 
   const requestLogsEnabled = Boolean(draftConfig.observability.requestLogs);
   const agentAnalysisEnabled = Boolean(draftConfig.observability.agentAnalysis);
@@ -2813,6 +2835,8 @@ function App() {
                   onWidgetsChange: changeOverviewWidgets,
                   overviewWidgets: normalizeOverviewWidgets(draftConfig.overviewWidgets),
                   providerAccounts: providerAccountSnapshots,
+                  providerAccountRefreshing,
+                  refreshProviderAccounts: () => void refreshProviderAccountsNow(),
                   setUsageRange,
                   usageRange,
                   usageStats

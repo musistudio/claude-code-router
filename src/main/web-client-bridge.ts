@@ -1,4 +1,8 @@
 const rpcEndpoint = "/api/ccr/rpc";
+const webAuthHeader = "x-ccr-web-auth";
+const webAuthQueryParam = "ccr_web_token";
+const webAuthStorageKey = "ccr.webAuthToken";
+const webAuthToken = readWebAuthToken();
 
 type RpcResponse =
   | { ok: true; value: unknown }
@@ -8,7 +12,8 @@ async function rpc(method: string, args: unknown[] = []): Promise<unknown> {
   const response = await fetch(rpcEndpoint, {
     body: JSON.stringify({ args, method }),
     headers: {
-      "content-type": "application/json"
+      "content-type": "application/json",
+      ...(webAuthToken ? { [webAuthHeader]: webAuthToken } : {})
     },
     method: "POST"
   });
@@ -25,6 +30,46 @@ async function rpc(method: string, args: unknown[] = []): Promise<unknown> {
     throw new Error(message);
   }
   return payload.value;
+}
+
+function readWebAuthToken(): string {
+  const tokenFromUrl = readWebAuthTokenFromUrl();
+  if (tokenFromUrl) {
+    writeStoredWebAuthToken(tokenFromUrl);
+    return tokenFromUrl;
+  }
+  return readStoredWebAuthToken();
+}
+
+function readWebAuthTokenFromUrl(): string {
+  try {
+    const url = new URL(window.location.href);
+    const token = url.searchParams.get(webAuthQueryParam)?.trim() ?? "";
+    if (!token) {
+      return "";
+    }
+    url.searchParams.delete(webAuthQueryParam);
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    return token;
+  } catch {
+    return "";
+  }
+}
+
+function readStoredWebAuthToken(): string {
+  try {
+    return window.sessionStorage.getItem(webAuthStorageKey)?.trim() ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeStoredWebAuthToken(token: string): void {
+  try {
+    window.sessionStorage.setItem(webAuthStorageKey, token);
+  } catch {
+    // The in-memory token still works for the current page load if storage is unavailable.
+  }
 }
 
 function noopSubscription(): () => void {

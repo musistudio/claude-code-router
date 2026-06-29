@@ -328,6 +328,7 @@ export const providerPresetIconUrls: Record<string, string> = {
   "kimi-coding": moonshotProviderIconUrl,
   mistral: mistralProviderIconUrl,
   moonshot: moonshotProviderIconUrl,
+  "moonshot-global": moonshotProviderIconUrl,
   openai: openaiProviderIconUrl,
   openrouter: openrouterProviderIconUrl,
   siliconflow: siliconflowProviderIconUrl,

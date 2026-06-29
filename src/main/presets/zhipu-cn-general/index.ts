@@ -54,5 +54,6 @@ export const zhipuCnGeneralProviderPreset: ProviderPreset = {
     }
   ],
   id: "zhipu-cn-general",
-  name: "Zhipu AI (China) - General Endpoint"
+  name: "Zhipu AI (China) - General Endpoint",
+  websiteUrl: "https://www.bigmodel.cn/"
 };

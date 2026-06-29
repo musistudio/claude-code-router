@@ -54,5 +54,6 @@ export const zaiGlobalGeneralProviderPreset: ProviderPreset = {
     }
   ],
   id: "zai-global-general",
-  name: "Z.ai (Global) - General Endpoint"
+  name: "Z.ai (Global) - General Endpoint",
+  websiteUrl: "https://z.ai/"
 };

@@ -4,7 +4,7 @@ import { deepSeekProviderPreset } from "./deepseek";
 import { geminiProviderPreset } from "./gemini";
 import { kimiCodingProviderPreset } from "./kimi-coding";
 import { mistralProviderPreset } from "./mistral";
-import { moonshotProviderPreset } from "./moonshot";
+import { moonshotChinaProviderPreset, moonshotGlobalProviderPreset } from "./moonshot";
 import { openaiProviderPreset } from "./openai";
 import { openRouterProviderPreset } from "./openrouter";
 import { siliconFlowProviderPreset } from "./siliconflow";
@@ -35,7 +35,8 @@ export const providerPresets: ProviderPreset[] = [
   zaiGlobalCodingProviderPreset,
   zaiGlobalGeneralProviderPreset,
   mistralProviderPreset,
-  moonshotProviderPreset,
+  moonshotChinaProviderPreset,
+  moonshotGlobalProviderPreset,
   bailianProviderPreset,
   siliconFlowProviderPreset
 ];

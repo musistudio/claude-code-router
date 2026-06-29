@@ -58,5 +58,6 @@ export const zhipuCnCodingProviderPreset: ProviderPreset = {
     }
   ],
   id: "zhipu-cn-coding",
-  name: "Zhipu AI (China) - Coding Plan"
+  name: "Zhipu AI (China) - Coding Plan",
+  websiteUrl: "https://www.bigmodel.cn/"
 };

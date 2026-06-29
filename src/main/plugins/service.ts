@@ -523,14 +523,49 @@ async function loadPluginModule(modulePath: string): Promise<unknown> {
 }
 
 function resolvePluginModule(modulePath: string): string {
-  const expanded = expandHome(modulePath);
+  const resolved = requireFromHere.resolve(resolveLocalModulePath(modulePath, "Plugin module"));
+  assertJavaScriptModulePath(resolved, "Plugin module");
+  return resolved;
+}
+
+function resolveLocalModulePath(value: string, label: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error(`${label} path is required.`);
+  }
+
+  const expanded = expandHome(trimmed);
   if (path.isAbsolute(expanded)) {
-    return requireFromHere.resolve(expanded);
+    return expanded;
   }
-  if (expanded.startsWith(".")) {
-    return requireFromHere.resolve(path.resolve(CONFIGDIR, expanded));
+  if (isProtocolSpecifier(expanded)) {
+    throw new Error(`${label} must be a local JavaScript file path, not a URL or protocol specifier.`);
   }
-  return requireFromHere.resolve(expanded, { paths: [CONFIGDIR, process.cwd()] });
+  if (!expanded.startsWith(".")) {
+    throw new Error(`${label} must be an explicit local JavaScript path. Package specifiers are not loaded from configuration.`);
+  }
+
+  const resolved = path.resolve(CONFIGDIR, expanded);
+  if (!isPathInside(resolved, CONFIGDIR)) {
+    throw new Error(`${label} relative paths must stay inside the CCR config directory.`);
+  }
+  return resolved;
+}
+
+function assertJavaScriptModulePath(resolved: string, label: string): void {
+  const extension = path.extname(resolved).toLowerCase();
+  if (![".cjs", ".js", ".mjs"].includes(extension)) {
+    throw new Error(`${label} must resolve to a JavaScript module file.`);
+  }
+}
+
+function isProtocolSpecifier(value: string): boolean {
+  return /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value);
+}
+
+function isPathInside(file: string, root: string): boolean {
+  const relative = path.relative(root, file);
+  return relative === "" || (Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 function normalizeLoadedPlugin(moduleValue: unknown): LoadedPlugin {

@@ -51,5 +51,6 @@ export const openRouterProviderPreset: ProviderPreset = {
   name: "OpenRouter",
   officialApiKeyPatterns: [
     { flags: "i", source: "^sk-or-v1-[a-z0-9_-]+$" }
-  ]
+  ],
+  websiteUrl: "https://openrouter.ai/"
 };

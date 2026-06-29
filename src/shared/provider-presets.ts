@@ -4,6 +4,7 @@ export type ProviderPresetEndpoint = {
   baseUrl: string;
   label?: string;
   protocols: GatewayProviderProtocol[];
+  websiteUrl?: string;
 };
 
 export type ProviderOfficialKeyPattern = {

@@ -80,7 +80,7 @@ const resolvedNavItems = navItems.map((item, index) => {
   };
 });
 const homeHref = withBase(locale === "en" ? "/en/" : "/");
-const faviconHref = withBase("/favicon.svg");
+const faviconHref = withBase("/ccr-icon.png");
 const logoSrc = withBase("/logo.png");
 const sidebarIcons = {
   rocket: Rocket,
@@ -177,7 +177,7 @@ const sidebarCloseLabel = locale === "zh" ? "关闭目录" : "Close navigation";
         }
       })();
     </script>
-    <link rel="icon" href={faviconHref} type="image/svg+xml" />
+    <link rel="icon" href={faviconHref} type="image/png" />
     {
       resolvedLanguageOptions.map((option) => (
         <link

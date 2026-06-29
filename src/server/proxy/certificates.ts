@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash, randomBytes } from "node:crypto";
 import net from "node:net";
 import os from "node:os";
@@ -7,6 +7,9 @@ import forge from "node-forge";
 import { CERTDIR, PROXY_CA_CERT_DER_FILE, PROXY_CA_CERT_FILE, PROXY_CA_KEY_FILE } from "../../main/constants";
 
 const pki = forge.pki;
+const certificateDirectoryMode = 0o700;
+const certificateFileMode = 0o644;
+const privateKeyFileMode = 0o600;
 
 export type CertificateAuthority = {
   cert: forge.pki.Certificate;
@@ -25,8 +28,10 @@ type SubjectAltName = {
 };
 
 export function ensureProxyCertificateAuthority(): void {
-  mkdirSync(CERTDIR, { recursive: true });
+  mkdirSync(CERTDIR, { mode: certificateDirectoryMode, recursive: true });
+  securePathPermissions(CERTDIR, certificateDirectoryMode);
   if (existsSync(PROXY_CA_CERT_FILE) && existsSync(PROXY_CA_KEY_FILE)) {
+    secureCertificateAuthorityFilePermissions();
     ensureProxyCertificateDerFile();
     return;
   }
@@ -68,8 +73,9 @@ export function ensureProxyCertificateAuthority(): void {
   ]);
   cert.sign(keys.privateKey, forge.md.sha256.create());
 
-  writeFileSync(PROXY_CA_CERT_FILE, pki.certificateToPem(cert), "utf8");
-  writeFileSync(PROXY_CA_KEY_FILE, pki.privateKeyToPem(keys.privateKey), "utf8");
+  writeFileSync(PROXY_CA_CERT_FILE, pki.certificateToPem(cert), { encoding: "utf8", mode: certificateFileMode });
+  writeFileSync(PROXY_CA_KEY_FILE, pki.privateKeyToPem(keys.privateKey), { encoding: "utf8", mode: privateKeyFileMode });
+  secureCertificateAuthorityFilePermissions();
   ensureProxyCertificateDerFile();
 }
 
@@ -214,7 +220,21 @@ function ensureProxyCertificateDerFile(): boolean {
 
 function writeProxyCertificateDerFile(cert: forge.pki.Certificate): void {
   const der = forge.asn1.toDer(pki.certificateToAsn1(cert)).getBytes();
-  writeFileSync(PROXY_CA_CERT_DER_FILE, Buffer.from(der, "binary"));
+  writeFileSync(PROXY_CA_CERT_DER_FILE, Buffer.from(der, "binary"), { mode: certificateFileMode });
+  securePathPermissions(PROXY_CA_CERT_DER_FILE, certificateFileMode);
+}
+
+function secureCertificateAuthorityFilePermissions(): void {
+  securePathPermissions(PROXY_CA_CERT_FILE, certificateFileMode);
+  securePathPermissions(PROXY_CA_KEY_FILE, privateKeyFileMode);
+  securePathPermissions(PROXY_CA_CERT_DER_FILE, certificateFileMode);
+}
+
+function securePathPermissions(file: string, mode: number): void {
+  if (process.platform === "win32" || !existsSync(file)) {
+    return;
+  }
+  chmodSync(file, mode);
 }
 
 function createSerialNumber(): string {

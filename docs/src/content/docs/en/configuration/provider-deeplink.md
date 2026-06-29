@@ -2,12 +2,12 @@
 title: One click import
 pageTitle: One click import
 eyebrow: Detailed Configuration
-lead: Use ccr://provider links to hand provider configuration to CCR, or open the import confirmation page with preset provider buttons.
+lead: Quickly add common model providers, review the details, and save them without filling everything in by hand.
 ---
 
 ## One-Click Import
 
-The buttons below open the CCR desktop app's provider import confirmation dialog. Preset buttons do not include API keys; custom provider links may include one. Always confirm the provider name, Base URL, protocol, and models before importing a key.
+Choose a provider below to get started. CCR shows what will be added before saving it; when using a custom entry point, make sure the source is one you trust.
 
 <div class="provider-import-grid" aria-label="Preset provider import buttons">
   <a class="provider-import-button provider-openai" href="ccr://provider?name=OpenAI&amp;base_url=https%3A%2F%2Fapi.openai.com%2Fv1&amp;protocol=openai_responses&amp;models=gpt-5.5%2Cgpt-5.5-pro%2Cgpt-5.5-instant%2Cgpt-5.4-mini" aria-label="Import OpenAI provider">
@@ -50,9 +50,13 @@ The buttons below open the CCR desktop app's provider import confirmation dialog
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/mistral.webp" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">Mistral</span><span class="provider-import-meta">Chat Completions</span></span>
   </a>
-  <a class="provider-import-button provider-moonshot" href="ccr://provider?name=Moonshot+Kimi&amp;base_url=https%3A%2F%2Fapi.moonshot.cn%2Fv1&amp;protocol=openai_chat_completions&amp;models=kimi-k2.7-code%2Ckimi-k2.6%2Ckimi-latest%2Ckimi-thinking-preview" aria-label="Import Moonshot Kimi provider">
+  <a class="provider-import-button provider-moonshot" href="ccr://provider?name=Kimi+API+%28China%29&amp;base_url=https%3A%2F%2Fapi.moonshot.cn%2Fv1&amp;protocol=openai_chat_completions&amp;models=kimi-k2.7-code%2Ckimi-k2.6%2Ckimi-latest%2Ckimi-thinking-preview" aria-label="Import Kimi API China provider">
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/moonshot.ico" alt="" loading="lazy" /></span>
-    <span class="provider-import-copy"><span class="provider-import-name">Moonshot Kimi</span><span class="provider-import-meta">Chat Completions</span></span>
+    <span class="provider-import-copy"><span class="provider-import-name">Kimi API (China)</span><span class="provider-import-meta">China platform</span></span>
+  </a>
+  <a class="provider-import-button provider-moonshot-global" href="ccr://provider?name=Kimi+API+%28Global%29&amp;base_url=https%3A%2F%2Fapi.moonshot.ai%2Fv1&amp;protocol=openai_chat_completions&amp;models=kimi-k2.7-code%2Ckimi-k2.6%2Ckimi-latest%2Ckimi-thinking-preview" aria-label="Import Kimi API Global provider">
+    <span class="provider-import-icon-shell"><img src="../../../provider-icons/moonshot.ico" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">Kimi API (Global)</span><span class="provider-import-meta">Global platform</span></span>
   </a>
   <a class="provider-import-button provider-kimi-coding" href="ccr://provider?name=Kimi+Code+-+Coding+Plan&amp;base_url=https%3A%2F%2Fapi.kimi.com%2Fcoding%2Fv1&amp;protocol=openai_chat_completions&amp;models=kimi-for-coding" aria-label="Import Kimi Code Coding Plan provider">
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/moonshot.ico" alt="" loading="lazy" /></span>

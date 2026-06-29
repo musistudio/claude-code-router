@@ -41,5 +41,6 @@ export const mistralProviderPreset: ProviderPreset = {
     }
   ],
   id: "mistral",
-  name: "Mistral"
+  name: "Mistral",
+  websiteUrl: "https://mistral.ai/"
 };

@@ -58,5 +58,6 @@ export const zaiGlobalCodingProviderPreset: ProviderPreset = {
     }
   ],
   id: "zai-global-coding",
-  name: "Z.ai (Global) - Coding Plan"
+  name: "Z.ai (Global) - Coding Plan",
+  websiteUrl: "https://z.ai/"
 };

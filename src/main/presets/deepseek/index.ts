@@ -47,5 +47,6 @@ export const deepSeekProviderPreset: ProviderPreset = {
     }
   ],
   id: "deepseek",
-  name: "DeepSeek"
+  name: "DeepSeek",
+  websiteUrl: "https://www.deepseek.com/"
 };

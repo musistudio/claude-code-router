@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -80,10 +82,19 @@ type RpcRequest = {
 
 type RpcHandler = (...args: unknown[]) => Promise<unknown> | unknown;
 
+type WebManagementSecurityContext = {
+  allowIpLiteralHosts: boolean;
+  allowedHostnames: Set<string>;
+  authToken: string;
+  port: number;
+};
+
 const defaultWebHost = "127.0.0.1";
 const defaultWebPort = 3458;
 const onboardingFinishedAtSettingKey = "onboardingFinishedAt";
 const maxRpcBodyBytes = 8 * 1024 * 1024;
+const webAuthHeader = "x-ccr-web-auth";
+const webAuthQueryParam = "ccr_web_token";
 const staticRoot = path.resolve(__dirname, "..", "renderer");
 const homeHtmlFile = path.join(staticRoot, "pages", "home", "index.html");
 const rendererAssetsRoot = path.join(staticRoot, "assets");
@@ -111,8 +122,14 @@ const pluginMarketplace: PluginMarketplaceEntry[] = [
 export async function startWebManagementServer(options: WebManagementServerOptions = {}): Promise<WebManagementServerRuntime> {
   const host = options.host?.trim() || readEnvString("CCR_WEB_HOST") || defaultWebHost;
   const requestedPort = options.port ?? readEnvPort("CCR_WEB_PORT") ?? defaultWebPort;
+  const authToken = randomBytes(32).toString("base64url");
+  let security: WebManagementSecurityContext | undefined;
   const server = createServer((request, response) => {
-    void handleRequest(request, response).catch((error) => {
+    if (!security) {
+      sendJson(response, 503, { error: { message: "CCR web management server is not ready." }, ok: false });
+      return;
+    }
+    void handleRequest(request, response, security).catch((error) => {
       sendJson(response, 500, { error: { message: formatError(error) }, ok: false });
     });
   });
@@ -120,7 +137,9 @@ export async function startWebManagementServer(options: WebManagementServerOptio
   const listenedPort = await listenWithFallback(server, requestedPort, host);
   const address = server.address();
   const port = typeof address === "object" && address ? address.port : listenedPort;
-  const url = `http://${formatListenHost(host)}:${port}/`;
+  const baseUrl = `http://${formatListenHost(host)}:${port}/`;
+  const url = urlWithWebAuthToken(baseUrl, authToken);
+  security = createWebManagementSecurityContext(host, port, authToken);
 
   if (options.startGateway !== false) {
     await startConfiguredServices("web startup");
@@ -141,10 +160,15 @@ export async function startWebManagementServer(options: WebManagementServerOptio
   };
 }
 
-async function handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
+async function handleRequest(request: IncomingMessage, response: ServerResponse, security: WebManagementSecurityContext): Promise<void> {
+  if (!isAllowedWebRequestHost(request, security)) {
+    sendText(response, 403, "Forbidden host");
+    return;
+  }
+
   const url = requestUrl(request);
   if (url.pathname === "/api/ccr/rpc") {
-    await handleRpcRequest(request, response);
+    await handleRpcRequest(request, response, security);
     return;
   }
   if (request.method !== "GET" && request.method !== "HEAD") {
@@ -162,9 +186,21 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse)
   sendText(response, 404, "Not found");
 }
 
-async function handleRpcRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
+async function handleRpcRequest(request: IncomingMessage, response: ServerResponse, security: WebManagementSecurityContext): Promise<void> {
   if (request.method !== "POST") {
     sendJson(response, 405, { error: { message: "RPC only supports POST." }, ok: false });
+    return;
+  }
+  if (!isJsonRequest(request)) {
+    sendJson(response, 415, { error: { message: "RPC requests must use application/json." }, ok: false });
+    return;
+  }
+  if (!isAllowedWebRequestOrigin(request, security)) {
+    sendJson(response, 403, { error: { message: "Forbidden RPC origin." }, ok: false });
+    return;
+  }
+  if (!hasValidWebAuthToken(request, security)) {
+    sendJson(response, 401, { error: { message: "CCR web authentication token is missing or invalid." }, ok: false });
     return;
   }
 
@@ -498,7 +534,8 @@ function sendBuffer(response: ServerResponse, status: number, body: Buffer, cont
   response.writeHead(status, {
     "cache-control": "no-store",
     "content-length": body.length,
-    "content-type": contentType
+    "content-type": contentType,
+    "x-content-type-options": "nosniff"
   });
   if (headOnly) {
     response.end();
@@ -512,7 +549,8 @@ function sendJson(response: ServerResponse, status: number, payload: unknown): v
   response.writeHead(status, {
     "cache-control": "no-store",
     "content-length": body.length,
-    "content-type": "application/json; charset=utf-8"
+    "content-type": "application/json; charset=utf-8",
+    "x-content-type-options": "nosniff"
   });
   response.end(body);
 }
@@ -523,6 +561,109 @@ function sendText(response: ServerResponse, status: number, text: string): void 
 
 function requestUrl(request: IncomingMessage): URL {
   return new URL(request.url || "/", `http://${request.headers.host || "127.0.0.1"}`);
+}
+
+function createWebManagementSecurityContext(host: string, port: number, authToken: string): WebManagementSecurityContext {
+  const normalizedHost = normalizeHostname(host);
+  const allowedHostnames = new Set<string>(["localhost", "127.0.0.1", "::1", "0:0:0:0:0:0:0:1"]);
+  if (normalizedHost) {
+    allowedHostnames.add(normalizedHost);
+  }
+  return {
+    allowIpLiteralHosts: isWildcardBindHost(normalizedHost),
+    allowedHostnames,
+    authToken,
+    port
+  };
+}
+
+function urlWithWebAuthToken(value: string, authToken: string): string {
+  const url = new URL(value);
+  url.searchParams.set(webAuthQueryParam, authToken);
+  return url.toString();
+}
+
+function isAllowedWebRequestHost(request: IncomingMessage, security: WebManagementSecurityContext): boolean {
+  const hostname = requestHostname(request);
+  return Boolean(hostname && isAllowedWebHostname(hostname, security));
+}
+
+function isAllowedWebRequestOrigin(request: IncomingMessage, security: WebManagementSecurityContext): boolean {
+  const origin = readHeaderValue(request.headers.origin);
+  if (origin && !isAllowedWebOriginValue(origin, security)) {
+    return false;
+  }
+
+  const referer = readHeaderValue(request.headers.referer);
+  if (!origin && referer && !isAllowedWebOriginValue(referer, security)) {
+    return false;
+  }
+
+  return true;
+}
+
+function isAllowedWebOriginValue(value: string, security: WebManagementSecurityContext): boolean {
+  try {
+    const url = new URL(value);
+    const port = url.port ? Number(url.port) : url.protocol === "http:" ? 80 : url.protocol === "https:" ? 443 : undefined;
+    return url.protocol === "http:" &&
+      port === security.port &&
+      isAllowedWebHostname(normalizeHostname(url.hostname), security);
+  } catch {
+    return false;
+  }
+}
+
+function isAllowedWebHostname(hostname: string, security: WebManagementSecurityContext): boolean {
+  const normalized = normalizeHostname(hostname);
+  return security.allowedHostnames.has(normalized) ||
+    (security.allowIpLiteralHosts && Boolean(net.isIP(normalized)));
+}
+
+function requestHostname(request: IncomingMessage): string | undefined {
+  const host = readHeaderValue(request.headers.host);
+  if (!host) {
+    return undefined;
+  }
+  try {
+    return normalizeHostname(new URL(`http://${host}`).hostname);
+  } catch {
+    return undefined;
+  }
+}
+
+function isJsonRequest(request: IncomingMessage): boolean {
+  const contentType = readHeaderValue(request.headers["content-type"])?.toLowerCase() ?? "";
+  return contentType.split(";")[0]?.trim() === "application/json";
+}
+
+function hasValidWebAuthToken(request: IncomingMessage, security: WebManagementSecurityContext): boolean {
+  const token = readHeaderValue(request.headers[webAuthHeader]);
+  return constantTimeEquals(token, security.authToken);
+}
+
+function constantTimeEquals(value: string | undefined, expected: string): boolean {
+  if (!value) {
+    return false;
+  }
+  const valueBuffer = Buffer.from(value);
+  const expectedBuffer = Buffer.from(expected);
+  return valueBuffer.length === expectedBuffer.length && timingSafeEqual(valueBuffer, expectedBuffer);
+}
+
+function readHeaderValue(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) {
+    return readString(value[0]);
+  }
+  return readString(value);
+}
+
+function normalizeHostname(value: string): string {
+  return value.trim().toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+}
+
+function isWildcardBindHost(host: string): boolean {
+  return host === "" || host === "0.0.0.0" || host === "::" || host === "::0";
 }
 
 function readRequestBody(request: IncomingMessage, maxBytes: number): Promise<Buffer> {

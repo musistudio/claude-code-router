@@ -14,5 +14,6 @@ export const anthropicProviderPreset: ProviderPreset = {
   name: "Anthropic",
   officialApiKeyPatterns: [
     { flags: "i", source: "^sk-ant-[a-z0-9_-]+$" }
-  ]
+  ],
+  websiteUrl: "https://www.anthropic.com/"
 };

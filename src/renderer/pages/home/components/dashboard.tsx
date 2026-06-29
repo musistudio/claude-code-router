@@ -8,11 +8,11 @@ import {
   DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent, Field, formatAxisNumber, formatBytes,
   formatCompactNumber, formatDuration, formatLogDateTime, formatPercent, formatProviderAccountMeterTitle, formatProviderAccountMeterValue,
   formatStatusBucketDate, formatStatusCodeCounts, formatSystemStatusRange, formatToolCounts, formatUsdCost, KeyboardSensor,
-  LabelList, LayoutGroup, Line, MeasuringStrategy, MetricCard, MetricTone,
+  LabelList, LayoutGroup, Line, LoaderCircle, MeasuringStrategy, MetricCard, MetricTone,
   metricToneBar, metricToneStroke, motion, normalizeAgentFilterValue, normalizeOverviewWidget, normalizeOverviewWidgets,
   OverviewMetricKind, overviewMetricOptions, overviewWidgetCollisionDetection, OverviewWidgetConfig, OverviewWidgetSize, overviewWidgetSizeOptions,
   OverviewWidgetType, OverviewWidgetVariant, Pencil, Pie, PieChart, Plus,
-  PointerSensor, primaryProviderAccountMeter, providerAccountBadgeVariant, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass,
+  PointerSensor, primaryProviderAccountMeter, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass,
   providerAccountSnapshotKey, providerAccountSnapshotLabel,
   ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ReactPointerEvent, rectSortingStrategy, RefreshCw, Select,
   SelectControl, SortableContext, sortableKeyboardCoordinates, systemStatusIconClass, systemStatusPointTooltip, systemStatusSegmentClass,
@@ -26,6 +26,8 @@ export function OverviewView({
   onWidgetsChange,
   overviewWidgets,
   providerAccounts,
+  providerAccountRefreshing = false,
+  refreshProviderAccounts,
   setUsageRange,
   usageRange,
   usageStats
@@ -33,6 +35,8 @@ export function OverviewView({
   onWidgetsChange: (widgets: OverviewWidgetConfig[]) => void;
   overviewWidgets: OverviewWidgetConfig[];
   providerAccounts: ProviderAccountSnapshot[];
+  providerAccountRefreshing?: boolean;
+  refreshProviderAccounts?: () => void | Promise<void>;
   setUsageRange: (range: UsageStatsRange) => void;
   usageRange: UsageStatsRange;
   usageStats: UsageStatsSnapshot;
@@ -248,6 +252,8 @@ export function OverviewView({
                 >
                   <OverviewWidgetRenderer
                     providerAccounts={providerAccounts}
+                    providerAccountRefreshing={providerAccountRefreshing}
+                    refreshProviderAccounts={refreshProviderAccounts}
                     usageRange={usageRange}
                     usageStats={usageStats}
                     widget={widget}
@@ -267,6 +273,8 @@ export function OverviewView({
         {activeWidget ? (
           <OverviewWidgetDragOverlay
             providerAccounts={providerAccounts}
+            providerAccountRefreshing={providerAccountRefreshing}
+            refreshProviderAccounts={refreshProviderAccounts}
             usageRange={usageRange}
             usageStats={usageStats}
             widget={activeWidget}
@@ -554,11 +562,15 @@ function SortableOverviewWidget({
 
 function OverviewWidgetDragOverlay({
   providerAccounts,
+  providerAccountRefreshing = false,
+  refreshProviderAccounts,
   usageRange,
   usageStats,
   widget
 }: {
   providerAccounts: ProviderAccountSnapshot[];
+  providerAccountRefreshing?: boolean;
+  refreshProviderAccounts?: () => void | Promise<void>;
   usageRange: UsageStatsRange;
   usageStats: UsageStatsSnapshot;
   widget: OverviewWidgetConfig;
@@ -567,6 +579,8 @@ function OverviewWidgetDragOverlay({
     <div className={cn("pointer-events-none overflow-hidden opacity-95 shadow-2xl", overviewWidgetOverlaySizeClass(widget.size))}>
       <OverviewWidgetRenderer
         providerAccounts={providerAccounts}
+        providerAccountRefreshing={providerAccountRefreshing}
+        refreshProviderAccounts={refreshProviderAccounts}
         usageRange={usageRange}
         usageStats={usageStats}
         widget={widget}
@@ -802,11 +816,15 @@ function overviewWidgetResizeCursor(axis: OverviewWidgetResizeAxis): string {
 
 function OverviewWidgetRenderer({
   providerAccounts,
+  providerAccountRefreshing = false,
+  refreshProviderAccounts,
   usageRange,
   usageStats,
   widget
 }: {
   providerAccounts: ProviderAccountSnapshot[];
+  providerAccountRefreshing?: boolean;
+  refreshProviderAccounts?: () => void | Promise<void>;
   usageRange: UsageStatsRange;
   usageStats: UsageStatsSnapshot;
   widget: OverviewWidgetConfig;
@@ -816,7 +834,7 @@ function OverviewWidgetRenderer({
   if (widget.type === "system-status") {
     content = <SystemStatusBar usageRange={usageRange} usageStats={usageStats} variant={widget.variant === "compact" ? "compact" : "timeline"} />;
   } else if (widget.type === "account-balance") {
-    content = <ProviderAccountsOverview accountProvider={widget.accountProvider} accounts={providerAccounts} dimensions={dimensions} variant={overviewAccountVariant(widget.variant)} />;
+    content = <ProviderAccountsOverview accountProvider={widget.accountProvider} accounts={providerAccounts} dimensions={dimensions} refreshing={providerAccountRefreshing} variant={overviewAccountVariant(widget.variant)} onRefresh={refreshProviderAccounts} />;
   } else if (widget.type === "metric") {
     content = <OverviewMetricWidget metric={widget.metric ?? "requests"} totals={usageStats.totals} variant={overviewMetricVariant(widget.variant)} />;
   } else if (widget.type === "usage-trend") {
@@ -952,19 +970,19 @@ function UsageTrendWidget({
                   <Bar barSize={12} dataKey="requestCount" fill="#2563eb" name={t("Requests")} radius={[3, 3, 0, 0]} yAxisId="requests">
                     <LabelList content={<RequestHealthBarLabel />} dataKey="requestCount" />
                   </Bar>
-                  <Line dataKey="cacheTokens" dot={false} name={t("Cache tokens")} stroke="#be123c" strokeWidth={2} type="monotone" yAxisId="tokens" />
+                  <Line dataKey="cacheTokens" dot={false} name={t("Cache tokens")} stroke={overviewCacheColor} strokeWidth={2} type="monotone" yAxisId="tokens" />
                 </>
               ) : null}
               {variant === "area" ? (
                 <>
                   <Area dataKey="totalTokens" fill="#0f766e" fillOpacity={0.18} name={t("Total tokens")} stroke="#0f766e" strokeWidth={2} type="monotone" yAxisId="tokens" />
-                  <Area dataKey="cacheTokens" fill="#be123c" fillOpacity={0.12} name={t("Cache tokens")} stroke="#be123c" strokeWidth={2} type="monotone" yAxisId="tokens" />
+                  <Area dataKey="cacheTokens" fill={overviewCacheColor} fillOpacity={0.12} name={t("Cache tokens")} stroke={overviewCacheColor} strokeWidth={2} type="monotone" yAxisId="tokens" />
                 </>
               ) : null}
               {variant === "line" ? (
                 <>
                   <Line dataKey="totalTokens" dot={false} name={t("Total tokens")} stroke="#0f766e" strokeWidth={2.5} type="monotone" yAxisId="tokens" />
-                  <Line dataKey="cacheTokens" dot={false} name={t("Cache tokens")} stroke="#be123c" strokeWidth={2} type="monotone" yAxisId="tokens" />
+                  <Line dataKey="cacheTokens" dot={false} name={t("Cache tokens")} stroke={overviewCacheColor} strokeWidth={2} type="monotone" yAxisId="tokens" />
                 </>
               ) : null}
               {variant === "bar" ? (
@@ -1185,7 +1203,7 @@ function TokenMixOverviewWidget({
   const tokenMix = [
     { color: "#2563eb", name: t("Input"), value: totals.inputTokens },
     { color: "#d97706", name: t("Output"), value: totals.outputTokens },
-    { color: "#be123c", name: t("Cache"), value: totals.cacheTokens }
+    { color: overviewCacheColor, name: t("Cache"), value: totals.cacheTokens }
   ];
   const total = tokenMix.reduce((sum, item) => sum + item.value, 0);
   const showLegend = dimensions.height >= 2 && dimensions.width >= 2;
@@ -1665,6 +1683,8 @@ function overviewWidgetOverlaySizeClass(size: OverviewWidgetSize): string {
 
 type OverviewWidgetDimensions = { height: 1 | 2 | 3 | 4; width: 1 | 2 | 3 | 4 };
 
+const overviewCacheColor = "#6366f1";
+
 function overviewWidgetDimensions(size: OverviewWidgetSize): OverviewWidgetDimensions {
   const [widthText, heightText] = size.split(":");
   const width = overviewWidgetDimensionValue(widthText);
@@ -1752,7 +1772,7 @@ function overviewMetricDatum(metric: OverviewMetricKind, totals: UsageTotals, tr
     return { label: translate("Output tokens"), ratio: totals.totalTokens > 0 ? totals.outputTokens / totals.totalTokens : 0, tone: "amber", value: formatCompactNumber(totals.outputTokens) };
   }
   if (metric === "cache-tokens") {
-    return { label: translate("Cache tokens"), ratio: totals.totalTokens > 0 ? totals.cacheTokens / totals.totalTokens : 0, tone: "rose", value: formatCompactNumber(totals.cacheTokens) };
+    return { label: translate("Cache tokens"), ratio: totals.totalTokens > 0 ? totals.cacheTokens / totals.totalTokens : 0, tone: "indigo", value: formatCompactNumber(totals.cacheTokens) };
   }
   if (metric === "cache-ratio") {
     return { label: translate("Cache ratio"), ratio: totals.cacheRatio, tone: "indigo", value: formatPercent(totals.cacheRatio) };
@@ -1897,11 +1917,15 @@ function ProviderAccountsOverview({
   accountProvider,
   accounts,
   dimensions,
+  onRefresh,
+  refreshing = false,
   variant = "cards"
 }: {
   accountProvider?: string;
   accounts: ProviderAccountSnapshot[];
   dimensions: OverviewWidgetDimensions;
+  onRefresh?: () => void | Promise<void>;
+  refreshing?: boolean;
   variant?: OverviewAccountVariant;
 }) {
   const t = useAppText();
@@ -1921,7 +1945,7 @@ function ProviderAccountsOverview({
             {t("No account balance connectors configured")}
           </div>
         ) : isSingleAccount ? (
-          <ProviderAccountSinglePanel account={visibleAccounts[0]} dimensions={dimensions} variant={variant} />
+          <ProviderAccountSinglePanel account={visibleAccounts[0]} dimensions={dimensions} refreshing={refreshing} variant={variant} onRefresh={onRefresh} />
         ) : variant === "compact" ? (
           <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions))}>
             {visibleAccounts.map((account) => {
@@ -1931,10 +1955,11 @@ function ProviderAccountsOverview({
                   <div className="min-w-0">
                     <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
                     {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
+                    {providerAccountShowRefreshTime(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
                   </div>
-                  <div className="shrink-0 text-right">
-                    {providerAccountShowStatus(dimensions) ? <Badge variant={providerAccountBadgeVariant(account.status)}>{account.status}</Badge> : null}
-                    {meter ? <div className="mt-1 text-[12px] font-semibold">{formatProviderAccountMeterValue(meter)}</div> : null}
+                  <div className="flex shrink-0 flex-col items-end gap-1 text-right">
+                    {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
+                    {meter ? <div className="text-[12px] font-semibold">{formatProviderAccountMeterValue(meter)}</div> : null}
                   </div>
                 </div>
               );
@@ -1951,8 +1976,12 @@ function ProviderAccountsOverview({
                     <div className="min-w-0">
                       <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
                       {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
+                      {providerAccountShowRefreshTime(dimensions) ? <div className="truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
                     </div>
-                    <div className="shrink-0 text-[12px] font-semibold">{meter ? formatProviderAccountMeterValue(meter) : account.status}</div>
+                    <div className="flex shrink-0 items-center gap-2 text-[12px] font-semibold">
+                      {meter ? <span>{formatProviderAccountMeterValue(meter)}</span> : null}
+                      {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
+                    </div>
                   </div>
                   {progress !== undefined ? (
                     <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
@@ -1966,7 +1995,7 @@ function ProviderAccountsOverview({
         ) : (
           <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions))}>
             {visibleAccounts.map((account) => {
-              return <ProviderAccountSummaryCard account={account} dimensions={dimensions} key={providerAccountSnapshotKey(account)} variant={variant} />;
+              return <ProviderAccountSummaryCard account={account} dimensions={dimensions} key={providerAccountSnapshotKey(account)} refreshing={refreshing} variant={variant} onRefresh={onRefresh} />;
             })}
           </div>
         )}
@@ -1978,10 +2007,14 @@ function ProviderAccountsOverview({
 function ProviderAccountSinglePanel({
   account,
   dimensions,
+  onRefresh,
+  refreshing = false,
   variant
 }: {
   account: ProviderAccountSnapshot;
   dimensions: OverviewWidgetDimensions;
+  onRefresh?: () => void | Promise<void>;
+  refreshing?: boolean;
   variant: OverviewAccountVariant;
 }) {
   const t = useAppText();
@@ -1995,8 +2028,9 @@ function ProviderAccountSinglePanel({
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <div className={cn("truncate font-semibold", dimensions.height <= 1 ? "text-[12px]" : "text-[13px]")}>{providerAccountSnapshotLabel(account)}</div>
+          {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
         </div>
-        {providerAccountShowStatus(dimensions) ? <Badge variant={providerAccountBadgeVariant(account.status)}>{account.status}</Badge> : null}
+        {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
       </div>
       {showQuotaVisual ? (
         <ProviderAccountQuotaVisual account={account} dimensions={dimensions} meters={quotaMeters} variant={variant} />
@@ -2021,10 +2055,14 @@ function ProviderAccountSinglePanel({
 function ProviderAccountSummaryCard({
   account,
   dimensions,
+  onRefresh,
+  refreshing = false,
   variant
 }: {
   account: ProviderAccountSnapshot;
   dimensions: OverviewWidgetDimensions;
+  onRefresh?: () => void | Promise<void>;
+  refreshing?: boolean;
   variant: OverviewAccountVariant;
 }) {
   const t = useAppText();
@@ -2038,8 +2076,9 @@ function ProviderAccountSummaryCard({
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate text-[13px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
+          {providerAccountShowRefreshTime(dimensions) ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{formatProviderAccountRefreshTime(account, t)}</div> : null}
         </div>
-        {providerAccountShowStatus(dimensions) ? <Badge variant={providerAccountBadgeVariant(account.status)}>{account.status}</Badge> : null}
+        {providerAccountShowRefresh(dimensions) ? <ProviderAccountRefreshButton account={account} refreshing={refreshing} onRefresh={onRefresh} /> : null}
       </div>
       {showQuotaVisual ? (
         <div className="mt-2 min-h-0 overflow-hidden">
@@ -2063,6 +2102,52 @@ function ProviderAccountSummaryCard({
       )}
     </div>
   );
+}
+
+function ProviderAccountRefreshButton({
+  account,
+  onRefresh,
+  refreshing = false
+}: {
+  account: ProviderAccountSnapshot;
+  onRefresh?: () => void | Promise<void>;
+  refreshing?: boolean;
+}) {
+  const t = useAppText();
+  const label = refreshing ? t("Refreshing account") : t("Refresh account");
+  return (
+    <button
+      aria-label={label}
+      className="m-0 inline-flex shrink-0 appearance-none items-center justify-center border-0 bg-transparent p-0 text-muted-foreground shadow-none transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-45"
+      disabled={refreshing || !onRefresh}
+      title={`${label} (${account.status})`}
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        void onRefresh?.();
+      }}
+    >
+      {refreshing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+    </button>
+  );
+}
+
+function formatProviderAccountRefreshTime(account: ProviderAccountSnapshot, t: (value: string) => string): string {
+  return `${t("Last updated")}: ${formatProviderAccountUpdatedAt(account.updatedAt) || "-"}`;
+}
+
+function formatProviderAccountUpdatedAt(value: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    return "";
+  }
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
 function ProviderAccountMeterLine({
@@ -2394,7 +2479,11 @@ function providerAccountShowSource(dimensions: OverviewWidgetDimensions): boolea
   return dimensions.height >= 2 && dimensions.width >= 2;
 }
 
-function providerAccountShowStatus(dimensions: OverviewWidgetDimensions): boolean {
+function providerAccountShowRefreshTime(dimensions: OverviewWidgetDimensions): boolean {
+  return dimensions.height >= 2 && dimensions.width >= 2;
+}
+
+function providerAccountShowRefresh(dimensions: OverviewWidgetDimensions): boolean {
   return dimensions.width >= 2;
 }
 

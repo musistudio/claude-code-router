@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { loadPersistedAppConfig, replacePersistedAppConfig } from "./app-config-store";
 import { loadPersistedApiKeys, replacePersistedApiKeys } from "./api-key-store";
@@ -98,6 +98,7 @@ const REMOVED_LEGACY_ROUTER_RULE_IDS = new Set([
   "legacy-image"
 ]);
 const INTERNAL_GATEWAY_CORE_HOST = "127.0.0.1";
+const GENERATED_GATEWAY_API_KEY_ID = "local-gateway";
 
 const DEFAULT_CONFIG: AppConfig = {
   APIKEY: "",
@@ -356,8 +357,9 @@ export async function loadAppConfig(): Promise<AppConfig> {
     const gatewayConfig = picked.gateway ?? {};
     const corePort = gatewayConfig.corePort ?? nextPort(port);
     const configFileApiKeys = normalizeApiKeys(picked.APIKEYS, picked.APIKEY).filter((apiKey) => !isDefaultSeedApiKey(apiKey));
-    const persistedApiKeys = await loadPersistedApiKeys();
-    const apiKeys = uniqueApiKeyConfigs([...persistedApiKeys, ...configFileApiKeys]);
+    const persistedApiKeys = (await loadPersistedApiKeys()).filter((apiKey) => !isDefaultSeedApiKey(apiKey));
+    const loadedApiKeys = uniqueApiKeyConfigs([...persistedApiKeys, ...configFileApiKeys]);
+    const apiKeys = ensureGatewayApiKeys(loadedApiKeys);
     const config: AppConfig = withSingleEnabledGlobalProfiles({
       ...DEFAULT_CONFIG,
       ...picked,
@@ -413,11 +415,11 @@ export async function loadAppConfig(): Promise<AppConfig> {
       },
       routerEndpoint: endpoint
     });
-    const shouldMigrateApiKeys = hasConfigFileApiKeys(rawValue) || configFileApiKeys.length > 0;
-    if (shouldMigrateApiKeys) {
+    const shouldPersistApiKeys = loadedApiKeys.length === 0 || hasConfigFileApiKeys(rawValue) || configFileApiKeys.length > 0;
+    if (shouldPersistApiKeys) {
       await replacePersistedApiKeys(apiKeys);
     }
-    if (loadedRawConfig.source !== "sqlite" || shouldMigrateApiKeys) {
+    if (loadedRawConfig.source !== "sqlite" || shouldPersistApiKeys) {
       await writeSanitizedConfig(config);
     }
     return config;
@@ -427,10 +429,16 @@ export async function loadAppConfig(): Promise<AppConfig> {
       console.warn(`[config] Failed to load API keys: ${formatError(storeError)}`);
       return [] as ApiKeyConfig[];
     });
+    const apiKeys = ensureGatewayApiKeys(persistedApiKeys.filter((apiKey) => !isDefaultSeedApiKey(apiKey)));
+    if (persistedApiKeys.length === 0) {
+      await replacePersistedApiKeys(apiKeys).catch((storeError) => {
+        console.warn(`[config] Failed to persist generated API key: ${formatError(storeError)}`);
+      });
+    }
     return {
       ...DEFAULT_CONFIG,
-      APIKEY: persistedApiKeys[0]?.key ?? "",
-      APIKEYS: persistedApiKeys
+      APIKEY: apiKeys[0]?.key ?? "",
+      APIKEYS: apiKeys
     };
   }
 }
@@ -438,7 +446,7 @@ export async function loadAppConfig(): Promise<AppConfig> {
 export async function saveAppConfig(config: AppConfig): Promise<AppConfig> {
   const normalizedConfig = withSingleEnabledGlobalProfiles(config);
   assertProviderApiKeysAreSafe(normalizedConfig);
-  const apiKeys = normalizeApiKeys(normalizedConfig.APIKEYS, normalizedConfig.APIKEY).filter((apiKey) => !isDefaultSeedApiKey(apiKey));
+  const apiKeys = ensureGatewayApiKeys(normalizeApiKeys(normalizedConfig.APIKEYS, normalizedConfig.APIKEY).filter((apiKey) => !isDefaultSeedApiKey(apiKey)));
   await replacePersistedApiKeys(apiKeys);
   await writeSanitizedConfig({
     ...normalizedConfig,
@@ -564,7 +572,7 @@ function providerCredentialApiKey(credential: ProviderCredentialConfig): string 
 }
 
 export async function saveApiKeysConfig(apiKeys: ApiKeyConfig[]): Promise<AppConfig> {
-  const normalized = normalizeApiKeys(apiKeys, undefined).filter((apiKey) => !isDefaultSeedApiKey(apiKey));
+  const normalized = ensureGatewayApiKeys(normalizeApiKeys(apiKeys, undefined).filter((apiKey) => !isDefaultSeedApiKey(apiKey)));
   await replacePersistedApiKeys(normalized);
   return loadAppConfig();
 }
@@ -2514,6 +2522,19 @@ function parseApiKeyLimits(value: unknown): ApiKeyLimitConfig | undefined {
 
 function normalizeApiKeys(value: ApiKeyConfig[] | undefined, legacyKey: string | undefined): ApiKeyConfig[] {
   return uniqueApiKeyConfigs([...(value ?? []), ...(legacyKey ? [createApiKeyConfig(legacyKey, value?.length ?? 0)] : [])]);
+}
+
+function ensureGatewayApiKeys(apiKeys: ApiKeyConfig[]): ApiKeyConfig[] {
+  return apiKeys.length ? apiKeys : [createGeneratedGatewayApiKey()];
+}
+
+function createGeneratedGatewayApiKey(): ApiKeyConfig {
+  return {
+    createdAt: new Date().toISOString(),
+    id: GENERATED_GATEWAY_API_KEY_ID,
+    key: `sk-ccr-${randomBytes(32).toString("base64url")}`,
+    name: "Local Gateway"
+  };
 }
 
 function createApiKeyConfig(key: string, index: number): ApiKeyConfig {

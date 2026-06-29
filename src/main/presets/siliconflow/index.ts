@@ -47,5 +47,6 @@ export const siliconFlowProviderPreset: ProviderPreset = {
     }
   ],
   id: "siliconflow",
-  name: "SiliconFlow"
+  name: "SiliconFlow",
+  websiteUrl: "https://siliconflow.cn/"
 };

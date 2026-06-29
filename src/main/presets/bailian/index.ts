@@ -10,5 +10,6 @@ export const bailianProviderPreset: ProviderPreset = {
     }
   ],
   id: "bailian",
-  name: "Alibaba Bailian"
+  name: "Alibaba Bailian",
+  websiteUrl: "https://bailian.console.aliyun.com/"
 };

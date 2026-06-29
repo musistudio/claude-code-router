@@ -1,6 +1,9 @@
 import { createRequire } from "node:module";
 import { EventEmitter } from "node:events";
+import os from "node:os";
+import path from "node:path";
 import type { AppConfig, RouterConfig, RouterFallbackConfig, RouterRule, RouterRuleCondition, RouterRuleRewrite } from "../../shared/app";
+import { CONFIGDIR } from "../../main/constants";
 
 type HeaderValue = string | string[] | undefined;
 
@@ -99,8 +102,9 @@ export class ClaudeCodeRouterPlugin {
     }
 
     try {
-      delete requireFromHere.cache[requireFromHere.resolve(routerPath)];
-      const loaded = requireFromHere(routerPath) as unknown;
+      const resolvedRouterPath = resolveCustomRouterModule(routerPath);
+      delete requireFromHere.cache[resolvedRouterPath];
+      const loaded = requireFromHere(resolvedRouterPath) as unknown;
       const customRouter = typeof loaded === "function" ? loaded : readDefaultFunction(loaded);
       if (!customRouter) {
         request.log.warn(`Custom router does not export a function: ${routerPath}`);
@@ -113,6 +117,62 @@ export class ClaudeCodeRouterPlugin {
       return undefined;
     }
   }
+}
+
+function resolveCustomRouterModule(routerPath: string): string {
+  const resolved = requireFromHere.resolve(resolveLocalModulePath(routerPath, "Custom router"));
+  assertJavaScriptModulePath(resolved, "Custom router");
+  return resolved;
+}
+
+function resolveLocalModulePath(value: string, label: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error(`${label} path is required.`);
+  }
+
+  const expanded = expandHome(trimmed);
+  if (path.isAbsolute(expanded)) {
+    return expanded;
+  }
+  if (isProtocolSpecifier(expanded)) {
+    throw new Error(`${label} must be a local JavaScript file path, not a URL or protocol specifier.`);
+  }
+  if (!expanded.startsWith(".")) {
+    throw new Error(`${label} must be an explicit local JavaScript path. Package specifiers are not loaded from configuration.`);
+  }
+
+  const resolved = path.resolve(CONFIGDIR, expanded);
+  if (!isPathInside(resolved, CONFIGDIR)) {
+    throw new Error(`${label} relative paths must stay inside the CCR config directory.`);
+  }
+  return resolved;
+}
+
+function assertJavaScriptModulePath(resolved: string, label: string): void {
+  const extension = path.extname(resolved).toLowerCase();
+  if (![".cjs", ".js", ".mjs"].includes(extension)) {
+    throw new Error(`${label} must resolve to a JavaScript module file.`);
+  }
+}
+
+function expandHome(value: string): string {
+  if (value === "~") {
+    return os.homedir();
+  }
+  if (value.startsWith("~/")) {
+    return path.join(os.homedir(), value.slice(2));
+  }
+  return value;
+}
+
+function isProtocolSpecifier(value: string): boolean {
+  return /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value);
+}
+
+function isPathInside(file: string, root: string): boolean {
+  const relative = path.relative(root, file);
+  return relative === "" || (Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 function resolveConfiguredRouteDecision(

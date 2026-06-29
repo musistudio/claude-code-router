@@ -38,6 +38,7 @@ const presetCatalogProviderIds: Record<string, string[]> = {
   "kimi-coding": ["kimi-for-coding"],
   mistral: ["mistral"],
   moonshot: ["moonshotai-cn"],
+  "moonshot-global": ["moonshotai"],
   openai: ["openai"],
   openrouter: ["openrouter"],
   siliconflow: ["siliconflow-cn"],

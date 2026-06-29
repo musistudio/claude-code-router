@@ -26,14 +26,16 @@ export const kimiCodingProviderPreset: ProviderPreset = {
   endpoints: [
     {
       baseUrl: "https://api.kimi.com/coding/v1",
-      protocols: ["openai_chat_completions"]
+      protocols: ["openai_chat_completions"],
+      websiteUrl: "https://www.kimi.com/code?aff=ccr"
     },
     {
       baseUrl: "https://api.kimi.com/coding/",
-      protocols: ["anthropic_messages"]
+      protocols: ["anthropic_messages"],
+      websiteUrl: "https://www.kimi.com/code?aff=ccr"
     }
   ],
   id: "kimi-coding",
   name: "Kimi Code - Coding Plan",
-  websiteUrl: "https://www.kimi.com/code/docs/"
+  websiteUrl: "https://www.kimi.com/code?aff=ccr"
 };

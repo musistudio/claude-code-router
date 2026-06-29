@@ -629,6 +629,8 @@ function ProviderPresetCombobox({
   const filteredOptions = normalizedQuery
     ? options.filter((option) => providerPresetOptionMatchesQuery(option, normalizedQuery))
     : options;
+  const selectedExternalUrl = providerPresetOptionPlatformUrl(selected);
+  const selectedDetail = providerPresetOptionDetail(selected, t);
 
   useEffect(() => {
     if (!open) {
@@ -662,29 +664,66 @@ function ProviderPresetCombobox({
     setOpen(false);
   }
 
+  function toggleOpen() {
+    setOpen((current) => !current);
+  }
+
+  function openSelectedExternalUrl() {
+    if (!selectedExternalUrl) {
+      return;
+    }
+    openExternalUrl(selectedExternalUrl);
+  }
+
   return (
     <div className="relative min-w-0" ref={rootRef}>
-      <button
+      <div
         aria-controls="provider-preset-options"
         aria-expanded={open}
         aria-haspopup="listbox"
         className={cn(
-          "flex h-8 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-[12px] font-medium shadow-[inset_0_1px_1px_rgba(0,0,0,0.03)] outline-none transition-[background-color,border-color,box-shadow,color] hover:border-muted-foreground/45 focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-ring/25",
-          open && "border-ring/35 bg-muted/40"
+          "flex min-h-[62px] w-full min-w-0 cursor-pointer items-center gap-3 rounded-md border border-border bg-background px-3 py-2.5 text-left outline-none transition-[background-color,border-color,box-shadow,color] hover:border-muted-foreground/45 hover:bg-muted/20 focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-ring/25",
+          open && "border-ring/35 bg-muted/30"
         )}
-        onClick={() => setOpen((current) => !current)}
+        onClick={toggleOpen}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
             event.preventDefault();
             setOpen(true);
           }
         }}
-        type="button"
+        role="button"
+        tabIndex={0}
       >
-        <ProviderPresetIcon className="h-4 w-4 rounded-[4px]" iconUrl={selected?.iconUrl} preset={selected?.preset} />
-        <span className="min-w-0 flex-1 truncate">{selected ? selected.label : t("Select preset provider")}</span>
-        <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
-      </button>
+        <ProviderPresetIcon className="h-10 w-10 rounded-md" iconUrl={selected?.iconUrl} preset={selected?.preset} />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[13px] font-semibold text-foreground">{selected ? selected.label : t("Select preset provider")}</div>
+          {selectedDetail ? (
+            <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground" title={selectedDetail}>{selectedDetail}</div>
+          ) : null}
+        </div>
+        {selectedExternalUrl ? (
+          <Button
+            aria-label={t("Open provider website")}
+            onKeyDown={(event) => {
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              openSelectedExternalUrl();
+            }}
+            onMouseDown={(event) => {
+              event.stopPropagation();
+            }}
+            size="iconSm"
+            title={t("Open provider website")}
+            type="button"
+            variant="ghost"
+          >
+            <ExternalLink className="h-4 w-4" />
+          </Button>
+        ) : null}
+      </div>
 
       <AnimatePresence initial={false}>
         {open ? (
@@ -794,11 +833,7 @@ function ProviderImportHeader({
     if (!platformUrl) {
       return;
     }
-    if (window.ccr?.openExternal) {
-      void window.ccr.openExternal(platformUrl).catch(() => undefined);
-      return;
-    }
-    window.open(platformUrl, "_blank", "noopener,noreferrer");
+    openExternalUrl(platformUrl);
   }
 
   return (
@@ -825,7 +860,15 @@ function ProviderImportHeader({
 }
 
 function providerImportPlatformUrl(provider: ProviderDeepLinkPayload, baseUrl: string, preset: ProviderPreset | undefined): string | undefined {
-  return normalizedHttpUrl(provider.source) ?? normalizedHttpUrl(preset?.websiteUrl) ?? providerBaseOrigin(baseUrl || provider.baseUrl);
+  return normalizedHttpUrl(provider.source) ?? providerPresetWebsiteUrlForBaseUrl(preset, baseUrl || provider.baseUrl);
+}
+
+function openExternalUrl(url: string) {
+  if (window.ccr?.openExternal) {
+    void window.ccr.openExternal(url).catch(() => undefined);
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 function providerBaseOrigin(value: string): string | undefined {
@@ -872,6 +915,76 @@ function providerPresetOptionMatchesQuery(
     ...(preset?.endpoints.map((endpoint) => endpoint.baseUrl) ?? [])
   ].filter(Boolean).join("\n").toLowerCase();
   return haystack.includes(query);
+}
+
+function providerPresetOptionDetail(option: ProviderPresetComboboxOption | undefined, t: (value: string) => string): string {
+  if (!option) {
+    return "";
+  }
+  if (option.preset) {
+    return primaryProviderPresetEndpoint(option.preset)?.baseUrl ?? option.preset.websiteUrl ?? "";
+  }
+  if (option.value === customProviderPresetId) {
+    return t("API endpoint");
+  }
+  return "";
+}
+
+function providerPresetOptionPlatformUrl(option: ProviderPresetComboboxOption | undefined): string | undefined {
+  if (!option?.preset) {
+    return undefined;
+  }
+  return providerPresetWebsiteUrlForEndpoint(option.preset, primaryProviderPresetEndpoint(option.preset));
+}
+
+function providerPresetWebsiteUrlForBaseUrl(preset: ProviderPreset | undefined, baseUrl: string): string | undefined {
+  if (!preset) {
+    return undefined;
+  }
+  const normalizedBaseUrl = baseUrl.trim();
+  const endpoint = normalizedBaseUrl
+    ? preset.endpoints.find((item) => item.baseUrl.trim() === normalizedBaseUrl)
+    : undefined;
+  return providerPresetWebsiteUrlForEndpoint(preset, endpoint);
+}
+
+function providerPresetWebsiteUrlForEndpoint(
+  preset: ProviderPreset,
+  endpoint: ReturnType<typeof primaryProviderPresetEndpoint> | undefined
+): string | undefined {
+  return normalizedHttpUrl(endpoint?.websiteUrl) ?? normalizedHttpUrl(preset.websiteUrl);
+}
+
+function providerDraftNameShouldFollowPreset(
+  name: string,
+  previousPreset: ProviderPreset | undefined,
+  t: (value: string) => string
+): boolean {
+  const trimmed = name.trim();
+  if (!trimmed || /^provider-\d+$/i.test(trimmed)) {
+    return true;
+  }
+  if (!previousPreset) {
+    return false;
+  }
+  return [previousPreset.name, t(previousPreset.name)].some((baseName) =>
+    providerNameMatchesGeneratedPresetName(trimmed, baseName)
+  );
+}
+
+function providerNameMatchesGeneratedPresetName(name: string, baseName: string): boolean {
+  const normalizedName = name.trim().toLowerCase();
+  const normalizedBaseName = baseName.trim().toLowerCase();
+  if (!normalizedBaseName) {
+    return false;
+  }
+  if (normalizedName === normalizedBaseName) {
+    return true;
+  }
+  if (!normalizedName.startsWith(`${normalizedBaseName} `)) {
+    return false;
+  }
+  return /^\d+$/.test(normalizedName.slice(normalizedBaseName.length + 1));
 }
 
 function LocalAgentProviderImportPanel({
@@ -1209,7 +1322,8 @@ export function AddProviderForm({
 
     const preset = findProviderPreset(presetId);
     const endpoint = preset ? primaryProviderPresetEndpoint(preset) : undefined;
-    const generatedName = !draft.name.trim() || /^provider-\d+$/i.test(draft.name.trim());
+    const previousPreset = findProviderPreset(draft.presetId);
+    const generatedName = providerDraftNameShouldFollowPreset(draft.name, previousPreset, t);
     const accountDraft = createProviderAccountDraftFromConfig(defaultProviderAccountConfigForPreset(presetId));
     onChange({
       ...accountDraft,
@@ -1240,13 +1354,14 @@ export function AddProviderForm({
               providerPlugins={[...providerPlugins, ...draft.providerPlugins]}
               providers={providers}
             />
-            <Field label={t("Preset provider")}>
+            <div className="block min-w-0 space-y-1 sm:col-span-2">
+              <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Select preset provider")}</span>
               <ProviderPresetCombobox
                 value={draft.presetId}
                 onChange={updatePreset}
                 options={providerPresetOptions}
               />
-            </Field>
+            </div>
           </>
         )}
         <Field label={t("Name")}>

@@ -14,5 +14,6 @@ export const openaiProviderPreset: ProviderPreset = {
   name: "OpenAI",
   officialApiKeyPatterns: [
     { flags: "i", source: "^sk-(?:proj|svcacct)-[a-z0-9_-]+$" }
-  ]
+  ],
+  websiteUrl: "https://openai.com/"
 };

@@ -3139,12 +3139,9 @@ function applyCors(response: ServerResponse, config?: AppConfig): void {
 async function authorize(request: IncomingMessage, response: ServerResponse, config: AppConfig): Promise<ApiKeyAuthorizationResult> {
   let apiKeys = await configuredApiKeys(config);
   if (apiKeys.length === 0) {
-    if (isLoopbackBindHost(config.gateway.host)) {
-      return { ok: true };
-    }
     sendJson(response, 403, {
       error: {
-        message: "Configure at least one CCR API key before listening on a non-loopback gateway host."
+        message: "CCR API key is not initialized. Save a gateway API key or restart CCR to generate one."
       }
     });
     return { ok: false };

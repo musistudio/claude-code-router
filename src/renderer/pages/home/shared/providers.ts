@@ -1571,7 +1571,10 @@ export function cloneProviderAccountConnectors(connectors: ProviderAccountConnec
   return JSON.parse(JSON.stringify(connectors)) as ProviderAccountConnectorConfig[];
 }
 
-export function defaultProviderAccountConfigForPreset(_presetId: string | undefined): ProviderAccountConfig | undefined {
+export function defaultProviderAccountConfigForPreset(presetId: string | undefined): ProviderAccountConfig | undefined {
+  if (presetId === "kimi-coding") {
+    return cloneProviderAccountConfig(findProviderPreset(presetId)?.account ?? defaultProviderAccountConfig);
+  }
   // Keep the advanced settings default on the standard endpoint; main resolves preset-specific connectors at runtime.
   return cloneProviderAccountConfig(defaultProviderAccountConfig);
 }
