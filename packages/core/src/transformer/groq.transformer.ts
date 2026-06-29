@@ -22,6 +22,10 @@ export class GroqTransformer implements Transformer {
         delete tool.function.parameters.$schema;
       })
     }
+    // Groq's OpenAI-compatible API rejects the reasoning field.
+    if (request.reasoning) {
+      delete request.reasoning;
+    }
     return request
   }
 
