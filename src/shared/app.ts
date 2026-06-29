@@ -78,6 +78,7 @@ export type GatewayProviderConfig = {
   extraHeaders?: unknown;
   icon?: string;
   id?: string;
+  modelDisplayNames?: Record<string, string>;
   models: string[];
   name: string;
   provider?: string;
@@ -221,6 +222,7 @@ export type ProviderDeepLinkPayload = {
   apiKey?: string;
   baseUrl: string;
   icon?: string;
+  modelDisplayNames?: Record<string, string>;
   models: string[];
   name?: string;
   protocol?: GatewayProviderProtocol;
@@ -250,6 +252,7 @@ export type LocalAgentProviderCandidate = {
   id: string;
   importable: boolean;
   kind: LocalAgentProviderKind;
+  modelDisplayNames?: Record<string, string>;
   models: string[];
   name: string;
   protocol: GatewayProviderProtocol;

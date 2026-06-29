@@ -30,13 +30,15 @@ export function missingCandidate(
   id: string,
   name: string,
   protocol: GatewayProviderProtocol,
-  models: string[]
+  models: string[],
+  modelDisplayNames?: Record<string, string>
 ): LocalAgentProviderCandidate {
   return {
     detail: "No local login state was found for this agent.",
     id,
     importable: false,
     kind,
+    modelDisplayNames: modelDisplayNamesForModels(modelDisplayNames, models),
     models,
     name,
     protocol,
@@ -50,14 +52,27 @@ export function providerPayload(
   baseUrl: string,
   account?: ProviderAccountConfig
 ): ProviderDeepLinkPayload {
+  const models = uniqueStrings(candidate.models).slice(0, 24);
   return {
     account,
     apiKey: localAgentProviderApiKey,
     baseUrl,
-    models: uniqueStrings(candidate.models).slice(0, 24),
+    modelDisplayNames: modelDisplayNamesForModels(candidate.modelDisplayNames, models),
+    models,
     name,
     protocol: candidate.protocol
   };
+}
+
+export function modelDisplayNamesForModels(
+  value: Record<string, string> | undefined,
+  models: string[]
+): Record<string, string> | undefined {
+  const modelIds = new Set(models);
+  const entries = Object.entries(value ?? {})
+    .map(([rawModel, rawDisplayName]) => [rawModel.trim(), rawDisplayName.trim()] as const)
+    .filter(([model, displayName]) => model && displayName && model !== displayName && modelIds.has(model));
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 export function bearerAuthPlugin(

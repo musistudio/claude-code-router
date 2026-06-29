@@ -5,7 +5,7 @@ import {
 	  DialogTitle, Field, GatewayProviderConfig, Info, Input, KeyValueRowsControl, LoaderCircle, motion,
   normalizeProfileScope, normalizeProfileSurface, parseProfileModelValue, Pencil, Plus, PopoverContent,
   profileAgentLabel, profileAgentOptions, ProfileConfig, profileModelDisplayValue, profileModelMatchesQuery, profileModelProviderMatchesQuery,
-  profileModelProviderOptions, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
+  profileModelOptionDisplayName, profileModelProviderOptions, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
   Play, Power, RefreshCw, Search, Select, SelectControl, Terminal, Toggle, translateOptions, Trash2, useAppErrorText, useAppText, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactNode, type VirtualModelProfileConfig,
   copyTextToClipboard,
   useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, X
@@ -516,7 +516,7 @@ function ProfileModelSelector({
     filteredProviders.find((provider) => provider.name === parsedValue.provider) ??
     filteredProviders[0];
   const filteredModels = activeProvider
-    ? activeProvider.models.filter((model) => profileModelMatchesQuery(activeProvider.name, model, query))
+    ? activeProvider.models.filter((model) => profileModelMatchesQuery(activeProvider.name, model, query, profileModelOptionDisplayName(activeProvider, model)))
     : [];
   const displayValue = profileModelDisplayValue(value, parsedValue, providers, placeholder, virtualModelProfiles);
 
@@ -729,6 +729,7 @@ function ProfileModelSelector({
                     ) : null}
                     {activeProvider && filteredModels.map((model) => {
                       const selected = parsedValue.provider === activeProvider.name && parsedValue.model === model;
+                      const displayName = profileModelOptionDisplayName(activeProvider, model);
                       return (
                         <button
                           className={cn(
@@ -739,7 +740,7 @@ function ProfileModelSelector({
                           onClick={() => chooseModel(activeProvider.name, model)}
                           type="button"
                         >
-                          <span className="min-w-0 flex-1 truncate font-mono">{model}</span>
+                          <span className="min-w-0 flex-1 truncate" title={displayName}>{displayName}</span>
                           {selected ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
                         </button>
                       );

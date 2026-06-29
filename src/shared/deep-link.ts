@@ -147,6 +147,7 @@ export function parseProviderDeepLinkPayload(rawUrl: string): ProviderDeepLinkPa
     firstStringParam(params, ["protocol"]) ?? firstPayloadString(payload, ["protocol"])
   );
   const models = readDeepLinkModels(params, payload);
+  const modelDisplayNames = readDeepLinkModelDisplayNames(params, payload, models);
   const account = readDeepLinkAccount(params, payload);
   const source = boundedString(
     firstStringParam(params, ["source"]) ??
@@ -159,6 +160,7 @@ export function parseProviderDeepLinkPayload(rawUrl: string): ProviderDeepLinkPa
     ...(apiKey ? { apiKey } : {}),
     baseUrl,
     ...(icon ? { icon } : {}),
+    ...(modelDisplayNames ? { modelDisplayNames } : {}),
     models,
     ...(name ? { name } : {}),
     ...(protocol ? { protocol } : {}),
@@ -216,6 +218,7 @@ function parseProviderPayloadFields(
     firstStringParam(params, ["protocol"]) ?? firstPayloadString(payload, ["protocol"])
   );
   const models = readDeepLinkModels(params, payload);
+  const modelDisplayNames = readDeepLinkModelDisplayNames(params, payload, models);
   const account = readDeepLinkAccount(params, payload);
   const source = boundedString(
     firstStringParam(params, ["source"]) ??
@@ -230,6 +233,7 @@ function parseProviderPayloadFields(
     ...(apiKey ? { apiKey } : {}),
     baseUrl,
     ...(icon ? { icon } : {}),
+    ...(modelDisplayNames ? { modelDisplayNames } : {}),
     models,
     ...(name ? { name } : {}),
     ...(protocol ? { protocol } : {}),
@@ -515,9 +519,59 @@ function payloadModels(payload: Record<string, unknown> | undefined): string[] {
   }
   const value = payload.models;
   if (Array.isArray(value)) {
-    return value.filter((item): item is string => typeof item === "string");
+    return value
+      .map((item) => typeof item === "string" ? item : readPayloadModelId(item))
+      .filter((item): item is string => Boolean(item));
   }
   return typeof value === "string" ? [value] : [];
+}
+
+function readDeepLinkModelDisplayNames(
+  params: URLSearchParams,
+  payload: Record<string, unknown> | undefined,
+  models: string[]
+): Record<string, string> | undefined {
+  const modelIds = new Set(models);
+  const displayNames: Record<string, string> = {};
+  const addDisplayName = (rawModel: unknown, rawDisplayName: unknown) => {
+    const model = typeof rawModel === "string" ? rawModel.trim() : "";
+    const displayName = typeof rawDisplayName === "string" ? rawDisplayName.trim() : "";
+    if (!model || !displayName || model === displayName || !modelIds.has(model)) {
+      return;
+    }
+    if (displayName.length > maxModelLength) {
+      throw new Error("Model display name is too long.");
+    }
+    displayNames[model] = displayName;
+  };
+
+  const explicit = parseJsonValueParam(params, payload, ["modelDisplayNames", "model_display_names"]);
+  if (isRecord(explicit)) {
+    for (const [model, displayName] of Object.entries(explicit)) {
+      addDisplayName(model, displayName);
+    }
+  }
+
+  const payloadModelList = Array.isArray(payload?.models) ? payload.models : [];
+  for (const item of payloadModelList) {
+    if (!isRecord(item)) {
+      continue;
+    }
+    addDisplayName(readPayloadModelId(item), readPayloadModelDisplayName(item));
+  }
+
+  return Object.keys(displayNames).length > 0 ? displayNames : undefined;
+}
+
+function readPayloadModelId(value: unknown): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  return firstPayloadString(value, ["id", "slug", "model", "name"]);
+}
+
+function readPayloadModelDisplayName(value: Record<string, unknown>): string | undefined {
+  return firstPayloadString(value, ["display_name", "displayName", "label", "name"]);
 }
 
 function splitModelValue(value: string): string[] {

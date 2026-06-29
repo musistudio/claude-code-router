@@ -12,7 +12,7 @@ import {
   providerAccountSnapshotCredentialLabel, providerAccountSnapshotLabel, ProviderAccountTestPath,
   ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
   ProviderConnectivityCheckReport, providerDeepLinkDisplayIcon, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
-  providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
+  providerModelDisplayName, providerModelDisplayTitle, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
   resolveProviderDeepLinkPreset, ShieldCheck, splitLines, splitModelTagInput, Switch, Textarea, translatedProviderProtocolLabel, translateOptions,
   translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppErrorText, useAppText, useEffect, useMemo,
   useRef, useState, X, isPlainRecord
@@ -216,16 +216,17 @@ export function ProvidersView({ accountSnapshots, addProvider, editProvider, not
                                   <div className="flex flex-wrap gap-2">
                                     {provider.models.map((model) => {
                                       const modelKey = `${itemKey}:${model}`;
+                                      const displayName = providerModelDisplayName(provider, model);
                                       return (
                                         <button
-                                          aria-label={`${t("Double click to copy")} ${model}`}
-                                          className="inline-flex max-w-full items-center rounded-full border border-border bg-background px-2.5 py-1 font-mono text-[11px] leading-4 text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                                          aria-label={`${t("Double click to copy")} ${displayName}`}
+                                          className="inline-flex max-w-full items-center rounded-full border border-border bg-background px-2.5 py-1 text-[11px] leading-4 text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
                                           key={modelKey}
                                           onDoubleClick={() => void copyModel(model)}
-                                          title={t("Double click to copy")}
+                                          title={`${providerModelDisplayTitle(provider, model)} · ${t("Double click to copy")}`}
                                           type="button"
                                         >
-                                          <span className="min-w-0 truncate">{model}</span>
+                                          <span className="min-w-0 truncate">{displayName}</span>
                                         </button>
                                       );
                                     })}
@@ -308,8 +309,8 @@ export function ModelsView({ config }: { config: AppConfig }) {
                         key={row.key}
                       >
                         <div className="min-w-0">
-                          <div className="truncate font-mono text-[12px] font-semibold text-foreground" title={row.model}>
-                            {row.model}
+                          <div className="truncate text-[12px] font-semibold text-foreground" title={row.displayName ?? row.model}>
+                            {row.displayName ?? row.model}
                           </div>
                         </div>
                       </AnimatedListItem>
@@ -521,7 +522,9 @@ export function ProviderDeepLinkDialog({
                 <div className="flex flex-wrap gap-2">
                   {modelPreview.map((model) => (
                     <Badge key={model} variant="outline">
-                      <span className="max-w-[210px] truncate font-mono">{model}</span>
+                      <span className="max-w-[210px] truncate" title={provider.modelDisplayNames?.[model] ?? model}>
+                        {provider.modelDisplayNames?.[model] ?? model}
+                      </span>
                     </Badge>
                   ))}
                   {provider.models.length > modelPreview.length ? (
@@ -943,6 +946,7 @@ function LocalAgentProviderImportPanel({
         baseUrl: result.provider.baseUrl,
         credentials: [],
         icon: result.provider.icon ?? "",
+        modelDisplayNames: result.provider.modelDisplayNames,
         modelSearch: "",
         modelsText: result.provider.models.join("\n"),
         name: result.provider.name?.trim() || inferProviderNameFromBaseUrl(result.provider.baseUrl),
@@ -2321,22 +2325,25 @@ function ModelTagInput({
       />
       {models.length > 0 ? (
         <div className="flex max-h-[120px] flex-wrap gap-1.5 overflow-auto">
-          {models.map((model) => (
-            <Badge className="max-w-full pr-1" key={model} variant="secondary">
-              <span className="min-w-0 max-w-[260px] truncate" title={model}>
-                {displayNames?.[model] ?? model}
-              </span>
-              <button
-                aria-label={`${t("Remove model")} ${model}`}
-                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
-                onClick={() => removeModel(model)}
-                title={t("Remove model")}
-                type="button"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
-          ))}
+          {models.map((model) => {
+            const displayName = displayNames?.[model] ?? model;
+            return (
+              <Badge className="max-w-full pr-1" key={model} variant="secondary">
+                <span className="min-w-0 max-w-[260px] truncate" title={displayName}>
+                  {displayName}
+                </span>
+                <button
+                  aria-label={`${t("Remove model")} ${displayName}`}
+                  className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
+                  onClick={() => removeModel(model)}
+                  title={t("Remove model")}
+                  type="button"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            );
+          })}
         </div>
       ) : null}
     </>
@@ -2401,7 +2408,7 @@ function ModelMultiSelect({
                   checked && "border-primary bg-accent"
                 )}
                 key={model}
-                title={displayName ? `${displayName} (${model})` : model}
+                title={displayName ?? model}
               >
                 <Checkbox checked={checked} onCheckedChange={() => toggleModel(model)} />
                 <span className="min-w-0 flex-1 truncate">{displayName ?? model}</span>

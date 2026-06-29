@@ -7,7 +7,9 @@ import type {
   ProviderAccountMappingConfig
 } from "../../shared/app";
 import {
+  isRecord,
   missingCandidate,
+  modelDisplayNamesForModels,
   providerInternalNamePlaceholder,
   providerNamePlaceholder,
   providerNameSlugPlaceholder,
@@ -17,7 +19,6 @@ import {
   readString,
   uniqueProviderName,
   uniqueStrings,
-  isRecord,
   type OAuthTokenSet
 } from "./shared";
 
@@ -25,6 +26,11 @@ export const codexDefaultBaseUrl = "https://chatgpt.com/backend-api/codex";
 
 const codexAccountBaseUrl = "https://chatgpt.com/backend-api";
 const codexDefaultModels = ["gpt-5-codex"];
+
+type LocalAgentModelCatalog = {
+  modelDisplayNames?: Record<string, string>;
+  models: string[];
+};
 
 const codexAccountRateLimitMapping: ProviderAccountMappingConfig = {
   meters: [
@@ -93,21 +99,22 @@ const codexAccountTokenUsageMapping: ProviderAccountMappingConfig = {
 
 export function codexCandidate(): LocalAgentProviderCandidate {
   const auth = readCodexAuth();
-  const models = readCodexModels();
+  const catalog = readCodexModelCatalog();
   if (auth?.refreshToken || auth?.accessToken) {
     return {
       detail: "ChatGPT login detected. Click Import to add it as a gateway provider.",
       id: "codex-api",
       importable: true,
       kind: "codex",
-      models,
+      modelDisplayNames: catalog.modelDisplayNames,
+      models: catalog.models,
       name: "Codex API",
       protocol: "openai_responses",
       sourceFile: auth.sourceFile,
       status: "available"
     };
   }
-  return missingCandidate("codex", "codex-api", "Codex API", "openai_responses", models);
+  return missingCandidate("codex", "codex-api", "Codex API", "openai_responses", catalog.models, catalog.modelDisplayNames);
 }
 
 export function importCodexProvider(candidate: LocalAgentProviderCandidate, providerNames: string[]): LocalAgentProviderImportResult {
@@ -197,13 +204,31 @@ function codexBackendRequestTransform(): Record<string, unknown> {
   };
 }
 
-function readCodexModels(): string[] {
+function readCodexModelCatalog(): LocalAgentModelCatalog {
   const modelsFile = path.join(os.homedir(), ".codex", "models_cache.json");
   const record = readJsonRecord(modelsFile);
-  const models = Array.isArray(record?.models)
-    ? record.models.map((model) => isRecord(model) ? readString(model.slug) || readString(model.id) || readString(model.name) : readString(model))
-    : [];
-  return uniqueStrings([...models, ...codexDefaultModels]);
+  const models: string[] = [];
+  const modelDisplayNames: Record<string, string> = {};
+  for (const item of Array.isArray(record?.models) ? record.models : []) {
+    const model = isRecord(item)
+      ? readString(item.slug) || readString(item.id) || readString(item.name)
+      : readString(item);
+    if (!model) {
+      continue;
+    }
+    models.push(model);
+    if (isRecord(item)) {
+      const displayName = readString(item.display_name) || readString(item.displayName) || readString(item.label) || readString(item.name);
+      if (displayName && displayName !== model) {
+        modelDisplayNames[model] = displayName;
+      }
+    }
+  }
+  const uniqueModels = uniqueStrings([...models, ...codexDefaultModels]);
+  return {
+    modelDisplayNames: modelDisplayNamesForModels(modelDisplayNames, uniqueModels),
+    models: uniqueModels
+  };
 }
 
 function readCodexIdTokenClaims(idToken: string | undefined): { accountId?: string; isFedrampAccount?: boolean } {

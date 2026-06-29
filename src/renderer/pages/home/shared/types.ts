@@ -694,6 +694,7 @@ export type ExtensionListItem = {
 };
 
 export type ModelCatalogItem = {
+  displayName?: string;
   key: string;
   model: string;
 };

@@ -17,7 +17,7 @@ import {
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
   isTraySupportedPlatform,
   isRoutingRewriteDraftRowValid,
-  LayoutGroup, mergeModelDisplayNames, mergeProviderCapabilities, mergeProviderModelLists,
+  LayoutGroup, mergeModelDisplayNames, mergeProviderCapabilities, mergeProviderModelLists, modelDisplayNamesForModels,
   navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets,
   normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
   normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
@@ -1349,6 +1349,7 @@ function App() {
     }
 
     const protocolsToSave = selectedProtocols.length > 0 ? selectedProtocols : [fallbackProtocol];
+    const modelDisplayNames = modelDisplayNamesForModels(providerDraft.modelDisplayNames, models);
     const selectedProtocolSet = new Set(protocolsToSave);
     const capabilityCandidates = mergeProviderCapabilities(
       presetCapabilitiesFromDraft(providerDraft),
@@ -1416,6 +1417,7 @@ function App() {
       account: accountConfig,
       credentials: credentials.length > 0 ? credentials : undefined,
       icon: providerDraft.icon.trim() || undefined,
+      modelDisplayNames,
       models,
       name: providerName,
       type: protocol

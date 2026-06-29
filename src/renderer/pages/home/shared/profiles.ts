@@ -415,6 +415,7 @@ export function normalizeProfileClientModel(value: string | undefined): string {
 }
 
 export type ProfileModelProviderOption = {
+  modelDisplayNames?: Record<string, string>;
   models: string[];
   name: string;
 };
@@ -433,6 +434,7 @@ export function profileModelProviderOptions(
   const providerOptions = providers
     .filter((provider) => provider.name?.trim() && Array.isArray(provider.models))
     .map((provider) => ({
+      modelDisplayNames: profileModelDisplayNamesForModels(provider.modelDisplayNames, provider.models),
       models: uniqueStrings(provider.models.filter(Boolean)),
       name: provider.name.trim()
     }))
@@ -485,10 +487,11 @@ export function profileModelDisplayValue(
   }
   const normalized = normalizeProfileClientModel(value);
   if (parsedValue.provider && parsedValue.model) {
-    return `${parsedValue.provider}/${parsedValue.model}`;
+    const provider = profileModelProviderOptions(providers, virtualModelProfiles).find((item) => item.name === parsedValue.provider);
+    return `${parsedValue.provider}/${profileModelOptionDisplayName(provider, parsedValue.model)}`;
   }
   const provider = profileModelProviderOptions(providers, virtualModelProfiles).find((item) => item.models.includes(normalized));
-  return provider ? `${provider.name}/${normalized}` : normalized;
+  return provider ? `${provider.name}/${profileModelOptionDisplayName(provider, normalized)}` : normalized;
 }
 
 export function profileModelProviderMatchesQuery(provider: ProfileModelProviderOption, query: string): boolean {
@@ -498,16 +501,36 @@ export function profileModelProviderMatchesQuery(provider: ProfileModelProviderO
   }
   return (
     provider.name.toLowerCase().includes(normalizedQuery) ||
-    provider.models.some((model) => model.toLowerCase().includes(normalizedQuery))
+    provider.models.some((model) =>
+      model.toLowerCase().includes(normalizedQuery) ||
+      profileModelOptionDisplayName(provider, model).toLowerCase().includes(normalizedQuery)
+    )
   );
 }
 
-export function profileModelMatchesQuery(providerName: string, model: string, query: string): boolean {
+export function profileModelMatchesQuery(providerName: string, model: string, query: string, displayName?: string): boolean {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) {
     return true;
   }
-  return providerName.toLowerCase().includes(normalizedQuery) || model.toLowerCase().includes(normalizedQuery);
+  return providerName.toLowerCase().includes(normalizedQuery) ||
+    model.toLowerCase().includes(normalizedQuery) ||
+    (displayName ?? "").toLowerCase().includes(normalizedQuery);
+}
+
+export function profileModelOptionDisplayName(provider: ProfileModelProviderOption | undefined, model: string): string {
+  return provider?.modelDisplayNames?.[model]?.trim() || model;
+}
+
+function profileModelDisplayNamesForModels(
+  value: Record<string, string> | undefined,
+  models: string[]
+): Record<string, string> | undefined {
+  const modelIds = new Set(models);
+  const entries = Object.entries(value ?? {})
+    .map(([rawModel, rawDisplayName]) => [rawModel.trim(), rawDisplayName.trim()] as const)
+    .filter(([model, displayName]) => model && displayName && model !== displayName && modelIds.has(model));
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 export type BotGatewayAuthInputType = "text" | "password";

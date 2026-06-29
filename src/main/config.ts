@@ -1083,6 +1083,7 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
       const models = Array.isArray(item.models)
         ? item.models.map((model) => readString(model)).filter((model): model is string => Boolean(model))
         : [];
+      const modelDisplayNames = parseModelDisplayNames(item.modelDisplayNames ?? item.model_display_names, models);
 
       if (!name) {
         return undefined;
@@ -1103,6 +1104,7 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         extraHeaders: item.extraHeaders,
         icon: readString(item.icon),
         id: readString(item.id),
+        modelDisplayNames,
         models,
         name,
         provider: readString(item.provider),
@@ -1114,6 +1116,22 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
     .filter((item): item is GatewayProviderConfig => Boolean(item));
 
   return withProviderIds(providers);
+}
+
+function parseModelDisplayNames(value: unknown, models: string[]): Record<string, string> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const modelIds = new Set(models);
+  const entries = Object.entries(value)
+    .map(([rawModel, rawDisplayName]) => [rawModel.trim(), readString(rawDisplayName)] as const)
+    .filter((entry): entry is [string, string] => {
+      const [model, displayName] = entry;
+      return Boolean(model && displayName && modelIds.has(model) && model !== displayName);
+    });
+
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 function withProviderIds(providers: GatewayProviderConfig[]): GatewayProviderConfig[] {

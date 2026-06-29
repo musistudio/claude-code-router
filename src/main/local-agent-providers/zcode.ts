@@ -13,6 +13,7 @@ import {
   isLoopbackUrl,
   isRecord,
   missingCandidate,
+  modelDisplayNamesForModels,
   providerInternalNamePlaceholder,
   providerPayload,
   readJsonRecord,
@@ -25,10 +26,16 @@ import {
 type ZcodeConfiguredProvider = {
   apiKey: string;
   baseUrl: string;
+  modelDisplayNames?: Record<string, string>;
   models: string[];
   name: string;
   providerId: string;
   sourceFile: string;
+};
+
+type LocalAgentModelCatalog = {
+  modelDisplayNames?: Record<string, string>;
+  models: string[];
 };
 
 const zcodeDefaultModels = ["GLM-5.2", "GLM-5-Turbo"];
@@ -40,12 +47,16 @@ export function zcodeCandidate(): LocalAgentProviderCandidate {
   const models = configuredProvider?.models.length
     ? configuredProvider.models
     : zcodeRuntime.models.length > 0 ? zcodeRuntime.models : zcodeDefaultModels;
+  const modelDisplayNames = configuredProvider?.models.length
+    ? configuredProvider.modelDisplayNames
+    : zcodeRuntime.modelDisplayNames;
   if (configuredProvider) {
     return {
       detail: "ZCode provider API key detected in local ZCode config. Click Import to add it as a gateway provider.",
       id: "zcode-api",
       importable: true,
       kind: "zcode",
+      modelDisplayNames,
       models,
       name: "ZCode API",
       protocol: "anthropic_messages",
@@ -61,6 +72,7 @@ export function zcodeCandidate(): LocalAgentProviderCandidate {
       id: "zcode-api",
       importable: false,
       kind: "zcode",
+      modelDisplayNames,
       models,
       name: "ZCode API",
       protocol: "anthropic_messages",
@@ -68,7 +80,7 @@ export function zcodeCandidate(): LocalAgentProviderCandidate {
       status: "locked"
     };
   }
-  return missingCandidate("zcode", "zcode-api", "ZCode API", "anthropic_messages", models);
+  return missingCandidate("zcode", "zcode-api", "ZCode API", "anthropic_messages", models, modelDisplayNames);
 }
 
 export function importZcodeProvider(candidate: LocalAgentProviderCandidate, providerNames: string[]): LocalAgentProviderImportResult {
@@ -77,7 +89,11 @@ export function importZcodeProvider(candidate: LocalAgentProviderCandidate, prov
     throw new Error("ZCode provider API key was not found in ZCode config.");
   }
   const provider = providerPayload(
-    { ...candidate, models: configuredProvider.models.length > 0 ? configuredProvider.models : candidate.models },
+    {
+      ...candidate,
+      modelDisplayNames: configuredProvider.models.length > 0 ? configuredProvider.modelDisplayNames : candidate.modelDisplayNames,
+      models: configuredProvider.models.length > 0 ? configuredProvider.models : candidate.models
+    },
     uniqueProviderName(providerNames, "ZCode API"),
     configuredProvider.baseUrl,
     zcodeProviderAccountConfig(configuredProvider.baseUrl)
@@ -152,7 +168,7 @@ function readZcodeConfiguredProviders(sourceFile: string): ZcodeConfiguredProvid
       return [{
         apiKey,
         baseUrl,
-        models: zcodeProviderModels(value),
+        ...zcodeProviderModelCatalog(value),
         name: readString(value.name) || providerId,
         providerId,
         sourceFile
@@ -160,7 +176,7 @@ function readZcodeConfiguredProviders(sourceFile: string): ZcodeConfiguredProvid
     });
 }
 
-function readZcodeRuntime(): { baseUrl: string; models: string[] } {
+function readZcodeRuntime(): { baseUrl: string } & LocalAgentModelCatalog {
   const cache = readJsonRecord(path.join(os.homedir(), ".zcode", "v2", "bots-model-cache.v2.json"));
   const providers = Array.isArray(cache?.providers)
     ? cache.providers.filter((provider): provider is Record<string, unknown> => isRecord(provider))
@@ -174,23 +190,63 @@ function readZcodeRuntime(): { baseUrl: string; models: string[] } {
     return text.includes("zcode") || text.includes("z.ai") || text.includes("bigmodel");
   });
   const baseUrl = readString(isRecord(provider?.endpoints) ? provider?.endpoints.baseURL : undefined) || zcodeDefaultBaseUrl;
-  const models = Array.isArray(provider?.models)
-    ? provider.models.map((model) => isRecord(model) ? readString(model.id) || readString(model.name) : readString(model))
-    : [];
+  const catalog = zcodeProviderModelCatalog(provider ?? {});
+  const models = uniqueStrings([...catalog.models, ...zcodeDefaultModels]);
   return {
     baseUrl,
-    models: uniqueStrings([...models, ...zcodeDefaultModels])
+    modelDisplayNames: modelDisplayNamesForModels(catalog.modelDisplayNames, models),
+    models
   };
 }
 
-function zcodeProviderModels(provider: Record<string, unknown>): string[] {
+function zcodeProviderModelCatalog(provider: Record<string, unknown>): LocalAgentModelCatalog {
+  const models: string[] = [];
+  const modelDisplayNames: Record<string, string> = {};
   if (Array.isArray(provider.models)) {
-    return uniqueStrings(provider.models.map((model) => isRecord(model) ? readString(model.id) || readString(model.name) : readString(model)));
+    for (const item of provider.models) {
+      const model = isRecord(item)
+        ? readString(item.id) || readString(item.name)
+        : readString(item);
+      if (!model) {
+        continue;
+      }
+      models.push(model);
+      if (isRecord(item)) {
+        const displayName = readString(item.displayName) || readString(item.display_name) || readString(item.label) || readString(item.name);
+        if (displayName && displayName !== model) {
+          modelDisplayNames[model] = displayName;
+        }
+      }
+    }
+    const uniqueModels = uniqueStrings(models);
+    return {
+      modelDisplayNames: modelDisplayNamesForModels(modelDisplayNames, uniqueModels),
+      models: uniqueModels
+    };
   }
   if (isRecord(provider.models)) {
-    return uniqueStrings(Object.entries(provider.models).map(([key, value]) => isRecord(value) ? readString(value.id) || key : key));
+    for (const [key, value] of Object.entries(provider.models)) {
+      const model = isRecord(value) ? readString(value.id) || key : key;
+      if (!model) {
+        continue;
+      }
+      models.push(model);
+      if (isRecord(value)) {
+        const displayName = readString(value.displayName) || readString(value.display_name) || readString(value.label) || readString(value.name);
+        if (displayName && displayName !== model) {
+          modelDisplayNames[model] = displayName;
+        }
+      }
+    }
+    const uniqueModels = uniqueStrings(models);
+    return {
+      modelDisplayNames: modelDisplayNamesForModels(modelDisplayNames, uniqueModels),
+      models: uniqueModels
+    };
   }
-  return [];
+  return {
+    models: []
+  };
 }
 
 function isZcodeModelProvider(providerId: string, provider: Record<string, unknown>): boolean {
