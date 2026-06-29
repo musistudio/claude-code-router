@@ -48,6 +48,7 @@ type UsageCaptureInput = {
   fallbackModel?: string;
   method: string;
   path: string;
+  providerName?: string;
   providerProtocol?: GatewayProviderProtocol;
   requestId?: string;
   responseHeaders: Headers;
@@ -316,6 +317,7 @@ export async function recordGatewayUsageCapture(input: UsageCaptureInput): Promi
     });
     const route = splitRouteSelector(input.fallbackModel);
     const provider =
+      input.providerName ??
       readHeader(input.responseHeaders, "x-gateway-target-provider-name") ??
       readHeader(input.responseHeaders, "x-gateway-target-provider") ??
       route.provider;

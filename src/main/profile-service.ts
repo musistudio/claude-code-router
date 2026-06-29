@@ -74,7 +74,7 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
     }
 
     const helperResult = writeClaudeCodeApiKeyHelper(profile, token);
-    const wrapperResult = writeClaudeCodeWrapper(config, profile);
+    const wrapperResult = writeClaudeCodeWrapper(config, profile, helperResult.file);
     const nextSettings = {
       ...settings,
       apiKeyHelper: process.platform === "win32" ? `"${helperResult.file}"` : helperResult.file,
@@ -459,7 +459,7 @@ function claudeCodeApiKeyHelperCmdScript(token: string): string {
   ].join("\r\n");
 }
 
-function writeClaudeCodeWrapper(config: AppConfig, profile: ProfileConfig): { backupFile?: string; changed: boolean; file: string } {
+function writeClaudeCodeWrapper(config: AppConfig, profile: ProfileConfig, apiKeyHelperFile: string): { backupFile?: string; changed: boolean; file: string } {
   const binDir = path.join(CONFIGDIR, "bin");
   mkdirSync(binDir, { mode: privateDirMode, recursive: true });
   const runtimeFile = path.join(binDir, codexMiddlewareRuntimeFilename());
@@ -469,8 +469,8 @@ function writeClaudeCodeWrapper(config: AppConfig, profile: ProfileConfig): { ba
   }
   const file = path.join(binDir, claudeCodeWrapperFilename(profile));
   const content = process.platform === "win32"
-    ? claudeCodeWrapperCmdScript(config, profile, runtimeFile)
-    : claudeCodeWrapperShellScript(config, profile, runtimeFile);
+    ? claudeCodeWrapperCmdScript(config, profile, runtimeFile, apiKeyHelperFile)
+    : claudeCodeWrapperShellScript(config, profile, runtimeFile, apiKeyHelperFile);
   const writeResult = writeFileWithBackup(file, content, { mode: privateExecutableMode });
   if (process.platform !== "win32") {
     chmodSync(file, privateExecutableMode);
@@ -489,9 +489,10 @@ function claudeCodeWrapperFilename(profile: ProfileConfig): string {
     : `ccr-claude-code-wrapper-${slug}`;
 }
 
-function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig, runtimeFile: string): string {
+function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig, runtimeFile: string, apiKeyHelperFile: string): string {
   const realClaude = profile.env?.CCR_CLAUDE_CODE_BIN?.trim() || "claude";
   const surface = normalizeProfileSurface(profile.surface);
+  const remoteEndpoint = `${gatewayEndpoint(config)}/__ccr/remote`;
   const envExports = Object.entries(profileEnv(profile))
     .filter(([key]) => key !== "CCR_CLAUDE_CODE_BIN")
     .map(([key, value]) => `export ${key}=${shellQuote(value)}`);
@@ -505,14 +506,21 @@ function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig,
     `export CCR_CLAUDE_CODE_WRAPPER=1`,
     `export CCR_REAL_CLAUDE_CODE_BIN=${shellQuote(realClaude)}`,
     `export CODEXL_CLAUDE_CODE_BIN=${shellQuote(realClaude)}`,
+    `if [ -z "\${CCR_REMOTE_SYNC_ENABLED:-}" ]; then CCR_REMOTE_SYNC_ENABLED=1; fi`,
+    `if [ -z "\${CCR_REMOTE_SYNC_ENDPOINT:-}" ]; then CCR_REMOTE_SYNC_ENDPOINT=${shellQuote(remoteEndpoint)}; fi`,
+    `if [ -z "\${CCR_REMOTE_SYNC_API_KEY_HELPER:-}" ]; then CCR_REMOTE_SYNC_API_KEY_HELPER=${shellQuote(apiKeyHelperFile)}; fi`,
+    `if [ -z "\${CCR_REMOTE_SYNC_PROFILE_ID:-}" ]; then CCR_REMOTE_SYNC_PROFILE_ID=${shellQuote(profile.id || profile.name || "claude-code")}; fi`,
+    `if [ -z "\${CCR_REMOTE_SYNC_PROFILE_NAME:-}" ]; then CCR_REMOTE_SYNC_PROFILE_NAME=${shellQuote(profile.name || profile.id || "Claude Code")}; fi`,
+    "export CCR_REMOTE_SYNC_ENABLED CCR_REMOTE_SYNC_ENDPOINT CCR_REMOTE_SYNC_API_KEY_HELPER CCR_REMOTE_SYNC_PROFILE_ID CCR_REMOTE_SYNC_PROFILE_NAME",
     ...nodeRuntimeShellExecLines(runtimeFile),
     ""
   ].join("\n");
 }
 
-function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, runtimeFile: string): string {
+function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, runtimeFile: string, apiKeyHelperFile: string): string {
   const realClaude = profile.env?.CCR_CLAUDE_CODE_BIN?.trim() || "claude";
   const surface = normalizeProfileSurface(profile.surface);
+  const remoteEndpoint = `${gatewayEndpoint(config)}/__ccr/remote`;
   const envExports = Object.entries(profileEnv(profile))
     .filter(([key]) => key !== "CCR_CLAUDE_CODE_BIN")
     .map(([key, value]) => cmdSetLine(key, value));
@@ -525,6 +533,11 @@ function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, r
     cmdSetLine("CCR_CLAUDE_CODE_WRAPPER", "1"),
     cmdSetLine("CCR_REAL_CLAUDE_CODE_BIN", realClaude),
     cmdSetLine("CODEXL_CLAUDE_CODE_BIN", realClaude),
+    `if not defined CCR_REMOTE_SYNC_ENABLED ${cmdSetLine("CCR_REMOTE_SYNC_ENABLED", "1")}`,
+    `if not defined CCR_REMOTE_SYNC_ENDPOINT ${cmdSetLine("CCR_REMOTE_SYNC_ENDPOINT", remoteEndpoint)}`,
+    `if not defined CCR_REMOTE_SYNC_API_KEY_HELPER ${cmdSetLine("CCR_REMOTE_SYNC_API_KEY_HELPER", apiKeyHelperFile)}`,
+    `if not defined CCR_REMOTE_SYNC_PROFILE_ID ${cmdSetLine("CCR_REMOTE_SYNC_PROFILE_ID", profile.id || profile.name || "claude-code")}`,
+    `if not defined CCR_REMOTE_SYNC_PROFILE_NAME ${cmdSetLine("CCR_REMOTE_SYNC_PROFILE_NAME", profile.name || profile.id || "Claude Code")}`,
     ...nodeRuntimeCmdExecLines(runtimeFile),
     ""
   ].join("\r\n");

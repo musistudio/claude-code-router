@@ -77,6 +77,7 @@ export type GatewayProviderConfig = {
   extraBody?: unknown;
   extraHeaders?: unknown;
   icon?: string;
+  id?: string;
   models: string[];
   name: string;
   provider?: string;
