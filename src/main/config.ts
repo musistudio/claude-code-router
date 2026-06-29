@@ -34,6 +34,7 @@ import type {
   ProfileRuntimeConfig,
   ProxyRouteTarget,
   ProxyRuntimeConfig,
+  MorphRouterConfig,
   RouterConfig,
   RouterFallbackConfig,
   RouterFallbackMode,
@@ -694,6 +695,10 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   if (router) {
     config.Router = router;
   }
+  const morphRouter = parseMorphRouter((value as Record<string, unknown>).MorphRouter ?? (value as Record<string, unknown>).morphRouter);
+  if (morphRouter) {
+    config.MorphRouter = morphRouter;
+  }
   const agent = parseAgent((value as Record<string, unknown>).agent ?? (value as Record<string, unknown>).Agent, (value as Record<string, unknown>).mcpServers);
   if (agent) {
     config.agent = agent;
@@ -1249,6 +1254,43 @@ function parseRouter(value: unknown): Partial<RouterConfig> | undefined {
     router.fallback = fallback;
   }
   return router;
+}
+
+function parseMorphRouter(value: unknown): MorphRouterConfig | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const morph: MorphRouterConfig = {};
+  if (typeof value.enabled === "boolean") {
+    morph.enabled = value.enabled;
+  }
+  const apiKey = readString(value.api_key) ?? readString(value.apiKey);
+  if (apiKey) {
+    morph.api_key = apiKey;
+  }
+  const policy = readString(value.policy);
+  if (policy) {
+    morph.policy = policy as MorphRouterConfig["policy"];
+  }
+  const defaultModel = readString(value.default_model) ?? readString(value.default);
+  if (defaultModel) {
+    morph.default_model = defaultModel;
+  }
+  const timeoutMs = readNumber(value.timeout_ms ?? value.timeoutMs);
+  if (timeoutMs !== undefined && timeoutMs > 0) {
+    morph.timeout_ms = timeoutMs;
+  }
+  const maxInputChars = readNumber(value.max_input_chars ?? value.maxInputChars);
+  if (maxInputChars !== undefined && maxInputChars > 0) {
+    morph.max_input_chars = maxInputChars;
+  }
+  // Preserve the model -> route mapping structure (record or array) verbatim;
+  // morph-router.ts normalizes and validates it against configured providers.
+  if (isObject(value.models) || Array.isArray(value.models)) {
+    morph.models = value.models as MorphRouterConfig["models"];
+  }
+  return morph;
 }
 
 function parseRouterFallback(value: unknown): RouterFallbackConfig | undefined {

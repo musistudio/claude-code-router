@@ -10,23 +10,34 @@ import {
   Trash2, uniqueStrings, useAppText, useMemo, useState, X
 } from "../shared";
 import { ROUTER_FALLBACK_MAX_RETRY_COUNT } from "../../../../shared/app";
+import type { MorphRouterConfig, MorphRouterPolicy } from "../../../../shared/app";
+import {
+  buildMorphRouterEditorRows,
+  MORPH_ROUTER_POLICY_OPTIONS,
+  morphRowsToModels,
+  type MorphRouterModelRow
+} from "../shared/morph-router-models";
 export function RoutingView({
   addRule,
   config,
   editRule,
   moveRule,
+  morphRouter,
   providers,
   removeRule,
   updateFallback,
+  updateMorphRouter,
   updateRule
 }: {
   addRule: () => void;
   config: AppConfig;
   editRule: (index: number) => void;
   moveRule: (index: number, direction: -1 | 1) => void;
+  morphRouter: MorphRouterConfig | undefined;
   providers: GatewayProviderConfig[];
   removeRule: (index: number) => void;
   updateFallback: (fallback: RouterFallbackConfig) => void;
+  updateMorphRouter: (patch: Partial<MorphRouterConfig>) => void;
   updateRule: (index: number, patch: Partial<RouterRule>) => void;
 }) {
   const t = useAppText();
@@ -69,6 +80,13 @@ export function RoutingView({
               fallback={fallback}
               label={t("Default on failure")}
               onChange={updateFallback}
+              providers={providers}
+            />
+          </div>
+          <div className="border-b border-border/60 px-4 py-3">
+            <MorphRouterControl
+              morphRouter={morphRouter}
+              onChange={updateMorphRouter}
               providers={providers}
             />
           </div>
@@ -267,6 +285,105 @@ function RouterFallbackControl({
               </div>
             ))
           )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MorphRouterControl({
+  morphRouter,
+  onChange,
+  providers
+}: {
+  morphRouter: MorphRouterConfig | undefined;
+  onChange: (patch: Partial<MorphRouterConfig>) => void;
+  providers: GatewayProviderConfig[];
+}) {
+  const t = useAppText();
+  const config = morphRouter ?? {};
+  const enabled = config.enabled === true;
+  const modelOptions = useMemo(() => createRouteModelOptions(providers), [providers]);
+  const editorRows = useMemo(() => buildMorphRouterEditorRows(config.models), [config.models]);
+  const defaultModel = config.default_model ?? config.default ?? "";
+  const policy = config.policy ?? "balanced";
+
+  // Set or unset the primary route for a Morph model. Choosing "Unset" (empty
+  // route) drops the mapping; an existing multi-target fallback chain is kept.
+  function setModelRoute(name: string, route: string) {
+    const next: MorphRouterModelRow[] = editorRows.map((row) =>
+      row.name === name ? { ...row, route } : row
+    );
+    onChange({ models: morphRowsToModels(next) });
+  }
+
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[12px] font-semibold">{t("Morph Router")}</div>
+          <div className="mt-0.5 text-[11px] text-muted-foreground">
+            {t("Auto-route non-explicit requests to the cheapest capable model")}
+          </div>
+        </div>
+        <Toggle checked={enabled} onChange={(value) => onChange({ enabled: value })} />
+      </div>
+      {enabled ? (
+        <div className="mt-3 space-y-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label={t("Morph API key")}>
+              <Input
+                autoComplete="off"
+                onChange={(event) => onChange({ api_key: event.target.value })}
+                placeholder="$MORPH_API_KEY"
+                type="password"
+                value={config.api_key ?? config.apiKey ?? ""}
+              />
+            </Field>
+            <Field label={t("Policy")}>
+              <SelectControl
+                onChange={(value) => onChange({ policy: value as MorphRouterPolicy })}
+                options={MORPH_ROUTER_POLICY_OPTIONS}
+                value={policy}
+              />
+            </Field>
+            <Field label={t("Default model")}>
+              <Input
+                onChange={(event) => onChange({ default_model: event.target.value })}
+                placeholder="claude-sonnet-4-6"
+                value={defaultModel}
+              />
+            </Field>
+            <Field label={t("Timeout (ms)")}>
+              <Input
+                min={1}
+                onChange={(event) => onChange({ timeout_ms: clampNumber(Number(event.target.value), 1, 600000) })}
+                type="number"
+                value={String(config.timeout_ms ?? config.timeoutMs ?? 1000)}
+              />
+            </Field>
+          </div>
+          <Field label={t("Model routing targets")}>
+            <div className="rounded-md border border-border bg-muted/20 p-2">
+              <div className="space-y-2">
+                {editorRows.map((row) => (
+                  <div className="grid min-w-0 grid-cols-[minmax(0,200px)_minmax(0,1fr)_auto] items-center gap-2" key={row.name}>
+                    <span className="min-w-0 truncate font-mono text-[12px]" title={row.name}>{row.name}</span>
+                    <RouteTargetControl
+                      modelOptions={modelOptions}
+                      onChange={(value) => setModelRoute(row.name, value)}
+                      value={row.route}
+                    />
+                    {row.fallbackRoutes.length > 0 ? (
+                      <Badge variant="outline" title={row.fallbackRoutes.map((value) => `↳ ${value}`).join("\n")}>{`+${row.fallbackRoutes.length}`}</Badge>
+                    ) : (
+                      <span aria-hidden="true" className="w-0" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Field>
         </div>
       ) : null}
     </div>

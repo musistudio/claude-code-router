@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { EventEmitter } from "node:events";
 import type { AppConfig, RouterConfig, RouterFallbackConfig, RouterRule, RouterRuleCondition, RouterRuleRewrite } from "../../shared/app";
+import { getMorphRouterDecision } from "./morph-router";
 
 type HeaderValue = string | string[] | undefined;
 
@@ -57,9 +58,29 @@ export class ClaudeCodeRouterPlugin {
     };
 
     const customModel = await this.resolveCustomRoute(request);
+
+    // MorphRouter owns non-explicit routing when enabled. Explicit selections
+    // bypass it regardless of how the configured router would classify them:
+    //   - a custom router file is configured (the user owns routing),
+    //   - the request carries an explicit `provider,model` selector, or
+    //   - the request carries a `<CCR-SUBAGENT-MODEL>` tag.
+    // These are checked directly (not via configuredDecision.reason) so the
+    // bypass holds even when the matching provider/rule is not configured.
+    // IMPORTANT: capture these signals BEFORE resolveConfiguredRouteDecision(),
+    // whose subagent rule strips the tag from the body as a side effect.
+    const bypassMorph =
+      Boolean(this.config.CUSTOM_ROUTER_PATH) ||
+      hasExplicitRouteSelector(request.body.model) ||
+      hasSubagentModelTag(request.body.system);
+
     const configuredDecision = resolveConfiguredRouteDecision(request, this.config, tokenCount);
+    // Any MorphRouter failure falls back to the configured decision.
+    const morphDecision = bypassMorph ? undefined : await this.resolveMorphRoute(request);
+
     if (customModel) {
       body.model = customModel;
+    } else if (morphDecision) {
+      body.model = morphDecision.model;
     } else {
       if (configuredDecision.rewrites?.length) {
         for (const rewrite of configuredDecision.rewrites) {
@@ -72,18 +93,65 @@ export class ClaudeCodeRouterPlugin {
         body.model = configuredDecision.model;
       }
     }
-    const routedModel = customModel ?? configuredDecision.model ?? readString(body.model);
+    const routedModel = customModel ?? morphDecision?.model ?? configuredDecision.model ?? readString(body.model);
 
     return {
       body,
       decision: {
-        fallback: customModel ? this.config.Router.fallback : configuredDecision.fallback,
+        fallback: customModel
+          ? this.config.Router.fallback
+          : morphDecision?.fallback ?? configuredDecision.fallback,
         model: routedModel,
-        reason: customModel ? "custom-router" : configuredDecision.reason,
+        reason: customModel ? "custom-router" : morphDecision ? "morph-router" : configuredDecision.reason,
         sessionId,
         tokenCount
       }
     };
+  }
+
+  private async resolveMorphRoute(
+    request: MutableRequestLike
+  ): Promise<{ model: string; fallback: RouterFallbackConfig } | undefined> {
+    if (this.config.MorphRouter?.enabled !== true) {
+      return undefined;
+    }
+
+    const decision = await getMorphRouterDecision({
+      rawConfig: this.config.MorphRouter,
+      providers: this.config.Providers ?? [],
+      requestBody: request.body,
+      logger: request.log
+    });
+    if (!decision) {
+      return undefined;
+    }
+
+    const primary = normalizeRouteSelector(decision.target.route);
+    if (!primary) {
+      return undefined;
+    }
+
+    // Map MorphRouter's remaining targets onto the gateway's native model-chain
+    // fallback. The configured global fallback chain is APPENDED after Morph's
+    // own targets (not replaced), so requests try: primary -> Morph's remaining
+    // targets -> the user's configured fallback, matching the documented order.
+    const fallbackModels = decision.fallbackTargets
+      .map((target) => normalizeRouteSelector(target.route))
+      .filter((value): value is string => Boolean(value));
+    const baseFallback = this.config.Router.fallback;
+    const baseModels = baseFallback?.mode === "model-chain" ? baseFallback.models ?? [] : [];
+    const chainModels = uniqueRouteSelectors([...fallbackModels, ...baseModels.map((model) => normalizeRouteSelector(model) ?? model)], primary);
+
+    const fallback: RouterFallbackConfig =
+      fallbackModels.length > 0
+        ? { mode: "model-chain", models: chainModels, retryCount: baseFallback?.retryCount ?? 1 }
+        : baseFallback;
+
+    request.log.info(
+      `MorphRouter selected ${decision.morphModel} -> ${primary}` +
+        (fallback.mode === "model-chain" && fallback.models.length ? ` (fallback: ${fallback.models.join(", ")})` : "")
+    );
+    return { model: primary, fallback };
   }
 
   countTokens(body: Record<string, unknown>) {
@@ -669,6 +737,39 @@ function estimateTextTokens(text: string): number {
   const asciiWords = text.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
   const cjkChars = text.match(/[\u3400-\u9fff]/g)?.length ?? 0;
   return Math.max(1, Math.ceil((asciiWords + cjkChars) * 1.15));
+}
+
+// Dedupe a fallback model-chain and drop the primary route (already the first
+// upstream attempt), preserving order.
+function uniqueRouteSelectors(models: string[], primary: string): string[] {
+  const seen = new Set<string>([primary]);
+  const result: string[] = [];
+  for (const model of models) {
+    if (!model || seen.has(model)) {
+      continue;
+    }
+    seen.add(model);
+    result.push(model);
+  }
+  return result;
+}
+
+// True when the request explicitly selects a `provider,model` route. CCR's
+// convention for an explicit selection is a comma between provider and model;
+// such requests must bypass MorphRouter even if the provider is not configured.
+function hasExplicitRouteSelector(model: unknown): boolean {
+  return typeof model === "string" && model.includes(",");
+}
+
+// Non-mutating check for a `<CCR-SUBAGENT-MODEL>` tag. extractSubagentModel()
+// strips the tag as a side effect, so detection for the MorphRouter bypass uses
+// this read-only peek instead.
+function hasSubagentModelTag(system: unknown): boolean {
+  if (!Array.isArray(system) || system.length < 2) {
+    return false;
+  }
+  const second = system[1];
+  return isRecord(second) && typeof second.text === "string" && /<CCR-SUBAGENT-MODEL>(.*?)<\/CCR-SUBAGENT-MODEL>/s.test(second.text);
 }
 
 function extractSubagentModel(system: unknown): string | undefined {

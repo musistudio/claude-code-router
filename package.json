@@ -17,6 +17,7 @@
     "build:app:mac:release": "node build/macos-release-preflight.mjs && npm run build:assets && electron-builder --mac --publish never",
     "build:app:win": "npm run build:assets && electron-builder --win",
     "preview": "npm run build:assets && electron .",
+    "test": "node build/test.mjs",
     "typecheck": "tsc --noEmit",
     "rebuild:sqlite3": "electron-rebuild -f -w better-sqlite3"
   },
