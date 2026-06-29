@@ -1866,7 +1866,7 @@ export function providerCapabilitiesSummary(provider: GatewayProviderConfig, tra
 }
 
 export function providerListItemKey(provider: GatewayProviderConfig, index: number): string {
-  return `${index}:${provider.name || "provider"}`;
+  return provider.id || `${index}:${provider.name || "provider"}`;
 }
 
 export function providerMatchesQuery(provider: GatewayProviderConfig, query: string): boolean {

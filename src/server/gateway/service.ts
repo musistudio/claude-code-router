@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer, type IncomingHttpHeaders, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import { networkInterfaces } from "node:os";
@@ -47,6 +47,7 @@ import { proxyService } from "../proxy/service";
 import { createSseErrorDetector, recordGatewayRequestLog, updateGatewayRequestLogFromRawTrace, type RequestLogRawTraceUpdateInput } from "../../main/request-log-store";
 import { recordGatewayUsageCapture } from "../../main/usage-store";
 import { ClaudeCodeRouterPlugin, normalizeRouteSelector } from "./claude-code-router-plugin";
+import { ccrRemoteControlPathPrefix, ccrRemoteControlService } from "./remote-control-service";
 import {
   claudeCodeEffectiveMaxInputTokens,
   findModelCatalogEntry,
@@ -428,6 +429,22 @@ class GatewayService {
       return;
     }
 
+    if (path === ccrRemoteControlPathPrefix || path.startsWith(`${ccrRemoteControlPathPrefix}/`)) {
+      const authorization = authorize(request, response, this.config);
+      if (!authorization.ok) {
+        return;
+      }
+      await ccrRemoteControlService.handleRequest({
+        endpoint: this.status.endpoint,
+        path,
+        readBody: readRequestBody,
+        request,
+        response,
+        sendJson
+      });
+      return;
+    }
+
     if (isNetworkCaptureMcpPath(path)) {
       if (!this.config.proxy.captureNetwork) {
         sendJson(response, 404, { error: { message: "Network capture MCP is disabled." } });
@@ -559,6 +576,7 @@ class GatewayService {
           fallbackModel: routedModel,
           method,
           path,
+          providerName: resolveProviderLogName(responseHeaders, config, routedModel),
           providerProtocol: resolveResponseProviderProtocol(responseHeaders, this.config),
           requestBody: shouldSendBody(method) ? bodyToForward ?? Buffer.alloc(0) : Buffer.alloc(0),
           requestHeaders: headers,
@@ -653,6 +671,7 @@ class GatewayService {
           fallbackModel: routedModel,
           method,
           path,
+          providerName: resolveProviderLogName(new Headers(), this.config, routedModel),
           providerProtocol: resolveResponseProviderProtocol(new Headers(), this.config),
           requestId,
           responseHeaders: new Headers(),
@@ -681,6 +700,7 @@ class GatewayService {
           fallbackModel: routedModel,
           method,
           path,
+          providerName: resolveProviderLogName(responseHeaders, this.config, routedModel),
           providerProtocol: resolveResponseProviderProtocol(responseHeaders, this.config),
           requestId,
           responseHeaders,
@@ -732,6 +752,7 @@ class GatewayService {
           fallbackModel: routedModel,
           method,
           path,
+          providerName: resolveProviderLogName(responseHeaders, this.config, routedModel),
           providerProtocol: resolveResponseProviderProtocol(responseHeaders, this.config),
           requestId,
           responseHeaders,
@@ -1624,7 +1645,7 @@ function rewriteProviderListHeader(
 function rewriteProviderSelectorForProtocol(value: string, config: AppConfig, protocol: GatewayProviderProtocol): string {
   const provider = findProviderByPublicOrInternalName(config, value);
   const capability = provider ? providerCapabilityForClientProtocol(provider, protocol) : undefined;
-  return provider && capability ? providerCapabilityInternalName(provider.name, capability.type) : value;
+  return provider && capability ? providerCapabilityInternalName(provider, capability.type) : value;
 }
 
 function rewriteFallbackForProtocol(fallback: RouterFallbackConfig, config: AppConfig, protocol: GatewayProviderProtocol): RouterFallbackConfig {
@@ -1669,7 +1690,7 @@ function rewriteModelSelectorForProtocol(
   const targetModel = publicModel.slice(separator + 1).trim();
   const provider = findProviderByPublicOrInternalName(config, providerName);
   const capability = provider ? providerCapabilityForClientProtocol(provider, protocol) : undefined;
-  return provider && capability ? `${providerCapabilityInternalName(provider.name, capability.type)}/${targetModel}` : publicModel;
+  return provider && capability ? `${providerCapabilityInternalName(provider, capability.type)}/${targetModel}` : publicModel;
 }
 
 function providerCapabilityForClientProtocol(
@@ -1733,15 +1754,19 @@ function findProviderByPublicOrInternalName(config: AppConfig, name: string): Ga
   }
   const credentialInternalName = parseProviderCredentialInternalName(name);
   if (credentialInternalName) {
+    const internalProviderId = credentialInternalName.providerId.toLowerCase();
     return config.Providers.find((provider) =>
-      provider.name.trim().toLowerCase() === credentialInternalName.providerName.toLowerCase()
+      provider.name.trim().toLowerCase() === internalProviderId ||
+      providerRuntimeId(provider).toLowerCase() === internalProviderId
     );
   }
   return config.Providers.find((provider) =>
     provider.name.trim().toLowerCase() === normalized ||
+    provider.id?.trim().toLowerCase() === normalized ||
     provider.provider?.trim().toLowerCase() === normalized ||
+    providerRuntimeId(provider).toLowerCase() === normalized ||
     normalizedProviderCapabilities(provider).some((capability) =>
-      providerCapabilityInternalName(provider.name, capability.type).toLowerCase() === normalized
+      providerCapabilityNameMatches(provider, capability.type, normalized)
     )
   );
 }
@@ -1753,27 +1778,27 @@ function rewriteCapabilityResponseHeaders(headers: Headers, config: AppConfig): 
   }
   const credentialInternalName = parseProviderCredentialInternalName(providerName);
   if (credentialInternalName) {
-    const provider = findProviderByPublicOrInternalName(config, credentialInternalName.providerName);
+    const provider = findProviderByPublicOrInternalName(config, credentialInternalName.providerId);
     if (!provider) {
       return headers;
     }
     const credential = findProviderCredentialBySlug(provider, credentialInternalName.credentialSlug);
     const rewritten = new Headers(headers);
-    rewritten.set("x-gateway-target-provider-name", provider.name);
+    rewritten.set("x-gateway-target-provider-name", providerRuntimeId(provider));
     rewritten.set("x-ccr-provider-protocol", credentialInternalName.protocol);
-    rewritten.set("x-ccr-provider-credential-provider", provider.name);
-    rewritten.set("x-ccr-provider-credential-id", credential ? providerCredentialRuntimeId(provider, credential) : credentialInternalName.credentialSlug);
+    rewritten.set("x-ccr-provider-credential-provider", providerRuntimeId(provider));
+    rewritten.set("x-ccr-provider-credential-id", providerCredentialSlug(credential ? providerCredentialRuntimeId(provider, credential) : credentialInternalName.credentialSlug));
     return rewritten;
   }
   const provider = findProviderByPublicOrInternalName(config, providerName);
-  if (!provider || provider.name === providerName) {
+  if (!provider) {
     return headers;
   }
   const capability = normalizedProviderCapabilities(provider).find((item) =>
-    providerCapabilityInternalName(provider.name, item.type).toLowerCase() === providerName.toLowerCase()
+    providerCapabilityNameMatches(provider, item.type, providerName)
   );
   const rewritten = new Headers(headers);
-  rewritten.set("x-gateway-target-provider-name", provider.name);
+  rewritten.set("x-gateway-target-provider-name", providerRuntimeId(provider));
   if (capability) {
     rewritten.set("x-ccr-provider-protocol", capability.type);
   }
@@ -2008,7 +2033,7 @@ function selectProviderCredentials(
     return {
       cooldown,
       credential,
-      credentialId: providerCredentialRuntimeId(provider, credential, providerIndex),
+      credentialId: providerCredentialSlug(providerCredentialRuntimeId(provider, credential, providerIndex)),
       index: providerIndex,
       internalName: providerCredentialInternalName(provider, protocol, credential),
       limitState,
@@ -2378,8 +2403,8 @@ function toCoreGatewayProvider(
     name: credential
       ? providerCredentialInternalName(provider, type, credential)
       : capability
-        ? providerCapabilityInternalName(provider.name, type)
-        : provider.name,
+        ? providerCapabilityInternalName(provider, type)
+        : providerRuntimeId(provider),
     type
   };
 }
@@ -2415,8 +2440,43 @@ function normalizedProviderCapabilities(provider: GatewayProviderConfig): Gatewa
   return normalized;
 }
 
-function providerCapabilityInternalName(providerName: string, protocol: GatewayProviderProtocol): string {
+function providerCapabilityInternalName(provider: GatewayProviderConfig, protocol: GatewayProviderProtocol): string {
+  return `${providerRuntimeId(provider)}::${protocol}`;
+}
+
+function providerCapabilityLegacyInternalName(providerName: string, protocol: GatewayProviderProtocol): string {
   return `${providerName}::${protocol}`;
+}
+
+function providerCapabilityNameMatches(provider: GatewayProviderConfig, protocol: GatewayProviderProtocol, value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return providerCapabilityInternalName(provider, protocol).toLowerCase() === normalized ||
+    providerCapabilityLegacyInternalName(provider.name, protocol).toLowerCase() === normalized;
+}
+
+function providerRuntimeId(provider: GatewayProviderConfig): string {
+  const explicit = sanitizeProviderHeaderId(provider.id);
+  if (explicit) {
+    return explicit;
+  }
+  const normalized = provider.name
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  const hash = createHash("sha256").update(`${provider.name}\n${readBaseUrl(provider) ?? ""}`).digest("hex").slice(0, 10);
+  return `provider-${normalized || "provider"}-${hash}`;
+}
+
+function sanitizeProviderHeaderId(value: string | undefined): string | undefined {
+  const normalized = value
+    ?.trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || undefined;
 }
 
 function providerCredentialInternalName(
@@ -2424,12 +2484,12 @@ function providerCredentialInternalName(
   protocol: GatewayProviderProtocol,
   credential: ProviderCredentialConfig
 ): string {
-  return `${providerCapabilityInternalName(provider.name, protocol)}::cred:${providerCredentialSlug(providerCredentialRuntimeId(provider, credential))}`;
+  return `${providerCapabilityInternalName(provider, protocol)}::cred:${providerCredentialSlug(providerCredentialRuntimeId(provider, credential))}`;
 }
 
 function parseProviderCredentialInternalName(value: string | undefined): {
   credentialSlug: string;
-  providerName: string;
+  providerId: string;
   protocol: GatewayProviderProtocol;
 } | undefined {
   const marker = "::cred:";
@@ -2444,8 +2504,8 @@ function parseProviderCredentialInternalName(value: string | undefined): {
     return undefined;
   }
   const protocol = normalizeProviderProtocol(baseName.slice(protocolSeparator + 2));
-  const providerName = baseName.slice(0, protocolSeparator).trim();
-  return protocol && providerName ? { credentialSlug, providerName, protocol } : undefined;
+  const providerId = baseName.slice(0, protocolSeparator).trim();
+  return protocol && providerId ? { credentialSlug, providerId, protocol } : undefined;
 }
 
 function providerCredentialSlug(value: string | undefined): string {
@@ -2550,7 +2610,7 @@ function resolveResponseProviderProtocol(headers: Headers, config: AppConfig | u
     return normalizeProviderProtocol(providerName);
   }
   const capability = normalizedProviderCapabilities(provider).find((item) =>
-    providerCapabilityInternalName(provider.name, item.type).toLowerCase() === providerName.toLowerCase()
+    providerCapabilityNameMatches(provider, item.type, providerName)
   );
   if (capability) {
     return capability.type;
@@ -2558,9 +2618,27 @@ function resolveResponseProviderProtocol(headers: Headers, config: AppConfig | u
   return normalizeProviderProtocol(provider.type) ?? normalizeProviderProtocol(provider.provider) ?? inferProtocol(provider);
 }
 
+function resolveProviderLogName(headers: Headers, config: AppConfig | undefined, fallbackModel?: string): string | undefined {
+  const providerSelector =
+    headers.get("x-gateway-target-provider-name")?.trim() ||
+    headers.get("x-gateway-target-provider")?.trim();
+  const headerProvider = providerSelector && config
+    ? findProviderByPublicOrInternalName(config, providerSelector)
+    : undefined;
+  if (headerProvider) {
+    return headerProvider.name;
+  }
+
+  const routeProvider = parseProviderModelSelector(fallbackModel)?.provider;
+  const modelProvider = routeProvider && config
+    ? findProviderByPublicOrInternalName(config, routeProvider)
+    : undefined;
+  return modelProvider?.name;
+}
+
 function providerMatchesName(provider: GatewayProviderConfig, name: string): boolean {
   const normalizedName = name.trim().toLowerCase();
-  return [provider.name, provider.provider]
+  return [provider.id, provider.name, provider.provider]
     .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
     .some((value) => value.trim().toLowerCase() === normalizedName);
 }
@@ -2862,7 +2940,7 @@ function shouldServeGatewayRequest(config: AppConfig, request: IncomingMessage):
 function applyCors(response: ServerResponse, config?: AppConfig): void {
   const origin = config ? endpoint(config.gateway.host, config.gateway.port) : "*";
   response.setHeader("Access-Control-Allow-Origin", origin);
-  response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, Anthropic-Version, Anthropic-Beta, Mcp-Session-Id, MCP-Protocol-Version");
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, Last-Event-ID, Anthropic-Version, Anthropic-Beta, Mcp-Session-Id, MCP-Protocol-Version");
   response.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
   response.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
 }
@@ -2873,7 +2951,7 @@ function authorize(request: IncomingMessage, response: ServerResponse, config: A
     return { ok: true };
   }
 
-  const token = readAuthToken(request.headers);
+  const token = readAuthToken(request.headers) || readRemoteControlQueryAuthToken(request);
   const apiKey = token ? apiKeys.find((item) => item.key === token) : undefined;
   if (apiKey) {
     if (isApiKeyExpired(apiKey)) {
@@ -3918,6 +3996,14 @@ function readAuthToken(headers: IncomingHttpHeaders): string | undefined {
     return undefined;
   }
   return raw.toLowerCase().startsWith("bearer ") ? raw.slice(7).trim() : raw;
+}
+
+function readRemoteControlQueryAuthToken(request: IncomingMessage): string | undefined {
+  const url = new URL(request.url || "/", "http://127.0.0.1");
+  if (url.pathname !== ccrRemoteControlPathPrefix && !url.pathname.startsWith(`${ccrRemoteControlPathPrefix}/`)) {
+    return undefined;
+  }
+  return url.searchParams.get("api_key")?.trim() || url.searchParams.get("key")?.trim() || undefined;
 }
 
 function forwardHeaders(headers: IncomingHttpHeaders): Record<string, string> {

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { loadPersistedAppConfig, replacePersistedAppConfig } from "./app-config-store";
 import { loadPersistedApiKeys, replacePersistedApiKeys } from "./api-key-store";
@@ -623,6 +624,7 @@ function sanitizeConfigForDisk(config: AppConfig): AppConfig {
       ...config.gateway,
       coreHost: INTERNAL_GATEWAY_CORE_HOST
     },
+    Providers: withProviderIds(config.Providers),
     profile: sanitizeProfileConfigForDisk(config.profile)
   };
 }
@@ -1100,6 +1102,7 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         extraBody: item.extraBody,
         extraHeaders: item.extraHeaders,
         icon: readString(item.icon),
+        id: readString(item.id),
         models,
         name,
         provider: readString(item.provider),
@@ -1110,7 +1113,47 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
     })
     .filter((item): item is GatewayProviderConfig => Boolean(item));
 
-  return providers;
+  return withProviderIds(providers);
+}
+
+function withProviderIds(providers: GatewayProviderConfig[]): GatewayProviderConfig[] {
+  const counts = new Map<string, number>();
+  return providers.map((provider) => {
+    const baseId = providerRuntimeIdCandidate(provider);
+    const nextCount = (counts.get(baseId) ?? 0) + 1;
+    counts.set(baseId, nextCount);
+    return {
+      ...provider,
+      id: nextCount === 1 ? baseId : `${baseId}-${nextCount}`
+    };
+  });
+}
+
+function providerRuntimeIdCandidate(provider: GatewayProviderConfig): string {
+  const explicit = sanitizeProviderId(provider.id);
+  if (explicit) {
+    return explicit;
+  }
+  const slug = sanitizeProviderId(provider.name) || "provider";
+  const source = [
+    provider.name,
+    provider.provider ?? "",
+    providerBaseUrl(provider),
+    provider.type ?? ""
+  ].join("\n");
+  const hash = createHash("sha256").update(source).digest("hex").slice(0, 10);
+  return `provider-${slug.slice(0, 48)}-${hash}`;
+}
+
+function sanitizeProviderId(value: string | undefined): string | undefined {
+  const normalized = value
+    ?.normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 72);
+  return normalized || undefined;
 }
 
 function parseProviderCredentials(value: unknown): ProviderCredentialConfig[] | undefined {

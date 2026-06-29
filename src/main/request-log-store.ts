@@ -71,6 +71,7 @@ type RequestLogRecordInput = {
   fallbackModel?: string;
   method: string;
   path: string;
+  providerName?: string;
   providerProtocol?: GatewayProviderProtocol;
   requestBody: Buffer;
   requestHeaders: HeaderRecord;
@@ -250,6 +251,7 @@ class RequestLogStore {
     const route = splitRouteSelector(input.fallbackModel);
     const requestModel = extractModelFromBody(input.requestBody.toString("utf8"));
     const provider =
+      normalizeFilterValue(input.providerName) ??
       readResponseHeader(input.responseHeaders, "x-gateway-target-provider-name") ??
       readResponseHeader(input.responseHeaders, "x-gateway-target-provider") ??
       route.provider;

@@ -58,12 +58,34 @@ async function main() {
 async function runClaudeCodeCliWrapper(args) {
   const realCli = expandHome(nonEmptyEnv("CCR_REAL_CLAUDE_CODE_BIN") || nonEmptyEnv("CCR_CLAUDE_CODE_BIN") || nonEmptyEnv("CODEXL_CLAUDE_CODE_BIN") || "claude");
   log("claude_code_wrapper_start", { realCli, args });
+  const remoteSync = createRemoteSyncClient({
+    args,
+    cwd: process.cwd(),
+    mode: "claude-cli",
+    title: nonEmptyEnv("CCR_REMOTE_SYNC_PROFILE_NAME") || "Claude Code"
+  });
+  const injectRemoteStdin = boolEnv("CCR_REMOTE_SYNC_INJECT_STDIN");
   const child = childProcess.spawn(realCli, args, {
     env: withoutKeys(process.env, ["CCR_CLAUDE_CODE_WRAPPER", "CCR_REAL_CLAUDE_CODE_BIN"]),
-    stdio: ["inherit", "pipe", "inherit"]
+    stdio: [injectRemoteStdin ? "pipe" : "inherit", "pipe", "inherit"]
+  });
+  if (injectRemoteStdin && child.stdin) {
+    process.stdin.pipe(child.stdin);
+  }
+  remoteSync.start((event) => {
+    const text = remoteEventText(event);
+    if (!text) return;
+    if (injectRemoteStdin && child.stdin && !child.killed) {
+      child.stdin.write(text + "\n");
+      return;
+    }
+    if (boolEnv("CCR_REMOTE_SYNC_NOTIFY_INBOUND") || !process.env.CCR_REMOTE_SYNC_NOTIFY_INBOUND) {
+      process.stdout.write("\n[CCR remote] " + text + "\n");
+    }
   });
   child.on("error", (error) => {
     log("claude_code_wrapper_spawn_error", { error: formatError(error) });
+    remoteSync.postEvent("claude.spawn.error", { error: formatError(error) }, { direction: "system" });
   });
   let pending = "";
   child.stdout.on("data", (chunk) => {
@@ -73,12 +95,16 @@ async function runClaudeCodeCliWrapper(args) {
     pending = lines.pop() || "";
     for (const line of lines) {
       botBridge().handleClaudeCliLine(line);
+      remoteSync.postEvent("claude.stdout", { line }, { text: line });
     }
   });
   const code = await waitForChild(child);
   if (pending.trim()) {
     botBridge().handleClaudeCliLine(pending);
+    remoteSync.postEvent("claude.stdout", { line: pending }, { text: pending });
   }
+  await remoteSync.postEvent("claude.exit", { code }, { direction: "system" });
+  remoteSync.stop();
   log("claude_code_wrapper_exit", { code });
   process.exitCode = code;
 }
@@ -2363,6 +2389,196 @@ function writeRaw(value) {
 
 function writeLine(stream, value) {
   stream.write(JSON.stringify(value) + "\n");
+}
+
+function createRemoteSyncClient(options) {
+  const endpoint = normalizeRemoteSyncEndpoint(nonEmptyEnv("CCR_REMOTE_SYNC_ENDPOINT"));
+  const enabled = endpoint && !["0", "false", "no", "off"].includes(String(process.env.CCR_REMOTE_SYNC_ENABLED || "1").trim().toLowerCase());
+  if (!enabled || typeof fetch !== "function") {
+    return {
+      postEvent: async () => {},
+      start() {},
+      stop() {}
+    };
+  }
+  return new RemoteSyncClient({
+    args: options.args || [],
+    cwd: options.cwd || process.cwd(),
+    endpoint,
+    mode: options.mode || "agent",
+    title: options.title || "CCR Remote",
+    profileId: nonEmptyEnv("CCR_REMOTE_SYNC_PROFILE_ID"),
+    profileName: nonEmptyEnv("CCR_REMOTE_SYNC_PROFILE_NAME")
+  });
+}
+
+class RemoteSyncClient {
+  constructor(options) {
+    this.options = options;
+    this.active = false;
+    this.apiKey = "";
+    this.lastInboundSeq = 0;
+    this.pollTimer = null;
+    this.ready = null;
+    this.seenInbound = new Set();
+    this.sessionId = nonEmptyEnv("CCR_REMOTE_SYNC_SESSION_ID") || "ccr-" + safePathSegment(options.profileId || options.profileName || options.mode) + "-" + uuid();
+  }
+
+  start(onInbound) {
+    if (this.active) return;
+    this.active = true;
+    this.ready = this.open().catch((error) => {
+      this.active = false;
+      log("remote_sync_start_failed", { error: formatError(error) });
+    });
+    this.ready.then(() => {
+      if (this.active) this.pollInbound(onInbound);
+    }).catch(() => {});
+  }
+
+  stop() {
+    this.active = false;
+    if (this.pollTimer) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = null;
+    }
+  }
+
+  async open() {
+    this.apiKey = await readRemoteSyncApiKey();
+    const response = await this.request("POST", "/sessions", {
+      id: this.sessionId,
+      title: this.options.title,
+      metadata: {
+        args: this.options.args,
+        cwd: this.options.cwd,
+        mode: this.options.mode,
+        pid: process.pid,
+        profileId: this.options.profileId,
+        profileName: this.options.profileName,
+        startedAt: new Date().toISOString()
+      }
+    });
+    const session = response && response.session;
+    if (session && session.id) this.sessionId = session.id;
+    log("remote_sync_started", { sessionId: this.sessionId, endpoint: this.options.endpoint });
+  }
+
+  postEvent(type, payload, options) {
+    if (!this.active) return Promise.resolve();
+    const eventOptions = options || {};
+    return Promise.resolve(this.ready)
+      .then(() => {
+        if (!this.active || !this.sessionId) return undefined;
+        return this.request("POST", "/sessions/" + encodeURIComponent(this.sessionId) + "/events", {
+          direction: eventOptions.direction || "local",
+          payload: payload || {},
+          source: "ccr-claude-wrapper",
+          text: eventOptions.text,
+          type
+        });
+      })
+      .catch((error) => {
+        log("remote_sync_event_failed", { type, error: formatError(error) });
+      });
+  }
+
+  pollInbound(onInbound) {
+    if (!this.active) return;
+    this.request("GET", "/sessions/" + encodeURIComponent(this.sessionId) + "/inbound?after=" + this.lastInboundSeq)
+      .then((response) => {
+        const events = Array.isArray(response && response.events) ? response.events : [];
+        for (const event of events) {
+          if (!event || !Number.isFinite(event.seq)) continue;
+          this.lastInboundSeq = Math.max(this.lastInboundSeq, event.seq);
+          const key = event.id || event.dedupeKey || String(event.seq);
+          if (this.seenInbound.has(key)) continue;
+          this.seenInbound.add(key);
+          while (this.seenInbound.size > 500) {
+            const oldest = this.seenInbound.values().next().value;
+            if (!oldest) break;
+            this.seenInbound.delete(oldest);
+          }
+          try {
+            onInbound(event);
+          } catch (error) {
+            log("remote_sync_inbound_handler_failed", { error: formatError(error) });
+          }
+        }
+      })
+      .catch((error) => {
+        log("remote_sync_poll_failed", { error: formatError(error) });
+      })
+      .finally(() => {
+        if (!this.active) return;
+        this.pollTimer = setTimeout(() => this.pollInbound(onInbound), numberEnv("CCR_REMOTE_SYNC_POLL_INTERVAL_MS", 2000));
+      });
+  }
+
+  async request(method, suffix, body) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), numberEnv("CCR_REMOTE_SYNC_REQUEST_TIMEOUT_MS", 5000));
+    const headers = { "accept": "application/json" };
+    if (body !== undefined) headers["content-type"] = "application/json";
+    if (this.apiKey) headers.authorization = "Bearer " + this.apiKey;
+    try {
+      const response = await fetch(remoteSyncUrl(this.options.endpoint, suffix), {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: controller.signal
+      });
+      if (!response.ok) {
+        throw new Error("HTTP " + response.status + " from CCR remote sync");
+      }
+      return await response.json();
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+}
+
+async function readRemoteSyncApiKey() {
+  const direct = nonEmptyEnv("CCR_REMOTE_SYNC_API_KEY");
+  if (direct) return direct;
+  const helper = nonEmptyEnv("CCR_REMOTE_SYNC_API_KEY_HELPER");
+  if (!helper) return "";
+  return new Promise((resolve) => {
+    childProcess.execFile(expandHome(helper), {
+      shell: process.platform === "win32",
+      timeout: 3000,
+      windowsHide: true
+    }, (error, stdout) => {
+      if (error) {
+        log("remote_sync_api_key_helper_failed", { error: formatError(error) });
+        resolve("");
+        return;
+      }
+      resolve(String(stdout || "").split(/\r?\n/).map((line) => line.trim()).find(Boolean) || "");
+    });
+  });
+}
+
+function normalizeRemoteSyncEndpoint(value) {
+  const trimmed = String(value || "").trim().replace(/\/+$/, "");
+  return trimmed || "";
+}
+
+function remoteSyncUrl(endpoint, suffix) {
+  return endpoint + (String(suffix || "").startsWith("/") ? suffix : "/" + suffix);
+}
+
+function remoteEventText(event) {
+  if (!event || typeof event !== "object") return "";
+  if (typeof event.text === "string" && event.text.trim()) return event.text.trim();
+  const payload = event.payload;
+  if (typeof payload === "string" && payload.trim()) return payload.trim();
+  if (payload && typeof payload === "object") {
+    if (typeof payload.text === "string" && payload.text.trim()) return payload.text.trim();
+    if (typeof payload.content === "string" && payload.content.trim()) return payload.content.trim();
+    if (typeof payload.message === "string" && payload.message.trim()) return payload.message.trim();
+  }
+  return "";
 }
 
 function createBotGatewayBridge() {
