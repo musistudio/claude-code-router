@@ -12,6 +12,8 @@ import type {
   AppInfo,
   AppImageExportTargetRequest,
   AppImageExportTargetResult,
+  AppRenderHtmlPngRequest,
+  AppRenderHtmlPngResult,
   AppSaveConfigOptions,
   AppUpdateStatus,
   ApiKeyConfig,
@@ -118,6 +120,7 @@ declare global {
       probeProvider: (request: GatewayProviderProbeRequest) => Promise<GatewayProviderProbeResult>;
       quitApp: () => Promise<void>;
       revealProxyCertificate: () => Promise<void>;
+      renderHtmlPng?: (request: AppRenderHtmlPngRequest) => Promise<AppRenderHtmlPngResult>;
       restartGateway: () => Promise<GatewayStatus>;
       restartProxy: () => Promise<ProxyStatus>;
       saveApiKeys: (apiKeys: ApiKeyConfig[]) => Promise<AppConfig>;

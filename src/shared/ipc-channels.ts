@@ -50,6 +50,7 @@ export const IPC_CHANNELS = {
   appPrepareImageExportTarget: "ccr:app:prepare-image-export-target",
   appQuit: "ccr:app:quit",
   appRevealProxyCertificate: "ccr:app:reveal-proxy-certificate",
+  appRenderHtmlPng: "ccr:app:render-html-png",
   appRestartProxy: "ccr:app:restart-proxy",
   appRestartGateway: "ccr:app:restart-gateway",
   appSaveApiKeys: "ccr:app:save-api-keys",

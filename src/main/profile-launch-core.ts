@@ -69,14 +69,22 @@ export function resolveProfileOpenSurface(profile: ProfileConfig, surface?: Prof
   return surfaces[0];
 }
 
+export function defaultProfileOpenSurface(profile: Pick<ProfileConfig, "agent">): ProfileOpenSurface {
+  return profile.agent === "zcode" ? "app" : "cli";
+}
+
 export function profileOpenCommand(
   profile: ProfileConfig,
-  surface: ProfileOpenSurface = profile.agent === "zcode" ? "app" : "cli",
+  surface: ProfileOpenSurface = defaultProfileOpenSurface(profile),
   command = "ccr",
   profileRef = profile.name?.trim() || profile.id
 ): string {
   const quote = process.platform === "win32" ? windowsCommandQuote : shellQuote;
-  return [quote(command), quote(profileRef), surface].join(" ");
+  const parts = [quote(command), quote(profileRef)];
+  if (surface === "app") {
+    parts.push(surface);
+  }
+  return parts.join(" ");
 }
 
 export function buildProfileLaunchPlan(

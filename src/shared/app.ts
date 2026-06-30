@@ -49,6 +49,26 @@ export type AppImageExportTargetResult = {
   file?: string;
 };
 
+export type AppRenderHtmlPngRequest = {
+  borderRadius?: number;
+  exportId?: string;
+  fileName: string;
+  html: string;
+  output?: {
+    height: number;
+    width: number;
+  };
+  size: {
+    height: number;
+    width: number;
+  };
+};
+
+export type AppRenderHtmlPngResult = {
+  canceled: boolean;
+  file?: string;
+};
+
 export type AppUpdateState =
   | "idle"
   | "checking"

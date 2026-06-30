@@ -1,6 +1,6 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, type OpenDialogOptions, type Rectangle, type SaveDialogOptions } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell, type OpenDialogOptions, type Rectangle, type SaveDialogOptions } from "electron";
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { deflateSync, inflateSync } from "node:zlib";
@@ -31,7 +31,7 @@ import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
 import { getUsageStats } from "./usage-store";
 import windowsManager from "./windows";
-import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfig, AppCaptureElementPngRequest, AppCaptureElementPngResult, AppConfig, AppDataExportResult, AppImageExportTargetRequest, AppImageExportTargetResult, AppInfo, AppSaveConfigOptions, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, LocalAgentProviderImportRequest, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
+import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfig, AppCaptureElementPngRequest, AppCaptureElementPngResult, AppConfig, AppDataExportResult, AppImageExportTargetRequest, AppImageExportTargetResult, AppInfo, AppRenderHtmlPngRequest, AppRenderHtmlPngResult, AppSaveConfigOptions, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, LocalAgentProviderImportRequest, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
 
 const pluginMarketplace: PluginMarketplaceEntry[] = [
   {
@@ -78,6 +78,9 @@ ipcMain.handle(IPC_CHANNELS.appCaptureElementPng, async (event, request: AppCapt
 });
 ipcMain.handle(IPC_CHANNELS.appPrepareImageExportTarget, async (event, request: AppImageExportTargetRequest): Promise<AppImageExportTargetResult> => {
   return prepareImageExportTarget(BrowserWindow.fromWebContents(event.sender), request);
+});
+ipcMain.handle(IPC_CHANNELS.appRenderHtmlPng, async (event, request: AppRenderHtmlPngRequest): Promise<AppRenderHtmlPngResult> => {
+  return renderHtmlPng(BrowserWindow.fromWebContents(event.sender), request);
 });
 
 ipcMain.handle(IPC_CHANNELS.appGetConfig, () => loadAppConfig());
@@ -554,10 +557,7 @@ async function captureElementPng(window: BrowserWindow | null, request: AppCaptu
   }
 
   const rect = sanitizeCaptureRect(request.rect);
-  const targetFile = request.exportId ? consumeImageExportTarget(request.exportId) : undefined;
-  const result = targetFile
-    ? { canceled: false, filePath: targetFile }
-    : await dialog.showSaveDialog(window, shareCardSaveDialogOptions(request.fileName));
+  const result = await imageExportFile(window, request.fileName, request.exportId);
   if (result.canceled || !result.filePath) {
     return { canceled: true };
   }
@@ -566,6 +566,62 @@ async function captureElementPng(window: BrowserWindow | null, request: AppCaptu
   const png = image.toPNG();
   writeFileSync(result.filePath, pngWithExportProcessing(png, request, rect.width), { mode: 0o600 });
   return { canceled: false, file: result.filePath };
+}
+
+async function renderHtmlPng(window: BrowserWindow | null, request: AppRenderHtmlPngRequest): Promise<AppRenderHtmlPngResult> {
+  const html = typeof request.html === "string" ? request.html : "";
+  if (!html.trim()) {
+    throw new Error("Export HTML is empty.");
+  }
+
+  const size = sanitizeRenderSize(request.size);
+  const result = await imageExportFile(window, request.fileName, request.exportId);
+  if (result.canceled || !result.filePath) {
+    return { canceled: true };
+  }
+
+  const renderWindow = new BrowserWindow({
+    backgroundColor: "#00000000",
+    frame: false,
+    height: size.height,
+    paintWhenInitiallyHidden: true,
+    resizable: false,
+    show: false,
+    skipTaskbar: true,
+    transparent: true,
+    useContentSize: true,
+    webPreferences: {
+      backgroundThrottling: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+      offscreen: true,
+      sandbox: true
+    },
+    width: size.width
+  });
+
+  const tempDir = mkdtempSync(path.join(app.getPath("temp"), "ccr-export-"));
+  const tempHtmlFile = path.join(tempDir, "export.html");
+  writeFileSync(tempHtmlFile, html, { encoding: "utf8", mode: 0o600 });
+
+  try {
+    await renderWindow.loadFile(tempHtmlFile);
+    await waitForExportWindowPaint(renderWindow);
+    const image = await renderWindow.webContents.capturePage({
+      height: size.height,
+      width: size.width,
+      x: 0,
+      y: 0
+    });
+    const png = image.toPNG();
+    writeFileSync(result.filePath, pngWithExportProcessing(png, request, size.width), { mode: 0o600 });
+    return { canceled: false, file: result.filePath };
+  } finally {
+    if (!renderWindow.isDestroyed()) {
+      renderWindow.destroy();
+    }
+    rmSync(tempDir, { force: true, recursive: true });
+  }
 }
 
 async function prepareImageExportTarget(window: BrowserWindow | null, request: AppImageExportTargetRequest): Promise<AppImageExportTargetResult> {
@@ -583,6 +639,15 @@ async function prepareImageExportTarget(window: BrowserWindow | null, request: A
     exportId,
     file: result.filePath
   };
+}
+
+async function imageExportFile(window: BrowserWindow | null, fileName: string, exportId?: string): Promise<{ canceled: boolean; filePath?: string }> {
+  const targetFile = exportId ? consumeImageExportTarget(exportId) : undefined;
+  return targetFile
+    ? { canceled: false, filePath: targetFile }
+    : window
+      ? await dialog.showSaveDialog(window, shareCardSaveDialogOptions(fileName))
+      : await dialog.showSaveDialog(shareCardSaveDialogOptions(fileName));
 }
 
 function dataExportSaveDialogOptions(exportedAt: string): SaveDialogOptions {
@@ -623,6 +688,29 @@ function sanitizeCaptureRect(rect: AppCaptureElementPngRequest["rect"]): Rectang
   };
 }
 
+function sanitizeRenderSize(size: AppRenderHtmlPngRequest["size"]): { height: number; width: number } {
+  const width = finiteNumber(size?.width, "render width");
+  const height = finiteNumber(size?.height, "render height");
+  if (width <= 0 || height <= 0 || width > 4096 || height > 4096) {
+    throw new Error("Render size is out of range.");
+  }
+  return {
+    height: Math.ceil(height),
+    width: Math.ceil(width)
+  };
+}
+
+async function waitForExportWindowPaint(window: BrowserWindow): Promise<void> {
+  await window.webContents.executeJavaScript(`
+    new Promise((resolve) => {
+      const fontsReady = document.fonts && document.fonts.ready ? document.fonts.ready.catch(() => undefined) : Promise.resolve();
+      fontsReady.then(() => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)));
+      });
+    });
+  `);
+}
+
 function finiteNumber(value: unknown, label: string): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new Error(`Invalid ${label}.`);
@@ -647,6 +735,14 @@ function consumeImageExportTarget(exportId: string): string {
 
 const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
+type PngExportProcessingRequest = {
+  borderRadius?: number;
+  output?: {
+    height: number;
+    width: number;
+  };
+};
+
 type DecodedPngPixels = {
   bitDepth: number;
   colorType: 2 | 6;
@@ -655,7 +751,7 @@ type DecodedPngPixels = {
   width: number;
 };
 
-function pngWithExportProcessing(png: Buffer, request: AppCaptureElementPngRequest, cssWidth: number): Buffer {
+function pngWithExportProcessing(png: Buffer, request: PngExportProcessingRequest, cssWidth: number): Buffer {
   const radius = typeof request.borderRadius === "number" && Number.isFinite(request.borderRadius) ? Math.max(0, request.borderRadius) : 0;
   const outputWidth = sanitizePngOutputDimension(request.output?.width);
   const outputHeight = sanitizePngOutputDimension(request.output?.height);
@@ -680,7 +776,27 @@ function pngWithExportProcessing(png: Buffer, request: AppCaptureElementPngReque
     return encodeRgbaPng(width, height, rgba);
   } catch (error) {
     console.warn(`[export] Failed to process exported PNG: ${formatError(error)}`);
+    const resized = resizePngWithNativeImage(png, outputWidth, outputHeight);
+    if (resized) {
+      return resized;
+    }
     return png;
+  }
+}
+
+function resizePngWithNativeImage(png: Buffer, width?: number, height?: number): Buffer | undefined {
+  if (!width || !height) {
+    return undefined;
+  }
+  try {
+    const image = nativeImage.createFromBuffer(png);
+    if (image.isEmpty()) {
+      return undefined;
+    }
+    return image.resize({ height, width }).toPNG();
+  } catch (error) {
+    console.warn(`[export] Failed to resize exported PNG fallback: ${formatError(error)}`);
+    return undefined;
   }
 }
 

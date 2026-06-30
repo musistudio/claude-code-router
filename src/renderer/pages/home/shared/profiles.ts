@@ -1609,7 +1609,7 @@ export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[
 
 export function profileOpenCommandFallback(profile: ProfileConfig, surface: ProfileOpenSurface = profile.agent === "zcode" ? "app" : "cli"): string {
   const profileRef = profile.name.trim() || profile.id;
-  return ["ccr", shellCommandQuote(profileRef), ...(surface === "app" ? ["--app"] : [])].join(" ");
+  return ["ccr", shellCommandQuote(profileRef), ...(surface === "app" ? ["app"] : [])].join(" ");
 }
 
 function shellCommandQuote(value: string): string {

@@ -2,14 +2,16 @@
 import { spawn, spawnSync } from "node:child_process";
 import { accessSync, constants as fsConstants, existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { assertAvailableGatewayModels, type ProfileOpenSurface } from "../shared/app";
+import { assertAvailableGatewayModels, type ProfileConfig, type ProfileOpenSurface } from "../shared/app";
 import { botGatewayProfileEnv } from "./bot-gateway-env";
+import { applyClaudeAppGatewayConfig } from "./claude-app-gateway-service";
+import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "./claude-app-launch";
 import { launchCodexAppProfile, launchZcodeAppProfile } from "./codex-app-launch";
 import { loadAppConfig } from "./config";
 import { CONFIGDIR } from "./constants";
 import { applyProfileConfig, applyProfileRuntimeConfig } from "./profile-service";
 import { ensureProfileGateway } from "./profile-launch-service";
-import { buildProfileLaunchPlan, findProfileForOpen, profileLaunchSpawnCommand, resolveProfileOpenSurface } from "./profile-launch-core";
+import { buildProfileLaunchPlan, defaultProfileOpenSurface, findProfileForOpen, profileLaunchSpawnCommand, resolveProfileOpenSurface } from "./profile-launch-core";
 import { startWebManagementServer } from "./web-management-server";
 
 type ProfileCliOptions = {
@@ -93,30 +95,50 @@ async function main(): Promise<void> {
   assertAvailableGatewayModels(config);
   await applyProfileConfig(config);
   const profile = findProfileForOpen(config, profileOptions.profileRef);
-  const surface = profileOptions.surface ?? (profile.agent === "zcode" || profile.surface === "app" ? "app" : "cli");
+  const surface = profileOptions.surface ?? defaultProfileOpenSurface(profile);
   const resolvedSurface = resolveProfileOpenSurface(profile, surface);
-  const launchConfig = resolvedSurface === "cli"
-    ? await ensureProfileGateway(config, profile, profile.name || profile.id || "profile", { reuseExisting: true, startIfMissing: false })
-    : config;
+  if (profile.agent === "zcode" && profileOptions.agentArgs.length > 0) {
+    throw new Error("ZCode profiles can only open the app; agent arguments are not supported.");
+  }
+  if (profile.agent === "claude-code" && resolvedSurface === "app" && profileOptions.agentArgs.length > 0) {
+    throw new Error("Claude App profiles do not support agent arguments.");
+  }
+
+  const launchConfig = await ensureProfileGateway(config, profile, resolvedSurface === "app" ? profileAppName(profile) : profile.name || profile.id || "profile", {
+    reuseExisting: true,
+    startIfMissing: false
+  });
   if (resolvedSurface === "cli") {
     const runtimeResult = applyProfileRuntimeConfig(launchConfig, profile, launchConfig.APIKEY);
     if (!runtimeResult.ok) {
       throw new Error(runtimeResult.message);
     }
   }
-  if (profile.agent === "zcode" && profileOptions.agentArgs.length > 0) {
-    throw new Error("ZCode profiles can only open the app; agent arguments are not supported.");
+  if (profile.agent === "claude-code" && resolvedSurface === "app") {
+    applyClaudeAppGatewayConfig(launchConfig);
+    applyClaudeAppGatewayConfig(launchConfig, {
+      backup: false,
+      dataDir: resolveClaudeAppProfileUserDataDir(configDir, profile),
+      refreshModelDiscoveryCache: true
+    });
+    const launch = await launchClaudeAppProfile(configDir, profile, launchConfig);
+    const spawnError = await waitForImmediateSpawnError(launch.child, 500);
+    if (spawnError) {
+      throw new Error(`Failed to open Claude App: ${spawnError}`);
+    }
+    process.stdout.write(`Opened Claude App with ${profile.name || profile.id}.\n`);
+    return;
   }
   if ((profile.agent === "codex" || profile.agent === "zcode") && resolvedSurface === "app" && profileOptions.agentArgs.length === 0) {
     if (profile.agent === "zcode") {
-      const launch = launchZcodeAppProfile(configDir, profile, config);
+      const launch = launchZcodeAppProfile(configDir, profile, launchConfig);
       const spawnError = await waitForImmediateSpawnError(launch.child, 500);
       if (spawnError) {
         throw new Error(`Failed to open ZCode App: ${spawnError}`);
       }
       process.stdout.write(`Opened ZCode App with ${profile.name || profile.id}.\n`);
     } else {
-      const launch = launchCodexAppProfile(configDir, profile, config);
+      const launch = launchCodexAppProfile(configDir, profile, launchConfig);
       const spawnError = await waitForImmediateSpawnError(launch.child, 500);
       if (spawnError) {
         throw new Error(`Failed to open Codex App: ${spawnError}`);
@@ -195,6 +217,16 @@ function parseArgs(args: string[]): CliOptions {
     options.agentArgs.push(arg);
   }
   return options;
+}
+
+function profileAppName(profile: Pick<ProfileConfig, "agent">): string {
+  if (profile.agent === "claude-code") {
+    return "Claude App";
+  }
+  if (profile.agent === "zcode") {
+    return "ZCode App";
+  }
+  return "Codex App";
 }
 
 function parseStopArgs(args: string[]): StopCliOptions {
@@ -376,13 +408,13 @@ function printHelp(exitCode: number): void {
     "Usage:",
     "  ccr start [--host <host>] [--port <port>] [--open] [--no-gateway]",
     "  ccr stop",
-    "  ccr <profile-name-or-id> <cli|app> [-- <agent args>]",
+    "  ccr <profile-name-or-id> [cli|app] [-- <agent args>]",
     "",
     "Examples:",
     "  ccr start",
     "  ccr stop",
-    "  ccr Codex cli",
-    "  ccr default-codex cli -- --model gpt-5-codex",
+    "  ccr Codex",
+    "  ccr default-codex -- --model gpt-5-codex",
     "  ccr default-codex app"
   ].join("\n");
   const stream = exitCode === 0 ? process.stdout : process.stderr;

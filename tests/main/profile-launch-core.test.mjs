@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildProfileLaunchPlan,
   ccrManagedProfileDir,
+  defaultProfileOpenSurface,
   findProfileForOpen,
   profileOpenCommand,
   profileOpenSurfaces,
@@ -59,6 +60,13 @@ test("profile open surfaces enforce agent capabilities", () => {
   assert.throws(() => resolveProfileOpenSurface({ ...claudeProfile, surface: "cli" }, "app"), /does not support APP/);
 });
 
+test("default profile command surface is CLI unless the agent is app-only", () => {
+  assert.equal(defaultProfileOpenSurface(claudeProfile), "cli");
+  assert.equal(defaultProfileOpenSurface(codexProfile), "cli");
+  assert.equal(defaultProfileOpenSurface({ ...codexProfile, surface: "app" }), "cli");
+  assert.equal(defaultProfileOpenSurface({ ...codexProfile, agent: "zcode" }), "app");
+});
+
 test("buildProfileLaunchPlan creates CCR-managed launcher paths", () => {
   const configDir = path.join(path.sep, "tmp", "ccr-config");
   const codexPlan = buildProfileLaunchPlan(configDir, codexProfile, "app");
@@ -99,6 +107,11 @@ test("profile config paths honor CCR, custom, and global scopes", () => {
 });
 
 test("profileOpenCommand quotes profile references for shell usage", () => {
-  assert.match(profileOpenCommand(claudeProfile, "cli", "ccr", "Claude Main"), /Claude/);
-  assert.match(profileOpenCommand(claudeProfile, "cli", "ccr", "Claude Main"), /Main/);
+  const cliCommand = profileOpenCommand(claudeProfile, "cli", "ccr", "Claude Main");
+  const appCommand = profileOpenCommand(codexProfile, "app", "ccr", "Codex Main");
+
+  assert.match(cliCommand, /Claude/);
+  assert.match(cliCommand, /Main/);
+  assert.equal(cliCommand.endsWith(" cli"), false);
+  assert.match(appCommand, / app$/);
 });

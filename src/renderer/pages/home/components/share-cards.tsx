@@ -29,9 +29,9 @@ type ShareCardPreparedExportTarget = {
 };
 
 const shareCardExportCssWidth = 540;
-const shareCardExportCssHeight = 960;
+const shareCardExportCssHeight = 675;
 const shareCardExportPixelWidth = 1080;
-const shareCardExportPixelHeight = 1920;
+const shareCardExportPixelHeight = 1350;
 
 const shareCardTones: Record<ShareCardTone, { accent: string; background: string; border: string; glow: string; muted: string; text: string }> = {
   amber: {
@@ -159,7 +159,7 @@ function ShareCardShell({
       setExporting(true);
       await nextFrame();
       await nextFrame();
-      const target = exportCardRef.current ?? cardRef.current;
+      const target = exportCardRef.current;
       if (!target) {
         throw new Error("Export card is unavailable.");
       }
@@ -185,9 +185,16 @@ function ShareCardShell({
         <div className="min-w-0 truncate text-[12px] font-semibold text-muted-foreground">{title}</div>
         <div className="flex shrink-0 items-center gap-2">
           {status === "error" ? <span className="text-[11px] font-medium text-destructive">{t("Export failed")}</span> : null}
-          <Button disabled={status === "saving"} size="sm" type="button" variant="outline" onClick={() => void saveImage()}>
+          <Button
+            aria-label={status === "saving" ? t("Saving") : t("Save image")}
+            className="inline-flex items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:opacity-45"
+            disabled={status === "saving"}
+            title={status === "saving" ? t("Saving") : t("Save image")}
+            type="button"
+            unstyled
+            onClick={() => void saveImage()}
+          >
             {status === "saving" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-            {status === "saving" ? t("Saving") : t("Save image")}
           </Button>
         </div>
       </div>
@@ -197,10 +204,11 @@ function ShareCardShell({
       {exporting ? (
         <div
           aria-hidden="true"
-          className="pointer-events-none fixed left-0 top-0 z-[9999]"
+          className="pointer-events-none fixed top-0 z-[9999]"
           ref={exportCardRef}
           style={{
             height: `${shareCardExportCssHeight}px`,
+            left: "-10000px",
             width: `${shareCardExportCssWidth}px`
           }}
         >
@@ -637,11 +645,30 @@ function calendarColor(intensity: TokenActivityCell["intensity"], inRange: boole
 }
 
 async function saveElementAsPng(element: HTMLElement, fileName: string, options: ShareCardPngExportOptions = {}): Promise<void> {
+  if (window.ccr?.renderHtmlPng) {
+    await nativeRenderElementAsPng(element, fileName, options);
+    return;
+  }
   if (window.ccr?.captureElementPng) {
     await nativeCaptureElementAsPng(element, fileName, options);
     return;
   }
   await browserExportElementAsPng(element, fileName);
+}
+
+async function nativeRenderElementAsPng(element: HTMLElement, fileName: string, options: ShareCardPngExportOptions): Promise<void> {
+  const size = exportElementSize(element);
+  const result = await window.ccr?.renderHtmlPng?.({
+    borderRadius: exportBorderRadius(element),
+    exportId: options.exportId,
+    fileName,
+    html: exportElementHtmlDocument(element, size.width, size.height),
+    output: options.output,
+    size
+  });
+  if (!result || result.canceled) {
+    return;
+  }
 }
 
 async function nativeCaptureElementAsPng(element: HTMLElement, fileName: string, options: ShareCardPngExportOptions): Promise<void> {
@@ -665,6 +692,16 @@ async function nativeCaptureElementAsPng(element: HTMLElement, fileName: string,
   }
 }
 
+function exportElementSize(element: HTMLElement): { height: number; width: number } {
+  const rect = element.getBoundingClientRect();
+  const width = Math.ceil(rect.width);
+  const height = Math.ceil(rect.height);
+  if (width <= 0 || height <= 0) {
+    throw new Error("Cannot export an empty element.");
+  }
+  return { height, width };
+}
+
 function exportBorderRadius(element: HTMLElement): number | undefined {
   const target = element.firstElementChild instanceof HTMLElement ? element.firstElementChild : element;
   const styles = window.getComputedStyle(target);
@@ -685,18 +722,8 @@ function nextFrame(): Promise<void> {
 }
 
 async function browserExportElementAsPng(element: HTMLElement, fileName: string): Promise<void> {
-  const rect = element.getBoundingClientRect();
-  const width = Math.ceil(rect.width);
-  const height = Math.ceil(rect.height);
-  if (width <= 0 || height <= 0) {
-    throw new Error("Cannot export an empty element.");
-  }
-
-  const clone = element.cloneNode(true) as HTMLElement;
-  clone.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
-  clone.style.width = `${width}px`;
-  clone.style.height = `${height}px`;
-  inlineComputedStyles(element, clone);
+  const { height, width } = exportElementSize(element);
+  const clone = cloneElementForExport(element, width, height);
 
   const serialized = new XMLSerializer().serializeToString(clone);
   const svg = [
@@ -733,6 +760,41 @@ async function browserExportElementAsPng(element: HTMLElement, fileName: string)
   } finally {
     URL.revokeObjectURL(svgUrl);
   }
+}
+
+function exportElementHtmlDocument(element: HTMLElement, width: number, height: number): string {
+  const clone = cloneElementForExport(element, width, height);
+  const serialized = new XMLSerializer().serializeToString(clone);
+  return [
+    "<!doctype html>",
+    "<html>",
+    "<head>",
+    "<meta charset=\"utf-8\">",
+    "<style>",
+    `html,body{margin:0;width:${width}px;height:${height}px;overflow:hidden;background:transparent;}`,
+    "body{display:block;}",
+    "*,*::before,*::after{box-sizing:border-box;}",
+    "</style>",
+    "</head>",
+    `<body>${serialized}</body>`,
+    "</html>"
+  ].join("");
+}
+
+function cloneElementForExport(element: HTMLElement, width: number, height: number): HTMLElement {
+  const clone = element.cloneNode(true) as HTMLElement;
+  clone.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
+  inlineComputedStyles(element, clone);
+  clone.style.bottom = "auto";
+  clone.style.height = `${height}px`;
+  clone.style.left = "0";
+  clone.style.margin = "0";
+  clone.style.position = "relative";
+  clone.style.right = "auto";
+  clone.style.top = "0";
+  clone.style.transform = "none";
+  clone.style.width = `${width}px`;
+  return clone;
 }
 
 function inlineComputedStyles(source: Element, target: Element): void {
