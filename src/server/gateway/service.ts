@@ -187,6 +187,8 @@ class UpstreamRequestError extends Error {
 const requireFromHere = createRequire(__filename);
 const coreGatewayAuthHeader = "x-ccr-core-auth";
 const coreGatewayAuthTokenEnv = "CCR_CORE_GATEWAY_AUTH_TOKEN";
+const clientClosedRequestStatusCode = 499;
+const clientDisconnectMessage = "Client connection closed before response completed.";
 const localObservabilityHeaderNames = new Set([
   "x-ccr-claude-app-model-rewrite",
   "x-ccr-claude-model-discovery",
@@ -565,6 +567,24 @@ class GatewayService {
     const requestId = randomUUID();
     headers["x-client-request-id"] = requestId;
     const requestUrl = new URL(request.url || path, this.status.endpoint || "http://127.0.0.1").toString();
+    const upstreamAbortController = new AbortController();
+    let clientDisconnected = false;
+    let responseCompleted = false;
+    let onClientDisconnect: (() => void) | undefined;
+    let onResponseFinish: (() => void) | undefined;
+
+    response.once("finish", () => {
+      responseCompleted = true;
+      onResponseFinish?.();
+    });
+    response.once("close", () => {
+      if (responseCompleted || response.writableEnded) {
+        return;
+      }
+      clientDisconnected = true;
+      upstreamAbortController.abort(new Error(clientDisconnectMessage));
+      onClientDisconnect?.();
+    });
 
     const writeRequestLog = (
       statusCode: number,
@@ -665,6 +685,7 @@ class GatewayService {
         path,
         routedModel,
         coreAuthToken: this.coreAuthToken,
+        signal: upstreamAbortController.signal,
         upstreamUrl
       });
     } catch (error) {
@@ -672,6 +693,10 @@ class GatewayService {
       if (error instanceof UpstreamRequestError) {
         bodyToForward = error.attempt?.body ?? bodyToForward;
         routedModel = error.attempt?.model ?? routedModel;
+      }
+      if (clientDisconnected || upstreamAbortController.signal.aborted) {
+        writeRequestLog(clientClosedRequestStatusCode, new Headers(), "", false, clientDisconnectMessage);
+        return;
       }
       if (shouldCaptureUsage) {
         void recordGatewayUsageCapture({
@@ -727,6 +752,7 @@ class GatewayService {
     const sampler = createBodySampler();
     const sseErrorDetector = createSseErrorDetector(responseHeaders.get("content-type") ?? undefined);
     let streamDetectedError: string | undefined;
+    let upstreamStreamEnded = false;
     let logRecorded = false;
     const writeStreamLog = (error?: string) => {
       if (logRecorded) {
@@ -741,17 +767,29 @@ class GatewayService {
         error ?? streamDetectedError
       );
     };
+    onClientDisconnect = () => {
+      writeStreamLog(clientDisconnectMessage);
+      responseBody.destroy(new Error(clientDisconnectMessage));
+    };
+    onResponseFinish = () => {
+      if (upstreamStreamEnded) {
+        writeStreamLog();
+      }
+    };
     responseBody.on("data", (chunk) => {
       sampler.append(chunk);
       streamDetectedError ??= sseErrorDetector.append(chunk);
     });
     responseBody.once("end", () => {
+      upstreamStreamEnded = true;
       streamDetectedError ??= sseErrorDetector.finish();
-      writeStreamLog();
+      if (responseCompleted || response.writableEnded) {
+        writeStreamLog();
+      }
     });
     responseBody.once("error", (error) => {
       streamDetectedError ??= sseErrorDetector.finish();
-      writeStreamLog(formatError(error));
+      writeStreamLog(clientDisconnected ? clientDisconnectMessage : formatError(error));
     });
     if (shouldCaptureUsage) {
       responseBody.once("end", () => {
@@ -1917,6 +1955,7 @@ async function fetchUpstreamWithFallback(input: {
   method: string;
   path: string;
   routedModel?: string;
+  signal?: AbortSignal;
   upstreamUrl: string;
 }): Promise<UpstreamFetchResult> {
   const fallbackMode = input.fallback.mode;
@@ -1924,6 +1963,12 @@ async function fetchUpstreamWithFallback(input: {
   const failedAttempts: UpstreamFailedAttempt[] = [];
 
   for (let index = 0; index < attempts.length; index += 1) {
+    if (input.signal?.aborted) {
+      throw new UpstreamRequestError(abortSignalMessage(input.signal), {
+        failedAttempts
+      });
+    }
+
     const attempt = prepareUpstreamCredentialAttempt({
       attempt: attempts[index],
       config: input.config,
@@ -1937,7 +1982,8 @@ async function fetchUpstreamWithFallback(input: {
       const response = await fetchWithSystemProxy(input.upstreamUrl, {
         body: shouldSendBody(input.method) ? attempt.body?.toString("utf8") : undefined,
         headers: withCoreGatewayAuthHeader(omitLocalObservabilityHeaders(attempt.headers ?? input.headers), input.coreAuthToken),
-        method: input.method
+        method: input.method,
+        signal: input.signal
       });
 
       if (hasNextAttempt && shouldFallbackAfterStatus(response.status, fallbackMode)) {
@@ -1971,6 +2017,13 @@ async function fetchUpstreamWithFallback(input: {
         error: message,
         model: attempt.model
       });
+      if (input.signal?.aborted) {
+        throw new UpstreamRequestError(abortSignalMessage(input.signal), {
+          attempt,
+          cause: error,
+          failedAttempts
+        });
+      }
       if (hasNextAttempt) {
         continue;
       }
@@ -2486,8 +2539,10 @@ function uniqueStrings(values: Array<string | undefined>): string[] {
 
 function spawnGatewayProcess(config: AppConfig, upstreamProxyUrl: string | undefined, runtimeId: string, coreAuthToken: string): ChildProcess {
   const gatewayEntry = resolveGatewayEntry();
+  const proxyPreloadFile = upstreamProxyUrl ? writeGatewayProxyPreloadFile(config, upstreamProxyUrl) : undefined;
   const env = createGatewayProcessEnv(config, upstreamProxyUrl, runtimeId, coreAuthToken);
-  return spawn(process.execPath, [gatewayEntry], {
+  const args = proxyPreloadFile ? ["--require", proxyPreloadFile, gatewayEntry] : [gatewayEntry];
+  return spawn(process.execPath, args, {
     cwd: dirname(config.gateway.generatedConfigFile),
     env,
     stdio: ["ignore", "pipe", "pipe"]
@@ -2526,7 +2581,6 @@ function createGatewayProcessEnv(config: AppConfig, upstreamProxyUrl: string | u
     return env;
   }
 
-  const preloadFile = writeGatewayProxyPreloadFile(config, upstreamProxyUrl);
   env.HTTP_PROXY = upstreamProxyUrl;
   env.HTTPS_PROXY = upstreamProxyUrl;
   env.ALL_PROXY = upstreamProxyUrl;
@@ -2537,7 +2591,6 @@ function createGatewayProcessEnv(config: AppConfig, upstreamProxyUrl: string | u
     config.gateway.host,
     config.gateway.coreHost
   ]);
-  env.NODE_OPTIONS = appendNodeRequireOption(env.NODE_OPTIONS, preloadFile);
   env.CCR_UPSTREAM_PROXY_URL = upstreamProxyUrl;
   env.CCR_UNDICI_MODULE = requireFromHere.resolve("undici");
   return env;
@@ -2570,11 +2623,6 @@ function mergeNoProxy(current: string | undefined, values: string[]): string {
     }
   }
   return [...merged].join(",");
-}
-
-function appendNodeRequireOption(current: string | undefined, preloadFile: string): string {
-  const option = `--require=${preloadFile}`;
-  return current?.trim() ? `${current.trim()} ${option}` : option;
 }
 
 function toCoreGatewayProviders(provider: GatewayProviderConfig): CoreGatewayProvider[] {
@@ -4340,6 +4388,17 @@ function filteredResponseHeaders(headers: Headers): Array<[string, string]> {
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function abortSignalMessage(signal: AbortSignal): string {
+  const reason = signal.reason as unknown;
+  if (reason instanceof Error && reason.message) {
+    return reason.message;
+  }
+  if (typeof reason === "string" && reason.trim()) {
+    return reason.trim();
+  }
+  return "Upstream request was aborted.";
 }
 
 function parseJsonObject(buffer: Buffer): Record<string, unknown> {

@@ -109,6 +109,45 @@ test("RequestLogStore redacts secrets and records CCR metadata", async () => {
   }
 });
 
+test("RequestLogStore marks interrupted successful-status streams as errors", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-interrupted-stream-test-"));
+  try {
+    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const startedAt = new Date().toISOString();
+    const error = "Client connection closed before response completed.";
+
+    await store.record({
+      completedAt: startedAt,
+      durationMs: 301000,
+      error,
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "test-provider",
+      requestBody: Buffer.from(JSON.stringify({ model: "claude-test", stream: true }), "utf8"),
+      requestHeaders: {
+        accept: "text/event-stream",
+        "content-type": "application/json"
+      },
+      requestId: "interrupted-stream-request",
+      responseBodyText: "data: {\"type\":\"message_delta\"}\n\n",
+      responseHeaders: { "content-type": "text/event-stream" },
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    const page = await store.list({ pageSize: 25, status: "error" });
+    assert.equal(page.items.length, 1);
+    assert.equal(page.items[0].ok, false);
+    assert.equal(page.items[0].statusCode, 200);
+    assert.equal(page.items[0].durationMs, 301000);
+    assert.equal(page.items[0].isStream, true);
+    assert.equal(page.items[0].error, error);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("RequestLogStore applies raw trace updates to existing request logs", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-raw-trace-test-"));
   try {

@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { loadPersistedAppConfig, replacePersistedAppConfig } from "./app-config-store";
 import { loadPersistedApiKeys, replacePersistedApiKeys } from "./api-key-store";
-import { CONFIG_FILE, GATEWAY_CONFIG_FILE, LEGACY_CONFIG_FILE } from "./constants";
+import { CONFIG_FILE, GATEWAY_CONFIG_FILE, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FILE } from "./constants";
 import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "../shared/app";
 import { createDefaultAppConfig } from "../shared/default-config";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "./presets";
@@ -460,7 +460,7 @@ async function loadRawAppConfig(): Promise<RawAppConfigLoadResult> {
 }
 
 function readLegacyJsonConfig(): Partial<AppConfig> | undefined {
-  const files = uniqueStrings([CONFIG_FILE, LEGACY_CONFIG_FILE]);
+  const files = uniqueStrings([CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FILE, LEGACY_CONFIG_FILE]);
   for (const file of files) {
     if (!existsSync(file)) {
       continue;

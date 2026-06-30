@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { API_KEYS_DB_FILE } from "./constants";
+import { API_KEYS_DB_FILE, LEGACY_API_KEYS_DB_FILES } from "./constants";
 import { createBetterSqliteDatabase, type BetterSqliteDatabase } from "./sqlite-native";
 import type { ApiKeyConfig, ApiKeyLimitConfig } from "../shared/app";
 
@@ -130,11 +130,35 @@ class ApiKeyStore {
 export const apiKeyStore = new ApiKeyStore(API_KEYS_DB_FILE);
 
 export async function loadPersistedApiKeys(): Promise<ApiKeyConfig[]> {
+  if (!existsSync(API_KEYS_DB_FILE)) {
+    const legacyApiKeys = await readLegacyApiKeys();
+    if (legacyApiKeys.length > 0) {
+      return legacyApiKeys;
+    }
+  }
   return apiKeyStore.list();
 }
 
 export async function replacePersistedApiKeys(apiKeys: ApiKeyConfig[]): Promise<ApiKeyConfig[]> {
   return apiKeyStore.replace(apiKeys);
+}
+
+async function readLegacyApiKeys(): Promise<ApiKeyConfig[]> {
+  for (const dbFile of LEGACY_API_KEYS_DB_FILES) {
+    if (!existsSync(dbFile) || samePath(dbFile, API_KEYS_DB_FILE)) {
+      continue;
+    }
+    try {
+      const store = new ApiKeyStore(dbFile);
+      const apiKeys = await store.list();
+      if (apiKeys.length > 0) {
+        return apiKeys;
+      }
+    } catch (error) {
+      console.warn(`[config] Failed to read legacy API key database ${dbFile}: ${formatError(error)}`);
+    }
+  }
+  return [];
 }
 
 function toApiKeyConfig(row: Record<string, SqlValue>): ApiKeyConfig | undefined {
@@ -288,6 +312,14 @@ function readPositiveInteger(value: unknown): number | undefined {
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function samePath(left: string, right: string): boolean {
+  return left.toLowerCase() === right.toLowerCase();
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

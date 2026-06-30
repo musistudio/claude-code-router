@@ -1,10 +1,14 @@
 import { app, dialog } from "electron";
-import { setRuntimeAppPaths } from "./app-paths";
+import path from "node:path";
+import { APP_STORAGE_NAME, setRuntimeAppPaths } from "./app-paths";
+import { copyMissingDirectoryContents, sameFilesystemPath } from "./storage-migration";
 
+const appDataPath = app.getPath("appData");
+const userDataPath = configureRuntimeUserDataPath(appDataPath);
 setRuntimeAppPaths({
-  appData: app.getPath("appData"),
+  appData: appDataPath,
   home: app.getPath("home"),
-  userData: app.getPath("userData")
+  userData: userDataPath
 });
 
 let fatalStartupErrorReported = false;
@@ -38,6 +42,22 @@ function reportFatalStartupError(error: unknown): void {
   }
 
   app.exit(1);
+}
+
+function configureRuntimeUserDataPath(appDataPath: string): string {
+  const currentUserDataPath = app.getPath("userData");
+  if (process.platform !== "win32") {
+    return currentUserDataPath;
+  }
+
+  const storageUserDataPath = path.join(appDataPath, APP_STORAGE_NAME);
+  if (sameFilesystemPath(currentUserDataPath, storageUserDataPath)) {
+    return currentUserDataPath;
+  }
+
+  copyMissingDirectoryContents(currentUserDataPath, storageUserDataPath, "Windows app data directory");
+  app.setPath("userData", storageUserDataPath);
+  return app.getPath("userData");
 }
 
 function startupErrorMessage(detail: string): string {

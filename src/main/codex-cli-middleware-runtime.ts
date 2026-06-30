@@ -26,7 +26,10 @@ function resolveConfigDir() {
     return expandHome(configured);
   }
   if (process.platform === "win32") {
-    return path.join(process.env.APPDATA || process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Roaming"), "Claude Code Router");
+    const appData = process.env.APPDATA || process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Roaming");
+    const current = path.join(appData, "claude-code-router");
+    const legacy = path.join(appData, "Claude Code Router");
+    return fs.existsSync(current) || !fs.existsSync(legacy) ? current : legacy;
   }
   return path.join(os.homedir(), ".claude-code-router");
 }

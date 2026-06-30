@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { APP_CONFIG_DB_FILE } from "./constants";
+import { APP_CONFIG_DB_FILE, LEGACY_APP_CONFIG_DB_FILES } from "./constants";
 import { createBetterSqliteDatabase, type BetterSqliteDatabase } from "./sqlite-native";
 
 type SqlDatabase = BetterSqliteDatabase;
@@ -79,10 +79,22 @@ class AppConfigStore {
 export const appConfigStore = new AppConfigStore(APP_CONFIG_DB_FILE);
 
 export async function loadPersistedAppConfig(): Promise<unknown | undefined> {
+  if (!existsSync(APP_CONFIG_DB_FILE)) {
+    const legacyValue = await readLegacyAppConfigKey(appConfigKey);
+    if (legacyValue !== undefined) {
+      return legacyValue;
+    }
+  }
   return appConfigStore.read();
 }
 
 export async function loadPersistedAppSetting(key: string): Promise<unknown | undefined> {
+  if (!existsSync(APP_CONFIG_DB_FILE)) {
+    const legacyValue = await readLegacyAppConfigKey(key);
+    if (legacyValue !== undefined) {
+      return legacyValue;
+    }
+  }
   return appConfigStore.readKey(key);
 }
 
@@ -92,6 +104,24 @@ export async function replacePersistedAppConfig(value: unknown): Promise<void> {
 
 export async function replacePersistedAppSetting(key: string, value: unknown): Promise<void> {
   await appConfigStore.replaceKey(key, value);
+}
+
+async function readLegacyAppConfigKey(key: string): Promise<unknown | undefined> {
+  for (const dbFile of LEGACY_APP_CONFIG_DB_FILES) {
+    if (!existsSync(dbFile) || samePath(dbFile, APP_CONFIG_DB_FILE)) {
+      continue;
+    }
+    try {
+      const store = new AppConfigStore(dbFile);
+      const value = await store.readKey(key);
+      if (value !== undefined) {
+        return value;
+      }
+    } catch (error) {
+      console.warn(`[config] Failed to read legacy app config database ${dbFile}: ${formatError(error)}`);
+    }
+  }
+  return undefined;
 }
 
 function configureSqliteDatabase(database: SqlDatabase): void {
@@ -123,4 +153,12 @@ function securePathPermissions(file: string, mode: number): void {
   } catch {
     // Best effort for filesystems that do not support chmod.
   }
+}
+
+function samePath(left: string, right: string): boolean {
+  return left.toLowerCase() === right.toLowerCase();
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
