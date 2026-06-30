@@ -2260,13 +2260,8 @@ function modelCatalogConfigItem(model, priority) {
     slug: model,
     display_name: model,
     description: "CCR gateway model " + model,
-    default_reasoning_level: "medium",
-    supported_reasoning_levels: [
-      { effort: "low", description: "Low reasoning" },
-      { effort: "medium", description: "Medium reasoning" },
-      { effort: "high", description: "High reasoning" },
-      { effort: "xhigh", description: "Extra high reasoning" }
-    ],
+    default_reasoning_level: null,
+    supported_reasoning_levels: [],
     shell_type: "shell_command",
     visibility: "list",
     supported_in_api: true,
@@ -2276,21 +2271,21 @@ function modelCatalogConfigItem(model, priority) {
     availability_nux: null,
     upgrade: null,
     base_instructions: "You are Codex, a coding agent.",
-    supports_reasoning_summaries: true,
+    supports_reasoning_summaries: false,
     default_reasoning_summary: "none",
     support_verbosity: true,
     default_verbosity: "low",
-    apply_patch_tool_type: "freeform",
-    web_search_tool_type: "text_and_image",
+    apply_patch_tool_type: null,
+    web_search_tool_type: "text",
     truncation_policy: { mode: "tokens", limit: 10000 },
-    supports_parallel_tool_calls: true,
-    supports_image_detail_original: true,
+    supports_parallel_tool_calls: false,
+    supports_image_detail_original: false,
     context_window: 128000,
     max_context_window: 128000,
     effective_context_window_percent: 95,
     experimental_supported_tools: [],
-    input_modalities: ["text", "image"],
-    supports_search_tool: true
+    input_modalities: ["text"],
+    supports_search_tool: false
   };
 }
 

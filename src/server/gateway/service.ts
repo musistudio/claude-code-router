@@ -1787,7 +1787,9 @@ function rewriteModelSelectorForProtocol(
     return model;
   }
   const publicModel = resolveGatewayPublicModelId(normalized, config) ?? normalized;
-  const selector = resolveConfiguredProviderModelSelector(publicModel, config);
+  const selector =
+    resolveConfiguredProviderModelSelector(publicModel, config) ??
+    resolveUniqueConfiguredProviderModelSelector(publicModel, config);
   const capability = selector ? providerCapabilityForClientProtocol(selector.provider, protocol) : undefined;
   return selector && capability
     ? `${providerCapabilityInternalName(selector.provider, capability.type)}/${selector.model}`
@@ -1997,7 +1999,9 @@ function prepareUpstreamCredentialAttempt(input: {
   if (!target) {
     return {
       ...input.attempt,
-      body: normalizedBody?.body ?? input.attempt.body,
+      body: bodyHasConfiguredProviderModelSelector(input.attempt.body, input.config)
+        ? input.attempt.body
+        : normalizedBody?.body ?? input.attempt.body,
       headers: input.headers
     };
   }
@@ -2057,6 +2061,12 @@ function normalizeConfiguredProviderModelBody(
     body: serializeJsonBodyWithModel(parsedBody, selector.model),
     model: selector.model
   };
+}
+
+function bodyHasConfiguredProviderModelSelector(body: Buffer | undefined, config: AppConfig): boolean {
+  const parsedBody = parseJsonObjectSafe(body);
+  const model = stringValue(parsedBody?.model);
+  return Boolean(resolveConfiguredProviderModelSelector(model, config));
 }
 
 function resolveProviderCredentialRoutingTarget(
@@ -2181,6 +2191,49 @@ function resolveConfiguredProviderModelSelector(
   }
 
   return selectedProvider && current ? { model: current, provider: selectedProvider } : undefined;
+}
+
+function resolveUniqueConfiguredProviderModelSelector(
+  value: string | undefined,
+  config: AppConfig
+): { model: string; provider: GatewayProviderConfig } | undefined {
+  const model = normalizeRouteSelector(value);
+  if (!model) {
+    return undefined;
+  }
+
+  const exactMatches = configuredProviderModelMatches(model, config, false);
+  if (exactMatches.length === 1) {
+    return exactMatches[0];
+  }
+  if (exactMatches.length > 1) {
+    return undefined;
+  }
+
+  const caseInsensitiveMatches = configuredProviderModelMatches(model, config, true);
+  return caseInsensitiveMatches.length === 1 ? caseInsensitiveMatches[0] : undefined;
+}
+
+function configuredProviderModelMatches(
+  model: string,
+  config: AppConfig,
+  caseInsensitive: boolean
+): Array<{ model: string; provider: GatewayProviderConfig }> {
+  const normalized = caseInsensitive ? model.toLowerCase() : model;
+  const matches: Array<{ model: string; provider: GatewayProviderConfig }> = [];
+  for (const provider of config.Providers) {
+    for (const candidate of provider.models) {
+      const configuredModel = candidate.trim();
+      if (!configuredModel) {
+        continue;
+      }
+      const comparable = caseInsensitive ? configuredModel.toLowerCase() : configuredModel;
+      if (comparable === normalized) {
+        matches.push({ model: configuredModel, provider });
+      }
+    }
+  }
+  return matches;
 }
 
 function firstTargetProviderHeader(headers: Record<string, string>): string | undefined {
