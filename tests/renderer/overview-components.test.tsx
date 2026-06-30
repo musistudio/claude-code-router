@@ -20,7 +20,13 @@ test("OverviewView renders every overview widget type", () => {
     { enabled: true, id: "token-mix", size: "2:2", type: "token-mix", variant: "stacked" },
     { enabled: true, id: "models", size: "2:2", type: "model-distribution", variant: "donut" },
     { enabled: true, id: "clients", size: "4:2", type: "client-analysis", variant: "table" },
-    { enabled: true, id: "providers", size: "4:2", type: "provider-analysis", variant: "table" }
+    { enabled: true, id: "providers", size: "4:2", type: "provider-analysis", variant: "table" },
+    { enabled: true, id: "share-usage", size: "1:4", type: "share-usage-wrapped", variant: "card" },
+    { enabled: true, id: "share-routes", size: "1:4", type: "share-route-map", variant: "card" },
+    { enabled: true, id: "share-models", size: "1:4", type: "share-model-leaderboard", variant: "card" },
+    { enabled: true, id: "share-fuel", size: "1:4", type: "share-fuel-cockpit", variant: "card" },
+    { enabled: true, id: "share-calendar", size: "1:4", type: "share-token-calendar", variant: "card" },
+    { enabled: true, id: "share-receipt", size: "1:4", type: "share-spend-receipt", variant: "card" }
   ];
 
   const html = renderToStaticMarkup(
@@ -51,6 +57,13 @@ test("OverviewView renders every overview widget type", () => {
   assert.match(html, /Provider Analysis/);
   assert.match(html, /claude-code/);
   assert.match(html, /openai/);
+  assert.match(html, /Save image/);
+  assert.match(html, /AI Usage Wrapped/);
+  assert.match(html, /CCR Route Map/);
+  assert.match(html, /Model Leaderboard/);
+  assert.match(html, /AI Fuel Cockpit/);
+  assert.match(html, /Token Calendar Poster/);
+  assert.match(html, /Spend Receipt/);
 });
 
 test("OverviewView renders the empty widget layout state", () => {

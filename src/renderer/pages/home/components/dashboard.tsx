@@ -22,6 +22,7 @@ import {
   useState, X, XAxis, YAxis
 } from "../shared";
 import { buildTokenActivity, type TokenActivityCell } from "@/lib/usage-activity";
+import { ShareCardWidget } from "./share-cards";
 export function OverviewView({
   onWidgetsChange,
   overviewWidgets,
@@ -223,6 +224,17 @@ export function OverviewView({
     });
   }
 
+  function changeWidgetShareData(id: string, type: ShareOverviewWidgetType) {
+    const current = widgets.find((widget) => widget.id === id);
+    if (!current) {
+      return;
+    }
+    updateWidget(id, {
+      type,
+      variant: overviewWidgetVariantOptions(type)[0]?.value ?? current.variant
+    });
+  }
+
   function resetLayout() {
     onWidgetsChange(DEFAULT_OVERVIEW_WIDGETS.map((widget) => ({ ...widget })));
     setSelectedWidgetId(undefined);
@@ -345,6 +357,7 @@ export function OverviewView({
               onChangeBreakdownData={(type) => selectedWidget ? changeWidgetBreakdownData(selectedWidget.id, type) : undefined}
               onChangeCategory={(category) => selectedWidget ? changeWidgetCategory(selectedWidget.id, category) : undefined}
               onChangeMetric={(metric) => selectedWidget ? updateWidget(selectedWidget.id, { metric }) : undefined}
+              onChangeShareData={(type) => selectedWidget ? changeWidgetShareData(selectedWidget.id, type) : undefined}
               onChangeSize={(size) => selectedWidget ? updateWidget(selectedWidget.id, { size }) : undefined}
               onChangeVariant={(variant) => selectedWidget ? updateWidget(selectedWidget.id, { variant }) : undefined}
               onRemove={() => selectedWidget ? removeWidget(selectedWidget.id) : undefined}
@@ -354,6 +367,7 @@ export function OverviewView({
       ) : (
         widgetGrid
       )}
+
     </motion.div>
   );
 }
@@ -419,8 +433,8 @@ function OverviewWidgetPalette({
         >
           <Plus className="h-3.5 w-3.5 text-muted-foreground" />
           <div className="min-w-0">
-            <div className="truncate text-[12px] font-semibold text-foreground">{t(overviewWidgetCategoryLabel(overviewWidgetCategory(template.type)))}</div>
-            <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{t(overviewWidgetCategoryDescription(overviewWidgetCategory(template.type)))}</div>
+            <div className="truncate text-[12px] font-semibold text-foreground">{t(overviewWidgetPaletteTitle(template))}</div>
+            <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{t(overviewWidgetPaletteDescription(template))}</div>
           </div>
         </Button>
       ))}
@@ -436,6 +450,7 @@ function OverviewWidgetProperties({
   onChangeBreakdownData,
   onChangeCategory,
   onChangeMetric,
+  onChangeShareData,
   onChangeSize,
   onChangeVariant,
   onRemove
@@ -447,6 +462,7 @@ function OverviewWidgetProperties({
   onChangeBreakdownData: (type: "model-distribution" | "token-mix") => void;
   onChangeCategory: (category: OverviewWidgetCategory) => void;
   onChangeMetric: (metric: OverviewMetricKind) => void;
+  onChangeShareData: (type: ShareOverviewWidgetType) => void;
   onChangeSize: (size: OverviewWidgetSize) => void;
   onChangeVariant: (variant: OverviewWidgetVariant) => void;
   onRemove: () => void;
@@ -479,6 +495,9 @@ function OverviewWidgetProperties({
     }
     if (category === "breakdown") {
       onChangeBreakdownData(value as "model-distribution" | "token-mix");
+    }
+    if (category === "share-card") {
+      onChangeShareData(value as ShareOverviewWidgetType);
     }
   };
 
@@ -847,6 +866,8 @@ function OverviewWidgetRenderer({
     content = <ModelDistributionOverviewWidget dimensions={dimensions} rows={usageStats.models} variant={overviewTokenMixVariant(widget.variant)} />;
   } else if (widget.type === "client-analysis") {
     content = <OverviewAnalysisWidget dimensions={dimensions} kind="client" rows={usageStats.clientModels} variant={widget.variant === "compact" ? "compact" : "table"} />;
+  } else if (isShareOverviewWidgetType(widget.type)) {
+    content = <ShareCardWidget providerAccounts={providerAccounts} type={widget.type} usageRange={usageRange} usageStats={usageStats} />;
   } else {
     content = <OverviewAnalysisWidget dimensions={dimensions} kind="provider" rows={usageStats.providerModels} variant={widget.variant === "compact" ? "compact" : "table"} />;
   }
@@ -1464,11 +1485,19 @@ function overviewWidgetTemplates(): OverviewWidgetConfig[] {
     { enabled: true, id: "usage-trend", size: "3:2", type: "usage-trend", variant: "composed" },
     { enabled: true, id: "token-activity", size: "4:2", type: "token-activity", variant: "heatmap" },
     { enabled: true, id: "token-mix", size: "1:2", type: "token-mix", variant: "bars" },
-    { enabled: true, id: "client-analysis", size: "2:2", type: "client-analysis", variant: "table" }
+    { enabled: true, id: "client-analysis", size: "2:2", type: "client-analysis", variant: "table" },
+    { enabled: true, id: "share-usage-wrapped", size: "1:4", type: "share-usage-wrapped", variant: "card" },
+    { enabled: true, id: "share-route-map", size: "1:4", type: "share-route-map", variant: "card" },
+    { enabled: true, id: "share-model-leaderboard", size: "1:4", type: "share-model-leaderboard", variant: "card" },
+    { enabled: true, id: "share-fuel-cockpit", size: "1:4", type: "share-fuel-cockpit", variant: "card" },
+    { enabled: true, id: "share-token-calendar", size: "1:4", type: "share-token-calendar", variant: "card" },
+    { enabled: true, id: "share-spend-receipt", size: "1:4", type: "share-spend-receipt", variant: "card" }
   ];
 }
 
-type OverviewWidgetCategory = "account-balance" | "activity" | "analysis" | "breakdown" | "metric" | "system-status" | "usage-trend";
+type ShareOverviewWidgetType = Extract<OverviewWidgetType, "share-fuel-cockpit" | "share-model-leaderboard" | "share-route-map" | "share-spend-receipt" | "share-token-calendar" | "share-usage-wrapped">;
+
+type OverviewWidgetCategory = "account-balance" | "activity" | "analysis" | "breakdown" | "metric" | "share-card" | "system-status" | "usage-trend";
 
 function overviewWidgetCategoryOptions(): Array<{ label: string; value: OverviewWidgetCategory }> {
   return [
@@ -1478,7 +1507,8 @@ function overviewWidgetCategoryOptions(): Array<{ label: string; value: Overview
     "usage-trend",
     "activity",
     "breakdown",
-    "analysis"
+    "analysis",
+    "share-card"
   ].map((category) => ({
     label: overviewWidgetCategoryLabel(category as OverviewWidgetCategory),
     value: category as OverviewWidgetCategory
@@ -1496,6 +1526,17 @@ function overviewBreakdownDataOptions(): Array<{ label: string; value: "model-di
   return [
     { label: "Token distribution", value: "token-mix" },
     { label: "Model distribution", value: "model-distribution" }
+  ];
+}
+
+function overviewShareCardDataOptions(): Array<{ label: string; value: ShareOverviewWidgetType }> {
+  return [
+    { label: "AI Usage Wrapped", value: "share-usage-wrapped" },
+    { label: "CCR Route Map", value: "share-route-map" },
+    { label: "Model Leaderboard", value: "share-model-leaderboard" },
+    { label: "AI Fuel Cockpit", value: "share-fuel-cockpit" },
+    { label: "Token Calendar Poster", value: "share-token-calendar" },
+    { label: "Spend Receipt", value: "share-spend-receipt" }
   ];
 }
 
@@ -1526,6 +1567,9 @@ function overviewWidgetDataOptions(widget: OverviewWidgetConfig, providerAccount
   if (category === "breakdown") {
     return overviewBreakdownDataOptions();
   }
+  if (category === "share-card") {
+    return overviewShareCardDataOptions();
+  }
   return [{ label: "Usage over time", value: "usage-trend" }];
 }
 
@@ -1546,6 +1590,9 @@ function overviewWidgetDataValue(widget: OverviewWidgetConfig): string {
   if (category === "activity") {
     return "token-activity";
   }
+  if (category === "share-card") {
+    return widget.type;
+  }
   return category;
 }
 
@@ -1558,6 +1605,9 @@ function overviewWidgetCategory(type: OverviewWidgetType): OverviewWidgetCategor
   }
   if (type === "token-activity") {
     return "activity";
+  }
+  if (isShareOverviewWidgetType(type)) {
+    return "share-card";
   }
   return type;
 }
@@ -1572,10 +1622,16 @@ function overviewWidgetTypeForCategory(category: OverviewWidgetCategory, current
   if (category === "activity") {
     return "token-activity";
   }
+  if (category === "share-card") {
+    return isShareOverviewWidgetType(currentType) ? currentType : "share-usage-wrapped";
+  }
   return category;
 }
 
 function overviewWidgetTemplateKey(widget: OverviewWidgetConfig): string {
+  if (isShareOverviewWidgetType(widget.type)) {
+    return widget.type;
+  }
   return overviewWidgetCategory(widget.type);
 }
 
@@ -1584,6 +1640,7 @@ function overviewWidgetCategoryLabel(category: OverviewWidgetCategory): string {
   if (category === "analysis") return "Analysis component";
   if (category === "activity") return "Activity component";
   if (category === "metric") return "Metric component";
+  if (category === "share-card") return "Share card";
   if (category === "system-status") return "Status component";
   if (category === "breakdown") return "Breakdown component";
   return "Trend component";
@@ -1594,9 +1651,22 @@ function overviewWidgetCategoryDescription(category: OverviewWidgetCategory): st
   if (category === "analysis") return "Client or provider";
   if (category === "activity") return "Token activity heatmap";
   if (category === "metric") return "Requests, tokens, cost";
+  if (category === "share-card") return "Social media PNG cards";
   if (category === "system-status") return "Status timeline";
   if (category === "breakdown") return "Token or model distribution";
   return "Usage over time";
+}
+
+function overviewWidgetPaletteTitle(widget: OverviewWidgetConfig): string {
+  return isShareOverviewWidgetType(widget.type)
+    ? overviewWidgetTypeLabel(widget.type)
+    : overviewWidgetCategoryLabel(overviewWidgetCategory(widget.type));
+}
+
+function overviewWidgetPaletteDescription(widget: OverviewWidgetConfig): string {
+  return isShareOverviewWidgetType(widget.type)
+    ? overviewWidgetCategoryLabel("share-card")
+    : overviewWidgetCategoryDescription(overviewWidgetCategory(widget.type));
 }
 
 function overviewWidgetTitle(widget: OverviewWidgetConfig, translate: (value: string) => string): string {
@@ -1612,6 +1682,12 @@ function overviewWidgetTypeLabel(type: OverviewWidgetType): string {
   if (type === "metric") return "Metric";
   if (type === "model-distribution") return "Model Distribution";
   if (type === "provider-analysis") return "Provider Analysis";
+  if (type === "share-fuel-cockpit") return "AI Fuel Cockpit";
+  if (type === "share-model-leaderboard") return "Model Leaderboard";
+  if (type === "share-route-map") return "CCR Route Map";
+  if (type === "share-spend-receipt") return "Spend Receipt";
+  if (type === "share-token-calendar") return "Token Calendar Poster";
+  if (type === "share-usage-wrapped") return "AI Usage Wrapped";
   if (type === "system-status") return "System status";
   if (type === "token-activity") return "Activity";
   if (type === "token-mix") return "Token Mix";
@@ -1665,10 +1741,24 @@ function overviewWidgetVariantOptions(type: OverviewWidgetType): Array<{ label: 
       { label: "Compact", value: "compact" }
     ];
   }
+  if (isShareOverviewWidgetType(type)) {
+    return [
+      { label: "Card", value: "card" }
+    ];
+  }
   return [
     { label: "Table", value: "table" },
     { label: "Compact", value: "compact" }
   ];
+}
+
+function isShareOverviewWidgetType(type: OverviewWidgetType): type is ShareOverviewWidgetType {
+  return type === "share-fuel-cockpit" ||
+    type === "share-model-leaderboard" ||
+    type === "share-route-map" ||
+    type === "share-spend-receipt" ||
+    type === "share-token-calendar" ||
+    type === "share-usage-wrapped";
 }
 
 function overviewWidgetSizeClass(size: OverviewWidgetSize): string {

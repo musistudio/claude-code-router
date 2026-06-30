@@ -1,5 +1,6 @@
 export const IPC_CHANNELS = {
   appBeforeQuit: "ccr:app:before-quit",
+  appCaptureElementPng: "ccr:app:capture-element-png",
   appCloseTray: "ccr:app:close-tray",
   appDetectProviderIcon: "ccr:app:detect-provider-icon",
   appExportData: "ccr:app:export-data",
@@ -46,6 +47,7 @@ export const IPC_CHANNELS = {
   appProbeProviderCandidates: "ccr:app:probe-provider-candidates",
   appProviderDeepLink: "ccr:app:provider-deep-link",
   appGetPluginMarketplace: "ccr:app:get-plugin-marketplace",
+  appPrepareImageExportTarget: "ccr:app:prepare-image-export-target",
   appQuit: "ccr:app:quit",
   appRevealProxyCertificate: "ccr:app:reveal-proxy-certificate",
   appRestartProxy: "ccr:app:restart-proxy",

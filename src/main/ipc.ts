@@ -1,7 +1,9 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, type OpenDialogOptions, type SaveDialogOptions } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell, type OpenDialogOptions, type Rectangle, type SaveDialogOptions } from "electron";
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
+import { deflateSync, inflateSync } from "node:zlib";
 import { loadPersistedAppSetting, replacePersistedAppSetting } from "./app-config-store";
 import { builtInBrowserService } from "./built-in-browser";
 import { scanBotHandoffBluetoothTargets, scanBotHandoffWifiTargets } from "./bot-handoff-scan-service";
@@ -29,7 +31,7 @@ import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
 import { getUsageStats } from "./usage-store";
 import windowsManager from "./windows";
-import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfig, AppConfig, AppDataExportResult, AppInfo, AppSaveConfigOptions, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, LocalAgentProviderImportRequest, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
+import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfig, AppCaptureElementPngRequest, AppCaptureElementPngResult, AppConfig, AppDataExportResult, AppImageExportTargetRequest, AppImageExportTargetResult, AppInfo, AppSaveConfigOptions, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, LocalAgentProviderImportRequest, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
 
 const pluginMarketplace: PluginMarketplaceEntry[] = [
   {
@@ -50,6 +52,7 @@ const pluginMarketplace: PluginMarketplaceEntry[] = [
   }
 ];
 const onboardingFinishedAtSettingKey = "onboardingFinishedAt";
+const imageExportTargets = new Map<string, string>();
 
 ipcMain.handle(IPC_CHANNELS.appGetInfo, () => {
   return {
@@ -69,6 +72,12 @@ ipcMain.handle(IPC_CHANNELS.appGetInfo, () => {
 
 ipcMain.handle(IPC_CHANNELS.appExportData, async (event): Promise<AppDataExportResult> => {
   return exportAppData(BrowserWindow.fromWebContents(event.sender));
+});
+ipcMain.handle(IPC_CHANNELS.appCaptureElementPng, async (event, request: AppCaptureElementPngRequest): Promise<AppCaptureElementPngResult> => {
+  return captureElementPng(BrowserWindow.fromWebContents(event.sender), request);
+});
+ipcMain.handle(IPC_CHANNELS.appPrepareImageExportTarget, async (event, request: AppImageExportTargetRequest): Promise<AppImageExportTargetResult> => {
+  return prepareImageExportTarget(BrowserWindow.fromWebContents(event.sender), request);
 });
 
 ipcMain.handle(IPC_CHANNELS.appGetConfig, () => loadAppConfig());
@@ -539,6 +548,43 @@ async function exportAppData(window: BrowserWindow | null): Promise<AppDataExpor
   };
 }
 
+async function captureElementPng(window: BrowserWindow | null, request: AppCaptureElementPngRequest): Promise<AppCaptureElementPngResult> {
+  if (!window) {
+    throw new Error("Window is unavailable.");
+  }
+
+  const rect = sanitizeCaptureRect(request.rect);
+  const targetFile = request.exportId ? consumeImageExportTarget(request.exportId) : undefined;
+  const result = targetFile
+    ? { canceled: false, filePath: targetFile }
+    : await dialog.showSaveDialog(window, shareCardSaveDialogOptions(request.fileName));
+  if (result.canceled || !result.filePath) {
+    return { canceled: true };
+  }
+
+  const image = await window.webContents.capturePage(rect);
+  const png = image.toPNG();
+  writeFileSync(result.filePath, pngWithExportProcessing(png, request, rect.width), { mode: 0o600 });
+  return { canceled: false, file: result.filePath };
+}
+
+async function prepareImageExportTarget(window: BrowserWindow | null, request: AppImageExportTargetRequest): Promise<AppImageExportTargetResult> {
+  const result = window
+    ? await dialog.showSaveDialog(window, shareCardSaveDialogOptions(request.fileName))
+    : await dialog.showSaveDialog(shareCardSaveDialogOptions(request.fileName));
+  if (result.canceled || !result.filePath) {
+    return { canceled: true };
+  }
+
+  const exportId = randomUUID();
+  imageExportTargets.set(exportId, result.filePath);
+  return {
+    canceled: false,
+    exportId,
+    file: result.filePath
+  };
+}
+
 function dataExportSaveDialogOptions(exportedAt: string): SaveDialogOptions {
   return {
     buttonLabel: "Export",
@@ -548,6 +594,321 @@ function dataExportSaveDialogOptions(exportedAt: string): SaveDialogOptions {
     ],
     title: "Export CCR data"
   };
+}
+
+function shareCardSaveDialogOptions(fileName: string): SaveDialogOptions {
+  return {
+    buttonLabel: "Save image",
+    defaultPath: path.join(app.getPath("downloads"), safePngFileName(fileName)),
+    filters: [
+      { extensions: ["png"], name: "PNG image" }
+    ],
+    title: "Save image"
+  };
+}
+
+function sanitizeCaptureRect(rect: AppCaptureElementPngRequest["rect"]): Rectangle {
+  const x = finiteNumber(rect?.x, "capture x");
+  const y = finiteNumber(rect?.y, "capture y");
+  const width = finiteNumber(rect?.width, "capture width");
+  const height = finiteNumber(rect?.height, "capture height");
+  if (width <= 0 || height <= 0) {
+    throw new Error("Capture area must not be empty.");
+  }
+  return {
+    height: Math.ceil(height),
+    width: Math.ceil(width),
+    x: Math.max(0, Math.floor(x)),
+    y: Math.max(0, Math.floor(y))
+  };
+}
+
+function finiteNumber(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`Invalid ${label}.`);
+  }
+  return value;
+}
+
+function safePngFileName(value: string): string {
+  const raw = typeof value === "string" ? value : "";
+  const safe = path.basename(raw).replace(/[<>:"/\\|?*\x00-\x1f]/g, "-").trim() || "ccr-share-card.png";
+  return safe.toLowerCase().endsWith(".png") ? safe : `${safe}.png`;
+}
+
+function consumeImageExportTarget(exportId: string): string {
+  const target = imageExportTargets.get(exportId);
+  imageExportTargets.delete(exportId);
+  if (!target) {
+    throw new Error("Image export target is unavailable.");
+  }
+  return target;
+}
+
+const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+type DecodedPngPixels = {
+  bitDepth: number;
+  colorType: 2 | 6;
+  height: number;
+  pixels: Uint8Array;
+  width: number;
+};
+
+function pngWithExportProcessing(png: Buffer, request: AppCaptureElementPngRequest, cssWidth: number): Buffer {
+  const radius = typeof request.borderRadius === "number" && Number.isFinite(request.borderRadius) ? Math.max(0, request.borderRadius) : 0;
+  const outputWidth = sanitizePngOutputDimension(request.output?.width);
+  const outputHeight = sanitizePngOutputDimension(request.output?.height);
+  if (radius <= 0 && (!outputWidth || !outputHeight)) {
+    return png;
+  }
+
+  try {
+    const decoded = decodePngPixels(png);
+    let width = decoded.width;
+    let height = decoded.height;
+    let rgba = pngPixelsToRgba(decoded);
+    if (outputWidth && outputHeight && (outputWidth !== width || outputHeight !== height)) {
+      rgba = resizeRgbaBilinear(rgba, width, height, outputWidth, outputHeight);
+      width = outputWidth;
+      height = outputHeight;
+    }
+    if (radius > 0 && cssWidth > 0) {
+      const pixelRadius = Math.min(width / 2, height / 2, radius * width / cssWidth);
+      applyRoundedAlphaMask(rgba, width, height, pixelRadius);
+    }
+    return encodeRgbaPng(width, height, rgba);
+  } catch (error) {
+    console.warn(`[export] Failed to process exported PNG: ${formatError(error)}`);
+    return png;
+  }
+}
+
+function sanitizePngOutputDimension(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+  const rounded = Math.round(value);
+  return rounded > 0 && rounded <= 4096 ? rounded : undefined;
+}
+
+function decodePngPixels(png: Buffer): DecodedPngPixels {
+  if (png.length < 33 || !png.subarray(0, pngSignature.length).equals(pngSignature)) {
+    throw new Error("Invalid PNG file.");
+  }
+
+  let offset = pngSignature.length;
+  let width = 0;
+  let height = 0;
+  let bitDepth = 0;
+  let colorType = 0;
+  let interlaceMethod = 0;
+  const idatChunks: Buffer[] = [];
+
+  while (offset + 12 <= png.length) {
+    const length = png.readUInt32BE(offset);
+    offset += 4;
+    const type = png.toString("ascii", offset, offset + 4);
+    offset += 4;
+    const data = png.subarray(offset, offset + length);
+    offset += length + 4;
+
+    if (type === "IHDR") {
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      bitDepth = data[8];
+      colorType = data[9];
+      interlaceMethod = data[12];
+    } else if (type === "IDAT") {
+      idatChunks.push(Buffer.from(data));
+    } else if (type === "IEND") {
+      break;
+    }
+  }
+
+  if (width <= 0 || height <= 0 || bitDepth !== 8 || (colorType !== 2 && colorType !== 6) || interlaceMethod !== 0) {
+    throw new Error("Unsupported PNG format.");
+  }
+
+  const channels = colorType === 6 ? 4 : 3;
+  const stride = width * channels;
+  const inflated = inflateSync(Buffer.concat(idatChunks));
+  const pixels = new Uint8Array(width * height * channels);
+  let sourceOffset = 0;
+  let previousRow = new Uint8Array(stride);
+
+  for (let y = 0; y < height; y += 1) {
+    const filter = inflated[sourceOffset];
+    sourceOffset += 1;
+    const row = new Uint8Array(stride);
+    for (let x = 0; x < stride; x += 1) {
+      const raw = inflated[sourceOffset + x];
+      const left = x >= channels ? row[x - channels] : 0;
+      const up = previousRow[x] ?? 0;
+      const upLeft = x >= channels ? previousRow[x - channels] ?? 0 : 0;
+      row[x] = unfilterPngByte(filter, raw, left, up, upLeft);
+    }
+    pixels.set(row, y * stride);
+    previousRow = row;
+    sourceOffset += stride;
+  }
+
+  return {
+    bitDepth,
+    colorType: colorType as 2 | 6,
+    height,
+    pixels,
+    width
+  };
+}
+
+function unfilterPngByte(filter: number, raw: number, left: number, up: number, upLeft: number): number {
+  if (filter === 0) return raw;
+  if (filter === 1) return (raw + left) & 0xff;
+  if (filter === 2) return (raw + up) & 0xff;
+  if (filter === 3) return (raw + Math.floor((left + up) / 2)) & 0xff;
+  if (filter === 4) return (raw + pngPaethPredictor(left, up, upLeft)) & 0xff;
+  throw new Error(`Unsupported PNG filter: ${filter}`);
+}
+
+function pngPaethPredictor(left: number, up: number, upLeft: number): number {
+  const estimate = left + up - upLeft;
+  const leftDistance = Math.abs(estimate - left);
+  const upDistance = Math.abs(estimate - up);
+  const upLeftDistance = Math.abs(estimate - upLeft);
+  if (leftDistance <= upDistance && leftDistance <= upLeftDistance) return left;
+  if (upDistance <= upLeftDistance) return up;
+  return upLeft;
+}
+
+function pngPixelsToRgba(decoded: DecodedPngPixels): Uint8Array {
+  const rgba = new Uint8Array(decoded.width * decoded.height * 4);
+  const sourceChannels = decoded.colorType === 6 ? 4 : 3;
+  for (let source = 0, target = 0; source < decoded.pixels.length; source += sourceChannels, target += 4) {
+    rgba[target] = decoded.pixels[source];
+    rgba[target + 1] = decoded.pixels[source + 1];
+    rgba[target + 2] = decoded.pixels[source + 2];
+    rgba[target + 3] = sourceChannels === 4 ? decoded.pixels[source + 3] : 255;
+  }
+  return rgba;
+}
+
+function resizeRgbaBilinear(source: Uint8Array, sourceWidth: number, sourceHeight: number, targetWidth: number, targetHeight: number): Uint8Array {
+  const target = new Uint8Array(targetWidth * targetHeight * 4);
+  const xRatio = targetWidth > 1 ? (sourceWidth - 1) / (targetWidth - 1) : 0;
+  const yRatio = targetHeight > 1 ? (sourceHeight - 1) / (targetHeight - 1) : 0;
+
+  for (let y = 0; y < targetHeight; y += 1) {
+    const sourceY = y * yRatio;
+    const y0 = Math.floor(sourceY);
+    const y1 = Math.min(sourceHeight - 1, y0 + 1);
+    const yWeight = sourceY - y0;
+    for (let x = 0; x < targetWidth; x += 1) {
+      const sourceX = x * xRatio;
+      const x0 = Math.floor(sourceX);
+      const x1 = Math.min(sourceWidth - 1, x0 + 1);
+      const xWeight = sourceX - x0;
+      const targetOffset = (y * targetWidth + x) * 4;
+      const topLeft = (y0 * sourceWidth + x0) * 4;
+      const topRight = (y0 * sourceWidth + x1) * 4;
+      const bottomLeft = (y1 * sourceWidth + x0) * 4;
+      const bottomRight = (y1 * sourceWidth + x1) * 4;
+      for (let channel = 0; channel < 4; channel += 1) {
+        const top = source[topLeft + channel] * (1 - xWeight) + source[topRight + channel] * xWeight;
+        const bottom = source[bottomLeft + channel] * (1 - xWeight) + source[bottomRight + channel] * xWeight;
+        target[targetOffset + channel] = Math.round(top * (1 - yWeight) + bottom * yWeight);
+      }
+    }
+  }
+
+  return target;
+}
+
+function applyRoundedAlphaMask(rgba: Uint8Array, width: number, height: number, radius: number): void {
+  if (radius <= 0) {
+    return;
+  }
+
+  const halfWidth = width / 2;
+  const halfHeight = height / 2;
+  const innerHalfWidth = Math.max(0, halfWidth - radius);
+  const innerHalfHeight = Math.max(0, halfHeight - radius);
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const qx = Math.abs(x + 0.5 - halfWidth) - innerHalfWidth;
+      const qy = Math.abs(y + 0.5 - halfHeight) - innerHalfHeight;
+      const outside = Math.hypot(Math.max(qx, 0), Math.max(qy, 0));
+      const inside = Math.min(Math.max(qx, qy), 0);
+      const distance = outside + inside - radius;
+      const coverage = Math.max(0, Math.min(1, 0.5 - distance));
+      if (coverage >= 1) {
+        continue;
+      }
+      const alphaOffset = (y * width + x) * 4 + 3;
+      rgba[alphaOffset] = Math.round(rgba[alphaOffset] * coverage);
+    }
+  }
+}
+
+function encodeRgbaPng(width: number, height: number, rgba: Uint8Array): Buffer {
+  const stride = width * 4;
+  const scanlines = Buffer.alloc((stride + 1) * height);
+  for (let y = 0; y < height; y += 1) {
+    const target = y * (stride + 1);
+    scanlines[target] = 0;
+    scanlines.set(rgba.subarray(y * stride, (y + 1) * stride), target + 1);
+  }
+
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 6;
+  ihdr[10] = 0;
+  ihdr[11] = 0;
+  ihdr[12] = 0;
+
+  return Buffer.concat([
+    pngSignature,
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", deflateSync(scanlines)),
+    pngChunk("IEND", Buffer.alloc(0))
+  ]);
+}
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const typeBuffer = Buffer.from(type, "ascii");
+  const chunk = Buffer.alloc(12 + data.length);
+  chunk.writeUInt32BE(data.length, 0);
+  typeBuffer.copy(chunk, 4);
+  data.copy(chunk, 8);
+  chunk.writeUInt32BE(crc32(Buffer.concat([typeBuffer, data])), 8 + data.length);
+  return chunk;
+}
+
+let crc32Table: Uint32Array | undefined;
+
+function crc32(buffer: Buffer): number {
+  const table = crc32Table ?? createCrc32Table();
+  crc32Table = table;
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc = table[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function createCrc32Table(): Uint32Array {
+  const table = new Uint32Array(256);
+  for (let index = 0; index < table.length; index += 1) {
+    let value = index;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+    }
+    table[index] = value >>> 0;
+  }
+  return table;
 }
 
 function readDataExportFiles(): Array<{ base64: string; name: string; path: string; sizeBytes: number }> {

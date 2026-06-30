@@ -674,7 +674,7 @@ export function normalizeOverviewWidget(value: unknown): OverviewWidgetConfig | 
 }
 
 export function normalizeOverviewWidgetType(value: unknown): OverviewWidgetType | undefined {
-  return typeof value === "string" && ["account-balance", "client-analysis", "metric", "model-distribution", "provider-analysis", "system-status", "token-activity", "token-mix", "usage-trend"].includes(value)
+  return typeof value === "string" && ["account-balance", "client-analysis", "metric", "model-distribution", "provider-analysis", "share-fuel-cockpit", "share-model-leaderboard", "share-route-map", "share-spend-receipt", "share-token-calendar", "share-usage-wrapped", "system-status", "token-activity", "token-mix", "usage-trend"].includes(value)
     ? value as OverviewWidgetType
     : undefined;
 }
@@ -754,6 +754,11 @@ export function overviewWidgetVariantOptions(type: OverviewWidgetType): Array<{ 
       { label: "Compact", value: "compact" }
     ];
   }
+  if (isShareOverviewWidgetType(type)) {
+    return [
+      { label: "Card", value: "card" }
+    ];
+  }
   return [
     { label: "Table", value: "table" },
     { label: "Compact", value: "compact" }
@@ -775,6 +780,7 @@ export function defaultOverviewWidgetSize(type: OverviewWidgetType): OverviewWid
   if (type === "client-analysis" || type === "provider-analysis") return "2:2";
   if (type === "usage-trend") return "3:2";
   if (type === "system-status") return "4:1";
+  if (isShareOverviewWidgetType(type)) return "1:4";
   return "4:2";
 }
 
@@ -786,6 +792,7 @@ export function defaultOverviewWidgetVariant(type: OverviewWidgetType): Overview
   if (type === "token-activity") return "heatmap";
   if (type === "usage-trend") return "composed";
   if (type === "system-status") return "timeline";
+  if (isShareOverviewWidgetType(type)) return "card";
   return "table";
 }
 
@@ -795,10 +802,22 @@ export function constrainOverviewWidgetSize(
   variant: OverviewWidgetVariant,
   accountProvider?: string
 ): OverviewWidgetSize {
+  if (isShareOverviewWidgetType(type)) {
+    return overviewWidgetSizeAtLeast(size, 1, 4);
+  }
   if (type !== "account-balance" || variant !== "compact" || accountProvider?.trim()) {
     return size;
   }
   return overviewWidgetSizeAtLeast(size, 2, 2);
+}
+
+function isShareOverviewWidgetType(type: OverviewWidgetType): boolean {
+  return type === "share-fuel-cockpit" ||
+    type === "share-model-leaderboard" ||
+    type === "share-route-map" ||
+    type === "share-spend-receipt" ||
+    type === "share-token-calendar" ||
+    type === "share-usage-wrapped";
 }
 
 function overviewWidgetSizeAtLeast(size: OverviewWidgetSize, minWidth: 1 | 2 | 3 | 4, minHeight: 1 | 2 | 3 | 4): OverviewWidgetSize {

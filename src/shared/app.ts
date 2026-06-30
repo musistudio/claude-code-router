@@ -18,6 +18,37 @@ export type AppDataExportResult = {
   file?: string;
 };
 
+export type AppCaptureElementPngRequest = {
+  borderRadius?: number;
+  exportId?: string;
+  fileName: string;
+  output?: {
+    height: number;
+    width: number;
+  };
+  rect: {
+    height: number;
+    width: number;
+    x: number;
+    y: number;
+  };
+};
+
+export type AppCaptureElementPngResult = {
+  canceled: boolean;
+  file?: string;
+};
+
+export type AppImageExportTargetRequest = {
+  fileName: string;
+};
+
+export type AppImageExportTargetResult = {
+  canceled: boolean;
+  exportId?: string;
+  file?: string;
+};
+
 export type AppUpdateState =
   | "idle"
   | "checking"
@@ -851,6 +882,12 @@ export type OverviewWidgetType =
   | "metric"
   | "model-distribution"
   | "provider-analysis"
+  | "share-fuel-cockpit"
+  | "share-model-leaderboard"
+  | "share-route-map"
+  | "share-spend-receipt"
+  | "share-token-calendar"
+  | "share-usage-wrapped"
   | "system-status"
   | "token-activity"
   | "token-mix"

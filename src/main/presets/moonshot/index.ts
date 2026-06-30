@@ -76,7 +76,7 @@ const moonshotChinaProviderAccountConfig: ProviderAccountConfig = {
 export const moonshotChinaProviderPreset: ProviderPreset = {
   account: moonshotChinaProviderAccountConfig,
   aliases: ["kimi", "kimi api", "moonshot", "moonshot kimi"],
-  defaultModels: ["moonshot-v1-8k"],
+  defaultModels: ["kimi-k2.7-code"],
   endpoints: [
     {
       baseUrl: "https://api.moonshot.cn/v1",
@@ -92,7 +92,7 @@ export const moonshotChinaProviderPreset: ProviderPreset = {
 export const moonshotGlobalProviderPreset: ProviderPreset = {
   account: moonshotGlobalProviderAccountConfig,
   aliases: ["kimi", "kimi api", "moonshot", "moonshot kimi"],
-  defaultModels: ["moonshot-v1-8k"],
+  defaultModels: ["kimi-k2.7-code"],
   endpoints: [
     {
       baseUrl: "https://api.moonshot.ai/v1",

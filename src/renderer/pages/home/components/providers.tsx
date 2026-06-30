@@ -2,7 +2,7 @@ import {
   AddProviderDraft, AnimatedDisclosure, AnimatedIconSwap, AnimatedListItem, AnimatedPopover, AnimatePresence, AppConfig, Badge,
   Box, Braces, Button, Card, CardContent, CardHeader, CardTitle,
   Check, Checkbox, ChevronDown, ChevronRight, CircleAlert, cn,
-  compareProviderAccountSnapshots, Copy, copyTextToClipboard, createDefaultProviderAccountDraft, createModelCatalogItems, createProviderAccountDraftFromConfig, createProviderCredentialDraft, createProviderInstallLinkFromDraft,
+  compareProviderAccountSnapshots, copyTextToClipboard, createDefaultProviderAccountDraft, createModelCatalogItems, createProviderAccountDraftFromConfig, createProviderCredentialDraft,
   customProviderPresetId, defaultProviderAccountConfigForPreset, Dialog, DialogBody, DialogContent, DialogFooter,
   DialogHeader, DialogTitle, ExternalLink, Field, findProviderPreset, formatProviderAccountMeterValue, GatewayProviderConfig,
   GatewayProviderProbeResult, getProviderPresets, Globe, inferProviderNameFromBaseUrl, Input, KeyValueRowsControl, Label,
@@ -624,7 +624,7 @@ function ProviderPresetCombobox({
   const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const selected = options.find((option) => option.value === value) ?? options[0];
+  const selected = options.find((option) => option.value === value) ?? options.find((option) => option.value === "");
   const normalizedQuery = query.trim().toLowerCase();
   const filteredOptions = normalizedQuery
     ? options.filter((option) => providerPresetOptionMatchesQuery(option, normalizedQuery))
@@ -1232,9 +1232,9 @@ export function AddProviderForm({
   const safetyIssue = providerDraftSafetyIssue(draft, detectedBaseUrl);
   const localAgentImport = draft.providerPlugins.length > 0;
   const providerPresetOptions = [
+    { iconUrl: draft.icon, label: t("Other / custom API endpoint"), value: customProviderPresetId },
     { label: t("Select preset provider"), value: "" },
-    ...getProviderPresets().map((preset) => ({ label: t(preset.name), preset, value: preset.id })),
-    { iconUrl: draft.icon, label: t("Other / custom API endpoint"), value: customProviderPresetId }
+    ...getProviderPresets().map((preset) => ({ label: t(preset.name), preset, value: preset.id }))
   ];
   const selectableProtocols = providerSelectableProtocolsFromProbe(probe);
   const hasConnectivityCheckInputs = Boolean(
@@ -1800,21 +1800,12 @@ function ProviderUsageSettings({
   const [testLoading, setTestLoading] = useState(false);
   const [testResult, setTestResult] = useState<ProviderAccountTestResult>();
   const [testError, setTestError] = useState("");
-  const [copiedLink, setCopiedLink] = useState(false);
   const modeOptions = translateOptions(providerAccountModeOptions, t);
 
   useEffect(() => {
     setTestResult(undefined);
     setTestError("");
   }, [draft.accountMode, draft.usageRequestUrl, draft.usageRequestMethod]);
-
-  useEffect(() => {
-    if (!copiedLink) {
-      return;
-    }
-    const timer = window.setTimeout(() => setCopiedLink(false), 1300);
-    return () => window.clearTimeout(timer);
-  }, [copiedLink]);
 
   async function testUsageRequest() {
     if (!window.ccr?.testProviderAccountConnector) {
@@ -1855,17 +1846,6 @@ function ProviderUsageSettings({
     }
   }
 
-  async function copyProviderPluginLink() {
-    const link = createProviderInstallLinkFromDraft(draft, probe);
-    if (typeof link === "string" && link.startsWith("ccr://")) {
-      await copyTextToClipboard(link);
-      setCopiedLink(true);
-      setTestError("");
-      return;
-    }
-    setTestError(formatError(new Error(link)));
-  }
-
   function selectPath(target: ProviderUsageFieldTarget, path: string) {
     onChange(providerUsageFieldPatch(target, path));
   }
@@ -1880,12 +1860,6 @@ function ProviderUsageSettings({
           />
           <span className="min-w-0 truncate">{t("Fetch usage")}</span>
         </Label>
-        <Button className="h-8 shrink-0 px-2" onClick={() => void copyProviderPluginLink()} type="button" variant="outline">
-          <AnimatedIconSwap iconKey={copiedLink ? "copied" : "copy"}>
-            {copiedLink ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-          </AnimatedIconSwap>
-          {copiedLink ? t("Copied") : t("Copy provider plugin link")}
-        </Button>
       </div>
 
       {draft.accountEnabled ? (

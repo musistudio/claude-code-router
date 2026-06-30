@@ -702,7 +702,7 @@ function parseOverviewWidget(value: unknown): OverviewWidgetConfig | undefined {
 }
 
 function parseOverviewWidgetType(value: unknown): OverviewWidgetType | undefined {
-  return parseEnumValue(value, ["account-balance", "client-analysis", "metric", "model-distribution", "provider-analysis", "system-status", "token-activity", "token-mix", "usage-trend"], undefined);
+  return parseEnumValue(value, ["account-balance", "client-analysis", "metric", "model-distribution", "provider-analysis", "share-fuel-cockpit", "share-model-leaderboard", "share-route-map", "share-spend-receipt", "share-token-calendar", "share-usage-wrapped", "system-status", "token-activity", "token-mix", "usage-trend"], undefined);
 }
 
 function parseOverviewWidgetSize(value: unknown, type: OverviewWidgetType): OverviewWidgetSize | undefined {
@@ -755,6 +755,9 @@ function defaultOverviewWidgetSize(type: OverviewWidgetType): OverviewWidgetSize
   if (type === "system-status") {
     return "4:1";
   }
+  if (isShareOverviewWidgetType(type)) {
+    return "1:4";
+  }
   return "4:2";
 }
 
@@ -780,11 +783,23 @@ function defaultOverviewWidgetVariant(type: OverviewWidgetType): OverviewWidgetV
   if (type === "system-status") {
     return "timeline";
   }
+  if (isShareOverviewWidgetType(type)) {
+    return "card";
+  }
   return "table";
 }
 
 function overviewWidgetId(type: OverviewWidgetType, metric?: OverviewMetricKind): string {
   return type === "metric" ? `metric-${metric ?? "requests"}` : type;
+}
+
+function isShareOverviewWidgetType(type: OverviewWidgetType): boolean {
+  return type === "share-fuel-cockpit" ||
+    type === "share-model-leaderboard" ||
+    type === "share-route-map" ||
+    type === "share-spend-receipt" ||
+    type === "share-token-calendar" ||
+    type === "share-usage-wrapped";
 }
 
 function parseTrayIconPreference(value: unknown): TrayIconPreference | undefined {
