@@ -564,7 +564,7 @@ export type RoutingRewriteDraftRow = {
   value: string;
 };
 
-export type ClaudeDesignRouteRuleType = "always" | "image" | "long-context" | "model" | "model-prefix" | "thinking" | "web-search";
+export type ClaudeDesignRouteRuleType = "always" | "model" | "model-prefix";
 
 export type ClaudeDesignRoutingRuleDraft = {
   enabled: boolean;

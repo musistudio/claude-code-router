@@ -18,7 +18,7 @@ CCR runs on your machine, keeps provider configuration in your local config dire
 ## Why Use CCR
 
 - Use one local endpoint for multiple agent tools instead of configuring every client separately.
-- Route different workloads to different models, such as fast background work, reasoning tasks, long-context requests, image tasks, or web-search-capable models.
+- Route requests with explicit rules instead of editing client configuration by hand.
 - Mix providers without changing your workflow. CCR supports OpenAI-compatible APIs, Anthropic Messages, Gemini Generate Content, OpenRouter, DeepSeek, SiliconFlow, Moonshot, Kimi Code, Mistral, Z.AI, Bailian, and custom providers.
 - Control cost and reliability with fallback routing, API key rotation, usage statistics, and request logs.
 - Manage everything from a desktop UI instead of editing JSON by hand.
@@ -28,7 +28,7 @@ CCR runs on your machine, keeps provider configuration in your local config dire
 
 - **Desktop dashboard**: start or stop the local gateway, inspect usage, configure the tray window, and manage runtime settings.
 - **Provider management**: add provider presets or custom endpoints, test connectivity, manage credentials, and monitor supported account balances where available.
-- **Routing rules**: set default, background, thinking, long-context, image, web-search, subagent, model-prefix, and conditional routing rules.
+- **Routing rules**: configure conditional and model-prefix routing rules with fallback handling.
 - **Agent profiles**: configure Claude Code, Codex, and ZCode profiles that point to the CCR gateway.
 - **Gateway compatibility**: translate client requests through the local CCR wrapper and the core gateway runtime.
 - **Proxy mode**: capture supported API traffic through a local proxy with optional system proxy integration and network capture.
@@ -88,9 +88,9 @@ Open **Providers**, click **Add Provider**, then choose a built-in preset or cre
 
 ### 2. Configure routing
 
-Open **Routing** and select which provider/model should handle the default route. Then fill optional routes for background work, thinking requests, long-context requests, image tasks, and web search if you want different models for those scenarios.
+Open **Routing** to add explicit rules and configure failure handling.
 
-Use **Add Routing Rule** when you need more control, such as model-prefix routing, subagent routing, request conditions, or fallback behavior.
+Use **Add Routing Rule** for request conditions, model-prefix routing, or fallback behavior.
 
 ### 3. Start the gateway
 

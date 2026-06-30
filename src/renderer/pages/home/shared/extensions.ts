@@ -697,12 +697,12 @@ export function wrapperPluginCapability(item: Record<string, unknown>): string {
 
   if (isClaudeDesignPluginConfig(item)) {
     const routing = readClaudeDesignRoutingConfig(item.config);
-    const routeCount = routing.rules.length + (routing.defaultTarget ? 1 : 0);
+    const routeCount = routing.rules.length;
     capabilities.push(routeCount > 0 ? `${routeCount} model ${routeCount === 1 ? "route" : "routes"}` : "Configurable routing");
   }
   if (isCursorProxyPluginConfig(item)) {
     const routing = readClaudeDesignRoutingConfig(item.config);
-    const routeCount = routing.rules.length + (routing.defaultTarget ? 1 : 0);
+    const routeCount = routing.rules.length;
     capabilities.push(routeCount > 0 ? `${routeCount} model ${routeCount === 1 ? "route" : "routes"}` : "Configurable routing");
   }
 

@@ -461,12 +461,7 @@ export type GatewayProviderConnectivityCheckReport = {
 
 export type RouterRuleType =
   | "condition"
-  | "image"
-  | "long-context"
-  | "model-prefix"
-  | "subagent"
-  | "thinking"
-  | "web-search";
+  | "model-prefix";
 
 export type RouterRuleOperator =
   | "=="

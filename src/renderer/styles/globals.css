@@ -556,9 +556,21 @@
 
   .network-table-scroll,
   .network-detail,
+  .network-json-fullscreen,
+  .network-json-fullscreen-body,
   .network-pane-body {
     background: var(--network-panel);
     border-color: var(--network-border);
+  }
+
+  .network-json-fullscreen {
+    color: var(--network-text);
+  }
+
+  .network-json-fullscreen-header {
+    background: var(--network-panel-alt);
+    border-color: var(--network-border);
+    box-shadow: var(--network-shadow);
   }
 
   .network-table-header,
@@ -571,6 +583,41 @@
 
   .network-header-cell {
     border-color: var(--network-border-strong);
+  }
+
+  .network-column-resize-handle {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    bottom: 0;
+    cursor: col-resize;
+    margin: 0;
+    outline: none;
+    padding: 0;
+    position: absolute;
+    right: -4px;
+    top: 0;
+    width: 8px;
+    z-index: 1;
+  }
+
+  .network-column-resize-handle::after {
+    background: var(--network-border-strong);
+    bottom: 6px;
+    content: "";
+    left: 50%;
+    opacity: .62;
+    position: absolute;
+    top: 6px;
+    transform: translateX(-50%);
+    width: 1px;
+  }
+
+  .network-column-resize-handle:hover::after,
+  .network-column-resize-handle:focus-visible::after {
+    background: var(--network-accent);
+    opacity: 1;
+    width: 2px;
   }
 
   .network-empty {

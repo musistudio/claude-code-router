@@ -442,8 +442,7 @@ export function normalizeRouterRules(value: unknown): RouterRule[] | undefined {
       const target = stringValue(item.target);
       const threshold = Number(item.threshold);
       const condition = normalizeRouterRuleCondition(item.condition ?? item) ?? routerRuleConditionFromLegacy(type, {
-        pattern,
-        threshold: Number.isFinite(threshold) && threshold > 0 ? Math.trunc(threshold) : undefined
+        pattern
       });
       const rewrites = normalizeRouterRuleRewrites(item);
       const rawFallback = item.fallback ?? item.failureFallback ?? item.fallbackStrategy;
@@ -459,7 +458,7 @@ export function normalizeRouterRules(value: unknown): RouterRule[] | undefined {
         ...(rewrites.length > 0 ? { rewrites } : {}),
         ...(target ? { target } : {}),
         ...(Number.isFinite(threshold) && threshold > 0 ? { threshold: Math.trunc(threshold) } : {}),
-        type: condition && type !== "subagent" ? "condition" : type
+        type: condition ? "condition" : type
       };
     })
     .filter((item): item is RouterRule => Boolean(item));
@@ -503,41 +502,13 @@ export function parseRouterRuleOperator(value: unknown): RouterRuleOperator | un
 
 function routerRuleConditionFromLegacy(
   type: RouterRuleType,
-  input: { pattern?: string; threshold?: number }
+  input: { pattern?: string }
 ): RouterRuleCondition | undefined {
-  if (type === "long-context") {
-    return {
-      left: "request.tokenCount",
-      operator: ">",
-      right: String(input.threshold ?? "200000")
-    };
-  }
   if (type === "model-prefix" && input.pattern) {
     return {
       left: "request.body.model",
       operator: "starts-with",
       right: input.pattern
-    };
-  }
-  if (type === "thinking") {
-    return {
-      left: "request.body.thinking",
-      operator: "==",
-      right: "true"
-    };
-  }
-  if (type === "web-search") {
-    return {
-      left: "request.body.tools",
-      operator: "contains-deep",
-      right: "web_search"
-    };
-  }
-  if (type === "image") {
-    return {
-      left: "request.body.messages",
-      operator: "contains-deep",
-      right: "image"
     };
   }
   return undefined;
@@ -719,7 +690,12 @@ export function normalizeClaudeDesignRoutingRuleDraft(value: unknown, index: num
   if (!isPlainRecord(value)) {
     return undefined;
   }
-  const type = parseClaudeDesignRouteRuleType(value.type) ?? "model";
+  const rawType = stringValue(value.type);
+  const parsedType = parseClaudeDesignRouteRuleType(value.type);
+  if (rawType && !parsedType) {
+    return undefined;
+  }
+  const type = parsedType ?? "model";
   const target =
     stringValue(value.target) ||
     composeRouteTargetValue(value.targetProvider, value.targetModel) ||
@@ -783,9 +759,6 @@ export function normalizeClaudeDesignRuleTypeChange(
   if (type === "model-prefix" && !rule.pattern.trim()) {
     patch.pattern = defaults.pattern;
   }
-  if (type === "long-context" && !rule.threshold.trim()) {
-    patch.threshold = "200000";
-  }
   return patch;
 }
 
@@ -806,16 +779,12 @@ export function isClaudeDesignRoutingDraftValid(draft: ClaudeDesignRoutingDraft)
     if (rule.type === "model-prefix") {
       return Boolean(rule.pattern.trim());
     }
-    if (rule.type === "long-context") {
-      return numberValue(rule.threshold) > 0;
-    }
     return true;
   });
 }
 
 export function claudeDesignRoutingConfigFromDraft(draft: ClaudeDesignRoutingDraft): Record<string, unknown> {
   return {
-    ...(draft.defaultTarget.trim() ? { default: draft.defaultTarget.trim() } : {}),
     enabled: draft.enabled,
     rules: draft.rules.map((rule) => {
       const output: Record<string, unknown> = {
@@ -830,9 +799,6 @@ export function claudeDesignRoutingConfigFromDraft(draft: ClaudeDesignRoutingDra
       }
       if (rule.type === "model-prefix") {
         output.pattern = rule.pattern.trim();
-      }
-      if (rule.type === "long-context") {
-        output.threshold = numberValue(rule.threshold);
       }
       return output;
     })
@@ -863,21 +829,6 @@ export function buildPluginRoutingRows(plugin: AppConfig["plugins"][number], plu
   const routing = readClaudeDesignRoutingConfig(plugin.config);
   const baseEnabled = plugin.enabled !== false && routing.enabled;
   const rows: RoutingRuleRow[] = [];
-  if (routing.defaultTarget) {
-    rows.push({
-      condition: "always",
-      enabled: baseEnabled,
-      key: `plugin-${pluginIndex}-${pluginName}-default`,
-      name: "Default",
-      pluginIndex,
-      readonly: true,
-      ruleCount: 0,
-      ruleId: "default",
-      sourceLabel: `Plugin: ${pluginName}`,
-      target: routing.defaultTarget,
-      typeLabel: "Always"
-    });
-  }
   routing.rules.forEach((rule, ruleIndex) => {
     rows.push({
       condition: formatClaudeDesignRoutingRuleCondition(rule),
@@ -915,18 +866,6 @@ export function formatClaudeDesignRoutingRuleCondition(rule: ClaudeDesignRouting
   if (rule.type === "model-prefix") {
     return rule.pattern ? `starts with ${rule.pattern}` : "prefix unset";
   }
-  if (rule.type === "long-context") {
-    return `>${rule.threshold || "threshold"} tokens`;
-  }
-  if (rule.type === "thinking") {
-    return "thinking enabled";
-  }
-  if (rule.type === "web-search") {
-    return "web_search tool";
-  }
-  if (rule.type === "image") {
-    return "image content";
-  }
   return "always";
 }
 
@@ -940,7 +879,7 @@ export function isClaudeDesignRouteRuleType(value: string): value is ClaudeDesig
 }
 
 export function isClaudeDesignStaticRuleType(type: ClaudeDesignRouteRuleType): boolean {
-  return type === "always" || type === "image" || type === "thinking" || type === "web-search";
+  return type === "always";
 }
 
 export function claudeDesignRouteRuleTypeLabel(type: ClaudeDesignRouteRuleType): string {

@@ -1171,7 +1171,7 @@ function parseRouter(value: unknown): Partial<RouterConfig> | undefined {
   }
 
   const router: Partial<RouterConfig> = {};
-  for (const key of ["background", "default", "image", "longContext", "think", "webSearch"] as const) {
+  for (const key of ["background", "default"] as const) {
     const route = readString(value[key]);
     if (route) {
       router[key] = route;
@@ -1296,8 +1296,7 @@ function parseRouterRules(value: unknown): RouterRule[] | undefined {
       const pattern = readString(item.pattern);
       const threshold = readNumber(item.threshold);
       const condition = parseRouterRuleCondition(item.condition ?? item) ?? routerRuleConditionFromLegacy(type, {
-        pattern,
-        threshold: threshold !== undefined && threshold > 0 ? threshold : undefined
+        pattern
       });
       const rewrites = parseRouterRuleRewrites(item);
       const fallback = parseRouterFallback(item.fallback ?? item.failureFallback ?? item.fallbackStrategy);
@@ -1313,7 +1312,7 @@ function parseRouterRules(value: unknown): RouterRule[] | undefined {
         ...(rewrites.length > 0 ? { rewrites } : {}),
         ...(target ? { target } : {}),
         ...(threshold !== undefined && threshold > 0 ? { threshold } : {}),
-        type: condition && type !== "subagent" ? "condition" : type
+        type: condition ? "condition" : type
       };
     })
     .filter((item): item is RouterRule => Boolean(item));
@@ -1327,12 +1326,7 @@ function parseRouterRuleType(value: unknown): RouterRuleType | undefined {
   const normalized = value.trim().toLowerCase();
   if (
     normalized === "condition" ||
-    normalized === "image" ||
-    normalized === "long-context" ||
-    normalized === "model-prefix" ||
-    normalized === "subagent" ||
-    normalized === "thinking" ||
-    normalized === "web-search"
+    normalized === "model-prefix"
   ) {
     return normalized;
   }
@@ -1381,41 +1375,13 @@ function parseRouterRuleOperator(value: unknown): RouterRuleOperator | undefined
 
 function routerRuleConditionFromLegacy(
   type: RouterRuleType,
-  input: { pattern?: string; threshold?: number }
+  input: { pattern?: string }
 ): RouterRuleCondition | undefined {
-  if (type === "long-context") {
-    return {
-      left: "request.tokenCount",
-      operator: ">",
-      right: String(input.threshold ?? "200000")
-    };
-  }
   if (type === "model-prefix" && input.pattern) {
     return {
       left: "request.body.model",
       operator: "starts-with",
       right: input.pattern
-    };
-  }
-  if (type === "thinking") {
-    return {
-      left: "request.body.thinking",
-      operator: "==",
-      right: "true"
-    };
-  }
-  if (type === "web-search") {
-    return {
-      left: "request.body.tools",
-      operator: "contains-deep",
-      right: "web_search"
-    };
-  }
-  if (type === "image") {
-    return {
-      left: "request.body.messages",
-      operator: "contains-deep",
-      right: "image"
     };
   }
   return undefined;

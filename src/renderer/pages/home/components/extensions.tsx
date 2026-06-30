@@ -303,13 +303,6 @@ export function ConfigureClaudeDesignDialog({
               <Field label={t("Model routing")}>
                 <Toggle checked={draft.enabled} onChange={(enabled) => onChange({ enabled })} />
               </Field>
-              <Field label={t("Default target model")}>
-                <RouteTargetControl
-                  modelOptions={modelOptions}
-                  onChange={(defaultTarget) => onChange({ defaultTarget })}
-                  value={draft.defaultTarget}
-                />
-              </Field>
             </div>
 
             <div className="space-y-2">
@@ -348,11 +341,6 @@ export function ConfigureClaudeDesignDialog({
                       {rule.type === "model-prefix" ? (
                         <Field label={t("Model prefix")}>
                           <Input value={rule.pattern} onChange={(event) => onChangeRule(index, { pattern: event.target.value })} />
-                        </Field>
-                      ) : null}
-                      {rule.type === "long-context" ? (
-                        <Field label={t("Token threshold")}>
-                          <Input type="number" value={rule.threshold} onChange={(event) => onChangeRule(index, { threshold: event.target.value })} />
                         </Field>
                       ) : null}
                       {isClaudeDesignStaticRuleType(rule.type) ? (

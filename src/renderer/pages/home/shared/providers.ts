@@ -506,46 +506,11 @@ export function routerRuleConditionFromRule(rule: RouterRule, config?: AppConfig
   if (rule.type === "condition") {
     return undefined;
   }
-  if (rule.type === "long-context") {
-    return {
-      left: "request.tokenCount",
-      operator: ">",
-      right: String(rule.threshold ?? config?.Router.longContextThreshold ?? "200000")
-    };
-  }
   if (rule.type === "model-prefix") {
     return {
       left: "request.body.model",
       operator: "starts-with",
       right: rule.pattern ?? ""
-    };
-  }
-  if (rule.type === "thinking") {
-    return {
-      left: "request.body.thinking",
-      operator: "==",
-      right: "true"
-    };
-  }
-  if (rule.type === "web-search") {
-    return {
-      left: "request.body.tools",
-      operator: "contains-deep",
-      right: "web_search"
-    };
-  }
-  if (rule.type === "image") {
-    return {
-      left: "request.body.messages",
-      operator: "contains-deep",
-      right: "image"
-    };
-  }
-  if (rule.type === "subagent") {
-    return {
-      left: "request.body.system.1.text",
-      operator: "==",
-      right: "<CCR-SUBAGENT-MODEL>"
     };
   }
   return undefined;

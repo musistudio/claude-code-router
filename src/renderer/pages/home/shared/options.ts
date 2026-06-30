@@ -65,7 +65,7 @@ type ProviderAccountDraftMode = "standard" | "http-json" | "raw";
 type ApiKeyLimitMetric = "images" | "requests" | "tokens";
 type ApiKeyExpirationPreset = "7d" | "30d" | "90d" | "custom" | "never";
 type LimitWindowPreset = "day" | "hour" | "minute";
-type ClaudeDesignRouteRuleType = "always" | "image" | "long-context" | "model" | "model-prefix" | "thinking" | "web-search";
+type ClaudeDesignRouteRuleType = "always" | "model" | "model-prefix";
 type VirtualModelClientToolsPolicy = "allow" | "deny";
 type VirtualModelMatchMode = "alias" | "prefix" | "suffix";
 export type AgentFilterValue = AgentKind | "all";
@@ -211,12 +211,7 @@ export const routerRewriteOperationOptions: Array<{ label: string; value: Router
 ];
 
 export const legacyRouterRuleTypes: RouterRuleType[] = [
-  "image",
-  "long-context",
-  "model-prefix",
-  "subagent",
-  "thinking",
-  "web-search"
+  "model-prefix"
 ];
 
 export const routerFallbackModeOptions: Array<{ label: string; value: RouterFallbackMode }> = [
@@ -236,10 +231,6 @@ export const removedLegacyRouterRuleIds = new Set([
 export const claudeDesignRouteRuleTypeOptions: Array<{ label: string; value: ClaudeDesignRouteRuleType }> = [
   { label: "Exact model", value: "model" },
   { label: "Model prefix", value: "model-prefix" },
-  { label: "Long context", value: "long-context" },
-  { label: "Thinking", value: "thinking" },
-  { label: "Web search", value: "web-search" },
-  { label: "Image content", value: "image" },
   { label: "Always", value: "always" }
 ];
 

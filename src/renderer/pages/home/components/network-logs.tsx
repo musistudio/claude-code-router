@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { Maximize2, X } from "lucide-react";
 import {
   AnimatedIconSwap, Check, ChevronDown, ChevronLeft,
   ChevronRight, clampNumber, clientInitial, cn, Copy, copyTextToClipboard,
@@ -21,6 +22,26 @@ const logJsonAutoExpandEntryLimit = 60;
 const logJsonContainerPreviewLimit = 80;
 const logJsonAutoExpandTextLimit = 160 * 1024;
 const logBodyViewCache = new Map<string, ReturnType<typeof formatLogBodyView>>();
+type LogTableColumnId = "time" | "status" | "stream" | "model" | "credential" | "tokens" | "duration";
+type LogTableColumn = {
+  id: LogTableColumnId;
+  minWidth: number;
+};
+type LogTableColumnWidths = Partial<Record<LogTableColumnId, number>>;
+type LogTableGridStyle = {
+  gridTemplateColumns: string;
+  minWidth: string;
+};
+
+const baseLogTableColumns: LogTableColumn[] = [
+  { id: "time", minWidth: 150 },
+  { id: "status", minWidth: 116 },
+  { id: "stream", minWidth: 108 },
+  { id: "model", minWidth: 180 },
+  { id: "tokens", minWidth: 140 },
+  { id: "duration", minWidth: 92 }
+];
+const credentialLogTableColumn: LogTableColumn = { id: "credential", minWidth: 128 };
 
 export function NetworkingView({
   clearCaptures,
@@ -287,14 +308,21 @@ export function LogsView({
   const [detailById, setDetailById] = useState<Record<number, RequestLogEntry>>({});
   const [detailErrorById, setDetailErrorById] = useState<Record<number, string>>({});
   const [detailLoadingId, setDetailLoadingId] = useState<number>();
+  const [logColumnWidths, setLogColumnWidths] = useState<LogTableColumnWidths>({});
+  const logTableHeaderRef = useRef<HTMLDivElement>(null);
   const firstItem = page.total === 0 ? 0 : (page.page - 1) * page.pageSize + 1;
   const lastItem = Math.min(page.total, page.page * page.pageSize);
   const hasAnyCredentialInfo = Boolean(filter.credential) ||
     page.options.credentials.length > 0 ||
     page.items.some(logHasCredentialInfo);
+  const visibleLogColumns = useMemo(() => getLogTableColumns(hasAnyCredentialInfo), [hasAnyCredentialInfo]);
   const logTableGridClass = hasAnyCredentialInfo
     ? "grid-cols-[minmax(0,0.8fr)_minmax(92px,0.38fr)_minmax(98px,0.4fr)_minmax(0,0.78fr)_minmax(120px,0.42fr)_minmax(0,0.68fr)_82px]"
     : "grid-cols-[minmax(0,0.8fr)_minmax(92px,0.38fr)_minmax(98px,0.4fr)_minmax(0,0.9fr)_minmax(0,0.74fr)_82px]";
+  const logTableGridStyle = useMemo(
+    () => createLogTableGridStyle(visibleLogColumns, logColumnWidths),
+    [logColumnWidths, visibleLogColumns]
+  );
   const loadLogDetail = useCallback((id: number) => {
     if (detailById[id] || detailLoadingId === id || !window.ccr?.getRequestLogDetail) {
       return;
@@ -332,6 +360,55 @@ export function LogsView({
     }
     setExpandedId(undefined);
   }, [expandedId, page.items]);
+
+  function startLogColumnResize(columnIndex: number, event: ReactPointerEvent<HTMLButtonElement>) {
+    const header = logTableHeaderRef.current;
+    const leftColumn = visibleLogColumns[columnIndex];
+    const rightColumn = visibleLogColumns[columnIndex + 1];
+    if (!header || !leftColumn || !rightColumn) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const measuredWidths: LogTableColumnWidths = {};
+    visibleLogColumns.forEach((column, index) => {
+      const width = header.children[index]?.getBoundingClientRect().width ?? column.minWidth;
+      measuredWidths[column.id] = Math.round(clampNumber(width, column.minWidth, Number.MAX_SAFE_INTEGER));
+    });
+
+    const startX = event.clientX;
+    const startLeftWidth = measuredWidths[leftColumn.id] ?? leftColumn.minWidth;
+    const startRightWidth = measuredWidths[rightColumn.id] ?? rightColumn.minWidth;
+    const minDelta = leftColumn.minWidth - startLeftWidth;
+    const maxDelta = startRightWidth - rightColumn.minWidth;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const update = (pointerEvent: PointerEvent) => {
+      const delta = clampNumber(pointerEvent.clientX - startX, minDelta, maxDelta);
+      setLogColumnWidths((current) => ({
+        ...current,
+        ...measuredWidths,
+        [leftColumn.id]: Math.round(startLeftWidth + delta),
+        [rightColumn.id]: Math.round(startRightWidth - delta)
+      }));
+    };
+    const stop = () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("pointermove", update);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+
+    window.addEventListener("pointermove", update);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  }
 
   return (
     <motion.div
@@ -431,14 +508,19 @@ export function LogsView({
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="network-table-scroll min-h-0 flex-1 overflow-auto">
             <div className="w-full min-w-0">
-              <div className={cn("network-table-header sticky top-0 z-10 grid h-9 items-center border-b text-[12px] font-semibold", logTableGridClass)}>
-                <NetworkHeaderCell label={t("时间")} />
-                <NetworkHeaderCell label={t("状态")} />
-                <NetworkHeaderCell label={t("Stream")} />
-                <NetworkHeaderCell label={t("模型")} />
-                {hasAnyCredentialInfo ? <NetworkHeaderCell label={t("Credential")} /> : null}
-                <NetworkHeaderCell label={t("令牌")} />
-                <NetworkHeaderCell label={t("持续时间")} />
+              <div
+                className={cn("network-table-header sticky top-0 z-10 grid h-9 items-center border-b text-[12px] font-semibold", logTableGridClass)}
+                ref={logTableHeaderRef}
+                style={logTableGridStyle}
+              >
+                {visibleLogColumns.map((column, index) => (
+                  <NetworkHeaderCell
+                    key={column.id}
+                    label={logTableColumnLabel(column.id, t)}
+                    onResizeStart={index < visibleLogColumns.length - 1 ? (event) => startLogColumnResize(index, event) : undefined}
+                    resizeLabel={t("Resize column width")}
+                  />
+                ))}
               </div>
 
               {page.items.length === 0 ? (
@@ -458,6 +540,7 @@ export function LogsView({
                   item={expandedId === item.id ? detailById[item.id] ?? item : item}
                   key={item.id}
                   logTableGridClass={logTableGridClass}
+                  logTableGridStyle={logTableGridStyle}
                   onToggle={toggleExpandedLog}
                 />
               ))}
@@ -469,6 +552,51 @@ export function LogsView({
   );
 }
 
+function getLogTableColumns(hasCredentialColumn: boolean): LogTableColumn[] {
+  if (!hasCredentialColumn) {
+    return baseLogTableColumns;
+  }
+  return [
+    ...baseLogTableColumns.slice(0, 4),
+    credentialLogTableColumn,
+    ...baseLogTableColumns.slice(4)
+  ];
+}
+
+function createLogTableGridStyle(columns: LogTableColumn[], widths: LogTableColumnWidths): LogTableGridStyle | undefined {
+  const columnWidths = columns.map((column) => widths[column.id]);
+  if (columnWidths.some((width) => typeof width !== "number")) {
+    return undefined;
+  }
+
+  return {
+    gridTemplateColumns: columns.map((column, index) => {
+      const width = Math.max(column.minWidth, Math.round(columnWidths[index] ?? column.minWidth));
+      return `minmax(${column.minWidth}px, ${width}fr)`;
+    }).join(" "),
+    minWidth: `${columns.reduce((total, column) => total + column.minWidth, 0)}px`
+  };
+}
+
+function logTableColumnLabel(columnId: LogTableColumnId, t: (value: string) => string): string {
+  switch (columnId) {
+    case "time":
+      return t("时间");
+    case "status":
+      return t("状态");
+    case "stream":
+      return t("Stream");
+    case "model":
+      return t("模型");
+    case "credential":
+      return t("Credential");
+    case "tokens":
+      return t("令牌");
+    case "duration":
+      return t("持续时间");
+  }
+}
+
 const LogRow = memo(function LogRow({
   detailError,
   detailLoading,
@@ -477,6 +605,7 @@ const LogRow = memo(function LogRow({
   index,
   item,
   logTableGridClass,
+  logTableGridStyle,
   onToggle
 }: {
   detailError?: string;
@@ -486,6 +615,7 @@ const LogRow = memo(function LogRow({
   index: number;
   item: RequestLogEntry;
   logTableGridClass: string;
+  logTableGridStyle?: LogTableGridStyle;
   onToggle: (id: number) => void;
 }) {
   const t = useAppText();
@@ -504,6 +634,7 @@ const LogRow = memo(function LogRow({
           expanded && "network-row-selected"
         )}
         onClick={() => onToggle(item.id)}
+        style={logTableGridStyle}
         type="button"
       >
         <div className="truncate px-3 font-mono text-[11px]" title={createdAt}>
@@ -707,6 +838,7 @@ function LogJsonPanel({
   const t = useAppText();
   const [selectedTab, setSelectedTab] = useState<LogPayloadTab>("body");
   const [preferTextBody, setPreferTextBody] = useState(false);
+  const [fullscreenOpen, setFullscreenOpen] = useState(false);
   const [query, setQuery] = useState("");
   const bodyKey = logBodyCacheKey(body);
   const bodyView = useMemo(() => cachedFormatLogBodyView(bodyKey, body), [bodyKey]);
@@ -720,6 +852,19 @@ function LogJsonPanel({
     setExpandedJsonPaths(createInitialVisibleJsonPaths(bodyView));
     setPreferTextBody(false);
   }, [bodyKey]);
+
+  useEffect(() => {
+    if (!fullscreenOpen) {
+      return;
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setFullscreenOpen(false);
+      }
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [fullscreenOpen]);
 
   function toggleJsonPath(path: string) {
     setExpandedJsonPaths((current) => {
@@ -757,42 +902,202 @@ function LogJsonPanel({
       <div className="network-pane-body flex min-h-0 flex-1 flex-col overflow-hidden">
         {selectedTab === "body" ? (
           <>
-            <div className="network-body-meta flex min-h-9 shrink-0 items-center gap-2 border-b px-3 py-1.5">
-              <div className="relative min-w-[180px] flex-1">
-                <Search className="network-search-icon pointer-events-none absolute left-2 top-1/2 z-[1] h-3 w-3 -translate-y-1/2" />
-                <input
-                  aria-label={`${t("Filter")} ${title} JSON`}
-                  className="network-filter-input h-6 w-full rounded border pl-7 pr-2 text-[11px] font-semibold outline-none"
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder={t("筛选 JSON...")}
-                  value={query}
-                />
-              </div>
-              {bodyView.json !== undefined && query.trim() === "" ? (
-                <button
-                  className="network-tab shrink-0 border-0 bg-transparent p-0 text-[11px] font-semibold outline-none"
-                  onClick={() => setPreferTextBody((current) => !current)}
-                  type="button"
-                >
-                  {preferTextBody ? "JSON" : t("Show full content")}
-                </button>
-              ) : null}
-              {body?.contentType ? <span className="network-muted hidden shrink-0 text-[11px] font-semibold sm:inline">{body.contentType}</span> : null}
-              {body?.truncated ? <span className="network-service-paused rounded-full px-2 py-0.5 text-[11px] font-semibold">{t("truncated")}</span> : null}
-            </div>
-            <LogBodyViewer copyLabel={`${t("Copy")} ${title} ${t("body")}`} copyText={formatted}>
-              {showJsonTree ? (
-                <LogJsonTree expandedPaths={expandedJsonPaths} onToggle={toggleJsonPath} value={bodyView.json} />
-              ) : (
-                <pre className="network-code min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-3 pr-12 font-mono text-[11px] leading-5">{visible}</pre>
-              )}
+            <LogJsonBodyToolbar
+              body={body}
+              bodyView={bodyView}
+              onQueryChange={setQuery}
+              onToggleTextBody={() => setPreferTextBody((current) => !current)}
+              preferTextBody={preferTextBody}
+              query={query}
+              title={title}
+            />
+            <LogBodyViewer
+              copyLabel={`${t("Copy")} ${title} ${t("body")}`}
+              copyText={formatted}
+              fullscreenLabel={t("Open fullscreen JSON viewer")}
+              onFullscreen={() => setFullscreenOpen(true)}
+            >
+              <LogJsonBodyContent
+                expandedJsonPaths={expandedJsonPaths}
+                onToggleJsonPath={toggleJsonPath}
+                showJsonTree={showJsonTree}
+                value={bodyView.json}
+                visible={visible}
+              />
             </LogBodyViewer>
+            {fullscreenOpen ? (
+              <LogJsonFullscreenViewer
+                body={body}
+                bodyView={bodyView}
+                copyLabel={`${t("Copy")} ${title} ${t("body")}`}
+                copyText={formatted}
+                expandedJsonPaths={expandedJsonPaths}
+                onClose={() => setFullscreenOpen(false)}
+                onQueryChange={setQuery}
+                onToggleJsonPath={toggleJsonPath}
+                onToggleTextBody={() => setPreferTextBody((current) => !current)}
+                preferTextBody={preferTextBody}
+                query={query}
+                showJsonTree={showJsonTree}
+                subtitle={subtitle}
+                title={title}
+                visible={visible}
+                value={bodyView.json}
+              />
+            ) : null}
           </>
         ) : (
           <div className="min-h-0 flex-1 overflow-auto">
             <NetworkKeyValueTable emptyLabel={headerEmptyLabel} rows={headerRows} />
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function LogJsonBodyToolbar({
+  body,
+  bodyView,
+  onQueryChange,
+  onToggleTextBody,
+  preferTextBody,
+  query,
+  title
+}: {
+  body?: RequestLogBody;
+  bodyView: ReturnType<typeof formatLogBodyView>;
+  onQueryChange: (value: string) => void;
+  onToggleTextBody: () => void;
+  preferTextBody: boolean;
+  query: string;
+  title: string;
+}) {
+  const t = useAppText();
+
+  return (
+    <div className="network-body-meta flex min-h-9 shrink-0 items-center gap-2 border-b px-3 py-1.5">
+      <div className="relative min-w-[180px] flex-1">
+        <Search className="network-search-icon pointer-events-none absolute left-2 top-1/2 z-[1] h-3 w-3 -translate-y-1/2" />
+        <input
+          aria-label={`${t("Filter")} ${title} JSON`}
+          className="network-filter-input h-6 w-full rounded border pl-7 pr-2 text-[11px] font-semibold outline-none"
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder={t("筛选 JSON...")}
+          value={query}
+        />
+      </div>
+      {bodyView.json !== undefined && query.trim() === "" ? (
+        <button
+          className="network-tab shrink-0 border-0 bg-transparent p-0 text-[11px] font-semibold outline-none"
+          onClick={onToggleTextBody}
+          type="button"
+        >
+          {preferTextBody ? "JSON" : t("Show full content")}
+        </button>
+      ) : null}
+      {body?.contentType ? <span className="network-muted hidden shrink-0 text-[11px] font-semibold sm:inline">{body.contentType}</span> : null}
+      {body?.truncated ? <span className="network-service-paused rounded-full px-2 py-0.5 text-[11px] font-semibold">{t("truncated")}</span> : null}
+    </div>
+  );
+}
+
+function LogJsonBodyContent({
+  expandedJsonPaths,
+  onToggleJsonPath,
+  showJsonTree,
+  value,
+  visible
+}: {
+  expandedJsonPaths: Set<string>;
+  onToggleJsonPath: (path: string) => void;
+  showJsonTree: boolean;
+  value: unknown;
+  visible: string;
+}) {
+  return showJsonTree ? (
+    <LogJsonTree expandedPaths={expandedJsonPaths} onToggle={onToggleJsonPath} value={value} />
+  ) : (
+    <pre className="network-code min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-3 pr-20 font-mono text-[11px] leading-5">{visible}</pre>
+  );
+}
+
+function LogJsonFullscreenViewer({
+  body,
+  bodyView,
+  copyLabel,
+  copyText,
+  expandedJsonPaths,
+  onClose,
+  onQueryChange,
+  onToggleJsonPath,
+  onToggleTextBody,
+  preferTextBody,
+  query,
+  showJsonTree,
+  subtitle,
+  title,
+  value,
+  visible
+}: {
+  body?: RequestLogBody;
+  bodyView: ReturnType<typeof formatLogBodyView>;
+  copyLabel: string;
+  copyText: string;
+  expandedJsonPaths: Set<string>;
+  onClose: () => void;
+  onQueryChange: (value: string) => void;
+  onToggleJsonPath: (path: string) => void;
+  onToggleTextBody: () => void;
+  preferTextBody: boolean;
+  query: string;
+  showJsonTree: boolean;
+  subtitle?: string;
+  title: string;
+  value: unknown;
+  visible: string;
+}) {
+  const t = useAppText();
+
+  return (
+    <div
+      aria-label={`${title} ${t("Fullscreen JSON viewer")}`}
+      aria-modal="true"
+      className="network-json-fullscreen fixed inset-0 z-[80] flex min-h-0 flex-col"
+      role="dialog"
+    >
+      <div className="network-json-fullscreen-header flex h-12 min-w-0 shrink-0 items-center gap-3 border-b px-4">
+        <span className="network-pane-title min-w-0 truncate text-[15px] font-bold">{title}</span>
+        {subtitle ? <span className="network-muted shrink-0 text-[12px] font-semibold">{subtitle}</span> : null}
+        <button
+          aria-label={t("Close fullscreen JSON viewer")}
+          className="network-control-button ml-auto flex h-7 w-7 items-center justify-center rounded border outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+          onClick={onClose}
+          title={t("Close")}
+          type="button"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <LogJsonBodyToolbar
+        body={body}
+        bodyView={bodyView}
+        onQueryChange={onQueryChange}
+        onToggleTextBody={onToggleTextBody}
+        preferTextBody={preferTextBody}
+        query={query}
+        title={title}
+      />
+      <div className="network-json-fullscreen-body flex min-h-0 flex-1">
+        <LogBodyViewer copyLabel={copyLabel} copyText={copyText}>
+          <LogJsonBodyContent
+            expandedJsonPaths={expandedJsonPaths}
+            onToggleJsonPath={onToggleJsonPath}
+            showJsonTree={showJsonTree}
+            value={value}
+            visible={visible}
+          />
+        </LogBodyViewer>
       </div>
     </div>
   );
@@ -901,11 +1206,15 @@ function jsonContainerHiddenSummary(value: Record<string, unknown> | unknown[], 
 function LogBodyViewer({
   children,
   copyLabel,
-  copyText
+  copyText,
+  fullscreenLabel,
+  onFullscreen
 }: {
   children: ReactNode;
   copyLabel: string;
   copyText: string;
+  fullscreenLabel?: string;
+  onFullscreen?: () => void;
 }) {
   const t = useAppText();
   const [copied, setCopied] = useState(false);
@@ -925,20 +1234,33 @@ function LogBodyViewer({
 
   return (
     <div className="relative flex min-h-0 flex-1">
-      <button
-        aria-label={copyLabel}
-        className={cn(
-          "network-control-button absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded border outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
-          copied && "network-json-copy-success"
-        )}
-        onClick={() => void copyBody()}
-        title={copied ? t("Copied") : t("复制")}
-        type="button"
-      >
-        <AnimatedIconSwap iconKey={copied ? "copied" : "copy"}>
-          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-        </AnimatedIconSwap>
-      </button>
+      <div className="absolute right-2 top-2 z-10 flex items-center gap-1">
+        {onFullscreen ? (
+          <button
+            aria-label={fullscreenLabel ?? t("Open fullscreen JSON viewer")}
+            className="network-control-button flex h-7 w-7 items-center justify-center rounded border outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+            onClick={onFullscreen}
+            title={fullscreenLabel ?? t("Open fullscreen JSON viewer")}
+            type="button"
+          >
+            <Maximize2 className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
+        <button
+          aria-label={copyLabel}
+          className={cn(
+            "network-control-button flex h-7 w-7 items-center justify-center rounded border outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
+            copied && "network-json-copy-success"
+          )}
+          onClick={() => void copyBody()}
+          title={copied ? t("Copied") : t("复制")}
+          type="button"
+        >
+          <AnimatedIconSwap iconKey={copied ? "copied" : "copy"}>
+            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          </AnimatedIconSwap>
+        </button>
+      </div>
       {children}
     </div>
   );
@@ -954,7 +1276,7 @@ function LogJsonTree({
   value: unknown;
 }) {
   return (
-    <div className="network-code min-h-0 flex-1 overflow-auto p-3 pr-12 font-mono text-[11px] leading-5">
+    <div className="network-code min-h-0 flex-1 overflow-auto p-3 pr-20 font-mono text-[11px] leading-5">
       <JsonTreeNode expandedPaths={expandedPaths} onToggle={onToggle} path="$" value={value} />
     </div>
   );
@@ -1091,10 +1413,27 @@ function JsonPrimitiveValue({ value }: { value: unknown }) {
   return <span>{String(value)}</span>;
 }
 
-function NetworkHeaderCell({ label }: { label: string }) {
+function NetworkHeaderCell({
+  label,
+  onResizeStart,
+  resizeLabel
+}: {
+  label: string;
+  onResizeStart?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  resizeLabel?: string;
+}) {
   return (
-    <div className="network-header-cell min-w-0 border-l px-2 first:border-l-0">
-      <span className="truncate">{label}</span>
+    <div className={cn("network-header-cell relative flex h-full min-w-0 items-center border-l px-2 first:border-l-0", onResizeStart && "pr-3")}>
+      <span className="min-w-0 truncate">{label}</span>
+      {onResizeStart ? (
+        <button
+          aria-label={resizeLabel ?? label}
+          className="network-column-resize-handle"
+          onPointerDown={onResizeStart}
+          title={resizeLabel ?? label}
+          type="button"
+        />
+      ) : null}
     </div>
   );
 }

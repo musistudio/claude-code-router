@@ -60,7 +60,7 @@ export class ClaudeCodeRouterPlugin {
     };
 
     const customModel = await this.resolveCustomRoute(request);
-    const configuredDecision = resolveConfiguredRouteDecision(request, this.config, tokenCount);
+    const configuredDecision = resolveConfiguredRouteDecision(request, this.config);
     if (customModel) {
       body.model = customModel;
     } else {
@@ -177,8 +177,7 @@ function isPathInside(file: string, root: string): boolean {
 
 function resolveConfiguredRouteDecision(
   request: MutableRequestLike,
-  config: AppConfig,
-  tokenCount: number
+  config: AppConfig
 ): ConfiguredRouteDecision {
   const requestedModel = readString(request.body.model);
   const explicitModel = normalizeRouteSelector(requestedModel);
@@ -189,7 +188,7 @@ function resolveConfiguredRouteDecision(
   const router = config.Router;
   const rules = router.rules ?? [];
   for (const rule of rules) {
-    const decision = resolveRouterRule(rule, request, tokenCount, router);
+    const decision = resolveRouterRule(rule, request, router);
     if (decision) {
       return decision;
     }
@@ -201,18 +200,12 @@ function resolveConfiguredRouteDecision(
 function resolveRouterRule(
   rule: RouterRule,
   request: MutableRequestLike,
-  tokenCount: number,
   router: RouterConfig
 ): ConfiguredRouteDecision | undefined {
   if (!rule.enabled) {
     return undefined;
   }
   const fallback = rule.fallback ?? router.fallback;
-
-  if (rule.type === "subagent") {
-    const subagentModel = extractSubagentModel(request.body.system);
-    return subagentModel ? { fallback, model: normalizeRouteSelector(subagentModel), reason: "subagent" } : undefined;
-  }
 
   const rewrites = routerRuleRewritesFromRule(rule);
   if (rewrites.length === 0) {
@@ -225,29 +218,12 @@ function resolveRouterRule(
       : undefined;
   }
 
-  if (rule.type === "long-context") {
-    const threshold = rule.threshold || router.longContextThreshold || 200000;
-    return tokenCount > threshold ? routerRuleRewriteDecision(rule, rewrites, fallback) : undefined;
-  }
-
   if (rule.type === "model-prefix") {
     const pattern = readString(rule.pattern);
     const requestedModel = readString(request.body.model);
     return pattern && requestedModel?.startsWith(pattern)
       ? routerRuleRewriteDecision(rule, rewrites, fallback)
       : undefined;
-  }
-
-  if (rule.type === "thinking") {
-    return request.body.thinking ? routerRuleRewriteDecision(rule, rewrites, fallback) : undefined;
-  }
-
-  if (rule.type === "web-search") {
-    return hasWebSearchTool(request.body.tools) ? routerRuleRewriteDecision(rule, rewrites, fallback) : undefined;
-  }
-
-  if (rule.type === "image") {
-    return hasImageContent(request.body.messages) ? routerRuleRewriteDecision(rule, rewrites, fallback) : undefined;
   }
 
   return undefined;
@@ -729,36 +705,6 @@ function estimateTextTokens(text: string): number {
   const asciiWords = text.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
   const cjkChars = text.match(/[\u3400-\u9fff]/g)?.length ?? 0;
   return Math.max(1, Math.ceil((asciiWords + cjkChars) * 1.15));
-}
-
-function extractSubagentModel(system: unknown): string | undefined {
-  if (!Array.isArray(system) || system.length < 2) {
-    return undefined;
-  }
-  const second = system[1];
-  if (!isRecord(second) || typeof second.text !== "string") {
-    return undefined;
-  }
-
-  const match = second.text.match(/<CCR-SUBAGENT-MODEL>(.*?)<\/CCR-SUBAGENT-MODEL>/s);
-  if (!match?.[1]) {
-    return undefined;
-  }
-
-  second.text = second.text.replace(match[0], "");
-  return match[1].trim();
-}
-
-function hasWebSearchTool(tools: unknown): boolean {
-  return Array.isArray(tools) && tools.some((tool) => isRecord(tool) && readString(tool.type)?.startsWith("web_search"));
-}
-
-function hasImageContent(messages: unknown): boolean {
-  if (!Array.isArray(messages)) {
-    return false;
-  }
-
-  return messages.some((message) => JSON.stringify(message).includes("\"image\""));
 }
 
 function resolveSessionId(body: Record<string, unknown>, headers: Record<string, HeaderValue>): string | undefined {

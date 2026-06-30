@@ -882,10 +882,10 @@ function writeCoreGatewayConfig(config: AppConfig, rawTraceSyncToken: string): v
     ...pluginService.getCoreProviderPlugins()
   ]);
   const codexOauthProviderNames = codexOauthLocalProviderNames(providerPlugins);
-  const virtualModelProfiles = withOptimisticVirtualModelStreams(withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases([
+  const virtualModelProfiles = normalizeCoreGatewayVirtualModelProfiles(withOptimisticVirtualModelStreams(withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases([
     ...(config.virtualModelProfiles ?? []),
     ...pluginService.getVirtualModelProfiles()
-  ])));
+  ]))), config);
   const coreEndpoint = endpoint(config.gateway.coreHost, config.gateway.corePort);
   const builtinToolArtifacts = fusionBuiltinToolArtifacts(virtualModelProfiles, coreEndpoint);
   const providers = [
@@ -955,6 +955,98 @@ function writePrivateTextFile(file: string, content: string): void {
       // Best effort for filesystems that do not support chmod.
     }
   }
+}
+
+export function normalizeCoreGatewayVirtualModelProfiles(profiles: unknown[], config: AppConfig): unknown[] {
+  return profiles.map((profile) => normalizeCoreGatewayVirtualModelProfile(profile, config));
+}
+
+function normalizeCoreGatewayVirtualModelProfile(profile: unknown, config: AppConfig): unknown {
+  if (!isRecord(profile)) {
+    return profile;
+  }
+
+  let nextProfile: Record<string, unknown> | undefined;
+  const baseModel = isRecord(profile.baseModel) ? profile.baseModel : undefined;
+  const fixedModel = stringValue(baseModel?.fixedModel);
+  const rewrittenFixedModel = fixedModel
+    ? rewriteModelSelectorForCoreGatewayProfile(fixedModel, config, "anthropic_messages")
+    : undefined;
+  if (baseModel && rewrittenFixedModel && rewrittenFixedModel !== fixedModel) {
+    nextProfile = {
+      ...profile,
+      baseModel: {
+        ...baseModel,
+        fixedModel: rewrittenFixedModel
+      }
+    };
+  }
+
+  const sourceProfile = nextProfile ?? profile;
+  const metadata = isRecord(sourceProfile.metadata) ? sourceProfile.metadata : undefined;
+  const fusionVision = isRecord(metadata?.fusionVision) ? metadata.fusionVision : undefined;
+  const visionBaseUrl = stringValue(fusionVision?.baseUrl);
+  const visionSelectorField = stringValue(fusionVision?.modelSelector) ? "modelSelector" : stringValue(fusionVision?.model) ? "model" : undefined;
+  const visionSelector = visionSelectorField ? stringValue(fusionVision?.[visionSelectorField]) : undefined;
+  const rewrittenVisionSelector = fusionVision && !visionBaseUrl && visionSelector
+    ? rewriteModelSelectorForCoreGatewayProfile(visionSelector, config, "openai_chat_completions")
+    : undefined;
+
+  if (metadata && fusionVision && visionSelectorField && rewrittenVisionSelector && rewrittenVisionSelector !== visionSelector) {
+    nextProfile = {
+      ...sourceProfile,
+      metadata: {
+        ...metadata,
+        fusionVision: {
+          ...fusionVision,
+          [visionSelectorField]: rewrittenVisionSelector
+        }
+      }
+    };
+  }
+
+  return nextProfile ?? profile;
+}
+
+function rewriteModelSelectorForCoreGatewayProfile(
+  model: string,
+  config: AppConfig,
+  clientProtocol: GatewayProviderProtocol
+): string | undefined {
+  const normalized = normalizeRouteSelector(model);
+  if (!normalized) {
+    return undefined;
+  }
+
+  const publicModel = resolveGatewayPublicModelId(normalized, config) ?? normalized;
+  const selector =
+    resolveConfiguredProviderModelSelector(publicModel, config) ??
+    resolveUniqueConfiguredProviderModelSelector(publicModel, config);
+  if (!selector) {
+    return publicModel;
+  }
+
+  const providerName = coreGatewayProviderSelectorName(selector.provider, clientProtocol);
+  return providerName ? `${providerName}/${selector.model}` : publicModel;
+}
+
+function coreGatewayProviderSelectorName(
+  provider: GatewayProviderConfig,
+  clientProtocol: GatewayProviderProtocol
+): string | undefined {
+  const capability = providerCapabilityForClientProtocol(provider, clientProtocol);
+  const explicitCapabilities = normalizedProviderCapabilities(provider);
+  const protocol = capability?.type ?? (explicitCapabilities.length === 0 ? providerProtocolForClientProtocol(provider, clientProtocol) : undefined);
+  if (!protocol) {
+    return undefined;
+  }
+
+  const credentials = sortProviderCredentialsForConfig(activeProviderCredentials(provider));
+  if (credentials.length > 0) {
+    return providerCredentialInternalName(provider, protocol, credentials[0]);
+  }
+
+  return capability ? providerCapabilityInternalName(provider, protocol) : providerRuntimeId(provider);
 }
 
 function withCodexOauthRuntimeDefaults(providerPlugins: unknown[]): unknown[] {
