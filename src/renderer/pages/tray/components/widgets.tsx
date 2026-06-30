@@ -566,8 +566,10 @@ export function RadialMetric({
   const circumference = 2 * Math.PI * radius;
   const clamped = Math.max(0, Math.min(1, value));
   const span = variant === "ring" ? 1 : variant === "arc" ? 0.78 : 0.55;
+  const sweepDegrees = span * 360;
   const dash = circumference * span;
-  const rotation = variant === "ring" ? -90 : variant === "arc" ? 130 : 160;
+  const progressDash = dash * clamped;
+  const rotation = variant === "ring" ? -90 : (540 - sweepDegrees) / 2;
 
   return (
     <div className="relative aspect-square min-w-0">
@@ -589,7 +591,7 @@ export function RadialMetric({
           fill="none"
           r={radius}
           stroke={color}
-          strokeDasharray={`${dash * clamped} ${circumference - dash * clamped}`}
+          strokeDasharray={`${progressDash} ${circumference - progressDash}`}
           strokeLinecap="round"
           strokeWidth="4"
           transform={`rotate(${rotation} 20 20)`}
