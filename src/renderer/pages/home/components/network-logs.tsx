@@ -10,7 +10,7 @@ import {
   Pause, Play, ProxyNetworkBody, ProxyNetworkExchange, ProxyNetworkSnapshot, ProxyStatus,
   ReactNode, ReactPointerEvent, RefreshCw, RequestLogBody, RequestLogEntry, RequestLogListFilter,
   RequestLogPage, requestLogPageSizeOptions, RequestLogStatusFilter, requestLogStatusOptions, Search, Select,
-  translateOptions, Trash2, useAppText, useCallback, useEffect, useMemo, useRef,
+  translateOptions, Trash2, useAppNumberLocale, useAppText, useCallback, useEffect, useMemo, useRef,
   useState
 } from "../shared";
 type NetworkRequestTab = "body" | "header" | "query" | "raw" | "summary";
@@ -489,8 +489,9 @@ const LogRow = memo(function LogRow({
   onToggle: (id: number) => void;
 }) {
   const t = useAppText();
+  const numberLocale = useAppNumberLocale();
   const createdAt = useMemo(() => formatLogDateTime(item.createdAt), [item.createdAt]);
-  const tokenSummary = useMemo(() => formatLogTokenSummary(item, t), [item, t]);
+  const tokenSummary = useMemo(() => formatLogTokenSummary(item, t, numberLocale), [item, numberLocale, t]);
 
   return (
     <div>
@@ -542,6 +543,7 @@ function LogExpandedDetails({
   entry: RequestLogEntry;
 }) {
   const t = useAppText();
+  const numberLocale = useAppNumberLocale();
   const hasCredentialInfo = logHasCredentialInfo(entry);
 
   return (
@@ -564,12 +566,12 @@ function LogExpandedDetails({
         {entry.credentialChain.length ? <LogMetric label={t("Credential chain")} value={entry.credentialChain.join(" > ")} /> : null}
         {hasCredentialInfo ? <LogMetric label={t("Credential saturated")} value={entry.credentialSaturated ? t("Yes") : t("No")} /> : null}
         {entry.retryAttempts.length > 0 ? <LogMetric label={t("Retry attempts")} value={String(entry.retryAttempts.length)} /> : null}
-        <LogMetric label={t("输入")} value={formatCompactNumber(entry.inputTokens)} />
-        <LogMetric label={t("输出")} value={formatCompactNumber(entry.outputTokens)} />
-        <LogMetric label={t("Thinking")} value={formatCompactNumber(entry.reasoningTokens)} />
-        <LogMetric label={t("缓存读取")} value={formatCompactNumber(entry.cacheReadTokens)} />
-        <LogMetric label={t("缓存写入")} value={formatCompactNumber(entry.cacheWriteTokens)} />
-        <LogMetric label={t("总计")} value={formatCompactNumber(entry.totalTokens)} />
+        <LogMetric label={t("输入")} value={formatCompactNumber(entry.inputTokens, numberLocale)} />
+        <LogMetric label={t("输出")} value={formatCompactNumber(entry.outputTokens, numberLocale)} />
+        <LogMetric label={t("Thinking")} value={formatCompactNumber(entry.reasoningTokens, numberLocale)} />
+        <LogMetric label={t("缓存读取")} value={formatCompactNumber(entry.cacheReadTokens, numberLocale)} />
+        <LogMetric label={t("缓存写入")} value={formatCompactNumber(entry.cacheWriteTokens, numberLocale)} />
+        <LogMetric label={t("总计")} value={formatCompactNumber(entry.totalTokens, numberLocale)} />
         <LogMetric label={t("Cost")} value={formatUsdCost(entry.costUsd ?? 0)} />
       </div>
       {entry.retryAttempts.length > 0 ? <LogRetryAttempts attempts={entry.retryAttempts} /> : null}

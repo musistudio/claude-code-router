@@ -36,7 +36,7 @@ function startPrimaryInstance(): void {
     queueEnsureConfiguredProxyModeActive("second-instance");
   });
 
-  app.whenReady().then(() => {
+  void app.whenReady().then(() => {
     configureProxyDesktopIntegration();
     try {
       ensureCcrCliLauncher();
@@ -57,6 +57,15 @@ function startPrimaryInstance(): void {
       }
       queueEnsureConfiguredProxyModeActive("activate");
     });
+  }).catch((error) => {
+    const detail = formatErrorDetail(error);
+    console.error(`Failed to initialize ${app.name || "application"}: ${detail}`);
+    try {
+      dialog.showErrorBox("Claude Code Router failed to start", detail);
+    } catch {
+      // Keep the console log as the fallback diagnostic channel.
+    }
+    app.exit(1);
   });
 
   app.on("before-quit", (event) => {
@@ -246,4 +255,8 @@ function logProxySystemProxyIssue(reason: string, status: ReturnType<typeof prox
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function formatErrorDetail(error: unknown): string {
+  return error instanceof Error ? error.stack || error.message : String(error);
 }

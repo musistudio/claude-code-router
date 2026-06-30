@@ -1,5 +1,5 @@
 import {
-  accountMetersForDisplay, accountProgressClass, accountProgressColor, accountSnapshotLabel, accountStatusClass, compareAccountSnapshots, formatAccountMeterTitle, formatAccountMeterValue,
+  accountMetersForDisplay, accountProgressClass, accountProgressColor, accountSnapshotLabel, compareAccountSnapshots, formatAccountMeterTitle, formatAccountMeterValue,
   LoaderCircle, meterProgress, meterRemainingRatio, ProviderAccountMeter, ProviderAccountSnapshot, RefreshCw, TrayComponentVariants,
   useTrayText
 } from "../shared";
@@ -38,7 +38,7 @@ export function AccountSummaryPanel({
         <h3 className="truncate text-[11px] font-bold text-slate-100">{accountSnapshotLabel(snapshot)}</h3>
         <button
           aria-label={t("Refresh")}
-          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition disabled:cursor-not-allowed disabled:opacity-50 ${accountStatusButtonClass(snapshot.status)}`}
+          className={`m-0 inline-flex shrink-0 appearance-none items-center justify-center border-0 bg-transparent p-0 shadow-none transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${accountStatusButtonClass(snapshot.status)}`}
           disabled={refreshing || !onRefresh}
           onClick={() => {
             void onRefresh?.();
@@ -59,7 +59,16 @@ export function AccountSummaryPanel({
 }
 
 function accountStatusButtonClass(status: ProviderAccountSnapshot["status"]): string {
-  return `${accountStatusClass(status)} hover:border-white/20 hover:bg-white/[.08] hover:text-slate-50`;
+  if (status === "critical" || status === "error") {
+    return "text-rose-100 hover:text-rose-50";
+  }
+  if (status === "warning") {
+    return "text-amber-100 hover:text-amber-50";
+  }
+  if (status === "ok") {
+    return "text-teal-100 hover:text-teal-50";
+  }
+  return "text-slate-200 hover:text-slate-50";
 }
 
 function AccountMeters({

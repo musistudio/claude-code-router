@@ -1563,6 +1563,11 @@ export function useAppText() {
   return useMemo(() => (value: string) => translateText(copy, value), [copy]);
 }
 
+export function useAppNumberLocale(): Intl.LocalesArgument {
+  const copy = useContext(AppI18nContext);
+  return copy === appCopy.zh ? "zh-CN" : "en-US";
+}
+
 export function translateText(copy: AppCopy, value: string): string {
   return copy.text[value] ?? value;
 }

@@ -393,7 +393,7 @@ export function formatLogDateTime(value: string): string {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} ${offset}`;
 }
 
-export function formatLogTokenSummary(entry: RequestLogEntry, t: (value: string) => string): string {
+export function formatLogTokenSummary(entry: RequestLogEntry, t: (value: string) => string, locale?: Intl.LocalesArgument): string {
   if (
     entry.totalTokens === 0 &&
     entry.inputTokens === 0 &&
@@ -405,18 +405,18 @@ export function formatLogTokenSummary(entry: RequestLogEntry, t: (value: string)
     return "-";
   }
   const values = [
-    `${formatCompactNumber(entry.inputTokens)} ${t("入")}`,
-    `${formatCompactNumber(entry.outputTokens)} ${t("出")}`
+    `${formatCompactNumber(entry.inputTokens, locale)} ${t("入")}`,
+    `${formatCompactNumber(entry.outputTokens, locale)} ${t("出")}`
   ];
 
   if (entry.cacheReadTokens > 0) {
-    values.push(`${formatCompactNumber(entry.cacheReadTokens)} ${t("Cache")}`);
+    values.push(`${formatCompactNumber(entry.cacheReadTokens, locale)} ${t("Cache")}`);
   }
   if (entry.cacheWriteTokens > 0) {
-    values.push(`${formatCompactNumber(entry.cacheWriteTokens)} ${t("Cache write")}`);
+    values.push(`${formatCompactNumber(entry.cacheWriteTokens, locale)} ${t("Cache write")}`);
   }
   if (entry.reasoningTokens > 0) {
-    values.push(`${formatCompactNumber(entry.reasoningTokens)} ${t("Thinking")}`);
+    values.push(`${formatCompactNumber(entry.reasoningTokens, locale)} ${t("Thinking")}`);
   }
 
   return values.join("  ");

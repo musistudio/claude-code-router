@@ -137,8 +137,8 @@ export function emptyUsageTotals(): UsageTotals {
   };
 }
 
-export function formatCompactNumber(value: number): string {
-  return new Intl.NumberFormat(undefined, {
+export function formatCompactNumber(value: number, locale?: Intl.LocalesArgument): string {
+  return new Intl.NumberFormat(locale, {
     maximumFractionDigits: value >= 1000 ? 1 : 0,
     notation: value >= 10000 ? "compact" : "standard"
   }).format(value);

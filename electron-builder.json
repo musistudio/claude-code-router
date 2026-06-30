@@ -16,6 +16,7 @@
   "directories": {
     "output": "release/${version}"
   },
+  "afterPack": "build/verify-packaged-app.cjs",
   "afterAllArtifactBuild": "build/verify-update-metadata.cjs",
   "protocols": [
     {
