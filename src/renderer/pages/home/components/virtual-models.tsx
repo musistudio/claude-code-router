@@ -3,11 +3,11 @@ import {
   Card, CardContent, CardHeader, CardTitle, Check, ChevronDown, ChevronRight,
   cn, createMcpServerDraftFromConfig, createRouteModelOptions, defaultFusionWebSearchProvider, Dialog, DialogBody, DialogContent, DialogFooter,
   DialogHeader, DialogTitle, ExtensionInstallDraft, Field, FolderOpen, formatPluginDependencies,
-  createFusionWebSearchEnvRows, customFusionToolName, fusionToolExecutionFlags, fusionToolOptions,
-  fusionWebSearchProviderOptions, GatewayMcpServerConfig, GatewayMcpToolInfo, GatewayProviderConfig, Input, KeyValueRowsControl, LoaderCircle,
+  createFusionWebSearchEnvRows, customFusionToolName, fusionToolExecutionFlagsFromTools, fusionToolOptions,
+  fusionWebSearchProviderOptions, GatewayMcpServerConfig, GatewayMcpToolInfo, GatewayProviderConfig, Input, isBuiltInFusionToolName, isFusionVisionToolName, isFusionWebSearchToolName, KeyValueRowsControl, LoaderCircle,
   mcpServerConfigFromDraft, mcpServerEndpointSummary, mcpServerTransportOptions,
   mcpStdioMessageModeOptions, motion, normalizeFusionToolName, Pencil,
-  PluginMarketplaceEntry, Plus, PopoverContent, RouteTargetControl, Search, selectedFusionToolName,
+  PluginMarketplaceEntry, Plus, PopoverContent, RouteTargetControl, Search, selectedFusionToolNames,
   SelectControl, Toggle, Trash2, translateOptions, useAppErrorText, useAppText, useEffect, useLayoutEffect, useMemo,
   useRef, useState, validateMcpServerDraft, virtualModelBaseModelSummary, VirtualModelDraft, virtualModelMatchesQuery, virtualModelMatchSummary,
   VirtualModelProfileConfig, virtualModelToolSummary, X
@@ -15,6 +15,25 @@ import {
 
 const virtualModelTableGridClass = "grid-cols-[minmax(180px,0.9fr)_minmax(220px,1.1fr)_minmax(220px,1.1fr)_minmax(170px,0.85fr)_112px_96px]";
 const virtualModelTableMinWidthClass = "min-w-[1100px]";
+
+function uniqueFusionTools(tools: string[]): string[] {
+  const seen = new Set<string>();
+  const values: string[] = [];
+  for (const tool of tools) {
+    const normalized = normalizeFusionToolName(tool);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    values.push(normalized);
+    seen.add(normalized);
+  }
+  return values;
+}
+
+function visibleFusionToolOption(toolName: string, currentValue: string, excludedValues: Set<string>): boolean {
+  const normalized = normalizeFusionToolName(toolName);
+  return Boolean(normalized) && (normalized === currentValue || !excludedValues.has(normalized));
+}
 
 export function VirtualModelsView({
   addVirtualModel,
@@ -157,11 +176,11 @@ export function VirtualModelDialog({
   const t = useAppText();
   const formatError = useAppErrorText();
   const modelOptions = useMemo(() => createRouteModelOptions(providers), [providers]);
-  const selectedTool = selectedFusionToolName(draft.toolsText);
-  const selectedToolFlags = fusionToolExecutionFlags(selectedTool);
+  const selectedTools = selectedFusionToolNames(draft.toolsText);
   const [customMcpDialogOpen, setCustomMcpDialogOpen] = useState(false);
   const [customMcpDialogDraft, setCustomMcpDialogDraft] = useState(draft.customMcpServer);
   const [customMcpDialogError, setCustomMcpDialogError] = useState("");
+  const [addingFusionTool, setAddingFusionTool] = useState(false);
   const [mcpToolStateByServer, setMcpToolStateByServer] = useState<Record<string, {
     error?: string;
     loading?: boolean;
@@ -197,18 +216,47 @@ export function VirtualModelDialog({
     }
   }, [customMcpDialogOpen, draft.customMcpServer]);
 
-  function updateFusionTool(toolName: string, server?: GatewayMcpServerConfig) {
-    const nextTool = normalizeFusionToolName(toolName);
-    const flags = fusionToolExecutionFlags(nextTool);
+  function applyFusionTools(nextTools: string[], server?: GatewayMcpServerConfig, selectedCustomTool?: string) {
+    const currentCustomServerName = draft.customMcpServer.name.trim();
+    const normalizedTools = uniqueFusionTools(
+      server && currentCustomServerName && currentCustomServerName !== server.name
+        ? nextTools.filter((tool) => isBuiltInFusionToolName(tool) || tool === selectedCustomTool)
+        : nextTools
+    );
+    const flags = fusionToolExecutionFlagsFromTools(normalizedTools);
+    const customTool = normalizedTools.find((tool) => !isBuiltInFusionToolName(tool));
     onChange({
       ...(flags.matchWebSearch && draft.webSearchEnvRows.length === 0 ? { webSearchEnvRows: createFusionWebSearchEnvRows(draft.webSearchProvider) } : {}),
-      ...(!flags.matchMultimodal && !flags.matchWebSearch ? {
+      ...(customTool ? {
         ...(server ? { customMcpServer: createMcpServerDraftFromConfig(server) } : {}),
-        customToolName: nextTool || draft.customToolName || customFusionToolName
+        customToolName: customTool || draft.customToolName || customFusionToolName
       } : {}),
-      toolsText: nextTool,
+      toolsText: normalizedTools.join(", "),
       ...flags
     });
+  }
+
+  function appendFusionTool(toolName: string, server?: GatewayMcpServerConfig) {
+    const nextTool = normalizeFusionToolName(toolName);
+    if (!nextTool) {
+      return;
+    }
+    applyFusionTools([...selectedFusionToolNames(draft.toolsText), nextTool], server, server ? nextTool : undefined);
+    setAddingFusionTool(false);
+  }
+
+  function updateFusionTool(index: number, toolName: string, server?: GatewayMcpServerConfig) {
+    const nextTool = normalizeFusionToolName(toolName);
+    if (!nextTool) {
+      return;
+    }
+    const currentTools = selectedFusionToolNames(draft.toolsText);
+    const nextTools = currentTools.map((tool, toolIndex) => toolIndex === index ? nextTool : tool);
+    applyFusionTools(nextTools, server, server ? nextTool : undefined);
+  }
+
+  function removeFusionTool(index: number) {
+    applyFusionTools(selectedFusionToolNames(draft.toolsText).filter((_, toolIndex) => toolIndex !== index));
   }
 
   function openCustomMcpDialog() {
@@ -289,12 +337,9 @@ export function VirtualModelDialog({
     const tools = await discoverMcpServerTools(server, true);
     const nextTool = normalizeFusionToolName(tools[0]?.name || "");
     if (nextTool) {
-      onChange({
-        customMcpServer: createMcpServerDraftFromConfig(server),
-        customToolName: nextTool,
-        toolsText: nextTool,
-        ...fusionToolExecutionFlags(nextTool)
-      });
+      const currentTools = selectedFusionToolNames(draft.toolsText);
+      applyFusionTools(currentTools.includes(nextTool) ? currentTools : [...currentTools, nextTool], server, nextTool);
+      setAddingFusionTool(false);
     }
   }
 
@@ -322,11 +367,18 @@ export function VirtualModelDialog({
               </Field>
 	              <div className="flex h-5 items-center justify-center font-mono text-[13px] font-semibold text-muted-foreground">+</div>
 	              <Field label={t("Tools")}>
-	                <FusionToolSelectControl
+	                <FusionToolsListControl
+                    adding={addingFusionTool}
+                    draft={draft}
 	                  mcpServers={availableMcpServers}
 	                  mcpToolStateByServer={mcpToolStateByServer}
+                    modelOptions={modelOptions}
 	                  onAddCustomMcpTool={openCustomMcpDialog}
-	                  onChange={updateFusionTool}
+                    onAddTool={() => setAddingFusionTool(true)}
+                    onAppendTool={appendFusionTool}
+                    onCancelAddTool={() => setAddingFusionTool(false)}
+                    onChange={onChange}
+	                  onChangeTool={updateFusionTool}
 	                  onDiscoverMcpTools={(server, force) => {
 	                    if (server) {
 	                      void discoverMcpServerTools(server, force);
@@ -334,27 +386,12 @@ export function VirtualModelDialog({
 	                    }
 	                    discoverVisibleMcpServers();
 	                  }}
+                    onRemoveTool={removeFusionTool}
 	                  selectedMcpServerName={draft.customMcpServer.name}
-	                  value={selectedTool}
+	                  values={selectedTools}
 	                />
 	              </Field>
             </div>
-
-            {selectedToolFlags.matchMultimodal ? (
-              <div className="grid grid-cols-1 gap-3 rounded-md border border-border/70 bg-muted/25 p-3">
-                <div className="min-w-0">
-                  <div className="truncate text-[12px] font-semibold text-foreground">{t("Vision tool configuration")}</div>
-                  <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t("Choose a configured gateway model for image understanding.")}</div>
-                </div>
-                <Field label={t("Vision model")}>
-                  <RouteTargetControl modelOptions={modelOptions} onChange={(visionModel) => onChange({ visionModel })} value={draft.visionModel} />
-                </Field>
-              </div>
-            ) : null}
-
-            {selectedToolFlags.matchWebSearch ? (
-              <WebSearchToolConfigurationPanel draft={draft} onChange={onChange} />
-            ) : null}
 
 	            {error ? (
 	              <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">{t(error)}</div>
@@ -412,9 +449,6 @@ function WebSearchToolConfigurationPanel({
 
   return (
     <div className="grid grid-cols-1 gap-3 rounded-md border border-border/70 bg-muted/25 p-3">
-      <div className="min-w-0">
-        <div className="truncate text-[12px] font-semibold text-foreground">{t("Web search configuration")}</div>
-      </div>
       <Field label={t("Search provider")}>
         <SelectControl onChange={updateProvider} options={providerOptions} value={draft.webSearchProvider} />
       </Field>
@@ -549,7 +583,166 @@ function CustomMcpToolDialog({
   );
 }
 
+function FusionToolConfigurationPanel({
+  draft,
+  modelOptions,
+  onChange,
+  toolName
+}: {
+  draft: VirtualModelDraft;
+  modelOptions: ReturnType<typeof createRouteModelOptions>;
+  onChange: (patch: Partial<VirtualModelDraft>) => void;
+  toolName: string;
+}) {
+  if (isFusionVisionToolName(toolName)) {
+    return <VisionToolConfigurationPanel draft={draft} modelOptions={modelOptions} onChange={onChange} />;
+  }
+  if (isFusionWebSearchToolName(toolName)) {
+    return <WebSearchToolConfigurationPanel draft={draft} onChange={onChange} />;
+  }
+  return null;
+}
+
+function VisionToolConfigurationPanel({
+  draft,
+  modelOptions,
+  onChange
+}: {
+  draft: VirtualModelDraft;
+  modelOptions: ReturnType<typeof createRouteModelOptions>;
+  onChange: (patch: Partial<VirtualModelDraft>) => void;
+}) {
+  const t = useAppText();
+
+  return (
+    <div className="grid grid-cols-1 gap-3 rounded-md border border-border/70 bg-muted/25 p-3">
+      <Field label={t("Vision model")}>
+        <RouteTargetControl modelOptions={modelOptions} onChange={(visionModel) => onChange({ visionModel })} value={draft.visionModel} />
+      </Field>
+    </div>
+  );
+}
+
+function FusionToolsListControl({
+  adding,
+  draft,
+  mcpServers,
+  mcpToolStateByServer,
+  modelOptions,
+  onAddCustomMcpTool,
+  onAddTool,
+  onAppendTool,
+  onCancelAddTool,
+  onChange,
+  onChangeTool,
+  onDiscoverMcpTools,
+  onRemoveTool,
+  selectedMcpServerName,
+  values
+}: {
+  adding: boolean;
+  draft: VirtualModelDraft;
+  mcpServers: GatewayMcpServerConfig[];
+  mcpToolStateByServer: Record<string, {
+    error?: string;
+    loading?: boolean;
+    tools?: GatewayMcpToolInfo[];
+  }>;
+  modelOptions: ReturnType<typeof createRouteModelOptions>;
+  onAddCustomMcpTool: () => void;
+  onAddTool: () => void;
+  onAppendTool: (value: string, server?: GatewayMcpServerConfig) => void;
+  onCancelAddTool: () => void;
+  onChange: (patch: Partial<VirtualModelDraft>) => void;
+  onChangeTool: (index: number, value: string, server?: GatewayMcpServerConfig) => void;
+  onDiscoverMcpTools: (server?: GatewayMcpServerConfig, force?: boolean) => void;
+  onRemoveTool: (index: number) => void;
+  selectedMcpServerName: string;
+  values: string[];
+}) {
+  const t = useAppText();
+  const selectedToolValues = values.map(normalizeFusionToolName).filter(Boolean);
+
+  return (
+    <div className="grid min-w-0 grid-cols-1 gap-2">
+      {values.map((value, index) => (
+        <div className="grid min-w-0 grid-cols-1 gap-2 rounded-md border border-border/70 bg-muted/15 p-2" key={`${value}-${index}`}>
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <FusionToolSelectControl
+                excludedValues={selectedToolValues.filter((_, toolIndex) => toolIndex !== index)}
+                mcpServers={mcpServers}
+                mcpToolStateByServer={mcpToolStateByServer}
+                onAddCustomMcpTool={onAddCustomMcpTool}
+                onChange={(toolName, server) => onChangeTool(index, toolName, server)}
+                onDiscoverMcpTools={onDiscoverMcpTools}
+                selectedMcpServerName={selectedMcpServerName}
+                value={value}
+              />
+            </div>
+            <Button
+              aria-label={t("Remove tool")}
+              onClick={() => onRemoveTool(index)}
+              size="iconSm"
+              title={t("Remove tool")}
+              type="button"
+              variant="ghost"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <FusionToolConfigurationPanel
+            draft={draft}
+            modelOptions={modelOptions}
+            onChange={onChange}
+            toolName={value}
+          />
+        </div>
+      ))}
+
+      {adding ? (
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <FusionToolSelectControl
+              excludedValues={selectedToolValues}
+              mcpServers={mcpServers}
+              mcpToolStateByServer={mcpToolStateByServer}
+              onAddCustomMcpTool={onAddCustomMcpTool}
+              onChange={onAppendTool}
+              onDiscoverMcpTools={onDiscoverMcpTools}
+              selectedMcpServerName={selectedMcpServerName}
+              value=""
+            />
+          </div>
+          <Button
+            aria-label={t("Cancel")}
+            onClick={onCancelAddTool}
+            size="iconSm"
+            title={t("Cancel")}
+            type="button"
+            variant="ghost"
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ) : null}
+
+      <Button
+        className="justify-start"
+        disabled={adding}
+        onClick={onAddTool}
+        type="button"
+        variant="outline"
+      >
+        <Plus className="h-4 w-4" />
+        {t("Add tool")}
+      </Button>
+    </div>
+  );
+}
+
 function FusionToolSelectControl({
+  excludedValues,
   mcpServers,
   mcpToolStateByServer,
   onAddCustomMcpTool,
@@ -558,6 +751,7 @@ function FusionToolSelectControl({
   selectedMcpServerName,
   value
 }: {
+  excludedValues?: string[];
   mcpServers: GatewayMcpServerConfig[];
   mcpToolStateByServer: Record<string, {
     error?: string;
@@ -581,6 +775,7 @@ function FusionToolSelectControl({
   }>();
   const rootRef = useRef<HTMLDivElement>(null);
   const normalizedValue = normalizeFusionToolName(value);
+  const excludedValueSet = new Set((excludedValues ?? []).map(normalizeFusionToolName).filter(Boolean));
   const selected = fusionToolOptions.find((option) => option.value === normalizedValue);
   const selectedServer = selectedMcpServerName
     ? mcpServers.find((server) => server.name === selectedMcpServerName)
@@ -703,7 +898,7 @@ function FusionToolSelectControl({
               role="listbox"
 	              style={{ maxHeight: `${popoverLayout?.maxHeight ?? 360}px` }}
 	            >
-	              {fusionToolOptions.map((option) => {
+	              {fusionToolOptions.filter((option) => visibleFusionToolOption(option.value, normalizedValue, excludedValueSet)).map((option) => {
 	                const selectedOption = option.value === selected?.value;
 	                return (
 	                  <button
@@ -712,7 +907,7 @@ function FusionToolSelectControl({
                       "flex min-h-[58px] w-full min-w-0 items-start gap-2 rounded-[5px] px-2 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25",
                       selectedOption ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
                     )}
-                    key={option.value}
+	                    key={option.value}
 	                    onClick={() => {
 	                      onChange(option.value);
 	                      setOpen(false);
@@ -733,7 +928,8 @@ function FusionToolSelectControl({
 	              {mcpServers.length > 0 ? <div className="my-1 border-t border-border/70" /> : null}
 	              {mcpServers.map((server) => {
 	                const state = mcpToolStateByServer[server.name];
-	                const tools = state?.tools ?? [];
+	                const tools = (state?.tools ?? []).filter((tool) => visibleFusionToolOption(tool.name, normalizedValue, excludedValueSet));
+                  const discoveredTools = state?.tools ?? [];
 	                const serverSelected = selectedMcpServerName === server.name;
 	                return (
 	                  <div className="rounded-[5px] px-1 py-1" key={server.name}>
@@ -789,7 +985,10 @@ function FusionToolSelectControl({
 	                          <span>{t("Discover tools")}</span>
 	                        </div>
 	                      ) : null}
-	                      {!state?.loading && state?.tools && tools.length === 0 && !state.error ? (
+	                      {!state?.loading && state?.tools && discoveredTools.length > 0 && tools.length === 0 && !state.error ? (
+	                        <div className="px-2 py-2 text-[11px] text-muted-foreground">{t("No tools available")}</div>
+	                      ) : null}
+	                      {!state?.loading && state?.tools && discoveredTools.length === 0 && !state.error ? (
 	                        <div className="px-2 py-2 text-[11px] text-muted-foreground">{t("No tools discovered")}</div>
 	                      ) : null}
 	                      {state?.error ? (

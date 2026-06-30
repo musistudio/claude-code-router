@@ -4,6 +4,8 @@ import { configurationSlugFromPath, zhConfigurationDocs } from "../../configurat
 
 export function getStaticPaths() {
   const activeLabels: Record<string, string> = {
+    "api-keys": "API 密钥",
+    overview: "概览仪表盘",
     provider: "供应商配置",
     "provider-deeplink": "一键导入供应商",
     routing: "路由配置",
@@ -14,6 +16,8 @@ export function getStaticPaths() {
     "fusion-web-search": "内置联网搜索",
     "fusion-mcp-tool": "自定义 MCP 工具",
     extensions: "扩展机制",
+    server: "服务配置",
+    tray: "托盘配置",
     "bot-relay": "Bot 与 IM 接力 Agent",
     "bot-setup": "配置步骤",
     "config-file": "配置数据库位置",

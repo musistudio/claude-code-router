@@ -7,20 +7,130 @@ lead: Configure upstream model services, credentials, protocols, base URLs, and 
 
 ## Basic Concept
 
-A provider is an upstream model service. CCR needs at least one provider with a valid protocol, Base URL, model list, and credential.
+A provider is an upstream model service. One provider config describes the upstream address, protocol capabilities, model list, authentication, optional multi-key rotation, and optional account usage fetching.
+
+Each provider needs at least a name, API endpoint, usable protocol, model list, and one valid credential. The add/edit dialog changes which fields are visible depending on preset providers, custom endpoints, local agent login import, and advanced settings.
+
+Preset providers fill common endpoints, protocols, models, and usage-fetching settings, so they are the recommended starting point. For custom providers, enter the endpoint manually. CCR uses the endpoint and API key to probe protocol compatibility and help identify whether the upstream works with OpenAI Chat, OpenAI Responses, Anthropic Messages, or Gemini Generate.
+
+## Main Fields
+
+| Field | Capability |
+| --- | --- |
+| Select preset provider | Applies a built-in provider template, including default endpoint, supported protocols, default models, icon, provider website, and sometimes account usage settings. Choose `Other / custom API endpoint` for any OpenAI, Anthropic, or Gemini compatible upstream. |
+| Import local agent login | Appears while adding a provider if CCR finds usable Claude Code, Codex, or ZCode login state on this computer. Importing creates a provider and provider plugin that reuse the local login credential instead of a normal pasted API key. |
+| Name | Internal CCR display name. It is also used by routing, model selectors, logs, and config references. Names must be unique. |
+| API endpoint | Upstream API base URL. It controls where requests are sent, and is also used for protocol probing, model discovery, icon detection, and safety checks. Preset providers hide it by default while adding, but it can be overridden in Advanced settings. Custom providers must provide it. |
+| API key | Default provider credential. When the credential pool is empty, model requests use this key. Protocol probing, model discovery, connection checks, and default usage fetching also use it. Only use a key issued for the selected endpoint. |
+| Models | Model IDs exposed by CCR. Routing rules, profile model selectors, the model catalog, and client `/models` responses all use this list. |
+| Search models / All / Clear | When CCR can discover models from the upstream or catalog, you can search, select all, clear, and choose models. Selected models are saved to the provider. |
+| Custom models | Manually adds model IDs that discovery did not return. Use this when the provider lacks a `/models` endpoint or a new model is not in the catalog yet. |
+| Check Connection | Sends real test requests with the current endpoint, API key, protocol, and selected models. It verifies key, model name, and protocol usability. |
+| Models to check | Model selection inside the connection-check confirmation dialog. Use it to test only some models. |
+| Check results | Shows whether each model is available, which protocol matched, and the upstream diagnostic message. Passing results do not automatically add models; the main model selection remains authoritative. |
+
+## Connectivity Checks
+
+`Check Connection` sends real model requests for the models you select. It verifies whether the endpoint, API key, protocol, and model IDs are usable. The check limits generated output, but it can still create extra token usage or count against provider-side request limits.
+
+If the provider bills by request, input tokens, or output tokens, select only the models you need to verify instead of checking every model at once. Check results are diagnostic only; they do not automatically change the model list or usage-fetching settings.
 
 ## Credentials
 
-Credentials store API keys. Multiple credentials can rotate by priority and weight, and can switch when a key hits a limit or fails.
+`API key` is the simplest single-key setup. For multiple upstream keys, expand `Credential pool` in Advanced settings.
 
-Use recognizable labels so failed keys are easy to identify in Logs.
-
-## Provider Options
-
-| Field | Description |
+| Field | Capability |
 | --- | --- |
-| Name | Internal display name in CCR; keep it short and recognizable |
-| Base URL | Upstream service address; custom providers should include the correct API path |
-| Protocol | OpenAI, Anthropic, Gemini, or compatible protocol |
-| Models | Model list exposed to CCR selectors |
-| Request headers | Extra headers required by some compatible services |
+| Show credential settings | Expands or collapses credential pool editing. Collapsing does not remove saved credentials. |
+| Import JSON | Imports credentials from a JSON file. CCR accepts a top-level array, or an object with a `credentials`, `keys`, or `apiKeys` array. |
+| Add key | Adds one upstream API key row. |
+| Enable | Controls whether this credential participates in request forwarding and usage fetching. Disabled credentials are kept but not selected. |
+| Name | Display name for the credential. It appears in account usage, logs, and diagnostics, so use a recognizable purpose or quota source. |
+| API key | The actual key sent to the upstream for this credential. When a credential pool is configured, CCR expands enabled credentials into internal upstream targets and prefers the pool over the main form API key for model requests. |
+| Remove | Deletes the credential row. |
+| Advanced key options | Expands per-key scheduling and limit fields. |
+| Priority | Credential priority. Lower numbers are tried first. If omitted, the row order is used. |
+| Weight | Tie-break weight among credentials with the same priority and similar usage. Higher numbers are preferred. Defaults to `1`. |
+| Limits JSON | Local limit rules for this key. CCR tracks request, token, or image usage windows and skips a key once it would exceed its limit, then tries another key on the same provider. |
+
+Common `Limits JSON` fields:
+
+| Field | Meaning |
+| --- | --- |
+| `rpm` / `rph` / `rpd` | Max requests per minute / hour / day |
+| `tpm` / `tph` / `tpd` | Max tokens per minute / hour / day |
+| `ipm` / `iph` / `ipd` | Max images per minute / hour / day |
+| `maxRequests` + `windowMs` | Max requests in a custom time window |
+| `maxTokens` + `quotaWindowMs` | Max tokens in a custom time window |
+
+Example:
+
+```json
+{
+  "rpm": 60,
+  "tpm": 100000
+}
+```
+
+The credential pool is an upstream provider key pool. It is separate from the client access keys configured on the API Keys page.
+
+## Usage Fetching
+
+`Fetch usage` lets CCR show balance, subscription quota, status, and messages in the provider list, tray, and account panels. It does not affect whether models can be requested.
+
+| Field | Capability |
+| --- | --- |
+| Fetch usage | Enables or disables account usage fetching for this provider. |
+| Usage mode | Usage connector mode. `Standard usage endpoint` uses CCR standard account endpoints; `HTTP JSON request` maps a custom JSON endpoint; `Raw connector JSON` edits the connector array directly. |
+| Refresh interval ms | Usage refresh interval in milliseconds. Empty uses the default interval. The minimum effective interval is 30000ms. |
+
+### Standard Usage Endpoint
+
+This mode tries provider-hosted CCR account endpoints such as `/.well-known/ccr/account` and `/v1/account/limits`. It is best for providers or presets that already implement CCR's standard account format.
+
+### HTTP JSON Request
+
+Use this mode when the provider has a balance or quota JSON endpoint that does not match CCR's standard account format.
+
+| Field | Capability |
+| --- | --- |
+| Method | Usage request method, `GET` or `POST`. |
+| Usage request URL | Usage endpoint URL. It can be a full URL. The request includes the provider API key unless changed through raw connector JSON. |
+| Headers | Extra headers for the usage endpoint. Avoid hard-coding sensitive auth headers here; prefer provider API key auth. |
+| Body | `POST` request body. Must be valid JSON. |
+| Balance remaining field | JSON path for remaining balance. |
+| Balance total field | JSON path for total balance or total credits. |
+| Balance used field | JSON path for used balance. |
+| Balance unit | Balance unit, such as `USD`, `CNY`, or `%`. |
+| Subscription remaining field | JSON path for remaining subscription, token, quota, or package amount. |
+| Subscription limit field | JSON path for subscription, token, quota, or package limit. |
+| Subscription reset field | JSON path for reset time. It may resolve to an ISO string, seconds timestamp, or milliseconds timestamp. |
+| Subscription unit | Subscription unit, such as `tokens`, `requests`, or `hours`. |
+| Status field | JSON path for account status. Supported values are `ok`, `warning`, `critical`, `error`, and `unsupported`. |
+| Message field | JSON path for account message. Useful for provider errors, plan notes, or risk-control messages. |
+| Test usage request | Requests and parses the usage endpoint before saving. |
+| Response fields | Lists selectable paths from the response. Buttons such as `Balance rem`, `Balance total`, `Balance used`, `Sub rem`, `Sub limit`, and `Reset` fill the matching field. |
+
+Field paths use CCR's lightweight JSONPath syntax:
+
+| Syntax | Meaning |
+| --- | --- |
+| `$` | Whole response object |
+| `$.balance.remaining` | Object field |
+| `$.items[0].value` | Array index |
+| `$["weird-key"]` | Field name with special characters |
+| `$.limits[?(@.type=="TOKENS")].remaining` | First array item matching simple equality filters |
+| `100 - $.data.percentage` | Numeric subtraction expression, often used to convert used percent into remaining percent |
+
+### Raw Connector JSON
+
+`Connectors JSON` edits the `account.connectors` array directly for more complex provider setups.
+
+| Connector type | Capability |
+| --- | --- |
+| `standard` | Uses CCR standard account endpoints. |
+| `http-json` | Requests a JSON endpoint and maps balance, subscription, status, and message fields. |
+| `plugin` | Calls an account usage connector registered by an installed plugin. |
+| `local-estimate` | Shows estimated quota from local time-window config without a remote request. |
+
+`Insert example` fills an example connector array containing `standard`, `http-json`, `plugin`, and `local-estimate` connectors.

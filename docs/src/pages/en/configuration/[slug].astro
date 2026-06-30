@@ -4,6 +4,8 @@ import { configurationSlugFromPath, enConfigurationDocs } from "../../../configu
 
 export function getStaticPaths() {
   const activeLabels: Record<string, string> = {
+    "api-keys": "API Keys",
+    overview: "Overview Dashboard",
     providers: "Provider Config",
     "provider-deeplink": "One click import",
     routing: "Routing Config",
@@ -14,6 +16,8 @@ export function getStaticPaths() {
     "fusion-web-search": "Built-In Web Search",
     "fusion-mcp-tool": "Custom MCP Tool",
     extensions: "Extension Mechanism",
+    server: "Server",
+    tray: "Tray Configuration",
     bots: "Bots And IM Agent Relay",
     "bot-setup": "Setup",
     "configuration-file": "Config Database Location",

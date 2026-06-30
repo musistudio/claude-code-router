@@ -428,16 +428,12 @@ export function createVirtualModelDraftFromProfile(profile: VirtualModelProfileC
   const toolDrafts = (profile.tools ?? []).map((tool, index) => createVirtualModelToolDraft(tool, index));
   const visionConfig = fusionVisionConfigFromProfile(profile);
   const webSearchConfig = fusionWebSearchConfigFromProfile(profile);
-  const selectedToolName = visionConfig
-    ? BUILTIN_FUSION_VISION_TOOL_NAME
-    : webSearchConfig
-      ? BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME
-      : selectedFusionToolNameFromProfile(toolDrafts, profile);
-  const flags = fusionToolExecutionFlags(selectedToolName);
+  const selectedToolNames = selectedFusionToolNamesFromProfile(toolDrafts, profile);
+  const flags = fusionToolExecutionFlagsFromTools(selectedToolNames);
   const routeModelOptions = createRouteModelOptions(config?.Providers ?? []);
   const defaultVisionModel = routeModelOptions[0]?.value ?? "";
   const customToolConfig = fusionCustomToolConfigFromProfile(profile);
-  const customToolName = !isBuiltInFusionToolName(selectedToolName) ? selectedToolName : customFusionToolName;
+  const customToolName = selectedToolNames.find((toolName) => !isBuiltInFusionToolName(toolName)) ?? customFusionToolName;
   const configuredMcpServers = config?.agent?.mcpServers ?? [];
   const customMcpServerConfig = customToolConfig?.mcpServerName
     ? configuredMcpServers.find((server) => server.name === customToolConfig.mcpServerName)
@@ -476,7 +472,7 @@ export function createVirtualModelDraftFromProfile(profile: VirtualModelProfileC
     suffixesText: (profile.match?.suffixes ?? []).join(", "),
     toolChoiceText: formatVirtualModelToolChoice(profile.toolChoice),
     tools: toolDrafts,
-    toolsText: selectedToolName,
+    toolsText: selectedToolNames.join(", "),
     visionModel: visionConfig?.modelSelector ?? visionConfig?.model ?? defaultVisionModel,
     webSearchEnvRows: createFusionWebSearchEnvRows(webSearchConfig?.provider ?? defaultFusionWebSearchProvider, keyValueRowsFromRecord(webSearchConfig?.env ?? {})),
     webSearchProvider: webSearchConfig?.provider ?? defaultFusionWebSearchProvider,
@@ -566,7 +562,7 @@ export function fusionVisionConfigFromProfile(profile: VirtualModelProfileConfig
 }
 
 export function fusionVisionConfigFromDraft(draft: VirtualModelDraft, key: string): VirtualModelFusionVisionConfig | undefined {
-  if (!fusionToolExecutionFlags(selectedFusionToolName(draft.toolsText)).matchMultimodal) {
+  if (!fusionToolExecutionFlagsFromTools(selectedFusionToolNames(draft.toolsText)).matchMultimodal) {
     return undefined;
   }
   const model = draft.visionModel.trim();
@@ -616,7 +612,7 @@ export function fusionWebSearchConfigFromProfile(profile: VirtualModelProfileCon
 }
 
 export function fusionWebSearchConfigFromDraft(draft: VirtualModelDraft, key: string): VirtualModelFusionWebSearchConfig | undefined {
-  if (!fusionToolExecutionFlags(selectedFusionToolName(draft.toolsText)).matchWebSearch) {
+  if (!fusionToolExecutionFlagsFromTools(selectedFusionToolNames(draft.toolsText)).matchWebSearch) {
     return undefined;
   }
   const env = recordFromKeyValueRows(draft.webSearchEnvRows);
@@ -643,8 +639,8 @@ export function fusionCustomToolConfigFromProfile(profile: VirtualModelProfileCo
 }
 
 export function fusionCustomToolConfigFromDraft(draft: VirtualModelDraft): VirtualModelFusionCustomToolConfig | undefined {
-  const selectedTool = selectedFusionToolName(draft.toolsText);
-  if (isBuiltInFusionToolName(selectedTool)) {
+  const selectedTools = selectedFusionToolNames(draft.toolsText);
+  if (!selectedTools.some((toolName) => !isBuiltInFusionToolName(toolName))) {
     return undefined;
   }
   const mcpServerName = draft.customMcpServer.name.trim();
@@ -656,8 +652,8 @@ export function fusionCustomMcpServerFromDraft(
   existingServers: GatewayMcpServerConfig[],
   editIndex?: number
 ): GatewayMcpServerConfig | undefined {
-  const selectedTool = selectedFusionToolName(draft.toolsText);
-  if (isBuiltInFusionToolName(selectedTool)) {
+  const selectedTools = selectedFusionToolNames(draft.toolsText);
+  if (!selectedTools.some((toolName) => !isBuiltInFusionToolName(toolName))) {
     return undefined;
   }
   return mcpServerConfigFromDraft(draft.customMcpServer, existingServers, editIndex);
@@ -693,15 +689,15 @@ export function createFusionWebSearchEnvRows(
 
 export function validateVirtualModelDraft(draft: VirtualModelDraft): string {
   const matchValues = parseVirtualModelTextList(draft.exactAliasesText);
-  const selectedTool = selectedFusionToolName(draft.toolsText);
-  const flags = fusionToolExecutionFlags(selectedTool);
+  const selectedTools = selectedFusionToolNames(draft.toolsText);
+  const flags = fusionToolExecutionFlagsFromTools(selectedTools);
   if (matchValues.length === 0) {
     return "New model is required.";
   }
   if (!draft.fixedModel.trim()) {
     return "Base model is required.";
   }
-  if (!isFusionToolName(selectedTool)) {
+  if (selectedTools.length === 0) {
     return "Tool is required.";
   }
   if (flags.matchMultimodal && !draft.visionModel.trim()) {
@@ -710,8 +706,8 @@ export function validateVirtualModelDraft(draft: VirtualModelDraft): string {
   if (flags.matchWebSearch && !validateKeyValueRows(draft.webSearchEnvRows)) {
     return "Environment variable keys are required when values are set.";
   }
-  if (!flags.matchMultimodal && !flags.matchWebSearch) {
-    if (!selectedTool.trim()) {
+  if (selectedTools.some((toolName) => !isBuiltInFusionToolName(toolName))) {
+    if (!selectedTools.some((toolName) => !isBuiltInFusionToolName(toolName) && toolName.trim())) {
       return "Tool name is required.";
     }
     return validateMcpServerDraft(draft.customMcpServer);
@@ -732,11 +728,20 @@ export function virtualModelProfileFromDraft(
   const fusionVisionConfig = fusionVisionConfigFromDraft(draft, id);
   const fusionWebSearchConfig = fusionWebSearchConfigFromDraft(draft, id);
   const fusionCustomToolConfig = fusionCustomToolConfigFromDraft(draft);
-  const selectedTool = fusionVisionConfig?.toolName ?? fusionWebSearchConfig?.toolName ?? selectedFusionToolName(draft.toolsText);
-  const tools = virtualModelToolsFromDraft(draft, selectedTool);
+  const selectedTools = selectedFusionToolNames(draft.toolsText);
+  const toolNames = selectedTools.map((toolName) => {
+    if (fusionVisionConfig?.toolName && isFusionVisionToolName(toolName)) {
+      return fusionVisionConfig.toolName;
+    }
+    if (fusionWebSearchConfig?.toolName && isFusionWebSearchToolName(toolName)) {
+      return fusionWebSearchConfig.toolName;
+    }
+    return toolName;
+  });
+  const tools = virtualModelToolsFromDraft(draft, toolNames);
   const maxToolCalls = numberValue(draft.maxToolCalls);
   const maxTurns = numberValue(draft.maxTurns);
-  const flags = fusionToolExecutionFlags(selectedTool);
+  const flags = fusionToolExecutionFlagsFromTools(toolNames);
   const metadata = {
     ...(fusionVisionConfig ? { [fusionVisionMetadataKey]: fusionVisionConfig } : {}),
     ...(fusionWebSearchConfig ? { [fusionWebSearchMetadataKey]: fusionWebSearchConfig } : {}),
@@ -803,17 +808,17 @@ export function virtualModelMatchFromDraft(
   };
 }
 
-export function virtualModelToolsFromDraft(draft: VirtualModelDraft, selectedToolName = selectedFusionToolName(draft.toolsText)): VirtualModelProfileConfig["tools"] {
+export function virtualModelToolsFromDraft(draft: VirtualModelDraft, selectedToolNames = selectedFusionToolNames(draft.toolsText)): VirtualModelProfileConfig["tools"] {
   const existingTools = new Map(
     draft.tools
       .map((tool) => [normalizeFusionToolName(tool.name.trim()), tool] as const)
       .filter(([name]) => Boolean(name))
   );
 
-  return uniqueStrings([selectedToolName])
+  return uniqueStrings(selectedToolNames.map(normalizeFusionToolName))
     .filter(isFusionToolName)
     .map((name) => {
-      const existingTool = existingTools.get(name);
+      const existingTool = existingTools.get(name) ?? existingTools.get(fusionToolBaseName(name));
       const inputSchema = existingTool ? parseVirtualModelJsonObject(existingTool.inputSchemaText) : undefined;
       const description = existingTool?.description.trim() || fusionToolDescription(name);
       return {
@@ -952,18 +957,19 @@ export function virtualModelToolSummary(profile: VirtualModelProfileConfig): str
     return "-";
   }
   const visionConfig = fusionVisionConfigFromProfile(profile);
-  if (visionConfig?.toolName && profile.tools.some((tool) => tool.name === visionConfig.toolName)) {
-    return `${fusionToolDisplayName(BUILTIN_FUSION_VISION_TOOL_NAME)}${visionConfig.modelSelector || visionConfig.model ? ` (${visionConfig.modelSelector || visionConfig.model})` : ""}`;
-  }
   const webSearchConfig = fusionWebSearchConfigFromProfile(profile);
-  if (webSearchConfig?.toolName && profile.tools.some((tool) => tool.name === webSearchConfig.toolName)) {
-    return `${fusionToolDisplayName(BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME)}${webSearchConfig.provider ? ` (${fusionWebSearchProviderLabel(webSearchConfig.provider)})` : ""}`;
-  }
   const customToolConfig = fusionCustomToolConfigFromProfile(profile);
-  if (customToolConfig?.mcpServerName) {
-    return profile.tools.map((tool) => `${customToolConfig.mcpServerName} / ${fusionToolDisplayName(tool.name)}`).join(", ");
-  }
-  return profile.tools.map((tool) => fusionToolDisplayName(tool.name)).join(", ");
+  return profile.tools.map((tool) => {
+    if (visionConfig?.toolName && tool.name === visionConfig.toolName) {
+      return `${fusionToolDisplayName(BUILTIN_FUSION_VISION_TOOL_NAME)}${visionConfig.modelSelector || visionConfig.model ? ` (${visionConfig.modelSelector || visionConfig.model})` : ""}`;
+    }
+    if (webSearchConfig?.toolName && tool.name === webSearchConfig.toolName) {
+      return `${fusionToolDisplayName(BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME)}${webSearchConfig.provider ? ` (${fusionWebSearchProviderLabel(webSearchConfig.provider)})` : ""}`;
+    }
+    return customToolConfig?.mcpServerName
+      ? `${customToolConfig.mcpServerName} / ${fusionToolDisplayName(tool.name)}`
+      : fusionToolDisplayName(tool.name);
+  }).join(", ");
 }
 
 export function normalizeFusionToolName(name: string): string {
@@ -994,18 +1000,44 @@ export function isFusionWebSearchToolName(name: string): boolean {
 }
 
 export function selectedFusionToolName(toolsText: string): string {
-  return parseVirtualModelTextList(toolsText).map(normalizeFusionToolName).find(isFusionToolName) ?? BUILTIN_FUSION_VISION_TOOL_NAME;
+  return selectedFusionToolNames(toolsText)[0] ?? BUILTIN_FUSION_VISION_TOOL_NAME;
+}
+
+export function selectedFusionToolNames(toolsText: string): string[] {
+  return uniqueStrings(parseVirtualModelTextList(toolsText).map(normalizeFusionToolName).filter(isFusionToolName));
 }
 
 export function selectedFusionToolNameFromProfile(toolDrafts: VirtualModelToolDraft[], profile: VirtualModelProfileConfig): string {
-  const directTool = toolDrafts.map((tool) => normalizeFusionToolName(tool.name)).find(isFusionToolName);
-  if (directTool) {
-    return directTool;
+  return selectedFusionToolNamesFromProfile(toolDrafts, profile)[0] ?? BUILTIN_FUSION_VISION_TOOL_NAME;
+}
+
+export function selectedFusionToolNamesFromProfile(toolDrafts: VirtualModelToolDraft[], profile: VirtualModelProfileConfig): string[] {
+  const visionConfig = fusionVisionConfigFromProfile(profile);
+  const webSearchConfig = fusionWebSearchConfigFromProfile(profile);
+  const directTools = uniqueStrings(
+    toolDrafts
+      .map((tool) => normalizeFusionToolName(tool.name))
+      .filter(isFusionToolName)
+      .map((toolName) => {
+        if (visionConfig?.toolName && toolName === visionConfig.toolName) {
+          return BUILTIN_FUSION_VISION_TOOL_NAME;
+        }
+        if (webSearchConfig?.toolName && toolName === webSearchConfig.toolName) {
+          return BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME;
+        }
+        return toolName;
+      })
+  );
+  if (directTools.length > 0) {
+    return directTools;
   }
   if (profile.execution?.matchWebSearch && !profile.execution?.matchMultimodal) {
-    return BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME;
+    return [BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME];
   }
-  return BUILTIN_FUSION_VISION_TOOL_NAME;
+  if (profile.execution?.matchWebSearch && profile.execution?.matchMultimodal) {
+    return [BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME];
+  }
+  return [BUILTIN_FUSION_VISION_TOOL_NAME];
 }
 
 export function fusionToolExecutionFlags(name: string): Pick<VirtualModelDraft, "matchMultimodal" | "matchWebSearch"> {
@@ -1016,19 +1048,38 @@ export function fusionToolExecutionFlags(name: string): Pick<VirtualModelDraft, 
   };
 }
 
+export function fusionToolExecutionFlagsFromTools(names: string[]): Pick<VirtualModelDraft, "matchMultimodal" | "matchWebSearch"> {
+  const flags = names.map(fusionToolExecutionFlags);
+  return {
+    matchMultimodal: flags.some((flag) => flag.matchMultimodal),
+    matchWebSearch: flags.some((flag) => flag.matchWebSearch)
+  };
+}
+
 export function fusionWebSearchProviderLabel(provider: VirtualModelFusionWebSearchProvider): string {
   return fusionWebSearchProviderOptions.find((option) => option.value === provider)?.label ?? provider;
 }
 
 export function fusionToolDescription(name: string): string {
-  const option = fusionToolOptions.find((item) => item.value === normalizeFusionToolName(name));
+  const option = fusionToolOptions.find((item) => item.value === fusionToolBaseName(name));
   return option?.description ?? "";
 }
 
 export function fusionToolDisplayName(name: string): string {
-  const normalized = normalizeFusionToolName(name);
+  const normalized = fusionToolBaseName(name);
   const option = fusionToolOptions.find((item) => item.value === normalized);
   return option?.label ?? normalized;
+}
+
+export function fusionToolBaseName(name: string): string {
+  const normalized = normalizeFusionToolName(name);
+  if (isFusionVisionToolName(normalized)) {
+    return BUILTIN_FUSION_VISION_TOOL_NAME;
+  }
+  if (isFusionWebSearchToolName(normalized)) {
+    return BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME;
+  }
+  return normalized;
 }
 
 export function createMcpToolOptions(mcpServers: GatewayMcpServerConfig[], selectedToolsText: string): Array<{ available: boolean; description: string; label: string; value: string }> {

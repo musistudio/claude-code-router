@@ -1,6 +1,17 @@
 ---
-import DocPage from "../../components/DocPage.astro";
-import * as doc from "../../content/docs/en/configuration.md";
+const target = "/en/configuration/providers/";
 ---
 
-<DocPage locale="en" pageKey="configuration" doc={doc} />
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="refresh" content={`0;url=${target}`} />
+    <link rel="canonical" href={target} />
+    <script is:inline>
+      window.location.replace("/en/configuration/providers/");
+    </script>
+  </head>
+  <body>
+    <a href={target}>Provider Config</a>
+  </body>
+</html>

@@ -1364,7 +1364,7 @@ export function AddProviderForm({
             </div>
           </>
         )}
-        <Field label={t("Name")}>
+        <Field className="sm:col-span-2" label={t("Name")}>
           <Input value={draft.name} onChange={(event) => onChange({ name: event.target.value })} />
         </Field>
         {showBaseUrl ? (
