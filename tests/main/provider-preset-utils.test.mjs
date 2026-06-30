@@ -7,7 +7,7 @@ import {
   providerEndpointCanReceiveProviderApiKeyInList,
   providerIdentitySafetyIssueInList,
   providerPresetMatchesBaseUrl
-} from "../src/shared/provider-preset-utils.ts";
+} from "../../src/shared/provider-preset-utils.ts";
 
 const openAiPreset = {
   aliases: ["OpenAI", "ChatGPT"],

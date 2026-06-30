@@ -6,7 +6,7 @@ import {
   parseProviderDeepLinkPayload,
   parseProviderManifestDeepLinkPayload,
   parseProviderManifestPayload
-} from "../src/shared/deep-link.ts";
+} from "../../src/shared/deep-link.ts";
 
 function base64UrlJson(value) {
   return Buffer.from(JSON.stringify(value), "utf8")

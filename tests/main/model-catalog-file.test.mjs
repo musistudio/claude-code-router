@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { loadModelCatalogPayload, modelCatalogPathCandidates } from "../src/main/model-catalog-file.ts";
+import { loadModelCatalogPayload, modelCatalogPathCandidates } from "../../src/main/model-catalog-file.ts";
 
 test("modelCatalogPathCandidates prefers env paths and removes duplicates", () => {
   const previousCatalogPath = process.env.CCR_MODEL_CATALOG_PATH;

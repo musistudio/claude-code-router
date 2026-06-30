@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { UsageStore } from "../src/main/usage-store.ts";
+import { UsageStore } from "../../src/main/usage-store.ts";
 
 test("UsageStore aggregates stats in SQLite without loading all events", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-test-"));

@@ -10,7 +10,7 @@ import {
   resolveClaudeCodeSettingsFile,
   resolveCodexConfigFile,
   resolveProfileOpenSurface
-} from "../src/main/profile-launch-core.ts";
+} from "../../src/main/profile-launch-core.ts";
 
 const claudeProfile = {
   agent: "claude-code",

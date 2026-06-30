@@ -46,6 +46,8 @@
     "prepublishOnly": "npm run typecheck",
     "preview": "npm run build:assets && electron .",
     "test": "node build/test.mjs && node build/run-tests.mjs",
+    "test:main": "node build/test.mjs main && node build/run-tests.mjs main",
+    "test:renderer": "node build/test.mjs renderer && node build/run-tests.mjs renderer",
     "typecheck": "tsc --noEmit",
     "rebuild:sqlite3": "electron-rebuild -f -w better-sqlite3"
   },
