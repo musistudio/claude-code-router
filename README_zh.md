@@ -67,9 +67,11 @@ Web 管理端默认监听 `http://127.0.0.1:3458`。可以用 `ccr start --host 
    - Windows：`Claude Code Router_<version>.exe`
    - Linux：`Claude Code Router_<version>.AppImage`
 3. 安装并启动 **Claude Code Router**。
-4. 首次启动后，CCR 会创建本地配置：
-   - macOS/Linux：`~/.claude-code-router/config.json`
-   - Windows：`%APPDATA%\Claude Code Router\config.json`
+4. 首次启动后，CCR 会创建本地配置数据库：
+   - macOS/Linux：`~/.claude-code-router/config.sqlite`
+   - Windows：`%APPDATA%\Claude Code Router\config.sqlite`
+
+CCR 的运行配置存储在 SQLite 中。旧版 `config.json` 只会在没有 SQLite 配置时作为迁移来源读取一次。
 
 启用网关后，CCR 会启动两个本地服务：
 

@@ -177,7 +177,7 @@ The recommended flow is through the desktop UI:
 4. Save the config.
 5. Open **Server** and restart the gateway.
 
-You can also edit the config file directly:
+CCR stores runtime configuration in SQLite, so add extensions through the UI instead of editing the legacy JSON config file. The extension entry has this shape:
 
 ```json
 {
@@ -194,7 +194,7 @@ You can also edit the config file directly:
 }
 ```
 
-Restart CCR after editing the config file directly. See [Config File Location](/en/configuration/configuration-file/).
+Restart the gateway after saving the extension config. See [Config Database Location](/en/configuration/configuration-file/).
 
 The local directory picker recognizes entry metadata from:
 

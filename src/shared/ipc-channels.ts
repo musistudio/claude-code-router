@@ -19,6 +19,7 @@ export const IPC_CHANNELS = {
   appGetProxyCertificateStatus: "ccr:app:get-proxy-certificate-status",
   appGetProxyNetworkCaptures: "ccr:app:get-proxy-network-captures",
   appGetProxyStatus: "ccr:app:get-proxy-status",
+  appGetRequestLogDetail: "ccr:app:get-request-log-detail",
   appGetRequestLogs: "ccr:app:get-request-logs",
   appGetUpdateStatus: "ccr:app:get-update-status",
   appGetUsageStats: "ccr:app:get-usage-stats",

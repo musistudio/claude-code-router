@@ -177,7 +177,7 @@ module.exports = {
 4. 保存配置。
 5. 打开 **Server** 页面，重启网关。
 
-也可以直接编辑配置文件：
+CCR 的运行配置存储在 SQLite 中，因此推荐通过 UI 添加扩展，而不是编辑旧版 JSON 配置文件。扩展条目的配置结构如下：
 
 ```json
 {
@@ -194,7 +194,7 @@ module.exports = {
 }
 ```
 
-直接编辑配置文件后需要重启 CCR。配置文件位置见 [配置文件位置](/configuration/config-file/)。
+保存扩展配置后需要重启网关。配置数据库位置见 [配置数据库位置](/configuration/config-file/)。
 
 本地目录选择器会按顺序识别这些入口信息：
 

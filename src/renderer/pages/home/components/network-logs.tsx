@@ -284,6 +284,9 @@ export function LogsView({
 }) {
   const t = useAppText();
   const [expandedId, setExpandedId] = useState<number>();
+  const [detailById, setDetailById] = useState<Record<number, RequestLogEntry>>({});
+  const [detailErrorById, setDetailErrorById] = useState<Record<number, string>>({});
+  const [detailLoadingId, setDetailLoadingId] = useState<number>();
   const firstItem = page.total === 0 ? 0 : (page.page - 1) * page.pageSize + 1;
   const lastItem = Math.min(page.total, page.page * page.pageSize);
   const hasAnyCredentialInfo = Boolean(filter.credential) ||
@@ -292,9 +295,36 @@ export function LogsView({
   const logTableGridClass = hasAnyCredentialInfo
     ? "grid-cols-[minmax(0,0.8fr)_minmax(92px,0.38fr)_minmax(98px,0.4fr)_minmax(0,0.78fr)_minmax(120px,0.42fr)_minmax(0,0.68fr)_82px]"
     : "grid-cols-[minmax(0,0.8fr)_minmax(92px,0.38fr)_minmax(98px,0.4fr)_minmax(0,0.9fr)_minmax(0,0.74fr)_82px]";
+  const loadLogDetail = useCallback((id: number) => {
+    if (detailById[id] || detailLoadingId === id || !window.ccr?.getRequestLogDetail) {
+      return;
+    }
+    setDetailLoadingId(id);
+    setDetailErrorById((current) => ({ ...current, [id]: "" }));
+    void window.ccr.getRequestLogDetail({ id })
+      .then((detail) => {
+        if (detail) {
+          setDetailById((current) => ({ ...current, [id]: detail }));
+          return;
+        }
+        setDetailErrorById((current) => ({ ...current, [id]: t("Request log not found.") }));
+      })
+      .catch((error) => {
+        setDetailErrorById((current) => ({ ...current, [id]: error instanceof Error ? error.message : String(error) }));
+      })
+      .finally(() => {
+        setDetailLoadingId((current) => current === id ? undefined : current);
+      });
+  }, [detailById, detailLoadingId, t]);
   const toggleExpandedLog = useCallback((id: number) => {
-    setExpandedId((current) => current === id ? undefined : id);
-  }, []);
+    setExpandedId((current) => {
+      const next = current === id ? undefined : id;
+      if (next !== undefined) {
+        loadLogDetail(next);
+      }
+      return next;
+    });
+  }, [loadLogDetail]);
 
   useEffect(() => {
     if (!expandedId || page.items.some((item) => item.id === expandedId)) {
@@ -420,10 +450,12 @@ export function LogsView({
 
               {page.items.map((item, index) => (
                 <LogRow
+                  detailError={detailErrorById[item.id]}
+                  detailLoading={detailLoadingId === item.id}
                   expanded={expandedId === item.id}
                   hasCredentialInfo={hasAnyCredentialInfo}
                   index={index}
-                  item={item}
+                  item={expandedId === item.id ? detailById[item.id] ?? item : item}
                   key={item.id}
                   logTableGridClass={logTableGridClass}
                   onToggle={toggleExpandedLog}
@@ -438,6 +470,8 @@ export function LogsView({
 }
 
 const LogRow = memo(function LogRow({
+  detailError,
+  detailLoading,
   expanded,
   hasCredentialInfo,
   index,
@@ -445,6 +479,8 @@ const LogRow = memo(function LogRow({
   logTableGridClass,
   onToggle
 }: {
+  detailError?: string;
+  detailLoading?: boolean;
   expanded: boolean;
   hasCredentialInfo: boolean;
   index: number;
@@ -491,12 +527,20 @@ const LogRow = memo(function LogRow({
         <div className="network-row-secondary truncate px-2" title={tokenSummary}>{tokenSummary}</div>
         <div className="network-row-secondary truncate px-2">{formatDuration(item.durationMs)}</div>
       </button>
-      {expanded ? <LogExpandedDetails entry={item} /> : null}
+      {expanded ? <LogExpandedDetails detailError={detailError} detailLoading={detailLoading} entry={item} /> : null}
     </div>
   );
 });
 
-function LogExpandedDetails({ entry }: { entry: RequestLogEntry }) {
+function LogExpandedDetails({
+  detailError,
+  detailLoading,
+  entry
+}: {
+  detailError?: string;
+  detailLoading?: boolean;
+  entry: RequestLogEntry;
+}) {
   const t = useAppText();
   const hasCredentialInfo = logHasCredentialInfo(entry);
 
@@ -529,6 +573,11 @@ function LogExpandedDetails({ entry }: { entry: RequestLogEntry }) {
         <LogMetric label={t("Cost")} value={formatUsdCost(entry.costUsd ?? 0)} />
       </div>
       {entry.retryAttempts.length > 0 ? <LogRetryAttempts attempts={entry.retryAttempts} /> : null}
+      {detailLoading || detailError ? (
+        <div className={cn("border-b px-3 py-2 text-[12px] font-semibold", detailError ? "network-error-box" : "network-body-meta")}>
+          {detailError || t("Loading full payload...")}
+        </div>
+      ) : null}
       <div className="network-detail-panes grid h-[440px] min-h-0 grid-cols-1 lg:grid-cols-2">
         <LogJsonPanel body={entry.requestBody} headerEmptyLabel="No request headers" headers={entry.requestHeaders} title={t("请求")} />
         <LogJsonPanel

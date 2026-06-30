@@ -51,7 +51,10 @@ function startPrimaryInstance(): void {
     void startConfiguredServices("startup");
 
     app.on("activate", () => {
-      windowsManager.showMainWindow();
+      const mainWindow = windowsManager.getWindow("main");
+      if (!trayController.consumeMainWindowActivationSuppression() && (!mainWindow || !mainWindow.isVisible())) {
+        windowsManager.showMainWindow();
+      }
       queueEnsureConfiguredProxyModeActive("activate");
     });
   });

@@ -11,7 +11,7 @@ import {
   enforceSingleEnabledGlobalProfilePerAgent,
   ExtensionConfigTarget, ExtensionDeleteTarget, ExtensionInstallDraft, ExtensionSource, fallbackAgentAnalysis, fallbackConfig,
   fallbackGatewayStatus, fallbackInfo, fallbackProxyCertificateStatus, fallbackProxyNetworkSnapshot, fallbackProxyStatus, fallbackRequestLogPage,
-  fallbackUpdateStatus, fallbackUsageStats, formatAppError, formatJson, formatProxyCertificateInstallMessage, GatewayProviderConfig,
+  fallbackUpdateStatus, fallbackUsageStats, formatAppError, formatProxyCertificateInstallMessage, GatewayProviderConfig,
   fusionCustomMcpServerFromDraft, fusionCustomToolConfigFromProfile,
   GatewayProviderProbeResult, gatewayServiceMessage, GatewayStatus, getDefaultOnboardingStep, isClaudeDesignPluginConfig, isClaudeDesignRoutingDraftValid,
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
@@ -34,6 +34,7 @@ import {
   useMemo, useReducedMotion, useRef, useState, validateVirtualModelDraft, ViewId,
   VirtualModelDraft, virtualModelProfileFromDraft
 } from "./shared";
+import { startVisiblePolling } from "./shared/polling";
 import {
   AppDialogStack, LightToast, MainLayout, OnboardingLayout
 } from "./components";
@@ -336,10 +337,9 @@ function App() {
       void window.ccr?.getProxyStatus().then(setProxyStatus);
       void refreshProfileRuntimeStatus();
     };
-    refreshRuntimeStatus();
-    const timer = window.setInterval(refreshRuntimeStatus, 2000);
+    const stopPolling = startVisiblePolling(refreshRuntimeStatus, 2000);
     return () => {
-      window.clearInterval(timer);
+      stopPolling();
       unsubscribeOpenSettings();
       unsubscribeOpenUpdate();
     };
@@ -435,11 +435,10 @@ function App() {
         }
       });
     };
-    refreshUsageStats();
-    const timer = window.setInterval(refreshUsageStats, 5000);
+    const stopPolling = startVisiblePolling(refreshUsageStats, 5000);
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      stopPolling();
     };
   }, [usageRange]);
 
@@ -463,11 +462,10 @@ function App() {
           }
         });
     };
-    refreshProviderAccounts();
-    const timer = window.setInterval(refreshProviderAccounts, 30000);
+    const stopPolling = startVisiblePolling(refreshProviderAccounts, 30000);
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      stopPolling();
     };
   }, [draftConfig.Providers]);
 
@@ -538,11 +536,11 @@ function App() {
         });
     };
 
+    const stopPolling = startVisiblePolling(() => refreshAgentAnalysis(), 5000, { immediate: false });
     refreshAgentAnalysis(true);
-    const timer = window.setInterval(() => refreshAgentAnalysis(), 5000);
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      stopPolling();
     };
   }, [activeView, agentAnalysisEnabled, agentAnalysisFilterKey]);
 
@@ -587,11 +585,11 @@ function App() {
         });
     };
 
+    const stopPolling = startVisiblePolling(() => refreshRequestLogs(), 5000, { immediate: false });
     refreshRequestLogs(true);
-    const timer = window.setInterval(() => refreshRequestLogs(), 5000);
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      stopPolling();
     };
   }, [activeView, requestLogsEnabled, requestLogFilterKey]);
 
@@ -612,15 +610,14 @@ function App() {
         }
       });
     };
-    refreshNetworkCaptures();
-    const timer = window.setInterval(refreshNetworkCaptures, 1500);
+    const stopPolling = startVisiblePolling(refreshNetworkCaptures, 1500);
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      stopPolling();
     };
   }, [activeView, draftConfig.proxy.captureNetwork]);
 
-  const dirty = useMemo(() => formatJson(savedConfig) !== formatJson(draftConfig), [draftConfig, savedConfig]);
+  const dirty = draftConfig !== savedConfig;
   const apiKeys = useMemo(() => createApiKeyList(draftConfig), [draftConfig.APIKEY, draftConfig.APIKEYS]);
   const apiKeyEditItem = apiKeyEditIndex === undefined ? undefined : apiKeys.find((apiKey) => apiKey.index === apiKeyEditIndex);
   const providerDeleteItem = providerDeleteIndex === undefined ? undefined : draftConfig.Providers[providerDeleteIndex];

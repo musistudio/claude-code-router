@@ -2,7 +2,7 @@
 title: Claude Code Router Detailed Configuration
 pageTitle: Detailed Configuration
 eyebrow: Detailed Configuration
-lead: Configure providers, routing, Agent Config, Fusion, Bots, and the config file location in detail.
+lead: Configure providers, routing, Agent Config, Fusion, Bots, and the config database location in detail.
 ---
 
 ## Page Structure
@@ -19,7 +19,7 @@ Detailed configuration docs are split into standalone pages. Every left-sidebar 
 | Agent Config | Agent launch method, model, scope, multi-instance launching, and Bot binding |
 | Extension Mechanism | Wrapper plugins, core gateway plugins, custom extension creation, and debugging |
 | Bots And IM Agent Relay | Bot forwarding, handoff mode, and platform pages |
-| Config File Location | Config file location maintained by the desktop app |
+| Config Database Location | SQLite config database location maintained by the desktop app |
 
 ## Content Relationships
 

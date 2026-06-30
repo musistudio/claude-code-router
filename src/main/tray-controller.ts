@@ -14,6 +14,7 @@ const popoverDetailGap = 12;
 const popoverDetailTopOffset = 0;
 const popoverDetailWidth = 420;
 const popoverMargin = 8;
+const trayActivationSuppressMs = 750;
 const trayMenuBarIconSize = 20;
 const trayWindowBackgroundColor = "#020617";
 const trayTokenFallbackTitle = "0 tokens";
@@ -38,6 +39,7 @@ class TrayController {
   private randomTrayIconDateKey?: string;
   private resolvedRandomTrayIcon?: TrayMascotIconId;
   private refreshTimer?: NodeJS.Timeout;
+  private suppressMainWindowActivationUntil = 0;
   private tray?: Tray;
   private trayBalanceProgress?: TrayBalanceProgressConfig;
   private trayIconPreference: TrayIconPreference = "random";
@@ -52,8 +54,14 @@ class TrayController {
     const icon = createTrayIcon(this.resolveTrayIconId("random"));
     this.tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
     this.applyTrayTitle(trayTokenFallbackTitle);
-    this.tray.on("click", () => this.togglePopover());
-    this.tray.on("right-click", () => this.showContextMenu());
+    this.tray.on("click", () => {
+      this.suppressMainWindowActivation();
+      this.togglePopover();
+    });
+    this.tray.on("right-click", () => {
+      this.suppressMainWindowActivation();
+      this.showContextMenu();
+    });
     void this.refreshIconFromConfig();
 
     this.unsubscribeUsageUpdates = onUsageRecorded(() => {
@@ -102,6 +110,14 @@ class TrayController {
     void this.refreshTrayTitle();
   }
 
+  consumeMainWindowActivationSuppression(): boolean {
+    if (process.platform !== "darwin" || Date.now() > this.suppressMainWindowActivationUntil) {
+      return false;
+    }
+    this.suppressMainWindowActivationUntil = 0;
+    return true;
+  }
+
   async refreshIconFromConfig(config?: AppConfig): Promise<void> {
     if (!supportsTrayPlatform() || !this.tray) {
       return;
@@ -138,6 +154,12 @@ class TrayController {
       return;
     }
     this.showPopover();
+  }
+
+  private suppressMainWindowActivation(): void {
+    if (process.platform === "darwin") {
+      this.suppressMainWindowActivationUntil = Date.now() + trayActivationSuppressMs;
+    }
   }
 
   private showPopover(): void {

@@ -57,6 +57,8 @@ import type {
   ProxyCertificateStatus,
   ProxyNetworkSnapshot,
   ProxyStatus,
+  RequestLogDetailRequest,
+  RequestLogEntry,
   RequestLogListFilter,
   RequestLogPage,
   UsageStatsFilter,
@@ -95,6 +97,7 @@ declare global {
       getProxyCertificateStatus: () => Promise<ProxyCertificateStatus>;
       getProxyNetworkCaptures: () => Promise<ProxyNetworkSnapshot>;
       getProxyStatus: () => Promise<ProxyStatus>;
+      getRequestLogDetail: (request: RequestLogDetailRequest) => Promise<RequestLogEntry | undefined>;
       getRequestLogs: (filter?: RequestLogListFilter) => Promise<RequestLogPage>;
       getUpdateStatus: () => Promise<AppUpdateStatus>;
       getUsageStats: (range?: UsageStatsRange, filter?: UsageStatsFilter) => Promise<UsageStatsSnapshot>;

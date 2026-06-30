@@ -26,7 +26,7 @@ The top navigation is split into four standalone pages:
 | --- | --- |
 | [Documentation](./) | Product positioning, architecture overview, and reading path |
 | [Quick Start](guides/) | From installation and provider setup to connecting an agent |
-| [Detailed Configuration](configuration/) | Providers, routing, Agent Config, Fusion, Bots, and config file location |
+| [Detailed Configuration](configuration/) | Providers, routing, Agent Config, Fusion, Bots, and config database location |
 | [Q&A](troubleshooting/) | Request logs, observability panel, and common questions |
 
 Bot platform guides are child pages under Detailed Configuration. Each platform has its own page so platform dashboard fields, callback URLs, signatures, and FAQs can be expanded independently.

@@ -220,8 +220,10 @@ async function resolveGatewayProviderProbe(request: GatewayProviderProbeRequest)
   const modelProbe = mode !== "models" || request.skipModelDiscovery
     ? { models: [] }
     : await probeModels(parsed, request.apiKey, protocols);
-  const models = mode === "connectivity" && modelProbe.models.length > 0 ? modelProbe.models : typedModels;
-  const protocolResults = mode === "models" ? [] : await probeProtocols(parsed, request.apiKey, models, protocols, mode);
+  const models = (mode === "connectivity" || mode === "models") && modelProbe.models.length > 0
+    ? modelProbe.models
+    : typedModels;
+  const protocolResults = await probeProtocols(parsed, request.apiKey, models, protocols, mode);
   const detectedProtocol = detectProtocol(parsed, protocolResults, modelProbe.source, protocols);
 
   return {
@@ -466,7 +468,7 @@ async function probeProtocols(
     results.push(
       mode === "connectivity"
         ? await probeProtocolConnectivity(parsed, apiKey, models, protocol)
-        : await probeProtocolSupport(parsed, protocol)
+        : await probeProtocolSupport(parsed, apiKey, protocol)
     );
   }
 
@@ -475,6 +477,7 @@ async function probeProtocols(
 
 async function probeProtocolSupport(
   parsed: ParsedProviderUrl,
+  apiKey: string | undefined,
   protocol: GatewayProviderProtocol
 ): Promise<GatewayProviderProbeProtocolResult> {
   const endpoints = endpointsForProtocol(parsed, protocol, undefined);
@@ -482,7 +485,7 @@ async function probeProtocolSupport(
   let firstResult: GatewayProviderProbeProtocolResult | undefined;
 
   for (const candidate of endpoints) {
-    const result = await requestJson(candidate.endpoint, requestForProtocolSupport(protocol));
+    const result = await requestJson(candidate.endpoint, requestForProtocolSupport(protocol, apiKey));
     const message = readResponseMessage(result);
     const supported = isProtocolEndpointSupported(result.status, message);
     const probeResult = {
@@ -620,12 +623,12 @@ function requestForProtocol(protocol: GatewayProviderProtocol, model: string, ap
   };
 }
 
-function requestForProtocolSupport(protocol: GatewayProviderProtocol): RequestInit {
+function requestForProtocolSupport(protocol: GatewayProviderProtocol, apiKey: string | undefined): RequestInit {
   return {
     body: JSON.stringify({}),
     headers: {
       "content-type": "application/json",
-      ...(protocol === "anthropic_messages" ? { "anthropic-version": "2023-06-01" } : {})
+      ...headersForProtocol(protocol, apiKey)
     },
     method: "POST"
   };
@@ -686,10 +689,16 @@ function endpointsForProtocol(
   }
 
   if (protocol === "anthropic_messages") {
-    return parsed.anthropicBaseUrlCandidates.map((baseUrl) => ({
-      baseUrl,
-      endpoint: `${baseUrl}/v1/messages`
-    }));
+    return parsed.anthropicBaseUrlCandidates.flatMap((baseUrl) => uniqueProtocolEndpoints([
+      {
+        baseUrl,
+        endpoint: `${baseUrl}/v1/messages`
+      },
+      {
+        baseUrl,
+        endpoint: `${baseUrl}/messages`
+      }
+    ]));
   }
 
   const encodedModel = encodeURIComponent(stripGeminiModelPrefix(model || "model"));
@@ -732,6 +741,16 @@ function geminiHeaders(apiKey: string | undefined): Record<string, string> {
         "x-goog-api-key": apiKey
       }
     : {};
+}
+
+function headersForProtocol(protocol: GatewayProviderProtocol, apiKey: string | undefined): Record<string, string> {
+  if (protocol === "anthropic_messages") {
+    return anthropicHeaders(apiKey);
+  }
+  if (protocol === "gemini_generate_content") {
+    return geminiHeaders(apiKey);
+  }
+  return openAiHeaders(apiKey);
 }
 
 function parseModelList(payload: unknown, source: ModelSource): Pick<ModelFetchResult, "modelDisplayNames" | "models"> {
@@ -1065,6 +1084,20 @@ function uniqueStrings(values: string[]): string[] {
 
 function uniqueProtocols(values: GatewayProviderProtocol[]): GatewayProviderProtocol[] {
   return values.filter((value, index) => values.indexOf(value) === index);
+}
+
+function uniqueProtocolEndpoints(values: ProtocolEndpoint[]): ProtocolEndpoint[] {
+  const seen = new Set<string>();
+  const result: ProtocolEndpoint[] = [];
+  for (const value of values) {
+    const key = `${value.baseUrl}\n${value.endpoint}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(value);
+  }
+  return result;
 }
 
 function uniqueModelSources(values: ModelSource[]): ModelSource[] {

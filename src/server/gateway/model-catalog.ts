@@ -1,5 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve as pathResolve } from "node:path";
+import { loadModelCatalogPayload } from "../../main/model-catalog-file";
 
 const claudeCodeDefaultContextTokens = 200_000;
 let modelCatalogIndex: ModelCatalogIndex | undefined;
@@ -94,17 +93,14 @@ function loadModelCatalogIndex(): ModelCatalogIndex {
     return modelCatalogIndex;
   }
 
-  for (const candidate of modelCatalogPathCandidates()) {
-    if (!existsSync(candidate)) {
-      continue;
-    }
-    try {
-      const parsed = JSON.parse(readFileSync(candidate, "utf8")) as unknown;
-      modelCatalogIndex = buildModelCatalogIndex(parsed, candidate);
+  try {
+    const loaded = loadModelCatalogPayload();
+    if (loaded) {
+      modelCatalogIndex = buildModelCatalogIndex(loaded.payload, loaded.loadedFrom);
       return modelCatalogIndex;
-    } catch (error) {
-      console.warn(`Failed to load model catalog from ${candidate}:`, error);
     }
+  } catch (error) {
+    console.warn("Failed to load model catalog:", error);
   }
 
   modelCatalogIndex = {
@@ -112,17 +108,6 @@ function loadModelCatalogIndex(): ModelCatalogIndex {
     byModelKey: new Map()
   };
   return modelCatalogIndex;
-}
-
-function modelCatalogPathCandidates(): string[] {
-  return uniqueStrings([
-    process.env.CCR_MODEL_CATALOG_PATH?.trim() || "",
-    process.env.CCR_MODELS_JSON_PATH?.trim() || "",
-    pathResolve(process.cwd(), "models.json"),
-    pathResolve(__dirname, "..", "models.json"),
-    pathResolve(__dirname, "..", "assets", "models.json"),
-    pathResolve(__dirname, "..", "..", "..", "models.json")
-  ]);
 }
 
 function buildModelCatalogIndex(payload: unknown, loadedFrom: string): ModelCatalogIndex {

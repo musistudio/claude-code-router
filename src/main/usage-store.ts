@@ -59,6 +59,11 @@ type UsageStatsQueryOptions = {
   includeProxy?: boolean;
 };
 
+type UsageWhereClause = {
+  params: SqlValue[];
+  where: string;
+};
+
 type StoredUsageEvent = {
   cacheReadTokens: number;
   cacheWriteTokens: number;
@@ -98,7 +103,7 @@ const emptyTotals: UsageTotals = {
   totalTokens: 0
 };
 
-class UsageStore {
+export class UsageStore {
   private database?: SqlDatabase;
   private initPromise?: Promise<SqlDatabase>;
 
@@ -174,27 +179,23 @@ class UsageStore {
     const database = await this.getDatabase();
     const now = new Date();
     const since = getRangeSince(range, now);
-    const query = buildUsageStatsQuery(since, filter);
-    const events = queryRows(database, query.sql, query.params).map(toStoredUsageEvent);
+    const query = buildUsageWhereClause(since, filter);
 
     return {
-      clientModels: buildClientModelRows(events),
+      clientModels: readClientModelRows(database, query),
       generatedAt: now.toISOString(),
-      models: buildModelRows(events),
-      providerModels: buildProviderModelRows(events),
+      models: readModelRows(database, query),
+      providerModels: readProviderModelRows(database, query),
       range,
-      recentRequests: buildRecentRequestRows(events),
-      series: buildSeries(range, now, events),
-      totals: buildTotals(events)
+      recentRequests: readRecentRequestRows(database, query),
+      series: readUsageSeries(database, range, now, query),
+      totals: readUsageTotals(database, query)
     };
   }
 
   async getTotalsSince(since: Date, filter: UsageStatsFilter = {}, options: UsageStatsQueryOptions = {}): Promise<UsageTotals> {
     const database = await this.getDatabase();
-    const query = buildUsageStatsQuery(since, filter, options);
-    const events = queryRows(database, query.sql, query.params).map(toStoredUsageEvent);
-
-    return buildTotals(events);
+    return readUsageTotals(database, buildUsageWhereClause(since, filter, options));
   }
 
   private async getDatabase(): Promise<SqlDatabase> {
@@ -277,6 +278,10 @@ function ensureUsageSchema(database: SqlDatabase): void {
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_credential_id_idx ON usage_events(credential_id)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_model_idx ON usage_events(model)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_path_idx ON usage_events(path)");
+  database.exec("CREATE INDEX IF NOT EXISTS usage_events_created_filter_idx ON usage_events(created_at, provider, model, credential_id)");
+  database.exec("CREATE INDEX IF NOT EXISTS usage_events_provider_created_at_idx ON usage_events(provider, created_at)");
+  database.exec("CREATE INDEX IF NOT EXISTS usage_events_model_created_at_idx ON usage_events(model, created_at)");
+  database.exec("CREATE INDEX IF NOT EXISTS usage_events_credential_created_at_idx ON usage_events(credential_id, created_at)");
 }
 
 export async function getUsageStats(range?: UsageStatsRange, filter?: UsageStatsFilter): Promise<UsageStatsSnapshot> {
@@ -339,11 +344,11 @@ export async function recordGatewayUsageCapture(input: UsageCaptureInput): Promi
   }
 }
 
-function buildUsageStatsQuery(
+function buildUsageWhereClause(
   since: Date,
   filter: UsageStatsFilter,
   options: UsageStatsQueryOptions = {}
-): { params: SqlValue[]; sql: string } {
+): UsageWhereClause {
   const where = ["created_at >= ?"];
   const params: SqlValue[] = [since.toISOString()];
   const credential = normalizeFilterValue(filter.credential);
@@ -368,30 +373,7 @@ function buildUsageStatsQuery(
 
   return {
     params,
-    sql: `
-          SELECT
-            id,
-            created_at,
-            request_id,
-            client,
-            method,
-            path,
-            model,
-            provider,
-            credential_id,
-            status_code,
-            duration_ms,
-            input_tokens,
-            output_tokens,
-            cache_read_tokens,
-            cache_write_tokens,
-            total_tokens,
-            cost_usd,
-            cost_source
-          FROM usage_events
-          WHERE ${where.join(" AND ")}
-          ORDER BY created_at ASC
-        `
+    where: where.join(" AND ")
   };
 }
 
@@ -425,6 +407,220 @@ function toStoredUsageEvent(row: Record<string, SqlValue>): StoredUsageEvent {
     requestId: String(row.request_id ?? ""),
     statusCode: normalizeCount(row.status_code),
     totalTokens: normalizeCount(row.total_tokens)
+  };
+}
+
+const usageTotalsSelect = `
+            COUNT(*) AS request_count,
+            COALESCE(SUM(input_tokens), 0) AS input_tokens,
+            COALESCE(SUM(output_tokens), 0) AS output_tokens,
+            COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
+            COALESCE(SUM(cache_write_tokens), 0) AS cache_write_tokens,
+            COALESCE(SUM(CASE
+              WHEN total_tokens > 0 THEN total_tokens
+              ELSE input_tokens + output_tokens + cache_read_tokens + cache_write_tokens
+            END), 0) AS computed_total_tokens,
+            COALESCE(SUM(COALESCE(cost_usd, 0)), 0) AS cost_usd,
+            COALESCE(SUM(duration_ms), 0) AS duration_ms,
+            COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END), 0) AS success_count,
+            COALESCE(SUM(CASE
+              WHEN total_tokens - output_tokens > 0 THEN MAX(input_tokens, total_tokens - output_tokens)
+              ELSE input_tokens + cache_read_tokens + cache_write_tokens
+            END), 0) AS prompt_tokens
+`;
+
+function readUsageTotals(database: SqlDatabase, query: UsageWhereClause): UsageTotals {
+  const row = queryRows(
+    database,
+    `
+      SELECT
+        ${usageTotalsSelect}
+      FROM usage_events
+      WHERE ${query.where}
+    `,
+    query.params
+  )[0];
+  return usageTotalsFromRow(row);
+}
+
+function readUsageSeries(
+  database: SqlDatabase,
+  range: UsageStatsRange,
+  now: Date,
+  query: UsageWhereClause
+): UsageSeriesPoint[] {
+  const unit: "day" | "hour" = range === "today" || range === "24h" ? "hour" : "day";
+  const bucketExpression = unit === "hour"
+    ? "strftime('%Y-%m-%d %H:00', created_at, 'localtime')"
+    : "strftime('%Y-%m-%d', created_at, 'localtime')";
+  const rows = queryRows(
+    database,
+    `
+      SELECT
+        ${bucketExpression} AS bucket,
+        ${usageTotalsSelect}
+      FROM usage_events
+      WHERE ${query.where}
+      GROUP BY bucket
+    `,
+    query.params
+  );
+  const totalsByBucket = new Map(rows.map((row) => [String(row.bucket ?? ""), usageTotalsFromRow(row)]));
+
+  return buildBuckets(range, now).map(({ key, label }) => ({
+    ...(totalsByBucket.get(key) ?? { ...emptyTotals }),
+    bucket: key,
+    label
+  }));
+}
+
+function readModelRows(database: SqlDatabase, query: UsageWhereClause): UsageComparisonRow[] {
+  const rows = readUsageGroupRows(
+    database,
+    query,
+    "provider, model",
+    "provider, model, MAX(credential_id) AS credential_id",
+    8
+  ).map((row) => ({
+    ...usageTotalsFromRow(row),
+    caption: normalizeLabel(String(row.provider ?? ""), "unknown"),
+    credentialId: normalizeFilterValue(String(row.credential_id ?? "")),
+    key: `${normalizeLabel(String(row.provider ?? ""), "unknown")}::${normalizeLabel(String(row.model ?? ""), "unknown")}`,
+    label: normalizeLabel(String(row.model ?? ""), "unknown"),
+    maxShare: 0,
+    model: normalizeLabel(String(row.model ?? ""), "unknown"),
+    provider: normalizeLabel(String(row.provider ?? ""), "unknown")
+  }));
+  return applyMaxShare(rows, (row) => row.totalTokens || row.requestCount);
+}
+
+function readClientModelRows(database: SqlDatabase, query: UsageWhereClause): UsageComparisonRow[] {
+  const rows = readUsageGroupRows(
+    database,
+    query,
+    "client, provider, credential_id, model",
+    "client, provider, credential_id, model",
+    25
+  ).map((row) => {
+    const client = normalizeLabel(String(row.client ?? ""), "unknown");
+    const model = normalizeLabel(String(row.model ?? ""), "unknown");
+    const provider = normalizeLabel(String(row.provider ?? ""), "unknown");
+    const credentialId = normalizeFilterValue(String(row.credential_id ?? "")) ?? "";
+    return {
+      ...usageTotalsFromRow(row),
+      caption: credentialId ? `${provider} / ${credentialId} / ${model}` : `${provider} / ${model}`,
+      client,
+      credentialId: credentialId || undefined,
+      key: `${client}::${provider}::${credentialId}::${model}`,
+      label: client,
+      maxShare: 0,
+      model,
+      provider
+    };
+  });
+  return applyMaxShare(rows, (row) => row.totalTokens || row.requestCount);
+}
+
+function readProviderModelRows(database: SqlDatabase, query: UsageWhereClause): UsageComparisonRow[] {
+  const rows = readUsageGroupRows(
+    database,
+    query,
+    "provider, credential_id, model",
+    "provider, credential_id, model",
+    25
+  ).map((row) => {
+    const model = normalizeLabel(String(row.model ?? ""), "unknown");
+    const provider = normalizeLabel(String(row.provider ?? ""), "unknown");
+    const credentialId = normalizeFilterValue(String(row.credential_id ?? "")) ?? "";
+    return {
+      ...usageTotalsFromRow(row),
+      caption: credentialId ? `${credentialId} / ${model}` : model,
+      credentialId: credentialId || undefined,
+      key: `${provider}::${credentialId}::${model}`,
+      label: provider,
+      maxShare: 0,
+      model,
+      provider
+    };
+  });
+  return applyMaxShare(rows, (row) => row.totalTokens || row.requestCount);
+}
+
+function readUsageGroupRows(
+  database: SqlDatabase,
+  query: UsageWhereClause,
+  groupBy: string,
+  selectColumns: string,
+  limit: number
+): Record<string, SqlValue>[] {
+  return queryRows(
+    database,
+    `
+      SELECT
+        ${selectColumns},
+        ${usageTotalsSelect}
+      FROM usage_events
+      WHERE ${query.where}
+      GROUP BY ${groupBy}
+      ORDER BY computed_total_tokens DESC, request_count DESC
+      LIMIT ?
+    `,
+    [...query.params, limit]
+  );
+}
+
+function readRecentRequestRows(database: SqlDatabase, query: UsageWhereClause): UsageComparisonRow[] {
+  const events = queryRows(
+    database,
+    `
+      SELECT
+        id,
+        created_at,
+        request_id,
+        client,
+        method,
+        path,
+        model,
+        provider,
+        credential_id,
+        status_code,
+        duration_ms,
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
+        cache_write_tokens,
+        total_tokens,
+        cost_usd,
+        cost_source
+      FROM usage_events
+      WHERE ${query.where}
+      ORDER BY created_at DESC, id DESC
+      LIMIT 10
+    `,
+    query.params
+  ).map(toStoredUsageEvent).reverse();
+  return buildRecentRequestRows(events);
+}
+
+function usageTotalsFromRow(row: Record<string, SqlValue> | undefined): UsageTotals {
+  const requestCount = normalizeCount(row?.request_count);
+  if (requestCount === 0) {
+    return { ...emptyTotals };
+  }
+  const successfulRequests = normalizeCount(row?.success_count);
+  const promptTokens = normalizeCount(row?.prompt_tokens);
+  const cacheTokens = normalizeCount(row?.cache_read_tokens);
+  return {
+    avgDurationMs: Math.round(normalizeCount(row?.duration_ms) / requestCount),
+    cacheRatio: ratio(cacheTokens, promptTokens),
+    cacheTokens,
+    costUsd: normalizeCost(row?.cost_usd),
+    errorCount: requestCount - successfulRequests,
+    inputTokens: normalizeCount(row?.input_tokens),
+    outputTokens: normalizeCount(row?.output_tokens),
+    requestCount,
+    successRate: successfulRequests / requestCount,
+    totalTokens: normalizeCount(row?.computed_total_tokens)
   };
 }
 

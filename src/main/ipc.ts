@@ -24,7 +24,7 @@ import { getProfileOpenCommand, getProfileRuntimeStatus, openProfileFromCcr, sto
 import { ensureProxyCertificateAuthority } from "../server/proxy/certificates";
 import { proxyService } from "../server/proxy/service";
 import { listMcpServerTools } from "../server/mcp/tool-discovery";
-import { getAgentAnalysis, getAgentTracePayload, getRequestLogs } from "./request-log-store";
+import { getAgentAnalysis, getAgentTracePayload, getRequestLogDetail, getRequestLogs } from "./request-log-store";
 import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
 import { getUsageStats } from "./usage-store";
@@ -94,6 +94,7 @@ ipcMain.handle(IPC_CHANNELS.appGetProxyCertificateStatus, () => proxyService.get
 ipcMain.handle(IPC_CHANNELS.appGetProxyNetworkCaptures, () => proxyService.getNetworkCaptures());
 ipcMain.handle(IPC_CHANNELS.appGetProxyStatus, () => proxyService.getStatus());
 ipcMain.handle(IPC_CHANNELS.appGetPluginMarketplace, () => pluginMarketplace);
+ipcMain.handle(IPC_CHANNELS.appGetRequestLogDetail, (_event, request) => getRequestLogDetail(request));
 ipcMain.handle(IPC_CHANNELS.appGetRequestLogs, (_event, filter?: RequestLogListFilter) => getRequestLogs(filter));
 ipcMain.handle(IPC_CHANNELS.appGetUpdateStatus, () => appUpdateService.getStatus());
 ipcMain.handle(IPC_CHANNELS.appGetUsageStats, (_event, range?: UsageStatsRange, filter?: UsageStatsFilter) => getUsageStats(range, filter));

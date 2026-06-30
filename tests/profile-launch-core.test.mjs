@@ -1,0 +1,104 @@
+import assert from "node:assert/strict";
+import path from "node:path";
+import test from "node:test";
+import {
+  buildProfileLaunchPlan,
+  ccrManagedProfileDir,
+  findProfileForOpen,
+  profileOpenCommand,
+  profileOpenSurfaces,
+  resolveClaudeCodeSettingsFile,
+  resolveCodexConfigFile,
+  resolveProfileOpenSurface
+} from "../src/main/profile-launch-core.ts";
+
+const claudeProfile = {
+  agent: "claude-code",
+  enabled: true,
+  id: "claude-main",
+  model: "provider,model",
+  name: "Claude Main",
+  scope: "ccr",
+  surface: "auto"
+};
+
+const codexProfile = {
+  agent: "codex",
+  enabled: true,
+  id: "codex-main",
+  model: "provider,model",
+  name: "Codex Main",
+  providerId: "openai-codex",
+  scope: "ccr",
+  surface: "auto"
+};
+
+test("findProfileForOpen resolves enabled profiles and reports ambiguous names", () => {
+  const config = {
+    profile: {
+      profiles: [
+        claudeProfile,
+        { ...claudeProfile, enabled: false, id: "disabled", name: "Disabled" },
+        { ...codexProfile, id: "duplicate-a", name: "Duplicate Name" },
+        { ...codexProfile, id: "duplicate-b", name: "duplicate name" }
+      ]
+    }
+  };
+
+  assert.equal(findProfileForOpen(config, "claude-main").id, "claude-main");
+  assert.equal(findProfileForOpen(config, "claude main").id, "claude-main");
+  assert.throws(() => findProfileForOpen(config, "duplicate name"), /ambiguous/);
+  assert.throws(() => findProfileForOpen(config, "Disabled"), /not found or is disabled/);
+});
+
+test("profile open surfaces enforce agent capabilities", () => {
+  assert.deepEqual(profileOpenSurfaces(claudeProfile), ["cli", "app"]);
+  assert.deepEqual(profileOpenSurfaces({ ...claudeProfile, surface: "cli" }), ["cli"]);
+  assert.deepEqual(profileOpenSurfaces({ ...codexProfile, agent: "zcode" }), ["app"]);
+  assert.equal(resolveProfileOpenSurface(codexProfile, "app"), "app");
+  assert.throws(() => resolveProfileOpenSurface({ ...claudeProfile, surface: "cli" }, "app"), /does not support APP/);
+});
+
+test("buildProfileLaunchPlan creates CCR-managed launcher paths", () => {
+  const configDir = path.join(path.sep, "tmp", "ccr-config");
+  const codexPlan = buildProfileLaunchPlan(configDir, codexProfile, "app");
+  const claudePlan = buildProfileLaunchPlan(configDir, claudeProfile, "cli", ["--debug"]);
+
+  assert.equal(codexPlan.surface, "app");
+  assert.deepEqual(codexPlan.args, ["app"]);
+  assert.equal(path.basename(codexPlan.command), process.platform === "win32" ? "ccr-codex-cli-stdio-codex-main.cmd" : "ccr-codex-cli-stdio-codex-main");
+  assert.equal(codexPlan.env.CCR_PROFILE_SURFACE, "app");
+
+  assert.equal(claudePlan.surface, "cli");
+  assert.deepEqual(claudePlan.args, ["--debug"]);
+  assert.equal(path.basename(claudePlan.command), process.platform === "win32" ? "ccr-claude-code-wrapper-claude-main.cmd" : "ccr-claude-code-wrapper-claude-main");
+  assert.equal(claudePlan.env.CCR_PROFILE_SURFACE, "cli");
+  assert.match(claudePlan.env.CLAUDE_CONFIG_DIR, /claude$/);
+
+  assert.throws(() => buildProfileLaunchPlan(configDir, claudeProfile, "app"), /Claude App opening/);
+});
+
+test("profile config paths honor CCR, custom, and global scopes", () => {
+  const configDir = path.join(path.sep, "tmp", "ccr-config");
+  const customProfile = { ...codexProfile, id: "Custom Profile", scope: "custom" };
+  const globalCodex = { ...codexProfile, codexHome: "~/codex-home", scope: "global" };
+
+  assert.equal(
+    ccrManagedProfileDir(configDir, customProfile),
+    path.join(configDir, "profiles", "custom-profile", "custom")
+  );
+  assert.equal(
+    resolveClaudeCodeSettingsFile(configDir, claudeProfile),
+    path.join(configDir, "profiles", "claude-main", "claude", "settings.json")
+  );
+  assert.equal(
+    resolveCodexConfigFile(configDir, customProfile),
+    path.join(configDir, "profiles", "custom-profile", "custom", "codex", "config.toml")
+  );
+  assert.equal(resolveCodexConfigFile(configDir, globalCodex), path.join(process.env.HOME, "codex-home", "config.toml"));
+});
+
+test("profileOpenCommand quotes profile references for shell usage", () => {
+  assert.match(profileOpenCommand(claudeProfile, "cli", "ccr", "Claude Main"), /Claude/);
+  assert.match(profileOpenCommand(claudeProfile, "cli", "ccr", "Claude Main"), /Main/);
+});

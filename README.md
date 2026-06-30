@@ -67,9 +67,11 @@ The web management UI listens on `http://127.0.0.1:3458` by default. Use `ccr st
    - Windows: `Claude Code Router_<version>.exe`
    - Linux: `Claude Code Router_<version>.AppImage`
 3. Install and launch **Claude Code Router**.
-4. On first launch, CCR creates its local configuration:
-   - macOS/Linux: `~/.claude-code-router/config.json`
-   - Windows: `%APPDATA%\Claude Code Router\config.json`
+4. On first launch, CCR creates its local configuration database:
+   - macOS/Linux: `~/.claude-code-router/config.sqlite`
+   - Windows: `%APPDATA%\Claude Code Router\config.sqlite`
+
+CCR stores runtime configuration in SQLite. A legacy `config.json` is read only once for migration when no SQLite config exists.
 
 CCR starts two local services when the gateway is enabled:
 

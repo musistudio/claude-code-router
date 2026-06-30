@@ -112,6 +112,7 @@ window.ccr = {
   getProxyCertificateStatus: () => rpc("getProxyCertificateStatus") as ReturnType<NonNullable<typeof window.ccr>["getProxyCertificateStatus"]>,
   getProxyNetworkCaptures: () => rpc("getProxyNetworkCaptures") as ReturnType<NonNullable<typeof window.ccr>["getProxyNetworkCaptures"]>,
   getProxyStatus: () => rpc("getProxyStatus") as ReturnType<NonNullable<typeof window.ccr>["getProxyStatus"]>,
+  getRequestLogDetail: (request) => rpc("getRequestLogDetail", [request]) as ReturnType<NonNullable<typeof window.ccr>["getRequestLogDetail"]>,
   getRequestLogs: (filter) => rpc("getRequestLogs", [filter]) as ReturnType<NonNullable<typeof window.ccr>["getRequestLogs"]>,
   getUpdateStatus: () => rpc("getUpdateStatus") as ReturnType<NonNullable<typeof window.ccr>["getUpdateStatus"]>,
   getUsageStats: (range, filter) => rpc("getUsageStats", [range, filter]) as ReturnType<NonNullable<typeof window.ccr>["getUsageStats"]>,

@@ -1436,6 +1436,10 @@ export type RequestLogListFilter = {
   status?: RequestLogStatusFilter;
 };
 
+export type RequestLogDetailRequest = {
+  id: number;
+};
+
 export type RequestLogBody = ProxyNetworkBody;
 
 export type RequestLogRetryAttempt = {

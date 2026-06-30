@@ -1,7 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve as pathResolve } from "node:path";
 import type { ProviderCatalogModelsRequest, ProviderCatalogModelsResult } from "../shared/app";
 import { providerUrlWithDefaultScheme } from "../shared/provider-url";
+import { loadModelCatalogPayload } from "./model-catalog-file";
 import { findProviderPreset, findProviderPresetByBaseUrl } from "./presets";
 
 type CatalogProviderEntry = {
@@ -121,34 +120,20 @@ function loadCatalogIndex(): CatalogIndex {
     return catalogIndex;
   }
 
-  for (const candidate of catalogPathCandidates()) {
-    if (!existsSync(candidate)) {
-      continue;
-    }
-    try {
-      const payload = JSON.parse(readFileSync(candidate, "utf8")) as unknown;
-      catalogIndex = buildCatalogIndex(payload, candidate);
+  try {
+    const loaded = loadModelCatalogPayload();
+    if (loaded) {
+      catalogIndex = buildCatalogIndex(loaded.payload, loaded.loadedFrom);
       return catalogIndex;
-    } catch (error) {
-      console.warn(`Failed to load provider model catalog from ${candidate}:`, error);
     }
+  } catch (error) {
+    console.warn("Failed to load provider model catalog:", error);
   }
 
   catalogIndex = {
     providers: []
   };
   return catalogIndex;
-}
-
-function catalogPathCandidates(): string[] {
-  return uniqueStrings([
-    process.env.CCR_MODEL_CATALOG_PATH?.trim() || "",
-    process.env.CCR_MODELS_JSON_PATH?.trim() || "",
-    pathResolve(process.cwd(), "models.json"),
-    pathResolve(__dirname, "..", "models.json"),
-    pathResolve(__dirname, "..", "assets", "models.json"),
-    pathResolve(__dirname, "..", "..", "..", "models.json")
-  ]);
 }
 
 function buildCatalogIndex(payload: unknown, loadedFrom: string): CatalogIndex {

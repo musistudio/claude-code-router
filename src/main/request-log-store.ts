@@ -30,6 +30,8 @@ import type {
   AgentKind,
   GatewayProviderProtocol,
   RequestLogBody,
+  RequestLogDetailRequest,
+  RequestLogEntry,
   RequestLogFilterOptions,
   RequestLogListFilter,
   RequestLogPage,
@@ -195,6 +197,10 @@ const maxBodyBytes = 2 * 1024 * 1024;
 const maxAgentAnalysisRows = 5000;
 const maxAgentSessionDetailRequests = 250;
 const maxTracePayloadPreviewChars = 1600;
+const requestLogBodyMetadataSelect = `
+            '' AS request_body_text,
+            '' AS response_body_text
+`;
 const emptyAgentAnalysisTotals: AgentAnalysisTotals = {
   avgDurationMs: 0,
   cacheRatio: 0,
@@ -227,10 +233,18 @@ const sensitiveHeaderNames = new Set([
   "x-auth-sub"
 ]);
 
-class RequestLogStore {
+type AgentAnalysisCacheEntry = {
+  filterKey: string;
+  revision: number;
+  snapshot: AgentAnalysisSnapshot;
+};
+
+export class RequestLogStore {
   private database?: SqlDatabase;
   private initPromise?: Promise<SqlDatabase>;
   private lastRetentionCleanupDay?: string;
+  private revision = 0;
+  private analysisCache?: AgentAnalysisCacheEntry;
 
   constructor(private readonly dbFile: string) {}
 
@@ -371,6 +385,7 @@ class RequestLogStore {
       responseBody.truncated ? 1 : 0,
       responseError ?? ""
     );
+    this.revision += 1;
   }
 
   async updateFromRawTrace(input: RequestLogRawTraceUpdateInput): Promise<boolean> {
@@ -520,6 +535,7 @@ class RequestLogStore {
     }
 
     database.prepare(`UPDATE request_logs SET ${sets.join(", ")} WHERE request_id = ?`).run(...params, requestId);
+    this.revision += 1;
     return true;
   }
 
@@ -563,12 +579,11 @@ class RequestLogStore {
             cost_usd,
             request_headers,
             response_headers,
-            request_body_text,
+            ${requestLogBodyMetadataSelect},
             request_body_encoding,
             request_body_content_type,
             request_body_size_bytes,
             request_body_truncated,
-            response_body_text,
             response_body_encoding,
             response_body_content_type,
             response_body_size_bytes,
@@ -593,10 +608,26 @@ class RequestLogStore {
     };
   }
 
+  async getDetail(request: RequestLogDetailRequest): Promise<RequestLogEntry | undefined> {
+    const database = await this.getDatabase();
+    const requestLogId = normalizeCount(request.id);
+    if (requestLogId <= 0) {
+      return undefined;
+    }
+    return readRequestLogById(database, requestLogId);
+  }
+
   async analyze(filter: AgentAnalysisFilter = {}): Promise<AgentAnalysisSnapshot> {
     const database = await this.getDatabase();
     this.pruneOldRequestLogs(database);
     const now = new Date();
+    const filterKey = agentAnalysisCacheKey(filter);
+    if (this.analysisCache?.revision === this.revision && this.analysisCache.filterKey === filterKey) {
+      return {
+        ...this.analysisCache.snapshot,
+        generatedAt: now.toISOString()
+      };
+    }
     const range = normalizeAgentAnalysisRange(filter.range);
     const since = getAgentAnalysisSince(range, now);
     const rows = queryRows(
@@ -665,7 +696,7 @@ class RequestLogStore {
       ? buildAgentSessionDetail(analysisRequests)
       : undefined;
 
-    return {
+    const snapshot: AgentAnalysisSnapshot = {
       agents: buildAgentRows(analysisRequests),
       clients: buildAgentClientRows(analysisRequests),
       concurrency: buildAgentConcurrencySeries(range, now, analysisRequests),
@@ -682,6 +713,12 @@ class RequestLogStore {
       tools: buildAgentToolRows(analysisRequests),
       totals: buildAgentAnalysisTotals(analysisRequests)
     };
+    this.analysisCache = {
+      filterKey,
+      revision: this.revision,
+      snapshot
+    };
+    return snapshot;
   }
 
   async getTracePayload(request: AgentAnalysisTracePayloadRequest): Promise<AgentAnalysisTracePayloadFullResult> {
@@ -840,6 +877,15 @@ export async function getRequestLogs(filter?: RequestLogListFilter): Promise<Req
   }
 }
 
+export async function getRequestLogDetail(request: RequestLogDetailRequest): Promise<RequestLogEntry | undefined> {
+  try {
+    return await requestLogStore.getDetail(request);
+  } catch (error) {
+    console.warn(`[request-log] Failed to read request log detail: ${formatError(error)}`);
+    throw error;
+  }
+}
+
 export async function getAgentAnalysis(filter?: AgentAnalysisFilter): Promise<AgentAnalysisSnapshot> {
   try {
     return await requestLogStore.analyze(filter);
@@ -900,6 +946,15 @@ function toAnalyzedAgentRequest(entry: StoredRequestLogEntry): AnalyzedAgentRequ
     totalTokens: entry.totalTokens,
     userAgent: details.userAgent
   };
+}
+
+function agentAnalysisCacheKey(filter: AgentAnalysisFilter): string {
+  return JSON.stringify({
+    agent: normalizeAgentFilter(filter.agent),
+    range: normalizeAgentAnalysisRange(filter.range),
+    sessionAgent: normalizeAgentFilter(filter.sessionAgent),
+    sessionId: normalizeFilterValue(filter.sessionId)
+  });
 }
 
 function extractAgentLogDetails(entry: StoredRequestLogEntry): AgentLogDetails {
@@ -2632,6 +2687,11 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   database.exec("CREATE INDEX IF NOT EXISTS request_logs_provider_idx ON request_logs(provider)");
   database.exec("CREATE INDEX IF NOT EXISTS request_logs_source_usage_id_idx ON request_logs(source_usage_id)");
   database.exec("CREATE INDEX IF NOT EXISTS request_logs_status_idx ON request_logs(ok, status_code)");
+  database.exec("CREATE INDEX IF NOT EXISTS request_logs_list_idx ON request_logs(source_usage_id, created_at DESC, id DESC)");
+  database.exec("CREATE INDEX IF NOT EXISTS request_logs_credential_created_at_idx ON request_logs(credential_id, created_at DESC)");
+  database.exec("CREATE INDEX IF NOT EXISTS request_logs_model_created_at_idx ON request_logs(model, created_at DESC)");
+  database.exec("CREATE INDEX IF NOT EXISTS request_logs_provider_created_at_idx ON request_logs(provider, created_at DESC)");
+  database.exec("CREATE INDEX IF NOT EXISTS request_logs_status_created_at_idx ON request_logs(ok, created_at DESC)");
 }
 
 function backfillRequestLogStreamFlags(database: SqlDatabase): void {

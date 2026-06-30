@@ -24,7 +24,7 @@ import { getProfileOpenCommand, getProfileRuntimeStatus, openProfileFromCcr, sto
 import { ensureProxyCertificateAuthority } from "../server/proxy/certificates";
 import { proxyService } from "../server/proxy/service";
 import { listMcpServerTools } from "../server/mcp/tool-discovery";
-import { getAgentAnalysis, getAgentTracePayload, getRequestLogs } from "./request-log-store";
+import { getAgentAnalysis, getAgentTracePayload, getRequestLogDetail, getRequestLogs } from "./request-log-store";
 import { getUsageStats } from "./usage-store";
 import { gatewayService } from "../server/gateway/service";
 import { getProviderAccountSnapshots, invalidateProviderAccountSnapshotCache, testProviderAccountConnector } from "./provider-account-service";
@@ -57,6 +57,7 @@ import type {
   ProviderCatalogModelsRequest,
   ProviderIconDetectionRequest,
   ProviderManifestFetchRequest,
+  RequestLogDetailRequest,
   RequestLogListFilter,
   UsageStatsFilter,
   UsageStatsRange
@@ -285,6 +286,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
   getProxyCertificateStatus: () => proxyService.getCertificateStatus(),
   getProxyNetworkCaptures: () => proxyService.getNetworkCaptures(),
   getProxyStatus: () => proxyService.getStatus(),
+  getRequestLogDetail: (request) => getRequestLogDetail(request as RequestLogDetailRequest),
   getRequestLogs: (filter) => getRequestLogs(filter as RequestLogListFilter | undefined),
   getUpdateStatus: () => unsupportedUpdateStatus,
   getUsageStats: (range, filter) => getUsageStats(range as UsageStatsRange | undefined, filter as UsageStatsFilter | undefined),
