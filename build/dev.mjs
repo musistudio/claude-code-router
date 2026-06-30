@@ -207,7 +207,8 @@ function restartElectron() {
     cwd: projectRoot,
     env: {
       ...process.env,
-      NODE_ENV: "development"
+      NODE_ENV: "development",
+      CCR_DEV: "1"
     },
     stdio: "inherit"
   });

@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { loadPersistedAppConfig, replacePersistedAppConfig } from "./app-config-store";
 import { loadPersistedApiKeys, replacePersistedApiKeys } from "./api-key-store";
-import { CONFIG_FILE, GATEWAY_CONFIG_FILE, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FILE } from "./constants";
+import { CONFIG_FILE, GATEWAY_CONFIG_FILE, IS_DEV, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FILE } from "./constants";
 import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "../shared/app";
 import { createDefaultAppConfig } from "../shared/default-config";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "./presets";
@@ -91,10 +91,13 @@ const REMOVED_LEGACY_ROUTER_RULE_IDS = new Set([
 ]);
 const INTERNAL_GATEWAY_CORE_HOST = "127.0.0.1";
 const GENERATED_GATEWAY_API_KEY_ID = "local-gateway";
+const DEFAULT_PORT = IS_DEV ? 3466 : 3456;
 
 const DEFAULT_CONFIG: AppConfig = createDefaultAppConfig({
   coreHost: INTERNAL_GATEWAY_CORE_HOST,
-  generatedConfigFile: GATEWAY_CONFIG_FILE
+  corePort: DEFAULT_PORT + 1,
+  generatedConfigFile: GATEWAY_CONFIG_FILE,
+  port: DEFAULT_PORT
 });
 
 function completeBotGatewayConfig(config: LoadedBotGatewayConfig | undefined): BotGatewayRuntimeConfig {
