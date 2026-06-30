@@ -10,7 +10,8 @@
     {
       "provider": "github",
       "owner": "musistudio",
-      "repo": "claude-code-router"
+      "repo": "claude-code-router",
+      "releaseType": "release"
     }
   ],
   "directories": {
