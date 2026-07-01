@@ -15,6 +15,35 @@ import { getThinkLevel } from "@/utils/thinking";
 import { createApiError } from "@/api/middleware";
 import { formatBase64 } from "@/utils/image";
 
+type OpenAIUsageLike = {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  cache_creation_input_tokens?: number;
+  prompt_tokens_details?: {
+    cached_tokens?: number;
+    cache_creation_tokens?: number;
+  };
+};
+
+function buildAnthropicUsageFromOpenAI(usage?: OpenAIUsageLike) {
+  const promptTokens = usage?.prompt_tokens || 0;
+  const cacheReadTokens = usage?.prompt_tokens_details?.cached_tokens || 0;
+  const cacheCreationTokens =
+    usage?.cache_creation_input_tokens ??
+    usage?.prompt_tokens_details?.cache_creation_tokens ??
+    0;
+
+  return {
+    input_tokens: Math.max(
+      0,
+      promptTokens - cacheReadTokens - cacheCreationTokens
+    ),
+    output_tokens: usage?.completion_tokens || 0,
+    cache_read_input_tokens: cacheReadTokens,
+    cache_creation_input_tokens: cacheCreationTokens,
+  };
+}
+
 export class AnthropicTransformer implements Transformer {
   name = "Anthropic";
   endPoint = "/v1/messages";
@@ -481,27 +510,12 @@ export class AnthropicTransformer implements Transformer {
                         stop_reason: "end_turn",
                         stop_sequence: null,
                       },
-                      usage: {
-                        input_tokens:
-                          (chunk.usage?.prompt_tokens || 0) -
-                          (chunk.usage?.prompt_tokens_details?.cached_tokens ||
-                            0),
-                        output_tokens: chunk.usage?.completion_tokens || 0,
-                        cache_read_input_tokens:
-                          chunk.usage?.prompt_tokens_details?.cached_tokens ||
-                          0,
-                      },
+                      usage: buildAnthropicUsageFromOpenAI(chunk.usage),
                     };
                   } else {
-                    stopReasonMessageDelta.usage = {
-                      input_tokens:
-                        (chunk.usage?.prompt_tokens || 0) -
-                        (chunk.usage?.prompt_tokens_details?.cached_tokens ||
-                          0),
-                      output_tokens: chunk.usage?.completion_tokens || 0,
-                      cache_read_input_tokens:
-                        chunk.usage?.prompt_tokens_details?.cached_tokens || 0,
-                    };
+                    stopReasonMessageDelta.usage = buildAnthropicUsageFromOpenAI(
+                      chunk.usage
+                    );
                   }
                 }
                 if (!choice) {
@@ -895,16 +909,7 @@ export class AnthropicTransformer implements Transformer {
                         stop_reason: anthropicStopReason,
                         stop_sequence: null,
                       },
-                      usage: {
-                        input_tokens:
-                          (chunk.usage?.prompt_tokens || 0) -
-                          (chunk.usage?.prompt_tokens_details?.cached_tokens ||
-                            0),
-                        output_tokens: chunk.usage?.completion_tokens || 0,
-                        cache_read_input_tokens:
-                          chunk.usage?.prompt_tokens_details?.cached_tokens ||
-                          0,
-                      },
+                      usage: buildAnthropicUsageFromOpenAI(chunk.usage),
                     };
                   }
 
@@ -1041,14 +1046,7 @@ export class AnthropicTransformer implements Transformer {
             ? "stop_sequence"
             : "end_turn",
         stop_sequence: null,
-        usage: {
-          input_tokens:
-            (openaiResponse.usage?.prompt_tokens || 0) -
-            (openaiResponse.usage?.prompt_tokens_details?.cached_tokens || 0),
-          output_tokens: openaiResponse.usage?.completion_tokens || 0,
-          cache_read_input_tokens:
-            openaiResponse.usage?.prompt_tokens_details?.cached_tokens || 0,
-        },
+        usage: buildAnthropicUsageFromOpenAI(openaiResponse.usage),
       };
       this.logger.debug(
         {
