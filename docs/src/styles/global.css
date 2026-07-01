@@ -847,6 +847,8 @@ pre {
 h1,
 h2,
 h3,
+h4,
+h5,
 p {
   overflow-wrap: anywhere;
 }
@@ -954,6 +956,24 @@ h1 {
   font-size: 17px;
   line-height: 1.4;
   font-weight: 720;
+}
+
+.doc-article h4,
+.doc-markdown > h4 {
+  margin: 24px 0 8px;
+  color: var(--heading);
+  font-size: 15px;
+  line-height: 1.45;
+  font-weight: 700;
+}
+
+.doc-article h5,
+.doc-markdown > h5 {
+  margin: 18px 0 6px;
+  color: var(--heading);
+  font-size: 14px;
+  line-height: 1.45;
+  font-weight: 680;
 }
 
 .doc-markdown > ul,
@@ -1552,11 +1572,31 @@ pre code span {
 }
 
 .toc a {
+  --toc-dot-left: 0px;
   position: relative;
   display: block;
   padding: 5px 0 5px 21px;
   color: var(--toc-text);
   line-height: 1.35;
+}
+
+.toc a.toc-depth-3 {
+  --toc-dot-left: 12px;
+  padding-left: 33px;
+  font-size: 13.5px;
+}
+
+.toc a.toc-depth-4 {
+  --toc-dot-left: 24px;
+  padding-left: 45px;
+  font-size: 13px;
+}
+
+.toc a.toc-depth-5,
+.toc a.toc-depth-6 {
+  --toc-dot-left: 36px;
+  padding-left: 57px;
+  font-size: 12.5px;
 }
 
 .toc a.active {
@@ -1566,7 +1606,7 @@ pre code span {
 
 .toc a.active::before {
   position: absolute;
-  left: 0;
+  left: var(--toc-dot-left);
   top: 13px;
   width: 5px;
   height: 5px;
