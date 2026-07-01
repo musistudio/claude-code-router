@@ -146,6 +146,7 @@ export function refreshCodexCompatibleAppProfileFiles(
 ): { modelCatalogChanged: boolean; modelCatalogFile: string; userDataDir: string } {
   const spec = profile.agent === "zcode" ? zcodeAppSpec : codexAppSpec;
   if (spec.kind === "zcode" && config?.APIKEY) {
+    const configFile = resolveCodexConfigFile(configDir, profile);
     writeZcodeGatewayConfig(config, profile, config.APIKEY, configFile, { backup: false });
   }
   const modelCatalog = writeCodexCompatibleAppModelCatalog(configDir, profile, config);
