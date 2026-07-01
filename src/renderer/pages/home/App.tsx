@@ -2891,12 +2891,18 @@ function App() {
                   moveRule: moveRoutingRule,
                   providers: draftConfig.Providers,
                   removeRule: setRoutingDeleteIndex,
-                  updateBuiltInRule: (agent, enabled) => updateConfig((config) => {
+                  updateBuiltInRule: (agent, patch) => updateConfig((config) => {
                     config.Router.builtInRules = normalizeRouterBuiltInRules(config.Router.builtInRules);
                     if (agent === "claude-code") {
-                      config.Router.builtInRules["claude-code"] = { enabled };
+                      config.Router.builtInRules["claude-code"] = {
+                        ...config.Router.builtInRules["claude-code"],
+                        ...patch
+                      };
                     } else {
-                      config.Router.builtInRules.codex = { enabled };
+                      config.Router.builtInRules.codex = {
+                        ...config.Router.builtInRules.codex,
+                        ...patch
+                      };
                     }
                     return config;
                   }),

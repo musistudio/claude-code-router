@@ -6,6 +6,7 @@ import {
   disclosureSpringTransition, Field, formatRouterRuleCondition, formatRouterRuleTarget, GatewayProviderConfig, Input,
   Info, motion, normalizeRouterFallbackConfig, Pencil, Plus, Route, RouterFallbackConfig,
   RouterBuiltInAgentRuleId, RouterFallbackMode, routerConditionSourceOptions, routerFallbackModeOptions, RouterRule, routerRewriteOperationOptions, routerRuleOperatorOptions,
+  RouterBuiltInAgentRuleConfig,
   RouteTargetControl, routingRuleRowMatchesQuery, Search, SelectControl, Toggle, translateOptions,
   Trash2, uniqueStrings, useAppText, useMemo, useState, X
 } from "../shared";
@@ -27,7 +28,7 @@ export function RoutingView({
   moveRule: (index: number, direction: -1 | 1) => void;
   providers: GatewayProviderConfig[];
   removeRule: (index: number) => void;
-  updateBuiltInRule: (agent: RouterBuiltInAgentRuleId, enabled: boolean) => void;
+  updateBuiltInRule: (agent: RouterBuiltInAgentRuleId, patch: Partial<RouterBuiltInAgentRuleConfig>) => void;
   updateFallback: (fallback: RouterFallbackConfig) => void;
   updateRule: (index: number, patch: Partial<RouterRule>) => void;
 }) {
@@ -133,7 +134,7 @@ export function RoutingView({
                           disabled={row.readonly || row.toggleDisabled}
                           onChange={(enabled) => {
                             if (row.builtInAgent) {
-                              updateBuiltInRule(row.builtInAgent, enabled);
+                              updateBuiltInRule(row.builtInAgent, { enabled });
                             } else if (row.index !== undefined) {
                               updateRule(row.index, { enabled });
                             }

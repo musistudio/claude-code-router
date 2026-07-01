@@ -5,6 +5,7 @@ import path from "node:path";
 import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, enforceSingleEnabledGlobalProfilePerAgent, hasAvailableGatewayModels, type ApiKeyConfig, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "../shared/app";
 import { replacePersistedApiKeys } from "./api-key-store";
 import { botGatewayProfileEnv } from "./bot-gateway-env";
+import { writeCodexCompatibleAppModelCatalog } from "./codex-app-launch";
 import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
 import { codexModelCatalogJson } from "./codex-model-catalog";
 import { CONFIGDIR } from "./constants";
@@ -151,6 +152,7 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
     const configFormat = normalizeCodexConfigFormat(profile.configFormat);
     const modelCatalogFile = codexModelCatalogFile(configFile);
     const modelCatalogResult = writeFileWithBackup(modelCatalogFile, codexModelCatalogJson(config, model));
+    const appModelCatalogResult = writeCodexCompatibleAppModelCatalog(CONFIGDIR, { ...profile, model }, config);
     const showAllSessions = profile.agent === "zcode" ? false : Boolean(profile.showAllSessions);
     const nextConfig = buildCodexConfigToml(source, {
       baseUrl: endpoint,
@@ -178,9 +180,14 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
           providerId
         })
       : undefined;
-    const changed = writeResult.changed || modelCatalogResult.changed || Boolean(separateProfileResult?.changed) || Boolean(middlewareResult?.changed);
+    const changed = writeResult.changed ||
+      modelCatalogResult.changed ||
+      appModelCatalogResult.changed ||
+      Boolean(separateProfileResult?.changed) ||
+      Boolean(middlewareResult?.changed);
     const extras = [
       modelCatalogFile ? `catalog ${modelCatalogFile}` : "",
+      appModelCatalogResult.file ? `app catalog ${appModelCatalogResult.file}` : "",
       separateProfileResult?.file ? `profile ${separateProfileResult.file}` : "",
       middlewareResult?.file ? `middleware ${middlewareResult.file}` : ""
     ].filter(Boolean);
