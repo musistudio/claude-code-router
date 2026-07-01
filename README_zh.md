@@ -209,18 +209,45 @@ Wrapper plugin route 示例：
 <table>
   <tr>
     <td align="center" width="260">
-      <a href="https://www.bigmodel.cn/claude-code?ic=FPF9IVAGFJ"><strong>Z智谱</strong></a>
+      <a href="https://www.bigmodel.cn/claude-code?ic=FPF9IVAGFJ">
+        <img src="/docs/public/provider-icons/zhipu-cn-general.png" width="42" height="42" alt="智谱图标" />
+        <br />
+        <strong>Z智谱</strong>
+      </a>
     </td>
     <td align="center" width="260">
-      <a href="https://aihubmix.com/"><strong>AIHubmix</strong></a>
+      <a href="https://aihubmix.com/">
+        <img src="https://www.google.com/s2/favicons?domain=aihubmix.com&amp;sz=128" width="42" height="42" alt="AIHubmix 图标" />
+        <br />
+        <strong>AIHubmix</strong>
+      </a>
     </td>
   </tr>
   <tr>
     <td align="center" width="260">
-      <a href="https://ai.burncloud.com"><strong>BurnCloud</strong></a>
+      <a href="https://ai.burncloud.com">
+        <img src="https://www.burncloud.com/favicon.png" width="42" height="42" alt="BurnCloud 图标" />
+        <br />
+        <strong>BurnCloud</strong>
+      </a>
     </td>
     <td align="center" width="260">
-      <a href="https://share.302.ai/ZGVF9w"><strong>302.AI</strong></a>
+      <a href="https://share.302.ai/ZGVF9w">
+        <img src="https://www.google.com/s2/favicons?domain=302.ai&amp;sz=128" width="42" height="42" alt="302.AI 图标" />
+        <br />
+        <strong>302.AI</strong>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="260">
+      <a href="https://runapi.co/register?aff=IX1t">
+        <img src="/docs/public/provider-icons/runapi.jpg" width="42" height="42" alt="RunAPI 图标" />
+        <br />
+        <strong>RunAPI</strong>
+      </a>
+    </td>
+    <td align="center" width="260">
     </td>
   </tr>
 </table>
