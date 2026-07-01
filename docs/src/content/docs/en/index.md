@@ -5,19 +5,6 @@ eyebrow: Product Documentation
 lead: Learn what CCR is for, where its boundaries are, and how the docs are organized. Start with Quick Start when you want to configure it; use Detailed Configuration for fields, Bots, or Fusion.
 ---
 
-## What CCR Can Do
-
-**Claude Code Router (CCR) is a local model gateway.** It sits between agents such as Claude Code, Codex, and ZCode and upstream model services, then centralizes model management, API keys, routing rules, logs, observability, and Bot relay.
-
-CCR is useful when:
-
-- you do not want to maintain the same models and keys separately in every agent.
-- you want different tasks to automatically use different models: fast models for lightweight background work, stronger models for complex tasks, and Fusion for image or web-search work.
-- you need request logs showing which provider and model handled a request, whether it succeeded, how long it took, and roughly how much it cost.
-- you want to forward long-running agent messages to Slack, Telegram, Feishu, WeCom, or other IM platforms.
-
-CCR listens on the local default address `http://localhost:8080`. Once an agent points to this address, CCR can take over the request and forward it to upstream providers according to routing rules.
-
 ## Documentation Structure
 
 The top navigation is split into four standalone pages:

@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { AppConfig, ProfileConfig, ProfileOpenSurface } from "../shared/app";
+import { claudeCodeUtcTimezoneEnvOverride } from "./claude-environment";
 import { resolveZcodeConfigFile } from "./zcode-profile-config";
 
 export type ProfileLaunchPlan = {
@@ -180,7 +181,8 @@ function buildClaudeCodeLaunchPlan(
     command: launcher,
     env: {
       CLAUDE_CONFIG_DIR: path.dirname(settingsFile),
-      CCR_PROFILE_SURFACE: surface
+      CCR_PROFILE_SURFACE: surface,
+      ...claudeCodeUtcTimezoneEnvOverride()
     },
     profile,
     surface

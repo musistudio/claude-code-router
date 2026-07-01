@@ -1638,9 +1638,11 @@ export function providerDraftSafetyIssue(draft: AddProviderDraft, baseUrl = draf
 
 export function providerProbeCandidates(draft: AddProviderDraft): ProviderProbeCandidate[] {
   const preset = findProviderPreset(draft.presetId);
+  const protocols = providerProtocolOptions.map((option) => option.value);
   if (preset) {
     return preset.endpoints.map((endpoint) => ({
       ...endpoint,
+      protocols,
       source: "preset"
     }));
   }
@@ -1648,7 +1650,7 @@ export function providerProbeCandidates(draft: AddProviderDraft): ProviderProbeC
   return [
     {
       baseUrl: draft.baseUrl.trim(),
-      protocols: providerProtocolOptions.map((option) => option.value),
+      protocols,
       source: "custom"
     }
   ];
@@ -1746,15 +1748,36 @@ export function selectedProviderProtocolsFromCapabilities(
 export function selectedProviderProtocolsForProbe(
   selectedProtocols: GatewayProviderProtocol[],
   probe: GatewayProviderProbeResult,
-  fallback: GatewayProviderProtocol
+  fallback: GatewayProviderProtocol,
+  presetId?: string
 ): GatewayProviderProtocol[] {
   const selectable = providerSelectableProtocolsFromProbe(probe);
   if (selectable.length === 0) {
     return selectedProtocols.length > 0 ? uniqueProviderProtocols(selectedProtocols) : [fallback];
   }
 
+  if (selectedProtocolsMatchPresetDefault(selectedProtocols, presetId)) {
+    return selectable;
+  }
+
   const selected = uniqueProviderProtocols(selectedProtocols).filter((protocol) => selectable.includes(protocol));
   return selected.length > 0 ? selected : selectable;
+}
+
+function selectedProtocolsMatchPresetDefault(
+  selectedProtocols: GatewayProviderProtocol[],
+  presetId: string | undefined
+): boolean {
+  const preset = findProviderPreset(presetId);
+  if (!preset) {
+    return false;
+  }
+
+  const selected = uniqueProviderProtocols(selectedProtocols);
+  const defaults = uniqueProviderProtocols(preset.endpoints.flatMap((endpoint) => endpoint.protocols));
+  return defaults.length > 0 &&
+    selected.length === defaults.length &&
+    defaults.every((protocol, index) => selected[index] === protocol);
 }
 
 export function uniqueProviderProtocols(values: Array<GatewayProviderProtocol | string | undefined>): GatewayProviderProtocol[] {
@@ -1804,7 +1827,7 @@ export function mergeProviderCapabilities(...groups: GatewayProviderCapability[]
 
 export function applyProviderProbeResult(draft: AddProviderDraft, probe: GatewayProviderProbeResult): AddProviderDraft {
   const protocol = probe.detectedProtocol ?? draft.protocol;
-  const selectedProtocols = selectedProviderProtocolsForProbe(draft.selectedProtocols, probe, protocol);
+  const selectedProtocols = selectedProviderProtocolsForProbe(draft.selectedProtocols, probe, protocol, draft.presetId);
   const modelDisplayNames = mergeModelDisplayNames(draft.modelDisplayNames, probe.modelDisplayNames);
 
   if (probe.models.length === 0) {

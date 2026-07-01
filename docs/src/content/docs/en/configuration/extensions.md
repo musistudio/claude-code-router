@@ -5,7 +5,7 @@ eyebrow: Detailed Configuration
 lead: Learn how CCR extensions are loaded, what they can register, and how to create, install, and debug your own extension.
 ---
 
-## What Extensions Are
+## Extension Types
 
 CCR has two extension layers:
 
@@ -177,7 +177,7 @@ The recommended flow is through the desktop UI:
 4. Save the config.
 5. Open **Server** and restart the gateway.
 
-CCR stores runtime configuration in SQLite, so add extensions through the UI instead of editing the legacy JSON config file. The extension entry has this shape:
+CCR stores runtime configuration in SQLite. Add extensions through the UI; the legacy JSON config file is kept here only as a reference. The extension entry has this shape:
 
 ```json
 {
@@ -270,7 +270,7 @@ Proxy route matching rules:
 | Response is 401 | Routes require gateway API key by default; set `auth: "none"` for debug routes |
 | Code changes do not apply | Wrapper plugins are not hot reloaded; restart the gateway or CCR |
 | Port is already in use | Omit `port` in `registerHttpBackend` so CCR can allocate one automatically |
-| Proxy route is not hit | Confirm proxy mode is enabled, the certificate is installed, and host matches the real request hostname |
+| Proxy route misses requests | Confirm proxy mode is enabled, the certificate is installed, and host matches the real request hostname |
 
 ## Security Notes
 

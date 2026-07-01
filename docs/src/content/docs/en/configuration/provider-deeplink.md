@@ -70,6 +70,10 @@ Choose a provider below to get started. CCR shows what will be added before savi
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/siliconflow.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">SiliconFlow</span><span class="provider-import-meta">Chat Completions</span></span>
   </a>
+  <a class="provider-import-button provider-runapi" href="ccr://provider?name=RunAPI&amp;base_url=https%3A%2F%2Frunapi.co%2Fv1&amp;protocol=openai_responses" aria-label="Import RunAPI provider">
+    <span class="provider-import-icon-shell"><img src="../../../provider-icons/runapi.jpg" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">RunAPI</span><span class="provider-import-meta">Responses / Chat Completions</span></span>
+  </a>
 </div>
 
 ## Embeddable Button Component

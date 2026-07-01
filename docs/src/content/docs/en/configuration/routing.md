@@ -16,9 +16,9 @@ CCR first decides which model the request should use, then forwards the request 
 
 The core shape of a rule is **Condition + Request action**. The condition decides whether the rule matches; the request action changes request fields. The most common action is setting `request.body.model` to a provider model or Fusion model.
 
-## What Fallback Does
+## Fallback Handling
 
-Fallback is the failure strategy after a model or upstream request fails. It does not pick the first model; it decides whether CCR should keep trying after the current target fails.
+Fallback is the failure strategy after a model or upstream request fails. Routing picks the first model; Fallback decides whether CCR should keep trying after the current target fails.
 
 The **Default on failure** control at the top of the Routing page is the global Fallback. Each rule also has **On failure**. When a rule matches, its rule-level Fallback overrides the global Fallback.
 
