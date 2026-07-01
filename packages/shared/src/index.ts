@@ -1,4 +1,5 @@
 export * from "./constants";
+export * from "./proxy";
 
 // Export preset-related functionality
 export * from './preset/types';

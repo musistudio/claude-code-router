@@ -355,6 +355,7 @@ async function sendRequestToProvider(
     requestBody,
     {
       httpsProxy: fastify.configService.getHttpsProxy(),
+      noProxy: fastify.configService.getNoProxy(),
       ...config,
       headers: JSON.parse(JSON.stringify(requestHeaders)),
     },

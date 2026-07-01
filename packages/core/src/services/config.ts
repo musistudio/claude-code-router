@@ -138,7 +138,21 @@ export class ConfigService {
       this.get("HTTPS_PROXY") ||
       this.get("https_proxy") ||
       this.get("httpsProxy") ||
-      this.get("PROXY_URL")
+      this.get("PROXY_URL") ||
+      process.env.HTTPS_PROXY ||
+      process.env.https_proxy ||
+      process.env.HTTP_PROXY ||
+      process.env.http_proxy
+    );
+  }
+
+  public getNoProxy(): string | undefined {
+    return (
+      this.get("NO_PROXY") ||
+      this.get("no_proxy") ||
+      this.get("noProxy") ||
+      process.env.NO_PROXY ||
+      process.env.no_proxy
     );
   }
 
