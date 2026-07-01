@@ -36,6 +36,7 @@ import {
 let electronProcess = null;
 let restartTimer = null;
 let pendingRestartReasons = [];
+let shutdownDevWatch = null;
 const watchSignatures = new Map();
 let shuttingDown = false;
 const restartDelayMs = 160;
@@ -221,6 +222,10 @@ function restartElectron() {
     if (electronProcess === child) {
       electronProcess = null;
     }
+    if (code === 0 && signal === null && !shuttingDown) {
+      logDev("Electron quit cleanly; shutting down dev watch");
+      shutdownDevWatch?.();
+    }
   });
 }
 
@@ -373,6 +378,7 @@ async function shutdown() {
   process.exit(0);
 }
 
+shutdownDevWatch = shutdown;
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 }
