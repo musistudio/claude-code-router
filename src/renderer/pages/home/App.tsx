@@ -17,9 +17,9 @@ import {
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
   isTraySupportedPlatform,
   isRoutingRewriteDraftRowValid,
-  LayoutGroup, mergeModelDisplayNames, mergeProviderCapabilities, mergeProviderModelLists, modelDisplayNamesForModels,
+  LayoutGroup, mergeModelDisplayNames, mergeProviderCapabilities, mergeProviderModelLists, modelDescriptionsForModels, modelDisplayNamesForModels,
   navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets,
-  normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
+  normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterBuiltInRules, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
   normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
   OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parseProviderAccountDraft,
   providerCredentialsFromDraft,
@@ -1157,6 +1157,7 @@ function App() {
 
       return {
         ...next,
+        modelDescriptions: patch.modelDescriptions ?? current.modelDescriptions,
         modelDisplayNames: patch.modelDisplayNames,
         modelsText: mergeProviderModelLists(current.selectedModels, splitLines(next.modelsText)).join("\n"),
         selectedModels: [],
@@ -1368,6 +1369,7 @@ function App() {
     }
 
     const protocolsToSave = selectedProtocols.length > 0 ? selectedProtocols : [fallbackProtocol];
+    const modelDescriptions = modelDescriptionsForModels(providerDraft.modelDescriptions, models);
     const modelDisplayNames = modelDisplayNamesForModels(providerDraft.modelDisplayNames, models);
     const selectedProtocolSet = new Set(protocolsToSave);
     const capabilityCandidates = mergeProviderCapabilities(
@@ -1436,6 +1438,7 @@ function App() {
       account: accountConfig,
       credentials: credentials.length > 0 ? credentials : undefined,
       icon: providerDraft.icon.trim() || undefined,
+      modelDescriptions,
       modelDisplayNames,
       models,
       name: providerName,
@@ -1516,6 +1519,27 @@ function App() {
     });
     setConfigDraft(next);
     return persistConfig(next, setActionError);
+  }
+
+  function updateProviderModelDescription(providerIndex: number, model: string, description: string) {
+    const next = buildConfigUpdate((config) => {
+      const provider = config.Providers[providerIndex];
+      const models = provider ? mergeProviderModelLists(provider.models) : [];
+      if (!provider || !models.includes(model)) {
+        return config;
+      }
+      const descriptions = { ...(provider.modelDescriptions ?? {}) };
+      const trimmed = description.trim();
+      if (trimmed) {
+        descriptions[model] = trimmed;
+      } else {
+        delete descriptions[model];
+      }
+      provider.modelDescriptions = modelDescriptionsForModels(descriptions, models);
+      return config;
+    });
+    setConfigDraft(next);
+    void persistConfig(next, setActionError);
   }
 
   async function confirmProviderDelete() {
@@ -2807,7 +2831,8 @@ function App() {
                   updateFilter: updateRequestLogFilter
                 },
                 models: {
-                  config: draftConfig
+                  config: draftConfig,
+                  updateModelDescription: updateProviderModelDescription
                 },
                 networking: {
                   clearCaptures: () => void clearProxyNetworkCaptures(),
@@ -2866,6 +2891,15 @@ function App() {
                   moveRule: moveRoutingRule,
                   providers: draftConfig.Providers,
                   removeRule: setRoutingDeleteIndex,
+                  updateBuiltInRule: (agent, enabled) => updateConfig((config) => {
+                    config.Router.builtInRules = normalizeRouterBuiltInRules(config.Router.builtInRules);
+                    if (agent === "claude-code") {
+                      config.Router.builtInRules["claude-code"] = { enabled };
+                    } else {
+                      config.Router.builtInRules.codex = { enabled };
+                    }
+                    return config;
+                  }),
                   updateFallback: (fallback) => updateConfig((config) => {
                     config.Router.fallback = normalizeRouterFallbackConfig(fallback);
                     return config;

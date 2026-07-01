@@ -207,6 +207,7 @@ const gatewayRuntimeMarkerFile = "gateway-runtime.json";
 const rawTraceSyncHeader = "x-ccr-raw-trace-token";
 let warnedMissingCursorOpenAICompatContext = false;
 const rawTraceSyncPath = "/__ccr/raw-trace-sync";
+const gatewayEntryOverrideEnv = "CCR_GATEWAY_ENTRY";
 const gatewayPackageCandidates = ["@the-next-ai/ai-gateway", "gateway"];
 const apiKeyLimitCounters = new Map<string, ApiKeyWindowCounter>();
 const providerCredentialCooldowns = new Map<string, { reason: string; until: number }>();
@@ -882,10 +883,10 @@ function writeCoreGatewayConfig(config: AppConfig, rawTraceSyncToken: string): v
     ...pluginService.getCoreProviderPlugins()
   ]);
   const codexOauthProviderNames = codexOauthLocalProviderNames(providerPlugins);
-  const virtualModelProfiles = normalizeCoreGatewayVirtualModelProfiles(withOptimisticVirtualModelStreams(withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases([
+  const virtualModelProfiles = normalizeCoreGatewayVirtualModelProfiles(withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases([
     ...(config.virtualModelProfiles ?? []),
     ...pluginService.getVirtualModelProfiles()
-  ]))), config);
+  ])), config);
   const coreEndpoint = endpoint(config.gateway.coreHost, config.gateway.corePort);
   const builtinToolArtifacts = fusionBuiltinToolArtifacts(virtualModelProfiles, coreEndpoint);
   const providers = [
@@ -1394,25 +1395,6 @@ function withCodexCompatibleVirtualModelProfiles(profiles: unknown[]): unknown[]
       execution: {
         ...execution,
         clientToolsPolicy: "allow"
-      }
-    };
-  });
-}
-
-function withOptimisticVirtualModelStreams(profiles: unknown[]): unknown[] {
-  return profiles.map((profile) => {
-    if (!isRecord(profile) || profile.enabled === false) {
-      return profile;
-    }
-    const execution = isRecord(profile.execution) ? profile.execution : {};
-    if (execution.streamMode === "optimistic") {
-      return profile;
-    }
-    return {
-      ...profile,
-      execution: {
-        ...execution,
-        streamMode: "optimistic"
       }
     };
   });
@@ -2642,6 +2624,15 @@ function spawnGatewayProcess(config: AppConfig, upstreamProxyUrl: string | undef
 }
 
 function resolveGatewayEntry(): string {
+  const override = process.env[gatewayEntryOverrideEnv]?.trim();
+  if (override) {
+    const entry = pathResolve(override);
+    if (!existsSync(entry)) {
+      throw new Error(`${gatewayEntryOverrideEnv} points to a missing gateway entry: ${entry}`);
+    }
+    return entry;
+  }
+
   for (const packageName of gatewayPackageCandidates) {
     try {
       return requireFromHere.resolve(packageName);
@@ -2794,25 +2785,41 @@ function sortProviderCredentialsForConfig(credentials: ProviderCredentialConfig[
 function normalizedProviderCapabilities(provider: GatewayProviderConfig): GatewayProviderCapability[] {
   const capabilities = Array.isArray(provider.capabilities) ? provider.capabilities : [];
   const normalized: GatewayProviderCapability[] = [];
-  const seen = new Set<string>();
+  const byProtocol = new Map<GatewayProviderProtocol, GatewayProviderCapability>();
   for (const capability of capabilities) {
     const type = normalizeProviderProtocol(capability.type);
     const baseUrl = capability.baseUrl?.trim();
     if (!type || !baseUrl) {
       continue;
     }
-    const key = `${type}\n${baseUrl}`;
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    normalized.push({
+    const item = {
       ...capability,
       baseUrl,
       type
-    });
+    };
+    const existing = byProtocol.get(type);
+    if (!existing || providerCapabilityPriority(item) < providerCapabilityPriority(existing)) {
+      byProtocol.set(type, item);
+    }
+  }
+  for (const capability of capabilities) {
+    const type = normalizeProviderProtocol(capability.type);
+    const selected = type ? byProtocol.get(type) : undefined;
+    if (selected && !normalized.includes(selected)) {
+      normalized.push(selected);
+    }
   }
   return normalized;
+}
+
+function providerCapabilityPriority(capability: GatewayProviderCapability): number {
+  if (capability.source === "preset") {
+    return 0;
+  }
+  if (capability.source === "detected") {
+    return 2;
+  }
+  return 1;
 }
 
 function providerCapabilityInternalName(provider: GatewayProviderConfig, protocol: GatewayProviderProtocol): string {

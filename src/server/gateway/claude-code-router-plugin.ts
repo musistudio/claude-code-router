@@ -2,12 +2,13 @@ import { createRequire } from "node:module";
 import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
-import type { AppConfig, RouterConfig, RouterFallbackConfig, RouterRule, RouterRuleCondition, RouterRuleRewrite } from "../../shared/app";
+import type { AppConfig, RouterBuiltInAgentRuleId, RouterConfig, RouterFallbackConfig, RouterRule, RouterRuleCondition, RouterRuleRewrite } from "../../shared/app";
 import { CONFIGDIR } from "../../main/constants";
 
 type HeaderValue = string | string[] | undefined;
 
 export type MutableRequestLike = {
+  builtInSubagentModel?: string;
   body: Record<string, unknown>;
   headers: Record<string, HeaderValue>;
   log: Pick<Console, "debug" | "error" | "info" | "warn">;
@@ -47,17 +48,22 @@ export class ClaudeCodeRouterPlugin {
     url: string;
   }): Promise<{ body: Record<string, unknown>; decision: ClaudeCodeRouteDecision }> {
     const body = cloneRecord(input.body);
-    const sessionId = resolveSessionId(body, input.headers);
-    const tokenCount = calculateTokenCount(body.messages, body.system, body.tools);
     const request: MutableRequestLike = {
       body,
       headers: input.headers,
       log: console,
       method: input.method,
-      sessionId,
-      tokenCount,
       url: input.url
     };
+    if (builtInAgentRouteMatches(request, this.config, "claude-code")) {
+      injectClaudeCodeAgentToolDescription(body, this.config);
+      removeClaudeCodeBillingSystemHeader(body);
+      request.builtInSubagentModel = extractAndRemoveClaudeCodeSubagentModelTag(body);
+    }
+    const sessionId = resolveSessionId(body, input.headers);
+    const tokenCount = calculateTokenCount(body.messages, body.system, body.tools);
+    request.sessionId = sessionId;
+    request.tokenCount = tokenCount;
 
     const customModel = await this.resolveCustomRoute(request);
     const configuredDecision = resolveConfiguredRouteDecision(request, this.config);
@@ -179,6 +185,11 @@ function resolveConfiguredRouteDecision(
   request: MutableRequestLike,
   config: AppConfig
 ): ConfiguredRouteDecision {
+  const builtInSubagentDecision = resolveBuiltInClaudeCodeSubagentRouteDecision(request, config);
+  if (builtInSubagentDecision) {
+    return builtInSubagentDecision;
+  }
+
   const requestedModel = readString(request.body.model);
   const explicitModel = normalizeRouteSelector(requestedModel);
   if (explicitModel && isKnownInlineRoute(explicitModel, config)) {
@@ -186,6 +197,11 @@ function resolveConfiguredRouteDecision(
   }
 
   const router = config.Router;
+  const builtInDecision = resolveBuiltInAgentRouteDecision(request, config);
+  if (builtInDecision) {
+    return builtInDecision;
+  }
+
   const rules = router.rules ?? [];
   for (const rule of rules) {
     const decision = resolveRouterRule(rule, request, router);
@@ -195,6 +211,374 @@ function resolveConfiguredRouteDecision(
   }
 
   return { fallback: router.fallback, model: normalizeRouteSelector(router.default) ?? explicitModel, reason: "default" };
+}
+
+function resolveBuiltInClaudeCodeSubagentRouteDecision(
+  request: MutableRequestLike,
+  config: AppConfig
+): ConfiguredRouteDecision | undefined {
+  if (!builtInAgentRouteMatches(request, config, "claude-code")) {
+    return undefined;
+  }
+  const target = normalizeRouteSelector(request.builtInSubagentModel);
+  if (!target) {
+    return undefined;
+  }
+  return {
+    fallback: config.Router.fallback,
+    model: target,
+    reason: "builtin:claude-code-subagent",
+    rewrite: {
+      key: "request.body.model",
+      operation: "set",
+      value: target
+    }
+  };
+}
+
+function resolveBuiltInAgentRouteDecision(
+  request: MutableRequestLike,
+  config: AppConfig
+): ConfiguredRouteDecision | undefined {
+  for (const agent of builtInAgentRuleIds) {
+    if (!builtInAgentRouteMatches(request, config, agent)) {
+      continue;
+    }
+    const target = resolveBuiltInAgentRouteTarget(config, agent);
+    if (!target) {
+      continue;
+    }
+    return {
+      fallback: config.Router.fallback,
+      model: target,
+      reason: `builtin:${agent}`,
+      rewrite: {
+        key: "request.body.model",
+        operation: "set",
+        value: target
+      }
+    };
+  }
+  return undefined;
+}
+
+const builtInAgentRuleIds: RouterBuiltInAgentRuleId[] = ["claude-code", "codex"];
+
+function builtInAgentRouteMatches(
+  request: MutableRequestLike,
+  config: AppConfig,
+  agent: RouterBuiltInAgentRuleId
+): boolean {
+  if (config.Router.builtInRules?.[agent]?.enabled === false) {
+    return false;
+  }
+  if (!resolveBuiltInAgentProfile(config, agent)) {
+    return false;
+  }
+  const userAgent = readRequestHeader(request.headers, "user-agent")?.toLowerCase() ?? "";
+  return userAgent.includes(builtInAgentUserAgentNeedle(agent));
+}
+
+function resolveBuiltInAgentProfile(config: AppConfig, agent: RouterBuiltInAgentRuleId) {
+  if (config.profile.enabled === false) {
+    return undefined;
+  }
+  return config.profile.profiles.find((profile) => profile.enabled && profile.agent === agent);
+}
+
+function resolveBuiltInAgentRouteTarget(config: AppConfig, agent: RouterBuiltInAgentRuleId): string | undefined {
+  return normalizeRouteSelector(resolveBuiltInAgentProfile(config, agent)?.model) ??
+    normalizeRouteSelector(config.Router.default);
+}
+
+function builtInAgentUserAgentNeedle(agent: RouterBuiltInAgentRuleId): string {
+  return agent === "claude-code" ? "claude" : "codex";
+}
+
+const ccrSubagentModelOpenTag = "<CCR-SUBAGENT-MODEL>";
+const ccrSubagentModelCloseTag = "</CCR-SUBAGENT-MODEL>";
+const ccrSubagentModelTagExample = `${ccrSubagentModelOpenTag}Provider/model${ccrSubagentModelCloseTag}`;
+const claudeCodeBillingSystemHeaderPrefix = "x-anthropic-billing-header";
+const ccrSubagentToolModelInstruction =
+  `CCR subagent routing is enabled. When calling this tool, the prompt parameter MUST start with ` +
+  `${ccrSubagentModelTagExample} on its own first line, replacing Provider/model with the best configured CCR gateway model. ` +
+  `CCR consumes the tag, removes it from the prompt, and routes the spawned agent request to that model. ` +
+  `Do not omit the tag, do not put it in description or subagent_type, and do not rely on the tool model enum for CCR-specific models. ` +
+  `中文要求：调用该工具时，prompt 参数第一行必须写入 ${ccrSubagentModelTagExample}，并将 Provider/model 替换成最适合的 CCR 模型。`;
+const ccrWorkflowSubagentModelInstruction =
+  `CCR workflow subagent routing is enabled. When this workflow creates Agent/Task subagents, each spawned agent prompt MUST start with ` +
+  `${ccrSubagentModelTagExample} on its own first line, replacing Provider/model with the best configured CCR gateway model. ` +
+  `Put the tag inside the Agent/Task prompt created by the workflow, not in the workflow description or subagent_type. ` +
+  `CCR consumes the tag from the spawned agent request, removes it, and routes that request to the selected model. ` +
+  `Do not rely on the Agent/Task model enum for CCR-specific models. ` +
+  `中文要求：Workflow 中创建 Agent/Task 时，每个被创建 agent 的 prompt 第一行必须写入 ${ccrSubagentModelTagExample}，并替换成最适合的 CCR 模型。`;
+const ccrSubagentPromptFieldInstruction =
+  `CCR subagent routing is enabled. This prompt string MUST start with ${ccrSubagentModelTagExample} on its own first line, ` +
+  `with Provider/model replaced by one configured CCR gateway model. Put the subagent task after that line; CCR removes the tag before the subagent runs. ` +
+  `中文要求：这个 prompt 字符串第一行必须是替换后的模型标签，后面再写 subagent 任务正文。`;
+type ClaudeCodeSubagentToolKind = "subagent" | "workflow";
+const claudeCodeAgentToolNames = new Set(["agent", "task"]);
+const claudeCodeWorkflowToolNames = new Set(["workflow"]);
+
+function injectClaudeCodeAgentToolDescription(body: Record<string, unknown>, config: AppConfig): void {
+  if (!Array.isArray(body.tools)) {
+    return;
+  }
+
+  const instructions = claudeCodeAgentToolInstructions(config);
+  if (!instructions) {
+    return;
+  }
+  for (const tool of body.tools) {
+    if (!isRecord(tool)) {
+      continue;
+    }
+    const toolKind = claudeCodeSubagentToolKind(tool);
+    if (!toolKind) {
+      continue;
+    }
+    appendToolDescriptionInstruction(tool, toolKind === "workflow" ? instructions.workflow : instructions.tool);
+    if (toolKind === "subagent") {
+      appendPromptSchemaDescriptionInstruction(tool, instructions.prompt);
+    }
+  }
+}
+
+function claudeCodeSubagentToolKind(tool: Record<string, unknown>): ClaudeCodeSubagentToolKind | undefined {
+  const functionSpec = isRecord(tool.function) ? tool.function : undefined;
+  const name = readString(tool.name)?.toLowerCase() ?? readString(functionSpec?.name)?.toLowerCase();
+  if (!name) {
+    return undefined;
+  }
+  if (claudeCodeAgentToolNames.has(name)) {
+    return "subagent";
+  }
+  if (claudeCodeWorkflowToolNames.has(name)) {
+    return "workflow";
+  }
+  return undefined;
+}
+
+function appendToolDescriptionInstruction(tool: Record<string, unknown>, instruction: string): void {
+  if (isRecord(tool.function)) {
+    tool.function.description = appendDescriptionInstruction(readOptionalString(tool.function.description), instruction);
+    return;
+  }
+  tool.description = appendDescriptionInstruction(readOptionalString(tool.description), instruction);
+}
+
+function appendPromptSchemaDescriptionInstruction(tool: Record<string, unknown>, instruction: string): void {
+  const functionSpec = isRecord(tool.function) ? tool.function : undefined;
+  const schema = isRecord(tool.input_schema)
+    ? tool.input_schema
+    : isRecord(tool.inputSchema)
+      ? tool.inputSchema
+      : isRecord(functionSpec?.parameters)
+        ? functionSpec.parameters
+        : undefined;
+  const properties = isRecord(schema?.properties) ? schema.properties : undefined;
+  const prompt = isRecord(properties?.prompt) ? properties.prompt : undefined;
+  if (!prompt) {
+    return;
+  }
+  prompt.description = appendDescriptionInstruction(readOptionalString(prompt.description), instruction);
+}
+
+function appendDescriptionInstruction(description: string | undefined, instruction: string): string {
+  const existing = description?.trim() ?? "";
+  if (existing.includes(ccrSubagentModelOpenTag)) {
+    return existing;
+  }
+  return existing ? `${existing}\n\n${instruction}` : instruction;
+}
+
+function claudeCodeAgentToolInstructions(config: AppConfig): { prompt: string; tool: string; workflow: string } | undefined {
+  const modelRows = configuredSubagentModelDescriptionRows(config);
+  if (modelRows.length === 0) {
+    return undefined;
+  }
+  const modelList = [
+    "Configured CCR gateway models:",
+    ...modelRows
+  ].join("\n");
+  return {
+    prompt: [
+      ccrSubagentPromptFieldInstruction,
+      "",
+      modelList
+    ].join("\n"),
+    tool: [
+      ccrSubagentToolModelInstruction,
+      "",
+      modelList
+    ].join("\n"),
+    workflow: [
+      ccrWorkflowSubagentModelInstruction,
+      "",
+      modelList
+    ].join("\n")
+  };
+}
+
+function configuredSubagentModelDescriptionRows(config: AppConfig): string[] {
+  const rows: string[] = [];
+  const seen = new Set<string>();
+  for (const provider of config.Providers) {
+    const providerName = provider.name?.trim();
+    if (!providerName || !Array.isArray(provider.models)) {
+      continue;
+    }
+    for (const rawModel of provider.models) {
+      const model = rawModel.trim();
+      const description = provider.modelDescriptions?.[model]?.trim();
+      if (!model || !description) {
+        continue;
+      }
+      const selector = `${providerName}/${model}`;
+      const key = selector.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      const displayName = provider.modelDisplayNames?.[model]?.trim();
+      const label = displayName && displayName !== model ? `${selector} (${displayName})` : selector;
+      rows.push(`- ${label}: ${singleLineText(description, 320)}`);
+    }
+  }
+  return rows;
+}
+
+function removeClaudeCodeBillingSystemHeader(body: Record<string, unknown>): void {
+  const system = body.system;
+  if (!Array.isArray(system) || system.length === 0) {
+    return;
+  }
+  const firstBlock = system[0];
+  const firstText = typeof firstBlock === "string"
+    ? firstBlock
+    : isRecord(firstBlock) && firstBlock.type === "text" && typeof firstBlock.text === "string"
+      ? firstBlock.text
+      : undefined;
+  if (!firstText?.startsWith(claudeCodeBillingSystemHeaderPrefix)) {
+    return;
+  }
+  system.shift();
+  if (system.length === 0) {
+    delete body.system;
+  }
+}
+
+function extractAndRemoveClaudeCodeSubagentModelTag(body: Record<string, unknown>): string | undefined {
+  const systemModel = extractAndRemoveSystemSubagentModelTag(body);
+  if (systemModel) {
+    return systemModel;
+  }
+  return extractAndRemoveMessageSubagentModelTag(body);
+}
+
+function extractAndRemoveSystemSubagentModelTag(body: Record<string, unknown>): string | undefined {
+  const system = body.system;
+  if (typeof system === "string") {
+    return extractAndRemoveSubagentModelTagFromText(system, (text) => {
+      body.system = text;
+    });
+  }
+  if (!Array.isArray(system)) {
+    return undefined;
+  }
+  for (let index = 0; index < system.length; index += 1) {
+    const block = system[index];
+    const model = extractAndRemoveSubagentModelTagFromContentBlock(block, (text) => {
+      if (typeof block === "string") {
+        system[index] = text;
+      } else if (isRecord(block)) {
+        block.text = text;
+      }
+    });
+    if (model) {
+      return model;
+    }
+  }
+  return undefined;
+}
+
+function extractAndRemoveMessageSubagentModelTag(body: Record<string, unknown>): string | undefined {
+  if (!Array.isArray(body.messages)) {
+    return undefined;
+  }
+  const limit = Math.min(body.messages.length, 2);
+  for (let index = 0; index < limit; index += 1) {
+    const message = body.messages[index];
+    if (!isRecord(message) || message.role !== "user") {
+      continue;
+    }
+    const model = extractAndRemoveSubagentModelTagFromMessage(message);
+    if (model) {
+      return model;
+    }
+  }
+  return undefined;
+}
+
+function extractAndRemoveSubagentModelTagFromMessage(message: Record<string, unknown>): string | undefined {
+  if (typeof message.content === "string") {
+    return extractAndRemoveSubagentModelTagFromText(message.content, (text) => {
+      message.content = text;
+    });
+  }
+  if (!Array.isArray(message.content)) {
+    return undefined;
+  }
+  const content = message.content;
+  for (let index = 0; index < content.length; index += 1) {
+    const block = content[index];
+    const model = extractAndRemoveSubagentModelTagFromContentBlock(block, (text) => {
+      if (typeof block === "string") {
+        content[index] = text;
+      } else if (isRecord(block)) {
+        block.text = text;
+      }
+    });
+    if (model) {
+      return model;
+    }
+  }
+  return undefined;
+}
+
+function extractAndRemoveSubagentModelTagFromContentBlock(
+  block: unknown,
+  replace: (text: string) => void
+): string | undefined {
+  if (typeof block === "string") {
+    return extractAndRemoveSubagentModelTagFromText(block, replace);
+  }
+  if (!isRecord(block) || typeof block.text !== "string") {
+    return undefined;
+  }
+  return extractAndRemoveSubagentModelTagFromText(block.text, replace);
+}
+
+function extractAndRemoveSubagentModelTagFromText(
+  text: string,
+  replace: (text: string) => void
+): string | undefined {
+  const openIndex = text.indexOf(ccrSubagentModelOpenTag);
+  if (openIndex < 0) {
+    return undefined;
+  }
+  const modelStart = openIndex + ccrSubagentModelOpenTag.length;
+  const closeIndex = text.indexOf(ccrSubagentModelCloseTag, modelStart);
+  if (closeIndex < 0) {
+    return undefined;
+  }
+  const model = normalizeRouteSelector(text.slice(modelStart, closeIndex));
+  if (!model) {
+    return undefined;
+  }
+  const nextText = `${text.slice(0, openIndex)}${text.slice(closeIndex + ccrSubagentModelCloseTag.length)}`;
+  replace(nextText);
+  return model;
 }
 
 function resolveRouterRule(
@@ -617,6 +1001,14 @@ function conditionComparableText(value: unknown): string | undefined {
   return String(value);
 }
 
+function singleLineText(value: string, maxLength: number): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}...`;
+}
+
 function routerRuleReason(rule: RouterRule): string {
   if (rule.id.startsWith("legacy-")) {
     return rule.id.replace(/^legacy-/, "");
@@ -752,4 +1144,8 @@ function readHeader(value: HeaderValue): string | undefined {
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function readOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
 }

@@ -205,6 +205,8 @@ import type {
   RequestLogListFilter,
   RequestLogPage,
   RequestLogStatusFilter,
+  RouterBuiltInAgentRuleId,
+  RouterBuiltInRulesConfig,
   RouterConfig,
   RouterFallbackConfig,
   RouterFallbackMode,
@@ -376,7 +378,7 @@ import type { MotionSafeDivAttributes } from "./motion";
 import { positiveInteger } from "./api-keys";
 import { isPlainRecord, stringValue, uniqueStrings } from "./common";
 import { sanitizeConfigId } from "./extensions";
-import { formatRouterRuleCondition, formatRouterRuleTarget, numberValue, routerRuleTypeLabel } from "./providers";
+import { formatRouterRuleCondition, formatRouterRuleTarget, routerRuleTypeLabel } from "./providers";
 import { clampNumber } from "./services";
 import type { ClaudeDesignRouteRuleType, ClaudeDesignRoutingDraft, ClaudeDesignRoutingRuleDraft, PluginRoutingConfigItem, RoutingRuleRow } from "./types";
 
@@ -388,9 +390,27 @@ export function normalizeRouterConfig(value: Partial<RouterConfig> | undefined):
   const rules = normalizeRouterRules((value as Record<string, unknown> | undefined)?.rules) ?? [];
   return {
     ...router,
+    builtInRules: normalizeRouterBuiltInRules((value as Record<string, unknown> | undefined)?.builtInRules),
     fallback: normalizeRouterFallbackConfig((value as Record<string, unknown> | undefined)?.fallback),
-    longContextThreshold: Number(router.longContextThreshold) > 0 ? numberValue(String(router.longContextThreshold)) : fallbackConfig.Router.longContextThreshold,
     rules
+  };
+}
+
+export function normalizeRouterBuiltInRules(value: unknown): RouterBuiltInRulesConfig {
+  const record = isPlainRecord(value) ? value : {};
+  return {
+    "claude-code": normalizeRouterBuiltInAgentRule(record["claude-code"] ?? record.claudeCode ?? record.claude),
+    codex: normalizeRouterBuiltInAgentRule(record.codex)
+  };
+}
+
+function normalizeRouterBuiltInAgentRule(value: unknown): { enabled: boolean } {
+  if (typeof value === "boolean") {
+    return { enabled: value };
+  }
+  const record = isPlainRecord(value) ? value : {};
+  return {
+    enabled: typeof record.enabled === "boolean" ? record.enabled : true
   };
 }
 
@@ -806,19 +826,74 @@ export function claudeDesignRoutingConfigFromDraft(draft: ClaudeDesignRoutingDra
 }
 
 export function buildRoutingRuleRows(config: AppConfig): RoutingRuleRow[] {
-  return config.Router.rules.map((rule, index): RoutingRuleRow => ({
-    condition: formatRouterRuleCondition(rule),
-    enabled: rule.enabled,
-    index,
-    key: `router-${rule.id}-${index}`,
-    name: rule.name || "Unnamed",
-    readonly: false,
-    ruleCount: config.Router.rules.length,
-    ruleId: rule.id,
-    sourceLabel: "Router",
-    target: formatRouterRuleTarget(rule),
-    typeLabel: routerRuleTypeLabel(rule.type)
-  }));
+  return [
+    ...buildBuiltInAgentRoutingRows(config),
+    ...config.Router.rules.map((rule, index): RoutingRuleRow => ({
+      condition: formatRouterRuleCondition(rule),
+      enabled: rule.enabled,
+      index,
+      key: `router-${rule.id}-${index}`,
+      name: rule.name || "Unnamed",
+      readonly: false,
+      ruleCount: config.Router.rules.length,
+      ruleId: rule.id,
+      sourceLabel: "Router",
+      target: formatRouterRuleTarget(rule),
+      typeLabel: routerRuleTypeLabel(rule.type)
+    }))
+  ];
+}
+
+export function buildBuiltInAgentRoutingRows(config: AppConfig): RoutingRuleRow[] {
+  return routerBuiltInAgentRuleIds.map((agent): RoutingRuleRow => {
+    const target = routerBuiltInAgentRouteTarget(config, agent);
+    const profileEnabled = Boolean(routerBuiltInAgentProfile(config, agent));
+    return {
+      builtInAgent: agent,
+      condition: `request.header.user-agent contains ${routerBuiltInAgentUserAgentNeedle(agent)}`,
+      enabled: routerBuiltInAgentRuleIsActive(config, agent),
+      key: `builtin-agent-${agent}`,
+      name: routerBuiltInAgentRuleName(agent),
+      readonly: false,
+      ruleCount: config.Router.rules.length,
+      ruleId: `builtin-agent-${agent}`,
+      sourceLabel: "Built-in",
+      target: target ? `set request.body.model = ${target}` : "Profile model unset",
+      toggleDisabled: !profileEnabled || !target,
+      typeLabel: "Condition"
+    };
+  });
+}
+
+const routerBuiltInAgentRuleIds: RouterBuiltInAgentRuleId[] = ["claude-code", "codex"];
+
+export function routerBuiltInAgentRuleIsActive(config: AppConfig, agent: RouterBuiltInAgentRuleId): boolean {
+  return routerBuiltInAgentRulePreferenceEnabled(config, agent) &&
+    Boolean(routerBuiltInAgentProfile(config, agent)) &&
+    Boolean(routerBuiltInAgentRouteTarget(config, agent));
+}
+
+export function routerBuiltInAgentRulePreferenceEnabled(config: AppConfig, agent: RouterBuiltInAgentRuleId): boolean {
+  return config.Router.builtInRules?.[agent]?.enabled !== false;
+}
+
+export function routerBuiltInAgentProfile(config: AppConfig, agent: RouterBuiltInAgentRuleId): ProfileConfig | undefined {
+  if (config.profile.enabled === false) {
+    return undefined;
+  }
+  return config.profile.profiles.find((profile) => profile.enabled && profile.agent === agent);
+}
+
+export function routerBuiltInAgentRouteTarget(config: AppConfig, agent: RouterBuiltInAgentRuleId): string {
+  return routerBuiltInAgentProfile(config, agent)?.model.trim() || config.Router.default?.trim() || "";
+}
+
+export function routerBuiltInAgentRuleName(agent: RouterBuiltInAgentRuleId): string {
+  return agent === "claude-code" ? "Claude Code" : "Codex";
+}
+
+export function routerBuiltInAgentUserAgentNeedle(agent: RouterBuiltInAgentRuleId): string {
+  return agent === "claude-code" ? "claude" : "codex";
 }
 
 export function buildPluginRoutingRows(plugin: AppConfig["plugins"][number], pluginIndex: number): RoutingRuleRow[] {

@@ -3,6 +3,7 @@ import test from "node:test";
 import { createDefaultAppConfig } from "../../src/shared/default-config.ts";
 import {
   createVirtualModelDraft,
+  createVirtualModelDraftFromProfile,
   validateVirtualModelDraft,
   virtualModelProfileFromDraft
 } from "../../src/renderer/pages/home/shared/virtual-models.ts";
@@ -32,9 +33,28 @@ test("Fusion draft saves multiple selected tools into one profile", () => {
   assert.equal(profile.execution.matchMultimodal, true);
   assert.equal(profile.execution.matchWebSearch, true);
   assert.equal(profile.execution.maxToolCalls, 8);
+  assert.equal(profile.execution.clientToolsPolicy, "allow");
+  assert.equal(profile.execution.streamMode, "optimistic");
   assert.equal(metadataString(profile.metadata, "fusionVision", "toolName"), "vision_understand_fusion_plus");
   assert.equal(metadataString(profile.metadata, "fusionWebSearch", "toolName"), "web_search_fusion_plus");
   assert.equal(metadataString(profile.metadata, "fusionTool", "mcpServerName"), "customer-tools");
+});
+
+test("Fusion default editing keeps client tools allowed", () => {
+  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-generated.json" });
+  const draft = createVirtualModelDraft(config);
+  draft.exactAliasesText = "fusion-default-tools";
+  draft.fixedModel = "provider/base-model";
+  draft.visionModel = "provider/vision-model";
+
+  const profile = virtualModelProfileFromDraft(draft, [], undefined);
+  profile.execution.clientToolsPolicy = "deny";
+
+  const editDraft = createVirtualModelDraftFromProfile(profile, config);
+  assert.equal(editDraft.clientToolsPolicy, "allow");
+
+  const savedProfile = virtualModelProfileFromDraft(editDraft, [], undefined);
+  assert.equal(savedProfile.execution.clientToolsPolicy, "allow");
 });
 
 function metadataString(metadata: Record<string, unknown> | undefined, key: string, field: string): string | undefined {

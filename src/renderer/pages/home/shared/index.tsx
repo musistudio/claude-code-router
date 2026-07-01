@@ -18,3 +18,4 @@ export * from "./routing";
 export * from "./virtual-models";
 export * from "./extensions";
 export * from "./providers";
+export type { RouterBuiltInAgentRuleId, RouterBuiltInRulesConfig } from "../../../../shared/app";
