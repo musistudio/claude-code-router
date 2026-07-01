@@ -172,7 +172,7 @@ function registerMainWindowBoundsPersistence(window: BrowserWindow): void {
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
   const scheduleSave = () => {
-    if (window.isDestroyed() || window.isMinimized() || window.isMaximized() || window.isFullScreen()) {
+    if (window.isDestroyed() || window.isMinimized()) {
       return;
     }
     clearTimeout(saveTimer);
@@ -185,7 +185,7 @@ function registerMainWindowBoundsPersistence(window: BrowserWindow): void {
   window.on("move", scheduleSave);
   window.on("close", () => {
     clearTimeout(saveTimer);
-    if (!window.isMinimized() && !window.isMaximized() && !window.isFullScreen()) {
+    if (!window.isMinimized()) {
       void replacePersistedAppSetting(mainWindowBoundsSettingKey, window.getBounds());
     }
   });
