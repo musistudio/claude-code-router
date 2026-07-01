@@ -47,7 +47,11 @@ export async function getSystemProxyUrlForProtocol(protocol: "http" | "https" = 
 async function systemProxyUrlForRequest(url: URL): Promise<string | undefined> {
   const cache = await readSystemProxy();
   const server = proxyServerForRequest(cache.upstreamProxy, url.protocol === "https:" ? "https" : "http");
-  return server ? formatProxyUrl(server) : undefined;
+  if (server) return formatProxyUrl(server);
+
+  const envProxy = process.env.HTTPS_PROXY || process.env.https_proxy ||
+    process.env.HTTP_PROXY || process.env.http_proxy;
+  return envProxy ? envProxy.trim() : undefined;
 }
 
 async function readSystemProxy(): Promise<SystemProxyCache> {
