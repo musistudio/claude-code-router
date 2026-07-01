@@ -104,6 +104,42 @@ test("codex catalog keeps freeform apply_patch when provider advertises Response
   assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
+test("codex catalog enables apply_patch bridge for non-GPT models when Codex built-in route enables it", () => {
+  const model = catalogModelFor({
+    Providers: [
+      { name: "openrouter", type: "openai_chat_completions", models: ["google/gemini-2.5-pro"] }
+    ],
+    Router: {
+      builtInRules: {
+        "claude-code": { enabled: true },
+        codex: { enabled: true }
+      },
+      fallback: { mode: "off", models: [], retryCount: 1 },
+      rules: []
+    }
+  }, "openrouter/google/gemini-2.5-pro");
+
+  assert.equal(model.apply_patch_tool_type, "freeform");
+});
+
+test("codex catalog disables apply_patch bridge for non-GPT models when the Codex built-in route is off", () => {
+  const model = catalogModelFor({
+    Providers: [
+      { name: "openrouter", type: "openai_chat_completions", models: ["google/gemini-2.5-pro"] }
+    ],
+    Router: {
+      builtInRules: {
+        "claude-code": { enabled: true },
+        codex: { enabled: false }
+      },
+      fallback: { mode: "off", models: [], retryCount: 1 },
+      rules: []
+    }
+  }, "openrouter/google/gemini-2.5-pro");
+
+  assert.equal(model.apply_patch_tool_type, null);
+});
+
 test("codex catalog marks Fusion aliases with builtin web search as searchable", () => {
   const model = catalogModelFor({
     Providers: [],

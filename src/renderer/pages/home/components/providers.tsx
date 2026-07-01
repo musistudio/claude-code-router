@@ -250,8 +250,22 @@ export function ProvidersView({ accountSnapshots, addProvider, editProvider, not
   );
 }
 
-export function ModelsView({ config }: { config: AppConfig }) {
+export function ModelsView({
+  config,
+  updateModelDescription
+}: {
+  config: AppConfig;
+  updateModelDescription: (providerIndex: number, model: string, description: string) => void;
+}) {
   const t = useAppText();
+  const [descriptionDraft, setDescriptionDraft] = useState("");
+  const [descriptionTarget, setDescriptionTarget] = useState<{
+    description: string;
+    displayName?: string;
+    model: string;
+    providerIndex: number;
+    providerName?: string;
+  }>();
   const [query, setQuery] = useState("");
   const rows = useMemo(() => createModelCatalogItems(config), [config]);
   const normalizedQuery = query.trim().toLowerCase();
@@ -259,6 +273,34 @@ export function ModelsView({ config }: { config: AppConfig }) {
     () => rows.filter((row) => modelCatalogItemMatchesQuery(row, normalizedQuery)),
     [normalizedQuery, rows]
   );
+
+  function openDescriptionDialog(row: (typeof rows)[number]) {
+    if (row.providerIndex === undefined) {
+      return;
+    }
+    const description = row.description ?? "";
+    setDescriptionDraft(description);
+    setDescriptionTarget({
+      description,
+      displayName: row.displayName,
+      model: row.model,
+      providerIndex: row.providerIndex,
+      providerName: row.providerName
+    });
+  }
+
+  function closeDescriptionDialog() {
+    setDescriptionDraft("");
+    setDescriptionTarget(undefined);
+  }
+
+  function saveDescriptionDialog() {
+    if (!descriptionTarget) {
+      return;
+    }
+    updateModelDescription(descriptionTarget.providerIndex, descriptionTarget.model, descriptionDraft);
+    closeDescriptionDialog();
+  }
 
   return (
     <motion.div
@@ -297,21 +339,55 @@ export function ModelsView({ config }: { config: AppConfig }) {
           ) : null}
           {visibleRows.length > 0 ? (
             <div className="overflow-x-auto">
-              <div className="min-w-[360px]">
-                <div className="sticky top-0 z-10 grid h-10 grid-cols-[minmax(0,1fr)] items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <div className="min-w-[680px]">
+                <div className="sticky top-0 z-10 grid h-10 grid-cols-[minmax(0,1fr)_minmax(260px,1.5fr)] items-center gap-3 border-b border-border/60 bg-muted/95 px-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   <div className="truncate">{t("Model")}</div>
+                  <div className="truncate">{t("Description")}</div>
                 </div>
                 <div className="divide-y divide-border/60">
                   <AnimatePresence initial={false}>
                     {visibleRows.map((row) => (
                       <AnimatedListItem
-                        className="grid min-h-[48px] grid-cols-[minmax(0,1fr)] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35"
+                        className="grid min-h-[76px] grid-cols-[minmax(0,1fr)_minmax(260px,1.5fr)] items-start gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35"
                         key={row.key}
                       >
                         <div className="min-w-0">
                           <div className="truncate text-[12px] font-semibold text-foreground" title={row.displayName ?? row.model}>
                             {row.displayName ?? row.model}
                           </div>
+                          <div className="truncate font-mono text-[11px] text-muted-foreground" title={row.providerName ? `${row.providerName}/${row.model}` : row.model}>
+                            {row.providerName ? `${row.providerName}/${row.model}` : row.model}
+                          </div>
+                          {row.providerName ? (
+                            <Badge className="mt-1 max-w-full" variant="outline">
+                              <span className="truncate">{row.providerName}</span>
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <div className="min-w-0">
+                          {row.providerIndex !== undefined ? (
+                            <div className="flex min-w-0 items-start gap-2">
+                              <div className="min-w-0 flex-1">
+                                <div className="line-clamp-2 text-[12px] leading-5 text-muted-foreground" title={row.description ?? ""}>
+                                  {row.description || "-"}
+                                </div>
+                              </div>
+                              <Button
+                                aria-label={`${t("Edit description")} ${row.displayName ?? row.model}`}
+                                className="h-7 w-7 shrink-0 p-0"
+                                onClick={() => openDescriptionDialog(row)}
+                                title={t("Edit description")}
+                                type="button"
+                                variant="ghost"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="line-clamp-2 text-[12px] leading-5 text-muted-foreground" title={row.description ?? ""}>
+                              {row.description || "-"}
+                            </div>
+                          )}
                         </div>
                       </AnimatedListItem>
                     ))}
@@ -322,7 +398,71 @@ export function ModelsView({ config }: { config: AppConfig }) {
           ) : null}
         </CardContent>
       </Card>
+      <ModelCatalogDescriptionDialog
+        draft={descriptionDraft}
+        onChange={setDescriptionDraft}
+        onClose={closeDescriptionDialog}
+        onSave={saveDescriptionDialog}
+        target={descriptionTarget}
+      />
     </motion.div>
+  );
+}
+
+function ModelCatalogDescriptionDialog({
+  draft,
+  onChange,
+  onClose,
+  onSave,
+  target
+}: {
+  draft: string;
+  onChange: (value: string) => void;
+  onClose: () => void;
+  onSave: () => void;
+  target?: {
+    description: string;
+    displayName?: string;
+    model: string;
+    providerName?: string;
+  };
+}) {
+  const t = useAppText();
+  const open = Boolean(target);
+  const title = target?.displayName || target?.model || t("Model");
+  const subtitle = target?.providerName ? `${target.providerName}/${target.model}` : target?.model;
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
+      <DialogContent className="max-w-[560px]">
+        <DialogHeader>
+          <DialogTitle>{t("Edit description")}</DialogTitle>
+        </DialogHeader>
+        <DialogBody className="space-y-3">
+          <div className="min-w-0">
+            <div className="truncate text-[13px] font-semibold text-foreground" title={title}>{title}</div>
+            {subtitle ? <div className="truncate font-mono text-[11px] text-muted-foreground" title={subtitle}>{subtitle}</div> : null}
+          </div>
+          <Field label={t("Description")}>
+            <Textarea
+              aria-label={`${t("Description")} ${title}`}
+              className="min-h-[160px] resize-y text-[12px]"
+              onChange={(event) => onChange(event.target.value)}
+              placeholder={t("Describe model strengths, tradeoffs, and best-fit tasks.")}
+              value={draft}
+            />
+          </Field>
+        </DialogBody>
+        <DialogFooter>
+          <Button onClick={onClose} type="button" variant="outline">
+            {t("Cancel")}
+          </Button>
+          <Button disabled={draft.trim() === (target?.description ?? "").trim()} onClick={onSave} type="button">
+            {t("Save")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1059,6 +1199,7 @@ function LocalAgentProviderImportPanel({
         baseUrl: result.provider.baseUrl,
         credentials: [],
         icon: result.provider.icon ?? "",
+        modelDescriptions: result.provider.modelDescriptions,
         modelDisplayNames: result.provider.modelDisplayNames,
         modelSearch: "",
         modelsText: result.provider.models.join("\n"),
@@ -1237,11 +1378,12 @@ export function AddProviderForm({
     ...getProviderPresets().map((preset) => ({ label: t(preset.name), preset, value: preset.id }))
   ];
   const selectableProtocols = providerSelectableProtocolsFromProbe(probe);
+  const configuredModels = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
   const hasConnectivityCheckInputs = Boolean(
     !localAgentImport &&
     draft.baseUrl.trim() &&
     draft.apiKey.trim() &&
-    mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText)).length > 0
+    configuredModels.length > 0
   );
 
   useEffect(() => {
@@ -1295,6 +1437,7 @@ export function AddProviderForm({
         ...createDefaultProviderAccountDraft(),
         baseUrl: "",
         icon: "",
+        modelDescriptions: undefined,
         modelDisplayNames: undefined,
         modelSearch: "",
         presetId,
@@ -1310,6 +1453,7 @@ export function AddProviderForm({
         ...createDefaultProviderAccountDraft(),
         baseUrl: "",
         icon: "",
+        modelDescriptions: undefined,
         modelDisplayNames: undefined,
         modelSearch: "",
         presetId,
@@ -1329,6 +1473,7 @@ export function AddProviderForm({
       ...accountDraft,
       baseUrl: endpoint?.baseUrl ?? "",
       icon: "",
+      modelDescriptions: undefined,
       modelDisplayNames: preset?.defaultModelDisplayNames,
       modelSearch: "",
       modelsText: draft.modelsText.trim() || preset?.defaultModels?.join("\n") || "",
@@ -1437,6 +1582,12 @@ export function AddProviderForm({
               value={splitLines(draft.modelsText)}
             />
           )}
+          <ModelDescriptionsEditor
+            descriptions={draft.modelDescriptions}
+            displayNames={draft.modelDisplayNames}
+            models={configuredModels}
+            onChange={(modelDescriptions) => onChange({ modelDescriptions })}
+          />
         </Field>
         <div className="sm:col-span-2 flex min-w-0 flex-wrap items-center justify-between gap-2 text-[12px] text-muted-foreground">
           <div className="min-w-0 flex-1">
@@ -2436,6 +2587,62 @@ function ModelTagInput({
         </div>
       ) : null}
     </>
+  );
+}
+
+function ModelDescriptionsEditor({
+  descriptions,
+  displayNames,
+  models,
+  onChange
+}: {
+  descriptions?: Record<string, string>;
+  displayNames?: Record<string, string>;
+  models: string[];
+  onChange: (value: Record<string, string> | undefined) => void;
+}) {
+  const t = useAppText();
+  const normalizedModels = mergeProviderModelLists(models);
+  if (normalizedModels.length === 0) {
+    return null;
+  }
+
+  function updateDescription(model: string, value: string) {
+    const next: Record<string, string> = {};
+    for (const item of normalizedModels) {
+      const description = (item === model ? value : descriptions?.[item] ?? "").trim();
+      if (description) {
+        next[item] = description;
+      }
+    }
+    onChange(Object.keys(next).length > 0 ? next : undefined);
+  }
+
+  return (
+    <div className="space-y-2 rounded-md border border-border bg-muted/20 p-2">
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("Model descriptions")}</span>
+        <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/75">{t("Used in Agent routing prompts")}</span>
+      </div>
+      <div className="grid grid-cols-1 gap-2">
+        {normalizedModels.map((model) => {
+          const label = displayNames?.[model]?.trim() || model;
+          return (
+            <div className="grid grid-cols-1 gap-1 sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)] sm:items-start" key={model}>
+              <Label className="min-h-8 min-w-0 pt-1.5 text-[12px] font-medium text-foreground" title={model}>
+                <span className="block truncate">{label}</span>
+              </Label>
+              <Textarea
+                className="min-h-[58px] resize-y text-[12px]"
+                onChange={(event) => updateDescription(model, event.target.value)}
+                placeholder={t("Describe model strengths, tradeoffs, and best-fit tasks.")}
+                value={descriptions?.[model] ?? ""}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

@@ -4,8 +4,9 @@ import {
   CardHeader, Check, CircleAlert, clampNumber, cn, createRouteModelOptions, createRoutingRewriteDraftRow,
   Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle,
   disclosureSpringTransition, Field, formatRouterRuleCondition, formatRouterRuleTarget, GatewayProviderConfig, Input,
-  motion, normalizeRouterFallbackConfig, Pencil, Plus, Route, RouterFallbackConfig,
-  RouterFallbackMode, routerConditionSourceOptions, routerFallbackModeOptions, RouterRule, routerRewriteOperationOptions, routerRuleOperatorOptions,
+  Info, motion, normalizeRouterFallbackConfig, Pencil, Plus, Route, RouterFallbackConfig,
+  RouterBuiltInAgentRuleId, RouterFallbackMode, routerConditionSourceOptions, routerFallbackModeOptions, RouterRule, routerRewriteOperationOptions, routerRuleOperatorOptions,
+  RouterBuiltInAgentRuleConfig,
   RouteTargetControl, routingRuleRowMatchesQuery, Search, SelectControl, Toggle, translateOptions,
   Trash2, uniqueStrings, useAppText, useMemo, useState, X
 } from "../shared";
@@ -17,6 +18,7 @@ export function RoutingView({
   moveRule,
   providers,
   removeRule,
+  updateBuiltInRule,
   updateFallback,
   updateRule
 }: {
@@ -26,13 +28,14 @@ export function RoutingView({
   moveRule: (index: number, direction: -1 | 1) => void;
   providers: GatewayProviderConfig[];
   removeRule: (index: number) => void;
+  updateBuiltInRule: (agent: RouterBuiltInAgentRuleId, patch: Partial<RouterBuiltInAgentRuleConfig>) => void;
   updateFallback: (fallback: RouterFallbackConfig) => void;
   updateRule: (index: number, patch: Partial<RouterRule>) => void;
 }) {
   const t = useAppText();
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
-  const rows = useMemo(() => buildRoutingRuleRows(config), [config.Router.rules]);
+  const rows = useMemo(() => buildRoutingRuleRows(config), [config]);
   const fallback = config.Router.fallback;
   const visibleRules = useMemo(
     () => rows.filter((row) => routingRuleRowMatchesQuery(row, normalizedQuery)),
@@ -90,66 +93,87 @@ export function RoutingView({
                   <div className="truncate">{t("Condition")}</div>
                   <div className="truncate">{t("Request action")}</div>
                   <div className="truncate">{t("Status")}</div>
-                  <div aria-hidden="true" />
+                  <div className="truncate text-right">{t("Action")}</div>
                 </div>
                 <div className="divide-y divide-border/60">
                   <AnimatePresence initial={false}>
-                  {visibleRules.map((row) => (
-                    <AnimatedListItem
-                      className="grid min-h-[58px] grid-cols-[minmax(160px,0.8fr)_minmax(220px,1fr)_minmax(240px,1.15fr)_84px_148px] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35"
-                      key={row.key}
-                    >
+                  {visibleRules.map((row) => {
+                    const rowSourceLabel = row.builtInAgent ? t(row.sourceLabel) : row.sourceLabel;
+                    const rowTarget = row.target === "Profile model unset" ? t(row.target) : row.target;
+                    return (
+                      <AnimatedListItem
+                        className="grid min-h-[58px] grid-cols-[minmax(160px,0.8fr)_minmax(220px,1fr)_minmax(240px,1.15fr)_84px_148px] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35"
+                        key={row.key}
+                      >
                       <div className="min-w-0">
                         <div className="flex min-w-0 items-center gap-2">
                           <div className="truncate text-[12px] font-semibold">{row.name || t("Unnamed")}</div>
-                          {row.readonly ? <Badge variant="outline">{t("Plugin")}</Badge> : null}
+                          {row.builtInAgent ? <BuiltInRouteInfoIcon description={builtInRouteDescription(row.builtInAgent, t)} /> : null}
+                          {row.builtInAgent ? <Badge variant="outline">{t("Built-in")}</Badge> : row.readonly ? <Badge variant="outline">{t("Plugin")}</Badge> : null}
                         </div>
-                        <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground" title={`${row.sourceLabel}: ${row.ruleId}`}>
-                          {row.sourceLabel}: {row.ruleId}
+                        <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground" title={`${rowSourceLabel}: ${row.ruleId}`}>
+                          {rowSourceLabel}: {row.ruleId}
                         </div>
                       </div>
                       <div className="min-w-0">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <Badge variant="outline">{t(row.typeLabel)}</Badge>
-                          <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground" title={row.condition}>
-                            {row.condition}
-                          </span>
-                        </div>
+                        {!row.builtInAgent ? (
+                          <div className="flex min-w-0 items-center gap-2">
+                            <Badge variant="outline">{t(row.typeLabel)}</Badge>
+                            <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground" title={row.condition}>
+                              {row.condition}
+                            </span>
+                          </div>
+                        ) : null}
                       </div>
-                      <div className="min-w-0 truncate font-mono text-[11px] text-muted-foreground" title={row.target}>
-                        {row.target}
+                      <div className="min-w-0 truncate font-mono text-[11px] text-muted-foreground" title={row.builtInAgent ? undefined : rowTarget}>
+                        {row.builtInAgent ? null : rowTarget}
                       </div>
                       <div className="flex min-w-0 items-center gap-2">
-                        <Toggle checked={row.enabled} disabled={row.readonly} onChange={(enabled) => row.index !== undefined && updateRule(row.index, { enabled })} />
-                      </div>
-                      <div className="flex items-center justify-end gap-1">
-                        <Button aria-label={`${t("Move")} ${row.name || t("rule")} ${t("up")}`} disabled={row.readonly || row.index === undefined || row.index === 0} onClick={() => row.index !== undefined && moveRule(row.index, -1)} size="iconSm" title={t("Move up")} type="button" variant="ghost">
-                          <ArrowUp className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button aria-label={`${t("Move")} ${row.name || t("rule")} ${t("down")}`} disabled={row.readonly || row.index === undefined || row.index === row.ruleCount - 1} onClick={() => row.index !== undefined && moveRule(row.index, 1)} size="iconSm" title={t("Move down")} type="button" variant="ghost">
-                          <ArrowDown className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          aria-label={`${t("Edit")} ${row.name || t("rule")}`}
-                          disabled={row.readonly || row.index === undefined}
-                          onClick={() => {
-                            if (row.index !== undefined) {
-                              editRule(row.index);
+                        <Toggle
+                          checked={row.enabled}
+                          disabled={row.readonly || row.toggleDisabled}
+                          onChange={(enabled) => {
+                            if (row.builtInAgent) {
+                              updateBuiltInRule(row.builtInAgent, { enabled });
+                            } else if (row.index !== undefined) {
+                              updateRule(row.index, { enabled });
                             }
                           }}
-                          size="iconSm"
-                          title={t("Edit rule")}
-                          type="button"
-                          variant="ghost"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button aria-label={`${t("Remove")} ${row.name || t("rule")}`} disabled={row.readonly || row.index === undefined} onClick={() => row.index !== undefined && removeRule(row.index)} size="iconSm" title={t("Remove rule")} type="button" variant="ghost">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        />
                       </div>
-                    </AnimatedListItem>
-                  ))}
+                      <div className="flex items-center justify-end gap-1">
+                        {!row.builtInAgent ? (
+                          <>
+                            <Button aria-label={`${t("Move")} ${row.name || t("rule")} ${t("up")}`} disabled={row.readonly || row.index === undefined || row.index === 0} onClick={() => row.index !== undefined && moveRule(row.index, -1)} size="iconSm" title={t("Move up")} type="button" variant="ghost">
+                              <ArrowUp className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button aria-label={`${t("Move")} ${row.name || t("rule")} ${t("down")}`} disabled={row.readonly || row.index === undefined || row.index === row.ruleCount - 1} onClick={() => row.index !== undefined && moveRule(row.index, 1)} size="iconSm" title={t("Move down")} type="button" variant="ghost">
+                              <ArrowDown className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              aria-label={`${t("Edit")} ${row.name || t("rule")}`}
+                              disabled={row.readonly || row.index === undefined}
+                              onClick={() => {
+                                if (row.index !== undefined) {
+                                  editRule(row.index);
+                                }
+                              }}
+                              size="iconSm"
+                              title={t("Edit rule")}
+                              type="button"
+                              variant="ghost"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button aria-label={`${t("Remove")} ${row.name || t("rule")}`} disabled={row.readonly || row.index === undefined} onClick={() => row.index !== undefined && removeRule(row.index)} size="iconSm" title={t("Remove rule")} type="button" variant="ghost">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </>
+                        ) : null}
+                      </div>
+                      </AnimatedListItem>
+                    );
+                  })}
                   </AnimatePresence>
                 </div>
               </div>
@@ -159,6 +183,24 @@ export function RoutingView({
       </Card>
     </motion.div>
   );
+}
+
+function BuiltInRouteInfoIcon({ description }: { description: string }) {
+  return (
+    <span aria-label={description} className="group relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/30" tabIndex={0} title={description}>
+      <Info className="h-3.5 w-3.5" aria-hidden="true" />
+      <span className="pointer-events-none absolute left-full top-1/2 z-[80] ml-2 hidden w-[260px] -translate-y-1/2 rounded-md border border-border bg-popover px-2.5 py-2 text-left text-[11px] font-medium leading-4 text-popover-foreground shadow-card group-hover:block group-focus:block">
+        {description}
+      </span>
+    </span>
+  );
+}
+
+function builtInRouteDescription(agent: RouterBuiltInAgentRuleId, t: (value: string) => string): string {
+  if (agent === "claude-code") {
+    return t("Routes Claude Code requests by matching the Claude user-agent and setting request.body.model to the Claude Code profile or default model.");
+  }
+  return t("Routes Codex requests by matching the Codex user-agent and setting request.body.model to the Codex profile or default model.");
 }
 
 function RouterFallbackControl({

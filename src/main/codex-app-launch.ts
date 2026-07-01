@@ -41,6 +41,12 @@ export type CodexAppLaunchResult = {
   userDataDir: string;
 };
 
+export type CodexCompatibleAppModelCatalogWriteResult = {
+  changed: boolean;
+  file: string;
+  userDataDir: string;
+};
+
 const codexAppSpec: CodexCompatibleAppSpec = {
   bundledCliNames: ["codex", "Codex", "OpenAI Codex"],
   defaultCliCommand: "codex",
@@ -137,18 +143,36 @@ export function refreshCodexCompatibleAppProfileFiles(
   configDir: string,
   profile: ProfileConfig,
   config?: AppConfig
-): { modelCatalogFile: string; userDataDir: string } {
+): { modelCatalogChanged: boolean; modelCatalogFile: string; userDataDir: string } {
   const spec = profile.agent === "zcode" ? zcodeAppSpec : codexAppSpec;
-  const configFile = resolveCodexConfigFile(configDir, profile);
   if (spec.kind === "zcode" && config?.APIKEY) {
     writeZcodeGatewayConfig(config, profile, config.APIKEY, { backup: false });
   }
+  const modelCatalog = writeCodexCompatibleAppModelCatalog(configDir, profile, config);
+  return {
+    modelCatalogChanged: modelCatalog.changed,
+    modelCatalogFile: modelCatalog.file,
+    userDataDir: modelCatalog.userDataDir
+  };
+}
+
+export function writeCodexCompatibleAppModelCatalog(
+  configDir: string,
+  profile: ProfileConfig,
+  config?: AppConfig
+): CodexCompatibleAppModelCatalogWriteResult {
+  const spec = profile.agent === "zcode" ? zcodeAppSpec : codexAppSpec;
+  const configFile = resolveCodexConfigFile(configDir, profile);
   const codexHome = codexCompatibleHomeFromConfigFile(spec, configFile);
   const userDataDir = codexElectronUserDataDir(codexHome, profile, spec);
   mkdirSync(userDataDir, { recursive: true });
-  const modelCatalogFile = codexAppModelCatalogFile(userDataDir, spec);
-  writeFileSync(modelCatalogFile, codexModelCatalogJson(config, profile.model), "utf8");
-  return { modelCatalogFile, userDataDir };
+  const file = codexAppModelCatalogFile(userDataDir, spec);
+  const content = codexModelCatalogJson(config, profile.model);
+  const previous = existsSync(file) ? readFileSync(file, "utf8") : undefined;
+  if (previous !== content) {
+    writeFileSync(file, content, "utf8");
+  }
+  return { changed: previous !== content, file, userDataDir };
 }
 
 function launchCodexCompatibleAppProfile(

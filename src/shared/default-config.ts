@@ -33,12 +33,19 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
     PORT: 3456,
     Providers: [],
     Router: {
+      builtInRules: {
+        "claude-code": {
+          enabled: true
+        },
+        codex: {
+          enabled: true
+        }
+      },
       fallback: {
         mode: "off",
         models: [],
         retryCount: 1
       },
-      longContextThreshold: 200000,
       rules: []
     },
     agent: {

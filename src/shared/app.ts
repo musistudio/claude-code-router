@@ -129,6 +129,7 @@ export type GatewayProviderConfig = {
   extraHeaders?: unknown;
   icon?: string;
   id?: string;
+  modelDescriptions?: Record<string, string>;
   modelDisplayNames?: Record<string, string>;
   models: string[];
   name: string;
@@ -273,6 +274,7 @@ export type ProviderDeepLinkPayload = {
   apiKey?: string;
   baseUrl: string;
   icon?: string;
+  modelDescriptions?: Record<string, string>;
   modelDisplayNames?: Record<string, string>;
   models: string[];
   name?: string;
@@ -520,16 +522,19 @@ export type RouterFallbackConfig = {
   retryCount: number;
 };
 
+export type RouterBuiltInAgentRuleId = "claude-code" | "codex";
+
+export type RouterBuiltInAgentRuleConfig = {
+  enabled: boolean;
+};
+
+export type RouterBuiltInRulesConfig = Record<RouterBuiltInAgentRuleId, RouterBuiltInAgentRuleConfig>;
+
 export type RouterConfig = {
-  background?: string;
+  builtInRules: RouterBuiltInRulesConfig;
   default?: string;
   fallback: RouterFallbackConfig;
-  image?: string;
-  longContext?: string;
-  longContextThreshold: number;
   rules: RouterRule[];
-  think?: string;
-  webSearch?: string;
 };
 
 export type GatewayRuntimeConfig = {

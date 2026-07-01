@@ -16,7 +16,7 @@ function base64UrlJson(value) {
     .replace(/=+$/, "");
 }
 
-test("parseProviderDeepLinkPayload reads payload JSON, models, display names, and usage account mapping", () => {
+test("parseProviderDeepLinkPayload reads payload JSON, models, descriptions, display names, and usage account mapping", () => {
   const payload = {
     account: {
       connectors: {
@@ -34,8 +34,11 @@ test("parseProviderDeepLinkPayload reads payload JSON, models, display names, an
     model_display_names: {
       "model-a": "Model A"
     },
+    model_descriptions: {
+      "model-a": "Fast general-purpose model."
+    },
     models: [
-      { displayName: "Model B", id: "model-b" },
+      { description: "Best at coding tasks.", displayName: "Model B", id: "model-b" },
       "model-a,model-c"
     ],
     name: "Example AI",
@@ -53,6 +56,10 @@ test("parseProviderDeepLinkPayload reads payload JSON, models, display names, an
   assert.deepEqual(parsed.modelDisplayNames, {
     "model-a": "Model A",
     "model-b": "Model B"
+  });
+  assert.deepEqual(parsed.modelDescriptions, {
+    "model-a": "Fast general-purpose model.",
+    "model-b": "Best at coding tasks."
   });
   assert.equal(parsed.account?.enabled, true);
   assert.equal(parsed.account?.refreshIntervalMs, 60000);

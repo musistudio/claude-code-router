@@ -556,7 +556,7 @@
 
   .network-table-scroll,
   .network-detail,
-  .network-json-fullscreen,
+  .network-json-fullscreen-panel,
   .network-json-fullscreen-body,
   .network-pane-body {
     background: var(--network-panel);
@@ -564,13 +564,28 @@
   }
 
   .network-json-fullscreen {
+    align-items: center;
+    background: rgba(0, 0, 0, .82);
     color: var(--network-text);
+    justify-content: center;
+    padding: clamp(14px, 4.4vw, 56px) clamp(14px, 4.4vw, 84px);
+  }
+
+  .network-json-fullscreen-panel {
+    border-color: var(--network-border);
+    border-radius: 24px;
+    box-shadow: 0 24px 72px rgba(0, 0, 0, .42);
+    height: 100%;
+    max-height: 100%;
+    max-width: 1760px;
+    min-width: 0;
+    width: 100%;
   }
 
   .network-json-fullscreen-header {
     background: var(--network-panel-alt);
     border-color: var(--network-border);
-    box-shadow: var(--network-shadow);
+    box-shadow: none;
   }
 
   .network-table-header,
@@ -758,6 +773,19 @@
     background: color-mix(in oklab, var(--network-active-bg) 16%, var(--network-panel));
     border-color: color-mix(in oklab, var(--network-active-bg) 55%, var(--network-border));
     color: color-mix(in oklab, var(--network-active-bg) 70%, var(--network-text));
+  }
+
+  @media (max-width: 720px), (max-height: 520px) {
+    .network-json-fullscreen {
+      padding: 0;
+    }
+
+    .network-json-fullscreen-panel {
+      border-left: 0;
+      border-radius: 0;
+      border-right: 0;
+      max-width: none;
+    }
   }
 
   .onboarding-mascot-sprite {
