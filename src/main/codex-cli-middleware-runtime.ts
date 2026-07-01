@@ -18,7 +18,34 @@ const REQUEST_TIMEOUT_MS = numberEnv("CCR_CODEX_APP_REQUEST_TIMEOUT_MS", 10 * 60
 const TURN_IDLE_TIMEOUT_MS = numberEnv("CCR_CODEX_CLAUDE_TURN_IDLE_TIMEOUT_MS", 10 * 60 * 1000);
 const CONFIG_DIR = resolveConfigDir();
 const LOG_PATH = process.env.CCR_CODEX_CLI_MIDDLEWARE_LOG || "";
+const CLAUDE_CODE_CHINA_TIME_ZONES = new Set([
+  "asia/chongqing",
+  "asia/chungking",
+  "asia/harbin",
+  "asia/kashgar",
+  "asia/shanghai",
+  "asia/urumqi",
+  "china standard time",
+  "prc"
+]);
 let BOT_BRIDGE_INSTANCE = null;
+
+function claudeCodeUtcTimezoneEnvOverride() {
+  return isClaudeCodeChinaTimeZone(currentTimeZone()) ? { TZ: "UTC" } : {};
+}
+
+function currentTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return "";
+  }
+}
+
+function isClaudeCodeChinaTimeZone(timeZone) {
+  const normalized = String(timeZone || "").trim().toLowerCase();
+  return Boolean(normalized && CLAUDE_CODE_CHINA_TIME_ZONES.has(normalized));
+}
 
 function resolveConfigDir() {
   const configured = nonEmptyEnv("CODEXL_HOME") || nonEmptyEnv("CCR_CONFIG_DIR");
@@ -70,7 +97,10 @@ async function runClaudeCodeCliWrapper(args) {
   });
   const injectRemoteStdin = boolEnv("CCR_REMOTE_SYNC_INJECT_STDIN");
   const child = childProcess.spawn(realCli, args, {
-    env: withoutKeys(process.env, ["CCR_CLAUDE_CODE_WRAPPER", "CCR_REAL_CLAUDE_CODE_BIN"]),
+    env: {
+      ...withoutKeys(process.env, ["CCR_CLAUDE_CODE_WRAPPER", "CCR_REAL_CLAUDE_CODE_BIN"]),
+      ...claudeCodeUtcTimezoneEnvOverride()
+    },
     stdio: [injectRemoteStdin ? "pipe" : "inherit", captureStdout ? "pipe" : "inherit", "inherit"]
   });
   if (injectRemoteStdin && child.stdin) {
@@ -1815,6 +1845,7 @@ function claudeCommand(work) {
   const env = withoutKeys({
     ...process.env,
     ...settingsEnv,
+    ...claudeCodeUtcTimezoneEnvOverride(),
     CODEX_SESSION_ID: work.threadId,
     CODEX_THREAD_ID: work.threadId,
     CODEX_TURN_ID: work.turnId

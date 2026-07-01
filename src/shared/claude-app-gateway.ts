@@ -25,14 +25,13 @@ export type ClaudeAppGatewayInferenceModel = {
   supports1m?: true;
 };
 
-export function inferClaudeAppGatewayTargetModel(config: Pick<AppConfig, "Router" | "profile">): string {
-  return config.Router.default?.trim() ||
-    inferGlobalClaudeProfileModel(config) ||
+export function inferClaudeAppGatewayTargetModel(config: Pick<AppConfig, "profile">): string {
+  return inferGlobalClaudeProfileModel(config) ||
     CLAUDE_APP_FALLBACK_MODEL;
 }
 
 export function buildClaudeAppGatewayModelRoutes(
-  config: Pick<AppConfig, "Providers" | "Router" | "profile" | "virtualModelProfiles">,
+  config: Pick<AppConfig, "Providers" | "profile" | "virtualModelProfiles">,
   options: ClaudeAppGatewayModelRouteOptions = {}
 ): ClaudeAppGatewayModelRoute[] {
   const targetModels = claudeAppGatewayTargetModels(config);
@@ -74,7 +73,7 @@ export function buildClaudeAppGatewayModelRoutes(
 
 export function resolveClaudeAppGatewayRouteModel(
   model: string,
-  config: Pick<AppConfig, "Providers" | "Router" | "profile" | "virtualModelProfiles">,
+  config: Pick<AppConfig, "Providers" | "profile" | "virtualModelProfiles">,
   options: ClaudeAppGatewayModelRouteOptions = {}
 ): string | undefined {
   const normalized = model.trim().toLowerCase();
@@ -99,7 +98,7 @@ export function resolveClaudeAppGatewayRouteModel(
 }
 
 export function buildClaudeAppGatewayInferenceModels(
-  config: Pick<AppConfig, "Providers" | "Router" | "profile" | "virtualModelProfiles">,
+  config: Pick<AppConfig, "Providers" | "profile" | "virtualModelProfiles">,
   options: ClaudeAppGatewayModelRouteOptions = {}
 ): ClaudeAppGatewayInferenceModel[] {
   const routes = buildClaudeAppGatewayModelRoutes(config, options);
@@ -129,7 +128,7 @@ function inferGlobalClaudeProfileModel(config: Pick<AppConfig, "profile">): stri
   )?.model.trim() ?? "";
 }
 
-function claudeAppGatewayTargetModels(config: Pick<AppConfig, "Providers" | "Router" | "profile" | "virtualModelProfiles">): string[] {
+function claudeAppGatewayTargetModels(config: Pick<AppConfig, "Providers" | "profile" | "virtualModelProfiles">): string[] {
   const baseEntries = config.Providers.flatMap((provider) => {
     const providerName = provider.name?.trim();
     if (!providerName || !Array.isArray(provider.models)) {

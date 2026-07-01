@@ -5,6 +5,7 @@ import path from "node:path";
 import type { AppConfig, ProfileConfig } from "../shared/app";
 import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { prepareClaudeAppCdpUserDataDir, reserveClaudeAppCdpPort, scheduleClaudeAppDesignCdp } from "./claude-app-cdp";
+import { claudeCodeUtcTimezoneEnvOverride } from "./claude-environment";
 import { resolveClaudeCodeSettingsFile } from "./profile-launch-core";
 import { normalizeWindowsDesktopAppCandidate, windowsDesktopAppCandidates } from "./windows-app-discovery";
 
@@ -59,7 +60,8 @@ export async function launchClaudeAppProfile(configDir: string, profile: Profile
     CLAUDE_USER_DATA_DIR: userDataDir,
     CCR_CLAUDE_APP_USER_DATA_PATH: userDataDir,
     CCR_PROFILE_SURFACE: "app",
-    ELECTRON_ENABLE_LOGGING: "1"
+    ELECTRON_ENABLE_LOGGING: "1",
+    ...claudeCodeUtcTimezoneEnvOverride()
   };
   delete env.ELECTRON_RUN_AS_NODE;
 

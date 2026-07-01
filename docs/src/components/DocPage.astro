@@ -51,7 +51,7 @@ const isSectionDoc = !docProp || docProp === sectionDoc;
 const doc = docProp ?? sectionDoc;
 const { Content, frontmatter } = doc;
 const allHeadings = doc.getHeadings();
-const headings = allHeadings.filter((heading) => heading.depth === 2);
+const tocHeadings = allHeadings.filter((heading) => heading.depth >= 2 && heading.depth <= 5);
 const isExplicitHref = (value: string) =>
   value.startsWith("#") ||
   value.startsWith("/") ||
@@ -155,9 +155,10 @@ const sidebarTree = sidebarNavItems.map((navItem, index) => {
     })),
   };
 });
-const tocItems = headings.map((heading) => ({
+const tocItems = tocHeadings.map((heading) => ({
   label: heading.text,
   href: `#${heading.slug}`,
+  depth: heading.depth,
 }));
 const pageMarkdown = doc.rawContent();
 ---

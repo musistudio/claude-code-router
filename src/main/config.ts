@@ -36,6 +36,7 @@ import type {
   ProfileRuntimeConfig,
   ProxyRouteTarget,
   ProxyRuntimeConfig,
+  RouterBuiltInRulesConfig,
   RouterConfig,
   RouterFallbackConfig,
   RouterFallbackMode,
@@ -965,6 +966,7 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
       const models = Array.isArray(item.models)
         ? item.models.map((model) => readString(model)).filter((model): model is string => Boolean(model))
         : [];
+      const modelDescriptions = parseModelDescriptions(item.modelDescriptions ?? item.model_descriptions, models);
       const modelDisplayNames = parseModelDisplayNames(item.modelDisplayNames ?? item.model_display_names, models);
 
       if (!name) {
@@ -986,6 +988,7 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         extraHeaders: item.extraHeaders,
         icon: readString(item.icon),
         id: readString(item.id),
+        modelDescriptions,
         modelDisplayNames,
         models,
         name,
@@ -998,6 +1001,22 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
     .filter((item): item is GatewayProviderConfig => Boolean(item));
 
   return withProviderIds(providers);
+}
+
+function parseModelDescriptions(value: unknown, models: string[]): Record<string, string> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const modelIds = new Set(models);
+  const entries = Object.entries(value)
+    .map(([rawModel, rawDescription]) => [rawModel.trim(), readString(rawDescription)] as const)
+    .filter((entry): entry is [string, string] => {
+      const [model, description] = entry;
+      return Boolean(model && description && modelIds.has(model));
+    });
+
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 function parseModelDisplayNames(value: unknown, models: string[]): Record<string, string> | undefined {
@@ -1171,15 +1190,9 @@ function parseRouter(value: unknown): Partial<RouterConfig> | undefined {
   }
 
   const router: Partial<RouterConfig> = {};
-  for (const key of ["background", "default"] as const) {
-    const route = readString(value[key]);
-    if (route) {
-      router[key] = route;
-    }
-  }
-  const threshold = readNumber(value.longContextThreshold);
-  if (threshold !== undefined && threshold > 0) {
-    router.longContextThreshold = threshold;
+  const builtInRules = parseRouterBuiltInRules(value.builtInRules ?? value.builtinRules ?? value.agentRules);
+  if (builtInRules) {
+    router.builtInRules = builtInRules;
   }
   const rules = parseRouterRules(value.rules);
   if (rules) {
@@ -1192,6 +1205,29 @@ function parseRouter(value: unknown): Partial<RouterConfig> | undefined {
     router.fallback = fallback;
   }
   return router;
+}
+
+function parseRouterBuiltInRules(value: unknown): RouterBuiltInRulesConfig | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  return {
+    "claude-code": parseRouterBuiltInAgentRule(value["claude-code"] ?? value.claudeCode ?? value.claude),
+    codex: parseRouterBuiltInAgentRule(value.codex)
+  };
+}
+
+function parseRouterBuiltInAgentRule(value: unknown): { enabled: boolean } {
+  if (typeof value === "boolean") {
+    return { enabled: value };
+  }
+  if (!isObject(value)) {
+    return { enabled: true };
+  }
+  return {
+    enabled: typeof value.enabled === "boolean" ? value.enabled : true
+  };
 }
 
 function parseRouterFallback(value: unknown): RouterFallbackConfig | undefined {

@@ -390,26 +390,36 @@ export const localAgentProviderIconUrls: Record<LocalAgentProviderKind, string> 
 };
 
 export function createModelCatalogItems(config: AppConfig): ModelCatalogItem[] {
-  const providerModels: string[] = [];
-  const displayNames: Record<string, string> = {};
-  for (const provider of config.Providers) {
-    for (const model of mergeProviderModelLists(provider.models)) {
-      providerModels.push(model);
-      const displayName = provider.modelDisplayNames?.[model]?.trim();
-      if (displayName && !displayNames[model]) {
-        displayNames[model] = displayName;
-      }
+  const rows: ModelCatalogItem[] = [];
+  config.Providers.forEach((provider, providerIndex) => {
+    const providerName = provider.name?.trim();
+    if (!providerName) {
+      return;
     }
-  }
+    for (const model of mergeProviderModelLists(provider.models)) {
+      const description = provider.modelDescriptions?.[model]?.trim();
+      const displayName = provider.modelDisplayNames?.[model]?.trim();
+      rows.push({
+        ...(description ? { description } : {}),
+        ...(displayName ? { displayName } : {}),
+        key: `provider-model:${providerIndex}:${providerName}:${model}`,
+        model,
+        providerIndex,
+        providerName
+      });
+    }
+  });
   const virtualModels = (config.virtualModelProfiles ?? [])
     .filter(virtualModelIsCatalogVisible)
     .flatMap(virtualModelCatalogNames);
 
-  return uniqueStrings([...providerModels, ...virtualModels]).map((model, index) => ({
-    ...(displayNames[model] ? { displayName: displayNames[model] } : {}),
-    key: `model:${index}:${model}`,
-    model
-  }));
+  return [
+    ...rows,
+    ...uniqueStrings(virtualModels).map((model, index) => ({
+      key: `virtual-model:${index}:${model}`,
+      model
+    }))
+  ];
 }
 
 export function virtualModelIsCatalogVisible(profile: VirtualModelProfileConfig): boolean {
@@ -462,7 +472,10 @@ export function modelCatalogItemMatchesQuery(row: ModelCatalogItem, query: strin
     return true;
   }
 
-  return row.model.toLowerCase().includes(query) || (row.displayName ?? "").toLowerCase().includes(query);
+  return row.model.toLowerCase().includes(query) ||
+    (row.providerName ?? "").toLowerCase().includes(query) ||
+    (row.displayName ?? "").toLowerCase().includes(query) ||
+    (row.description ?? "").toLowerCase().includes(query);
 }
 
 export function createRouteModelOptions(providers: GatewayProviderConfig[]): Array<{ label: string; value: string }> {
@@ -611,7 +624,7 @@ export function createRoutingRuleDraft(config?: AppConfig): AddRoutingRuleDraft 
     rewriteValue: rewrite.value,
     rewrites: [rewrite],
     target: "",
-    threshold: String(config?.Router.longContextThreshold || 200000),
+    threshold: "200000",
     type: "condition"
   };
 }
@@ -635,7 +648,7 @@ export function createRoutingRuleDraftFromRule(rule: RouterRule, config?: AppCon
     rewriteValue: firstRewrite.value,
     rewrites: rewrites.length ? rewrites : [firstRewrite],
     target: rule.target ?? "",
-    threshold: String(rule.threshold ?? config?.Router.longContextThreshold ?? 200000),
+    threshold: String(rule.threshold ?? 200000),
     type: "condition"
   };
 }
@@ -843,6 +856,7 @@ export function createProviderDraftFromDeepLinkPayload(
     baseUrl,
     credentials: [],
     icon: payload.icon?.trim() || "",
+    modelDescriptions: modelDescriptionsForModels(payload.modelDescriptions, models),
     modelDisplayNames: modelDisplayNamesForModels(
       mergeModelDisplayNames(providerPresetModelDisplayNames(preset), payload.modelDisplayNames),
       models
@@ -905,6 +919,7 @@ export function createProviderConfigFromDeepLink(
     api_key: apiKey,
     capabilities: capabilities.length > 0 ? capabilities : undefined,
     icon: payload.icon?.trim() || undefined,
+    modelDescriptions: modelDescriptionsForModels(payload.modelDescriptions, models),
     modelDisplayNames: modelDisplayNamesForModels(mergeModelDisplayNames(payload.modelDisplayNames, probe?.modelDisplayNames), models),
     models,
     name,
@@ -930,6 +945,7 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
     baseUrl: "",
     credentials: [],
     icon: "",
+    modelDescriptions: undefined,
     modelDisplayNames: undefined,
     modelSearch: "",
     modelsText: "",
@@ -953,6 +969,7 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
     baseUrl,
     credentials: (provider.credentials ?? []).map(providerCredentialDraftFromConfig),
     icon: provider.icon ?? "",
+    modelDescriptions: modelDescriptionsForModels(provider.modelDescriptions, provider.models),
     modelDisplayNames: modelDisplayNamesForModels(
       mergeModelDisplayNames(providerPresetModelDisplayNames(preset), provider.modelDisplayNames),
       provider.models
@@ -1502,11 +1519,13 @@ export function createProviderInstallLinkFromDraft(draft: AddProviderDraft, prob
     return accountKeySafetyIssue.message;
   }
 
+  const modelDescriptions = modelDescriptionsForModels(draft.modelDescriptions, models);
   const modelDisplayNames = modelDisplayNamesForModels(draft.modelDisplayNames, models);
   const payload: ProviderDeepLinkPayload = {
     ...(account ? { account } : {}),
     baseUrl,
     ...(draft.icon.trim() ? { icon: draft.icon.trim() } : {}),
+    ...(modelDescriptions ? { modelDescriptions } : {}),
     ...(modelDisplayNames ? { modelDisplayNames } : {}),
     models,
     name: providerName,
@@ -1638,9 +1657,11 @@ export function providerDraftSafetyIssue(draft: AddProviderDraft, baseUrl = draf
 
 export function providerProbeCandidates(draft: AddProviderDraft): ProviderProbeCandidate[] {
   const preset = findProviderPreset(draft.presetId);
+  const protocols = providerProtocolOptions.map((option) => option.value);
   if (preset) {
     return preset.endpoints.map((endpoint) => ({
       ...endpoint,
+      protocols,
       source: "preset"
     }));
   }
@@ -1648,7 +1669,7 @@ export function providerProbeCandidates(draft: AddProviderDraft): ProviderProbeC
   return [
     {
       baseUrl: draft.baseUrl.trim(),
-      protocols: providerProtocolOptions.map((option) => option.value),
+      protocols,
       source: "custom"
     }
   ];
@@ -1746,15 +1767,36 @@ export function selectedProviderProtocolsFromCapabilities(
 export function selectedProviderProtocolsForProbe(
   selectedProtocols: GatewayProviderProtocol[],
   probe: GatewayProviderProbeResult,
-  fallback: GatewayProviderProtocol
+  fallback: GatewayProviderProtocol,
+  presetId?: string
 ): GatewayProviderProtocol[] {
   const selectable = providerSelectableProtocolsFromProbe(probe);
   if (selectable.length === 0) {
     return selectedProtocols.length > 0 ? uniqueProviderProtocols(selectedProtocols) : [fallback];
   }
 
+  if (selectedProtocolsMatchPresetDefault(selectedProtocols, presetId)) {
+    return selectable;
+  }
+
   const selected = uniqueProviderProtocols(selectedProtocols).filter((protocol) => selectable.includes(protocol));
   return selected.length > 0 ? selected : selectable;
+}
+
+function selectedProtocolsMatchPresetDefault(
+  selectedProtocols: GatewayProviderProtocol[],
+  presetId: string | undefined
+): boolean {
+  const preset = findProviderPreset(presetId);
+  if (!preset) {
+    return false;
+  }
+
+  const selected = uniqueProviderProtocols(selectedProtocols);
+  const defaults = uniqueProviderProtocols(preset.endpoints.flatMap((endpoint) => endpoint.protocols));
+  return defaults.length > 0 &&
+    selected.length === defaults.length &&
+    defaults.every((protocol, index) => selected[index] === protocol);
 }
 
 export function uniqueProviderProtocols(values: Array<GatewayProviderProtocol | string | undefined>): GatewayProviderProtocol[] {
@@ -1804,7 +1846,7 @@ export function mergeProviderCapabilities(...groups: GatewayProviderCapability[]
 
 export function applyProviderProbeResult(draft: AddProviderDraft, probe: GatewayProviderProbeResult): AddProviderDraft {
   const protocol = probe.detectedProtocol ?? draft.protocol;
-  const selectedProtocols = selectedProviderProtocolsForProbe(draft.selectedProtocols, probe, protocol);
+  const selectedProtocols = selectedProviderProtocolsForProbe(draft.selectedProtocols, probe, protocol, draft.presetId);
   const modelDisplayNames = mergeModelDisplayNames(draft.modelDisplayNames, probe.modelDisplayNames);
 
   if (probe.models.length === 0) {
@@ -1866,6 +1908,17 @@ export function modelDisplayNamesForModels(
   const entries = Object.entries(value ?? {})
     .map(([rawModel, rawDisplayName]) => [rawModel.trim(), rawDisplayName.trim()] as const)
     .filter(([model, displayName]) => model && displayName && model !== displayName && modelIds.has(model));
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+export function modelDescriptionsForModels(
+  value: Record<string, string> | undefined,
+  models: string[]
+): Record<string, string> | undefined {
+  const modelIds = new Set(models);
+  const entries = Object.entries(value ?? {})
+    .map(([rawModel, rawDescription]) => [rawModel.trim(), rawDescription.trim()] as const)
+    .filter(([model, description]) => model && description && modelIds.has(model));
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 

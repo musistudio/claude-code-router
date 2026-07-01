@@ -446,7 +446,7 @@ export function createVirtualModelDraftFromProfile(profile: VirtualModelProfileC
   }
   return {
     baseModelMode: "fixed",
-    clientToolsPolicy: profile.execution?.clientToolsPolicy === "deny" ? "deny" : "allow",
+    clientToolsPolicy: "allow",
     customMcpServer: customMcpServerDraft,
     customToolName,
     description: profile.description ?? "",
@@ -752,7 +752,7 @@ export function virtualModelProfileFromDraft(
     displayName,
     enabled: draft.enabled,
     execution: {
-      clientToolsPolicy: draft.clientToolsPolicy,
+      clientToolsPolicy: "allow",
       ...flags,
       maxToolCalls: clampNumber(maxToolCalls || Math.max(tools.length, 1), 1, 50),
       maxTurns: clampNumber(maxTurns || 6, 1, 50),

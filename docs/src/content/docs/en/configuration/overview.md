@@ -5,12 +5,6 @@ eyebrow: Detailed Configuration
 lead: Customize the CCR home dashboard for system status, account balance, requests, tokens, cost, model distribution, and share cards.
 ---
 
-## Basic Concept
-
-Overview is the CCR dashboard. It turns gateway status, provider accounts, request usage, and analysis results into draggable widgets. You can switch the time range, edit widgets, resize them, change styles, and generate shareable cards from selected data.
-
-Overview depends on request logs, usage stats, and provider account usage. Some widgets require Request logs or Agent observability to be enabled in Settings. Account balance widgets require `Fetch usage` on providers.
-
 ## Top Controls
 
 | Field | Capability |

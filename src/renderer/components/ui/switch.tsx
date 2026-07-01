@@ -6,8 +6,8 @@ export interface SwitchProps extends Omit<React.InputHTMLAttributes<HTMLInputEle
 }
 
 const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
-  ({ checked = false, className, disabled, onChange, onCheckedChange, ...props }, ref) => (
-    <span className={cn("relative inline-flex h-[30px] w-[54px] shrink-0", className)}>
+  ({ checked = false, className, disabled, onChange, onCheckedChange, title, ...props }, ref) => (
+    <span className={cn("relative inline-flex h-[30px] w-[54px] shrink-0", className)} title={title}>
       <input
         aria-checked={checked}
         checked={checked}
@@ -19,6 +19,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
         }}
         ref={ref}
         role="switch"
+        title={title}
         type="checkbox"
         {...props}
       />

@@ -204,6 +204,7 @@ import type {
   RequestLogListFilter,
   RequestLogPage,
   RequestLogStatusFilter,
+  RouterBuiltInAgentRuleId,
   RouterConfig,
   RouterFallbackConfig,
   RouterFallbackMode,
@@ -421,6 +422,7 @@ export type AddProviderDraft = {
   baseUrl: string;
   credentials: ProviderCredentialDraft[];
   icon: string;
+  modelDescriptions?: Record<string, string>;
   modelDisplayNames?: Record<string, string>;
   modelSearch: string;
   modelsText: string;
@@ -694,9 +696,12 @@ export type ExtensionListItem = {
 };
 
 export type ModelCatalogItem = {
+  description?: string;
   displayName?: string;
   key: string;
   model: string;
+  providerIndex?: number;
+  providerName?: string;
 };
 
 export type PluginInstallCandidate = {
@@ -715,6 +720,7 @@ export type PluginSettingsDraft = {
 };
 
 export type RoutingRuleRow = {
+  builtInAgent?: RouterBuiltInAgentRuleId;
   condition: string;
   enabled: boolean;
   index?: number;
@@ -726,6 +732,8 @@ export type RoutingRuleRow = {
   ruleId: string;
   sourceLabel: string;
   target: string;
+  toggleDisabled?: boolean;
+  toggleDisabledReason?: string;
   typeLabel: string;
 };
 

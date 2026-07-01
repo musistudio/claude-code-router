@@ -5,6 +5,8 @@ import path from "node:path";
 import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, enforceSingleEnabledGlobalProfilePerAgent, hasAvailableGatewayModels, type ApiKeyConfig, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "../shared/app";
 import { replacePersistedApiKeys } from "./api-key-store";
 import { botGatewayProfileEnv } from "./bot-gateway-env";
+import { claudeCodeUtcTimezoneEnvOverride } from "./claude-environment";
+import { writeCodexCompatibleAppModelCatalog } from "./codex-app-launch";
 import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
 import { codexModelCatalogJson } from "./codex-model-catalog";
 import { CONFIGDIR } from "./constants";
@@ -98,6 +100,7 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
     } else {
       delete env.ANTHROPIC_SMALL_FAST_MODEL;
     }
+    Object.assign(env, claudeCodeUtcTimezoneEnvOverride());
 
     const helperResult = writeClaudeCodeApiKeyHelper(profile, token);
     const wrapperResult = writeClaudeCodeWrapper(config, profile, helperResult.file);
@@ -151,6 +154,7 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
     const configFormat = normalizeCodexConfigFormat(profile.configFormat);
     const modelCatalogFile = codexModelCatalogFile(configFile);
     const modelCatalogResult = writeFileWithBackup(modelCatalogFile, codexModelCatalogJson(config, model));
+    const appModelCatalogResult = writeCodexCompatibleAppModelCatalog(CONFIGDIR, { ...profile, model }, config);
     const showAllSessions = profile.agent === "zcode" ? false : Boolean(profile.showAllSessions);
     const nextConfig = buildCodexConfigToml(source, {
       baseUrl: endpoint,
@@ -178,9 +182,14 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
           providerId
         })
       : undefined;
-    const changed = writeResult.changed || modelCatalogResult.changed || Boolean(separateProfileResult?.changed) || Boolean(middlewareResult?.changed);
+    const changed = writeResult.changed ||
+      modelCatalogResult.changed ||
+      appModelCatalogResult.changed ||
+      Boolean(separateProfileResult?.changed) ||
+      Boolean(middlewareResult?.changed);
     const extras = [
       modelCatalogFile ? `catalog ${modelCatalogFile}` : "",
+      appModelCatalogResult.file ? `app catalog ${appModelCatalogResult.file}` : "",
       separateProfileResult?.file ? `profile ${separateProfileResult.file}` : "",
       middlewareResult?.file ? `middleware ${middlewareResult.file}` : ""
     ].filter(Boolean);
@@ -531,6 +540,7 @@ function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig,
   return [
     "#!/bin/sh",
     ...envExports,
+    ...shellEnvExports(claudeCodeUtcTimezoneEnvOverride()),
     `: "\${CCR_PROFILE_SURFACE:=${surface}}"`,
     "export CCR_PROFILE_SURFACE",
     ...botEnvExports,
@@ -559,6 +569,7 @@ function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, r
   return [
     "@echo off",
     ...envExports,
+    ...cmdEnvExports(claudeCodeUtcTimezoneEnvOverride()),
     `if not defined CCR_PROFILE_SURFACE ${cmdSetLine("CCR_PROFILE_SURFACE", surface)}`,
     ...botEnvExports,
     cmdSetLine("CCR_CLAUDE_CODE_WRAPPER", "1"),
@@ -850,6 +861,10 @@ function shellBotGatewayEnvExports(config: AppConfig, profile: ProfileConfig): s
   ];
 }
 
+function shellEnvExports(env: Record<string, string>): string[] {
+  return Object.entries(env).map(([key, value]) => `export ${key}=${shellQuote(value)}`);
+}
+
 function cmdBotGatewayEnvExports(config: AppConfig, profile: ProfileConfig): string[] {
   return [
     `if /I "%CCR_PROFILE_SURFACE%"=="app" (`,
@@ -858,6 +873,10 @@ function cmdBotGatewayEnvExports(config: AppConfig, profile: ProfileConfig): str
     ...Object.entries(botGatewayProfileEnv(config, profile, "cli")).map(([key, value]) => cmdSetLine(key, value, "  ")),
     ")"
   ];
+}
+
+function cmdEnvExports(env: Record<string, string>): string[] {
+  return Object.entries(env).map(([key, value]) => cmdSetLine(key, value));
 }
 
 function withoutBotGatewayEnv(values: Record<string, string>): Record<string, string> {
@@ -1285,10 +1304,6 @@ function gatewayEndpoint(config: AppConfig): string {
 }
 
 function defaultClientModel(config: AppConfig): string {
-  const configuredDefault = normalizeClientModel(config.Router.default);
-  if (configuredDefault) {
-    return configuredDefault;
-  }
   const preferred = config.Providers.find((provider) => provider.name === config.preferredProvider) ?? config.Providers[0];
   if (preferred?.name && preferred.models[0]) {
     return `${preferred.name}/${preferred.models[0]}`;

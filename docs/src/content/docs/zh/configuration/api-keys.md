@@ -5,12 +5,6 @@ eyebrow: 详细配置
 lead: 管理客户端访问 CCR 网关时使用的 API Key，并为每个 Key 设置过期时间和本地限额。
 ---
 
-## 基本概念
-
-“API 密钥”页面管理的是客户端访问 CCR 时使用的访问 Key。它不同于供应商配置里的 `API 密钥` 或 `凭据池`：这里的 Key 用来控制谁能调用 CCR；供应商 Key 用来控制 CCR 调用上游供应商。
-
-如果配置了 API Key，客户端请求需要带 `Authorization: Bearer <key>` 或 `x-api-key: <key>`。
-
 ## 列表字段
 
 | 字段 | 代表的能力 |

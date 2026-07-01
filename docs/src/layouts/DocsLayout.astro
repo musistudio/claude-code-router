@@ -394,14 +394,21 @@ const sidebarCloseLabel = locale === "zh" ? "关闭目录" : "Close navigation";
             </h2>
             <nav>
               {
-                tocItems.map((item, index) => (
-                  <a
-                    class:list={{ active: index === 0 }}
-                    href={typeof item === "string" ? `#section-${index + 1}` : item.href}
-                  >
-                    {typeof item === "string" ? item : item.label}
-                  </a>
-                ))
+                tocItems.map((item, index) => {
+                  const tocItem = typeof item === "string"
+                    ? { label: item, href: `#section-${index + 1}`, depth: 2 }
+                    : { depth: 2, ...item };
+                  const depth = Math.min(Math.max(Number(tocItem.depth), 2), 6);
+
+                  return (
+                    <a
+                      class:list={[`toc-depth-${depth}`, { active: index === 0 }]}
+                      href={tocItem.href}
+                    >
+                      {tocItem.label}
+                    </a>
+                  );
+                })
               }
             </nav>
           </div>

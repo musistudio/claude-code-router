@@ -46,13 +46,13 @@ export type CodexModelCatalogItem = {
   web_search_tool_type: string;
 };
 
-export function buildCodexModelCatalog(config?: Partial<Pick<AppConfig, "Providers" | "virtualModelProfiles">>, selectedModel?: string): CodexModelCatalog {
+export function buildCodexModelCatalog(config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>, selectedModel?: string): CodexModelCatalog {
   return {
     models: buildCodexModelCatalogIds(config, selectedModel).map((model, index) => codexModelCatalogItem(model, index, config))
   };
 }
 
-export function buildCodexModelCatalogIds(config?: Partial<Pick<AppConfig, "Providers" | "virtualModelProfiles">>, selectedModel?: string): string[] {
+export function buildCodexModelCatalogIds(config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>, selectedModel?: string): string[] {
   const ids: string[] = [];
   pushUniqueModel(ids, normalizeModelSelector(selectedModel));
 
@@ -98,11 +98,11 @@ export function buildCodexModelCatalogIds(config?: Partial<Pick<AppConfig, "Prov
   return ids;
 }
 
-export function codexModelCatalogJson(config?: Partial<Pick<AppConfig, "Providers" | "virtualModelProfiles">>, selectedModel?: string): string {
+export function codexModelCatalogJson(config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>, selectedModel?: string): string {
   return `${JSON.stringify(buildCodexModelCatalog(config, selectedModel), null, 2)}\n`;
 }
 
-export function codexModelCatalogBase64(config?: Partial<Pick<AppConfig, "Providers" | "virtualModelProfiles">>, selectedModel?: string): string {
+export function codexModelCatalogBase64(config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>, selectedModel?: string): string {
   const catalog = buildCodexModelCatalog(config, selectedModel);
   return Buffer.from(JSON.stringify(catalog), "utf8").toString("base64");
 }
@@ -110,7 +110,7 @@ export function codexModelCatalogBase64(config?: Partial<Pick<AppConfig, "Provid
 function codexModelCatalogItem(
   model: string,
   priority: number,
-  config?: Partial<Pick<AppConfig, "Providers" | "virtualModelProfiles">>
+  config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>
 ): CodexModelCatalogItem {
   const profile = codexModelCapabilityProfile(model, config);
   const contextWindow = codexModelContextWindow(model, profile.catalogEntry);
@@ -159,7 +159,7 @@ type CodexCapabilityProfile = {
 
 function codexModelCapabilityProfile(
   model: string,
-  config?: Partial<Pick<AppConfig, "Providers" | "virtualModelProfiles">>
+  config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>
 ): CodexCapabilityProfile {
   const selector = parseModelSelector(model);
   const provider = selector?.provider ? findConfiguredProvider(config, selector.provider) : undefined;
@@ -171,7 +171,7 @@ function codexModelCapabilityProfile(
   const supportsReasoning = readCatalogCapability(capabilities, "reasoning");
   const supportsImageInput = catalogEntrySupportsImageInput(catalogEntry);
   const supportsParallelToolCalls = readCatalogCapability(capabilities, "parallelFunctionCalling");
-  const applyPatchToolType = providerSupportsResponses || catalogModelLooksLikeGpt(model, catalogEntry)
+  const applyPatchToolType = providerSupportsResponses || catalogModelLooksLikeGpt(model, catalogEntry) || codexPatchBridgeApplies(model, catalogEntry, config)
     ? "freeform"
     : null;
   const supportsSearchTool =
@@ -273,6 +273,22 @@ function catalogModelLooksLikeGpt(model: string, entry: ModelCatalogEntry | unde
     entry?.id,
     entry?.model
   ].some((value) => typeof value === "string" && value.toLowerCase().includes("gpt"));
+}
+
+function codexPatchBridgeApplies(
+  model: string,
+  entry: ModelCatalogEntry | undefined,
+  config?: Partial<Pick<AppConfig, "Router">>
+): boolean {
+  const codexRule = config?.Router?.builtInRules?.codex;
+  if (!codexRule || codexRule.enabled === false) {
+    return false;
+  }
+  return !catalogModelLooksLikeGpt(modelNameForPatchBridge(model), entry);
+}
+
+function modelNameForPatchBridge(model: string): string {
+  return parseModelSelector(model)?.model ?? model;
 }
 
 function normalizeProviderProtocol(value: unknown): GatewayProviderProtocol | undefined {

@@ -5,10 +5,6 @@ eyebrow: Detailed Configuration
 lead: Configure the CCR system tray icon, balance progress, and tray window widgets.
 ---
 
-## Basic Concept
-
-Tray settings live under Settings. They control the system tray icon and the tray window. The tray window can show providers, account balance, token trends, activity, metrics, and model share so you can check CCR status without opening the main window.
-
 ## Top Fields
 
 | Field | Capability |
