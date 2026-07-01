@@ -1063,41 +1063,43 @@ function LogJsonFullscreenViewer({
     <div
       aria-label={`${title} ${t("Fullscreen JSON viewer")}`}
       aria-modal="true"
-      className="network-json-fullscreen fixed inset-0 z-[80] flex min-h-0 flex-col"
+      className="network-json-fullscreen fixed inset-0 z-[100] flex min-h-0"
       role="dialog"
     >
-      <div className="network-json-fullscreen-header flex h-12 min-w-0 shrink-0 items-center gap-3 border-b px-4">
-        <span className="network-pane-title min-w-0 truncate text-[15px] font-bold">{title}</span>
-        {subtitle ? <span className="network-muted shrink-0 text-[12px] font-semibold">{subtitle}</span> : null}
-        <button
-          aria-label={t("Close fullscreen JSON viewer")}
-          className="network-control-button ml-auto flex h-7 w-7 items-center justify-center rounded border outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-          onClick={onClose}
-          title={t("Close")}
-          type="button"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      <LogJsonBodyToolbar
-        body={body}
-        bodyView={bodyView}
-        onQueryChange={onQueryChange}
-        onToggleTextBody={onToggleTextBody}
-        preferTextBody={preferTextBody}
-        query={query}
-        title={title}
-      />
-      <div className="network-json-fullscreen-body flex min-h-0 flex-1">
-        <LogBodyViewer copyLabel={copyLabel} copyText={copyText}>
-          <LogJsonBodyContent
-            expandedJsonPaths={expandedJsonPaths}
-            onToggleJsonPath={onToggleJsonPath}
-            showJsonTree={showJsonTree}
-            value={value}
-            visible={visible}
-          />
-        </LogBodyViewer>
+      <div className="network-json-fullscreen-panel flex min-h-0 flex-1 flex-col overflow-hidden border">
+        <div className="network-json-fullscreen-header flex h-12 min-w-0 shrink-0 items-center gap-3 border-b px-4">
+          <span className="network-pane-title min-w-0 truncate text-[15px] font-bold">{title}</span>
+          {subtitle ? <span className="network-muted shrink-0 text-[12px] font-semibold">{subtitle}</span> : null}
+          <button
+            aria-label={t("Close fullscreen JSON viewer")}
+            className="network-control-button ml-auto flex h-7 w-7 items-center justify-center rounded border outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+            onClick={onClose}
+            title={t("Close")}
+            type="button"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <LogJsonBodyToolbar
+          body={body}
+          bodyView={bodyView}
+          onQueryChange={onQueryChange}
+          onToggleTextBody={onToggleTextBody}
+          preferTextBody={preferTextBody}
+          query={query}
+          title={title}
+        />
+        <div className="network-json-fullscreen-body flex min-h-0 flex-1">
+          <LogBodyViewer copyLabel={copyLabel} copyText={copyText}>
+            <LogJsonBodyContent
+              expandedJsonPaths={expandedJsonPaths}
+              onToggleJsonPath={onToggleJsonPath}
+              showJsonTree={showJsonTree}
+              value={value}
+              visible={visible}
+            />
+          </LogBodyViewer>
+        </div>
       </div>
     </div>
   );

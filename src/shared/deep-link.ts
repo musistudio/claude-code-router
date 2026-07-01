@@ -20,6 +20,7 @@ const maxIconLength = 8_192;
 const maxManifestUrlLength = 2_048;
 const maxSourceLength = 2_048;
 const maxModelLength = 256;
+const maxModelDescriptionLength = 1_000;
 const maxModels = 300;
 
 const providerProtocols = new Set<GatewayProviderProtocol>([
@@ -147,6 +148,7 @@ export function parseProviderDeepLinkPayload(rawUrl: string): ProviderDeepLinkPa
     firstStringParam(params, ["protocol"]) ?? firstPayloadString(payload, ["protocol"])
   );
   const models = readDeepLinkModels(params, payload);
+  const modelDescriptions = readDeepLinkModelDescriptions(params, payload, models);
   const modelDisplayNames = readDeepLinkModelDisplayNames(params, payload, models);
   const account = readDeepLinkAccount(params, payload);
   const source = boundedString(
@@ -160,6 +162,7 @@ export function parseProviderDeepLinkPayload(rawUrl: string): ProviderDeepLinkPa
     ...(apiKey ? { apiKey } : {}),
     baseUrl,
     ...(icon ? { icon } : {}),
+    ...(modelDescriptions ? { modelDescriptions } : {}),
     ...(modelDisplayNames ? { modelDisplayNames } : {}),
     models,
     ...(name ? { name } : {}),
@@ -218,6 +221,7 @@ function parseProviderPayloadFields(
     firstStringParam(params, ["protocol"]) ?? firstPayloadString(payload, ["protocol"])
   );
   const models = readDeepLinkModels(params, payload);
+  const modelDescriptions = readDeepLinkModelDescriptions(params, payload, models);
   const modelDisplayNames = readDeepLinkModelDisplayNames(params, payload, models);
   const account = readDeepLinkAccount(params, payload);
   const source = boundedString(
@@ -233,6 +237,7 @@ function parseProviderPayloadFields(
     ...(apiKey ? { apiKey } : {}),
     baseUrl,
     ...(icon ? { icon } : {}),
+    ...(modelDescriptions ? { modelDescriptions } : {}),
     ...(modelDisplayNames ? { modelDisplayNames } : {}),
     models,
     ...(name ? { name } : {}),
@@ -561,6 +566,43 @@ function readDeepLinkModelDisplayNames(
   }
 
   return Object.keys(displayNames).length > 0 ? displayNames : undefined;
+}
+
+function readDeepLinkModelDescriptions(
+  params: URLSearchParams,
+  payload: Record<string, unknown> | undefined,
+  models: string[]
+): Record<string, string> | undefined {
+  const modelIds = new Set(models);
+  const descriptions: Record<string, string> = {};
+  const addDescription = (rawModel: unknown, rawDescription: unknown) => {
+    const model = typeof rawModel === "string" ? rawModel.trim() : "";
+    const description = typeof rawDescription === "string" ? rawDescription.trim() : "";
+    if (!model || !description || !modelIds.has(model)) {
+      return;
+    }
+    if (description.length > maxModelDescriptionLength) {
+      throw new Error("Model description is too long.");
+    }
+    descriptions[model] = description;
+  };
+
+  const explicit = parseJsonValueParam(params, payload, ["modelDescriptions", "model_descriptions"]);
+  if (isRecord(explicit)) {
+    for (const [model, description] of Object.entries(explicit)) {
+      addDescription(model, description);
+    }
+  }
+
+  const payloadModelList = Array.isArray(payload?.models) ? payload.models : [];
+  for (const item of payloadModelList) {
+    if (!isRecord(item)) {
+      continue;
+    }
+    addDescription(readPayloadModelId(item), firstPayloadString(item, ["description", "desc", "summary"]));
+  }
+
+  return Object.keys(descriptions).length > 0 ? descriptions : undefined;
 }
 
 function readPayloadModelId(value: unknown): string | undefined {

@@ -282,10 +282,6 @@ function gatewayEndpoint(config: AppConfig): string {
 }
 
 function defaultClientModel(config: AppConfig): string {
-  const configuredDefault = normalizeClientModel(config.Router.default);
-  if (configuredDefault) {
-    return configuredDefault;
-  }
   const preferred = config.Providers.find((provider) => provider.name === config.preferredProvider) ?? config.Providers[0];
   if (preferred?.name && preferred.models[0]) {
     return `${preferred.name}/${preferred.models[0]}`;

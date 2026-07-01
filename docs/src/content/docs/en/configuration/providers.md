@@ -5,20 +5,54 @@ eyebrow: Detailed Configuration
 lead: Configure upstream model services, credentials, protocols, base URLs, and model lists.
 ---
 
-## Basic Concept
+## Import Local Agent Login
 
-A provider is an upstream model service. One provider config describes the upstream address, protocol capabilities, model list, authentication, optional multi-key rotation, and optional account usage fetching.
+When you add a provider, CCR scans for reusable local agent login state. If usable credentials are found, the add dialog shows the matching import entry. Importing creates a normal provider plus provider plugins, so CCR can reuse the local agent authorization without requiring a pasted API key.
 
-Each provider needs at least a name, API endpoint, usable protocol, model list, and one valid credential. The add/edit dialog changes which fields are visible depending on preset providers, custom endpoints, local agent login import, and advanced settings.
+### Claude Code
 
-Preset providers fill common endpoints, protocols, models, and usage-fetching settings, so they are the recommended starting point. For custom providers, enter the endpoint manually. CCR uses the endpoint and API key to probe protocol compatibility and help identify whether the upstream works with OpenAI Chat, OpenAI Responses, Anthropic Messages, or Gemini Generate.
+Claude Code import reads local Claude Code OAuth credentials. When a usable access token is available, CCR can import it as a `Claude Code API` provider.
+
+After import:
+
+1. The protocol is `anthropic_messages`.
+2. The default model list includes `claude-sonnet-4-20250514`; you can later add or remove models in the provider model list.
+3. CCR creates OAuth provider plugins that convert requests to use the Claude Code login state.
+4. Account usage uses the Anthropic OAuth usage endpoint, so quota state can appear in the provider list, tray, and account panels.
+
+If CCR only detects login traces but no usable access token, the import entry shows why it cannot be imported. Re-authenticate in Claude Code, then return to CCR and add the provider again.
+
+### Codex
+
+Codex import reads the local Codex auth file and model cache. When a Codex access token or refresh token is available, CCR can import it as a `Codex API` provider.
+
+After import:
+
+1. The protocol is `openai_responses`.
+2. The API endpoint points to the Codex backend. The model list always includes at least `gpt-5-codex` and also merges models and display names from the local model cache.
+3. CCR creates Codex OAuth provider plugins and refreshes access credentials when needed.
+4. Account usage reads Codex quota, balance, and token-stat endpoints.
+
+After import, select `Codex API/model-name` in routing or Agent Config. If the model cache is stale, open Codex first so it refreshes the model list, then return to CCR to import again or edit the models.
+
+### ZCode
+
+ZCode import reads provider API keys, API endpoints, and model lists from local ZCode config. It can be imported as a `ZCode API` provider only when CCR finds a usable provider key and Base URL.
+
+After import:
+
+1. The protocol is `anthropic_messages`.
+2. Models come from local ZCode config first; if none are configured, CCR uses the ZCode runtime cache or default models.
+3. CCR creates API-key provider plugins that use the key from local ZCode config for request authentication.
+4. If the API endpoint matches a built-in CCR preset, account usage settings are reused from that preset.
+
+If CCR detects ZCode login state but no usable provider API key, the import entry remains unavailable. Configure a usable model provider in ZCode first, then return to CCR and add the provider.
 
 ## Main Fields
 
 | Field | Capability |
 | --- | --- |
 | Select preset provider | Applies a built-in provider template, including default endpoint, supported protocols, default models, icon, provider website, and sometimes account usage settings. Choose `Other / custom API endpoint` for any OpenAI, Anthropic, or Gemini compatible upstream. |
-| Import local agent login | Appears while adding a provider if CCR finds usable Claude Code, Codex, or ZCode login state on this computer. Importing creates a provider and provider plugin that reuse the local login credential instead of a normal pasted API key. |
 | Name | Internal CCR display name. It is also used by routing, model selectors, logs, and config references. Names must be unique. |
 | API endpoint | Upstream API base URL. It controls where requests are sent, and is also used for protocol probing, model discovery, icon detection, and safety checks. Preset providers hide it by default while adding, but it can be overridden in Advanced settings. Custom providers must provide it. |
 | API key | Default provider credential. When the credential pool is empty, model requests use this key. Protocol probing, model discovery, connection checks, and default usage fetching also use it. Only use a key issued for the selected endpoint. |
@@ -27,13 +61,13 @@ Preset providers fill common endpoints, protocols, models, and usage-fetching se
 | Custom models | Manually adds model IDs that discovery did not return. Use this when the provider lacks a `/models` endpoint or a new model is not in the catalog yet. |
 | Check Connection | Sends real test requests with the current endpoint, API key, protocol, and selected models. It verifies key, model name, and protocol usability. |
 | Models to check | Model selection inside the connection-check confirmation dialog. Use it to test only some models. |
-| Check results | Shows whether each model is available, which protocol matched, and the upstream diagnostic message. Passing results do not automatically add models; the main model selection remains authoritative. |
+| Check results | Shows whether each model is available, which protocol matched, and the upstream diagnostic message. Results are diagnostic. Add models through the main model selection when you want them saved. |
 
 ## Connectivity Checks
 
 `Check Connection` sends real model requests for the models you select. It verifies whether the endpoint, API key, protocol, and model IDs are usable. The check limits generated output, but it can still create extra token usage or count against provider-side request limits.
 
-If the provider bills by request, input tokens, or output tokens, select only the models you need to verify instead of checking every model at once. Check results are diagnostic only; they do not automatically change the model list or usage-fetching settings.
+If the provider bills by request, input tokens, or output tokens, select only the models you need to verify. Checking every model at once can create unnecessary usage. Review the diagnostics, then adjust the model list or usage-fetching settings manually when needed.
 
 ## Credentials
 
@@ -90,7 +124,7 @@ This mode tries provider-hosted CCR account endpoints such as `/.well-known/ccr/
 
 ### HTTP JSON Request
 
-Use this mode when the provider has a balance or quota JSON endpoint that does not match CCR's standard account format.
+Use this mode when the provider has a balance or quota endpoint that returns a custom JSON shape.
 
 | Field | Capability |
 | --- | --- |

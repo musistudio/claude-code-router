@@ -5,10 +5,6 @@ eyebrow: Detailed Configuration
 lead: Configure the CCR gateway host, port, and Proxy mode for MITM interception and proxying into CCR.
 ---
 
-## Basic Concept
-
-The Server page controls how the local CCR gateway listens for requests. Normal model requests usually need only `Host` and `Port`.
-
 ## Main Fields
 
 | Field | Capability |

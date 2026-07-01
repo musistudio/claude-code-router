@@ -5,12 +5,6 @@ eyebrow: Detailed Configuration
 lead: Manage API keys that clients use to access the CCR gateway, with expiration and local limits.
 ---
 
-## Basic Concept
-
-The API Keys page manages client access keys for CCR. These keys are different from provider `API key` values and provider credential pools: API Keys control who can call CCR; provider keys control how CCR calls upstream providers.
-
-When API keys are configured, clients should send `Authorization: Bearer <key>` or `x-api-key: <key>`.
-
 ## List Fields
 
 | Field | Capability |

@@ -1,6 +1,6 @@
 {
   "name": "claude-code-router",
-  "version": "3.0.4",
+  "version": "3.0.5",
   "license": "MIT",
   "description": "Local Claude Code Router gateway with CLI and web management UI.",
   "repository": {
@@ -55,7 +55,7 @@
     "postinstall": "node build/post-install.mjs"
   },
   "dependencies": {
-    "@the-next-ai/ai-gateway": "^1.0.2",
+    "@the-next-ai/ai-gateway": "^1.0.3",
     "@the-next-ai/bot-gateway-sdk": "^0.1.0",
     "better-sqlite3": "^12.11.1",
     "electron-updater": "^6.8.9",

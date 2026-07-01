@@ -6,6 +6,7 @@ import { assertAvailableGatewayModels, type AppConfig, type ProfileOpenCommandRe
 import { botGatewayProfileEnv } from "./bot-gateway-env";
 import { applyClaudeAppGatewayConfig, readClaudeAppGatewayApiKeyCandidates } from "./claude-app-gateway-service";
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "./claude-app-launch";
+import { claudeCodeUtcTimezoneEnvOverride } from "./claude-environment";
 import { launchCodexAppProfile, launchZcodeAppProfile, refreshCodexCompatibleAppProfileFiles } from "./codex-app-launch";
 import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
 import { CONFIGDIR, IS_DEV } from "./constants";
@@ -79,7 +80,8 @@ export async function openProfileFromCcr(config: AppConfig, request: ProfileOpen
     env: {
       ...process.env,
       ...plan.env,
-      ...botGatewayProfileEnv(config, profile, surface)
+      ...botGatewayProfileEnv(config, profile, surface),
+      ...(profile.agent === "claude-code" ? claudeCodeUtcTimezoneEnvOverride() : {})
     },
     stdio: "ignore"
   });
@@ -515,11 +517,7 @@ function profileGatewayConfigWithToken(config: AppConfig, profile: ReturnType<ty
         key: token,
         name: `Profile: ${profile.name?.trim() || profile.id || profile.agent}`
       }
-    ],
-    Router: {
-      ...config.Router,
-      ...(profile.model.trim() ? { default: profile.model.trim() } : {})
-    }
+    ]
   };
 }
 
@@ -964,7 +962,8 @@ function startClaudeAppBotWorker(config: AppConfig, profile: ReturnType<typeof f
     CCR_CODEX_WORKSPACE_NAME: profile.name || profile.id,
     CCR_PROFILE_SURFACE: "app",
     CODEXL_CODEX_WORKSPACE_NAME: profile.name || profile.id,
-    CODEXL_PROFILE_SURFACE: "app"
+    CODEXL_PROFILE_SURFACE: "app",
+    ...claudeCodeUtcTimezoneEnvOverride()
   };
   delete env.ELECTRON_NO_ATTACH_CONSOLE;
 
