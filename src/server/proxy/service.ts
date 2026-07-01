@@ -1244,6 +1244,10 @@ function createForwardHeaders(
     forwarded.host = upstreamUrl.host;
     forwarded["x-ccr-proxy-mode"] = "transparent";
   }
+  const ccrSessionId = process.env.CCRCODE_SESSION_ID;
+  if (ccrSessionId) {
+    forwarded["x-session-id"] = ccrSessionId;
+  }
   return forwarded;
 }
 
