@@ -187,12 +187,65 @@ function isHttpUrl(url: URL): boolean {
 
 function shouldBypassProxy(url: URL): boolean {
   const hostname = normalizeHostname(url.hostname);
-  return hostname === "localhost" ||
+  if (hostname === "localhost" ||
     hostname === "127.0.0.1" ||
     hostname.startsWith("127.") ||
     hostname === "0.0.0.0" ||
     hostname === "::1" ||
-    hostname === "0:0:0:0:0:0:0:1";
+    hostname === "0:0:0:0:0:0:0:1") {
+    return true;
+  }
+
+  const noProxy = process.env.NO_PROXY || process.env.no_proxy;
+  if (!noProxy) return false;
+
+  const patterns = noProxy.split(",").map((s) => s.trim()).filter(Boolean);
+  for (const pattern of patterns) {
+    if (pattern === "*") return true;
+
+    if (pattern.startsWith(".")) {
+      if (hostname.endsWith(pattern.toLowerCase()) || hostname === pattern.slice(1).toLowerCase()) return true;
+      continue;
+    }
+
+    if (pattern.includes("/") && isPlainIp(hostname)) {
+      if (isInCidr(hostname, pattern)) return true;
+      continue;
+    }
+
+    if (hostname === pattern.toLowerCase()) return true;
+  }
+
+  return false;
+}
+
+function isPlainIp(s: string): boolean {
+  return /^\d+\.\d+\.\d+\.\d+$/.test(s);
+}
+
+function isInCidr(ip: string, cidr: string): boolean {
+  const [network, prefixStr] = cidr.split("/");
+  const prefix = parseInt(prefixStr, 10);
+  if (isNaN(prefix) || prefix < 0 || prefix > 32) return false;
+
+  const ipInt = ipToInt(ip);
+  const netInt = ipToInt(network);
+  if (ipInt === null || netInt === null) return false;
+
+  const mask = prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0;
+  return (ipInt & mask) === (netInt & mask);
+}
+
+function ipToInt(ip: string): number | null {
+  const parts = ip.split(".");
+  if (parts.length !== 4) return null;
+  let result = 0;
+  for (const part of parts) {
+    const num = parseInt(part, 10);
+    if (isNaN(num) || num < 0 || num > 255) return null;
+    result = (result << 8) | num;
+  }
+  return result >>> 0;
 }
 
 function normalizeHostname(hostname: string): string {
