@@ -4,11 +4,11 @@ import {
   CardHeader, Check, CircleAlert, clampNumber, cn, createRouteModelOptions, createRoutingRewriteDraftRow,
   Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle,
   disclosureSpringTransition, Field, formatRouterRuleCondition, formatRouterRuleTarget, GatewayProviderConfig, Input,
-  Info, motion, normalizeRouterFallbackConfig, Pencil, Plus, Route, RouterFallbackConfig,
+  AppI18nContext, appCopy, ExternalLink, Info, motion, normalizeRouterFallbackConfig, Pencil, Plus, Route, RouterFallbackConfig,
   RouterBuiltInAgentRuleId, RouterFallbackMode, routerConditionSourceOptions, routerFallbackModeOptions, RouterRule, routerRewriteOperationOptions, routerRuleOperatorOptions,
   RouterBuiltInAgentRuleConfig,
   RouteTargetControl, routingRuleRowMatchesQuery, Search, SelectControl, Toggle, translateOptions,
-  Trash2, uniqueStrings, useAppText, useMemo, useState, X
+  Trash2, uniqueStrings, useAppText, useContext, useMemo, useState, X
 } from "../shared";
 import { ROUTER_FALLBACK_MAX_RETRY_COUNT } from "../../../../shared/app";
 export function RoutingView({
@@ -100,6 +100,7 @@ export function RoutingView({
                   {visibleRules.map((row) => {
                     const rowSourceLabel = row.builtInAgent ? t(row.sourceLabel) : row.sourceLabel;
                     const rowTarget = row.target === "Profile model unset" ? t(row.target) : row.target;
+                    const toggleDisabledReason = row.toggleDisabledReason ? t(row.toggleDisabledReason) : undefined;
                     return (
                       <AnimatedListItem
                         className="grid min-h-[58px] grid-cols-[minmax(160px,0.8fr)_minmax(220px,1fr)_minmax(240px,1.15fr)_84px_148px] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35"
@@ -108,7 +109,7 @@ export function RoutingView({
                       <div className="min-w-0">
                         <div className="flex min-w-0 items-center gap-2">
                           <div className="truncate text-[12px] font-semibold">{row.name || t("Unnamed")}</div>
-                          {row.builtInAgent ? <BuiltInRouteInfoIcon description={builtInRouteDescription(row.builtInAgent, t)} /> : null}
+                          {row.builtInAgent ? <BuiltInRouteInfoIcon agent={row.builtInAgent} /> : null}
                           {row.builtInAgent ? <Badge variant="outline">{t("Built-in")}</Badge> : row.readonly ? <Badge variant="outline">{t("Plugin")}</Badge> : null}
                         </div>
                         <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground" title={`${rowSourceLabel}: ${row.ruleId}`}>
@@ -129,17 +130,28 @@ export function RoutingView({
                         {row.builtInAgent ? null : rowTarget}
                       </div>
                       <div className="flex min-w-0 items-center gap-2">
-                        <Toggle
-                          checked={row.enabled}
-                          disabled={row.readonly || row.toggleDisabled}
-                          onChange={(enabled) => {
-                            if (row.builtInAgent) {
-                              updateBuiltInRule(row.builtInAgent, { enabled });
-                            } else if (row.index !== undefined) {
-                              updateRule(row.index, { enabled });
-                            }
-                          }}
-                        />
+                        <span
+                          aria-label={toggleDisabledReason}
+                          className="group relative inline-flex rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                          tabIndex={toggleDisabledReason ? 0 : undefined}
+                        >
+                          <Toggle
+                            checked={row.enabled}
+                            disabled={row.readonly || row.toggleDisabled}
+                            onChange={(enabled) => {
+                              if (row.builtInAgent) {
+                                updateBuiltInRule(row.builtInAgent, { enabled });
+                              } else if (row.index !== undefined) {
+                                updateRule(row.index, { enabled });
+                              }
+                            }}
+                          />
+                          {toggleDisabledReason ? (
+                            <span className="pointer-events-none absolute right-full top-1/2 z-[80] mr-2 hidden w-[240px] -translate-y-1/2 rounded-md border border-border bg-popover px-2.5 py-2 text-left text-[11px] font-medium leading-4 text-popover-foreground shadow-card group-hover:block group-focus:block group-focus-within:block">
+                              {toggleDisabledReason}
+                            </span>
+                          ) : null}
+                        </span>
                       </div>
                       <div className="flex items-center justify-end gap-1">
                         {!row.builtInAgent ? (
@@ -185,22 +197,55 @@ export function RoutingView({
   );
 }
 
-function BuiltInRouteInfoIcon({ description }: { description: string }) {
+function BuiltInRouteInfoIcon({ agent }: { agent: RouterBuiltInAgentRuleId }) {
+  const t = useAppText();
+  const copy = useContext(AppI18nContext);
+  const description = builtInRouteDescription(agent, t);
+  const docsUrl = builtInRouteDocsUrl(agent, copy === appCopy.zh ? "zh" : "en");
+
   return (
-    <span aria-label={description} className="group relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/30" tabIndex={0} title={description}>
+    <span aria-label={description} className="group relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/30" tabIndex={0}>
       <Info className="h-3.5 w-3.5" aria-hidden="true" />
-      <span className="pointer-events-none absolute left-full top-1/2 z-[80] ml-2 hidden w-[260px] -translate-y-1/2 rounded-md border border-border bg-popover px-2.5 py-2 text-left text-[11px] font-medium leading-4 text-popover-foreground shadow-card group-hover:block group-focus:block">
-        {description}
+      <span className="absolute left-full top-1/2 z-[80] hidden w-[232px] -translate-y-1/2 pl-2 group-hover:block group-focus:block group-focus-within:block">
+        <span className="block rounded-md border border-border bg-popover px-2.5 py-2 text-left text-[11px] font-medium leading-4 text-popover-foreground shadow-card">
+          <span>{description}</span>
+          <a
+            className="ml-1 inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+            href={docsUrl}
+            onClick={(event) => {
+              event.preventDefault();
+              openExternalUrl(docsUrl);
+            }}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {t("Docs")}
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </span>
       </span>
     </span>
   );
 }
 
 function builtInRouteDescription(agent: RouterBuiltInAgentRuleId, t: (value: string) => string): string {
-  if (agent === "claude-code") {
-    return t("Routes Claude Code requests by matching the Claude user-agent and setting request.body.model to the Claude Code profile or default model.");
+  return agent === "claude-code"
+    ? t("Identifies the Claude Code user-agent to provide deep Claude Code integration.")
+    : t("Identifies the Codex user-agent to provide deep Codex integration.");
+}
+
+function builtInRouteDocsUrl(agent: RouterBuiltInAgentRuleId, language: "en" | "zh"): string {
+  const path = language === "zh" ? "/configuration/routing" : "/en/configuration/routing";
+  const hash = agent === "claude-code" ? "claude-code" : "codex";
+  return `https://ccrdesk.top${path}#${hash}`;
+}
+
+function openExternalUrl(url: string) {
+  if (window.ccr?.openExternal) {
+    void window.ccr.openExternal(url).catch(() => undefined);
+    return;
   }
-  return t("Routes Codex requests by matching the Codex user-agent and setting request.body.model to the Codex profile or default model.");
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 function RouterFallbackControl({

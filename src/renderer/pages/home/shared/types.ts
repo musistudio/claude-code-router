@@ -733,6 +733,7 @@ export type RoutingRuleRow = {
   sourceLabel: string;
   target: string;
   toggleDisabled?: boolean;
+  toggleDisabledReason?: string;
   typeLabel: string;
 };
 

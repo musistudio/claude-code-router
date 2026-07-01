@@ -20,7 +20,6 @@ function createRouterPlugin(options = {}) {
         "claude-code": { enabled: options.claudeCodeRuleEnabled ?? true },
         codex: { enabled: options.codexRuleEnabled ?? true }
       },
-      default: options.defaultModel ?? "",
       fallback: { mode: "off", models: [], retryCount: 1 },
       rules: []
     },
@@ -59,10 +58,9 @@ test("built-in Claude Code route matches user-agent case-insensitively", async (
   assert.equal(result.decision.reason, "builtin:claude-code");
 });
 
-test("built-in Codex route can use Router.default when profile model is unset", async () => {
+test("built-in Codex route stays inactive when profile model is unset", async () => {
   const plugin = createRouterPlugin({
-    agent: "codex",
-    defaultModel: "Provider/gpt-5-codex"
+    agent: "codex"
   });
   const result = await plugin.routeRequest({
     body: {
@@ -76,8 +74,8 @@ test("built-in Codex route can use Router.default when profile model is unset", 
     url: "/v1/messages"
   });
 
-  assert.equal(result.body.model, "Provider/gpt-5-codex");
-  assert.equal(result.decision.reason, "builtin:codex");
+  assert.equal(result.body.model, "gpt-5");
+  assert.equal(result.decision.reason, "default");
 });
 
 test("built-in agent route stays off after the user disables it", async () => {
@@ -417,7 +415,7 @@ test("built-in Claude Code route removes only the first billing system array ite
 test("non-Claude-Code routes keep billing system prompts unchanged", async () => {
   const plugin = createRouterPlugin({
     agent: "codex",
-    defaultModel: "Provider/gpt-5-codex"
+    profileModel: "Provider/gpt-5-codex"
   });
   const result = await plugin.routeRequest({
     body: {

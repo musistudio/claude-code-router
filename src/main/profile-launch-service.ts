@@ -514,11 +514,7 @@ function profileGatewayConfigWithToken(config: AppConfig, profile: ReturnType<ty
         key: token,
         name: `Profile: ${profile.name?.trim() || profile.id || profile.agent}`
       }
-    ],
-    Router: {
-      ...config.Router,
-      ...(profile.model.trim() ? { default: profile.model.trim() } : {})
-    }
+    ]
   };
 }
 

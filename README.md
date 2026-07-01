@@ -62,7 +62,7 @@ Open **Providers**, click **Add Provider**, then choose a built-in preset or **O
 
 ### 2. Configure routing
 
-Open **Routing** to choose the default route, add conditional rules, configure request rewrites, and set fallback behavior.
+Open **Routing** to add conditional rules, configure request rewrites, and set fallback behavior.
 
 Use **Add Routing Rule** for request conditions, model-prefix routing, or rule-level fallback targets.
 

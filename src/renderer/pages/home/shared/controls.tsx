@@ -529,8 +529,8 @@ export function KeyValueRowsControl({
   );
 }
 
-export function Toggle({ checked, disabled = false, onChange }: { checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void }) {
-  return <Switch checked={checked} disabled={disabled} onCheckedChange={onChange} />;
+export function Toggle({ checked, disabled = false, onChange, title }: { checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void; title?: string }) {
+  return <Switch checked={checked} disabled={disabled} onCheckedChange={onChange} title={title} />;
 }
 
 export type MetricTone = "amber" | "blue" | "indigo" | "rose" | "slate" | "teal";

@@ -9,9 +9,9 @@ lead: Choose the model for a request, then automatically retry or switch to fall
 
 ### Claude Code
 
-The built-in Claude Code route detects requests from Claude Code and routes main requests to the Claude Code Agent Config model or the default route model.
+The built-in Claude Code route detects requests from Claude Code and routes main requests to the Claude Code Agent Config model.
 
-Claude Code **main requests** use the Claude Code Agent Config model by default; if it is unset, they use the Routing page default model. CCR also automatically removes the first `x-anthropic-billing-header` system message injected by Claude Code so that billing helper messages do not affect later routing decisions. Claude Code Subagent, Task, and Workflow-created agents can still choose different models through the tag mechanism below.
+Claude Code **main requests** use the Claude Code Agent Config model. If that model is unset, the built-in route remains inactive. CCR also automatically removes the first `x-anthropic-billing-header` system message injected by Claude Code so that billing helper messages do not affect later routing decisions. Claude Code Subagent, Task, and Workflow-created agents can still choose different models through the tag mechanism below.
 
 #### Subagent / Workflow Auto-Routing
 
@@ -176,7 +176,7 @@ Configure **Default on failure** at the top of the Routing page:
 2. If you choose **Retry**, set `Retries`.
 3. If you choose **Fallback targets**, add backup models in priority order.
 
-Global Fallback applies to the default route and to rules that do not define their own Fallback.
+Global Fallback applies to routing rules that do not define their own Fallback.
 
 ### Rule-Level Fallback
 

@@ -210,7 +210,7 @@ function resolveConfiguredRouteDecision(
     }
   }
 
-  return { fallback: router.fallback, model: normalizeRouteSelector(router.default) ?? explicitModel, reason: "default" };
+  return { fallback: router.fallback, model: explicitModel, reason: "default" };
 }
 
 function resolveBuiltInClaudeCodeSubagentRouteDecision(
@@ -287,8 +287,7 @@ function resolveBuiltInAgentProfile(config: AppConfig, agent: RouterBuiltInAgent
 }
 
 function resolveBuiltInAgentRouteTarget(config: AppConfig, agent: RouterBuiltInAgentRuleId): string | undefined {
-  return normalizeRouteSelector(resolveBuiltInAgentProfile(config, agent)?.model) ??
-    normalizeRouteSelector(config.Router.default);
+  return normalizeRouteSelector(resolveBuiltInAgentProfile(config, agent)?.model);
 }
 
 function builtInAgentUserAgentNeedle(agent: RouterBuiltInAgentRuleId): string {

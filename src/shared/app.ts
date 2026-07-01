@@ -532,7 +532,6 @@ export type RouterBuiltInRulesConfig = Record<RouterBuiltInAgentRuleId, RouterBu
 
 export type RouterConfig = {
   builtInRules: RouterBuiltInRulesConfig;
-  default?: string;
   fallback: RouterFallbackConfig;
   rules: RouterRule[];
 };
