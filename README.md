@@ -71,6 +71,8 @@ The web management UI listens on `http://127.0.0.1:3458` by default. Use `ccr st
    - macOS/Linux: `~/.claude-code-router/config.sqlite`
    - Windows: `%APPDATA%\Claude Code Router\config.sqlite`
 
+The packaged app binary is also the CLI: launched with no arguments it opens the desktop GUI, but launched with CLI-style arguments (e.g. `Claude-Code-Router.AppImage 'My Profile' cli`, the same command the GUI's "copy CLI" button gives you) it runs the same command logic headlessly and exits, without opening a window or starting a duplicate gateway.
+
 CCR stores runtime configuration in SQLite. A legacy `config.json` is read only once for migration when no SQLite config exists.
 
 CCR starts two local services when the gateway is enabled:
@@ -168,12 +170,16 @@ Local plugin examples are available in [examples/plugins](examples/plugins).
 
 ```bash
 npm install
-npm run dev
+npm run dev                  # Run the CCR CLI in development mode (equivalent to `ccr`)
+npm run dev start            # Run the CCR CLI in development mode (equivalent to `ccr start`)
+npm run dev:watch            # Start the Electron app with hot reload (for UI development)
 npm run typecheck
 npm run build:assets
 npm run build:app:mac
 npm run build:app:win
 ```
+
+`npm run dev` is `ccr`, just in dev mode: it builds the CLI once and forwards all arguments straight to `dist/main/cli.js`, including the no-arguments case, e.g. `npm run dev start` behaves exactly like `ccr start`. (Don't add a `--` separator — npm strips it, but pnpm forwards it as a literal argument, breaking command parsing.) `npm run dev:watch` is a separate workflow for UI/app development — it builds everything, watches for changes, and launches the Electron app. In the development environment, CCR uses `~/.claude-code-router-dev/` as its configuration directory and runs on alternate ports (3466/3467) to avoid interfering with a production instance. Launching the Electron app also writes a `ccr` shim to `~/.claude-code-router-dev/bin/` — add that directory to your `PATH` to use `ccr` as the dev CLI directly.
 
 `npm run build:assets` compiles the Electron main process and renderer assets into `dist/`.
 

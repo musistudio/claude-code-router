@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { AppConfig, ProfileConfig, ProfileOpenSurface } from "../shared/app";
+import { IS_DEV } from "./constants";
 import { resolveZcodeConfigFile } from "./zcode-profile-config";
 
 export type ProfileLaunchPlan = {
@@ -80,7 +81,7 @@ export function profileOpenCommand(
   profileRef = profile.name?.trim() || profile.id
 ): string {
   const quote = process.platform === "win32" ? windowsCommandQuote : shellQuote;
-  const parts = [quote(command), quote(profileRef)];
+  const parts = [command, quote(profileRef)];
   if (surface === "app") {
     parts.push(surface);
   }
@@ -132,11 +133,12 @@ export function resolveClaudeCodeSettingsFile(configDir: string, profile: Profil
 }
 
 export function resolveCodexConfigFile(configDir: string, profile: ProfileConfig): string {
+  if (isGeneratedProfileScope(profile.scope)) {
+    const filename = profile.agent === "zcode" ? "config.json" : "config.toml";
+    return path.join(ccrManagedProfileDir(configDir, profile), codexConfigSubdir(profile.agent), filename);
+  }
   if (profile.agent === "zcode") {
     return resolveZcodeConfigFile(profile);
-  }
-  if (isGeneratedProfileScope(profile.scope)) {
-    return path.join(ccrManagedProfileDir(configDir, profile), codexConfigSubdir(profile.agent), "config.toml");
   }
   const codexHome = profile.codexHome?.trim();
   if (codexHome) {
@@ -218,7 +220,7 @@ function normalizeProfileSurface(value: ProfileConfig["surface"]): "auto" | "cli
 }
 
 function isGeneratedProfileScope(value: ProfileConfig["scope"]): boolean {
-  return value === "ccr" || value === "custom";
+  return value === "ccr" || value === "custom" || IS_DEV;
 }
 
 function resolveUserPath(value: string): string {

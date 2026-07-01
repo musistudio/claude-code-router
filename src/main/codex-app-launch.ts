@@ -141,7 +141,7 @@ export function refreshCodexCompatibleAppProfileFiles(
   const spec = profile.agent === "zcode" ? zcodeAppSpec : codexAppSpec;
   const configFile = resolveCodexConfigFile(configDir, profile);
   if (spec.kind === "zcode" && config?.APIKEY) {
-    writeZcodeGatewayConfig(config, profile, config.APIKEY, { backup: false });
+    writeZcodeGatewayConfig(config, profile, config.APIKEY, configFile, { backup: false });
   }
   const codexHome = codexCompatibleHomeFromConfigFile(spec, configFile);
   const userDataDir = codexElectronUserDataDir(codexHome, profile, spec);

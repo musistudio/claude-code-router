@@ -6,6 +6,7 @@ import { existsSync, readdirSync, readFileSync, statSync, watch } from "node:fs"
 import path from "node:path";
 import {
   binPath,
+  buildMain,
   buildStyles,
   cleanDist,
   browserRendererHtmlInput,
@@ -24,6 +25,7 @@ import {
   cssInput,
   cssOutput,
   appAssetsInput,
+  mainOutDir,
   modelCatalogInput,
   projectRoot,
   rendererHtmlInput,
@@ -207,8 +209,8 @@ function restartElectron() {
     cwd: projectRoot,
     env: {
       ...process.env,
-      NODE_ENV: "development",
-      CCR_DEV: "1"
+      CCR_ENV: "development",
+      NODE_ENV: "development"
     },
     stdio: "inherit"
   });
@@ -222,9 +224,29 @@ function restartElectron() {
   });
 }
 
-logDev("starting dev build");
-cleanDist();
-copyAppAssets();
+export async function runCliOnce(args) {
+  logDev(`building cli+main once for dev CLI invocation: ${args.join(" ")}`);
+  await buildMain({ mode: "development" });
+  const cliEntry = path.join(mainOutDir, "cli.js");
+  const child = spawn(process.execPath, [cliEntry, ...args], {
+    cwd: projectRoot,
+    env: {
+      ...process.env,
+      CCR_ENV: "development",
+      NODE_ENV: "development"
+    },
+    stdio: "inherit"
+  });
+  const exitCode = await new Promise((resolve) => {
+    child.on("exit", (code) => resolve(code ?? 0));
+  });
+  process.exit(exitCode);
+}
+
+export async function runWatchMode() {
+  logDev("starting dev build");
+  cleanDist();
+  copyAppAssets();
 copyMarketplacePlugins();
 copyModelCatalog();
 copyBrowserRendererHtml();
@@ -353,3 +375,9 @@ async function shutdown() {
 
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+}
+
+const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+if (isMainModule) {
+  await runCliOnce(process.argv.slice(2));
+}

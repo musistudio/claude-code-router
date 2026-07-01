@@ -1482,7 +1482,7 @@ export function legacyProfileItemsFromProfileConfig(profile: AppConfig["profile"
       id: "default-claude-code",
       model: profile.claudeCode.model,
       name: "Claude Code",
-      scope: "global",
+      scope: "ccr",
       settingsFile: profile.claudeCode.settingsFile,
       smallFastModel: profile.claudeCode.smallFastModel,
       surface: "auto"
@@ -1501,7 +1501,7 @@ export function legacyProfileItemsFromProfileConfig(profile: AppConfig["profile"
       name: "Codex",
       providerId: profile.codex.providerId,
       providerName: profile.codex.providerName,
-      scope: "global",
+      scope: "ccr",
       showAllSessions: profile.codex.showAllSessions,
       surface: "auto"
     }, 1)
@@ -1536,7 +1536,7 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
     name: typeof value.name === "string" ? value.name : profileAgentLabel(agent),
     providerId: typeof value.providerId === "string" ? value.providerId : undefined,
     providerName: typeof value.providerName === "string" ? value.providerName : undefined,
-    scope: typeof value.scope === "string" ? normalizeProfileScope(value.scope) : "global",
+    scope: typeof value.scope === "string" ? normalizeProfileScope(value.scope) : "ccr",
     settingsFile: typeof value.settingsFile === "string" ? value.settingsFile : undefined,
     showAllSessions: typeof value.showAllSessions === "boolean"
       ? value.showAllSessions

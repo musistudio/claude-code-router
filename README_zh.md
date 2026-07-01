@@ -71,6 +71,8 @@ Web 管理端默认监听 `http://127.0.0.1:3458`。可以用 `ccr start --host 
    - macOS/Linux：`~/.claude-code-router/config.sqlite`
    - Windows：`%APPDATA%\Claude Code Router\config.sqlite`
 
+打包后的应用本身也是 CLI：不带参数启动会打开桌面 GUI；带上 CLI 风格的参数启动（例如 `Claude-Code-Router.AppImage 'My Profile' cli`，即 GUI 中「复制 CLI」按钮给出的那条命令）则会以无窗口方式运行相同的命令逻辑并退出，不会打开窗口，也不会启动重复的网关。
+
 CCR 的运行配置存储在 SQLite 中。旧版 `config.json` 只会在没有 SQLite 配置时作为迁移来源读取一次。
 
 启用网关后，CCR 会启动两个本地服务：
@@ -168,12 +170,16 @@ Wrapper plugin route 示例：
 
 ```bash
 npm install
-npm run dev
+npm run dev                  # 在开发模式下运行 CCR CLI（等同于 `ccr`）
+npm run dev start            # 在开发模式下运行 CCR CLI（等同于 `ccr start`）
+npm run dev:watch            # 启动带热重载的 Electron 应用（用于 UI 开发）
 npm run typecheck
 npm run build:assets
 npm run build:app:mac
 npm run build:app:win
 ```
+
+`npm run dev` 就是开发模式下的 `ccr`：会构建一次 CLI，并将全部参数（包括不带参数的情况）原样转发给 `dist/main/cli.js`，例如 `npm run dev start` 的行为与 `ccr start` 完全一致。（不要加 `--` 分隔符——npm 会把它去掉，但 pnpm 会把它当作字面参数原样转发，导致命令解析失败。）`npm run dev:watch` 是另一套独立的 UI/应用开发流程——会构建全部内容、监听变更并启动 Electron 应用。开发环境下，CCR 使用 `~/.claude-code-router-dev/` 作为配置目录，并运行在备用端口（3466/3467），避免与生产实例冲突。启动 Electron 应用时还会向 `~/.claude-code-router-dev/bin/` 写入 `ccr` shim——将该目录加入 `PATH` 即可直接将其作为开发用 CLI 使用。
 
 `npm run build:assets` 会把 Electron main process 和 renderer assets 编译到 `dist/`。
 

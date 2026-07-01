@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { spawn, spawnSync } from "node:child_process";
-import { accessSync, constants as fsConstants, existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { assertAvailableGatewayModels, type ProfileConfig, type ProfileOpenSurface } from "../shared/app";
 import { botGatewayProfileEnv } from "./bot-gateway-env";
@@ -8,7 +8,7 @@ import { applyClaudeAppGatewayConfig } from "./claude-app-gateway-service";
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "./claude-app-launch";
 import { launchCodexAppProfile, launchZcodeAppProfile } from "./codex-app-launch";
 import { loadAppConfig } from "./config";
-import { CONFIGDIR } from "./constants";
+import { CONFIGDIR, IS_DEV } from "./constants";
 import { applyProfileConfig, applyProfileRuntimeConfig } from "./profile-service";
 import { ensureProfileGateway } from "./profile-launch-service";
 import { buildProfileLaunchPlan, defaultProfileOpenSurface, findProfileForOpen, profileLaunchSpawnCommand, resolveProfileOpenSurface } from "./profile-launch-core";
@@ -52,42 +52,41 @@ const serviceStartTimeoutMs = 30_000;
 const serviceStopTimeoutMs = 10_000;
 
 async function main(): Promise<void> {
-  const delegatedExitCode = delegateManagedDesktopCliToExternalCli();
-  if (delegatedExitCode !== undefined) {
-    process.exitCode = delegatedExitCode;
-    return;
-  }
+  process.exitCode = await runCliCommand(process.argv.slice(2));
+}
 
-  const options = parseArgs(process.argv.slice(2));
+export async function runCliCommand(argv: string[]): Promise<number> {
+  const options = parseArgs(argv);
   if (options.command === "start") {
     if (options.help) {
       printStartHelp(0);
-      return;
+      return 0;
     }
     await startService(options);
-    return;
+    return 0;
   }
   if (options.command === "stop") {
     if (options.help) {
       printStopHelp(0);
-      return;
+      return 0;
     }
     await stopService();
-    return;
+    return 0;
   }
   if (options.command === "web") {
     if (options.help) {
       printWebHelp(0);
-      return;
+      return 0;
     }
     await runWebServer(options);
-    return;
+    return 0;
   }
 
   const profileOptions = options as ProfileCliOptions;
   if (profileOptions.help || !profileOptions.profileRef) {
-    printHelp(profileOptions.help ? 0 : 2);
-    return;
+    const exitCode = profileOptions.help ? 0 : 2;
+    printHelp(exitCode);
+    return exitCode;
   }
 
   const configDir = CONFIGDIR;
@@ -127,7 +126,7 @@ async function main(): Promise<void> {
       throw new Error(`Failed to open Claude App: ${spawnError}`);
     }
     process.stdout.write(`Opened Claude App with ${profile.name || profile.id}.\n`);
-    return;
+    return 0;
   }
   if ((profile.agent === "codex" || profile.agent === "zcode") && resolvedSurface === "app" && profileOptions.agentArgs.length === 0) {
     if (profile.agent === "zcode") {
@@ -145,7 +144,7 @@ async function main(): Promise<void> {
       }
       process.stdout.write(`Opened Codex App with ${profile.name || profile.id}.\n`);
     }
-    return;
+    return 0;
   }
 
   const plan = buildProfileLaunchPlan(configDir, profile, resolvedSurface, profileOptions.agentArgs);
@@ -162,13 +161,15 @@ async function main(): Promise<void> {
   delete childEnv.ELECTRON_RUN_AS_NODE;
 
   const launch = profileLaunchSpawnCommand(plan);
+  if (IS_DEV) {
+    console.log(`[ccr-dev] Spawning: ${launch.command} ${launch.args.map(arg => JSON.stringify(arg)).join(" ")}`);
+  }
   const child = spawn(launch.command, launch.args, {
     env: childEnv,
     stdio: "inherit",
     windowsVerbatimArguments: !!launch.windowsVerbatimArguments
   });
-  const code = await waitForChild(child);
-  process.exitCode = code;
+  return waitForChild(child);
 }
 
 function parseArgs(args: string[]): CliOptions {
@@ -516,94 +517,6 @@ function currentCliScript(): string {
   return __filename;
 }
 
-function delegateManagedDesktopCliToExternalCli(): number | undefined {
-  if (!isManagedDesktopCliRuntime()) {
-    return undefined;
-  }
-  if (process.env.CCR_MANAGED_CLI_NO_DELEGATE === "1" || process.env.CCR_MANAGED_CLI_DELEGATED === "1") {
-    return undefined;
-  }
-
-  const externalCcr = findExternalCcrCommand();
-  if (!externalCcr) {
-    return undefined;
-  }
-
-  const launch = profileLaunchSpawnCommand({
-    args: process.argv.slice(2),
-    command: externalCcr
-  });
-  const result = spawnSync(launch.command, launch.args, {
-    env: {
-      ...process.env,
-      CCR_MANAGED_CLI_DELEGATED: "1"
-    },
-    stdio: "inherit",
-    windowsVerbatimArguments: !!launch.windowsVerbatimArguments
-  });
-  if (result.error) {
-    return undefined;
-  }
-  if (typeof result.status === "number") {
-    return result.status;
-  }
-  return result.signal === "SIGINT" ? 130 : 1;
-}
-
-function isManagedDesktopCliRuntime(): boolean {
-  const script = process.argv[1] || __filename;
-  return samePath(path.resolve(script), path.join(CONFIGDIR, "bin", "ccr-cli.js"));
-}
-
-function findExternalCcrCommand(): string | undefined {
-  const pathKey = process.platform === "win32"
-    ? Object.keys(process.env).find((key) => key.toLowerCase() === "path") || "Path"
-    : "PATH";
-  const pathValue = process.env[pathKey] || "";
-  const managedBinDir = path.resolve(CONFIGDIR, "bin");
-  const names = process.platform === "win32"
-    ? ["ccr.cmd", "ccr.exe", "ccr.bat", "ccr"]
-    : ["ccr"];
-
-  for (const rawSegment of pathValue.split(path.delimiter)) {
-    const dir = path.resolve(rawSegment || ".");
-    if (samePath(dir, managedBinDir)) {
-      continue;
-    }
-    for (const name of names) {
-      const candidate = path.join(dir, name);
-      if (isExecutableFile(candidate)) {
-        return candidate;
-      }
-    }
-  }
-  return undefined;
-}
-
-function isExecutableFile(file: string): boolean {
-  try {
-    const stats = statSync(file);
-    if (!stats.isFile() && !stats.isSymbolicLink()) {
-      return false;
-    }
-    if (process.platform === "win32") {
-      return true;
-    }
-    accessSync(file, fsConstants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function samePath(left: string, right: string): boolean {
-  const normalizedLeft = path.normalize(left);
-  const normalizedRight = path.normalize(right);
-  return process.platform === "win32"
-    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
-    : normalizedLeft === normalizedRight;
-}
-
 async function waitForServiceState(pid: number | undefined, timeoutMs: number): Promise<ServiceState | undefined> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
@@ -695,7 +608,7 @@ function waitForImmediateSpawnError(child: ReturnType<typeof spawn>, timeoutMs: 
 }
 
 function formatError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return error instanceof Error ? error.stack || error.message : String(error);
 }
 
 main().catch((error) => {

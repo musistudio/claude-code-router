@@ -121,7 +121,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
           id: "default-claude-code",
           model: "",
           name: "Claude Code",
-          scope: "global",
+          scope: "ccr",
           settingsFile: "~/.claude/settings.json",
           smallFastModel: "",
           surface: "auto"
@@ -141,7 +141,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
           providerId: "claude-code-router",
           providerName: "Claude Code Router",
           showAllSessions: false,
-          scope: "global",
+          scope: "ccr",
           surface: "auto"
         }
       ]

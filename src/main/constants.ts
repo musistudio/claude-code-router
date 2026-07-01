@@ -8,7 +8,7 @@ export const LEGACY_CONFIG_FILE = path.join(LEGACY_CONFIGDIR, "config.json");
 
 export { APP_NAME, APP_STORAGE_NAME, LEGACY_CONFIGDIR };
 
-export const IS_DEV = process.env.CCR_DEV === "1";
+export const IS_DEV = process.env.CCR_ENV === "development";
 
 export const CONFIGDIR = IS_DEV
   ? path.join(os.homedir(), ".claude-code-router-dev")

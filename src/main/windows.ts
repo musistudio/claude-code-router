@@ -2,7 +2,7 @@ import { app, BrowserWindow, screen } from "electron";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { APP_NAME, IPC_CHANNELS, ONBOARDING_FINISHED_FILE } from "./constants";
+import { APP_NAME, IPC_CHANNELS, IS_DEV, ONBOARDING_FINISHED_FILE } from "./constants";
 
 type WindowName = "main" | string;
 type WindowBounds = { height: number; width: number; x?: number; y?: number };
@@ -64,7 +64,7 @@ class WindowsManager {
 
     void window.loadURL(this.resolveRendererUrl("pages/home/index.html"));
 
-    if (process.env.NODE_ENV === "development") {
+    if (IS_DEV) {
       window.webContents.openDevTools({ mode: "detach" });
     }
 

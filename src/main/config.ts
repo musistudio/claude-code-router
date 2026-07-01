@@ -2096,7 +2096,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
           id,
           model,
           name,
-          scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
+          scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "ccr",
           settingsFile: readString(item.settingsFile) || readString(item.configFile) || "~/.claude/settings.json",
           smallFastModel: readString(item.smallFastModel) || readString(item.smallModel) || "",
           surface
@@ -2120,7 +2120,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         providerId: readString(item.providerId) || readString(item.provider) || "claude-code-router",
         providerName: readString(item.providerName) || "Claude Code Router",
         remoteFrontendMode: parseCodexRemoteFrontendMode(readString(item.remoteFrontendMode) || readString(item.frontendMode) || readString(item.coreMode)) || "app",
-        scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
+        scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "ccr",
         showAllSessions: agent === "zcode"
           ? false
           : typeof item.showAllSessions === "boolean"
@@ -2181,7 +2181,7 @@ function profileFromClaudeCodeConfig(config: ClaudeCodeProfileConfig): ProfileCo
     id: "default-claude-code",
     model: config.model,
     name: "Claude Code",
-    scope: "global",
+    scope: "ccr",
     settingsFile: config.settingsFile,
     smallFastModel: config.smallFastModel,
     surface: "auto"
@@ -2216,7 +2216,7 @@ function profileFromCodexConfig(config: CodexProfileConfig): ProfileConfig {
     providerId: config.providerId,
     providerName: config.providerName,
     remoteFrontendMode: config.remoteFrontendMode,
-    scope: "global",
+    scope: "ccr",
     showAllSessions: config.showAllSessions,
     surface: "auto"
   };
