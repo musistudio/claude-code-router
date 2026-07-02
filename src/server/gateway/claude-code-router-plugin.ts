@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
-import type { AppConfig, RouterBuiltInAgentRuleId, RouterConfig, RouterFallbackConfig, RouterRule, RouterRuleCondition, RouterRuleRewrite } from "../../shared/app";
+import { availableGatewayModelIds, type AppConfig, type RouterBuiltInAgentRuleId, type RouterConfig, type RouterFallbackConfig, type RouterRule, type RouterRuleCondition, type RouterRuleRewrite } from "../../shared/app";
 import { CONFIGDIR } from "../../main/constants";
 
 type HeaderValue = string | string[] | undefined;
@@ -1055,16 +1055,22 @@ export function normalizeRouteSelector(value: string | undefined): string | unde
 }
 
 function isKnownInlineRoute(model: string | undefined, config: AppConfig): boolean {
-  if (!model) {
+  const normalizedModel = normalizeRouteSelector(model);
+  if (!normalizedModel) {
     return false;
   }
 
-  const separator = model.indexOf("/");
+  const normalizedModelLower = normalizedModel.toLowerCase();
+  if (availableGatewayModelIds(config).some((id) => id.toLowerCase() === normalizedModelLower)) {
+    return true;
+  }
+
+  const separator = normalizedModel.indexOf("/");
   if (separator <= 0) {
     return false;
   }
 
-  const providerName = model.slice(0, separator).trim().toLowerCase();
+  const providerName = normalizedModel.slice(0, separator).trim().toLowerCase();
   return config.Providers.some((provider) => provider.name.trim().toLowerCase() === providerName);
 }
 

@@ -113,6 +113,12 @@ type HostedWebSearchProtocolContext = {
 
 type AnthropicWebSearchProtocolContext = HostedWebSearchProtocolContext;
 
+type ClaudeCodeWebSearchContinuationContext = {
+  queryHint?: string;
+  sinceMs: number;
+  toolName: string;
+};
+
 export type BrowserWebSearchMcpRegistration = {
   env?: Record<string, string>;
   name: string;
@@ -823,6 +829,33 @@ class GatewayService {
       }
     }
 
+    const claudeCodeWebSearchContinuationContext = !hostedWebSearchProtocolContext && this.browserWebSearchMcpIntegration
+      ? createClaudeCodeWebSearchContinuationContext({
+          body: bodyToForward,
+          config: this.config,
+          method,
+          path,
+          routedModel,
+          sinceMs: startedAt - 5 * 60_000
+        })
+      : undefined;
+    if (claudeCodeWebSearchContinuationContext && this.browserWebSearchMcpIntegration) {
+      const records = selectClaudeCodeWebSearchContinuationRecords(
+        claudeCodeWebSearchContinuationContext,
+        this.browserWebSearchMcpIntegration
+      );
+      const webSearchContinuationBody = prepareClaudeCodeWebSearchContinuationRequestBody(
+        bodyToForward,
+        records,
+        claudeCodeWebSearchContinuationContext
+      );
+      if (webSearchContinuationBody) {
+        bodyToForward = webSearchContinuationBody;
+        headers["content-type"] = "application/json";
+        headers["x-ccr-claude-code-web-search-continuation"] = records.length > 0 ? "in-app-browser-evidence" : "tool-result-evidence";
+      }
+    }
+
     delete headers["content-length"];
     const upstreamUrl = new URL(request.url || "/", this.status.coreEndpoint).toString();
     let upstreamResult: UpstreamFetchResult;
@@ -882,7 +915,8 @@ class GatewayService {
     const hostedWebSearchResponseContentType = responseHeaders.get("content-type")?.toLowerCase() ?? "";
     if (
       hostedWebSearchProtocolContext &&
-      hostedWebSearchResponseContentType.includes("application/json") &&
+      (hostedWebSearchResponseContentType.includes("application/json") ||
+        hostedWebSearchResponseContentType.includes("text/event-stream")) &&
       (this.browserWebSearchMcpIntegration?.recentBrowserWebSearchResults || this.browserWebSearchMcpIntegration?.runBrowserWebSearch)
     ) {
       responseHeaders.delete("content-length");
@@ -2628,6 +2662,32 @@ function createAnthropicWebSearchProtocolContext(input: {
   return context?.protocol === "anthropic_messages" ? context : undefined;
 }
 
+function createClaudeCodeWebSearchContinuationContext(input: {
+  body: Buffer | undefined;
+  config: AppConfig;
+  method: string;
+  path: string;
+  routedModel?: string;
+  sinceMs: number;
+}): ClaudeCodeWebSearchContinuationContext | undefined {
+  if (input.method !== "POST" || requestProtocolForPath(input.path) !== "anthropic_messages") {
+    return undefined;
+  }
+  const body = parseJsonObjectSafe(input.body);
+  if (!body || claudeCodeWebSearchToolResultTexts(body).length === 0) {
+    return undefined;
+  }
+  const toolName = fusionWebSearchToolNameForRequest(input.config, stringValue(body.model) || input.routedModel);
+  if (!toolName) {
+    return undefined;
+  }
+  return {
+    queryHint: extractClaudeCodeWebSearchToolResultQuery(body) || extractAnthropicWebSearchQueryHint(body),
+    sinceMs: input.sinceMs,
+    toolName
+  };
+}
+
 export function prepareHostedWebSearchProtocolRequestBody(
   body: Buffer | undefined,
   records: BrowserWebSearchProtocolRecord[],
@@ -2669,6 +2729,31 @@ export function prepareAnthropicWebSearchProtocolRequestBody(
     return undefined;
   }
   const next = applyAnthropicWebSearchSynthesisControls(stripAnthropicHostedWebSearchTools({
+    ...parsed,
+    system: appendAnthropicSystemText(parsed.system, evidence)
+  }));
+  return Buffer.from(`${JSON.stringify(next)}\n`, "utf8");
+}
+
+export function prepareClaudeCodeWebSearchContinuationRequestBody(
+  body: Buffer | undefined,
+  records: BrowserWebSearchProtocolRecord[],
+  context: Pick<ClaudeCodeWebSearchContinuationContext, "queryHint">
+): Buffer | undefined {
+  const parsed = parseJsonObjectSafe(body);
+  if (!parsed) {
+    return undefined;
+  }
+  const toolResultTexts = claudeCodeWebSearchToolResultTexts(parsed);
+  if (toolResultTexts.length === 0) {
+    return undefined;
+  }
+  const queryHint = context.queryHint || extractClaudeCodeWebSearchToolResultQuery(parsed) || extractAnthropicWebSearchQueryHint(parsed);
+  const evidence = claudeCodeWebSearchContinuationEvidenceText(records, queryHint, toolResultTexts);
+  if (!evidence) {
+    return undefined;
+  }
+  const next = applyAnthropicWebSearchSynthesisControls(stripClaudeCodeWebSearchContinuationTools({
     ...parsed,
     system: appendAnthropicSystemText(parsed.system, evidence)
   }));
@@ -2738,6 +2823,16 @@ function stripAnthropicHostedWebSearchTools(body: Record<string, unknown>): Reco
   if (tools.length === 0 || toolChoiceName === "web_search") {
     delete next.tool_choice;
   }
+  return next;
+}
+
+function stripClaudeCodeWebSearchContinuationTools(body: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(body.tools)) {
+    return body;
+  }
+  const next = { ...body };
+  delete next.tools;
+  delete next.tool_choice;
   return next;
 }
 
@@ -2877,6 +2972,29 @@ function hostedWebSearchEvidenceText(records: BrowserWebSearchProtocolRecord[], 
   ].filter(Boolean).join("\n\n").slice(0, 10_000);
 }
 
+function claudeCodeWebSearchContinuationEvidenceText(
+  records: BrowserWebSearchProtocolRecord[],
+  queryHint: string | undefined,
+  toolResultTexts: string[]
+): string {
+  const browserEvidence = records.length > 0 ? hostedWebSearchEvidenceText(records, queryHint) : "";
+  const toolResultEvidence = toolResultTexts
+    .map((text) => text.trim())
+    .filter(Boolean)
+    .join("\n\n---\n\n")
+    .slice(0, 12_000);
+  if (!browserEvidence && !toolResultEvidence) {
+    return "";
+  }
+  return [
+    "A Claude Code WebSearch tool result has already been returned for this turn.",
+    "Answer the user's search question directly in the visible final response. Do not call any tool. Do not merely list links or ask the user to open links. Include the sources you used as markdown links.",
+    queryHint ? `Original search intent: ${queryHint}` : "",
+    browserEvidence ? `In-app browser extracted evidence:\n\n${browserEvidence}` : "",
+    toolResultEvidence ? `Previous WebSearch tool result:\n\n${toolResultEvidence}` : ""
+  ].filter(Boolean).join("\n\n");
+}
+
 function focusedWebSearchContent(content: string | undefined, queryHint: string | undefined): string | undefined {
   const text = content?.replace(/\s+/g, " ").trim();
   if (!text) {
@@ -2901,7 +3019,7 @@ function focusedWebSearchContent(content: string | undefined, queryHint: string 
   return `${start > 0 ? "..." : ""}${text.slice(start, start + 1_200)}${start + 1_200 < text.length ? "..." : ""}`;
 }
 
-function hostedWebSearchProtocolResponseStream(
+export function hostedWebSearchProtocolResponseStream(
   input: Readable,
   headers: Headers,
   context: HostedWebSearchProtocolContext,
@@ -2912,7 +3030,10 @@ function hostedWebSearchProtocolResponseStream(
   }
   const contentType = headers.get("content-type")?.toLowerCase() ?? "";
   if (contentType.includes("text/event-stream")) {
-    return input;
+    if (context.protocol === "anthropic_messages") {
+      return anthropicHostedWebSearchProtocolSseStream(input, context, integration);
+    }
+    return hostedWebSearchProtocolSseStream(input, context, integration);
   }
   if (!contentType.includes("application/json")) {
     return input;
@@ -2942,6 +3063,416 @@ function hostedWebSearchProtocolResponseStream(
       }).finally(() => callback());
     }
   }));
+}
+
+function hostedWebSearchProtocolSseStream(
+  input: Readable,
+  context: HostedWebSearchProtocolContext,
+  integration: BrowserWebSearchMcpIntegration
+): Readable {
+  const recordsPromise = selectHostedWebSearchProtocolRecords(context, integration);
+  let records: BrowserWebSearchProtocolRecord[] | undefined;
+  let pending = "";
+  let passThrough = false;
+  const state: HostedWebSearchSseState = {
+    done: false,
+    maxOutputIndex: -1,
+    visibleText: false
+  };
+
+  async function ensureRecords() {
+    if (records || passThrough) {
+      return;
+    }
+    records = await recordsPromise;
+    passThrough = records.length === 0;
+  }
+
+  return input.pipe(new Transform({
+    transform(chunk, _encoding, callback) {
+      const text = chunk.toString();
+      const rawText = pending + text;
+      void (async () => {
+        await ensureRecords();
+        if (passThrough || !records) {
+          this.push(text);
+          return;
+        }
+        pending += text;
+        drainHostedWebSearchSseBlocks(this, pending, state, records, context, false);
+        pending = sseTrailingPartialBlock(pending);
+      })().catch((error) => {
+        console.warn(`[gateway] Hosted web search protocol bridge failed: ${formatError(error)}`);
+        this.push(rawText);
+        pending = "";
+        passThrough = true;
+      }).finally(() => callback());
+    },
+    flush(callback) {
+      void (async () => {
+        await ensureRecords();
+        if (passThrough || !records) {
+          if (pending) {
+            this.push(pending);
+          }
+          return;
+        }
+        drainHostedWebSearchSseBlocks(this, pending, state, records, context, true);
+        pending = "";
+      })().catch((error) => {
+        console.warn(`[gateway] Hosted web search protocol bridge failed: ${formatError(error)}`);
+        if (pending) {
+          this.push(pending);
+        }
+      }).finally(() => callback());
+    }
+  }));
+}
+
+type HostedWebSearchSseState = {
+  done: boolean;
+  maxOutputIndex: number;
+  visibleText: boolean;
+};
+
+function drainHostedWebSearchSseBlocks(
+  stream: Transform,
+  text: string,
+  state: HostedWebSearchSseState,
+  records: BrowserWebSearchProtocolRecord[],
+  context: Pick<HostedWebSearchProtocolContext, "protocol" | "queryHint" | "requestId">,
+  flush: boolean
+): void {
+  let cursor = 0;
+  for (const match of text.matchAll(/\r?\n\r?\n/g)) {
+    const index = match.index ?? 0;
+    const delimiter = match[0];
+    const block = text.slice(cursor, index);
+    cursor = index + delimiter.length;
+    if (!block.trim()) {
+      stream.push(delimiter);
+      continue;
+    }
+    writeHostedWebSearchSseEvent(stream, parseSseEventBlock(block), delimiter, state, records, context);
+  }
+  if (flush) {
+    const block = text.slice(cursor);
+    if (block.trim()) {
+      writeHostedWebSearchSseEvent(stream, parseSseEventBlock(block), "", state, records, context);
+    } else if (block) {
+      stream.push(block);
+    }
+    writeHostedWebSearchSseFallback(stream, state, records, context);
+  }
+}
+
+function writeHostedWebSearchSseEvent(
+  stream: Transform,
+  event: ParsedSseEvent,
+  delimiter: string,
+  state: HostedWebSearchSseState,
+  records: BrowserWebSearchProtocolRecord[],
+  context: Pick<HostedWebSearchProtocolContext, "protocol" | "queryHint" | "requestId">
+): void {
+  updateHostedWebSearchSseState(event, state, context.protocol);
+  const isDone = sseEventIsDone(event);
+  const isOpenAiResponsesCompleted = context.protocol === "openai_responses" &&
+    isRecord(event.data) &&
+    stringValue(event.data.type) === "response.completed";
+  if ((isDone || isOpenAiResponsesCompleted) && !state.done) {
+    writeHostedWebSearchSseFallback(stream, state, records, context);
+  }
+  const nextEvent = context.protocol === "openai_chat_completions"
+    ? updateOpenAiChatSseFinishReason(event)
+    : context.protocol === "openai_responses"
+      ? updateOpenAiResponsesCompletedStatus(event)
+      : event;
+  stream.push(`${serializeSseEvent(nextEvent)}${delimiter}`);
+}
+
+function updateHostedWebSearchSseState(
+  event: ParsedSseEvent,
+  state: HostedWebSearchSseState,
+  protocol: GatewayProviderProtocol
+): void {
+  if (protocol === "openai_chat_completions") {
+    state.visibleText ||= openAiChatSseContainsVisibleText([event]);
+    return;
+  }
+  if (protocol === "openai_responses") {
+    state.visibleText ||= openAiResponsesSseContainsVisibleText([event]);
+    if (isRecord(event.data)) {
+      const outputIndex = numberValue(event.data.output_index);
+      if (outputIndex !== undefined) {
+        state.maxOutputIndex = Math.max(state.maxOutputIndex, outputIndex);
+      }
+    }
+    return;
+  }
+  if (protocol === "gemini_generate_content") {
+    state.visibleText ||= geminiSseContainsVisibleText([event]);
+  }
+}
+
+function writeHostedWebSearchSseFallback(
+  stream: Transform,
+  state: HostedWebSearchSseState,
+  records: BrowserWebSearchProtocolRecord[],
+  context: Pick<HostedWebSearchProtocolContext, "protocol" | "queryHint" | "requestId">
+): void {
+  if (state.done || state.visibleText) {
+    return;
+  }
+  const answer = synthesizeWebSearchAnswer(records, context.queryHint);
+  if (!answer) {
+    state.done = true;
+    return;
+  }
+  for (const event of hostedWebSearchSseFallbackEvents(answer, state, context)) {
+    stream.push(`${serializeSseEvent(event)}\n\n`);
+  }
+  state.visibleText = true;
+  state.done = true;
+}
+
+function hostedWebSearchSseFallbackEvents(
+  answer: string,
+  state: HostedWebSearchSseState,
+  context: Pick<HostedWebSearchProtocolContext, "protocol" | "requestId">
+): ParsedSseEvent[] {
+  if (context.protocol === "openai_chat_completions") {
+    return [sseEventFromValue({
+      object: "chat.completion.chunk",
+      choices: [
+        {
+          delta: { content: answer },
+          finish_reason: null,
+          index: 0
+        }
+      ]
+    })];
+  }
+  if (context.protocol === "openai_responses") {
+    return openAiResponsesSseAnswerEvents(answer, context.requestId, state.maxOutputIndex + 1);
+  }
+  if (context.protocol === "gemini_generate_content") {
+    return [sseEventFromValue(geminiAnswerCandidateChunk(answer))];
+  }
+  return [];
+}
+
+function anthropicHostedWebSearchProtocolSseStream(
+  input: Readable,
+  context: HostedWebSearchProtocolContext,
+  integration: BrowserWebSearchMcpIntegration
+): Readable {
+  const recordsPromise = selectHostedWebSearchProtocolRecords(context, integration);
+  let records: BrowserWebSearchProtocolRecord[] | undefined;
+  let pending = "";
+  let passThrough = false;
+  const state: AnthropicHostedWebSearchSseState = {
+    answerInjected: false,
+    hasClientToolUse: false,
+    hasWebSearchBlocks: false,
+    injectedBlockCount: 0,
+    insertedSearchBlocks: false,
+    maxIndex: -1,
+    visibleText: false
+  };
+
+  async function ensureRecords() {
+    if (records || passThrough) {
+      return;
+    }
+    records = await recordsPromise;
+    passThrough = records.length === 0;
+  }
+
+  return input.pipe(new Transform({
+    transform(chunk, _encoding, callback) {
+      const text = chunk.toString();
+      const rawText = pending + text;
+      void (async () => {
+        await ensureRecords();
+        if (passThrough || !records) {
+          this.push(text);
+          return;
+        }
+        pending += text;
+        drainAnthropicHostedWebSearchSseBlocks(this, pending, state, records, context, false);
+        pending = sseTrailingPartialBlock(pending);
+      })().catch((error) => {
+        console.warn(`[gateway] Hosted web search protocol bridge failed: ${formatError(error)}`);
+        this.push(rawText);
+        pending = "";
+        passThrough = true;
+      }).finally(() => callback());
+    },
+    flush(callback) {
+      void (async () => {
+        await ensureRecords();
+        if (passThrough || !records) {
+          if (pending) {
+            this.push(pending);
+          }
+          return;
+        }
+        drainAnthropicHostedWebSearchSseBlocks(this, pending, state, records, context, true);
+        pending = "";
+      })().catch((error) => {
+        console.warn(`[gateway] Hosted web search protocol bridge failed: ${formatError(error)}`);
+        if (pending) {
+          this.push(pending);
+        }
+      }).finally(() => callback());
+    }
+  }));
+}
+
+type AnthropicHostedWebSearchSseState = {
+  answerInjected: boolean;
+  hasClientToolUse: boolean;
+  hasWebSearchBlocks: boolean;
+  injectedBlockCount: number;
+  insertedSearchBlocks: boolean;
+  insertIndex?: number;
+  maxIndex: number;
+  visibleText: boolean;
+};
+
+function drainAnthropicHostedWebSearchSseBlocks(
+  stream: Transform,
+  text: string,
+  state: AnthropicHostedWebSearchSseState,
+  records: BrowserWebSearchProtocolRecord[],
+  context: Pick<HostedWebSearchProtocolContext, "queryHint" | "requestId">,
+  flush: boolean
+): void {
+  let cursor = 0;
+  for (const match of text.matchAll(/\r?\n\r?\n/g)) {
+    const index = match.index ?? 0;
+    const delimiter = match[0];
+    const block = text.slice(cursor, index);
+    cursor = index + delimiter.length;
+    if (!block.trim()) {
+      stream.push(delimiter);
+      continue;
+    }
+    writeAnthropicHostedWebSearchSseEvent(
+      stream,
+      parseSseEventBlock(block),
+      delimiter,
+      state,
+      records,
+      context
+    );
+  }
+  if (flush) {
+    const block = text.slice(cursor);
+    if (block.trim()) {
+      writeAnthropicHostedWebSearchSseEvent(
+        stream,
+        parseSseEventBlock(block),
+        "",
+        state,
+        records,
+        context
+      );
+    } else if (block) {
+      stream.push(block);
+    }
+  }
+}
+
+function sseTrailingPartialBlock(text: string): string {
+  let cursor = 0;
+  for (const match of text.matchAll(/\r?\n\r?\n/g)) {
+    cursor = (match.index ?? 0) + match[0].length;
+  }
+  return text.slice(cursor);
+}
+
+function writeAnthropicHostedWebSearchSseEvent(
+  stream: Transform,
+  event: ParsedSseEvent,
+  delimiter: string,
+  state: AnthropicHostedWebSearchSseState,
+  records: BrowserWebSearchProtocolRecord[],
+  context: Pick<HostedWebSearchProtocolContext, "queryHint" | "requestId">
+): void {
+  updateAnthropicHostedWebSearchSseState(event, state);
+  const textStartIndex = anthropicSseTextBlockStartIndex(event);
+  const isMessageEnd = sseEventIsAnthropicMessageEnd(event);
+  const answer = !state.hasClientToolUse && !state.visibleText && !state.answerInjected && isMessageEnd
+    ? synthesizeWebSearchAnswer(records, context.queryHint)
+    : undefined;
+
+  if (!state.insertedSearchBlocks && (textStartIndex !== undefined || isMessageEnd)) {
+    const insertIndex = textStartIndex ?? state.maxIndex + 1;
+    insertAnthropicHostedWebSearchSseBlocks(stream, state, records, context.requestId, insertIndex);
+  }
+  if (answer && isMessageEnd) {
+    const answerIndex = state.maxIndex + state.injectedBlockCount + 1;
+    insertAnthropicHostedWebSearchSseAnswer(stream, state, answer, answerIndex);
+  }
+
+  const nextEvent = updateAnthropicWebSearchSseUsage(
+    shiftAnthropicHostedWebSearchSseEvent(event, state),
+    records.length,
+    Boolean(answer),
+    state.hasClientToolUse
+  );
+  stream.push(`${serializeSseEvent(nextEvent)}${delimiter}`);
+}
+
+function updateAnthropicHostedWebSearchSseState(event: ParsedSseEvent, state: AnthropicHostedWebSearchSseState): void {
+  if (isRecord(event.data) && Number.isFinite(event.data.index)) {
+    state.maxIndex = Math.max(state.maxIndex, Number(event.data.index));
+  }
+  state.hasWebSearchBlocks ||= sseEventContainsAnthropicWebSearchBlock(event);
+  state.hasClientToolUse ||= sseEventContainsAnthropicClientToolUse(event);
+  state.visibleText ||= sseEventContainsVisibleText(event);
+}
+
+function insertAnthropicHostedWebSearchSseBlocks(
+  stream: Transform,
+  state: AnthropicHostedWebSearchSseState,
+  records: BrowserWebSearchProtocolRecord[],
+  requestId: string,
+  insertIndex: number
+): void {
+  state.insertedSearchBlocks = true;
+  state.insertIndex = insertIndex;
+  if (state.hasWebSearchBlocks) {
+    return;
+  }
+  const blocks = anthropicWebSearchProtocolBlocks(records, requestId);
+  for (const event of blocks.flatMap((block, offset) => anthropicWebSearchSseEventsForBlock(block, insertIndex + offset))) {
+    stream.push(`${serializeSseEvent(event)}\n\n`);
+  }
+  state.injectedBlockCount += blocks.length;
+}
+
+function insertAnthropicHostedWebSearchSseAnswer(
+  stream: Transform,
+  state: AnthropicHostedWebSearchSseState,
+  answer: string,
+  answerIndex: number
+): void {
+  state.answerInjected = true;
+  for (const event of anthropicWebSearchSseEventsForBlock({ text: answer, type: "text" }, answerIndex)) {
+    stream.push(`${serializeSseEvent(event)}\n\n`);
+  }
+}
+
+function shiftAnthropicHostedWebSearchSseEvent(
+  event: ParsedSseEvent,
+  state: AnthropicHostedWebSearchSseState
+): ParsedSseEvent {
+  if (!state.insertedSearchBlocks || state.insertIndex === undefined || state.injectedBlockCount === 0) {
+    return event;
+  }
+  return shiftSseContentBlockIndex(event, state.insertIndex, state.injectedBlockCount);
 }
 
 function transformHostedWebSearchProtocolResponseValue(
@@ -2995,7 +3526,8 @@ export function transformAnthropicWebSearchProtocolResponseValue(
   }
   const hasWebSearchBlocks = responseValueContainsAnthropicWebSearchBlocks(value);
   const blocks = hasWebSearchBlocks ? [] : anthropicWebSearchProtocolBlocks(records, requestId);
-  const answer = responseValueContainsVisibleText(value)
+  const hasClientToolUse = responseValueContainsAnthropicClientToolUse(value);
+  const answer = hasClientToolUse || responseValueContainsVisibleText(value)
     ? undefined
     : synthesizeWebSearchAnswer(records, queryHint);
   const injectedBlocks = [
@@ -3010,7 +3542,7 @@ export function transformAnthropicWebSearchProtocolResponseValue(
   const nextValue = {
     ...value,
     ...(shouldUpdateUsage ? { usage: mergeAnthropicWebSearchUsage(value.usage, records.length) } : {}),
-    ...(answer && stringValue(value.stop_reason) === "max_tokens" ? { stop_reason: "end_turn" } : {}),
+    ...(shouldEndAnthropicHostedWebSearchTurn(value.stop_reason, Boolean(answer), hasClientToolUse) ? { stop_reason: "end_turn" } : {}),
     content: injectedBlocks.length > 0
       ? [
           ...value.content.slice(0, insertAt),
@@ -3037,7 +3569,8 @@ export function transformAnthropicWebSearchProtocolSseText(
   }
   const hasWebSearchBlocks = sseEventsContainAnthropicWebSearchBlocks(events);
   const blocks = hasWebSearchBlocks ? [] : anthropicWebSearchProtocolBlocks(records, requestId);
-  const answer = sseEventsContainVisibleText(events)
+  const hasClientToolUse = sseEventsContainAnthropicClientToolUse(events);
+  const answer = hasClientToolUse || sseEventsContainVisibleText(events)
     ? undefined
     : synthesizeWebSearchAnswer(records, queryHint);
   const injectedBlocks = [
@@ -3076,7 +3609,7 @@ export function transformAnthropicWebSearchProtocolSseText(
 
   const shiftedEvents = events
     .map((event) => shiftSseContentBlockIndex(event, insertIndex, injectedBlocks.length))
-    .map((event) => updateAnthropicWebSearchSseUsage(event, records.length, Boolean(answer)));
+    .map((event) => updateAnthropicWebSearchSseUsage(event, records.length, Boolean(answer), hasClientToolUse));
   const injectedEvents = injectedBlocks.flatMap((block, offset) => anthropicWebSearchSseEventsForBlock(block, insertIndex + offset));
   shiftedEvents.splice(insertPosition, 0, ...injectedEvents);
   return `${shiftedEvents.map(serializeSseEvent).join("\n\n")}\n\n`;
@@ -3199,59 +3732,7 @@ export function transformOpenAiResponsesHostedWebSearchSseText(
     return serializeOpenAiResponsesSseEvents(normalizeOpenAiResponsesSseEvents(events));
   }
   const outputIndex = nextOpenAiResponsesOutputIndex(events);
-  const itemId = `msg_${sanitizeAnthropicToolUseId(requestId)}_web_search_answer`;
-  const contentIndex = 0;
-  const injected = [
-    sseEventFromValue({
-      item: {
-        id: itemId,
-        role: "assistant",
-        status: "in_progress",
-        type: "message"
-      },
-      output_index: outputIndex,
-      type: "response.output_item.added"
-    }),
-    sseEventFromValue({
-      content_index: contentIndex,
-      item_id: itemId,
-      output_index: outputIndex,
-      part: { annotations: [], text: "", type: "output_text" },
-      type: "response.content_part.added"
-    }),
-    sseEventFromValue({
-      content_index: contentIndex,
-      delta: answer,
-      item_id: itemId,
-      output_index: outputIndex,
-      type: "response.output_text.delta"
-    }),
-    sseEventFromValue({
-      content_index: contentIndex,
-      item_id: itemId,
-      output_index: outputIndex,
-      text: answer,
-      type: "response.output_text.done"
-    }),
-    sseEventFromValue({
-      content_index: contentIndex,
-      item_id: itemId,
-      output_index: outputIndex,
-      part: { annotations: [], text: answer, type: "output_text" },
-      type: "response.content_part.done"
-    }),
-    sseEventFromValue({
-      item: {
-        content: [{ annotations: [], text: answer, type: "output_text" }],
-        id: itemId,
-        role: "assistant",
-        status: "completed",
-        type: "message"
-      },
-      output_index: outputIndex,
-      type: "response.output_item.done"
-    })
-  ];
+  const injected = openAiResponsesSseAnswerEvents(answer, requestId, outputIndex);
   const shifted = events.map(updateOpenAiResponsesCompletedStatus);
   const insertAt = shifted.findIndex((event) => isRecord(event.data) && stringValue(event.data.type) === "response.completed");
   shifted.splice(insertAt >= 0 ? insertAt : doneSseEventIndex(shifted) >= 0 ? doneSseEventIndex(shifted) : shifted.length, 0, ...injected);
@@ -3446,6 +3927,62 @@ function nextOpenAiResponsesOutputIndex(events: ParsedSseEvent[]): number {
   return indexes.length === 0 ? 0 : Math.max(...indexes) + 1;
 }
 
+function openAiResponsesSseAnswerEvents(answer: string, requestId: string, outputIndex: number): ParsedSseEvent[] {
+  const itemId = `msg_${sanitizeAnthropicToolUseId(requestId)}_web_search_answer`;
+  const contentIndex = 0;
+  return [
+    sseEventFromValue({
+      item: {
+        id: itemId,
+        role: "assistant",
+        status: "in_progress",
+        type: "message"
+      },
+      output_index: outputIndex,
+      type: "response.output_item.added"
+    }),
+    sseEventFromValue({
+      content_index: contentIndex,
+      item_id: itemId,
+      output_index: outputIndex,
+      part: { annotations: [], text: "", type: "output_text" },
+      type: "response.content_part.added"
+    }),
+    sseEventFromValue({
+      content_index: contentIndex,
+      delta: answer,
+      item_id: itemId,
+      output_index: outputIndex,
+      type: "response.output_text.delta"
+    }),
+    sseEventFromValue({
+      content_index: contentIndex,
+      item_id: itemId,
+      output_index: outputIndex,
+      text: answer,
+      type: "response.output_text.done"
+    }),
+    sseEventFromValue({
+      content_index: contentIndex,
+      item_id: itemId,
+      output_index: outputIndex,
+      part: { annotations: [], text: answer, type: "output_text" },
+      type: "response.content_part.done"
+    }),
+    sseEventFromValue({
+      item: {
+        content: [{ annotations: [], text: answer, type: "output_text" }],
+        id: itemId,
+        role: "assistant",
+        status: "completed",
+        type: "message"
+      },
+      output_index: outputIndex,
+      type: "response.output_item.done"
+    })
+  ];
+}
+
 function updateOpenAiResponsesCompletedStatus(event: ParsedSseEvent): ParsedSseEvent {
   if (!isRecord(event.data) || stringValue(event.data.type) !== "response.completed") {
     return event;
@@ -3602,6 +4139,10 @@ function doneSseEventIndex(events: ParsedSseEvent[]): number {
   return events.findIndex((event) => event.raw?.includes("[DONE]"));
 }
 
+function sseEventIsDone(event: ParsedSseEvent): boolean {
+  return Boolean(event.raw?.includes("[DONE]"));
+}
+
 function hasAnthropicHostedWebSearchTool(tools: unknown): boolean {
   if (!Array.isArray(tools)) {
     return false;
@@ -3731,6 +4272,20 @@ function extractAnthropicWebSearchQueryHint(body: Record<string, unknown>): stri
   return normalizedWebSearchQueryHintFromParts(userTexts);
 }
 
+function extractClaudeCodeWebSearchToolResultQuery(body: Record<string, unknown>): string | undefined {
+  for (const text of claudeCodeWebSearchToolResultTexts(body)) {
+    const quoted = /Web search results for query:\s*"([^"]+)"/i.exec(text);
+    if (quoted?.[1]) {
+      return normalizedWebSearchQueryHint(quoted[1]);
+    }
+    const unquoted = /Web search results for query:\s*([^\n]+)/i.exec(text);
+    if (unquoted?.[1]) {
+      return normalizedWebSearchQueryHint(unquoted[1].replace(/^["']|["']$/g, ""));
+    }
+  }
+  return undefined;
+}
+
 function normalizedWebSearchQueryHintFromParts(parts: string[]): string | undefined {
   const candidates = parts
     .map((part) => part.trim())
@@ -3797,6 +4352,75 @@ function textPartsFromAnthropicContent(content: unknown): string[] {
     return [];
   }
   return content.flatMap((part) => isRecord(part) && typeof part.text === "string" ? [part.text] : []);
+}
+
+function claudeCodeWebSearchToolResultTexts(body: Record<string, unknown>): string[] {
+  if (!Array.isArray(body.messages)) {
+    return [];
+  }
+  const lastMessage = body.messages.at(-1);
+  if (!isRecord(lastMessage) || stringValue(lastMessage.role) !== "user" || !Array.isArray(lastMessage.content)) {
+    return [];
+  }
+  const latestToolResults = lastMessage.content.filter((part) => isRecord(part) && stringValue(part.type) === "tool_result");
+  if (latestToolResults.length === 0) {
+    return [];
+  }
+  const webSearchToolUseIds = new Set<string>();
+  for (let index = body.messages.length - 2; index >= 0; index -= 1) {
+    const message = body.messages[index];
+    if (!isRecord(message) || stringValue(message.role) !== "assistant" || !Array.isArray(message.content)) {
+      continue;
+    }
+    for (const part of message.content) {
+      if (!isRecord(part) || stringValue(part.type) !== "tool_use" || stringValue(part.name)?.toLowerCase() !== "websearch") {
+        continue;
+      }
+      const id = stringValue(part.id);
+      if (id) {
+        webSearchToolUseIds.add(id);
+      }
+    }
+    break;
+  }
+  if (webSearchToolUseIds.size === 0) {
+    return [];
+  }
+  const texts: string[] = [];
+  for (const part of latestToolResults) {
+    if (!isRecord(part)) {
+      continue;
+    }
+    const toolUseId = stringValue(part.tool_use_id);
+    if (!toolUseId || !webSearchToolUseIds.has(toolUseId)) {
+      continue;
+    }
+    const text = anthropicToolResultContentText(part.content);
+    if (text) {
+      texts.push(text);
+    }
+  }
+  return texts;
+}
+
+function anthropicToolResultContentText(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  return content.flatMap((part) => {
+    if (!isRecord(part)) {
+      return [];
+    }
+    const type = stringValue(part.type);
+    if (type === "text" || type === "input_text" || type === "output_text") {
+      const text = stringValue(part.text);
+      return text ? [text] : [];
+    }
+    return [];
+  }).join("\n");
 }
 
 function textPartsFromOpenAiChatMessages(messages: unknown): string[] {
@@ -3868,11 +4492,21 @@ function textPartsFromGeminiContents(contents: unknown): string[] {
 
 export function fusionWebSearchToolNameForRequest(config: AppConfig, model: string | undefined): string | undefined {
   const normalizedModel = model ? fusionModelNameFromSelector(model) : "";
+  for (const candidate of fusionBrowserWebSearchToolCandidates(config)) {
+    if (!normalizedModel || candidate.aliases.some((alias) => fusionModelNameFromSelector(alias).toLowerCase() === normalizedModel.toLowerCase())) {
+      return candidate.toolName;
+    }
+  }
+  return undefined;
+}
+
+function fusionBrowserWebSearchToolCandidates(config: AppConfig): Array<{ aliases: string[]; toolName: string }> {
   const rawProfiles = Array.isArray(config.virtualModelProfiles) ? config.virtualModelProfiles : [];
   const profiles = normalizeCoreGatewayVirtualModelProfiles(
     withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases(rawProfiles)),
     config
   );
+  const candidates: Array<{ aliases: string[]; toolName: string }> = [];
   for (const profile of profiles) {
     if (!isRecord(profile) || profile.enabled === false) {
       continue;
@@ -3890,11 +4524,9 @@ export function fusionWebSearchToolNameForRequest(config: AppConfig, model: stri
       stringValue(profile.displayName),
       ...stringListValue(match?.exactAliases)
     ].filter((item): item is string => Boolean(item)));
-    if (!normalizedModel || aliases.some((alias) => fusionModelNameFromSelector(alias).toLowerCase() === normalizedModel.toLowerCase())) {
-      return webSearchConfig.toolName;
-    }
+    candidates.push({ aliases, toolName: webSearchConfig.toolName });
   }
-  return undefined;
+  return candidates;
 }
 
 async function selectHostedWebSearchProtocolRecords(
@@ -3924,6 +4556,24 @@ async function selectHostedWebSearchProtocolRecords(
     toolName: context.toolName
   });
   return record?.results.length ? [record] : [];
+}
+
+function selectClaudeCodeWebSearchContinuationRecords(
+  context: ClaudeCodeWebSearchContinuationContext,
+  integration: BrowserWebSearchMcpIntegration
+): BrowserWebSearchProtocolRecord[] {
+  const records = integration.recentBrowserWebSearchResults?.({
+    sinceMs: context.sinceMs,
+    toolName: context.toolName
+  }) ?? [];
+  return records
+    .filter((record) => record.results.length > 0)
+    .filter(uniqueSearchRecordFilter())
+    .sort((left, right) => {
+      const queryScoreDelta = queryMatchScore(context.queryHint, right.query) - queryMatchScore(context.queryHint, left.query);
+      return queryScoreDelta || right.completedAtMs - left.completedAtMs;
+    })
+    .slice(0, 3);
 }
 
 async function selectAnthropicWebSearchProtocolRecords(
@@ -3985,6 +4635,12 @@ function responseValueContainsVisibleText(value: Record<string, unknown>): boole
   });
 }
 
+function responseValueContainsAnthropicClientToolUse(value: Record<string, unknown>): boolean {
+  return Array.isArray(value.content) && value.content.some((block) => {
+    return isRecord(block) && stringValue(block.type) === "tool_use";
+  });
+}
+
 function leadingThinkingBlockCount(content: unknown[]): number {
   let index = 0;
   while (index < content.length) {
@@ -4024,28 +4680,59 @@ function mergeAnthropicWebSearchUsage(usage: unknown, searchCount: number): Reco
 
 function sseEventsContainAnthropicWebSearchBlocks(events: ParsedSseEvent[]): boolean {
   return events.some((event) => {
-    const data = isRecord(event.data) ? event.data : undefined;
-    const block = isRecord(data?.content_block) ? data.content_block : undefined;
-    const type = stringValue(block?.type) || stringValue(data?.type);
-    return type === "server_tool_use" || type === "web_search_tool_result";
+    return sseEventContainsAnthropicWebSearchBlock(event);
   });
 }
 
 function sseEventsContainVisibleText(events: ParsedSseEvent[]): boolean {
-  return events.some((event) => {
-    const data = isRecord(event.data) ? event.data : undefined;
-    if (!data) {
-      return false;
-    }
-    const block = isRecord(data.content_block) ? data.content_block : undefined;
-    if (stringValue(data.type) === "content_block_start" && stringValue(block?.type) === "text") {
-      return Boolean(stringValue(block?.text)?.trim());
-    }
-    const delta = isRecord(data.delta) ? data.delta : undefined;
-    return stringValue(data.type) === "content_block_delta" &&
-      stringValue(delta?.type) === "text_delta" &&
-      Boolean(stringValue(delta?.text)?.trim());
-  });
+  return events.some(sseEventContainsVisibleText);
+}
+
+function sseEventContainsAnthropicWebSearchBlock(event: ParsedSseEvent): boolean {
+  const data = isRecord(event.data) ? event.data : undefined;
+  const block = isRecord(data?.content_block) ? data.content_block : undefined;
+  const type = stringValue(block?.type) || stringValue(data?.type);
+  return type === "server_tool_use" || type === "web_search_tool_result";
+}
+
+function sseEventContainsVisibleText(event: ParsedSseEvent): boolean {
+  const data = isRecord(event.data) ? event.data : undefined;
+  if (!data) {
+    return false;
+  }
+  const block = isRecord(data.content_block) ? data.content_block : undefined;
+  if (stringValue(data.type) === "content_block_start" && stringValue(block?.type) === "text") {
+    return Boolean(stringValue(block?.text)?.trim());
+  }
+  const delta = isRecord(data.delta) ? data.delta : undefined;
+  return stringValue(data.type) === "content_block_delta" &&
+    stringValue(delta?.type) === "text_delta" &&
+    Boolean(stringValue(delta?.text)?.trim());
+}
+
+function sseEventsContainAnthropicClientToolUse(events: ParsedSseEvent[]): boolean {
+  return events.some(sseEventContainsAnthropicClientToolUse);
+}
+
+function sseEventContainsAnthropicClientToolUse(event: ParsedSseEvent): boolean {
+  const data = isRecord(event.data) ? event.data : undefined;
+  const block = isRecord(data?.content_block) ? data.content_block : undefined;
+  return stringValue(data?.type) === "content_block_start" && stringValue(block?.type) === "tool_use";
+}
+
+function anthropicSseTextBlockStartIndex(event: ParsedSseEvent): number | undefined {
+  const data = isRecord(event.data) ? event.data : undefined;
+  const block = isRecord(data?.content_block) ? data.content_block : undefined;
+  if (stringValue(data?.type) !== "content_block_start" || stringValue(block?.type) !== "text") {
+    return undefined;
+  }
+  const index = numberValue(data?.index);
+  return index === undefined ? undefined : index;
+}
+
+function sseEventIsAnthropicMessageEnd(event: ParsedSseEvent): boolean {
+  const type = isRecord(event.data) ? stringValue(event.data.type) : undefined;
+  return type === "message_delta" || type === "message_stop";
 }
 
 function anthropicWebSearchSseEventsForBlock(block: Record<string, unknown>, index: number): ParsedSseEvent[] {
@@ -4081,7 +4768,12 @@ function anthropicWebSearchSseEventsForBlock(block: Record<string, unknown>, ind
   ];
 }
 
-function updateAnthropicWebSearchSseUsage(event: ParsedSseEvent, searchCount: number, didSynthesizeAnswer: boolean): ParsedSseEvent {
+function updateAnthropicWebSearchSseUsage(
+  event: ParsedSseEvent,
+  searchCount: number,
+  didSynthesizeAnswer: boolean,
+  hasClientToolUse: boolean
+): ParsedSseEvent {
   if (!isRecord(event.data) || stringValue(event.data.type) !== "message_delta") {
     return event;
   }
@@ -4090,7 +4782,7 @@ function updateAnthropicWebSearchSseUsage(event: ParsedSseEvent, searchCount: nu
     ...event.data,
     usage: mergeAnthropicWebSearchUsage(event.data.usage, searchCount)
   };
-  if (didSynthesizeAnswer && isRecord(delta) && stringValue(delta.stop_reason) === "max_tokens") {
+  if (isRecord(delta) && shouldEndAnthropicHostedWebSearchTurn(delta.stop_reason, didSynthesizeAnswer, hasClientToolUse)) {
     nextData.delta = { ...delta, stop_reason: "end_turn" };
   }
   return {
@@ -4099,11 +4791,27 @@ function updateAnthropicWebSearchSseUsage(event: ParsedSseEvent, searchCount: nu
   };
 }
 
+function shouldEndAnthropicHostedWebSearchTurn(
+  stopReason: unknown,
+  didSynthesizeAnswer: boolean,
+  hasClientToolUse: boolean
+): boolean {
+  if (hasClientToolUse) {
+    return false;
+  }
+  const normalized = stringValue(stopReason);
+  return normalized === "tool_use" || (didSynthesizeAnswer && normalized === "max_tokens");
+}
+
 function synthesizeWebSearchAnswer(records: BrowserWebSearchProtocolRecord[], queryHint: string | undefined): string | undefined {
   const query = queryHint || records.map((record) => record.query).find(Boolean) || "";
   const weatherAnswer = synthesizeWeatherWebSearchAnswer(records, query);
   if (weatherAnswer) {
     return weatherAnswer;
+  }
+  const componentChangelogAnswer = synthesizeComponentChangelogWebSearchAnswer(records, query);
+  if (componentChangelogAnswer) {
+    return componentChangelogAnswer;
   }
   const evidence = topWebSearchEvidenceSentences(records, query, 3);
   if (evidence.length === 0) {
@@ -4119,6 +4827,74 @@ function synthesizeWebSearchAnswer(records: BrowserWebSearchProtocolRecord[], qu
   return containsCjkText(query)
     ? `根据搜索结果，${evidence.join("；")}。${sources ? `来源：${sources}。` : ""}`
     : `Based on the search results, ${evidence.join("; ")}.${sources ? ` Sources: ${sources}.` : ""}`;
+}
+
+function synthesizeComponentChangelogWebSearchAnswer(records: BrowserWebSearchProtocolRecord[], query: string): string | undefined {
+  const normalizedQuery = normalizeSearchComparisonText(query);
+  const asksForComponents = /component|components|组件/i.test(query);
+  const asksForNewOrChangelog = /new|latest|recent|changelog|release|新增|新组件|最新|更新|官方/i.test(query);
+  if (!asksForComponents || !asksForNewOrChangelog) {
+    return undefined;
+  }
+  const items = webSearchEvidenceItems(records);
+  const preferred = items.find((item) => {
+    const normalized = normalizeSearchComparisonText(`${item.source} ${item.url} ${item.text.slice(0, 500)}`);
+    return normalized.includes("changelog") || normalized.includes("official") || normalized.includes("docs") || normalizedQuery.includes("official");
+  }) ?? items[0];
+  if (!preferred) {
+    return undefined;
+  }
+  const release = extractComponentReleaseTitle(preferred.text);
+  const components = extractLikelyComponentNames(preferred.text);
+  const sources = webSearchSourceNames(records, 2);
+  const cjk = containsCjkText(query);
+  if (!release && components.length === 0) {
+    return undefined;
+  }
+  if (cjk) {
+    return [
+      release ? `官方相关条目是 ${release}` : "官方页面包含新增组件相关内容",
+      components.length > 0 ? `可提取到的相关组件包括 ${components.join("、")}` : "",
+      sources ? `来源：${sources}。` : ""
+    ].filter(Boolean).join("；");
+  }
+  return [
+    release ? `The relevant official entry is ${release}` : "The official page contains new component information",
+    components.length > 0 ? `extractable related components include ${components.join(", ")}` : "",
+    sources ? `Sources: ${sources}.` : ""
+  ].filter(Boolean).join("; ");
+}
+
+function extractComponentReleaseTitle(text: string): string | undefined {
+  const patterns = [
+    /((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}\s*-\s*Components?[^.。!?]{0,90})/i,
+    /(\d{4}[-/]\d{1,2}[^.。!?]{0,60}Components?[^.。!?]{0,60})/i
+  ];
+  for (const pattern of patterns) {
+    const match = pattern.exec(text);
+    const title = match?.[1]?.replace(/\s+/g, " ").trim();
+    if (title) {
+      return title;
+    }
+  }
+  return undefined;
+}
+
+function extractLikelyComponentNames(text: string): string[] {
+  const knownNames = [
+    "Message Scroller",
+    "Message",
+    "Attachment",
+    "Bubble",
+    "Marker",
+    "Empty",
+    "Item",
+    "Field",
+    "Input OTP",
+    "Button Group"
+  ];
+  const lower = text.toLowerCase();
+  return knownNames.filter((name) => lower.includes(name.toLowerCase())).slice(0, 10);
 }
 
 function synthesizeWeatherWebSearchAnswer(records: BrowserWebSearchProtocolRecord[], query: string): string | undefined {
@@ -4314,7 +5090,7 @@ function anthropicWebSearchProtocolBlocks(records: BrowserWebSearchProtocolRecor
 }
 
 function anthropicWebSearchResultBlock(result: BrowserWebSearchProtocolResult): Record<string, unknown> {
-  const snippet = result.snippet || result.content;
+  const snippet = anthropicWebSearchResultSnippet(result);
   return {
     encrypted_content: "",
     ...(snippet ? { snippet: snippet.slice(0, 1_200) } : {}),
@@ -4322,6 +5098,14 @@ function anthropicWebSearchResultBlock(result: BrowserWebSearchProtocolResult): 
     type: "web_search_result",
     url: result.url
   };
+}
+
+function anthropicWebSearchResultSnippet(result: BrowserWebSearchProtocolResult): string | undefined {
+  const parts = [
+    result.snippet ? `Search snippet: ${sanitizeWebSearchEvidenceText(result.snippet)}` : "",
+    result.content ? `Extracted page content: ${sanitizeWebSearchEvidenceText(result.content)}` : ""
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join("\n") : undefined;
 }
 
 function sanitizeAnthropicToolUseId(value: string): string {
@@ -4338,25 +5122,27 @@ function parseSseEvents(body: string): ParsedSseEvent[] {
   return body
     .split(/\r?\n\r?\n/g)
     .filter((block) => block.trim())
-    .map((raw) => {
-      const lines = raw.split(/\r?\n/g);
-      const event = lines
-        .filter((line) => line.startsWith("event:"))
-        .map((line) => line.slice(6).trim())
-        .find(Boolean);
-      const data = lines
-        .filter((line) => line.startsWith("data:"))
-        .map((line) => line.slice(5).replace(/^ /, ""))
-        .join("\n");
-      if (!data || data === "[DONE]") {
-        return { event, raw };
-      }
-      try {
-        return { data: JSON.parse(data) as unknown, event, raw };
-      } catch {
-        return { event, raw };
-      }
-    });
+    .map(parseSseEventBlock);
+}
+
+function parseSseEventBlock(raw: string): ParsedSseEvent {
+  const lines = raw.split(/\r?\n/g);
+  const event = lines
+    .filter((line) => line.startsWith("event:"))
+    .map((line) => line.slice(6).trim())
+    .find(Boolean);
+  const data = lines
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice(5).replace(/^ /, ""))
+    .join("\n");
+  if (!data || data === "[DONE]") {
+    return { event, raw };
+  }
+  try {
+    return { data: JSON.parse(data) as unknown, event, raw };
+  } catch {
+    return { event, raw };
+  }
 }
 
 function shiftSseContentBlockIndex(event: ParsedSseEvent, startIndex: number, delta: number): ParsedSseEvent {

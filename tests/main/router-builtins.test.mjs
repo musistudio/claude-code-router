@@ -35,7 +35,8 @@ function createRouterPlugin(options = {}) {
           scope: "global"
         }
       ]
-    }
+    },
+    virtualModelProfiles: options.virtualModelProfiles ?? []
   });
 }
 
@@ -56,6 +57,37 @@ test("built-in Claude Code route matches user-agent case-insensitively", async (
   assert.equal(result.body.model, "Provider/claude-sonnet");
   assert.equal(result.decision.model, "Provider/claude-sonnet");
   assert.equal(result.decision.reason, "builtin:claude-code");
+});
+
+test("built-in Claude Code route preserves explicit virtual gateway models", async () => {
+  const plugin = createRouterPlugin({
+    profileModel: "Provider/claude-sonnet",
+    virtualModelProfiles: [
+      {
+        displayName: "Kimisearch",
+        enabled: true,
+        id: "fusion-search",
+        key: "kimisearch",
+        match: { exactAliases: ["kimisearch"], prefixes: [], suffixes: [] },
+        materialization: { enabled: true, includeInGatewayModels: true }
+      }
+    ]
+  });
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "Fusion/kimisearch"
+    },
+    headers: {
+      "user-agent": "claude-code/1.0"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Fusion/kimisearch");
+  assert.equal(result.decision.model, "Fusion/kimisearch");
+  assert.equal(result.decision.reason, "inline-model");
 });
 
 test("built-in Codex route stays inactive when profile model is unset", async () => {

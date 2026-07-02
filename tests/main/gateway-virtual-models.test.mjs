@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
+import { PassThrough, Readable } from "node:stream";
 import test from "node:test";
 import {
   fusionFallbackToolDefinitions,
   fusionWebSearchToolNameForRequest,
   fusionToolNamesBackedByMcpServers,
   extractHostedWebSearchQueryHint,
+  hostedWebSearchProtocolResponseStream,
   prepareAnthropicWebSearchProtocolRequestBody,
+  prepareClaudeCodeWebSearchContinuationRequestBody,
   prepareHostedWebSearchProtocolRequestBody,
   transformAnthropicWebSearchProtocolResponseValue,
   transformAnthropicWebSearchProtocolSseText,
@@ -143,6 +146,76 @@ test("gateway resolves normalized Fusion web search tool names for Anthropic pro
   assert.equal(fusionWebSearchToolNameForRequest(config, "Fusion/kimisearch"), "fusion_2_web_search");
 });
 
+test("gateway does not route hosted web search through an unrelated Fusion search profile", () => {
+  const config = {
+    Providers: [
+      {
+        baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+        credentials: [{ apiKey: "test-key", id: "test-1" }],
+        models: ["glm-5.2", "glm-5v-turbo"],
+        name: "Zhipu AI (China) - Coding Plan",
+        type: "openai_chat_completions"
+      },
+      {
+        baseUrl: "https://api.moonshot.cn/anthropic",
+        models: ["kimi-for-coding"],
+        name: "Kimi Code - Coding Plan",
+        type: "openai_chat_completions"
+      }
+    ],
+    Router: { fallback: { mode: "off", models: [], retryCount: 0 } },
+    gateway: {},
+    virtualModelProfiles: [
+      {
+        baseModel: { fixedModel: "Zhipu AI (China) - Coding Plan/glm-5.2", mode: "fixed" },
+        displayName: "GLM 5 2V",
+        enabled: true,
+        execution: {
+          clientToolsPolicy: "deny",
+          matchMultimodal: true,
+          matchWebSearch: false,
+          maxToolCalls: 8,
+          maxTurns: 6,
+          mode: "tool_loop",
+          streamMode: "buffered"
+        },
+        id: "glm-5.2v",
+        key: "glm-5.2v",
+        match: { exactAliases: ["GLM-5.2V"], prefixes: [], suffixes: [] },
+        materialization: { enabled: true, includeInGatewayModels: true },
+        metadata: {
+          fusionVision: { modelSelector: "Zhipu AI (China) - Coding Plan/glm-5v-turbo", toolName: "vision_understand_glm_5_2v" }
+        },
+        tools: [{ name: "vision_understand_glm_5_2v", visibility: "internal" }]
+      },
+      {
+        baseModel: { fixedModel: "Kimi Code - Coding Plan/kimi-for-coding", mode: "fixed" },
+        displayName: "Kimisearch",
+        enabled: true,
+        execution: {
+          clientToolsPolicy: "allow",
+          matchWebSearch: true,
+          maxToolCalls: 8,
+          maxTurns: 6,
+          mode: "tool_loop",
+          streamMode: "optimistic"
+        },
+        id: "fusion-2",
+        key: "kimisearch",
+        match: { exactAliases: ["kimisearch"], prefixes: [], suffixes: [] },
+        materialization: { enabled: true, includeInGatewayModels: true },
+        metadata: {
+          fusionWebSearch: { provider: "browser", toolName: "web_search_fusion_2" }
+        },
+        tools: [{ name: "web_search_fusion_2", visibility: "internal" }]
+      }
+    ]
+  };
+
+  assert.equal(fusionWebSearchToolNameForRequest(config, "Fusion/GLM-5.2V"), undefined);
+  assert.equal(fusionWebSearchToolNameForRequest(config, "Fusion/kimisearch"), "fusion_2_web_search");
+});
+
 test("gateway resolves only browser-backed Fusion web search tools for hosted protocol bridging", () => {
   const config = {
     Providers: [],
@@ -205,6 +278,7 @@ test("gateway response injects Anthropic web search protocol blocks into JSON re
     ],
     id: "msg_1",
     role: "assistant",
+    stop_reason: "tool_use",
     type: "message",
     usage: { server_tool_use: { web_search_requests: 1 } }
   };
@@ -217,7 +291,30 @@ test("gateway response injects Anthropic web search protocol blocks into JSON re
   );
   assert.equal(transformed.value.content[1].name, "web_search");
   assert.equal(transformed.value.content[2].content[0].type, "web_search_result");
-  assert.equal(transformed.value.content[2].content[0].snippet, "Spot gold traded near $3,340 per ounce.");
+  assert.equal(transformed.value.content[2].content[0].snippet, "Search snippet: Spot gold traded near $3,340 per ounce.");
+  assert.equal(transformed.value.stop_reason, "end_turn");
+});
+
+test("gateway preserves Anthropic tool_use stop reason when client tools remain", () => {
+  const response = {
+    content: [
+      { thinking: "searched", type: "thinking" },
+      { id: "toolu_1", input: { command: "pwd" }, name: "Bash", type: "tool_use" }
+    ],
+    id: "msg_1",
+    role: "assistant",
+    stop_reason: "tool_use",
+    type: "message",
+    usage: {}
+  };
+  const transformed = transformAnthropicWebSearchProtocolResponseValue(response, [sampleSearchRecord()], "req-1");
+
+  assert.equal(transformed.changed, true);
+  assert.deepEqual(
+    transformed.value.content.map((block) => block.type),
+    ["thinking", "server_tool_use", "web_search_tool_result", "tool_use"]
+  );
+  assert.equal(transformed.value.stop_reason, "tool_use");
 });
 
 test("gateway injects prefetched web search evidence into Anthropic requests", () => {
@@ -241,6 +338,107 @@ test("gateway injects prefetched web search evidence into Anthropic requests", (
   assert.equal(parsed.output_config.effort, "low");
   assert.equal(parsed.thinking, undefined);
   assert.match(parsed.system[1].text, /北京市当前天气晴/);
+});
+
+test("gateway forces Claude Code WebSearch continuations to answer without tools", () => {
+  const body = Buffer.from(JSON.stringify({
+    messages: [
+      { role: "user", content: [{ type: "text", text: "搜索 shadcn官方有哪些New Components" }] },
+      {
+        role: "assistant",
+        content: [
+          {
+            id: "tool_search_1",
+            input: { query: "shadcn UI new components 2025 2026 official" },
+            name: "WebSearch",
+            type: "tool_use"
+          }
+        ]
+      },
+      {
+        role: "user",
+        content: [
+          {
+            content: "Web search results for query: \"shadcn UI new components 2025 2026 official\"\n\nLinks: [{\"title\":\"Changelog - Shadcn UI\",\"url\":\"https://ui.shadcn.com/docs/changelog\"}]\n\nThe official shadcn/ui changelog lists June 2026 chat interface components. REMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks.",
+            tool_use_id: "tool_search_1",
+            type: "tool_result"
+          }
+        ]
+      }
+    ],
+    model: "Fusion/kimisearch",
+    output_config: { effort: "high" },
+    system: [{ type: "text", text: "You are Claude Code." }],
+    thinking: { type: "enabled" },
+    tools: [
+      { name: "WebFetch", input_schema: { type: "object" } },
+      { name: "WebSearch", input_schema: { type: "object" } },
+      { name: "Bash", input_schema: { type: "object" } }
+    ]
+  }));
+
+  const transformed = prepareClaudeCodeWebSearchContinuationRequestBody(
+    body,
+    [sampleSearchRecord()],
+    { queryHint: "shadcn UI new components 2025 2026 official" }
+  );
+  assert.ok(transformed);
+  const parsed = JSON.parse(transformed.toString("utf8"));
+
+  assert.equal(parsed.tools, undefined);
+  assert.equal(parsed.tool_choice, undefined);
+  assert.equal(parsed.output_config.effort, "low");
+  assert.equal(parsed.thinking, undefined);
+  assert.match(parsed.system.at(-1).text, /Do not call any tool/);
+  assert.match(parsed.system.at(-1).text, /In-app browser extracted evidence/);
+  assert.match(parsed.system.at(-1).text, /Previous WebSearch tool result/);
+  assert.match(parsed.system.at(-1).text, /Spot gold traded near \$3,340 per ounce/);
+});
+
+test("gateway ignores stale Claude Code WebSearch results on later turns", () => {
+  const body = Buffer.from(JSON.stringify({
+    messages: [
+      { role: "user", content: [{ type: "text", text: "搜索 shadcn官方有哪些New Components" }] },
+      {
+        role: "assistant",
+        content: [
+          {
+            id: "tool_search_1",
+            input: { query: "shadcn UI new components 2025 2026 official" },
+            name: "WebSearch",
+            type: "tool_use"
+          }
+        ]
+      },
+      {
+        role: "user",
+        content: [
+          {
+            content: "Web search results for query: \"shadcn UI new components 2025 2026 official\"\n\nLinks: []",
+            tool_use_id: "tool_search_1",
+            type: "tool_result"
+          }
+        ]
+      },
+      { role: "assistant", content: [{ type: "text", text: "The changelog has new chat components." }] },
+      { role: "user", content: [{ type: "text", text: "Now inspect package.json with Bash." }] }
+    ],
+    model: "Fusion/kimisearch",
+    system: [{ type: "text", text: "You are Claude Code." }],
+    tools: [
+      { name: "WebFetch", input_schema: { type: "object" } },
+      { name: "WebSearch", input_schema: { type: "object" } },
+      { name: "Bash", input_schema: { type: "object" } }
+    ]
+  }));
+
+  const transformed = prepareClaudeCodeWebSearchContinuationRequestBody(
+    body,
+    [sampleSearchRecord()],
+    { queryHint: undefined }
+  );
+
+  assert.equal(transformed, undefined);
 });
 
 test("gateway synthesizes final Anthropic text when web search response has no visible answer", () => {
@@ -271,6 +469,32 @@ test("gateway synthesizes final Anthropic text when web search response has no v
   assert.equal(transformed.value.stop_reason, "end_turn");
 });
 
+test("gateway synthesizes useful component changelog answers from extracted pages", () => {
+  const response = {
+    content: [
+      { thinking: "searched but did not answer", type: "thinking" }
+    ],
+    id: "msg_1",
+    role: "assistant",
+    stop_reason: "max_tokens",
+    type: "message",
+    usage: { output_tokens: 0 }
+  };
+  const transformed = transformAnthropicWebSearchProtocolResponseValue(
+    response,
+    [sampleShadcnSearchRecord()],
+    "req-1",
+    "shadcn ui new components 2025 2026 official registry"
+  );
+
+  assert.equal(transformed.changed, true);
+  assert.match(transformed.value.content[2].content[0].snippet, /Extracted page content:/);
+  assert.match(transformed.value.content[3].text, /June 2026 - Components for Chat Interfaces/);
+  assert.match(transformed.value.content[3].text, /Message Scroller/);
+  assert.match(transformed.value.content[3].text, /Attachment/);
+  assert.doesNotMatch(transformed.value.content[3].text, /Morning, shadcn/);
+});
+
 test("gateway response injects Anthropic web search protocol blocks into SSE responses", () => {
   const sse = [
     sseEvent({ type: "message_start", message: { content: [], id: "msg_1", role: "assistant", type: "message" } }),
@@ -279,7 +503,7 @@ test("gateway response injects Anthropic web search protocol blocks into SSE res
     sseEvent({ type: "content_block_start", index: 1, content_block: { type: "text", text: "" } }),
     sseEvent({ type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "answer" } }),
     sseEvent({ type: "content_block_stop", index: 1 }),
-    sseEvent({ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { server_tool_use: { web_search_requests: 1 } } }),
+    sseEvent({ type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { server_tool_use: { web_search_requests: 1 } } }),
     sseEvent({ type: "message_stop" })
   ].join("\n\n") + "\n\n";
 
@@ -290,6 +514,102 @@ test("gateway response injects Anthropic web search protocol blocks into SSE res
   assert.match(transformed, /"type":"web_search_result"/);
   assert.match(transformed, /"index":3,"content_block":\{"type":"text"/);
   assert.match(transformed, /"server_tool_use":\{"web_search_requests":1\}/);
+  assert.match(transformed, /"stop_reason":"end_turn"/);
+});
+
+test("gateway preserves Anthropic SSE tool_use stop reason when client tools remain", () => {
+  const sse = [
+    sseEvent({ type: "message_start", message: { content: [], id: "msg_1", role: "assistant", type: "message" } }),
+    sseEvent({ type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "" } }),
+    sseEvent({ type: "content_block_stop", index: 0 }),
+    sseEvent({ type: "content_block_start", index: 1, content_block: { id: "toolu_1", input: { command: "pwd" }, name: "Bash", type: "tool_use" } }),
+    sseEvent({ type: "content_block_stop", index: 1 }),
+    sseEvent({ type: "message_delta", delta: { stop_reason: "tool_use" }, usage: {} }),
+    sseEvent({ type: "message_stop" })
+  ].join("\n\n") + "\n\n";
+
+  const transformed = transformAnthropicWebSearchProtocolSseText(sse, [sampleSearchRecord()], "req-1");
+
+  assert.match(transformed, /"type":"server_tool_use"/);
+  assert.match(transformed, /"type":"tool_use"/);
+  assert.match(transformed, /"stop_reason":"tool_use"/);
+  assert.doesNotMatch(transformed, /"stop_reason":"end_turn"/);
+});
+
+test("gateway hosted web search response stream transforms Anthropic SSE responses", async () => {
+  const sse = [
+    sseEvent({ type: "message_start", message: { content: [], id: "msg_1", role: "assistant", type: "message" } }),
+    sseEvent({ type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "" } }),
+    sseEvent({ type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "reasoning" } }),
+    sseEvent({ type: "content_block_stop", index: 0 }),
+    sseEvent({ type: "content_block_start", index: 1, content_block: { type: "text", text: "" } }),
+    sseEvent({ type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "answer" } }),
+    sseEvent({ type: "content_block_stop", index: 1 }),
+    sseEvent({ type: "message_delta", delta: { stop_reason: "tool_use" }, usage: {} }),
+    sseEvent({ type: "message_stop" })
+  ].join("\n\n") + "\n\n";
+  const stream = hostedWebSearchProtocolResponseStream(
+    Readable.from([Buffer.from(sse, "utf8")]),
+    new Headers({ "content-type": "text/event-stream; charset=utf-8" }),
+    {
+      protocol: "anthropic_messages",
+      queryHint: "today gold price per ounce USD July 2026",
+      records: [sampleSearchRecord()],
+      requestId: "req-1",
+      sinceMs: Date.now() - 1000,
+      toolName: "fusion_2_web_search"
+    },
+    {
+      recentBrowserWebSearchResults: () => [],
+      stopBrowserWebSearchMcpServers: async () => {}
+    }
+  );
+
+  const transformed = await readStreamText(stream);
+
+  assert.match(transformed, /"type":"server_tool_use"/);
+  assert.match(transformed, /"type":"web_search_tool_result"/);
+  assert.match(transformed, /"type":"web_search_result"/);
+  assert.match(transformed, /"server_tool_use":\{"web_search_requests":1\}/);
+  assert.match(transformed, /"stop_reason":"end_turn"/);
+});
+
+test("gateway hosted web search Anthropic SSE stream emits before upstream ends", async () => {
+  const input = new PassThrough();
+  const stream = hostedWebSearchProtocolResponseStream(
+    input,
+    new Headers({ "content-type": "text/event-stream; charset=utf-8" }),
+    {
+      protocol: "anthropic_messages",
+      queryHint: "today gold price per ounce USD July 2026",
+      records: [sampleSearchRecord()],
+      requestId: "req-1",
+      sinceMs: Date.now() - 1000,
+      toolName: "fusion_2_web_search"
+    },
+    {
+      recentBrowserWebSearchResults: () => [],
+      stopBrowserWebSearchMcpServers: async () => {}
+    }
+  );
+
+  const injectedData = waitForStreamDataMatching(stream, /"type":"server_tool_use"/, 500);
+  input.write([
+    sseEvent({ type: "message_start", message: { content: [], id: "msg_1", role: "assistant", type: "message" } }),
+    sseEvent({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } })
+  ].join("\n\n") + "\n\n");
+  const chunk = await injectedData;
+  assert.ok(chunk);
+  assert.match(chunk.toString("utf8"), /"type":"server_tool_use"/);
+
+  input.end([
+    sseEvent({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "answer" } }),
+    sseEvent({ type: "content_block_stop", index: 0 }),
+    sseEvent({ type: "message_delta", delta: { stop_reason: "tool_use" }, usage: {} }),
+    sseEvent({ type: "message_stop" })
+  ].join("\n\n") + "\n\n");
+  const rest = await readStreamText(stream);
+  assert.match(`${chunk.toString("utf8")}${rest}`, /"stop_reason":"end_turn"/);
 });
 
 test("gateway synthesizes final Anthropic SSE text when model exhausts tokens in thinking", () => {
@@ -626,10 +946,62 @@ function sampleSearchRecord() {
   };
 }
 
+function sampleShadcnSearchRecord() {
+  return {
+    completedAtMs: Date.now(),
+    engine: "google",
+    query: "shadcn ui new components 2025 2026 official registry",
+    results: [
+      {
+        content: "Sections Introduction Components Attachment Avatar Badge Bubble Button Button Group Empty Field Input Input Group Input OTP Item Marker Message Message Scroller Native Select Changelog RSS Latest updates and announcements. June 2026 - Components for Chat Interfaces New Chat How can I help you today? Morning, shadcn! What are we working on today?",
+        title: "Changelog - Shadcn UI",
+        url: "https://ui.shadcn.com/docs/changelog"
+      },
+      {
+        snippet: "YouTube · Web Dev Simplified 26.3K+ views · 11 months ago",
+        title: "How I Built My Own Shadcn Library",
+        url: "https://www.youtube.com/watch?v=example"
+      }
+    ],
+    searchUrl: "https://www.google.com/search?q=shadcn",
+    toolName: "fusion_2_web_search"
+  };
+}
+
 function sseEvent(value) {
   return `event: ${value.type}\ndata: ${JSON.stringify(value)}`;
 }
 
 function openAiSseEvent(value) {
   return `data: ${JSON.stringify(value)}`;
+}
+
+async function readStreamText(stream) {
+  const chunks = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function waitForStreamDataMatching(stream, pattern, timeoutMs) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve(null);
+    }, timeoutMs);
+    const onData = (chunk) => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (!pattern.test(buffer.toString("utf8"))) {
+        return;
+      }
+      cleanup();
+      resolve(buffer);
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      stream.off("data", onData);
+    };
+    stream.on("data", onData);
+  });
 }
