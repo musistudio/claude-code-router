@@ -6,6 +6,7 @@ import { loadAppConfig } from "./config";
 import { APP_NAME } from "./constants";
 import { getProviderAccountSnapshots } from "./provider-account-service";
 import { getTodayUsageTotals, onUsageRecorded } from "./usage-store";
+import windowsManager from "./windows";
 import type { AppConfig, ProviderAccountMeter, TrayBalanceProgressConfig, TrayIconPreference } from "../shared/app";
 
 const popoverMenuWidth = 420;
@@ -57,6 +58,10 @@ class TrayController {
     this.tray.on("click", () => {
       this.suppressMainWindowActivation();
       this.togglePopover();
+    });
+    this.tray.on("double-click", () => {
+      this.suppressMainWindowActivation();
+      this.showMainWindow();
     });
     this.tray.on("right-click", () => {
       this.suppressMainWindowActivation();
@@ -276,6 +281,10 @@ class TrayController {
       },
       { type: "separator" },
       {
+        click: () => this.showMainWindow(),
+        label: `Open ${APP_NAME}`
+      },
+      {
         click: () => this.showPopover(),
         label: "Show Usage"
       },
@@ -287,6 +296,11 @@ class TrayController {
     ]);
 
     this.tray?.popUpContextMenu(menu);
+  }
+
+  private showMainWindow(): void {
+    this.hidePopover();
+    windowsManager.showMainWindow();
   }
 
   private showDetailPopover(provider?: string): void {
