@@ -193,7 +193,7 @@ test("codex catalog marks prefixed Fusion virtual models with legacy web search 
         key: "web-prefix",
         match: { exactAliases: [], prefixes: ["web-"], suffixes: [] },
         materialization: { enabled: true, includeInGatewayModels: true },
-        tools: [{ name: "web_search", visibility: "internal" }]
+        tools: [{ name: "web_prefix_web_search", visibility: "internal" }]
       }
     ]
   }, "deepseek/web-deepseek-chat");

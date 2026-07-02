@@ -265,7 +265,7 @@ export const fusionToolOptions: Array<{ description: string; label: string; valu
     value: BUILTIN_FUSION_VISION_TOOL_NAME
   },
   {
-    description: "Generic web search tool supporting Brave, Bing, Google CSE, Serper, SerpAPI, Tavily, and Exa.",
+    description: "Generic web search tool supporting hidden in-app browser search plus Brave, Bing, Google CSE, Serper, SerpAPI, Tavily, and Exa.",
     label: `${BUILTIN_FUSION_TOOL_SERVER_NAME} / ${BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME}`,
     value: BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME
   }
@@ -277,6 +277,7 @@ export const customFusionToolName = "custom_mcp_tool";
 export const defaultFusionWebSearchProvider: VirtualModelFusionWebSearchProvider = "brave";
 
 export const fusionWebSearchProviderOptions: Array<{ label: string; value: VirtualModelFusionWebSearchProvider }> = [
+  { label: "In-app Browser", value: "browser" },
   { label: "Brave", value: "brave" },
   { label: "Bing", value: "bing" },
   { label: "Google CSE", value: "google_cse" },
@@ -288,6 +289,7 @@ export const fusionWebSearchProviderOptions: Array<{ label: string; value: Virtu
 
 export const fusionWebSearchEnvKeysByProvider: Record<VirtualModelFusionWebSearchProvider, string[]> = {
   bing: ["BING_SEARCH_API_KEY", "BING_SEARCH_ENDPOINT"],
+  browser: ["BROWSER_SEARCH_ENGINE", "BROWSER_SEARCH_LANGUAGE", "BROWSER_SEARCH_COUNTRY", "BROWSER_SEARCH_SAFE_SEARCH"],
   brave: ["BRAVE_SEARCH_API_KEY", "BRAVE_SEARCH_ENDPOINT"],
   exa: ["EXA_API_KEY", "EXA_SEARCH_ENDPOINT"],
   google_cse: ["GOOGLE_SEARCH_API_KEY", "GOOGLE_SEARCH_CX", "GOOGLE_SEARCH_ENDPOINT"],

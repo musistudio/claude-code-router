@@ -348,7 +348,7 @@ export function ModelsView({
                   <AnimatePresence initial={false}>
                     {visibleRows.map((row) => (
                       <AnimatedListItem
-                        className="grid min-h-[76px] grid-cols-[minmax(0,1fr)_minmax(260px,1.5fr)] items-start gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35"
+                        className="grid min-h-[60px] grid-cols-[minmax(0,1fr)_minmax(260px,1.5fr)] items-start gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35"
                         key={row.key}
                       >
                         <div className="min-w-0">
@@ -358,11 +358,6 @@ export function ModelsView({
                           <div className="truncate font-mono text-[11px] text-muted-foreground" title={row.providerName ? `${row.providerName}/${row.model}` : row.model}>
                             {row.providerName ? `${row.providerName}/${row.model}` : row.model}
                           </div>
-                          {row.providerName ? (
-                            <Badge className="mt-1 max-w-full" variant="outline">
-                              <span className="truncate">{row.providerName}</span>
-                            </Badge>
-                          ) : null}
                         </div>
                         <div className="min-w-0">
                           {row.providerIndex !== undefined ? (

@@ -57,6 +57,13 @@ class WindowsManager {
         window.show();
       }
     });
+    window.on("close", (event) => {
+      if (!shouldHideMainWindowOnClose()) {
+        return;
+      }
+      event.preventDefault();
+      window.hide();
+    });
     window.on("closed", () => this.windows.delete("main"));
     window.webContents.on("page-title-updated", (_event, title) => {
       window.setTitle(title || APP_NAME);
@@ -115,9 +122,16 @@ const windowsManager = new WindowsManager();
 
 export default windowsManager;
 
+let appIsQuitting = false;
+
 app.on("before-quit", () => {
+  appIsQuitting = true;
   windowsManager.broadcast(IPC_CHANNELS.appBeforeQuit);
 });
+
+function shouldHideMainWindowOnClose(): boolean {
+  return process.platform === "win32" && !appIsQuitting;
+}
 
 function fitWindowSize(preferred: number, minimum: number, available: number): number {
   return Math.max(minimum, Math.min(preferred, available > 0 ? available : preferred));

@@ -60,6 +60,7 @@ export async function applyProfileConfig(config: AppConfig): Promise<ProfileAppl
           : applyCodexProfile(config, profile, token, appliedAt)
     );
   }
+  result.clients.push(...restoreInactiveGlobalProfileConfigs(profiles));
   return result;
 }
 
@@ -91,9 +92,14 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
     delete env.ANTHROPIC_AUTH_TOKEN;
     delete env.ANTHROPIC_API_KEY;
     if (profile.model.trim()) {
-      env.ANTHROPIC_MODEL = normalizeClientModel(profile.model);
+      const model = normalizeClientModel(profile.model);
+      env.ANTHROPIC_MODEL = model;
+      env.CCR_CLAUDE_CODE_MODEL = model;
+      env.CODEXL_CLAUDE_CODE_MODEL = model;
     } else {
       delete env.ANTHROPIC_MODEL;
+      delete env.CCR_CLAUDE_CODE_MODEL;
+      delete env.CODEXL_CLAUDE_CODE_MODEL;
     }
     if (profile.smallFastModel?.trim()) {
       env.ANTHROPIC_SMALL_FAST_MODEL = normalizeClientModel(profile.smallFastModel);
@@ -533,6 +539,7 @@ function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig,
   const realClaude = profile.env?.CCR_CLAUDE_CODE_BIN?.trim() || "claude";
   const surface = normalizeProfileSurface(profile.surface);
   const remoteEndpoint = `${gatewayEndpoint(config)}/__ccr/remote`;
+  const settingsDir = path.dirname(resolveClaudeCodeSettingsFile(profile));
   const envExports = Object.entries(profileEnv(profile))
     .filter(([key]) => key !== "CCR_CLAUDE_CODE_BIN")
     .map(([key, value]) => `export ${key}=${shellQuote(value)}`);
@@ -540,6 +547,7 @@ function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig,
   return [
     "#!/bin/sh",
     ...envExports,
+    ...shellEnvExports(claudeCodeRuntimeEnv(config, profile, settingsDir)),
     ...shellEnvExports(claudeCodeUtcTimezoneEnvOverride()),
     `: "\${CCR_PROFILE_SURFACE:=${surface}}"`,
     "export CCR_PROFILE_SURFACE",
@@ -562,6 +570,7 @@ function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, r
   const realClaude = profile.env?.CCR_CLAUDE_CODE_BIN?.trim() || "claude";
   const surface = normalizeProfileSurface(profile.surface);
   const remoteEndpoint = `${gatewayEndpoint(config)}/__ccr/remote`;
+  const settingsDir = path.dirname(resolveClaudeCodeSettingsFile(profile));
   const envExports = Object.entries(profileEnv(profile))
     .filter(([key]) => key !== "CCR_CLAUDE_CODE_BIN")
     .map(([key, value]) => cmdSetLine(key, value));
@@ -569,6 +578,7 @@ function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, r
   return [
     "@echo off",
     ...envExports,
+    ...cmdEnvExports(claudeCodeRuntimeEnv(config, profile, settingsDir)),
     ...cmdEnvExports(claudeCodeUtcTimezoneEnvOverride()),
     `if not defined CCR_PROFILE_SURFACE ${cmdSetLine("CCR_PROFILE_SURFACE", surface)}`,
     ...botEnvExports,
@@ -615,6 +625,27 @@ function writeCodexCliMiddleware(
     changed: writeResult.changed || runtimeResult.changed,
     file
   };
+}
+
+function claudeCodeRuntimeEnv(config: AppConfig, profile: ProfileConfig, settingsDir: string): Record<string, string> {
+  const endpoint = gatewayEndpoint(config);
+  const env: Record<string, string> = {
+    ANTHROPIC_API_BASE_URL: endpoint,
+    ANTHROPIC_BASE_URL: endpoint,
+    CLAUDE_AGENT_API_BASE_URL: endpoint,
+    CLAUDE_CONFIG_DIR: settingsDir
+  };
+  const model = normalizeClientModel(profile.model);
+  if (model) {
+    env.ANTHROPIC_MODEL = model;
+    env.CCR_CLAUDE_CODE_MODEL = model;
+    env.CODEXL_CLAUDE_CODE_MODEL = model;
+  }
+  const smallFastModel = normalizeClientModel(profile.smallFastModel);
+  if (smallFastModel) {
+    env.ANTHROPIC_SMALL_FAST_MODEL = smallFastModel;
+  }
+  return env;
 }
 
 function codexMiddlewareRuntimeFilename(): string {
@@ -1030,6 +1061,60 @@ function disabledProfileStatus(profile: ProfileConfig): ProfileClientApplyStatus
     "Codex profile is disabled.",
     (content) => isManagedCodexConfigContent(content, providerId)
   );
+}
+
+export function restoreInactiveGlobalProfileConfigs(profiles: ProfileConfig[]): ProfileClientApplyStatus[] {
+  const statuses: ProfileClientApplyStatus[] = [];
+  if (!profiles.some((profile) => profile.agent === "claude-code" && profile.enabled && isGlobalProfile(profile))) {
+    for (const file of uniqueResolvedPaths([
+      "~/.claude/settings.json",
+      ...profiles
+        .filter((profile) => profile.agent === "claude-code")
+        .map((profile) => profile.settingsFile || "")
+        .filter(Boolean)
+    ])) {
+      const restoreResult = restoreGlobalConfigFile(file, {
+        isManagedContent: isManagedClaudeCodeSettingsContent,
+        mode: privateFileMode
+      });
+      if (restoreResult.changed || restoreResult.missingBackup) {
+        statuses.push(inactiveGlobalCleanupStatus("claude-code", file, restoreResult));
+      }
+    }
+  }
+  return statuses;
+}
+
+function inactiveGlobalCleanupStatus(
+  client: ProfileClientKind,
+  file: string,
+  restoreResult: RestoreFileResult
+): ProfileClientApplyStatus {
+  return {
+    backupFile: restoreResult.backupFile,
+    client,
+    enabled: false,
+    message: restoreResult.missingBackup
+      ? `No active global ${codexCompatibleClientName(client)} profile is configured, but the global config is managed by CCR and no original backup was found.`
+      : `${codexCompatibleClientName(client)} global config was restored because no active global profile is configured.`,
+    ok: !restoreResult.missingBackup,
+    path: resolveUserPath(file)
+  };
+}
+
+function uniqueResolvedPaths(paths: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of paths) {
+    const resolved = resolveUserPath(item);
+    const key = process.platform === "win32" ? resolved.toLowerCase() : resolved;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(resolved);
+  }
+  return result;
 }
 
 function restoreDisabledZcodeProfile(profile: ProfileConfig, configFile: string): ProfileClientApplyStatus {

@@ -20,6 +20,7 @@ const claudeProfile = {
   model: "provider,model",
   name: "Claude Main",
   scope: "ccr",
+  smallFastModel: "provider,small",
   surface: "auto"
 };
 
@@ -82,6 +83,10 @@ test("buildProfileLaunchPlan creates CCR-managed launcher paths", () => {
   assert.equal(path.basename(claudePlan.command), process.platform === "win32" ? "ccr-claude-code-wrapper-claude-main.cmd" : "ccr-claude-code-wrapper-claude-main");
   assert.equal(claudePlan.env.CCR_PROFILE_SURFACE, "cli");
   assert.match(claudePlan.env.CLAUDE_CONFIG_DIR, /claude$/);
+  assert.equal(claudePlan.env.ANTHROPIC_MODEL, "provider/model");
+  assert.equal(claudePlan.env.CCR_CLAUDE_CODE_MODEL, "provider/model");
+  assert.equal(claudePlan.env.CODEXL_CLAUDE_CODE_MODEL, "provider/model");
+  assert.equal(claudePlan.env.ANTHROPIC_SMALL_FAST_MODEL, "provider/small");
 
   assert.throws(() => buildProfileLaunchPlan(configDir, claudeProfile, "app"), /Claude App opening/);
 });

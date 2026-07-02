@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
-import type { AppConfig, RouterBuiltInAgentRuleId, RouterConfig, RouterFallbackConfig, RouterRule, RouterRuleCondition, RouterRuleRewrite } from "../../shared/app";
+import { availableGatewayModelIds, type AppConfig, type RouterBuiltInAgentRuleId, type RouterConfig, type RouterFallbackConfig, type RouterRule, type RouterRuleCondition, type RouterRuleRewrite } from "../../shared/app";
 import { CONFIGDIR } from "../../main/constants";
 
 type HeaderValue = string | string[] | undefined;
@@ -420,8 +420,7 @@ function claudeCodeAgentToolInstructions(config: AppConfig): { prompt: string; t
 }
 
 function configuredSubagentModelDescriptionRows(config: AppConfig): string[] {
-  const rows: string[] = [];
-  const seen = new Set<string>();
+  const candidates: Array<{ key: string; row: string; selector: string }> = [];
   for (const provider of config.Providers) {
     const providerName = provider.name?.trim();
     if (!providerName || !Array.isArray(provider.models)) {
@@ -435,16 +434,40 @@ function configuredSubagentModelDescriptionRows(config: AppConfig): string[] {
       }
       const selector = `${providerName}/${model}`;
       const key = selector.toLowerCase();
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
       const displayName = provider.modelDisplayNames?.[model]?.trim();
       const label = displayName && displayName !== model ? `${selector} (${displayName})` : selector;
-      rows.push(`- ${label}: ${singleLineText(description, 320)}`);
+      candidates.push({
+        key,
+        row: `- ${label}: ${singleLineText(description, 320)}`,
+        selector
+      });
     }
   }
+  candidates.sort(compareSubagentModelDescriptionRows);
+
+  const rows: string[] = [];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    if (seen.has(candidate.key)) {
+      continue;
+    }
+    seen.add(candidate.key);
+    rows.push(candidate.row);
+  }
   return rows;
+}
+
+function compareSubagentModelDescriptionRows(
+  left: { key: string; row: string; selector: string },
+  right: { key: string; row: string; selector: string }
+): number {
+  return compareCodeUnitStrings(left.key, right.key) ||
+    compareCodeUnitStrings(left.selector, right.selector) ||
+    compareCodeUnitStrings(left.row, right.row);
+}
+
+function compareCodeUnitStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function removeClaudeCodeBillingSystemHeader(body: Record<string, unknown>): void {
@@ -1032,16 +1055,22 @@ export function normalizeRouteSelector(value: string | undefined): string | unde
 }
 
 function isKnownInlineRoute(model: string | undefined, config: AppConfig): boolean {
-  if (!model) {
+  const normalizedModel = normalizeRouteSelector(model);
+  if (!normalizedModel) {
     return false;
   }
 
-  const separator = model.indexOf("/");
+  const normalizedModelLower = normalizedModel.toLowerCase();
+  if (availableGatewayModelIds(config).some((id) => id.toLowerCase() === normalizedModelLower)) {
+    return true;
+  }
+
+  const separator = normalizedModel.indexOf("/");
   if (separator <= 0) {
     return false;
   }
 
-  const providerName = model.slice(0, separator).trim().toLowerCase();
+  const providerName = normalizedModel.slice(0, separator).trim().toLowerCase();
   return config.Providers.some((provider) => provider.name.trim().toLowerCase() === providerName);
 }
 

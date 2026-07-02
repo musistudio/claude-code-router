@@ -55,6 +55,7 @@ export async function launchClaudeAppProfile(configDir: string, profile: Profile
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     ...profileEnv(profile),
+    ...claudeCodeModelEnv(profile),
     ...(config ? botGatewayProfileEnv(config, profile, "app") : {}),
     CLAUDE_CONFIG_DIR: settingsDir,
     CLAUDE_USER_DATA_DIR: userDataDir,
@@ -312,6 +313,35 @@ function profileEnv(profile: ProfileConfig): Record<string, string> {
     }
     return result;
   }, {});
+}
+
+function claudeCodeModelEnv(profile: ProfileConfig): Record<string, string> {
+  const env: Record<string, string> = {};
+  const model = normalizeClientModel(profile.model);
+  if (model) {
+    env.ANTHROPIC_MODEL = model;
+    env.CCR_CLAUDE_CODE_MODEL = model;
+    env.CODEXL_CLAUDE_CODE_MODEL = model;
+  }
+  const smallFastModel = normalizeClientModel(profile.smallFastModel);
+  if (smallFastModel) {
+    env.ANTHROPIC_SMALL_FAST_MODEL = smallFastModel;
+  }
+  return env;
+}
+
+function normalizeClientModel(value: string | undefined): string {
+  const trimmed = value?.trim() || "";
+  if (!trimmed) {
+    return "";
+  }
+  const commaIndex = trimmed.indexOf(",");
+  if (commaIndex > 0 && commaIndex < trimmed.length - 1) {
+    const provider = trimmed.slice(0, commaIndex).trim();
+    const model = trimmed.slice(commaIndex + 1).trim();
+    return provider && model ? `${provider}/${model}` : "";
+  }
+  return trimmed;
 }
 
 function isEnvName(value: string): boolean {

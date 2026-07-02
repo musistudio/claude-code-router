@@ -3,18 +3,40 @@ import {
   Card, CardContent, CardHeader, CardTitle, Check, ChevronDown, ChevronRight,
   cn, createMcpServerDraftFromConfig, createRouteModelOptions, defaultFusionWebSearchProvider, Dialog, DialogBody, DialogContent, DialogFooter,
   DialogHeader, DialogTitle, ExtensionInstallDraft, Field, FolderOpen, formatPluginDependencies,
-  createFusionWebSearchEnvRows, customFusionToolName, fusionToolExecutionFlagsFromTools, fusionToolOptions,
+  createFusionWebSearchEnvRows, createKeyValueDraftRow, customFusionToolName, fusionToolExecutionFlagsFromTools, fusionToolOptions,
   fusionWebSearchProviderOptions, GatewayMcpServerConfig, GatewayMcpToolInfo, GatewayProviderConfig, Input, isBuiltInFusionToolName, isFusionVisionToolName, isFusionWebSearchToolName, KeyValueRowsControl, LoaderCircle,
   mcpServerConfigFromDraft, mcpServerEndpointSummary, mcpServerTransportOptions,
   mcpStdioMessageModeOptions, motion, normalizeFusionToolName, Pencil,
   PluginMarketplaceEntry, Plus, PopoverContent, RouteTargetControl, Search, selectedFusionToolNames,
   SelectControl, Toggle, Trash2, translateOptions, useAppErrorText, useAppText, useEffect, useLayoutEffect, useMemo,
   useRef, useState, validateMcpServerDraft, virtualModelBaseModelSummary, VirtualModelDraft, virtualModelMatchesQuery, virtualModelMatchSummary,
+  type KeyValueDraftRow,
   VirtualModelProfileConfig, virtualModelToolSummary, X
 } from "../shared";
 
 const virtualModelTableGridClass = "grid-cols-[minmax(180px,0.9fr)_minmax(220px,1.1fr)_minmax(220px,1.1fr)_minmax(170px,0.85fr)_112px_96px]";
 const virtualModelTableMinWidthClass = "min-w-[1100px]";
+const browserWebSearchEngineEnvKey = "BROWSER_SEARCH_ENGINE";
+const browserWebSearchLanguageEnvKey = "BROWSER_SEARCH_LANGUAGE";
+const browserWebSearchCountryEnvKey = "BROWSER_SEARCH_COUNTRY";
+const browserWebSearchSafeSearchEnvKey = "BROWSER_SEARCH_SAFE_SEARCH";
+const browserWebSearchKnownEnvKeys = new Set([
+  browserWebSearchEngineEnvKey,
+  browserWebSearchLanguageEnvKey,
+  browserWebSearchCountryEnvKey,
+  browserWebSearchSafeSearchEnvKey
+]);
+const browserWebSearchEngineOptions = [
+  { label: "Bing", value: "bing" },
+  { label: "Google", value: "google" },
+  { label: "DuckDuckGo", value: "duckduckgo" }
+];
+const browserWebSearchSafeSearchOptions = [
+  { label: "Default", value: "default" },
+  { label: "Moderate", value: "moderate" },
+  { label: "Strict", value: "strict" },
+  { label: "Off", value: "off" }
+];
 
 function uniqueFusionTools(tools: string[]): string[] {
   const seen = new Set<string>();
@@ -452,15 +474,110 @@ function WebSearchToolConfigurationPanel({
       <Field label={t("Search provider")}>
         <SelectControl onChange={updateProvider} options={providerOptions} value={draft.webSearchProvider} />
       </Field>
-      <Field label={t("Provider configuration")}>
-        <KeyValueRowsControl
-          addLabel={t("Add variable")}
+      {draft.webSearchProvider === "browser" ? (
+        <BrowserWebSearchConfigurationPanel
           onChange={(webSearchEnvRows) => onChange({ webSearchEnvRows })}
           rows={draft.webSearchEnvRows}
+        />
+      ) : (
+        <Field label={t("Provider configuration")}>
+          <KeyValueRowsControl
+            addLabel={t("Add variable")}
+            onChange={(webSearchEnvRows) => onChange({ webSearchEnvRows })}
+            rows={draft.webSearchEnvRows}
+          />
+        </Field>
+      )}
+    </div>
+  );
+}
+
+function BrowserWebSearchConfigurationPanel({
+  onChange,
+  rows
+}: {
+  onChange: (rows: KeyValueDraftRow[]) => void;
+  rows: KeyValueDraftRow[];
+}) {
+  const t = useAppText();
+  const extraRows = browserWebSearchExtraRows(rows);
+  const engine = browserWebSearchEnvValue(rows, browserWebSearchEngineEnvKey) || "bing";
+  const language = browserWebSearchEnvValue(rows, browserWebSearchLanguageEnvKey);
+  const country = browserWebSearchEnvValue(rows, browserWebSearchCountryEnvKey);
+  const safeSearch = browserWebSearchEnvValue(rows, browserWebSearchSafeSearchEnvKey) || "default";
+
+  function updateKnownValue(key: string, value: string) {
+    onChange(upsertBrowserWebSearchEnvRows(rows, key, value === "default" ? "" : value));
+  }
+
+  function updateExtraRows(nextExtraRows: KeyValueDraftRow[]) {
+    onChange(mergeBrowserWebSearchEnvRows(rows, nextExtraRows));
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <Field label={t("Search engine")}>
+          <SelectControl
+            onChange={(value) => updateKnownValue(browserWebSearchEngineEnvKey, value)}
+            options={browserWebSearchEngineOptions}
+            value={browserWebSearchEngineOptions.some((option) => option.value === engine) ? engine : "bing"}
+          />
+        </Field>
+        <Field label={t("Safe search")}>
+          <SelectControl
+            onChange={(value) => updateKnownValue(browserWebSearchSafeSearchEnvKey, value)}
+            options={translateOptions(browserWebSearchSafeSearchOptions, t)}
+            value={browserWebSearchSafeSearchOptions.some((option) => option.value === safeSearch) ? safeSearch : "default"}
+          />
+        </Field>
+        <Field label={t("Language")}>
+          <Input
+            onChange={(event) => updateKnownValue(browserWebSearchLanguageEnvKey, event.target.value)}
+            placeholder="en, zh-CN"
+            value={language}
+          />
+        </Field>
+        <Field label={t("Country")}>
+          <Input
+            onChange={(event) => updateKnownValue(browserWebSearchCountryEnvKey, event.target.value)}
+            placeholder="US, CN"
+            value={country}
+          />
+        </Field>
+      </div>
+      <Field label={t("Advanced variables")}>
+        <KeyValueRowsControl
+          addLabel={t("Add variable")}
+          onChange={updateExtraRows}
+          rows={extraRows}
         />
       </Field>
     </div>
   );
+}
+
+function browserWebSearchEnvValue(rows: KeyValueDraftRow[], key: string): string {
+  return rows.find((row) => row.key.trim() === key)?.value.trim() ?? "";
+}
+
+function browserWebSearchExtraRows(rows: KeyValueDraftRow[]): KeyValueDraftRow[] {
+  return rows.filter((row) => {
+    const key = row.key.trim();
+    return key && !browserWebSearchKnownEnvKeys.has(key);
+  });
+}
+
+function upsertBrowserWebSearchEnvRows(rows: KeyValueDraftRow[], key: string, value: string): KeyValueDraftRow[] {
+  const normalizedValue = value.trim();
+  const nextRows = rows.filter((row) => row.key.trim() !== key);
+  return normalizedValue ? [createKeyValueDraftRow(key, normalizedValue), ...nextRows] : nextRows;
+}
+
+function mergeBrowserWebSearchEnvRows(currentRows: KeyValueDraftRow[], extraRows: KeyValueDraftRow[]): KeyValueDraftRow[] {
+  const knownRows = currentRows.filter((row) => browserWebSearchKnownEnvKeys.has(row.key.trim()) && row.value.trim());
+  const cleanedExtraRows = extraRows.filter((row) => row.key.trim() || row.value.trim());
+  return [...knownRows, ...cleanedExtraRows];
 }
 
 function CustomMcpToolDialog({

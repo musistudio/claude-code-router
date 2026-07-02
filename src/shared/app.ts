@@ -675,6 +675,7 @@ export type VirtualModelFusionVisionConfig = {
 };
 
 export type VirtualModelFusionWebSearchProvider =
+  | "browser"
   | "brave"
   | "bing"
   | "google_cse"

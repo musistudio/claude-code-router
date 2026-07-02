@@ -27,7 +27,7 @@ export const trayRendererHtmlOutput = path.join(rendererOutDir, "pages", "tray",
 export const cssInput = path.join(rendererRoot, "styles", "globals.css");
 export const cssOutput = path.join(rendererAssetsDir, "main.css");
 export const webClientBridgeOutput = path.join(rendererAssetsDir, "web-client-bridge.js");
-const lightweightMcpBundleNames = ["fusion-vision-mcp.js", "fusion-tool-fallback-mcp.js"];
+const lightweightMcpBundleNames = ["browser-web-search-proxy-mcp.js", "fusion-vision-mcp.js", "fusion-tool-fallback-mcp.js"];
 const lightweightMcpBundleMaxBytes = 128 * 1024;
 const forbiddenLightweightMcpInputs = [
   { prefix: "src/main/", reason: "main-process modules can pull in config, Electron, or native storage side effects" },
@@ -120,6 +120,7 @@ export function createMainBuildOptions({ mode = "production", plugins = [] } = {
     entryPoints: [
       path.join(projectRoot, "src", "main", "main.ts"),
       path.join(projectRoot, "src", "main", "browser-preload.ts"),
+      path.join(projectRoot, "src", "server", "mcp", "browser-web-search-proxy-mcp.ts"),
       path.join(projectRoot, "src", "server", "mcp", "fusion-vision-mcp.ts"),
       path.join(projectRoot, "src", "server", "mcp", "fusion-tool-fallback-mcp.ts"),
       path.join(projectRoot, "src", "main", "preload.ts")

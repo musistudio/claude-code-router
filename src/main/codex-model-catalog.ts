@@ -415,9 +415,16 @@ function virtualModelProfileSupportsFusionWebSearch(profile: VirtualModelProfile
 
   return (profile.tools ?? []).some((tool) => {
     const name = tool.name.trim();
-    return name === BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME ||
-      name.startsWith(`${BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME}_`);
+    return fusionWebSearchToolNameMatches(name);
   });
+}
+
+function fusionWebSearchToolNameMatches(name: string): boolean {
+  const normalized = name.toLowerCase().replace(/[-.]/g, "_");
+  return normalized === BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME ||
+    normalized.startsWith(`${BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME}_`) ||
+    normalized.endsWith(`_${BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME}`) ||
+    normalized.includes("search_web");
 }
 
 function recordValue(value: unknown): Record<string, unknown> | undefined {

@@ -87,7 +87,8 @@ async function main() {
 
 async function runClaudeCodeCliWrapper(args) {
   const realCli = expandHome(nonEmptyEnv("CCR_REAL_CLAUDE_CODE_BIN") || nonEmptyEnv("CCR_CLAUDE_CODE_BIN") || nonEmptyEnv("CODEXL_CLAUDE_CODE_BIN") || "claude");
-  log("claude_code_wrapper_start", { realCli, args });
+  const realArgs = claudeCodeCliWrapperArgs(args);
+  log("claude_code_wrapper_start", { realCli, args, realArgs });
   const captureStdout = shouldCaptureClaudeCodeCliStdout(args);
   const remoteSync = createRemoteSyncClient({
     args,
@@ -96,7 +97,7 @@ async function runClaudeCodeCliWrapper(args) {
     title: nonEmptyEnv("CCR_REMOTE_SYNC_PROFILE_NAME") || "Claude Code"
   });
   const injectRemoteStdin = boolEnv("CCR_REMOTE_SYNC_INJECT_STDIN");
-  const child = childProcess.spawn(realCli, args, {
+  const child = childProcess.spawn(realCli, realArgs, {
     env: {
       ...withoutKeys(process.env, ["CCR_CLAUDE_CODE_WRAPPER", "CCR_REAL_CLAUDE_CODE_BIN"]),
       ...claudeCodeUtcTimezoneEnvOverride()
@@ -143,6 +144,79 @@ async function runClaudeCodeCliWrapper(args) {
   remoteSync.stop();
   log("claude_code_wrapper_exit", { code });
   process.exitCode = code;
+}
+
+function claudeCodeCliWrapperArgs(args) {
+  const model = nonEmptyEnv("CCR_CLAUDE_CODE_MODEL") || nonEmptyEnv("CODEXL_CLAUDE_CODE_MODEL") || nonEmptyEnv("ANTHROPIC_MODEL");
+  if (!model || claudeCodeArgsHaveModel(args) || claudeCodeArgsShouldSkipModelInjection(args)) {
+    return args;
+  }
+  return ["--model", model, ...args];
+}
+
+function claudeCodeArgsHaveModel(args) {
+  for (const arg of args) {
+    if (arg === "--model" || arg === "-m" || arg.startsWith("--model=")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function claudeCodeArgsShouldSkipModelInjection(args) {
+  if (args.some((arg) => arg === "--help" || arg === "-h" || arg === "--version" || arg === "-v")) {
+    return true;
+  }
+  const command = firstClaudeCodePositionalArg(args);
+  return Boolean(command && new Set([
+    "config",
+    "doctor",
+    "help",
+    "install",
+    "login",
+    "logout",
+    "mcp",
+    "update",
+    "upgrade",
+    "version"
+  ]).has(command.toLowerCase()));
+}
+
+function firstClaudeCodePositionalArg(args) {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--") {
+      return undefined;
+    }
+    if (!arg.startsWith("-")) {
+      return arg;
+    }
+    if (claudeCodeOptionTakesValue(arg) && !arg.includes("=")) {
+      index += 1;
+    }
+  }
+  return undefined;
+}
+
+function claudeCodeOptionTakesValue(arg) {
+  return new Set([
+    "--add-dir",
+    "--append-system-prompt",
+    "--config",
+    "--continue",
+    "--debug-to",
+    "--fallback-model",
+    "--model",
+    "--output-format",
+    "--permission-mode",
+    "--resume",
+    "--settings",
+    "--system-prompt",
+    "-c",
+    "-m",
+    "-p",
+    "-r"
+  ]).has(arg);
 }
 
 function shouldCaptureClaudeCodeCliStdout(args) {
@@ -736,7 +810,14 @@ async function runClaudeCodeBotWorker(args) {
   try {
     const server = new ClaudeCodeAppServer(options);
     server.ensureBotBridgeRegistered();
-    log("claude_bot_worker_start", { workspaceName: options.workspaceName, pid: process.pid, lockPath: lock.path });
+    log("claude_bot_worker_start", {
+      workspaceName: options.workspaceName,
+      pid: process.pid,
+      lockPath: lock.path,
+      claudeConfigDir: nonEmptyEnv("CLAUDE_CONFIG_DIR"),
+      claudeUserDataDir: currentClaudeAppUserDataDir(),
+      model: nonEmptyEnv("CCR_CLAUDE_CODE_MODEL") || nonEmptyEnv("CODEXL_CLAUDE_CODE_MODEL") || agentEnv(codexRuntimeAgent(), "MODEL") || ""
+    });
     await waitForTerminationSignal();
     await botBridge().stop();
     log("claude_bot_worker_stop", { pid: process.pid });
@@ -1295,13 +1376,23 @@ class ClaudeCodeAppServer {
       return null;
     }
     if (!entry.claudeSessionId && !entry.claudeAppSessionId) return null;
+    const appSession = readClaudeAppLocalAgentSession(entry.claudeAppSessionFile || "");
+    if (!botSessionEntryMatchesCurrentProfile(entry, appSession)) {
+      log("bot_gateway_session_scope_skip", {
+        conversationKeyPrefix: key.slice(0, 80),
+        threadId: entry.threadId || "",
+        claudeConfigDir: entry.claudeConfigDir || appSession.claudeConfigDir || "",
+        claudeAppSessionFile: entry.claudeAppSessionFile || "",
+        expectedUserDataDir: currentClaudeAppUserDataDir()
+      });
+      return null;
+    }
     const thread = this.createThread({
       cwd: entry.cwd || process.cwd(),
       model: entry.model || undefined,
       workspaceKind: "local",
       claudeConfigDir: entry.claudeConfigDir || null
     });
-    const appSession = readClaudeAppLocalAgentSession(entry.claudeAppSessionFile || "");
     this.replaceThreadId(thread, entry.threadId || thread.id);
     thread.sessionId = entry.sessionId || thread.id;
     thread.claudeSessionId = entry.claudeSessionId || appSession.cliSessionId || null;
@@ -1537,7 +1628,15 @@ class ClaudeCodeAppServer {
     if (!thread || !turn) return;
     const started = Date.now();
     const command = claudeCommand(work);
-    log("claude_turn_spawn", { threadId: work.threadId, turnId: work.turnId, command: command.command, args: command.args });
+    log("claude_turn_spawn", {
+      threadId: work.threadId,
+      turnId: work.turnId,
+      command: command.command,
+      args: command.args,
+      cwd: work.cwd,
+      claudeConfigDir: work.claudeConfigDir || "",
+      expectedUserDataDir: currentClaudeAppUserDataDir()
+    });
     const child = childProcess.spawn(command.command, command.args, {
       cwd: work.cwd,
       env: command.env,
@@ -3414,9 +3513,9 @@ function latestClaudeAppLocalAgentSession() {
 }
 
 function claudeAppLocalAgentSessions() {
-  const baseDir = nonEmptyEnv("CCR_CLAUDE_APP_USER_DATA_PATH") || nonEmptyEnv("CLAUDE_USER_DATA_DIR");
+  const baseDir = currentClaudeAppUserDataDir();
   if (!baseDir) return [];
-  const root = path.join(expandHome(baseDir), "local-agent-mode-sessions");
+  const root = path.join(baseDir, "local-agent-mode-sessions");
   const files = listClaudeAppSessionFiles(root, 6);
   const sessions = [];
   for (const file of files) {
@@ -3447,6 +3546,37 @@ function claudeAppLocalAgentSessions() {
   }
   sessions.sort((left, right) => (right.lastActivityAt || 0) - (left.lastActivityAt || 0));
   return sessions;
+}
+
+function currentClaudeAppUserDataDir() {
+  return expandHome(nonEmptyEnv("CCR_CLAUDE_APP_USER_DATA_PATH") || nonEmptyEnv("CLAUDE_USER_DATA_DIR") || "");
+}
+
+function botSessionEntryMatchesCurrentProfile(entry, appSession) {
+  const expectedUserDataDir = currentClaudeAppUserDataDir();
+  if (!expectedUserDataDir) return true;
+  const candidates = [
+    entry && entry.claudeConfigDir,
+    entry && entry.claudeAppSessionFile,
+    entry && entry.cwd,
+    appSession && appSession.claudeConfigDir
+  ];
+  return candidates.some((candidate) => pathIsInside(candidate, expectedUserDataDir));
+}
+
+function pathIsInside(candidate, parentDir) {
+  const child = expandHome(String(candidate || ""));
+  const parent = expandHome(String(parentDir || ""));
+  if (!child || !parent) return false;
+  const childPath = normalizeComparablePath(path.resolve(child));
+  const parentPath = normalizeComparablePath(path.resolve(parent));
+  if (childPath === parentPath) return true;
+  const relative = path.relative(parentPath, childPath);
+  return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+function normalizeComparablePath(value) {
+  return process.platform === "win32" ? value.toLowerCase() : value;
 }
 
 function resolveClaudeAppLocalAgentSession(selector) {

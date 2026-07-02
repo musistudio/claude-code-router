@@ -6,7 +6,7 @@ function createRouterPlugin(options = {}) {
   const agent = options.agent ?? "claude-code";
   return new ClaudeCodeRouterPlugin({
     CUSTOM_ROUTER_PATH: "",
-    Providers: [
+    Providers: options.providers ?? [
       {
         modelDescriptions: options.modelDescriptions,
         modelDisplayNames: options.modelDisplayNames,
@@ -35,7 +35,8 @@ function createRouterPlugin(options = {}) {
           scope: "global"
         }
       ]
-    }
+    },
+    virtualModelProfiles: options.virtualModelProfiles ?? []
   });
 }
 
@@ -56,6 +57,37 @@ test("built-in Claude Code route matches user-agent case-insensitively", async (
   assert.equal(result.body.model, "Provider/claude-sonnet");
   assert.equal(result.decision.model, "Provider/claude-sonnet");
   assert.equal(result.decision.reason, "builtin:claude-code");
+});
+
+test("built-in Claude Code route preserves explicit virtual gateway models", async () => {
+  const plugin = createRouterPlugin({
+    profileModel: "Provider/claude-sonnet",
+    virtualModelProfiles: [
+      {
+        displayName: "Kimisearch",
+        enabled: true,
+        id: "fusion-search",
+        key: "kimisearch",
+        match: { exactAliases: ["kimisearch"], prefixes: [], suffixes: [] },
+        materialization: { enabled: true, includeInGatewayModels: true }
+      }
+    ]
+  });
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "Fusion/kimisearch"
+    },
+    headers: {
+      "user-agent": "claude-code/1.0"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Fusion/kimisearch");
+  assert.equal(result.decision.model, "Fusion/kimisearch");
+  assert.equal(result.decision.reason, "inline-model");
 });
 
 test("built-in Codex route stays inactive when profile model is unset", async () => {
@@ -154,6 +186,82 @@ test("built-in Claude Code route injects subagent model instructions into Agent 
     assert.match(tool.input_schema.properties.prompt.description, /Provider\/gpt-5-codex: Use for long refactors/);
     assert.doesNotMatch(tool.input_schema.properties.prompt.description, /optionally include/);
   }
+});
+
+test("built-in Claude Code route injects subagent model descriptions in stable order", async () => {
+  const providersA = [
+    {
+      modelDescriptions: {
+        "z-model": "Zeta model.",
+        "a-model": "Alpha model."
+      },
+      models: ["z-model", "a-model"],
+      name: "Zeta",
+      type: "anthropic_messages"
+    },
+    {
+      modelDescriptions: {
+        "z-model": "Z model.",
+        "a-model": "A model."
+      },
+      models: ["z-model", "a-model"],
+      name: "Alpha",
+      type: "anthropic_messages"
+    }
+  ];
+  const providersB = [
+    {
+      modelDescriptions: {
+        "a-model": "A model.",
+        "z-model": "Z model."
+      },
+      models: ["a-model", "z-model"],
+      name: "Alpha",
+      type: "anthropic_messages"
+    },
+    {
+      modelDescriptions: {
+        "a-model": "Alpha model.",
+        "z-model": "Zeta model."
+      },
+      models: ["a-model", "z-model"],
+      name: "Zeta",
+      type: "anthropic_messages"
+    }
+  ];
+  const routeRequest = (plugin) => plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "claude-default",
+      tools: [
+        {
+          description: "Start a subagent.",
+          input_schema: {
+            properties: {
+              prompt: { description: "Task prompt.", type: "string" }
+            },
+            type: "object"
+          },
+          name: "Agent"
+        }
+      ]
+    },
+    headers: {
+      "user-agent": "Claude Code"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  const pluginA = createRouterPlugin({ profileModel: "Alpha/a-model", providers: providersA });
+  const pluginB = createRouterPlugin({ profileModel: "Alpha/a-model", providers: providersB });
+  const [resultA, resultB] = await Promise.all([routeRequest(pluginA), routeRequest(pluginB)]);
+  const description = resultA.body.tools[0].description;
+
+  assert.equal(description, resultB.body.tools[0].description);
+  assert.ok(description.indexOf("- Alpha/a-model: A model.") < description.indexOf("- Alpha/z-model: Z model."));
+  assert.ok(description.indexOf("- Alpha/z-model: Z model.") < description.indexOf("- Zeta/a-model: Alpha model."));
+  assert.ok(description.indexOf("- Zeta/a-model: Alpha model.") < description.indexOf("- Zeta/z-model: Zeta model."));
 });
 
 test("built-in Claude Code route injects workflow subagent model instructions into the Workflow tool", async () => {

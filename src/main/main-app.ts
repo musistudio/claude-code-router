@@ -10,6 +10,7 @@ import { ensureCcrCliLauncher } from "./profile-launch-service";
 import { proxyService } from "../server/proxy/service";
 import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
+import { browserWebSearchMcpService } from "./electron-web-search-mcp";
 import windowsManager from "./windows";
 
 const gotTheLock = app.requestSingleInstanceLock();
@@ -27,6 +28,7 @@ if (!gotTheLock) {
 }
 
 function startPrimaryInstance(): void {
+  gatewayService.setBrowserWebSearchMcpIntegration(browserWebSearchMcpService);
   deepLinkService.register();
   deepLinkService.handleArgv(process.argv);
 

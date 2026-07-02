@@ -27,7 +27,7 @@ test("Fusion draft saves multiple selected tools into one profile", () => {
 
   assert.deepEqual(profile.tools.map((tool) => tool.name), [
     "vision_understand_fusion_plus",
-    "web_search_fusion_plus",
+    "fusion_plus_web_search",
     "lookup_customer"
   ]);
   assert.equal(profile.execution.matchMultimodal, true);
@@ -36,7 +36,7 @@ test("Fusion draft saves multiple selected tools into one profile", () => {
   assert.equal(profile.execution.clientToolsPolicy, "allow");
   assert.equal(profile.execution.streamMode, "optimistic");
   assert.equal(metadataString(profile.metadata, "fusionVision", "toolName"), "vision_understand_fusion_plus");
-  assert.equal(metadataString(profile.metadata, "fusionWebSearch", "toolName"), "web_search_fusion_plus");
+  assert.equal(metadataString(profile.metadata, "fusionWebSearch", "toolName"), "fusion_plus_web_search");
   assert.equal(metadataString(profile.metadata, "fusionTool", "mcpServerName"), "customer-tools");
 });
 

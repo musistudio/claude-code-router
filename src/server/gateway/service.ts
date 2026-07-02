@@ -101,6 +101,55 @@ type GatewayStopOptions = {
   proxyRestoreTimeoutMs?: number;
 };
 
+type HostedWebSearchProtocolContext = {
+  maxUses?: number;
+  protocol: GatewayProviderProtocol;
+  queryHint?: string;
+  records?: BrowserWebSearchProtocolRecord[];
+  requestId: string;
+  sinceMs: number;
+  toolName: string;
+};
+
+type AnthropicWebSearchProtocolContext = HostedWebSearchProtocolContext;
+
+type ClaudeCodeWebSearchContinuationContext = {
+  queryHint?: string;
+  sinceMs: number;
+  toolName: string;
+};
+
+export type BrowserWebSearchMcpRegistration = {
+  env?: Record<string, string>;
+  name: string;
+  resultCount?: number;
+  timeoutMs?: number;
+  toolName: string;
+};
+
+export type BrowserWebSearchProtocolResult = {
+  content?: string;
+  snippet?: string;
+  title: string;
+  url: string;
+};
+
+export type BrowserWebSearchProtocolRecord = {
+  completedAtMs: number;
+  engine: string;
+  query: string;
+  results: BrowserWebSearchProtocolResult[];
+  searchUrl: string;
+  toolName: string;
+};
+
+export type BrowserWebSearchMcpIntegration = {
+  registerBrowserWebSearchMcpServer: (options: BrowserWebSearchMcpRegistration) => Promise<GatewayMcpServerConfig | undefined>;
+  recentBrowserWebSearchResults?: (options: { sinceMs: number; toolName?: string }) => BrowserWebSearchProtocolRecord[];
+  runBrowserWebSearch?: (options: { count?: number; prompt: string; timeoutMs?: number; toolName?: string }) => Promise<BrowserWebSearchProtocolRecord | undefined>;
+  stopBrowserWebSearchMcpServers: () => Promise<void>;
+};
+
 type CoreGatewayHealth = {
   runtimeId?: string;
   status?: string;
@@ -261,6 +310,7 @@ const persistedApiKeyCacheTtlMs = 1000;
 let persistedApiKeyCache: { loadedAt: number; values: ApiKeyConfig[] } | undefined;
 
 class GatewayService {
+  private browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration;
   private child?: ChildProcess;
   private config?: AppConfig;
   private coreAuthToken = "";
@@ -275,6 +325,10 @@ class GatewayService {
     networkEndpoints: [],
     state: "stopped"
   };
+
+  setBrowserWebSearchMcpIntegration(integration: BrowserWebSearchMcpIntegration): void {
+    this.browserWebSearchMcpIntegration = integration;
+  }
 
   async start(config: AppConfig): Promise<GatewayStatus> {
     const coreHostError = loopbackCoreHostError(config.gateway.coreHost);
@@ -324,7 +378,7 @@ class GatewayService {
       }
 
       if (shouldRunGateway) {
-        writeCoreGatewayConfig(config, this.rawTraceSyncToken);
+        await writeCoreGatewayConfig(config, this.rawTraceSyncToken, this.browserWebSearchMcpIntegration);
         await stopPreviousManagedCoreGateway(config, this.status.coreEndpoint);
         if (await isCoreGatewayHealthy(this.status.coreEndpoint)) {
           throw new Error(`Core gateway endpoint is already in use: ${this.status.coreEndpoint}`);
@@ -379,6 +433,9 @@ class GatewayService {
     await proxyService.stop(options.proxyRestoreTimeoutMs);
     await pluginService.stop();
     await backendService.stopAll();
+    await this.browserWebSearchMcpIntegration?.stopBrowserWebSearchMcpServers().catch((error) => {
+      console.warn(`[gateway] Failed to stop browser web search MCP: ${formatError(error)}`);
+    });
 
     this.status = {
       ...this.status,
@@ -739,6 +796,66 @@ class GatewayService {
     routeFallback = providerCapabilityRouting.fallback;
     routedModel = providerCapabilityRouting.routedModel;
 
+    const hostedWebSearchProtocolContext = createHostedWebSearchProtocolContext({
+      body: bodyToForward,
+      config: this.config,
+      method,
+      path,
+      requestId,
+      routedModel,
+      sinceMs: startedAt - 1_000
+    });
+
+    if (hostedWebSearchProtocolContext && this.browserWebSearchMcpIntegration) {
+      const records = await selectHostedWebSearchProtocolRecords(
+        hostedWebSearchProtocolContext,
+        this.browserWebSearchMcpIntegration
+      ).catch((error) => {
+        console.warn(`[gateway] Failed to prefetch hosted web search results: ${formatError(error)}`);
+        return [] as BrowserWebSearchProtocolRecord[];
+      });
+      if (records.length > 0) {
+        hostedWebSearchProtocolContext.records = records;
+        const webSearchContextBody = prepareHostedWebSearchProtocolRequestBody(
+          bodyToForward,
+          records,
+          hostedWebSearchProtocolContext
+        );
+        if (webSearchContextBody) {
+          bodyToForward = webSearchContextBody;
+          headers["content-type"] = "application/json";
+          headers["x-ccr-hosted-web-search-context"] = hostedWebSearchProtocolContext.protocol;
+        }
+      }
+    }
+
+    const claudeCodeWebSearchContinuationContext = !hostedWebSearchProtocolContext && this.browserWebSearchMcpIntegration
+      ? createClaudeCodeWebSearchContinuationContext({
+          body: bodyToForward,
+          config: this.config,
+          method,
+          path,
+          routedModel,
+          sinceMs: startedAt - 5 * 60_000
+        })
+      : undefined;
+    if (claudeCodeWebSearchContinuationContext && this.browserWebSearchMcpIntegration) {
+      const records = selectClaudeCodeWebSearchContinuationRecords(
+        claudeCodeWebSearchContinuationContext,
+        this.browserWebSearchMcpIntegration
+      );
+      const webSearchContinuationBody = prepareClaudeCodeWebSearchContinuationRequestBody(
+        bodyToForward,
+        records,
+        claudeCodeWebSearchContinuationContext
+      );
+      if (webSearchContinuationBody) {
+        bodyToForward = webSearchContinuationBody;
+        headers["content-type"] = "application/json";
+        headers["x-ccr-claude-code-web-search-continuation"] = records.length > 0 ? "in-app-browser-evidence" : "tool-result-evidence";
+      }
+    }
+
     delete headers["content-length"];
     const upstreamUrl = new URL(request.url || "/", this.status.coreEndpoint).toString();
     let upstreamResult: UpstreamFetchResult;
@@ -795,6 +912,15 @@ class GatewayService {
     if (codexApplyPatchBridgeActive) {
       responseHeaders.delete("content-length");
     }
+    const hostedWebSearchResponseContentType = responseHeaders.get("content-type")?.toLowerCase() ?? "";
+    if (
+      hostedWebSearchProtocolContext &&
+      (hostedWebSearchResponseContentType.includes("application/json") ||
+        hostedWebSearchResponseContentType.includes("text/event-stream")) &&
+      (this.browserWebSearchMcpIntegration?.recentBrowserWebSearchResults || this.browserWebSearchMcpIntegration?.runBrowserWebSearch)
+    ) {
+      responseHeaders.delete("content-length");
+    }
     recordProviderCredentialOutcome(this.config, method, upstreamResult.attempt, upstreamResponse.status, responseHeaders);
     response.writeHead(upstreamResponse.status, Object.fromEntries(filteredResponseHeaders(responseHeaders)));
     if (!upstreamResponse.body) {
@@ -819,9 +945,17 @@ class GatewayService {
     }
 
     const upstreamBody = Readable.fromWeb(upstreamResponse.body as unknown as import("node:stream/web").ReadableStream);
-    const responseBody = codexApplyPatchBridgeActive
+    const patchedResponseBody = codexApplyPatchBridgeActive
       ? codexApplyPatchBridgeResponseStream(upstreamBody, responseHeaders)
       : upstreamBody;
+    const responseBody = hostedWebSearchProtocolContext
+      ? hostedWebSearchProtocolResponseStream(
+          patchedResponseBody,
+          responseHeaders,
+          hostedWebSearchProtocolContext,
+          this.browserWebSearchMcpIntegration
+        )
+      : patchedResponseBody;
     const sampler = createBodySampler();
     const sseErrorDetector = createSseErrorDetector(responseHeaders.get("content-type") ?? undefined);
     let streamDetectedError: string | undefined;
@@ -946,7 +1080,11 @@ class GatewayService {
 
 export const gatewayService = new GatewayService();
 
-function writeCoreGatewayConfig(config: AppConfig, rawTraceSyncToken: string): void {
+async function writeCoreGatewayConfig(
+  config: AppConfig,
+  rawTraceSyncToken: string,
+  browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration
+): Promise<void> {
   assertLoopbackCoreHost(config.gateway.coreHost);
   mkdirSync(dirname(config.gateway.generatedConfigFile), { mode: privateDirMode, recursive: true });
   const pluginCoreGatewayConfig = pluginService.getCoreGatewayConfig();
@@ -960,7 +1098,7 @@ function writeCoreGatewayConfig(config: AppConfig, rawTraceSyncToken: string): v
     ...pluginService.getVirtualModelProfiles()
   ])), config);
   const coreEndpoint = endpoint(config.gateway.coreHost, config.gateway.corePort);
-  const builtinToolArtifacts = fusionBuiltinToolArtifacts(virtualModelProfiles, coreEndpoint);
+  const builtinToolArtifacts = await fusionBuiltinToolArtifacts(virtualModelProfiles, coreEndpoint, browserWebSearchMcpIntegration);
   const providers = [
     ...config.Providers
       .flatMap((provider) => toCoreGatewayProviders(withCodexOauthProviderBaseUrl(provider, codexOauthProviderNames)))
@@ -1078,7 +1216,9 @@ function normalizeCoreGatewayVirtualModelProfile(profile: unknown, config: AppCo
     };
   }
 
-  return nextProfile ?? profile;
+  const profileAfterVision = nextProfile ?? profile;
+  const profileAfterWebSearchToolName = normalizeFusionWebSearchProfileToolName(profileAfterVision) ?? profileAfterVision;
+  return withFusionWebSearchToolInstructions(profileAfterWebSearchToolName) ?? profileAfterWebSearchToolName;
 }
 
 function rewriteModelSelectorForCoreGatewayProfile(
@@ -1241,18 +1381,19 @@ function hasOwn(value: Record<string, unknown>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, key);
 }
 
-function fusionBuiltinToolArtifacts(
+async function fusionBuiltinToolArtifacts(
   profiles: unknown[],
-  coreEndpoint: string
-): { mcpServers: GatewayMcpServerConfig[]; providers: CoreGatewayProvider[] } {
+  coreEndpoint: string,
+  browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration
+): Promise<{ mcpServers: GatewayMcpServerConfig[]; providers: CoreGatewayProvider[] }> {
   const providers: CoreGatewayProvider[] = [];
   const mcpServers: GatewayMcpServerConfig[] = [];
   const toolServerKeys = new Set<string>();
   const entry = bundledFusionBuiltinMcpEntryPath();
 
-  profiles.forEach((profile, index) => {
+  for (const [index, profile] of profiles.entries()) {
     if (!isRecord(profile) || profile.enabled === false) {
-      return;
+      continue;
     }
     const metadata = isRecord(profile.metadata) ? profile.metadata : undefined;
     const profileId = stringValue(profile.id) || stringValue(profile.key) || `fusion-${index + 1}`;
@@ -1285,21 +1426,35 @@ function fusionBuiltinToolArtifacts(
       const toolServerKey = `web_search:${webSearchConfig.toolName}`;
       if (!toolServerKeys.has(toolServerKey)) {
         toolServerKeys.add(toolServerKey);
-        mcpServers.push(fusionBuiltinMcpServer({
-          entry,
-          env: {
-            FUSION_BUILTIN_TOOL_KIND: "web_search",
-            FUSION_TOOL_NAME: webSearchConfig.toolName,
-            SEARCH_PROVIDER: webSearchConfig.provider ?? defaultFusionWebSearchProvider,
-            ...(webSearchConfig.resultCount ? { SEARCH_RESULT_COUNT: String(webSearchConfig.resultCount) } : {}),
-            ...(webSearchConfig.timeoutMs ? { SEARCH_TIMEOUT_MS: String(webSearchConfig.timeoutMs) } : {}),
-            ...(webSearchConfig.env ?? {})
-          },
-          name: `fusion-web-search-${sanitizedProfileId}`
-        }));
+        const provider = webSearchConfig.provider ?? defaultFusionWebSearchProvider;
+        if (provider === "browser") {
+          const browserMcpServer = await browserWebSearchMcpIntegration?.registerBrowserWebSearchMcpServer({
+            env: webSearchConfig.env ?? {},
+            name: `fusion-browser-web-search-${sanitizedProfileId}`,
+            resultCount: webSearchConfig.resultCount,
+            timeoutMs: webSearchConfig.timeoutMs,
+            toolName: webSearchConfig.toolName
+          });
+          if (browserMcpServer) {
+            mcpServers.push(browserMcpServer);
+          }
+        } else {
+          mcpServers.push(fusionBuiltinMcpServer({
+            entry,
+            env: {
+              FUSION_BUILTIN_TOOL_KIND: "web_search",
+              FUSION_TOOL_NAME: webSearchConfig.toolName,
+              SEARCH_PROVIDER: provider,
+              ...(webSearchConfig.resultCount ? { SEARCH_RESULT_COUNT: String(webSearchConfig.resultCount) } : {}),
+              ...(webSearchConfig.timeoutMs ? { SEARCH_TIMEOUT_MS: String(webSearchConfig.timeoutMs) } : {}),
+              ...(webSearchConfig.env ?? {})
+            },
+            name: `fusion-web-search-${sanitizedProfileId}`
+          }));
+        }
       }
     }
-  });
+  }
 
   return { mcpServers, providers };
 }
@@ -1337,7 +1492,7 @@ function fusionToolFallbackMcpServer(
   profiles: unknown[],
   existingServers: unknown[]
 ): GatewayMcpServerConfig | undefined {
-  const tools = fusionFallbackToolDefinitions(profiles);
+  const tools = fusionFallbackToolDefinitions(profiles, fusionToolNamesBackedByMcpServers(existingServers));
   if (tools.length === 0) {
     return undefined;
   }
@@ -1362,8 +1517,9 @@ function bundledFusionToolFallbackMcpEntryPath(): string {
   return pathJoin(__dirname, "fusion-tool-fallback-mcp.js");
 }
 
-function fusionFallbackToolDefinitions(
-  profiles: unknown[]
+export function fusionFallbackToolDefinitions(
+  profiles: unknown[],
+  backedToolNames: Set<string> = new Set()
 ): Array<{ description?: string; inputSchema?: Record<string, unknown>; name: string }> {
   const byName = new Map<string, { description?: string; inputSchema?: Record<string, unknown>; name: string }>();
 
@@ -1377,6 +1533,9 @@ function fusionFallbackToolDefinitions(
       }
       const name = stringValue(tool.name);
       if (!name) {
+        continue;
+      }
+      if (backedToolNames.has(name)) {
         continue;
       }
 
@@ -1406,6 +1565,26 @@ function fusionFallbackToolDefinitions(
   }
 
   return [...byName.values()];
+}
+
+export function fusionToolNamesBackedByMcpServers(servers: unknown[]): Set<string> {
+  const names = new Set<string>();
+  for (const server of servers) {
+    if (!isRecord(server)) {
+      continue;
+    }
+    const serverName = stringValue(server.name);
+    if (serverName) {
+      names.add(serverName);
+    }
+
+    const env = isRecord(server.env) ? server.env : undefined;
+    const fusionToolName = stringValue(env?.FUSION_TOOL_NAME);
+    if (fusionToolName) {
+      names.add(fusionToolName);
+    }
+  }
+  return names;
 }
 
 function uniqueMcpServerName(baseName: string, servers: unknown[]): string {
@@ -1517,12 +1696,139 @@ function legacyFusionBuiltinToolName(
   const tools = Array.isArray(profile.tools) ? profile.tools : [];
   const toolName = tools
     .map((tool) => isRecord(tool) ? stringValue(tool.name) ?? "" : "")
-    .find((name) => name === baseToolName || name.startsWith(`${baseToolName}_`));
+    .find((name) => fusionBuiltinToolNameMatches(name, baseToolName));
   if (toolName) {
     return toolName;
   }
   const execution = isRecord(profile.execution) ? profile.execution : {};
   return execution[executionFlag] === true ? baseToolName : undefined;
+}
+
+function fusionBuiltinToolNameMatches(name: string, baseToolName: string): boolean {
+  if (name === baseToolName || name.startsWith(`${baseToolName}_`)) {
+    return true;
+  }
+  if (baseToolName !== BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME) {
+    return false;
+  }
+  return coreGatewayWebSearchToolNameMatches(name);
+}
+
+function normalizeFusionWebSearchProfileToolName(profile: Record<string, unknown>): Record<string, unknown> | undefined {
+  const metadata = isRecord(profile.metadata) ? profile.metadata : undefined;
+  const fusionWebSearch = isRecord(metadata?.fusionWebSearch) ? metadata.fusionWebSearch : undefined;
+  const configuredToolName = stringValue(fusionWebSearch?.toolName);
+  const legacyToolName = configuredToolName ? undefined : legacyFusionWebSearchConfig(profile)?.toolName;
+  const toolName = configuredToolName || legacyToolName;
+  if (!toolName) {
+    return undefined;
+  }
+
+  const nextToolName = coreGatewayCompatibleWebSearchToolName(toolName, stringValue(profile.key) || stringValue(profile.id));
+  if (nextToolName === toolName) {
+    return undefined;
+  }
+
+  const tools = Array.isArray(profile.tools)
+    ? profile.tools.map((tool) => {
+        if (!isRecord(tool) || stringValue(tool.name) !== toolName) {
+          return tool;
+        }
+        return {
+          ...tool,
+          name: nextToolName
+        };
+      })
+    : profile.tools;
+
+  return {
+    ...profile,
+    ...(metadata && fusionWebSearch
+      ? {
+          metadata: {
+            ...metadata,
+            fusionWebSearch: {
+              ...fusionWebSearch,
+              toolName: nextToolName
+            }
+          }
+        }
+      : {}),
+    ...(tools ? { tools } : {})
+  };
+}
+
+function withFusionWebSearchToolInstructions(profile: Record<string, unknown>): Record<string, unknown> | undefined {
+  const metadata = isRecord(profile.metadata) ? profile.metadata : undefined;
+  const fusionWebSearch = isRecord(metadata?.fusionWebSearch) ? metadata.fusionWebSearch : undefined;
+  const toolName = stringValue(fusionWebSearch?.toolName) || legacyFusionWebSearchConfig(profile)?.toolName;
+  if (!toolName) {
+    return undefined;
+  }
+  const execution = isRecord(profile.execution) ? profile.execution : {};
+  if (execution.matchWebSearch !== true) {
+    return undefined;
+  }
+
+  const instruction = [
+    `When the client request includes a hosted web_search tool declaration, call the ${toolName} function tool before answering.`,
+    "Pass the user's search query in the prompt field.",
+    "Do not use provider-native web search or claim that web search is unavailable unless this function tool returns an error."
+  ].join(" ");
+  const instructions = isRecord(profile.instructions) ? profile.instructions : {};
+  if ([instructions.prepend, instructions.append, instructions.replace].some((value) => stringValue(value)?.includes(instruction))) {
+    return undefined;
+  }
+  const replace = stringValue(instructions.replace);
+  const append = stringValue(instructions.append);
+  return {
+    ...profile,
+    instructions: {
+      ...instructions,
+      ...(replace
+        ? { replace: `${replace.trim()}\n\n${instruction}` }
+        : { append: [append, instruction].filter(Boolean).join("\n\n") })
+    }
+  };
+}
+
+function coreGatewayCompatibleWebSearchToolName(toolName: string, fallbackName?: string): string {
+  if (coreGatewayWebSearchToolNameMatches(toolName)) {
+    return toolName;
+  }
+
+  const normalized = sanitizeFusionToolName(toolName);
+  const prefix = `${BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME}_`;
+  if (normalized.startsWith(prefix) && normalized.length > prefix.length) {
+    return truncateFusionToolName(`${normalized.slice(prefix.length)}_${BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME}`);
+  }
+
+  const fallback = sanitizeFusionToolName(fallbackName || normalized || "fusion");
+  return truncateFusionToolName(`${fallback}_${BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME}`);
+}
+
+function coreGatewayWebSearchToolNameMatches(name: string): boolean {
+  const normalized = name.toLowerCase().replace(/[-.]/g, "_");
+  return normalized === BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME ||
+    normalized.endsWith(`_${BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME}`) ||
+    normalized.includes("search_web");
+}
+
+function sanitizeFusionToolName(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "fusion";
+}
+
+function truncateFusionToolName(value: string): string {
+  const maxToolNameLength = 64;
+  if (value.length <= maxToolNameLength) {
+    return value;
+  }
+  const suffix = `_${BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME}`;
+  const available = Math.max(1, maxToolNameLength - suffix.length);
+  return `${value.slice(0, available).replace(/_+$/g, "")}${suffix}`;
 }
 
 function readFusionVisionConfig(value: unknown): VirtualModelFusionVisionConfig | undefined {
@@ -1630,7 +1936,8 @@ function parseFusionWebSearchProvider(value: unknown): VirtualModelFusionWebSear
     normalized === "serper" ||
     normalized === "serpapi" ||
     normalized === "tavily" ||
-    normalized === "exa"
+    normalized === "exa" ||
+    normalized === "browser"
   ) {
     return normalized;
   }
@@ -2310,6 +2617,2563 @@ export function transformCodexApplyPatchBridgeSseEvent(block: string): string {
   } catch {
     return block;
   }
+}
+
+function createHostedWebSearchProtocolContext(input: {
+  body: Buffer | undefined;
+  config: AppConfig;
+  method: string;
+  path: string;
+  requestId: string;
+  routedModel?: string;
+  sinceMs: number;
+}): HostedWebSearchProtocolContext | undefined {
+  const protocol = requestProtocolForPath(input.path);
+  if (input.method !== "POST" || !protocol) {
+    return undefined;
+  }
+  const body = parseJsonObjectSafe(input.body);
+  if (!body || !hasHostedWebSearchDeclaration(body, protocol)) {
+    return undefined;
+  }
+  const toolName = fusionWebSearchToolNameForRequest(input.config, stringValue(body.model) || input.routedModel);
+  if (!toolName) {
+    return undefined;
+  }
+  return {
+    maxUses: readHostedWebSearchMaxUses(body, protocol),
+    protocol,
+    queryHint: extractHostedWebSearchQueryHint(body, protocol),
+    requestId: input.requestId,
+    sinceMs: input.sinceMs,
+    toolName
+  };
+}
+
+function createAnthropicWebSearchProtocolContext(input: {
+  body: Buffer | undefined;
+  config: AppConfig;
+  method: string;
+  path: string;
+  requestId: string;
+  sinceMs: number;
+}): AnthropicWebSearchProtocolContext | undefined {
+  const context = createHostedWebSearchProtocolContext(input);
+  return context?.protocol === "anthropic_messages" ? context : undefined;
+}
+
+function createClaudeCodeWebSearchContinuationContext(input: {
+  body: Buffer | undefined;
+  config: AppConfig;
+  method: string;
+  path: string;
+  routedModel?: string;
+  sinceMs: number;
+}): ClaudeCodeWebSearchContinuationContext | undefined {
+  if (input.method !== "POST" || requestProtocolForPath(input.path) !== "anthropic_messages") {
+    return undefined;
+  }
+  const body = parseJsonObjectSafe(input.body);
+  if (!body || claudeCodeWebSearchToolResultTexts(body).length === 0) {
+    return undefined;
+  }
+  const toolName = fusionWebSearchToolNameForRequest(input.config, stringValue(body.model) || input.routedModel);
+  if (!toolName) {
+    return undefined;
+  }
+  return {
+    queryHint: extractClaudeCodeWebSearchToolResultQuery(body) || extractAnthropicWebSearchQueryHint(body),
+    sinceMs: input.sinceMs,
+    toolName
+  };
+}
+
+export function prepareHostedWebSearchProtocolRequestBody(
+  body: Buffer | undefined,
+  records: BrowserWebSearchProtocolRecord[],
+  context: Pick<HostedWebSearchProtocolContext, "protocol" | "queryHint">
+): Buffer | undefined {
+  if (context.protocol === "anthropic_messages") {
+    return prepareAnthropicWebSearchProtocolRequestBody(body, records, context);
+  }
+  const parsed = parseJsonObjectSafe(body);
+  if (!parsed || records.length === 0) {
+    return undefined;
+  }
+  const evidence = hostedWebSearchEvidenceText(records, context.queryHint);
+  if (!evidence) {
+    return undefined;
+  }
+  let next: Record<string, unknown> | undefined;
+  if (context.protocol === "openai_chat_completions") {
+    next = prepareOpenAiChatHostedWebSearchRequestBody(parsed, evidence);
+  } else if (context.protocol === "openai_responses") {
+    next = prepareOpenAiResponsesHostedWebSearchRequestBody(parsed, evidence);
+  } else if (context.protocol === "gemini_generate_content") {
+    next = prepareGeminiHostedWebSearchRequestBody(parsed, evidence);
+  }
+  return next ? Buffer.from(`${JSON.stringify(next)}\n`, "utf8") : undefined;
+}
+
+export function prepareAnthropicWebSearchProtocolRequestBody(
+  body: Buffer | undefined,
+  records: BrowserWebSearchProtocolRecord[],
+  context: Pick<AnthropicWebSearchProtocolContext, "queryHint">
+): Buffer | undefined {
+  const parsed = parseJsonObjectSafe(body);
+  if (!parsed || records.length === 0) {
+    return undefined;
+  }
+  const evidence = hostedWebSearchEvidenceText(records, context.queryHint);
+  if (!evidence) {
+    return undefined;
+  }
+  const next = applyAnthropicWebSearchSynthesisControls(stripAnthropicHostedWebSearchTools({
+    ...parsed,
+    system: appendAnthropicSystemText(parsed.system, evidence)
+  }));
+  return Buffer.from(`${JSON.stringify(next)}\n`, "utf8");
+}
+
+export function prepareClaudeCodeWebSearchContinuationRequestBody(
+  body: Buffer | undefined,
+  records: BrowserWebSearchProtocolRecord[],
+  context: Pick<ClaudeCodeWebSearchContinuationContext, "queryHint">
+): Buffer | undefined {
+  const parsed = parseJsonObjectSafe(body);
+  if (!parsed) {
+    return undefined;
+  }
+  const toolResultTexts = claudeCodeWebSearchToolResultTexts(parsed);
+  if (toolResultTexts.length === 0) {
+    return undefined;
+  }
+  const queryHint = context.queryHint || extractClaudeCodeWebSearchToolResultQuery(parsed) || extractAnthropicWebSearchQueryHint(parsed);
+  const evidence = claudeCodeWebSearchContinuationEvidenceText(records, queryHint, toolResultTexts);
+  if (!evidence) {
+    return undefined;
+  }
+  const next = applyAnthropicWebSearchSynthesisControls(stripClaudeCodeWebSearchContinuationTools({
+    ...parsed,
+    system: appendAnthropicSystemText(parsed.system, evidence)
+  }));
+  return Buffer.from(`${JSON.stringify(next)}\n`, "utf8");
+}
+
+function applyAnthropicWebSearchSynthesisControls(body: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...body };
+  const outputConfig = isRecord(next.output_config) ? { ...next.output_config } : {};
+  outputConfig.effort = "low";
+  next.output_config = outputConfig;
+  delete next.thinking;
+  delete next.reasoning;
+  return next;
+}
+
+function prepareOpenAiChatHostedWebSearchRequestBody(body: Record<string, unknown>, evidence: string): Record<string, unknown> {
+  const next = stripOpenAiHostedWebSearchTools({
+    ...body,
+    messages: appendOpenAiChatSystemText(body.messages, evidence)
+  });
+  return applyOpenAiHostedWebSearchSynthesisControls(next);
+}
+
+function prepareOpenAiResponsesHostedWebSearchRequestBody(body: Record<string, unknown>, evidence: string): Record<string, unknown> {
+  const next = stripOpenAiHostedWebSearchTools({
+    ...body,
+    instructions: appendStringInstruction(body.instructions, evidence)
+  });
+  return applyOpenAiHostedWebSearchSynthesisControls(next);
+}
+
+function prepareGeminiHostedWebSearchRequestBody(body: Record<string, unknown>, evidence: string): Record<string, unknown> {
+  return stripGeminiHostedWebSearchTools({
+    ...body,
+    systemInstruction: appendGeminiSystemInstruction(body.systemInstruction, evidence)
+  });
+}
+
+function applyOpenAiHostedWebSearchSynthesisControls(body: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...body };
+  if (typeof next.reasoning_effort === "string") {
+    next.reasoning_effort = "low";
+  }
+  if (isRecord(next.reasoning)) {
+    next.reasoning = { ...next.reasoning, effort: "low" };
+  }
+  return next;
+}
+
+function stripAnthropicHostedWebSearchTools(body: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(body.tools)) {
+    return body;
+  }
+  const tools = body.tools.filter((tool) => !isAnthropicHostedWebSearchTool(tool));
+  if (tools.length === body.tools.length) {
+    return body;
+  }
+  const next = { ...body };
+  if (tools.length > 0) {
+    next.tools = tools;
+  } else {
+    delete next.tools;
+  }
+  const toolChoice = isRecord(next.tool_choice) ? next.tool_choice : undefined;
+  const toolChoiceName = stringValue(toolChoice?.name);
+  if (tools.length === 0 || toolChoiceName === "web_search") {
+    delete next.tool_choice;
+  }
+  return next;
+}
+
+function stripClaudeCodeWebSearchContinuationTools(body: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(body.tools)) {
+    return body;
+  }
+  const next = { ...body };
+  delete next.tools;
+  delete next.tool_choice;
+  return next;
+}
+
+function stripOpenAiHostedWebSearchTools(body: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...body };
+  let removedTools = false;
+  if (Array.isArray(body.tools)) {
+    const tools = body.tools.filter((tool) => !isOpenAiHostedWebSearchTool(tool));
+    removedTools = tools.length !== body.tools.length;
+    if (tools.length > 0) {
+      next.tools = tools;
+    } else {
+      delete next.tools;
+    }
+  }
+  if (next.web_search_options !== undefined || next.webSearchOptions !== undefined) {
+    delete next.web_search_options;
+    delete next.webSearchOptions;
+    removedTools = true;
+  }
+  if (removedTools && (!Array.isArray(next.tools) || next.tools.length === 0 || openAiToolChoiceNamesWebSearch(next.tool_choice))) {
+    delete next.tool_choice;
+    delete next.parallel_tool_calls;
+  }
+  return next;
+}
+
+function stripGeminiHostedWebSearchTools(body: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(body.tools)) {
+    return body;
+  }
+  let changed = false;
+  const tools = body.tools.flatMap((tool) => {
+    const transformed = stripGeminiHostedWebSearchTool(tool);
+    changed ||= transformed.changed;
+    return transformed.value ? [transformed.value] : [];
+  });
+  if (!changed) {
+    return body;
+  }
+  const next = { ...body };
+  if (tools.length > 0) {
+    next.tools = tools;
+  } else {
+    delete next.tools;
+  }
+  return next;
+}
+
+function stripGeminiHostedWebSearchTool(tool: unknown): { changed: boolean; value?: unknown } {
+  if (!isRecord(tool)) {
+    return { changed: false, value: tool };
+  }
+  let changed = false;
+  const next: Record<string, unknown> = { ...tool };
+  for (const key of ["google_search", "googleSearch", "google_search_retrieval", "googleSearchRetrieval"]) {
+    if (key in next) {
+      delete next[key];
+      changed = true;
+    }
+  }
+  return Object.keys(next).length === 0 ? { changed, value: undefined } : { changed, value: next };
+}
+
+function appendAnthropicSystemText(system: unknown, text: string): unknown {
+  if (typeof system === "string") {
+    return `${system.trimEnd()}\n\n${text}`;
+  }
+  const block = { text, type: "text" };
+  if (Array.isArray(system)) {
+    return [...system, block];
+  }
+  return [block];
+}
+
+function appendOpenAiChatSystemText(messages: unknown, text: string): unknown[] {
+  const message = { content: text, role: "system" };
+  return Array.isArray(messages) ? [message, ...messages] : [message];
+}
+
+function appendStringInstruction(value: unknown, text: string): string {
+  const existing = rawStringValue(value);
+  return existing ? `${existing.trimEnd()}\n\n${text}` : text;
+}
+
+function appendGeminiSystemInstruction(value: unknown, text: string): Record<string, unknown> {
+  const part = { text };
+  if (typeof value === "string") {
+    return { parts: [{ text: value }, part] };
+  }
+  if (isRecord(value)) {
+    const parts = Array.isArray(value.parts) ? value.parts : [];
+    return {
+      ...value,
+      parts: [...parts, part]
+    };
+  }
+  return { parts: [part] };
+}
+
+function hostedWebSearchEvidenceText(records: BrowserWebSearchProtocolRecord[], queryHint: string | undefined): string {
+  const sections = records.flatMap((record, recordIndex) => {
+    const resultLines = record.results.slice(0, 8).map((result, resultIndex) => {
+      const content = focusedWebSearchContent(result.content, queryHint);
+      const details = [
+        result.snippet ? `Search snippet: ${result.snippet}` : "",
+        content ? `Extracted page content: ${content}` : ""
+      ].filter(Boolean).join("\n");
+      return [
+        `${resultIndex + 1}. ${result.title}`,
+        `URL: ${result.url}`,
+        details
+      ].filter(Boolean).join("\n");
+    });
+    if (resultLines.length === 0) {
+      return [];
+    }
+    return [
+      [
+        `Search ${recordIndex + 1}`,
+        `Query: ${record.query}`,
+        `Engine: ${record.engine}`,
+        `Search URL: ${record.searchUrl}`,
+        ...resultLines
+      ].join("\n\n")
+    ];
+  });
+  if (sections.length === 0) {
+    return "";
+  }
+  return [
+    "A hidden in-app browser web search has already been performed for this request.",
+    "Use the evidence below to answer the user's question directly in the visible final response, within 5 concise sentences. Do not call another web search tool, do not merely list links, do not expose hidden reasoning, and do not ask the user to open links. If the evidence is insufficient for an exact value, say that clearly and summarize the most relevant findings with source names.",
+    queryHint ? `Original search intent: ${queryHint}` : "",
+    "Web search evidence:",
+    ...sections
+  ].filter(Boolean).join("\n\n").slice(0, 10_000);
+}
+
+function claudeCodeWebSearchContinuationEvidenceText(
+  records: BrowserWebSearchProtocolRecord[],
+  queryHint: string | undefined,
+  toolResultTexts: string[]
+): string {
+  const browserEvidence = records.length > 0 ? hostedWebSearchEvidenceText(records, queryHint) : "";
+  const toolResultEvidence = toolResultTexts
+    .map((text) => text.trim())
+    .filter(Boolean)
+    .join("\n\n---\n\n")
+    .slice(0, 12_000);
+  if (!browserEvidence && !toolResultEvidence) {
+    return "";
+  }
+  return [
+    "A Claude Code WebSearch tool result has already been returned for this turn.",
+    "Answer the user's search question directly in the visible final response. Do not call any tool. Do not merely list links or ask the user to open links. Include the sources you used as markdown links.",
+    queryHint ? `Original search intent: ${queryHint}` : "",
+    browserEvidence ? `In-app browser extracted evidence:\n\n${browserEvidence}` : "",
+    toolResultEvidence ? `Previous WebSearch tool result:\n\n${toolResultEvidence}` : ""
+  ].filter(Boolean).join("\n\n");
+}
+
+function focusedWebSearchContent(content: string | undefined, queryHint: string | undefined): string | undefined {
+  const text = content?.replace(/\s+/g, " ").trim();
+  if (!text) {
+    return undefined;
+  }
+  const queryTerms = normalizeSearchComparisonText(queryHint ?? "")
+    .split(" ")
+    .filter((term) => term.length >= 2);
+  const weatherTerms = /天气|weather/i.test(queryHint ?? "")
+    ? ["天气", "气温", "温度", "体感", "空气质量", "湿度", "风", "降水", "℃", "晴", "多云", "阴", "雨"]
+    : [];
+  const terms = uniqueStrings([...queryTerms, ...weatherTerms]);
+  const indexes = terms.flatMap((term) => {
+    const index = text.toLowerCase().indexOf(term.toLowerCase());
+    return index >= 0 ? [index] : [];
+  });
+  if (indexes.length === 0) {
+    return text.slice(0, 1_000);
+  }
+  const center = Math.min(...indexes);
+  const start = Math.max(0, center - 300);
+  return `${start > 0 ? "..." : ""}${text.slice(start, start + 1_200)}${start + 1_200 < text.length ? "..." : ""}`;
+}
+
+export function hostedWebSearchProtocolResponseStream(
+  input: Readable,
+  headers: Headers,
+  context: HostedWebSearchProtocolContext,
+  integration: BrowserWebSearchMcpIntegration | undefined
+): Readable {
+  if (!integration?.recentBrowserWebSearchResults && !integration?.runBrowserWebSearch) {
+    return input;
+  }
+  const contentType = headers.get("content-type")?.toLowerCase() ?? "";
+  if (contentType.includes("text/event-stream")) {
+    if (context.protocol === "anthropic_messages") {
+      return anthropicHostedWebSearchProtocolSseStream(input, context, integration);
+    }
+    return hostedWebSearchProtocolSseStream(input, context, integration);
+  }
+  if (!contentType.includes("application/json")) {
+    return input;
+  }
+
+  const chunks: Buffer[] = [];
+  return input.pipe(new Transform({
+    transform(chunk, _encoding, callback) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      callback();
+    },
+    flush(callback) {
+      const body = Buffer.concat(chunks).toString("utf8");
+      void (async () => {
+        const records = await selectHostedWebSearchProtocolRecords(context, integration);
+        if (records.length === 0) {
+          this.push(body);
+          return;
+        }
+
+        const parsed = JSON.parse(body) as unknown;
+        const transformed = transformHostedWebSearchProtocolResponseValue(parsed, records, context);
+        this.push(transformed.changed ? JSON.stringify(transformed.value) : body);
+      })().catch((error) => {
+        console.warn(`[gateway] Hosted web search protocol bridge failed: ${formatError(error)}`);
+        this.push(body);
+      }).finally(() => callback());
+    }
+  }));
+}
+
+function hostedWebSearchProtocolSseStream(
+  input: Readable,
+  context: HostedWebSearchProtocolContext,
+  integration: BrowserWebSearchMcpIntegration
+): Readable {
+  const recordsPromise = selectHostedWebSearchProtocolRecords(context, integration);
+  let records: BrowserWebSearchProtocolRecord[] | undefined;
+  let pending = "";
+  let passThrough = false;
+  const state: HostedWebSearchSseState = {
+    done: false,
+    maxOutputIndex: -1,
+    visibleText: false
+  };
+
+  async function ensureRecords() {
+    if (records || passThrough) {
+      return;
+    }
+    records = await recordsPromise;
+    passThrough = records.length === 0;
+  }
+
+  return input.pipe(new Transform({
+    transform(chunk, _encoding, callback) {
+      const text = chunk.toString();
+      const rawText = pending + text;
+      void (async () => {
+        await ensureRecords();
+        if (passThrough || !records) {
+          this.push(text);
+          return;
+        }
+        pending += text;
+        drainHostedWebSearchSseBlocks(this, pending, state, records, context, false);
+        pending = sseTrailingPartialBlock(pending);
+      })().catch((error) => {
+        console.warn(`[gateway] Hosted web search protocol bridge failed: ${formatError(error)}`);
+        this.push(rawText);
+        pending = "";
+        passThrough = true;
+      }).finally(() => callback());
+    },
+    flush(callback) {
+      void (async () => {
+        await ensureRecords();
+        if (passThrough || !records) {
+          if (pending) {
+            this.push(pending);
+          }
+          return;
+        }
+        drainHostedWebSearchSseBlocks(this, pending, state, records, context, true);
+        pending = "";
+      })().catch((error) => {
+        console.warn(`[gateway] Hosted web search protocol bridge failed: ${formatError(error)}`);
+        if (pending) {
+          this.push(pending);
+        }
+      }).finally(() => callback());
+    }
+  }));
+}
+
+type HostedWebSearchSseState = {
+  done: boolean;
+  maxOutputIndex: number;
+  visibleText: boolean;
+};
+
+function drainHostedWebSearchSseBlocks(
+  stream: Transform,
+  text: string,
+  state: HostedWebSearchSseState,
+  records: BrowserWebSearchProtocolRecord[],
+  context: Pick<HostedWebSearchProtocolContext, "protocol" | "queryHint" | "requestId">,
+  flush: boolean
+): void {
+  let cursor = 0;
+  for (const match of text.matchAll(/\r?\n\r?\n/g)) {
+    const index = match.index ?? 0;
+    const delimiter = match[0];
+    const block = text.slice(cursor, index);
+    cursor = index + delimiter.length;
+    if (!block.trim()) {
+      stream.push(delimiter);
+      continue;
+    }
+    writeHostedWebSearchSseEvent(stream, parseSseEventBlock(block), delimiter, state, records, context);
+  }
+  if (flush) {
+    const block = text.slice(cursor);
+    if (block.trim()) {
+      writeHostedWebSearchSseEvent(stream, parseSseEventBlock(block), "", state, records, context);
+    } else if (block) {
+      stream.push(block);
+    }
+    writeHostedWebSearchSseFallback(stream, state, records, context);
+  }
+}
+
+function writeHostedWebSearchSseEvent(
+  stream: Transform,
+  event: ParsedSseEvent,
+  delimiter: string,
+  state: HostedWebSearchSseState,
+  records: BrowserWebSearchProtocolRecord[],
+  context: Pick<HostedWebSearchProtocolContext, "protocol" | "queryHint" | "requestId">
+): void {
+  updateHostedWebSearchSseState(event, state, context.protocol);
+  const isDone = sseEventIsDone(event);
+  const isOpenAiResponsesCompleted = context.protocol === "openai_responses" &&
+    isRecord(event.data) &&
+    stringValue(event.data.type) === "response.completed";
+  if ((isDone || isOpenAiResponsesCompleted) && !state.done) {
+    writeHostedWebSearchSseFallback(stream, state, records, context);
+  }
+  const nextEvent = context.protocol === "openai_chat_completions"
+    ? updateOpenAiChatSseFinishReason(event)
+    : context.protocol === "openai_responses"
+      ? updateOpenAiResponsesCompletedStatus(event)
+      : event;
+  stream.push(`${serializeSseEvent(nextEvent)}${delimiter}`);
+}
+
+function updateHostedWebSearchSseState(
+  event: ParsedSseEvent,
+  state: HostedWebSearchSseState,
+  protocol: GatewayProviderProtocol
+): void {
+  if (protocol === "openai_chat_completions") {
+    state.visibleText ||= openAiChatSseContainsVisibleText([event]);
+    return;
+  }
+  if (protocol === "openai_responses") {
+    state.visibleText ||= openAiResponsesSseContainsVisibleText([event]);
+    if (isRecord(event.data)) {
+      const outputIndex = numberValue(event.data.output_index);
+      if (outputIndex !== undefined) {
+        state.maxOutputIndex = Math.max(state.maxOutputIndex, outputIndex);
+      }
+    }
+    return;
+  }
+  if (protocol === "gemini_generate_content") {
+    state.visibleText ||= geminiSseContainsVisibleText([event]);
+  }
+}
+
+function writeHostedWebSearchSseFallback(
+  stream: Transform,
+  state: HostedWebSearchSseState,
+  records: BrowserWebSearchProtocolRecord[],
+  context: Pick<HostedWebSearchProtocolContext, "protocol" | "queryHint" | "requestId">
+): void {
+  if (state.done || state.visibleText) {
+    return;
+  }
+  const answer = synthesizeWebSearchAnswer(records, context.queryHint);
+  if (!answer) {
+    state.done = true;
+    return;
+  }
+  for (const event of hostedWebSearchSseFallbackEvents(answer, state, context)) {
+    stream.push(`${serializeSseEvent(event)}\n\n`);
+  }
+  state.visibleText = true;
+  state.done = true;
+}
+
+function hostedWebSearchSseFallbackEvents(
+  answer: string,
+  state: HostedWebSearchSseState,
+  context: Pick<HostedWebSearchProtocolContext, "protocol" | "requestId">
+): ParsedSseEvent[] {
+  if (context.protocol === "openai_chat_completions") {
+    return [sseEventFromValue({
+      object: "chat.completion.chunk",
+      choices: [
+        {
+          delta: { content: answer },
+          finish_reason: null,
+          index: 0
+        }
+      ]
+    })];
+  }
+  if (context.protocol === "openai_responses") {
+    return openAiResponsesSseAnswerEvents(answer, context.requestId, state.maxOutputIndex + 1);
+  }
+  if (context.protocol === "gemini_generate_content") {
+    return [sseEventFromValue(geminiAnswerCandidateChunk(answer))];
+  }
+  return [];
+}
+
+function anthropicHostedWebSearchProtocolSseStream(
+  input: Readable,
+  context: HostedWebSearchProtocolContext,
+  integration: BrowserWebSearchMcpIntegration
+): Readable {
+  const recordsPromise = selectHostedWebSearchProtocolRecords(context, integration);
+  let records: BrowserWebSearchProtocolRecord[] | undefined;
+  let pending = "";
+  let passThrough = false;
+  const state: AnthropicHostedWebSearchSseState = {
+    answerInjected: false,
+    hasClientToolUse: false,
+    hasWebSearchBlocks: false,
+    injectedBlockCount: 0,
+    insertedSearchBlocks: false,
+    maxIndex: -1,
+    visibleText: false
+  };
+
+  async function ensureRecords() {
+    if (records || passThrough) {
+      return;
+    }
+    records = await recordsPromise;
+    passThrough = records.length === 0;
+  }
+
+  return input.pipe(new Transform({
+    transform(chunk, _encoding, callback) {
+      const text = chunk.toString();
+      const rawText = pending + text;
+      void (async () => {
+        await ensureRecords();
+        if (passThrough || !records) {
+          this.push(text);
+          return;
+        }
+        pending += text;
+        drainAnthropicHostedWebSearchSseBlocks(this, pending, state, records, context, false);
+        pending = sseTrailingPartialBlock(pending);
+      })().catch((error) => {
+        console.warn(`[gateway] Hosted web search protocol bridge failed: ${formatError(error)}`);
+        this.push(rawText);
+        pending = "";
+        passThrough = true;
+      }).finally(() => callback());
+    },
+    flush(callback) {
+      void (async () => {
+        await ensureRecords();
+        if (passThrough || !records) {
+          if (pending) {
+            this.push(pending);
+          }
+          return;
+        }
+        drainAnthropicHostedWebSearchSseBlocks(this, pending, state, records, context, true);
+        pending = "";
+      })().catch((error) => {
+        console.warn(`[gateway] Hosted web search protocol bridge failed: ${formatError(error)}`);
+        if (pending) {
+          this.push(pending);
+        }
+      }).finally(() => callback());
+    }
+  }));
+}
+
+type AnthropicHostedWebSearchSseState = {
+  answerInjected: boolean;
+  hasClientToolUse: boolean;
+  hasWebSearchBlocks: boolean;
+  injectedBlockCount: number;
+  insertedSearchBlocks: boolean;
+  insertIndex?: number;
+  maxIndex: number;
+  visibleText: boolean;
+};
+
+function drainAnthropicHostedWebSearchSseBlocks(
+  stream: Transform,
+  text: string,
+  state: AnthropicHostedWebSearchSseState,
+  records: BrowserWebSearchProtocolRecord[],
+  context: Pick<HostedWebSearchProtocolContext, "queryHint" | "requestId">,
+  flush: boolean
+): void {
+  let cursor = 0;
+  for (const match of text.matchAll(/\r?\n\r?\n/g)) {
+    const index = match.index ?? 0;
+    const delimiter = match[0];
+    const block = text.slice(cursor, index);
+    cursor = index + delimiter.length;
+    if (!block.trim()) {
+      stream.push(delimiter);
+      continue;
+    }
+    writeAnthropicHostedWebSearchSseEvent(
+      stream,
+      parseSseEventBlock(block),
+      delimiter,
+      state,
+      records,
+      context
+    );
+  }
+  if (flush) {
+    const block = text.slice(cursor);
+    if (block.trim()) {
+      writeAnthropicHostedWebSearchSseEvent(
+        stream,
+        parseSseEventBlock(block),
+        "",
+        state,
+        records,
+        context
+      );
+    } else if (block) {
+      stream.push(block);
+    }
+  }
+}
+
+function sseTrailingPartialBlock(text: string): string {
+  let cursor = 0;
+  for (const match of text.matchAll(/\r?\n\r?\n/g)) {
+    cursor = (match.index ?? 0) + match[0].length;
+  }
+  return text.slice(cursor);
+}
+
+function writeAnthropicHostedWebSearchSseEvent(
+  stream: Transform,
+  event: ParsedSseEvent,
+  delimiter: string,
+  state: AnthropicHostedWebSearchSseState,
+  records: BrowserWebSearchProtocolRecord[],
+  context: Pick<HostedWebSearchProtocolContext, "queryHint" | "requestId">
+): void {
+  updateAnthropicHostedWebSearchSseState(event, state);
+  const textStartIndex = anthropicSseTextBlockStartIndex(event);
+  const isMessageEnd = sseEventIsAnthropicMessageEnd(event);
+  const answer = !state.hasClientToolUse && !state.visibleText && !state.answerInjected && isMessageEnd
+    ? synthesizeWebSearchAnswer(records, context.queryHint)
+    : undefined;
+
+  if (!state.insertedSearchBlocks && (textStartIndex !== undefined || isMessageEnd)) {
+    const insertIndex = textStartIndex ?? state.maxIndex + 1;
+    insertAnthropicHostedWebSearchSseBlocks(stream, state, records, context.requestId, insertIndex);
+  }
+  if (answer && isMessageEnd) {
+    const answerIndex = state.maxIndex + state.injectedBlockCount + 1;
+    insertAnthropicHostedWebSearchSseAnswer(stream, state, answer, answerIndex);
+  }
+
+  const nextEvent = updateAnthropicWebSearchSseUsage(
+    shiftAnthropicHostedWebSearchSseEvent(event, state),
+    records.length,
+    Boolean(answer),
+    state.hasClientToolUse
+  );
+  stream.push(`${serializeSseEvent(nextEvent)}${delimiter}`);
+}
+
+function updateAnthropicHostedWebSearchSseState(event: ParsedSseEvent, state: AnthropicHostedWebSearchSseState): void {
+  if (isRecord(event.data) && Number.isFinite(event.data.index)) {
+    state.maxIndex = Math.max(state.maxIndex, Number(event.data.index));
+  }
+  state.hasWebSearchBlocks ||= sseEventContainsAnthropicWebSearchBlock(event);
+  state.hasClientToolUse ||= sseEventContainsAnthropicClientToolUse(event);
+  state.visibleText ||= sseEventContainsVisibleText(event);
+}
+
+function insertAnthropicHostedWebSearchSseBlocks(
+  stream: Transform,
+  state: AnthropicHostedWebSearchSseState,
+  records: BrowserWebSearchProtocolRecord[],
+  requestId: string,
+  insertIndex: number
+): void {
+  state.insertedSearchBlocks = true;
+  state.insertIndex = insertIndex;
+  if (state.hasWebSearchBlocks) {
+    return;
+  }
+  const blocks = anthropicWebSearchProtocolBlocks(records, requestId);
+  for (const event of blocks.flatMap((block, offset) => anthropicWebSearchSseEventsForBlock(block, insertIndex + offset))) {
+    stream.push(`${serializeSseEvent(event)}\n\n`);
+  }
+  state.injectedBlockCount += blocks.length;
+}
+
+function insertAnthropicHostedWebSearchSseAnswer(
+  stream: Transform,
+  state: AnthropicHostedWebSearchSseState,
+  answer: string,
+  answerIndex: number
+): void {
+  state.answerInjected = true;
+  for (const event of anthropicWebSearchSseEventsForBlock({ text: answer, type: "text" }, answerIndex)) {
+    stream.push(`${serializeSseEvent(event)}\n\n`);
+  }
+}
+
+function shiftAnthropicHostedWebSearchSseEvent(
+  event: ParsedSseEvent,
+  state: AnthropicHostedWebSearchSseState
+): ParsedSseEvent {
+  if (!state.insertedSearchBlocks || state.insertIndex === undefined || state.injectedBlockCount === 0) {
+    return event;
+  }
+  return shiftSseContentBlockIndex(event, state.insertIndex, state.injectedBlockCount);
+}
+
+function transformHostedWebSearchProtocolResponseValue(
+  value: unknown,
+  records: BrowserWebSearchProtocolRecord[],
+  context: Pick<HostedWebSearchProtocolContext, "protocol" | "queryHint" | "requestId">
+): { changed: boolean; value: unknown } {
+  if (context.protocol === "anthropic_messages") {
+    return transformAnthropicWebSearchProtocolResponseValue(value, records, context.requestId, context.queryHint);
+  }
+  if (context.protocol === "openai_chat_completions") {
+    return transformOpenAiChatHostedWebSearchResponseValue(value, records, context.queryHint);
+  }
+  if (context.protocol === "openai_responses") {
+    return transformOpenAiResponsesHostedWebSearchResponseValue(value, records, context.requestId, context.queryHint);
+  }
+  if (context.protocol === "gemini_generate_content") {
+    return transformGeminiHostedWebSearchResponseValue(value, records, context.queryHint);
+  }
+  return { changed: false, value };
+}
+
+function transformHostedWebSearchProtocolSseText(
+  body: string,
+  records: BrowserWebSearchProtocolRecord[],
+  context: Pick<HostedWebSearchProtocolContext, "protocol" | "queryHint" | "requestId">
+): string {
+  if (context.protocol === "anthropic_messages") {
+    return transformAnthropicWebSearchProtocolSseText(body, records, context.requestId, context.queryHint);
+  }
+  if (context.protocol === "openai_chat_completions") {
+    return transformOpenAiChatHostedWebSearchSseText(body, records, context.queryHint);
+  }
+  if (context.protocol === "openai_responses") {
+    return transformOpenAiResponsesHostedWebSearchSseText(body, records, context.requestId, context.queryHint);
+  }
+  if (context.protocol === "gemini_generate_content") {
+    return transformGeminiHostedWebSearchSseText(body, records, context.queryHint);
+  }
+  return body;
+}
+
+export function transformAnthropicWebSearchProtocolResponseValue(
+  value: unknown,
+  records: BrowserWebSearchProtocolRecord[],
+  requestId: string,
+  queryHint?: string
+): { changed: boolean; value: unknown } {
+  if (!isRecord(value) || !Array.isArray(value.content)) {
+    return { changed: false, value };
+  }
+  const hasWebSearchBlocks = responseValueContainsAnthropicWebSearchBlocks(value);
+  const blocks = hasWebSearchBlocks ? [] : anthropicWebSearchProtocolBlocks(records, requestId);
+  const hasClientToolUse = responseValueContainsAnthropicClientToolUse(value);
+  const answer = hasClientToolUse || responseValueContainsVisibleText(value)
+    ? undefined
+    : synthesizeWebSearchAnswer(records, queryHint);
+  const injectedBlocks = [
+    ...blocks,
+    ...(answer ? [{ text: answer, type: "text" }] : [])
+  ];
+  const shouldUpdateUsage = hasWebSearchBlocks || blocks.length > 0;
+  if (injectedBlocks.length === 0 && !shouldUpdateUsage) {
+    return { changed: false, value };
+  }
+  const insertAt = webSearchProtocolInsertIndex(value.content, hasWebSearchBlocks);
+  const nextValue = {
+    ...value,
+    ...(shouldUpdateUsage ? { usage: mergeAnthropicWebSearchUsage(value.usage, records.length) } : {}),
+    ...(shouldEndAnthropicHostedWebSearchTurn(value.stop_reason, Boolean(answer), hasClientToolUse) ? { stop_reason: "end_turn" } : {}),
+    content: injectedBlocks.length > 0
+      ? [
+          ...value.content.slice(0, insertAt),
+          ...injectedBlocks,
+          ...value.content.slice(insertAt)
+        ]
+      : value.content
+  };
+  return {
+    changed: true,
+    value: nextValue
+  };
+}
+
+export function transformAnthropicWebSearchProtocolSseText(
+  body: string,
+  records: BrowserWebSearchProtocolRecord[],
+  requestId: string,
+  queryHint?: string
+): string {
+  const events = parseSseEvents(body);
+  if (events.length === 0) {
+    return body;
+  }
+  const hasWebSearchBlocks = sseEventsContainAnthropicWebSearchBlocks(events);
+  const blocks = hasWebSearchBlocks ? [] : anthropicWebSearchProtocolBlocks(records, requestId);
+  const hasClientToolUse = sseEventsContainAnthropicClientToolUse(events);
+  const answer = hasClientToolUse || sseEventsContainVisibleText(events)
+    ? undefined
+    : synthesizeWebSearchAnswer(records, queryHint);
+  const injectedBlocks = [
+    ...blocks,
+    ...(answer ? [{ text: answer, type: "text" }] : [])
+  ];
+  const shouldUpdateUsage = hasWebSearchBlocks || blocks.length > 0;
+  if (injectedBlocks.length === 0 && !shouldUpdateUsage) {
+    return body;
+  }
+
+  let maxIndex = -1;
+  for (const event of events) {
+    if (isRecord(event.data) && Number.isFinite(event.data.index)) {
+      maxIndex = Math.max(maxIndex, Number(event.data.index));
+    }
+  }
+
+  const firstTextIndex = events.findIndex((event) => {
+    const data = isRecord(event.data) ? event.data : undefined;
+    const contentBlock = isRecord(data?.content_block) ? data.content_block : undefined;
+    return data?.type === "content_block_start" && contentBlock?.type === "text";
+  });
+  const messageEndIndex = events.findIndex((event) => {
+    const type = isRecord(event.data) ? stringValue(event.data.type) : undefined;
+    return type === "message_delta" || type === "message_stop";
+  });
+  const insertPosition = firstTextIndex >= 0
+    ? firstTextIndex
+    : messageEndIndex >= 0
+      ? messageEndIndex
+      : events.length;
+  const insertIndex = firstTextIndex >= 0 && isRecord(events[firstTextIndex].data) && Number.isFinite(events[firstTextIndex].data.index)
+      ? Number(events[firstTextIndex].data.index)
+      : maxIndex + 1;
+
+  const shiftedEvents = events
+    .map((event) => shiftSseContentBlockIndex(event, insertIndex, injectedBlocks.length))
+    .map((event) => updateAnthropicWebSearchSseUsage(event, records.length, Boolean(answer), hasClientToolUse));
+  const injectedEvents = injectedBlocks.flatMap((block, offset) => anthropicWebSearchSseEventsForBlock(block, insertIndex + offset));
+  shiftedEvents.splice(insertPosition, 0, ...injectedEvents);
+  return `${shiftedEvents.map(serializeSseEvent).join("\n\n")}\n\n`;
+}
+
+export function transformOpenAiChatHostedWebSearchResponseValue(
+  value: unknown,
+  records: BrowserWebSearchProtocolRecord[],
+  queryHint?: string
+): { changed: boolean; value: unknown } {
+  if (!isRecord(value) || openAiChatResponseContainsVisibleText(value)) {
+    return { changed: false, value };
+  }
+  const answer = synthesizeWebSearchAnswer(records, queryHint);
+  if (!answer || !Array.isArray(value.choices) || value.choices.length === 0) {
+    return { changed: false, value };
+  }
+  const choices = value.choices.map((choice, index) => {
+    if (!isRecord(choice) || index !== 0) {
+      return choice;
+    }
+    const message = isRecord(choice.message) ? choice.message : {};
+    return {
+      ...choice,
+      finish_reason: stringValue(choice.finish_reason) === "length" ? "stop" : choice.finish_reason,
+      message: {
+        ...message,
+        content: answer,
+        role: stringValue(message.role) || "assistant"
+      }
+    };
+  });
+  return {
+    changed: true,
+    value: {
+      ...value,
+      choices
+    }
+  };
+}
+
+export function transformOpenAiChatHostedWebSearchSseText(
+  body: string,
+  records: BrowserWebSearchProtocolRecord[],
+  queryHint?: string
+): string {
+  const events = parseSseEvents(body);
+  if (events.length === 0 || openAiChatSseContainsVisibleText(events)) {
+    return body;
+  }
+  const answer = synthesizeWebSearchAnswer(records, queryHint);
+  if (!answer) {
+    return body;
+  }
+  const template = firstSseDataRecord(events);
+  const injected = sseEventFromValue({
+    ...(template?.id ? { id: template.id } : {}),
+    ...(template?.model ? { model: template.model } : {}),
+    object: stringValue(template?.object) || "chat.completion.chunk",
+    choices: [
+      {
+        delta: { content: answer },
+        finish_reason: null,
+        index: 0
+      }
+    ]
+  });
+  const shifted = events.map((event) => updateOpenAiChatSseFinishReason(event));
+  const insertAt = doneSseEventIndex(shifted);
+  shifted.splice(insertAt >= 0 ? insertAt : shifted.length, 0, injected);
+  return `${shifted.map(serializeSseEvent).join("\n\n")}\n\n`;
+}
+
+export function transformOpenAiResponsesHostedWebSearchResponseValue(
+  value: unknown,
+  records: BrowserWebSearchProtocolRecord[],
+  requestId: string,
+  queryHint?: string
+): { changed: boolean; value: unknown } {
+  if (!isRecord(value)) {
+    return { changed: false, value };
+  }
+  const output = Array.isArray(value.output) ? value.output : [];
+  const hasSearchCall = output.some((item) => isRecord(item) && stringValue(item.type) === "web_search_call");
+  const answer = openAiResponsesValueContainsVisibleText(value) ? undefined : synthesizeWebSearchAnswer(records, queryHint);
+  const injected = [
+    ...(hasSearchCall ? [] : openAiResponsesWebSearchCallItems(records, requestId)),
+    ...(answer ? [openAiResponsesMessageItem(answer, requestId)] : [])
+  ];
+  if (injected.length === 0) {
+    return { changed: false, value };
+  }
+  const next: Record<string, unknown> = {
+    ...value,
+    output: [...injected, ...output]
+  };
+  if (answer && stringValue(next.status) === "incomplete") {
+    next.status = "completed";
+    delete next.incomplete_details;
+  }
+  return { changed: true, value: next };
+}
+
+export function transformOpenAiResponsesHostedWebSearchSseText(
+  body: string,
+  records: BrowserWebSearchProtocolRecord[],
+  requestId: string,
+  queryHint?: string
+): string {
+  const events = parseSseEvents(body);
+  if (events.length === 0) {
+    return body;
+  }
+  const visibleText = openAiResponsesSseVisibleText(events);
+  if (visibleText) {
+    return serializeOpenAiResponsesSseEvents(normalizeOpenAiResponsesSseEvents(events, visibleText));
+  }
+  const answer = synthesizeWebSearchAnswer(records, queryHint);
+  if (!answer) {
+    return serializeOpenAiResponsesSseEvents(normalizeOpenAiResponsesSseEvents(events));
+  }
+  const outputIndex = nextOpenAiResponsesOutputIndex(events);
+  const injected = openAiResponsesSseAnswerEvents(answer, requestId, outputIndex);
+  const shifted = events.map(updateOpenAiResponsesCompletedStatus);
+  const insertAt = shifted.findIndex((event) => isRecord(event.data) && stringValue(event.data.type) === "response.completed");
+  shifted.splice(insertAt >= 0 ? insertAt : doneSseEventIndex(shifted) >= 0 ? doneSseEventIndex(shifted) : shifted.length, 0, ...injected);
+  return serializeOpenAiResponsesSseEvents(normalizeOpenAiResponsesSseEvents(shifted, answer));
+}
+
+export function transformGeminiHostedWebSearchResponseValue(
+  value: unknown,
+  records: BrowserWebSearchProtocolRecord[],
+  queryHint?: string
+): { changed: boolean; value: unknown } {
+  if (Array.isArray(value)) {
+    if (geminiResponseArrayContainsVisibleText(value)) {
+      return { changed: false, value };
+    }
+    const answer = synthesizeWebSearchAnswer(records, queryHint);
+    return answer
+      ? { changed: true, value: [...value, geminiAnswerCandidateChunk(answer)] }
+      : { changed: false, value };
+  }
+  if (!isRecord(value) || geminiResponseValueContainsVisibleText(value)) {
+    return { changed: false, value };
+  }
+  const answer = synthesizeWebSearchAnswer(records, queryHint);
+  if (!answer) {
+    return { changed: false, value };
+  }
+  const candidates = Array.isArray(value.candidates) ? value.candidates : [];
+  const nextCandidate = candidates.length > 0 && isRecord(candidates[0])
+    ? {
+        ...candidates[0],
+        content: {
+          ...(isRecord(candidates[0].content) ? candidates[0].content : {}),
+          parts: [{ text: answer }],
+          role: "model"
+        },
+        finishReason: stringValue(candidates[0].finishReason) === "MAX_TOKENS" ? "STOP" : candidates[0].finishReason
+      }
+    : geminiAnswerCandidate(answer);
+  return {
+    changed: true,
+    value: {
+      ...value,
+      candidates: [nextCandidate, ...candidates.slice(1)]
+    }
+  };
+}
+
+export function transformGeminiHostedWebSearchSseText(
+  body: string,
+  records: BrowserWebSearchProtocolRecord[],
+  queryHint?: string
+): string {
+  const events = parseSseEvents(body);
+  if (events.length === 0 || geminiSseContainsVisibleText(events)) {
+    return body;
+  }
+  const answer = synthesizeWebSearchAnswer(records, queryHint);
+  if (!answer) {
+    return body;
+  }
+  const injected = sseEventFromValue(geminiAnswerCandidateChunk(answer));
+  const insertAt = doneSseEventIndex(events);
+  events.splice(insertAt >= 0 ? insertAt : events.length, 0, injected);
+  return `${events.map(serializeSseEvent).join("\n\n")}\n\n`;
+}
+
+function openAiChatResponseContainsVisibleText(value: Record<string, unknown>): boolean {
+  if (!Array.isArray(value.choices)) {
+    return false;
+  }
+  return value.choices.some((choice) => {
+    const message = isRecord(choice) && isRecord(choice.message) ? choice.message : undefined;
+    return Boolean(stringValue(message?.content)?.trim());
+  });
+}
+
+function openAiChatSseContainsVisibleText(events: ParsedSseEvent[]): boolean {
+  return events.some((event) => {
+    const choices = isRecord(event.data) && Array.isArray(event.data.choices) ? event.data.choices : [];
+    return choices.some((choice) => {
+      const delta = isRecord(choice) && isRecord(choice.delta) ? choice.delta : undefined;
+      return Boolean(stringValue(delta?.content)?.trim());
+    });
+  });
+}
+
+function updateOpenAiChatSseFinishReason(event: ParsedSseEvent): ParsedSseEvent {
+  if (!isRecord(event.data) || !Array.isArray(event.data.choices)) {
+    return event;
+  }
+  let changed = false;
+  const choices = event.data.choices.map((choice) => {
+    if (!isRecord(choice) || stringValue(choice.finish_reason) !== "length") {
+      return choice;
+    }
+    changed = true;
+    return { ...choice, finish_reason: "stop" };
+  });
+  return changed ? { ...event, data: { ...event.data, choices } } : event;
+}
+
+function openAiResponsesValueContainsVisibleText(value: Record<string, unknown>): boolean {
+  return Array.isArray(value.output) && value.output.some(openAiResponsesItemContainsVisibleText);
+}
+
+function openAiResponsesItemContainsVisibleText(item: unknown): boolean {
+  if (!isRecord(item)) {
+    return false;
+  }
+  if (stringValue(item.type) === "message" && Array.isArray(item.content)) {
+    return item.content.some((part) => isRecord(part) && Boolean(stringValue(part.text)?.trim()));
+  }
+  return Boolean(stringValue(item.text)?.trim());
+}
+
+function openAiResponsesSseContainsVisibleText(events: ParsedSseEvent[]): boolean {
+  return Boolean(openAiResponsesSseVisibleText(events));
+}
+
+function openAiResponsesSseVisibleText(events: ParsedSseEvent[]): string | undefined {
+  let deltaText = "";
+  let doneText = "";
+  let itemText = "";
+  for (const event of events) {
+    const data = isRecord(event.data) ? event.data : undefined;
+    if (!data) {
+      continue;
+    }
+    const type = stringValue(data.type);
+    if (type === "response.output_text.delta") {
+      deltaText += stringValue(data.delta) ?? "";
+      continue;
+    }
+    if (type === "response.output_text.done") {
+      doneText = stringValue(data.text) ?? doneText;
+      continue;
+    }
+    const item = isRecord(data.item) ? data.item : undefined;
+    if (item && openAiResponsesItemContainsVisibleText(item)) {
+      itemText = openAiResponsesItemText(item) ?? itemText;
+    }
+  }
+  return nonEmptyText(deltaText) ?? nonEmptyText(doneText) ?? nonEmptyText(itemText);
+}
+
+function openAiResponsesItemText(item: unknown): string | undefined {
+  if (!isRecord(item)) {
+    return undefined;
+  }
+  if (stringValue(item.type) === "message" && Array.isArray(item.content)) {
+    const text = item.content
+      .flatMap((part) => isRecord(part) ? [stringValue(part.text) ?? ""] : [])
+      .join("");
+    return text.trim() ? text : undefined;
+  }
+  return stringValue(item.text);
+}
+
+function nonEmptyText(value: string | undefined): string | undefined {
+  return value && value.trim() ? value : undefined;
+}
+
+function openAiResponsesWebSearchCallItems(records: BrowserWebSearchProtocolRecord[], requestId: string): Record<string, unknown>[] {
+  return records.map((record, index) => ({
+    action: {
+      query: record.query,
+      type: "search"
+    },
+    id: `ws_${sanitizeAnthropicToolUseId(requestId)}_${index + 1}`,
+    status: "completed",
+    type: "web_search_call"
+  }));
+}
+
+function openAiResponsesMessageItem(answer: string, requestId: string): Record<string, unknown> {
+  return {
+    content: [{ annotations: [], text: answer, type: "output_text" }],
+    id: `msg_${sanitizeAnthropicToolUseId(requestId)}_web_search_answer`,
+    role: "assistant",
+    status: "completed",
+    type: "message"
+  };
+}
+
+function nextOpenAiResponsesOutputIndex(events: ParsedSseEvent[]): number {
+  const indexes = events.flatMap((event) => {
+    const data = isRecord(event.data) ? event.data : undefined;
+    const index = numberValue(data?.output_index);
+    return index === undefined ? [] : [index];
+  });
+  return indexes.length === 0 ? 0 : Math.max(...indexes) + 1;
+}
+
+function openAiResponsesSseAnswerEvents(answer: string, requestId: string, outputIndex: number): ParsedSseEvent[] {
+  const itemId = `msg_${sanitizeAnthropicToolUseId(requestId)}_web_search_answer`;
+  const contentIndex = 0;
+  return [
+    sseEventFromValue({
+      item: {
+        id: itemId,
+        role: "assistant",
+        status: "in_progress",
+        type: "message"
+      },
+      output_index: outputIndex,
+      type: "response.output_item.added"
+    }),
+    sseEventFromValue({
+      content_index: contentIndex,
+      item_id: itemId,
+      output_index: outputIndex,
+      part: { annotations: [], text: "", type: "output_text" },
+      type: "response.content_part.added"
+    }),
+    sseEventFromValue({
+      content_index: contentIndex,
+      delta: answer,
+      item_id: itemId,
+      output_index: outputIndex,
+      type: "response.output_text.delta"
+    }),
+    sseEventFromValue({
+      content_index: contentIndex,
+      item_id: itemId,
+      output_index: outputIndex,
+      text: answer,
+      type: "response.output_text.done"
+    }),
+    sseEventFromValue({
+      content_index: contentIndex,
+      item_id: itemId,
+      output_index: outputIndex,
+      part: { annotations: [], text: answer, type: "output_text" },
+      type: "response.content_part.done"
+    }),
+    sseEventFromValue({
+      item: {
+        content: [{ annotations: [], text: answer, type: "output_text" }],
+        id: itemId,
+        role: "assistant",
+        status: "completed",
+        type: "message"
+      },
+      output_index: outputIndex,
+      type: "response.output_item.done"
+    })
+  ];
+}
+
+function updateOpenAiResponsesCompletedStatus(event: ParsedSseEvent): ParsedSseEvent {
+  if (!isRecord(event.data) || stringValue(event.data.type) !== "response.completed") {
+    return event;
+  }
+  const response = isRecord(event.data.response) ? event.data.response : undefined;
+  if (!response || stringValue(response.status) !== "incomplete") {
+    return event;
+  }
+  const nextResponse: Record<string, unknown> = { ...response, status: "completed" };
+  delete nextResponse.incomplete_details;
+  return {
+    ...event,
+    data: {
+      ...event.data,
+      response: nextResponse
+    }
+  };
+}
+
+function normalizeOpenAiResponsesSseEvents(events: ParsedSseEvent[], visibleText?: string): ParsedSseEvent[] {
+  const outputIndexMap = openAiResponsesOutputIndexMap(events);
+  return events.flatMap((event) => {
+    if (isOpenAiResponsesReasoningSseEvent(event)) {
+      return [];
+    }
+    return [updateOpenAiResponsesCompletedOutput(
+      remapOpenAiResponsesOutputIndex(event, outputIndexMap),
+      visibleText
+    )];
+  });
+}
+
+function serializeOpenAiResponsesSseEvents(events: ParsedSseEvent[]): string {
+  return `${events.map(serializeSseEvent).join("\n\n")}\n\n`;
+}
+
+function openAiResponsesOutputIndexMap(events: ParsedSseEvent[]): Map<number, number> {
+  const indexes: number[] = [];
+  for (const event of events) {
+    if (isOpenAiResponsesReasoningSseEvent(event)) {
+      continue;
+    }
+    const data = isRecord(event.data) ? event.data : undefined;
+    const index = numberValue(data?.output_index);
+    if (index !== undefined && !indexes.includes(index)) {
+      indexes.push(index);
+    }
+  }
+  return new Map(indexes.sort((left, right) => left - right).map((index, nextIndex) => [index, nextIndex]));
+}
+
+function remapOpenAiResponsesOutputIndex(event: ParsedSseEvent, outputIndexMap: Map<number, number>): ParsedSseEvent {
+  if (!isRecord(event.data)) {
+    return event;
+  }
+  const index = numberValue(event.data.output_index);
+  if (index === undefined || !outputIndexMap.has(index)) {
+    return event;
+  }
+  return {
+    ...event,
+    data: {
+      ...event.data,
+      output_index: outputIndexMap.get(index)
+    }
+  };
+}
+
+function updateOpenAiResponsesCompletedOutput(event: ParsedSseEvent, visibleText?: string): ParsedSseEvent {
+  if (!isRecord(event.data) || stringValue(event.data.type) !== "response.completed") {
+    return event;
+  }
+  const response = isRecord(event.data.response) ? event.data.response : undefined;
+  if (!response) {
+    return event;
+  }
+  const nextResponse: Record<string, unknown> = { ...response };
+  if (Array.isArray(response.output)) {
+    nextResponse.output = response.output.filter((item) => !(isRecord(item) && stringValue(item.type) === "reasoning"));
+  }
+  if (visibleText) {
+    nextResponse.output_text = visibleText;
+  }
+  if (visibleText && stringValue(nextResponse.status) === "incomplete") {
+    nextResponse.status = "completed";
+    delete nextResponse.incomplete_details;
+  }
+  return {
+    ...event,
+    data: {
+      ...event.data,
+      response: nextResponse
+    }
+  };
+}
+
+function isOpenAiResponsesReasoningSseEvent(event: ParsedSseEvent): boolean {
+  const data = isRecord(event.data) ? event.data : undefined;
+  if (!data) {
+    return false;
+  }
+  const type = stringValue(data.type);
+  if (type?.startsWith("response.reasoning")) {
+    return true;
+  }
+  const item = isRecord(data.item) ? data.item : undefined;
+  if (stringValue(item?.type) === "reasoning") {
+    return true;
+  }
+  const part = isRecord(data.part) ? data.part : undefined;
+  return stringValue(part?.type) === "reasoning_text";
+}
+
+function geminiResponseValueContainsVisibleText(value: Record<string, unknown>): boolean {
+  return Array.isArray(value.candidates) && value.candidates.some(geminiCandidateContainsVisibleText);
+}
+
+function geminiResponseArrayContainsVisibleText(values: unknown[]): boolean {
+  return values.some((value) => isRecord(value) && geminiResponseValueContainsVisibleText(value));
+}
+
+function geminiCandidateContainsVisibleText(candidate: unknown): boolean {
+  const content = isRecord(candidate) && isRecord(candidate.content) ? candidate.content : undefined;
+  const parts = Array.isArray(content?.parts) ? content.parts : [];
+  return parts.some((part) => isRecord(part) && Boolean(stringValue(part.text)?.trim()));
+}
+
+function geminiSseContainsVisibleText(events: ParsedSseEvent[]): boolean {
+  return events.some((event) => isRecord(event.data) && geminiResponseValueContainsVisibleText(event.data));
+}
+
+function geminiAnswerCandidate(answer: string): Record<string, unknown> {
+  return {
+    content: {
+      parts: [{ text: answer }],
+      role: "model"
+    },
+    finishReason: "STOP",
+    index: 0
+  };
+}
+
+function geminiAnswerCandidateChunk(answer: string): Record<string, unknown> {
+  return {
+    candidates: [geminiAnswerCandidate(answer)]
+  };
+}
+
+function firstSseDataRecord(events: ParsedSseEvent[]): Record<string, unknown> | undefined {
+  return events.map((event) => isRecord(event.data) ? event.data : undefined).find(Boolean);
+}
+
+function doneSseEventIndex(events: ParsedSseEvent[]): number {
+  return events.findIndex((event) => event.raw?.includes("[DONE]"));
+}
+
+function sseEventIsDone(event: ParsedSseEvent): boolean {
+  return Boolean(event.raw?.includes("[DONE]"));
+}
+
+function hasAnthropicHostedWebSearchTool(tools: unknown): boolean {
+  if (!Array.isArray(tools)) {
+    return false;
+  }
+  return tools.some(isAnthropicHostedWebSearchTool);
+}
+
+function hasHostedWebSearchDeclaration(body: Record<string, unknown>, protocol: GatewayProviderProtocol): boolean {
+  if (protocol === "anthropic_messages") {
+    return hasAnthropicHostedWebSearchTool(body.tools);
+  }
+  if (protocol === "openai_chat_completions" || protocol === "openai_responses") {
+    return hasOpenAiHostedWebSearchDeclaration(body);
+  }
+  if (protocol === "gemini_generate_content") {
+    return hasGeminiHostedWebSearchTool(body.tools);
+  }
+  return false;
+}
+
+function hasOpenAiHostedWebSearchDeclaration(body: Record<string, unknown>): boolean {
+  if (body.web_search_options !== undefined || body.webSearchOptions !== undefined) {
+    return true;
+  }
+  return Array.isArray(body.tools) && body.tools.some(isOpenAiHostedWebSearchTool);
+}
+
+function hasGeminiHostedWebSearchTool(tools: unknown): boolean {
+  if (!Array.isArray(tools)) {
+    return false;
+  }
+  return tools.some((tool) => {
+    if (!isRecord(tool)) {
+      return false;
+    }
+    if (tool.google_search !== undefined || tool.googleSearch !== undefined || tool.google_search_retrieval !== undefined || tool.googleSearchRetrieval !== undefined) {
+      return true;
+    }
+    return false;
+  });
+}
+
+function isAnthropicHostedWebSearchTool(tool: unknown): boolean {
+  if (!isRecord(tool)) {
+    return false;
+  }
+  return anthropicHostedWebSearchType(stringValue(tool.type));
+}
+
+function isOpenAiHostedWebSearchTool(tool: unknown): boolean {
+  if (!isRecord(tool)) {
+    return false;
+  }
+  return openAiHostedWebSearchType(stringValue(tool.type));
+}
+
+function openAiToolChoiceNamesWebSearch(value: unknown): boolean {
+  if (typeof value === "string") {
+    return openAiHostedWebSearchType(value);
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+  return openAiHostedWebSearchType(stringValue(value.type));
+}
+
+function anthropicHostedWebSearchType(value: string | undefined): boolean {
+  const normalized = normalizedToolProtocolName(value);
+  return normalized === "web_search" || normalized === "web_search_20250305";
+}
+
+function openAiHostedWebSearchType(value: string | undefined): boolean {
+  const normalized = normalizedToolProtocolName(value);
+  return normalized === "web_search" ||
+    normalized === "web_search_preview" ||
+    normalized.startsWith("web_search_preview_");
+}
+
+function normalizedToolProtocolName(value: string | undefined): string {
+  return value?.trim().toLowerCase().replace(/[-.]/g, "_") ?? "";
+}
+
+function readAnthropicWebSearchMaxUses(tools: unknown): number | undefined {
+  if (!Array.isArray(tools)) {
+    return undefined;
+  }
+  const tool = tools.find((item) => isRecord(item) && stringValue(item.type)?.toLowerCase() === "web_search_20250305");
+  return isRecord(tool) ? numberValue(tool.max_uses ?? tool.maxUses) : undefined;
+}
+
+function readHostedWebSearchMaxUses(body: Record<string, unknown>, protocol: GatewayProviderProtocol): number | undefined {
+  if (protocol === "anthropic_messages") {
+    return readAnthropicWebSearchMaxUses(body.tools);
+  }
+  if (protocol === "openai_chat_completions" || protocol === "openai_responses") {
+    const tool = Array.isArray(body.tools) ? body.tools.find(isOpenAiHostedWebSearchTool) : undefined;
+    return isRecord(tool) ? numberValue(tool.max_uses ?? tool.maxUses) : undefined;
+  }
+  return undefined;
+}
+
+export function extractHostedWebSearchQueryHint(body: Record<string, unknown>, protocol: GatewayProviderProtocol): string | undefined {
+  if (protocol === "anthropic_messages") {
+    return extractAnthropicWebSearchQueryHint(body);
+  }
+  if (protocol === "openai_chat_completions") {
+    return normalizedWebSearchQueryHintFromParts(textPartsFromOpenAiChatMessages(body.messages));
+  }
+  if (protocol === "openai_responses") {
+    return normalizedWebSearchQueryHintFromParts(textPartsFromOpenAiResponsesInput(body.input));
+  }
+  if (protocol === "gemini_generate_content") {
+    return normalizedWebSearchQueryHintFromParts(textPartsFromGeminiContents(body.contents));
+  }
+  return undefined;
+}
+
+function extractAnthropicWebSearchQueryHint(body: Record<string, unknown>): string | undefined {
+  const userTexts = Array.isArray(body.messages)
+    ? body.messages.flatMap((message) => {
+        if (!isRecord(message) || stringValue(message.role) !== "user") {
+          return [];
+        }
+        return textPartsFromAnthropicContent(message.content);
+      })
+    : [];
+  return normalizedWebSearchQueryHintFromParts(userTexts);
+}
+
+function extractClaudeCodeWebSearchToolResultQuery(body: Record<string, unknown>): string | undefined {
+  for (const text of claudeCodeWebSearchToolResultTexts(body)) {
+    const quoted = /Web search results for query:\s*"([^"]+)"/i.exec(text);
+    if (quoted?.[1]) {
+      return normalizedWebSearchQueryHint(quoted[1]);
+    }
+    const unquoted = /Web search results for query:\s*([^\n]+)/i.exec(text);
+    if (unquoted?.[1]) {
+      return normalizedWebSearchQueryHint(unquoted[1].replace(/^["']|["']$/g, ""));
+    }
+  }
+  return undefined;
+}
+
+function normalizedWebSearchQueryHintFromParts(parts: string[]): string | undefined {
+  const candidates = parts
+    .map((part) => part.trim())
+    .filter(Boolean);
+  for (const candidate of [...candidates].reverse()) {
+    const explicit = extractExplicitWebSearchQuery(candidate);
+    if (explicit) {
+      return normalizedWebSearchQueryHint(explicit);
+    }
+  }
+  for (const candidate of [...candidates].reverse()) {
+    if (isRuntimeContextText(candidate)) {
+      continue;
+    }
+    return normalizedWebSearchQueryHint(stripSearchIntentPrefix(candidate));
+  }
+  return normalizedWebSearchQueryHint(candidates.join("\n"));
+}
+
+function normalizedWebSearchQueryHint(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const joined = value.trim();
+  if (!joined) {
+    return undefined;
+  }
+  return joined.trim().slice(0, 500);
+}
+
+function extractExplicitWebSearchQuery(value: string): string | undefined {
+  const explicit = /perform\s+a\s+web\s+search\s+for\s+the\s+query:\s*([\s\S]+)$/i.exec(value.trim());
+  return normalizedWebSearchQueryHint(explicit?.[1]);
+}
+
+function stripSearchIntentPrefix(value: string): string {
+  const trimmed = value.trim();
+  const match = /^(?:请)?(?:帮我)?(?:搜索|查询|查一下|帮我查一下|搜一下)\s*[:：]?\s*([\s\S]+)$/i.exec(trimmed);
+  return (match?.[1] || trimmed).trim();
+}
+
+function isRuntimeContextText(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (/^<(?:environment_context|permissions instructions|collaboration_mode|skills_instructions|plugins_instructions|apps_instructions)>/i.test(trimmed)) {
+    return true;
+  }
+  return (
+    trimmed.includes("<workspace_roots>") ||
+    trimmed.includes("<permission_profile") ||
+    trimmed.includes("<filesystem>") ||
+    trimmed.includes("<current_date>") ||
+    trimmed.includes("<writable_roots>")
+  );
+}
+
+function textPartsFromAnthropicContent(content: unknown): string[] {
+  if (typeof content === "string") {
+    return [content];
+  }
+  if (!Array.isArray(content)) {
+    return [];
+  }
+  return content.flatMap((part) => isRecord(part) && typeof part.text === "string" ? [part.text] : []);
+}
+
+function claudeCodeWebSearchToolResultTexts(body: Record<string, unknown>): string[] {
+  if (!Array.isArray(body.messages)) {
+    return [];
+  }
+  const lastMessage = body.messages.at(-1);
+  if (!isRecord(lastMessage) || stringValue(lastMessage.role) !== "user" || !Array.isArray(lastMessage.content)) {
+    return [];
+  }
+  const latestToolResults = lastMessage.content.filter((part) => isRecord(part) && stringValue(part.type) === "tool_result");
+  if (latestToolResults.length === 0) {
+    return [];
+  }
+  const webSearchToolUseIds = new Set<string>();
+  for (let index = body.messages.length - 2; index >= 0; index -= 1) {
+    const message = body.messages[index];
+    if (!isRecord(message) || stringValue(message.role) !== "assistant" || !Array.isArray(message.content)) {
+      continue;
+    }
+    for (const part of message.content) {
+      if (!isRecord(part) || stringValue(part.type) !== "tool_use" || stringValue(part.name)?.toLowerCase() !== "websearch") {
+        continue;
+      }
+      const id = stringValue(part.id);
+      if (id) {
+        webSearchToolUseIds.add(id);
+      }
+    }
+    break;
+  }
+  if (webSearchToolUseIds.size === 0) {
+    return [];
+  }
+  const texts: string[] = [];
+  for (const part of latestToolResults) {
+    if (!isRecord(part)) {
+      continue;
+    }
+    const toolUseId = stringValue(part.tool_use_id);
+    if (!toolUseId || !webSearchToolUseIds.has(toolUseId)) {
+      continue;
+    }
+    const text = anthropicToolResultContentText(part.content);
+    if (text) {
+      texts.push(text);
+    }
+  }
+  return texts;
+}
+
+function anthropicToolResultContentText(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  return content.flatMap((part) => {
+    if (!isRecord(part)) {
+      return [];
+    }
+    const type = stringValue(part.type);
+    if (type === "text" || type === "input_text" || type === "output_text") {
+      const text = stringValue(part.text);
+      return text ? [text] : [];
+    }
+    return [];
+  }).join("\n");
+}
+
+function textPartsFromOpenAiChatMessages(messages: unknown): string[] {
+  if (!Array.isArray(messages)) {
+    return [];
+  }
+  return messages.flatMap((message) => {
+    if (!isRecord(message) || stringValue(message.role)?.toLowerCase() !== "user") {
+      return [];
+    }
+    return textPartsFromOpenAiContent(message.content);
+  });
+}
+
+function textPartsFromOpenAiContent(content: unknown): string[] {
+  if (typeof content === "string") {
+    return [content];
+  }
+  if (!Array.isArray(content)) {
+    return [];
+  }
+  return content.flatMap((part) => {
+    if (!isRecord(part)) {
+      return [];
+    }
+    const type = stringValue(part.type);
+    if (type === "text" || type === "input_text" || type === "output_text") {
+      return stringValue(part.text) ? [stringValue(part.text) as string] : [];
+    }
+    return [];
+  });
+}
+
+function textPartsFromOpenAiResponsesInput(input: unknown): string[] {
+  if (typeof input === "string") {
+    return [input];
+  }
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  return input.flatMap((item) => {
+    if (!isRecord(item)) {
+      return [];
+    }
+    const role = stringValue(item.role)?.toLowerCase();
+    if (role && role !== "user") {
+      return [];
+    }
+    return textPartsFromOpenAiContent(item.content);
+  });
+}
+
+function textPartsFromGeminiContents(contents: unknown): string[] {
+  if (!Array.isArray(contents)) {
+    return [];
+  }
+  return contents.flatMap((content) => {
+    if (!isRecord(content)) {
+      return [];
+    }
+    const role = stringValue(content.role)?.toLowerCase();
+    if (role && role !== "user") {
+      return [];
+    }
+    const parts = Array.isArray(content.parts) ? content.parts : [];
+    return parts.flatMap((part) => isRecord(part) && typeof part.text === "string" ? [part.text] : []);
+  });
+}
+
+export function fusionWebSearchToolNameForRequest(config: AppConfig, model: string | undefined): string | undefined {
+  const normalizedModel = model ? fusionModelNameFromSelector(model) : "";
+  for (const candidate of fusionBrowserWebSearchToolCandidates(config)) {
+    if (!normalizedModel || candidate.aliases.some((alias) => fusionModelNameFromSelector(alias).toLowerCase() === normalizedModel.toLowerCase())) {
+      return candidate.toolName;
+    }
+  }
+  return undefined;
+}
+
+function fusionBrowserWebSearchToolCandidates(config: AppConfig): Array<{ aliases: string[]; toolName: string }> {
+  const rawProfiles = Array.isArray(config.virtualModelProfiles) ? config.virtualModelProfiles : [];
+  const profiles = normalizeCoreGatewayVirtualModelProfiles(
+    withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases(rawProfiles)),
+    config
+  );
+  const candidates: Array<{ aliases: string[]; toolName: string }> = [];
+  for (const profile of profiles) {
+    if (!isRecord(profile) || profile.enabled === false) {
+      continue;
+    }
+    const metadata = isRecord(profile.metadata) ? profile.metadata : undefined;
+    const fusionWebSearch = isRecord(metadata?.fusionWebSearch) ? metadata.fusionWebSearch : undefined;
+    const webSearchConfig = readFusionWebSearchConfig(fusionWebSearch);
+    if (!webSearchConfig?.toolName || webSearchConfig.provider !== "browser") {
+      continue;
+    }
+    const match = isRecord(profile.match) ? profile.match : undefined;
+    const aliases = uniqueStrings([
+      stringValue(profile.id),
+      stringValue(profile.key),
+      stringValue(profile.displayName),
+      ...stringListValue(match?.exactAliases)
+    ].filter((item): item is string => Boolean(item)));
+    candidates.push({ aliases, toolName: webSearchConfig.toolName });
+  }
+  return candidates;
+}
+
+async function selectHostedWebSearchProtocolRecords(
+  context: HostedWebSearchProtocolContext,
+  integration: BrowserWebSearchMcpIntegration
+): Promise<BrowserWebSearchProtocolRecord[]> {
+  const records = [
+    ...(context.records ?? []),
+    ...(integration.recentBrowserWebSearchResults?.({ sinceMs: context.sinceMs, toolName: context.toolName }) ?? [])
+  ]
+    .filter((record) => record.results.length > 0)
+    .filter(uniqueSearchRecordFilter())
+    .sort((left, right) => {
+      const queryScoreDelta = queryMatchScore(context.queryHint, right.query) - queryMatchScore(context.queryHint, left.query);
+      return queryScoreDelta || left.completedAtMs - right.completedAtMs;
+    });
+  if (records.length > 0) {
+    return records.slice(0, 8);
+  }
+  if (!context.queryHint || !integration.runBrowserWebSearch) {
+    return [];
+  }
+  const record = await integration.runBrowserWebSearch({
+    count: Math.trunc(clampNumber(context.maxUses ?? 5, 1, 10)),
+    prompt: context.queryHint,
+    timeoutMs: 30_000,
+    toolName: context.toolName
+  });
+  return record?.results.length ? [record] : [];
+}
+
+function selectClaudeCodeWebSearchContinuationRecords(
+  context: ClaudeCodeWebSearchContinuationContext,
+  integration: BrowserWebSearchMcpIntegration
+): BrowserWebSearchProtocolRecord[] {
+  const records = integration.recentBrowserWebSearchResults?.({
+    sinceMs: context.sinceMs,
+    toolName: context.toolName
+  }) ?? [];
+  return records
+    .filter((record) => record.results.length > 0)
+    .filter(uniqueSearchRecordFilter())
+    .sort((left, right) => {
+      const queryScoreDelta = queryMatchScore(context.queryHint, right.query) - queryMatchScore(context.queryHint, left.query);
+      return queryScoreDelta || right.completedAtMs - left.completedAtMs;
+    })
+    .slice(0, 3);
+}
+
+async function selectAnthropicWebSearchProtocolRecords(
+  context: AnthropicWebSearchProtocolContext,
+  integration: BrowserWebSearchMcpIntegration
+): Promise<BrowserWebSearchProtocolRecord[]> {
+  return selectHostedWebSearchProtocolRecords(context, integration);
+}
+
+function uniqueSearchRecordFilter(): (record: BrowserWebSearchProtocolRecord) => boolean {
+  const seen = new Set<string>();
+  return (record) => {
+    const key = `${record.toolName}\n${record.query}\n${record.searchUrl}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  };
+}
+
+function queryMatchScore(queryHint: string | undefined, query: string): number {
+  if (!queryHint) {
+    return 0;
+  }
+  const left = normalizeSearchComparisonText(queryHint);
+  const right = normalizeSearchComparisonText(query);
+  if (!left || !right) {
+    return 0;
+  }
+  if (left === right) {
+    return 4;
+  }
+  if (left.includes(right) || right.includes(left)) {
+    return 3;
+  }
+  const leftTerms = new Set(left.split(" ").filter((item) => item.length > 2));
+  const rightTerms = right.split(" ").filter((item) => item.length > 2);
+  return rightTerms.reduce((score, term) => score + (leftTerms.has(term) ? 1 : 0), 0);
+}
+
+function normalizeSearchComparisonText(value: string): string {
+  return value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim();
+}
+
+function responseValueContainsAnthropicWebSearchBlocks(value: Record<string, unknown>): boolean {
+  return Array.isArray(value.content) && value.content.some((block) => {
+    const type = isRecord(block) ? stringValue(block.type) : undefined;
+    return type === "server_tool_use" || type === "web_search_tool_result";
+  });
+}
+
+function responseValueContainsVisibleText(value: Record<string, unknown>): boolean {
+  return Array.isArray(value.content) && value.content.some((block) => {
+    if (!isRecord(block) || stringValue(block.type) !== "text") {
+      return false;
+    }
+    return Boolean(stringValue(block.text)?.trim());
+  });
+}
+
+function responseValueContainsAnthropicClientToolUse(value: Record<string, unknown>): boolean {
+  return Array.isArray(value.content) && value.content.some((block) => {
+    return isRecord(block) && stringValue(block.type) === "tool_use";
+  });
+}
+
+function leadingThinkingBlockCount(content: unknown[]): number {
+  let index = 0;
+  while (index < content.length) {
+    const block = content[index];
+    if (!isRecord(block) || stringValue(block.type) !== "thinking") {
+      break;
+    }
+    index += 1;
+  }
+  return index;
+}
+
+function webSearchProtocolInsertIndex(content: unknown[], hasWebSearchBlocks: boolean): number {
+  let index = leadingThinkingBlockCount(content);
+  if (!hasWebSearchBlocks) {
+    return index;
+  }
+  while (index < content.length) {
+    const block = content[index];
+    const type = isRecord(block) ? stringValue(block.type) : undefined;
+    if (type !== "server_tool_use" && type !== "web_search_tool_result") {
+      break;
+    }
+    index += 1;
+  }
+  return index;
+}
+
+function mergeAnthropicWebSearchUsage(usage: unknown, searchCount: number): Record<string, unknown> {
+  const nextUsage = isRecord(usage) ? { ...usage } : {};
+  const serverToolUse = isRecord(nextUsage.server_tool_use) ? { ...nextUsage.server_tool_use } : {};
+  const webSearchRequests = Math.max(1, Math.trunc(searchCount));
+  serverToolUse.web_search_requests = Math.max(numberValue(serverToolUse.web_search_requests) ?? 0, webSearchRequests);
+  nextUsage.server_tool_use = serverToolUse;
+  return nextUsage;
+}
+
+function sseEventsContainAnthropicWebSearchBlocks(events: ParsedSseEvent[]): boolean {
+  return events.some((event) => {
+    return sseEventContainsAnthropicWebSearchBlock(event);
+  });
+}
+
+function sseEventsContainVisibleText(events: ParsedSseEvent[]): boolean {
+  return events.some(sseEventContainsVisibleText);
+}
+
+function sseEventContainsAnthropicWebSearchBlock(event: ParsedSseEvent): boolean {
+  const data = isRecord(event.data) ? event.data : undefined;
+  const block = isRecord(data?.content_block) ? data.content_block : undefined;
+  const type = stringValue(block?.type) || stringValue(data?.type);
+  return type === "server_tool_use" || type === "web_search_tool_result";
+}
+
+function sseEventContainsVisibleText(event: ParsedSseEvent): boolean {
+  const data = isRecord(event.data) ? event.data : undefined;
+  if (!data) {
+    return false;
+  }
+  const block = isRecord(data.content_block) ? data.content_block : undefined;
+  if (stringValue(data.type) === "content_block_start" && stringValue(block?.type) === "text") {
+    return Boolean(stringValue(block?.text)?.trim());
+  }
+  const delta = isRecord(data.delta) ? data.delta : undefined;
+  return stringValue(data.type) === "content_block_delta" &&
+    stringValue(delta?.type) === "text_delta" &&
+    Boolean(stringValue(delta?.text)?.trim());
+}
+
+function sseEventsContainAnthropicClientToolUse(events: ParsedSseEvent[]): boolean {
+  return events.some(sseEventContainsAnthropicClientToolUse);
+}
+
+function sseEventContainsAnthropicClientToolUse(event: ParsedSseEvent): boolean {
+  const data = isRecord(event.data) ? event.data : undefined;
+  const block = isRecord(data?.content_block) ? data.content_block : undefined;
+  return stringValue(data?.type) === "content_block_start" && stringValue(block?.type) === "tool_use";
+}
+
+function anthropicSseTextBlockStartIndex(event: ParsedSseEvent): number | undefined {
+  const data = isRecord(event.data) ? event.data : undefined;
+  const block = isRecord(data?.content_block) ? data.content_block : undefined;
+  if (stringValue(data?.type) !== "content_block_start" || stringValue(block?.type) !== "text") {
+    return undefined;
+  }
+  const index = numberValue(data?.index);
+  return index === undefined ? undefined : index;
+}
+
+function sseEventIsAnthropicMessageEnd(event: ParsedSseEvent): boolean {
+  const type = isRecord(event.data) ? stringValue(event.data.type) : undefined;
+  return type === "message_delta" || type === "message_stop";
+}
+
+function anthropicWebSearchSseEventsForBlock(block: Record<string, unknown>, index: number): ParsedSseEvent[] {
+  if (stringValue(block.type) === "text") {
+    const text = stringValue(block.text) ?? "";
+    return [
+      sseEventFromValue({
+        content_block: { text: "", type: "text" },
+        index,
+        type: "content_block_start"
+      }),
+      sseEventFromValue({
+        delta: { text, type: "text_delta" },
+        index,
+        type: "content_block_delta"
+      }),
+      sseEventFromValue({
+        index,
+        type: "content_block_stop"
+      })
+    ];
+  }
+  return [
+    sseEventFromValue({
+      content_block: block,
+      index,
+      type: "content_block_start"
+    }),
+    sseEventFromValue({
+      index,
+      type: "content_block_stop"
+    })
+  ];
+}
+
+function updateAnthropicWebSearchSseUsage(
+  event: ParsedSseEvent,
+  searchCount: number,
+  didSynthesizeAnswer: boolean,
+  hasClientToolUse: boolean
+): ParsedSseEvent {
+  if (!isRecord(event.data) || stringValue(event.data.type) !== "message_delta") {
+    return event;
+  }
+  const delta = isRecord(event.data.delta) ? { ...event.data.delta } : event.data.delta;
+  const nextData: Record<string, unknown> = {
+    ...event.data,
+    usage: mergeAnthropicWebSearchUsage(event.data.usage, searchCount)
+  };
+  if (isRecord(delta) && shouldEndAnthropicHostedWebSearchTurn(delta.stop_reason, didSynthesizeAnswer, hasClientToolUse)) {
+    nextData.delta = { ...delta, stop_reason: "end_turn" };
+  }
+  return {
+    ...event,
+    data: nextData
+  };
+}
+
+function shouldEndAnthropicHostedWebSearchTurn(
+  stopReason: unknown,
+  didSynthesizeAnswer: boolean,
+  hasClientToolUse: boolean
+): boolean {
+  if (hasClientToolUse) {
+    return false;
+  }
+  const normalized = stringValue(stopReason);
+  return normalized === "tool_use" || (didSynthesizeAnswer && normalized === "max_tokens");
+}
+
+function synthesizeWebSearchAnswer(records: BrowserWebSearchProtocolRecord[], queryHint: string | undefined): string | undefined {
+  const query = queryHint || records.map((record) => record.query).find(Boolean) || "";
+  const weatherAnswer = synthesizeWeatherWebSearchAnswer(records, query);
+  if (weatherAnswer) {
+    return weatherAnswer;
+  }
+  const componentChangelogAnswer = synthesizeComponentChangelogWebSearchAnswer(records, query);
+  if (componentChangelogAnswer) {
+    return componentChangelogAnswer;
+  }
+  const evidence = topWebSearchEvidenceSentences(records, query, 3);
+  if (evidence.length === 0) {
+    const sources = webSearchSourceNames(records, 3);
+    if (!sources) {
+      return undefined;
+    }
+    return containsCjkText(query)
+      ? `搜索已完成，但页面可提取正文不足。较相关的来源包括：${sources}。`
+      : `The search completed, but the pages did not expose enough extractable text. The most relevant sources are: ${sources}.`;
+  }
+  const sources = webSearchSourceNames(records, 3);
+  return containsCjkText(query)
+    ? `根据搜索结果，${evidence.join("；")}。${sources ? `来源：${sources}。` : ""}`
+    : `Based on the search results, ${evidence.join("; ")}.${sources ? ` Sources: ${sources}.` : ""}`;
+}
+
+function synthesizeComponentChangelogWebSearchAnswer(records: BrowserWebSearchProtocolRecord[], query: string): string | undefined {
+  const normalizedQuery = normalizeSearchComparisonText(query);
+  const asksForComponents = /component|components|组件/i.test(query);
+  const asksForNewOrChangelog = /new|latest|recent|changelog|release|新增|新组件|最新|更新|官方/i.test(query);
+  if (!asksForComponents || !asksForNewOrChangelog) {
+    return undefined;
+  }
+  const items = webSearchEvidenceItems(records);
+  const preferred = items.find((item) => {
+    const normalized = normalizeSearchComparisonText(`${item.source} ${item.url} ${item.text.slice(0, 500)}`);
+    return normalized.includes("changelog") || normalized.includes("official") || normalized.includes("docs") || normalizedQuery.includes("official");
+  }) ?? items[0];
+  if (!preferred) {
+    return undefined;
+  }
+  const release = extractComponentReleaseTitle(preferred.text);
+  const components = extractLikelyComponentNames(preferred.text);
+  const sources = webSearchSourceNames(records, 2);
+  const cjk = containsCjkText(query);
+  if (!release && components.length === 0) {
+    return undefined;
+  }
+  if (cjk) {
+    return [
+      release ? `官方相关条目是 ${release}` : "官方页面包含新增组件相关内容",
+      components.length > 0 ? `可提取到的相关组件包括 ${components.join("、")}` : "",
+      sources ? `来源：${sources}。` : ""
+    ].filter(Boolean).join("；");
+  }
+  return [
+    release ? `The relevant official entry is ${release}` : "The official page contains new component information",
+    components.length > 0 ? `extractable related components include ${components.join(", ")}` : "",
+    sources ? `Sources: ${sources}.` : ""
+  ].filter(Boolean).join("; ");
+}
+
+function extractComponentReleaseTitle(text: string): string | undefined {
+  const patterns = [
+    /((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}\s*-\s*Components?[^.。!?]{0,90})/i,
+    /(\d{4}[-/]\d{1,2}[^.。!?]{0,60}Components?[^.。!?]{0,60})/i
+  ];
+  for (const pattern of patterns) {
+    const match = pattern.exec(text);
+    const title = match?.[1]?.replace(/\s+/g, " ").trim();
+    if (title) {
+      return title;
+    }
+  }
+  return undefined;
+}
+
+function extractLikelyComponentNames(text: string): string[] {
+  const knownNames = [
+    "Message Scroller",
+    "Message",
+    "Attachment",
+    "Bubble",
+    "Marker",
+    "Empty",
+    "Item",
+    "Field",
+    "Input OTP",
+    "Button Group"
+  ];
+  const lower = text.toLowerCase();
+  return knownNames.filter((name) => lower.includes(name.toLowerCase())).slice(0, 10);
+}
+
+function synthesizeWeatherWebSearchAnswer(records: BrowserWebSearchProtocolRecord[], query: string): string | undefined {
+  if (!/天气|气温|温度|weather|forecast|temperature/i.test(query)) {
+    return undefined;
+  }
+  const items = webSearchEvidenceItems(records);
+  const text = items.map((item) => item.text).join(" ");
+  if (!text) {
+    return undefined;
+  }
+  const cjk = containsCjkText(query);
+  const location = extractWeatherLocation(query);
+  const temperatureRange = weatherTemperatureRange(text);
+  const currentTemperature = firstRegexGroup(text, [
+    /(?:当前|现在|实时|实况|气温|温度)[^。；，,\d-]{0,12}(-?\d{1,2}(?:\.\d+)?)\s*℃/i,
+    location ? new RegExp(`${escapeRegExp(location)}\\s+(-?\\d{1,2}(?:\\.\\d+)?)\\s*℃`) : undefined
+  ]);
+  const feelsLike = firstRegexGroup(text, [/体感温度[：:\s]*(-?\d{1,2}(?:\.\d+)?)\s*℃/]);
+  const high = firstRegexGroup(text, [/最高气温[：:\s]*(-?\d{1,2}(?:\.\d+)?)\s*℃/]);
+  const low = firstRegexGroup(text, [/最低气温[：:\s]*(-?\d{1,2}(?:\.\d+)?)\s*℃/]);
+  const humidity = firstRegexGroup(text, [/(?:最大相对湿度|相对湿度)[：:\s]*(-?\d{1,3}(?:\.\d+)?%)/]);
+  const aqi = firstRegexGroup(text, [/AQI最高值[：:\s]*(\d{1,3})/i]);
+  const airQuality = firstRegexGroup(text, [/空气质量[：:\s]*([^\s，。；,;]{1,12})/]);
+  const rain = firstRegexGroup(text, [/(?:过去24小时总降水量|总降水量|降水量)[：:\s]*(-?\d+(?:\.\d+)?mm)/i]);
+  const wind = firstRegexGroup(text, [/最大风力[：:\s]*([<>]?\d+级|微风)/, /(东风|东南风|南风|西南风|西风|西北风|北风|东北风)\s*([<>]?\d+级|微风)/]);
+
+  const facts = [
+    currentTemperature ? (cjk ? `当前约 ${currentTemperature}℃` : `currently about ${currentTemperature}°C`) : undefined,
+    !currentTemperature && temperatureRange ? (cjk ? `气温约 ${temperatureRange}` : `temperatures are around ${temperatureRange}`) : undefined,
+    feelsLike ? (cjk ? `体感约 ${feelsLike}℃` : `feels like about ${feelsLike}°C`) : undefined,
+    high || low ? (cjk
+      ? `过去24小时${high ? `最高 ${high}℃` : ""}${high && low ? "、" : ""}${low ? `最低 ${low}℃` : ""}`
+      : `over the past 24 hours ${high ? `the high was ${high}°C` : ""}${high && low ? " and " : ""}${low ? `the low was ${low}°C` : ""}`) : undefined,
+    humidity ? (cjk ? `相对湿度最高 ${humidity}` : `relative humidity reached ${humidity}`) : undefined,
+    aqi ? (cjk ? `AQI 最高 ${aqi}` : `AQI reached ${aqi}`) : undefined,
+    airQuality && !aqi ? (cjk ? `空气质量 ${airQuality}` : `air quality is ${airQuality}`) : undefined,
+    rain ? (cjk ? `过去24小时降水量 ${rain}` : `24-hour rainfall is ${rain}`) : undefined,
+    wind ? (cjk ? `风力 ${wind}` : `wind ${wind}`) : undefined
+  ].filter((item): item is string => Boolean(item));
+
+  if (facts.length === 0) {
+    return undefined;
+  }
+  const sources = webSearchSourceNames(records, 2);
+  if (cjk) {
+    return `${location ? `${location}天气` : "天气"}：${facts.slice(0, 6).join("，")}。${sources ? `来源：${sources}。` : ""}`;
+  }
+  return `${location ? `${location} weather` : "Weather"}: ${facts.slice(0, 6).join(", ")}.${sources ? ` Sources: ${sources}.` : ""}`;
+}
+
+function webSearchEvidenceItems(records: BrowserWebSearchProtocolRecord[]): Array<{ source: string; text: string; url: string }> {
+  return records.flatMap((record) => record.results.map((result) => ({
+    source: result.title || hostnameFromUrl(result.url) || record.engine,
+    text: sanitizeWebSearchEvidenceText(result.content || result.snippet || ""),
+    url: result.url
+  }))).filter((item) => item.text);
+}
+
+function topWebSearchEvidenceSentences(records: BrowserWebSearchProtocolRecord[], query: string, limit: number): string[] {
+  const terms = relevantSearchTerms(query);
+  const scored = webSearchEvidenceItems(records).flatMap((item, itemIndex) => {
+    const sentences = splitEvidenceSentences(item.text).slice(0, 12);
+    return sentences.map((sentence, sentenceIndex) => {
+      const normalizedSentence = normalizeSearchComparisonText(sentence);
+      const termScore = terms.reduce((score, term) => score + (normalizedSentence.includes(term) ? 2 : 0), 0);
+      const sourceBonus = itemIndex === 0 ? 2 : itemIndex === 1 ? 1 : 0;
+      const positionBonus = Math.max(0, 4 - sentenceIndex) / 4;
+      return {
+        score: termScore + sourceBonus + positionBonus,
+        sentence
+      };
+    });
+  }).filter((item) => item.sentence.length >= 12 && item.sentence.length <= 260);
+  scored.sort((left, right) => right.score - left.score || left.sentence.length - right.sentence.length);
+  const seen = new Set<string>();
+  return scored.flatMap((item) => {
+    const key = normalizeSearchComparisonText(item.sentence).slice(0, 120);
+    if (!key || seen.has(key)) {
+      return [];
+    }
+    seen.add(key);
+    return [item.sentence];
+  }).slice(0, limit);
+}
+
+function splitEvidenceSentences(text: string): string[] {
+  return text
+    .replace(/\s+/g, " ")
+    .split(/[。！？!?]\s*|\n+/g)
+    .map((sentence) => sentence.trim().replace(/[，,；;：:]\s*$/, ""))
+    .filter((sentence) => sentence && !looksLikeNavigationText(sentence));
+}
+
+function looksLikeNavigationText(text: string): boolean {
+  const punctuationCount = (text.match(/[，,。；;：:]/g) ?? []).length;
+  const digitCount = (text.match(/\d/g) ?? []).length;
+  return text.length > 160 && punctuationCount < 2 && digitCount < 2;
+}
+
+function relevantSearchTerms(query: string): string[] {
+  const normalizedTerms = normalizeSearchComparisonText(query)
+    .split(" ")
+    .filter((term) => term.length >= 2);
+  const cjkTerms = query.match(/[\p{Script=Han}]{2,}/gu) ?? [];
+  return uniqueStrings([...normalizedTerms, ...cjkTerms].map((term) => term.toLowerCase()));
+}
+
+function weatherTemperatureRange(text: string): string | undefined {
+  const values = Array.from(text.matchAll(/(-?\d{1,2}(?:\.\d+)?)\s*℃/g))
+    .map((match) => Number(match[1]))
+    .filter((value) => Number.isFinite(value) && value > -80 && value < 60)
+    .slice(0, 8);
+  if (values.length === 0) {
+    return undefined;
+  }
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const format = (value: number) => Number.isInteger(value) ? String(value) : value.toFixed(1);
+  return min === max ? `${format(min)}℃` : `${format(min)}-${format(max)}℃`;
+}
+
+function extractWeatherLocation(query: string): string | undefined {
+  const cleaned = query
+    .replace(/perform\s+a\s+web\s+search\s+for\s+the\s+query:\s*/i, "")
+    .replace(/天气预报|天气|气温|温度|怎么样|如何|查询|搜索|今天|今日|现在|当前|请问|weather|forecast|temperature/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned || cleaned.length > 24) {
+    return undefined;
+  }
+  return cleaned;
+}
+
+function firstRegexGroup(text: string, patterns: Array<RegExp | undefined>): string | undefined {
+  for (const pattern of patterns) {
+    if (!pattern) {
+      continue;
+    }
+    const match = pattern.exec(text);
+    const value = match?.[1];
+    if (value) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function sanitizeWebSearchEvidenceText(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function containsCjkText(text: string): boolean {
+  return /\p{Script=Han}/u.test(text);
+}
+
+function webSearchSourceNames(records: BrowserWebSearchProtocolRecord[], limit: number): string {
+  return uniqueStrings(records.flatMap((record) => record.results.map((result) => {
+    const title = result.title?.trim();
+    return title || hostnameFromUrl(result.url) || record.engine;
+  }))).slice(0, limit).join("、");
+}
+
+function hostnameFromUrl(value: string): string | undefined {
+  try {
+    return new URL(value).hostname.replace(/^www\./, "");
+  } catch {
+    return undefined;
+  }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function anthropicWebSearchProtocolBlocks(records: BrowserWebSearchProtocolRecord[], requestId: string): Record<string, unknown>[] {
+  const blocks: Record<string, unknown>[] = [];
+  records.forEach((record, index) => {
+    const toolUseId = `srvtoolu_${sanitizeAnthropicToolUseId(requestId)}_${index + 1}`;
+    blocks.push({
+      id: toolUseId,
+      input: { query: record.query },
+      name: "web_search",
+      type: "server_tool_use"
+    });
+    blocks.push({
+      content: record.results.map(anthropicWebSearchResultBlock),
+      tool_use_id: toolUseId,
+      type: "web_search_tool_result"
+    });
+  });
+  return blocks;
+}
+
+function anthropicWebSearchResultBlock(result: BrowserWebSearchProtocolResult): Record<string, unknown> {
+  const snippet = anthropicWebSearchResultSnippet(result);
+  return {
+    encrypted_content: "",
+    ...(snippet ? { snippet: snippet.slice(0, 1_200) } : {}),
+    title: result.title,
+    type: "web_search_result",
+    url: result.url
+  };
+}
+
+function anthropicWebSearchResultSnippet(result: BrowserWebSearchProtocolResult): string | undefined {
+  const parts = [
+    result.snippet ? `Search snippet: ${sanitizeWebSearchEvidenceText(result.snippet)}` : "",
+    result.content ? `Extracted page content: ${sanitizeWebSearchEvidenceText(result.content)}` : ""
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join("\n") : undefined;
+}
+
+function sanitizeAnthropicToolUseId(value: string): string {
+  return value.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24) || randomBytes(8).toString("hex");
+}
+
+type ParsedSseEvent = {
+  data?: unknown;
+  event?: string;
+  raw?: string;
+};
+
+function parseSseEvents(body: string): ParsedSseEvent[] {
+  return body
+    .split(/\r?\n\r?\n/g)
+    .filter((block) => block.trim())
+    .map(parseSseEventBlock);
+}
+
+function parseSseEventBlock(raw: string): ParsedSseEvent {
+  const lines = raw.split(/\r?\n/g);
+  const event = lines
+    .filter((line) => line.startsWith("event:"))
+    .map((line) => line.slice(6).trim())
+    .find(Boolean);
+  const data = lines
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice(5).replace(/^ /, ""))
+    .join("\n");
+  if (!data || data === "[DONE]") {
+    return { event, raw };
+  }
+  try {
+    return { data: JSON.parse(data) as unknown, event, raw };
+  } catch {
+    return { event, raw };
+  }
+}
+
+function shiftSseContentBlockIndex(event: ParsedSseEvent, startIndex: number, delta: number): ParsedSseEvent {
+  if (!isRecord(event.data) || !Number.isFinite(event.data.index) || Number(event.data.index) < startIndex) {
+    return event;
+  }
+  return {
+    ...event,
+    data: {
+      ...event.data,
+      index: Number(event.data.index) + delta
+    }
+  };
+}
+
+function sseEventFromValue(data: Record<string, unknown>): ParsedSseEvent {
+  return {
+    data,
+    event: stringValue(data.type)
+  };
+}
+
+function serializeSseEvent(event: ParsedSseEvent): string {
+  if (event.data === undefined) {
+    return event.raw ?? "";
+  }
+  const type = isRecord(event.data) ? stringValue(event.data.type) : undefined;
+  return [
+    event.event || type ? `event: ${event.event || type}` : undefined,
+    `data: ${JSON.stringify(event.data)}`
+  ].filter(Boolean).join("\n");
 }
 
 function requestProtocolForPath(path: string): GatewayProviderProtocol | undefined {
@@ -3159,6 +6023,16 @@ function createGatewayProcessEnv(config: AppConfig, upstreamProxyUrl: string | u
     PORT: String(config.gateway.corePort)
   };
 
+  const noProxy = mergeNoProxy(env.NO_PROXY || env.no_proxy, [
+    "127.0.0.1",
+    "localhost",
+    "::1",
+    config.gateway.host,
+    config.gateway.coreHost
+  ]);
+  env.NO_PROXY = noProxy;
+  env.no_proxy = noProxy;
+
   if (!upstreamProxyUrl) {
     return env;
   }
@@ -3166,13 +6040,9 @@ function createGatewayProcessEnv(config: AppConfig, upstreamProxyUrl: string | u
   env.HTTP_PROXY = upstreamProxyUrl;
   env.HTTPS_PROXY = upstreamProxyUrl;
   env.ALL_PROXY = upstreamProxyUrl;
-  env.NO_PROXY = mergeNoProxy(env.NO_PROXY, [
-    "127.0.0.1",
-    "localhost",
-    "::1",
-    config.gateway.host,
-    config.gateway.coreHost
-  ]);
+  env.http_proxy = upstreamProxyUrl;
+  env.https_proxy = upstreamProxyUrl;
+  env.all_proxy = upstreamProxyUrl;
   env.CCR_UPSTREAM_PROXY_URL = upstreamProxyUrl;
   env.CCR_UNDICI_MODULE = requireFromHere.resolve("undici");
   return env;
@@ -3187,8 +6057,79 @@ function writeGatewayProxyPreloadFile(config: AppConfig, upstreamProxyUrl: strin
       "const proxyUrl = process.env.CCR_UPSTREAM_PROXY_URL;",
       "if (proxyUrl) {",
       "  const undiciModule = process.env.CCR_UNDICI_MODULE || \"undici\";",
-      "  const { ProxyAgent, setGlobalDispatcher } = require(undiciModule);",
-      "  setGlobalDispatcher(new ProxyAgent(proxyUrl));",
+      "  const { Agent, ProxyAgent, setGlobalDispatcher } = require(undiciModule);",
+      "  const directAgent = new Agent();",
+      "  const proxyAgent = new ProxyAgent(proxyUrl);",
+      "  const noProxyEntries = String(process.env.NO_PROXY || process.env.no_proxy || \"\")",
+      "    .split(\",\")",
+      "    .map((entry) => entry.trim())",
+      "    .filter(Boolean);",
+      "  function normalizeHost(host) {",
+      "    return String(host || \"\").replace(/^\\[/, \"\").replace(/\\]$/, \"\").replace(/\\.$/, \"\").toLowerCase();",
+      "  }",
+      "  function isLoopbackHost(host) {",
+      "    return host === \"localhost\" || host === \"::1\" || host === \"0:0:0:0:0:0:0:1\" || host === \"127.0.0.1\" || host.startsWith(\"127.\");",
+      "  }",
+      "  function splitNoProxyEntry(entry) {",
+      "    let value = String(entry || \"\").trim().toLowerCase();",
+      "    if (!value || value === \"*\") {",
+      "      return { host: value, port: \"\" };",
+      "    }",
+      "    if (value.startsWith(\"[\")) {",
+      "      const end = value.indexOf(\"]\");",
+      "      if (end >= 0) {",
+      "        const remainder = value.slice(end + 1);",
+      "        return { host: normalizeHost(value.slice(1, end)), port: remainder.startsWith(\":\") ? remainder.slice(1) : \"\" };",
+      "      }",
+      "    }",
+      "    const colon = value.lastIndexOf(\":\");",
+      "    if (colon > 0 && value.indexOf(\":\") === colon) {",
+      "      return { host: normalizeHost(value.slice(0, colon)), port: value.slice(colon + 1) };",
+      "    }",
+      "    return { host: normalizeHost(value), port: \"\" };",
+      "  }",
+      "  function noProxyMatches(host, port, entry) {",
+      "    const parsed = splitNoProxyEntry(entry);",
+      "    if (parsed.host === \"*\") {",
+      "      return true;",
+      "    }",
+      "    if (!parsed.host || (parsed.port && parsed.port !== port)) {",
+      "      return false;",
+      "    }",
+      "    if (parsed.host.startsWith(\"*.\")) {",
+      "      const suffix = parsed.host.slice(1);",
+      "      return host.endsWith(suffix);",
+      "    }",
+      "    if (parsed.host.startsWith(\".\")) {",
+      "      return host === parsed.host.slice(1) || host.endsWith(parsed.host);",
+      "    }",
+      "    return host === parsed.host || host.endsWith(`.${parsed.host}`);",
+      "  }",
+      "  function shouldBypassProxy(origin) {",
+      "    try {",
+      "      const url = new URL(String(origin));",
+      "      const host = normalizeHost(url.hostname);",
+      "      const port = url.port || (url.protocol === \"https:\" ? \"443\" : url.protocol === \"http:\" ? \"80\" : \"\");",
+      "      return isLoopbackHost(host) || noProxyEntries.some((entry) => noProxyMatches(host, port, entry));",
+      "    } catch {",
+      "      return false;",
+      "    }",
+      "  }",
+      "  setGlobalDispatcher({",
+      "    dispatch(options, handler) {",
+      "      return shouldBypassProxy(options && options.origin)",
+      "        ? directAgent.dispatch(options, handler)",
+      "        : proxyAgent.dispatch(options, handler);",
+      "    },",
+      "    close(callback) {",
+      "      Promise.all([directAgent.close(), proxyAgent.close()]).then(() => callback && callback(), callback);",
+      "    },",
+      "    destroy(error, callback) {",
+      "      directAgent.destroy(error);",
+      "      proxyAgent.destroy(error);",
+      "      if (callback) callback();",
+      "    }",
+      "  });",
       "}"
     ].join("\n"),
     "utf8"
