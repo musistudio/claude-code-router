@@ -7,6 +7,7 @@ import { mistralProviderPreset } from "./mistral";
 import { moonshotChinaProviderPreset, moonshotGlobalProviderPreset } from "./moonshot";
 import { openaiProviderPreset } from "./openai";
 import { openRouterProviderPreset } from "./openrouter";
+import { runApiProviderPreset } from "./runapi";
 import { siliconFlowProviderPreset } from "./siliconflow";
 import { zaiGlobalCodingProviderPreset } from "./zai-global-coding";
 import { zaiGlobalGeneralProviderPreset } from "./zai-global-general";
@@ -38,7 +39,8 @@ export const providerPresets: ProviderPreset[] = [
   moonshotChinaProviderPreset,
   moonshotGlobalProviderPreset,
   bailianProviderPreset,
-  siliconFlowProviderPreset
+  siliconFlowProviderPreset,
+  runApiProviderPreset
 ];
 
 export function getProviderPresets(): ProviderPreset[] {

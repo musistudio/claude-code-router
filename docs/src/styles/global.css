@@ -1300,6 +1300,12 @@ h1 {
   --provider-brand-3: #d9e3f1;
 }
 
+.doc-markdown a.provider-import-button.provider-runapi {
+  --provider-brand: #070707;
+  --provider-brand-2: #747474;
+  --provider-brand-3: #f3f3f3;
+}
+
 .doc-markdown a.provider-import-button.provider-deepseek {
   --provider-brand: #173aa8;
   --provider-brand-2: #4e69ff;

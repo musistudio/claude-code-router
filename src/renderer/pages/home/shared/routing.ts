@@ -386,10 +386,11 @@ export function normalizeRouterConfig(value: Partial<RouterConfig> | undefined):
   const router = {
     ...fallbackConfig.Router,
     ...(value || {})
-  };
+  } as RouterConfig & { default?: unknown };
+  const { default: _legacyDefault, ...routerWithoutLegacyDefault } = router;
   const rules = normalizeRouterRules((value as Record<string, unknown> | undefined)?.rules) ?? [];
   return {
-    ...router,
+    ...routerWithoutLegacyDefault,
     builtInRules: normalizeRouterBuiltInRules((value as Record<string, unknown> | undefined)?.builtInRules),
     fallback: normalizeRouterFallbackConfig((value as Record<string, unknown> | undefined)?.fallback),
     rules
@@ -847,7 +848,7 @@ export function buildRoutingRuleRows(config: AppConfig): RoutingRuleRow[] {
 export function buildBuiltInAgentRoutingRows(config: AppConfig): RoutingRuleRow[] {
   return routerBuiltInAgentRuleIds.map((agent): RoutingRuleRow => {
     const target = routerBuiltInAgentRouteTarget(config, agent);
-    const profileEnabled = Boolean(routerBuiltInAgentProfile(config, agent));
+    const toggleDisabledReason = routerBuiltInAgentRuleDisabledReason(config, agent);
     return {
       builtInAgent: agent,
       condition: `request.header.user-agent contains ${routerBuiltInAgentUserAgentNeedle(agent)}`,
@@ -859,7 +860,8 @@ export function buildBuiltInAgentRoutingRows(config: AppConfig): RoutingRuleRow[
       ruleId: `builtin-agent-${agent}`,
       sourceLabel: "Built-in",
       target: target ? `set request.body.model = ${target}` : "Profile model unset",
-      toggleDisabled: !profileEnabled || !target,
+      toggleDisabled: Boolean(toggleDisabledReason),
+      toggleDisabledReason,
       typeLabel: "Condition"
     };
   });
@@ -885,7 +887,22 @@ export function routerBuiltInAgentProfile(config: AppConfig, agent: RouterBuiltI
 }
 
 export function routerBuiltInAgentRouteTarget(config: AppConfig, agent: RouterBuiltInAgentRuleId): string {
-  return routerBuiltInAgentProfile(config, agent)?.model.trim() || config.Router.default?.trim() || "";
+  return routerBuiltInAgentProfile(config, agent)?.model.trim() || "";
+}
+
+export function routerBuiltInAgentRuleDisabledReason(config: AppConfig, agent: RouterBuiltInAgentRuleId): string | undefined {
+  if (config.profile.enabled === false) {
+    return "Agent profiles are disabled.";
+  }
+  const agentName = routerBuiltInAgentRuleName(agent);
+  const profile = routerBuiltInAgentProfile(config, agent);
+  if (!profile) {
+    return `Enable a ${agentName} profile before enabling this built-in route.`;
+  }
+  if (!profile.model.trim()) {
+    return `Set a model on the ${agentName} profile before enabling this built-in route.`;
+  }
+  return undefined;
 }
 
 export function routerBuiltInAgentRuleName(agent: RouterBuiltInAgentRuleId): string {

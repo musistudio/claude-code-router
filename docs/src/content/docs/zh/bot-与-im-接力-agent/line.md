@@ -13,7 +13,7 @@ LINE 适合把 Agent 消息接入已有的 LINE 好友、群聊或 LINE Official
 
 ## 你会用到哪些字段
 
-CCR 里 LINE 的认证方式叫 **Bot Token**，但填的不是 Telegram 那种 token，而是下面这两个 channel 字段：
+CCR 里 LINE 的认证方式叫 **Bot Token**，这里需要填写下面这两个 channel 字段：
 
 | LINE 后台里的名字 | CCR 字段 | 是否必填 | 说明 |
 | --- | --- | --- | --- |

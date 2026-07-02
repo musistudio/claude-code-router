@@ -15,7 +15,7 @@ export const docsContent = {
     navItems: [
       { label: "文档", href: "/", pageKey: "documentation" },
       { label: "快速开始", href: "/guides/", pageKey: "guides" },
-      { label: "详细配置", href: "/configuration/provider/", pageKey: "configuration" },
+      { label: "详细配置", href: "/configuration/overview/", pageKey: "configuration" },
       { label: "Q&A", href: "/troubleshooting/", pageKey: "troubleshooting" },
     ],
     pages: {
@@ -77,7 +77,7 @@ export const docsContent = {
               "Bot 与 IM 接力 Agent",
               "配置数据库位置",
             ],
-            active: "供应商配置",
+            active: "概览仪表盘",
           },
         ],
         expandableSidebarItems: ["Fusion 组合模型", "Bot 与 IM 接力 Agent"],
@@ -163,7 +163,7 @@ export const docsContent = {
     navItems: [
       { label: "Documentation", href: "/en/", pageKey: "documentation" },
       { label: "Quick Start", href: "/en/guides/", pageKey: "guides" },
-      { label: "Detailed Configuration", href: "/en/configuration/providers/", pageKey: "configuration" },
+      { label: "Detailed Configuration", href: "/en/configuration/overview/", pageKey: "configuration" },
       { label: "Q&A", href: "/en/troubleshooting/", pageKey: "troubleshooting" },
     ],
     pages: {
@@ -225,7 +225,7 @@ export const docsContent = {
               "Bots And IM Agent Relay",
               "Config Database Location",
             ],
-            active: "Provider Config",
+            active: "Overview Dashboard",
           },
         ],
         expandableSidebarItems: ["Fusion Models", "Bots And IM Agent Relay"],

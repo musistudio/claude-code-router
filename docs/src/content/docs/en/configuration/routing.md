@@ -9,9 +9,9 @@ lead: Choose the model for a request, then automatically retry or switch to fall
 
 ### Claude Code
 
-The built-in Claude Code route detects requests from Claude Code and routes main requests to the Claude Code Agent Config model or the default route model.
+The built-in Claude Code route detects requests from Claude Code and routes main requests to the Claude Code Agent Config model.
 
-Claude Code **main requests** use the Claude Code Agent Config model by default; if it is unset, they use the Routing page default model. CCR also automatically removes the first `x-anthropic-billing-header` system message injected by Claude Code so that billing helper messages do not affect later routing decisions. Claude Code Subagent, Task, and Workflow-created agents can still choose different models through the tag mechanism below.
+Claude Code **main requests** use the Claude Code Agent Config model. If that model is unset, the built-in route remains inactive. CCR also automatically removes the first `x-anthropic-billing-header` system message injected by Claude Code so that billing helper messages do not affect later routing decisions. Claude Code Subagent, Task, and Workflow-created agents can still choose different models through the tag mechanism below.
 
 #### Subagent / Workflow Auto-Routing
 
@@ -137,9 +137,9 @@ When a rule matches, its **On failure** setting is used. Requests that do not ma
 
 After saving, the rule appears in the list. Use request logs, especially `request model`, `resolved provider`, `resolved model`, and route reason, to verify that it matched.
 
-## What Fallback Does
+## Fallback Handling
 
-Fallback is the failure strategy after a model or upstream request fails. It does not pick the first model; it decides whether CCR should keep trying after the current target fails.
+Fallback is the failure strategy after a model or upstream request fails. Routing picks the first model; Fallback decides whether CCR should keep trying after the current target fails.
 
 The **Default on failure** control at the top of the Routing page is the global Fallback. Each rule also has **On failure**. When a rule matches, its rule-level Fallback overrides the global Fallback.
 
@@ -176,7 +176,7 @@ Configure **Default on failure** at the top of the Routing page:
 2. If you choose **Retry**, set `Retries`.
 3. If you choose **Fallback targets**, add backup models in priority order.
 
-Global Fallback applies to the default route and to rules that do not define their own Fallback.
+Global Fallback applies to routing rules that do not define their own Fallback.
 
 ### Rule-Level Fallback
 

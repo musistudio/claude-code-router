@@ -1190,10 +1190,6 @@ function parseRouter(value: unknown): Partial<RouterConfig> | undefined {
   }
 
   const router: Partial<RouterConfig> = {};
-  const defaultRoute = readString(value.default);
-  if (defaultRoute) {
-    router.default = defaultRoute;
-  }
   const builtInRules = parseRouterBuiltInRules(value.builtInRules ?? value.builtinRules ?? value.agentRules);
   if (builtInRules) {
     router.builtInRules = builtInRules;
