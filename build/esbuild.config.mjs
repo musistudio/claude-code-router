@@ -116,6 +116,10 @@ export function createMainBuildOptions({ mode = "production", plugins = [] } = {
   return {
     absWorkingDir: projectRoot,
     bundle: true,
+    define: {
+      "process.env.CCR_ENV": JSON.stringify(mode),
+      "process.env.NODE_ENV": JSON.stringify(mode)
+    },
     entryNames: "[name]",
     entryPoints: [
       path.join(projectRoot, "src", "main", "main.ts"),

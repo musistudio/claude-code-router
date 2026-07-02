@@ -22,10 +22,15 @@ function resolveBetterSqliteNativeBinding(): string | undefined {
     return resolvedNativeBinding;
   }
   nativeBindingResolved = true;
+  const suffix = process.versions.electron ? "_electron" : "_node";
   try {
-    resolvedNativeBinding = requireFromHere.resolve("better-sqlite3/build/Release/better_sqlite3.node");
+    resolvedNativeBinding = requireFromHere.resolve(`better-sqlite3/build/Release/better_sqlite3${suffix}.node`);
   } catch {
-    resolvedNativeBinding = undefined;
+    try {
+      resolvedNativeBinding = requireFromHere.resolve("better-sqlite3/build/Release/better_sqlite3.node");
+    } catch {
+      resolvedNativeBinding = undefined;
+    }
   }
   return resolvedNativeBinding;
 }

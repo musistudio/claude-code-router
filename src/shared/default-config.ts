@@ -19,18 +19,22 @@ export const DEFAULT_PROXY_TARGETS: ProxyRouteTarget[] = [
 
 export type DefaultAppConfigOptions = {
   coreHost?: string;
+  corePort?: number;
   generatedConfigFile: string;
+  port?: number;
 };
 
 export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppConfig {
   const coreHost = options.coreHost ?? "127.0.0.1";
+  const port = options.port ?? 3456;
+  const corePort = options.corePort ?? 3457;
   return {
     APIKEY: "",
     APIKEYS: [],
     API_TIMEOUT_MS: 600000,
     CUSTOM_ROUTER_PATH: "",
     HOST: "127.0.0.1",
-    PORT: 3456,
+    PORT: port,
     Providers: [],
     Router: {
       builtInRules: {
@@ -84,11 +88,11 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
     },
     gateway: {
       coreHost,
-      corePort: 3457,
+      corePort,
       enabled: true,
       generatedConfigFile: options.generatedConfigFile,
       host: "127.0.0.1",
-      port: 3456
+      port
     },
     observability: {
       agentAnalysis: false,
@@ -124,7 +128,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
           id: "default-claude-code",
           model: "",
           name: "Claude Code",
-          scope: "global",
+          scope: "ccr",
           settingsFile: "~/.claude/settings.json",
           smallFastModel: "",
           surface: "auto"
@@ -144,7 +148,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
           providerId: "claude-code-router",
           providerName: "Claude Code Router",
           showAllSessions: false,
-          scope: "global",
+          scope: "ccr",
           surface: "auto"
         }
       ]
@@ -161,7 +165,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
     },
     providerPlugins: [],
     overviewWidgets: DEFAULT_OVERVIEW_WIDGETS,
-    routerEndpoint: "http://127.0.0.1:3456",
+    routerEndpoint: `http://127.0.0.1:${port}`,
     theme: "system",
     trayComponentVariants: DEFAULT_TRAY_COMPONENT_VARIANTS,
     trayIcon: "random",

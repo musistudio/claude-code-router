@@ -1,6 +1,7 @@
 import { app, dialog } from "electron";
 import path from "node:path";
 import { APP_STORAGE_NAME, setRuntimeAppPaths } from "./app-paths";
+import { isAppDeepLinkUrl } from "../shared/deep-link";
 import { copyMissingDirectoryContents, sameFilesystemPath } from "./storage-migration";
 
 const appDataPath = app.getPath("appData");
@@ -13,17 +14,52 @@ setRuntimeAppPaths({
 
 let fatalStartupErrorReported = false;
 
-process.once("uncaughtException", reportFatalStartupError);
-process.once("unhandledRejection", reportFatalStartupError);
+const cliDispatchArgs = resolveCliDispatchArgs();
+if (cliDispatchArgs) {
+  void runCliDispatch(cliDispatchArgs);
+} else {
+  process.once("uncaughtException", reportFatalStartupError);
+  process.once("unhandledRejection", reportFatalStartupError);
 
-void import("./main-app.js")
-  .then(() => {
-    process.off("uncaughtException", reportFatalStartupError);
-    process.off("unhandledRejection", reportFatalStartupError);
-  })
-  .catch((error) => {
-    reportFatalStartupError(error);
-  });
+  void import("./main-app.js")
+    .then(() => {
+      process.off("uncaughtException", reportFatalStartupError);
+      process.off("unhandledRejection", reportFatalStartupError);
+    })
+    .catch((error) => {
+      reportFatalStartupError(error);
+    });
+}
+
+// Electron's argv layout differs between dev and packaged runs: in dev
+// (`electron .`) process.defaultApp is true and argv[1] is the app path being
+// loaded, so user args start at index 2, matching a normal Node CLI. In a
+// packaged build there is no separate script slot - argv[0] is the app
+// executable itself, so user args start at index 1. (Same distinction
+// deep-link.ts already relies on for protocol-client registration.)
+function resolveCliDispatchArgs(): string[] | undefined {
+  const args = process.defaultApp ? process.argv.slice(2) : process.argv.slice(1);
+  if (args.length === 0) {
+    return undefined;
+  }
+  // Deep link activations (ccr://...) must still fall through to the GUI so
+  // main-app.ts's normal deep-link handling can pick them up.
+  if (args.some((arg) => isAppDeepLinkUrl(arg))) {
+    return undefined;
+  }
+  return args;
+}
+
+async function runCliDispatch(args: string[]): Promise<void> {
+  try {
+    const { runCliCommand } = await import("./cli.js");
+    const exitCode = await runCliCommand(args);
+    app.exit(exitCode);
+  } catch (error) {
+    console.error(formatErrorDetail(error));
+    app.exit(1);
+  }
+}
 
 function reportFatalStartupError(error: unknown): void {
   if (fatalStartupErrorReported) {

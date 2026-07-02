@@ -47,6 +47,8 @@ Claude Code Router Desktop 是一个本地网关和桌面控制台，用来把 C
    - macOS/Linux：`~/.claude-code-router/config.sqlite`
    - Windows：`%APPDATA%\Claude Code Router\config.sqlite`
 
+打包后的应用本身也是 CLI：不带参数启动会打开桌面 GUI；带上 CLI 风格的参数启动（例如 `Claude-Code-Router.AppImage 'My Profile' cli`，即 GUI 中「复制 CLI」按钮给出的那条命令）则会以无窗口方式运行相同的命令逻辑并退出，不会打开窗口，也不会启动重复的网关。
+
 CCR 的运行配置存储在 SQLite 中。旧版 `config.json` 只会在没有 SQLite 配置时作为迁移来源读取一次。
 
 从 **服务** 页面启动后，CCR 默认监听 `http://localhost:8080`。**服务** 页面负责配置网关 `Host`、`Port`、代理模式、系统代理、网络捕获和 CA 证书状态。
@@ -76,6 +78,104 @@ CCR 可以完全通过桌面 UI 完成配置。首次使用建议按下面顺序
 ### 5. 日常查看和调整
 
 到 **设置 → 日志与观测** 打开请求日志和 Agent 观测。使用 **日志** 确认 `request model`、`resolved provider`、`resolved model`、状态码、tokens、耗时和错误；使用托盘窗口快速查看 Token 和账号状态。
+
+## Provider Deeplink
+
+Provider 网站可以通过自定义协议打开 CCR 并导入模型服务配置：
+
+```text
+ccr://provider?name=Example%20AI&base_url=https%3A%2F%2Fapi.example.com%2Fv1&api_key=sk-example&models=example-chat%2Cexample-coder&protocol=openai_chat_completions
+```
+
+支持的 query 参数：
+
+- `name`：Provider 展示名称。
+- `base_url`：Provider API Base URL。
+- `api_key`：可选 Provider API Key。
+- `models`：逗号或换行分隔的模型列表，也可以重复传入 `models=...`。
+- `protocol`：`openai_chat_completions`、`openai_responses`、`anthropic_messages` 或 `gemini_generate_content`。
+
+更大的 payload 可以通过 URL 编码 JSON 或 base64url JSON 传入 `payload` 字段。CCR 在写入外部链接导入的 Provider 前，总会弹出确认窗口。
+
+## 插件
+
+CCR 有两层插件：
+
+- Core gateway plugins：使用 `providerPlugins` 和 `virtualModelProfiles`，会透传给 core gateway。
+- Wrapper plugins：使用顶层 `plugins` 扩展 Electron wrapper，注册本地 HTTP 后端、添加 gateway route，或把代理模式流量路由到插件后端。
+
+Wrapper plugin route 示例：
+
+```json
+{
+  "plugins": [
+    {
+      "id": "local-admin-api",
+      "enabled": true,
+      "proxy": {
+        "routes": [
+          {
+            "id": "admin-api",
+            "host": "api.example.com",
+            "paths": ["/v1/admin"],
+            "upstream": "http://127.0.0.1:4510",
+            "stripPathPrefix": false
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+插件模块需要导出函数或包含 `setup(ctx)` 的对象。上下文支持：
+
+- `ctx.registerGatewayRoute({ method, path, auth, handler })`
+- `ctx.registerHttpBackend({ id, host, port, handler })`
+- `ctx.registerProxyRoute({ host, paths, upstream, stripPathPrefix, rewritePathPrefix, headers })`
+- `ctx.openSqliteStore({ filename, migrate })`
+- `ctx.registerCoreGatewayProviderPlugin(plugin)`
+- `ctx.registerCoreGatewayVirtualModelProfile(profile)`
+
+本地插件示例见 [examples/plugins](examples/plugins)。
+
+## 开发
+
+```bash
+npm install
+npm run dev                  # 在开发模式下运行 CCR CLI（等同于 `ccr`）
+npm run dev start            # 在开发模式下运行 CCR CLI（等同于 `ccr start`）
+npm run dev:watch            # 启动带热重载的 Electron 应用（用于 UI 开发）
+npm run typecheck
+npm run build:assets
+npm run build:app:mac
+npm run build:app:win
+```
+
+`npm run dev` 就是开发模式下的 `ccr`：会构建一次 CLI，并将全部参数（包括不带参数的情况）原样转发给 `dist/main/cli.js`，例如 `npm run dev start` 的行为与 `ccr start` 完全一致。（不要加 `--` 分隔符——npm 会把它去掉，但 pnpm 会把它当作字面参数原样转发，导致命令解析失败。）`npm run dev:watch` 是另一套独立的 UI/应用开发流程——会构建全部内容、监听变更并启动 Electron 应用。开发环境下，CCR 使用 `~/.claude-code-router-dev/` 作为配置目录，并运行在备用端口（3466/3467），避免与生产实例冲突。启动 Electron 应用时还会向 `~/.claude-code-router-dev/bin/` 写入 `ccr` shim——将该目录加入 `PATH` 即可直接将其作为开发用 CLI 使用。
+
+`npm run build:assets` 会把 Electron main process 和 renderer assets 编译到 `dist/`。
+
+`npm run build` 会为当前平台打包应用，并把安装包写入 `release/`。
+
+`npm run build:app:mac` 和 `npm run build:app:win` 会分别打包对应平台的应用产物。Linux AppImage 打包配置在 `electron-builder.json` 中。
+
+`npm run build:app:mac` 会在 `release-local/` 生成本地测试用 macOS 包，使用 ad-hoc 签名。它适合免费 Apple Account 或只有 Apple Development 证书的本机测试，但不适合公开分发，因为用户下载后仍无法通过 Gatekeeper 公证检查。
+
+macOS 发布包会使用 Developer ID 签名并提交 Apple 公证。运行 `npm run build:app:mac:release` 前，打包机器必须具备：可用的 `Developer ID Application` 证书（在 keychain 中，或通过 `CSC_LINK`/`CSC_KEY_PASSWORD` 提供）、已通过 `xcode-select` 选择完整 Xcode，以及下面任意一组公证凭据：
+
+- `APPLE_API_KEY`、`APPLE_API_KEY_ID`、`APPLE_API_ISSUER`
+- `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID`
+- `APPLE_KEYCHAIN_PROFILE`，可选 `APPLE_KEYCHAIN`
+
+macOS 打包 hook 会在产物生成前验证代码签名、公证票据 stapling 和 Gatekeeper 评估，避免发布未公证的安装包。
+
+打包后的应用会通过 `electron-updater` 检查 GitHub Releases。测试本地更新源时，可以在启动应用前设置 `CCR_UPDATE_FEED_URL` 为 generic electron-updater feed URL。`CCR_UPDATE_ALLOW_PRERELEASE=1` 可以启用 prerelease 更新。
+
+## 深入阅读
+
+- [项目动机和工作原理](blog/zh/项目初衷及原理.md)
+- [也许我们可以用路由器做更多事情](blog/zh/或许我们能在Router中做更多事情.md)
 
 ## 致谢
 
