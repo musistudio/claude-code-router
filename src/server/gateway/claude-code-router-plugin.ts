@@ -421,8 +421,7 @@ function claudeCodeAgentToolInstructions(config: AppConfig): { prompt: string; t
 }
 
 function configuredSubagentModelDescriptionRows(config: AppConfig): string[] {
-  const rows: string[] = [];
-  const seen = new Set<string>();
+  const candidates: Array<{ key: string; row: string; selector: string }> = [];
   for (const provider of config.Providers) {
     const providerName = provider.name?.trim();
     if (!providerName || !Array.isArray(provider.models)) {
@@ -436,16 +435,40 @@ function configuredSubagentModelDescriptionRows(config: AppConfig): string[] {
       }
       const selector = `${providerName}/${model}`;
       const key = selector.toLowerCase();
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
       const displayName = provider.modelDisplayNames?.[model]?.trim();
       const label = displayName && displayName !== model ? `${selector} (${displayName})` : selector;
-      rows.push(`- ${label}: ${singleLineText(description, 320)}`);
+      candidates.push({
+        key,
+        row: `- ${label}: ${singleLineText(description, 320)}`,
+        selector
+      });
     }
   }
+  candidates.sort(compareSubagentModelDescriptionRows);
+
+  const rows: string[] = [];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    if (seen.has(candidate.key)) {
+      continue;
+    }
+    seen.add(candidate.key);
+    rows.push(candidate.row);
+  }
   return rows;
+}
+
+function compareSubagentModelDescriptionRows(
+  left: { key: string; row: string; selector: string },
+  right: { key: string; row: string; selector: string }
+): number {
+  return compareCodeUnitStrings(left.key, right.key) ||
+    compareCodeUnitStrings(left.selector, right.selector) ||
+    compareCodeUnitStrings(left.row, right.row);
+}
+
+function compareCodeUnitStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function removeClaudeCodeBillingSystemHeader(body: Record<string, unknown>): void {
