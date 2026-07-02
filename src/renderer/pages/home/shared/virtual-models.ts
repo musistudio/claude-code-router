@@ -625,7 +625,7 @@ export function fusionWebSearchConfigFromDraft(draft: VirtualModelDraft, key: st
 
 export function fusionWebSearchToolName(key: string): string {
   const normalized = sanitizeConfigId(key).replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
-  return `web_search_${normalized || "fusion"}`;
+  return `${normalized || "fusion"}_web_search`;
 }
 
 export function fusionCustomToolConfigFromProfile(profile: VirtualModelProfileConfig): VirtualModelFusionCustomToolConfig | undefined {
@@ -996,7 +996,10 @@ export function isFusionVisionToolName(name: string): boolean {
 
 export function isFusionWebSearchToolName(name: string): boolean {
   const normalized = normalizeFusionToolName(name);
-  return normalized === BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME || normalized.startsWith(`${BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME}_`);
+  return normalized === BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME ||
+    normalized.startsWith(`${BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME}_`) ||
+    normalized.endsWith(`_${BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME}`) ||
+    normalized.includes("search_web");
 }
 
 export function selectedFusionToolName(toolsText: string): string {

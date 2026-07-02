@@ -90,6 +90,10 @@ const visionTool = {
 const webSearchTool = {
   description: "Search the web with this Fusion profile's configured search provider.",
   inputSchema: objectSchema({
+    allowedDomains: { items: { type: "string" }, type: "array" },
+    allowed_domains: { items: { type: "string" }, type: "array" },
+    blockedDomains: { items: { type: "string" }, type: "array" },
+    blocked_domains: { items: { type: "string" }, type: "array" },
     count: { maximum: 20, minimum: 1, type: "number" },
     country: { type: "string" },
     excludeDomains: { items: { type: "string" }, type: "array" },
@@ -280,9 +284,17 @@ async function analyzeWebSearch(args: Record<string, unknown>): Promise<string> 
   const input = {
     count,
     country: readString(args.country),
-    excludeDomains: readStringArray(args.excludeDomains),
+    excludeDomains: uniqueStrings([
+      ...readStringArray(args.excludeDomains),
+      ...readStringArray(args.blockedDomains),
+      ...readStringArray(args.blocked_domains)
+    ]),
     freshness: readString(args.freshness),
-    includeDomains: readStringArray(args.includeDomains),
+    includeDomains: uniqueStrings([
+      ...readStringArray(args.includeDomains),
+      ...readStringArray(args.allowedDomains),
+      ...readStringArray(args.allowed_domains)
+    ]),
     includeRaw: args.includeRaw === true,
     language: readString(args.language),
     prompt,
@@ -651,10 +663,17 @@ function isSearchResult(value: SearchResult): value is Required<Pick<SearchResul
 }
 
 function readStringArray(value: unknown): string[] {
+  if (typeof value === "string") {
+    return value.split(",").map((item) => item.trim()).filter(Boolean);
+  }
   if (!Array.isArray(value)) {
     return [];
   }
   return value.map(readString).filter((item): item is string => Boolean(item));
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
 }
 
 function textResult(text: string): ToolCallResult {
