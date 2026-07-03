@@ -487,7 +487,7 @@ async function probeProtocolSupport(
   for (const candidate of endpoints) {
     const result = await requestJson(candidate.endpoint, requestForProtocolSupport(protocol, apiKey));
     const message = readResponseMessage(result);
-    const supported = isProtocolEndpointSupported(result.status, message);
+    const supported = isProviderProtocolEndpointSupportedForProbe(result.status, message, protocol, parsed.hints);
     const probeResult = {
       baseUrl: candidate.baseUrl,
       endpoint: candidate.endpoint,
@@ -1003,16 +1003,35 @@ function isProtocolSupported(status: number | undefined, message: string): boole
   return false;
 }
 
-function isProtocolEndpointSupported(status: number | undefined, message: string): boolean {
+export function isProviderProtocolEndpointSupportedForProbe(
+  status: number | undefined,
+  message: string,
+  protocol: GatewayProviderProtocol,
+  hints: GatewayProviderProtocol[] = []
+): boolean {
   if (isProtocolSupported(status, message)) {
     return true;
   }
 
   if (status === 401 || status === 403) {
     const normalized = message.toLowerCase();
-    return !/not found|unknown endpoint|unknown route|no route/.test(normalized);
+    return (hints.length === 0 || protocolMatchesHints(protocol, hints)) &&
+      !/not found|unknown endpoint|unknown route|no route/.test(normalized);
   }
 
+  return false;
+}
+
+function protocolMatchesHints(protocol: GatewayProviderProtocol, hints: GatewayProviderProtocol[]): boolean {
+  if (hints.includes(protocol)) {
+    return true;
+  }
+  if (protocol === "openai_chat_completions") {
+    return hints.includes("openai_responses");
+  }
+  if (protocol === "openai_responses") {
+    return hints.includes("openai_chat_completions");
+  }
   return false;
 }
 

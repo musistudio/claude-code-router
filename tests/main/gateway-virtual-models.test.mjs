@@ -79,6 +79,56 @@ test("gateway config rewrites Fusion fixed base and vision models to core provid
   assert.equal(profiles[0].baseModel.fixedModel, `${providerName}/glm-5.2`);
 });
 
+test("gateway ignores non-Gemini capabilities on Gemini preset providers", () => {
+  const providerName = "Google Gemini";
+  const config = {
+    Providers: [
+      {
+        api_base_url: "https://generativelanguage.googleapis.com",
+        capabilities: [
+          { baseUrl: "https://generativelanguage.googleapis.com", source: "preset", type: "gemini_generate_content" },
+          { baseUrl: "https://generativelanguage.googleapis.com", source: "preset", type: "openai_chat_completions" },
+          { baseUrl: "https://generativelanguage.googleapis.com", source: "preset", type: "openai_responses" },
+          { baseUrl: "https://generativelanguage.googleapis.com", source: "preset", type: "anthropic_messages" }
+        ],
+        credentials: [{ apiKey: "test-key", id: "test-1" }],
+        id: "provider-google-gemini-1785c39128",
+        models: ["gemini-2.5-pro"],
+        name: providerName,
+        type: "gemini_generate_content"
+      }
+    ],
+    Router: { fallback: { mode: "off", models: [], retryCount: 0 } },
+    gateway: {}
+  };
+  const profiles = [
+    {
+      baseModel: { fixedModel: `${providerName}/gemini-2.5-pro`, mode: "fixed" },
+      displayName: "Gemini Fusion",
+      enabled: true,
+      execution: {
+        clientToolsPolicy: "allow",
+        maxToolCalls: 8,
+        maxTurns: 6,
+        mode: "tool_loop",
+        streamMode: "optimistic"
+      },
+      id: "gemini-fusion",
+      key: "gemini-fusion",
+      match: { exactAliases: ["gemini-fusion"], prefixes: [], suffixes: [] },
+      materialization: { enabled: true, includeInGatewayModels: true },
+      tools: []
+    }
+  ];
+
+  const [profile] = normalizeCoreGatewayVirtualModelProfiles(profiles, config);
+
+  assert.equal(
+    profile.baseModel.fixedModel,
+    "provider-google-gemini-1785c39128::gemini_generate_content::cred:test-1/gemini-2.5-pro"
+  );
+});
+
 test("gateway config normalizes Fusion web search tool names for native Anthropic search triggers", () => {
   const profiles = [
     {

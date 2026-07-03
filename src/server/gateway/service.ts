@@ -37,7 +37,7 @@ import {
   ROUTER_FALLBACK_MAX_RETRY_COUNT,
   hasAvailableGatewayModels
 } from "../../shared/app";
-import { providerApiKeySafetyIssue } from "../../main/presets";
+import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue } from "../../main/presets";
 import { normalizeProviderBaseUrl as normalizeProviderBaseUrlInput } from "../../shared/provider-url";
 import { backendService } from "../backend-service";
 import { RAW_TRACE_SPOOL_DIR } from "../../main/constants";
@@ -6249,7 +6249,46 @@ function normalizedProviderCapabilities(provider: GatewayProviderConfig): Gatewa
       normalized.push(selected);
     }
   }
-  return normalized;
+  return applyPresetProtocolLock(provider, normalized);
+}
+
+function applyPresetProtocolLock(
+  provider: GatewayProviderConfig,
+  capabilities: GatewayProviderCapability[]
+): GatewayProviderCapability[] {
+  const lockedProtocol = lockedProviderPresetProtocol(provider, capabilities);
+  if (!lockedProtocol) {
+    return capabilities;
+  }
+
+  const lockedCapabilities = capabilities.filter((capability) => capability.type === lockedProtocol);
+  if (lockedCapabilities.length > 0) {
+    return lockedCapabilities;
+  }
+
+  const baseUrl = readBaseUrl(provider);
+  const normalizedBaseUrl = normalizeProviderRuntimeBaseUrl(baseUrl, lockedProtocol);
+  return normalizedBaseUrl
+    ? [{ baseUrl: normalizedBaseUrl, source: "preset", type: lockedProtocol }]
+    : [];
+}
+
+function lockedProviderPresetProtocol(
+  provider: GatewayProviderConfig,
+  capabilities: GatewayProviderCapability[]
+): GatewayProviderProtocol | undefined {
+  const baseUrls = [
+    readBaseUrl(provider),
+    ...capabilities.map((capability) => capability.baseUrl)
+  ].filter((value): value is string => Boolean(value?.trim()));
+
+  for (const baseUrl of baseUrls) {
+    if (findProviderPresetByBaseUrl(baseUrl)?.id === "gemini") {
+      return "gemini_generate_content";
+    }
+  }
+
+  return undefined;
 }
 
 function providerCapabilityPriority(capability: GatewayProviderCapability): number {
