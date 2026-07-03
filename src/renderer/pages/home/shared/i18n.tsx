@@ -1444,6 +1444,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "OpenAI Responses": "OpenAI Responses",
       "Anthropic Messages": "Anthropic Messages",
       "Gemini Generate": "Gemini 生成",
+      "Gemini Interactions": "Gemini Interactions",
       "Model required before protocol verification.": "需要先填写模型，才能验证协议。",
       "No endpoint candidates available.": "没有可用的端点候选。",
       "Request failed.": "请求失败。",

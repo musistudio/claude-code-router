@@ -178,7 +178,11 @@ function codexModelCapabilityProfile(
     supportsFusionWebSearch ||
     (
       readCatalogCapability(capabilities, "webSearch") &&
-      (providerProtocol === "openai_responses" || providerProtocol === "anthropic_messages")
+      (
+        providerProtocol === "openai_responses" ||
+        providerProtocol === "anthropic_messages" ||
+        providerProtocol === "gemini_interactions"
+      )
     );
 
   return {
@@ -231,7 +235,7 @@ function findConfiguredProvider(
 
 function codexProviderProtocol(provider: GatewayProviderConfig): GatewayProviderProtocol | undefined {
   const capabilityProtocols = uniqueProviderProtocols((provider.capabilities ?? []).map((capability) => normalizeProviderProtocol(capability.type)));
-  for (const protocol of ["openai_responses", "openai_chat_completions", "anthropic_messages", "gemini_generate_content"] as GatewayProviderProtocol[]) {
+  for (const protocol of ["openai_responses", "openai_chat_completions", "anthropic_messages", "gemini_generate_content", "gemini_interactions"] as GatewayProviderProtocol[]) {
     if (capabilityProtocols.includes(protocol)) {
       return protocol;
     }
@@ -252,6 +256,9 @@ function inferProviderProtocol(provider: GatewayProviderConfig): GatewayProvider
   const transformer = JSON.stringify(provider.transformer ?? "").toLowerCase();
   if (providerEndpointLooksLikeResponses(provider)) {
     return "openai_responses";
+  }
+  if (url.includes("/interactions") || transformer.includes("gemini_interactions")) {
+    return "gemini_interactions";
   }
   if (url.includes("generativelanguage.googleapis.com") || transformer.includes("gemini")) {
     return "gemini_generate_content";
@@ -307,6 +314,16 @@ function normalizeProviderProtocol(value: unknown): GatewayProviderProtocol | un
   }
   if (normalized === "gemini" || normalized === "gemini_generate_content") {
     return "gemini_generate_content";
+  }
+  if (
+    normalized === "gemini_interactions" ||
+    normalized === "gemini-interactions" ||
+    normalized === "google_interactions" ||
+    normalized === "google-interactions" ||
+    normalized === "interactions" ||
+    normalized === "interaction"
+  ) {
+    return "gemini_interactions";
   }
   return undefined;
 }

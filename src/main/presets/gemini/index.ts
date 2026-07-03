@@ -6,7 +6,7 @@ export const geminiProviderPreset: ProviderPreset = {
   endpoints: [
     {
       baseUrl: "https://generativelanguage.googleapis.com",
-      protocols: ["gemini_generate_content"]
+      protocols: ["gemini_generate_content", "gemini_interactions"]
     }
   ],
   id: "gemini",

@@ -1185,6 +1185,16 @@ function parseProviderCapabilityProtocol(value: string | undefined): GatewayProv
   if (normalized === "gemini" || normalized === "gemini_generate_content") {
     return "gemini_generate_content";
   }
+  if (
+    normalized === "gemini_interactions" ||
+    normalized === "gemini-interactions" ||
+    normalized === "google_interactions" ||
+    normalized === "google-interactions" ||
+    normalized === "interactions" ||
+    normalized === "interaction"
+  ) {
+    return "gemini_interactions";
+  }
   return undefined;
 }
 

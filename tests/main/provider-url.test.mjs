@@ -16,6 +16,7 @@ test("provider URL parsing strips endpoint paths and unsafe URL parts", () => {
   assert.equal(providerBaseUrlForProtocol(parsed, "openai_responses"), "https://api.example.com/v1");
   assert.equal(providerBaseUrlForProtocol(parsed, "anthropic_messages"), "https://api.example.com");
   assert.equal(providerBaseUrlForProtocol(parsed, "gemini_generate_content"), "https://api.example.com");
+  assert.equal(providerBaseUrlForProtocol(parsed, "gemini_interactions"), "https://api.example.com");
 });
 
 test("provider URL parsing handles local and Gemini endpoint variants", () => {
@@ -24,6 +25,18 @@ test("provider URL parsing handles local and Gemini endpoint variants", () => {
   assert.equal(parsed.normalizedInputBaseUrl, "http://localhost:8787/v1beta");
   assert.equal(parsed.rootBaseUrl, "http://localhost:8787");
   assert.equal(parsed.geminiBaseUrl, "http://localhost:8787");
+});
+
+test("provider URL parsing handles Gemini Interactions endpoint variants", () => {
+  const parsed = parseProviderBaseUrl("localhost:8787/v1/interactions/interaction-123/cancel");
+
+  assert.equal(parsed.normalizedInputBaseUrl, "http://localhost:8787/v1");
+  assert.equal(parsed.rootBaseUrl, "http://localhost:8787");
+  assert.equal(parsed.geminiBaseUrl, "http://localhost:8787");
+  assert.equal(
+    normalizeProviderBaseUrl("localhost:8787/v1beta/interactions", "gemini_interactions"),
+    "http://localhost:8787"
+  );
 });
 
 test("provider URL normalization chooses protocol-specific bases", () => {

@@ -59,7 +59,8 @@ const protocolOrder: GatewayProviderProtocol[] = [
   "openai_responses",
   "openai_chat_completions",
   "anthropic_messages",
-  "gemini_generate_content"
+  "gemini_generate_content",
+  "gemini_interactions"
 ];
 
 const modelSourceOrder: ModelSource[] = ["openai", "anthropic", "gemini"];
@@ -608,6 +609,24 @@ function requestForProtocol(protocol: GatewayProviderProtocol, model: string, ap
     };
   }
 
+  if (protocol === "gemini_interactions") {
+    return {
+      body: JSON.stringify({
+        generation_config: {
+          max_output_tokens: probeOutputTokenLimit
+        },
+        input: "ping",
+        model,
+        store: false
+      }),
+      headers: {
+        "content-type": "application/json",
+        ...geminiHeaders(apiKey)
+      },
+      method: "POST"
+    };
+  }
+
   return {
     body: JSON.stringify({
       contents: [{ parts: [{ text: "ping" }], role: "user" }],
@@ -701,6 +720,19 @@ function endpointsForProtocol(
     ]));
   }
 
+  if (protocol === "gemini_interactions") {
+    return [
+      {
+        baseUrl: parsed.geminiBaseUrl,
+        endpoint: `${parsed.geminiBaseUrl}/v1beta/interactions`
+      },
+      {
+        baseUrl: parsed.geminiBaseUrl,
+        endpoint: `${parsed.geminiBaseUrl}/v1/interactions`
+      }
+    ];
+  }
+
   const encodedModel = encodeURIComponent(stripGeminiModelPrefix(model || "model"));
   return [
     {
@@ -747,7 +779,7 @@ function headersForProtocol(protocol: GatewayProviderProtocol, apiKey: string | 
   if (protocol === "anthropic_messages") {
     return anthropicHeaders(apiKey);
   }
-  if (protocol === "gemini_generate_content") {
+  if (protocol === "gemini_generate_content" || protocol === "gemini_interactions") {
     return geminiHeaders(apiKey);
   }
   return openAiHeaders(apiKey);
@@ -834,7 +866,7 @@ function pickProbeModel(models: string[], protocol: GatewayProviderProtocol): st
     return undefined;
   }
 
-  if (protocol === "gemini_generate_content") {
+  if (protocol === "gemini_generate_content" || protocol === "gemini_interactions") {
     return candidates.find((model) => model.toLowerCase().includes("gemini")) ?? candidates[0];
   }
 
@@ -883,7 +915,7 @@ function protocolModelSource(protocol: GatewayProviderProtocol): ModelSource {
   if (protocol === "anthropic_messages") {
     return "anthropic";
   }
-  if (protocol === "gemini_generate_content") {
+  if (protocol === "gemini_generate_content" || protocol === "gemini_interactions") {
     return "gemini";
   }
   return "openai";
@@ -921,8 +953,13 @@ function detectProtocol(
     return "anthropic_messages";
   }
 
-  if (modelSource === "gemini" && protocolIsAllowed("gemini_generate_content", allowedProtocols)) {
-    return "gemini_generate_content";
+  if (modelSource === "gemini") {
+    const geminiProtocols = orderedProtocols(parsed, allowedProtocols).filter((protocol) =>
+      protocol === "gemini_generate_content" || protocol === "gemini_interactions"
+    );
+    return geminiProtocols.find((protocol) => parsed.hints.includes(protocol)) ??
+      geminiProtocols.find((protocol) => protocol === "gemini_generate_content") ??
+      geminiProtocols[0];
   }
 
   if (modelSource === "openai") {
@@ -975,8 +1012,14 @@ function protocolHints(value: string): GatewayProviderProtocol[] {
   if (normalized.includes("anthropic") || normalized.includes("/messages")) {
     hints.push("anthropic_messages");
   }
+  if (normalized.includes("interactions") || normalized.includes("gemini_interactions") || normalized.includes("google_interactions")) {
+    hints.push("gemini_interactions");
+  }
   if (normalized.includes("generativelanguage.googleapis.com") || normalized.includes("gemini") || normalized.includes("generatecontent")) {
     hints.push("gemini_generate_content");
+  }
+  if (normalized.includes("generativelanguage.googleapis.com")) {
+    hints.push("gemini_interactions");
   }
 
   return hints;
@@ -1001,9 +1044,21 @@ function isProtocolSupported(
 
   if (status === 400) {
     const normalized = message.toLowerCase();
-    const schemaError = /model|max_tokens|max output|messages|input|required/.test(normalized) ||
-      (protocol === "gemini_generate_content" && /contents|generatecontentrequest|generationconfig/.test(normalized));
-    return schemaError && !/not found|unknown endpoint|unknown route|no route/.test(normalized);
+    if (/not found|unknown endpoint|unknown route|no route/.test(normalized)) {
+      return false;
+    }
+    if (protocol === "openai_responses") {
+      return /model|max_output|max output|input|required/.test(normalized);
+    }
+    if (protocol === "openai_chat_completions" || protocol === "anthropic_messages") {
+      return /model|max_tokens|messages|required/.test(normalized);
+    }
+    if (protocol === "gemini_generate_content") {
+      return /contents|generatecontentrequest|generationconfig/.test(normalized);
+    }
+    if (protocol === "gemini_interactions") {
+      return /model|input|required|interaction|generation_config|generationconfig|system_instruction/.test(normalized);
+    }
   }
 
   return false;

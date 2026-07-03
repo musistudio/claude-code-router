@@ -102,6 +102,9 @@ function stripProviderEndpointPath(pathname: string): string {
     [/\/messages$/i, ""],
     [/\/v1beta\/models\/[^/]+:(generateContent|streamGenerateContent)$/i, "/v1beta"],
     [/\/v1\/models\/[^/]+:(generateContent|streamGenerateContent)$/i, "/v1"],
+    [/\/v1beta\/interactions(?:\/[^/]+(?:\/cancel)?)?$/i, "/v1beta"],
+    [/\/v1\/interactions(?:\/[^/]+(?:\/cancel)?)?$/i, "/v1"],
+    [/\/interactions(?:\/[^/]+(?:\/cancel)?)?$/i, ""],
     [/\/v1beta\/models$/i, "/v1beta"],
     [/\/v1\/models$/i, "/v1"],
     [/\/models$/i, ""]
@@ -178,10 +181,13 @@ function normalizeProviderBaseUrlText(value: string, protocol?: GatewayProviderP
   if (protocol === "anthropic_messages") {
     return normalized.replace(/\/v1\/messages$/i, "").replace(/\/messages$/i, "").replace(/\/v1$/i, "");
   }
-  if (protocol === "gemini_generate_content") {
+  if (protocol === "gemini_generate_content" || protocol === "gemini_interactions") {
     return normalized
       .replace(/\/v1beta\/models\/[^/]+:(generateContent|streamGenerateContent)$/i, "")
       .replace(/\/v1\/models\/[^/]+:(generateContent|streamGenerateContent)$/i, "")
+      .replace(/\/v1beta\/interactions(?:\/[^/]+(?:\/cancel)?)?$/i, "")
+      .replace(/\/v1\/interactions(?:\/[^/]+(?:\/cancel)?)?$/i, "")
+      .replace(/\/interactions(?:\/[^/]+(?:\/cancel)?)?$/i, "")
       .replace(/\/v1beta\/models$/i, "")
       .replace(/\/v1\/models$/i, "")
       .replace(/\/v1beta$/i, "")

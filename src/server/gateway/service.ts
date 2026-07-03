@@ -302,7 +302,8 @@ const gatewayProviderProtocolFallbackOrder: GatewayProviderProtocol[] = [
   "anthropic_messages",
   "openai_chat_completions",
   "openai_responses",
-  "gemini_generate_content"
+  "gemini_generate_content",
+  "gemini_interactions"
 ];
 const privateDirMode = 0o700;
 const privateFileMode = 0o600;
@@ -2184,6 +2185,7 @@ function applyProviderCapabilityRouting(input: {
   const routedModel = rewriteModelSelectorForProtocol(input.routedModel, input.config, protocol);
   const fallback = rewriteFallbackForProtocol(input.fallback, input.config, protocol);
   const body = rewriteBodyModelForProtocol(input.body, input.config, protocol);
+  clearTargetProviderHeadersForModelSelector(input.headers, input.config, body, routedModel);
 
   return {
     body,
@@ -5242,6 +5244,9 @@ function requestProtocolForPath(path: string): GatewayProviderProtocol | undefin
   if (/\/v1(?:beta)?\/models\/[^/]+:(?:generatecontent|streamgeneratecontent)$/i.test(normalized)) {
     return "gemini_generate_content";
   }
+  if (/\/v1(?:beta)?\/interactions(?:\/[^/]+(?:\/cancel)?)?$/i.test(normalized)) {
+    return "gemini_interactions";
+  }
   return undefined;
 }
 
@@ -5304,6 +5309,23 @@ function rewriteBodyModelForProtocol(body: Buffer | undefined, config: AppConfig
   return Buffer.from(`${JSON.stringify({ ...parsedBody, model: rewrittenModel })}\n`, "utf8");
 }
 
+function clearTargetProviderHeadersForModelSelector(
+  headers: Record<string, string>,
+  config: AppConfig,
+  body: Buffer | undefined,
+  routedModel: string | undefined
+): void {
+  const parsedBody = parseJsonObjectSafe(body);
+  const model = stringValue(parsedBody?.model) || routedModel;
+  if (!resolveConfiguredProviderModelSelector(model, config)) {
+    return;
+  }
+
+  delete headers["x-target-provider"];
+  delete headers["x-target-providers"];
+  delete headers["x-gateway-target-provider"];
+}
+
 function rewriteModelSelectorForProtocol(
   model: string | undefined,
   config: AppConfig,
@@ -5356,7 +5378,7 @@ function providerProtocolForClientProtocol(
 
 function providerProtocolPreferenceForClient(clientProtocol: GatewayProviderProtocol): GatewayProviderProtocol[] {
   if (clientProtocol === "openai_responses") {
-    return ["openai_responses", "openai_chat_completions", "anthropic_messages"];
+    return ["openai_responses", "openai_chat_completions", "anthropic_messages", "gemini_interactions"];
   }
   if (clientProtocol === "anthropic_messages") {
     return uniqueProviderProtocols([clientProtocol, ...gatewayProviderProtocolFallbackOrder]);
@@ -6308,16 +6330,18 @@ function applyPresetProtocolLock(
   provider: GatewayProviderConfig,
   capabilities: GatewayProviderCapability[]
 ): GatewayProviderCapability[] {
-  const lockedProtocol = lockedProviderPresetProtocol(provider, capabilities);
-  if (!lockedProtocol) {
+  const lockedProtocols = lockedProviderPresetProtocols(provider, capabilities);
+  if (lockedProtocols.length === 0) {
     return capabilities;
   }
 
-  const lockedCapabilities = capabilities.filter((capability) => capability.type === lockedProtocol);
+  const lockedProtocolSet = new Set(lockedProtocols);
+  const lockedCapabilities = capabilities.filter((capability) => lockedProtocolSet.has(capability.type));
   if (lockedCapabilities.length > 0) {
     return lockedCapabilities;
   }
 
+  const lockedProtocol = lockedProtocols[0];
   const baseUrl = readBaseUrl(provider);
   const normalizedBaseUrl = normalizeProviderRuntimeBaseUrl(baseUrl, lockedProtocol);
   return normalizedBaseUrl
@@ -6325,10 +6349,10 @@ function applyPresetProtocolLock(
     : [];
 }
 
-function lockedProviderPresetProtocol(
+function lockedProviderPresetProtocols(
   provider: GatewayProviderConfig,
   capabilities: GatewayProviderCapability[]
-): GatewayProviderProtocol | undefined {
+): GatewayProviderProtocol[] {
   const baseUrls = [
     readBaseUrl(provider),
     ...capabilities.map((capability) => capability.baseUrl)
@@ -6336,11 +6360,11 @@ function lockedProviderPresetProtocol(
 
   for (const baseUrl of baseUrls) {
     if (findProviderPresetByBaseUrl(baseUrl)?.id === "gemini") {
-      return "gemini_generate_content";
+      return ["gemini_generate_content", "gemini_interactions"];
     }
   }
 
-  return undefined;
+  return [];
 }
 
 function providerCapabilityPriority(capability: GatewayProviderCapability): number {
@@ -6488,12 +6512,25 @@ function normalizeProviderProtocol(value: unknown): GatewayProviderProtocol | un
   if (normalized === "gemini" || normalized === "gemini_generate_content") {
     return "gemini_generate_content";
   }
+  if (
+    normalized === "gemini_interactions" ||
+    normalized === "gemini-interactions" ||
+    normalized === "google_interactions" ||
+    normalized === "google-interactions" ||
+    normalized === "interactions" ||
+    normalized === "interaction"
+  ) {
+    return "gemini_interactions";
+  }
   return undefined;
 }
 
 function inferProtocol(provider: GatewayProviderConfig): GatewayProviderProtocol {
   const url = readBaseUrl(provider)?.toLowerCase() ?? "";
   const transformerNames = JSON.stringify(provider.transformer ?? "").toLowerCase();
+  if (url.includes("/interactions") || transformerNames.includes("gemini_interactions")) {
+    return "gemini_interactions";
+  }
   if (url.includes("generativelanguage.googleapis.com") || transformerNames.includes("gemini")) {
     return "gemini_generate_content";
   }

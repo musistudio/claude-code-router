@@ -22,6 +22,10 @@ test("protocol support probe does not treat Gemini auth errors as every protocol
     isProviderProtocolEndpointSupportedForProbe(403, message, "gemini_generate_content", hints),
     true
   );
+  assert.equal(
+    isProviderProtocolEndpointSupportedForProbe(403, message, "gemini_interactions", hints),
+    false
+  );
 });
 
 test("protocol support probe keeps auth-only fallback for unhinted endpoints", () => {
@@ -42,6 +46,19 @@ test("protocol support probe treats Gemini contents validation as Gemini support
   );
   assert.equal(
     isProviderProtocolEndpointSupportedForProbe(400, message, "openai_chat_completions", ["openai_chat_completions"]),
+    false
+  );
+});
+
+test("protocol support probe treats Gemini Interactions input validation as Interactions support", () => {
+  const message = "HTTP 400: Gemini Interactions request requires input.";
+
+  assert.equal(
+    isProviderProtocolEndpointSupportedForProbe(400, message, "gemini_interactions", ["gemini_interactions"]),
+    true
+  );
+  assert.equal(
+    isProviderProtocolEndpointSupportedForProbe(400, message, "gemini_generate_content", ["gemini_generate_content"]),
     false
   );
 });

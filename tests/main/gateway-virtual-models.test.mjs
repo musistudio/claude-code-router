@@ -7,6 +7,7 @@ import {
   fusionToolNamesBackedByMcpServers,
   extractHostedWebSearchQueryHint,
   hostedWebSearchProtocolResponseStream,
+  prepareGatewayUpstreamAttemptForTest,
   prepareAnthropicWebSearchProtocolRequestBody,
   prepareClaudeCodeWebSearchContinuationRequestBody,
   prepareHostedWebSearchProtocolRequestBody,
@@ -127,6 +128,89 @@ test("gateway ignores non-Gemini capabilities on Gemini preset providers", () =>
     profile.baseModel.fixedModel,
     "provider-google-gemini-1785c39128::gemini_generate_content::cred:test-1/gemini-2.5-pro"
   );
+});
+
+test("gateway keeps Gemini Interactions capability on Gemini preset providers", () => {
+  const providerName = "Google Gemini";
+  const config = {
+    Providers: [
+      {
+        api_base_url: "https://generativelanguage.googleapis.com",
+        capabilities: [
+          { baseUrl: "https://generativelanguage.googleapis.com", source: "preset", type: "gemini_generate_content" },
+          { baseUrl: "https://generativelanguage.googleapis.com", source: "preset", type: "gemini_interactions" },
+          { baseUrl: "https://generativelanguage.googleapis.com", source: "preset", type: "openai_responses" }
+        ],
+        models: ["gemini-3.5-flash"],
+        name: providerName,
+        type: "gemini_generate_content"
+      }
+    ],
+    Router: { fallback: { mode: "off", models: [], retryCount: 0 } },
+    gateway: {}
+  };
+
+  const attempt = prepareGatewayUpstreamAttemptForTest({
+    body: {
+      input: "Say hello",
+      model: `${providerName}/gemini-3.5-flash`
+    },
+    config,
+    headers: {
+      "x-target-provider": providerName
+    },
+    method: "POST",
+    path: "/v1/responses"
+  });
+
+  assert.equal(attempt.headers["x-target-provider"], undefined);
+  assert.match(attempt.body.model, /^provider-google-gemini-[a-f0-9]{10}::gemini_interactions\/gemini-3\.5-flash$/);
+});
+
+test("gateway lets explicit Gemini Interactions model selectors override generic target provider lists", () => {
+  const geminiName = "Google Gemini";
+  const config = {
+    Providers: [
+      {
+        api_base_url: "https://generativelanguage.googleapis.com",
+        capabilities: [
+          { baseUrl: "https://generativelanguage.googleapis.com", source: "preset", type: "gemini_interactions" }
+        ],
+        models: ["gemma-4-31b-it"],
+        name: geminiName,
+        type: "gemini_interactions"
+      },
+      {
+        api_base_url: "https://open.bigmodel.cn/api/coding/paas/v4",
+        capabilities: [
+          { baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4", type: "openai_chat_completions" },
+          { baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4", type: "anthropic_messages" }
+        ],
+        credentials: [{ apiKey: "test-key", id: "test-1" }],
+        models: ["glm-5.2", "glm-4.5-air", "glm-5v-turbo"],
+        name: "Zhipu AI (China) - Coding Plan",
+        type: "openai_chat_completions"
+      }
+    ],
+    Router: { fallback: { mode: "off", models: [], retryCount: 0 } },
+    gateway: {}
+  };
+
+  const attempt = prepareGatewayUpstreamAttemptForTest({
+    body: {
+      input: "Say hello",
+      model: `${geminiName}/gemma-4-31b-it`
+    },
+    config,
+    headers: {
+      "x-target-providers": "openai,anthropic"
+    },
+    method: "POST",
+    path: "/v1/responses"
+  });
+
+  assert.equal(attempt.headers["x-target-providers"], undefined);
+  assert.match(attempt.body.model, /^provider-google-gemini-[a-f0-9]{10}::gemini_interactions\/gemma-4-31b-it$/);
 });
 
 test("gateway config normalizes Fusion web search tool names for native Anthropic search triggers", () => {

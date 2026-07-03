@@ -144,7 +144,8 @@ export const providerProtocolOptions: Array<{ label: string; value: GatewayProvi
   { label: "OpenAI Chat", value: "openai_chat_completions" },
   { label: "OpenAI Responses", value: "openai_responses" },
   { label: "Anthropic Messages", value: "anthropic_messages" },
-  { label: "Gemini Generate", value: "gemini_generate_content" }
+  { label: "Gemini Generate", value: "gemini_generate_content" },
+  { label: "Gemini Interactions", value: "gemini_interactions" }
 ];
 
 export const providerAccountModeOptions: Array<{ label: string; value: ProviderAccountDraftMode }> = [

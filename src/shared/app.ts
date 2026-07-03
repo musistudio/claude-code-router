@@ -113,7 +113,8 @@ export type GatewayProviderProtocol =
   | "openai_responses"
   | "openai_chat_completions"
   | "anthropic_messages"
-  | "gemini_generate_content";
+  | "gemini_generate_content"
+  | "gemini_interactions";
 
 export type GatewayProviderConfig = {
   account?: ProviderAccountConfig;

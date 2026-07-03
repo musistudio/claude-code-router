@@ -1948,7 +1948,7 @@ export function recommendedModelRank(model: string, protocol?: GatewayProviderPr
     if (normalized.includes("opus")) return 1;
     if (normalized.includes("haiku")) return 2;
   }
-  if (protocol === "gemini_generate_content" || normalized.includes("gemini")) {
+  if (protocol === "gemini_generate_content" || protocol === "gemini_interactions" || normalized.includes("gemini")) {
     if (normalized.includes("pro")) return 0;
     if (normalized.includes("flash")) return 1;
   }

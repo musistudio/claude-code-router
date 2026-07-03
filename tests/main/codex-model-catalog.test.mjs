@@ -61,6 +61,16 @@ test("codex catalog enables multimodal reasoning and search when provider protoc
   assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
+test("codex catalog enables native search for Gemini Interactions providers", () => {
+  const model = catalogModelFor({
+    Providers: [
+      { name: "gemini", type: "gemini_interactions", models: ["gemini-2.5-pro"] }
+    ]
+  }, "gemini/gemini-2.5-pro");
+
+  assert.equal(model.supports_search_tool, true);
+});
+
 test("codex catalog does not expose native search through chat-completions-only providers", () => {
   const model = catalogModelFor({
     Providers: [

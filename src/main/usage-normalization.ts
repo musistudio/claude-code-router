@@ -60,7 +60,12 @@ function inputIncludesCacheTokensForProtocol(protocol: GatewayProviderProtocol |
   if (protocol === "anthropic_messages") {
     return false;
   }
-  if (protocol === "openai_chat_completions" || protocol === "openai_responses" || protocol === "gemini_generate_content") {
+  if (
+    protocol === "openai_chat_completions" ||
+    protocol === "openai_responses" ||
+    protocol === "gemini_generate_content" ||
+    protocol === "gemini_interactions"
+  ) {
     return true;
   }
   return undefined;
@@ -71,7 +76,12 @@ function inputIncludesCacheTokensForPath(path: string | undefined): boolean | un
   if (!normalized) {
     return undefined;
   }
-  if (normalized.includes("/chat/completions") || normalized.includes("/responses") || normalized.includes(":generatecontent")) {
+  if (
+    normalized.includes("/chat/completions") ||
+    normalized.includes("/responses") ||
+    normalized.includes(":generatecontent") ||
+    normalized.includes("/interactions")
+  ) {
     return true;
   }
   if (normalized.includes("/messages")) {

@@ -26,6 +26,7 @@ const maxModels = 300;
 const providerProtocols = new Set<GatewayProviderProtocol>([
   "anthropic_messages",
   "gemini_generate_content",
+  "gemini_interactions",
   "openai_chat_completions",
   "openai_responses"
 ]);

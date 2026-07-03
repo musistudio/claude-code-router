@@ -133,7 +133,7 @@ For larger configs, pass a manifest:
 | `name` | Provider display name |
 | `base_url` | Provider API Base URL, required for direct imports |
 | `api_key` | Optional provider API key |
-| `protocol` | Protocol, one of `openai_chat_completions`, `openai_responses`, `anthropic_messages`, `gemini_generate_content` |
+| `protocol` | Protocol, one of `openai_chat_completions`, `openai_responses`, `anthropic_messages`, `gemini_generate_content`, `gemini_interactions` |
 | `models` | Model list. Use comma/newline-separated text in HTML, or a string/array in JavaScript |
 | `icon` | Provider icon URL |
 | `source` | Provider website or config source |
@@ -261,7 +261,7 @@ Complete manifest example:
 | `name` | Provider display name |
 | `base_url` | Provider API Base URL, required |
 | `api_key` | Optional provider API key |
-| `protocol` | Protocol, one of `openai_chat_completions`, `openai_responses`, `anthropic_messages`, `gemini_generate_content` |
+| `protocol` | Protocol, one of `openai_chat_completions`, `openai_responses`, `anthropic_messages`, `gemini_generate_content`, `gemini_interactions` |
 | `models` | Model list, comma-separated, newline-separated, or repeated |
 | `icon` | Provider icon URL |
 | `source` | Provider website or config source |
