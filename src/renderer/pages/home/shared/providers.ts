@@ -1750,10 +1750,7 @@ export function providerSelectableProtocolsFromProbe(probe: GatewayProviderProbe
     return [];
   }
 
-  return uniqueProviderProtocols([
-    ...(probe.capabilities ?? []).map((capability) => capability.type),
-    ...probe.protocols.filter((item) => item.supported).map((item) => item.protocol)
-  ]);
+  return uniqueProviderProtocols(probe.protocols.filter((item) => item.supported).map((item) => item.protocol));
 }
 
 export function selectedProviderProtocolsFromCapabilities(
@@ -1772,7 +1769,7 @@ export function selectedProviderProtocolsForProbe(
 ): GatewayProviderProtocol[] {
   const selectable = providerSelectableProtocolsFromProbe(probe);
   if (selectable.length === 0) {
-    return selectedProtocols.length > 0 ? uniqueProviderProtocols(selectedProtocols) : [fallback];
+    return [];
   }
 
   if (selectedProtocolsMatchPresetDefault(selectedProtocols, presetId)) {

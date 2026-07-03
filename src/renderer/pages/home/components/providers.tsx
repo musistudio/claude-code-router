@@ -1680,7 +1680,7 @@ export function AddProviderForm({
                       <div className="space-y-1.5">
                         {probe.protocols.map((item) => {
                           const selectable = item.supported && selectableProtocols.includes(item.protocol);
-                          const checked = draft.selectedProtocols.includes(item.protocol);
+                          const checked = selectable && draft.selectedProtocols.includes(item.protocol);
                           return (
                             <div className="grid grid-cols-[20px_minmax(118px,0.7fr)_72px_minmax(0,1fr)] items-center gap-2 text-[11px]" key={`${item.protocol}-${item.endpoint}`}>
                               <Checkbox

@@ -1361,7 +1361,7 @@ function App() {
     const fallbackBaseUrl = probe?.normalizedBaseUrl || providerDraft.baseUrl;
     const selectableProtocols = providerSelectableProtocolsFromProbe(probe);
     const selectedProtocols = providerDraft.selectedProtocols.length > 0
-      ? providerDraft.selectedProtocols.filter((protocol) => selectableProtocols.length === 0 || selectableProtocols.includes(protocol))
+      ? providerDraft.selectedProtocols.filter((protocol) => !probe || selectableProtocols.includes(protocol))
       : [];
     if (selectableProtocols.length > 0 && selectedProtocols.length === 0) {
       setProviderProbeError(t("Select at least one protocol."));

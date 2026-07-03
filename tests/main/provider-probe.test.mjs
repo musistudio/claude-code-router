@@ -32,3 +32,16 @@ test("protocol support probe keeps auth-only fallback for unhinted endpoints", (
     true
   );
 });
+
+test("protocol support probe treats Gemini contents validation as Gemini support only", () => {
+  const message = "HTTP 400: * GenerateContentRequest.contents: contents is not specified";
+
+  assert.equal(
+    isProviderProtocolEndpointSupportedForProbe(400, message, "gemini_generate_content", ["gemini_generate_content"]),
+    true
+  );
+  assert.equal(
+    isProviderProtocolEndpointSupportedForProbe(400, message, "openai_chat_completions", ["openai_chat_completions"]),
+    false
+  );
+});

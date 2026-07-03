@@ -535,7 +535,7 @@ async function probeProtocolConnectivity(
   for (const candidate of endpoints) {
     const result = await requestJson(candidate.endpoint, requestForProtocol(protocol, model, apiKey));
     const message = readResponseMessage(result);
-    const supported = isProtocolSupported(result.status, message);
+    const supported = isProtocolSupported(result.status, message, protocol);
     const probeResult = {
       baseUrl: candidate.baseUrl,
       endpoint: candidate.endpoint,
@@ -982,7 +982,11 @@ function protocolHints(value: string): GatewayProviderProtocol[] {
   return hints;
 }
 
-function isProtocolSupported(status: number | undefined, message: string): boolean {
+function isProtocolSupported(
+  status: number | undefined,
+  message: string,
+  protocol?: GatewayProviderProtocol
+): boolean {
   if (status === undefined) {
     return false;
   }
@@ -997,7 +1001,9 @@ function isProtocolSupported(status: number | undefined, message: string): boole
 
   if (status === 400) {
     const normalized = message.toLowerCase();
-    return /model|max_tokens|max output|messages|input|required/.test(normalized) && !/not found|unknown endpoint|unknown route|no route/.test(normalized);
+    const schemaError = /model|max_tokens|max output|messages|input|required/.test(normalized) ||
+      (protocol === "gemini_generate_content" && /contents|generatecontentrequest|generationconfig/.test(normalized));
+    return schemaError && !/not found|unknown endpoint|unknown route|no route/.test(normalized);
   }
 
   return false;
@@ -1009,7 +1015,7 @@ export function isProviderProtocolEndpointSupportedForProbe(
   protocol: GatewayProviderProtocol,
   hints: GatewayProviderProtocol[] = []
 ): boolean {
-  if (isProtocolSupported(status, message)) {
+  if (isProtocolSupported(status, message, protocol)) {
     return true;
   }
 
