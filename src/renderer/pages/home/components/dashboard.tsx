@@ -12,7 +12,7 @@ import {
   metricToneBar, metricToneStroke, motion, normalizeAgentFilterValue, normalizeOverviewWidget, normalizeOverviewWidgets,
   OverviewMetricKind, overviewMetricOptions, overviewWidgetCollisionDetection, OverviewWidgetConfig, OverviewWidgetSize, overviewWidgetSizeOptions,
   OverviewWidgetType, OverviewWidgetVariant, Pencil, Pie, PieChart, Plus,
-  PointerSensor, primaryProviderAccountMeter, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass,
+  PointerSensor, primaryProviderAccountMeter, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass, isProviderAccountManualResetMeter,
   providerAccountSnapshotKey, providerAccountSnapshotLabel,
   ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ReactPointerEvent, rectSortingStrategy, RefreshCw, Select,
   SelectControl, SortableContext, sortableKeyboardCoordinates, systemStatusIconClass, systemStatusPointTooltip, systemStatusSegmentClass,
@@ -2432,7 +2432,15 @@ function primaryProviderAccountBalanceMeter(account: ProviderAccountSnapshot): P
 }
 
 function providerAccountMetersForDisplayOrdered(account: ProviderAccountSnapshot, maxCount: number): ProviderAccountMeter[] {
-  const ordered = [...providerAccountQuotaMeters(account), ...providerAccountBalanceMeters(account)];
+  const quotaMeters = providerAccountQuotaMeters(account);
+  const manualResetMeters = account.meters.filter(isProviderAccountManualResetMeter);
+  const leadingQuotaCount = manualResetMeters.length > 0 ? Math.min(quotaMeters.length, maxCount <= 2 ? 1 : 2) : quotaMeters.length;
+  const ordered = [
+    ...quotaMeters.slice(0, leadingQuotaCount),
+    ...manualResetMeters,
+    ...providerAccountBalanceMeters(account),
+    ...quotaMeters.slice(leadingQuotaCount)
+  ];
   const seen = new Set<string>();
   const unique = ordered.filter((meter) => {
     const key = `${meter.id}:${meter.kind}:${meter.window ?? ""}`;
@@ -2470,10 +2478,11 @@ function compareProviderAccountQuotaMeters(a: ProviderAccountMeter, b: ProviderA
 }
 
 function providerAccountMeterWindowRank(meter: ProviderAccountMeter): number {
-  if (meter.window === "5h" || meter.id.toLowerCase().includes("5h") || meter.label.toLowerCase().includes("5h")) {
+  const text = `${meter.window ?? ""} ${meter.id} ${meter.label}`.toLowerCase();
+  if (meter.window === "5h" || text.includes("5h") || text.includes("primary")) {
     return 0;
   }
-  if (meter.window === "weekly" || meter.id.toLowerCase().includes("weekly") || meter.label.toLowerCase().includes("weekly")) {
+  if (meter.window === "weekly" || text.includes("weekly") || text.includes("secondary")) {
     return 1;
   }
   if (meter.window === "daily") return 2;

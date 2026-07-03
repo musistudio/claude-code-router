@@ -223,15 +223,18 @@ export type ProviderAccountMappingConfig = {
   status?: string;
 };
 
+export type ProviderAccountMappedNumberExpression = number | string | Array<number | string>;
+export type ProviderAccountMappedStringExpression = string | string[];
+
 export type ProviderAccountMappedMeterConfig = {
   id: string;
   kind?: ProviderAccountMeterKind;
   label: string;
-  limit?: number | string;
-  remaining?: number | string;
-  resetAt?: string;
+  limit?: ProviderAccountMappedNumberExpression;
+  remaining?: ProviderAccountMappedNumberExpression;
+  resetAt?: ProviderAccountMappedStringExpression;
   unit?: ProviderAccountMeterUnit;
-  used?: number | string;
+  used?: ProviderAccountMappedNumberExpression;
   window?: ProviderAccountMeterWindow;
 };
 

@@ -18,6 +18,8 @@ import type {
   ProviderAccountLocalEstimateConnectorConfig,
   ProviderAccountLocalWindowConfig,
   ProviderAccountMappedMeterConfig,
+  ProviderAccountMappedNumberExpression,
+  ProviderAccountMappedStringExpression,
   ProviderAccountMeter,
   ProviderAccountMeterKind,
   ProviderAccountMeterUnit,
@@ -1345,7 +1347,16 @@ type JsonPathFilterCondition = {
   path: string[];
 };
 
-function readMappedNumber(value: number | string | undefined, payload: unknown): number | undefined {
+function readMappedNumber(value: ProviderAccountMappedNumberExpression | undefined, payload: unknown): number | undefined {
+  if (Array.isArray(value)) {
+    for (const candidate of value) {
+      const resolved = readMappedNumber(candidate, payload);
+      if (resolved !== undefined) {
+        return resolved;
+      }
+    }
+    return undefined;
+  }
   if (typeof value === "number") {
     return normalizeNumber(value);
   }
@@ -1382,7 +1393,16 @@ function resolveMappedNumberTerm(term: string, payload: unknown): unknown {
   return trimmed.startsWith("$") ? readJsonPath(payload, trimmed) : trimmed;
 }
 
-function readMappedString(value: string | undefined, payload: unknown): string | undefined {
+function readMappedString(value: ProviderAccountMappedStringExpression | undefined, payload: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    for (const candidate of value) {
+      const resolved = readMappedString(candidate, payload);
+      if (resolved !== undefined) {
+        return resolved;
+      }
+    }
+    return undefined;
+  }
   if (!value) {
     return undefined;
   }
@@ -1390,7 +1410,16 @@ function readMappedString(value: string | undefined, payload: unknown): string |
   return readString(resolved);
 }
 
-function readMappedDateString(value: string | undefined, payload: unknown): string | undefined {
+function readMappedDateString(value: ProviderAccountMappedStringExpression | undefined, payload: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    for (const candidate of value) {
+      const resolved = readMappedDateString(candidate, payload);
+      if (resolved !== undefined) {
+        return resolved;
+      }
+    }
+    return undefined;
+  }
   if (!value) {
     return undefined;
   }

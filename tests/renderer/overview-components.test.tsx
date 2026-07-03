@@ -3,7 +3,7 @@ import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { OverviewView } from "../../src/renderer/pages/home/components/dashboard.tsx";
-import type { OverviewWidgetConfig } from "../../src/shared/app.ts";
+import type { OverviewWidgetConfig, ProviderAccountSnapshot } from "../../src/shared/app.ts";
 import { accountSnapshots, installBrowserGlobals, usageStats } from "./fixtures.ts";
 
 installBrowserGlobals();
@@ -81,4 +81,81 @@ test("OverviewView renders the empty widget layout state", () => {
   assert.match(html, /Overview/);
   assert.match(html, /No widgets configured/);
   assert.match(html, /aria-label="Edit widgets"/);
+});
+
+test("OverviewView prioritizes Codex manual resets before folded balance meters", () => {
+  const resetAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+  const codexAccount: ProviderAccountSnapshot = {
+    meters: [
+      {
+        id: "codex_primary_quota",
+        kind: "quota",
+        label: "Primary quota",
+        limit: 100,
+        remaining: 96,
+        resetAt,
+        unit: "%",
+        window: "primary"
+      },
+      {
+        id: "codex_secondary_quota",
+        kind: "quota",
+        label: "Secondary quota",
+        limit: 100,
+        remaining: 68,
+        resetAt,
+        unit: "%",
+        window: "secondary"
+      },
+      {
+        id: "codex_individual_limit",
+        kind: "quota",
+        label: "Individual limit",
+        limit: 100,
+        remaining: 42,
+        resetAt,
+        unit: "credits",
+        window: "monthly"
+      },
+      {
+        id: "codex_credit_balance",
+        kind: "balance",
+        label: "Credit balance",
+        remaining: 0,
+        unit: "credits"
+      },
+      {
+        id: "codex_manual_resets",
+        kind: "requests",
+        label: "Manual resets",
+        remaining: 2,
+        resetAt,
+        unit: "resets",
+        window: "manual-reset"
+      }
+    ],
+    provider: "Codex API",
+    source: "http-json",
+    status: "ok",
+    updatedAt: new Date().toISOString()
+  };
+
+  const html = renderToStaticMarkup(
+    <OverviewView
+      overviewWidgets={[{ enabled: true, id: "account", size: "4:2", type: "account-balance", variant: "cards" }]}
+      providerAccounts={[codexAccount]}
+      refreshProviderAccounts={() => undefined}
+      setUsageRange={() => undefined}
+      usageRange="30d"
+      usageStats={usageStats("30d")}
+      onWidgetsChange={() => undefined}
+    />
+  );
+
+  assert.match(html, /Primary quota/);
+  assert.match(html, /Secondary quota/);
+  assert.match(html, /Manual resets/);
+  assert.match(html, /expires in/);
+  assert.match(html, /2 resets/);
+  assert.doesNotMatch(html, /Credit balance/);
 });

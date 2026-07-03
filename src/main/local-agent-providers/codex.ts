@@ -39,21 +39,124 @@ const codexAccountRateLimitMapping: ProviderAccountMappingConfig = {
       kind: "quota",
       label: "Primary quota",
       limit: 100,
-      remaining: "100 - $.rate_limit.primary_window.used_percent",
-      resetAt: "$.rate_limit.primary_window.reset_at",
+      remaining: [
+        "100 - $.rate_limit.primary_window.used_percent",
+        "100 - $.rate_limits.primary.used_percent"
+      ],
+      resetAt: [
+        "$.rate_limit.primary_window.reset_at",
+        "$.rate_limit.primary_window.resets_at",
+        "$.rate_limits.primary.resets_at"
+      ],
       unit: "%",
-      used: "$.rate_limit.primary_window.used_percent",
+      used: [
+        "$.rate_limit.primary_window.used_percent",
+        "$.rate_limits.primary.used_percent"
+      ],
       window: "primary"
+    },
+    {
+      id: "codex_manual_resets",
+      kind: "requests",
+      label: "Manual resets",
+      remaining: [
+        "$.resetsAvailable",
+        "$.availableRateLimitResetCount",
+        "$.rate_limit.resetsAvailable",
+        "$.rate_limits.resetsAvailable",
+        "$.rate_limit.manual_resets.remaining",
+        "$.rate_limit.manual_resets.resetsAvailable",
+        "$.rate_limit.manual_reset.remaining",
+        "$.rate_limit.manual_reset.resetsAvailable",
+        "$.rate_limits.manual_resets.remaining",
+        "$.rate_limits.manual_resets.resetsAvailable",
+        "$.rate_limits.manual_reset.remaining",
+        "$.rate_limits.manual_reset.resetsAvailable",
+        "$.manual_resets.remaining",
+        "$.manual_resets.resetsAvailable",
+        "$.manual_reset.remaining",
+        "$.manual_reset.resetsAvailable",
+        "$.resets.remaining",
+        "$.resets.resetsAvailable",
+        "$.rate_limit.manual_resets.available",
+        "$.rate_limit.manual_reset.available",
+        "$.rate_limit.resets.available",
+        "$.rate_limits.resets.available",
+        "$.manual_resets.available",
+        "$.manual_reset.available",
+        "$.resets.available"
+      ],
+      resetAt: [
+        "$.resetExpires",
+        "$.expires_at",
+        "$.resets_at",
+        "$.rate_limit.manual_resets.expires_at",
+        "$.rate_limit.manual_resets.expire_at",
+        "$.rate_limit.manual_resets.reset_at",
+        "$.rate_limit.manual_resets.resets_at",
+        "$.rate_limit.manual_reset.expires_at",
+        "$.rate_limit.manual_reset.expire_at",
+        "$.rate_limit.manual_reset.reset_at",
+        "$.rate_limit.manual_reset.resets_at",
+        "$.rate_limits.manual_resets.expires_at",
+        "$.rate_limits.manual_resets.expire_at",
+        "$.rate_limits.manual_resets.reset_at",
+        "$.rate_limits.manual_resets.resets_at",
+        "$.rate_limits.manual_reset.expires_at",
+        "$.rate_limits.manual_reset.expire_at",
+        "$.rate_limits.manual_reset.reset_at",
+        "$.rate_limits.manual_reset.resets_at",
+        "$.rate_limit.resets.expires_at",
+        "$.rate_limit.resets.expire_at",
+        "$.rate_limit.resets.reset_at",
+        "$.rate_limit.resets.resets_at",
+        "$.rate_limits.resets.expires_at",
+        "$.rate_limits.resets.expire_at",
+        "$.rate_limits.resets.reset_at",
+        "$.rate_limits.resets.resets_at",
+        "$.manual_resets.expires_at",
+        "$.manual_resets.expire_at",
+        "$.manual_resets.reset_at",
+        "$.manual_resets.resets_at",
+        "$.manual_reset.expires_at",
+        "$.manual_reset.expire_at",
+        "$.manual_reset.reset_at",
+        "$.manual_reset.resets_at",
+        "$.resets.expires_at",
+        "$.resets.expire_at",
+        "$.resets.reset_at",
+        "$.resets.resets_at"
+      ],
+      unit: "resets",
+      used: [
+        "$.rate_limit.manual_resets.used",
+        "$.rate_limit.manual_reset.used",
+        "$.rate_limits.manual_resets.used",
+        "$.manual_resets.used",
+        "$.manual_reset.used",
+        "$.resets.used"
+      ],
+      window: "manual-reset"
     },
     {
       id: "codex_secondary_quota",
       kind: "quota",
       label: "Secondary quota",
       limit: 100,
-      remaining: "100 - $.rate_limit.secondary_window.used_percent",
-      resetAt: "$.rate_limit.secondary_window.reset_at",
+      remaining: [
+        "100 - $.rate_limit.secondary_window.used_percent",
+        "100 - $.rate_limits.secondary.used_percent"
+      ],
+      resetAt: [
+        "$.rate_limit.secondary_window.reset_at",
+        "$.rate_limit.secondary_window.resets_at",
+        "$.rate_limits.secondary.resets_at"
+      ],
       unit: "%",
-      used: "$.rate_limit.secondary_window.used_percent",
+      used: [
+        "$.rate_limit.secondary_window.used_percent",
+        "$.rate_limits.secondary.used_percent"
+      ],
       window: "secondary"
     },
     {
@@ -164,7 +267,7 @@ export function readCodexAuth(): OAuthTokenSet | undefined {
   };
 }
 
-function codexProviderAccountConfig(): ProviderAccountConfig {
+export function codexProviderAccountConfig(): ProviderAccountConfig {
   return {
     connectors: [
       {

@@ -71,9 +71,12 @@ export const trayText: Record<ResolvedLanguage, Record<string, string>> = {
     "F": "五",
     "Granted balance": "赠送余额",
     "Input": "输入",
+    "Individual limit": "个人额度",
     "Less": "少",
+    "Lifetime tokens": "累计令牌",
     "Longest streak": "最长连续",
     "M": "一",
+    "Manual resets": "主动重置次数",
     "Monthly budget": "月度预算",
     "Model Share": "模型占比",
     "More": "多",
@@ -84,8 +87,11 @@ export const trayText: Record<ResolvedLanguage, Record<string, string>> = {
     "Output": "输出",
     "Overview": "概览",
     "Open CCR": "打开 CCR",
+    "Peak daily tokens": "日峰值令牌",
+    "Primary quota": "主额度",
     "Quit": "退出",
     "Refresh": "刷新",
+    "Secondary quota": "副额度",
     "Subscription": "订阅",
     "Success": "成功",
     "Success rate": "成功率",
@@ -112,10 +118,13 @@ export const trayText: Record<ResolvedLanguage, Record<string, string>> = {
     "day": "天",
     "days": "天",
     "error": "错误",
+    "expired": "已过期",
+    "expires in": "剩余",
     "hours": "小时",
     "minutes": "分钟",
     "ok": "正常",
     "requests": "请求",
+    "resets": "次",
     "soon": "即将",
     "tokens": "令牌",
     "unsupported": "不支持",
@@ -652,7 +661,17 @@ export function accountStatusRank(status: ProviderAccountSnapshot["status"]): nu
 }
 
 export function accountMetersForDisplay(snapshot: ProviderAccountSnapshot, maxCount: number): ProviderAccountMeter[] {
-  return snapshot.meters.slice(0, maxCount);
+  const meters = snapshot.meters.slice(0, maxCount);
+  const manualResetMeter = snapshot.meters.find(isAccountManualResetMeter);
+  if (!manualResetMeter || meters.includes(manualResetMeter) || meters.length < maxCount) {
+    return meters;
+  }
+  return [...meters.slice(0, Math.max(0, maxCount - 1)), manualResetMeter];
+}
+
+function isAccountManualResetMeter(meter: ProviderAccountMeter): boolean {
+  const text = `${meter.id} ${meter.label} ${meter.window ?? ""}`.toLowerCase();
+  return text.includes("manual_reset") || text.includes("manual reset") || text.includes("manual-reset");
 }
 
 export function meterRemainingRatio(meter: ProviderAccountMeter): number | undefined {
@@ -706,28 +725,29 @@ export function formatMeterNumber(value: number): string {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 6 }).format(value);
 }
 
-export function formatAccountReset(value: string): string {
+export function formatAccountReset(value: string, translate: (value: string) => string = (item) => item): string {
   const timestamp = new Date(value).getTime();
   if (!Number.isFinite(timestamp)) {
     return value;
   }
   const minutes = Math.round((timestamp - Date.now()) / 60000);
   if (minutes <= 0) {
-    return "soon";
+    return translate("expired");
   }
+  const prefix = translate("expires in");
   if (minutes < 60) {
-    return `${minutes}m`;
+    return `${prefix} ${minutes}m`;
   }
   const hours = Math.round(minutes / 60);
   if (hours < 48) {
-    return `${hours}h`;
+    return `${prefix} ${hours}h`;
   }
-  return `${Math.round(hours / 24)}d`;
+  return `${prefix} ${Math.round(hours / 24)}d`;
 }
 
 export function formatAccountMeterTitle(meter: ProviderAccountMeter, translate: (value: string) => string): string {
   const label = translateAccountMeterLabel(meter.label, translate);
-  return meter.resetAt ? `${label} (${formatAccountReset(meter.resetAt)})` : label;
+  return meter.resetAt ? `${label} (${formatAccountReset(meter.resetAt, translate)})` : label;
 }
 
 export function accountStatusClass(status: ProviderAccountSnapshot["status"]): string {

@@ -144,6 +144,59 @@ test("AccountSummaryPanel covers empty and metered account states", () => {
   assert.match(meteredHtml, /style="\s*width:42%"/);
 });
 
+test("AccountSummaryPanel prioritizes Codex manual reset meter with expiration", () => {
+  const resetAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+  const html = renderToStaticMarkup(
+    <AccountSummaryPanel
+      snapshots={[
+        {
+          meters: [
+            {
+              id: "codex_primary_quota",
+              kind: "quota",
+              label: "Primary quota",
+              limit: 100,
+              remaining: 66,
+              resetAt,
+              unit: "%",
+              window: "primary"
+            },
+            {
+              id: "codex_secondary_quota",
+              kind: "quota",
+              label: "Secondary quota",
+              limit: 100,
+              remaining: 80,
+              unit: "%",
+              window: "secondary"
+            },
+            {
+              id: "codex_manual_resets",
+              kind: "requests",
+              label: "Manual resets",
+              remaining: 2,
+              resetAt,
+              unit: "resets",
+              window: "manual-reset"
+            }
+          ],
+          provider: "Codex API",
+          source: "http-json",
+          status: "ok",
+          updatedAt: new Date().toISOString()
+        }
+      ]}
+      variant="bar"
+    />
+  );
+
+  assert.match(html, /Primary quota/);
+  assert.match(html, /Manual resets/);
+  assert.match(html, /expires in/);
+  assert.match(html, /2 resets/);
+  assert.doesNotMatch(html, /Secondary quota/);
+});
+
 test("RangeSwitch renders every usage range option", () => {
   const html = renderToStaticMarkup(<RangeSwitch range="7d" onChange={() => undefined} />);
 

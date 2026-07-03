@@ -410,7 +410,12 @@ export function primaryProviderAccountMeter(account: ProviderAccountSnapshot): P
 }
 
 export function providerAccountMetersForDisplay(account: ProviderAccountSnapshot, maxCount: number): ProviderAccountMeter[] {
-  return account.meters.slice(0, maxCount);
+  const meters = account.meters.slice(0, maxCount);
+  const manualResetMeter = account.meters.find(isProviderAccountManualResetMeter);
+  if (!manualResetMeter || meters.includes(manualResetMeter) || meters.length < maxCount) {
+    return meters;
+  }
+  return [...meters.slice(0, Math.max(0, maxCount - 1)), manualResetMeter];
 }
 
 export function providerAccountMeterRemainingRatio(meter: ProviderAccountMeter): number | undefined {
@@ -483,26 +488,32 @@ export function formatProviderAccountNumber(value: number): string {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 6 }).format(value);
 }
 
-export function formatProviderAccountReset(value: string): string {
+export function formatProviderAccountReset(value: string, translate: (value: string) => string = (item) => item): string {
   const timestamp = new Date(value).getTime();
   if (!Number.isFinite(timestamp)) {
     return value;
   }
   const minutes = Math.round((timestamp - Date.now()) / 60000);
   if (minutes <= 0) {
-    return "soon";
+    return translate("expired");
   }
+  const prefix = translate("expires in");
   if (minutes < 60) {
-    return `${minutes}m`;
+    return `${prefix} ${minutes}m`;
   }
   const hours = Math.round(minutes / 60);
   if (hours < 48) {
-    return `${hours}h`;
+    return `${prefix} ${hours}h`;
   }
-  return `${Math.round(hours / 24)}d`;
+  return `${prefix} ${Math.round(hours / 24)}d`;
 }
 
 export function formatProviderAccountMeterTitle(meter: ProviderAccountMeter, translate: (value: string) => string): string {
   const label = translate(meter.label);
-  return meter.resetAt ? `${label} (${formatProviderAccountReset(meter.resetAt)})` : label;
+  return meter.resetAt ? `${label} (${formatProviderAccountReset(meter.resetAt, translate)})` : label;
+}
+
+export function isProviderAccountManualResetMeter(meter: ProviderAccountMeter): boolean {
+  const text = `${meter.id} ${meter.label} ${meter.window ?? ""}`.toLowerCase();
+  return text.includes("manual_reset") || text.includes("manual reset") || text.includes("manual-reset");
 }

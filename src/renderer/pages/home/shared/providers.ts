@@ -1286,7 +1286,7 @@ export function createProviderAccountDraftFromConfig(account: ProviderAccountCon
     usageStatusPath: httpJsonConnector.mapping.status ?? "",
     usageSubscriptionLimitPath: stringValue(subscriptionMeter?.limit) || "",
     usageSubscriptionRemainingPath: stringValue(subscriptionMeter?.remaining) || "",
-    usageSubscriptionResetPath: subscriptionMeter?.resetAt ?? "",
+    usageSubscriptionResetPath: stringValue(subscriptionMeter?.resetAt) || "",
     usageSubscriptionUnit: stringValue(subscriptionMeter?.unit) || "tokens"
   };
 }
