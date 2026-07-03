@@ -686,6 +686,35 @@ export function meterProgress(meter: ProviderAccountMeter): number | undefined {
   return ratio === undefined ? undefined : Math.max(3, Math.round(ratio * 100));
 }
 
+export function meterValidityProgress(meter: ProviderAccountMeter, now = Date.now()): number | undefined {
+  const detail = currentMeterDetail(meter, now);
+  const effectiveAt = meterDetailTimestamp(detail?.effectiveAt);
+  const expiresAt = meterDetailTimestamp(detail?.expiresAt);
+  if (effectiveAt === undefined || expiresAt === undefined || expiresAt <= effectiveAt || now < effectiveAt || now >= expiresAt) {
+    return undefined;
+  }
+  const ratio = (expiresAt - now) / (expiresAt - effectiveAt);
+  return Math.max(3, Math.round(Math.max(0, Math.min(1, ratio)) * 100));
+}
+
+function currentMeterDetail(meter: ProviderAccountMeter, now = Date.now()): NonNullable<ProviderAccountMeter["details"]>[number] | undefined {
+  return (meter.details ?? [])
+    .filter((detail) => {
+      const effectiveAt = meterDetailTimestamp(detail.effectiveAt);
+      const expiresAt = meterDetailTimestamp(detail.expiresAt);
+      return effectiveAt !== undefined && expiresAt !== undefined && effectiveAt <= now && now < expiresAt;
+    })
+    .sort((a, b) => (meterDetailTimestamp(a.expiresAt) ?? Number.MAX_SAFE_INTEGER) - (meterDetailTimestamp(b.expiresAt) ?? Number.MAX_SAFE_INTEGER))[0];
+}
+
+function meterDetailTimestamp(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : undefined;
+}
+
 export function translateAccountMeterLabel(label: string, translate: (value: string) => string): string {
   return translate(label);
 }

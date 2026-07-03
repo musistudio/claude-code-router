@@ -1,5 +1,6 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { loadAppConfig } from "./config";
+import { attachCodexRateLimitResetCreditDetails } from "./local-agent-providers/codex";
 import { localAgentProviderApiKey, readCodexAuth } from "./local-agent-provider-service";
 import { pluginService } from "./plugins/service";
 import { getUsageTotalsSince } from "./usage-store";
@@ -21,11 +22,14 @@ import type {
   ProviderAccountMappedNumberExpression,
   ProviderAccountMappedStringExpression,
   ProviderAccountMeter,
+  ProviderAccountMeterDetail,
   ProviderAccountMeterKind,
   ProviderAccountMeterUnit,
   ProviderAccountPluginConnectorConfig,
   ProviderAccountSnapshot,
   ProviderAccountSnapshotRequestOptions,
+  ProviderAccountResetRequest,
+  ProviderAccountResetResult,
   ProviderAccountTestPath,
   ProviderAccountTestRequest,
   ProviderAccountTestResult,
@@ -65,6 +69,7 @@ const maxErrorRefreshIntervalMs = 60 * 1000;
 const maxStaleAccountSnapshotMs = 2 * 60 * 1000;
 const maxCacheEntries = 500;
 const standardAccountPaths = ["/.well-known/ccr/account", "/v1/account/limits"];
+const codexRateLimitResetCreditConsumeEndpoint = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume";
 const cache = new Map<string, CacheEntry>();
 const inFlightRefreshes = new Map<string, Promise<ProviderAccountSnapshot | undefined>>();
 let cacheGeneration = 0;
@@ -142,9 +147,7 @@ export async function testProviderAccountConnector(request: ProviderAccountTestR
     };
   }
 
-  const meters = connector.mapping.meters
-    .map((meter) => mappedMeterFromPayload(meter, payload))
-    .filter((meter): meter is ProviderAccountMeter => Boolean(meter));
+  const meters = mappedMetersFromPayload(connector, payload);
 
   return {
     meters,
@@ -152,6 +155,42 @@ export async function testProviderAccountConnector(request: ProviderAccountTestR
     paths: flattenJsonPaths(payload),
     payload,
     status: normalizeStatus(readMappedString(connector.mapping.status, payload))
+  };
+}
+
+export async function resetCodexRateLimitCredit(request: ProviderAccountResetRequest): Promise<ProviderAccountResetResult> {
+  const providerName = request.provider?.trim();
+  const creditId = request.creditId?.trim();
+  if (!providerName) {
+    throw new Error("Provider is required.");
+  }
+  if (!creditId) {
+    throw new Error("Reset credit id is required.");
+  }
+
+  const config = await loadAppConfig();
+  const provider = codexResetProvider(config, providerName, request.credentialId);
+  const materialized = materializeProviderAccountRequest(config, provider);
+  const payload = await fetchJson(
+    codexRateLimitResetCreditConsumeEndpoint,
+    materialized.provider,
+    "provider-api-key",
+    {
+      "User-Agent": "codex-cli",
+      ...(materialized.headers ?? {})
+    },
+    "POST",
+    {
+      credit_id: creditId,
+      redeem_request_id: randomUUID()
+    }
+  );
+
+  invalidateProviderAccountSnapshotCache(providerName);
+  return {
+    code: isRecord(payload) ? readString(payload.code) : undefined,
+    creditId,
+    ok: true
   };
 }
 
@@ -313,6 +352,36 @@ function providerAccountTargets(provider: GatewayProviderConfig): ProviderAccoun
   }
 
   return providerAccount && providerApiKey(provider) ? [{ account: providerAccount, provider }] : [];
+}
+
+function codexResetProvider(config: AppConfig, providerName: string, credentialId: string | undefined): GatewayProviderConfig {
+  const normalizedProviderName = normalizeProviderName(providerName);
+  const provider = config.Providers.find((candidate) => normalizeProviderName(candidate.name) === normalizedProviderName);
+  if (!provider) {
+    throw new Error("Provider account was not found.");
+  }
+
+  const target = providerAccountTargets(provider).find((candidate) => {
+    const candidateCredentialId = candidate.credential ? providerCredentialRuntimeId(candidate.provider, candidate.credential) : undefined;
+    return !credentialId || candidateCredentialId === credentialId;
+  });
+  if (!target) {
+    throw new Error("Provider account credential was not found.");
+  }
+  if (!providerAccountHasCodexResetCreditsConnector(target.account)) {
+    throw new Error("Provider account does not support Codex manual reset credits.");
+  }
+
+  return target.credential
+    ? providerWithCredentialApiKey(target.provider, target.credential, target.account)
+    : { ...target.provider, account: target.account };
+}
+
+function providerAccountHasCodexResetCreditsConnector(account: ProviderAccountConfig): boolean {
+  return normalizeConnectors(account).some((connector) =>
+    connector.type === "http-json" &&
+    /\/wham\/rate-limit-reset-credits(?:$|[?#/])/i.test(connector.endpoint.trim())
+  );
 }
 
 function providerAccountUnavailableSnapshots(provider: GatewayProviderConfig): ProviderAccountSnapshot[] {
@@ -518,9 +587,7 @@ async function resolveHttpJsonConnector(
     };
   }
 
-  const meters = connector.mapping.meters
-    .map((meter) => mappedMeterFromPayload(meter, payload))
-    .filter((meter): meter is ProviderAccountMeter => Boolean(meter));
+  const meters = mappedMetersFromPayload(connector, payload);
   return {
     errors: [],
     meters,
@@ -906,6 +973,13 @@ function mappedMeterFromPayload(config: ProviderAccountMappedMeterConfig, payloa
   }, "http-json");
 }
 
+function mappedMetersFromPayload(connector: ProviderAccountHttpJsonConnectorConfig, payload: unknown): ProviderAccountMeter[] {
+  const meters = connector.mapping.meters
+    .map((meter) => mappedMeterFromPayload(meter, payload))
+    .filter((meter): meter is ProviderAccountMeter => Boolean(meter));
+  return attachCodexRateLimitResetCreditDetails(meters, payload);
+}
+
 function normalizeMeter(value: unknown, source: ProviderAccountConnectorSource): ProviderAccountMeter | undefined {
   if (!isRecord(value)) {
     return undefined;
@@ -919,7 +993,9 @@ function normalizeMeter(value: unknown, source: ProviderAccountConnectorSource):
   const limit = normalizeNumber(value.limit);
   const used = normalizeNumber(value.used);
   const remaining = normalizeNumber(value.remaining) ?? (limit !== undefined && used !== undefined ? limit - used : undefined);
+  const details = normalizeMeterDetails(value.details);
   return {
+    ...(details.length > 0 ? { details } : {}),
     id,
     kind: normalizeMeterKind(readString(value.kind)) ?? inferMeterKind(unit),
     label,
@@ -931,6 +1007,31 @@ function normalizeMeter(value: unknown, source: ProviderAccountConnectorSource):
     used,
     window: readString(value.window)
   };
+}
+
+function normalizeMeterDetails(value: unknown): ProviderAccountMeterDetail[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map(normalizeMeterDetail)
+    .filter((detail): detail is ProviderAccountMeterDetail => Boolean(detail));
+}
+
+function normalizeMeterDetail(value: unknown): ProviderAccountMeterDetail | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const detail: ProviderAccountMeterDetail = {
+    description: readString(value.description),
+    effectiveAt: readString(value.effectiveAt),
+    expiresAt: readString(value.expiresAt),
+    id: readString(value.id),
+    label: readString(value.label),
+    redeemable: readBoolean(value.redeemable),
+    status: readString(value.status)
+  };
+  return detail.description || detail.effectiveAt || detail.expiresAt || detail.id || detail.label || detail.redeemable !== undefined || detail.status ? detail : undefined;
 }
 
 function materializeProviderAccountRequest(
@@ -1675,6 +1776,10 @@ function normalizeProviderName(value: string | undefined): string {
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function readBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function joinUrlPath(basePath: string, suffix: string): string {

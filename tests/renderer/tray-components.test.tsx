@@ -146,6 +146,7 @@ test("AccountSummaryPanel covers empty and metered account states", () => {
 
 test("AccountSummaryPanel prioritizes Codex manual reset meter with expiration", () => {
   const resetAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+  const resetEffectiveAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const html = renderToStaticMarkup(
     <AccountSummaryPanel
       snapshots={[
@@ -174,6 +175,13 @@ test("AccountSummaryPanel prioritizes Codex manual reset meter with expiration",
               id: "codex_manual_resets",
               kind: "requests",
               label: "Manual resets",
+              details: [
+                {
+                  effectiveAt: resetEffectiveAt,
+                  expiresAt: resetAt,
+                  id: "reset-1"
+                }
+              ],
               remaining: 2,
               resetAt,
               unit: "resets",
@@ -194,6 +202,7 @@ test("AccountSummaryPanel prioritizes Codex manual reset meter with expiration",
   assert.match(html, /Manual resets/);
   assert.match(html, /expires in/);
   assert.match(html, /2 resets/);
+  assert.match(html, /width:/);
   assert.doesNotMatch(html, /Secondary quota/);
 });
 

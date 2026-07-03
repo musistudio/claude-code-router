@@ -27,7 +27,7 @@ import { listMcpServerTools } from "../server/mcp/tool-discovery";
 import { getAgentAnalysis, getAgentTracePayload, getRequestLogDetail, getRequestLogs } from "./request-log-store";
 import { getUsageStats } from "./usage-store";
 import { gatewayService } from "../server/gateway/service";
-import { getProviderAccountSnapshots, invalidateProviderAccountSnapshotCache, testProviderAccountConnector } from "./provider-account-service";
+import { getProviderAccountSnapshots, invalidateProviderAccountSnapshotCache, resetCodexRateLimitCredit, testProviderAccountConnector } from "./provider-account-service";
 import type {
   AgentAnalysisFilter,
   AgentAnalysisTracePayloadRequest,
@@ -52,6 +52,7 @@ import type {
   PluginMarketplaceEntry,
   ProfileApplyResult,
   ProfileOpenRequest,
+  ProviderAccountResetRequest,
   ProviderAccountSnapshotRequestOptions,
   ProviderAccountTestRequest,
   ProviderCatalogModelsRequest,
@@ -354,6 +355,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
     ensureProxyCertificateAuthority();
     await revealFile(PROXY_CA_CERT_FILE);
   },
+  resetCodexRateLimitCredit: (request) => resetCodexRateLimitCredit(request as ProviderAccountResetRequest),
   saveApiKeys: async (apiKeys) => {
     const savedConfig = await saveApiKeysConfig(apiKeys as ApiKeyConfig[]);
     const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(savedConfig);

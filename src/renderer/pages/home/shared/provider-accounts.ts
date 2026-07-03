@@ -430,6 +430,64 @@ export function providerAccountMeterProgress(meter: ProviderAccountMeter): numbe
   return ratio === undefined ? undefined : Math.max(3, Math.round(ratio * 100));
 }
 
+export function providerAccountMeterValidityProgress(meter: ProviderAccountMeter, now = Date.now()): number | undefined {
+  const detail = providerAccountCurrentMeterDetail(meter, now);
+  if (!detail) {
+    return undefined;
+  }
+  const progress = providerAccountMeterDetailValidityProgress(detail, now);
+  return progress && progress > 0 ? progress : undefined;
+}
+
+export function providerAccountCurrentMeterDetail(meter: ProviderAccountMeter, now = Date.now()): NonNullable<ProviderAccountMeter["details"]>[number] | undefined {
+  return (meter.details ?? [])
+    .filter((detail) => {
+      const effectiveAt = providerAccountDetailTimestamp(detail.effectiveAt);
+      const expiresAt = providerAccountDetailTimestamp(detail.expiresAt);
+      return effectiveAt !== undefined && expiresAt !== undefined && effectiveAt <= now && now < expiresAt;
+    })
+    .sort((a, b) => (providerAccountDetailTimestamp(a.expiresAt) ?? Number.MAX_SAFE_INTEGER) - (providerAccountDetailTimestamp(b.expiresAt) ?? Number.MAX_SAFE_INTEGER))[0];
+}
+
+export function providerAccountMeterDetailValidityProgress(detail: NonNullable<ProviderAccountMeter["details"]>[number], now = Date.now()): number | undefined {
+  const effectiveAt = providerAccountDetailTimestamp(detail.effectiveAt);
+  const expiresAt = providerAccountDetailTimestamp(detail.expiresAt);
+  if (effectiveAt === undefined || expiresAt === undefined || expiresAt <= effectiveAt) {
+    return undefined;
+  }
+  if (now <= effectiveAt) {
+    return 100;
+  }
+  if (now >= expiresAt) {
+    return 0;
+  }
+  const ratio = (expiresAt - now) / (expiresAt - effectiveAt);
+  return Math.max(3, Math.round(Math.max(0, Math.min(1, ratio)) * 100));
+}
+
+export function formatProviderAccountDetailDate(value: string | undefined): string {
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${month}-${day} ${hours}:${minutes}`;
+}
+
+function providerAccountDetailTimestamp(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : undefined;
+}
+
 export function providerAccountBadgeVariant(status: ProviderAccountSnapshot["status"]): "danger" | "outline" | "success" | "warning" {
   if (status === "critical" || status === "error") {
     return "danger";

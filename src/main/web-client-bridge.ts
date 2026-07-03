@@ -137,6 +137,7 @@ window.ccr = {
   restartGateway: () => rpc("restartGateway") as ReturnType<NonNullable<typeof window.ccr>["restartGateway"]>,
   restartProxy: () => rpc("restartProxy") as ReturnType<NonNullable<typeof window.ccr>["restartProxy"]>,
   revealProxyCertificate: () => rpc("revealProxyCertificate") as ReturnType<NonNullable<typeof window.ccr>["revealProxyCertificate"]>,
+  resetCodexRateLimitCredit: (request) => rpc("resetCodexRateLimitCredit", [request]) as ReturnType<NonNullable<typeof window.ccr>["resetCodexRateLimitCredit"]>,
   saveApiKeys: (apiKeys) => rpc("saveApiKeys", [apiKeys]) as ReturnType<NonNullable<typeof window.ccr>["saveApiKeys"]>,
   saveConfig: (config, options) => rpc("saveConfig", [config, options]) as ReturnType<NonNullable<typeof window.ccr>["saveConfig"]>,
   scanBotHandoffBluetoothTargets: () => rpc("scanBotHandoffBluetoothTargets") as ReturnType<NonNullable<typeof window.ccr>["scanBotHandoffBluetoothTargets"]>,

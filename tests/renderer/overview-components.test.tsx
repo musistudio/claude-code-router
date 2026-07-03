@@ -3,6 +3,7 @@ import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { OverviewView } from "../../src/renderer/pages/home/components/dashboard.tsx";
+import { providerAccountMeterDetailValidityProgress } from "../../src/renderer/pages/home/shared/provider-accounts.ts";
 import type { OverviewWidgetConfig, ProviderAccountSnapshot } from "../../src/shared/app.ts";
 import { accountSnapshots, installBrowserGlobals, usageStats } from "./fixtures.ts";
 
@@ -85,6 +86,7 @@ test("OverviewView renders the empty widget layout state", () => {
 
 test("OverviewView prioritizes Codex manual resets before folded balance meters", () => {
   const resetAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+  const resetEffectiveAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const codexAccount: ProviderAccountSnapshot = {
     meters: [
       {
@@ -128,6 +130,15 @@ test("OverviewView prioritizes Codex manual resets before folded balance meters"
         id: "codex_manual_resets",
         kind: "requests",
         label: "Manual resets",
+        details: [
+          {
+            description: "Reset all active Codex rate limits.",
+            effectiveAt: resetEffectiveAt,
+            expiresAt: resetAt,
+            id: "reset-1",
+            label: "Full reset"
+          }
+        ],
         remaining: 2,
         resetAt,
         unit: "resets",
@@ -155,7 +166,81 @@ test("OverviewView prioritizes Codex manual resets before folded balance meters"
   assert.match(html, /Primary quota/);
   assert.match(html, /Secondary quota/);
   assert.match(html, /Manual resets/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.match(html, /aria-label="Expand Manual resets/);
+  assert.doesNotMatch(html, /Effective/);
+  assert.doesNotMatch(html, /Expires/);
+  assert.doesNotMatch(html, /Full reset/);
   assert.match(html, /expires in/);
   assert.match(html, /2 resets/);
   assert.doesNotMatch(html, /Credit balance/);
+});
+
+test("OverviewView does not render an outer progress bar for Codex manual resets", () => {
+  const resetAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+  const resetEffectiveAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const codexAccount: ProviderAccountSnapshot = {
+    meters: [
+      {
+        id: "codex_manual_resets",
+        kind: "requests",
+        label: "Manual resets",
+        details: [
+          {
+            effectiveAt: resetEffectiveAt,
+            expiresAt: resetAt,
+            id: "reset-1",
+            label: "Full reset"
+          }
+        ],
+        remaining: 2,
+        resetAt,
+        unit: "resets",
+        window: "manual-reset"
+      }
+    ],
+    provider: "Codex API",
+    source: "http-json",
+    status: "ok",
+    updatedAt: new Date().toISOString()
+  };
+
+  const html = renderToStaticMarkup(
+    <OverviewView
+      overviewWidgets={[{ enabled: true, id: "account", size: "4:2", type: "account-balance", variant: "cards" }]}
+      providerAccounts={[codexAccount]}
+      refreshProviderAccounts={() => undefined}
+      setUsageRange={() => undefined}
+      usageRange="30d"
+      usageStats={usageStats("30d")}
+      onWidgetsChange={() => undefined}
+    />
+  );
+
+  assert.match(html, /Manual resets/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.doesNotMatch(html, /style="width:[^"]*%"/);
+  assert.doesNotMatch(html, /Full reset/);
+});
+
+test("provider account reset credit detail progress uses each validity window", () => {
+  const effectiveAt = "2026-07-01T00:00:00.000Z";
+  const expiresAt = "2026-07-11T00:00:00.000Z";
+
+  assert.equal(providerAccountMeterDetailValidityProgress({
+    effectiveAt,
+    expiresAt
+  }, Date.parse("2026-07-06T00:00:00.000Z")), 50);
+  assert.equal(providerAccountMeterDetailValidityProgress({
+    effectiveAt,
+    expiresAt
+  }, Date.parse("2026-06-30T00:00:00.000Z")), 100);
+  assert.equal(providerAccountMeterDetailValidityProgress({
+    effectiveAt,
+    expiresAt
+  }, Date.parse("2026-07-12T00:00:00.000Z")), 0);
+  assert.equal(providerAccountMeterDetailValidityProgress({
+    effectiveAt: expiresAt,
+    expiresAt
+  }, Date.parse("2026-07-06T00:00:00.000Z")), undefined);
 });

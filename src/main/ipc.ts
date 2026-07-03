@@ -14,7 +14,7 @@ import { loadAppConfig, saveApiKeysConfig, saveAppConfig } from "./config";
 import { API_KEYS_DB_FILE, APP_CONFIG_DB_FILE, APP_NAME, CONFIGDIR, CONFIG_FILE, DATADIR, GATEWAY_CONFIG_FILE, IPC_CHANNELS, LEGACY_CONFIG_FILE, ONBOARDING_FINISHED_FILE, PROXY_CA_CERT_FILE, REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "./constants";
 import { deepLinkService } from "./deep-link";
 import { gatewayService } from "../server/gateway/service";
-import { getProviderAccountSnapshots, invalidateProviderAccountSnapshotCache, testProviderAccountConnector } from "./provider-account-service";
+import { getProviderAccountSnapshots, invalidateProviderAccountSnapshotCache, resetCodexRateLimitCredit, testProviderAccountConnector } from "./provider-account-service";
 import { detectProviderIcon } from "./provider-icons";
 import { fetchProviderManifest } from "./provider-manifest-service";
 import { getLocalAgentProviderCandidates, importLocalAgentProvider } from "./local-agent-provider-service";
@@ -32,7 +32,7 @@ import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
 import { getUsageStats } from "./usage-store";
 import windowsManager from "./windows";
-import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfig, AppCaptureElementPngRequest, AppCaptureElementPngResult, AppConfig, AppDataExportResult, AppImageExportTargetRequest, AppImageExportTargetResult, AppInfo, AppRenderHtmlPngRequest, AppRenderHtmlPngResult, AppSaveConfigOptions, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, LocalAgentProviderImportRequest, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
+import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfig, AppCaptureElementPngRequest, AppCaptureElementPngResult, AppConfig, AppDataExportResult, AppImageExportTargetRequest, AppImageExportTargetResult, AppInfo, AppRenderHtmlPngRequest, AppRenderHtmlPngResult, AppSaveConfigOptions, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, LocalAgentProviderImportRequest, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountResetRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "../shared/app";
 
 const pluginMarketplace: PluginMarketplaceEntry[] = [
   {
@@ -233,6 +233,9 @@ ipcMain.handle(IPC_CHANNELS.appProbeProvider, (_event, request: GatewayProviderP
 });
 ipcMain.handle(IPC_CHANNELS.appProbeProviderCandidates, (_event, request: GatewayProviderProbeCandidatesRequest) => {
   return probeGatewayProviderCandidates(request);
+});
+ipcMain.handle(IPC_CHANNELS.appResetCodexRateLimitCredit, (_event, request: ProviderAccountResetRequest) => {
+  return resetCodexRateLimitCredit(request);
 });
 ipcMain.handle(IPC_CHANNELS.appTestProviderAccountConnector, (_event, request: ProviderAccountTestRequest) => {
   return testProviderAccountConnector(request);

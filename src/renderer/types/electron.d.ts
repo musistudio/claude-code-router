@@ -47,6 +47,8 @@ import type {
   ProfileOpenResult,
   ProfileRuntimeStatus,
   ProfileStopResult,
+  ProviderAccountResetRequest,
+  ProviderAccountResetResult,
   ProviderAccountSnapshotRequestOptions,
   ProviderAccountTestRequest,
   ProviderAccountTestResult,
@@ -121,6 +123,7 @@ declare global {
       quitApp: () => Promise<void>;
       revealProxyCertificate: () => Promise<void>;
       renderHtmlPng?: (request: AppRenderHtmlPngRequest) => Promise<AppRenderHtmlPngResult>;
+      resetCodexRateLimitCredit: (request: ProviderAccountResetRequest) => Promise<ProviderAccountResetResult>;
       restartGateway: () => Promise<GatewayStatus>;
       restartProxy: () => Promise<ProxyStatus>;
       saveApiKeys: (apiKeys: ApiKeyConfig[]) => Promise<AppConfig>;

@@ -238,7 +238,18 @@ export type ProviderAccountMappedMeterConfig = {
   window?: ProviderAccountMeterWindow;
 };
 
+export type ProviderAccountMeterDetail = {
+  description?: string;
+  effectiveAt?: string;
+  expiresAt?: string;
+  id?: string;
+  label?: string;
+  redeemable?: boolean;
+  status?: string;
+};
+
 export type ProviderAccountMeter = {
+  details?: ProviderAccountMeterDetail[];
   id: string;
   kind: ProviderAccountMeterKind;
   label: string;
@@ -364,6 +375,18 @@ export type ProviderAccountTestResult = {
   paths: ProviderAccountTestPath[];
   payload: unknown;
   status?: ProviderAccountStatus;
+};
+
+export type ProviderAccountResetRequest = {
+  credentialId?: string;
+  creditId: string;
+  provider: string;
+};
+
+export type ProviderAccountResetResult = {
+  code?: string;
+  creditId: string;
+  ok: boolean;
 };
 
 export type ProviderDeepLinkRequest = {

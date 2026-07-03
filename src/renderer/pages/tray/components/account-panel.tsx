@@ -1,6 +1,6 @@
 import {
   accountMetersForDisplay, accountProgressClass, accountProgressColor, accountSnapshotLabel, compareAccountSnapshots, formatAccountMeterTitle, formatAccountMeterValue,
-  LoaderCircle, meterProgress, meterRemainingRatio, ProviderAccountMeter, ProviderAccountSnapshot, RefreshCw, TrayComponentVariants,
+  LoaderCircle, meterProgress, meterRemainingRatio, meterValidityProgress, ProviderAccountMeter, ProviderAccountSnapshot, RefreshCw, TrayComponentVariants,
   useTrayText
 } from "../shared";
 import { RadialMetric } from "./widgets";
@@ -110,7 +110,7 @@ function AccountMeters({
     return (
       <div className="space-y-1.5">
         {meters.map((meter) => {
-          const progress = meterProgress(meter);
+          const progress = meterProgress(meter) ?? meterValidityProgress(meter);
           return (
             <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_56px] items-center gap-2" key={meter.id}>
               <div className="min-w-0">
@@ -132,7 +132,7 @@ function AccountMeters({
   return (
     <div className="space-y-1.5">
       {meters.map((meter) => {
-        const progress = meterProgress(meter);
+        const progress = meterProgress(meter) ?? meterValidityProgress(meter);
         return (
           <div className="min-w-0" key={meter.id}>
             <div className="flex min-w-0 items-end justify-between gap-2">

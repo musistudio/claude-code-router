@@ -3,11 +3,17 @@ import path from "node:path";
 import type {
   LocalAgentProviderCandidate,
   LocalAgentProviderImportResult,
+  GatewayProviderConfig,
   ProviderAccountConfig,
-  ProviderAccountMappingConfig
+  ProviderAccountConnectorConfig,
+  ProviderAccountMappingConfig,
+  ProviderAccountMeter,
+  ProviderAccountMeterDetail
 } from "../../shared/app";
+import { normalizeProviderBaseUrl } from "../../shared/provider-url";
 import {
   isRecord,
+  localAgentProviderApiKey,
   missingCandidate,
   modelDisplayNamesForModels,
   providerInternalNamePlaceholder,
@@ -62,6 +68,7 @@ const codexAccountRateLimitMapping: ProviderAccountMappingConfig = {
       remaining: [
         "$.resetsAvailable",
         "$.availableRateLimitResetCount",
+        "$.rate_limit_reset_credits.available_count",
         "$.rate_limit.resetsAvailable",
         "$.rate_limits.resetsAvailable",
         "$.rate_limit.manual_resets.remaining",
@@ -84,7 +91,8 @@ const codexAccountRateLimitMapping: ProviderAccountMappingConfig = {
         "$.rate_limits.resets.available",
         "$.manual_resets.available",
         "$.manual_reset.available",
-        "$.resets.available"
+        "$.resets.available",
+        0
       ],
       resetAt: [
         "$.resetExpires",
@@ -176,6 +184,29 @@ const codexAccountRateLimitMapping: ProviderAccountMappingConfig = {
       label: "Credit balance",
       remaining: "$.credits.balance",
       unit: "credits"
+    }
+  ]
+};
+
+const codexAccountRateLimitResetCreditsMapping: ProviderAccountMappingConfig = {
+  meters: [
+    {
+      id: "codex_manual_resets",
+      kind: "requests",
+      label: "Manual resets",
+      remaining: [
+        "$.available_count",
+        "$.rate_limit_reset_credits.available_count",
+        0
+      ],
+      resetAt: [
+        "$.expires_at",
+        "$.expiresAt",
+        "$.reset_at",
+        "$.resetAt"
+      ],
+      unit: "resets",
+      window: "manual-reset"
     }
   ]
 };
@@ -281,6 +312,15 @@ export function codexProviderAccountConfig(): ProviderAccountConfig {
       },
       {
         auth: "provider-api-key",
+        endpoint: `${codexAccountBaseUrl}/wham/rate-limit-reset-credits`,
+        headers: {
+          "User-Agent": "codex-cli"
+        },
+        mapping: codexAccountRateLimitResetCreditsMapping,
+        type: "http-json"
+      },
+      {
+        auth: "provider-api-key",
         endpoint: `${codexAccountBaseUrl}/wham/profiles/me`,
         headers: {
           "User-Agent": "codex-cli"
@@ -291,6 +331,247 @@ export function codexProviderAccountConfig(): ProviderAccountConfig {
     ],
     enabled: true
   };
+}
+
+export function attachCodexRateLimitResetCreditDetails(meters: ProviderAccountMeter[], payload: unknown): ProviderAccountMeter[] {
+  const details = codexRateLimitResetCreditDetails(payload);
+  if (details.length === 0) {
+    return meters;
+  }
+  const resetAt = firstCodexResetCreditExpiry(details);
+  return meters.map((meter) => {
+    if (!isCodexManualResetMeter(meter)) {
+      return meter;
+    }
+    return {
+      ...meter,
+      details,
+      resetAt: meter.resetAt ?? resetAt
+    };
+  });
+}
+
+export function codexRateLimitResetCreditDetails(payload: unknown): ProviderAccountMeterDetail[] {
+  const records = codexRateLimitResetCreditRecords(payload);
+  if (records.length === 0) {
+    return [];
+  }
+  const availableRecords = records.filter(isAvailableCodexResetCreditRecord);
+  const sourceRecords = availableRecords.length > 0 ? availableRecords : records;
+  return sourceRecords
+    .map(codexRateLimitResetCreditDetail)
+    .filter((detail): detail is ProviderAccountMeterDetail => Boolean(detail))
+    .sort(compareCodexResetCreditDetails);
+}
+
+export function normalizeCodexProviderAccountConfig(provider: GatewayProviderConfig): GatewayProviderConfig {
+  if (!isLocalCodexProvider(provider) || !shouldUseCurrentCodexAccountConfig(provider.account)) {
+    return provider;
+  }
+  const account = codexProviderAccountConfig();
+  return {
+    ...provider,
+    account: {
+      ...account,
+      refreshIntervalMs: provider.account?.refreshIntervalMs ?? account.refreshIntervalMs
+    }
+  };
+}
+
+function isLocalCodexProvider(provider: GatewayProviderConfig): boolean {
+  return (
+    providerApiKey(provider) === localAgentProviderApiKey &&
+    normalizeProviderBaseUrl(providerBaseUrl(provider)) === normalizeProviderBaseUrl(codexDefaultBaseUrl)
+  );
+}
+
+function shouldUseCurrentCodexAccountConfig(account: ProviderAccountConfig | undefined): boolean {
+  if (account?.enabled === false) {
+    return false;
+  }
+  const connectors = account?.connectors ?? [];
+  if (connectors.length === 0) {
+    return true;
+  }
+  return connectors.every(isCodexAccountConnector);
+}
+
+function isCodexAccountConnector(connector: ProviderAccountConnectorConfig): boolean {
+  if (connector.type === "standard") {
+    return !connector.endpoint?.trim() && !connector.endpoints?.length && !connector.headers && !connector.id;
+  }
+  if (connector.type !== "http-json") {
+    return false;
+  }
+  return /^https:\/\/chatgpt\.com\/backend-api\/wham\//i.test(connector.endpoint.trim());
+}
+
+function codexRateLimitResetCreditRecords(payload: unknown): Record<string, unknown>[] {
+  if (!isRecord(payload)) {
+    return [];
+  }
+  const containers = [
+    payload.rate_limit_reset_credits,
+    payload.rateLimitResetCredits,
+    payload
+  ].filter(isRecord);
+  for (const container of containers) {
+    const candidates = [
+      container.credits,
+      container.items,
+      container.data,
+      container.available,
+      container.available_credits,
+      container.availableCredits,
+      container.reset_credits,
+      container.resetCredits
+    ];
+    for (const candidate of candidates) {
+      const records = readCodexResetCreditRecordArray(candidate);
+      if (records.length > 0) {
+        return records;
+      }
+    }
+  }
+  return [];
+}
+
+function readCodexResetCreditRecordArray(value: unknown): Record<string, unknown>[] {
+  if (Array.isArray(value)) {
+    return value.filter(isRecord);
+  }
+  if (!isRecord(value)) {
+    return [];
+  }
+  const nested = [value.credits, value.items, value.data];
+  for (const candidate of nested) {
+    if (Array.isArray(candidate)) {
+      return candidate.filter(isRecord);
+    }
+  }
+  return [];
+}
+
+function isAvailableCodexResetCreditRecord(record: Record<string, unknown>): boolean {
+  const status = readCodexStringFromKeys(record, ["status", "state"])?.toLowerCase();
+  return !status || status === "available" || status === "active";
+}
+
+function codexRateLimitResetCreditDetail(record: Record<string, unknown>, index: number): ProviderAccountMeterDetail | undefined {
+  const id = readCodexStringFromKeys(record, ["id", "credit_id", "creditId"]);
+  const status = readCodexStringFromKeys(record, ["status", "state"]);
+  const effectiveAt = readCodexDateFromKeys(record, [
+    "effective_at",
+    "effectiveAt",
+    "start_date",
+    "startDate",
+    "valid_from",
+    "validFrom",
+    "starts_at",
+    "startsAt",
+    "start_at",
+    "startAt",
+    "available_at",
+    "availableAt",
+    "granted_at",
+    "grantedAt",
+    "created_at",
+    "createdAt"
+  ]);
+  const expiresAt = readCodexDateFromKeys(record, [
+    "expires_at",
+    "expiresAt",
+    "expire_at",
+    "expireAt",
+    "expiration_at",
+    "expirationAt",
+    "valid_until",
+    "validUntil",
+    "end_date",
+    "endDate",
+    "ends_at",
+    "endsAt",
+    "end_at",
+    "endAt"
+  ]);
+  if (!effectiveAt && !expiresAt) {
+    return undefined;
+  }
+  return {
+    description: readCodexStringFromKeys(record, ["description", "message"]),
+    effectiveAt,
+    expiresAt,
+    id: id ?? `codex-reset-credit-${index + 1}`,
+    label: readCodexStringFromKeys(record, ["label", "name", "title"]),
+    redeemable: Boolean(id) && isAvailableCodexResetCreditRecord(record),
+    status
+  };
+}
+
+function readCodexStringFromKeys(record: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = readString(record[key]);
+    if (value) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function readCodexDateFromKeys(record: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = codexDateString(record[key]);
+    if (value) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function codexDateString(value: unknown): string | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const timestamp = value > 1_000_000_000_000 ? value : value * 1000;
+    return new Date(timestamp).toISOString();
+  }
+  const text = readString(value);
+  if (!text) {
+    return undefined;
+  }
+  const timestamp = new Date(text).getTime();
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : text;
+}
+
+function compareCodexResetCreditDetails(a: ProviderAccountMeterDetail, b: ProviderAccountMeterDetail): number {
+  return codexDetailTimestamp(a.expiresAt) - codexDetailTimestamp(b.expiresAt)
+    || codexDetailTimestamp(a.effectiveAt) - codexDetailTimestamp(b.effectiveAt);
+}
+
+function codexDetailTimestamp(value: string | undefined): number {
+  if (!value) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : Number.MAX_SAFE_INTEGER;
+}
+
+function firstCodexResetCreditExpiry(details: ProviderAccountMeterDetail[]): string | undefined {
+  return [...details]
+    .sort(compareCodexResetCreditDetails)
+    .find((detail) => detail.expiresAt)
+    ?.expiresAt;
+}
+
+function isCodexManualResetMeter(meter: ProviderAccountMeter): boolean {
+  const text = `${meter.id} ${meter.label} ${meter.window ?? ""}`.toLowerCase();
+  return text.includes("manual_reset") || text.includes("manual reset") || text.includes("manual-reset");
+}
+
+function providerBaseUrl(provider: GatewayProviderConfig): string {
+  return provider.api_base_url || provider.baseUrl || provider.baseurl || "";
+}
+
+function providerApiKey(provider: GatewayProviderConfig): string {
+  return provider.api_key || provider.apiKey || provider.apikey || "";
 }
 
 function codexOauthPlugin(suffix: string, providerName = providerNamePlaceholder): Record<string, unknown> {

@@ -1,18 +1,19 @@
 import {
   agentAnalysisRangeOptions, AgentAnalysisSessionSelection, AgentAnalysisSnapshot, AgentAnalysisTracePayloadFullResult, AgentAnalysisTracePayloadRequest, AgentAnalysisTraceRun, agentFilterOptions, AgentFilterValue, agentKindLabel,
+  AnimatePresence, AnimatedDisclosure, AnimatedIconSwap,
   Area, arrayMove, Badge, Bar, BarChart, Button,
   Card, CardContent, CardHeader, CardTitle, CartesianGrid, Cell, constrainOverviewWidgetSize,
   Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, cn, compactId,
   compactUserAgent, compareProviderAccountSnapshots, ComposedChart, CSS, DEFAULT_OVERVIEW_WIDGETS, DndContext,
   Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle,
   DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent, Field, formatAxisNumber, formatBytes,
-  formatCompactNumber, formatDuration, formatLogDateTime, formatPercent, formatProviderAccountMeterTitle, formatProviderAccountMeterValue,
+  formatCompactNumber, formatDuration, formatLogDateTime, formatPercent, formatProviderAccountDetailDate, formatProviderAccountMeterTitle, formatProviderAccountMeterValue,
   formatStatusBucketDate, formatStatusCodeCounts, formatSystemStatusRange, formatToolCounts, formatUsdCost, KeyboardSensor,
   LabelList, LayoutGroup, Line, LoaderCircle, MeasuringStrategy, MetricCard, MetricTone,
   metricToneBar, metricToneStroke, motion, normalizeAgentFilterValue, normalizeOverviewWidget, normalizeOverviewWidgets,
   OverviewMetricKind, overviewMetricOptions, overviewWidgetCollisionDetection, OverviewWidgetConfig, OverviewWidgetSize, overviewWidgetSizeOptions,
   OverviewWidgetType, OverviewWidgetVariant, Pencil, Pie, PieChart, Plus,
-  PointerSensor, primaryProviderAccountMeter, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass, isProviderAccountManualResetMeter,
+  PointerSensor, primaryProviderAccountMeter, providerAccountMeterDetailValidityProgress, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass, isProviderAccountManualResetMeter,
   providerAccountSnapshotKey, providerAccountSnapshotLabel,
   ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ReactPointerEvent, rectSortingStrategy, RefreshCw, Select,
   SelectControl, SortableContext, sortableKeyboardCoordinates, systemStatusIconClass, systemStatusPointTooltip, systemStatusSegmentClass,
@@ -23,6 +24,7 @@ import {
 } from "../shared";
 import { buildTokenActivity, type TokenActivityCell } from "@/lib/usage-activity";
 import { ShareCardWidget } from "./share-cards";
+import { Cloud, Rocket } from "lucide-react";
 export function OverviewView({
   onWidgetsChange,
   overviewWidgets,
@@ -2129,7 +2131,7 @@ function ProviderAccountSinglePanel({
       ) : meters.length > 0 ? (
         <div className={cn("min-h-0 overflow-hidden", providerAccountStackClass(dimensions))}>
           {meters.map((meter) => (
-            <ProviderAccountMeterLine account={account} dimensions={dimensions} key={meter.id} meter={meter} single />
+            <ProviderAccountMeterLine account={account} dimensions={dimensions} key={meter.id} meter={meter} single onRefresh={onRefresh} />
           ))}
           {providerAccountShowExtraCount(dimensions) && account.meters.length > meters.length ? (
             <div className="truncate text-[10px] text-muted-foreground">+{account.meters.length - meters.length}</div>
@@ -2181,7 +2183,7 @@ function ProviderAccountSummaryCard({
       ) : meters.length > 0 ? (
         <div className={cn("mt-2 min-h-0 overflow-hidden", providerAccountStackClass(dimensions))}>
           {meters.map((meter) => (
-            <ProviderAccountMeterLine account={account} dimensions={dimensions} key={meter.id} meter={meter} />
+            <ProviderAccountMeterLine account={account} dimensions={dimensions} key={meter.id} meter={meter} onRefresh={onRefresh} />
           ))}
           {providerAccountShowExtraCount(dimensions) && account.meters.length > meters.length ? (
             <div className="truncate text-[10px] text-muted-foreground">+{account.meters.length - meters.length}</div>
@@ -2244,29 +2246,578 @@ function ProviderAccountMeterLine({
   account,
   dimensions,
   meter,
+  onRefresh,
   single = false
 }: {
   account: ProviderAccountSnapshot;
   dimensions: OverviewWidgetDimensions;
   meter: ReturnType<typeof providerAccountMetersForDisplay>[number];
+  onRefresh?: () => void | Promise<void>;
   single?: boolean;
 }) {
   const t = useAppText();
   const progress = isProviderAccountQuotaMeter(meter) ? providerAccountMeterProgress(meter) : undefined;
+  const canExpandDetails = dimensions.height >= 2 && isProviderAccountManualResetMeter(meter) && (meter.details?.length ?? 0) > 0;
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [resetDialogDetail, setResetDialogDetail] = useState<NonNullable<ProviderAccountMeter["details"]>[number]>();
+  const title = formatProviderAccountMeterTitle(meter, t);
+  const detailsId = `provider-account-meter-${providerAccountSnapshotKey(account)}-${meter.id}-details`.replace(/[^a-zA-Z0-9_-]/g, "-");
+  const titleClassName = cn("min-w-0 truncate font-medium text-muted-foreground", single && dimensions.height >= 2 ? "text-[13px]" : "text-[12px]");
+  const valueClassName = cn("shrink-0 font-semibold tracking-tight", single && dimensions.height >= 2 ? "text-[18px]" : "text-[15px]");
+  const meterSummary = (
+    <>
+      <div className="flex min-w-0 items-center gap-1.5">
+        {canExpandDetails ? (
+          <AnimatedIconSwap className="text-muted-foreground transition-colors group-hover:text-foreground" iconKey={detailsOpen}>
+            {detailsOpen ? <ChevronDown aria-hidden="true" className="h-3.5 w-3.5" /> : <ChevronRight aria-hidden="true" className="h-3.5 w-3.5" />}
+          </AnimatedIconSwap>
+        ) : null}
+        <div className={titleClassName}>{title}</div>
+      </div>
+      <div className={valueClassName}>{formatProviderAccountMeterValue(meter)}</div>
+    </>
+  );
 
   return (
     <div className="min-w-0 overflow-hidden">
-      <div className="flex min-w-0 items-end justify-between gap-3">
-        <div className={cn("min-w-0 truncate font-medium text-muted-foreground", single && dimensions.height >= 2 ? "text-[13px]" : "text-[12px]")}>{formatProviderAccountMeterTitle(meter, t)}</div>
-        <div className={cn("shrink-0 font-semibold tracking-tight", single && dimensions.height >= 2 ? "text-[18px]" : "text-[15px]")}>{formatProviderAccountMeterValue(meter)}</div>
-      </div>
+      {canExpandDetails ? (
+        <button
+          aria-controls={detailsId}
+          aria-expanded={detailsOpen}
+          aria-label={`${t(detailsOpen ? "Collapse" : "Expand")} ${title}`}
+          className="group -mx-1 flex w-[calc(100%+8px)] min-w-0 items-end justify-between gap-3 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
+          onClick={() => setDetailsOpen((current) => !current)}
+          type="button"
+        >
+          {meterSummary}
+        </button>
+      ) : (
+        <div className="flex min-w-0 items-end justify-between gap-3">
+          {meterSummary}
+        </div>
+      )}
       {progress !== undefined && providerAccountShowProgress(dimensions) ? (
         <div className={cn("mt-1.5 overflow-hidden rounded-full", single ? "bg-muted" : "bg-background", dimensions.height <= 1 ? "h-1.5" : "h-2")}>
           <div className={cn("h-full rounded-full", providerAccountProgressClass(account.status))} style={{ width: `${progress}%` }} />
         </div>
       ) : null}
+      <AnimatePresence initial={false}>
+        {canExpandDetails && detailsOpen ? (
+          <AnimatedDisclosure>
+            <ProviderAccountMeterDetails account={account} detailsId={detailsId} meter={meter} onReset={setResetDialogDetail} />
+          </AnimatedDisclosure>
+        ) : null}
+      </AnimatePresence>
+      <CodexResetCreditDialog
+        account={account}
+        detail={resetDialogDetail}
+        open={Boolean(resetDialogDetail)}
+        onClose={() => setResetDialogDetail(undefined)}
+        onResetComplete={onRefresh}
+      />
     </div>
   );
+}
+
+function ProviderAccountMeterDetails({
+  account,
+  detailsId,
+  meter,
+  onReset
+}: {
+  account: ProviderAccountSnapshot;
+  detailsId: string;
+  meter: ProviderAccountMeter;
+  onReset: (detail: NonNullable<ProviderAccountMeter["details"]>[number]) => void;
+}) {
+  const t = useAppText();
+  const details = meter.details ?? [];
+
+  return (
+    <div className="mt-2 max-h-48 space-y-2 overflow-y-auto pr-1" id={detailsId}>
+      {details.map((detail, index) => {
+        const detailProgress = providerAccountMeterDetailValidityProgress(detail);
+        const label = providerAccountMeterDetailLabel(detail, index, t);
+        const status = providerAccountMeterDetailStatusLabel(detail.status, t);
+        return (
+          <div className="min-w-0 rounded-md border border-border/70 bg-background/70 px-2.5 py-2 text-[10px] leading-tight text-muted-foreground" key={detail.id ?? `${meter.id}-${index}`}>
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-[11px] font-medium text-foreground/80" title={label}>{label}</div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {status ? <div className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] tracking-wide text-muted-foreground">{status}</div> : null}
+                {detail.redeemable ? (
+                  <Button
+                    aria-label={`${t("Reset")} ${label}`}
+                    className="h-5 px-1.5 text-[10px]"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onReset(detail);
+                    }}
+                    title={`${t("Reset")} ${label}`}
+                    type="button"
+                    variant="outline"
+                  >
+                    {t("Reset")}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+            <div className="mt-1.5 flex min-w-0 items-center justify-between gap-2">
+              <div className="truncate">{t("Effective")}: {formatProviderAccountDetailDate(detail.effectiveAt)}</div>
+              <div className="truncate text-right">{t("Expires")}: {formatProviderAccountDetailDate(detail.expiresAt)}</div>
+            </div>
+            {detailProgress !== undefined ? (
+              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+                <div className={cn("h-full rounded-full", providerAccountProgressClass(account.status))} style={{ width: `${detailProgress}%` }} />
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function providerAccountMeterDetailLabel(
+  detail: NonNullable<ProviderAccountMeter["details"]>[number],
+  index: number,
+  t: (value: string) => string
+): string {
+  return detail.label ? t(detail.label) : `#${index + 1}`;
+}
+
+function providerAccountMeterDetailStatusLabel(status: string | undefined, t: (value: string) => string): string {
+  const normalized = status?.trim().toLowerCase();
+  if (!normalized) {
+    return "";
+  }
+  if (normalized === "available") return t("Available");
+  if (normalized === "active") return t("Active");
+  if (normalized === "expired") return t("Expired");
+  if (normalized === "used") return t("Used");
+  return t(status ?? "");
+}
+
+type CodexResetLaunchStatus = "idle" | "launching" | "launched";
+
+function CodexResetCreditDialog({
+  account,
+  detail,
+  onClose,
+  onResetComplete,
+  open
+}: {
+  account: ProviderAccountSnapshot;
+  detail: NonNullable<ProviderAccountMeter["details"]>[number] | undefined;
+  onClose: () => void;
+  onResetComplete?: () => void | Promise<void>;
+  open: boolean;
+}) {
+  const t = useAppText();
+  const [status, setStatus] = useState<CodexResetLaunchStatus>("idle");
+  const [error, setError] = useState("");
+  const detailLabel = detail ? providerAccountMeterDetailLabel(detail, 0, t) : "";
+  const detailStatus = providerAccountMeterDetailStatusLabel(detail?.status, t);
+
+  useEffect(() => {
+    if (!open) {
+      setStatus("idle");
+      setError("");
+    }
+  }, [open, detail?.id]);
+
+  async function resetCredit() {
+    if (status !== "idle" || !detail?.id) {
+      return;
+    }
+    if (!window.ccr?.resetCodexRateLimitCredit) {
+      setError(t("Reset is unavailable."));
+      return;
+    }
+
+    setError("");
+    setStatus("launching");
+    const ignition = delay(2000);
+    try {
+      await window.ccr.resetCodexRateLimitCredit({
+        credentialId: account.credentialId,
+        creditId: detail.id,
+        provider: account.provider
+      });
+      await ignition;
+      setStatus("launched");
+      await onResetComplete?.();
+      window.setTimeout(() => {
+        onClose();
+        setStatus("idle");
+      }, 1800);
+    } catch (resetError) {
+      await ignition.catch(() => undefined);
+      setError(formatDialogError(resetError));
+      setStatus("idle");
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen && status !== "launching") onClose(); }}>
+      <DialogContent className="max-w-[560px] overflow-hidden border-slate-700/60 bg-slate-950 p-0 text-white shadow-[0_24px_80px_rgba(2,6,23,0.55)]">
+        <DialogBody className="relative min-h-[420px] overflow-hidden p-0">
+          <style>{codexResetSpaceAnimationCss}</style>
+          <div className="pointer-events-none absolute inset-0">
+            <div className="absolute inset-0 bg-[linear-gradient(180deg,#020617_0%,#030712_48%,#07111f_100%)]" />
+            <div
+              className="ccr-codex-starfield-slow absolute -inset-12 opacity-80"
+              style={{
+                backgroundImage: codexResetStarfieldDense,
+                backgroundSize: "180px 180px"
+              }}
+            />
+            <div
+              className="ccr-codex-starfield-deep absolute -inset-16 opacity-55"
+              style={{
+                backgroundImage: codexResetStarfieldWide,
+                backgroundSize: "320px 320px"
+              }}
+            />
+            <div className="ccr-codex-nebula absolute -inset-24 opacity-75" />
+            {codexResetSpaceDust.map((dust) => (
+              <div
+                className="ccr-codex-space-dust absolute rounded-full bg-cyan-100/60 shadow-[0_0_12px_rgba(125,211,252,0.55)]"
+                key={dust.id}
+                style={{
+                  animationDelay: `${dust.delay}s`,
+                  animationDuration: `${dust.duration}s`,
+                  height: dust.size,
+                  left: `${dust.left}%`,
+                  top: `${dust.top}%`,
+                  width: dust.size
+                }}
+              />
+            ))}
+            {codexResetLaunchStars.map((star) => (
+              <div
+                className="ccr-codex-twinkle-star absolute rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.75)]"
+                key={star.id}
+                style={{
+                  animationDelay: `${star.delay}s`,
+                  animationDuration: `${star.duration}s`,
+                  height: star.size,
+                  left: `${star.left}%`,
+                  top: `${star.top}%`,
+                  width: star.size
+                }}
+              />
+            ))}
+            {codexResetShootingStars.map((meteor) => (
+              <div
+                className="ccr-codex-meteor absolute h-px w-36 rounded-full bg-gradient-to-r from-transparent via-white to-transparent shadow-[0_0_16px_rgba(255,255,255,0.95)]"
+                key={meteor.id}
+                style={{
+                  animationDelay: `${meteor.delay}s`,
+                  animationDuration: `${meteor.duration}s`,
+                  opacity: meteor.opacity,
+                  top: `${meteor.top}%`
+                }}
+              />
+            ))}
+          </div>
+          <Button
+            aria-label={t("Close")}
+            className="absolute right-3 top-3 z-20 text-slate-300 hover:bg-white/10 hover:text-white"
+            disabled={status === "launching"}
+            onClick={onClose}
+            size="iconSm"
+            title={t("Close")}
+            type="button"
+            variant="ghost"
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+          <div className="absolute left-5 right-14 top-5 z-10 min-w-0 text-slate-300">
+            <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">{t("Manual reset credit")}</div>
+            <div className="mt-1 truncate text-[15px] font-semibold text-white" title={detailLabel || undefined}>{detailLabel || "-"}</div>
+            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-slate-400">
+              <span>{t("Expires")}: {formatProviderAccountDetailDate(detail?.expiresAt)}</span>
+              {detailStatus ? <span className="rounded-full border border-white/10 px-1.5 py-0.5 text-[10px] text-slate-300">{detailStatus}</span> : null}
+            </div>
+          </div>
+          <div className="relative z-10 flex min-h-[420px] flex-col items-center justify-center px-4 py-16 font-sans">
+            <div className="flex flex-col items-center">
+              <motion.button
+                animate={status === "launching" ? {
+                  x: [-2, 2, -3, 3, -1, 1, 0],
+                  y: [-1, 1, -2, 2, -1, 1, 0]
+                } : {}}
+                className="group relative overflow-hidden rounded-full border border-red-400/50 bg-gradient-to-b from-orange-500 to-red-600 shadow-[0_0_40px_rgba(239,68,68,0.3)] transition-shadow duration-300 hover:shadow-[0_0_60px_rgba(239,68,68,0.6)] disabled:cursor-not-allowed"
+                disabled={status !== "idle"}
+                onClick={() => void resetCredit()}
+                transition={status === "launching" ? { duration: 0.3, repeat: Infinity } : {}}
+                type="button"
+                whileHover={status === "idle" ? { scale: 1.05 } : {}}
+                whileTap={status === "idle" ? { scale: 0.95 } : {}}
+              >
+                <div className="relative z-10 flex w-64 items-center justify-center gap-4 px-10 py-5">
+                  <AnimatePresence mode="wait">
+                    {status === "idle" ? (
+                      <motion.div
+                        animate={{ opacity: 1, y: 0 }}
+                        className="flex items-center gap-3 text-xl font-bold uppercase tracking-wider text-white"
+                        exit={{ opacity: 0, y: -10 }}
+                        initial={{ opacity: 0, y: 10 }}
+                        key="idle-text"
+                      >
+                        <Rocket className="h-6 w-6" />
+                        <span>{t("Reset")}</span>
+                      </motion.div>
+                    ) : null}
+                    {status === "launching" ? (
+                      <motion.div
+                        animate={{ opacity: 1, y: 0 }}
+                        className="flex items-center gap-3 text-xl font-bold uppercase tracking-wider text-white"
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        initial={{ opacity: 0, y: 10 }}
+                        key="launching-text"
+                      >
+                        <motion.div animate={{ y: [0, -3, 0] }} transition={{ duration: 0.2, repeat: Infinity }}>
+                          <Rocket className="h-6 w-6 fill-white" />
+                        </motion.div>
+                        <span>{t("Resetting")}</span>
+                      </motion.div>
+                    ) : null}
+                    {status === "launched" ? (
+                      <motion.div
+                        animate={{ opacity: 1 }}
+                        className="flex items-center gap-3 text-xl font-bold uppercase tracking-wider text-white"
+                        exit={{ opacity: 0 }}
+                        initial={{ opacity: 0 }}
+                        key="launched-text"
+                      >
+                        <span className="bg-gradient-to-r from-yellow-200 to-white bg-clip-text text-transparent">{t("Reset complete")}</span>
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
+                </div>
+
+                <AnimatePresence>
+                  {(status === "launching" || status === "launched") ? (
+                    <motion.div
+                      animate={status === "launching" ? {
+                        bottom: "-20px",
+                        height: ["40px", "70px", "50px"],
+                        opacity: [0.6, 1, 0.6],
+                        width: ["50px", "60px", "50px"]
+                      } : {
+                        bottom: "-100px",
+                        height: "250px",
+                        opacity: 0,
+                        width: "100px"
+                      }}
+                      className="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 rounded-full bg-gradient-to-t from-yellow-300 via-orange-500 to-transparent blur-md"
+                      exit={{ opacity: 0 }}
+                      initial={{ height: 0, opacity: 0, width: "40px" }}
+                      transition={status === "launching" ? { duration: 0.1, repeat: Infinity } : { duration: 0.8, ease: "easeOut" }}
+                    />
+                  ) : null}
+                </AnimatePresence>
+
+                <AnimatePresence>
+                  {status === "launched" ? (
+                    <motion.div
+                      animate={{ opacity: 0, scale: 0.5, y: -800 }}
+                      className="pointer-events-none absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2"
+                      initial={{ opacity: 1, scale: 1.2, y: 0 }}
+                      transition={{ duration: 1.5, ease: "easeIn" }}
+                    >
+                      <div className="relative">
+                        <Rocket className="h-10 w-10 fill-white text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.8)]" />
+                        <motion.div
+                          animate={{
+                            height: ["100px", "150px", "120px"],
+                            opacity: [0.8, 1, 0.8]
+                          }}
+                          className="absolute left-1/2 top-full h-32 w-6 -translate-x-1/2 rounded-full bg-gradient-to-b from-yellow-200 via-orange-500 to-transparent blur-sm"
+                          transition={{ duration: 0.1, repeat: Infinity }}
+                        />
+                      </div>
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
+              </motion.button>
+
+              <AnimatePresence>
+                {status !== "idle" ? (
+                  <motion.div
+                    animate={status === "launching" ? {
+                      opacity: 1,
+                      scale: 1,
+                      y: 0
+                    } : {
+                      opacity: 0,
+                      scale: 2.5,
+                      y: 50
+                    }}
+                    className="pointer-events-none absolute top-full mt-2 flex w-full justify-center"
+                    exit={{ opacity: 0 }}
+                    initial={{ opacity: 0, scale: 0.8, y: -20 }}
+                    transition={{ duration: status === "launching" ? 1 : 1.5 }}
+                  >
+                    <div className="relative h-24 w-48">
+                      <motion.div animate={{ x: [-5, 5, -5] }} className="absolute left-4 top-0 text-slate-300 drop-shadow-xl" transition={{ duration: 2, ease: "easeInOut", repeat: Infinity }}>
+                        <Cloud className="h-20 w-20 fill-slate-300 opacity-90" />
+                      </motion.div>
+                      <motion.div animate={{ x: [5, -5, 5] }} className="absolute right-4 top-4 text-slate-400 drop-shadow-xl" transition={{ duration: 2.5, ease: "easeInOut", repeat: Infinity }}>
+                        <Cloud className="h-24 w-24 fill-slate-400 opacity-80" />
+                      </motion.div>
+                      <motion.div animate={{ y: [-3, 3, -3] }} className="absolute -top-2 left-16 text-slate-200 drop-shadow-xl" transition={{ duration: 1.5, ease: "easeInOut", repeat: Infinity }}>
+                        <Cloud className="h-16 w-16 fill-slate-200 opacity-95" />
+                      </motion.div>
+                    </div>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+            </div>
+          </div>
+          {error ? <div className="absolute bottom-4 left-5 right-5 z-20 rounded-md border border-red-400/30 bg-red-950/70 px-3 py-2 text-[11px] text-red-100">{error}</div> : null}
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const codexResetStarfieldDense = [
+  "radial-gradient(circle at 12% 18%, rgba(255,255,255,0.75) 0 1px, transparent 1.4px)",
+  "radial-gradient(circle at 42% 36%, rgba(186,230,253,0.65) 0 1px, transparent 1.6px)",
+  "radial-gradient(circle at 74% 22%, rgba(255,255,255,0.6) 0 1px, transparent 1.5px)",
+  "radial-gradient(circle at 18% 72%, rgba(226,232,240,0.55) 0 1px, transparent 1.4px)",
+  "radial-gradient(circle at 88% 78%, rgba(147,197,253,0.5) 0 1px, transparent 1.6px)"
+].join(", ");
+
+const codexResetStarfieldWide = [
+  "radial-gradient(circle at 18% 28%, rgba(255,255,255,0.5) 0 1.4px, transparent 2px)",
+  "radial-gradient(circle at 58% 16%, rgba(219,234,254,0.45) 0 1.2px, transparent 2px)",
+  "radial-gradient(circle at 78% 62%, rgba(255,255,255,0.42) 0 1.3px, transparent 2px)",
+  "radial-gradient(circle at 34% 82%, rgba(125,211,252,0.35) 0 1.2px, transparent 2px)"
+].join(", ");
+
+const codexResetLaunchStars = Array.from({ length: 76 }, (_, index) => ({
+  delay: (index % 9) * 0.18,
+  duration: 2 + (index % 7) * 0.35,
+  id: index,
+  left: (index * 37) % 100,
+  opacity: 0.45 + (index % 5) * 0.11,
+  size: `${1.2 + (index % 4) * 0.65}px`,
+  top: (index * 53) % 100
+}));
+
+const codexResetSpaceDust = Array.from({ length: 26 }, (_, index) => ({
+  delay: (index % 8) * 0.55,
+  duration: 5.5 + (index % 6) * 0.75,
+  id: index,
+  left: (index * 41) % 100,
+  size: `${2 + (index % 3)}px`,
+  top: (index * 29) % 100
+}));
+
+const codexResetShootingStars = Array.from({ length: 5 }, (_, index) => ({
+  delay: 1.4 + index * 2.8,
+  drop: 14 + (index % 3) * 5,
+  duration: 5.8 + index * 0.7,
+  id: index,
+  opacity: 0.55 + (index % 3) * 0.12,
+  repeatDelay: 8 + index * 1.4,
+  rotate: 14 + (index % 2) * 6,
+  top: 12 + index * 15
+}));
+
+const codexResetSpaceAnimationCss = `
+  .ccr-codex-starfield-slow {
+    animation: ccr-codex-starfield-slow 9s linear infinite;
+    will-change: background-position;
+  }
+
+  .ccr-codex-starfield-deep {
+    animation: ccr-codex-starfield-deep 15s linear infinite;
+    will-change: background-position;
+  }
+
+  .ccr-codex-nebula {
+    background:
+      radial-gradient(circle at 24% 52%, rgba(239, 68, 68, 0.2), transparent 32%),
+      radial-gradient(circle at 70% 42%, rgba(59, 130, 246, 0.18), transparent 36%),
+      radial-gradient(circle at 54% 76%, rgba(20, 184, 166, 0.12), transparent 38%);
+    animation: ccr-codex-nebula 6s ease-in-out infinite alternate;
+    will-change: opacity, transform;
+  }
+
+  .ccr-codex-twinkle-star {
+    animation-name: ccr-codex-twinkle-star;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+    opacity: 0.24;
+    will-change: opacity, transform;
+  }
+
+  .ccr-codex-space-dust {
+    animation-name: ccr-codex-space-dust;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+    opacity: 0;
+    will-change: opacity, transform;
+  }
+
+  .ccr-codex-meteor {
+    left: -32%;
+    opacity: 0;
+    transform: translate3d(-160px, -40px, 0) rotate(16deg);
+    animation-name: ccr-codex-meteor;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    will-change: opacity, transform;
+  }
+
+  @keyframes ccr-codex-starfield-slow {
+    from { background-position: 0 0; }
+    to { background-position: 180px 180px; }
+  }
+
+  @keyframes ccr-codex-starfield-deep {
+    from { background-position: 0 0; }
+    to { background-position: -320px 320px; }
+  }
+
+  @keyframes ccr-codex-nebula {
+    0% { opacity: 0.42; transform: translate3d(-18px, 10px, 0) scale(1); }
+    100% { opacity: 0.82; transform: translate3d(18px, -14px, 0) scale(1.08); }
+  }
+
+  @keyframes ccr-codex-twinkle-star {
+    0%, 100% { opacity: 0.18; transform: scale(0.65); }
+    45% { opacity: 0.95; transform: scale(1.8); }
+    70% { opacity: 0.36; transform: scale(1.1); }
+  }
+
+  @keyframes ccr-codex-space-dust {
+    0% { opacity: 0; transform: translate3d(-10px, 24px, 0) scale(0.7); }
+    35% { opacity: 0.75; }
+    100% { opacity: 0; transform: translate3d(34px, -44px, 0) scale(1.35); }
+  }
+
+  @keyframes ccr-codex-meteor {
+    0%, 48% { opacity: 0; transform: translate3d(-180px, -72px, 0) rotate(16deg) scaleX(0.75); }
+    54% { opacity: 1; }
+    72% { opacity: 0.85; }
+    100% { opacity: 0; transform: translate3d(860px, 210px, 0) rotate(16deg) scaleX(1.25); }
+  }
+`;
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+function formatDialogError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function ProviderAccountBalanceMetric({
