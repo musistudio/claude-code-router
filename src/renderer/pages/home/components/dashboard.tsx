@@ -2385,7 +2385,43 @@ function providerAccountMeterDetailLabel(
   index: number,
   t: (value: string) => string
 ): string {
-  return detail.label ? t(detail.label) : `#${index + 1}`;
+  return detail.label ? formatProviderAccountMeterDetailLabel(detail.label, t) : `#${index + 1}`;
+}
+
+function formatProviderAccountMeterDetailLabel(value: string, t: (value: string) => string): string {
+  const trimmed = value.trim();
+  const fullResetMatch = /^full reset(?:\s*\(([^)]*)\))?$/i.exec(trimmed);
+  if (fullResetMatch) {
+    const qualifier = fullResetMatch[1] ? formatCodexResetCreditQualifier(fullResetMatch[1], t) : "";
+    if (!qualifier) {
+      return t("Full reset");
+    }
+    return appTextLooksTranslated(t)
+      ? `${t("Full reset")}（${qualifier}）`
+      : `${t("Full reset")} (${qualifier})`;
+  }
+  return t(trimmed);
+}
+
+function formatCodexResetCreditQualifier(value: string, t: (value: string) => string): string {
+  return value
+    .replace(/\bweekly\b/gi, t("Weekly"))
+    .replace(/\bdaily\b/gi, t("Daily"))
+    .replace(/\bmonthly\b/gi, t("Monthly"))
+    .replace(/\byearly\b/gi, t("Yearly"))
+    .replace(/\bhours?\b/gi, t("hour"))
+    .replace(/\bhrs?\b/gi, t("hr"))
+    .replace(/\bminutes?\b/gi, t("minute"))
+    .replace(/\bmins?\b/gi, t("min"))
+    .replace(/\bdays?\b/gi, t("day"))
+    .replace(/\bweeks?\b/gi, t("week"))
+    .replace(/\bmonths?\b/gi, t("month"))
+    .replace(/\s*\+\s*/g, " + ")
+    .trim();
+}
+
+function appTextLooksTranslated(t: (value: string) => string): boolean {
+  return t("Manual reset credit") !== "Manual reset credit";
 }
 
 function providerAccountMeterDetailStatusLabel(status: string | undefined, t: (value: string) => string): string {
