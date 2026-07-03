@@ -46,9 +46,9 @@ export function writeZcodeGatewayConfig(
   config: AppConfig,
   profile: ProfileConfig,
   token: string,
+  file: string,
   options: { backup?: boolean } = {}
 ): ZcodeProfileConfigWriteResult {
-  const file = resolveZcodeConfigFile(profile);
   const model = normalizeClientModel(profile.model) || defaultClientModel(config);
   const providerId = sanitizeZcodeProviderId(profile.providerId || "") || "claude-code-router";
   const values: ZcodeGatewayConfigValues = {

@@ -9,7 +9,7 @@ import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "./cl
 import { claudeCodeUtcTimezoneEnvOverride } from "./claude-environment";
 import { launchCodexAppProfile, launchZcodeAppProfile, refreshCodexCompatibleAppProfileFiles } from "./codex-app-launch";
 import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
-import { CONFIGDIR } from "./constants";
+import { CONFIGDIR, IS_DEV } from "./constants";
 import { gatewayService } from "../server/gateway/service";
 import { buildProfileLaunchPlan, findProfileForOpen, profileLaunchSpawnCommand, profileOpenCommand, resolveClaudeCodeSettingsFile, resolveProfileOpenSurface } from "./profile-launch-core";
 import { applyProfileConfig } from "./profile-service";
@@ -47,8 +47,11 @@ export async function getProfileOpenCommand(config: AppConfig, request: ProfileO
   const profile = findProfileForOpen(config, request.profileId);
   const surface = resolveProfileOpenSurface(profile, request.surface);
   ensureCcrCliLauncher();
+  const cmd = IS_DEV
+    ? path.join(os.homedir(), ".claude-code-router-dev", "bin", process.platform === "win32" ? "ccr.cmd" : "ccr")
+    : "ccr";
   return {
-    command: profileOpenCommand(profile, surface, "ccr", commandProfileRef(config, profile)),
+    command: profileOpenCommand(profile, surface, cmd, commandProfileRef(config, profile)),
     profileId: profile.id,
     profileName: profile.name,
     surface
@@ -1128,6 +1131,7 @@ function posixCcrLauncher(runtimeFile: string): string {
     "else",
     '  export NODE_PATH="$CCR_CLI_NODE_PATH"',
     "fi",
+    ...(IS_DEV ? ["export CCR_ENV=development", "export NODE_ENV=development"] : []),
     'if [ -n "$CCR_NODE_BIN" ]; then',
     `  exec "$CCR_NODE_BIN" ${shQuote(runtimeFile)} "$@"`,
     "fi",
@@ -1147,6 +1151,7 @@ function windowsCcrLauncher(runtimeFile: string): string {
     ") else (",
     "  set \"NODE_PATH=%CCR_CLI_NODE_PATH%\"",
     ")",
+    ...(IS_DEV ? ['set "CCR_ENV=development"', 'set "NODE_ENV=development"'] : []),
     "if defined CCR_NODE_BIN (",
     '  "%CCR_NODE_BIN%" "%CCR_CLI_RUNTIME%" %*',
     "  exit /b %ERRORLEVEL%",

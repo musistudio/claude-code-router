@@ -48,6 +48,8 @@ Read the full documentation at [ccrdesk.top](https://ccrdesk.top/).
    - macOS/Linux: `~/.claude-code-router/config.sqlite`
    - Windows: `%APPDATA%\Claude Code Router\config.sqlite`
 
+The packaged app binary is also the CLI: launched with no arguments it opens the desktop GUI, but launched with CLI-style arguments (e.g. `Claude-Code-Router.AppImage 'My Profile' cli`, the same command the GUI's "copy CLI" button gives you) it runs the same command logic headlessly and exits, without opening a window or starting a duplicate gateway.
+
 CCR stores runtime configuration in SQLite. A legacy `config.json` is read only once for migration when no SQLite config exists.
 
 After the service is started from the **Server** page, CCR listens on `http://localhost:8080` by default. The **Server** page controls the gateway `Host`, `Port`, proxy mode, system proxy, network capture, and CA certificate status.
@@ -77,6 +79,104 @@ Open **Agent Config** and choose the client you want to use. Configure Claude Co
 ### 5. Monitor and adjust
 
 Use **Settings → Logs & Observability** to enable request logs and agent observability. Use **Logs** to confirm `request model`, `resolved provider`, `resolved model`, status, tokens, latency, and errors; use the tray window for quick token and account status.
+
+## Provider Deeplink
+
+Provider websites can open CCR and import a model provider with a custom protocol link:
+
+```text
+ccr://provider?name=Example%20AI&base_url=https%3A%2F%2Fapi.example.com%2Fv1&api_key=sk-example&models=example-chat%2Cexample-coder&protocol=openai_chat_completions
+```
+
+Supported query parameters:
+
+- `name`: display name for the provider.
+- `base_url`: provider API base URL.
+- `api_key`: optional provider API key.
+- `models`: comma-separated or newline-separated model list. You can also repeat `models=...`.
+- `protocol`: one of `openai_chat_completions`, `openai_responses`, `anthropic_messages`, or `gemini_generate_content`.
+
+For larger payloads, pass `payload` as URL-encoded JSON or base64url JSON with the same fields. CCR always opens a confirmation dialog before writing a provider imported from an external link.
+
+## Plugins
+
+CCR has two plugin layers:
+
+- Core gateway plugins: use `providerPlugins` and `virtualModelProfiles`; these are passed through to the core gateway.
+- Wrapper plugins: use top-level `plugins` to extend the Electron wrapper, register local HTTP backends, add gateway routes, and route proxy-mode traffic to plugin backends.
+
+Example wrapper plugin route:
+
+```json
+{
+  "plugins": [
+    {
+      "id": "local-admin-api",
+      "enabled": true,
+      "proxy": {
+        "routes": [
+          {
+            "id": "admin-api",
+            "host": "api.example.com",
+            "paths": ["/v1/admin"],
+            "upstream": "http://127.0.0.1:4510",
+            "stripPathPrefix": false
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+Plugin modules export a function or object with `setup(ctx)`. The context supports:
+
+- `ctx.registerGatewayRoute({ method, path, auth, handler })`
+- `ctx.registerHttpBackend({ id, host, port, handler })`
+- `ctx.registerProxyRoute({ host, paths, upstream, stripPathPrefix, rewritePathPrefix, headers })`
+- `ctx.openSqliteStore({ filename, migrate })`
+- `ctx.registerCoreGatewayProviderPlugin(plugin)`
+- `ctx.registerCoreGatewayVirtualModelProfile(profile)`
+
+Local plugin examples are available in [examples/plugins](examples/plugins).
+
+## Development
+
+```bash
+npm install
+npm run dev                  # Run the CCR CLI in development mode (equivalent to `ccr`)
+npm run dev start            # Run the CCR CLI in development mode (equivalent to `ccr start`)
+npm run dev:watch            # Start the Electron app with hot reload (for UI development)
+npm run typecheck
+npm run build:assets
+npm run build:app:mac
+npm run build:app:win
+```
+
+`npm run dev` is `ccr`, just in dev mode: it builds the CLI once and forwards all arguments straight to `dist/main/cli.js`, including the no-arguments case, e.g. `npm run dev start` behaves exactly like `ccr start`. (Don't add a `--` separator — npm strips it, but pnpm forwards it as a literal argument, breaking command parsing.) `npm run dev:watch` is a separate workflow for UI/app development — it builds everything, watches for changes, and launches the Electron app. In the development environment, CCR uses `~/.claude-code-router-dev/` as its configuration directory and runs on alternate ports (3466/3467) to avoid interfering with a production instance. Launching the Electron app also writes a `ccr` shim to `~/.claude-code-router-dev/bin/` — add that directory to your `PATH` to use `ccr` as the dev CLI directly.
+
+`npm run build:assets` compiles the Electron main process and renderer assets into `dist/`.
+
+`npm run build` packages the app for the current platform and writes installer artifacts to `release/`.
+
+`npm run build:app:mac` and `npm run build:app:win` package platform-specific app artifacts. Linux AppImage packaging is configured in `electron-builder.json`.
+
+`npm run build:app:mac` creates a local macOS test package in `release-local/` using ad-hoc signing. It is useful with a free Apple Account or Apple Development certificate, but it is not suitable for public distribution because downloaded copies will not pass Gatekeeper notarization checks.
+
+macOS release builds are signed and notarized for distribution. Before running `npm run build:app:mac:release`, the build machine must have a `Developer ID Application` certificate available through the keychain or `CSC_LINK`/`CSC_KEY_PASSWORD`, full Xcode selected with `xcode-select`, and one notarization credential set:
+
+- `APPLE_API_KEY`, `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER`
+- `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`
+- `APPLE_KEYCHAIN_PROFILE`, optionally with `APPLE_KEYCHAIN`
+
+The macOS packaging hook validates codesigning, the stapled notarization ticket, and Gatekeeper assessment before writing distributable artifacts.
+
+Packaged builds check GitHub Releases for updates through `electron-updater`. For local update feed testing, set `CCR_UPDATE_FEED_URL` to a generic electron-updater feed URL before starting the app. `CCR_UPDATE_ALLOW_PRERELEASE=1` enables prerelease updates.
+
+## Further Reading
+
+- [Project Motivation and How It Works](blog/en/project-motivation-and-how-it-works.md)
+- [Maybe We Can Do More with the Router](blog/en/maybe-we-can-do-more-with-the-route.md)
 
 ## Acknowledgements
 

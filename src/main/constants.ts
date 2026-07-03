@@ -1,4 +1,5 @@
 import path from "node:path";
+import os from "node:os";
 import { APP_NAME, APP_STORAGE_NAME, LEGACY_CONFIGDIR, resolveRuntimeAppPath } from "./app-paths";
 import { copyMissingDirectoryContents } from "./storage-migration";
 
@@ -7,9 +8,13 @@ export const LEGACY_CONFIG_FILE = path.join(LEGACY_CONFIGDIR, "config.json");
 
 export { APP_NAME, APP_STORAGE_NAME, LEGACY_CONFIGDIR };
 
-export const CONFIGDIR = process.platform === "win32"
-  ? path.join(resolveRuntimeAppPath("appData"), APP_STORAGE_NAME)
-  : LEGACY_CONFIGDIR;
+export const IS_DEV = process.env.CCR_ENV === "development";
+
+export const CONFIGDIR = IS_DEV
+  ? path.join(os.homedir(), ".claude-code-router-dev")
+  : process.platform === "win32"
+    ? path.join(resolveRuntimeAppPath("appData"), APP_STORAGE_NAME)
+    : LEGACY_CONFIGDIR;
 export const LEGACY_WINDOWS_CONFIGDIR = path.join(resolveRuntimeAppPath("appData"), APP_NAME);
 export const LEGACY_WINDOWS_CONFIG_FILE = path.join(LEGACY_WINDOWS_CONFIGDIR, "config.json");
 export const CONFIG_FILE = path.join(CONFIGDIR, "config.json");

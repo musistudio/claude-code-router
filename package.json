@@ -36,6 +36,7 @@
   },
   "scripts": {
     "dev": "node build/dev.mjs",
+    "dev:watch": "node build/dev-watch.mjs",
     "build": "npm run build:assets && electron-builder",
     "build:assets": "node build/build.mjs",
     "build:app:mac": "npm run build:app:mac:local",
@@ -49,7 +50,9 @@
     "test:main": "node build/test.mjs main && node build/run-tests.mjs main",
     "test:renderer": "node build/test.mjs renderer && node build/run-tests.mjs renderer",
     "typecheck": "tsc --noEmit",
-    "rebuild:sqlite3": "electron-rebuild -f -w better-sqlite3"
+    "rebuild:sqlite3": "electron-rebuild -f -w better-sqlite3",
+    "rebuild:sqlite3:node": "npm rebuild better-sqlite3",
+    "postinstall": "node build/post-install.mjs"
   },
   "dependencies": {
     "@the-next-ai/ai-gateway": "^1.0.3",

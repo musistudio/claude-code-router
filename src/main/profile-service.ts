@@ -10,7 +10,11 @@ import { writeCodexCompatibleAppModelCatalog } from "./codex-app-launch";
 import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime";
 import { codexModelCatalogJson } from "./codex-model-catalog";
 import { CONFIGDIR } from "./constants";
-import { resolveZcodeConfigFile, writeZcodeGatewayConfig, zcodeHomeFromConfigFile } from "./zcode-profile-config";
+import {
+  resolveClaudeCodeSettingsFile as resolveClaudeCodeSettingsFileCore,
+  resolveCodexConfigFile as resolveCodexConfigFileCore
+} from "./profile-launch-core";
+import { writeZcodeGatewayConfig, zcodeHomeFromConfigFile } from "./zcode-profile-config";
 import { normalizeRouteSelector } from "../server/gateway/claude-code-router-plugin";
 
 const managedRootStart = "# BEGIN CCR managed profile";
@@ -222,7 +226,7 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
 }
 
 function applyZcodeProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
-  const configFile = resolveZcodeConfigFile(profile);
+  const configFile = resolveCodexConfigFile(profile);
   if (!profile.enabled) {
     return restoreDisabledZcodeProfile(profile, configFile);
   }
@@ -230,7 +234,7 @@ function applyZcodeProfile(config: AppConfig, profile: ProfileConfig, token: str
   try {
     const providerId = sanitizeCodexProviderId(profile.providerId || "") || "claude-code-router";
     const model = normalizeClientModel(profile.model) || defaultClientModel(config);
-    const configResult = writeZcodeGatewayConfig(config, profile, token, { backup: true });
+    const configResult = writeZcodeGatewayConfig(config, profile, token, configFile, { backup: true });
     const middlewareResult = profile.cliMiddleware
       ? writeCodexCliMiddleware(config, profile, {
           configFile,
@@ -335,24 +339,11 @@ function profilePath(profile: ProfileConfig): string {
 }
 
 function resolveClaudeCodeSettingsFile(profile: ProfileConfig): string {
-  if (isGeneratedProfileScope(profile.scope)) {
-    return path.join(ccrManagedProfileDir(profile), "claude", "settings.json");
-  }
-  return resolveUserPath(profile.settingsFile || "~/.claude/settings.json");
+  return resolveClaudeCodeSettingsFileCore(CONFIGDIR, profile);
 }
 
 function resolveCodexConfigFile(profile: ProfileConfig): string {
-  if (profile.agent === "zcode") {
-    return resolveZcodeConfigFile(profile);
-  }
-  if (isGeneratedProfileScope(profile.scope)) {
-    return path.join(ccrManagedProfileDir(profile), codexConfigSubdir(profile.agent), "config.toml");
-  }
-  const codexHome = profile.codexHome?.trim();
-  if (codexHome) {
-    return path.join(resolveUserPath(codexHome), "config.toml");
-  }
-  return resolveUserPath(profile.configFile || defaultCodexConfigFile(profile.agent));
+  return resolveCodexConfigFileCore(CONFIGDIR, profile);
 }
 
 function codexModelCatalogFile(configFile: string): string {
@@ -361,12 +352,6 @@ function codexModelCatalogFile(configFile: string): string {
 
 function zcodeMiddlewareModelCatalogFile(configFile: string): string {
   return path.join(path.dirname(configFile), "ccr-zcode-middleware-model-catalog.json");
-}
-
-function ccrManagedProfileDir(profile: ProfileConfig): string {
-  const slug = sanitizeProfilePathSegment(profile.id || profile.name || profile.agent);
-  const baseDir = path.join(CONFIGDIR, "profiles", slug || "profile");
-  return profile.scope === "custom" ? path.join(baseDir, "custom") : baseDir;
 }
 
 function buildCodexConfigToml(
@@ -1052,7 +1037,7 @@ function disabledProfileStatus(profile: ProfileConfig): ProfileClientApplyStatus
     return restoreDisabledGlobalProfile(profile, resolveClaudeCodeSettingsFile(profile), "Claude Code profile is disabled.", isManagedClaudeCodeSettingsContent);
   }
   if (profile.agent === "zcode") {
-    return restoreDisabledZcodeProfile(profile, resolveZcodeConfigFile(profile));
+    return restoreDisabledZcodeProfile(profile, resolveCodexConfigFile(profile));
   }
   const providerId = sanitizeCodexProviderId(profile.providerId || "") || "claude-code-router";
   return restoreDisabledGlobalProfile(
@@ -1431,10 +1416,6 @@ function normalizeProfileScope(value: ProfileConfig["scope"]): "ccr" | "global" 
   return value === "ccr" || value === "custom" ? value : "global";
 }
 
-function isGeneratedProfileScope(value: ProfileConfig["scope"]): boolean {
-  return value === "ccr" || value === "custom";
-}
-
 function normalizeProfileSurface(value: ProfileConfig["surface"]): "auto" | "cli" | "app" {
   return value === "cli" || value === "app" ? value : "auto";
 }
@@ -1444,14 +1425,6 @@ function codexCompatibleClientName(agent: ProfileConfig["agent"]): string {
     return "Claude Code";
   }
   return agent === "zcode" ? "ZCode" : "Codex";
-}
-
-function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "~/.zcode/cli/config.json" : "~/.codex/config.toml";
-}
-
-function codexConfigSubdir(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "zcode" : "codex";
 }
 
 function defaultCodexCliCommand(agent: ProfileConfig["agent"]): string {
