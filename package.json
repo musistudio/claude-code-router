@@ -52,7 +52,7 @@
     "rebuild:sqlite3": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
-    "@the-next-ai/ai-gateway": "^1.0.3",
+    "@the-next-ai/ai-gateway": "^1.0.4",
     "@the-next-ai/bot-gateway-sdk": "^0.1.0",
     "better-sqlite3": "^12.11.1",
     "electron-updater": "^6.8.9",
