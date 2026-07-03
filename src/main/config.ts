@@ -579,6 +579,10 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   if (typeof value.autoStart === "boolean") {
     config.autoStart = value.autoStart;
   }
+  const launchAtLogin = (value as Record<string, unknown>).launchAtLogin;
+  if (typeof launchAtLogin === "boolean") {
+    config.launchAtLogin = launchAtLogin;
+  }
   if (isObject(value.gateway)) {
     const gateway = value.gateway as Record<string, unknown>;
     const gatewayConfig: Partial<AppConfig["gateway"]> = {};

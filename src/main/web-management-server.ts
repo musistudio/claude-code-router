@@ -497,6 +497,7 @@ function getCliAppInfo(): AppInfo {
     configFile: CONFIG_FILE,
     dataDir: DATADIR,
     gatewayConfigFile: GATEWAY_CONFIG_FILE,
+    launchAtLoginSupported: false,
     name: APP_NAME,
     platform: process.platform,
     requestLogsDbFile: REQUEST_LOGS_DB_FILE,

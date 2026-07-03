@@ -2040,6 +2040,13 @@ function App() {
     }));
   }
 
+  function changeLaunchAtLogin(launchAtLogin: boolean) {
+    updateConfig((config) => ({
+      ...config,
+      launchAtLogin
+    }));
+  }
+
   function changeTrayIconPreference(value: string) {
     const trayIcon = normalizeTrayIconPreference(value);
     if (trayIcon === "progress" && !normalizeTrayBalanceProgressConfig(draftConfig.trayBalanceProgress)) {
@@ -3120,9 +3127,10 @@ function App() {
               botConfigs: draftConfig.botConfigs,
               copy,
               initialPage: settingsInitialPage,
-              traySupported,
               languagePreference,
+              launchAtLogin: Boolean(draftConfig.launchAtLogin),
               onChangeBotConfigs: changeBotConfigs,
+              onChangeLaunchAtLogin: changeLaunchAtLogin,
               onChangeLanguage: changeLanguagePreference,
               onChangeObservability: changeObservabilityConfig,
               onChangeTheme: changeThemePreference,
@@ -3138,6 +3146,7 @@ function App() {
               providerAccountSnapshots,
               trayBalanceProgress: normalizeTrayBalanceProgressConfig(draftConfig.trayBalanceProgress),
               trayIconPreference: draftConfig.trayIcon || "random",
+              traySupported,
               trayWidgets: normalizeTrayWidgets(draftConfig.trayWidgets ?? DEFAULT_TRAY_WIDGETS, draftConfig.trayWindowModules, draftConfig.trayComponentVariants)
             } : undefined}
             update={updateDialogOpen ? {

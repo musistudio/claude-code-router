@@ -22,7 +22,9 @@ export function AppSettingsDialog({
   copy,
   initialPage = "appearance",
   languagePreference,
+  launchAtLogin,
   onChangeBotConfigs,
+  onChangeLaunchAtLogin,
   onChangeObservability,
   onChangeTrayBalanceProgress,
   onChangeLanguage,
@@ -47,7 +49,9 @@ export function AppSettingsDialog({
   copy: AppCopy;
   initialPage?: SettingsPageId;
   languagePreference: AppLanguagePreference;
+  launchAtLogin: boolean;
   onChangeBotConfigs: (configs: BotGatewaySavedConfig[]) => void;
+  onChangeLaunchAtLogin: (checked: boolean) => void;
   onChangeObservability: (patch: Partial<AppConfig["observability"]>) => void;
   onChangeTrayBalanceProgress: (config: TrayBalanceProgressConfig) => void;
   onChangeLanguage: (value: string) => void;
@@ -77,6 +81,9 @@ export function AppSettingsDialog({
             <AppearanceSettingsPage
               copy={copy}
               languagePreference={languagePreference}
+              launchAtLogin={launchAtLogin}
+              launchAtLoginSupported={appInfo.launchAtLoginSupported}
+              onChangeLaunchAtLogin={onChangeLaunchAtLogin}
               onChangeLanguage={onChangeLanguage}
               onChangeTheme={onChangeTheme}
               systemLanguage={systemLanguage}
@@ -261,6 +268,9 @@ function SettingsPageButton({
 function AppearanceSettingsPage({
   copy,
   languagePreference,
+  launchAtLogin,
+  launchAtLoginSupported,
+  onChangeLaunchAtLogin,
   onChangeLanguage,
   onChangeTheme,
   systemLanguage,
@@ -269,6 +279,9 @@ function AppearanceSettingsPage({
 }: {
   copy: AppCopy;
   languagePreference: AppLanguagePreference;
+  launchAtLogin: boolean;
+  launchAtLoginSupported: boolean;
+  onChangeLaunchAtLogin: (checked: boolean) => void;
   onChangeLanguage: (value: string) => void;
   onChangeTheme: (value: string) => void;
   systemLanguage: ResolvedLanguage;
@@ -296,6 +309,15 @@ function AppearanceSettingsPage({
         <Field label={copy.settings.language}>
           <SelectControl onChange={onChangeLanguage} options={languageOptions} value={languagePreference} />
         </Field>
+        {launchAtLoginSupported ? (
+          <SettingsSwitchRow
+            checked={launchAtLogin}
+            description={copy.settings.launchAtLoginDescription}
+            icon={Power}
+            label={copy.settings.launchAtLogin}
+            onChange={onChangeLaunchAtLogin}
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -314,14 +336,14 @@ function ObservabilitySettingsPage({
     <div className={cn(settingsPageContentWidthClassName, "grid grid-cols-1 gap-5")}>
       <h3 className="text-[15px] font-semibold text-foreground">{copy.settings.observability}</h3>
       <div className="grid grid-cols-1 gap-3">
-        <ObservabilitySwitchRow
+        <SettingsSwitchRow
           checked={observability.requestLogs}
           description={copy.settings.requestLogsDescription}
           icon={Database}
           label={copy.settings.requestLogs}
           onChange={(requestLogs) => onChange({ requestLogs })}
         />
-        <ObservabilitySwitchRow
+        <SettingsSwitchRow
           checked={observability.agentAnalysis}
           description={copy.settings.agentAnalysisDescription}
           icon={Activity}
@@ -333,7 +355,7 @@ function ObservabilitySettingsPage({
   );
 }
 
-function ObservabilitySwitchRow({
+function SettingsSwitchRow({
   checked,
   description,
   icon: Icon,

@@ -2192,6 +2192,58 @@ function applyProviderCapabilityRouting(input: {
   };
 }
 
+export function prepareGatewayUpstreamAttemptForTest(input: {
+  body: Record<string, unknown>;
+  config: AppConfig;
+  fallback?: RouterFallbackConfig;
+  headers: Record<string, string>;
+  method: string;
+  path: string;
+  routedModel?: string;
+}): {
+  body?: Record<string, unknown>;
+  credentialChain?: string[];
+  credentialIds?: string[];
+  credentialProtocol?: GatewayProviderProtocol;
+  fallback: RouterFallbackConfig;
+  headers?: Record<string, string>;
+  logicalProvider?: string;
+  model?: string;
+  routedModel?: string;
+} {
+  const headers = { ...input.headers };
+  const providerCapabilityRouting = applyProviderCapabilityRouting({
+    body: Buffer.from(`${JSON.stringify(input.body)}\n`, "utf8"),
+    config: input.config,
+    fallback: input.fallback ?? input.config.Router.fallback,
+    headers,
+    path: input.path,
+    routedModel: input.routedModel
+  });
+  const attempt = prepareUpstreamCredentialAttempt({
+    attempt: {
+      body: providerCapabilityRouting.body,
+      index: 0,
+      model: normalizeRouteSelector(providerCapabilityRouting.routedModel)
+    },
+    config: input.config,
+    headers,
+    method: input.method,
+    path: input.path
+  });
+  return {
+    body: parseJsonObjectSafe(attempt.body),
+    credentialChain: attempt.credentialChain,
+    credentialIds: attempt.credentialIds,
+    credentialProtocol: attempt.credentialProtocol,
+    fallback: providerCapabilityRouting.fallback,
+    headers: attempt.headers,
+    logicalProvider: attempt.logicalProvider,
+    model: attempt.model,
+    routedModel: providerCapabilityRouting.routedModel
+  };
+}
+
 export function prepareCodexApplyPatchBridgeRequest(input: {
   body?: Buffer;
   config: AppConfig;

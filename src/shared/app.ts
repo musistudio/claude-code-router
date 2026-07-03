@@ -5,6 +5,7 @@ export type AppInfo = {
   configFile: string;
   dataDir: string;
   gatewayConfigFile: string;
+  launchAtLoginSupported: boolean;
   requestLogsDbFile: string;
   name: string;
   platform: string;
@@ -1352,6 +1353,7 @@ export type AppConfig = {
   botConfigs: BotGatewaySavedConfig[];
   botGateway: BotGatewayRuntimeConfig;
   gateway: GatewayRuntimeConfig;
+  launchAtLogin: boolean;
   observability: ObservabilityConfig;
   preferredProvider: string;
   plugins: GatewayPluginConfig[];

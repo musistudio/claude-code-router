@@ -407,6 +407,7 @@ export function normalizeConfig(config: AppConfig): AppConfig {
       ...(config.gateway || {}),
       coreHost: fallbackConfig.gateway.coreHost
     },
+    launchAtLogin: Boolean(config.launchAtLogin),
     observability: normalizeObservabilityConfig(config.observability),
     proxy: {
       ...fallbackConfig.proxy,

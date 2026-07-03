@@ -198,19 +198,43 @@ function resolveConfiguredRouteDecision(
 
   const router = config.Router;
   const builtInDecision = resolveBuiltInAgentRouteDecision(request, config);
-  if (builtInDecision) {
-    return builtInDecision;
-  }
-
   const rules = router.rules ?? [];
   for (const rule of rules) {
     const decision = resolveRouterRule(rule, request, router);
     if (decision) {
-      return decision;
+      return builtInDecision ? mergeConfiguredRouteDecisions(builtInDecision, decision) : decision;
     }
   }
 
+  if (builtInDecision) {
+    return builtInDecision;
+  }
+
   return { fallback: router.fallback, model: explicitModel, reason: "default" };
+}
+
+function mergeConfiguredRouteDecisions(
+  base: ConfiguredRouteDecision,
+  override: ConfiguredRouteDecision
+): ConfiguredRouteDecision {
+  const rewrites = [
+    ...configuredRouteDecisionRewrites(base),
+    ...configuredRouteDecisionRewrites(override)
+  ];
+  return {
+    fallback: override.fallback ?? base.fallback,
+    model: override.model ?? base.model,
+    reason: override.reason,
+    ...(rewrites.length === 1 ? { rewrite: rewrites[0] } : {}),
+    ...(rewrites.length > 0 ? { rewrites } : {})
+  };
+}
+
+function configuredRouteDecisionRewrites(decision: ConfiguredRouteDecision): RouterRuleRewrite[] {
+  if (decision.rewrites?.length) {
+    return decision.rewrites;
+  }
+  return decision.rewrite ? [decision.rewrite] : [];
 }
 
 function resolveBuiltInClaudeCodeSubagentRouteDecision(

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ClaudeCodeRouterPlugin } from "../../src/server/gateway/claude-code-router-plugin.ts";
+import { prepareGatewayUpstreamAttemptForTest } from "../../src/server/gateway/service.ts";
 
 function createRouterPlugin(options = {}) {
   const agent = options.agent ?? "claude-code";
@@ -21,7 +22,7 @@ function createRouterPlugin(options = {}) {
         codex: { enabled: options.codexRuleEnabled ?? true }
       },
       fallback: { mode: "off", models: [], retryCount: 1 },
-      rules: []
+      rules: options.routerRules ?? []
     },
     profile: {
       enabled: options.profileRuntimeEnabled ?? true,
@@ -38,6 +39,115 @@ function createRouterPlugin(options = {}) {
     },
     virtualModelProfiles: options.virtualModelProfiles ?? []
   });
+}
+
+function createIssue1480RouterConfig() {
+  return {
+    CUSTOM_ROUTER_PATH: "",
+    Providers: [
+      {
+        api_base_url: "https://nebulacoder.example/v1/chat/completions",
+        credentials: [{ apiKey: "nebulacoder-key", id: "nebulacoder-main" }],
+        modelDescriptions: {
+          "nebulacoder-v8.0": "Code reading model.",
+          "nebulacoder-cot-v8.0": "Code reading reasoning model."
+        },
+        models: ["nebulacoder-v8.0", "nebulacoder-cot-v8.0"],
+        name: "NebulaCoder"
+      },
+      {
+        api_base_url: "https://coclaw.example/v1/chat/completions",
+        credentials: [{ apiKey: "coclaw-key", id: "coclaw-main" }],
+        modelDescriptions: {
+          "Qwen3-235B-A22B": "Background task model."
+        },
+        models: ["Qwen3-235B-A22B"],
+        name: "CoClaw"
+      },
+      {
+        api_base_url: "https://opencode.ai/zen/go/v1/chat/completions",
+        capabilities: [
+          { baseUrl: "https://opencode.ai/zen/go/v1/chat/completions", type: "openai_chat_completions" }
+        ],
+        credentials: [{ apiKey: "opencode-key", id: "opencode-main" }],
+        modelDescriptions: {
+          "deepseek-v4-flash": "Default route model.",
+          "deepseek-v4-pro": "Thinking route model.",
+          "kimi-k2.6": "Claude Code profile model."
+        },
+        models: ["kimi-k2.6", "deepseek-v4-pro", "deepseek-v4-flash"],
+        name: "OpenCode"
+      }
+    ],
+    Router: {
+      builtInRules: {
+        "claude-code": { enabled: true },
+        codex: { enabled: true }
+      },
+      fallback: { mode: "retry", models: [], retryCount: 1 },
+      rules: [
+        {
+          condition: {
+            left: "request.url",
+            operator: "contains",
+            right: "/v1"
+          },
+          enabled: true,
+          id: "rule-default",
+          name: "Default route",
+          rewrites: [
+            { key: "request.header.x-target-provider", operation: "set", value: "OpenCode" },
+            { key: "request.body.model", operation: "set", value: "deepseek-v4-flash" }
+          ],
+          type: "condition"
+        },
+        {
+          condition: {
+            left: "request.header.anthropic-background",
+            operator: "==",
+            right: "true"
+          },
+          enabled: true,
+          id: "rule-background",
+          name: "Background tasks",
+          rewrites: [
+            { key: "request.header.x-target-provider", operation: "set", value: "CoClaw" },
+            { key: "request.body.model", operation: "set", value: "Qwen3-235B-A22B" }
+          ],
+          type: "condition"
+        },
+        {
+          condition: {
+            left: "request.header.anthropic-thinking",
+            operator: "==",
+            right: "true"
+          },
+          enabled: true,
+          id: "rule-thinking",
+          name: "Thinking/reasoning tasks",
+          rewrites: [
+            { key: "request.header.x-target-provider", operation: "set", value: "OpenCode" },
+            { key: "request.body.model", operation: "set", value: "deepseek-v4-pro" }
+          ],
+          type: "condition"
+        }
+      ]
+    },
+    profile: {
+      enabled: true,
+      profiles: [
+        {
+          agent: "claude-code",
+          enabled: true,
+          id: "claude-code-main",
+          model: "kimi-k2.6",
+          name: "Claude Code",
+          scope: "global"
+        }
+      ]
+    },
+    virtualModelProfiles: []
+  };
 }
 
 test("built-in Claude Code route matches user-agent case-insensitively", async () => {
@@ -57,6 +167,124 @@ test("built-in Claude Code route matches user-agent case-insensitively", async (
   assert.equal(result.body.model, "Provider/claude-sonnet");
   assert.equal(result.decision.model, "Provider/claude-sonnet");
   assert.equal(result.decision.reason, "builtin:claude-code");
+});
+
+test("router rules override the built-in Claude Code profile route", async () => {
+  const plugin = createRouterPlugin({
+    profileModel: "Provider/claude-sonnet",
+    routerRules: [
+      {
+        condition: {
+          left: "request.url",
+          operator: "contains",
+          right: "/v1"
+        },
+        enabled: true,
+        id: "default",
+        name: "Default",
+        rewrites: [
+          { key: "request.header.x-target-provider", operation: "set", value: "OverrideProvider" },
+          { key: "request.body.model", operation: "set", value: "Provider/gpt-5-codex" }
+        ],
+        type: "condition"
+      }
+    ]
+  });
+  const headers = {
+    "user-agent": "claude-code/1.0"
+  };
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "claude-default"
+    },
+    headers,
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(headers["x-target-provider"], "OverrideProvider");
+  assert.equal(result.body.model, "Provider/gpt-5-codex");
+  assert.equal(result.decision.model, "Provider/gpt-5-codex");
+  assert.equal(result.decision.reason, "rule:default");
+});
+
+test("router rules can add headers after the built-in Claude Code profile route", async () => {
+  const plugin = createRouterPlugin({
+    profileModel: "Provider/claude-sonnet",
+    routerRules: [
+      {
+        condition: {
+          left: "request.url",
+          operator: "contains",
+          right: "/v1"
+        },
+        enabled: true,
+        id: "target-provider",
+        name: "Target provider",
+        rewrites: [
+          { key: "request.header.x-target-provider", operation: "set", value: "Provider" }
+        ],
+        type: "condition"
+      }
+    ]
+  });
+  const headers = {
+    "user-agent": "Claude Code"
+  };
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "claude-default"
+    },
+    headers,
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(headers["x-target-provider"], "Provider");
+  assert.equal(result.body.model, "Provider/claude-sonnet");
+  assert.equal(result.decision.model, "Provider/claude-sonnet");
+  assert.equal(result.decision.reason, "rule:target-provider");
+});
+
+test("issue 1480 config routes Claude Code profile traffic through the user default OpenCode rule", async () => {
+  const config = createIssue1480RouterConfig();
+  const plugin = new ClaudeCodeRouterPlugin(config);
+  const headers = {
+    "user-agent": "claude-cli/2.1.187 (external, cli)"
+  };
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "claude-sonnet-4-6",
+      tools: []
+    },
+    headers,
+    method: "POST",
+    url: "/v1/messages?beta=true"
+  });
+
+  assert.equal(headers["x-target-provider"], "OpenCode");
+  assert.equal(result.body.model, "deepseek-v4-flash");
+  assert.equal(result.decision.model, "deepseek-v4-flash");
+  assert.equal(result.decision.reason, "rule:rule-default");
+
+  const upstreamAttempt = prepareGatewayUpstreamAttemptForTest({
+    body: result.body,
+    config,
+    fallback: result.decision.fallback,
+    headers,
+    method: "POST",
+    path: "/v1/messages",
+    routedModel: result.decision.model
+  });
+
+  assert.equal(upstreamAttempt.logicalProvider, "OpenCode");
+  assert.equal(upstreamAttempt.credentialProtocol, "openai_chat_completions");
+  assert.equal(upstreamAttempt.body.model, "deepseek-v4-flash");
+  assert.match(upstreamAttempt.headers["x-target-providers"], /^provider-opencode-[a-f0-9]{10}::openai_chat_completions::cred:opencode-main$/);
+  assert.doesNotMatch(upstreamAttempt.headers["x-target-providers"], /nebulacoder/i);
 });
 
 test("built-in Claude Code route preserves explicit virtual gateway models", async () => {

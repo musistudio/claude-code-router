@@ -7,6 +7,7 @@ import { gatewayService } from "../server/gateway/service";
 import "./ipc";
 import { applyProfileConfig } from "./profile-service";
 import { ensureCcrCliLauncher } from "./profile-launch-service";
+import { syncLaunchAtLogin } from "./launch-at-login";
 import { proxyService } from "../server/proxy/service";
 import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
@@ -181,6 +182,11 @@ function startConfiguredServices(reason: string): Promise<void> {
           config = (await syncClaudeAppGatewayConfig(config)).config;
         } catch (error) {
           console.error(`Failed to sync Claude App gateway config during ${reason}: ${formatError(error)}`);
+        }
+        try {
+          syncLaunchAtLogin(config);
+        } catch (error) {
+          console.error(`Failed to sync launch-at-login setting during ${reason}: ${formatError(error)}`);
         }
         const status = await gatewayService.start(config);
         if (status.state === "error") {

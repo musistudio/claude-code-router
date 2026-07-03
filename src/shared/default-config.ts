@@ -90,6 +90,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
       host: "127.0.0.1",
       port: 3456
     },
+    launchAtLogin: false,
     observability: {
       agentAnalysis: false,
       requestLogs: false

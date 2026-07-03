@@ -19,6 +19,8 @@ export type AppCopy = {
     languageChinese: string;
     languageEnglish: string;
     languageSystem: string;
+    launchAtLogin: string;
+    launchAtLoginDescription: string;
     observability: string;
     requestLogs: string;
     requestLogsDescription: string;
@@ -119,6 +121,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       languageChinese: "Chinese",
       languageEnglish: "English",
       languageSystem: "System",
+      launchAtLogin: "Launch at login",
+      launchAtLoginDescription: "Open Claude Code Router automatically when you sign in to this computer.",
       observability: "Logs & Observability",
       requestLogs: "Request logs",
       requestLogsDescription: "Record gateway requests and show the Logs page.",
@@ -461,6 +465,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       languageChinese: "中文",
       languageEnglish: "英文",
       languageSystem: "跟随系统",
+      launchAtLogin: "开机自启",
+      launchAtLoginDescription: "登录系统后自动打开 Claude Code Router。",
       observability: "日志与观测",
       requestLogs: "请求日志",
       requestLogsDescription: "记录网关请求并显示日志页。",

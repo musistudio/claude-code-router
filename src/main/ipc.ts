@@ -18,6 +18,7 @@ import { getProviderAccountSnapshots, invalidateProviderAccountSnapshotCache, te
 import { detectProviderIcon } from "./provider-icons";
 import { fetchProviderManifest } from "./provider-manifest-service";
 import { getLocalAgentProviderCandidates, importLocalAgentProvider } from "./local-agent-provider-service";
+import { isLaunchAtLoginSupported, syncLaunchAtLogin } from "./launch-at-login";
 import { getProviderCatalogModels } from "./provider-model-catalog";
 import { getProviderPresets } from "./presets";
 import { checkGatewayProviderConnectivity, probeGatewayProvider, probeGatewayProviderCandidates } from "./provider-probe";
@@ -62,6 +63,7 @@ ipcMain.handle(IPC_CHANNELS.appGetInfo, () => {
     configFile: CONFIG_FILE,
     dataDir: DATADIR,
     gatewayConfigFile: GATEWAY_CONFIG_FILE,
+    launchAtLoginSupported: isLaunchAtLoginSupported(),
     name: APP_NAME,
     platform: process.platform,
     requestLogsDbFile: REQUEST_LOGS_DB_FILE,
@@ -253,7 +255,19 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig, opt
       throw new Error(certificateStatus.message);
     }
   }
+  const launchAtLoginChanged = Boolean(config.launchAtLogin) !== Boolean(previousConfig.launchAtLogin);
   let savedConfig = await saveAppConfig(config);
+  if (launchAtLoginChanged) {
+    try {
+      syncLaunchAtLogin(savedConfig);
+    } catch (error) {
+      await saveAppConfig({
+        ...savedConfig,
+        launchAtLogin: previousConfig.launchAtLogin
+      });
+      throw error;
+    }
+  }
   const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(savedConfig);
   savedConfig = syncedClaudeAppConfig.config;
   let runtimeStatus = gatewayService.getStatus();
