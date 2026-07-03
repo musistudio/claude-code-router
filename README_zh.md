@@ -168,6 +168,13 @@ CCR 可以完全通过桌面 UI 完成配置。首次使用建议按下面顺序
         <strong>RunAPI</strong>
       </a>
     </td>
+    <td align="center" width="330">
+      <a href="https://teamorouter.com/">
+        <img src="/docs/public/provider-icons/teamorouter.png" width="42" height="42" alt="TeamoRouter 图标" />
+        <br />
+        <strong>TeamoRouter</strong>
+      </a>
+    </td>
   </tr>
 </table>
 

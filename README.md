@@ -169,6 +169,13 @@ Codex support is powered by [musistudio/codexl](https://github.com/musistudio/co
         <strong>RunAPI</strong>
       </a>
     </td>
+    <td align="center" width="330">
+      <a href="https://teamorouter.com/">
+        <img src="/docs/public/provider-icons/teamorouter.png" width="42" height="42" alt="TeamoRouter icon" />
+        <br />
+        <strong>TeamoRouter</strong>
+      </a>
+    </td>
   </tr>
 </table>
 

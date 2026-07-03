@@ -9,6 +9,7 @@ import { openaiProviderPreset } from "./openai";
 import { openRouterProviderPreset } from "./openrouter";
 import { runApiProviderPreset } from "./runapi";
 import { siliconFlowProviderPreset } from "./siliconflow";
+import { teamoRouterProviderPreset } from "./teamorouter";
 import { zaiGlobalCodingProviderPreset } from "./zai-global-coding";
 import { zaiGlobalGeneralProviderPreset } from "./zai-global-general";
 import { zhipuCnCodingProviderPreset } from "./zhipu-cn-coding";
@@ -40,7 +41,8 @@ export const providerPresets: ProviderPreset[] = [
   moonshotGlobalProviderPreset,
   bailianProviderPreset,
   siliconFlowProviderPreset,
-  runApiProviderPreset
+  runApiProviderPreset,
+  teamoRouterProviderPreset
 ];
 
 export function getProviderPresets(): ProviderPreset[] {

@@ -1306,6 +1306,12 @@ h1 {
   --provider-brand-3: #f3f3f3;
 }
 
+.doc-markdown a.provider-import-button.provider-teamorouter {
+  --provider-brand: #0c0c0f;
+  --provider-brand-2: #555b64;
+  --provider-brand-3: #f4f4f5;
+}
+
 .doc-markdown a.provider-import-button.provider-deepseek {
   --provider-brand: #173aa8;
   --provider-brand-2: #4e69ff;
