@@ -658,6 +658,10 @@ class GatewayService {
     const startedAtIso = new Date(startedAt).toISOString();
     const requestId = randomUUID();
     headers["x-client-request-id"] = requestId;
+    const ccrSessionId = process.env.CCRCODE_SESSION_ID;
+    if (ccrSessionId) {
+      headers["x-session-id"] = ccrSessionId;
+    }
     const requestUrl = new URL(request.url || path, this.status.endpoint || "http://127.0.0.1").toString();
     const upstreamAbortController = new AbortController();
     let clientDisconnected = false;
