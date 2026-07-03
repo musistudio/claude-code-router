@@ -19,6 +19,7 @@ export type ClaudeAppLaunchResult = {
   command: string;
   cdpPort?: number;
   claudeDesignProxy?: boolean;
+  pidIsLauncher?: boolean;
   pid?: number;
   userDataDir: string;
 };
@@ -52,8 +53,7 @@ export async function launchClaudeAppProfile(configDir: string, profile: Profile
   const shouldOpenDesign = shouldOpenClaudeAppDesign(config);
   const cdpPort = await reserveClaudeAppCdpPort(console, shouldOpenDesign);
 
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
+  const appEnv: Record<string, string> = {
     ...profileEnv(profile),
     ...claudeCodeModelEnv(profile),
     ...(config ? botGatewayProfileEnv(config, profile, "app") : {}),
@@ -64,11 +64,16 @@ export async function launchClaudeAppProfile(configDir: string, profile: Profile
     ELECTRON_ENABLE_LOGGING: "1",
     ...claudeCodeUtcTimezoneEnvOverride()
   };
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...appEnv
+  };
   delete env.ELECTRON_RUN_AS_NODE;
 
   const designUrl = claudeAppDesignUrl(config);
   const proxyUrl = claudeAppProxyUrl(config);
-  const child = spawn(lookup.executable, claudeElectronArgs(userDataDir, cdpPort, proxyUrl), {
+  const launch = claudeAppLaunchCommand(lookup.executable, userDataDir, cdpPort, proxyUrl, appEnv);
+  const child = spawn(launch.command, launch.args, {
     detached: true,
     env,
     stdio: "ignore"
@@ -84,8 +89,9 @@ export async function launchClaudeAppProfile(configDir: string, profile: Profile
   return {
     child,
     claudeDesignProxy: Boolean(proxyUrl),
-    command: lookup.executable,
+    command: launch.command,
     ...(cdpPort ? { cdpPort } : {}),
+    ...(launch.pidIsLauncher ? { pidIsLauncher: launch.pidIsLauncher } : {}),
     pid: child.pid,
     userDataDir
   };
@@ -161,6 +167,52 @@ function claudeElectronArgs(userDataDir: string, cdpPort?: number, proxyUrl?: st
     "--disable-background-timer-throttling",
     "--disable-backgrounding-occluded-windows"
   ];
+}
+
+export function claudeAppLaunchCommand(
+  executable: string,
+  userDataDir: string,
+  cdpPort: number | undefined,
+  proxyUrl: string | undefined,
+  env: Record<string, string>
+): { args: string[]; command: string; pidIsLauncher?: boolean } {
+  const args = claudeElectronArgs(userDataDir, cdpPort, proxyUrl);
+  const appBundle = process.platform === "darwin" ? macAppBundleFromExecutable(executable) : undefined;
+  if (appBundle) {
+    return {
+      args: [
+        "-W",
+        "-n",
+        ...macOpenEnvArgs(env),
+        appBundle,
+        "--args",
+        ...args
+      ],
+      command: "/usr/bin/open",
+      pidIsLauncher: true
+    };
+  }
+  return {
+    args,
+    command: executable
+  };
+}
+
+function macAppBundleFromExecutable(executable: string): string | undefined {
+  const normalized = path.normalize(executable);
+  const marker = `${path.sep}Contents${path.sep}MacOS${path.sep}`;
+  const markerIndex = normalized.lastIndexOf(marker);
+  if (markerIndex <= 0) {
+    return undefined;
+  }
+  const appBundle = normalized.slice(0, markerIndex);
+  return appBundle.endsWith(".app") && isDirectory(appBundle) ? appBundle : undefined;
+}
+
+function macOpenEnvArgs(env: Record<string, string>): string[] {
+  return Object.entries(env)
+    .filter(([key, value]) => isEnvName(key) && typeof value === "string")
+    .flatMap(([key, value]) => ["--env", `${key}=${value}`]);
 }
 
 function claudeElectronUserDataDir(settingsDir: string, profile: ProfileConfig): string {

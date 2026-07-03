@@ -46,12 +46,9 @@ const claudeAppDesignCdpConnectTimeoutMs = 15_000;
 const claudeAppDesignCdpKeepAliveMs = 45_000;
 const claudeAppDesignCdpPollIntervalMs = 250;
 
-export function shouldEnableClaudeAppDesignCdp(enabledByConfig = false): boolean {
+export function shouldEnableClaudeAppDesignCdp(_enabledByConfig = false): boolean {
   const configured = process.env.CCR_CLAUDE_APP_DESIGN_CDP?.trim().toLowerCase();
-  if (configured === "false" || configured === "0" || configured === "off") {
-    return false;
-  }
-  return enabledByConfig || configured === "true" || configured === "1" || configured === "on";
+  return configured === "true" || configured === "1" || configured === "on";
 }
 
 export async function reserveClaudeAppCdpPort(logger: ClaudeAppCdpLogger = console, enabledByConfig = false): Promise<number | undefined> {
