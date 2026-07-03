@@ -12,7 +12,7 @@ import { codexCliMiddlewareRuntimeScript } from "./codex-cli-middleware-runtime"
 import { CONFIGDIR } from "./constants";
 import { gatewayService } from "../server/gateway/service";
 import { buildProfileLaunchPlan, findProfileForOpen, profileLaunchSpawnCommand, profileOpenCommand, resolveClaudeCodeSettingsFile, resolveProfileOpenSurface } from "./profile-launch-core";
-import { applyProfileConfig } from "./profile-service";
+import { applyProfileConfig, cleanupGeneratedBinBackups } from "./profile-service";
 import { broadcastWindowsEnvironmentChanged, windowsSystemCommand } from "./windows-system";
 
 const ccrPathBlockStart = "# >>> Claude Code Router CLI >>>";
@@ -1082,6 +1082,7 @@ function commandProfileRef(config: AppConfig, profile: ReturnType<typeof findPro
 export function ensureCcrCliLauncher(): string {
   const binDir = path.join(CONFIGDIR, "bin");
   mkdirSync(binDir, { recursive: true });
+  cleanupGeneratedBinBackups();
 
   const runtimeFile = path.join(binDir, "ccr-cli.js");
   const runtimeSource = findBundledCcrCliSource();
