@@ -38,10 +38,18 @@ export async function fetchWithSystemProxy(input: RequestInfo | URL, init?: Requ
   } as FetchInitWithDispatcher);
 }
 
+export function readEnvProxyUrl(): string | undefined {
+  const envProxy = process.env.HTTPS_PROXY || process.env.https_proxy ||
+    process.env.HTTP_PROXY || process.env.http_proxy;
+  return envProxy ? envProxy.trim() : undefined;
+}
+
 export async function getSystemProxyUrlForProtocol(protocol: "http" | "https" = "https"): Promise<string | undefined> {
   const cache = await readSystemProxy();
   const server = proxyServerForRequest(cache.upstreamProxy, protocol);
-  return server ? formatProxyUrl(server) : undefined;
+  if (server) return formatProxyUrl(server);
+
+  return readEnvProxyUrl();
 }
 
 async function systemProxyUrlForRequest(url: URL): Promise<string | undefined> {
@@ -49,9 +57,7 @@ async function systemProxyUrlForRequest(url: URL): Promise<string | undefined> {
   const server = proxyServerForRequest(cache.upstreamProxy, url.protocol === "https:" ? "https" : "http");
   if (server) return formatProxyUrl(server);
 
-  const envProxy = process.env.HTTPS_PROXY || process.env.https_proxy ||
-    process.env.HTTP_PROXY || process.env.http_proxy;
-  return envProxy ? envProxy.trim() : undefined;
+  return readEnvProxyUrl();
 }
 
 async function readSystemProxy(): Promise<SystemProxyCache> {
