@@ -26,6 +26,7 @@ const privateFileMode = 0o600;
 const publicExecutableMode = 0o755;
 
 export async function applyProfileConfig(config: AppConfig): Promise<ProfileApplyResult> {
+  cleanupGeneratedBinBackups();
   const appliedAt = new Date().toISOString();
   const profiles = profileEntries(config);
   const result: ProfileApplyResult = {
@@ -65,6 +66,7 @@ export async function applyProfileConfig(config: AppConfig): Promise<ProfileAppl
 }
 
 export function applyProfileRuntimeConfig(config: AppConfig, profile: ProfileConfig, token: string): ProfileClientApplyStatus {
+  cleanupGeneratedBinBackups();
   const appliedAt = new Date().toISOString();
   return profile.agent === "claude-code"
     ? applyClaudeCodeProfile(config, profile, token, appliedAt)
@@ -471,12 +473,8 @@ function writeClaudeCodeApiKeyHelper(profile: ProfileConfig, token: string): { b
   const content = process.platform === "win32"
     ? claudeCodeApiKeyHelperCmdScript(token)
     : claudeCodeApiKeyHelperShellScript(token);
-  const writeResult = writeFileWithBackup(file, content, { mode: privateExecutableMode });
-  if (process.platform !== "win32") {
-    chmodSync(file, privateExecutableMode);
-  }
+  const writeResult = writeGeneratedFileIfChanged(file, content, { mode: privateExecutableMode });
   return {
-    backupFile: writeResult.backupFile,
     changed: writeResult.changed,
     file
   };
@@ -509,20 +507,13 @@ function writeClaudeCodeWrapper(config: AppConfig, profile: ProfileConfig, apiKe
   const binDir = path.join(CONFIGDIR, "bin");
   mkdirSync(binDir, { mode: privateDirMode, recursive: true });
   const runtimeFile = path.join(binDir, codexMiddlewareRuntimeFilename());
-  const runtimeResult = writeFileWithBackup(runtimeFile, codexCliMiddlewareRuntimeScript());
-  if (process.platform !== "win32") {
-    chmodSync(runtimeFile, publicExecutableMode);
-  }
+  const runtimeResult = writeGeneratedFileIfChanged(runtimeFile, codexCliMiddlewareRuntimeScript(), { mode: publicExecutableMode });
   const file = path.join(binDir, claudeCodeWrapperFilename(profile));
   const content = process.platform === "win32"
     ? claudeCodeWrapperCmdScript(config, profile, runtimeFile, apiKeyHelperFile)
     : claudeCodeWrapperShellScript(config, profile, runtimeFile, apiKeyHelperFile);
-  const writeResult = writeFileWithBackup(file, content, { mode: privateExecutableMode });
-  if (process.platform !== "win32") {
-    chmodSync(file, privateExecutableMode);
-  }
+  const writeResult = writeGeneratedFileIfChanged(file, content, { mode: privateExecutableMode });
   return {
-    backupFile: writeResult.backupFile ?? runtimeResult.backupFile,
     changed: writeResult.changed || runtimeResult.changed,
     file
   };
@@ -609,18 +600,12 @@ function writeCodexCliMiddleware(
   const binDir = path.join(CONFIGDIR, "bin");
   mkdirSync(binDir, { mode: privateDirMode, recursive: true });
   const runtimeFile = path.join(binDir, codexMiddlewareRuntimeFilename());
-  const runtimeResult = writeFileWithBackup(runtimeFile, codexCliMiddlewareRuntimeScript());
-  if (process.platform !== "win32") {
-    chmodSync(runtimeFile, publicExecutableMode);
-  }
+  const runtimeResult = writeGeneratedFileIfChanged(runtimeFile, codexCliMiddlewareRuntimeScript(), { mode: publicExecutableMode });
   const file = path.join(binDir, codexMiddlewareFilename(profile, values.providerId));
   const content = process.platform === "win32"
     ? codexMiddlewareCmdScript(config, profile, values, runtimeFile)
     : codexMiddlewareShellScript(config, profile, values, runtimeFile);
-  const writeResult = writeFileWithBackup(file, content, { mode: privateExecutableMode });
-  if (process.platform !== "win32") {
-    chmodSync(file, privateExecutableMode);
-  }
+  const writeResult = writeGeneratedFileIfChanged(file, content, { mode: privateExecutableMode });
   return {
     changed: writeResult.changed || runtimeResult.changed,
     file
@@ -1023,6 +1008,71 @@ function writeFileWithBackup(
   writeFileSync(file, content, options.mode === undefined ? "utf8" : { encoding: "utf8", mode: options.mode });
   chmodFileIfRequested(file, options.mode);
   return { backupFile, changed: true };
+}
+
+function writeGeneratedFileIfChanged(
+  file: string,
+  content: string,
+  options: { mode?: number } = {}
+): { changed: boolean } {
+  mkdirSync(path.dirname(file), { recursive: true });
+  const previous = existsSync(file) ? readFileSync(file, "utf8") : undefined;
+  if (previous === content) {
+    chmodFileIfRequested(file, options.mode);
+    return { changed: false };
+  }
+  writeFileSync(file, content, options.mode === undefined ? "utf8" : { encoding: "utf8", mode: options.mode });
+  chmodFileIfRequested(file, options.mode);
+  return { changed: true };
+}
+
+export function cleanupGeneratedBinBackups(configDir = CONFIGDIR): number {
+  const binDir = path.join(configDir, "bin");
+  let entries: string[];
+  try {
+    entries = readdirSync(binDir);
+  } catch {
+    return 0;
+  }
+
+  let removed = 0;
+  for (const entry of entries) {
+    const baseName = generatedBinBackupBaseName(entry);
+    if (!baseName || !isManagedGeneratedBinFile(baseName)) {
+      continue;
+    }
+    try {
+      rmSync(path.join(binDir, entry), { force: true });
+      removed += 1;
+    } catch {
+      // Cleanup is best effort; stale backups should never block profile launch.
+    }
+  }
+  return removed;
+}
+
+function generatedBinBackupBaseName(entry: string): string | undefined {
+  const backupMarker = ".ccr-backup-";
+  const backupIndex = entry.indexOf(backupMarker);
+  if (backupIndex !== -1) {
+    return entry.slice(0, backupIndex);
+  }
+  for (const suffix of [originalMissingSuffix, originalBackupSuffix]) {
+    if (entry.endsWith(suffix)) {
+      return entry.slice(0, -suffix.length);
+    }
+  }
+  return undefined;
+}
+
+function isManagedGeneratedBinFile(fileName: string): boolean {
+  const normalized = fileName.replace(/\.cmd$/i, "");
+  return normalized === "ccr" ||
+    normalized === "ccr-cli.js" ||
+    normalized === codexMiddlewareRuntimeFilename() ||
+    normalized.startsWith("ccr-claude-code-api-key-") ||
+    normalized.startsWith("ccr-claude-code-wrapper-") ||
+    normalized.startsWith("ccr-codex-cli-stdio-");
 }
 
 type RestoreFileResult = {
