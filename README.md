@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/musistudio-claude-code-router-badge.png)](https://mseep.ai/app/musistudio-claude-code-router)
+
 <h1 align="center">Claude Code Router Desktop</h1>
 
 <p align="center">
