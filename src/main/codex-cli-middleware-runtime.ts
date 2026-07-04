@@ -2355,8 +2355,12 @@ function configRead(params, values) {
       model: agentEnv(runtimeAgent, "MODEL") || DEFAULT_MODEL,
       model_catalog_json: JSON.stringify(modelCatalogConfigValue()),
       model_provider: agentEnv(runtimeAgent, "MODEL_PROVIDER") || "claude-code",
-      approval_policy: "default",
-      sandbox_mode: "workspace-write"
+      approval_policy: "default"
+      // sandbox_mode intentionally omitted: let Codex read it from its own
+      // config.toml (e.g. [windows] sandbox) instead of forcing workspace-write.
+      // Forcing workspace-write triggers codex-windows-sandbox-setup.exe on every
+      // command, which fails on systems where the COM+ catalog is unavailable
+      // (see openai/codex#29332), surfacing as repeated error dialogs.
     }
   };
 }
