@@ -5,7 +5,7 @@ import {
   compareProviderAccountSnapshots, copyTextToClipboard, createDefaultProviderAccountDraft, createModelCatalogItems, createProviderAccountDraftFromConfig, createProviderCredentialDraft,
   customProviderPresetId, defaultProviderAccountConfigForPreset, Dialog, DialogBody, DialogContent, DialogFooter,
   DialogHeader, DialogTitle, ExternalLink, Field, findProviderPreset, formatProviderAccountMeterValue, GatewayProviderConfig,
-  GatewayProviderProbeResult, getProviderPresets, Globe, inferProviderNameFromBaseUrl, Input, KeyValueRowsControl, Label,
+  GatewayProviderProbeResult, getProviderPresets, Globe, inferProviderNameFromBaseUrl, Info, Input, KeyValueRowsControl, Label,
   Layers3, LoaderCircle, localAgentProviderIconUrls, mergeProviderModelLists, modelCatalogItemMatchesQuery, motion,
   Pencil, Plus, PopoverContent, primaryProviderAccountMeter, primaryProviderPresetEndpoint,
   providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountSnapshot,
@@ -1356,6 +1356,7 @@ export function AddProviderForm({
   const t = useAppText();
   const [advancedOpen, setAdvancedOpen] = useState(mode === "edit");
   const [iconDetecting, setIconDetecting] = useState(false);
+  const [protocolProbeDetails, setProtocolProbeDetails] = useState<ProviderProtocolProbeDetailsState>();
   const iconDetectionRequestRef = useRef(0);
   const onChangeRef = useRef(onChange);
   const hasModelCatalog = Boolean(probe?.models.length);
@@ -1384,6 +1385,32 @@ export function AddProviderForm({
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  useEffect(() => {
+    setProtocolProbeDetails(undefined);
+  }, [probe]);
+
+  useEffect(() => {
+    if (!protocolProbeDetails) {
+      return;
+    }
+    const close = () => setProtocolProbeDetails(undefined);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        close();
+      }
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [protocolProbeDetails]);
 
   useEffect(() => {
     onIconDetectingChange?.(iconDetecting);
@@ -1479,6 +1506,20 @@ export function AddProviderForm({
       selectedModels: [],
       selectedProtocols: uniqueProviderProtocols(preset?.endpoints.flatMap((item) => item.protocols) ?? endpoint?.protocols ?? [])
     }, true);
+  }
+
+  function toggleProtocolProbeDetails(
+    itemKey: string,
+    item: GatewayProviderProbeResult["protocols"][number],
+    button: HTMLButtonElement
+  ) {
+    const rect = button.getBoundingClientRect();
+    const position = providerProtocolProbeTooltipPosition(rect);
+    setProtocolProbeDetails((current) => current?.key === itemKey ? undefined : {
+      item,
+      key: itemKey,
+      ...position
+    });
   }
 
   return (
@@ -1681,8 +1722,9 @@ export function AddProviderForm({
                         {probe.protocols.map((item) => {
                           const selectable = item.supported && selectableProtocols.includes(item.protocol);
                           const checked = selectable && draft.selectedProtocols.includes(item.protocol);
+                          const itemKey = `${item.protocol}-${item.endpoint}`;
                           return (
-                            <div className="grid grid-cols-[20px_minmax(118px,0.7fr)_72px_minmax(0,1fr)] items-center gap-2 text-[11px]" key={`${item.protocol}-${item.endpoint}`}>
+                            <div className="grid grid-cols-[20px_minmax(118px,1fr)_minmax(88px,max-content)] items-center gap-2 text-[11px]" key={itemKey}>
                               <Checkbox
                                 aria-label={`${t("Add")} ${translatedProviderProtocolLabel(item.protocol, t)}`}
                                 checked={checked}
@@ -1699,10 +1741,26 @@ export function AddProviderForm({
                                 }}
                               />
                               <span className="truncate font-medium">{translatedProviderProtocolLabel(item.protocol, t)}</span>
-                              <span className={cn("truncate", item.supported ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground")}>
-                                {item.supported ? t("Available") : t("Unavailable")}
+                              <span className={cn("inline-flex min-w-0 items-center justify-end gap-1.5", item.supported ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground")}>
+                                <span className="truncate">{item.supported ? t("Available") : t("Unavailable")}</span>
+                                <button
+                                  aria-label={t("Protocol detection details")}
+                                  aria-pressed={protocolProbeDetails?.key === itemKey}
+                                  className={cn(
+                                    "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30",
+                                    protocolProbeDetails?.key === itemKey && "bg-muted text-foreground"
+                                  )}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    toggleProtocolProbeDetails(itemKey, item, event.currentTarget);
+                                  }}
+                                  onMouseDown={(event) => event.stopPropagation()}
+                                  title={t("Protocol detection details")}
+                                  type="button"
+                                >
+                                  <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                                </button>
                               </span>
-                              <span className="truncate text-muted-foreground" title={translateProbeProtocolMessage(item.message, t)}>{translateProbeProtocolMessage(item.message, t)}</span>
                             </div>
                           );
                         })}
@@ -1718,10 +1776,76 @@ export function AddProviderForm({
             </AnimatedDisclosure>
           ) : null}
         </AnimatePresence>
+        {protocolProbeDetails ? (
+          <ProtocolProbeDetailsTooltip
+            item={protocolProbeDetails.item}
+            left={protocolProbeDetails.left}
+            top={protocolProbeDetails.top}
+            t={t}
+          />
+        ) : null}
       </div>
 
       {error ? <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive"><CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>{error}</span></div> : null}
     </>
+  );
+}
+
+type ProviderProtocolProbeDetailsState = {
+  item: GatewayProviderProbeResult["protocols"][number];
+  key: string;
+  left: number;
+  top: number;
+};
+
+function providerProtocolProbeTooltipPosition(rect: DOMRect): { left: number; top: number } {
+  const margin = 12;
+  const tooltipWidth = 260;
+  const tooltipHeight = 160;
+  const left = Math.min(
+    Math.max(margin, rect.right - tooltipWidth),
+    window.innerWidth - tooltipWidth - margin
+  );
+  const below = rect.bottom + 8;
+  const above = rect.top - tooltipHeight - 8;
+  const top = below + tooltipHeight > window.innerHeight && above > margin
+    ? above
+    : Math.min(below, window.innerHeight - tooltipHeight - margin);
+  return {
+    left,
+    top: Math.max(margin, top)
+  };
+}
+
+function ProtocolProbeDetailsTooltip({
+  item,
+  left,
+  t,
+  top
+}: {
+  item: GatewayProviderProbeResult["protocols"][number];
+  left: number;
+  t: (value: string) => string;
+  top: number;
+}) {
+  const status = item.status === undefined ? "-" : `HTTP ${item.status}`;
+  const message = translateProbeProtocolMessage(item.message, t) || "-";
+
+  return (
+    <div
+      className="fixed z-[120] w-[260px] rounded-md border border-border bg-popover p-2.5 text-left text-[11px] leading-4 text-popover-foreground shadow-card-elevated"
+      onMouseDown={(event) => event.stopPropagation()}
+      role="tooltip"
+      style={{ left, top }}
+    >
+      <div className="mb-1.5 font-semibold">{t("Protocol detection details")}</div>
+      <div className="grid grid-cols-[76px_minmax(0,1fr)] gap-x-2 gap-y-1">
+        <span className="text-muted-foreground">{t("HTTP status")}</span>
+        <span className="min-w-0 truncate font-mono">{status}</span>
+        <span className="text-muted-foreground">{t("Error message")}</span>
+        <span className="min-w-0 break-words">{message}</span>
+      </div>
+    </div>
   );
 }
 
