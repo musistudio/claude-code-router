@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeUsageInputTokens } from "../../src/main/usage-normalization.ts";
+import { normalizeUsageInputTokens } from "../../packages/core/src/usage/normalization.ts";
 
 test("normalizeUsageInputTokens subtracts cache tokens for OpenAI-compatible protocols", () => {
   const usage = normalizeUsageInputTokens(

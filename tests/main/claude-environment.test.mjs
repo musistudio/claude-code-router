@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { claudeCodeUtcTimezoneEnvOverride, isChinaTimeZone } from "../../src/main/claude-environment.ts";
+import { claudeCodeUtcTimezoneEnvOverride, isChinaTimeZone } from "../../packages/core/src/agents/claude-code/environment.ts";
 
 test("detects China time zones used by Claude Code", () => {
   assert.equal(isChinaTimeZone("Asia/Shanghai"), true);

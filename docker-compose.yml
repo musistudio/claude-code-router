@@ -1,0 +1,23 @@
+services:
+  ccr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: claude-code-router:local
+    environment:
+      CCR_WEB_HOST: 127.0.0.1
+      CCR_WEB_PORT: 3459
+      CCR_NGINX_PORT: 8080
+      CCR_GATEWAY_HOST: 127.0.0.1
+      CCR_GATEWAY_PORT: 3456
+      CCR_GATEWAY_CORE_PORT: 3457
+      CCR_PUBLIC_HOST: 127.0.0.1
+      CCR_PUBLIC_PORT: 3458
+    ports:
+      - "3458:8080"
+    volumes:
+      - ccr-data:/data
+    restart: unless-stopped
+
+volumes:
+  ccr-data:

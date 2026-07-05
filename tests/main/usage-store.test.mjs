@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { UsageStore } from "../../src/main/usage-store.ts";
+import { UsageStore } from "../../packages/core/src/usage/store.ts";
 
 test("UsageStore aggregates stats in SQLite without loading all events", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-test-"));
@@ -99,6 +99,38 @@ test("UsageStore excludes proxy rows by default and includes them on request", a
     const withProxy = await store.getStats("30d", { includeProxy: true });
     assert.equal(withProxy.totals.requestCount, 2);
     assert.equal(withProxy.totals.totalTokens, 312);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("UsageStore treats null web RPC usage filters as empty filters", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-null-filter-test-"));
+  try {
+    const store = new UsageStore(path.join(dir, "usage.sqlite"));
+
+    await store.record({
+      createdAt: new Date().toISOString(),
+      durationMs: 10,
+      method: "POST",
+      model: "alpha-model",
+      path: "/v1/messages",
+      provider: "alpha",
+      requestId: "req-null-filter",
+      statusCode: 200,
+      usage: {
+        inputTokens: 3,
+        outputTokens: 4
+      }
+    });
+
+    const stats = await store.getStats("7d", null);
+    assert.equal(stats.range, "7d");
+    assert.equal(stats.totals.requestCount, 1);
+
+    const defaultRangeStats = await store.getStats(null, null);
+    assert.equal(defaultRangeStats.range, "7d");
+    assert.equal(defaultRangeStats.totals.requestCount, 1);
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }

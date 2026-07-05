@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildCodexModelCatalog } from "../../src/main/codex-model-catalog.ts";
+import { buildCodexModelCatalog } from "../../packages/core/src/agents/codex/model-catalog.ts";
 
 function catalogModelFor(config, slug) {
   const catalog = buildCodexModelCatalog(config, slug);

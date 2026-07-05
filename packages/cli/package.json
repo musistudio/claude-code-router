@@ -1,0 +1,48 @@
+{
+  "name": "@musistudio/claude-code-router",
+  "version": "3.0.7",
+  "license": "MIT",
+  "description": "Local Claude Code Router gateway with CLI and web management UI.",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/musistudio/claude-code-router.git"
+  },
+  "bugs": {
+    "url": "https://github.com/musistudio/claude-code-router/issues"
+  },
+  "homepage": "https://github.com/musistudio/claude-code-router#readme",
+  "keywords": [
+    "claude-code",
+    "codex",
+    "llm",
+    "gateway",
+    "router"
+  ],
+  "main": "dist/main/cli.js",
+  "bin": {
+    "ccr": "dist/main/cli.js"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md",
+    "README_zh.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "prepack": "npm --prefix ../.. run build:assets",
+    "prepublishOnly": "npm --prefix ../.. run typecheck"
+  },
+  "dependencies": {
+    "@the-next-ai/ai-gateway": "^1.0.4",
+    "@the-next-ai/bot-gateway-sdk": "^0.1.0",
+    "better-sqlite3": "^12.11.1",
+    "node-forge": "^1.4.0",
+    "undici": "^7.27.2"
+  }
+}

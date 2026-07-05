@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
-const outputPath = path.join(projectRoot, "models.json");
+const outputPath = path.join(projectRoot, "packages", "core", "models.json");
 
 const sources = {
   litellm: {

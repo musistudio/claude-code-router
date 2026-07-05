@@ -4,7 +4,7 @@ import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { codexCliMiddlewareRuntimeScript } from "../../src/main/codex-cli-middleware-runtime.ts";
+import { codexCliMiddlewareRuntimeScript } from "../../packages/core/src/agents/codex/cli-middleware-runtime.ts";
 
 test("generated Codex CLI middleware runtime is valid JavaScript", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-check-"));

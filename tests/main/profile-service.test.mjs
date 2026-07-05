@@ -3,9 +3,9 @@ import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, 
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { createDefaultAppConfig } from "../../src/shared/default-config.ts";
-import { CONFIGDIR } from "../../src/main/constants.ts";
-import { applyProfileConfig, cleanupGeneratedBinBackups, restoreInactiveGlobalProfileConfigs } from "../../src/main/profile-service.ts";
+import { createDefaultAppConfig } from "../../packages/core/src/config/default-config.ts";
+import { CONFIGDIR } from "../../packages/core/src/config/constants.ts";
+import { applyProfileConfig, cleanupGeneratedBinBackups, restoreInactiveGlobalProfileConfigs } from "../../packages/core/src/profiles/service.ts";
 
 test("profile service cleans stale generated bin backups only", () => {
   const configDir = mkdtempSync(path.join(os.tmpdir(), "ccr-generated-bin-cleanup-"));

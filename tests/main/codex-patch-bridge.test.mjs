@@ -4,7 +4,7 @@ import {
   prepareCodexApplyPatchBridgeRequest,
   transformCodexApplyPatchBridgeResponseValue,
   transformCodexApplyPatchBridgeSseEvent
-} from "../../src/server/gateway/service.ts";
+} from "../../packages/core/src/gateway/service.ts";
 
 const config = {
   Providers: [],

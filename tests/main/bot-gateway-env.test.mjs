@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { botGatewayProfileEnv } from "../../src/main/bot-gateway-env.ts";
+import { botGatewayProfileEnv } from "../../packages/core/src/agents/bot-gateway/env.ts";
 
 function botGateway(overrides = {}) {
   return {

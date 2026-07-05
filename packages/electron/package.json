@@ -1,0 +1,10 @@
+{
+  "name": "@claude-code-router/electron",
+  "version": "3.0.7",
+  "private": true,
+  "description": "Claude Code Router Electron desktop shell.",
+  "main": "dist/main/main.js",
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
+}

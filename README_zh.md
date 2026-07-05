@@ -1,4 +1,4 @@
-<h1 align="center">Claude Code Router Desktop</h1>
+<h1 align="center">Claude Code Router</h1>
 
 <p align="center">
   <a href="README.md"><img alt="English README" src="https://img.shields.io/badge/%F0%9F%87%AC%F0%9F%87%A7-English-000aff?style=flat" /></a>

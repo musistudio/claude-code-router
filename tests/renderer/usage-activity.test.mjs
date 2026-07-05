@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildTokenActivity, activityDateKey } from "../../src/renderer/lib/usage-activity.ts";
+import { buildTokenActivity, activityDateKey } from "../../packages/ui/src/lib/usage-activity.ts";
 
 test("buildTokenActivity summarizes observed token days and streaks", () => {
   const summary = buildTokenActivity(

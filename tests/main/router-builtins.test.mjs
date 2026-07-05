@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ClaudeCodeRouterPlugin } from "../../src/server/gateway/claude-code-router-plugin.ts";
-import { prepareGatewayUpstreamAttemptForTest } from "../../src/server/gateway/service.ts";
+import { ClaudeCodeRouterPlugin } from "../../packages/core/src/gateway/claude-code-router-plugin.ts";
+import { prepareGatewayUpstreamAttemptForTest } from "../../packages/core/src/gateway/service.ts";
 
 function createRouterPlugin(options = {}) {
   const agent = options.agent ?? "claude-code";

@@ -8,16 +8,43 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export const projectRoot = path.resolve(__dirname, "..");
-export const distDir = path.join(projectRoot, "dist");
-export const mainOutDir = path.join(distDir, "main");
-export const rendererOutDir = path.join(distDir, "renderer");
-export const appAssetsDir = path.join(distDir, "assets");
+export const packagesRoot = path.join(projectRoot, "packages");
+export const cliRoot = path.join(packagesRoot, "cli");
+export const coreRoot = path.join(packagesRoot, "core");
+export const electronRoot = path.join(packagesRoot, "electron");
+export const uiRoot = path.join(packagesRoot, "ui");
+export const cliSourceRoot = path.join(cliRoot, "src");
+export const coreSourceRoot = path.join(coreRoot, "src");
+export const electronSourceRoot = path.join(electronRoot, "src");
+export const uiSourceRoot = path.join(uiRoot, "src");
+export const legacyDistDir = path.join(projectRoot, "dist");
+export const cliDistDir = path.join(cliRoot, "dist");
+export const coreDistDir = path.join(coreRoot, "dist");
+export const electronDistDir = path.join(electronRoot, "dist");
+export const uiDistDir = path.join(uiRoot, "dist");
+export const distDir = electronDistDir;
+export const cliMainOutDir = path.join(cliDistDir, "main");
+export const coreMainOutDir = path.join(coreDistDir, "main");
+export const electronMainOutDir = path.join(electronDistDir, "main");
+export const mainOutDir = electronMainOutDir;
+export const rendererOutDir = path.join(uiDistDir, "renderer");
+export const cliRendererOutDir = path.join(cliDistDir, "renderer");
+export const coreRendererOutDir = path.join(coreDistDir, "renderer");
+export const electronRendererOutDir = path.join(electronDistDir, "renderer");
+export const runtimeRendererOutDirs = [cliRendererOutDir, coreRendererOutDir, electronRendererOutDir];
+export const appAssetsDir = path.join(electronDistDir, "assets");
 export const rendererAssetsDir = path.join(rendererOutDir, "assets");
-export const marketplacePluginsDir = path.join(distDir, "marketplace", "plugins");
-export const appAssetsInput = path.join(projectRoot, "assets");
-export const modelCatalogInput = path.join(projectRoot, "models.json");
-export const modelCatalogOutput = path.join(distDir, "models.json");
-export const rendererRoot = path.join(projectRoot, "src", "renderer");
+export const cliMarketplacePluginsDir = path.join(cliDistDir, "marketplace", "plugins");
+export const coreMarketplacePluginsDir = path.join(coreDistDir, "marketplace", "plugins");
+export const electronMarketplacePluginsDir = path.join(electronDistDir, "marketplace", "plugins");
+export const marketplacePluginsDir = electronMarketplacePluginsDir;
+export const appAssetsInput = path.join(electronRoot, "assets");
+export const modelCatalogInput = path.join(coreRoot, "models.json");
+export const cliModelCatalogOutput = path.join(cliDistDir, "models.json");
+export const coreModelCatalogOutput = path.join(coreDistDir, "models.json");
+export const electronModelCatalogOutput = path.join(electronDistDir, "models.json");
+export const modelCatalogOutput = electronModelCatalogOutput;
+export const rendererRoot = uiSourceRoot;
 export const rendererHtmlInput = path.join(rendererRoot, "pages", "home", "index.html");
 export const rendererHtmlOutput = path.join(rendererOutDir, "pages", "home", "index.html");
 export const browserRendererHtmlInput = path.join(rendererRoot, "pages", "browser", "index.html");
@@ -30,8 +57,10 @@ export const webClientBridgeOutput = path.join(rendererAssetsDir, "web-client-br
 const lightweightMcpBundleNames = ["browser-web-search-proxy-mcp.js", "fusion-vision-mcp.js", "fusion-tool-fallback-mcp.js"];
 const lightweightMcpBundleMaxBytes = 128 * 1024;
 const forbiddenLightweightMcpInputs = [
-  { prefix: "src/main/", reason: "main-process modules can pull in config, Electron, or native storage side effects" },
-  { prefix: "src/renderer/", reason: "renderer modules do not belong in stdio MCP subprocesses" },
+  { prefix: "packages/core/src/config/", reason: "config modules can pull in native storage side effects" },
+  { prefix: "packages/core/src/storage/", reason: "native SQLite storage is not allowed in lightweight MCP subprocesses" },
+  { prefix: "packages/electron/src/", reason: "Electron runtime modules are not allowed in lightweight MCP subprocesses" },
+  { prefix: "packages/ui/src/", reason: "UI modules do not belong in stdio MCP subprocesses" },
   { prefix: "node_modules/better-sqlite3/", reason: "native SQLite is not allowed in lightweight MCP subprocesses" },
   { prefix: "node_modules/electron/", reason: "Electron runtime modules are not allowed in lightweight MCP subprocesses" }
 ];
@@ -45,15 +74,26 @@ const nodeExternals = [
 ];
 
 export function cleanDist() {
-  rmSync(distDir, { force: true, recursive: true });
+  rmSync(legacyDistDir, { force: true, recursive: true });
+  rmSync(cliDistDir, { force: true, recursive: true });
+  rmSync(coreDistDir, { force: true, recursive: true });
+  rmSync(electronDistDir, { force: true, recursive: true });
+  rmSync(uiDistDir, { force: true, recursive: true });
   ensureDist();
 }
 
 export function ensureDist() {
-  mkdirSync(mainOutDir, { recursive: true });
+  mkdirSync(cliMainOutDir, { recursive: true });
+  mkdirSync(coreMainOutDir, { recursive: true });
+  mkdirSync(electronMainOutDir, { recursive: true });
   mkdirSync(appAssetsDir, { recursive: true });
-  mkdirSync(marketplacePluginsDir, { recursive: true });
+  mkdirSync(cliMarketplacePluginsDir, { recursive: true });
+  mkdirSync(coreMarketplacePluginsDir, { recursive: true });
+  mkdirSync(electronMarketplacePluginsDir, { recursive: true });
   mkdirSync(rendererAssetsDir, { recursive: true });
+  for (const outputDir of runtimeRendererOutDirs) {
+    mkdirSync(path.join(outputDir, "assets"), { recursive: true });
+  }
   mkdirSync(path.dirname(rendererHtmlOutput), { recursive: true });
   mkdirSync(path.dirname(browserRendererHtmlOutput), { recursive: true });
   mkdirSync(path.dirname(trayRendererHtmlOutput), { recursive: true });
@@ -69,12 +109,16 @@ export function copyAppAssets() {
 export function copyModelCatalog() {
   ensureDist();
   if (existsSync(modelCatalogInput)) {
-    cpSync(modelCatalogInput, modelCatalogOutput);
+    cpSync(modelCatalogInput, cliModelCatalogOutput);
+    cpSync(modelCatalogInput, coreModelCatalogOutput);
+    cpSync(modelCatalogInput, electronModelCatalogOutput);
   }
 }
 
 export function copyRendererHtml() {
-  copyRendererPageHtml(rendererHtmlInput, rendererHtmlOutput, "main.js");
+  copyRendererPageHtml(rendererHtmlInput, rendererHtmlOutput, "main.js", {
+    beforeModuleScriptTags: ['    <script src="../../assets/web-client-bridge.js"></script>']
+  });
 }
 
 export function copyTrayRendererHtml() {
@@ -89,14 +133,25 @@ export function copyMarketplacePlugins() {
   ensureDist();
   for (const filename of ["claude-design-plugin.cjs", "cursor-proxy-plugin.cjs"]) {
     const source = path.join(projectRoot, "examples", "plugins", filename);
-    const target = path.join(marketplacePluginsDir, filename);
     if (existsSync(source)) {
-      cpSync(source, target);
+      cpSync(source, path.join(cliMarketplacePluginsDir, filename));
+      cpSync(source, path.join(coreMarketplacePluginsDir, filename));
+      cpSync(source, path.join(electronMarketplacePluginsDir, filename));
     }
   }
 }
 
-function copyRendererPageHtml(input, output, scriptName) {
+export function syncUiRendererToRuntimeDists() {
+  ensureDist();
+  for (const outputDir of runtimeRendererOutDirs) {
+    rmSync(outputDir, { force: true, recursive: true });
+    if (existsSync(rendererOutDir)) {
+      cpSync(rendererOutDir, outputDir, { recursive: true });
+    }
+  }
+}
+
+function copyRendererPageHtml(input, output, scriptName, options = {}) {
   ensureDist();
   const source = readFileSync(input, "utf8");
   const styleTag = '    <link rel="stylesheet" href="../../assets/main.css" />';
@@ -105,11 +160,22 @@ function copyRendererPageHtml(input, output, scriptName) {
     ? source.replace('    <script type="module" src="./main.tsx"></script>', scriptTag)
     : source.replace("</body>", `${scriptTag}\n  </body>`);
 
+  for (const extraScriptTag of options.beforeModuleScriptTags ?? []) {
+    if (!hasScriptTag(html, extraScriptTag)) {
+      html = html.replace(scriptTag, `${extraScriptTag}\n${scriptTag}`);
+    }
+  }
+
   if (!html.includes('href="../../assets/main.css"')) {
     html = html.replace("</head>", `${styleTag}\n  </head>`);
   }
 
   writeFileSync(output, html, "utf8");
+}
+
+function hasScriptTag(html, scriptTag) {
+  const sourceMatch = scriptTag.match(/\bsrc="([^"]+)"/);
+  return sourceMatch ? html.includes(sourceMatch[1]) : html.includes(scriptTag);
 }
 
 export function createMainBuildOptions({ mode = "production", plugins = [] } = {}) {
@@ -118,12 +184,12 @@ export function createMainBuildOptions({ mode = "production", plugins = [] } = {
     bundle: true,
     entryNames: "[name]",
     entryPoints: [
-      path.join(projectRoot, "src", "main", "main.ts"),
-      path.join(projectRoot, "src", "main", "browser-preload.ts"),
-      path.join(projectRoot, "src", "server", "mcp", "browser-web-search-proxy-mcp.ts"),
-      path.join(projectRoot, "src", "server", "mcp", "fusion-vision-mcp.ts"),
-      path.join(projectRoot, "src", "server", "mcp", "fusion-tool-fallback-mcp.ts"),
-      path.join(projectRoot, "src", "main", "preload.ts")
+      path.join(electronSourceRoot, "main", "main.ts"),
+      path.join(electronSourceRoot, "main", "browser-preload.ts"),
+      path.join(coreSourceRoot, "mcp", "browser-web-search-proxy-mcp.ts"),
+      path.join(coreSourceRoot, "mcp", "fusion-vision-mcp.ts"),
+      path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts"),
+      path.join(electronSourceRoot, "main", "preload.ts")
     ],
     external: nodeExternals,
     format: "cjs",
@@ -131,9 +197,9 @@ export function createMainBuildOptions({ mode = "production", plugins = [] } = {
     logLevel: "info",
     metafile: true,
     minify: mode === "production",
-    outdir: mainOutDir,
+    outdir: electronMainOutDir,
     platform: "node",
-    plugins,
+    plugins: [packageAliasPlugin(), ...plugins],
     sourcemap: mode !== "production",
     target: "node22"
   };
@@ -144,15 +210,42 @@ export function createCliBuildOptions({ mode = "production", plugins = [] } = {}
     absWorkingDir: projectRoot,
     bundle: true,
     entryNames: "[name]",
-    entryPoints: [path.join(projectRoot, "src", "main", "cli.ts")],
+    entryPoints: [
+      path.join(cliSourceRoot, "cli.ts"),
+      path.join(coreSourceRoot, "mcp", "fusion-vision-mcp.ts"),
+      path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts")
+    ],
     external: nodeExternals.filter((moduleName) => moduleName !== "electron"),
     format: "cjs",
     legalComments: "none",
     logLevel: "info",
     minify: mode === "production",
-    outdir: mainOutDir,
+    outdir: cliMainOutDir,
     platform: "node",
-    plugins: [forbidCliElectronPlugin(), ...plugins],
+    plugins: [forbidCliElectronPlugin(), packageAliasPlugin(), ...plugins],
+    sourcemap: mode !== "production",
+    target: "node22"
+  };
+}
+
+export function createCoreServerBuildOptions({ mode = "production", plugins = [] } = {}) {
+  return {
+    absWorkingDir: projectRoot,
+    bundle: true,
+    entryNames: "[name]",
+    entryPoints: [
+      path.join(coreSourceRoot, "entrypoints", "server.ts"),
+      path.join(coreSourceRoot, "mcp", "fusion-vision-mcp.ts"),
+      path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts")
+    ],
+    external: nodeExternals.filter((moduleName) => moduleName !== "electron"),
+    format: "cjs",
+    legalComments: "none",
+    logLevel: "info",
+    minify: mode === "production",
+    outdir: coreMainOutDir,
+    platform: "node",
+    plugins: [forbidCliElectronPlugin(), packageAliasPlugin(), ...plugins],
     sourcemap: mode !== "production",
     target: "node22"
   };
@@ -183,7 +276,7 @@ export function createRendererBuildOptions({ mode = "production", plugins = [] }
     minify: mode === "production",
     outfile: path.join(rendererAssetsDir, "main.js"),
     platform: "browser",
-    plugins: [rendererAliasPlugin(), ...plugins],
+    plugins: [rendererAliasPlugin(), packageAliasPlugin(), ...plugins],
     publicPath: "../../assets",
     sourcemap: mode !== "production",
     target: "chrome120"
@@ -210,14 +303,14 @@ export function createWebClientBridgeBuildOptions({ mode = "production", plugins
   return {
     absWorkingDir: projectRoot,
     bundle: true,
-    entryPoints: [path.join(projectRoot, "src", "main", "web-client-bridge.ts")],
+    entryPoints: [path.join(uiSourceRoot, "web-client-bridge.ts")],
     format: "iife",
     legalComments: "none",
     logLevel: "info",
     minify: mode === "production",
     outfile: webClientBridgeOutput,
     platform: "browser",
-    plugins,
+    plugins: [packageAliasPlugin(), ...plugins],
     sourcemap: mode !== "production",
     target: "chrome120"
   };
@@ -239,9 +332,19 @@ export function watchPlugin(name, onEnd) {
 export async function buildMain(options = {}) {
   const [mainBuildResult] = await Promise.all([
     esbuild.build(createMainBuildOptions(options)),
-    esbuild.build(createCliBuildOptions(options))
+    buildCoreServer(options),
+    buildCli(options)
   ]);
+  copyCliRuntimeToElectronDist();
   validateLightweightMcpBundles(mainBuildResult.metafile);
+}
+
+export async function buildCli(options = {}) {
+  await esbuild.build(createCliBuildOptions(options));
+}
+
+export async function buildCoreServer(options = {}) {
+  await esbuild.build(createCoreServerBuildOptions(options));
 }
 
 export async function buildRenderer(options = {}) {
@@ -258,6 +361,14 @@ export async function buildBrowserRenderer(options = {}) {
 
 export async function buildWebClientBridge(options = {}) {
   await esbuild.build(createWebClientBridgeBuildOptions(options));
+}
+
+export function copyCliRuntimeToElectronDist() {
+  ensureDist();
+  const cliRuntime = path.join(cliMainOutDir, "cli.js");
+  if (existsSync(cliRuntime)) {
+    cpSync(cliRuntime, path.join(electronMainOutDir, "cli.js"));
+  }
 }
 
 export async function buildStyles({ minify = false } = {}) {
@@ -300,6 +411,26 @@ function rendererAliasPlugin() {
     setup(build) {
       build.onResolve({ filter: /^@\// }, (args) => {
         return { path: resolveRendererImport(args.path.slice(2)) };
+      });
+    }
+  };
+}
+
+function packageAliasPlugin() {
+  return {
+    name: "ccr-package-alias",
+    setup(build) {
+      build.onResolve({ filter: /^@ccr\/cli\// }, (args) => {
+        return { path: resolvePackageImport(cliSourceRoot, args.path.slice("@ccr/cli/".length)) };
+      });
+      build.onResolve({ filter: /^@ccr\/core\// }, (args) => {
+        return { path: resolvePackageImport(coreSourceRoot, args.path.slice("@ccr/core/".length)) };
+      });
+      build.onResolve({ filter: /^@ccr\/electron\// }, (args) => {
+        return { path: resolvePackageImport(electronSourceRoot, args.path.slice("@ccr/electron/".length)) };
+      });
+      build.onResolve({ filter: /^@ccr\/ui\// }, (args) => {
+        return { path: resolvePackageImport(uiSourceRoot, args.path.slice("@ccr/ui/".length)) };
       });
     }
   };
@@ -371,19 +502,23 @@ function normalizeBuildPath(value) {
 }
 
 function resolveRendererImport(importPath) {
-  const basePath = path.resolve(rendererRoot, importPath);
+  return resolvePackageImport(rendererRoot, importPath);
+}
+
+function resolvePackageImport(rootDir, importPath) {
+  const packageBasePath = path.resolve(rootDir, importPath);
   const candidates = [
-    basePath,
-    `${basePath}.tsx`,
-    `${basePath}.ts`,
-    `${basePath}.jsx`,
-    `${basePath}.js`,
-    `${basePath}.json`,
-    `${basePath}.css`,
-    path.join(basePath, "index.tsx"),
-    path.join(basePath, "index.ts"),
-    path.join(basePath, "index.jsx"),
-    path.join(basePath, "index.js")
+    packageBasePath,
+    `${packageBasePath}.tsx`,
+    `${packageBasePath}.ts`,
+    `${packageBasePath}.jsx`,
+    `${packageBasePath}.js`,
+    `${packageBasePath}.json`,
+    `${packageBasePath}.css`,
+    path.join(packageBasePath, "index.tsx"),
+    path.join(packageBasePath, "index.ts"),
+    path.join(packageBasePath, "index.jsx"),
+    path.join(packageBasePath, "index.js")
   ];
 
   for (const candidate of candidates) {
@@ -392,5 +527,5 @@ function resolveRendererImport(importPath) {
     }
   }
 
-  return basePath;
+  return packageBasePath;
 }

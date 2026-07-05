@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Badge } from "../../src/renderer/components/ui/badge.tsx";
-import { Button } from "../../src/renderer/components/ui/button.tsx";
-import { Card, CardContent, CardHeader, CardTitle } from "../../src/renderer/components/ui/card.tsx";
-import { Switch } from "../../src/renderer/components/ui/switch.tsx";
+import { Badge } from "../../packages/ui/src/components/ui/badge.tsx";
+import { Button } from "../../packages/ui/src/components/ui/button.tsx";
+import { Card, CardContent, CardHeader, CardTitle } from "../../packages/ui/src/components/ui/card.tsx";
+import { Switch } from "../../packages/ui/src/components/ui/switch.tsx";
 
 test("Button renders default button semantics and variant classes", () => {
   const html = renderToStaticMarkup(

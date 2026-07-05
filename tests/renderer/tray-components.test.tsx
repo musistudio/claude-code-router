@@ -17,9 +17,9 @@ import {
   TrayStatusStrip,
   UsageDetailPanel,
   UsageOverviewPanel
-} from "../../src/renderer/pages/tray/components/index.ts";
-import { TrayApp } from "../../src/renderer/pages/tray/TrayApp.tsx";
-import { TrayDetailApp } from "../../src/renderer/pages/tray/TrayDetailApp.tsx";
+} from "../../packages/ui/src/pages/tray/components/index.ts";
+import { TrayApp } from "../../packages/ui/src/pages/tray/TrayApp.tsx";
+import { TrayDetailApp } from "../../packages/ui/src/pages/tray/TrayDetailApp.tsx";
 import { accountSnapshots, installBrowserGlobals, usageStats, usageTotals } from "./fixtures.ts";
 
 installBrowserGlobals();

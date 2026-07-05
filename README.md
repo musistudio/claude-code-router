@@ -1,4 +1,4 @@
-<h1 align="center">Claude Code Router Desktop</h1>
+<h1 align="center">Claude Code Router</h1>
 
 <p align="center">
   <a href="README_zh.md"><img alt="Chinese README" src="https://img.shields.io/badge/%F0%9F%87%A8%F0%9F%87%B3-%E4%B8%AD%E6%96%87%E7%89%88-ff0000?style=flat" /></a>

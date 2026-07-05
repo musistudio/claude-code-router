@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isProviderProtocolEndpointSupportedForProbe } from "../../src/main/provider-probe.ts";
+import { isProviderProtocolEndpointSupportedForProbe } from "../../packages/core/src/providers/probe.ts";
 
 test("protocol support probe does not treat Gemini auth errors as every protocol", () => {
   const message = "HTTP 403: API key not valid. Please pass a valid API key.";

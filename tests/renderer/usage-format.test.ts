@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatLogTokenSummary } from "../../src/renderer/pages/home/shared/logs.ts";
-import { formatCompactNumber } from "../../src/renderer/pages/home/shared/usage.ts";
-import type { RequestLogEntry } from "../../src/shared/app.ts";
+import { formatLogTokenSummary } from "../../packages/ui/src/pages/home/shared/logs.ts";
+import { formatCompactNumber } from "../../packages/ui/src/pages/home/shared/usage.ts";
+import type { RequestLogEntry } from "../../packages/core/src/contracts/app.ts";
 
 test("formatCompactNumber can be bound to the UI language locale", () => {
   assert.equal(formatCompactNumber(123456, "en-US"), "123.5K");
