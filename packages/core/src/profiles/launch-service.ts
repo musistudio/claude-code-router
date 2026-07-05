@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { assertAvailableGatewayModels, type AppConfig, type ProfileOpenCommandResult, type ProfileOpenRequest, type ProfileOpenResult, type ProfileRuntimeEntry, type ProfileRuntimeStatus, type ProfileStopResult } from "@ccr/core/contracts/app";
@@ -17,8 +17,16 @@ import { broadcastWindowsEnvironmentChanged, windowsSystemCommand } from "@ccr/c
 
 const ccrPathBlockStart = "# >>> Claude Code Router CLI >>>";
 const ccrPathBlockEnd = "# <<< Claude Code Router CLI <<<";
+export const desktopCliCommandName = "ccr-app";
+const desktopCliRuntimeFileName = "ccr-cli.js";
+const desktopCliCommandNameEnv = "CCR_CLI_COMMAND_NAME";
 let claudeAppBotWorker: ChildProcess | undefined;
 let claudeAppBotWorkerProfileId: string | undefined;
+
+type ProfileOpenCommandOptions = {
+  commandName?: string;
+  ensureLauncher?: boolean;
+};
 
 type ProfileAppLaunchResult = {
   child: ChildProcess;
@@ -41,14 +49,16 @@ type RunningProfileApp = ProfileRuntimeEntry & {
 
 process.once("exit", () => stopClaudeAppBotWorker());
 
-export async function getProfileOpenCommand(config: AppConfig, request: ProfileOpenRequest): Promise<ProfileOpenCommandResult> {
+export async function getProfileOpenCommand(config: AppConfig, request: ProfileOpenRequest, options: ProfileOpenCommandOptions = {}): Promise<ProfileOpenCommandResult> {
   assertAvailableGatewayModels(config);
   await applyProfileConfig(config);
   const profile = findProfileForOpen(config, request.profileId);
   const surface = resolveProfileOpenSurface(profile, request.surface);
-  ensureCcrCliLauncher();
+  if (options.ensureLauncher) {
+    ensureCcrCliLauncher();
+  }
   return {
-    command: profileOpenCommand(profile, surface, "ccr", commandProfileRef(config, profile)),
+    command: profileOpenCommand(profile, surface, options.commandName ?? "ccr", commandProfileRef(config, profile)),
     profileId: profile.id,
     profileName: profile.name,
     surface
@@ -1083,13 +1093,14 @@ export function ensureCcrCliLauncher(): string {
   const binDir = path.join(CONFIGDIR, "bin");
   mkdirSync(binDir, { recursive: true });
   cleanupGeneratedBinBackups();
+  cleanupLegacyCcrCliLauncher(binDir);
 
-  const runtimeFile = path.join(binDir, "ccr-cli.js");
+  const runtimeFile = path.join(binDir, desktopCliRuntimeFileName);
   const runtimeSource = findBundledCcrCliSource();
   writeFileIfChanged(runtimeFile, readFileSync(runtimeSource, "utf8"));
   chmodSafe(runtimeFile);
 
-  const launcherFile = path.join(binDir, process.platform === "win32" ? "ccr.cmd" : "ccr");
+  const launcherFile = path.join(binDir, process.platform === "win32" ? `${desktopCliCommandName}.cmd` : desktopCliCommandName);
   const launcherContent = process.platform === "win32"
     ? windowsCcrLauncher(runtimeFile)
     : posixCcrLauncher(runtimeFile);
@@ -1098,6 +1109,29 @@ export function ensureCcrCliLauncher(): string {
   ensureCcrBinOnPath(binDir);
 
   return launcherFile;
+}
+
+function cleanupLegacyCcrCliLauncher(binDir: string): void {
+  const legacyLauncherFile = path.join(binDir, process.platform === "win32" ? "ccr.cmd" : "ccr");
+  if (!existsSync(legacyLauncherFile)) {
+    return;
+  }
+  try {
+    const source = readFileSync(legacyLauncherFile, "utf8");
+    if (!isLegacyManagedCcrCliLauncher(source)) {
+      return;
+    }
+    rmSync(legacyLauncherFile, { force: true });
+  } catch (error) {
+    console.warn(`[profile] Failed to remove legacy ccr launcher: ${formatError(error)}`);
+  }
+}
+
+function isLegacyManagedCcrCliLauncher(source: string): boolean {
+  return source.includes("CCR_CLI_NODE_PATH") &&
+    source.includes(desktopCliRuntimeFileName) &&
+    source.includes("ELECTRON_RUN_AS_NODE=1") &&
+    source.includes("CCR_NODE_BIN");
 }
 
 function findBundledCcrCliSource(): string {
@@ -1123,6 +1157,8 @@ function posixCcrLauncher(runtimeFile: string): string {
   const nodePath = bundledNodePath();
   return [
     "#!/bin/sh",
+    `${desktopCliCommandNameEnv}=${shQuote(desktopCliCommandName)}`,
+    `export ${desktopCliCommandNameEnv}`,
     `CCR_CLI_NODE_PATH=${shQuote(nodePath)}`,
     'if [ -n "$NODE_PATH" ]; then',
     '  export NODE_PATH="$CCR_CLI_NODE_PATH:$NODE_PATH"',
@@ -1141,6 +1177,7 @@ function windowsCcrLauncher(runtimeFile: string): string {
   return [
     "@echo off",
     "setlocal",
+    `set "${desktopCliCommandNameEnv}=${desktopCliCommandName}"`,
     `set "CCR_CLI_RUNTIME=${cmdEnvValue(runtimeFile)}"`,
     `set "CCR_CLI_NODE_PATH=${cmdEnvValue(nodePath)}"`,
     "if defined NODE_PATH (",
@@ -1316,7 +1353,7 @@ function shellRcPathBlock(): string {
   const binDir = "$HOME/.claude-code-router/bin";
   return [
     ccrPathBlockStart,
-    "# Added by Claude Code Router. Enables the ccr command in new shells.",
+    "# Added by Claude Code Router. Enables the ccr-app command in new shells.",
     'case ":$PATH:" in',
     `  *":${binDir}:"*) ;;`,
     `  *) export PATH="${binDir}:$PATH" ;;`,
@@ -1349,7 +1386,7 @@ function ensureFishPathBlock(file: string, binDir: string): void {
 function fishPathBlock(): string {
   return [
     ccrPathBlockStart,
-    "# Added by Claude Code Router. Enables the ccr command in new shells.",
+    "# Added by Claude Code Router. Enables the ccr-app command in new shells.",
     'set -l ccr_bin "$HOME/.claude-code-router/bin"',
     "if not contains $ccr_bin $PATH",
     "    set -gx PATH $ccr_bin $PATH",

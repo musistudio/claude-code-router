@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { accessSync, constants as fsConstants, existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import { applyClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
@@ -56,14 +56,9 @@ const serviceStartTimeoutMs = 30_000;
 const serviceStopTimeoutMs = 10_000;
 const webAuthHeader = "x-ccr-web-auth";
 const webAuthQueryParam = "ccr_web_token";
+const defaultCliCommandName = "ccr";
 
 async function main(): Promise<void> {
-  const delegatedExitCode = delegateManagedDesktopCliToExternalCli();
-  if (delegatedExitCode !== undefined) {
-    process.exitCode = delegatedExitCode;
-    return;
-  }
-
   const options = parseArgs(process.argv.slice(2));
   if (options.command === "start") {
     if (options.help) {
@@ -455,20 +450,21 @@ async function stopService(): Promise<void> {
 }
 
 function printHelp(exitCode: number): void {
+  const command = cliCommandName();
   const output = [
     "Usage:",
-    "  ccr start [--host <host>] [--port <port>] [--open] [--no-gateway]",
-    "  ccr ui [--host <host>] [--port <port>] [--no-gateway]",
-    "  ccr stop",
-    "  ccr <profile-name-or-id> [cli|app] [-- <agent args>]",
+    `  ${command} start [--host <host>] [--port <port>] [--open] [--no-gateway]`,
+    `  ${command} ui [--host <host>] [--port <port>] [--no-gateway]`,
+    `  ${command} stop`,
+    `  ${command} <profile-name-or-id> [cli|app] [-- <agent args>]`,
     "",
     "Examples:",
-    "  ccr start",
-    "  ccr ui",
-    "  ccr stop",
-    "  ccr Codex",
-    "  ccr default-codex -- --model gpt-5-codex",
-    "  ccr default-codex app"
+    `  ${command} start`,
+    `  ${command} ui`,
+    `  ${command} stop`,
+    `  ${command} Codex`,
+    `  ${command} default-codex -- --model gpt-5-codex`,
+    `  ${command} default-codex app`
   ].join("\n");
   const stream = exitCode === 0 ? process.stdout : process.stderr;
   stream.write(`${output}\n`);
@@ -476,9 +472,10 @@ function printHelp(exitCode: number): void {
 }
 
 function printStartHelp(exitCode: number): void {
+  const command = cliCommandName();
   const output = [
     "Usage:",
-    "  ccr start [--host <host>] [--port <port>] [--open] [--no-gateway]",
+    `  ${command} start [--host <host>] [--port <port>] [--open] [--no-gateway]`,
     "",
     "Options:",
     "  --host <host>    Management server host. Defaults to 127.0.0.1.",
@@ -496,9 +493,10 @@ function printStartHelp(exitCode: number): void {
 }
 
 function printUiHelp(exitCode: number): void {
+  const command = cliCommandName();
   const output = [
     "Usage:",
-    "  ccr ui [--host <host>] [--port <port>] [--no-gateway]",
+    `  ${command} ui [--host <host>] [--port <port>] [--no-gateway]`,
     "",
     "Starts the background CCR service if needed and opens the management UI in the default browser.",
     "",
@@ -517,11 +515,12 @@ function printUiHelp(exitCode: number): void {
 }
 
 function printStopHelp(exitCode: number): void {
+  const command = cliCommandName();
   const output = [
     "Usage:",
-    "  ccr stop",
+    `  ${command} stop`,
     "",
-    "Stops the background CCR service started by `ccr start`."
+    `Stops the background CCR service started by \`${command} start\`.`
   ].join("\n");
   const stream = exitCode === 0 ? process.stdout : process.stderr;
   stream.write(`${output}\n`);
@@ -529,9 +528,10 @@ function printStopHelp(exitCode: number): void {
 }
 
 function printWebHelp(exitCode: number): void {
+  const command = cliCommandName();
   const output = [
     "Usage:",
-    "  ccr serve [--host <host>] [--port <port>] [--open] [--no-gateway]",
+    `  ${command} serve [--host <host>] [--port <port>] [--open] [--no-gateway]`,
     "",
     "Options:",
     "  --host <host>    Management server host. Defaults to 127.0.0.1.",
@@ -545,6 +545,13 @@ function printWebHelp(exitCode: number): void {
   const stream = exitCode === 0 ? process.stdout : process.stderr;
   stream.write(`${output}\n`);
   process.exitCode = exitCode;
+}
+
+function cliCommandName(): string {
+  const configured = process.env.CCR_CLI_COMMAND_NAME?.trim();
+  return configured && /^[A-Za-z0-9._-]+$/.test(configured)
+    ? configured
+    : defaultCliCommandName;
 }
 
 function readServiceState(): ServiceState | undefined {
@@ -595,94 +602,6 @@ function serviceStateFile(): string {
 
 function currentCliScript(): string {
   return __filename;
-}
-
-function delegateManagedDesktopCliToExternalCli(): number | undefined {
-  if (!isManagedDesktopCliRuntime()) {
-    return undefined;
-  }
-  if (process.env.CCR_MANAGED_CLI_NO_DELEGATE === "1" || process.env.CCR_MANAGED_CLI_DELEGATED === "1") {
-    return undefined;
-  }
-
-  const externalCcr = findExternalCcrCommand();
-  if (!externalCcr) {
-    return undefined;
-  }
-
-  const launch = profileLaunchSpawnCommand({
-    args: process.argv.slice(2),
-    command: externalCcr
-  });
-  const result = spawnSync(launch.command, launch.args, {
-    env: {
-      ...process.env,
-      CCR_MANAGED_CLI_DELEGATED: "1"
-    },
-    stdio: "inherit",
-    windowsVerbatimArguments: !!launch.windowsVerbatimArguments
-  });
-  if (result.error) {
-    return undefined;
-  }
-  if (typeof result.status === "number") {
-    return result.status;
-  }
-  return result.signal === "SIGINT" ? 130 : 1;
-}
-
-function isManagedDesktopCliRuntime(): boolean {
-  const script = process.argv[1] || __filename;
-  return samePath(path.resolve(script), path.join(CONFIGDIR, "bin", "ccr-cli.js"));
-}
-
-function findExternalCcrCommand(): string | undefined {
-  const pathKey = process.platform === "win32"
-    ? Object.keys(process.env).find((key) => key.toLowerCase() === "path") || "Path"
-    : "PATH";
-  const pathValue = process.env[pathKey] || "";
-  const managedBinDir = path.resolve(CONFIGDIR, "bin");
-  const names = process.platform === "win32"
-    ? ["ccr.cmd", "ccr.exe", "ccr.bat", "ccr"]
-    : ["ccr"];
-
-  for (const rawSegment of pathValue.split(path.delimiter)) {
-    const dir = path.resolve(rawSegment || ".");
-    if (samePath(dir, managedBinDir)) {
-      continue;
-    }
-    for (const name of names) {
-      const candidate = path.join(dir, name);
-      if (isExecutableFile(candidate)) {
-        return candidate;
-      }
-    }
-  }
-  return undefined;
-}
-
-function isExecutableFile(file: string): boolean {
-  try {
-    const stats = statSync(file);
-    if (!stats.isFile() && !stats.isSymbolicLink()) {
-      return false;
-    }
-    if (process.platform === "win32") {
-      return true;
-    }
-    accessSync(file, fsConstants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function samePath(left: string, right: string): boolean {
-  const normalizedLeft = path.normalize(left);
-  const normalizedRight = path.normalize(right);
-  return process.platform === "win32"
-    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
-    : normalizedLeft === normalizedRight;
 }
 
 async function waitForServiceState(pid: number | undefined, timeoutMs: number): Promise<ServiceState | undefined> {

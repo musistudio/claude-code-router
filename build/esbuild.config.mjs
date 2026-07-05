@@ -1,11 +1,12 @@
 import esbuild from "esbuild";
 import { spawn } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { builtinModules } from "node:module";
+import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { builtinModules, createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const requireFromHere = createRequire(import.meta.url);
 
 export const projectRoot = path.resolve(__dirname, "..");
 export const packagesRoot = path.join(projectRoot, "packages");
@@ -27,6 +28,18 @@ export const cliMainOutDir = path.join(cliDistDir, "main");
 export const coreMainOutDir = path.join(coreDistDir, "main");
 export const electronMainOutDir = path.join(electronDistDir, "main");
 export const mainOutDir = electronMainOutDir;
+export const gatewayPackageRoot = path.dirname(requireFromHere.resolve("@the-next-ai/ai-gateway/package.json"));
+export const gatewayRuntimeInput = path.join(gatewayPackageRoot, "bin", "next-ai-gateway.js");
+export const electronGatewayRuntimeOutput = path.join(electronMainOutDir, "next-ai-gateway.js");
+export const botGatewaySdkPackageRoot = path.dirname(requireFromHere.resolve("@the-next-ai/bot-gateway-sdk/package.json"));
+export const botGatewaySdkEntryInput = path.join(botGatewaySdkPackageRoot, "dist", "index.js");
+export const botGatewaySdkRunnerInput = path.join(botGatewaySdkPackageRoot, "bin", "bot-gateway-stdio.mjs");
+export const electronBotGatewaySdkRootDir = path.join(electronMainOutDir, "bot-gateway-sdk");
+export const electronBotGatewaySdkDistDir = path.join(electronBotGatewaySdkRootDir, "dist");
+export const electronBotGatewaySdkBinDir = path.join(electronBotGatewaySdkRootDir, "bin");
+export const electronBotGatewaySdkPackageOutput = path.join(electronBotGatewaySdkRootDir, "package.json");
+export const electronBotGatewaySdkEntryOutput = path.join(electronBotGatewaySdkDistDir, "index.js");
+export const electronBotGatewaySdkRunnerOutput = path.join(electronBotGatewaySdkBinDir, "bot-gateway-stdio.mjs");
 export const rendererOutDir = path.join(uiDistDir, "renderer");
 export const cliRendererOutDir = path.join(cliDistDir, "renderer");
 export const coreRendererOutDir = path.join(coreDistDir, "renderer");
@@ -86,6 +99,8 @@ export function ensureDist() {
   mkdirSync(cliMainOutDir, { recursive: true });
   mkdirSync(coreMainOutDir, { recursive: true });
   mkdirSync(electronMainOutDir, { recursive: true });
+  mkdirSync(electronBotGatewaySdkDistDir, { recursive: true });
+  mkdirSync(electronBotGatewaySdkBinDir, { recursive: true });
   mkdirSync(appAssetsDir, { recursive: true });
   mkdirSync(cliMarketplacePluginsDir, { recursive: true });
   mkdirSync(coreMarketplacePluginsDir, { recursive: true });
@@ -178,6 +193,18 @@ function hasScriptTag(html, scriptTag) {
   return sourceMatch ? html.includes(sourceMatch[1]) : html.includes(scriptTag);
 }
 
+function normalizeDuplicateShebangs(source) {
+  const lines = source.split("\n");
+  if (!lines[0]?.startsWith("#!")) {
+    return source;
+  }
+  let index = 1;
+  while (lines[index]?.startsWith("#!")) {
+    index += 1;
+  }
+  return [lines[0], ...lines.slice(index)].join("\n");
+}
+
 export function createMainBuildOptions({ mode = "production", plugins = [] } = {}) {
   return {
     absWorkingDir: projectRoot,
@@ -186,6 +213,7 @@ export function createMainBuildOptions({ mode = "production", plugins = [] } = {
     entryPoints: [
       path.join(electronSourceRoot, "main", "main.ts"),
       path.join(electronSourceRoot, "main", "browser-preload.ts"),
+      gatewayRuntimeInput,
       path.join(coreSourceRoot, "mcp", "browser-web-search-proxy-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-vision-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts"),
@@ -316,6 +344,27 @@ export function createWebClientBridgeBuildOptions({ mode = "production", plugins
   };
 }
 
+export function createBotGatewaySdkBuildOptions({ mode = "production", plugins = [] } = {}) {
+  return {
+    absWorkingDir: projectRoot,
+    bundle: true,
+    entryPoints: [botGatewaySdkEntryInput],
+    external: [
+      ...builtinModules,
+      ...builtinModules.map((moduleName) => `node:${moduleName}`)
+    ],
+    format: "esm",
+    legalComments: "none",
+    logLevel: "info",
+    minify: mode === "production",
+    outfile: electronBotGatewaySdkEntryOutput,
+    platform: "node",
+    plugins,
+    sourcemap: mode !== "production",
+    target: "node22"
+  };
+}
+
 export function watchPlugin(name, onEnd) {
   return {
     name: `${name}-watch`,
@@ -332,11 +381,28 @@ export function watchPlugin(name, onEnd) {
 export async function buildMain(options = {}) {
   const [mainBuildResult] = await Promise.all([
     esbuild.build(createMainBuildOptions(options)),
+    buildBotGatewaySdkRuntime(options),
     buildCoreServer(options),
     buildCli(options)
   ]);
   copyCliRuntimeToElectronDist();
   validateLightweightMcpBundles(mainBuildResult.metafile);
+}
+
+export async function buildBotGatewaySdkRuntime(options = {}) {
+  ensureDist();
+  await esbuild.build(createBotGatewaySdkBuildOptions(options));
+  writeFileSync(
+    electronBotGatewaySdkPackageOutput,
+    `${JSON.stringify({ private: true, type: "module" }, null, 2)}\n`,
+    "utf8"
+  );
+  writeFileSync(
+    electronBotGatewaySdkRunnerOutput,
+    normalizeDuplicateShebangs(readFileSync(botGatewaySdkRunnerInput, "utf8")),
+    "utf8"
+  );
+  chmodSync(electronBotGatewaySdkRunnerOutput, 0o755);
 }
 
 export async function buildCli(options = {}) {

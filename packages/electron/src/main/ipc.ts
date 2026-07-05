@@ -23,7 +23,7 @@ import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
 import { getProviderPresets } from "@ccr/core/providers/presets/index";
 import { checkGatewayProviderConnectivity, probeGatewayProvider, probeGatewayProviderCandidates } from "@ccr/core/providers/probe";
 import { applyProfileConfig } from "@ccr/core/profiles/service";
-import { getProfileOpenCommand, getProfileRuntimeStatus, openProfileFromCcr, stopProfileFromCcr } from "@ccr/core/profiles/launch-service";
+import { desktopCliCommandName, getProfileOpenCommand, getProfileRuntimeStatus, openProfileFromCcr, stopProfileFromCcr } from "@ccr/core/profiles/launch-service";
 import { ensureProxyCertificateAuthority } from "@ccr/core/proxy/certificates";
 import { proxyService } from "@ccr/core/proxy/service";
 import { listMcpServerTools } from "@ccr/core/mcp/tool-discovery";
@@ -93,7 +93,10 @@ ipcMain.handle(IPC_CHANNELS.appGetOnboardingFinished, async () => {
 ipcMain.handle(IPC_CHANNELS.appGetPendingProviderDeepLinks, () => deepLinkService.consumePendingProviderRequests());
 ipcMain.handle(IPC_CHANNELS.appGetLocalAgentProviderCandidates, () => getLocalAgentProviderCandidates());
 ipcMain.handle(IPC_CHANNELS.appGetProfileOpenCommand, async (_event, request: ProfileOpenRequest) => {
-  return getProfileOpenCommand(await loadAppConfig(), request);
+  return getProfileOpenCommand(await loadAppConfig(), request, {
+    commandName: desktopCliCommandName,
+    ensureLauncher: true
+  });
 });
 ipcMain.handle(IPC_CHANNELS.appGetProfileRuntimeStatus, () => {
   return getProfileRuntimeStatus();

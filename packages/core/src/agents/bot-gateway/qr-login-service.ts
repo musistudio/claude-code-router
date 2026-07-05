@@ -244,6 +244,7 @@ async function loadBotGatewaySdk(): Promise<BotGatewaySdkModule> {
 async function importBotGatewaySdk(): Promise<BotGatewaySdkModule> {
   const candidates = [
     process.env.CCR_BOT_GATEWAY_SDK_MODULE,
+    resolveBundledBotGatewaySdkModule(),
     "@the-next-ai/bot-gateway-sdk"
   ].filter((value): value is string => Boolean(value?.trim()));
   const errors: string[] = [];
@@ -259,6 +260,20 @@ async function importBotGatewaySdk(): Promise<BotGatewaySdkModule> {
     }
   }
   throw new Error(`Unable to load @the-next-ai/bot-gateway-sdk. ${errors.join("; ")}`);
+}
+
+function resolveBundledBotGatewaySdkModule(): string {
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+  const candidates = [
+    path.join(__dirname, "bot-gateway-sdk", "dist", "index.js"),
+    ...(resourcesPath
+      ? [
+          path.join(resourcesPath, "app.asar", "dist", "main", "bot-gateway-sdk", "dist", "index.js"),
+          path.join(resourcesPath, "app", "dist", "main", "bot-gateway-sdk", "dist", "index.js")
+        ]
+      : [])
+  ];
+  return candidates.find((candidate) => existsSync(candidate)) ?? "";
 }
 
 function botGatewaySdkImportSpecifier(value: string): string {

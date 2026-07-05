@@ -6071,6 +6071,11 @@ function resolveGatewayEntry(): string {
     return entry;
   }
 
+  const bundledEntry = resolveBundledGatewayEntry();
+  if (bundledEntry) {
+    return bundledEntry;
+  }
+
   for (const packageName of gatewayPackageCandidates) {
     try {
       return requireFromHere.resolve(packageName);
@@ -6079,6 +6084,19 @@ function resolveGatewayEntry(): string {
     }
   }
   return requireFromHere.resolve(gatewayPackageCandidates[0]);
+}
+
+function resolveBundledGatewayEntry(): string | undefined {
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+  return [
+    pathJoin(__dirname, "next-ai-gateway.js"),
+    ...(resourcesPath
+      ? [
+          pathJoin(resourcesPath, "app.asar", "dist", "main", "next-ai-gateway.js"),
+          pathJoin(resourcesPath, "app", "dist", "main", "next-ai-gateway.js")
+        ]
+      : [])
+  ].find((candidate) => existsSync(candidate));
 }
 
 function createGatewayProcessEnv(config: AppConfig, upstreamProxyUrl: string | undefined, runtimeId: string, coreAuthToken: string): NodeJS.ProcessEnv {

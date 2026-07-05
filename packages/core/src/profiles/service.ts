@@ -1068,6 +1068,7 @@ function generatedBinBackupBaseName(entry: string): string | undefined {
 function isManagedGeneratedBinFile(fileName: string): boolean {
   const normalized = fileName.replace(/\.cmd$/i, "");
   return normalized === "ccr" ||
+    normalized === "ccr-app" ||
     normalized === "ccr-cli.js" ||
     normalized === codexMiddlewareRuntimeFilename() ||
     normalized.startsWith("ccr-claude-code-api-key-") ||

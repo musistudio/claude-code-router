@@ -3246,6 +3246,10 @@ async function importBotGatewaySdk() {
   if (configured) {
     candidates.push(configured);
   }
+  const bundled = bundledBotGatewaySdkModule();
+  if (bundled) {
+    candidates.push(bundled);
+  }
   candidates.push("@the-next-ai/bot-gateway-sdk");
   const errors = [];
   for (const candidate of candidates) {
@@ -3260,6 +3264,20 @@ async function importBotGatewaySdk() {
     }
   }
   throw new Error("Unable to load @the-next-ai/bot-gateway-sdk. " + errors.join("; "));
+}
+
+function bundledBotGatewaySdkModule() {
+  const resourcesPath = process["resourcesPath"];
+  const candidates = [
+    path.join(__dirname, "bot-gateway-sdk", "dist", "index.js"),
+    ...(resourcesPath
+      ? [
+          path.join(resourcesPath, "app.asar", "dist", "main", "bot-gateway-sdk", "dist", "index.js"),
+          path.join(resourcesPath, "app", "dist", "main", "bot-gateway-sdk", "dist", "index.js")
+        ]
+      : [])
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) || "";
 }
 
 function botGatewaySdkImportSpecifier(value) {

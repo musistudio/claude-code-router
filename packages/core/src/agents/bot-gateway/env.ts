@@ -1,5 +1,6 @@
 import os from "node:os";
 import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import type { AppConfig, BotGatewayRuntimeConfig, ProfileConfig, ProfileOpenSurface } from "@ccr/core/contracts/app";
 import { CONFIGDIR } from "@ccr/core/config/constants";
@@ -126,11 +127,30 @@ function botGatewaySdkEnv(): Record<string, string> {
 }
 
 function resolveBotGatewaySdkModule(): string {
+  const bundled = resolveBundledBotGatewaySdkModule();
+  if (bundled) {
+    return bundled;
+  }
+
   try {
     return path.join(path.dirname(requireFromHere.resolve("@the-next-ai/bot-gateway-sdk/package.json")), "dist", "index.js");
   } catch {
     return "";
   }
+}
+
+function resolveBundledBotGatewaySdkModule(): string {
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+  const candidates = [
+    path.join(__dirname, "bot-gateway-sdk", "dist", "index.js"),
+    ...(resourcesPath
+      ? [
+          path.join(resourcesPath, "app.asar", "dist", "main", "bot-gateway-sdk", "dist", "index.js"),
+          path.join(resourcesPath, "app", "dist", "main", "bot-gateway-sdk", "dist", "index.js")
+        ]
+      : [])
+  ];
+  return candidates.find((candidate) => existsSync(candidate)) ?? "";
 }
 
 function normalizeBotGatewayForWebSocket(bot: BotGatewayRuntimeConfig): BotGatewayRuntimeConfig {
