@@ -635,7 +635,7 @@ class GatewayService {
     const client = inferGatewayClient(apiKey, request.headers);
     const cursorCompatPreparation = prepareCursorOpenAICompatChatBody(this.config, client, method, path, requestBody);
     if (cursorCompatPreparation) {
-      headers["x-ccr-cursor-openai-compat"] = cursorCompatPreparation.diagnostic;
+      headers["x-ccr-cursor-openai-compat"] = sanitizeHeaderValue(cursorCompatPreparation.diagnostic);
     }
     let bodyToForward: Buffer | undefined = cursorCompatPreparation?.body ?? requestBody;
     let routeFallback = this.config.Router.fallback;
@@ -643,12 +643,12 @@ class GatewayService {
     let codexApplyPatchBridgeActive = false;
     const claudeModelRewrite = prepareClaudeCodeDiscoveredModelRequest(this.config, request.headers, method, path, bodyToForward);
     if (claudeModelRewrite) {
-      headers["x-ccr-claude-model-discovery"] = claudeModelRewrite.diagnostic;
+      headers["x-ccr-claude-model-discovery"] = sanitizeHeaderValue(claudeModelRewrite.diagnostic);
       bodyToForward = claudeModelRewrite.body;
     }
     const claudeAppModelRewrite = prepareClaudeAppFallbackModelRequest(this.config, method, path, bodyToForward);
     if (claudeAppModelRewrite) {
-      headers["x-ccr-claude-app-model-rewrite"] = claudeAppModelRewrite.diagnostic;
+      headers["x-ccr-claude-app-model-rewrite"] = sanitizeHeaderValue(claudeAppModelRewrite.diagnostic);
       bodyToForward = claudeAppModelRewrite.body;
       routedModel = claudeAppModelRewrite.routedModel;
     }
@@ -677,6 +677,16 @@ class GatewayService {
       clientDisconnected = true;
       upstreamAbortController.abort(new Error(clientDisconnectMessage));
       onClientDisconnect?.();
+    });
+    response.on("error", (error) => {
+      // Client-side write failures (EPIPE / ECONNRESET when the client closes
+      // mid-stream, common during tool execution) must not crash the main
+      // process as an Uncaught Exception. Swallow them here; the close handler
+      // above already records the disconnect via writeStreamLog.
+      if (!clientDisconnected) {
+        clientDisconnected = true;
+        upstreamAbortController.abort(new Error(clientDisconnectMessage));
+      }
     });
 
     const writeRequestLog = (
@@ -743,10 +753,10 @@ class GatewayService {
       });
       const serialized = Buffer.from(`${JSON.stringify(routed.body)}\n`, "utf8");
       headers["content-type"] = "application/json";
-      headers["x-ccr-route-reason"] = routed.decision.reason;
+      headers["x-ccr-route-reason"] = sanitizeHeaderValue(routed.decision.reason);
       routeFallback = routed.decision.fallback ?? routeFallback;
       if (routed.decision.model) {
-        headers["x-ccr-routed-model"] = routed.decision.model;
+        headers["x-ccr-routed-model"] = sanitizeHeaderValue(routed.decision.model);
         routedModel = routed.decision.model;
       }
       bodyToForward = serialized;
@@ -761,10 +771,10 @@ class GatewayService {
       });
       const serialized = Buffer.from(`${JSON.stringify(routed.body)}\n`, "utf8");
       headers["content-type"] = "application/json";
-      headers["x-ccr-route-reason"] = routed.decision.reason;
+      headers["x-ccr-route-reason"] = sanitizeHeaderValue(routed.decision.reason);
       routeFallback = routed.decision.fallback ?? routeFallback;
       if (routed.decision.model) {
-        headers["x-ccr-routed-model"] = routed.decision.model;
+        headers["x-ccr-routed-model"] = sanitizeHeaderValue(routed.decision.model);
         routedModel = routed.decision.model;
       }
       bodyToForward = serialized;
@@ -781,7 +791,7 @@ class GatewayService {
     if (codexApplyPatchBridgeRequest) {
       bodyToForward = codexApplyPatchBridgeRequest.body;
       codexApplyPatchBridgeActive = true;
-      headers["x-ccr-codex-patch-bridge"] = codexApplyPatchBridgeRequest.diagnostic;
+      headers["x-ccr-codex-patch-bridge"] = sanitizeHeaderValue(codexApplyPatchBridgeRequest.diagnostic);
       headers["content-type"] = "application/json";
     }
 
@@ -906,7 +916,13 @@ class GatewayService {
     bodyToForward = upstreamResult.attempt.body ?? bodyToForward;
     routedModel = upstreamResult.attempt.model ?? routedModel;
     const responseHeaders = rewriteCapabilityResponseHeaders(
-      mergeFallbackResponseHeaders(upstreamResponseHeaders(upstreamResult), upstreamResult),
+      // Copy into a mutable Headers instance: upstream fetch Response.headers
+      // can be immutable (TypeError: immutable on .delete/.set), and
+      // mergeFallbackResponseHeaders returns the original object as-is when
+      // no fallback occurred. Codex apply_patch / web-search paths call
+      // .delete("content-length") below, which would otherwise throw and
+      // surface as a 502.
+      new Headers(mergeFallbackResponseHeaders(upstreamResponseHeaders(upstreamResult), upstreamResult)),
       this.config
     );
     const upstreamResponse = upstreamResult.response;
@@ -995,7 +1011,7 @@ class GatewayService {
         writeStreamLog();
       }
     });
-    responseBody.once("error", (error) => {
+    responseBody.on("error", (error) => {
       streamDetectedError ??= sseErrorDetector.finish();
       writeStreamLog(clientDisconnected ? clientDisconnectMessage : formatError(error));
     });
@@ -5592,7 +5608,7 @@ function prepareUpstreamCredentialAttempt(input: {
   const headers: Record<string, string> = {
     ...input.headers,
     "x-target-providers": selection.credentials.map((candidate) => candidate.internalName).join(","),
-    "x-ccr-logical-provider": target.provider.name,
+    "x-ccr-logical-provider": providerRuntimeId(target.provider),
     "x-ccr-provider-credential-chain": selection.credentials.map((candidate) => candidate.credentialId).join(",")
   };
   delete headers["x-target-provider"];
@@ -6002,7 +6018,7 @@ function mergeFallbackResponseHeaders(headers: Headers, result: UpstreamFetchRes
       merged.set("x-ccr-fallback-delays-ms", formatFallbackDelays(result.failedAttempts));
     }
     if (result.attempt.model) {
-      merged.set("x-ccr-fallback-model", result.attempt.model);
+      merged.set("x-ccr-fallback-model", sanitizeHeaderValue(result.attempt.model));
     }
   }
   if (credentialIds.length) {
@@ -6377,6 +6393,20 @@ function sanitizeProviderHeaderId(value: string | undefined): string | undefined
     .replace(/[^a-z0-9_.-]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return normalized || undefined;
+}
+
+function sanitizeHeaderValue(value: unknown): string {
+  // HTTP header values must be ByteString (code point <= 255). Values derived
+  // from user-facing names — model selectors like "小米mimo/...", provider
+  // names, route reasons — can contain non-ASCII characters that crash Node's
+  // fetch/undici with "Cannot convert argument to a ByteString" (surfaced as
+  // 502). Normalize to ASCII while preserving case and printable punctuation.
+  const text = typeof value === "string" && value.trim() ? value : "unknown";
+  const sanitized = text
+    .replace(/[^\x20-\x7E]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return sanitized || "unknown";
 }
 
 function providerCredentialInternalName(
