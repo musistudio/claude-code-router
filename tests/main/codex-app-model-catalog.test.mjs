@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { writeCodexCompatibleAppModelCatalog } from "../../src/main/codex-app-launch.ts";
+import { writeCodexCompatibleAppModelCatalog } from "../../packages/core/src/agents/codex/app-launch.ts";
 
 test("Codex App model catalog write includes patch bridge capabilities", () => {
   const configDir = mkdtempSync(path.join(os.tmpdir(), "ccr-codex-app-catalog-"));

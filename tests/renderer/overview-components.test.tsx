@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { OverviewView } from "../../src/renderer/pages/home/components/dashboard.tsx";
-import { providerAccountMeterDetailValidityProgress } from "../../src/renderer/pages/home/shared/provider-accounts.ts";
-import type { OverviewWidgetConfig, ProviderAccountSnapshot } from "../../src/shared/app.ts";
+import { OverviewView } from "../../packages/ui/src/pages/home/components/dashboard.tsx";
+import { providerAccountMeterDetailValidityProgress } from "../../packages/ui/src/pages/home/shared/provider-accounts.ts";
+import type { OverviewWidgetConfig, ProviderAccountSnapshot } from "../../packages/core/src/contracts/app.ts";
 import { accountSnapshots, installBrowserGlobals, usageStats } from "./fixtures.ts";
 
 installBrowserGlobals();

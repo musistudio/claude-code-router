@@ -1,0 +1,15 @@
+services:
+  ccr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: claude-code-router:local
+    ports:
+      # Publish only Nginx. Internal web/gateway listeners stay inside the container.
+      - "3458:8080"
+    volumes:
+      - ccr-data:/data
+    restart: unless-stopped
+
+volumes:
+  ccr-data:

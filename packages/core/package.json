@@ -1,0 +1,21 @@
+{
+  "name": "@claude-code-router/core",
+  "version": "3.0.8",
+  "private": true,
+  "description": "Claude Code Router core gateway, routing, provider, and storage services.",
+  "main": "dist/main/server.js",
+  "bin": {
+    "ccr-core-server": "dist/main/server.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@the-next-ai/ai-gateway": "^1.0.4",
+    "@the-next-ai/bot-gateway-sdk": "^0.1.0",
+    "better-sqlite3": "^12.11.1",
+    "node-forge": "^1.4.0",
+    "pm2": "^6.0.13",
+    "undici": "^7.27.2"
+  }
+}

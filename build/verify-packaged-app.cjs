@@ -9,6 +9,19 @@ const betterSqliteNativeRelativePath = path.join(
   "Release",
   "better_sqlite3.node"
 );
+const betterSqlitePackageRelativePath = path.join("app.asar.unpacked", "node_modules", "better-sqlite3");
+const betterSqlitePrunablePaths = [
+  "deps",
+  "src",
+  "binding.gyp",
+  "README.md",
+  "docs",
+  "benchmark",
+  "benchmarks",
+  "test",
+  path.join("build", "Release", "obj"),
+  path.join("build", "Release", "obj.target")
+];
 
 module.exports = async function verifyPackagedApp(context) {
   const platform = context?.electronPlatformName;
@@ -21,6 +34,7 @@ module.exports = async function verifyPackagedApp(context) {
 
   const resourcesDir = findResourcesDir(appOutDir, platform);
   assertFile(path.join(resourcesDir, "app.asar"), "Packaged app archive");
+  cleanupBetterSqlitePackage(resourcesDir);
 
   const nativeModule = path.join(resourcesDir, betterSqliteNativeRelativePath);
   assertFile(nativeModule, "better-sqlite3 native module");
@@ -40,6 +54,13 @@ module.exports = async function verifyPackagedApp(context) {
     );
   }
 };
+
+function cleanupBetterSqlitePackage(resourcesDir) {
+  const packageDir = path.join(resourcesDir, betterSqlitePackageRelativePath);
+  for (const relativePath of betterSqlitePrunablePaths) {
+    fs.rmSync(path.join(packageDir, relativePath), { force: true, recursive: true });
+  }
+}
 
 function findResourcesDir(appOutDir, platform) {
   if (platform !== "darwin") {

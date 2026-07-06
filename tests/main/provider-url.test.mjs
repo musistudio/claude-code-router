@@ -5,7 +5,7 @@ import {
   parseProviderBaseUrl,
   providerBaseUrlForProtocol,
   providerUrlWithDefaultScheme
-} from "../../src/shared/provider-url.ts";
+} from "../../packages/core/src/providers/url.ts";
 
 test("provider URL parsing strips endpoint paths and unsafe URL parts", () => {
   const parsed = parseProviderBaseUrl("https://user:secret@api.example.com/v1/chat/completions?token=secret#section");

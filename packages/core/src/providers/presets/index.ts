@@ -1,0 +1,86 @@
+import { anthropicProviderPreset } from "@ccr/core/providers/presets/anthropic/index";
+import { bailianProviderPreset } from "@ccr/core/providers/presets/bailian/index";
+import { deepSeekProviderPreset } from "@ccr/core/providers/presets/deepseek/index";
+import { geminiProviderPreset } from "@ccr/core/providers/presets/gemini/index";
+import { kimiCodingProviderPreset } from "@ccr/core/providers/presets/kimi-coding/index";
+import { mistralProviderPreset } from "@ccr/core/providers/presets/mistral/index";
+import { moonshotChinaProviderPreset, moonshotGlobalProviderPreset } from "@ccr/core/providers/presets/moonshot/index";
+import { openaiProviderPreset } from "@ccr/core/providers/presets/openai/index";
+import { openRouterProviderPreset } from "@ccr/core/providers/presets/openrouter/index";
+import { runApiProviderPreset } from "@ccr/core/providers/presets/runapi/index";
+import { siliconFlowProviderPreset } from "@ccr/core/providers/presets/siliconflow/index";
+import { teamoRouterProviderPreset } from "@ccr/core/providers/presets/teamorouter/index";
+import { zaiGlobalCodingProviderPreset } from "@ccr/core/providers/presets/zai-global-coding/index";
+import { zaiGlobalGeneralProviderPreset } from "@ccr/core/providers/presets/zai-global-general/index";
+import { zhipuCnCodingProviderPreset } from "@ccr/core/providers/presets/zhipu-cn-coding/index";
+import { zhipuCnGeneralProviderPreset } from "@ccr/core/providers/presets/zhipu-cn-general/index";
+import {
+  findProviderPresetByBaseUrlInList,
+  findProviderPresetInList,
+  primaryProviderPresetEndpoint,
+  providerApiKeySafetyIssueInList,
+  providerEndpointCanReceiveProviderApiKeyInList,
+  providerIdentitySafetyIssueInList,
+  providerPresetMatchesBaseUrl
+} from "@ccr/core/providers/presets/utils";
+import type { ProviderIdentitySafetyIssue, ProviderPreset } from "@ccr/core/providers/presets/types";
+
+export const providerPresets: ProviderPreset[] = [
+  openaiProviderPreset,
+  anthropicProviderPreset,
+  geminiProviderPreset,
+  openRouterProviderPreset,
+  deepSeekProviderPreset,
+  kimiCodingProviderPreset,
+  zhipuCnCodingProviderPreset,
+  zhipuCnGeneralProviderPreset,
+  zaiGlobalCodingProviderPreset,
+  zaiGlobalGeneralProviderPreset,
+  mistralProviderPreset,
+  moonshotChinaProviderPreset,
+  moonshotGlobalProviderPreset,
+  bailianProviderPreset,
+  siliconFlowProviderPreset,
+  runApiProviderPreset,
+  teamoRouterProviderPreset
+];
+
+export function getProviderPresets(): ProviderPreset[] {
+  return JSON.parse(JSON.stringify(providerPresets)) as ProviderPreset[];
+}
+
+export function findProviderPreset(id: string | undefined): ProviderPreset | undefined {
+  return findProviderPresetInList(providerPresets, id);
+}
+
+export function findProviderPresetByBaseUrl(baseUrl: string): ProviderPreset | undefined {
+  return findProviderPresetByBaseUrlInList(providerPresets, baseUrl);
+}
+
+export { primaryProviderPresetEndpoint, providerPresetMatchesBaseUrl };
+
+export function providerIdentitySafetyIssue(input: {
+  baseUrl: string;
+  name?: string;
+  presetId?: string;
+}): ProviderIdentitySafetyIssue | undefined {
+  return providerIdentitySafetyIssueInList(providerPresets, input);
+}
+
+export function providerApiKeySafetyIssue(input: {
+  apiKey?: string;
+  baseUrl: string;
+  name?: string;
+  presetId?: string;
+}): ProviderIdentitySafetyIssue | undefined {
+  return providerApiKeySafetyIssueInList(providerPresets, input);
+}
+
+export function providerEndpointCanReceiveProviderApiKey(input: {
+  apiKey?: string;
+  endpoint: string;
+  providerName?: string;
+  providerPresetId?: string;
+}): ProviderIdentitySafetyIssue | undefined {
+  return providerEndpointCanReceiveProviderApiKeyInList(providerPresets, input);
+}

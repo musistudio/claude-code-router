@@ -1,0 +1,21 @@
+{
+  "name": "@claude-code-router/ui",
+  "version": "3.0.8",
+  "private": true,
+  "description": "Claude Code Router web management UI.",
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "baseui": "^16.1.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.17.0",
+    "motion": "^12.40.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^3.8.1",
+    "styletron-engine-atomic": "^1.6.2",
+    "styletron-react": "^6.1.1",
+    "tailwind-merge": "^3.6.0"
+  }
+}

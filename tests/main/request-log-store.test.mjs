@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { RequestLogStore } from "../../src/main/request-log-store.ts";
+import { RequestLogStore } from "../../packages/core/src/observability/request-log-store.ts";
 
 test("RequestLogStore keeps list rows lightweight and detail rows complete", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-test-"));

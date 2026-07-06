@@ -6,7 +6,9 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
 const testsOutDir = path.join(projectRoot, "dist", "tests");
-const rendererRoot = path.join(projectRoot, "src", "renderer");
+const rendererRoot = path.join(projectRoot, "packages", "ui", "src");
+const cliSourceRoot = path.join(projectRoot, "packages", "cli", "src");
+const coreSourceRoot = path.join(projectRoot, "packages", "core", "src");
 const testSuites = [
   { name: "main", testDir: path.join(projectRoot, "tests", "main") },
   { name: "renderer", testDir: path.join(projectRoot, "tests", "renderer") }
@@ -25,7 +27,10 @@ if (unknownSuites.length > 0) {
 rmSync(testsOutDir, { force: true, recursive: true });
 
 for (const suite of selectedSuites) {
-  const entryPoints = findTestFiles(suite.testDir);
+  const entryPoints = [
+    ...findTestFiles(suite.testDir),
+    ...runtimeEntryPointsForSuite(suite.name)
+  ];
   if (entryPoints.length === 0) {
     continue;
   }
@@ -53,9 +58,18 @@ for (const suite of selectedSuites) {
     logLevel: "info",
     outdir: path.join(testsOutDir, suite.name),
     platform: "node",
-    plugins: [rendererAliasPlugin()],
+    plugins: [rendererAliasPlugin(), packageAliasPlugin()],
     target: "node22"
   });
+}
+
+function runtimeEntryPointsForSuite(suiteName) {
+  if (suiteName !== "main") {
+    return [];
+  }
+  return [
+    path.join(coreSourceRoot, "mcp", "toolhub-mcp.ts")
+  ];
 }
 
 function findTestFiles(dir) {
@@ -87,8 +101,26 @@ function rendererAliasPlugin() {
   };
 }
 
+function packageAliasPlugin() {
+  return {
+    name: "test-package-alias",
+    setup(build) {
+      build.onResolve({ filter: /^@ccr\/cli\// }, (args) => {
+        return { path: resolvePackageImport(cliSourceRoot, args.path.slice("@ccr/cli/".length)) };
+      });
+      build.onResolve({ filter: /^@ccr\/core\// }, (args) => {
+        return { path: resolvePackageImport(coreSourceRoot, args.path.slice("@ccr/core/".length)) };
+      });
+    }
+  };
+}
+
 function resolveRendererImport(importPath) {
-  const basePath = path.resolve(rendererRoot, importPath);
+  return resolvePackageImport(rendererRoot, importPath);
+}
+
+function resolvePackageImport(rootDir, importPath) {
+  const basePath = path.resolve(rootDir, importPath);
   const candidates = [
     basePath,
     `${basePath}.tsx`,

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ClaudeCodeRouterPlugin } from "../../src/server/gateway/claude-code-router-plugin.ts";
-import { prepareGatewayUpstreamAttemptForTest } from "../../src/server/gateway/service.ts";
+import { ClaudeCodeRouterPlugin } from "../../packages/core/src/gateway/claude-code-router-plugin.ts";
+import { prepareGatewayUpstreamAttemptForTest } from "../../packages/core/src/gateway/service.ts";
 
 function createRouterPlugin(options = {}) {
   const agent = options.agent ?? "claude-code";
@@ -37,6 +37,7 @@ function createRouterPlugin(options = {}) {
         }
       ]
     },
+    toolHub: options.toolHub,
     virtualModelProfiles: options.virtualModelProfiles ?? []
   });
 }
@@ -169,6 +170,120 @@ test("built-in Claude Code route matches user-agent case-insensitively", async (
   assert.equal(result.decision.reason, "builtin:claude-code");
 });
 
+test("built-in Claude Code route does not inject Claude Code native tool search", async () => {
+  const plugin = createRouterPlugin({
+    profileModel: "Provider/claude-sonnet",
+    toolHub: {
+      enabled: true,
+      llm: {
+        apiKey: "resolver-key",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini"
+      },
+      maxTools: 5,
+      requestTimeoutMs: 60000
+    }
+  });
+  const headers = {
+    "anthropic-beta": "oauth-2025-04-20",
+    "user-agent": "claude-code/1.0"
+  };
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "claude-default",
+      tools: [
+        { name: "Bash", input_schema: { type: "object" } },
+        { name: "Read", input_schema: { type: "object" } },
+        { name: "WebFetch", input_schema: { type: "object" } },
+        { name: "LookupCustomer", input_schema: { type: "object" } }
+      ]
+    },
+    headers,
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.tools.some((tool) => String(tool.name || "").startsWith("tool_search_")), false);
+  assert.deepEqual(result.body.tools.map((tool) => tool.name), ["Bash", "Read", "WebFetch", "LookupCustomer"]);
+  assert.equal(result.body.tools.find((tool) => tool.name === "Bash").defer_loading, undefined);
+  assert.equal(result.body.tools.find((tool) => tool.name === "Read").defer_loading, undefined);
+  assert.equal(result.body.tools.find((tool) => tool.name === "WebFetch").defer_loading, undefined);
+  assert.equal(result.body.tools.find((tool) => tool.name === "LookupCustomer").defer_loading, undefined);
+  assert.equal(result.body.system, undefined);
+  assert.equal(headers["anthropic-beta"], "oauth-2025-04-20");
+});
+
+test("built-in Claude Code route injects ToolHub resolver instructions when ToolHub MCP is available", async () => {
+  const plugin = createRouterPlugin({
+    profileModel: "Provider/claude-sonnet",
+    toolHub: {
+      enabled: true,
+      llm: {
+        apiKey: "resolver-key",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini"
+      },
+      maxTools: 5,
+      requestTimeoutMs: 60000
+    }
+  });
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "claude-default",
+      tools: [
+        { name: "tool_hub.resolve", input_schema: { type: "object" } },
+        { name: "mcp__ccr-toolhub__tool_hub.invoke", input_schema: { type: "object" } }
+      ]
+    },
+    headers: {
+      "user-agent": "claude-code/1.0"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.match(result.body.system.at(-1).text, /CCR ToolHub tool resolution is enabled/);
+  assert.match(result.body.system.at(-1).text, /MUST call tool_hub\.resolve before answering/);
+  assert.match(result.body.system.at(-1).text, /external services.*business APIs.*orders.*coupons.*stores.*accounts/);
+  assert.match(result.body.system.at(-1).text, /Only skip tool_hub\.resolve when the request is clearly local/);
+  assert.match(result.body.system.at(-1).text, /use mcp__ccr-toolhub__tool_hub\.invoke/);
+});
+
+test("built-in Claude Code route does not inject ToolHub instructions without the resolve tool", async () => {
+  const plugin = createRouterPlugin({
+    profileModel: "Provider/claude-sonnet",
+    toolHub: {
+      enabled: true,
+      llm: {
+        apiKey: "resolver-key",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini"
+      },
+      maxTools: 5,
+      requestTimeoutMs: 60000
+    }
+  });
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "claude-default",
+      tools: [
+        { name: "Bash", input_schema: { type: "object" } },
+        { name: "Read", input_schema: { type: "object" } }
+      ]
+    },
+    headers: {
+      "user-agent": "claude-code/1.0"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.system, undefined);
+});
+
 test("router rules override the built-in Claude Code profile route", async () => {
   const plugin = createRouterPlugin({
     profileModel: "Provider/claude-sonnet",
@@ -285,6 +400,70 @@ test("issue 1480 config routes Claude Code profile traffic through the user defa
   assert.equal(upstreamAttempt.body.model, "deepseek-v4-flash");
   assert.match(upstreamAttempt.headers["x-target-providers"], /^provider-opencode-[a-f0-9]{10}::openai_chat_completions::cred:opencode-main$/);
   assert.doesNotMatch(upstreamAttempt.headers["x-target-providers"], /nebulacoder/i);
+});
+
+test("OpenAI chat completion streaming attempts request upstream usage chunks", () => {
+  const config = createIssue1480RouterConfig();
+  const headers = {
+    "x-target-provider": "OpenCode"
+  };
+  const upstreamAttempt = prepareGatewayUpstreamAttemptForTest({
+    body: {
+      messages: [],
+      model: "deepseek-v4-flash",
+      stream: true,
+      stream_options: {
+        extra_flag: "keep"
+      }
+    },
+    config,
+    headers,
+    method: "POST",
+    path: "/v1/messages",
+    routedModel: "deepseek-v4-flash"
+  });
+
+  assert.equal(upstreamAttempt.credentialProtocol, "openai_chat_completions");
+  assert.equal(upstreamAttempt.body.stream_options.include_usage, true);
+  assert.equal(upstreamAttempt.body.stream_options.extra_flag, "keep");
+});
+
+test("explicit OpenAI chat provider selectors request upstream usage chunks without credential routing", () => {
+  const config = {
+    CUSTOM_ROUTER_PATH: "",
+    Providers: [
+      {
+        api_base_url: "https://api.kimi.example/v1/chat/completions",
+        capabilities: [
+          { baseUrl: "https://api.kimi.example/v1/chat/completions", type: "openai_chat_completions" }
+        ],
+        models: ["kimi-for-coding"],
+        name: "Kimi Code - Coding Plan"
+      }
+    ],
+    Router: {
+      fallback: { mode: "off", models: [], retryCount: 0 },
+      rules: []
+    },
+    virtualModelProfiles: []
+  };
+
+  const upstreamAttempt = prepareGatewayUpstreamAttemptForTest({
+    body: {
+      messages: [],
+      model: "Kimi Code - Coding Plan/kimi-for-coding",
+      stream: true
+    },
+    config,
+    headers: {},
+    method: "POST",
+    path: "/v1/messages",
+    routedModel: "Kimi Code - Coding Plan/kimi-for-coding"
+  });
+
+  assert.equal(upstreamAttempt.credentialProtocol, undefined);
+  assert.equal(upstreamAttempt.logicalProvider, undefined);
+  assert.equal(upstreamAttempt.body.stream_options.include_usage, true);
 });
 
 test("built-in Claude Code route preserves explicit virtual gateway models", async () => {

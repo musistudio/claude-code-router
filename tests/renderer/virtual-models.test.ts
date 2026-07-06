@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createDefaultAppConfig } from "../../src/shared/default-config.ts";
+import { createDefaultAppConfig } from "../../packages/core/src/config/default-config.ts";
 import {
   createVirtualModelDraft,
   createVirtualModelDraftFromProfile,
   validateVirtualModelDraft,
   virtualModelProfileFromDraft
-} from "../../src/renderer/pages/home/shared/virtual-models.ts";
+} from "../../packages/ui/src/pages/home/shared/virtual-models.ts";
 
 test("Fusion draft saves multiple selected tools into one profile", () => {
   const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-generated.json" });

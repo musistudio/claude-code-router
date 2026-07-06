@@ -20,7 +20,7 @@ import {
   transformOpenAiResponsesHostedWebSearchResponseValue,
   transformOpenAiResponsesHostedWebSearchSseText,
   normalizeCoreGatewayVirtualModelProfiles
-} from "../../src/server/gateway/service.ts";
+} from "../../packages/core/src/gateway/service.ts";
 
 test("gateway config rewrites Fusion fixed base and vision models to core provider selectors", () => {
   const providerName = "Zhipu AI (China) - Coding Plan";

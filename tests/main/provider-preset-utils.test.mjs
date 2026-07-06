@@ -7,7 +7,7 @@ import {
   providerEndpointCanReceiveProviderApiKeyInList,
   providerIdentitySafetyIssueInList,
   providerPresetMatchesBaseUrl
-} from "../../src/shared/provider-preset-utils.ts";
+} from "../../packages/core/src/providers/presets/utils.ts";
 
 const openAiPreset = {
   aliases: ["OpenAI", "ChatGPT"],
@@ -28,8 +28,16 @@ const anthropicPreset = {
 const presets = [openAiPreset, anthropicPreset];
 
 test("provider preset matching accepts endpoint subpaths but rejects different hosts", () => {
+  const openRouterPreset = {
+    aliases: ["openrouter"],
+    endpoints: [{ baseUrl: "https://openrouter.ai/api/v1", protocols: ["openai_chat_completions"] }],
+    id: "openrouter",
+    name: "OpenRouter"
+  };
+
   assert.equal(providerPresetMatchesBaseUrl(openAiPreset, "https://api.openai.com/v1/chat/completions"), true);
   assert.equal(providerPresetMatchesBaseUrl(openAiPreset, "https://api.openai.com"), true);
+  assert.equal(providerPresetMatchesBaseUrl(openRouterPreset, "https://openrouter.ai/api"), true);
   assert.equal(providerPresetMatchesBaseUrl(openAiPreset, "https://proxy.example.com/v1"), false);
   assert.equal(findProviderPresetByBaseUrlInList(presets, "api.anthropic.com/v1/messages")?.id, "anthropic");
 });

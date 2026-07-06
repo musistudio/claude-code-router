@@ -5,12 +5,14 @@ import { spawn } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync, watch } from "node:fs";
 import path from "node:path";
 import {
-  binPath,
   buildStyles,
   cleanDist,
   browserRendererHtmlInput,
+  cliSourceRoot,
+  coreSourceRoot,
   copyAppAssets,
   copyBrowserRendererHtml,
+  copyCliRuntimeToElectronDist,
   copyMarketplacePlugins,
   copyModelCatalog,
   copyRendererHtml,
@@ -21,12 +23,12 @@ import {
   createRendererBuildOptions,
   createTrayRendererBuildOptions,
   createWebClientBridgeBuildOptions,
-  cssInput,
-  cssOutput,
   appAssetsInput,
   modelCatalogInput,
   projectRoot,
+  rendererRoot,
   rendererHtmlInput,
+  syncUiRendererToRuntimeDists,
   trayRendererHtmlInput,
   watchPlugin
 } from "./esbuild.config.mjs";
@@ -37,7 +39,12 @@ let pendingRestartReasons = [];
 const watchSignatures = new Map();
 let shuttingDown = false;
 const restartDelayMs = 160;
+const styleBuildDelayMs = 160;
+const stylePollIntervalMs = 1000;
 const ignoredSignatureEntries = new Set([".DS_Store"]);
+let styleBuildTimer = null;
+let styleBuildInFlight = false;
+let queuedStyleBuildReason = null;
 const ready = {
   browser: false,
   cli: false,
@@ -46,6 +53,32 @@ const ready = {
   tray: false,
   webBridge: false
 };
+const devTarget = parseDevTarget(process.argv.slice(2));
+const enabled = {
+  cli: devTarget === "cli" || devTarget === "electron",
+  electron: devTarget === "electron",
+  ui: true
+};
+const coreSharedSourceRoot = path.join(coreSourceRoot, "shared");
+const styleWatchRoots = [rendererRoot, coreSharedSourceRoot].filter((watchRoot) => existsSync(watchRoot));
+const activeReadyNames = new Set([
+  ...(enabled.ui ? ["browser", "renderer", "tray", "webBridge"] : []),
+  ...(enabled.cli ? ["cli"] : []),
+  ...(enabled.electron ? ["main"] : [])
+]);
+
+function parseDevTarget(args) {
+  const target = args[0] ?? "electron";
+  if (target === "--help" || target === "-h") {
+    console.log("Usage: node build/dev.mjs [ui|cli|electron]");
+    process.exit(0);
+  }
+  if (target === "ui" || target === "cli" || target === "electron") {
+    return target;
+  }
+  console.error(`Unknown dev target "${target}". Expected ui, cli, or electron.`);
+  process.exit(2);
+}
 
 function logDev(message) {
   console.log(`[dev] ${new Date().toISOString()} ${message}`);
@@ -57,6 +90,7 @@ function relativePath(file) {
 
 function readyState() {
   return Object.entries(ready)
+    .filter(([name]) => activeReadyNames.has(name))
     .map(([name, value]) => `${name}:${value ? "ready" : "pending"}`)
     .join(" ");
 }
@@ -163,7 +197,63 @@ function handleWatchedInput(label, watchedPath, eventType, filename, options, on
   }
 
   onChange();
-  scheduleRestart(reason);
+  if (enabled.electron && options?.restart !== false) {
+    scheduleRestart(reason);
+  }
+}
+
+function scheduleStyleBuild(reason) {
+  queuedStyleBuildReason = reason;
+  if (styleBuildTimer) {
+    clearTimeout(styleBuildTimer);
+  }
+  styleBuildTimer = setTimeout(() => {
+    styleBuildTimer = null;
+    void rebuildStyles(queuedStyleBuildReason ?? reason);
+  }, styleBuildDelayMs);
+}
+
+async function rebuildStyles(reason) {
+  if (styleBuildInFlight) {
+    queuedStyleBuildReason = reason;
+    return;
+  }
+
+  styleBuildInFlight = true;
+  queuedStyleBuildReason = null;
+  try {
+    logDev(`rebuilding styles: ${reason}`);
+    await buildStyles({ minify: false });
+    syncUiRendererToRuntimeDists();
+    if (enabled.electron) {
+      scheduleRestart(`styles rebuilt: ${reason}`);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logDev(`style rebuild failed: ${message}`);
+  } finally {
+    styleBuildInFlight = false;
+    if (queuedStyleBuildReason) {
+      const queuedReason = queuedStyleBuildReason;
+      queuedStyleBuildReason = null;
+      scheduleStyleBuild(queuedReason);
+    }
+  }
+}
+
+function pollStyleWatchRoots() {
+  for (const styleWatchRoot of styleWatchRoots) {
+    const label = `styles ${relativePath(styleWatchRoot)}`;
+    const signature = contentSignature(styleWatchRoot);
+    const previousSignature = watchSignatures.get(label);
+    if (previousSignature === signature.key) {
+      continue;
+    }
+
+    watchSignatures.set(label, signature.key);
+    logDev(`watch event: ${label}; ${signature.summary}; content=changed`);
+    scheduleStyleBuild(label);
+  }
 }
 
 function markReady(name, reason = `${name} esbuild completed`) {
@@ -171,7 +261,7 @@ function markReady(name, reason = `${name} esbuild completed`) {
     ready[name] = true;
   }
   logDev(`build ready: ${reason}; ${readyState()}`);
-  if (ready.browser && ready.cli && ready.main && ready.renderer && ready.tray && ready.webBridge) {
+  if (enabled.electron && Array.from(activeReadyNames).every((readyName) => ready[readyName])) {
     scheduleRestart(reason);
   }
 }
@@ -221,114 +311,153 @@ function restartElectron() {
   });
 }
 
-logDev("starting dev build");
+logDev(`starting dev build target=${devTarget} ui=${enabled.ui ? "on" : "off"} cli=${enabled.cli ? "on" : "off"} electron=${enabled.electron ? "on" : "off"}`);
 cleanDist();
-copyAppAssets();
-copyMarketplacePlugins();
-copyModelCatalog();
+if (enabled.electron) {
+  copyAppAssets();
+}
+if (enabled.cli || enabled.electron) {
+  copyMarketplacePlugins();
+  copyModelCatalog();
+}
 copyBrowserRendererHtml();
 copyRendererHtml();
 copyTrayRendererHtml();
 await buildStyles({ minify: false });
-
-const tailwindProcess = spawn(binPath("tailwindcss"), ["-i", cssInput, "-o", cssOutput, "--watch"], {
-  cwd: projectRoot,
-  stdio: "inherit",
-  shell: process.platform === "win32"
-});
-logDev(`Tailwind watcher started pid=${tailwindProcess.pid ?? "unknown"} input=${relativePath(cssInput)} output=${relativePath(cssOutput)}`);
-tailwindProcess.on("exit", (code, signal) => {
-  logDev(`Tailwind watcher exited code=${code ?? "null"} signal=${signal ?? "null"}`);
-});
+syncUiRendererToRuntimeDists();
 
 rememberWatchSignature("home html", rendererHtmlInput);
 rememberWatchSignature("browser html", browserRendererHtmlInput);
 rememberWatchSignature("tray html", trayRendererHtmlInput);
-rememberWatchSignature("app assets", appAssetsInput);
-if (existsSync(modelCatalogInput)) {
+for (const styleWatchRoot of styleWatchRoots) {
+  rememberWatchSignature(`styles ${relativePath(styleWatchRoot)}`, styleWatchRoot);
+}
+if (enabled.electron) {
+  rememberWatchSignature("app assets", appAssetsInput);
+}
+if ((enabled.cli || enabled.electron) && existsSync(modelCatalogInput)) {
   rememberWatchSignature("model catalog", modelCatalogInput);
 }
 
 const htmlWatcher = watch(rendererHtmlInput, { persistent: true }, (eventType, filename) => {
-  handleWatchedInput("home html", rendererHtmlInput, eventType, filename, undefined, copyRendererHtml);
+  handleWatchedInput("home html", rendererHtmlInput, eventType, filename, undefined, () => {
+    copyRendererHtml();
+    syncUiRendererToRuntimeDists();
+  });
 });
 
 const browserHtmlWatcher = watch(browserRendererHtmlInput, { persistent: true }, (eventType, filename) => {
-  handleWatchedInput("browser html", browserRendererHtmlInput, eventType, filename, undefined, copyBrowserRendererHtml);
+  handleWatchedInput("browser html", browserRendererHtmlInput, eventType, filename, undefined, () => {
+    copyBrowserRendererHtml();
+    syncUiRendererToRuntimeDists();
+  });
 });
 
 const trayHtmlWatcher = watch(trayRendererHtmlInput, { persistent: true }, (eventType, filename) => {
-  handleWatchedInput("tray html", trayRendererHtmlInput, eventType, filename, undefined, copyTrayRendererHtml);
+  handleWatchedInput("tray html", trayRendererHtmlInput, eventType, filename, undefined, () => {
+    copyTrayRendererHtml();
+    syncUiRendererToRuntimeDists();
+  });
 });
 
-const appAssetsWatcher = watch(appAssetsInput, { persistent: true }, (eventType, filename) => {
-  handleWatchedInput("app assets", appAssetsInput, eventType, filename, { isDirectory: true }, copyAppAssets);
-});
+const stylePoller = setInterval(pollStyleWatchRoots, stylePollIntervalMs);
 
-const modelCatalogWatcher = existsSync(modelCatalogInput)
+const appAssetsWatcher = enabled.electron
+  ? watch(appAssetsInput, { persistent: true }, (eventType, filename) => {
+      handleWatchedInput("app assets", appAssetsInput, eventType, filename, { isDirectory: true }, copyAppAssets);
+    })
+  : { close: () => undefined };
+
+const modelCatalogWatcher = (enabled.cli || enabled.electron) && existsSync(modelCatalogInput)
   ? watch(modelCatalogInput, { persistent: true }, (eventType, filename) => {
       handleWatchedInput("model catalog", modelCatalogInput, eventType, filename, undefined, copyModelCatalog);
     })
   : { close: () => undefined };
 
-const mainContext = await esbuild.context(
-  createMainBuildOptions({
-    mode: "development",
-    plugins: [watchPlugin("main", (name) => markReady(name))]
-  })
-);
+const contexts = [];
 
-const cliContext = await esbuild.context(
-  createCliBuildOptions({
-    mode: "development",
-    plugins: [watchPlugin("cli", (name) => markReady(name))]
-  })
-);
-
-const rendererContext = await esbuild.context(
-  createRendererBuildOptions({
-    mode: "development",
-    plugins: [
-      watchPlugin("renderer", (name) => {
-        copyRendererHtml();
-        markReady(name);
+if (enabled.electron) {
+  contexts.push(
+    await esbuild.context(
+      createMainBuildOptions({
+        mode: "development",
+        plugins: [watchPlugin("main", (name) => markReady(name))]
       })
-    ]
-  })
-);
+    )
+  );
+}
 
-const trayRendererContext = await esbuild.context(
-  createTrayRendererBuildOptions({
-    mode: "development",
-    plugins: [
-      watchPlugin("tray", (name) => {
-        copyTrayRendererHtml();
-        markReady(name);
+if (enabled.cli) {
+  contexts.push(
+    await esbuild.context(
+      createCliBuildOptions({
+        mode: "development",
+        plugins: [
+          watchPlugin("cli", (name) => {
+            if (enabled.electron) {
+              copyCliRuntimeToElectronDist();
+            }
+            markReady(name);
+          })
+        ]
       })
-    ]
-  })
-);
+    )
+  );
+}
 
-const browserRendererContext = await esbuild.context(
-  createBrowserRendererBuildOptions({
-    mode: "development",
-    plugins: [
-      watchPlugin("browser", (name) => {
-        copyBrowserRendererHtml();
-        markReady(name);
+if (enabled.ui) {
+  contexts.push(
+    await esbuild.context(
+      createRendererBuildOptions({
+        mode: "development",
+        plugins: [
+          watchPlugin("renderer", (name) => {
+            copyRendererHtml();
+            syncUiRendererToRuntimeDists();
+            markReady(name);
+          })
+        ]
       })
-    ]
-  })
-);
+    ),
+    await esbuild.context(
+      createTrayRendererBuildOptions({
+        mode: "development",
+        plugins: [
+          watchPlugin("tray", (name) => {
+            copyTrayRendererHtml();
+            syncUiRendererToRuntimeDists();
+            markReady(name);
+          })
+        ]
+      })
+    ),
+    await esbuild.context(
+      createBrowserRendererBuildOptions({
+        mode: "development",
+        plugins: [
+          watchPlugin("browser", (name) => {
+            copyBrowserRendererHtml();
+            syncUiRendererToRuntimeDists();
+            markReady(name);
+          })
+        ]
+      })
+    ),
+    await esbuild.context(
+      createWebClientBridgeBuildOptions({
+        mode: "development",
+        plugins: [
+          watchPlugin("webBridge", (name) => {
+            syncUiRendererToRuntimeDists();
+            markReady(name);
+          })
+        ]
+      })
+    )
+  );
+}
 
-const webClientBridgeContext = await esbuild.context(
-  createWebClientBridgeBuildOptions({
-    mode: "development",
-    plugins: [watchPlugin("webBridge", (name) => markReady(name))]
-  })
-);
-
-await Promise.all([mainContext.watch(), cliContext.watch(), rendererContext.watch(), trayRendererContext.watch(), browserRendererContext.watch(), webClientBridgeContext.watch()]);
+await Promise.all(contexts.map((context) => context.watch()));
 logDev("watchers are active");
 
 async function shutdown() {
@@ -340,13 +469,16 @@ async function shutdown() {
   if (electronProcess) {
     electronProcess.kill();
   }
-  tailwindProcess.kill();
+  if (styleBuildTimer) {
+    clearTimeout(styleBuildTimer);
+  }
   htmlWatcher.close();
   browserHtmlWatcher.close();
   trayHtmlWatcher.close();
+  clearInterval(stylePoller);
   appAssetsWatcher.close();
   modelCatalogWatcher.close();
-  await Promise.all([mainContext.dispose(), cliContext.dispose(), rendererContext.dispose(), trayRendererContext.dispose(), browserRendererContext.dispose(), webClientBridgeContext.dispose()]);
+  await Promise.all(contexts.map((context) => context.dispose()));
   process.exit(0);
 }
 

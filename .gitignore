@@ -14,3 +14,7 @@ tmp
 release-local
 logs
 .opencat
+test-results
+playwright-report
+blob-report
+.tmp

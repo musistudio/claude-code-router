@@ -1,0 +1,13 @@
+{
+  "name": "@claude-code-router/electron",
+  "version": "3.0.8",
+  "private": true,
+  "description": "Claude Code Router Electron desktop shell.",
+  "main": "dist/main/main.js",
+  "dependencies": {
+    "better-sqlite3": "^12.11.1"
+  },
+  "devDependencies": {
+    "electron-updater": "^6.8.9"
+  }
+}

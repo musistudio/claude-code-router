@@ -1,0 +1,17 @@
+.git
+.DS_Store
+.env
+.env.*
+node_modules
+dist
+packages/*/dist
+release
+release-local
+logs
+tmp
+test-results
+playwright-report
+blob-report
+docs/node_modules
+docs/dist
+docs/.astro

@@ -4,7 +4,7 @@ import type {
   UsageStatsRange,
   UsageStatsSnapshot,
   UsageTotals
-} from "../../src/shared/app.ts";
+} from "../../packages/core/src/contracts/app.ts";
 
 export function installBrowserGlobals() {
   const localStorage = {
