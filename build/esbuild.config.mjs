@@ -67,6 +67,7 @@ export const trayRendererHtmlOutput = path.join(rendererOutDir, "pages", "tray",
 export const cssInput = path.join(rendererRoot, "styles", "globals.css");
 export const cssOutput = path.join(rendererAssetsDir, "main.css");
 export const webClientBridgeOutput = path.join(rendererAssetsDir, "web-client-bridge.js");
+export const electronUndiciProxyAgentInput = path.join(coreSourceRoot, "proxy", "undici-proxy-agent.ts");
 const lightweightMcpBundleNames = ["browser-web-search-proxy-mcp.js", "fusion-vision-mcp.js", "fusion-tool-fallback-mcp.js"];
 const lightweightMcpBundleMaxBytes = 128 * 1024;
 const forbiddenLightweightMcpInputs = [
@@ -217,6 +218,8 @@ export function createMainBuildOptions({ mode = "production", plugins = [] } = {
       path.join(coreSourceRoot, "mcp", "browser-web-search-proxy-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-vision-mcp.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts"),
+      path.join(coreSourceRoot, "mcp", "toolhub-mcp.ts"),
+      electronUndiciProxyAgentInput,
       path.join(electronSourceRoot, "main", "preload.ts")
     ],
     external: nodeExternals,
@@ -241,7 +244,8 @@ export function createCliBuildOptions({ mode = "production", plugins = [] } = {}
     entryPoints: [
       path.join(cliSourceRoot, "cli.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-vision-mcp.ts"),
-      path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts")
+      path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts"),
+      path.join(coreSourceRoot, "mcp", "toolhub-mcp.ts")
     ],
     external: nodeExternals.filter((moduleName) => moduleName !== "electron"),
     format: "cjs",
@@ -264,7 +268,8 @@ export function createCoreServerBuildOptions({ mode = "production", plugins = []
     entryPoints: [
       path.join(coreSourceRoot, "entrypoints", "server.ts"),
       path.join(coreSourceRoot, "mcp", "fusion-vision-mcp.ts"),
-      path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts")
+      path.join(coreSourceRoot, "mcp", "fusion-tool-fallback-mcp.ts"),
+      path.join(coreSourceRoot, "mcp", "toolhub-mcp.ts")
     ],
     external: nodeExternals.filter((moduleName) => moduleName !== "electron"),
     format: "cjs",

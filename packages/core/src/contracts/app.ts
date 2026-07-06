@@ -635,6 +635,20 @@ export type GatewayAgentConfig = {
   mcpServers: GatewayMcpServerConfig[];
 };
 
+export type ToolHubLlmConfig = {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+};
+
+export type ToolHubConfig = {
+  enabled: boolean;
+  llm: ToolHubLlmConfig;
+  mcpServers: GatewayMcpServerConfig[];
+  maxTools: number;
+  requestTimeoutMs: number;
+};
+
 export const CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV = "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY";
 export const CLAUDE_CODE_DEFAULT_ENV: Record<string, string> = {
   [CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV]: "1"
@@ -1396,6 +1410,7 @@ export type AppConfig = {
   trayIcon: TrayIconPreference;
   trayWidgets: TrayWidgetConfig[];
   trayWindowModules: TrayWindowModuleId[];
+  toolHub: ToolHubConfig;
   virtualModelProfiles?: VirtualModelProfileConfig[];
 };
 

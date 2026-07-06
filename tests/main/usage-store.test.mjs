@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { RequestLogStore } from "../../packages/core/src/observability/request-log-store.ts";
 import { UsageStore } from "../../packages/core/src/usage/store.ts";
 
 test("UsageStore aggregates stats in SQLite without loading all events", async () => {
@@ -131,6 +132,52 @@ test("UsageStore treats null web RPC usage filters as empty filters", async () =
     const defaultRangeStats = await store.getStats(null, null);
     assert.equal(defaultRangeStats.range, "7d");
     assert.equal(defaultRangeStats.totals.requestCount, 1);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("UsageStore backfills missing events from request logs", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-request-log-backfill-test-"));
+  try {
+    const requestLogDbFile = path.join(dir, "request-logs.sqlite");
+    const requestLogStore = new RequestLogStore(requestLogDbFile);
+    const usageStore = new UsageStore(path.join(dir, "usage.sqlite"), { requestLogDbFile });
+    const createdAt = new Date().toISOString();
+
+    await requestLogStore.record({
+      client: "Claude Code",
+      completedAt: createdAt,
+      durationMs: 25,
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "alpha",
+      requestBody: Buffer.from(JSON.stringify({ model: "alpha-model" })),
+      requestHeaders: { "content-type": "application/json" },
+      requestId: "req-backfill-1",
+      responseBodyText: JSON.stringify({
+        model: "alpha-model",
+        usage: {
+          input_tokens: 12,
+          output_tokens: 5,
+          total_tokens: 17
+        }
+      }),
+      responseHeaders: new Headers({ "content-type": "application/json" }),
+      startedAt: createdAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    const stats = await usageStore.getStats("today", { includeProxy: true });
+    assert.equal(stats.totals.requestCount, 1);
+    assert.equal(stats.totals.totalTokens, 17);
+    assert.equal(stats.providerModels[0]?.provider, "alpha");
+    assert.equal(stats.providerModels[0]?.model, "alpha-model");
+
+    const reread = await usageStore.getStats("today", { includeProxy: true });
+    assert.equal(reread.totals.requestCount, 1);
+    assert.equal(reread.totals.totalTokens, 17);
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }

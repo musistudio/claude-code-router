@@ -18,6 +18,8 @@ const REQUEST_TIMEOUT_MS = numberEnv("CCR_CODEX_APP_REQUEST_TIMEOUT_MS", 10 * 60
 const TURN_IDLE_TIMEOUT_MS = numberEnv("CCR_CODEX_CLAUDE_TURN_IDLE_TIMEOUT_MS", 10 * 60 * 1000);
 const CONFIG_DIR = resolveConfigDir();
 const LOG_PATH = process.env.CCR_CODEX_CLI_MIDDLEWARE_LOG || "";
+const CLAUDE_CODE_MCP_CONFIG_ENV = "CCR_CLAUDE_CODE_MCP_CONFIG";
+const CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV = "CODEXL_CLAUDE_CODE_MCP_CONFIG";
 const CLAUDE_CODE_CHINA_TIME_ZONES = new Set([
   "asia/chongqing",
   "asia/chungking",
@@ -147,6 +149,11 @@ async function runClaudeCodeCliWrapper(args) {
 }
 
 function claudeCodeCliWrapperArgs(args) {
+  const modelArgs = claudeCodeArgsWithModel(args);
+  return claudeCodeArgsWithMcpConfig(modelArgs, process.env);
+}
+
+function claudeCodeArgsWithModel(args) {
   const model = nonEmptyEnv("CCR_CLAUDE_CODE_MODEL") || nonEmptyEnv("CODEXL_CLAUDE_CODE_MODEL") || nonEmptyEnv("ANTHROPIC_MODEL");
   if (!model || claudeCodeArgsHaveModel(args) || claudeCodeArgsShouldSkipModelInjection(args)) {
     return args;
@@ -154,9 +161,26 @@ function claudeCodeCliWrapperArgs(args) {
   return ["--model", model, ...args];
 }
 
+function claudeCodeArgsWithMcpConfig(args, env) {
+  const mcpConfig = nonEmptyEnvFrom(env, CLAUDE_CODE_MCP_CONFIG_ENV) || nonEmptyEnvFrom(env, CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV);
+  if (!mcpConfig || claudeCodeArgsHaveMcpConfig(args) || claudeCodeArgsShouldSkipModelInjection(args)) {
+    return args;
+  }
+  return ["--mcp-config", mcpConfig, ...args];
+}
+
 function claudeCodeArgsHaveModel(args) {
   for (const arg of args) {
     if (arg === "--model" || arg === "-m" || arg.startsWith("--model=")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function claudeCodeArgsHaveMcpConfig(args) {
+  for (const arg of args) {
+    if (arg === "--mcp-config" || arg.startsWith("--mcp-config=")) {
       return true;
     }
   }
@@ -207,6 +231,7 @@ function claudeCodeOptionTakesValue(arg) {
     "--debug-to",
     "--fallback-model",
     "--model",
+    "--mcp-config",
     "--output-format",
     "--permission-mode",
     "--resume",
@@ -1954,7 +1979,7 @@ function claudeCommand(work) {
   }
   return {
     command,
-    args,
+    args: claudeCodeArgsWithMcpConfig(args, env),
     env
   };
 }
@@ -4243,6 +4268,11 @@ function childEnvForAgent(agent) {
 
 function nonEmptyEnv(name) {
   const value = process.env[name];
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function nonEmptyEnvFrom(env, name) {
+  const value = env?.[name];
   return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 

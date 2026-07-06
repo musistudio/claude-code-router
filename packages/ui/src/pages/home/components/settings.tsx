@@ -4,12 +4,12 @@ import {
   botGatewaySavedConfigFromDraft, botGatewaySavedConfigLabel, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitResult, BotGatewayQrWindowOpenResult, BotGatewaySavedConfig, Button,
   CircleAlert, closestCenter, cn, CSS, Database, Dialog, DialogBody, DialogContent,
   DialogFooter, DialogHeader, DialogTitle, Field, formatAppError, formatProviderAccountMeterValue, formatSystemOption, Gauge,
-  createBotGatewayConfigDraft, DndContext, DragEndEvent, Input, isBotGatewayConfigDraftSubmittable, KeyboardSensor, languageDisplayName, Layers3, LoaderCircle,
-  normalizeBotGatewayAuthType, normalizeBotGatewayPlatform, Palette, ProfileConfig, profileAgentLabel,
+  createBotGatewayConfigDraft, createMcpServerDraft, createMcpServerDraftFromConfig, createMcpServerDraftFromUnknown, createRouteModelOptions, DndContext, DragEndEvent, GatewayMcpServerConfig, GatewayProviderConfig, Input, isBotGatewayConfigDraftSubmittable, KeyboardSensor, KeyRound, KeyValueRowsControl, languageDisplayName, Layers3, LoaderCircle,
+  mcpServerConfigFromDraft, mcpServerEndpointSummary, mcpServerTransportOptions, mcpStdioMessageModeOptions, McpServerDraft, normalizeBotGatewayAuthType, normalizeBotGatewayPlatform, normalizeToolHubConfig, Palette, Pencil, Plus, ProfileConfig, profileAgentLabel,
   PanelLeftOpen, Power, ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ResolvedLanguage, ResolvedTheme, Select, SelectControl,
   PointerSensor, rectSortingStrategy, SettingsPageId, SortableContext, sortableKeyboardCoordinates, themeDisplayName,
-  TrayBalanceProgressConfig, TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant,
-  appLogoUrl, trayMascotIconUrls, arrayMove, defaultTrayWidgetVariant, isTraySingletonWidgetType, normalizeTrayWidget, normalizeTrayWidgets, Switch, Trash2, trayWidgetVariantOptions, useEffect, useMemo, useRef, useSensor, useSensors, useSortable, useState,
+  translateOptions, TrayBalanceProgressConfig, TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant,
+  appLogoUrl, trayMascotIconUrls, arrayMove, defaultTrayWidgetVariant, isTraySingletonWidgetType, normalizeTrayWidget, normalizeTrayWidgets, Switch, Textarea, Trash2, trayWidgetVariantOptions, useAppText, useEffect, useMemo, useRef, useSensor, useSensors, useSortable, useState, validateMcpServerDraft,
   X
 } from "../shared/index";
 
@@ -26,6 +26,7 @@ export function AppSettingsDialog({
   onChangeBotConfigs,
   onChangeLaunchAtLogin,
   onChangeObservability,
+  onChangeToolHub,
   onChangeTrayBalanceProgress,
   onChangeLanguage,
   onChangeTheme,
@@ -34,10 +35,12 @@ export function AppSettingsDialog({
   onClose,
   observability,
   profiles,
+  providers,
   providerAccountSnapshots,
   systemLanguage,
   systemTheme,
   themePreference,
+  toolHub,
   traySupported,
   trayBalanceProgress,
   trayIconPreference,
@@ -53,6 +56,7 @@ export function AppSettingsDialog({
   onChangeBotConfigs: (configs: BotGatewaySavedConfig[]) => void;
   onChangeLaunchAtLogin: (checked: boolean) => void;
   onChangeObservability: (patch: Partial<AppConfig["observability"]>) => void;
+  onChangeToolHub: (patch: Partial<AppConfig["toolHub"]>) => void;
   onChangeTrayBalanceProgress: (config: TrayBalanceProgressConfig) => void;
   onChangeLanguage: (value: string) => void;
   onChangeTheme: (value: string) => void;
@@ -61,10 +65,12 @@ export function AppSettingsDialog({
   onClose: () => void;
   observability: AppConfig["observability"];
   profiles: ProfileConfig[];
+  providers: GatewayProviderConfig[];
   providerAccountSnapshots: ProviderAccountSnapshot[];
   systemLanguage: ResolvedLanguage;
   systemTheme: ResolvedTheme;
   themePreference: AppConfig["theme"];
+  toolHub: AppConfig["toolHub"];
   traySupported: boolean;
   trayBalanceProgress?: TrayBalanceProgressConfig;
   trayIconPreference: AppConfig["trayIcon"];
@@ -112,6 +118,16 @@ export function AppSettingsDialog({
               copy={copy}
               observability={observability}
               onChange={onChangeObservability}
+            />
+          );
+        }
+        if (activePage === "toolhub") {
+          return (
+            <ToolHubSettingsPage
+              copy={copy}
+              onChange={onChangeToolHub}
+              providers={providers}
+              toolHub={toolHub}
             />
           );
         }
@@ -187,6 +203,13 @@ function SettingsLayout({
               icon={Activity}
               label={copy.settings.observability}
               onClick={() => setActivePage("observability")}
+            />
+            <SettingsPageButton
+              active={visiblePage === "toolhub"}
+              className="mt-1"
+              icon={KeyRound}
+              label={copy.settings.toolHub}
+              onClick={() => setActivePage("toolhub")}
             />
             <SettingsPageButton
               active={visiblePage === "bots"}
@@ -353,6 +376,526 @@ function ObservabilitySettingsPage({
       </div>
     </div>
   );
+}
+
+function ToolHubSettingsPage({
+  copy,
+  onChange,
+  providers,
+  toolHub
+}: {
+  copy: AppCopy;
+  onChange: (patch: Partial<AppConfig["toolHub"]>) => void;
+  providers: GatewayProviderConfig[];
+  toolHub: AppConfig["toolHub"];
+}) {
+  const t = useAppText();
+  const modelOptions = useMemo(() => createRouteModelOptions(providers), [providers]);
+  const selectedProviderModel = useMemo(() => selectedToolHubProviderModelValue(toolHub, providers), [providers, toolHub]);
+  const [mcpDialogDraft, setMcpDialogDraft] = useState<McpServerDraft>(() => createMcpServerDraft(toolHub.mcpServers));
+  const [mcpDialogError, setMcpDialogError] = useState("");
+  const [mcpDialogIndex, setMcpDialogIndex] = useState<number | undefined>();
+  const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
+  const [mcpJsonDialogOpen, setMcpJsonDialogOpen] = useState(false);
+  const [mcpJsonError, setMcpJsonError] = useState("");
+  const [mcpJsonText, setMcpJsonText] = useState("");
+
+  const selectProviderModel = (value: string) => {
+    if (!value) {
+      return;
+    }
+    const parsed = parseProviderModelSelectValue(value);
+    if (!parsed) {
+      return;
+    }
+    const provider = providers.find((item) => item.name === parsed.provider);
+    onChange({
+      llm: {
+        ...toolHub.llm,
+        apiKey: providerApiKey(provider),
+        baseUrl: providerBaseUrl(provider),
+        model: parsed.model
+      }
+    });
+  };
+
+  const patchNumber = (key: "maxTools" | "requestTimeoutMs", raw: string) => {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) {
+      return;
+    }
+    onChange(normalizeToolHubConfig({
+      ...toolHub,
+      [key]: parsed
+    }));
+  };
+
+  const openAddMcpDialog = () => {
+    setMcpDialogDraft(createMcpServerDraft(toolHub.mcpServers));
+    setMcpDialogError("");
+    setMcpDialogIndex(undefined);
+    setMcpDialogOpen(true);
+  };
+
+  const openImportMcpJsonDialog = () => {
+    setMcpJsonText("");
+    setMcpJsonError("");
+    setMcpJsonDialogOpen(true);
+  };
+
+  const openEditMcpDialog = (index: number) => {
+    const server = toolHub.mcpServers[index];
+    if (!server) {
+      return;
+    }
+    setMcpDialogDraft(createMcpServerDraftFromConfig(server));
+    setMcpDialogError("");
+    setMcpDialogIndex(index);
+    setMcpDialogOpen(true);
+  };
+
+  const submitMcpDialog = () => {
+    const validationError = validateMcpServerDraft(mcpDialogDraft);
+    if (validationError) {
+      setMcpDialogError(validationError);
+      return;
+    }
+    const normalizedName = mcpDialogDraft.name.trim().toLowerCase();
+    if (toolHub.mcpServers.some((server, index) => index !== mcpDialogIndex && server.name.trim().toLowerCase() === normalizedName)) {
+      setMcpDialogError("MCP server name already exists.");
+      return;
+    }
+    const nextServers = [...toolHub.mcpServers];
+    const server = mcpServerConfigFromDraft(mcpDialogDraft, nextServers, mcpDialogIndex);
+    if (mcpDialogIndex === undefined) {
+      nextServers.push(server);
+    } else {
+      nextServers[mcpDialogIndex] = server;
+    }
+    onChange({ mcpServers: nextServers });
+    setMcpDialogOpen(false);
+    setMcpDialogError("");
+  };
+
+  const removeMcpServer = (index: number) => {
+    onChange({
+      mcpServers: toolHub.mcpServers.filter((_, itemIndex) => itemIndex !== index)
+    });
+  };
+
+  const importMcpJson = () => {
+    const result = parseToolHubMcpServersJson(mcpJsonText, toolHub.mcpServers);
+    if ("error" in result) {
+      setMcpJsonError(result.error);
+      return;
+    }
+    onChange({ mcpServers: [...toolHub.mcpServers, ...result.servers] });
+    setMcpJsonDialogOpen(false);
+    setMcpJsonError("");
+    setMcpJsonText("");
+  };
+
+  return (
+    <div className={cn(settingsPageContentWidthClassName, "grid grid-cols-1 gap-5")}>
+      <div className="grid gap-1">
+        <h3 className="text-[15px] font-semibold text-foreground">{copy.settings.toolHub}</h3>
+        <p className="text-[12px] leading-5 text-muted-foreground">{copy.settings.toolHubDescription}</p>
+      </div>
+      <div className="grid grid-cols-1 gap-3">
+        <SettingsSwitchRow
+          checked={toolHub.enabled}
+          description={copy.settings.toolHubEnabledDescription}
+          icon={KeyRound}
+          label={copy.settings.toolHubEnabled}
+          onChange={(enabled) => onChange({ enabled })}
+        />
+      </div>
+      {toolHub.enabled ? (
+        <>
+          <div className="grid grid-cols-1 gap-3 rounded-md border border-border/70 bg-card/70 p-3 md:grid-cols-2">
+            <Field className="md:col-span-2" label={copy.settings.toolHubModel}>
+              <SelectControl
+                onChange={selectProviderModel}
+                options={[
+                  { disabled: true, label: copy.settings.toolHubModelPlaceholder, value: "" },
+                  ...modelOptions
+                ]}
+                value={selectedProviderModel}
+              />
+            </Field>
+            <Field label={copy.settings.toolHubMaxTools}>
+              <Input
+                min={1}
+                max={20}
+                onChange={(event) => patchNumber("maxTools", event.target.value)}
+                type="number"
+                value={String(toolHub.maxTools)}
+              />
+            </Field>
+            <Field label={copy.settings.toolHubTimeout}>
+              <Input
+                min={8000}
+                max={300000}
+                onChange={(event) => patchNumber("requestTimeoutMs", event.target.value)}
+                step={1000}
+                type="number"
+                value={String(toolHub.requestTimeoutMs)}
+              />
+            </Field>
+          </div>
+          <div className="grid grid-cols-1 gap-3 rounded-md border border-border/70 bg-card/70 p-3">
+            <div className="flex min-w-0 items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-[12px] font-semibold text-foreground">{t("MCP servers")}</div>
+                <div className="truncate text-[11px] text-muted-foreground">{String(toolHub.mcpServers.length)}</div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button onClick={openImportMcpJsonDialog} size="sm" type="button" variant="outline">
+                  {t("Import JSON")}
+                </Button>
+                <Button onClick={openAddMcpDialog} size="sm" type="button" variant="outline">
+                  <Plus className="h-4 w-4" />
+                  {t("Add MCP server")}
+                </Button>
+              </div>
+            </div>
+            {toolHub.mcpServers.length === 0 ? (
+              <div className="rounded-md border border-dashed border-border/70 px-3 py-3 text-[12px] text-muted-foreground">
+                {t("No MCP servers configured")}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-2">
+                {toolHub.mcpServers.map((server, index) => (
+                  <div key={`${server.name}-${index}`} className="flex min-w-0 items-center gap-2 rounded-md border border-border/70 bg-background/60 px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[12px] font-semibold text-foreground" title={server.name}>{server.name}</div>
+                      <div className="truncate text-[11px] text-muted-foreground" title={mcpServerEndpointSummary(server)}>
+                        {server.transport} · {mcpServerEndpointSummary(server)}
+                      </div>
+                    </div>
+                    <Button aria-label={t("Edit MCP server")} onClick={() => openEditMcpDialog(index)} size="iconSm" title={t("Edit MCP server")} type="button" variant="ghost">
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button aria-label={t("Remove MCP server")} onClick={() => removeMcpServer(index)} size="iconSm" title={t("Remove MCP server")} type="button" variant="ghost">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <ToolHubMcpServerDialog
+            draft={mcpDialogDraft}
+            error={mcpDialogError}
+            mode={mcpDialogIndex === undefined ? "add" : "edit"}
+            onChange={(patch) => setMcpDialogDraft((current) => ({ ...current, ...patch }))}
+            onClose={() => setMcpDialogOpen(false)}
+            onSubmit={submitMcpDialog}
+            open={mcpDialogOpen}
+          />
+          <ToolHubMcpJsonDialog
+            error={mcpJsonError}
+            onChange={setMcpJsonText}
+            onClose={() => setMcpJsonDialogOpen(false)}
+            onSubmit={importMcpJson}
+            open={mcpJsonDialogOpen}
+            value={mcpJsonText}
+          />
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function ToolHubMcpServerDialog({
+  draft,
+  error,
+  mode,
+  onChange,
+  onClose,
+  onSubmit,
+  open
+}: {
+  draft: McpServerDraft;
+  error: string;
+  mode: "add" | "edit";
+  onChange: (patch: Partial<McpServerDraft>) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+  open: boolean;
+}) {
+  const t = useAppText();
+  const transportOptions = translateOptions(mcpServerTransportOptions, t);
+  const stdioMessageModeOptions = translateOptions(mcpStdioMessageModeOptions, t);
+
+  return (
+    <Dialog className="z-[80]" onOpenChange={(nextOpen) => !nextOpen && onClose()} open={open}>
+      <DialogContent className="max-w-[760px]">
+        <DialogHeader>
+          <div className="min-w-0">
+            <DialogTitle>{mode === "add" ? t("Add MCP server") : t("Edit MCP server")}</DialogTitle>
+          </div>
+          <Button aria-label={t("Close dialog")} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
+            <X className="h-4 w-4" />
+          </Button>
+        </DialogHeader>
+        <DialogBody>
+          <div className="grid grid-cols-1 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label={t("MCP server")}>
+                <Input onChange={(event) => onChange({ name: event.target.value })} value={draft.name} />
+              </Field>
+              <Field label={t("Transport")}>
+                <SelectControl
+                  onChange={(transport) => onChange({ transport: transport as McpServerDraft["transport"] })}
+                  options={transportOptions}
+                  value={draft.transport}
+                />
+              </Field>
+            </div>
+            {draft.transport === "stdio" ? (
+              <div className="grid grid-cols-1 gap-3">
+                <Field label={t("Command")}>
+                  <Input onChange={(event) => onChange({ command: event.target.value })} value={draft.command} />
+                </Field>
+                <Field label={t("Arguments")}>
+                  <Input onChange={(event) => onChange({ argsText: event.target.value })} value={draft.argsText} />
+                </Field>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label={t("Working directory")}>
+                    <Input onChange={(event) => onChange({ cwd: event.target.value })} value={draft.cwd} />
+                  </Field>
+                  <Field label={t("Stdio message mode")}>
+                    <SelectControl
+                      onChange={(stdioMessageMode) => onChange({ stdioMessageMode: stdioMessageMode as McpServerDraft["stdioMessageMode"] })}
+                      options={stdioMessageModeOptions}
+                      value={draft.stdioMessageMode}
+                    />
+                  </Field>
+                </div>
+                <Field label={t("Environment variables")}>
+                  <KeyValueRowsControl
+                    addLabel={t("Add variable")}
+                    onChange={(envRows) => onChange({ envRows })}
+                    rows={draft.envRows}
+                  />
+                </Field>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3">
+                <Field label={t("URL")}>
+                  <Input onChange={(event) => onChange({ url: event.target.value })} value={draft.url} />
+                </Field>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label={t("API key")}>
+                    <Input autoComplete="off" onChange={(event) => onChange({ apiKey: event.target.value })} type="password" value={draft.apiKey} />
+                  </Field>
+                  <Field label={t("API key env")}>
+                    <Input onChange={(event) => onChange({ apiKeyEnv: event.target.value })} value={draft.apiKeyEnv} />
+                  </Field>
+                </div>
+                <Field label={t("Headers")}>
+                  <KeyValueRowsControl
+                    addLabel={t("Add variable")}
+                    onChange={(headerRows) => onChange({ headerRows })}
+                    rows={draft.headerRows}
+                  />
+                </Field>
+              </div>
+            )}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label={t("Request timeout")}>
+                <Input onChange={(event) => onChange({ requestTimeoutMs: event.target.value })} type="number" value={draft.requestTimeoutMs} />
+              </Field>
+              <Field label={t("Startup timeout")}>
+                <Input onChange={(event) => onChange({ startupTimeoutMs: event.target.value })} type="number" value={draft.startupTimeoutMs} />
+              </Field>
+            </div>
+            {error ? (
+              <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">{t(error)}</div>
+            ) : null}
+          </div>
+        </DialogBody>
+        <DialogFooter>
+          <Button onClick={onClose} type="button" variant="outline">
+            {t("Cancel")}
+          </Button>
+          <Button onClick={onSubmit} type="button">
+            <Plus className="h-4 w-4" />
+            {mode === "add" ? t("Add") : t("Save")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ToolHubMcpJsonDialog({
+  error,
+  onChange,
+  onClose,
+  onSubmit,
+  open,
+  value
+}: {
+  error: string;
+  onChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+  open: boolean;
+  value: string;
+}) {
+  const t = useAppText();
+
+  return (
+    <Dialog className="z-[80]" onOpenChange={(nextOpen) => !nextOpen && onClose()} open={open}>
+      <DialogContent className="max-w-[760px]">
+        <DialogHeader>
+          <div className="min-w-0">
+            <DialogTitle>{t("Import MCP JSON")}</DialogTitle>
+          </div>
+          <Button aria-label={t("Close dialog")} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
+            <X className="h-4 w-4" />
+          </Button>
+        </DialogHeader>
+        <DialogBody>
+          <div className="grid grid-cols-1 gap-3">
+            <Field label={t("MCP JSON")}>
+              <Textarea
+                className="min-h-[260px] font-mono text-[12px]"
+                onChange={(event) => onChange(event.target.value)}
+                placeholder={[
+                  '{',
+                  '  "mcpServers": {',
+                  '    "filesystem": {',
+                  '      "command": "npx",',
+                  '      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]',
+                  "    }",
+                  "  }",
+                  "}"
+                ].join("\n")}
+                value={value}
+              />
+            </Field>
+            {error ? (
+              <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">{t(error)}</div>
+            ) : null}
+          </div>
+        </DialogBody>
+        <DialogFooter>
+          <Button onClick={onClose} type="button" variant="outline">
+            {t("Cancel")}
+          </Button>
+          <Button onClick={onSubmit} type="button">
+            {t("Import")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+type ParsedMcpServerRecord = {
+  nameHint?: string;
+  value: Record<string, unknown>;
+};
+
+function parseToolHubMcpServersJson(raw: string, existingServers: GatewayMcpServerConfig[]): { error: string } | { servers: GatewayMcpServerConfig[] } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { error: "Invalid JSON." };
+  }
+
+  const records = mcpServerRecordsFromJson(parsed);
+  if (records.length === 0) {
+    return { error: "No MCP servers found in JSON." };
+  }
+
+  const importedNames = new Set(existingServers.map((server) => server.name.trim().toLowerCase()));
+  const servers: GatewayMcpServerConfig[] = [];
+  for (const record of records) {
+    const draft = createMcpServerDraftFromUnknown({
+      ...record.value,
+      name: typeof record.value.name === "string" && record.value.name.trim() ? record.value.name : record.nameHint ?? ""
+    });
+    const validationError = validateMcpServerDraft(draft);
+    if (validationError) {
+      return { error: validationError };
+    }
+    const normalizedName = draft.name.trim().toLowerCase();
+    if (importedNames.has(normalizedName)) {
+      return { error: "MCP server name already exists." };
+    }
+    importedNames.add(normalizedName);
+    servers.push(mcpServerConfigFromDraft(draft, [...existingServers, ...servers], undefined));
+  }
+
+  return { servers };
+}
+
+function mcpServerRecordsFromJson(value: unknown): ParsedMcpServerRecord[] {
+  if (Array.isArray(value)) {
+    return value
+      .filter(isPlainObject)
+      .map((item) => ({ value: item }));
+  }
+  if (!isPlainObject(value)) {
+    return [];
+  }
+  const mcpServers = value.mcpServers ?? value.mcp_servers;
+  if (Array.isArray(mcpServers)) {
+    return mcpServers
+      .filter(isPlainObject)
+      .map((item) => ({ value: item }));
+  }
+  if (isPlainObject(mcpServers)) {
+    return Object.entries(mcpServers)
+      .filter(([, item]) => isPlainObject(item))
+      .map(([nameHint, item]) => ({ nameHint, value: item as Record<string, unknown> }));
+  }
+  return [{ value }];
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function selectedToolHubProviderModelValue(toolHub: AppConfig["toolHub"], providers: GatewayProviderConfig[]): string {
+  const model = toolHub.llm.model.trim();
+  if (!model) {
+    return "";
+  }
+  const baseUrl = toolHub.llm.baseUrl.trim();
+  const matchedProvider = providers.find((provider) =>
+    provider.models?.includes(model) &&
+    (!baseUrl || !providerBaseUrl(provider) || providerBaseUrl(provider) === baseUrl)
+  ) ?? providers.find((provider) => provider.models?.includes(model));
+  return matchedProvider ? `${matchedProvider.name},${model}` : "";
+}
+
+function parseProviderModelSelectValue(value: string): { model: string; provider: string } | undefined {
+  const commaIndex = value.indexOf(",");
+  if (commaIndex <= 0 || commaIndex >= value.length - 1) {
+    return undefined;
+  }
+  const provider = value.slice(0, commaIndex).trim();
+  const model = value.slice(commaIndex + 1).trim();
+  return provider && model ? { model, provider } : undefined;
+}
+
+function providerBaseUrl(provider: GatewayProviderConfig | undefined): string {
+  return provider?.baseUrl || provider?.baseurl || provider?.api_base_url || "";
+}
+
+function providerApiKey(provider: GatewayProviderConfig | undefined): string {
+  const direct = provider?.api_key || provider?.apiKey || provider?.apikey;
+  if (direct) {
+    return direct;
+  }
+  const credential = provider?.credentials?.find((item) => item.enabled !== false && (item.api_key || item.apiKey || item.apikey));
+  return credential?.api_key || credential?.apiKey || credential?.apikey || "";
 }
 
 function SettingsSwitchRow({

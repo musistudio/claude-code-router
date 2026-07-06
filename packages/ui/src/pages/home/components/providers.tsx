@@ -1374,6 +1374,7 @@ export function AddProviderForm({
     ...getProviderPresets().map((preset) => ({ label: t(preset.name), preset, value: preset.id }))
   ];
   const selectableProtocols = providerSelectableProtocolsFromProbe(probe);
+  const protocolProbeRows = useMemo(() => uniqueProviderProbeProtocolRows(probe?.protocols ?? []), [probe]);
   const configuredModels = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
   const hasConnectivityCheckInputs = Boolean(
     !localAgentImport &&
@@ -1717,9 +1718,9 @@ export function AddProviderForm({
                 />
                 <Field className="sm:col-span-2" label={t("Protocol details")}>
                   <div className="max-h-[128px] overflow-auto rounded-md border border-border bg-background p-2">
-                    {probe?.protocols.length ? (
+                    {protocolProbeRows.length ? (
                       <div className="space-y-1.5">
-                        {probe.protocols.map((item) => {
+                        {protocolProbeRows.map((item) => {
                           const selectable = item.supported && selectableProtocols.includes(item.protocol);
                           const checked = selectable && draft.selectedProtocols.includes(item.protocol);
                           const itemKey = `${item.protocol}-${item.endpoint}`;
@@ -1797,6 +1798,20 @@ type ProviderProtocolProbeDetailsState = {
   left: number;
   top: number;
 };
+
+function uniqueProviderProbeProtocolRows(
+  protocols: GatewayProviderProbeResult["protocols"]
+): GatewayProviderProbeResult["protocols"] {
+  const rows = new Map<string, GatewayProviderProbeResult["protocols"][number]>();
+  for (const item of protocols) {
+    const key = `${item.protocol}\n${item.endpoint}`;
+    const current = rows.get(key);
+    if (!current || (!current.supported && item.supported)) {
+      rows.set(key, item);
+    }
+  }
+  return [...rows.values()];
+}
 
 function providerProtocolProbeTooltipPosition(rect: DOMRect): { left: number; top: number } {
   const margin = 12;

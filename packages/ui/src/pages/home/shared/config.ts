@@ -440,6 +440,7 @@ export function normalizeConfig(config: AppConfig): AppConfig {
     trayProgressTargetTokens: normalizeTrayProgressTargetTokens(config.trayProgressTargetTokens),
     trayWidgets: normalizeTrayWidgets(config.trayWidgets, config.trayWindowModules, config.trayComponentVariants),
     trayWindowModules: normalizeTrayWindowModules(config.trayWindowModules),
+    toolHub: normalizeToolHubConfig(config.toolHub),
     virtualModelProfiles: Array.isArray(config.virtualModelProfiles) ? config.virtualModelProfiles : []
   };
 }
@@ -450,5 +451,31 @@ export function normalizeObservabilityConfig(config: Partial<AppConfig["observab
     ...(config || {}),
     agentAnalysis: Boolean(config?.agentAnalysis),
     requestLogs: Boolean(config?.requestLogs)
+  };
+}
+
+export function normalizeToolHubConfig(config: Partial<AppConfig["toolHub"]> | undefined): AppConfig["toolHub"] {
+  const maxTools = typeof config?.maxTools === "number" && Number.isFinite(config.maxTools)
+    ? Math.min(Math.max(Math.floor(config.maxTools), 1), 20)
+    : fallbackConfig.toolHub.maxTools;
+  const requestTimeoutMs = typeof config?.requestTimeoutMs === "number" && Number.isFinite(config.requestTimeoutMs)
+    ? Math.min(Math.max(Math.floor(config.requestTimeoutMs), 8000), 300000)
+    : fallbackConfig.toolHub.requestTimeoutMs;
+  return {
+    ...fallbackConfig.toolHub,
+    ...(config || {}),
+    enabled: Boolean(config?.enabled),
+    llm: {
+      ...fallbackConfig.toolHub.llm,
+      ...(config?.llm || {}),
+      apiKey: typeof config?.llm?.apiKey === "string" ? config.llm.apiKey : "",
+      baseUrl: typeof config?.llm?.baseUrl === "string" && config.llm.baseUrl.trim()
+        ? config.llm.baseUrl.trim()
+        : fallbackConfig.toolHub.llm.baseUrl,
+      model: typeof config?.llm?.model === "string" ? config.llm.model.trim() : ""
+    },
+    mcpServers: Array.isArray(config?.mcpServers) ? normalizeMcpServers(config.mcpServers) : fallbackConfig.toolHub.mcpServers,
+    maxTools,
+    requestTimeoutMs
   };
 }

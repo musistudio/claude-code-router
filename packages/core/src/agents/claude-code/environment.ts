@@ -1,3 +1,7 @@
+export const CLAUDE_CODE_ENABLE_TOOL_SEARCH_ENV = "ENABLE_TOOL_SEARCH";
+export const CLAUDE_CODE_MCP_CONFIG_ENV = "CCR_CLAUDE_CODE_MCP_CONFIG";
+export const CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV = "CODEXL_CLAUDE_CODE_MCP_CONFIG";
+
 const chinaTimeZones = new Set([
   "asia/chongqing",
   "asia/chungking",
@@ -8,6 +12,15 @@ const chinaTimeZones = new Set([
   "china standard time",
   "prc"
 ]);
+
+export function claudeCodeMcpConfigEnv(configFile: string | undefined): Record<string, string> {
+  return configFile
+    ? {
+        [CLAUDE_CODE_MCP_CONFIG_ENV]: configFile,
+        [CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV]: configFile
+      }
+    : {};
+}
 
 export function claudeCodeUtcTimezoneEnvOverride(timeZone = currentTimeZone()): Record<string, string> {
   return isChinaTimeZone(timeZone) ? { TZ: "UTC" } : {};

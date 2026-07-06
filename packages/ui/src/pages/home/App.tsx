@@ -19,7 +19,7 @@ import {
   isRoutingRewriteDraftRowValid,
   LayoutGroup, mergeModelDisplayNames, mergeProviderCapabilities, mergeProviderModelLists, modelDescriptionsForModels, modelDisplayNamesForModels,
   navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets,
-  normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterBuiltInRules, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
+  normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterBuiltInRules, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeToolHubConfig, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
   normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
   OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parseProviderAccountDraft,
   providerCredentialsFromDraft,
@@ -2103,6 +2103,20 @@ function App() {
     }));
   }
 
+  function changeToolHubConfig(patch: Partial<AppConfig["toolHub"]>) {
+    updateConfig((config) => ({
+      ...config,
+      toolHub: normalizeToolHubConfig({
+        ...config.toolHub,
+        ...patch,
+        llm: {
+          ...config.toolHub.llm,
+          ...(patch.llm ?? {})
+        }
+      })
+    }));
+  }
+
   function openBotSettingsWithAddDialog() {
     setSettingsInitialPage("bots");
     setSettingsBotAddRequestKey((current) => current + 1);
@@ -3134,15 +3148,18 @@ function App() {
               onChangeLanguage: changeLanguagePreference,
               onChangeObservability: changeObservabilityConfig,
               onChangeTheme: changeThemePreference,
+              onChangeToolHub: changeToolHubConfig,
               onChangeTrayBalanceProgress: changeTrayBalanceProgress,
               onChangeTrayIcon: changeTrayIconPreference,
               onChangeTrayWidgets: changeTrayWidgets,
               onClose: () => setSettingsOpen(false),
               observability: draftConfig.observability,
               profiles: draftConfig.profile.profiles,
+              providers: draftConfig.Providers,
               systemLanguage,
               systemTheme,
               themePreference: draftConfig.theme || "system",
+              toolHub: draftConfig.toolHub,
               providerAccountSnapshots,
               trayBalanceProgress: normalizeTrayBalanceProgressConfig(draftConfig.trayBalanceProgress),
               trayIconPreference: draftConfig.trayIcon || "random",

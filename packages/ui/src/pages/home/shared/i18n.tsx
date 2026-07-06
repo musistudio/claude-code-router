@@ -28,6 +28,14 @@ export type AppCopy = {
     themeDark: string;
     themeLight: string;
     themeSystem: string;
+    toolHub: string;
+    toolHubDescription: string;
+    toolHubEnabled: string;
+    toolHubEnabledDescription: string;
+    toolHubMaxTools: string;
+    toolHubModel: string;
+    toolHubModelPlaceholder: string;
+    toolHubTimeout: string;
     tray: string;
     trayBalanceProgressAccount: string;
     trayBalanceProgressData: string;
@@ -130,6 +138,14 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       themeDark: "Dark",
       themeLight: "Light",
       themeSystem: "System",
+      toolHub: "ToolHub",
+      toolHubDescription: "Route configured MCP servers through ToolHub, where the model finds the tools needed for each task.",
+      toolHubEnabled: "Enable ToolHub",
+      toolHubEnabledDescription: "Expose a compact ToolHub MCP server instead of all configured MCP tools.",
+      toolHubMaxTools: "Max tools",
+      toolHubModel: "Resolver model",
+      toolHubModelPlaceholder: "Select a configured model",
+      toolHubTimeout: "Timeout ms",
       tray: "Tray",
       trayBalanceProgressAccount: "Account",
       trayBalanceProgressData: "Data",
@@ -401,8 +417,11 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
 	      "Add custom MCP tool": "Add custom MCP tool",
 	      "Custom MCP tool": "Custom MCP tool",
 	      "Discover tools": "Discover tools",
+      "Import MCP JSON": "Import MCP JSON",
+      "MCP JSON": "MCP JSON",
 	      "MCP tools": "MCP tools",
 	      "MCP server": "MCP server",
+      "MCP server name already exists.": "MCP server name already exists.",
       "Arguments": "Arguments",
       "Working directory": "Working directory",
       "API key env": "API key env",
@@ -412,6 +431,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Tool name is required.": "Tool name is required.",
 	      "Environment variable keys are required when values are set.": "Environment variable keys are required when values are set.",
 	      "MCP tool discovery is available in the Electron app.": "MCP tool discovery is available in the Electron app.",
+      "No MCP servers found in JSON.": "No MCP servers found in JSON.",
 	      "No MCP servers configured": "No MCP servers configured",
 	      "No tools discovered": "No tools discovered",
 	      "No tools available": "No tools available",
@@ -474,6 +494,14 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       themeDark: "暗色",
       themeLight: "亮色",
       themeSystem: "跟随系统",
+      toolHub: "ToolHub",
+      toolHubDescription: "将已配置的 MCP servers 交给 ToolHub，由模型负责检索需要的工具。",
+      toolHubEnabled: "启用 ToolHub",
+      toolHubEnabledDescription: "向 Agent 暴露紧凑的 ToolHub MCP，而不是所有已配置 MCP 工具。",
+      toolHubMaxTools: "最大工具数",
+      toolHubModel: "检索模型",
+      toolHubModelPlaceholder: "选择已配置模型",
+      toolHubTimeout: "超时毫秒",
       tray: "Tray",
       trayBalanceProgressAccount: "账户",
       trayBalanceProgressData: "数据",
@@ -1268,13 +1296,17 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
 	      "Add custom MCP tool": "添加自定义 MCP 工具",
 	      "Custom MCP tool": "自定义 MCP 工具",
 	      "Discover tools": "发现工具",
+      "Import MCP JSON": "导入 MCP JSON",
+      "MCP JSON": "MCP JSON",
 	      "MCP server": "MCP 服务",
+      "MCP server name already exists.": "MCP 服务名称已存在。",
       "Arguments": "参数",
       "Working directory": "工作目录",
       "API key env": "API Key 环境变量",
 	      "Third-party tool environment": "三方工具环境变量",
 	      "Environment variable keys are required when values are set.": "设置变量值时必须填写变量名。",
 	      "MCP tool discovery is available in the Electron app.": "MCP 工具发现仅在 Electron App 中可用。",
+      "No MCP servers found in JSON.": "JSON 中未找到 MCP 服务。",
 	      "Image recognition": "图片识别",
       "Image recognition and Web Search": "图片识别和 Web Search",
       "Generic image understanding tool for OCR, screenshot analysis, chart reading, UI comparison, error diagnosis, and other multi-image tasks.": "通用图片理解工具，支持 OCR、截图分析、图表解读、UI 对比、错误诊断等多图任务。",

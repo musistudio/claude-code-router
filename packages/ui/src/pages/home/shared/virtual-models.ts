@@ -1229,7 +1229,7 @@ export function normalizeMcpServers(value: unknown): GatewayMcpServerConfig[] {
 }
 
 export function createMcpServerDraftFromUnknown(value: Record<string, unknown>): McpServerDraft {
-  const transport = parseMcpServerTransportValue(value.transport);
+  const transport = parseMcpServerTransportValue(value.transport ?? value.type);
   const remote = transport !== "stdio";
   return {
     apiKey: stringValue(value.apiKey) ?? "",
@@ -1264,7 +1264,7 @@ export function parseMcpServerTransportValue(value: unknown): GatewayMcpServerTr
   if (normalized === "sse") {
     return "sse";
   }
-  if (normalized === "streamable-http" || normalized === "streamble-http" || normalized === "websocket") {
+  if (normalized === "http" || normalized === "streamable-http" || normalized === "streamablehttp" || normalized === "streamble-http" || normalized === "websocket") {
     return "streamable-http";
   }
   return "stdio";

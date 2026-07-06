@@ -11,6 +11,7 @@ import { launchCodexAppProfile, launchZcodeAppProfile, refreshCodexCompatibleApp
 import { codexCliMiddlewareRuntimeScript } from "@ccr/core/agents/codex/cli-middleware-runtime";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { gatewayService } from "@ccr/core/gateway/service";
+import { TOOL_HUB_MCP_RUNTIME_FILE_NAME, bundledToolHubMcpEntryPathCandidates } from "@ccr/core/mcp/toolhub-config";
 import { buildProfileLaunchPlan, findProfileForOpen, profileLaunchSpawnCommand, profileOpenCommand, resolveClaudeCodeSettingsFile, resolveProfileOpenSurface } from "@ccr/core/profiles/launch-core";
 import { applyProfileConfig, cleanupGeneratedBinBackups } from "@ccr/core/profiles/service";
 import { broadcastWindowsEnvironmentChanged, windowsSystemCommand } from "@ccr/core/platform/windows-system";
@@ -1099,6 +1100,7 @@ export function ensureCcrCliLauncher(): string {
   const runtimeSource = findBundledCcrCliSource();
   writeFileIfChanged(runtimeFile, readFileSync(runtimeSource, "utf8"));
   chmodSafe(runtimeFile);
+  ensureBundledToolHubMcpRuntime(path.join(binDir, TOOL_HUB_MCP_RUNTIME_FILE_NAME));
 
   const launcherFile = path.join(binDir, process.platform === "win32" ? `${desktopCliCommandName}.cmd` : desktopCliCommandName);
   const launcherContent = process.platform === "win32"
@@ -1151,6 +1153,15 @@ function findBundledCcrCliSource(): string {
     throw new Error(`CCR CLI runtime was not found. Rebuild or reinstall CCR and try again. Checked: ${candidates.join(", ")}`);
   }
   return source;
+}
+
+function ensureBundledToolHubMcpRuntime(file: string): void {
+  const source = bundledToolHubMcpEntryPathCandidates().find((candidate) => existsSync(candidate));
+  if (!source) {
+    return;
+  }
+  writeFileIfChanged(file, readFileSync(source, "utf8"));
+  chmodSafe(file);
 }
 
 function posixCcrLauncher(runtimeFile: string): string {

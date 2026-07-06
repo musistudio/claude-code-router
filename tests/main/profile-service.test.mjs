@@ -16,7 +16,8 @@ test("profile service cleans stale generated bin backups only", () => {
       "ccr-claude-code-api-key-default.ccr-backup-2026-01-01T00-00-00-000Z",
       "ccr-claude-code-wrapper-default.ccr-original",
       "ccr-codex-cli-stdio-default.ccr-original-missing",
-      "ccr-codex-cli-middleware.js.ccr-backup-2026-01-01T00-00-00-000Z"
+      "ccr-codex-cli-middleware.js.ccr-backup-2026-01-01T00-00-00-000Z",
+      "toolhub-mcp.js.ccr-backup-2026-01-01T00-00-00-000Z"
     ];
     const keptFiles = [
       "custom-tool.ccr-backup-2026-01-01T00-00-00-000Z",
@@ -46,7 +47,8 @@ test("profile service overwrites generated bin files without creating backups", 
   const generatedFiles = [
     path.join(binDir, `ccr-claude-code-api-key-${profileId}${commandExtension}`),
     path.join(binDir, `ccr-claude-code-wrapper-${profileId}${commandExtension}`),
-    path.join(binDir, "ccr-codex-cli-middleware.js")
+    path.join(binDir, "ccr-codex-cli-middleware.js"),
+    path.join(binDir, "toolhub-mcp.js")
   ];
   for (const file of generatedFiles) {
     writeFileSync(file, "old generated content\n");
@@ -66,6 +68,23 @@ test("profile service overwrites generated bin files without creating backups", 
     }
   ];
   config.preferredProvider = "Provider";
+  config.toolHub = {
+    ...config.toolHub,
+    enabled: true,
+    llm: {
+      ...config.toolHub.llm,
+      apiKey: "resolver-key",
+      baseUrl: "https://example.test/v1",
+      model: "model"
+    },
+    mcpServers: [
+      {
+        command: "node",
+        name: "backend",
+        transport: "stdio"
+      }
+    ]
+  };
   config.APIKEY = "ccr-profile-test";
   config.APIKEYS = [
     {
@@ -96,14 +115,172 @@ test("profile service overwrites generated bin files without creating backups", 
   for (const file of generatedFiles) {
     assert.notEqual(readFileSync(file, "utf8"), "old generated content\n");
   }
+  const toolHubMcpConfigFile = path.join(CONFIGDIR, "profiles", profileId, "claude", "toolhub-mcp.json");
+  const toolHubMcpConfig = JSON.parse(readFileSync(toolHubMcpConfigFile, "utf8"));
+  const toolHubMcpServerEnv = toolHubMcpConfig.mcpServers["ccr-toolhub"].env;
+  assert.equal(toolHubMcpServerEnv.TOOLHUB_OPENAI_API_KEY, "ccr-profile-test");
+  assert.equal(toolHubMcpServerEnv.TOOLHUB_OPENAI_BASE_URL, `http://127.0.0.1:${config.gateway.port}/v1`);
+  assert.equal(toolHubMcpServerEnv.TOOLHUB_OPENAI_MODEL, "Provider/model");
   const backupEntries = readdirSync(binDir).filter((entry) =>
     (
       entry.startsWith(`ccr-claude-code-api-key-${profileId}`) ||
       entry.startsWith(`ccr-claude-code-wrapper-${profileId}`) ||
-      entry.startsWith("ccr-codex-cli-middleware.js")
+      entry.startsWith("ccr-codex-cli-middleware.js") ||
+      entry.startsWith("toolhub-mcp.js")
     ) && entry.includes(".ccr-")
   );
   assert.deepEqual(backupEntries, []);
+});
+
+test("profile service injects ToolHub MCP into Codex config", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const profileId = "codex-toolhub-test";
+  const config = createDefaultAppConfig({
+    generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
+  });
+  config.Providers = [
+    {
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      models: ["model"],
+      name: "Provider"
+    }
+  ];
+  config.preferredProvider = "Provider";
+  config.toolHub = {
+    ...config.toolHub,
+    enabled: true,
+    llm: {
+      ...config.toolHub.llm,
+      apiKey: "resolver-key",
+      baseUrl: "https://example.test/v1",
+      model: "model"
+    },
+    mcpServers: [
+      {
+        command: "node",
+        name: "backend",
+        transport: "stdio"
+      }
+    ]
+  };
+  config.APIKEY = "ccr-codex-profile-test";
+  config.APIKEYS = [
+    {
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: `profile:${profileId}`,
+      key: "ccr-codex-profile-test",
+      name: "Profile: Codex ToolHub Test"
+    }
+  ];
+  config.profile.profiles = [
+    {
+      agent: "codex",
+      cliMiddleware: false,
+      codexCliPath: "",
+      codexHome: "",
+      configFile: "",
+      configFormat: "legacy",
+      enabled: true,
+      env: {},
+      id: profileId,
+      model: "Provider/model",
+      name: "Codex ToolHub Test",
+      providerId: "claude-code-router",
+      providerName: "Claude Code Router",
+      scope: "ccr",
+      showAllSessions: false,
+      surface: "auto"
+    }
+  ];
+
+  const result = await applyProfileConfig(config);
+  assert.equal(result.clients.length, 1);
+  assert.equal(result.clients[0].ok, true);
+
+  const configFile = path.join(CONFIGDIR, "profiles", profileId, "codex", "config.toml");
+  const content = readFileSync(configFile, "utf8");
+  assert.match(content, /# BEGIN CCR managed ToolHub MCP/);
+  assert.match(content, /\[mcp_servers\.ccr-toolhub\]/);
+  assert.equal(content.includes(`command = ${JSON.stringify(process.execPath)}`), true);
+  assert.equal(content.includes(`args = [${JSON.stringify(path.join(CONFIGDIR, "bin", "toolhub-mcp.js"))}]`), true);
+  assert.match(content, /\[mcp_servers\.ccr-toolhub\.env\]/);
+  assert.match(content, /TOOLHUB_OPENAI_API_KEY = "ccr-codex-profile-test"/);
+  assert.match(content, new RegExp(`TOOLHUB_OPENAI_BASE_URL = "http://127\\.0\\.0\\.1:${config.gateway.port}/v1"`));
+  assert.match(content, /TOOLHUB_OPENAI_MODEL = "Provider\/model"/);
+});
+
+test("profile service clears stale Claude Code ToolHub artifacts when no gateway models are available", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const profileId = "stale-toolhub-no-models";
+  const settingsFile = path.join(CONFIGDIR, "profiles", profileId, "claude", "settings.json");
+  const toolHubMcpConfigFile = path.join(CONFIGDIR, "profiles", profileId, "claude", "toolhub-mcp.json");
+  const staleSettingsFile = path.join(CONFIGDIR, "profiles", "old-claude-code", "claude", "settings.json");
+  const staleToolHubMcpConfigFile = path.join(CONFIGDIR, "profiles", "old-claude-code", "claude", "toolhub-mcp.json");
+  mkdirSync(path.dirname(settingsFile), { recursive: true });
+  mkdirSync(path.dirname(toolHubMcpConfigFile), { recursive: true });
+  mkdirSync(path.dirname(staleSettingsFile), { recursive: true });
+  writeFileSync(settingsFile, `${JSON.stringify({
+    env: {
+      CCR_CLAUDE_CODE_MCP_CONFIG: toolHubMcpConfigFile,
+      CODEXL_CLAUDE_CODE_MCP_CONFIG: toolHubMcpConfigFile,
+      ENABLE_TOOL_SEARCH: "true",
+      USER_VALUE: "kept"
+    },
+    theme: "dark"
+  }, null, 2)}\n`);
+  writeFileSync(toolHubMcpConfigFile, `${JSON.stringify({
+    mcpServers: {
+      "ccr-toolhub": {
+        args: [path.join(CONFIGDIR, "bin", "toolhub-mcp.js")],
+        command: "node",
+        env: {
+          TOOLHUB_OPENAI_BASE_URL: "https://api.deepseek.com",
+          TOOLHUB_OPENAI_MODEL: "deepseek-v4-flash"
+        }
+      }
+    }
+  }, null, 2)}\n`);
+  writeFileSync(staleSettingsFile, `${JSON.stringify({
+    env: {
+      CCR_CLAUDE_CODE_MCP_CONFIG: staleToolHubMcpConfigFile,
+      ENABLE_TOOL_SEARCH: "true",
+      USER_VALUE: "old-kept"
+    }
+  }, null, 2)}\n`);
+  writeFileSync(staleToolHubMcpConfigFile, "{}\n");
+
+  const config = createDefaultAppConfig({
+    generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
+  });
+  config.Providers = [];
+  config.virtualModelProfiles = [];
+  config.profile.profiles = [
+    {
+      agent: "claude-code",
+      enabled: true,
+      env: {},
+      id: profileId,
+      model: "",
+      name: "Claude Code",
+      scope: "ccr",
+      settingsFile,
+      smallFastModel: "",
+      surface: "auto"
+    }
+  ];
+
+  const result = await applyProfileConfig(config);
+  assert.equal(result.clients.length, 1);
+  assert.equal(result.clients[0].ok, false);
+  assert.equal(existsSync(toolHubMcpConfigFile), false);
+  assert.equal(existsSync(staleToolHubMcpConfigFile), false);
+  const settings = JSON.parse(readFileSync(settingsFile, "utf8"));
+  assert.deepEqual(settings.env, {
+    USER_VALUE: "kept"
+  });
+  const staleSettings = JSON.parse(readFileSync(staleSettingsFile, "utf8"));
+  assert.deepEqual(staleSettings.env, {
+    USER_VALUE: "old-kept"
+  });
 });
 
 test("profile service restores managed global Claude settings when only CCR-scoped Claude profiles are active", () => {

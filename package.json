@@ -61,6 +61,7 @@
     "better-sqlite3": "^12.11.1",
     "electron-updater": "^6.8.9",
     "node-forge": "^1.4.0",
+    "openai": "^6.27.0",
     "undici": "^7.27.2"
   },
   "devDependencies": {

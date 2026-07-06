@@ -5,18 +5,34 @@ import path from "node:path";
 import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, enforceSingleEnabledGlobalProfilePerAgent, hasAvailableGatewayModels, type ApiKeyConfig, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "@ccr/core/contracts/app";
 import { replacePersistedApiKeys } from "@ccr/core/config/api-key-store";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
-import { claudeCodeUtcTimezoneEnvOverride } from "@ccr/core/agents/claude-code/environment";
+import {
+  CLAUDE_CODE_ENABLE_TOOL_SEARCH_ENV,
+  CLAUDE_CODE_MCP_CONFIG_ENV,
+  CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV,
+  claudeCodeMcpConfigEnv,
+  claudeCodeUtcTimezoneEnvOverride
+} from "@ccr/core/agents/claude-code/environment";
 import { writeCodexCompatibleAppModelCatalog } from "@ccr/core/agents/codex/app-launch";
 import { codexCliMiddlewareRuntimeScript } from "@ccr/core/agents/codex/cli-middleware-runtime";
 import { codexModelCatalogJson } from "@ccr/core/agents/codex/model-catalog";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { resolveZcodeConfigFile, writeZcodeGatewayConfig, zcodeHomeFromConfigFile } from "@ccr/core/agents/zcode/profile-config";
 import { normalizeRouteSelector } from "@ccr/core/gateway/claude-code-router-plugin";
+import {
+  TOOL_HUB_MCP_RUNTIME_FILE_NAME,
+  TOOL_HUB_MCP_SERVER_NAME,
+  bundledToolHubMcpEntryPathCandidates,
+  toolHubClaudeCodeMcpConfig,
+  toolHubMcpRuntimeConfig,
+  type ToolHubMcpRuntimeConfig
+} from "@ccr/core/mcp/toolhub-config";
 
 const managedRootStart = "# BEGIN CCR managed profile";
 const managedRootEnd = "# END CCR managed profile";
 const managedProviderStart = "# BEGIN CCR managed Codex provider";
 const managedProviderEnd = "# END CCR managed Codex provider";
+const managedToolHubMcpStart = "# BEGIN CCR managed ToolHub MCP";
+const managedToolHubMcpEnd = "# END CCR managed ToolHub MCP";
 const originalBackupSuffix = ".ccr-original";
 const originalMissingSuffix = ".ccr-original-missing";
 const fallbackClientToken = "ccr-local";
@@ -41,11 +57,26 @@ export async function applyProfileConfig(config: AppConfig): Promise<ProfileAppl
   }
 
   if (!hasAvailableGatewayModels(config)) {
-    result.clients = profiles.map((profile) =>
-      profile.enabled
+    const managedCleanupResult = cleanupManagedClaudeCodeToolHubArtifacts(profiles, { includeActive: true });
+    result.clients = profiles.map((profile) => {
+      const cleanupResult = profile.agent === "claude-code"
+        ? cleanupClaudeCodeToolHubArtifacts(profile)
+        : { ok: true };
+      const status = profile.enabled
         ? unavailableModelStatus(profile, profilePath(profile))
-        : disabledProfileStatus(profile)
-    );
+        : disabledProfileStatus(profile);
+      const cleanupMessage = [managedCleanupResult, cleanupResult]
+        .filter((item) => !item.ok)
+        .map((item) => item.message)
+        .filter(Boolean)
+        .join("; ");
+      return cleanupMessage
+        ? {
+            ...status,
+            message: `${status.message} Failed to clean stale ToolHub config: ${cleanupMessage}`
+          }
+        : status;
+    });
     return result;
   }
 
@@ -61,8 +92,131 @@ export async function applyProfileConfig(config: AppConfig): Promise<ProfileAppl
           : applyCodexProfile(config, profile, token, appliedAt)
     );
   }
+  cleanupManagedClaudeCodeToolHubArtifacts(profiles, { includeActive: false });
   result.clients.push(...restoreInactiveGlobalProfileConfigs(profiles));
   return result;
+}
+
+function cleanupManagedClaudeCodeToolHubArtifacts(
+  profiles: ProfileConfig[],
+  options: { includeActive: boolean }
+): { changed?: boolean; message?: string; ok: boolean } {
+  const activeToolHubFiles = new Set(profiles
+    .filter((profile) => profile.agent === "claude-code")
+    .map((profile) => normalizedFileKey(claudeCodeToolHubMcpConfigFile(profile))));
+  const activeGeneratedSettingsFiles = new Set(profiles
+    .filter((profile) => profile.agent === "claude-code" && isGeneratedProfileScope(profile.scope))
+    .map((profile) => normalizedFileKey(resolveClaudeCodeSettingsFile(profile))));
+  const errors: string[] = [];
+  let changed = false;
+
+  for (const file of managedClaudeCodeToolHubMcpConfigFiles()) {
+    if (!options.includeActive && activeToolHubFiles.has(normalizedFileKey(file))) {
+      continue;
+    }
+    try {
+      rmSync(file, { force: true });
+      changed = true;
+    } catch (error) {
+      errors.push(`${file}: ${formatError(error)}`);
+    }
+  }
+
+  for (const file of managedClaudeCodeSettingsFiles()) {
+    if (!options.includeActive && activeGeneratedSettingsFiles.has(normalizedFileKey(file))) {
+      continue;
+    }
+    try {
+      changed = cleanupClaudeCodeToolHubSettingsFile(file, { backup: false }).changed || changed;
+    } catch (error) {
+      errors.push(`${file}: ${formatError(error)}`);
+    }
+  }
+
+  return errors.length > 0
+    ? { changed, message: errors.join("; "), ok: false }
+    : { changed, ok: true };
+}
+
+function managedClaudeCodeToolHubMcpConfigFiles(): string[] {
+  return managedClaudeCodeGeneratedFiles("toolhub-mcp.json");
+}
+
+function managedClaudeCodeSettingsFiles(): string[] {
+  return managedClaudeCodeGeneratedFiles("settings.json");
+}
+
+function managedClaudeCodeGeneratedFiles(fileName: string): string[] {
+  const profilesDir = path.join(CONFIGDIR, "profiles");
+  let entries;
+  try {
+    entries = readdirSync(profilesDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const files: string[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const profileDir = path.join(profilesDir, entry.name);
+    for (const file of [
+      path.join(profileDir, "claude", fileName),
+      path.join(profileDir, "custom", "claude", fileName)
+    ]) {
+      if (existsSync(file)) {
+        files.push(file);
+      }
+    }
+  }
+  return files;
+}
+
+function normalizedFileKey(file: string): string {
+  const normalized = path.resolve(file);
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+function cleanupClaudeCodeToolHubSettingsFile(file: string, options: { backup: boolean }): { changed: boolean } {
+  const settings = readJsonObject(file);
+  const env = isRecord(settings.env) ? { ...settings.env } : {};
+  if (!deleteClaudeCodeToolHubEnv(env)) {
+    return { changed: false };
+  }
+  const content = `${JSON.stringify({ ...settings, env }, null, 2)}\n`;
+  const writeResult = options.backup
+    ? writeFileWithBackup(file, content, { mode: privateFileMode })
+    : writeGeneratedFileIfChanged(file, content, { mode: privateFileMode });
+  return { changed: writeResult.changed };
+}
+
+function deleteClaudeCodeToolHubEnv(env: Record<string, unknown>): boolean {
+  let changed = false;
+  for (const key of [CLAUDE_CODE_ENABLE_TOOL_SEARCH_ENV, CLAUDE_CODE_MCP_CONFIG_ENV, CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV]) {
+    if (key in env) {
+      delete env[key];
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function cleanupClaudeCodeToolHubArtifacts(profile: ProfileConfig): { changed?: boolean; message?: string; ok: boolean } {
+  try {
+    let changed = false;
+    const mcpConfigFile = claudeCodeToolHubMcpConfigFile(profile);
+    if (existsSync(mcpConfigFile)) {
+      rmSync(mcpConfigFile, { force: true });
+      changed = true;
+    }
+    changed = cleanupClaudeCodeToolHubSettingsFile(resolveClaudeCodeSettingsFile(profile), { backup: true }).changed || changed;
+    return { changed, ok: true };
+  } catch (error) {
+    return {
+      message: formatError(error),
+      ok: false
+    };
+  }
 }
 
 export function applyProfileRuntimeConfig(config: AppConfig, profile: ProfileConfig, token: string): ProfileClientApplyStatus {
@@ -84,8 +238,12 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
   try {
     const endpoint = gatewayEndpoint(config);
     const settings = readJsonObject(settingsFile);
+    const settingsEnv = withoutBotGatewayEnv(Object.fromEntries(stringRecord(settings.env)));
+    delete settingsEnv[CLAUDE_CODE_ENABLE_TOOL_SEARCH_ENV];
+    delete settingsEnv[CLAUDE_CODE_MCP_CONFIG_ENV];
+    delete settingsEnv[CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV];
     const env = {
-      ...withoutBotGatewayEnv(Object.fromEntries(stringRecord(settings.env))),
+      ...settingsEnv,
       ...profileEnv(profile)
     };
     env.ANTHROPIC_BASE_URL = endpoint;
@@ -108,17 +266,18 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
     } else {
       delete env.ANTHROPIC_SMALL_FAST_MODEL;
     }
-    Object.assign(env, claudeCodeUtcTimezoneEnvOverride());
+    const toolHubMcpConfigResult = writeClaudeCodeToolHubMcpConfig(config, profile, token);
+    Object.assign(env, claudeCodeMcpConfigEnv(toolHubMcpConfigResult.file), claudeCodeUtcTimezoneEnvOverride());
 
     const helperResult = writeClaudeCodeApiKeyHelper(profile, token);
-    const wrapperResult = writeClaudeCodeWrapper(config, profile, helperResult.file);
+    const wrapperResult = writeClaudeCodeWrapper(config, profile, helperResult.file, toolHubMcpConfigResult.file);
     const nextSettings = {
       ...settings,
       apiKeyHelper: process.platform === "win32" ? `"${helperResult.file}"` : helperResult.file,
       env
     };
     const writeResult = writeFileWithBackup(settingsFile, `${JSON.stringify(nextSettings, null, 2)}\n`, { mode: privateFileMode });
-    const changed = writeResult.changed || helperResult.changed || wrapperResult.changed;
+    const changed = writeResult.changed || helperResult.changed || wrapperResult.changed || toolHubMcpConfigResult.changed;
     return {
       appliedAt,
       backupFile: writeResult.backupFile ?? helperResult.backupFile ?? wrapperResult.backupFile,
@@ -164,6 +323,7 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
     const modelCatalogResult = writeFileWithBackup(modelCatalogFile, codexModelCatalogJson(config, model));
     const appModelCatalogResult = writeCodexCompatibleAppModelCatalog(CONFIGDIR, { ...profile, model }, config);
     const showAllSessions = profile.agent === "zcode" ? false : Boolean(profile.showAllSessions);
+    const toolHubMcpResult = writeCodexToolHubMcpRuntimeConfig(config, token);
     const nextConfig = buildCodexConfigToml(source, {
       baseUrl: endpoint,
       modelCatalogFile,
@@ -172,7 +332,8 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
       providerId,
       providerName,
       showAllSessions,
-      token
+      token,
+      toolHubMcp: toolHubMcpResult.runtime
     });
     const writeResult = writeFileWithBackup(configFile, nextConfig, { mode: privateFileMode });
     const separateProfileResult = maybeWriteSeparateCodexProfileFile(configFile, source, {
@@ -193,11 +354,13 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
     const changed = writeResult.changed ||
       modelCatalogResult.changed ||
       appModelCatalogResult.changed ||
+      toolHubMcpResult.changed ||
       Boolean(separateProfileResult?.changed) ||
       Boolean(middlewareResult?.changed);
     const extras = [
       modelCatalogFile ? `catalog ${modelCatalogFile}` : "",
       appModelCatalogResult.file ? `app catalog ${appModelCatalogResult.file}` : "",
+      toolHubMcpResult.file ? `toolhub runtime ${toolHubMcpResult.file}` : "",
       separateProfileResult?.file ? `profile ${separateProfileResult.file}` : "",
       middlewareResult?.file ? `middleware ${middlewareResult.file}` : ""
     ].filter(Boolean);
@@ -343,6 +506,64 @@ function resolveClaudeCodeSettingsFile(profile: ProfileConfig): string {
   return resolveUserPath(profile.settingsFile || "~/.claude/settings.json");
 }
 
+function claudeCodeToolHubMcpConfigFile(profile: ProfileConfig): string {
+  return path.join(ccrManagedProfileDir(profile), "claude", "toolhub-mcp.json");
+}
+
+function writeClaudeCodeToolHubMcpConfig(config: AppConfig, profile: ProfileConfig, token: string): { changed: boolean; file?: string } {
+  const file = claudeCodeToolHubMcpConfigFile(profile);
+  const entryPath = path.join(CONFIGDIR, "bin", TOOL_HUB_MCP_RUNTIME_FILE_NAME);
+  const mcpConfig = toolHubClaudeCodeMcpConfig(config, {
+    entryPath,
+    resolver: {
+      apiKey: token,
+      baseUrl: `${gatewayEndpoint(config).replace(/\/+$/g, "")}/v1`,
+      model: toolHubResolverModel(config)
+    }
+  });
+  if (!mcpConfig) {
+    if (existsSync(file)) {
+      rmSync(file, { force: true });
+      return { changed: true };
+    }
+    return { changed: false };
+  }
+
+  const runtimeResult = ensureToolHubMcpRuntimeFile(entryPath);
+  const writeResult = writeGeneratedFileIfChanged(file, `${JSON.stringify(mcpConfig, null, 2)}\n`, { mode: privateFileMode });
+  return { changed: runtimeResult.changed || writeResult.changed, file };
+}
+
+function writeCodexToolHubMcpRuntimeConfig(config: AppConfig, token: string): { changed: boolean; file?: string; runtime?: ToolHubMcpRuntimeConfig } {
+  const entryPath = path.join(CONFIGDIR, "bin", TOOL_HUB_MCP_RUNTIME_FILE_NAME);
+  const runtime = toolHubMcpRuntimeConfig(config, undefined, {
+    entryPath,
+    resolver: {
+      apiKey: token,
+      baseUrl: `${gatewayEndpoint(config).replace(/\/+$/g, "")}/v1`,
+      model: toolHubResolverModel(config)
+    }
+  });
+  if (!runtime) {
+    return { changed: false };
+  }
+
+  const runtimeResult = ensureToolHubMcpRuntimeFile(entryPath);
+  return {
+    changed: runtimeResult.changed,
+    file: entryPath,
+    runtime
+  };
+}
+
+function ensureToolHubMcpRuntimeFile(file: string): { changed: boolean } {
+  const source = bundledToolHubMcpEntryPathCandidates().find((candidate) => existsSync(candidate));
+  if (!source) {
+    throw new Error(`ToolHub MCP runtime was not found. Rebuild or reinstall CCR and try again. Checked: ${bundledToolHubMcpEntryPathCandidates().join(", ")}`);
+  }
+  return writeGeneratedFileIfChanged(file, readFileSync(source, "utf8"), { mode: publicExecutableMode });
+}
+
 function resolveCodexConfigFile(profile: ProfileConfig): string {
   if (profile.agent === "zcode") {
     return resolveZcodeConfigFile(profile);
@@ -382,11 +603,14 @@ function buildCodexConfigToml(
     providerName: string;
     showAllSessions: boolean;
     token: string;
+    toolHubMcp?: ToolHubMcpRuntimeConfig;
   }
 ): string {
   let content = removeManagedBlock(source, managedRootStart, managedRootEnd);
   content = removeManagedBlock(content, managedProviderStart, managedProviderEnd);
+  content = removeManagedBlock(content, managedToolHubMcpStart, managedToolHubMcpEnd);
   content = removeCodexProviderTable(content, values.providerId);
+  content = removeCodexMcpServerTable(content, TOOL_HUB_MCP_SERVER_NAME);
   if (values.configFormat === "separate_profile_files") {
     content = removeCodexProfileTable(content, values.providerId);
   }
@@ -415,8 +639,29 @@ function buildCodexConfigToml(
     managedProviderEnd,
     ""
   ].join("\n");
+  const toolHubMcpBlock = buildCodexToolHubMcpBlock(values.toolHubMcp);
 
-  return `${rootBlock}${trimLeadingBlankLines(cleanedRoot)}${restSource}${providerBlock}`.replace(/\n{4,}/g, "\n\n\n");
+  return `${rootBlock}${trimLeadingBlankLines(cleanedRoot)}${restSource}${providerBlock}${toolHubMcpBlock}`.replace(/\n{4,}/g, "\n\n\n");
+}
+
+function buildCodexToolHubMcpBlock(runtime: ToolHubMcpRuntimeConfig | undefined): string {
+  if (!runtime) {
+    return "";
+  }
+
+  const serverTable = `mcp_servers.${tomlKey(TOOL_HUB_MCP_SERVER_NAME)}`;
+  return [
+    "",
+    managedToolHubMcpStart,
+    `[${serverTable}]`,
+    `command = ${tomlString(runtime.command)}`,
+    `args = ${tomlStringArray(runtime.args)}`,
+    "",
+    `[${serverTable}.env]`,
+    ...Object.entries(runtime.env).map(([key, value]) => `${tomlKey(key)} = ${tomlString(value)}`),
+    managedToolHubMcpEnd,
+    ""
+  ].join("\n");
 }
 
 function maybeWriteSeparateCodexProfileFile(
@@ -503,15 +748,15 @@ function claudeCodeApiKeyHelperCmdScript(token: string): string {
   ].join("\r\n");
 }
 
-function writeClaudeCodeWrapper(config: AppConfig, profile: ProfileConfig, apiKeyHelperFile: string): { backupFile?: string; changed: boolean; file: string } {
+function writeClaudeCodeWrapper(config: AppConfig, profile: ProfileConfig, apiKeyHelperFile: string, mcpConfigFile: string | undefined): { backupFile?: string; changed: boolean; file: string } {
   const binDir = path.join(CONFIGDIR, "bin");
   mkdirSync(binDir, { mode: privateDirMode, recursive: true });
   const runtimeFile = path.join(binDir, codexMiddlewareRuntimeFilename());
   const runtimeResult = writeGeneratedFileIfChanged(runtimeFile, codexCliMiddlewareRuntimeScript(), { mode: publicExecutableMode });
   const file = path.join(binDir, claudeCodeWrapperFilename(profile));
   const content = process.platform === "win32"
-    ? claudeCodeWrapperCmdScript(config, profile, runtimeFile, apiKeyHelperFile)
-    : claudeCodeWrapperShellScript(config, profile, runtimeFile, apiKeyHelperFile);
+    ? claudeCodeWrapperCmdScript(config, profile, runtimeFile, apiKeyHelperFile, mcpConfigFile)
+    : claudeCodeWrapperShellScript(config, profile, runtimeFile, apiKeyHelperFile, mcpConfigFile);
   const writeResult = writeGeneratedFileIfChanged(file, content, { mode: privateExecutableMode });
   return {
     changed: writeResult.changed || runtimeResult.changed,
@@ -526,7 +771,7 @@ function claudeCodeWrapperFilename(profile: ProfileConfig): string {
     : `ccr-claude-code-wrapper-${slug}`;
 }
 
-function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig, runtimeFile: string, apiKeyHelperFile: string): string {
+function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig, runtimeFile: string, apiKeyHelperFile: string, mcpConfigFile: string | undefined): string {
   const realClaude = profile.env?.CCR_CLAUDE_CODE_BIN?.trim() || "claude";
   const surface = normalizeProfileSurface(profile.surface);
   const remoteEndpoint = `${gatewayEndpoint(config)}/__ccr/remote`;
@@ -539,6 +784,7 @@ function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig,
     "#!/bin/sh",
     ...envExports,
     ...shellEnvExports(claudeCodeRuntimeEnv(config, profile, settingsDir)),
+    ...shellEnvExports(claudeCodeMcpConfigEnv(mcpConfigFile)),
     ...shellEnvExports(claudeCodeUtcTimezoneEnvOverride()),
     `: "\${CCR_PROFILE_SURFACE:=${surface}}"`,
     "export CCR_PROFILE_SURFACE",
@@ -557,7 +803,7 @@ function claudeCodeWrapperShellScript(config: AppConfig, profile: ProfileConfig,
   ].join("\n");
 }
 
-function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, runtimeFile: string, apiKeyHelperFile: string): string {
+function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, runtimeFile: string, apiKeyHelperFile: string, mcpConfigFile: string | undefined): string {
   const realClaude = profile.env?.CCR_CLAUDE_CODE_BIN?.trim() || "claude";
   const surface = normalizeProfileSurface(profile.surface);
   const remoteEndpoint = `${gatewayEndpoint(config)}/__ccr/remote`;
@@ -570,6 +816,7 @@ function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, r
     "@echo off",
     ...envExports,
     ...cmdEnvExports(claudeCodeRuntimeEnv(config, profile, settingsDir)),
+    ...cmdEnvExports(claudeCodeMcpConfigEnv(mcpConfigFile)),
     ...cmdEnvExports(claudeCodeUtcTimezoneEnvOverride()),
     `if not defined CCR_PROFILE_SURFACE ${cmdSetLine("CCR_PROFILE_SURFACE", surface)}`,
     ...botEnvExports,
@@ -920,6 +1167,31 @@ function removeCodexProfileTable(source: string, providerId: string): string {
   return removeTomlTable(source, "profiles", providerId);
 }
 
+function removeCodexMcpServerTable(source: string, serverName: string): string {
+  const lines = source.split(/(?<=\n)/);
+  const headers = new Set([
+    `[mcp_servers.${serverName}]`,
+    `[mcp_servers.${tomlQuotedKey(serverName)}]`,
+    `[mcp_servers.${serverName}.env]`,
+    `[mcp_servers.${tomlQuotedKey(serverName)}.env]`
+  ]);
+  const kept: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!headers.has(line.trim())) {
+      kept.push(line);
+      continue;
+    }
+
+    index += 1;
+    while (index < lines.length && !/^\s*\[/.test(lines[index])) {
+      index += 1;
+    }
+    index -= 1;
+  }
+  return kept.join("");
+}
+
 function removeTomlTable(source: string, section: string, name: string): string {
   const lines = source.split(/(?<=\n)/);
   const headers = new Set([
@@ -1070,6 +1342,7 @@ function isManagedGeneratedBinFile(fileName: string): boolean {
   return normalized === "ccr" ||
     normalized === "ccr-app" ||
     normalized === "ccr-cli.js" ||
+    normalized === TOOL_HUB_MCP_RUNTIME_FILE_NAME ||
     normalized === codexMiddlewareRuntimeFilename() ||
     normalized.startsWith("ccr-claude-code-api-key-") ||
     normalized.startsWith("ccr-claude-code-wrapper-") ||
@@ -1447,6 +1720,30 @@ function defaultClientModel(config: AppConfig): string {
   return "gpt-5-codex";
 }
 
+function toolHubResolverModel(config: AppConfig): string {
+  const model = config.toolHub.llm.model.trim();
+  if (!model) {
+    return "";
+  }
+  if (model.includes("/")) {
+    return model;
+  }
+  const baseUrl = normalizeUrlForMatch(config.toolHub.llm.baseUrl);
+  const provider = config.Providers.find((candidate) =>
+    candidate.models.includes(model) &&
+    (!baseUrl || normalizeUrlForMatch(providerBaseUrl(candidate)) === baseUrl)
+  ) ?? config.Providers.find((candidate) => candidate.models.includes(model));
+  return provider?.name ? `${provider.name}/${model}` : model;
+}
+
+function providerBaseUrl(provider: AppConfig["Providers"][number]): string {
+  return provider.api_base_url || provider.baseUrl || provider.baseurl || "";
+}
+
+function normalizeUrlForMatch(value: string | undefined): string {
+  return (value || "").trim().replace(/\/+$/g, "");
+}
+
 function normalizeClientModel(value: string | undefined): string {
   return normalizeRouteSelector(value)?.trim() || "";
 }
@@ -1546,6 +1843,10 @@ function tomlQuotedKey(value: string): string {
 
 function tomlString(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r")}"`;
+}
+
+function tomlStringArray(values: string[]): string {
+  return `[${values.map((value) => tomlString(value)).join(", ")}]`;
 }
 
 function tomlStringContent(value: string): string {

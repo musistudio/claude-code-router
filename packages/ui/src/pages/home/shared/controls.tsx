@@ -408,7 +408,7 @@ export function SelectControl({
 }: {
   className?: string;
   onChange: (value: string) => void;
-  options: Array<{ label: string; value: string }>;
+  options: Array<{ disabled?: boolean; label: string; value: string }>;
   value: string;
 }) {
   return <Select className={className} onValueChange={onChange} options={options} value={value} />;

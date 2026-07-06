@@ -50,6 +50,7 @@ import type {
   TrayBalanceProgressConfig,
   TrayComponentVariants,
   TrayIconPreference,
+  ToolHubConfig,
   TrayWidgetConfig,
   TrayWidgetType,
   TrayWidgetVariant,
@@ -66,7 +67,7 @@ type LoadedBotGatewayConfig = Partial<Omit<BotGatewayRuntimeConfig, "handoff">> 
   handoff?: Partial<BotGatewayRuntimeConfig["handoff"]>;
 };
 
-type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway" | "gateway" | "observability" | "profile" | "proxy">> & {
+type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway" | "gateway" | "observability" | "profile" | "proxy" | "toolHub">> & {
   Router?: Partial<RouterConfig>;
   agent?: Partial<GatewayAgentConfig>;
   botConfigs?: BotGatewaySavedConfig[];
@@ -75,6 +76,7 @@ type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway"
   observability?: Partial<ObservabilityConfig>;
   profile?: LoadedProfileConfig;
   proxy?: Partial<ProxyRuntimeConfig>;
+  toolHub?: Partial<ToolHubConfig>;
 };
 
 type RawAppConfigSource = "default" | "legacy-json" | "sqlite";
@@ -274,7 +276,16 @@ export async function loadAppConfig(): Promise<AppConfig> {
         ...(picked.proxy ?? {}),
         targets: picked.proxy?.targets?.length ? picked.proxy.targets : DEFAULT_CONFIG.proxy.targets
       },
-      routerEndpoint: endpoint
+      routerEndpoint: endpoint,
+      toolHub: {
+        ...DEFAULT_CONFIG.toolHub,
+        ...(picked.toolHub ?? {}),
+        llm: {
+          ...DEFAULT_CONFIG.toolHub.llm,
+          ...(picked.toolHub?.llm ?? {})
+        },
+        mcpServers: picked.toolHub?.mcpServers ?? DEFAULT_CONFIG.toolHub.mcpServers
+      }
     });
     const shouldPersistApiKeys = loadedApiKeys.length === 0 || hasConfigFileApiKeys(rawValue) || configFileApiKeys.length > 0;
     if (shouldPersistApiKeys) {
@@ -615,6 +626,10 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   if (observability) {
     config.observability = observability;
   }
+  const toolHub = parseToolHub((value as Record<string, unknown>).toolHub ?? (value as Record<string, unknown>).tool_hub);
+  if (toolHub) {
+    config.toolHub = toolHub;
+  }
   if (typeof value.preferredProvider === "string" && value.preferredProvider.trim()) {
     config.preferredProvider = value.preferredProvider.trim();
   }
@@ -674,6 +689,49 @@ function parseObservability(value: unknown): Partial<ObservabilityConfig> | unde
     observability.agentAnalysis = value.agentAnalysis;
   }
   return Object.keys(observability).length ? observability : undefined;
+}
+
+function parseToolHub(value: unknown): Partial<ToolHubConfig> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const toolHub: Partial<ToolHubConfig> = {};
+  if (typeof value.enabled === "boolean") {
+    toolHub.enabled = value.enabled;
+  }
+  const maxTools = readNumber(value.maxTools ?? value.max_tools);
+  if (maxTools !== undefined) {
+    toolHub.maxTools = clampNumber(maxTools, 1, 20);
+  }
+  const requestTimeoutMs = readNumber(value.requestTimeoutMs ?? value.request_timeout_ms);
+  if (requestTimeoutMs !== undefined) {
+    toolHub.requestTimeoutMs = clampNumber(requestTimeoutMs, 8000, 300000);
+  }
+  const mcpServers = parseMcpServers(value.mcpServers ?? value.mcp_servers);
+  if (mcpServers) {
+    toolHub.mcpServers = mcpServers;
+  }
+
+  const rawLlm = isObject(value.llm) ? value.llm : value;
+  const llm: Partial<ToolHubConfig["llm"]> = {};
+  const apiKey = readString(rawLlm.apiKey) || readString(rawLlm.api_key);
+  if (apiKey !== undefined) {
+    llm.apiKey = apiKey;
+  }
+  const baseUrl = readString(rawLlm.baseUrl) || readString(rawLlm.base_url);
+  if (baseUrl !== undefined) {
+    llm.baseUrl = baseUrl;
+  }
+  const model = readString(rawLlm.model);
+  if (model !== undefined) {
+    llm.model = model;
+  }
+  if (Object.keys(llm).length > 0) {
+    toolHub.llm = llm as ToolHubConfig["llm"];
+  }
+
+  return Object.keys(toolHub).length ? toolHub : undefined;
 }
 
 function parseOverviewWidgets(value: unknown): OverviewWidgetConfig[] | undefined {
@@ -1737,7 +1795,7 @@ function parseMcpServers(value: unknown): GatewayMcpServerConfig[] | undefined {
         return undefined;
       }
 
-      const transport = parseMcpServerTransport(item.transport);
+      const transport = parseMcpServerTransport(item.transport ?? item.type);
       const name = readString(item.name) || (transport !== "stdio" ? readString(item.url) : readString(item.command)) || `mcp-${index + 1}`;
       const protocolVersion = readString(item.protocolVersion) || "2024-11-05";
       const startupTimeoutMs = clampNumber(readNumber(item.startupTimeoutMs) ?? 600000, 100, 600000);
@@ -1792,7 +1850,7 @@ function parseMcpServerTransport(value: unknown): GatewayMcpServerTransport {
   if (normalized === "sse") {
     return "sse";
   }
-  if (normalized === "streamable-http" || normalized === "streamble-http" || normalized === "websocket") {
+  if (normalized === "http" || normalized === "streamable-http" || normalized === "streamablehttp" || normalized === "streamble-http" || normalized === "websocket") {
     return "streamable-http";
   }
   return "stdio";

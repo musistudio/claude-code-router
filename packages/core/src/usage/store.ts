@@ -1,7 +1,9 @@
-import { mkdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { EventEmitter } from "node:events";
-import { dirname } from "node:path";
-import { USAGE_DB_FILE } from "@ccr/core/config/constants";
+import { randomBytes } from "node:crypto";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "@ccr/core/config/constants";
 import { estimateUsageCostUsd } from "@ccr/core/models/pricing-service";
 import { createBetterSqliteDatabase, type BetterSqliteDatabase } from "@ccr/core/storage/sqlite-native";
 import { normalizeUsageInputTokens } from "@ccr/core/usage/normalization";
@@ -59,6 +61,10 @@ type UsageStatsQueryOptions = {
   includeProxy?: boolean;
 };
 
+type UsageStoreOptions = {
+  requestLogDbFile?: string;
+};
+
 type UsageWhereClause = {
   params: SqlValue[];
   where: string;
@@ -107,8 +113,12 @@ const emptyTotals: UsageTotals = {
 export class UsageStore {
   private database?: SqlDatabase;
   private initPromise?: Promise<SqlDatabase>;
+  private readonly requestLogDbFile?: string;
+  private requestLogBackfillFailureLogged = false;
 
-  constructor(private readonly dbFile: string) {}
+  constructor(private readonly dbFile: string, options: UsageStoreOptions = {}) {
+    this.requestLogDbFile = options.requestLogDbFile;
+  }
 
   async record(event: UsageEventInput): Promise<void> {
     const database = await this.getDatabase();
@@ -181,6 +191,7 @@ export class UsageStore {
     const now = new Date();
     const normalizedRange = normalizeUsageRange(range);
     const since = getRangeSince(normalizedRange, now);
+    this.backfillFromRequestLogs(database, since);
     const query = buildUsageWhereClause(since, filter);
 
     return {
@@ -197,6 +208,7 @@ export class UsageStore {
 
   async getTotalsSince(since: Date, filter: UsageStatsFilter | null | undefined = {}, options: UsageStatsQueryOptions | null | undefined = {}): Promise<UsageTotals> {
     const database = await this.getDatabase();
+    this.backfillFromRequestLogs(database, since);
     return readUsageTotals(database, buildUsageWhereClause(since, filter, options));
   }
 
@@ -244,9 +256,100 @@ export class UsageStore {
     this.database = database;
     return database;
   }
+
+  private backfillFromRequestLogs(database: SqlDatabase, since: Date): void {
+    const requestLogDbFile = this.requestLogDbFile;
+    if (!requestLogDbFile || !existsSync(requestLogDbFile)) {
+      return;
+    }
+
+    let tempRequestLogDbFile: string | undefined;
+    try {
+      try {
+        this.backfillFromAttachedRequestLog(database, requestLogDbFile, since);
+      } catch {
+        tempRequestLogDbFile = copySqliteDatabaseToTemp(requestLogDbFile);
+        this.backfillFromAttachedRequestLog(database, tempRequestLogDbFile, since);
+      }
+      this.requestLogBackfillFailureLogged = false;
+    } catch (error) {
+      if (!this.requestLogBackfillFailureLogged) {
+        console.warn(`[usage] Failed to backfill usage from request logs: ${formatError(error)}`);
+        this.requestLogBackfillFailureLogged = true;
+      }
+    } finally {
+      if (tempRequestLogDbFile) {
+        cleanupSqliteTempCopy(tempRequestLogDbFile);
+      }
+    }
+  }
+
+  private backfillFromAttachedRequestLog(database: SqlDatabase, requestLogDbFile: string, since: Date): void {
+    database.exec(`ATTACH DATABASE ${sqlString(requestLogDbFile)} AS request_log_source`);
+    try {
+      database.prepare(`
+          INSERT INTO usage_events (
+            created_at,
+            request_id,
+            client,
+            method,
+            path,
+            model,
+            provider,
+            credential_id,
+            status_code,
+            duration_ms,
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            cache_write_tokens,
+            total_tokens,
+            cost_usd,
+            cost_source
+          )
+          SELECT
+            logs.created_at,
+            logs.request_id,
+            logs.client,
+            logs.method,
+            logs.path,
+            logs.model,
+            logs.provider,
+            logs.credential_id,
+            logs.status_code,
+            logs.duration_ms,
+            logs.input_tokens,
+            logs.output_tokens,
+            logs.cache_read_tokens,
+            logs.cache_write_tokens,
+            logs.total_tokens,
+            logs.cost_usd,
+            'request_log'
+          FROM request_log_source.request_logs AS logs
+          WHERE logs.source_usage_id IS NULL
+            AND logs.path NOT LIKE ?
+            AND logs.created_at >= ?
+            AND NOT EXISTS (
+              SELECT 1
+              FROM usage_events AS existing
+              WHERE (
+                logs.request_id <> ''
+                AND existing.request_id = logs.request_id
+              ) OR (
+                logs.request_id = ''
+                AND existing.created_at = logs.created_at
+                AND existing.path = logs.path
+                AND existing.model = logs.model
+              )
+            )
+        `).run("%/count_tokens%", since.toISOString());
+    } finally {
+      database.exec("DETACH DATABASE request_log_source");
+    }
+  }
 }
 
-export const usageStore = new UsageStore(USAGE_DB_FILE);
+export const usageStore = new UsageStore(USAGE_DB_FILE, { requestLogDbFile: REQUEST_LOGS_DB_FILE });
 
 export function onUsageRecorded(listener: () => void): () => void {
   usageEvents.on("recorded", listener);
@@ -409,6 +512,28 @@ function configureSqliteDatabase(database: SqlDatabase): void {
 
 function queryRows(database: SqlDatabase, sql: string, params: SqlValue[] = []): Record<string, SqlValue>[] {
   return database.prepare(sql).all(...params) as Record<string, SqlValue>[];
+}
+
+function sqlString(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function copySqliteDatabaseToTemp(file: string): string {
+  const target = join(tmpdir(), `ccr-request-logs-${process.pid}-${Date.now()}-${randomBytes(4).toString("hex")}.sqlite`);
+  copyFileSync(file, target);
+  for (const suffix of ["-wal", "-shm"]) {
+    const source = `${file}${suffix}`;
+    if (existsSync(source)) {
+      copyFileSync(source, `${target}${suffix}`);
+    }
+  }
+  return target;
+}
+
+function cleanupSqliteTempCopy(file: string): void {
+  for (const item of [file, `${file}-wal`, `${file}-shm`]) {
+    rmSync(item, { force: true });
+  }
 }
 
 function toStoredUsageEvent(row: Record<string, SqlValue>): StoredUsageEvent {

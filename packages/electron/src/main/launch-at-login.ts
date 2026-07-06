@@ -9,7 +9,12 @@ export function syncLaunchAtLogin(config: Pick<AppConfig, "launchAtLogin">): voi
   if (!isLaunchAtLoginSupported()) {
     return;
   }
-  app.setLoginItemSettings(loginItemSettings(Boolean(config.launchAtLogin)));
+  const openAtLogin = Boolean(config.launchAtLogin);
+  const current = app.getLoginItemSettings();
+  if (current.openAtLogin === openAtLogin) {
+    return;
+  }
+  app.setLoginItemSettings(loginItemSettings(openAtLogin));
 }
 
 function loginItemSettings(openAtLogin: boolean): Electron.Settings {

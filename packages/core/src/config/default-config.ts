@@ -169,6 +169,17 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
     trayProgressTargetTokens: 100000,
     trayWidgets: DEFAULT_TRAY_WIDGETS,
     trayWindowModules: DEFAULT_TRAY_WINDOW_MODULES,
+    toolHub: {
+      enabled: false,
+      llm: {
+        apiKey: "",
+        baseUrl: "https://api.openai.com/v1",
+        model: ""
+      },
+      mcpServers: [],
+      maxTools: 10,
+      requestTimeoutMs: 60000
+    },
     virtualModelProfiles: []
   };
 }

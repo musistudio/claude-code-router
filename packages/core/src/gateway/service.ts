@@ -45,6 +45,7 @@ import { loadPersistedApiKeys } from "@ccr/core/config/api-key-store";
 import { codexDefaultBaseUrl, readCodexAuth } from "@ccr/core/agents/local-providers/service";
 import { fetchWithSystemProxy, getSystemProxyUrlForProtocol } from "@ccr/core/proxy/system-proxy-fetch";
 import { handleNetworkCaptureMcpRequest, isNetworkCaptureMcpPath } from "@ccr/core/mcp/network-capture-mcp";
+import { TOOL_HUB_MCP_SERVER_NAME, toolHubMcpRuntimeConfig } from "@ccr/core/mcp/toolhub-config";
 import { pluginService } from "@ccr/core/plugins/service";
 import { proxyService } from "@ccr/core/proxy/service";
 import { createSseErrorDetector, recordGatewayRequestLog, updateGatewayRequestLogFromRawTrace, type RequestLogRawTraceUpdateInput } from "@ccr/core/observability/request-log-store";
@@ -1109,12 +1110,20 @@ async function writeCoreGatewayConfig(
   ];
   const pluginAgentConfig = isRecord(pluginCoreGatewayConfig.agent) ? pluginCoreGatewayConfig.agent : {};
   const pluginMcpServers = Array.isArray(pluginAgentConfig.mcpServers) ? pluginAgentConfig.mcpServers : [];
+  const externalMcpServers = [
+    ...pluginMcpServers,
+    ...(config.agent?.mcpServers ?? []),
+    ...(config.toolHub?.mcpServers ?? [])
+  ];
+  const toolHubServer = toolHubMcpServer(config, externalMcpServers);
   const mcpServers = [
     ...builtinToolArtifacts.mcpServers,
-    ...pluginMcpServers,
-    ...(config.agent?.mcpServers ?? [])
+    ...(toolHubServer ? [toolHubServer] : externalMcpServers)
   ];
-  const fallbackMcpServer = fusionToolFallbackMcpServer(virtualModelProfiles, mcpServers);
+  const fallbackMcpServer = fusionToolFallbackMcpServer(virtualModelProfiles, [
+    ...builtinToolArtifacts.mcpServers,
+    ...externalMcpServers
+  ]);
   if (fallbackMcpServer) {
     mcpServers.push(fallbackMcpServer);
   }
@@ -1517,6 +1526,24 @@ function fusionToolFallbackMcpServer(
 
 function bundledFusionToolFallbackMcpEntryPath(): string {
   return pathJoin(__dirname, "fusion-tool-fallback-mcp.js");
+}
+
+function toolHubMcpServer(config: AppConfig, backendServers: unknown[]): GatewayMcpServerConfig | undefined {
+  const toolHub = config.toolHub;
+  const runtimeConfig = toolHubMcpRuntimeConfig(config, backendServers);
+  if (!toolHub?.enabled || !runtimeConfig) {
+    return undefined;
+  }
+
+  return {
+    ...runtimeConfig,
+    name: uniqueMcpServerName(TOOL_HUB_MCP_SERVER_NAME, backendServers),
+    protocolVersion: "2024-11-05",
+    requestTimeoutMs: Math.max(toolHub.requestTimeoutMs ?? 60000, 60000),
+    startupTimeoutMs: 600000,
+    stdioMessageMode: "content-length",
+    transport: "stdio"
+  };
 }
 
 export function fusionFallbackToolDefinitions(
@@ -5561,12 +5588,19 @@ function prepareUpstreamCredentialAttempt(input: {
 }): UpstreamAttempt {
   const normalizedBody = normalizeConfiguredProviderModelBody(input.attempt.body, input.config);
   const target = resolveProviderCredentialRoutingTarget(input.config, input.headers, input.path, input.attempt.body);
+  const attemptBody = (body: Buffer | undefined) => usageAwareOpenAiChatAttemptBody({
+    body,
+    config: input.config,
+    path: input.path,
+    target
+  });
   if (!target) {
+    const body = bodyHasConfiguredProviderModelSelector(input.attempt.body, input.config)
+      ? input.attempt.body
+      : normalizedBody?.body ?? input.attempt.body;
     return {
       ...input.attempt,
-      body: bodyHasConfiguredProviderModelSelector(input.attempt.body, input.config)
-        ? input.attempt.body
-        : normalizedBody?.body ?? input.attempt.body,
+      body: attemptBody(body),
       headers: input.headers
     };
   }
@@ -5575,7 +5609,7 @@ function prepareUpstreamCredentialAttempt(input: {
   if (credentials.length === 0) {
     return {
       ...input.attempt,
-      body: target.body ?? normalizedBody?.body ?? input.attempt.body,
+      body: attemptBody(target.body ?? normalizedBody?.body ?? input.attempt.body),
       headers: input.headers
     };
   }
@@ -5585,7 +5619,7 @@ function prepareUpstreamCredentialAttempt(input: {
   if (selection.credentials.length === 0) {
     return {
       ...input.attempt,
-      body: target.body ?? normalizedBody?.body ?? input.attempt.body,
+      body: attemptBody(target.body ?? normalizedBody?.body ?? input.attempt.body),
       headers: input.headers
     };
   }
@@ -5603,13 +5637,60 @@ function prepareUpstreamCredentialAttempt(input: {
 
   return {
     ...input.attempt,
-    body: target.body ?? normalizedBody?.body ?? input.attempt.body,
+    body: attemptBody(target.body ?? normalizedBody?.body ?? input.attempt.body),
     credentialChain: selection.credentials.map((candidate) => candidate.internalName),
     credentialIds: selection.credentials.map((candidate) => candidate.credentialId),
     credentialProtocol: target.protocol,
     headers,
     logicalProvider: target.provider.name
   };
+}
+
+function usageAwareOpenAiChatAttemptBody(input: {
+  body: Buffer | undefined;
+  config: AppConfig;
+  path: string;
+  target?: { protocol: GatewayProviderProtocol };
+}): Buffer | undefined {
+  if (input.target?.protocol === "openai_chat_completions") {
+    return usageAwareOpenAiChatBody(input.body);
+  }
+
+  const protocol = requestProtocolForPath(input.path);
+  if (!protocol) {
+    return input.body;
+  }
+
+  const parsedBody = parseJsonObjectSafe(input.body);
+  const modelSelector = resolveConfiguredProviderModelSelector(stringValue(parsedBody?.model), input.config);
+  const providerProtocol = modelSelector
+    ? providerProtocolForClientProtocol(modelSelector.provider, protocol)
+    : undefined;
+  return providerProtocol === "openai_chat_completions"
+    ? usageAwareOpenAiChatBody(input.body)
+    : input.body;
+}
+
+function usageAwareOpenAiChatBody(body: Buffer | undefined): Buffer | undefined {
+  const parsedBody = parseJsonObjectSafe(body);
+  if (!parsedBody || parsedBody.stream !== true) {
+    return body;
+  }
+  const streamOptions = isRecord(parsedBody.stream_options)
+    ? parsedBody.stream_options
+    : isRecord(parsedBody.streamOptions)
+      ? parsedBody.streamOptions
+      : {};
+  if (streamOptions.include_usage === true || streamOptions.includeUsage === true) {
+    return body;
+  }
+  return Buffer.from(`${JSON.stringify({
+    ...parsedBody,
+    stream_options: {
+      ...streamOptions,
+      include_usage: true
+    }
+  })}\n`, "utf8");
 }
 
 function normalizeConfiguredProviderModelBody(
@@ -6099,6 +6180,32 @@ function resolveBundledGatewayEntry(): string | undefined {
   ].find((candidate) => existsSync(candidate));
 }
 
+function resolveUndiciProxyAgentModule(): string {
+  const bundled = resolveBundledUndiciProxyAgentModule();
+  if (bundled) {
+    return bundled;
+  }
+
+  try {
+    return requireFromHere.resolve("undici");
+  } catch (error) {
+    throw new Error(`Unable to resolve undici ProxyAgent module for gateway proxy preload: ${formatError(error)}`);
+  }
+}
+
+function resolveBundledUndiciProxyAgentModule(): string | undefined {
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+  return [
+    pathJoin(__dirname, "undici-proxy-agent.js"),
+    ...(resourcesPath
+      ? [
+          pathJoin(resourcesPath, "app.asar", "dist", "main", "undici-proxy-agent.js"),
+          pathJoin(resourcesPath, "app", "dist", "main", "undici-proxy-agent.js")
+        ]
+      : [])
+  ].find((candidate) => existsSync(candidate));
+}
+
 function createGatewayProcessEnv(config: AppConfig, upstreamProxyUrl: string | undefined, runtimeId: string, coreAuthToken: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -6137,7 +6244,7 @@ function createGatewayProcessEnv(config: AppConfig, upstreamProxyUrl: string | u
   env.https_proxy = upstreamProxyUrl;
   env.all_proxy = upstreamProxyUrl;
   env.CCR_UPSTREAM_PROXY_URL = upstreamProxyUrl;
-  env.CCR_UNDICI_MODULE = requireFromHere.resolve("undici");
+  env.CCR_UNDICI_MODULE = resolveUndiciProxyAgentModule();
   return env;
 }
 

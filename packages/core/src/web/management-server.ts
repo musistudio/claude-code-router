@@ -27,6 +27,7 @@ import { listMcpServerTools } from "@ccr/core/mcp/tool-discovery";
 import { getAgentAnalysis, getAgentTracePayload, getRequestLogDetail, getRequestLogs } from "@ccr/core/observability/request-log-store";
 import { getUsageStats } from "@ccr/core/usage/store";
 import { gatewayService } from "@ccr/core/gateway/service";
+import { shouldRestartGatewayForRuntimeConfigChange } from "@ccr/core/gateway/runtime-change";
 import { getProviderAccountSnapshots, invalidateProviderAccountSnapshotCache, resetCodexRateLimitCredit, testProviderAccountConnector } from "@ccr/core/providers/account-service";
 import type {
   AgentAnalysisFilter,
@@ -247,7 +248,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
     const synced = await syncClaudeAppGatewayConfig(baseConfig);
     const savedConfig = synced.config;
     let runtimeStatus = gatewayService.getStatus();
-    if (synced.configChanged || shouldRestartForRuntimeChange(previousConfig, savedConfig) || runtimeStatus.state !== "running") {
+    if (synced.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig) || runtimeStatus.state !== "running") {
       runtimeStatus = await gatewayService.start(savedConfig);
     } else {
       gatewayService.updateConfig(savedConfig);
@@ -386,7 +387,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
     const syncedClaudeAppConfig = await syncClaudeAppGatewayConfig(savedConfig);
     savedConfig = syncedClaudeAppConfig.config;
     let runtimeStatus = gatewayService.getStatus();
-    if (syncedClaudeAppConfig.configChanged || shouldRestartForRuntimeChange(previousConfig, savedConfig)) {
+    if (syncedClaudeAppConfig.configChanged || shouldRestartGatewayForRuntimeConfigChange(previousConfig, savedConfig)) {
       runtimeStatus = await gatewayService.start(savedConfig);
     } else {
       gatewayService.updateConfig(savedConfig);
@@ -476,27 +477,6 @@ function logProfileApplyResult(result: ProfileApplyResult): void {
       console.warn(`[profile:${client.client}] ${client.message}`);
     }
   }
-}
-
-function shouldRestartForRuntimeChange(previousConfig: AppConfig, nextConfig: AppConfig): boolean {
-  return (
-    previousConfig.gateway.enabled !== nextConfig.gateway.enabled ||
-    previousConfig.gateway.host !== nextConfig.gateway.host ||
-    previousConfig.gateway.port !== nextConfig.gateway.port ||
-    previousConfig.gateway.coreHost !== nextConfig.gateway.coreHost ||
-    previousConfig.gateway.corePort !== nextConfig.gateway.corePort ||
-    previousConfig.proxy.enabled !== nextConfig.proxy.enabled ||
-    previousConfig.proxy.host !== nextConfig.proxy.host ||
-    previousConfig.proxy.mode !== nextConfig.proxy.mode ||
-    previousConfig.proxy.port !== nextConfig.proxy.port ||
-    previousConfig.proxy.systemProxy !== nextConfig.proxy.systemProxy ||
-    JSON.stringify(previousConfig.proxy.targets) !== JSON.stringify(nextConfig.proxy.targets) ||
-    JSON.stringify(previousConfig.agent) !== JSON.stringify(nextConfig.agent) ||
-    JSON.stringify(previousConfig.Providers) !== JSON.stringify(nextConfig.Providers) ||
-    JSON.stringify(previousConfig.plugins) !== JSON.stringify(nextConfig.plugins) ||
-    JSON.stringify(previousConfig.providerPlugins) !== JSON.stringify(nextConfig.providerPlugins) ||
-    JSON.stringify(previousConfig.virtualModelProfiles) !== JSON.stringify(nextConfig.virtualModelProfiles)
-  );
 }
 
 function getCliAppInfo(): AppInfo {

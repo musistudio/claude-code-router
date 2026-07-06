@@ -57,6 +57,7 @@ export class ClaudeCodeRouterPlugin {
     };
     if (builtInAgentRouteMatches(request, this.config, "claude-code")) {
       injectClaudeCodeAgentToolDescription(body, this.config);
+      injectClaudeCodeToolHubInstructions(body, this.config);
       removeClaudeCodeBillingSystemHeader(body);
       request.builtInSubagentModel = extractAndRemoveClaudeCodeSubagentModelTag(body);
     }
@@ -342,6 +343,81 @@ const ccrSubagentPromptFieldInstruction =
 type ClaudeCodeSubagentToolKind = "subagent" | "workflow";
 const claudeCodeAgentToolNames = new Set(["agent", "task"]);
 const claudeCodeWorkflowToolNames = new Set(["workflow"]);
+const ccrToolHubSystemInstructionMarker = "CCR ToolHub tool resolution is enabled.";
+
+function claudeCodeToolName(tool: Record<string, unknown>): string | undefined {
+  const functionSpec = isRecord(tool.function) ? tool.function : undefined;
+  return readString(tool.name) ?? readString(functionSpec?.name);
+}
+
+function normalizeClaudeCodeToolName(toolName: string | undefined): string {
+  return toolName?.toLowerCase().replace(/[-._]/g, "") ?? "";
+}
+
+function injectClaudeCodeToolHubInstructions(body: Record<string, unknown>, config: AppConfig): void {
+  if (!config.toolHub?.enabled || !Array.isArray(body.tools)) {
+    return;
+  }
+  const toolNames = claudeCodeToolHubToolNames(body.tools);
+  if (!toolNames.resolve) {
+    return;
+  }
+  const invokeName = toolNames.invoke ?? "tool_hub.invoke";
+  appendSystemInstruction(body, [
+    ccrToolHubSystemInstructionMarker,
+    `You MUST call ${toolNames.resolve} before answering any request that asks about external services, installed MCP capabilities, business APIs, orders, coupons, stores, accounts, available tools, or capabilities that are not already obvious from the eager tools.`,
+    `Do this even if the user did not mention ToolHub or ${toolNames.resolve}. Only skip ${toolNames.resolve} when the request is clearly local code/file/shell work or simple conversation that does not need an external or MCP capability.`,
+    `If ${toolNames.resolve} returns selected tools, use ${invokeName} to call the selected tool instead of telling the user that no such capability is available.`,
+    "Use the user's request as the task and include concise context when resolving. Do not ask the user to name the MCP tool unless the task is genuinely ambiguous after resolution."
+  ].join("\n"));
+}
+
+function claudeCodeToolHubToolNames(tools: unknown[]): { invoke?: string; resolve?: string } {
+  const names: { invoke?: string; resolve?: string } = {};
+  for (const tool of tools) {
+    if (!isRecord(tool)) {
+      continue;
+    }
+    const name = claudeCodeToolName(tool);
+    const normalized = normalizeClaudeCodeToolName(name);
+    if (!names.resolve && normalized.endsWith("toolhubresolve")) {
+      names.resolve = name;
+    }
+    if (!names.invoke && normalized.endsWith("toolhubinvoke")) {
+      names.invoke = name;
+    }
+  }
+  return names;
+}
+
+function appendSystemInstruction(body: Record<string, unknown>, instruction: string): void {
+  if (systemContainsInstruction(body.system, ccrToolHubSystemInstructionMarker)) {
+    return;
+  }
+  if (typeof body.system === "string") {
+    body.system = body.system.trim() ? `${body.system}\n\n${instruction}` : instruction;
+    return;
+  }
+  if (Array.isArray(body.system)) {
+    body.system.push({ text: instruction, type: "text" });
+    return;
+  }
+  if (body.system === undefined) {
+    body.system = [{ text: instruction, type: "text" }];
+  }
+}
+
+function systemContainsInstruction(system: unknown, marker: string): boolean {
+  if (typeof system === "string") {
+    return system.includes(marker);
+  }
+  if (!Array.isArray(system)) {
+    return false;
+  }
+  return system.some((block) => typeof block === "string"
+    ? block.includes(marker)
+    : isRecord(block) && typeof block.text === "string" && block.text.includes(marker));
+}
 
 function injectClaudeCodeAgentToolDescription(body: Record<string, unknown>, config: AppConfig): void {
   if (!Array.isArray(body.tools)) {
