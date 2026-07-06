@@ -94,6 +94,14 @@ async function selectPluginDirectory(): Promise<unknown> {
   return rpc("selectPluginDirectory", [directory.trim()]);
 }
 
+function normalizeExternalHttpUrl(value: string): string {
+  const url = new URL(value.trim());
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("Only http and https URLs can be opened.");
+  }
+  return url.toString();
+}
+
 const webClientBridge: CcrApi = {
   applyClaudeAppGateway: (config) => rpc("applyClaudeAppGateway", [config]) as ReturnType<CcrApi["applyClaudeAppGateway"]>,
   applyProfile: () => rpc("applyProfile") as ReturnType<CcrApi["applyProfile"]>,
@@ -136,9 +144,8 @@ const webClientBridge: CcrApi = {
   onUpdateStatusChanged: noopSubscription,
   openBotGatewayQrWindow: (request) => rpc("openBotGatewayQrWindow", [request]) as ReturnType<CcrApi["openBotGatewayQrWindow"]>,
   openBuiltInBrowser: () => rpc("openBuiltInBrowser") as ReturnType<CcrApi["openBuiltInBrowser"]>,
-  openExternal: (url) => {
-    window.open(url, "_blank", "noopener,noreferrer");
-    return Promise.resolve();
+  openExternal: async (url) => {
+    window.open(normalizeExternalHttpUrl(url), "_blank", "noopener,noreferrer");
   },
   openProfile: (request) => rpc("openProfile", [request]) as ReturnType<CcrApi["openProfile"]>,
   probeProvider: (request) => rpc("probeProvider", [request]) as ReturnType<CcrApi["probeProvider"]>,

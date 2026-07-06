@@ -79,7 +79,7 @@ type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway"
   toolHub?: Partial<ToolHubConfig>;
 };
 
-type RawAppConfigSource = "default" | "legacy-json" | "sqlite";
+export type RawAppConfigSource = "default" | "legacy-json" | "sqlite";
 
 type RawAppConfigLoadResult = {
   source: RawAppConfigSource;
@@ -211,7 +211,7 @@ export async function loadAppConfig(): Promise<AppConfig> {
   try {
     const loadedRawConfig = await loadRawAppConfig();
     const rawValue = loadedRawConfig.value;
-    const value = interpolateEnvVars(rawValue) as Partial<AppConfig>;
+    const value = interpolateRawAppConfigEnvVars(rawValue, loadedRawConfig.source) as Partial<AppConfig>;
     const picked = pickConfig(value);
     const providers = picked.Providers ?? DEFAULT_CONFIG.Providers;
     const port = picked.PORT ?? endpointPort(picked.routerEndpoint) ?? DEFAULT_CONFIG.PORT;
@@ -2545,6 +2545,10 @@ function isDefaultSeedApiKey(apiKey: ApiKeyConfig): boolean {
     (apiKey.id === "key-1" || apiKey.id === "legacy") &&
     (!apiKey.name || apiKey.name === "API Key 1")
   );
+}
+
+export function interpolateRawAppConfigEnvVars(value: unknown, source: RawAppConfigSource): unknown {
+  return source === "legacy-json" ? interpolateEnvVars(value) : value;
 }
 
 function interpolateEnvVars(value: unknown): unknown {

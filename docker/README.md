@@ -16,11 +16,28 @@ Then open:
 - Web UI: <http://localhost:3458>
 - Gateway endpoint: <http://localhost:3458>
 
+`docker-compose.yml` publishes only Nginx (`3458:8080`). Behind Nginx, the image
+runs separate container-private listeners for management RPC, API gateway
+routing, and the core gateway runtime. They are implementation details and are
+not published or configured by the default Compose file.
+
+To use a different host port, change the Compose port mapping and keep the
+public router endpoint in sync:
+
+```yaml
+services:
+  ccr:
+    ports:
+      - "8088:8080"
+    environment:
+      CCR_PUBLIC_BASE_URL: http://127.0.0.1:8088
+```
+
 The container stores config and SQLite databases under `/data`, backed by the
 `ccr-data` volume in `docker-compose.yml`.
 
-On a fresh data volume, the Web UI starts immediately. The gateway port is
-available through the same Nginx port, but the gateway only starts after at
+On a fresh data volume, the Web UI starts immediately. The gateway endpoint is
+available through the same Nginx entrypoint, but the gateway only starts after at
 least one provider and model are configured.
 
 ## Image scripts
@@ -52,18 +69,14 @@ docker build --build-arg NODE_IMAGE=node:22-bookworm-slim -t claude-code-router:
 
 ## Environment
 
+Most deployments only need the published Nginx port mapping, `CCR_WEB_AUTH_TOKEN`,
+and optionally `CCR_PUBLIC_BASE_URL` when the host-facing URL is not
+`http://127.0.0.1:3458`.
+
 | Variable | Default | Description |
 | --- | --- | --- |
-| `CCR_WEB_HOST` | `127.0.0.1` | Internal core server bind host. |
-| `CCR_WEB_PORT` | `3459` | Internal core server port. |
-| `CCR_NGINX_PORT` | `8080` | Nginx port that serves UI and proxies management/gateway requests. |
 | `CCR_WEB_AUTH_TOKEN` | generated | Shared management UI token used by Nginx redirects and the core server. |
-| `CCR_GATEWAY_HOST` | `127.0.0.1` | Internal gateway bind host. |
-| `CCR_GATEWAY_PORT` | `3456` | Internal gateway port proxied by Nginx. |
-| `CCR_GATEWAY_CORE_PORT` | `3457` | Internal core gateway port used for first-run config. |
-| `CCR_PUBLIC_HOST` | `127.0.0.1` | Host used for the first-run public router endpoint. |
-| `CCR_PUBLIC_PORT` | `3458` | Port used for the first-run public router endpoint. |
-| `CCR_PUBLIC_BASE_URL` | `http://127.0.0.1:3458` | Full public router endpoint override. |
+| `CCR_PUBLIC_BASE_URL` | `http://127.0.0.1:3458` | Full public router endpoint override. Set this when changing the host-facing Compose port. |
 | `CCR_DATA_DIR` | `/data` | Container data root. |
 | `CCR_NO_GATEWAY` | `0` | Set to `1` to run only the Web UI management service. |
 | `CCR_DOCKER_INIT_CONFIG` | `1` | Set to `0` to disable first-run `config.json` bootstrap. |

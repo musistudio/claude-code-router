@@ -5,7 +5,6 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import packageJson from "../../package.json";
 import { loadPersistedAppSetting, replacePersistedAppSetting } from "@ccr/core/config/app-config-store";
 import { scanBotHandoffBluetoothTargets, scanBotHandoffWifiTargets } from "@ccr/core/agents/bot-gateway/handoff-scan-service";
@@ -1028,20 +1027,38 @@ async function revealFile(file: string): Promise<void> {
     await execDetached("explorer.exe", ["/select,", file]);
     return;
   }
-  await openSystemExternal(pathToFileURL(path.dirname(file)).toString());
+  await execDetached("xdg-open", [path.dirname(file)]);
 }
 
 export function openSystemExternal(target: string): Promise<void> {
-  if (!target || target === "about:blank") {
+  const url = normalizeExternalHttpTarget(target);
+  if (!url) {
     return Promise.resolve();
   }
   if (process.platform === "darwin") {
-    return execDetached("/usr/bin/open", [target]);
+    return execDetached("/usr/bin/open", [url]);
   }
   if (process.platform === "win32") {
-    return execDetached("cmd.exe", ["/d", "/s", "/c", "start", "", target]);
+    return execDetached("rundll32.exe", ["url.dll,FileProtocolHandler", url]);
   }
-  return execDetached("xdg-open", [target]);
+  return execDetached("xdg-open", [url]);
+}
+
+export function normalizeExternalHttpTarget(target: unknown): string | undefined {
+  const trimmed = typeof target === "string" ? target.trim() : "";
+  if (!trimmed || trimmed === "about:blank") {
+    return undefined;
+  }
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    throw new Error("External URL must be a valid absolute URL.");
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("Only http and https URLs can be opened.");
+  }
+  return url.toString();
 }
 
 function execDetached(command: string, args: string[]): Promise<void> {
