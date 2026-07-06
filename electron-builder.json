@@ -61,6 +61,7 @@
     "artifactName": "Claude-Code-Router_${version}.${ext}"
   },
   "linux": {
+    "executableName": "claude-code-router",
     "target": ["AppImage"],
     "artifactName": "Claude-Code-Router_${version}.${ext}"
   },
