@@ -31,7 +31,7 @@ function runSuite(suite) {
   console.log(`\nRunning ${suite} tests...`);
 
   return new Promise((resolve, reject) => {
-    const child = spawn(electron, ["--test", `dist/tests/${suite}/*.js`], {
+    const child = spawn(electron, ["--test", `dist/tests/${suite}/*.test.js`], {
       cwd: projectRoot,
       env: {
         ...process.env,

@@ -6,7 +6,6 @@ import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MO
 import { replacePersistedApiKeys } from "@ccr/core/config/api-key-store";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import {
-  CLAUDE_CODE_ENABLE_TOOL_SEARCH_ENV,
   CLAUDE_CODE_MCP_CONFIG_ENV,
   CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV,
   claudeCodeMcpConfigEnv,
@@ -192,7 +191,7 @@ function cleanupClaudeCodeToolHubSettingsFile(file: string, options: { backup: b
 
 function deleteClaudeCodeToolHubEnv(env: Record<string, unknown>): boolean {
   let changed = false;
-  for (const key of [CLAUDE_CODE_ENABLE_TOOL_SEARCH_ENV, CLAUDE_CODE_MCP_CONFIG_ENV, CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV]) {
+  for (const key of [CLAUDE_CODE_MCP_CONFIG_ENV, CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV]) {
     if (key in env) {
       delete env[key];
       changed = true;
@@ -239,7 +238,6 @@ function applyClaudeCodeProfile(config: AppConfig, profile: ProfileConfig, token
     const endpoint = gatewayEndpoint(config);
     const settings = readJsonObject(settingsFile);
     const settingsEnv = withoutBotGatewayEnv(Object.fromEntries(stringRecord(settings.env)));
-    delete settingsEnv[CLAUDE_CODE_ENABLE_TOOL_SEARCH_ENV];
     delete settingsEnv[CLAUDE_CODE_MCP_CONFIG_ENV];
     delete settingsEnv[CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV];
     const env = {

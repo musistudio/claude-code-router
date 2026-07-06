@@ -27,7 +27,10 @@ if (unknownSuites.length > 0) {
 rmSync(testsOutDir, { force: true, recursive: true });
 
 for (const suite of selectedSuites) {
-  const entryPoints = findTestFiles(suite.testDir);
+  const entryPoints = [
+    ...findTestFiles(suite.testDir),
+    ...runtimeEntryPointsForSuite(suite.name)
+  ];
   if (entryPoints.length === 0) {
     continue;
   }
@@ -58,6 +61,15 @@ for (const suite of selectedSuites) {
     plugins: [rendererAliasPlugin(), packageAliasPlugin()],
     target: "node22"
   });
+}
+
+function runtimeEntryPointsForSuite(suiteName) {
+  if (suiteName !== "main") {
+    return [];
+  }
+  return [
+    path.join(coreSourceRoot, "mcp", "toolhub-mcp.ts")
+  ];
 }
 
 function findTestFiles(dir) {

@@ -12,7 +12,7 @@ test("ToolHub MCP runtime source keeps a shebang for direct MCP Inspector execut
 });
 
 test("built ToolHub MCP runtime accepts newline JSON stdio used by MCP Inspector", async (t) => {
-  const runtime = path.join(process.cwd(), "packages", "electron", "dist", "main", "toolhub-mcp.js");
+  const runtime = toolHubRuntimePath();
   if (!existsSync(runtime)) {
     t.skip("ToolHub MCP runtime has not been built.");
     return;
@@ -83,7 +83,7 @@ test("built ToolHub MCP runtime accepts newline JSON stdio used by MCP Inspector
 });
 
 test("built ToolHub MCP runtime waits for local CCR resolver readiness", async (t) => {
-  const runtime = path.join(process.cwd(), "packages", "electron", "dist", "main", "toolhub-mcp.js");
+  const runtime = toolHubRuntimePath();
   if (!existsSync(runtime)) {
     t.skip("ToolHub MCP runtime has not been built.");
     return;
@@ -180,6 +180,133 @@ test("built ToolHub MCP runtime waits for local CCR resolver readiness", async (
   assert.match(response.result.content[0].text, /mcp\.mcd_mcp\.campaign-calendar/);
 });
 
+test("built ToolHub MCP runtime keeps resolve cache scoped by task", async (t) => {
+  const runtime = toolHubRuntimePath();
+  if (!existsSync(runtime)) {
+    t.skip("ToolHub MCP runtime has not been built.");
+    return;
+  }
+
+  const backend = createMcpHttpServer({
+    serverName: "multi-mcp",
+    tools: [
+      {
+        description: "查询指定城市的天气预报。",
+        inputSchema: { type: "object" },
+        name: "weather-forecast"
+      },
+      {
+        description: "查询麦当劳中国当月的营销活动日历。",
+        inputSchema: { type: "object" },
+        name: "campaign-calendar"
+      }
+    ]
+  });
+  try {
+    await listen(backend);
+  } catch (error) {
+    backend.close();
+    t.skip(`Local HTTP listen is unavailable: ${error.message}`);
+    return;
+  }
+  const backendPort = backend.address().port;
+  t.after(() => backend.close());
+
+  const resolver = createTaskAwareResolverServer();
+  try {
+    await listen(resolver);
+  } catch (error) {
+    resolver.close();
+    t.skip(`Local HTTP listen is unavailable: ${error.message}`);
+    return;
+  }
+  const resolverPort = resolver.address().port;
+  t.after(() => resolver.close());
+
+  const child = spawn(process.execPath, [runtime], {
+    env: {
+      ...process.env,
+      TOOLHUB_MCP_SERVERS_JSON: JSON.stringify([
+        {
+          name: "multi-mcp",
+          transport: "streamable-http",
+          url: `http://127.0.0.1:${backendPort}/mcp`
+        }
+      ]),
+      TOOLHUB_OPENAI_API_KEY: "test-key",
+      TOOLHUB_OPENAI_BASE_URL: `http://127.0.0.1:${resolverPort}/v1`,
+      TOOLHUB_OPENAI_MODEL: "resolver-model",
+      TOOLHUB_REQUEST_TIMEOUT_MS: "10000"
+    },
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  t.after(() => child.kill());
+
+  const stderr = [];
+  child.stderr.on("data", (chunk) => stderr.push(chunk.toString("utf8")));
+  const reader = jsonLineReader(child);
+  writeJsonLine(child, {
+    id: 1,
+    jsonrpc: "2.0",
+    method: "initialize",
+    params: {
+      capabilities: {},
+      clientInfo: { name: "resolve-cache-test", version: "1.0.0" },
+      protocolVersion: "2024-11-05"
+    }
+  });
+  await reader.nextMessage(1);
+  writeJsonLine(child, {
+    jsonrpc: "2.0",
+    method: "notifications/initialized",
+    params: {}
+  });
+
+  writeJsonLine(child, {
+    id: 2,
+    jsonrpc: "2.0",
+    method: "tools/call",
+    params: {
+      name: "tool_hub.resolve",
+      arguments: {
+        task: "查询北京今天的天气"
+      }
+    }
+  });
+  const first = await reader.nextMessage(2, 12_000).catch((error) => {
+    error.message += ` stderr: ${stderr.join("")}`;
+    throw error;
+  });
+  assert.equal(first.error, undefined);
+  assert.deepEqual(first.result.selectedToolNames, ["mcp.multi_mcp.weather-forecast"]);
+
+  writeJsonLine(child, {
+    id: 3,
+    jsonrpc: "2.0",
+    method: "tools/call",
+    params: {
+      name: "tool_hub.resolve",
+      arguments: {
+        task: "查询麦当劳这个月有什么优惠活动"
+      }
+    }
+  });
+  const second = await reader.nextMessage(3, 12_000).catch((error) => {
+    error.message += ` stderr: ${stderr.join("")}`;
+    throw error;
+  });
+  assert.equal(second.error, undefined);
+  assert.equal(second.result.alreadyResolved, undefined);
+  assert.deepEqual(second.result.selectedToolNames, ["mcp.multi_mcp.campaign-calendar"]);
+});
+
+function toolHubRuntimePath() {
+  return [
+    path.join(process.cwd(), "dist", "tests", "main", "toolhub-mcp.js"),
+    path.join(process.cwd(), "packages", "electron", "dist", "main", "toolhub-mcp.js")
+  ].find((candidate) => existsSync(candidate)) ?? path.join(process.cwd(), "dist", "tests", "main", "toolhub-mcp.js");
+}
+
 function writeJsonLine(child, message) {
   child.stdin.write(`${JSON.stringify(message)}\n`);
 }
@@ -236,7 +363,15 @@ function jsonLineReader(child) {
   };
 }
 
-function createMcpHttpServer() {
+function createMcpHttpServer(options = {}) {
+  const serverName = options.serverName ?? "mcd-mcp";
+  const tools = options.tools ?? [
+    {
+      description: "查询麦当劳中国当月的营销活动日历，返回进行中、往期和未来日期的活动。",
+      inputSchema: { type: "object" },
+      name: "campaign-calendar"
+    }
+  ];
   return createServer(async (request, response) => {
     const payload = await readJsonBody(request);
     response.setHeader("content-type", "application/json");
@@ -248,7 +383,7 @@ function createMcpHttpServer() {
         result: {
           capabilities: { tools: {} },
           protocolVersion: "2024-11-05",
-          serverInfo: { name: "mcd-mcp", version: "1.0.0" }
+          serverInfo: { name: serverName, version: "1.0.0" }
         }
       }));
       return;
@@ -263,19 +398,67 @@ function createMcpHttpServer() {
         id: payload.id,
         jsonrpc: "2.0",
         result: {
-          tools: [
-            {
-              description: "查询麦当劳中国当月的营销活动日历，返回进行中、往期和未来日期的活动。",
-              inputSchema: { type: "object" },
-              name: "campaign-calendar"
-            }
-          ]
+          tools
         }
       }));
       return;
     }
     response.end(JSON.stringify({ id: payload.id, jsonrpc: "2.0", result: {} }));
   });
+}
+
+function createTaskAwareResolverServer() {
+  return createServer(async (request, response) => {
+    if (request.method === "GET" && request.url === "/v1/models") {
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ data: [], object: "list" }));
+      return;
+    }
+    if (request.method === "POST" && request.url === "/v1/chat/completions") {
+      const payload = await readJsonBody(request);
+      const query = readResolverQuery(payload);
+      const toolName = /天气|weather/i.test(query)
+        ? "mcp.multi_mcp.weather-forecast"
+        : "mcp.multi_mcp.campaign-calendar";
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                summary: "ok",
+                toolNames: [toolName]
+              })
+            }
+          }
+        ],
+        id: "chatcmpl-test",
+        object: "chat.completion"
+      }));
+      return;
+    }
+    response.statusCode = 404;
+    response.end("not found");
+  });
+}
+
+function readResolverQuery(payload) {
+  const messages = Array.isArray(payload.messages) ? payload.messages : [];
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || message.role !== "user" || typeof message.content !== "string") {
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(message.content);
+      if (typeof parsed.query === "string") {
+        return parsed.query;
+      }
+    } catch {
+      return message.content;
+    }
+  }
+  return "";
 }
 
 function createDelayedResolverServer() {

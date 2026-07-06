@@ -380,7 +380,7 @@ class ToolHubRuntime {
       }
     }
 
-    const inFlightResolve = session.inFlightResolves.get(taskHash) ?? firstMapValue(session.inFlightResolves);
+    const inFlightResolve = session.inFlightResolves.get(taskHash);
     if (inFlightResolve) {
       const output = await inFlightResolve;
       const selectedTools = output.selectedTools
@@ -707,8 +707,7 @@ class ToolHubRuntime {
     const session = this.session(scopeKey);
     const now = Date.now();
     session.recentlyResolvedTasks = session.recentlyResolvedTasks.filter((item) => now - item.resolvedAt <= repeatedResolveWindowMs);
-    return session.recentlyResolvedTasks.find((item) => item.taskHash === taskHash) ??
-      session.recentlyResolvedTasks.find((item) => item.observationCount === session.recentObservations.length);
+    return session.recentlyResolvedTasks.find((item) => item.taskHash === taskHash);
   }
 
   private rememberObservation(scopeKey: string, toolName: string, result: unknown): void {
@@ -1516,21 +1515,15 @@ class OpenAiToolHubSearchAgent {
         continue;
       }
 
-      if (!didCallAnalyzer) {
-        messages.push({
-          role: "user",
-          content: `You must call ${treeSitterToolName} on a TypeScript workflow sketch before your final answer.`
-        });
-        continue;
-      }
-
       const contentText = typeof responseMessage.content === "string" ? responseMessage.content.trim() : "";
       const parsed = firstJsonObject(contentText);
       if (!parsed) {
         messages.push(responseMessage);
         messages.push({
           role: "user",
-          content: "Return only a valid JSON object with keys \"summary\", \"steps\", \"workflowSketch\", and \"toolNames\"."
+          content: didCallAnalyzer
+            ? "Return only a valid JSON object with keys \"summary\", \"steps\", \"workflowSketch\", and \"toolNames\"."
+            : `You must call ${treeSitterToolName} on a TypeScript workflow sketch before your final answer.`
         });
         continue;
       }
@@ -1555,11 +1548,15 @@ class OpenAiToolHubSearchAgent {
           .filter((name): name is string => typeof name === "string")
       );
       const selectedToolNames = uniqueStrings([...latestResolvedFromAnalyzer, ...llmSelectedNames]).slice(0, topK);
-      const refinementFeedback = buildSearchRefinementFeedback({
-        selectedToolNames,
-        summary,
-        workflowSketch
-      });
+      const refinementFeedback = didCallAnalyzer
+        ? buildSearchRefinementFeedback({
+            selectedToolNames,
+            summary,
+            workflowSketch
+          })
+        : selectedToolNames.length === 0
+          ? "Your current answer resolved to zero valid catalog tools. Call the tree-sitter tool on a revised TypeScript workflow sketch before answering."
+          : undefined;
       if (refinementFeedback && turn + 1 < maxTurns) {
         messages.push(responseMessage);
         messages.push({ role: "user", content: refinementFeedback });
@@ -1568,15 +1565,22 @@ class OpenAiToolHubSearchAgent {
       break;
     }
 
-    if (!didCallAnalyzer || analyzerCallCount === 0) {
-      throw new Error("Resolve retrieval LLM did not complete an AST planning round.");
-    }
     const selectedToolNames = uniqueStrings([...latestResolvedFromAnalyzer, ...llmSelectedNames]).slice(0, topK);
     if (selectedToolNames.length === 0) {
-      throw new Error("Resolve retrieval did not converge on any valid catalog tools after AST refinement.");
+      throw new Error(didCallAnalyzer || analyzerCallCount > 0
+        ? "Resolve retrieval did not converge on any valid catalog tools after AST refinement."
+        : "Resolve retrieval did not converge on any valid catalog tools.");
+    }
+    if (!didCallAnalyzer || analyzerCallCount === 0) {
+      referencedTokens = uniqueStrings([...referencedTokens, ...selectedToolNames]);
+    }
+    if (didCallAnalyzer && analyzerCallCount === 0) {
+      throw new Error("Resolve retrieval LLM did not complete an AST planning round.");
     }
     if (!summary) {
-      summary = "Resolved a planned end-to-end tool bundle with AST-assisted retrieval.";
+      summary = didCallAnalyzer
+        ? "Resolved a planned end-to-end tool bundle with AST-assisted retrieval."
+        : "Resolved a planned end-to-end tool bundle from the resolver model response.";
     } else if (summary.toLowerCase().includes("no strong tool bundle match was found")) {
       summary = "Resolved a candidate tool bundle after iterative AST refinement.";
     }
@@ -1596,14 +1600,14 @@ class OpenAiToolHubSearchAgent {
     messages: SearchMessage[],
     timeoutMs: number
   ): Promise<SearchMessage> {
-    const stream = await client.chat.completions.create({
+    const response = await client.chat.completions.create({
       model,
       temperature: 0,
       messages: [
         { role: "system", content: system },
         ...messages
       ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
-      stream: true,
+      stream: false,
       tools: [
         {
           type: "function",
@@ -1625,70 +1629,36 @@ class OpenAiToolHubSearchAgent {
         }
       ],
       tool_choice: "auto"
-    } as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming, {
+    } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming, {
       timeout: timeoutMs
     });
 
-    let content = "";
-    let sawDelta = false;
-    const toolCalls = new Map<number, {
-      function: {
-        arguments: string;
-        name: string;
-      };
-      id: string;
-      type: "function";
-    }>();
-
-    for await (const chunk of stream) {
-      const delta = chunk.choices[0]?.delta;
-      if (!delta) {
-        continue;
-      }
-      sawDelta = true;
-      if (typeof delta.content === "string") {
-        content += delta.content;
-      }
-      for (const toolCallDelta of delta.tool_calls ?? []) {
-        const index = typeof toolCallDelta.index === "number" ? toolCallDelta.index : toolCalls.size;
-        const toolCall = toolCalls.get(index) ?? {
-          id: "",
-          type: "function",
+    const message = response.choices[0]?.message;
+    if (!message) {
+      throw new Error("OpenAI resolve retrieval returned no assistant message.");
+    }
+    const content = typeof message.content === "string" ? message.content : "";
+    const toolCalls = (message.tool_calls ?? [])
+      .map((toolCall, index) => {
+        const rawToolCall = toolCall as unknown as { function?: unknown };
+        const functionCall = isRecord(rawToolCall.function) ? rawToolCall.function : {};
+        return {
+          id: toolCall.id || `tool_call_${index}`,
+          type: "function" as const,
           function: {
-            arguments: "",
-            name: ""
+            arguments: typeof functionCall.arguments === "string" ? functionCall.arguments : "",
+            name: typeof functionCall.name === "string" ? functionCall.name : ""
           }
         };
-        if (toolCallDelta.id) {
-          toolCall.id = toolCallDelta.id;
-        }
-        if (toolCallDelta.function?.name) {
-          toolCall.function.name += toolCallDelta.function.name;
-        }
-        if (typeof toolCallDelta.function?.arguments === "string") {
-          toolCall.function.arguments += toolCallDelta.function.arguments;
-        }
-        toolCalls.set(index, toolCall);
-      }
-    }
-
-    if (!sawDelta) {
-      throw new Error("OpenAI resolve retrieval stream returned no assistant delta.");
+      })
+      .filter((toolCall) => toolCall.function.name.length > 0);
+    if (!content && toolCalls.length === 0) {
+      throw new Error("OpenAI resolve retrieval returned no assistant content or tool calls.");
     }
     return {
       role: "assistant",
       content,
-      tool_calls: Array.from(toolCalls.entries())
-        .sort(([left], [right]) => left - right)
-        .map(([index, toolCall]) => ({
-          id: toolCall.id || `tool_call_${index}`,
-          type: "function" as const,
-          function: {
-            name: toolCall.function.name,
-            arguments: toolCall.function.arguments
-          }
-        }))
-        .filter((toolCall) => toolCall.function.name.length > 0)
+      tool_calls: toolCalls
     };
   }
 }
@@ -2671,13 +2641,6 @@ function stableJsonStringify(value: unknown): string | undefined {
 
 function normalizeResolveTaskKey(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function firstMapValue<K, V>(map: Map<K, V>): V | undefined {
-  for (const value of map.values()) {
-    return value;
-  }
-  return undefined;
 }
 
 function readNonEmptyString(value: unknown): string | undefined {

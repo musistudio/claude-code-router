@@ -275,10 +275,12 @@ test("profile service clears stale Claude Code ToolHub artifacts when no gateway
   assert.equal(existsSync(staleToolHubMcpConfigFile), false);
   const settings = JSON.parse(readFileSync(settingsFile, "utf8"));
   assert.deepEqual(settings.env, {
+    ENABLE_TOOL_SEARCH: "true",
     USER_VALUE: "kept"
   });
   const staleSettings = JSON.parse(readFileSync(staleSettingsFile, "utf8"));
   assert.deepEqual(staleSettings.env, {
+    ENABLE_TOOL_SEARCH: "true",
     USER_VALUE: "old-kept"
   });
 });
