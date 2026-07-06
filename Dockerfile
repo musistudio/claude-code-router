@@ -1,4 +1,5 @@
 ARG NODE_IMAGE=node:22-bookworm
+ARG RUNTIME_NODE_IMAGE=node:22-bookworm-slim
 
 FROM ${NODE_IMAGE} AS build
 WORKDIR /app
@@ -13,7 +14,16 @@ RUN npm ci
 COPY . .
 RUN npm run build:docker
 
-FROM ${NODE_IMAGE} AS runtime
+FROM ${NODE_IMAGE} AS production-deps
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY package.json package-lock.json ./
+COPY packages/core/package.json packages/core/package.json
+RUN npm ci --omit=dev --workspace=@claude-code-router/core --include-workspace-root=false \
+  && npm cache clean --force
+
+FROM ${RUNTIME_NODE_IMAGE} AS runtime
 ENV NODE_ENV=production \
     CCR_DATA_DIR=/data \
     CCR_WEB_HOST=127.0.0.1 \
@@ -28,14 +38,25 @@ ENV NODE_ENV=production \
 WORKDIR /app
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates nginx \
+  && apt-get install -y --no-install-recommends ca-certificates libstdc++6 nginx \
   && rm -rf /var/lib/apt/lists/* \
-  && rm -f /etc/nginx/sites-enabled/default /etc/nginx/conf.d/default.conf
+  && rm -f /etc/nginx/sites-enabled/default /etc/nginx/conf.d/default.conf \
+  && rm -rf \
+    /opt/yarn-* \
+    /usr/local/bin/corepack \
+    /usr/local/bin/npm \
+    /usr/local/bin/npx \
+    /usr/local/bin/yarn \
+    /usr/local/bin/yarnpkg \
+    /usr/local/include/node \
+    /usr/local/lib/node_modules/corepack \
+    /usr/local/lib/node_modules/npm \
+    /usr/local/share/doc \
+    /usr/local/share/man
 
 COPY package.json package-lock.json ./
 COPY packages/core/package.json packages/core/package.json
-RUN npm ci --omit=dev --workspace=@claude-code-router/core --include-workspace-root=false \
-  && npm cache clean --force
+COPY --from=production-deps /app/node_modules node_modules
 
 COPY --from=build /app/packages/core/dist packages/core/dist
 COPY --from=build /app/packages/ui/dist/renderer /usr/share/nginx/html

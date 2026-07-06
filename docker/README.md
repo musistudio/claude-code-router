@@ -60,11 +60,15 @@ migrated to the public Nginx router endpoint, and removes its temporary
 container and volume. Set `CCR_DOCKER_TEST_SKIP_BUILD=1` to reuse an already
 built image.
 
-The Dockerfile defaults to `node:22-bookworm` for reliable native SQLite
-installation. To use a different Node base image:
+The Dockerfile uses `node:22-bookworm` for build and native SQLite dependency
+installation, then copies the production dependencies into a smaller
+`node:22-bookworm-slim` runtime image. To use different base images:
 
 ```sh
-docker build --build-arg NODE_IMAGE=node:22-bookworm-slim -t claude-code-router:local .
+docker build \
+  --build-arg NODE_IMAGE=node:22-bookworm \
+  --build-arg RUNTIME_NODE_IMAGE=node:22-bookworm-slim \
+  -t claude-code-router:local .
 ```
 
 ## Environment
