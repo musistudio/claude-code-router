@@ -11,6 +11,7 @@ import { syncLaunchAtLogin } from "./launch-at-login";
 import { proxyService } from "@ccr/core/proxy/service";
 import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
+import { browserAutomationMcpService } from "./browser-automation-mcp";
 import { browserWebSearchMcpService } from "./electron-web-search-mcp";
 import windowsManager from "./windows";
 
@@ -29,6 +30,7 @@ if (!gotTheLock) {
 }
 
 function startPrimaryInstance(): void {
+  gatewayService.setBrowserAutomationMcpIntegration(browserAutomationMcpService);
   gatewayService.setBrowserWebSearchMcpIntegration(browserWebSearchMcpService);
   deepLinkService.register();
   deepLinkService.handleArgv(process.argv);

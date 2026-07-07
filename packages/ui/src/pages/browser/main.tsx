@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { createRoot } from "react-dom/client";
-import { ArrowLeft, ArrowRight, Globe2, LoaderCircle, Plus, RotateCw, Search, X } from "lucide-react";
-import type { BuiltInBrowserState } from "@ccr/core/contracts/app";
+import { ArrowLeft, ArrowRight, Check, KeyRound, LoaderCircle, Plus, RotateCw, Search, UserRound, X } from "lucide-react";
+import type { BuiltInBrowserState, ChromeLoginImportJob, ChromeLoginImportRequest } from "@ccr/core/contracts/app";
 
 declare global {
   interface Window {
@@ -9,11 +9,14 @@ declare global {
       back: (tabId?: string) => Promise<BuiltInBrowserState>;
       closeTab: (tabId: string) => Promise<BuiltInBrowserState>;
       forward: (tabId?: string) => Promise<BuiltInBrowserState>;
+      getChromeLoginImport: (id: string) => Promise<ChromeLoginImportJob | undefined>;
       getState: () => Promise<BuiltInBrowserState>;
       navigate: (url: string, tabId?: string) => Promise<BuiltInBrowserState>;
       newTab: (url?: string) => Promise<BuiltInBrowserState>;
       reload: (tabId?: string) => Promise<BuiltInBrowserState>;
+      resolveAutomationHandoff: (status: "completed" | "dismissed") => Promise<BuiltInBrowserState>;
       selectTab: (tabId: string) => Promise<BuiltInBrowserState>;
+      startChromeLoginImport: (request: ChromeLoginImportRequest) => Promise<ChromeLoginImportJob>;
       onStateChanged: (callback: (state: BuiltInBrowserState) => void) => () => void;
     };
   }
@@ -29,10 +32,12 @@ function BrowserChrome() {
   const [state, setState] = useState<BuiltInBrowserState>(emptyState);
   const [addressDraft, setAddressDraft] = useState("");
   const [homeDraft, setHomeDraft] = useState("");
+  const [chromeImportJob, setChromeImportJob] = useState<ChromeLoginImportJob | undefined>();
   const activeTab = useMemo(
     () => state.tabs.find((tab) => tab.id === state.activeTabId),
     [state.activeTabId, state.tabs]
   );
+  const handoff = state.automationHandoff;
   const homeVisible = activeTab?.url === browserHomeUrl;
 
   useEffect(() => {
@@ -57,6 +62,25 @@ function BrowserChrome() {
     setHomeDraft("");
   }, [activeTab?.id]);
 
+  useEffect(() => {
+    if (!chromeImportJob || chromeImportJob.status !== "pending") {
+      return;
+    }
+    const interval = window.setInterval(() => {
+      void window.ccrBrowser?.getChromeLoginImport(chromeImportJob.id).then((job) => {
+        if (!job) {
+          setChromeImportJob(undefined);
+          return;
+        }
+        setChromeImportJob(job);
+        if (job.status === "completed" && activeTab?.id && activeTabMatchesImport(activeTab.url, job.domains)) {
+          void run(window.ccrBrowser?.reload(activeTab.id));
+        }
+      });
+    }, 2000);
+    return () => window.clearInterval(interval);
+  }, [activeTab?.id, activeTab?.url, chromeImportJob]);
+
   async function run(action: Promise<BuiltInBrowserState> | undefined): Promise<void> {
     if (!action) {
       return;
@@ -79,8 +103,53 @@ function BrowserChrome() {
     void run(window.ccrBrowser?.navigate(url, activeTab?.id));
   }
 
+  async function startChromeLoginImport() {
+    const defaultDomain = activeTabDomain(activeTab?.url);
+    const rawDomains = window.prompt("Chrome domain(s) to import. Separate multiple domains with commas.", defaultDomain);
+    if (!rawDomains) {
+      return;
+    }
+    const domains = parseImportDomains(rawDomains);
+    if (domains.length === 0) {
+      return;
+    }
+    const job = await window.ccrBrowser?.startChromeLoginImport({ domains, openConfirmationPage: true });
+    if (!job) {
+      return;
+    }
+    setChromeImportJob(job);
+  }
+
+  function chromeImportTitle(): string {
+    if (!chromeImportJob) {
+      return "Import login from Chrome";
+    }
+    if (chromeImportJob.status === "completed") {
+      return `Chrome import complete: ${chromeImportJob.result?.imported ?? 0} imported, ${chromeImportJob.result?.skipped ?? 0} skipped`;
+    }
+    if (chromeImportJob.status === "expired") {
+      return "Chrome import expired";
+    }
+    if (chromeImportJob.status === "failed") {
+      return "Chrome import failed";
+    }
+    return "Chrome import pending. Confirm it in the browser window.";
+  }
+
+  async function handleChromeImportButton() {
+    if (chromeImportJob?.status === "pending") {
+      try {
+        await navigator.clipboard.writeText(chromeImportJob.confirmUrl);
+      } catch {
+        window.prompt("Open this Chrome import confirmation URL.", chromeImportJob.confirmUrl);
+      }
+      return;
+    }
+    await startChromeLoginImport();
+  }
+
   return (
-    <div className="browser-shell">
+    <div className={`browser-shell ${handoff ? "has-handoff" : ""}`}>
       <div className="tabs-row">
         <div className="traffic-space" />
         <div className="tabs-strip">
@@ -149,7 +218,44 @@ function BrowserChrome() {
           spellCheck={false}
           value={addressDraft}
         />
+        <button
+          className={`icon-button ${chromeImportJob?.status === "pending" ? "active-import" : ""}`}
+          disabled={!activeTab}
+          onClick={() => void handleChromeImportButton()}
+          title={chromeImportTitle()}
+          type="button"
+        >
+          <KeyRound size={16} strokeWidth={2.2} />
+        </button>
       </form>
+
+      {handoff ? (
+        <div className="automation-handoff" role="status">
+          <div className="handoff-copy">
+            <UserRound size={16} strokeWidth={2.2} />
+            <span className="handoff-message">{handoff.message}</span>
+            {handoff.reason ? <span className="handoff-reason">{handoff.reason}</span> : null}
+          </div>
+          <div className="handoff-actions">
+            <button
+              className="handoff-button primary"
+              onClick={() => void run(window.ccrBrowser?.resolveAutomationHandoff("completed"))}
+              type="button"
+            >
+              <Check size={15} strokeWidth={2.4} />
+              <span>Done</span>
+            </button>
+            <button
+              className="handoff-button"
+              onClick={() => void run(window.ccrBrowser?.resolveAutomationHandoff("dismissed"))}
+              type="button"
+            >
+              <X size={14} strokeWidth={2.3} />
+              <span>Hide</span>
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {homeVisible ? (
         <main className="home-page">
@@ -188,6 +294,42 @@ function BrowserChrome() {
 
 const root = createRoot(document.getElementById("root") as HTMLElement);
 root.render(<BrowserChrome />);
+
+function activeTabDomain(url: string | undefined): string {
+  if (!url || url === browserHomeUrl) {
+    return "";
+  }
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "";
+  }
+}
+
+function activeTabMatchesImport(url: string | undefined, domains: string[]): boolean {
+  const host = activeTabDomain(url).toLowerCase();
+  return Boolean(host && domains.some((domain) => host === domain || host.endsWith(`.${domain}`)));
+}
+
+function parseImportDomains(value: string): string[] {
+  return [...new Set(value
+    .split(/[,\n]/)
+    .map((item) => normalizeImportDomain(item))
+    .filter((item): item is string => Boolean(item)))];
+}
+
+function normalizeImportDomain(value: string): string | undefined {
+  const raw = value.trim().toLowerCase();
+  if (!raw) {
+    return undefined;
+  }
+  try {
+    return new URL(raw.includes("://") ? raw : `https://${raw}`).hostname;
+  } catch {
+    const domain = raw.replace(/^\*\./, "").split("/")[0];
+    return domain && !domain.includes(" ") ? domain : undefined;
+  }
+}
 
 const style = document.createElement("style");
 style.textContent = `
@@ -229,6 +371,10 @@ style.textContent = `
     height: 100%;
     min-width: 0;
     width: 100%;
+  }
+
+  .browser-shell.has-handoff {
+    grid-template-rows: 38px 44px 44px minmax(0, 1fr);
   }
 
   .tabs-row {
@@ -325,7 +471,7 @@ style.textContent = `
     border-bottom: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
     display: grid;
     gap: 4px;
-    grid-template-columns: 32px 32px 32px minmax(0, 1fr);
+    grid-template-columns: 32px 32px 32px minmax(0, 1fr) 32px;
     padding: 6px 10px;
   }
 
@@ -337,6 +483,11 @@ style.textContent = `
   .icon-button:disabled {
     cursor: default;
     opacity: 0.4;
+  }
+
+  .icon-button.active-import {
+    background: color-mix(in srgb, #0f766e 16%, transparent);
+    color: color-mix(in srgb, #0f766e 82%, CanvasText);
   }
 
   input {
@@ -353,6 +504,79 @@ style.textContent = `
 
   input:focus {
     border-color: color-mix(in srgb, #2563eb 70%, CanvasText 30%);
+  }
+
+  .automation-handoff {
+    -webkit-app-region: drag;
+    align-items: center;
+    background: color-mix(in srgb, #f59e0b 16%, Canvas);
+    border-bottom: 1px solid color-mix(in srgb, #92400e 24%, transparent);
+    display: grid;
+    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-width: 0;
+    padding: 6px 10px;
+  }
+
+  .handoff-copy {
+    align-items: center;
+    color: color-mix(in srgb, #78350f 76%, CanvasText);
+    display: flex;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .handoff-message,
+  .handoff-reason {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .handoff-message {
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .handoff-reason {
+    color: color-mix(in srgb, CanvasText 58%, transparent);
+    font-size: 12px;
+  }
+
+  .handoff-actions {
+    -webkit-app-region: no-drag;
+    align-items: center;
+    display: flex;
+    flex: 0 0 auto;
+    gap: 6px;
+  }
+
+  .handoff-button {
+    align-items: center;
+    background: color-mix(in srgb, CanvasText 5%, Canvas);
+    border: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+    border-radius: 7px;
+    display: inline-flex;
+    gap: 5px;
+    height: 30px;
+    justify-content: center;
+    min-width: 0;
+    padding: 0 9px;
+    white-space: nowrap;
+  }
+
+  .handoff-button:hover {
+    background: color-mix(in srgb, CanvasText 9%, Canvas);
+  }
+
+  .handoff-button.primary {
+    background: #166534;
+    border-color: #166534;
+    color: white;
+  }
+
+  .handoff-button.primary:hover {
+    background: #14532d;
   }
 
   .home-page {
@@ -486,6 +710,24 @@ style.textContent = `
 
     .installed-apps {
       grid-template-columns: 1fr;
+    }
+
+    .automation-handoff {
+      gap: 6px;
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .handoff-reason {
+      display: none;
+    }
+
+    .handoff-button span {
+      display: none;
+    }
+
+    .handoff-button {
+      padding: 0 8px;
+      width: 32px;
     }
   }
 

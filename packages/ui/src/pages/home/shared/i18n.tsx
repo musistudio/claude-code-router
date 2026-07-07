@@ -29,6 +29,8 @@ export type AppCopy = {
     themeLight: string;
     themeSystem: string;
     toolHub: string;
+    toolHubBrowserAutomation: string;
+    toolHubBrowserAutomationDescription: string;
     toolHubDescription: string;
     toolHubEnabled: string;
     toolHubEnabledDescription: string;
@@ -139,6 +141,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       themeLight: "Light",
       themeSystem: "System",
       toolHub: "ToolHub",
+      toolHubBrowserAutomation: "Built-in browser automation",
+      toolHubBrowserAutomationDescription: "Expose CCR Desktop's built-in browser automation tools through ToolHub.",
       toolHubDescription: "Route configured MCP servers through ToolHub, where the model finds the tools needed for each task.",
       toolHubEnabled: "Enable ToolHub",
       toolHubEnabledDescription: "Expose a compact ToolHub MCP server instead of all configured MCP tools.",
@@ -495,6 +499,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       themeLight: "亮色",
       themeSystem: "跟随系统",
       toolHub: "ToolHub",
+      toolHubBrowserAutomation: "内置浏览器自动化",
+      toolHubBrowserAutomationDescription: "通过 ToolHub 暴露 CCR Desktop 的内置浏览器自动化工具。",
       toolHubDescription: "将已配置的 MCP servers 交给 ToolHub，由模型负责检索需要的工具。",
       toolHubEnabled: "启用 ToolHub",
       toolHubEnabledDescription: "向 Agent 暴露紧凑的 ToolHub MCP，而不是所有已配置 MCP 工具。",

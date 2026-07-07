@@ -642,6 +642,7 @@ export type ToolHubLlmConfig = {
 };
 
 export type ToolHubConfig = {
+  browserAutomation: boolean;
   enabled: boolean;
   llm: ToolHubLlmConfig;
   mcpServers: GatewayMcpServerConfig[];
@@ -1468,10 +1469,89 @@ export type BuiltInBrowserTabState = {
   url: string;
 };
 
+export type BuiltInBrowserAutomationHandoffKind =
+  | "blocked"
+  | "human_verification"
+  | "login_required"
+  | "other"
+  | "verification_code";
+
+export type BuiltInBrowserAutomationHandoff = {
+  id: string;
+  kind: BuiltInBrowserAutomationHandoffKind;
+  message: string;
+  reason?: string;
+  requestedAt: number;
+  sessionId?: string;
+  status: "pending";
+  tabId?: string;
+};
+
 export type BuiltInBrowserState = {
   activeTabId?: string;
   apps: InstalledBrowserApp[];
+  automationHandoff?: BuiltInBrowserAutomationHandoff;
   tabs: BuiltInBrowserTabState[];
+};
+
+export type ChromeLoginImportTarget = "browser" | "browser-and-web-search";
+
+export type ChromeLoginImportStatus =
+  | "completed"
+  | "expired"
+  | "failed"
+  | "pending";
+
+export type ChromeLoginImportRequest = {
+  domains: string[];
+  openConfirmationPage?: boolean;
+  target?: ChromeLoginImportTarget;
+};
+
+export type ChromeLoginImportResult = {
+  completedAt: number;
+  cookieImported: number;
+  cookieSkipped: number;
+  domains: string[];
+  errors?: string[];
+  imported: number;
+  localStorageImported: number;
+  localStorageSkipped: number;
+  partitions: string[];
+  skipped: number;
+};
+
+export type ChromeLoginImportJob = {
+  confirmUrl: string;
+  createdAt: number;
+  domains: string[];
+  endpointUrl: string;
+  expiresAt: number;
+  id: string;
+  importUrl: string;
+  result?: ChromeLoginImportResult;
+  status: ChromeLoginImportStatus;
+  target: ChromeLoginImportTarget;
+};
+
+export type ChromeLoginImportCookie = {
+  domain: string;
+  expirationDate?: number;
+  hostOnly?: boolean;
+  httpOnly?: boolean;
+  name: string;
+  partitionKey?: unknown;
+  path?: string;
+  sameSite?: "lax" | "no_restriction" | "strict" | "unspecified";
+  secure?: boolean;
+  session?: boolean;
+  storeId?: string;
+  value: string;
+};
+
+export type ChromeLoginImportLocalStorage = {
+  items: Record<string, string>;
+  origin: string;
 };
 
 export type ProxyCertificateInstallResult = {

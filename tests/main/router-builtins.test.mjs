@@ -234,7 +234,8 @@ test("built-in Claude Code route injects ToolHub resolver instructions when Tool
       model: "claude-default",
       tools: [
         { name: "tool_hub.resolve", input_schema: { type: "object" } },
-        { name: "mcp__ccr-toolhub__tool_hub.invoke", input_schema: { type: "object" } }
+        { name: "mcp__ccr-toolhub__tool_hub_resolve", input_schema: { type: "object" } },
+        { name: "mcp__ccr-toolhub__tool_hub_invoke", input_schema: { type: "object" } }
       ]
     },
     headers: {
@@ -245,10 +246,13 @@ test("built-in Claude Code route injects ToolHub resolver instructions when Tool
   });
 
   assert.match(result.body.system.at(-1).text, /CCR ToolHub tool resolution is enabled/);
-  assert.match(result.body.system.at(-1).text, /MUST call tool_hub\.resolve before answering/);
+  assert.match(result.body.system.at(-1).text, /ToolHub search\/resolution tool is mcp__ccr-toolhub__tool_hub_resolve/);
+  assert.match(result.body.system.at(-1).text, /call this actual tool, do not merely mention its name in text/);
+  assert.match(result.body.system.at(-1).text, /MUST call the ToolHub search\/resolution tool mcp__ccr-toolhub__tool_hub_resolve before answering/);
   assert.match(result.body.system.at(-1).text, /external services.*business APIs.*orders.*coupons.*stores.*accounts/);
-  assert.match(result.body.system.at(-1).text, /Only skip tool_hub\.resolve when the request is clearly local/);
-  assert.match(result.body.system.at(-1).text, /use mcp__ccr-toolhub__tool_hub\.invoke/);
+  assert.match(result.body.system.at(-1).text, /Only skip the ToolHub search\/resolution tool when the request is clearly local/);
+  assert.match(result.body.system.at(-1).text, /call the ToolHub invocation tool mcp__ccr-toolhub__tool_hub_invoke/);
+  assert.match(result.body.system.at(-1).text, /executionPlanJs.*Promise\.all/);
 });
 
 test("built-in Claude Code route does not inject ToolHub instructions without the resolve tool", async () => {

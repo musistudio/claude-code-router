@@ -464,6 +464,7 @@ export function normalizeToolHubConfig(config: Partial<AppConfig["toolHub"]> | u
   return {
     ...fallbackConfig.toolHub,
     ...(config || {}),
+    browserAutomation: Boolean(config?.browserAutomation),
     enabled: Boolean(config?.enabled),
     llm: {
       ...fallbackConfig.toolHub.llm,

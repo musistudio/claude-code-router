@@ -404,6 +404,24 @@ test("gateway config does not create fallback tools for MCP-backed Fusion tools"
   assert.deepEqual(definitions.map((definition) => definition.name), ["missing_fusion_tool"]);
 });
 
+test("gateway fallback explains In-app Browser web search requires Desktop integration", () => {
+  const profiles = [
+    {
+      enabled: true,
+      metadata: {
+        fusionWebSearch: { provider: "browser", toolName: "fusion_2_web_search" }
+      },
+      tools: [{ description: "Browser search", name: "fusion_2_web_search", visibility: "internal" }]
+    }
+  ];
+
+  const definitions = fusionFallbackToolDefinitions(profiles);
+
+  assert.equal(definitions[0].name, "fusion_2_web_search");
+  assert.match(definitions[0].unavailableMessage, /requires CCR Desktop/);
+  assert.match(definitions[0].unavailableMessage, /switch the Fusion web search provider/);
+});
+
 test("gateway response injects Anthropic web search protocol blocks into JSON responses", () => {
   const response = {
     content: [
@@ -790,6 +808,24 @@ test("gateway injects prefetched web search evidence into OpenAI chat requests",
   assert.equal(parsed.web_search_options, undefined);
   assert.equal(parsed.messages[0].role, "system");
   assert.match(parsed.messages[0].content, /hidden in-app browser web search/);
+});
+
+test("gateway includes browser extraction diagnostics in hosted web search evidence", () => {
+  const body = Buffer.from(JSON.stringify({
+    messages: [{ role: "user", content: "Perform a web search for the query: today gold price per ounce USD July 2026" }],
+    model: "Fusion/kimisearch",
+    tools: [{ type: "web_search_preview" }]
+  }));
+  const record = sampleSearchRecord();
+  record.results[0].diagnostics = ["Page extraction failed: Browser search navigation timed out."];
+
+  const transformed = prepareHostedWebSearchProtocolRequestBody(body, [record], {
+    protocol: "openai_chat_completions",
+    queryHint: "today gold price per ounce USD July 2026"
+  });
+  const parsed = JSON.parse(transformed.toString("utf8"));
+
+  assert.match(parsed.messages[0].content, /Diagnostics: Page extraction failed/);
 });
 
 test("gateway hosted web search rewrites preserve custom web_search-named tools", () => {

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { EventEmitter } from "node:events";
 import {
   BrowserWindow,
   clipboard,
@@ -10,28 +11,64 @@ import {
   WebContentsView,
   type ContextMenuParams,
   type IpcMainInvokeEvent,
-  type MenuItemConstructorOptions
+  type MenuItemConstructorOptions,
+  type WebContents
 } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import type { AppConfig, BuiltInBrowserState, BuiltInBrowserTabState, GatewayPluginAppConfig, InstalledBrowserApp } from "@ccr/core/contracts/app";
+import type {
+  AppConfig,
+  BuiltInBrowserAutomationHandoff,
+  BuiltInBrowserAutomationHandoffKind,
+  BuiltInBrowserState,
+  BuiltInBrowserTabState,
+  ChromeLoginImportRequest,
+  GatewayPluginAppConfig,
+  InstalledBrowserApp
+} from "@ccr/core/contracts/app";
 import { IPC_CHANNELS } from "@ccr/core/contracts/ipc-channels";
 import { APP_NAME } from "@ccr/core/config/constants";
 import { pluginService } from "@ccr/core/plugins/service";
-import { proxyService } from "@ccr/core/proxy/service";
+import { chromeLoginImportService } from "./chrome-login-import";
 
 type BrowserTab = BuiltInBrowserTabState & {
   view: WebContentsView;
 };
 
-const browserChromeHeight = 82;
+export type BrowserAutomationEvent = {
+  errorCode?: number;
+  errorDescription?: string;
+  handoffId?: string;
+  handoffStatus?: "completed" | "dismissed";
+  kind: string;
+  seq: number;
+  summary?: string;
+  tabId?: string;
+  title?: string;
+  ts: number;
+  url?: string;
+  windowId?: string;
+};
+
+export type BrowserAutomationEventListener = (event: BrowserAutomationEvent) => void;
+
+const browserChromeBaseHeight = 82;
+const browserHandoffToolbarHeight = 44;
 const browserHomeUrl = "about:blank";
 const browserPartition = "persist:ccr-built-in-browser";
+const browserAutomationWindowId = "ccr-built-in-browser";
+const maxAutomationEventHistory = 512;
+const maxAutomationEventAgeMs = 60_000;
 const titleBarHeight = 46;
 
 class BuiltInBrowserService {
   private activeTabId?: string;
   private apps: InstalledBrowserApp[] = [];
+  private automationHandoff?: BuiltInBrowserAutomationHandoff;
+  private automationEventSeq = 0;
+  private readonly automationEvents = new EventEmitter();
+  private readonly automationEventHistory: BrowserAutomationEvent[] = [];
+  private hideWindowAfterAutomationHandoff = false;
   private proxyConfigKey = "";
   private tabOrder: string[] = [];
   private tabs = new Map<string, BrowserTab>();
@@ -44,10 +81,7 @@ class BuiltInBrowserService {
   async open(config: AppConfig): Promise<void> {
     await this.syncProxy(config);
 
-    const window = this.window && !this.window.isDestroyed() ? this.window : this.createWindow();
-    if (this.tabs.size === 0) {
-      this.createTab(browserHomeUrl);
-    }
+    const window = this.ensureWindow();
     if (window.isMinimized()) {
       window.restore();
     }
@@ -57,28 +91,18 @@ class BuiltInBrowserService {
     this.sendState();
   }
 
+  async openHidden(config: AppConfig): Promise<void> {
+    await this.syncProxy(config);
+    this.ensureWindow();
+    this.layoutActiveView();
+    this.sendState();
+  }
+
   async syncProxy(config: AppConfig): Promise<void> {
     this.syncApps(config);
 
     const browserSession = session.fromPartition(browserPartition);
-    if (config.proxy.enabled) {
-      await proxyService.refreshUpstreamProxyFromCurrentSystem();
-    }
-    const proxyStatus = proxyService.getStatus();
-    const shouldUseProxy = Boolean(
-      config.proxy.enabled &&
-      proxyStatus.state === "running" &&
-      proxyStatus.endpoint
-    );
-    const proxyConfig = shouldUseProxy
-      ? {
-          mode: "fixed_servers" as const,
-          proxyBypassRules: "<-loopback>",
-          proxyRules: electronProxyRules(proxyStatus.endpoint)
-        }
-      : {
-          mode: "direct" as const
-        };
+    const proxyConfig = { mode: "system" as const };
     const nextKey = JSON.stringify(proxyConfig);
     if (nextKey === this.proxyConfigKey) {
       return;
@@ -100,15 +124,225 @@ class BuiltInBrowserService {
 
   async clearProxy(): Promise<void> {
     const browserSession = session.fromPartition(browserPartition);
-    await browserSession.setProxy({ mode: "direct" });
+    const proxyConfig = { mode: "system" as const };
+    await browserSession.setProxy(proxyConfig);
     await browserSession.forceReloadProxyConfig();
-    this.proxyConfigKey = JSON.stringify({ mode: "direct" });
+    this.proxyConfigKey = JSON.stringify(proxyConfig);
+  }
+
+  getAutomationState(): BuiltInBrowserState {
+    return this.getState();
+  }
+
+  getAutomationWindowId(): string {
+    return browserAutomationWindowId;
+  }
+
+  getAutomationEvents(options: { replayRecentMs?: number } = {}): BrowserAutomationEvent[] {
+    const replayRecentMs = Math.max(0, Math.floor(options.replayRecentMs ?? 0));
+    const cutoff = replayRecentMs > 0 ? Date.now() - replayRecentMs : 0;
+    this.pruneAutomationEventHistory();
+    return this.automationEventHistory
+      .filter((event) => event.ts >= cutoff)
+      .map((event) => ({ ...event }));
+  }
+
+  requestAutomationHandoff(request: {
+    kind?: BuiltInBrowserAutomationHandoffKind;
+    message?: string;
+    reason?: string;
+    sessionId?: string;
+    tabId?: string;
+  }): BuiltInBrowserAutomationHandoff {
+    const existingWindow = this.window && !this.window.isDestroyed() ? this.window : undefined;
+    if (!this.automationHandoff) {
+      this.hideWindowAfterAutomationHandoff = !existingWindow || !existingWindow.isVisible() || existingWindow.isMinimized();
+    }
+    const tab = this.getTab(request.tabId);
+    if (request.tabId && tab?.id) {
+      this.selectTab(request.tabId);
+    }
+    const targetTab = tab || this.getTab();
+    const handoff: BuiltInBrowserAutomationHandoff = {
+      id: randomUUID(),
+      kind: request.kind || "other",
+      message: request.message?.trim() || defaultAutomationHandoffMessage(request.kind),
+      ...(request.reason?.trim() ? { reason: request.reason.trim() } : {}),
+      requestedAt: Date.now(),
+      ...(request.sessionId?.trim() ? { sessionId: request.sessionId.trim() } : {}),
+      status: "pending",
+      tabId: targetTab?.id || request.tabId || this.activeTabId
+    };
+    this.automationHandoff = handoff;
+    this.layoutActiveView();
+    this.showAutomationWindow();
+    this.sendState();
+    this.emitAutomationEvent({
+      handoffId: handoff.id,
+      kind: "handoff.requested",
+      summary: handoff.message,
+      tabId: handoff.tabId,
+      title: targetTab?.title,
+      url: targetTab?.url
+    });
+    return handoff;
+  }
+
+  resolveAutomationHandoff(status: "completed" | "dismissed" = "completed"): BuiltInBrowserState {
+    const handoff = this.automationHandoff;
+    const shouldHideWindow = this.hideWindowAfterAutomationHandoff;
+    this.automationHandoff = undefined;
+    this.hideWindowAfterAutomationHandoff = false;
+    this.layoutActiveView();
+    this.sendState();
+    if (handoff) {
+      const tab = this.getTab(handoff.tabId);
+      if (shouldHideWindow) {
+        this.hideAutomationWindow();
+      }
+      this.emitAutomationEvent({
+        handoffId: handoff.id,
+        handoffStatus: status,
+        kind: status === "completed" ? "handoff.completed" : "handoff.dismissed",
+        summary: status === "completed" ? "User completed the requested browser handoff." : "User dismissed the requested browser handoff.",
+        tabId: handoff.tabId,
+        title: tab?.title,
+        url: tab?.url
+      });
+    }
+    return this.getState();
+  }
+
+  subscribeAutomationEvents(
+    listener: BrowserAutomationEventListener,
+    options: { replayRecentMs?: number } = {}
+  ): () => void {
+    this.automationEvents.on("event", listener);
+    const replayRecentMs = Math.max(0, Math.floor(options.replayRecentMs ?? 0));
+    if (replayRecentMs > 0) {
+      const cutoff = Date.now() - replayRecentMs;
+      this.pruneAutomationEventHistory();
+      for (const event of this.automationEventHistory) {
+        if (event.ts >= cutoff) {
+          listener(event);
+        }
+      }
+    }
+    return () => this.automationEvents.off("event", listener);
+  }
+
+  createAutomationTab(url = browserHomeUrl): BuiltInBrowserTabState {
+    const tab = this.createTab(url);
+    const { view: _view, ...state } = tab;
+    return state;
+  }
+
+  selectAutomationTab(tabId: string): BuiltInBrowserState {
+    this.selectTab(tabId);
+    return this.getState();
+  }
+
+  closeAutomationTab(tabId: string): BuiltInBrowserState {
+    this.closeTab(tabId);
+    return this.getState();
+  }
+
+  async navigateAutomationTab(url: string, tabId?: string): Promise<BuiltInBrowserState> {
+    const tab = this.getTab(tabId);
+    if (!tab) {
+      throw new Error("Browser tab was not found.");
+    }
+
+    const nextUrl = normalizeBrowserUrl(url);
+    tab.url = nextUrl;
+    if (tab.id === this.activeTabId) {
+      this.layoutActiveView();
+    }
+    this.sendState();
+    void tab.view.webContents.loadURL(nextUrl).catch((error) => {
+      this.emitAutomationEvent({
+        kind: "page.load_failed",
+        summary: `Navigation request failed: ${formatError(error)}`,
+        tabId: tab.id,
+        title: tab.title,
+        url: nextUrl
+      });
+    });
+    this.emitAutomationEvent({
+      kind: "page.navigation_requested",
+      summary: `Navigation requested: ${nextUrl}`,
+      tabId: tab.id,
+      title: tab.title,
+      url: nextUrl
+    });
+    return this.getState();
+  }
+
+  goBackAutomationTab(tabId?: string): BuiltInBrowserState {
+    const tab = this.getTab(tabId);
+    tab?.view.webContents.navigationHistory.goBack();
+    if (tab) {
+      this.emitAutomationEvent({
+        kind: "tab.go_back",
+        summary: `Go back in tab ${tab.id}.`,
+        tabId: tab.id,
+        title: tab.title,
+        url: tab.url
+      });
+    }
+    return this.getState();
+  }
+
+  goForwardAutomationTab(tabId?: string): BuiltInBrowserState {
+    const tab = this.getTab(tabId);
+    tab?.view.webContents.navigationHistory.goForward();
+    if (tab) {
+      this.emitAutomationEvent({
+        kind: "tab.go_forward",
+        summary: `Go forward in tab ${tab.id}.`,
+        tabId: tab.id,
+        title: tab.title,
+        url: tab.url
+      });
+    }
+    return this.getState();
+  }
+
+  reloadAutomationTab(tabId?: string): BuiltInBrowserState {
+    const tab = this.getTab(tabId);
+    tab?.view.webContents.reload();
+    if (tab) {
+      this.emitAutomationEvent({
+        kind: "tab.reload",
+        summary: `Reload tab ${tab.id}.`,
+        tabId: tab.id,
+        title: tab.title,
+        url: tab.url
+      });
+    }
+    return this.getState();
+  }
+
+  getAutomationWebContents(tabId?: string): WebContents {
+    const tab = this.getTab(tabId);
+    if (!tab || tab.view.webContents.isDestroyed()) {
+      throw new Error("Browser tab is unavailable.");
+    }
+    return tab.view.webContents;
   }
 
   private registerIpcHandlers(): void {
     ipcMain.handle(IPC_CHANNELS.browserGetState, (event) => {
       this.assertBrowserSender(event);
       return this.getState();
+    });
+    ipcMain.handle(IPC_CHANNELS.browserStartChromeLoginImport, async (event, request: ChromeLoginImportRequest) => {
+      this.assertBrowserSender(event);
+      return await chromeLoginImportService.createJob(request);
+    });
+    ipcMain.handle(IPC_CHANNELS.browserGetChromeLoginImport, (event, id: string) => {
+      this.assertBrowserSender(event);
+      return chromeLoginImportService.getJob(typeof id === "string" ? id : "");
     });
     ipcMain.handle(IPC_CHANNELS.browserNewTab, (event, url?: string) => {
       this.assertBrowserSender(event);
@@ -145,6 +379,34 @@ class BuiltInBrowserService {
       this.getTab(tabId)?.view.webContents.reload();
       return this.getState();
     });
+    ipcMain.handle(IPC_CHANNELS.browserResolveAutomationHandoff, (event, status?: string) => {
+      this.assertBrowserSender(event);
+      return this.resolveAutomationHandoff(status === "dismissed" ? "dismissed" : "completed");
+    });
+  }
+
+  private ensureWindow(): BrowserWindow {
+    const window = this.window && !this.window.isDestroyed() ? this.window : this.createWindow();
+    if (this.tabs.size === 0) {
+      this.createTab(browserHomeUrl);
+    }
+    return window;
+  }
+
+  private showAutomationWindow(): void {
+    const window = this.ensureWindow();
+    if (window.isMinimized()) {
+      window.restore();
+    }
+    window.show();
+    window.focus();
+  }
+
+  private hideAutomationWindow(): void {
+    const window = this.window;
+    if (window && !window.isDestroyed()) {
+      window.hide();
+    }
   }
 
   private createWindow(): BrowserWindow {
@@ -187,15 +449,12 @@ class BuiltInBrowserService {
         this.window = undefined;
       }
     });
-    window.once("ready-to-show", () => {
-      if (!window.isDestroyed()) {
-        window.show();
-      }
-    });
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("did-finish-load", () => this.sendState());
 
-    void window.loadURL(this.resolveRendererUrl("pages/browser/index.html"));
+    void window.loadURL(this.resolveRendererUrl("pages/browser/index.html")).catch((error) => {
+      console.warn(`[browser] Failed to load browser chrome: ${formatError(error)}`);
+    });
     return window;
   }
 
@@ -225,8 +484,23 @@ class BuiltInBrowserService {
     this.window?.contentView.addChildView(view);
     view.setVisible(false);
     this.selectTab(tab.id);
-    void view.webContents.loadURL(tab.url);
+    void view.webContents.loadURL(tab.url).catch((error) => {
+      this.emitAutomationEvent({
+        kind: "page.load_failed",
+        summary: `Initial tab load failed: ${formatError(error)}`,
+        tabId: tab.id,
+        title: tab.title,
+        url: tab.url
+      });
+    });
     this.sendState();
+    this.emitAutomationEvent({
+      kind: "tab.created",
+      summary: `Created tab ${tab.id}.`,
+      tabId: tab.id,
+      title: tab.title,
+      url: tab.url
+    });
     return tab;
   }
 
@@ -234,7 +508,14 @@ class BuiltInBrowserService {
     const { webContents } = tab.view;
     webContents.setWindowOpenHandler(({ url }) => {
       if (isHttpUrl(url)) {
-        this.createTab(url);
+        const opened = this.createTab(url);
+        this.emitAutomationEvent({
+          kind: "tab.opened",
+          summary: `Opened new tab from window.open: ${url}`,
+          tabId: opened.id,
+          title: opened.title,
+          url: opened.url
+        });
       }
       return { action: "deny" };
     });
@@ -244,14 +525,35 @@ class BuiltInBrowserService {
     webContents.on("page-title-updated", (_event, title) => {
       tab.title = title || titleFromUrl(tab.url);
       this.sendState();
+      this.emitAutomationEvent({
+        kind: "page.title",
+        summary: `Title updated: ${tab.title}`,
+        tabId: tab.id,
+        title: tab.title,
+        url: tab.url
+      });
     });
     webContents.on("did-start-loading", () => {
       tab.isLoading = true;
       this.updateTabNavigationState(tab);
+      this.emitAutomationEvent({
+        kind: "page.loading_started",
+        summary: `Loading started: ${tab.url}`,
+        tabId: tab.id,
+        title: tab.title,
+        url: tab.url
+      });
     });
     webContents.on("did-stop-loading", () => {
       tab.isLoading = false;
       this.updateTabNavigationState(tab);
+      this.emitAutomationEvent({
+        kind: "page.loading_stopped",
+        summary: `Loading stopped: ${tab.url}`,
+        tabId: tab.id,
+        title: tab.title,
+        url: tab.url
+      });
     });
     webContents.on("did-navigate", (_event, url) => {
       tab.url = url;
@@ -260,6 +562,13 @@ class BuiltInBrowserService {
         this.layoutActiveView();
       }
       this.updateTabNavigationState(tab);
+      this.emitAutomationEvent({
+        kind: "page.navigation",
+        summary: `Navigated to ${url}`,
+        tabId: tab.id,
+        title: tab.title,
+        url
+      });
     });
     webContents.on("did-navigate-in-page", (_event, url) => {
       tab.url = url;
@@ -267,8 +576,15 @@ class BuiltInBrowserService {
         this.layoutActiveView();
       }
       this.updateTabNavigationState(tab);
+      this.emitAutomationEvent({
+        kind: "page.navigation_in_page",
+        summary: `In-page navigation to ${url}`,
+        tabId: tab.id,
+        title: tab.title,
+        url
+      });
     });
-    webContents.on("did-fail-load", (_event, errorCode, _errorDescription, validatedUrl) => {
+    webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedUrl) => {
       if (errorCode !== -3) {
         tab.isLoading = false;
         tab.url = validatedUrl || tab.url;
@@ -276,6 +592,35 @@ class BuiltInBrowserService {
           this.layoutActiveView();
         }
         this.updateTabNavigationState(tab);
+        this.emitAutomationEvent({
+          errorCode,
+          errorDescription,
+          kind: "page.load_failed",
+          summary: `Load failed (${errorCode}): ${errorDescription}`,
+          tabId: tab.id,
+          title: tab.title,
+          url: tab.url
+        });
+      }
+    });
+    webContents.on("dom-ready", () => {
+      this.emitAutomationEvent({
+        kind: "page.dom_ready",
+        summary: `DOM ready: ${tab.url}`,
+        tabId: tab.id,
+        title: tab.title,
+        url: tab.url
+      });
+    });
+    webContents.on("console-message", (_event, level, message) => {
+      if (level >= 2) {
+        this.emitAutomationEvent({
+          kind: "runtime.console",
+          summary: message,
+          tabId: tab.id,
+          title: tab.title,
+          url: tab.url
+        });
       }
     });
     webContents.on("destroyed", () => {
@@ -286,6 +631,13 @@ class BuiltInBrowserService {
           this.activeTabId = this.tabOrder[0];
         }
         this.sendState();
+        this.emitAutomationEvent({
+          kind: "tab.destroyed",
+          summary: `Destroyed tab ${tab.id}.`,
+          tabId: tab.id,
+          title: tab.title,
+          url: tab.url
+        });
       }
     });
   }
@@ -403,6 +755,13 @@ class BuiltInBrowserService {
       selected.view.webContents.focus();
     }
     this.sendState();
+    this.emitAutomationEvent({
+      kind: "tab.activated",
+      summary: `Activated tab ${tabId}.`,
+      tabId,
+      title: selected.title,
+      url: selected.url
+    });
   }
 
   private closeTab(tabId: string): void {
@@ -415,6 +774,13 @@ class BuiltInBrowserService {
     this.tabs.delete(tabId);
     this.tabOrder = this.tabOrder.filter((id) => id !== tabId);
     tab.view.webContents.close({ waitForBeforeUnload: false });
+    this.emitAutomationEvent({
+      kind: "tab.closed",
+      summary: `Closed tab ${tabId}.`,
+      tabId,
+      title: tab.title,
+      url: tab.url
+    });
 
     if (this.tabOrder.length === 0) {
       this.createTab(browserHomeUrl);
@@ -440,8 +806,23 @@ class BuiltInBrowserService {
     if (tab.id === this.activeTabId) {
       this.layoutActiveView();
     }
-    void tab.view.webContents.loadURL(nextUrl);
+    void tab.view.webContents.loadURL(nextUrl).catch((error) => {
+      this.emitAutomationEvent({
+        kind: "page.load_failed",
+        summary: `Navigation request failed: ${formatError(error)}`,
+        tabId: tab.id,
+        title: tab.title,
+        url: nextUrl
+      });
+    });
     this.sendState();
+    this.emitAutomationEvent({
+      kind: "page.navigation_requested",
+      summary: `Navigation requested: ${nextUrl}`,
+      tabId: tab.id,
+      title: tab.title,
+      url: nextUrl
+    });
   }
 
   private getTab(tabId?: string): BrowserTab | undefined {
@@ -469,17 +850,22 @@ class BuiltInBrowserService {
     const { height, width } = window.getContentBounds();
     activeTab.view.setVisible(true);
     activeTab.view.setBounds({
-      height: Math.max(0, height - browserChromeHeight),
+      height: Math.max(0, height - this.browserChromeHeight()),
       width,
       x: 0,
-      y: browserChromeHeight
+      y: this.browserChromeHeight()
     });
+  }
+
+  private browserChromeHeight(): number {
+    return browserChromeBaseHeight + (this.automationHandoff ? browserHandoffToolbarHeight : 0);
   }
 
   private getState(): BuiltInBrowserState {
     return {
       activeTabId: this.activeTabId,
       apps: this.apps.map((app) => ({ ...app })),
+      ...(this.automationHandoff ? { automationHandoff: { ...this.automationHandoff } } : {}),
       tabs: this.tabOrder
         .map((id) => this.tabs.get(id))
         .filter((tab): tab is BrowserTab => Boolean(tab))
@@ -510,6 +896,27 @@ class BuiltInBrowserService {
     this.tabs.clear();
     this.tabOrder = [];
     this.activeTabId = undefined;
+  }
+
+  private emitAutomationEvent(event: Omit<BrowserAutomationEvent, "seq" | "ts" | "windowId">): void {
+    const nextEvent: BrowserAutomationEvent = {
+      ...event,
+      seq: ++this.automationEventSeq,
+      ts: Date.now(),
+      windowId: browserAutomationWindowId
+    };
+    this.automationEventHistory.push(nextEvent);
+    this.pruneAutomationEventHistory(nextEvent.ts);
+    this.automationEvents.emit("event", nextEvent);
+  }
+
+  private pruneAutomationEventHistory(now = Date.now()): void {
+    while (this.automationEventHistory.length > 0 && now - this.automationEventHistory[0].ts > maxAutomationEventAgeMs) {
+      this.automationEventHistory.shift();
+    }
+    if (this.automationEventHistory.length > maxAutomationEventHistory) {
+      this.automationEventHistory.splice(0, this.automationEventHistory.length - maxAutomationEventHistory);
+    }
   }
 
   private resolveRendererUrl(relativeHtmlPath: string): string {
@@ -619,9 +1026,22 @@ function titleFromUrl(value: string): string {
   }
 }
 
-function electronProxyRules(endpoint: string): string {
-  const parsed = new URL(endpoint);
-  const host = parsed.hostname.includes(":") ? `[${parsed.hostname}]` : parsed.hostname;
-  const port = parsed.port || (parsed.protocol === "https:" ? "443" : "80");
-  return `http=${host}:${port};https=${host}:${port}`;
+function defaultAutomationHandoffMessage(kind?: BuiltInBrowserAutomationHandoffKind): string {
+  if (kind === "login_required") {
+    return "Please sign in on this page, then click Done.";
+  }
+  if (kind === "verification_code") {
+    return "Please enter the verification code, then click Done.";
+  }
+  if (kind === "human_verification") {
+    return "Please complete the human verification, then click Done.";
+  }
+  if (kind === "blocked") {
+    return "Please resolve the blocker on this page, then click Done.";
+  }
+  return "Please complete the requested browser step, then click Done.";
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

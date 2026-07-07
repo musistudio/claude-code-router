@@ -4,6 +4,7 @@ import {
   botGatewaySavedConfigFromDraft, botGatewaySavedConfigLabel, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitResult, BotGatewayQrWindowOpenResult, BotGatewaySavedConfig, Button,
   CircleAlert, closestCenter, cn, CSS, Database, Dialog, DialogBody, DialogContent,
   DialogFooter, DialogHeader, DialogTitle, Field, formatAppError, formatProviderAccountMeterValue, formatSystemOption, Gauge,
+  Globe,
   createBotGatewayConfigDraft, createMcpServerDraft, createMcpServerDraftFromConfig, createMcpServerDraftFromUnknown, createRouteModelOptions, DndContext, DragEndEvent, GatewayMcpServerConfig, GatewayProviderConfig, Input, isBotGatewayConfigDraftSubmittable, KeyboardSensor, KeyRound, KeyValueRowsControl, languageDisplayName, Layers3, LoaderCircle,
   mcpServerConfigFromDraft, mcpServerEndpointSummary, mcpServerTransportOptions, mcpStdioMessageModeOptions, McpServerDraft, normalizeBotGatewayAuthType, normalizeBotGatewayPlatform, normalizeToolHubConfig, Palette, Pencil, Plus, ProfileConfig, profileAgentLabel,
   PanelLeftOpen, Power, ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ResolvedLanguage, ResolvedTheme, Select, SelectControl,
@@ -512,6 +513,13 @@ function ToolHubSettingsPage({
       </div>
       {toolHub.enabled ? (
         <>
+          <SettingsSwitchRow
+            checked={toolHub.browserAutomation}
+            description={copy.settings.toolHubBrowserAutomationDescription}
+            icon={Globe}
+            label={copy.settings.toolHubBrowserAutomation}
+            onChange={(browserAutomation) => onChange({ browserAutomation })}
+          />
           <div className="grid grid-cols-1 gap-3 rounded-md border border-border/70 bg-card/70 p-3 md:grid-cols-2">
             <Field className="md:col-span-2" label={copy.settings.toolHubModel}>
               <SelectControl
@@ -547,7 +555,6 @@ function ToolHubSettingsPage({
             <div className="flex min-w-0 items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="truncate text-[12px] font-semibold text-foreground">{t("MCP servers")}</div>
-                <div className="truncate text-[11px] text-muted-foreground">{String(toolHub.mcpServers.length)}</div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <Button onClick={openImportMcpJsonDialog} size="sm" type="button" variant="outline">

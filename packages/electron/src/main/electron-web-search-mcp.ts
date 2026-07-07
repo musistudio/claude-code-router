@@ -70,6 +70,7 @@ type BrowserSearchRequest = BrowserSearchInput & {
 
 type BrowserSearchResult = {
   content?: string;
+  diagnostics?: string[];
   snippet?: string;
   title: string;
   url: string;
@@ -597,11 +598,15 @@ class HiddenBrowserSearchPool {
       return {
         ...result,
         ...(content ? { content } : {}),
+        ...(!content ? { diagnostics: appendSearchResultDiagnostic(result.diagnostics, "No extractable page content found.") } : {}),
         ...(snippet ? { snippet } : {}),
         ...(page.title && page.title.length > result.title.length ? { title: page.title.slice(0, 240) } : {})
       };
-    } catch {
-      return result;
+    } catch (error) {
+      return {
+        ...result,
+        diagnostics: appendSearchResultDiagnostic(result.diagnostics, `Page extraction failed: ${formatError(error)}`)
+      };
     } finally {
       if (worker) {
         this.release(worker);
@@ -635,7 +640,16 @@ async function pollSearchResults(webContents: WebContents, request: BrowserSearc
   const deadline = Date.now() + request.timeoutMs;
   let last: BrowserSearchPageResult = { results: [] };
   while (Date.now() < deadline) {
-    last = await webContents.executeJavaScript(searchResultExtractionScript(request.engine, request.count), true) as BrowserSearchPageResult;
+    try {
+      last = await withTimeout(
+        webContents.executeJavaScript(searchResultExtractionScript(request.engine, request.count), true) as Promise<BrowserSearchPageResult>,
+        Math.max(100, Math.min(1000, deadline - Date.now())),
+        "Browser search result extraction timed out."
+      );
+    } catch {
+      await sleep(150);
+      continue;
+    }
     if (last.blocked || (last.results?.length ?? 0) >= Math.min(request.count, 3)) {
       return last;
     }
@@ -823,18 +837,46 @@ function searchResultExtractionScript(engine: BrowserSearchEngine, count: number
       const host = url.hostname.toLowerCase();
       const path = url.pathname.toLowerCase();
       if (host === location.hostname.toLowerCase() && (path === "/" || path === "/search" || path.startsWith("/search/"))) return true;
-      if (host.includes("google.") && /\\/(preferences|advanced_search|intl|policies|support|sorry)/.test(path)) return true;
-      if (host.endsWith("bing.com") && /\\/(search|account|profile|images|videos|maps|news)/.test(path)) return true;
-      if (host.endsWith("duckduckgo.com") && path === "/") return true;
+      if (host.includes("google.") && /\\/(preferences|advanced_search|intl|policies|support|sorry|search|aclk|imgres)/.test(path)) return true;
+      if (host.endsWith("bing.com") && /\\/(search|account|profile|images|videos|maps|news|aclick)/.test(path)) return true;
+      if (host.endsWith("bing.com") && path.startsWith("/ck/")) return true;
+      if (host.endsWith("duckduckgo.com") && (path === "/" || path.startsWith("/settings") || path.startsWith("/y.js"))) return true;
       return false;
     }
     function resultContainer(anchor, title) {
+      const root = anchor && anchor.closest("li.b_algo, li.b_ad, div.g, div[data-sokoban-container], div[data-testid='result'], article, .result, .result__body, .web-result");
+      if (root) return root;
       let node = anchor;
       for (let depth = 0; node && depth < 8; depth += 1, node = node.parentElement) {
+        if (node.matches && node.matches("nav, header, footer, form, aside")) return undefined;
+        if (node.matches && node.matches("main, #search, #b_results, #rso")) break;
         const text = compact(node.textContent || "");
         if (text.length > title.length + 40) return node;
       }
-      return anchor.closest("li.b_algo, article, div.g, div[data-sokoban-container], div[data-testid='result'], .result, li, div");
+      return undefined;
+    }
+    function isLikelyOrganicResult(anchor, container) {
+      if (!anchor || !container) return false;
+      if (anchor.closest("nav, header, footer, form, aside")) return false;
+      if (anchor.closest("li.b_algo, div.g, div[data-sokoban-container], div[data-testid='result'], article, .result, .result__body, .web-result")) return true;
+      const heading = anchor.closest("h1, h2, h3, [role='heading']");
+      const searchRegion = anchor.closest("main, #search, #b_results, #rso");
+      return Boolean(heading && searchRegion);
+    }
+    function isAdOrUtilityResult(anchor, container) {
+      let node = anchor;
+      for (let depth = 0; node && depth < 6; depth += 1, node = node.parentElement) {
+        const attributes = [
+          node.getAttribute && node.getAttribute("aria-label"),
+          node.getAttribute && node.getAttribute("data-text-ad"),
+          node.getAttribute && node.getAttribute("data-testid"),
+          node.className
+        ].filter(Boolean).join(" ");
+        if (/\\b(?:ad|ads|sponsored|promo|shopping)\\b|广告|赞助|推廣/i.test(attributes)) return true;
+      }
+      const firstText = compact(container && container.textContent).slice(0, 180);
+      if (/^(?:ad|ads|sponsored|promo|shopping)\\b|^(?:广告|赞助|推廣)/i.test(firstText)) return true;
+      return false;
     }
     function cleanSnippetCandidate(value, title, url) {
       const host = (() => { try { return new URL(url).hostname.replace(/^www\\./, ""); } catch (_) { return ""; } })();
@@ -881,6 +923,7 @@ function searchResultExtractionScript(engine: BrowserSearchEngine, count: number
       const title = titleFor(anchor, titleOverride);
       if (!title || title.length < 2) return;
       const container = resultContainer(anchor, title);
+      if (!isLikelyOrganicResult(anchor, container) || isAdOrUtilityResult(anchor, container)) return;
       seen.add(url);
       results.push({
         snippet: snippetFor(anchor, container, title, url),
@@ -908,19 +951,22 @@ function searchResultExtractionScript(engine: BrowserSearchEngine, count: number
       collect(".result__a");
       collect("article h2 a[href]");
     }
+    function collectGenericHeadings() {
+      collect("main h1 a[href], main h2 a[href], main h3 a[href], #search h3, #b_results h2 a[href], #rso h3, article h2 a[href], article h3 a[href]");
+    }
     if (engine === "google") collectGoogle();
     if (engine === "bing") collectBing();
     if (engine === "duckduckgo") collectDuckDuckGo();
-    collect("main a[href], #search a[href], #b_results a[href], article a[href], a[href]");
+    collectGenericHeadings();
     return { results, title: document.title || "" };
 
     function detectBlocked() {
       const text = compact(document.body && document.body.innerText).toLowerCase();
       if (!text) return "";
-      if (text.includes("unusual traffic") || text.includes("detected unusual") || text.includes("not a robot") || text.includes("captcha")) {
+      if (text.includes("unusual traffic") || text.includes("detected unusual") || text.includes("not a robot") || text.includes("captcha") || text.includes("验证码") || text.includes("人机验证")) {
         return "Search engine returned an anti-bot or CAPTCHA page.";
       }
-      if (text.includes("before you continue to google") || text.includes("consent.google")) {
+      if (text.includes("before you continue to google") || text.includes("consent.google") || text.includes("cookie consent")) {
         return "Google returned a consent page instead of search results.";
       }
       return "";
@@ -996,9 +1042,14 @@ function formatSearchResponse(
       `${index + 1}. ${result.title}`,
       `URL: ${result.url}`,
       result.snippet ? `Snippet: ${result.snippet}` : "",
-      result.content ? `Extracted content: ${result.content}` : ""
+      result.content ? `Extracted content: ${result.content}` : "",
+      result.diagnostics?.length ? `Diagnostics: ${result.diagnostics.join("; ")}` : ""
     ].filter(Boolean).join("\n"))
   ].filter(Boolean).join("\n\n");
+}
+
+function appendSearchResultDiagnostic(existing: string[] | undefined, message: string): string[] {
+  return uniqueStrings([...(existing ?? []), message]);
 }
 
 function uniqueSearchResults(results: BrowserSearchResult[]): BrowserSearchResult[] {

@@ -700,6 +700,10 @@ function parseToolHub(value: unknown): Partial<ToolHubConfig> | undefined {
   if (typeof value.enabled === "boolean") {
     toolHub.enabled = value.enabled;
   }
+  const browserAutomation = value.browserAutomation ?? value.browser_automation;
+  if (typeof browserAutomation === "boolean") {
+    toolHub.browserAutomation = browserAutomation;
+  }
   const maxTools = readNumber(value.maxTools ?? value.max_tools);
   if (maxTools !== undefined) {
     toolHub.maxTools = clampNumber(maxTools, 1, 20);

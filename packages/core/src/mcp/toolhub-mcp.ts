@@ -149,6 +149,8 @@ type LlmToolResolution = {
 
 type ResolveOutput = {
   alreadyResolved?: boolean;
+  executionPlanInstructions?: string;
+  executionPlanJs?: string;
   nextAction?: {
     confirmationRequiredFor: string[];
     firstAction: {
@@ -186,6 +188,17 @@ const defaultRequestTimeoutMs = 60_000;
 const defaultMaxTools = 10;
 const discoveryCacheMaxAgeMs = 10_000;
 const repeatedResolveWindowMs = 5 * 60_000;
+const executionPlanInstructions = [
+  "Treat executionPlanJs as the dependency plan for ToolHub invocations.",
+  "Each callTool(toolName, args) call maps to one tool_hub.invoke call with tool=toolName and args=args.",
+  "await means the next ToolHub invocation depends on the previous result and must not be started early.",
+  "Only callTool calls inside the same Promise.all([...]) expression may be issued as parallel tool calls.",
+  "If a later call needs values from an earlier result, wait for that earlier result and fill the arguments after it returns."
+].join(" ");
+const reservedJavaScriptWords = new Set(
+  "await break case catch class const continue debugger default delete do else enum export extends false finally for function if import in instanceof new null return super switch this throw true try typeof var void while with yield"
+    .split(" ")
+);
 
 type RuntimeLike = {
   callTool(params: unknown): Promise<unknown>;
@@ -365,15 +378,25 @@ class ToolHubRuntime {
       await this.registry.refreshServers(undefined, true);
       catalog = await this.registry.listTools();
     }
+    if (taskWantsChromeLoginImport(task) && !catalogHasChromeLoginImportTool(catalog)) {
+      await this.registry.refreshServers(["ccr-browser-automation"], true);
+      catalog = await this.registry.listTools();
+    }
     if (catalog.length === 0) {
       throw new Error("No MCP tools are available to resolve.");
     }
 
     const cached = this.findRecentlyResolvedTask(scopeKey, taskHash);
     if (cached) {
-      const selectedTools = cached.toolNames
-        .map((toolName) => this.resolveCatalogEntry(toolName, catalog))
-        .filter((entry): entry is CatalogEntry => Boolean(entry));
+      const selectedTools = expandToolBundleWithCompanionTools(
+        uniqueToolEntries([
+          ...cached.toolNames
+            .map((toolName) => this.resolveCatalogEntry(toolName, catalog))
+            .filter((entry): entry is CatalogEntry => Boolean(entry)),
+          ...getDeterministicTaskTools(task, catalog)
+        ]),
+        catalog
+      );
       if (selectedTools.length > 0) {
         this.markToolsLoaded(scopeKey, selectedTools);
         return toolResult(this.buildRepeatedResolveOutput(selectedTools));
@@ -383,9 +406,15 @@ class ToolHubRuntime {
     const inFlightResolve = session.inFlightResolves.get(taskHash);
     if (inFlightResolve) {
       const output = await inFlightResolve;
-      const selectedTools = output.selectedTools
-        .map((tool) => this.resolveCatalogEntry(tool.toolName, catalog) ?? tool)
-        .filter((entry): entry is CatalogEntry => Boolean(entry));
+      const selectedTools = expandToolBundleWithCompanionTools(
+        uniqueToolEntries([
+          ...output.selectedTools
+            .map((tool) => this.resolveCatalogEntry(tool.toolName, catalog) ?? tool)
+            .filter((entry): entry is CatalogEntry => Boolean(entry)),
+          ...getDeterministicTaskTools(task, catalog)
+        ]),
+        catalog
+      );
       if (selectedTools.length > 0) {
         this.markToolsLoaded(scopeKey, selectedTools);
         return toolResult(this.buildRepeatedResolveOutput(selectedTools));
@@ -461,7 +490,13 @@ class ToolHubRuntime {
       usedLlm = false;
     }
 
-    let selectedTools = resolution.selectedTools;
+    let selectedTools = expandToolBundleWithCompanionTools(
+      uniqueToolEntries([
+        ...resolution.selectedTools,
+        ...getDeterministicTaskTools(input.task, input.catalog)
+      ]),
+      input.catalog
+    );
     if (input.withoutSideEffects) {
       selectedTools = selectedTools.filter((tool) => !tool.invocation.sideEffect);
     }
@@ -471,13 +506,14 @@ class ToolHubRuntime {
 
     this.markToolsLoaded(input.scopeKey, selectedTools);
     this.rememberResolvedTask(input.scopeKey, input.taskHash, selectedTools);
+    const executionPlanJs = buildExecutionPlanJs(resolution.workflowSketch, selectedTools);
     return {
-      ...this.buildResolveOutput(resolution.summary, selectedTools),
+      ...this.buildResolveOutput(resolution.summary, selectedTools, executionPlanJs),
       plannedSteps: resolution.plannedSteps,
       referencedTokens: resolution.referencedTokens,
       retriever,
       usedLlm,
-      workflowSketch: resolution.workflowSketch
+      workflowSketch: executionPlanJs
     };
   }
 
@@ -587,39 +623,50 @@ class ToolHubRuntime {
     return catalog.find((entry) => entry.toolName === resolvedName);
   }
 
-  private buildResolveOutput(summary: string, selectedTools: CatalogEntry[]): ResolveOutput {
+  private buildResolveOutput(summary: string, selectedTools: CatalogEntry[], executionPlanJs = buildSequentialExecutionPlanJs(selectedTools)): ResolveOutput {
     return {
+      executionPlanInstructions,
+      executionPlanJs,
       nextAction: this.buildResolveNextAction(selectedTools),
       reasoningSummary: summary,
       runtimeContext: {
-        availableContextKeys: ["selectedTools"],
-        summary: selectedTools.map((tool) => `${tool.toolName}: ${tool.description || tool.title}`)
+        availableContextKeys: ["selectedTools", "executionPlanJs", "executionPlanInstructions"],
+        summary: [
+          ...selectedTools.map((tool) => `${tool.toolName}: ${tool.description || tool.title}`),
+          "Follow executionPlanJs for dependency ordering before invoking selected tools."
+        ]
       },
       selectedToolNames: selectedTools.map((tool) => tool.toolName),
       selectedTools,
-      tsDefinitions: buildTsDefinitions(selectedTools)
+      tsDefinitions: buildTsDefinitions(selectedTools),
+      workflowSketch: executionPlanJs
     };
   }
 
   private buildRepeatedResolveOutput(selectedTools: CatalogEntry[]): ResolveOutput {
     const nextAction = this.buildResolveNextAction(selectedTools);
+    const executionPlanJs = buildSequentialExecutionPlanJs(selectedTools);
     return {
       alreadyResolved: true,
+      executionPlanInstructions,
+      executionPlanJs,
       nextAction,
       reasoningSummary: [
         "This task has already been resolved in the current ToolHub session.",
         nextAction.instruction
       ].join(" "),
       runtimeContext: {
-        availableContextKeys: ["selectedTools", "nextAction"],
+        availableContextKeys: ["selectedTools", "nextAction", "executionPlanJs", "executionPlanInstructions"],
         summary: [
           "The selected tools are already loaded for tool_hub.invoke.",
           "Do not repeat discovery for this task.",
-          nextAction.instruction
+          nextAction.instruction,
+          "Follow executionPlanJs for dependency ordering before invoking selected tools."
         ]
       },
       selectedToolNames: selectedTools.map((tool) => tool.toolName),
-      selectedTools
+      selectedTools,
+      workflowSketch: executionPlanJs
     };
   }
 
@@ -646,7 +693,10 @@ class ToolHubRuntime {
           toolName: firstTool?.toolName,
           type: "invoke_tool" as const
         };
-    const instructionParts = ["Do not call tool_hub.resolve again for this task."];
+    const instructionParts = [
+      "Do not call tool_hub.resolve again for this task.",
+      "Follow executionPlanJs: await is serial dependency; only Promise.all groups may run in parallel."
+    ];
     if (firstTool && firstRequiredArguments.length > 0) {
       instructionParts.push(`Ask the user for missing required arguments for ${firstTool.toolName}: ${firstRequiredArguments.join(", ")}.`);
     } else if (firstTool) {
@@ -790,7 +840,7 @@ class ToolHubRegistry {
 
   private async ensureDiscoveryFresh(maxAgeMs = discoveryCacheMaxAgeMs): Promise<void> {
     const staleServerNames = [...this.entries.values()]
-      .filter((entry) => !entry.loadedFromCache && (!entry.lastCheckedAt || Date.now() - entry.lastCheckedAt > maxAgeMs))
+      .filter((entry) => !entry.lastCheckedAt || Date.now() - entry.lastCheckedAt > maxAgeMs)
       .map((entry) => entry.config.name);
     if (staleServerNames.length === 0) {
       return;
@@ -1752,6 +1802,7 @@ function metaTools(): Array<{ description: string; inputSchema: Record<string, u
         `MUST be called before answering any request about external services, installed MCP capabilities, business APIs, orders, coupons, stores, accounts, available tools, or capabilities that are not already obvious from the eager tools.`,
         `Call this even if the user did not mention ToolHub or ${resolveToolName}.`,
         `Use ${invokeToolName} after this tool returns selected tools.`,
+        "Follow the returned executionPlanJs: await means serial dependency, and only calls grouped by Promise.all may be invoked in parallel.",
         "Use the user's request as task and include concise context so the resolver can select the right tools."
       ].join(" "),
       inputSchema: {
@@ -1773,7 +1824,7 @@ function metaTools(): Array<{ description: string; inputSchema: Record<string, u
     },
     {
       name: invokeToolName,
-      description: `Invoke one MCP tool selected by ${resolveToolName}.`,
+      description: `Invoke one MCP tool selected by ${resolveToolName}. Follow executionPlanJs from ${resolveToolName}; do not parallelize invoke calls unless that plan groups them in Promise.all.`,
       inputSchema: {
         type: "object",
         properties: {
@@ -1989,7 +2040,7 @@ function buildSearchSystemPrompt(catalog: SearchCatalogItem[], topK: number): st
     "If your first workflow sketch yields zero, partial, or weak tool matches, revise the sketch and call the tree-sitter tool again before answering.",
     "Workflow you must follow:",
     "1. Plan the likely execution steps.",
-    "2. Draft a short TypeScript workflow sketch that uses the exact catalog tool names or aliases you expect to need.",
+    "2. Draft a short JavaScript/TypeScript workflow sketch that uses the exact catalog tool names or aliases you expect to need.",
     "2a. Prefer sketches that call tools through string literals such as callTool(\"<exact catalog tool name>\", {...}) or tools.call(\"<exact catalog tool name>\", {...}).",
     "3. Call the tree-sitter tool on that sketch.",
     "4. Inspect the tree-sitter result and check whether the bundle is complete end-to-end.",
@@ -2000,10 +2051,18 @@ function buildSearchSystemPrompt(catalog: SearchCatalogItem[], topK: number): st
     "{ \"summary\": string, \"steps\": string[], \"workflowSketch\": string, \"toolNames\": string[] }",
     "Rules:",
     "- toolNames must be exact catalog names or aliases.",
+    "- workflowSketch is the dependency plan that will be returned to the caller as executionPlanJs.",
+    "- In workflowSketch, use await to show serial dependencies and Promise.all([...]) only for tool calls that are independent and safe to invoke in parallel.",
+    "- Do not put side-effecting calls in Promise.all unless they are truly independent and safe to run concurrently.",
     "- In workflowSketch, prefer string-literal tool calls over reconstructed member chains whenever possible.",
     "- Include prerequisite and downstream tools you will likely need after the first action.",
     "- Never invent tool names.",
     "- Generic browser automation tools are a strong match for web tasks such as ordering, buying, booking, delivery, or checkout when no domain-specific MCP tool exists.",
+    "- For browser navigation/open calls, prefer omitting waitUntil or using waitUntil: \"interactive\" so the agent can inspect and act as soon as the page is usable.",
+    "- Do not use waitUntil: \"network_idle\" for Gmail, Google sign-in, SPAs, mail, chat, auth, checkout, verification, or pages with long-lived requests. Use network_idle only when the user explicitly asks for network quiescence.",
+    "- When selecting CCR browser automation tools, include the human-handoff follow-up tools needed if login, CAPTCHA, verification, blocked navigation, or manual confirmation appears.",
+    "- For CCR browser automation bundles, include browser_handoff_request and browser_handoff_wait when the workflow may need user help. Do not assume all browser tools are preloaded.",
+    "- For importing existing Chrome login state into CCR's in-app browser, select browser_chrome_login_import and include browser_chrome_login_import_status to check completion.",
     "- If using member-call syntax, prefer tools.<catalog alias>(...) or mcp.<server namespace>.<remote tool name>(...).",
     "- For lookup tasks, do not stop at opening or navigating. Include the tools needed to read or extract the answer.",
     "- If the catalog has no strong match, return an empty toolNames array.",
@@ -2312,6 +2371,21 @@ function getLocalFallbackPreferredTools(taskText: string): Map<string, number> {
     add("browser_screenshot", 60);
     add("browser_events_await", 44);
   }
+  if (hasAnyToken(tokens, [
+    "auth",
+    "chrome",
+    "cookie",
+    "cookies",
+    "import",
+    "localstorage",
+    "login",
+    "session",
+    "signin",
+    "storage"
+  ]) || /chrome|cookie|cookies|localstorage|local storage|登录态|登录状态|导入登录|浏览器登录|本地存储/.test(normalizedText)) {
+    add("browser_chrome_login_import", 128);
+    add("browser_chrome_login_import_status", 92);
+  }
   if (hasAnyToken(tokens, ["address", "delivery", "geo", "geolocation", "location", "nearby", "pickup", "store"]) ||
     /地址|定位|位置|附近|配送|外卖|自取|门店/.test(normalizedText)) {
     add("location_permission_status", 90);
@@ -2322,6 +2396,28 @@ function getLocalFallbackPreferredTools(taskText: string): Map<string, number> {
     add("user_interaction_collect", 82);
   }
   return scores;
+}
+
+function getDeterministicTaskTools(taskText: string, catalog: CatalogEntry[]): CatalogEntry[] {
+  if (!taskWantsChromeLoginImport(taskText)) {
+    return [];
+  }
+  return [
+    catalog.find((tool) => isBrowserAutomationTool(tool) && tool.remoteToolName === "browser_chrome_login_import"),
+    catalog.find((tool) => isBrowserAutomationTool(tool) && tool.remoteToolName === "browser_chrome_login_import_status")
+  ].filter((tool): tool is CatalogEntry => Boolean(tool));
+}
+
+function taskWantsChromeLoginImport(taskText: string): boolean {
+  const normalizedText = taskText.toLowerCase();
+  return normalizedText.includes("browser_chrome_login_import") ||
+    /(chrome|谷歌浏览器|浏览器).*(login|signin|auth|cookie|localstorage|local storage|session|登录态|登录状态|登录信息|本地存储|cookie)/.test(normalizedText) ||
+    /(import|导入|迁移|同步).*(chrome|谷歌浏览器).*(login|signin|auth|cookie|localstorage|local storage|session|登录态|登录状态|登录信息|本地存储)/.test(normalizedText) ||
+    /(登录态|登录状态|登录信息).*(chrome|谷歌浏览器|浏览器).*(导入|迁移|同步)/.test(normalizedText);
+}
+
+function catalogHasChromeLoginImportTool(catalog: CatalogEntry[]): boolean {
+  return catalog.some((tool) => isBrowserAutomationTool(tool) && tool.remoteToolName === "browser_chrome_login_import");
 }
 
 function tokenizeLocalSearchText(text: string): string[] {
@@ -2350,10 +2446,113 @@ function uniqueToolEntries(entries: CatalogEntry[]): CatalogEntry[] {
   return output;
 }
 
+function expandToolBundleWithCompanionTools(selectedTools: CatalogEntry[], catalog: CatalogEntry[]): CatalogEntry[] {
+  const output = uniqueToolEntries(selectedTools);
+  const selectedNames = new Set(output.map((tool) => tool.toolName));
+  const selectedRemoteNames = new Set(output.map((tool) => tool.remoteToolName));
+  const hasBrowserAutomationTool = output.some((tool) => isBrowserAutomationTool(tool));
+  const hasHandoffRequestTool = output.some((tool) =>
+    isBrowserAutomationTool(tool) &&
+    (tool.remoteToolName === "browser_handoff_request" || tool.remoteToolName === "askHumanHelp")
+  );
+  const hasChromeLoginImportTool = output.some((tool) =>
+    isBrowserAutomationTool(tool) &&
+    tool.remoteToolName === "browser_chrome_login_import"
+  );
+  const companionRemoteNames = new Set<string>();
+
+  if (hasBrowserAutomationTool) {
+    companionRemoteNames.add("browser_handoff_request");
+    companionRemoteNames.add("browser_handoff_status");
+    companionRemoteNames.add("browser_handoff_wait");
+  }
+  if (hasHandoffRequestTool) {
+    companionRemoteNames.add("browser_handoff_wait");
+  }
+  if (hasChromeLoginImportTool) {
+    companionRemoteNames.add("browser_chrome_login_import_status");
+  }
+
+  for (const remoteToolName of companionRemoteNames) {
+    if (selectedRemoteNames.has(remoteToolName)) {
+      continue;
+    }
+    const companion = catalog.find((tool) =>
+      isBrowserAutomationTool(tool) &&
+      tool.remoteToolName === remoteToolName &&
+      !selectedNames.has(tool.toolName)
+    );
+    if (companion) {
+      output.push(companion);
+      selectedNames.add(companion.toolName);
+      selectedRemoteNames.add(companion.remoteToolName);
+    }
+  }
+
+  return output;
+}
+
+function isBrowserAutomationTool(tool: CatalogEntry): boolean {
+  return tool.serverName === "ccr-browser-automation" ||
+    tool.serverId === "ccr-browser-automation" ||
+    tool.serverNamespace === "ccr_browser_automation" ||
+    tool.toolName.startsWith("mcp.ccr_browser_automation.");
+}
+
 function buildLocalFallbackWorkflowSketch(selectedTools: CatalogEntry[]): string | undefined {
-  return selectedTools.length > 0
-    ? selectedTools.slice(0, 5).map((tool) => `await callTool(${JSON.stringify(tool.toolName)}, {});`).join("\n")
-    : undefined;
+  return selectedTools.length > 0 ? buildSequentialExecutionPlanJs(selectedTools) : undefined;
+}
+
+function isBrowserNavigationTool(tool: CatalogEntry): boolean {
+  return isBrowserAutomationTool(tool) && (
+    tool.toolName.endsWith("browser_session_open") ||
+    tool.toolName.endsWith("browser_navigate") ||
+    tool.remoteToolName === "browser_session_open" ||
+    tool.remoteToolName === "browser_navigate"
+  );
+}
+
+function buildExecutionPlanJs(workflowSketch: string | undefined, selectedTools: CatalogEntry[]): string {
+  const trimmed = typeof workflowSketch === "string" ? workflowSketch.trim() : "";
+  return trimmed || buildSequentialExecutionPlanJs(selectedTools);
+}
+
+function buildSequentialExecutionPlanJs(selectedTools: CatalogEntry[]): string {
+  if (selectedTools.length === 0) {
+    return [
+      "async function runWithToolHub() {",
+      "  // Ask the user for missing task details before invoking tools.",
+      "}"
+    ].join("\n");
+  }
+  const lines = [
+    "async function runWithToolHub() {",
+    "  // Invoke calls in this order unless the plan explicitly uses Promise.all."
+  ];
+  selectedTools.forEach((tool, index) => {
+    lines.push(`  const step${index + 1} = await callTool(${JSON.stringify(tool.toolName)}, ${buildExecutionPlanArgs(tool)});`);
+  });
+  lines.push("}");
+  return lines.join("\n");
+}
+
+function buildExecutionPlanArgs(tool: CatalogEntry): string {
+  if (isBrowserNavigationTool(tool)) {
+    return "{ url, waitUntil: \"interactive\" }";
+  }
+  const required = getSchemaRequiredProperties(tool.inputSchema);
+  if (required.length === 0) {
+    return "{}";
+  }
+  return `{ ${required.map((key) => `${JSON.stringify(key)}: ${toPlanVariableName(key)}`).join(", ")} }`;
+}
+
+function toPlanVariableName(value: string): string {
+  const identifier = toIdentifier(value).replace(/^[A-Z]/, (match) => match.toLowerCase());
+  if (!identifier || reservedJavaScriptWords.has(identifier)) {
+    return "value";
+  }
+  return identifier;
 }
 
 function inferInvocation(tool: ToolDefinition): ToolInvocation {

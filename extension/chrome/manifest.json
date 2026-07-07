@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "CCR Login Import",
+  "description": "Import selected Chrome site login cookies into CCR's in-app browser.",
+  "version": "0.1.0",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "CCR Login Import"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "js": [
+        "confirm.js"
+      ],
+      "matches": [
+        "http://127.0.0.1/*",
+        "http://localhost/*"
+      ]
+    }
+  ],
+  "permissions": [
+    "cookies",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "http://*/*",
+    "https://*/*"
+  ]
+}
