@@ -1318,6 +1318,18 @@ h1 {
   --provider-brand-3: #f4f4f5;
 }
 
+.doc-markdown a.provider-import-button.provider-code0 {
+  --provider-brand: #101214;
+  --provider-brand-2: #267dff;
+  --provider-brand-3: #d8e8ff;
+}
+
+.doc-markdown a.provider-import-button.provider-claudeapi {
+  --provider-brand: #0d1b2a;
+  --provider-brand-2: #2f8f83;
+  --provider-brand-3: #d7fff8;
+}
+
 .doc-markdown a.provider-import-button.provider-deepseek {
   --provider-brand: #173aa8;
   --provider-brand-2: #4e69ff;

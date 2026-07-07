@@ -43,6 +43,8 @@ import type {
 } from "@ccr/core/contracts/app";
 import anthropicProviderIconUrl from "@/assets/provider-icons/anthropic.png";
 import bailianProviderIconUrl from "@/assets/provider-icons/bailian.ico";
+import claudeapiProviderIconUrl from "@/assets/provider-icons/claudeapi.png";
+import code0ProviderIconUrl from "@/assets/provider-icons/code0.png";
 import deepseekProviderIconUrl from "@/assets/provider-icons/deepseek.ico";
 import geminiProviderIconUrl from "@/assets/provider-icons/gemini.svg";
 import mistralProviderIconUrl from "@/assets/provider-icons/mistral.webp";
@@ -319,6 +321,8 @@ export const mcpStdioMessageModeOptions: Array<{ label: string; value: GatewayMc
 export const providerPresetIconUrls: Record<string, string> = {
   anthropic: anthropicProviderIconUrl,
   bailian: bailianProviderIconUrl,
+  claudeapi: claudeapiProviderIconUrl,
+  code0: code0ProviderIconUrl,
   deepseek: deepseekProviderIconUrl,
   gemini: geminiProviderIconUrl,
   "kimi-coding": moonshotProviderIconUrl,
