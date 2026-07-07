@@ -81,28 +81,136 @@ test("gateway config rewrites Fusion fixed base and vision models to core provid
   assert.equal(profiles[0].baseModel.fixedModel, `${providerName}/glm-5.2`);
 });
 
-test("gateway config injects core auth token into Fusion vision MCP gateway runtime", async () => {
-  const profiles = [
-    {
-      enabled: true,
-      id: "glm-vision",
-      key: "glm-vision",
-      metadata: {
-        fusionVision: {
-          modelSelector: "VisionProvider/glm-5v",
-          toolName: "vision_understand_glm"
-        }
+test("issue 1480 Fusion vision config injects core auth token into MCP gateway runtime", async () => {
+  const providerName = "Zhipu AI (China) - Coding Plan";
+  const config = {
+    CUSTOM_ROUTER_PATH: "",
+    Providers: [
+      {
+        api_base_url: "https://nebulacoder.example/v1/chat/completions",
+        credentials: [{ apiKey: "nebulacoder-key", id: "nebulacoder-main" }],
+        models: ["nebulacoder-v8.0", "nebulacoder-cot-v8.0"],
+        name: "NebulaCoder"
+      },
+      {
+        api_base_url: "https://coclaw.example/v1/chat/completions",
+        credentials: [{ apiKey: "coclaw-key", id: "coclaw-main" }],
+        models: ["Qwen3-235B-A22B"],
+        name: "CoClaw"
+      },
+      {
+        api_base_url: "https://opencode.ai/zen/go/v1/chat/completions",
+        capabilities: [
+          { baseUrl: "https://opencode.ai/zen/go/v1/chat/completions", type: "openai_chat_completions" }
+        ],
+        credentials: [{ apiKey: "opencode-key", id: "opencode-main" }],
+        models: ["kimi-k2.6", "deepseek-v4-pro", "deepseek-v4-flash"],
+        name: "OpenCode"
+      },
+      {
+        baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+        capabilities: [
+          { baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4", type: "openai_chat_completions" },
+          { baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4", type: "anthropic_messages" }
+        ],
+        credentials: [{ apiKey: "zhipu-key", id: "test-1" }],
+        models: ["glm-5.2", "glm-4.5-air", "glm-5v-turbo"],
+        name: providerName,
+        type: "openai_chat_completions"
       }
-    }
-  ];
+    ],
+    Router: {
+      fallback: { mode: "retry", models: [], retryCount: 1 },
+      rules: [
+        {
+          condition: { left: "request.url", operator: "contains", right: "/v1" },
+          enabled: true,
+          id: "rule-default",
+          name: "Default route",
+          rewrites: [
+            { key: "request.header.x-target-provider", operation: "set", value: "OpenCode" },
+            { key: "request.body.model", operation: "set", value: "deepseek-v4-flash" }
+          ],
+          type: "condition"
+        },
+        {
+          condition: { left: "request.header.anthropic-background", operator: "==", right: "true" },
+          enabled: true,
+          id: "rule-background",
+          name: "Background tasks",
+          rewrites: [
+            { key: "request.header.x-target-provider", operation: "set", value: "CoClaw" },
+            { key: "request.body.model", operation: "set", value: "Qwen3-235B-A22B" }
+          ],
+          type: "condition"
+        },
+        {
+          condition: { left: "request.header.anthropic-thinking", operator: "==", right: "true" },
+          enabled: true,
+          id: "rule-thinking",
+          name: "Thinking/reasoning tasks",
+          rewrites: [
+            { key: "request.header.x-target-provider", operation: "set", value: "OpenCode" },
+            { key: "request.body.model", operation: "set", value: "deepseek-v4-pro" }
+          ],
+          type: "condition"
+        }
+      ]
+    },
+    gateway: { coreHost: "127.0.0.1", corePort: 3457 },
+    profile: {
+      enabled: true,
+      profiles: [
+        {
+          agent: "claude-code",
+          enabled: true,
+          id: "claude-code-main",
+          model: "kimi-k2.6",
+          name: "Claude Code",
+          scope: "global"
+        }
+      ]
+    },
+    virtualModelProfiles: [
+      {
+        baseModel: { fixedModel: `${providerName}/glm-5.2`, mode: "fixed" },
+        displayName: "GLM 5 2V",
+        enabled: true,
+        execution: {
+          clientToolsPolicy: "allow",
+          matchMultimodal: true,
+          maxToolCalls: 8,
+          maxTurns: 6,
+          mode: "tool_loop",
+          streamMode: "buffered"
+        },
+        id: "glm-5.2v",
+        key: "glm-5.2v",
+        match: { exactAliases: ["GLM-5.2V", "Fusion/GLM-5.2V"], prefixes: [], suffixes: [] },
+        materialization: { enabled: true, includeInGatewayModels: true },
+        metadata: {
+          fusionVision: {
+            modelSelector: `${providerName}/glm-5v-turbo`,
+            toolName: "vision_understand_glm_5_2v"
+          }
+        },
+        tools: [{ name: "vision_understand_glm_5_2v", visibility: "internal" }]
+      }
+    ]
+  };
 
+  const profiles = normalizeCoreGatewayVirtualModelProfiles(config.virtualModelProfiles, config);
   const artifacts = await fusionBuiltinToolArtifactsForTest(profiles, "http://127.0.0.1:3457", "core-token");
-  const server = artifacts.mcpServers.find((item) => item.name === "fusion-vision-glm-vision");
+  const server = artifacts.mcpServers.find((item) => item.name === "fusion-vision-glm-5.2v");
 
   assert.ok(server);
   assert.equal(server.env.VISION_GATEWAY_BASE_URL, "http://127.0.0.1:3457/v1");
   assert.equal(server.env.VISION_GATEWAY_API_KEY, "core-token");
   assert.equal(server.env.VISION_API_KEY, undefined);
+  assert.match(
+    server.env.VISION_MODEL,
+    /^provider-zhipu-ai-china---coding-plan-[a-f0-9]{10}::openai_chat_completions::cred:test-1\/glm-5v-turbo$/
+  );
 });
 
 test("gateway config does not inject core auth token into external Fusion vision MCP runtime", async () => {

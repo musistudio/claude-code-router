@@ -246,7 +246,7 @@ function resolveBuiltInClaudeCodeSubagentRouteDecision(
     return undefined;
   }
   const target = normalizeRouteSelector(request.builtInSubagentModel);
-  if (!target) {
+  if (!target || isSubagentModelPlaceholder(target) || !isKnownInlineRoute(target, config)) {
     return undefined;
   }
   return {
@@ -322,6 +322,7 @@ function builtInAgentUserAgentNeedle(agent: RouterBuiltInAgentRuleId): string {
 const ccrSubagentModelOpenTag = "<CCR-SUBAGENT-MODEL>";
 const ccrSubagentModelCloseTag = "</CCR-SUBAGENT-MODEL>";
 const ccrSubagentModelTagExample = `${ccrSubagentModelOpenTag}Provider/model${ccrSubagentModelCloseTag}`;
+const ccrSubagentModelPlaceholder = "provider/model";
 const claudeCodeBillingSystemHeaderPrefix = "x-anthropic-billing-header";
 const ccrSubagentToolModelInstruction =
   `CCR subagent routing is enabled. When calling this tool, the prompt parameter MUST start with ` +
@@ -1198,6 +1199,10 @@ function isKnownInlineRoute(model: string | undefined, config: AppConfig): boole
 
   const providerName = normalizedModel.slice(0, separator).trim().toLowerCase();
   return config.Providers.some((provider) => provider.name.trim().toLowerCase() === providerName);
+}
+
+function isSubagentModelPlaceholder(model: string): boolean {
+  return model.trim().toLowerCase() === ccrSubagentModelPlaceholder;
 }
 
 function calculateTokenCount(messages: unknown, system: unknown, tools: unknown): number {
