@@ -291,6 +291,11 @@ const sidebarCloseLabel = locale === "zh" ? "关闭目录" : "Close navigation";
                           <ul class="sidebar-children directory-children">
                             {section.groups.map((group) => (
                               <li class="directory-group">
+                                {(section.groups.length > 1 || group.label !== section.label) && (
+                                  <div class="directory-group-label">
+                                    <span>{group.label}</span>
+                                  </div>
+                                )}
                                 <ul>
                                   {group.items.map((item) => {
                                     const isExpandable = item.children.length > 0;

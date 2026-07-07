@@ -9,7 +9,7 @@ import {
   Layers3, LoaderCircle, localAgentProviderIconUrls, mergeProviderModelLists, modelCatalogItemMatchesQuery, motion,
   Pencil, Plus, PopoverContent, primaryProviderAccountMeter, primaryProviderPresetEndpoint,
   providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountSnapshot,
-  providerAccountSnapshotCredentialLabel, providerAccountSnapshotLabel, ProviderAccountTestPath,
+  providerAccountConnectorsTextWithNewApiUserBalanceTemplate, providerAccountSnapshotCredentialLabel, providerAccountSnapshotLabel, ProviderAccountTestPath,
   ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
   ProviderConnectivityCheckReport, providerDeepLinkDisplayIcon, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
   providerModelDisplayName, providerModelDisplayTitle, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
@@ -2085,7 +2085,11 @@ function ProviderUsageSettings({
   const [testLoading, setTestLoading] = useState(false);
   const [testResult, setTestResult] = useState<ProviderAccountTestResult>();
   const [testError, setTestError] = useState("");
+  const [newApiUserId, setNewApiUserId] = useState("");
   const modeOptions = translateOptions(providerAccountModeOptions, t);
+  const showNewApiUserBalanceTemplate = probe?.detectedProvider === "new-api" ||
+    draft.accountConnectorsText.includes("new-api-key-usage") ||
+    draft.accountConnectorsText.includes("new-api-user-self");
 
   useEffect(() => {
     setTestResult(undefined);
@@ -2133,6 +2137,16 @@ function ProviderUsageSettings({
 
   function selectPath(target: ProviderUsageFieldTarget, path: string) {
     onChange(providerUsageFieldPatch(target, path));
+  }
+
+  function insertNewApiUserBalanceTemplate() {
+    onChange({
+      accountConnectorsText: providerAccountConnectorsTextWithNewApiUserBalanceTemplate(
+        draft.accountConnectorsText,
+        probe?.normalizedBaseUrl || draft.baseUrl,
+        newApiUserId
+      )
+    });
   }
 
   return (
@@ -2253,23 +2267,40 @@ function ProviderUsageSettings({
           ) : null}
 
           {draft.accountMode === "raw" ? (
-            <Field className="sm:col-span-2" label={t("Connectors JSON")}>
-              <Textarea
-                className="min-h-[180px] font-mono text-[11px]"
-                value={draft.accountConnectorsText}
-                onChange={(event) => onChange({ accountConnectorsText: event.target.value })}
-              />
-              <div className="flex min-w-0 items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                <span className="min-w-0 truncate">{t("Supports standard, http-json, plugin, and local-estimate connectors.")}</span>
-                <button
-                  className="shrink-0 text-primary hover:underline"
-                  type="button"
-                  onClick={() => onChange({ accountConnectorsText: providerAccountConnectorExample() })}
-                >
-                  {t("Insert example")}
-                </button>
-              </div>
-            </Field>
+            <div className="sm:col-span-2 space-y-2">
+              <Field label={t("Connectors JSON")}>
+                <Textarea
+                  className="min-h-[180px] font-mono text-[11px]"
+                  value={draft.accountConnectorsText}
+                  onChange={(event) => onChange({ accountConnectorsText: event.target.value })}
+                />
+                <div className="flex min-w-0 items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                  <span className="min-w-0 truncate">{t("Supports standard, http-json, plugin, and local-estimate connectors.")}</span>
+                  <button
+                    className="shrink-0 text-primary hover:underline"
+                    type="button"
+                    onClick={() => onChange({ accountConnectorsText: providerAccountConnectorExample() })}
+                  >
+                    {t("Insert example")}
+                  </button>
+                </div>
+              </Field>
+              {showNewApiUserBalanceTemplate ? (
+                <div className="grid grid-cols-1 items-end gap-2 rounded-md border border-border/60 bg-muted/20 p-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                  <div className="min-w-0 space-y-1">
+                    <Label className="text-[11px] font-medium text-muted-foreground">{t("New API user ID")}</Label>
+                    <Input
+                      placeholder="<user-id>"
+                      value={newApiUserId}
+                      onChange={(event) => setNewApiUserId(event.target.value)}
+                    />
+                  </div>
+                  <Button size="sm" type="button" variant="outline" onClick={insertNewApiUserBalanceTemplate}>
+                    {t("Insert New API user balance")}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
           ) : null}
         </div>
       ) : null}

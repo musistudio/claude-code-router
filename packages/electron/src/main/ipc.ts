@@ -1,7 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell, type OpenDialogOptions, type Rectangle, type SaveDialogOptions } from "electron";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import net from "node:net";
 import path from "node:path";
 import { deflateSync, inflateSync } from "node:zlib";
 import { loadPersistedAppSetting, replacePersistedAppSetting } from "@ccr/core/config/app-config-store";
@@ -133,7 +132,6 @@ ipcMain.handle(IPC_CHANNELS.appListMcpServerTools, async (_event, serverName: st
 });
 ipcMain.handle(IPC_CHANNELS.appOpenBuiltInBrowser, async () => {
   const config = await loadAppConfig();
-  await ensureBuiltInBrowserProxyReady(config);
   await builtInBrowserService.open(config);
 });
 ipcMain.handle(IPC_CHANNELS.appCloseTray, () => {
@@ -359,157 +357,6 @@ function logProfileApplyResult(result: ProfileApplyResult): void {
     }
     console.warn(`[profile:${client.client}] ${client.message}`);
   }
-}
-
-type ProxyConnectProbeResult = {
-  detail?: string;
-  ok: boolean;
-};
-
-const browserProxyConnectProbeTarget = "claude.ai:443";
-const proxyConnectProbeTimeoutMs = 3000;
-
-async function ensureBuiltInBrowserProxyReady(config: AppConfig): Promise<void> {
-  if (!config.proxy.enabled) {
-    return;
-  }
-
-  let proxyStatus = proxyService.getStatus();
-  if (proxyStatus.state === "running" && proxyStatus.endpoint) {
-    const probe = await probeProxyConnect(proxyStatus.endpoint);
-    if (probe.ok) {
-      return;
-    }
-    console.warn(`[browser] Proxy CONNECT probe failed at ${proxyStatus.endpoint}; restarting proxy: ${probe.detail || "unknown error"}`);
-  }
-
-  const status = await gatewayService.start(config);
-  if (status.state === "error") {
-    throw new Error(status.lastError || "Failed to start proxy mode.");
-  }
-
-  proxyStatus = proxyService.getStatus();
-  if (proxyStatus.state !== "running" || !proxyStatus.endpoint) {
-    throw new Error(proxyStatus.lastError || "Proxy mode is not running.");
-  }
-
-  const probe = await probeProxyConnect(proxyStatus.endpoint);
-  if (probe.ok) {
-    return;
-  }
-
-  console.warn(
-    `[browser] Shared proxy endpoint ${proxyStatus.endpoint} still does not accept CONNECT after restart; starting dedicated proxy endpoint: ${probe.detail || "unknown error"}`
-  );
-  const dedicatedProxyConfig = await createBuiltInBrowserProxyConfig(config);
-  const dedicatedProxyStatus = await proxyService.start(dedicatedProxyConfig);
-  if (dedicatedProxyStatus.state !== "running" || !dedicatedProxyStatus.endpoint) {
-    throw new Error(dedicatedProxyStatus.lastError || "Failed to start the dedicated proxy endpoint for the built-in browser.");
-  }
-
-  const dedicatedProbe = await probeProxyConnect(dedicatedProxyStatus.endpoint);
-  if (!dedicatedProbe.ok) {
-    const detail = dedicatedProbe.detail ? `: ${dedicatedProbe.detail}` : "";
-    throw new Error(`Proxy mode is running at ${dedicatedProxyStatus.endpoint}, but HTTPS CONNECT is not available${detail}.`);
-  }
-}
-
-async function createBuiltInBrowserProxyConfig(config: AppConfig): Promise<AppConfig> {
-  return {
-    ...config,
-    proxy: {
-      ...config.proxy,
-      host: "127.0.0.1",
-      port: await findAvailableLoopbackPort(),
-      systemProxy: false
-    }
-  };
-}
-
-function findAvailableLoopbackPort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        if (!address || typeof address === "string") {
-          reject(new Error("Failed to allocate a local proxy port."));
-          return;
-        }
-        resolve(address.port);
-      });
-    });
-  });
-}
-
-function probeProxyConnect(endpoint: string): Promise<ProxyConnectProbeResult> {
-  return new Promise((resolve) => {
-    let parsed: URL;
-    try {
-      parsed = new URL(endpoint);
-    } catch {
-      resolve({ detail: `Invalid proxy endpoint: ${endpoint}`, ok: false });
-      return;
-    }
-
-    const port = Number(parsed.port || (parsed.protocol === "https:" ? 443 : 80));
-    if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-      resolve({ detail: `Invalid proxy port in endpoint: ${endpoint}`, ok: false });
-      return;
-    }
-
-    const host = parsed.hostname.replace(/^\[|\]$/g, "");
-    const socket = net.connect({ host, port });
-    let response = "";
-    let settled = false;
-
-    const finish = (result: ProxyConnectProbeResult) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      socket.destroy();
-      resolve(result);
-    };
-    const parseResponse = (): ProxyConnectProbeResult | undefined => {
-      const firstLine = response.split(/\r?\n/, 1)[0]?.trim();
-      if (!firstLine) {
-        return undefined;
-      }
-      if (/^HTTP\/1\.[01]\s+200\b/i.test(firstLine)) {
-        return { ok: true };
-      }
-      if (/^HTTP\/1\.[01]\s+\d{3}\b/i.test(firstLine)) {
-        return { detail: firstLine, ok: false };
-      }
-      return { detail: `Unexpected response: ${firstLine}`, ok: false };
-    };
-
-    socket.setTimeout(proxyConnectProbeTimeoutMs, () => {
-      finish({ detail: `Timed out after ${proxyConnectProbeTimeoutMs}ms`, ok: false });
-    });
-    socket.once("error", (error) => {
-      finish({ detail: formatError(error), ok: false });
-    });
-    socket.once("connect", () => {
-      socket.write(`CONNECT ${browserProxyConnectProbeTarget} HTTP/1.1\r\nHost: ${browserProxyConnectProbeTarget}\r\n\r\n`);
-    });
-    socket.on("data", (chunk) => {
-      response += chunk.toString("latin1");
-      const result = parseResponse();
-      if (result) {
-        finish(result);
-      }
-    });
-    socket.once("close", () => {
-      finish(parseResponse() ?? { detail: "Connection closed without a CONNECT response", ok: false });
-    });
-  });
 }
 
 async function exportAppData(window: BrowserWindow | null): Promise<AppDataExportResult> {

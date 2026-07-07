@@ -68,6 +68,7 @@ function runtimeEntryPointsForSuite(suiteName) {
     return [];
   }
   return [
+    path.join(coreSourceRoot, "mcp", "fusion-vision-mcp.ts"),
     path.join(coreSourceRoot, "mcp", "toolhub-mcp.ts")
   ];
 }

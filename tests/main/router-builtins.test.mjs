@@ -42,13 +42,14 @@ function createRouterPlugin(options = {}) {
   });
 }
 
-function createIssue1480RouterConfig() {
+function createIssue1480UserConfig() {
   return {
+    APIKEY: "gateway-key",
     CUSTOM_ROUTER_PATH: "",
     Providers: [
       {
         api_base_url: "https://nebulacoder.example/v1/chat/completions",
-        credentials: [{ apiKey: "nebulacoder-key", id: "nebulacoder-main" }],
+        api_key: "nebulacoder-key",
         modelDescriptions: {
           "nebulacoder-v8.0": "Code reading model.",
           "nebulacoder-cot-v8.0": "Code reading reasoning model."
@@ -58,7 +59,7 @@ function createIssue1480RouterConfig() {
       },
       {
         api_base_url: "https://coclaw.example/v1/chat/completions",
-        credentials: [{ apiKey: "coclaw-key", id: "coclaw-main" }],
+        api_key: "coclaw-key",
         modelDescriptions: {
           "Qwen3-235B-A22B": "Background task model."
         },
@@ -67,24 +68,43 @@ function createIssue1480RouterConfig() {
       },
       {
         api_base_url: "https://opencode.ai/zen/go/v1/chat/completions",
+        api_key: "opencode-key",
         capabilities: [
           { baseUrl: "https://opencode.ai/zen/go/v1/chat/completions", type: "openai_chat_completions" }
         ],
-        credentials: [{ apiKey: "opencode-key", id: "opencode-main" }],
         modelDescriptions: {
+          "glm-5.1": "Previous generation flagship model.",
+          "glm-5.2": "Flagship model.",
           "deepseek-v4-flash": "Default route model.",
           "deepseek-v4-pro": "Thinking route model.",
-          "kimi-k2.6": "Claude Code profile model."
+          "kimi-k2.6": "Claude Code profile model.",
+          "kimi-k2.7": "Fast model.",
+          "mimo-v2.5": "Lightweight model.",
+          "mimo-v2.5-pro": "Enhanced lightweight model."
         },
-        models: ["kimi-k2.6", "deepseek-v4-pro", "deepseek-v4-flash"],
+        models: [
+          "glm-5.2",
+          "glm-5.1",
+          "kimi-k2.7",
+          "kimi-k2.6",
+          "deepseek-v4-pro",
+          "deepseek-v4-flash",
+          "mimo-v2.5",
+          "mimo-v2.5-pro"
+        ],
         name: "OpenCode"
+      },
+      {
+        api_base_url: "https://reasoning.example/v1/chat/completions",
+        api_key: "reasoning-key",
+        modelDescriptions: {
+          "sap-glm-2-2": "Reasoning model."
+        },
+        models: ["sap-glm-2-2"],
+        name: "Reasoning"
       }
     ],
     Router: {
-      builtInRules: {
-        "claude-code": { enabled: true },
-        codex: { enabled: true }
-      },
       fallback: { mode: "retry", models: [], retryCount: 1 },
       rules: [
         {
@@ -134,6 +154,13 @@ function createIssue1480RouterConfig() {
         }
       ]
     },
+    gateway: {
+      coreHost: "0.0.0.0",
+      corePort: 3457,
+      enabled: true,
+      host: "0.0.0.0",
+      port: 3456
+    },
     profile: {
       enabled: true,
       profiles: [
@@ -147,7 +174,68 @@ function createIssue1480RouterConfig() {
         }
       ]
     },
-    virtualModelProfiles: []
+    providerPlugins: [
+      {
+        enabled: true,
+        key: "opencode",
+        opencode: { enabled: true },
+        provider: "openai"
+      }
+    ],
+    virtualModelProfiles: [
+      {
+        description: "Automatically search the web using Tavily",
+        displayName: "Fusion Tavily",
+        enabled: true,
+        execution: {
+          clientToolsPolicy: "allow",
+          matchWebSearch: true,
+          maxToolCalls: 10,
+          maxTurns: 20,
+          mode: "tool_loop",
+          streamMode: "optimistic"
+        },
+        id: "fusion-tavily-web-search",
+        key: "fusion-tavily",
+        match: {
+          exactAliases: [],
+          prefixes: [],
+          suffixes: []
+        },
+        materialization: {
+          enabled: true,
+          includeInGatewayModels: true
+        },
+        metadata: {
+          fusionVision: {
+            apiKey: "opencode-key",
+            baseUrl: "https://opencode.ai/zen/go/v1",
+            model: "kimi-k2.6",
+            toolName: "vision_understand"
+          },
+          fusionWebSearch: {
+            env: {
+              TAVILY_API_KEY: "tavily-key"
+            },
+            provider: "tavily",
+            resultCount: 5,
+            toolName: "web_search"
+          }
+        },
+        tools: []
+      }
+    ]
+  };
+}
+
+function createIssue1480RouterConfig() {
+  const config = createIssue1480UserConfig();
+  return {
+    ...config,
+    Providers: config.Providers.map((provider) => ({
+      ...provider,
+      credentials: [{ apiKey: provider.api_key, id: `${provider.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-main` }]
+    }))
   };
 }
 
@@ -234,7 +322,8 @@ test("built-in Claude Code route injects ToolHub resolver instructions when Tool
       model: "claude-default",
       tools: [
         { name: "tool_hub.resolve", input_schema: { type: "object" } },
-        { name: "mcp__ccr-toolhub__tool_hub.invoke", input_schema: { type: "object" } }
+        { name: "mcp__ccr-toolhub__tool_hub_resolve", input_schema: { type: "object" } },
+        { name: "mcp__ccr-toolhub__tool_hub_invoke", input_schema: { type: "object" } }
       ]
     },
     headers: {
@@ -245,10 +334,13 @@ test("built-in Claude Code route injects ToolHub resolver instructions when Tool
   });
 
   assert.match(result.body.system.at(-1).text, /CCR ToolHub tool resolution is enabled/);
-  assert.match(result.body.system.at(-1).text, /MUST call tool_hub\.resolve before answering/);
+  assert.match(result.body.system.at(-1).text, /ToolHub search\/resolution tool is mcp__ccr-toolhub__tool_hub_resolve/);
+  assert.match(result.body.system.at(-1).text, /call this actual tool, do not merely mention its name in text/);
+  assert.match(result.body.system.at(-1).text, /MUST call the ToolHub search\/resolution tool mcp__ccr-toolhub__tool_hub_resolve before answering/);
   assert.match(result.body.system.at(-1).text, /external services.*business APIs.*orders.*coupons.*stores.*accounts/);
-  assert.match(result.body.system.at(-1).text, /Only skip tool_hub\.resolve when the request is clearly local/);
-  assert.match(result.body.system.at(-1).text, /use mcp__ccr-toolhub__tool_hub\.invoke/);
+  assert.match(result.body.system.at(-1).text, /Only skip the ToolHub search\/resolution tool when the request is clearly local/);
+  assert.match(result.body.system.at(-1).text, /call the ToolHub invocation tool mcp__ccr-toolhub__tool_hub_invoke/);
+  assert.match(result.body.system.at(-1).text, /executionPlanJs.*Promise\.all/);
 });
 
 test("built-in Claude Code route does not inject ToolHub instructions without the resolve tool", async () => {
@@ -361,6 +453,83 @@ test("router rules can add headers after the built-in Claude Code profile route"
   assert.equal(result.body.model, "Provider/claude-sonnet");
   assert.equal(result.decision.model, "Provider/claude-sonnet");
   assert.equal(result.decision.reason, "rule:target-provider");
+});
+
+test("issue 1480 raw user config no longer reproduces the Claude Code profile routing failure", async () => {
+  const config = createIssue1480UserConfig();
+  const plugin = new ClaudeCodeRouterPlugin(config);
+  const headers = {
+    "user-agent": "claude-cli/2.1.187 (external, cli)"
+  };
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "claude-sonnet-4-6",
+      tools: []
+    },
+    headers,
+    method: "POST",
+    url: "/v1/messages?beta=true"
+  });
+
+  assert.equal(headers["x-target-provider"], "OpenCode");
+  assert.equal(result.body.model, "deepseek-v4-flash");
+  assert.equal(result.decision.model, "deepseek-v4-flash");
+  assert.equal(result.decision.reason, "rule:rule-default");
+});
+
+test("issue 1480 raw user config reproduces the old failure precondition when Router rules are skipped", async () => {
+  const config = createIssue1480UserConfig();
+  const plugin = new ClaudeCodeRouterPlugin({
+    ...config,
+    Router: {
+      ...config.Router,
+      rules: []
+    }
+  });
+  const headers = {
+    "user-agent": "claude-cli/2.1.187 (external, cli)"
+  };
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "claude-sonnet-4-6",
+      tools: []
+    },
+    headers,
+    method: "POST",
+    url: "/v1/messages?beta=true"
+  });
+
+  assert.equal(headers["x-target-provider"], undefined);
+  assert.equal(result.body.model, "kimi-k2.6");
+  assert.equal(result.decision.model, "kimi-k2.6");
+  assert.equal(result.decision.reason, "builtin:claude-code");
+});
+
+test("issue 1480 raw user config ignores an unreplaced Provider/model subagent placeholder", async () => {
+  const config = createIssue1480UserConfig();
+  const plugin = new ClaudeCodeRouterPlugin(config);
+  const headers = {
+    "user-agent": "claude-cli/2.1.187 (external, cli)"
+  };
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "claude-sonnet-4-6",
+      system: "Use <CCR-SUBAGENT-MODEL>provider/model</CCR-SUBAGENT-MODEL> for this subagent.",
+      tools: []
+    },
+    headers,
+    method: "POST",
+    url: "/v1/messages?beta=true"
+  });
+
+  assert.equal(headers["x-target-provider"], "OpenCode");
+  assert.equal(result.body.model, "deepseek-v4-flash");
+  assert.equal(result.body.system, "Use  for this subagent.");
+  assert.equal(result.decision.model, "deepseek-v4-flash");
+  assert.equal(result.decision.reason, "rule:rule-default");
 });
 
 test("issue 1480 config routes Claude Code profile traffic through the user default OpenCode rule", async () => {
@@ -848,6 +1017,27 @@ test("built-in Claude Code subagent route uses model tag from system", async () 
   assert.equal(result.body.system, "Use  for this subagent.");
   assert.equal(result.decision.model, "Provider/claude-opus");
   assert.equal(result.decision.reason, "builtin:claude-code-subagent");
+});
+
+test("built-in Claude Code subagent route ignores the Provider/model placeholder", async () => {
+  const plugin = createRouterPlugin({ profileModel: "Provider/claude-sonnet" });
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "claude-default",
+      system: "Use <CCR-SUBAGENT-MODEL>Provider/model</CCR-SUBAGENT-MODEL> for this subagent."
+    },
+    headers: {
+      "user-agent": "Claude Code"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Provider/claude-sonnet");
+  assert.equal(result.body.system, "Use  for this subagent.");
+  assert.equal(result.decision.model, "Provider/claude-sonnet");
+  assert.equal(result.decision.reason, "builtin:claude-code");
 });
 
 test("built-in Claude Code route removes the first billing system block before subagent tag extraction", async () => {

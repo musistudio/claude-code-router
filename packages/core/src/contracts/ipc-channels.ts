@@ -73,10 +73,13 @@ export const IPC_CHANNELS = {
   browserBack: "ccr:browser:back",
   browserCloseTab: "ccr:browser:close-tab",
   browserForward: "ccr:browser:forward",
+  browserGetChromeLoginImport: "ccr:browser:get-chrome-login-import",
   browserGetState: "ccr:browser:get-state",
   browserNavigate: "ccr:browser:navigate",
   browserNewTab: "ccr:browser:new-tab",
   browserReload: "ccr:browser:reload",
+  browserResolveAutomationHandoff: "ccr:browser:resolve-automation-handoff",
   browserSelectTab: "ccr:browser:select-tab",
+  browserStartChromeLoginImport: "ccr:browser:start-chrome-login-import",
   browserStateChanged: "ccr:browser:state-changed"
 } as const;

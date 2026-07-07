@@ -19,6 +19,11 @@ import {
   providerBaseUrlForProtocol,
   type ParsedProviderBaseUrl
 } from "@ccr/core/providers/url";
+import {
+  detectedProviderFromHeaders,
+  newApiKeyUsageAccountConfig,
+  type DetectedProviderKind
+} from "@ccr/core/providers/new-api";
 
 type ModelSource = NonNullable<GatewayProviderProbeResult["modelSource"]>;
 
@@ -27,6 +32,8 @@ type ParsedProviderUrl = ParsedProviderBaseUrl & {
 };
 
 type FetchJsonResult = {
+  detectedProvider?: DetectedProviderKind;
+  headers?: Record<string, string>;
   payload?: unknown;
   status?: number;
   text: string;
@@ -226,16 +233,21 @@ async function resolveGatewayProviderProbe(request: GatewayProviderProbeRequest)
     : typedModels;
   const protocolResults = await probeProtocols(parsed, request.apiKey, models, protocols, mode);
   const detectedProtocol = detectProtocol(parsed, protocolResults, modelProbe.source, protocols);
+  const normalizedBaseUrl = detectedProtocol
+    ? resolveProbeBaseUrl(parsed, detectedProtocol, protocolResults, modelProbe)
+    : parsed.normalizedInputBaseUrl;
+  const detectedProvider = detectProvider(protocolResults);
+  const account = detectedProvider === "new-api" ? newApiKeyUsageAccountConfig(normalizedBaseUrl) : undefined;
 
   return {
+    ...(account ? { account } : {}),
     capabilities: capabilitiesFromProtocolResults(protocolResults),
+    ...(detectedProvider ? { detectedProvider } : {}),
     detectedProtocol,
     modelDisplayNames: modelProbe.modelDisplayNames,
     modelSource: modelProbe.source,
     models: modelProbe.models,
-    normalizedBaseUrl: detectedProtocol
-      ? resolveProbeBaseUrl(parsed, detectedProtocol, protocolResults, modelProbe)
-      : parsed.normalizedInputBaseUrl,
+    normalizedBaseUrl,
     protocols: protocolResults
   };
 }
@@ -491,6 +503,7 @@ async function probeProtocolSupport(
     const supported = isProviderProtocolEndpointSupportedForProbe(result.status, message, protocol, parsed.hints);
     const probeResult = {
       baseUrl: candidate.baseUrl,
+      ...(result.detectedProvider ? { detectedProvider: result.detectedProvider } : {}),
       endpoint: candidate.endpoint,
       message,
       protocol,
@@ -539,6 +552,7 @@ async function probeProtocolConnectivity(
     const supported = isProtocolSupported(result.status, message, protocol);
     const probeResult = {
       baseUrl: candidate.baseUrl,
+      ...(result.detectedProvider ? { detectedProvider: result.detectedProvider } : {}),
       endpoint: candidate.endpoint,
       message,
       protocol,
@@ -663,7 +677,10 @@ async function requestJson(url: string, init: RequestInit): Promise<FetchJsonRes
       signal: controller.signal
     });
     const text = await response.text();
+    const headers = responseHeadersRecord(response.headers);
     return {
+      detectedProvider: detectedProviderFromHeaders(headers),
+      headers,
       payload: parseJson(text),
       status: response.status,
       text
@@ -675,6 +692,18 @@ async function requestJson(url: string, init: RequestInit): Promise<FetchJsonRes
   } finally {
     clearTimeout(timer);
   }
+}
+
+function detectProvider(protocols: GatewayProviderProbeProtocolResult[]): DetectedProviderKind | undefined {
+  return protocols.find((item) => item.detectedProvider)?.detectedProvider;
+}
+
+function responseHeadersRecord(headers: Headers): Record<string, string> {
+  const record: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    record[key] = value;
+  });
+  return record;
 }
 
 function parseProviderUrl(value: string): ParsedProviderUrl {

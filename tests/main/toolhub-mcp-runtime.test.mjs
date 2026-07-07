@@ -54,6 +54,7 @@ test("built ToolHub MCP runtime accepts newline JSON stdio used by MCP Inspector
             const resolveTool = message.result.tools.find((tool) => tool.name === "tool_hub.resolve");
             assert.match(resolveTool.description, /MUST be called before answering/);
             assert.match(resolveTool.description, /external services.*business APIs.*orders.*coupons.*stores.*accounts/);
+            assert.match(resolveTool.description, /executionPlanJs/);
             child.kill();
             resolve();
             return;
@@ -176,8 +177,366 @@ test("built ToolHub MCP runtime waits for local CCR resolver readiness", async (
   assert.equal(response.error, undefined);
   assert.deepEqual(response.result.selectedToolNames, ["mcp.mcd_mcp.campaign-calendar"]);
   assert.deepEqual(response.result.structuredContent.selectedToolNames, ["mcp.mcd_mcp.campaign-calendar"]);
+  assert.match(response.result.executionPlanInstructions, /Promise\.all/);
+  assert.match(response.result.executionPlanJs, /await callTool\("mcp\.mcd_mcp\.campaign-calendar"/);
+  assert.equal(response.result.workflowSketch, response.result.executionPlanJs);
+  assert.match(response.result.structuredContent.executionPlanJs, /mcp\.mcd_mcp\.campaign-calendar/);
   assert.equal(response.result.content[0].type, "text");
   assert.match(response.result.content[0].text, /mcp\.mcd_mcp\.campaign-calendar/);
+});
+
+test("built ToolHub MCP runtime expands browser automation bundles with handoff tools", async (t) => {
+  const runtime = toolHubRuntimePath();
+  if (!existsSync(runtime)) {
+    t.skip("ToolHub MCP runtime has not been built.");
+    return;
+  }
+
+  const backend = createMcpHttpServer({
+    serverName: "ccr-browser-automation",
+    tools: [
+      {
+        description: "Open a URL or attach an existing CCR built-in browser tab and create an automation session.",
+        inputSchema: { type: "object" },
+        name: "browser_session_open"
+      },
+      {
+        description: "Request human intervention for the current browser task.",
+        inputSchema: { type: "object" },
+        name: "browser_handoff_request"
+      },
+      {
+        description: "Read the current browser human handoff status.",
+        inputSchema: { type: "object" },
+        name: "browser_handoff_status"
+      },
+      {
+        description: "Wait until the user clicks Done or Hide on the current browser handoff toolbar.",
+        inputSchema: { type: "object" },
+        name: "browser_handoff_wait"
+      }
+    ]
+  });
+  try {
+    await listen(backend);
+  } catch (error) {
+    backend.close();
+    t.skip(`Local HTTP listen is unavailable: ${error.message}`);
+    return;
+  }
+  const backendPort = backend.address().port;
+  t.after(() => backend.close());
+
+  const resolver = createFixedResolverServer(["mcp.ccr_browser_automation.browser_session_open"]);
+  try {
+    await listen(resolver);
+  } catch (error) {
+    resolver.close();
+    t.skip(`Local HTTP listen is unavailable: ${error.message}`);
+    return;
+  }
+  const resolverPort = resolver.address().port;
+  t.after(() => resolver.close());
+
+  const child = spawn(process.execPath, [runtime], {
+    env: {
+      ...process.env,
+      TOOLHUB_MCP_SERVERS_JSON: JSON.stringify([
+        {
+          name: "ccr-browser-automation",
+          transport: "streamable-http",
+          url: `http://127.0.0.1:${backendPort}/mcp`
+        }
+      ]),
+      TOOLHUB_OPENAI_API_KEY: "test-key",
+      TOOLHUB_OPENAI_BASE_URL: `http://127.0.0.1:${resolverPort}/v1`,
+      TOOLHUB_OPENAI_MODEL: "resolver-model",
+      TOOLHUB_REQUEST_TIMEOUT_MS: "10000"
+    },
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  t.after(() => child.kill());
+
+  const stderr = [];
+  child.stderr.on("data", (chunk) => stderr.push(chunk.toString("utf8")));
+  const reader = jsonLineReader(child);
+  writeJsonLine(child, {
+    id: 1,
+    jsonrpc: "2.0",
+    method: "initialize",
+    params: {
+      capabilities: {},
+      clientInfo: { name: "browser-handoff-bundle-test", version: "1.0.0" },
+      protocolVersion: "2024-11-05"
+    }
+  });
+  await reader.nextMessage(1);
+  writeJsonLine(child, {
+    jsonrpc: "2.0",
+    method: "notifications/initialized",
+    params: {}
+  });
+  writeJsonLine(child, {
+    id: 2,
+    jsonrpc: "2.0",
+    method: "tools/call",
+    params: {
+      name: "tool_hub.resolve",
+      arguments: {
+        constraints: { maxTools: 10 },
+        task: "打开 Gmail，如果需要登录就让用户接管"
+      }
+    }
+  });
+  const response = await reader.nextMessage(2, 12_000).catch((error) => {
+    error.message += ` stderr: ${stderr.join("")}`;
+    throw error;
+  });
+  assert.equal(response.error, undefined);
+  assert.deepEqual(response.result.selectedToolNames, [
+    "mcp.ccr_browser_automation.browser_session_open",
+    "mcp.ccr_browser_automation.browser_handoff_request",
+    "mcp.ccr_browser_automation.browser_handoff_status",
+    "mcp.ccr_browser_automation.browser_handoff_wait"
+  ]);
+  assert.match(response.result.tsDefinitions, /browser_handoff_wait/);
+});
+
+test("built ToolHub MCP runtime deterministically resolves Chrome login import tools", async (t) => {
+  const runtime = toolHubRuntimePath();
+  if (!existsSync(runtime)) {
+    t.skip("ToolHub MCP runtime has not been built.");
+    return;
+  }
+
+  const backend = createMcpHttpServer({
+    serverName: "ccr-browser-automation",
+    tools: [
+      {
+        description: "Ask the user to confirm importing Chrome cookies and localStorage into CCR's in-app browser.",
+        inputSchema: { type: "object" },
+        name: "browser_chrome_login_import"
+      },
+      {
+        description: "Read the status of a Chrome login import job.",
+        inputSchema: { type: "object" },
+        name: "browser_chrome_login_import_status"
+      }
+    ]
+  });
+  try {
+    await listen(backend);
+  } catch (error) {
+    backend.close();
+    t.skip(`Local HTTP listen is unavailable: ${error.message}`);
+    return;
+  }
+  const backendPort = backend.address().port;
+  t.after(() => backend.close());
+
+  const resolver = createFixedResolverServer([]);
+  try {
+    await listen(resolver);
+  } catch (error) {
+    resolver.close();
+    t.skip(`Local HTTP listen is unavailable: ${error.message}`);
+    return;
+  }
+  const resolverPort = resolver.address().port;
+  t.after(() => resolver.close());
+
+  const child = spawn(process.execPath, [runtime], {
+    env: {
+      ...process.env,
+      TOOLHUB_MCP_SERVERS_JSON: JSON.stringify([
+        {
+          name: "ccr-browser-automation",
+          transport: "streamable-http",
+          url: `http://127.0.0.1:${backendPort}/mcp`
+        }
+      ]),
+      TOOLHUB_OPENAI_API_KEY: "test-key",
+      TOOLHUB_OPENAI_BASE_URL: `http://127.0.0.1:${resolverPort}/v1`,
+      TOOLHUB_OPENAI_MODEL: "resolver-model",
+      TOOLHUB_REQUEST_TIMEOUT_MS: "10000"
+    },
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  t.after(() => child.kill());
+
+  const stderr = [];
+  child.stderr.on("data", (chunk) => stderr.push(chunk.toString("utf8")));
+  const reader = jsonLineReader(child);
+  writeJsonLine(child, {
+    id: 1,
+    jsonrpc: "2.0",
+    method: "initialize",
+    params: {
+      capabilities: {},
+      clientInfo: { name: "chrome-login-import-test", version: "1.0.0" },
+      protocolVersion: "2024-11-05"
+    }
+  });
+  await reader.nextMessage(1);
+  writeJsonLine(child, {
+    jsonrpc: "2.0",
+    method: "notifications/initialized",
+    params: {}
+  });
+  writeJsonLine(child, {
+    id: 2,
+    jsonrpc: "2.0",
+    method: "tools/call",
+    params: {
+      name: "tool_hub.resolve",
+      arguments: {
+        constraints: { maxTools: 10 },
+        task: "把 Chrome 里 github.com 的登录态导入 CCR in-app browser"
+      }
+    }
+  });
+  const response = await reader.nextMessage(2, 12_000).catch((error) => {
+    error.message += ` stderr: ${stderr.join("")}`;
+    throw error;
+  });
+  assert.equal(response.error, undefined);
+  assert.deepEqual(response.result.selectedToolNames, [
+    "mcp.ccr_browser_automation.browser_chrome_login_import",
+    "mcp.ccr_browser_automation.browser_chrome_login_import_status"
+  ]);
+  assert.match(response.result.tsDefinitions, /browser_chrome_login_import/);
+});
+
+test("built ToolHub MCP runtime does not add CCR handoff tools for non-CCR browser tools", async (t) => {
+  const runtime = toolHubRuntimePath();
+  if (!existsSync(runtime)) {
+    t.skip("ToolHub MCP runtime has not been built.");
+    return;
+  }
+
+  const externalBrowser = createMcpHttpServer({
+    serverName: "playwright",
+    tools: [
+      {
+        description: "Navigate a browser page in an external automation backend.",
+        inputSchema: { type: "object" },
+        name: "navigate",
+        tags: ["browser"]
+      }
+    ]
+  });
+  try {
+    await listen(externalBrowser);
+  } catch (error) {
+    externalBrowser.close();
+    t.skip(`Local HTTP listen is unavailable: ${error.message}`);
+    return;
+  }
+  const externalBrowserPort = externalBrowser.address().port;
+  t.after(() => externalBrowser.close());
+
+  const ccrBrowser = createMcpHttpServer({
+    serverName: "ccr-browser-automation",
+    tools: [
+      {
+        description: "Request human intervention for the current browser task.",
+        inputSchema: { type: "object" },
+        name: "browser_handoff_request"
+      },
+      {
+        description: "Read the current browser human handoff status.",
+        inputSchema: { type: "object" },
+        name: "browser_handoff_status"
+      },
+      {
+        description: "Wait until the user clicks Done or Hide on the current browser handoff toolbar.",
+        inputSchema: { type: "object" },
+        name: "browser_handoff_wait"
+      }
+    ]
+  });
+  try {
+    await listen(ccrBrowser);
+  } catch (error) {
+    ccrBrowser.close();
+    t.skip(`Local HTTP listen is unavailable: ${error.message}`);
+    return;
+  }
+  const ccrBrowserPort = ccrBrowser.address().port;
+  t.after(() => ccrBrowser.close());
+
+  const resolver = createFixedResolverServer(["mcp.playwright.navigate"]);
+  try {
+    await listen(resolver);
+  } catch (error) {
+    resolver.close();
+    t.skip(`Local HTTP listen is unavailable: ${error.message}`);
+    return;
+  }
+  const resolverPort = resolver.address().port;
+  t.after(() => resolver.close());
+
+  const child = spawn(process.execPath, [runtime], {
+    env: {
+      ...process.env,
+      TOOLHUB_MCP_SERVERS_JSON: JSON.stringify([
+        {
+          name: "playwright",
+          transport: "streamable-http",
+          url: `http://127.0.0.1:${externalBrowserPort}/mcp`
+        },
+        {
+          name: "ccr-browser-automation",
+          transport: "streamable-http",
+          url: `http://127.0.0.1:${ccrBrowserPort}/mcp`
+        }
+      ]),
+      TOOLHUB_OPENAI_API_KEY: "test-key",
+      TOOLHUB_OPENAI_BASE_URL: `http://127.0.0.1:${resolverPort}/v1`,
+      TOOLHUB_OPENAI_MODEL: "resolver-model",
+      TOOLHUB_REQUEST_TIMEOUT_MS: "10000"
+    },
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  t.after(() => child.kill());
+
+  const stderr = [];
+  child.stderr.on("data", (chunk) => stderr.push(chunk.toString("utf8")));
+  const reader = jsonLineReader(child);
+  writeJsonLine(child, {
+    id: 1,
+    jsonrpc: "2.0",
+    method: "initialize",
+    params: {
+      capabilities: {},
+      clientInfo: { name: "external-browser-tag-test", version: "1.0.0" },
+      protocolVersion: "2024-11-05"
+    }
+  });
+  await reader.nextMessage(1);
+  writeJsonLine(child, {
+    jsonrpc: "2.0",
+    method: "notifications/initialized",
+    params: {}
+  });
+  writeJsonLine(child, {
+    id: 2,
+    jsonrpc: "2.0",
+    method: "tools/call",
+    params: {
+      name: "tool_hub.resolve",
+      arguments: {
+        constraints: { maxTools: 10 },
+        task: "Use the external Playwright browser to navigate a page."
+      }
+    }
+  });
+  const response = await reader.nextMessage(2, 12_000).catch((error) => {
+    error.message += ` stderr: ${stderr.join("")}`;
+    throw error;
+  });
+  assert.equal(response.error, undefined);
+  assert.deepEqual(response.result.selectedToolNames, ["mcp.playwright.navigate"]);
 });
 
 test("built ToolHub MCP runtime keeps resolve cache scoped by task", async (t) => {
@@ -433,6 +792,36 @@ function createTaskAwareResolverServer() {
           }
         ],
         id: "chatcmpl-test",
+        object: "chat.completion"
+      }));
+      return;
+    }
+    response.statusCode = 404;
+    response.end("not found");
+  });
+}
+
+function createFixedResolverServer(toolNames) {
+  return createServer(async (request, response) => {
+    if (request.method === "GET" && request.url === "/v1/models") {
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ data: [], object: "list" }));
+      return;
+    }
+    if (request.method === "POST" && request.url === "/v1/chat/completions") {
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                summary: "ok",
+                toolNames
+              })
+            }
+          }
+        ],
+        id: "chatcmpl-fixed-test",
         object: "chat.completion"
       }));
       return;

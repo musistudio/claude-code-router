@@ -5,6 +5,7 @@ import {
   fusionFallbackToolDefinitions,
   fusionWebSearchToolNameForRequest,
   fusionToolNamesBackedByMcpServers,
+  fusionBuiltinToolArtifactsForTest,
   extractHostedWebSearchQueryHint,
   hostedWebSearchProtocolResponseStream,
   prepareGatewayUpstreamAttemptForTest,
@@ -78,6 +79,164 @@ test("gateway config rewrites Fusion fixed base and vision models to core provid
     /^provider-zhipu-ai-china---coding-plan-[a-f0-9]{10}::openai_chat_completions::cred:test-1\/glm-5v-turbo$/
   );
   assert.equal(profiles[0].baseModel.fixedModel, `${providerName}/glm-5.2`);
+});
+
+test("issue 1480 Fusion vision config injects core auth token into MCP gateway runtime", async () => {
+  const providerName = "Zhipu AI (China) - Coding Plan";
+  const config = {
+    CUSTOM_ROUTER_PATH: "",
+    Providers: [
+      {
+        api_base_url: "https://nebulacoder.example/v1/chat/completions",
+        credentials: [{ apiKey: "nebulacoder-key", id: "nebulacoder-main" }],
+        models: ["nebulacoder-v8.0", "nebulacoder-cot-v8.0"],
+        name: "NebulaCoder"
+      },
+      {
+        api_base_url: "https://coclaw.example/v1/chat/completions",
+        credentials: [{ apiKey: "coclaw-key", id: "coclaw-main" }],
+        models: ["Qwen3-235B-A22B"],
+        name: "CoClaw"
+      },
+      {
+        api_base_url: "https://opencode.ai/zen/go/v1/chat/completions",
+        capabilities: [
+          { baseUrl: "https://opencode.ai/zen/go/v1/chat/completions", type: "openai_chat_completions" }
+        ],
+        credentials: [{ apiKey: "opencode-key", id: "opencode-main" }],
+        models: ["kimi-k2.6", "deepseek-v4-pro", "deepseek-v4-flash"],
+        name: "OpenCode"
+      },
+      {
+        baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+        capabilities: [
+          { baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4", type: "openai_chat_completions" },
+          { baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4", type: "anthropic_messages" }
+        ],
+        credentials: [{ apiKey: "zhipu-key", id: "test-1" }],
+        models: ["glm-5.2", "glm-4.5-air", "glm-5v-turbo"],
+        name: providerName,
+        type: "openai_chat_completions"
+      }
+    ],
+    Router: {
+      fallback: { mode: "retry", models: [], retryCount: 1 },
+      rules: [
+        {
+          condition: { left: "request.url", operator: "contains", right: "/v1" },
+          enabled: true,
+          id: "rule-default",
+          name: "Default route",
+          rewrites: [
+            { key: "request.header.x-target-provider", operation: "set", value: "OpenCode" },
+            { key: "request.body.model", operation: "set", value: "deepseek-v4-flash" }
+          ],
+          type: "condition"
+        },
+        {
+          condition: { left: "request.header.anthropic-background", operator: "==", right: "true" },
+          enabled: true,
+          id: "rule-background",
+          name: "Background tasks",
+          rewrites: [
+            { key: "request.header.x-target-provider", operation: "set", value: "CoClaw" },
+            { key: "request.body.model", operation: "set", value: "Qwen3-235B-A22B" }
+          ],
+          type: "condition"
+        },
+        {
+          condition: { left: "request.header.anthropic-thinking", operator: "==", right: "true" },
+          enabled: true,
+          id: "rule-thinking",
+          name: "Thinking/reasoning tasks",
+          rewrites: [
+            { key: "request.header.x-target-provider", operation: "set", value: "OpenCode" },
+            { key: "request.body.model", operation: "set", value: "deepseek-v4-pro" }
+          ],
+          type: "condition"
+        }
+      ]
+    },
+    gateway: { coreHost: "127.0.0.1", corePort: 3457 },
+    profile: {
+      enabled: true,
+      profiles: [
+        {
+          agent: "claude-code",
+          enabled: true,
+          id: "claude-code-main",
+          model: "kimi-k2.6",
+          name: "Claude Code",
+          scope: "global"
+        }
+      ]
+    },
+    virtualModelProfiles: [
+      {
+        baseModel: { fixedModel: `${providerName}/glm-5.2`, mode: "fixed" },
+        displayName: "GLM 5 2V",
+        enabled: true,
+        execution: {
+          clientToolsPolicy: "allow",
+          matchMultimodal: true,
+          maxToolCalls: 8,
+          maxTurns: 6,
+          mode: "tool_loop",
+          streamMode: "buffered"
+        },
+        id: "glm-5.2v",
+        key: "glm-5.2v",
+        match: { exactAliases: ["GLM-5.2V", "Fusion/GLM-5.2V"], prefixes: [], suffixes: [] },
+        materialization: { enabled: true, includeInGatewayModels: true },
+        metadata: {
+          fusionVision: {
+            modelSelector: `${providerName}/glm-5v-turbo`,
+            toolName: "vision_understand_glm_5_2v"
+          }
+        },
+        tools: [{ name: "vision_understand_glm_5_2v", visibility: "internal" }]
+      }
+    ]
+  };
+
+  const profiles = normalizeCoreGatewayVirtualModelProfiles(config.virtualModelProfiles, config);
+  const artifacts = await fusionBuiltinToolArtifactsForTest(profiles, "http://127.0.0.1:3457", "core-token");
+  const server = artifacts.mcpServers.find((item) => item.name === "fusion-vision-glm-5.2v");
+
+  assert.ok(server);
+  assert.equal(server.env.VISION_GATEWAY_BASE_URL, "http://127.0.0.1:3457/v1");
+  assert.equal(server.env.VISION_GATEWAY_API_KEY, "core-token");
+  assert.equal(server.env.VISION_API_KEY, undefined);
+  assert.match(
+    server.env.VISION_MODEL,
+    /^provider-zhipu-ai-china---coding-plan-[a-f0-9]{10}::openai_chat_completions::cred:test-1\/glm-5v-turbo$/
+  );
+});
+
+test("gateway config does not inject core auth token into external Fusion vision MCP runtime", async () => {
+  const profiles = [
+    {
+      enabled: true,
+      id: "external-vision",
+      key: "external-vision",
+      metadata: {
+        fusionVision: {
+          apiKey: "external-key",
+          baseUrl: "https://vision.example/v1",
+          model: "gpt-vision",
+          toolName: "vision_understand_external"
+        }
+      }
+    }
+  ];
+
+  const artifacts = await fusionBuiltinToolArtifactsForTest(profiles, "http://127.0.0.1:3457", "core-token");
+  const server = artifacts.mcpServers.find((item) => item.name === "fusion-vision-external-vision");
+
+  assert.ok(server);
+  assert.equal(server.env.VISION_BASE_URL, "https://vision.example/v1");
+  assert.equal(server.env.VISION_API_KEY, "external-key");
+  assert.equal(server.env.VISION_GATEWAY_API_KEY, undefined);
 });
 
 test("gateway ignores non-Gemini capabilities on Gemini preset providers", () => {
@@ -402,6 +561,24 @@ test("gateway config does not create fallback tools for MCP-backed Fusion tools"
   const definitions = fusionFallbackToolDefinitions(profiles, fusionToolNamesBackedByMcpServers(servers));
 
   assert.deepEqual(definitions.map((definition) => definition.name), ["missing_fusion_tool"]);
+});
+
+test("gateway fallback explains In-app Browser web search requires Desktop integration", () => {
+  const profiles = [
+    {
+      enabled: true,
+      metadata: {
+        fusionWebSearch: { provider: "browser", toolName: "fusion_2_web_search" }
+      },
+      tools: [{ description: "Browser search", name: "fusion_2_web_search", visibility: "internal" }]
+    }
+  ];
+
+  const definitions = fusionFallbackToolDefinitions(profiles);
+
+  assert.equal(definitions[0].name, "fusion_2_web_search");
+  assert.match(definitions[0].unavailableMessage, /requires CCR Desktop/);
+  assert.match(definitions[0].unavailableMessage, /switch the Fusion web search provider/);
 });
 
 test("gateway response injects Anthropic web search protocol blocks into JSON responses", () => {
@@ -790,6 +967,24 @@ test("gateway injects prefetched web search evidence into OpenAI chat requests",
   assert.equal(parsed.web_search_options, undefined);
   assert.equal(parsed.messages[0].role, "system");
   assert.match(parsed.messages[0].content, /hidden in-app browser web search/);
+});
+
+test("gateway includes browser extraction diagnostics in hosted web search evidence", () => {
+  const body = Buffer.from(JSON.stringify({
+    messages: [{ role: "user", content: "Perform a web search for the query: today gold price per ounce USD July 2026" }],
+    model: "Fusion/kimisearch",
+    tools: [{ type: "web_search_preview" }]
+  }));
+  const record = sampleSearchRecord();
+  record.results[0].diagnostics = ["Page extraction failed: Browser search navigation timed out."];
+
+  const transformed = prepareHostedWebSearchProtocolRequestBody(body, [record], {
+    protocol: "openai_chat_completions",
+    queryHint: "today gold price per ounce USD July 2026"
+  });
+  const parsed = JSON.parse(transformed.toString("utf8"));
+
+  assert.match(parsed.messages[0].content, /Diagnostics: Page extraction failed/);
 });
 
 test("gateway hosted web search rewrites preserve custom web_search-named tools", () => {

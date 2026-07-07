@@ -170,6 +170,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
     trayWidgets: DEFAULT_TRAY_WIDGETS,
     trayWindowModules: DEFAULT_TRAY_WINDOW_MODULES,
     toolHub: {
+      browserAutomation: false,
       enabled: false,
       llm: {
         apiKey: "",

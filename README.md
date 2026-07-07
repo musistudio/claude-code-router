@@ -177,6 +177,20 @@ Codex support is powered by [musistudio/codexl](https://github.com/musistudio/co
         <strong>TeamoRouter</strong>
       </a>
     </td>
+    <td align="center" width="330">
+      <a href="https://code0.ai?source=claudecoderouter">
+        <img src="/docs/public/provider-icons/code0.png" width="42" height="42" alt="code0.ai icon" />
+        <br />
+        <strong>code0.ai</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://www.claudeapi.com?source=claudecoderouter">
+        <img src="/docs/public/provider-icons/claudeapi.png" width="42" height="42" alt="claudeapi icon" />
+        <br />
+        <strong>claudeapi</strong>
+      </a>
+    </td>
   </tr>
 </table>
 

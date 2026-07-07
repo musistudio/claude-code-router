@@ -28,6 +28,7 @@ type McpTool = {
   description: string;
   inputSchema: JsonValue;
   name: string;
+  unavailableMessage?: string;
 };
 
 type ToolCallResult = {
@@ -134,10 +135,11 @@ async function handleJsonRpcRequest(payload: unknown): Promise<JsonRpcResponse |
 function callTool(params: unknown): ToolCallResult {
   const name = isRecord(params) && typeof params.name === "string" ? params.name.trim() : "";
   const toolLabel = name || "unknown";
+  const tool = tools.find((item) => item.name === toolLabel);
   const knownSuffix = toolNames.has(toolLabel) ? "" : " The requested tool was not in the fallback catalog.";
   return {
     content: [{
-      text:
+      text: tool?.unavailableMessage ||
         `Fusion MCP tool "${toolLabel}" is temporarily unavailable. ` +
         "CCR registered a fallback definition because the real MCP server did not provide the tool during discovery. " +
         `Check the Fusion MCP server logs and retry.${knownSuffix}`,
@@ -179,7 +181,8 @@ function readFallbackTools(): McpTool[] {
         readString(item.description) ||
         `Fallback registration for Fusion MCP tool "${name}". The real MCP server should handle successful calls.`,
       inputSchema: isRecord(item.inputSchema) ? item.inputSchema as JsonValue : objectSchema({}),
-      name
+      name,
+      unavailableMessage: readString(item.unavailableMessage)
     });
   }
   return result;

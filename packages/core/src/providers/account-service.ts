@@ -146,6 +146,26 @@ export async function testProviderAccountConnector(request: ProviderAccountTestR
       status: statusFromMeters(meters, [], 1)
     };
   }
+  if (connector.parser === "new-api-key-usage") {
+    const meters = newApiKeyUsageMeters(payload);
+    return {
+      meters,
+      message: meters.length === 0 ? newApiKeyUsageFallbackMessage(payload) : readMappedString(connector.mapping.message, payload),
+      paths: flattenJsonPaths(payload),
+      payload,
+      status: statusFromMeters(meters, [], 1)
+    };
+  }
+  if (connector.parser === "new-api-user-self") {
+    const meters = newApiUserSelfMeters(payload);
+    return {
+      meters,
+      message: meters.length === 0 ? readMappedString(connector.mapping.message, payload) ?? "No user balance data available." : readMappedString(connector.mapping.message, payload),
+      paths: flattenJsonPaths(payload),
+      payload,
+      status: statusFromMeters(meters, [], 1)
+    };
+  }
 
   const meters = mappedMetersFromPayload(connector, payload);
 
@@ -156,6 +176,18 @@ export async function testProviderAccountConnector(request: ProviderAccountTestR
     payload,
     status: normalizeStatus(readMappedString(connector.mapping.status, payload))
   };
+}
+
+export function newApiKeyUsageMetersForTest(payload: unknown): ProviderAccountMeter[] {
+  return newApiKeyUsageMeters(payload);
+}
+
+export function newApiKeyUsageFallbackMessageForTest(payload: unknown): string {
+  return newApiKeyUsageFallbackMessage(payload);
+}
+
+export function newApiUserSelfMetersForTest(payload: unknown): ProviderAccountMeter[] {
+  return newApiUserSelfMeters(payload);
 }
 
 export async function resetCodexRateLimitCredit(request: ProviderAccountResetRequest): Promise<ProviderAccountResetResult> {
@@ -586,6 +618,24 @@ async function resolveHttpJsonConnector(
       source: "http-json"
     };
   }
+  if (connector.parser === "new-api-key-usage") {
+    const meters = newApiKeyUsageMeters(payload);
+    return {
+      errors: [],
+      message: meters.length === 0 ? newApiKeyUsageFallbackMessage(payload) : readMappedString(connector.mapping.message, payload),
+      meters,
+      source: "http-json"
+    };
+  }
+  if (connector.parser === "new-api-user-self") {
+    const meters = newApiUserSelfMeters(payload);
+    return {
+      errors: [],
+      message: meters.length === 0 ? readMappedString(connector.mapping.message, payload) ?? "No user balance data available." : readMappedString(connector.mapping.message, payload),
+      meters,
+      source: "http-json"
+    };
+  }
 
   const meters = mappedMetersFromPayload(connector, payload);
   return {
@@ -756,6 +806,90 @@ function normalizeRemoteSnapshot(
     status: normalizeStatus(readString(payload.status)) ?? statusFromMeters(meters, [], 1),
     updatedAt: readString(payload.updatedAt) || new Date().toISOString()
   };
+}
+
+function newApiKeyUsageMeters(payload: unknown): ProviderAccountMeter[] {
+  const meter = newApiKeyUsageMeter(payload);
+  return meter ? [meter] : [];
+}
+
+function newApiKeyUsageMeter(payload: unknown): ProviderAccountMeter | undefined {
+  const data = newApiKeyUsageData(payload);
+  if (!data) {
+    return undefined;
+  }
+
+  const unlimited = readBoolean(readJsonRecordValue(data, "unlimited_quota")) === true;
+  const remaining = normalizeNumber(readJsonRecordValue(data, "total_available"));
+  const limit = normalizeNumber(readJsonRecordValue(data, "total_granted"));
+  const used = normalizeNumber(readJsonRecordValue(data, "total_used"));
+  if (unlimited || (limit === undefined && remaining === undefined && used === undefined)) {
+    return undefined;
+  }
+
+  return {
+    id: "new_api_key_quota",
+    kind: "quota",
+    label: "API key quota",
+    limit,
+    remaining,
+    source: "http-json",
+    unit: "quota",
+    used
+  };
+}
+
+function newApiKeyUsageFallbackMessage(payload: unknown): string {
+  const data = newApiKeyUsageData(payload);
+  if (data && readBoolean(readJsonRecordValue(data, "unlimited_quota")) === true) {
+    return "API key has no dedicated quota limit. Configure a New API user balance connector with an access token and New-Api-User to read account balance.";
+  }
+  return readMappedString("$.message", payload) ?? "No API key quota data available.";
+}
+
+function newApiUserSelfMeters(payload: unknown): ProviderAccountMeter[] {
+  const meter = newApiUserSelfMeter(payload);
+  return meter ? [meter] : [];
+}
+
+function newApiUserSelfMeter(payload: unknown): ProviderAccountMeter | undefined {
+  const data = newApiUserSelfData(payload);
+  if (!data) {
+    return undefined;
+  }
+
+  const remaining = normalizeNumber(readJsonRecordValue(data, "quota"));
+  const used = normalizeNumber(readJsonRecordValue(data, "used_quota"));
+  if (remaining === undefined && used === undefined) {
+    return undefined;
+  }
+
+  return {
+    id: "new_api_user_balance",
+    kind: "balance",
+    label: "User balance",
+    limit: remaining !== undefined && used !== undefined ? remaining + used : undefined,
+    remaining,
+    source: "http-json",
+    unit: "quota",
+    used
+  };
+}
+
+function newApiKeyUsageData(payload: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(payload)) {
+    return undefined;
+  }
+  const data = readJsonRecordValue(payload, "data");
+  return isRecord(data) ? data : payload;
+}
+
+function newApiUserSelfData(payload: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(payload)) {
+    return undefined;
+  }
+  const data = readJsonRecordValue(payload, "data");
+  return isRecord(data) ? data : payload;
 }
 
 function kimiCodeUsageMeters(payload: unknown): ProviderAccountMeter[] {

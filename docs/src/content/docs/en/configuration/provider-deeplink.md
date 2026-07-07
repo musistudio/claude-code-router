@@ -78,6 +78,14 @@ Choose a provider below to get started. CCR shows what will be added before savi
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/teamorouter.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">TeamoRouter</span><span class="provider-import-meta">Anthropic / Chat / Responses</span></span>
   </a>
+  <a class="provider-import-button provider-code0" href="ccr://provider?name=code0.ai&amp;base_url=https%3A%2F%2Fconsole.code0.ai&amp;protocol=anthropic_messages&amp;source=https%3A%2F%2Fcode0.ai%3Fsource%3Dclaudecoderouter" aria-label="Import code0.ai provider">
+    <span class="provider-import-icon-shell"><img src="../../../provider-icons/code0.png" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">code0.ai</span><span class="provider-import-meta">Anthropic / Chat / Responses</span></span>
+  </a>
+  <a class="provider-import-button provider-claudeapi" href="ccr://provider?name=claudeapi&amp;base_url=https%3A%2F%2Fgw.claudeapi.com&amp;protocol=anthropic_messages&amp;source=https%3A%2F%2Fwww.claudeapi.com%3Fsource%3Dclaudecoderouter" aria-label="Import claudeapi provider">
+    <span class="provider-import-icon-shell"><img src="../../../provider-icons/claudeapi.png" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">claudeapi</span><span class="provider-import-meta">Anthropic Messages</span></span>
+  </a>
 </div>
 
 ## Embeddable Button Component

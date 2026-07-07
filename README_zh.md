@@ -176,6 +176,20 @@ CCR 可以完全通过桌面 UI 完成配置。首次使用建议按下面顺序
         <strong>TeamoRouter</strong>
       </a>
     </td>
+    <td align="center" width="330">
+      <a href="https://code0.ai?source=claudecoderouter">
+        <img src="/docs/public/provider-icons/code0.png" width="42" height="42" alt="code0.ai 图标" />
+        <br />
+        <strong>code0.ai</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://www.claudeapi.com?source=claudecoderouter">
+        <img src="/docs/public/provider-icons/claudeapi.png" width="42" height="42" alt="claudeapi 图标" />
+        <br />
+        <strong>claudeapi</strong>
+      </a>
+    </td>
   </tr>
 </table>
 

@@ -45,7 +45,7 @@ import { loadPersistedApiKeys } from "@ccr/core/config/api-key-store";
 import { codexDefaultBaseUrl, readCodexAuth } from "@ccr/core/agents/local-providers/service";
 import { fetchWithSystemProxy, getSystemProxyUrlForProtocol } from "@ccr/core/proxy/system-proxy-fetch";
 import { handleNetworkCaptureMcpRequest, isNetworkCaptureMcpPath } from "@ccr/core/mcp/network-capture-mcp";
-import { TOOL_HUB_MCP_SERVER_NAME, toolHubMcpRuntimeConfig } from "@ccr/core/mcp/toolhub-config";
+import { BROWSER_AUTOMATION_MCP_PATH, TOOL_HUB_MCP_SERVER_NAME, browserAutomationMcpEnabled, toolHubBuiltInBackendServers, toolHubMcpRuntimeConfig, toolHubRequestTimeoutMs } from "@ccr/core/mcp/toolhub-config";
 import { pluginService } from "@ccr/core/plugins/service";
 import { proxyService } from "@ccr/core/proxy/service";
 import { createSseErrorDetector, recordGatewayRequestLog, updateGatewayRequestLogFromRawTrace, type RequestLogRawTraceUpdateInput } from "@ccr/core/observability/request-log-store";
@@ -130,6 +130,7 @@ export type BrowserWebSearchMcpRegistration = {
 
 export type BrowserWebSearchProtocolResult = {
   content?: string;
+  diagnostics?: string[];
   snippet?: string;
   title: string;
   url: string;
@@ -149,6 +150,11 @@ export type BrowserWebSearchMcpIntegration = {
   recentBrowserWebSearchResults?: (options: { sinceMs: number; toolName?: string }) => BrowserWebSearchProtocolRecord[];
   runBrowserWebSearch?: (options: { count?: number; prompt: string; timeoutMs?: number; toolName?: string }) => Promise<BrowserWebSearchProtocolRecord | undefined>;
   stopBrowserWebSearchMcpServers: () => Promise<void>;
+};
+
+export type BrowserAutomationMcpIntegration = {
+  handleBrowserAutomationMcpRequest: (request: IncomingMessage, response: ServerResponse) => Promise<void>;
+  stopBrowserAutomationMcpServer: () => Promise<void>;
 };
 
 type CoreGatewayHealth = {
@@ -312,6 +318,7 @@ const persistedApiKeyCacheTtlMs = 1000;
 let persistedApiKeyCache: { loadedAt: number; values: ApiKeyConfig[] } | undefined;
 
 class GatewayService {
+  private browserAutomationMcpIntegration?: BrowserAutomationMcpIntegration;
   private browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration;
   private child?: ChildProcess;
   private config?: AppConfig;
@@ -330,6 +337,10 @@ class GatewayService {
 
   setBrowserWebSearchMcpIntegration(integration: BrowserWebSearchMcpIntegration): void {
     this.browserWebSearchMcpIntegration = integration;
+  }
+
+  setBrowserAutomationMcpIntegration(integration: BrowserAutomationMcpIntegration): void {
+    this.browserAutomationMcpIntegration = integration;
   }
 
   async start(config: AppConfig): Promise<GatewayStatus> {
@@ -380,7 +391,7 @@ class GatewayService {
       }
 
       if (shouldRunGateway) {
-        await writeCoreGatewayConfig(config, this.rawTraceSyncToken, this.browserWebSearchMcpIntegration);
+        await writeCoreGatewayConfig(config, this.rawTraceSyncToken, this.coreAuthToken, this.browserWebSearchMcpIntegration);
         await stopPreviousManagedCoreGateway(config, this.status.coreEndpoint);
         if (await isCoreGatewayHealthy(this.status.coreEndpoint)) {
           throw new Error(`Core gateway endpoint is already in use: ${this.status.coreEndpoint}`);
@@ -438,6 +449,9 @@ class GatewayService {
     await backendService.stopAll();
     await this.browserWebSearchMcpIntegration?.stopBrowserWebSearchMcpServers().catch((error) => {
       console.warn(`[gateway] Failed to stop browser web search MCP: ${formatError(error)}`);
+    });
+    await this.browserAutomationMcpIntegration?.stopBrowserAutomationMcpServer().catch((error) => {
+      console.warn(`[gateway] Failed to stop browser automation MCP: ${formatError(error)}`);
     });
 
     this.status = {
@@ -548,6 +562,31 @@ class GatewayService {
         response,
         sendJson
       });
+      return;
+    }
+
+    if (path === BROWSER_AUTOMATION_MCP_PATH || path === `${BROWSER_AUTOMATION_MCP_PATH}/`) {
+      if (!browserAutomationMcpEnabled(this.config)) {
+        sendJson(response, 404, {
+          error: {
+            message: "CCR browser automation MCP is disabled."
+          }
+        });
+        return;
+      }
+      const authorization = await authorize(request, response, this.config);
+      if (!authorization.ok) {
+        return;
+      }
+      if (!this.browserAutomationMcpIntegration) {
+        sendJson(response, 503, {
+          error: {
+            message: "CCR browser automation MCP is only available in the Electron desktop app."
+          }
+        });
+        return;
+      }
+      await this.browserAutomationMcpIntegration.handleBrowserAutomationMcpRequest(request, response);
       return;
     }
 
@@ -818,6 +857,15 @@ class GatewayService {
       routedModel,
       sinceMs: startedAt - 1_000
     });
+
+    if (hostedWebSearchProtocolContext && !this.browserWebSearchMcpIntegration) {
+      const message = browserWebSearchUnavailableMessage(hostedWebSearchProtocolContext.toolName);
+      const responseHeaders = new Headers({ "content-type": "application/json; charset=utf-8" });
+      const responseBody = JSON.stringify({ error: { message } });
+      writeRequestLog(503, responseHeaders, responseBody, false, message);
+      sendJson(response, 503, { error: { message } });
+      return;
+    }
 
     if (hostedWebSearchProtocolContext && this.browserWebSearchMcpIntegration) {
       const records = await selectHostedWebSearchProtocolRecords(
@@ -1102,6 +1150,7 @@ export const gatewayService = new GatewayService();
 async function writeCoreGatewayConfig(
   config: AppConfig,
   rawTraceSyncToken: string,
+  coreAuthToken: string,
   browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration
 ): Promise<void> {
   assertLoopbackCoreHost(config.gateway.coreHost);
@@ -1117,7 +1166,7 @@ async function writeCoreGatewayConfig(
     ...pluginService.getVirtualModelProfiles()
   ])), config);
   const coreEndpoint = endpoint(config.gateway.coreHost, config.gateway.corePort);
-  const builtinToolArtifacts = await fusionBuiltinToolArtifacts(virtualModelProfiles, coreEndpoint, browserWebSearchMcpIntegration);
+  const builtinToolArtifacts = await fusionBuiltinToolArtifacts(virtualModelProfiles, coreEndpoint, coreAuthToken, browserWebSearchMcpIntegration);
   const providers = [
     ...config.Providers
       .flatMap((provider) => toCoreGatewayProviders(withCodexOauthProviderBaseUrl(provider, codexOauthProviderNames)))
@@ -1411,6 +1460,7 @@ function hasOwn(value: Record<string, unknown>, key: string): boolean {
 async function fusionBuiltinToolArtifacts(
   profiles: unknown[],
   coreEndpoint: string,
+  coreAuthToken: string,
   browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration
 ): Promise<{ mcpServers: GatewayMcpServerConfig[]; providers: CoreGatewayProvider[] }> {
   const providers: CoreGatewayProvider[] = [];
@@ -1433,12 +1483,14 @@ async function fusionBuiltinToolArtifacts(
       const toolServerKey = `vision:${visionConfig.toolName}`;
       if (!toolServerKeys.has(toolServerKey)) {
         toolServerKeys.add(toolServerKey);
+        const useGatewayVisionRuntime = !visionConfig.baseUrl;
         mcpServers.push(fusionBuiltinMcpServer({
           entry,
           env: {
             FUSION_BUILTIN_TOOL_KIND: "vision",
             FUSION_TOOL_NAME: visionConfig.toolName,
-            ...(visionConfig.baseUrl ? { VISION_BASE_URL: visionConfig.baseUrl } : { VISION_GATEWAY_BASE_URL: `${coreEndpoint}/v1` }),
+            ...(useGatewayVisionRuntime ? { VISION_GATEWAY_BASE_URL: `${coreEndpoint}/v1` } : { VISION_BASE_URL: visionConfig.baseUrl || "" }),
+            ...(useGatewayVisionRuntime && coreAuthToken ? { VISION_GATEWAY_API_KEY: coreAuthToken } : {}),
             ...(resolvedVision.model ? { VISION_MODEL: resolvedVision.model } : {}),
             ...(visionConfig.baseUrl && visionConfig.apiKey ? { VISION_API_KEY: visionConfig.apiKey } : {}),
             ...(visionConfig.timeoutMs ? { VISION_TIMEOUT_MS: String(visionConfig.timeoutMs) } : {})
@@ -1484,6 +1536,15 @@ async function fusionBuiltinToolArtifacts(
   }
 
   return { mcpServers, providers };
+}
+
+export async function fusionBuiltinToolArtifactsForTest(
+  profiles: unknown[],
+  coreEndpoint: string,
+  coreAuthToken: string,
+  browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration
+): Promise<{ mcpServers: GatewayMcpServerConfig[]; providers: unknown[] }> {
+  return fusionBuiltinToolArtifacts(profiles, coreEndpoint, coreAuthToken, browserWebSearchMcpIntegration);
 }
 
 function fusionBuiltinMcpServer({
@@ -1546,16 +1607,20 @@ function bundledFusionToolFallbackMcpEntryPath(): string {
 
 function toolHubMcpServer(config: AppConfig, backendServers: unknown[]): GatewayMcpServerConfig | undefined {
   const toolHub = config.toolHub;
-  const runtimeConfig = toolHubMcpRuntimeConfig(config, backendServers);
+  const runtimeBackendServers = [
+    ...toolHubBuiltInBackendServers(config),
+    ...backendServers
+  ];
+  const runtimeConfig = toolHubMcpRuntimeConfig(config, runtimeBackendServers);
   if (!toolHub?.enabled || !runtimeConfig) {
     return undefined;
   }
 
   return {
     ...runtimeConfig,
-    name: uniqueMcpServerName(TOOL_HUB_MCP_SERVER_NAME, backendServers),
+    name: uniqueMcpServerName(TOOL_HUB_MCP_SERVER_NAME, runtimeBackendServers),
     protocolVersion: "2024-11-05",
-    requestTimeoutMs: Math.max(toolHub.requestTimeoutMs ?? 60000, 60000),
+    requestTimeoutMs: toolHubRequestTimeoutMs(config, runtimeBackendServers),
     startupTimeoutMs: 600000,
     stdioMessageMode: "content-length",
     transport: "stdio"
@@ -1565,51 +1630,119 @@ function toolHubMcpServer(config: AppConfig, backendServers: unknown[]): Gateway
 export function fusionFallbackToolDefinitions(
   profiles: unknown[],
   backedToolNames: Set<string> = new Set()
-): Array<{ description?: string; inputSchema?: Record<string, unknown>; name: string }> {
-  const byName = new Map<string, { description?: string; inputSchema?: Record<string, unknown>; name: string }>();
+): FusionFallbackToolDefinition[] {
+  const byName = new Map<string, FusionFallbackToolDefinition>();
 
   for (const profile of profiles) {
-    if (!isRecord(profile) || profile.enabled === false || !Array.isArray(profile.tools)) {
+    if (!isRecord(profile) || profile.enabled === false) {
       continue;
     }
-    for (const tool of profile.tools) {
-      if (!isRecord(tool)) {
-        continue;
-      }
-      const name = stringValue(tool.name);
-      if (!name) {
-        continue;
-      }
-      if (backedToolNames.has(name)) {
-        continue;
-      }
 
-      const existing = byName.get(name);
-      const description = stringValue(tool.description);
-      const inputSchema = isRecord(tool.inputSchema)
-        ? tool.inputSchema
-        : isRecord(tool.input_schema)
-          ? tool.input_schema
-          : undefined;
-      if (existing) {
-        if (!existing.description && description) {
-          existing.description = description;
+    if (Array.isArray(profile.tools)) {
+      for (const tool of profile.tools) {
+        if (!isRecord(tool)) {
+          continue;
         }
-        if (!existing.inputSchema && inputSchema) {
-          existing.inputSchema = inputSchema;
+        const name = stringValue(tool.name);
+        if (!name) {
+          continue;
         }
-        continue;
-      }
+        if (backedToolNames.has(name)) {
+          continue;
+        }
 
-      byName.set(name, {
-        ...(description ? { description } : {}),
-        ...(inputSchema ? { inputSchema } : {}),
-        name
-      });
+        const existing = byName.get(name);
+        const description = stringValue(tool.description);
+        const inputSchema = isRecord(tool.inputSchema)
+          ? tool.inputSchema
+          : isRecord(tool.input_schema)
+            ? tool.input_schema
+            : undefined;
+        const unavailableMessage = fusionFallbackToolUnavailableMessage(profile, name);
+        if (existing) {
+          if (!existing.description && description) {
+            existing.description = description;
+          }
+          if (!existing.inputSchema && inputSchema) {
+            existing.inputSchema = inputSchema;
+          }
+          if (!existing.unavailableMessage && unavailableMessage) {
+            existing.unavailableMessage = unavailableMessage;
+          }
+          continue;
+        }
+
+        byName.set(name, {
+          ...(description ? { description } : {}),
+          ...(inputSchema ? { inputSchema } : {}),
+          ...(unavailableMessage ? { unavailableMessage } : {}),
+          name
+        });
+      }
+    }
+
+    const browserFallback = browserWebSearchFallbackToolDefinition(profile, backedToolNames);
+    if (browserFallback && !byName.has(browserFallback.name)) {
+      byName.set(browserFallback.name, browserFallback);
     }
   }
 
   return [...byName.values()];
+}
+
+type FusionFallbackToolDefinition = {
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+  name: string;
+  unavailableMessage?: string;
+};
+
+function fusionFallbackToolUnavailableMessage(profile: unknown, toolName: string): string | undefined {
+  if (!isRecord(profile)) {
+    return undefined;
+  }
+  const metadata = isRecord(profile.metadata) ? profile.metadata : undefined;
+  const fusionWebSearch = isRecord(metadata?.fusionWebSearch) ? metadata.fusionWebSearch : undefined;
+  const webSearchConfig = readFusionWebSearchConfig(fusionWebSearch);
+  if (webSearchConfig?.provider !== "browser" || webSearchConfig.toolName !== toolName) {
+    return undefined;
+  }
+  return browserWebSearchUnavailableMessage(toolName);
+}
+
+function browserWebSearchUnavailableMessage(toolName: string): string {
+  return [
+    `Fusion MCP tool "${toolName}" is unavailable because In-app Browser web search requires CCR Desktop.`,
+    "This runtime did not register the Electron browser web search integration, so the hidden browser search tool cannot run here.",
+    "Run the profile in CCR Desktop or switch the Fusion web search provider to Brave, Bing, Google CSE, Serper, SerpAPI, Tavily, or Exa."
+  ].join(" ");
+}
+
+function browserWebSearchFallbackToolDefinition(
+  profile: Record<string, unknown>,
+  backedToolNames: Set<string>
+): FusionFallbackToolDefinition | undefined {
+  const metadata = isRecord(profile.metadata) ? profile.metadata : undefined;
+  const fusionWebSearch = isRecord(metadata?.fusionWebSearch) ? metadata.fusionWebSearch : undefined;
+  const webSearchConfig = readFusionWebSearchConfig(fusionWebSearch);
+  if (webSearchConfig?.provider !== "browser" || !webSearchConfig.toolName || backedToolNames.has(webSearchConfig.toolName)) {
+    return undefined;
+  }
+  return {
+    description: "Fallback registration for CCR In-app Browser web search when the Electron browser integration is unavailable.",
+    inputSchema: {
+      additionalProperties: true,
+      properties: {
+        count: { maximum: 20, minimum: 1, type: "number" },
+        prompt: { type: "string" },
+        query: { type: "string" }
+      },
+      required: ["prompt"],
+      type: "object"
+    },
+    name: webSearchConfig.toolName,
+    unavailableMessage: fusionFallbackToolUnavailableMessage(profile, webSearchConfig.toolName)
+  };
 }
 
 export function fusionToolNamesBackedByMcpServers(servers: unknown[]): Set<string> {
@@ -3037,7 +3170,8 @@ function hostedWebSearchEvidenceText(records: BrowserWebSearchProtocolRecord[], 
       const content = focusedWebSearchContent(result.content, queryHint);
       const details = [
         result.snippet ? `Search snippet: ${result.snippet}` : "",
-        content ? `Extracted page content: ${content}` : ""
+        content ? `Extracted page content: ${content}` : "",
+        result.diagnostics?.length ? `Diagnostics: ${result.diagnostics.join("; ")}` : ""
       ].filter(Boolean).join("\n");
       return [
         `${resultIndex + 1}. ${result.title}`,
@@ -5201,7 +5335,8 @@ function anthropicWebSearchResultBlock(result: BrowserWebSearchProtocolResult): 
 function anthropicWebSearchResultSnippet(result: BrowserWebSearchProtocolResult): string | undefined {
   const parts = [
     result.snippet ? `Search snippet: ${sanitizeWebSearchEvidenceText(result.snippet)}` : "",
-    result.content ? `Extracted page content: ${sanitizeWebSearchEvidenceText(result.content)}` : ""
+    result.content ? `Extracted page content: ${sanitizeWebSearchEvidenceText(result.content)}` : "",
+    result.diagnostics?.length ? `Diagnostics: ${result.diagnostics.join("; ")}` : ""
   ].filter(Boolean);
   return parts.length > 0 ? parts.join("\n") : undefined;
 }

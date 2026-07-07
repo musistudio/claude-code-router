@@ -246,7 +246,7 @@ function resolveBuiltInClaudeCodeSubagentRouteDecision(
     return undefined;
   }
   const target = normalizeRouteSelector(request.builtInSubagentModel);
-  if (!target) {
+  if (!target || isSubagentModelPlaceholder(target) || !isKnownInlineRoute(target, config)) {
     return undefined;
   }
   return {
@@ -322,6 +322,7 @@ function builtInAgentUserAgentNeedle(agent: RouterBuiltInAgentRuleId): string {
 const ccrSubagentModelOpenTag = "<CCR-SUBAGENT-MODEL>";
 const ccrSubagentModelCloseTag = "</CCR-SUBAGENT-MODEL>";
 const ccrSubagentModelTagExample = `${ccrSubagentModelOpenTag}Provider/model${ccrSubagentModelCloseTag}`;
+const ccrSubagentModelPlaceholder = "provider/model";
 const claudeCodeBillingSystemHeaderPrefix = "x-anthropic-billing-header";
 const ccrSubagentToolModelInstruction =
   `CCR subagent routing is enabled. When calling this tool, the prompt parameter MUST start with ` +
@@ -365,9 +366,11 @@ function injectClaudeCodeToolHubInstructions(body: Record<string, unknown>, conf
   const invokeName = toolNames.invoke ?? "tool_hub.invoke";
   appendSystemInstruction(body, [
     ccrToolHubSystemInstructionMarker,
-    `You MUST call ${toolNames.resolve} before answering any request that asks about external services, installed MCP capabilities, business APIs, orders, coupons, stores, accounts, available tools, or capabilities that are not already obvious from the eager tools.`,
-    `Do this even if the user did not mention ToolHub or ${toolNames.resolve}. Only skip ${toolNames.resolve} when the request is clearly local code/file/shell work or simple conversation that does not need an external or MCP capability.`,
-    `If ${toolNames.resolve} returns selected tools, use ${invokeName} to call the selected tool instead of telling the user that no such capability is available.`,
+    `The ToolHub search/resolution tool is ${toolNames.resolve}; call this actual tool, do not merely mention its name in text.`,
+    `You MUST call the ToolHub search/resolution tool ${toolNames.resolve} before answering any request that asks about external services, installed MCP capabilities, business APIs, orders, coupons, stores, accounts, available tools, or capabilities that are not already obvious from the eager tools.`,
+    `Do this even if the user did not mention ToolHub or ${toolNames.resolve}. Only skip the ToolHub search/resolution tool when the request is clearly local code/file/shell work or simple conversation that does not need an external or MCP capability.`,
+    `If ${toolNames.resolve} returns selected tools, call the ToolHub invocation tool ${invokeName} to run the selected tool instead of telling the user that no such capability is available.`,
+    "When the ToolHub resolve result includes executionPlanJs or workflowSketch, treat that JavaScript as the invocation dependency plan: await means serial order, and only callTool calls grouped inside the same Promise.all may be issued in parallel.",
     "Use the user's request as the task and include concise context when resolving. Do not ask the user to name the MCP tool unless the task is genuinely ambiguous after resolution."
   ].join("\n"));
 }
@@ -380,14 +383,38 @@ function claudeCodeToolHubToolNames(tools: unknown[]): { invoke?: string; resolv
     }
     const name = claudeCodeToolName(tool);
     const normalized = normalizeClaudeCodeToolName(name);
-    if (!names.resolve && normalized.endsWith("toolhubresolve")) {
+    if (normalized.endsWith("toolhubresolve") && shouldUseClaudeCodeToolHubName(names.resolve, name)) {
       names.resolve = name;
     }
-    if (!names.invoke && normalized.endsWith("toolhubinvoke")) {
+    if (normalized.endsWith("toolhubinvoke") && shouldUseClaudeCodeToolHubName(names.invoke, name)) {
       names.invoke = name;
     }
   }
   return names;
+}
+
+function shouldUseClaudeCodeToolHubName(current: string | undefined, candidate: string | undefined): boolean {
+  if (!candidate) {
+    return false;
+  }
+  if (!current) {
+    return true;
+  }
+  return claudeCodeToolHubNameScore(candidate) > claudeCodeToolHubNameScore(current);
+}
+
+function claudeCodeToolHubNameScore(name: string): number {
+  const normalized = name.toLowerCase();
+  if (normalized.startsWith("mcp__ccr-toolhub__") || normalized.startsWith("mcp__ccr_toolhub__")) {
+    return 3;
+  }
+  if (normalized.startsWith("mcp__") && normalized.includes("toolhub")) {
+    return 2;
+  }
+  if (normalized.startsWith("mcp__")) {
+    return 1;
+  }
+  return 0;
 }
 
 function appendSystemInstruction(body: Record<string, unknown>, instruction: string): void {
@@ -1172,6 +1199,10 @@ function isKnownInlineRoute(model: string | undefined, config: AppConfig): boole
 
   const providerName = normalizedModel.slice(0, separator).trim().toLowerCase();
   return config.Providers.some((provider) => provider.name.trim().toLowerCase() === providerName);
+}
+
+function isSubagentModelPlaceholder(model: string): boolean {
+  return model.trim().toLowerCase() === ccrSubagentModelPlaceholder;
 }
 
 function calculateTokenCount(messages: unknown, system: unknown, tools: unknown): number {
