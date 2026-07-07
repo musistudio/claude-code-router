@@ -194,6 +194,34 @@ CCR 的运行配置存储在 SQLite 中。请通过 UI 添加扩展；旧版 JSO
 }
 ```
 
+`coreGateway.config` 也是写入 core gateway 高级配置的推荐位置。CCR 启动网关时会把这个对象合并到生成的 core gateway 配置中。不要直接编辑生成出来的 `gateway.config.json`；该文件会被 CCR 重写，手动修改会在重启后丢失。
+
+例如，扩展或持久化插件条目可以这样调整上游重试行为，而不需要修改生成文件：
+
+```json
+{
+  "plugins": [
+    {
+      "id": "advanced-core-gateway",
+      "enabled": true,
+      "coreGateway": {
+        "config": {
+          "upstreamRetry": {
+            "enabled": true,
+            "maxAttempts": 2,
+            "baseDelayMs": 300,
+            "maxDelayMs": 1000,
+            "backoffMultiplier": 2,
+            "jitterMs": 200,
+            "retryStatusCodes": [429, 500, 502, 503, 504]
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
 保存扩展配置后需要重启网关。配置数据库位置见 [配置数据库位置](/configuration/config-file/)。
 
 本地目录选择器会按顺序识别这些入口信息：
