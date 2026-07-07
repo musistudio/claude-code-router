@@ -391,7 +391,7 @@ class GatewayService {
       }
 
       if (shouldRunGateway) {
-        await writeCoreGatewayConfig(config, this.rawTraceSyncToken, this.browserWebSearchMcpIntegration);
+        await writeCoreGatewayConfig(config, this.rawTraceSyncToken, this.coreAuthToken, this.browserWebSearchMcpIntegration);
         await stopPreviousManagedCoreGateway(config, this.status.coreEndpoint);
         if (await isCoreGatewayHealthy(this.status.coreEndpoint)) {
           throw new Error(`Core gateway endpoint is already in use: ${this.status.coreEndpoint}`);
@@ -1150,6 +1150,7 @@ export const gatewayService = new GatewayService();
 async function writeCoreGatewayConfig(
   config: AppConfig,
   rawTraceSyncToken: string,
+  coreAuthToken: string,
   browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration
 ): Promise<void> {
   assertLoopbackCoreHost(config.gateway.coreHost);
@@ -1165,7 +1166,7 @@ async function writeCoreGatewayConfig(
     ...pluginService.getVirtualModelProfiles()
   ])), config);
   const coreEndpoint = endpoint(config.gateway.coreHost, config.gateway.corePort);
-  const builtinToolArtifacts = await fusionBuiltinToolArtifacts(virtualModelProfiles, coreEndpoint, browserWebSearchMcpIntegration);
+  const builtinToolArtifacts = await fusionBuiltinToolArtifacts(virtualModelProfiles, coreEndpoint, coreAuthToken, browserWebSearchMcpIntegration);
   const providers = [
     ...config.Providers
       .flatMap((provider) => toCoreGatewayProviders(withCodexOauthProviderBaseUrl(provider, codexOauthProviderNames)))
@@ -1459,6 +1460,7 @@ function hasOwn(value: Record<string, unknown>, key: string): boolean {
 async function fusionBuiltinToolArtifacts(
   profiles: unknown[],
   coreEndpoint: string,
+  coreAuthToken: string,
   browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration
 ): Promise<{ mcpServers: GatewayMcpServerConfig[]; providers: CoreGatewayProvider[] }> {
   const providers: CoreGatewayProvider[] = [];
@@ -1481,12 +1483,14 @@ async function fusionBuiltinToolArtifacts(
       const toolServerKey = `vision:${visionConfig.toolName}`;
       if (!toolServerKeys.has(toolServerKey)) {
         toolServerKeys.add(toolServerKey);
+        const useGatewayVisionRuntime = !visionConfig.baseUrl;
         mcpServers.push(fusionBuiltinMcpServer({
           entry,
           env: {
             FUSION_BUILTIN_TOOL_KIND: "vision",
             FUSION_TOOL_NAME: visionConfig.toolName,
-            ...(visionConfig.baseUrl ? { VISION_BASE_URL: visionConfig.baseUrl } : { VISION_GATEWAY_BASE_URL: `${coreEndpoint}/v1` }),
+            ...(useGatewayVisionRuntime ? { VISION_GATEWAY_BASE_URL: `${coreEndpoint}/v1` } : { VISION_BASE_URL: visionConfig.baseUrl || "" }),
+            ...(useGatewayVisionRuntime && coreAuthToken ? { VISION_GATEWAY_API_KEY: coreAuthToken } : {}),
             ...(resolvedVision.model ? { VISION_MODEL: resolvedVision.model } : {}),
             ...(visionConfig.baseUrl && visionConfig.apiKey ? { VISION_API_KEY: visionConfig.apiKey } : {}),
             ...(visionConfig.timeoutMs ? { VISION_TIMEOUT_MS: String(visionConfig.timeoutMs) } : {})
@@ -1532,6 +1536,15 @@ async function fusionBuiltinToolArtifacts(
   }
 
   return { mcpServers, providers };
+}
+
+export async function fusionBuiltinToolArtifactsForTest(
+  profiles: unknown[],
+  coreEndpoint: string,
+  coreAuthToken: string,
+  browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration
+): Promise<{ mcpServers: GatewayMcpServerConfig[]; providers: unknown[] }> {
+  return fusionBuiltinToolArtifacts(profiles, coreEndpoint, coreAuthToken, browserWebSearchMcpIntegration);
 }
 
 function fusionBuiltinMcpServer({

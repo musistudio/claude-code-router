@@ -160,6 +160,7 @@ export type ProviderAccountStatus = "ok" | "warning" | "critical" | "error" | "u
 export type ProviderAccountMeterKind = "balance" | "subscription" | "quota" | "time_window" | "tokens" | "requests";
 export type ProviderAccountMeterUnit = "USD" | "CNY" | "hours" | "minutes" | "tokens" | "requests" | string;
 export type ProviderAccountMeterWindow = "5h" | "daily" | "weekly" | "monthly" | string;
+export type ProviderAccountHttpJsonParser = "kimi-code-usages" | "new-api-key-usage" | "new-api-user-self";
 
 export type ProviderAccountConfig = {
   connectors?: ProviderAccountConnectorConfig[];
@@ -193,7 +194,7 @@ export type ProviderAccountHttpJsonConnectorConfig = ProviderAccountConnectorBas
   headers?: Record<string, string>;
   mapping: ProviderAccountMappingConfig;
   method?: "GET" | "POST";
-  parser?: "kimi-code-usages";
+  parser?: ProviderAccountHttpJsonParser;
   type: "http-json";
 };
 
@@ -405,6 +406,8 @@ export type GatewayProviderCapability = {
   type: GatewayProviderProtocol;
 };
 
+export type GatewayProviderDetectedProvider = "new-api";
+
 export type GatewayProviderProbeRequest = {
   apiKey?: string;
   baseUrl: string;
@@ -445,6 +448,7 @@ export type ProviderIconDetectionResult = {
 
 export type GatewayProviderProbeProtocolResult = {
   baseUrl?: string;
+  detectedProvider?: GatewayProviderDetectedProvider;
   endpoint: string;
   message: string;
   protocol: GatewayProviderProtocol;
@@ -453,7 +457,9 @@ export type GatewayProviderProbeProtocolResult = {
 };
 
 export type GatewayProviderProbeResult = {
+  account?: ProviderAccountConfig;
   capabilities?: GatewayProviderCapability[];
+  detectedProvider?: GatewayProviderDetectedProvider;
   detectedProtocol?: GatewayProviderProtocol;
   modelDisplayNames?: Record<string, string>;
   modelSource?: "anthropic" | "gemini" | "openai";

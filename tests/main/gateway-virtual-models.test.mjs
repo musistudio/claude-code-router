@@ -5,6 +5,7 @@ import {
   fusionFallbackToolDefinitions,
   fusionWebSearchToolNameForRequest,
   fusionToolNamesBackedByMcpServers,
+  fusionBuiltinToolArtifactsForTest,
   extractHostedWebSearchQueryHint,
   hostedWebSearchProtocolResponseStream,
   prepareGatewayUpstreamAttemptForTest,
@@ -78,6 +79,56 @@ test("gateway config rewrites Fusion fixed base and vision models to core provid
     /^provider-zhipu-ai-china---coding-plan-[a-f0-9]{10}::openai_chat_completions::cred:test-1\/glm-5v-turbo$/
   );
   assert.equal(profiles[0].baseModel.fixedModel, `${providerName}/glm-5.2`);
+});
+
+test("gateway config injects core auth token into Fusion vision MCP gateway runtime", async () => {
+  const profiles = [
+    {
+      enabled: true,
+      id: "glm-vision",
+      key: "glm-vision",
+      metadata: {
+        fusionVision: {
+          modelSelector: "VisionProvider/glm-5v",
+          toolName: "vision_understand_glm"
+        }
+      }
+    }
+  ];
+
+  const artifacts = await fusionBuiltinToolArtifactsForTest(profiles, "http://127.0.0.1:3457", "core-token");
+  const server = artifacts.mcpServers.find((item) => item.name === "fusion-vision-glm-vision");
+
+  assert.ok(server);
+  assert.equal(server.env.VISION_GATEWAY_BASE_URL, "http://127.0.0.1:3457/v1");
+  assert.equal(server.env.VISION_GATEWAY_API_KEY, "core-token");
+  assert.equal(server.env.VISION_API_KEY, undefined);
+});
+
+test("gateway config does not inject core auth token into external Fusion vision MCP runtime", async () => {
+  const profiles = [
+    {
+      enabled: true,
+      id: "external-vision",
+      key: "external-vision",
+      metadata: {
+        fusionVision: {
+          apiKey: "external-key",
+          baseUrl: "https://vision.example/v1",
+          model: "gpt-vision",
+          toolName: "vision_understand_external"
+        }
+      }
+    }
+  ];
+
+  const artifacts = await fusionBuiltinToolArtifactsForTest(profiles, "http://127.0.0.1:3457", "core-token");
+  const server = artifacts.mcpServers.find((item) => item.name === "fusion-vision-external-vision");
+
+  assert.ok(server);
+  assert.equal(server.env.VISION_BASE_URL, "https://vision.example/v1");
+  assert.equal(server.env.VISION_API_KEY, "external-key");
+  assert.equal(server.env.VISION_GATEWAY_API_KEY, undefined);
 });
 
 test("gateway ignores non-Gemini capabilities on Gemini preset providers", () => {

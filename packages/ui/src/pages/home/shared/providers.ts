@@ -252,6 +252,7 @@ import {
   providerEndpointCanReceiveProviderApiKeyInList,
   providerIdentitySafetyIssueInList
 } from "@ccr/core/providers/presets/utils";
+import { newApiUserSelfConnectorConfig } from "@ccr/core/providers/new-api";
 import { normalizeProviderBaseUrl, providerUrlWithDefaultScheme } from "@ccr/core/providers/url";
 import {
   fallbackConfig,
@@ -899,7 +900,8 @@ export function createProviderConfigFromDeepLink(
   if (identityIssue) {
     throw new Error(identityIssue.message);
   }
-  const accountKeySafetyIssue = providerAccountApiKeySafetyIssue(payload.account, {
+  const account = payload.account ?? probe?.account ?? defaultProviderAccountConfigForBaseUrl(baseUrl);
+  const accountKeySafetyIssue = providerAccountApiKeySafetyIssue(account, {
     apiKey: payload.apiKey,
     baseUrl,
     providerName: name
@@ -914,7 +916,7 @@ export function createProviderConfigFromDeepLink(
   );
 
   return {
-    account: payload.account ? cloneProviderAccountConfig(payload.account) : defaultProviderAccountConfigForBaseUrl(baseUrl),
+    account: cloneProviderAccountConfig(account),
     api_base_url: normalizeProviderBaseUrl(baseUrl, protocol),
     api_key: apiKey,
     capabilities: capabilities.length > 0 ? capabilities : undefined,
@@ -1259,6 +1261,15 @@ export function createProviderAccountDraftFromConfig(account: ProviderAccountCon
       accountConnectorsText: JSON.stringify(connectors, null, 2),
       accountEnabled: account.enabled === true,
       accountMode: connectors.length > 0 && !providerAccountConnectorsAreDefaultStandard(connectors) ? "raw" : "standard",
+      accountRefreshIntervalMs: account.refreshIntervalMs ? String(account.refreshIntervalMs) : ""
+    };
+  }
+  if (httpJsonConnector.parser) {
+    return {
+      ...base,
+      accountConnectorsText: JSON.stringify(connectors, null, 2),
+      accountEnabled: account.enabled === true,
+      accountMode: "raw",
       accountRefreshIntervalMs: account.refreshIntervalMs ? String(account.refreshIntervalMs) : ""
     };
   }
@@ -1609,6 +1620,31 @@ export function providerAccountConnectorExample(): string {
   ], null, 2);
 }
 
+export function providerAccountConnectorsTextWithNewApiUserBalanceTemplate(connectorsText: string, baseUrl: string, userId: string): string {
+  const connector = newApiUserSelfConnectorConfig(baseUrl.trim() || "https://new-api.example/v1");
+  connector.headers = {
+    ...(connector.headers ?? {}),
+    "New-Api-User": userId.trim() || "<user-id>"
+  };
+
+  let connectors: unknown[] = [];
+  try {
+    const parsed = JSON.parse(connectorsText.trim() || "[]") as unknown;
+    connectors = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    connectors = [];
+  }
+
+  return JSON.stringify([
+    ...connectors.filter((item) => !isNewApiUserSelfConnector(item)),
+    connector
+  ], null, 2);
+}
+
+function isNewApiUserSelfConnector(value: unknown): boolean {
+  return isPlainRecord(value) && value.type === "http-json" && value.parser === "new-api-user-self";
+}
+
 export function toProviderProtocol(value: string | undefined): GatewayProviderProtocol | undefined {
   return providerProtocolOptions.some((option) => option.value === value) ? value as GatewayProviderProtocol : undefined;
 }
@@ -1845,10 +1881,12 @@ export function applyProviderProbeResult(draft: AddProviderDraft, probe: Gateway
   const protocol = probe.detectedProtocol ?? draft.protocol;
   const selectedProtocols = selectedProviderProtocolsForProbe(draft.selectedProtocols, probe, protocol, draft.presetId);
   const modelDisplayNames = mergeModelDisplayNames(draft.modelDisplayNames, probe.modelDisplayNames);
+  const accountDraft = providerProbeAccountDraftPatch(draft, probe.account);
 
   if (probe.models.length === 0) {
     return {
       ...draft,
+      ...accountDraft,
       baseUrl: probe.normalizedBaseUrl || draft.baseUrl,
       modelDisplayNames,
       protocol,
@@ -1871,6 +1909,7 @@ export function applyProviderProbeResult(draft: AddProviderDraft, probe: Gateway
 
   return {
     ...draft,
+    ...accountDraft,
     baseUrl: probe.normalizedBaseUrl || draft.baseUrl,
     modelDisplayNames,
     protocol,
@@ -1878,6 +1917,16 @@ export function applyProviderProbeResult(draft: AddProviderDraft, probe: Gateway
     selectedModels: nextSelectedModels,
     selectedProtocols
   };
+}
+
+function providerProbeAccountDraftPatch(
+  draft: AddProviderDraft,
+  account: ProviderAccountConfig | undefined
+): Partial<AddProviderDraft> {
+  if (!account || (draft.accountEnabled && draft.accountMode !== "standard")) {
+    return {};
+  }
+  return createProviderAccountDraftFromConfig(account);
 }
 
 export function mergeModelDisplayNames(

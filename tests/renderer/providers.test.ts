@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { newApiKeyUsageAccountConfig } from "../../packages/core/src/providers/new-api.ts";
 import { geminiProviderPreset } from "../../packages/core/src/providers/presets/gemini/index.ts";
 import {
   applyProviderProbeResult,
   createProviderDraft,
+  providerAccountConnectorsTextWithNewApiUserBalanceTemplate,
   providerProtocolOptions,
   providerProbeCandidates,
   setProviderPresets
@@ -70,4 +72,60 @@ test("provider probe result keeps only supported selected protocols", () => {
   });
 
   assert.deepEqual(next.selectedProtocols, ["gemini_generate_content"]);
+});
+
+test("provider probe result applies detected New API key quota account connector", () => {
+  const draft = {
+    ...createProviderDraft([]),
+    accountEnabled: false,
+    baseUrl: "https://gateway.example/v1",
+    protocol: "openai_chat_completions"
+  };
+  const account = newApiKeyUsageAccountConfig("https://gateway.example/v1");
+
+  const next = applyProviderProbeResult(draft, {
+    account,
+    detectedProvider: "new-api",
+    detectedProtocol: "openai_chat_completions",
+    models: [],
+    normalizedBaseUrl: draft.baseUrl,
+    protocols: [
+      {
+        detectedProvider: "new-api",
+        endpoint: "https://gateway.example/v1/chat/completions",
+        message: "HTTP 401",
+        protocol: "openai_chat_completions",
+        status: 401,
+        supported: true
+      }
+    ]
+  });
+
+  assert.equal(next.accountEnabled, true);
+  assert.equal(next.accountMode, "raw");
+  const connectors = JSON.parse(next.accountConnectorsText);
+  assert.equal(connectors.length, 1);
+  assert.equal(connectors[0].endpoint, "https://gateway.example/api/usage/token/");
+  assert.equal(connectors[0].parser, "new-api-key-usage");
+  assert.equal(connectors[0].mapping.meters[0].id, "new_api_key_quota");
+  assert.equal(connectors[0].mapping.meters[0].kind, "quota");
+  assert.equal(connectors[0].mapping.meters[0].remaining, "$.data.total_available");
+});
+
+test("New API user balance template adds configurable user self connector", () => {
+  const account = newApiKeyUsageAccountConfig("https://gateway.example/v1");
+  const text = providerAccountConnectorsTextWithNewApiUserBalanceTemplate(
+    JSON.stringify(account.connectors ?? [], null, 2),
+    "https://gateway.example/v1",
+    "42"
+  );
+  const connectors = JSON.parse(text);
+
+  assert.equal(connectors.length, 2);
+  assert.equal(connectors[0].parser, "new-api-key-usage");
+  assert.equal(connectors[1].endpoint, "https://gateway.example/api/user/self");
+  assert.equal(connectors[1].parser, "new-api-user-self");
+  assert.equal(connectors[1].headers.Authorization, "Bearer <new-api-access-token>");
+  assert.equal(connectors[1].headers["New-Api-User"], "42");
+  assert.equal(connectors[1].mapping.meters[0].id, "new_api_user_balance");
 });

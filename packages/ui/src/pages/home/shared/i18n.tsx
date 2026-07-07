@@ -1229,6 +1229,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Usage Trend": "用量趋势",
       "User idle": "用户空闲",
       "Insert example": "插入示例",
+      "Insert New API user balance": "插入 New API 用户余额",
+      "New API user ID": "New API 用户 ID",
       "Virtual model": "Fusion",
       "Virtual Models": "Fusion",
       "Add MCP Server": "添加 MCP 服务",
