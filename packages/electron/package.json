@@ -1,6 +1,6 @@
 {
   "name": "@claude-code-router/electron",
-  "version": "3.0.8",
+  "version": "3.0.9",
   "private": true,
   "description": "Claude Code Router Electron desktop shell.",
   "main": "dist/main/main.js",
