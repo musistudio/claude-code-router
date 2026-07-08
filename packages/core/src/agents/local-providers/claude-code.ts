@@ -20,9 +20,8 @@ import {
   type OAuthTokenSet
 } from "@ccr/core/agents/local-providers/shared";
 
+const claudeDefaultModels = ["claude-sonnet-5"];
 const claudeCodeKeychainService = "Claude Code-credentials";
-
-const claudeDefaultModels = ["claude-sonnet-4-20250514"];
 
 const percentLimitMapping = (id: string, label: string, path: string, window: string) => ({
   id,
