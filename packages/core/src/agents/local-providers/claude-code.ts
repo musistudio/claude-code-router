@@ -22,7 +22,7 @@ import {
 
 const claudeCodeKeychainService = "Claude Code-credentials";
 
-const claudeDefaultModels = ["claude-sonnet-4-5-20250929"];
+const claudeDefaultModels = ["claude-sonnet-4-20250514"];
 
 const percentLimitMapping = (id: string, label: string, path: string, window: string) => ({
   id,
