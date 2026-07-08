@@ -60,12 +60,17 @@ const localAgentProviderApiKey = "ccr-local-agent-login";
 function materializeProviderPluginTemplates(
   templates: unknown[],
   providerName: string,
-  protocol: GatewayProviderConfig["type"]
+  protocol: GatewayProviderConfig["type"],
+  providerId: string
 ): unknown[] {
   if (templates.length === 0) {
     return [];
   }
-  const internalName = protocol ? `${providerName}::${protocol}` : providerName;
+  // The core gateway matches provider plugins against the provider's runtime
+  // identifier (provider.id, or its slug), not the human-readable display name
+  // — the internal name here must mirror providerCapabilityInternalName() in
+  // gateway/service.ts or the plugin's auth-header override silently never applies.
+  const internalName = protocol ? `${providerId}::${protocol}` : providerId;
   const replacements: Record<string, string> = {
     [providerInternalNamePlaceholder]: internalName,
     [providerNamePlaceholder]: providerName,
@@ -1431,6 +1436,8 @@ function App() {
       return false;
     }
 
+    const existingProvider = providerEditIndex !== undefined ? draftConfig.Providers[providerEditIndex] : undefined;
+    const providerId = existingProvider?.id ?? providerNameSlug(providerName);
     const provider: GatewayProviderConfig = {
       api_base_url: normalizeProviderBaseUrl(baseUrl, protocol),
       api_key: providerDraft.apiKey.trim(),
@@ -1438,13 +1445,14 @@ function App() {
       account: accountConfig,
       credentials: credentials.length > 0 ? credentials : undefined,
       icon: providerDraft.icon.trim() || undefined,
+      id: providerId,
       modelDescriptions,
       modelDisplayNames,
       models,
       name: providerName,
       type: protocol
     };
-    const importedProviderPlugins = materializeProviderPluginTemplates(providerDraft.providerPlugins, providerName, protocol);
+    const importedProviderPlugins = materializeProviderPluginTemplates(providerDraft.providerPlugins, providerName, protocol, providerId);
     const wasImport = providerImportOpen;
 
     const next = buildConfigUpdate((config) => {
