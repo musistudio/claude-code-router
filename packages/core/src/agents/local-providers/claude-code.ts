@@ -18,7 +18,7 @@ import {
   type OAuthTokenSet
 } from "@ccr/core/agents/local-providers/shared";
 
-const claudeDefaultModels = ["claude-sonnet-4-20250514"];
+const claudeDefaultModels = ["claude-sonnet-4-5-20250929"];
 
 const percentLimitMapping = (id: string, label: string, path: string, window: string) => ({
   id,
