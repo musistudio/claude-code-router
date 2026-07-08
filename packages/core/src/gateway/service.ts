@@ -1157,8 +1157,8 @@ async function writeCoreGatewayConfig(
   mkdirSync(dirname(config.gateway.generatedConfigFile), { mode: privateDirMode, recursive: true });
   const pluginCoreGatewayConfig = pluginService.getCoreGatewayConfig();
   const providerPlugins = withCodexOauthRuntimeDefaults([
-    ...(config.providerPlugins ?? []),
-    ...pluginService.getCoreProviderPlugins()
+    ...(config.providerPlugins ?? []).filter(providerPluginEnabled),
+    ...pluginService.getCoreProviderPlugins().filter(providerPluginEnabled)
   ]);
   const codexOauthProviderNames = codexOauthLocalProviderNames(providerPlugins);
   const virtualModelProfiles = normalizeCoreGatewayVirtualModelProfiles(withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases([
@@ -1242,6 +1242,10 @@ function writePrivateTextFile(file: string, content: string): void {
       // Best effort for filesystems that do not support chmod.
     }
   }
+}
+
+function providerPluginEnabled(plugin: unknown): boolean {
+  return !isRecord(plugin) || plugin.enabled !== false;
 }
 
 export function normalizeCoreGatewayVirtualModelProfiles(profiles: unknown[], config: AppConfig): unknown[] {

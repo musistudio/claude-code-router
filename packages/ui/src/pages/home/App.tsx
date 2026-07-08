@@ -827,12 +827,23 @@ function App() {
     void checkForAppUpdate();
   }
 
-  function openUpdateDownloadDialog() {
+  function openSidebarUpdateDialog() {
     setUpdateDialogOpen(true);
     setUpdateActionError("");
     if (updateDialogStatus.canDownload || updateDialogStatus.state === "available") {
       void downloadAppUpdate();
+      return;
     }
+    if (
+      updateDialogStatus.canInstall ||
+      updateDialogStatus.state === "checking" ||
+      updateDialogStatus.state === "downloading" ||
+      updateDialogStatus.state === "downloaded" ||
+      updateDialogStatus.state === "installing"
+    ) {
+      return;
+    }
+    void checkForAppUpdate();
   }
 
   async function checkForAppUpdate() {
@@ -2816,7 +2827,7 @@ function App() {
               isMac={isMac}
               needsTrafficLightSafeArea={needsTrafficLightSafeArea}
               networkCaptureEnabled={networkCaptureEnabled}
-              onDownloadUpdate={openUpdateDownloadDialog}
+              onOpenUpdate={openSidebarUpdateDialog}
               onOpenSettings={openSettingsDialog}
               onSelectNavigationItem={selectNavigationItem}
               onToggleSidebar={() => setSidebarOpen((current) => !current)}
