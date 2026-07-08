@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import type {
@@ -10,7 +9,6 @@ import type {
 import {
   bearerAuthPlugin,
   findOauthTokenSet,
-  isRecord,
   missingCandidate,
   providerInternalNamePlaceholder,
   providerPayload,
@@ -19,8 +17,6 @@ import {
   uniqueStrings,
   type OAuthTokenSet
 } from "@ccr/core/agents/local-providers/shared";
-
-const claudeCodeKeychainService = "Claude Code-credentials";
 
 const claudeDefaultModels = ["claude-sonnet-4-20250514"];
 
@@ -152,19 +148,6 @@ function readClaudeCodeOauth(): OAuthTokenSet | undefined {
       sourceFile
     };
   }
-
-  const keychainRecord = readClaudeCodeKeychainRecord();
-  if (keychainRecord) {
-    const credential = findOauthTokenSet(keychainRecord);
-    if (credential) {
-      return {
-        accessToken: credential.accessToken,
-        refreshToken: credential.refreshToken,
-        sourceFile: `keychain:${claudeCodeKeychainService}`
-      };
-    }
-  }
-
   return undefined;
 }
 
@@ -174,25 +157,4 @@ function claudeCredentialFiles(): string[] {
     path.join(os.homedir(), ".claude", "credentials.json"),
     path.join(os.homedir(), ".config", "claude", "credentials.json")
   ]);
-}
-
-// Newer macOS builds of the Claude Code CLI store credentials in the
-// Keychain instead of ~/.claude/.credentials.json. Reading it triggers the
-// standard macOS keychain access prompt (Allow / Always Allow); the user
-// declining or the item not existing both surface as a non-zero exit here.
-function readClaudeCodeKeychainRecord(): Record<string, unknown> | undefined {
-  if (process.platform !== "darwin") {
-    return undefined;
-  }
-  try {
-    const output = execFileSync(
-      "security",
-      ["find-generic-password", "-s", claudeCodeKeychainService, "-w"],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
-    );
-    const parsed = JSON.parse(output.trim()) as unknown;
-    return isRecord(parsed) ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
 }
