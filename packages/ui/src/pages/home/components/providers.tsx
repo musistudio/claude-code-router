@@ -2516,7 +2516,7 @@ export function AddProviderDialog({
       </Dialog>
 
       {checkConfirmOpen ? (
-        <Dialog className="z-[60]" onOpenChange={(open) => !open && !checkConfirmBusy && setCheckConfirmOpen(false)}>
+        <Dialog className="z-[110]" onOpenChange={(open) => !open && !checkConfirmBusy && setCheckConfirmOpen(false)}>
           <DialogContent className="max-w-[520px]">
             <DialogHeader>
               <div className="min-w-0">

@@ -636,7 +636,7 @@ function ToolHubMcpServerDialog({
   const stdioMessageModeOptions = translateOptions(mcpStdioMessageModeOptions, t);
 
   return (
-    <Dialog className="z-[80]" onOpenChange={(nextOpen) => !nextOpen && onClose()} open={open}>
+    <Dialog className="z-[110]" onOpenChange={(nextOpen) => !nextOpen && onClose()} open={open}>
       <DialogContent className="max-w-[760px]">
         <DialogHeader>
           <div className="min-w-0">
@@ -755,7 +755,7 @@ function ToolHubMcpJsonDialog({
   const t = useAppText();
 
   return (
-    <Dialog className="z-[80]" onOpenChange={(nextOpen) => !nextOpen && onClose()} open={open}>
+    <Dialog className="z-[110]" onOpenChange={(nextOpen) => !nextOpen && onClose()} open={open}>
       <DialogContent className="max-w-[760px]">
         <DialogHeader>
           <div className="min-w-0">
