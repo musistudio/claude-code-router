@@ -82,6 +82,22 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
       stateDir: "",
       tenantId: "ccr"
     },
+    contextArchive: {
+      enabled: false,
+      handoffMaxCharacters: 24000,
+      llm: {
+        apiKey: "",
+        baseUrl: "https://api.openai.com/v1",
+        model: "",
+        timeoutMs: 60000
+      },
+      maxEntries: 2000,
+      maxSearchResults: 8,
+      mcpEnabled: true,
+      retainRecentItems: 12,
+      toolName: "ccr_history_search",
+      triggerTokenLimit: 100000
+    },
     gateway: {
       coreHost,
       corePort: 3457,

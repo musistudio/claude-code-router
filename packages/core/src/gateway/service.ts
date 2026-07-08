@@ -46,6 +46,13 @@ import { codexDefaultBaseUrl, readCodexAuth } from "@ccr/core/agents/local-provi
 import { fetchWithSystemProxy, getSystemProxyUrlForProtocol } from "@ccr/core/proxy/system-proxy-fetch";
 import { handleNetworkCaptureMcpRequest, isNetworkCaptureMcpPath } from "@ccr/core/mcp/network-capture-mcp";
 import { BROWSER_AUTOMATION_MCP_PATH, TOOL_HUB_MCP_SERVER_NAME, browserAutomationMcpEnabled, toolHubBuiltInBackendServers, toolHubMcpRuntimeConfig, toolHubRequestTimeoutMs } from "@ccr/core/mcp/toolhub-config";
+import {
+  contextArchiveMcpServer,
+  handleContextArchiveMcpRequest,
+  isContextArchiveMcpPath,
+  prepareContextArchiveRequest,
+  recordContextArchiveResponse
+} from "@ccr/core/gateway/context-archive";
 import { pluginService } from "@ccr/core/plugins/service";
 import { proxyService } from "@ccr/core/proxy/service";
 import { createSseErrorDetector, recordGatewayRequestLog, updateGatewayRequestLogFromRawTrace, type RequestLogRawTraceUpdateInput } from "@ccr/core/observability/request-log-store";
@@ -211,6 +218,8 @@ type UpstreamAttempt = {
   logicalProvider?: string;
   model?: string;
 };
+
+type ContextArchiveForwardRecord = Parameters<typeof recordContextArchiveResponse>[0];
 
 type UpstreamFailedAttempt = {
   credentialChain?: string[];
@@ -603,6 +612,15 @@ class GatewayService {
       return;
     }
 
+    if (isContextArchiveMcpPath(path)) {
+      const authorization = await authorize(request, response, this.config);
+      if (!authorization.ok) {
+        return;
+      }
+      await handleContextArchiveMcpRequest(request, response, this.config);
+      return;
+    }
+
     const pluginRoute = pluginService.matchGatewayRoute(request.method, path);
     if (pluginRoute) {
       if (pluginRoute.auth !== "none") {
@@ -917,6 +935,23 @@ class GatewayService {
       }
     }
 
+    let contextArchiveRecord: ContextArchiveForwardRecord;
+    const contextArchivePreparation = await prepareContextArchiveRequest({
+      body: bodyToForward,
+      config: this.config,
+      headers: request.headers,
+      method,
+      path,
+      protocol: requestProtocolForPath(path),
+      requestId
+    });
+    if (contextArchivePreparation) {
+      bodyToForward = contextArchivePreparation.body;
+      contextArchiveRecord = contextArchivePreparation.record;
+      headers["content-type"] = "application/json";
+      headers["x-ccr-context-archive"] = sanitizeHeaderValue(contextArchivePreparation.diagnostic);
+    }
+
     delete headers["content-length"];
     const upstreamUrl = new URL(request.url || "/", this.status.coreEndpoint).toString();
     let upstreamResult: UpstreamFetchResult;
@@ -1057,6 +1092,7 @@ class GatewayService {
     responseBody.once("end", () => {
       upstreamStreamEnded = true;
       streamDetectedError ??= sseErrorDetector.finish();
+      recordContextArchiveResponse(contextArchiveRecord, sampler.read(), this.config);
       if (responseCompleted || response.writableEnded) {
         writeStreamLog();
       }
@@ -1185,6 +1221,14 @@ async function writeCoreGatewayConfig(
     ...builtinToolArtifacts.mcpServers,
     ...(toolHubServer ? [toolHubServer] : externalMcpServers)
   ];
+  const contextArchiveServer = contextArchiveMcpServer(
+    config,
+    clientGatewayEndpoint(config.gateway.host, config.gateway.port),
+    firstConfiguredApiKey(config)
+  );
+  if (contextArchiveServer) {
+    mcpServers.push(contextArchiveServer);
+  }
   const fallbackMcpServer = fusionToolFallbackMcpServer(virtualModelProfiles, [
     ...builtinToolArtifacts.mcpServers,
     ...externalMcpServers
@@ -1246,6 +1290,11 @@ function writePrivateTextFile(file: string, content: string): void {
 
 function providerPluginEnabled(plugin: unknown): boolean {
   return !isRecord(plugin) || plugin.enabled !== false;
+}
+
+function firstConfiguredApiKey(config: AppConfig): string | undefined {
+  return (Array.isArray(config.APIKEYS) ? config.APIKEYS : [])
+    .find((apiKey) => apiKey.key.trim())?.key.trim() || stringValue(config.APIKEY);
 }
 
 export function normalizeCoreGatewayVirtualModelProfiles(profiles: unknown[], config: AppConfig): unknown[] {
@@ -6865,6 +6914,20 @@ function readBaseUrl(provider: GatewayProviderConfig): string | undefined {
 function endpoint(host: string, port: number): string {
   const endpointHost = host === "0.0.0.0" ? "127.0.0.1" : host;
   return `http://${endpointHost}:${port}`;
+}
+
+function clientGatewayEndpoint(host: string, port: number): string {
+  let endpointHost = host;
+  if (endpointHost === "0.0.0.0") {
+    endpointHost = "127.0.0.1";
+  } else if (endpointHost === "::" || endpointHost === "[::]") {
+    endpointHost = "::1";
+  }
+  return `http://${formatUrlHost(endpointHost)}:${port}`;
+}
+
+function formatUrlHost(host: string): string {
+  return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
 }
 
 function gatewayNetworkEndpoints(host: string, port: number): GatewayNetworkEndpoint[] {

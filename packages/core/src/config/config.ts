@@ -15,6 +15,7 @@ import type {
   BotGatewaySavedConfig,
   ClaudeCodeProfileConfig,
   CodexProfileConfig,
+  ContextArchiveConfig,
   GatewayAgentConfig,
   GatewayMcpServerConfig,
   GatewayMcpServerTransport,
@@ -67,11 +68,12 @@ type LoadedBotGatewayConfig = Partial<Omit<BotGatewayRuntimeConfig, "handoff">> 
   handoff?: Partial<BotGatewayRuntimeConfig["handoff"]>;
 };
 
-type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway" | "gateway" | "observability" | "profile" | "proxy" | "toolHub">> & {
+type LoadedAppConfig = Partial<Omit<AppConfig, "Router" | "agent" | "botGateway" | "contextArchive" | "gateway" | "observability" | "profile" | "proxy" | "toolHub">> & {
   Router?: Partial<RouterConfig>;
   agent?: Partial<GatewayAgentConfig>;
   botConfigs?: BotGatewaySavedConfig[];
   botGateway?: LoadedBotGatewayConfig;
+  contextArchive?: Partial<ContextArchiveConfig>;
   gateway?: Partial<AppConfig["gateway"]>;
   observability?: Partial<ObservabilityConfig>;
   profile?: LoadedProfileConfig;
@@ -242,6 +244,14 @@ export async function loadAppConfig(): Promise<AppConfig> {
       },
       botConfigs: picked.botConfigs ?? DEFAULT_CONFIG.botConfigs,
       botGateway: completeBotGatewayConfig(picked.botGateway),
+      contextArchive: {
+        ...DEFAULT_CONFIG.contextArchive,
+        ...(picked.contextArchive ?? {}),
+        llm: {
+          ...DEFAULT_CONFIG.contextArchive.llm,
+          ...(picked.contextArchive?.llm ?? {})
+        }
+      },
       gateway: {
         ...DEFAULT_CONFIG.gateway,
         ...gatewayConfig,
@@ -588,6 +598,10 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   if (botConfigs) {
     config.botConfigs = botConfigs;
   }
+  const contextArchive = parseContextArchive((value as Record<string, unknown>).contextArchive ?? (value as Record<string, unknown>).context_archive);
+  if (contextArchive) {
+    config.contextArchive = contextArchive;
+  }
   if (typeof value.autoStart === "boolean") {
     config.autoStart = value.autoStart;
   }
@@ -674,6 +688,69 @@ function pickConfig(value: Partial<AppConfig>): LoadedAppConfig {
   }
 
   return config;
+}
+
+function parseContextArchive(value: unknown): Partial<ContextArchiveConfig> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const contextArchive: Partial<ContextArchiveConfig> = {};
+  if (typeof value.enabled === "boolean") {
+    contextArchive.enabled = value.enabled;
+  }
+  const mcpEnabled = value.mcpEnabled ?? value.mcp_enabled;
+  if (typeof mcpEnabled === "boolean") {
+    contextArchive.mcpEnabled = mcpEnabled;
+  }
+  const triggerTokenLimit = readNumber(value.triggerTokenLimit ?? value.trigger_token_limit);
+  if (triggerTokenLimit !== undefined) {
+    contextArchive.triggerTokenLimit = clampNumber(triggerTokenLimit, 1000, 2_000_000);
+  }
+  const retainRecentItems = readNumber(value.retainRecentItems ?? value.retain_recent_items);
+  if (retainRecentItems !== undefined) {
+    contextArchive.retainRecentItems = clampNumber(retainRecentItems, 2, 200);
+  }
+  const maxEntries = readNumber(value.maxEntries ?? value.max_entries);
+  if (maxEntries !== undefined) {
+    contextArchive.maxEntries = clampNumber(maxEntries, 50, 100000);
+  }
+  const maxSearchResults = readNumber(value.maxSearchResults ?? value.max_search_results);
+  if (maxSearchResults !== undefined) {
+    contextArchive.maxSearchResults = clampNumber(maxSearchResults, 1, 50);
+  }
+  const handoffMaxCharacters = readNumber(value.handoffMaxCharacters ?? value.handoff_max_characters);
+  if (handoffMaxCharacters !== undefined) {
+    contextArchive.handoffMaxCharacters = clampNumber(handoffMaxCharacters, 1000, 200000);
+  }
+  const toolName = readString(value.toolName ?? value.tool_name);
+  if (toolName !== undefined) {
+    contextArchive.toolName = toolName;
+  }
+
+  const rawLlm = isObject(value.llm) ? value.llm : value;
+  const llm: Partial<ContextArchiveConfig["llm"]> = {};
+  const apiKey = readString(rawLlm.apiKey) || readString(rawLlm.api_key);
+  if (apiKey !== undefined) {
+    llm.apiKey = apiKey;
+  }
+  const baseUrl = readString(rawLlm.baseUrl) || readString(rawLlm.base_url);
+  if (baseUrl !== undefined) {
+    llm.baseUrl = baseUrl;
+  }
+  const model = readString(rawLlm.model);
+  if (model !== undefined) {
+    llm.model = model;
+  }
+  const timeoutMs = readNumber(rawLlm.timeoutMs ?? rawLlm.timeout_ms);
+  if (timeoutMs !== undefined) {
+    llm.timeoutMs = clampNumber(timeoutMs, 8000, 600000);
+  }
+  if (Object.keys(llm).length > 0) {
+    contextArchive.llm = llm as ContextArchiveConfig["llm"];
+  }
+
+  return Object.keys(contextArchive).length ? contextArchive : undefined;
 }
 
 function parseObservability(value: unknown): Partial<ObservabilityConfig> | undefined {

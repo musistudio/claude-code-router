@@ -656,6 +656,25 @@ export type ToolHubConfig = {
   requestTimeoutMs: number;
 };
 
+export type ContextArchiveLlmConfig = {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  timeoutMs: number;
+};
+
+export type ContextArchiveConfig = {
+  enabled: boolean;
+  handoffMaxCharacters: number;
+  llm: ContextArchiveLlmConfig;
+  maxEntries: number;
+  maxSearchResults: number;
+  mcpEnabled: boolean;
+  retainRecentItems: number;
+  toolName: string;
+  triggerTokenLimit: number;
+};
+
 export const CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV = "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY";
 export const CLAUDE_CODE_DEFAULT_ENV: Record<string, string> = {
   [CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV]: "1"
@@ -1400,6 +1419,7 @@ export type AppConfig = {
   autoStart: boolean;
   botConfigs: BotGatewaySavedConfig[];
   botGateway: BotGatewayRuntimeConfig;
+  contextArchive: ContextArchiveConfig;
   gateway: GatewayRuntimeConfig;
   launchAtLogin: boolean;
   observability: ObservabilityConfig;
