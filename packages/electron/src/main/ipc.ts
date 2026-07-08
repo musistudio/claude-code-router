@@ -24,6 +24,7 @@ import { getProviderPresets } from "@ccr/core/providers/presets/index";
 import { checkGatewayProviderConnectivity, probeGatewayProvider, probeGatewayProviderCandidates } from "@ccr/core/providers/probe";
 import { applyProfileConfig } from "@ccr/core/profiles/service";
 import { desktopCliCommandName, getProfileOpenCommand, getProfileRuntimeStatus, openProfileFromCcr, stopProfileFromCcr } from "@ccr/core/profiles/launch-service";
+import { getPluginMarketplace } from "@ccr/core/plugins/marketplace";
 import { ensureProxyCertificateAuthority } from "@ccr/core/proxy/certificates";
 import { proxyService } from "@ccr/core/proxy/service";
 import { listMcpServerTools } from "@ccr/core/mcp/tool-discovery";
@@ -32,26 +33,7 @@ import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
 import { getUsageStats } from "@ccr/core/usage/store";
 import windowsManager from "./windows";
-import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfig, AppCaptureElementPngRequest, AppCaptureElementPngResult, AppConfig, AppDataExportResult, AppImageExportTargetRequest, AppImageExportTargetResult, AppInfo, AppRenderHtmlPngRequest, AppRenderHtmlPngResult, AppSaveConfigOptions, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, LocalAgentProviderImportRequest, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountResetRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "@ccr/core/contracts/app";
-
-const pluginMarketplace: PluginMarketplaceEntry[] = [
-  {
-    capabilities: ["Wrapper runtime", "Claude App proxy", "Claude Design", "Model routing"],
-    dependencies: [],
-    description: "Routes Claude App Design traffic through the local CCR wrapper backend with configurable model routing.",
-    id: "claude-design",
-    modulePath: path.join(__dirname, "..", "marketplace", "plugins", "claude-design-plugin.cjs"),
-    name: "Claude Design"
-  },
-  {
-    capabilities: ["Wrapper runtime", "Proxy mode", "Cursor", "Model routing", "OpenAI/Anthropic/Gemini forwarding"],
-    dependencies: [],
-    description: "Routes Cursor-compatible LLM traffic captured by proxy mode into the local CCR gateway.",
-    id: "cursor-proxy",
-    modulePath: path.join(__dirname, "..", "marketplace", "plugins", "cursor-proxy-plugin.cjs"),
-    name: "Cursor Proxy"
-  }
-];
+import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfig, AppCaptureElementPngRequest, AppCaptureElementPngResult, AppConfig, AppDataExportResult, AppImageExportTargetRequest, AppImageExportTargetResult, AppInfo, AppRenderHtmlPngRequest, AppRenderHtmlPngResult, AppSaveConfigOptions, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, LocalAgentProviderImportRequest, PluginDependency, PluginDirectorySelection, ProfileApplyResult, ProfileOpenRequest, ProviderAccountResetRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "@ccr/core/contracts/app";
 const onboardingFinishedAtSettingKey = "onboardingFinishedAt";
 const imageExportTargets = new Map<string, string>();
 
@@ -110,7 +92,7 @@ ipcMain.handle(IPC_CHANNELS.appGetGatewayStatus, () => gatewayService.getStatus(
 ipcMain.handle(IPC_CHANNELS.appGetProxyCertificateStatus, () => proxyService.getCertificateStatus());
 ipcMain.handle(IPC_CHANNELS.appGetProxyNetworkCaptures, () => proxyService.getNetworkCaptures());
 ipcMain.handle(IPC_CHANNELS.appGetProxyStatus, () => proxyService.getStatus());
-ipcMain.handle(IPC_CHANNELS.appGetPluginMarketplace, () => pluginMarketplace);
+ipcMain.handle(IPC_CHANNELS.appGetPluginMarketplace, () => getPluginMarketplace());
 ipcMain.handle(IPC_CHANNELS.appGetRequestLogDetail, (_event, request) => getRequestLogDetail(request));
 ipcMain.handle(IPC_CHANNELS.appGetRequestLogs, (_event, filter?: RequestLogListFilter) => getRequestLogs(filter));
 ipcMain.handle(IPC_CHANNELS.appGetUpdateStatus, () => appUpdateService.getStatus());
@@ -132,6 +114,10 @@ ipcMain.handle(IPC_CHANNELS.appListMcpServerTools, async (_event, serverName: st
 });
 ipcMain.handle(IPC_CHANNELS.appOpenBuiltInBrowser, async () => {
   const config = await loadAppConfig();
+  if (hasEnabledPluginApp(config, "agent-console")) {
+    await deepLinkService.openPluginApp("agent-console");
+    return;
+  }
   await builtInBrowserService.open(config);
 });
 ipcMain.handle(IPC_CHANNELS.appCloseTray, () => {
@@ -1169,6 +1155,14 @@ function isFile(file: string): boolean {
   } catch {
     return false;
   }
+}
+
+function hasEnabledPluginApp(config: AppConfig, pluginId: string): boolean {
+  return config.plugins.some((plugin) =>
+    plugin.id === pluginId &&
+    plugin.enabled !== false &&
+    plugin.apps?.some((app) => typeof app.url === "string" && app.url.trim())
+  );
 }
 
 function formatError(error: unknown): string {

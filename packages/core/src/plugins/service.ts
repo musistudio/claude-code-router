@@ -145,10 +145,6 @@ type LoadedPlugin = {
 };
 
 const requireFromHere = createRequire(__filename);
-const builtInMarketplacePluginModules = new Map<string, string>([
-  ["claude-design", path.join(__dirname, "..", "marketplace", "plugins", "claude-design-plugin.cjs")],
-  ["cursor-proxy", path.join(__dirname, "..", "marketplace", "plugins", "cursor-proxy-plugin.cjs")]
-]);
 
 class GatewayPluginService {
   private config?: AppConfig;
@@ -297,7 +293,7 @@ class GatewayPluginService {
       this.registerProxyRoute(pluginConfig.id, route);
     }
 
-    const modulePath = pluginConfig.module || builtInMarketplacePluginModules.get(pluginConfig.id);
+    const modulePath = pluginConfig.module;
     if (!modulePath) {
       return;
     }

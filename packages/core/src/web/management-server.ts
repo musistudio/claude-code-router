@@ -20,6 +20,7 @@ import { getProviderPresets } from "@ccr/core/providers/presets/index";
 import { checkGatewayProviderConnectivity, probeGatewayProvider, probeGatewayProviderCandidates } from "@ccr/core/providers/probe";
 import { applyProfileConfig } from "@ccr/core/profiles/service";
 import { getProfileOpenCommand, getProfileRuntimeStatus, openProfileFromCcr, stopProfileFromCcr } from "@ccr/core/profiles/launch-service";
+import { getPluginMarketplace } from "@ccr/core/plugins/marketplace";
 import { ensureProxyCertificateAuthority } from "@ccr/core/proxy/certificates";
 import { proxyService } from "@ccr/core/proxy/service";
 import { listMcpServerTools } from "@ccr/core/mcp/tool-discovery";
@@ -49,7 +50,6 @@ import type {
   LocalAgentProviderImportRequest,
   PluginDependency,
   PluginDirectorySelection,
-  PluginMarketplaceEntry,
   ProfileApplyResult,
   ProfileOpenRequest,
   ProviderAccountResetRequest,
@@ -103,24 +103,6 @@ const homeHtmlFile = path.join(staticRoot, "pages", "home", "index.html");
 const rendererAssetsRoot = path.join(staticRoot, "assets");
 const webBridgeScriptTag = '    <script src="../../assets/web-client-bridge.js"></script>';
 
-const pluginMarketplace: PluginMarketplaceEntry[] = [
-  {
-    capabilities: ["Wrapper runtime", "Claude App proxy", "Claude Design", "Model routing"],
-    dependencies: [],
-    description: "Routes Claude App Design traffic through the local CCR wrapper backend with configurable model routing.",
-    id: "claude-design",
-    modulePath: path.join(__dirname, "..", "marketplace", "plugins", "claude-design-plugin.cjs"),
-    name: "Claude Design"
-  },
-  {
-    capabilities: ["Wrapper runtime", "Proxy mode", "Cursor", "Model routing", "OpenAI/Anthropic/Gemini forwarding"],
-    dependencies: [],
-    description: "Routes Cursor-compatible LLM traffic captured by proxy mode into the local CCR gateway.",
-    id: "cursor-proxy",
-    modulePath: path.join(__dirname, "..", "marketplace", "plugins", "cursor-proxy-plugin.cjs"),
-    name: "Cursor Proxy"
-  }
-];
 
 export async function startWebManagementServer(options: WebManagementServerOptions = {}): Promise<WebManagementServerRuntime> {
   const host = options.host?.trim() || readEnvString("CCR_WEB_HOST") || defaultWebHost;
@@ -286,7 +268,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
   }),
   getLocalAgentProviderCandidates: () => getLocalAgentProviderCandidates(),
   getOnboardingFinished: async () => Boolean(readString(await loadPersistedAppSetting(onboardingFinishedAtSettingKey)) || existsSync(ONBOARDING_FINISHED_FILE)),
-  getPluginMarketplace: () => pluginMarketplace,
+  getPluginMarketplace,
   getProfileOpenCommand: async (request) => getProfileOpenCommand(await loadAppConfig(), request as ProfileOpenRequest),
   getProfileRuntimeStatus: () => getProfileRuntimeStatus(),
   getProviderAccountSnapshots: (provider, options) => getProviderAccountSnapshots(provider as string | undefined, options as ProviderAccountSnapshotRequestOptions | undefined),
@@ -1010,12 +992,36 @@ function firstConfiguredBrowserAppUrl(config: AppConfig): string | undefined {
     if (plugin.enabled === false) {
       continue;
     }
-    const app = plugin.apps?.find((candidate) => readString(candidate.url));
+    const app = configuredBrowserAppsForPlugin(plugin.id, plugin.apps)?.find((candidate) => readString(candidate.url));
     if (app?.url) {
-      return app.url;
+      return resolveGatewayBrowserAppUrl(config, app.url);
     }
   }
   return undefined;
+}
+
+function configuredBrowserAppsForPlugin(_pluginId: string, apps: GatewayPluginAppConfig[] | undefined): GatewayPluginAppConfig[] {
+  if (apps?.length) {
+    return apps;
+  }
+  return [];
+}
+
+function resolveGatewayBrowserAppUrl(config: AppConfig, url: string): string {
+  const trimmed = url.trim();
+  if (/^https?:\/\//i.test(trimmed) || trimmed === "about:blank") {
+    return trimmed;
+  }
+  const path = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  const host = normalizeGatewayBrowserAppHost(config.gateway?.host || config.HOST || "127.0.0.1");
+  const port = config.gateway?.port || config.PORT || 3456;
+  return `http://${host}:${port}${path}`;
+}
+
+function normalizeGatewayBrowserAppHost(host: string): string {
+  if (!host || host === "0.0.0.0") return "127.0.0.1";
+  if (host === "::" || host === "[::]") return "[::1]";
+  return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
 }
 
 async function revealFile(file: string): Promise<void> {
@@ -1031,7 +1037,7 @@ async function revealFile(file: string): Promise<void> {
 }
 
 export function openSystemExternal(target: string): Promise<void> {
-  const url = normalizeExternalHttpTarget(target);
+  const url = normalizeExternalTarget(target);
   if (!url) {
     return Promise.resolve();
   }
@@ -1045,6 +1051,14 @@ export function openSystemExternal(target: string): Promise<void> {
 }
 
 export function normalizeExternalHttpTarget(target: unknown): string | undefined {
+  const url = normalizeExternalTarget(target);
+  if (!url?.startsWith("http://") && !url?.startsWith("https://")) {
+    return undefined;
+  }
+  return url;
+}
+
+function normalizeExternalTarget(target: unknown): string | undefined {
   const trimmed = typeof target === "string" ? target.trim() : "";
   if (!trimmed || trimmed === "about:blank") {
     return undefined;
@@ -1055,10 +1069,13 @@ export function normalizeExternalHttpTarget(target: unknown): string | undefined
   } catch {
     throw new Error("External URL must be a valid absolute URL.");
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("Only http and https URLs can be opened.");
+  if (url.protocol === "http:" || url.protocol === "https:") {
+    return url.toString();
   }
-  return url.toString();
+  if (url.protocol === "ccr:" && url.hostname.toLowerCase() === "plugin") {
+    return url.toString();
+  }
+  throw new Error("Only http, https, and CCR plugin URLs can be opened.");
 }
 
 function execDetached(command: string, args: string[]): Promise<void> {

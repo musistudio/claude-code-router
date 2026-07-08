@@ -965,8 +965,8 @@ function resolveInstalledBrowserApps(config: AppConfig, runtimeApps: InstalledBr
     if (plugin.id === "claude-design") {
       continue;
     }
-    for (const app of plugin.apps ?? []) {
-      const normalized = normalizeConfiguredBrowserApp(plugin.id, app, apps.size + 1);
+    for (const app of configuredBrowserAppsForPlugin(plugin.id, plugin.apps)) {
+      const normalized = normalizeConfiguredBrowserApp(config, plugin.id, app, apps.size + 1);
       if (normalized) {
         apps.set(`${normalized.pluginId}:${normalized.id}`, normalized);
       }
@@ -981,7 +981,14 @@ function resolveInstalledBrowserApps(config: AppConfig, runtimeApps: InstalledBr
   return [...apps.values()];
 }
 
-function normalizeConfiguredBrowserApp(pluginId: string, app: GatewayPluginAppConfig, index: number): InstalledBrowserApp | undefined {
+function configuredBrowserAppsForPlugin(_pluginId: string, apps: GatewayPluginAppConfig[] | undefined): GatewayPluginAppConfig[] {
+  if (apps?.length) {
+    return apps;
+  }
+  return [];
+}
+
+function normalizeConfiguredBrowserApp(config: AppConfig, pluginId: string, app: GatewayPluginAppConfig, index: number): InstalledBrowserApp | undefined {
   const name = app.name?.trim();
   const url = app.url?.trim();
   if (!name || !url) {
@@ -994,8 +1001,25 @@ function normalizeConfiguredBrowserApp(pluginId: string, app: GatewayPluginAppCo
     id: app.id?.trim() || sanitizeBrowserAppId(`${name}-${url}`) || `app-${index}`,
     name,
     pluginId,
-    url
+    url: resolveGatewayBrowserAppUrl(config, url)
   };
+}
+
+function resolveGatewayBrowserAppUrl(config: AppConfig, url: string): string {
+  const trimmed = url.trim();
+  if (/^https?:\/\//i.test(trimmed) || trimmed === "about:blank") {
+    return trimmed;
+  }
+  const path = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  const host = normalizeGatewayBrowserAppHost(config.gateway?.host || config.HOST || "127.0.0.1");
+  const port = config.gateway?.port || config.PORT || 3456;
+  return `http://${host}:${port}${path}`;
+}
+
+function normalizeGatewayBrowserAppHost(host: string): string {
+  if (!host || host === "0.0.0.0") return "127.0.0.1";
+  if (host === "::" || host === "[::]") return "[::1]";
+  return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

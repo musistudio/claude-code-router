@@ -1,0 +1,14 @@
+{
+  "id": "agent-console",
+  "name": "Agent Console",
+  "module": "index.cjs",
+  "apps": [
+    {
+      "id": "agent-console",
+      "name": "Agent Console",
+      "description": "Open Agent Console inside CCR.",
+      "icon": "terminal-square",
+      "url": "/plugins/agent-console/pages/home/?mode=main"
+    }
+  ]
+}

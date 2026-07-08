@@ -21,10 +21,12 @@ Most custom extensions should start as a Wrapper plugin. It receives CCR config,
 When the gateway starts, CCR reads the `plugins` array and processes each plugin whose `enabled !== false`:
 
 1. It first applies `apps`, `proxy.routes`, `coreGateway.providerPlugins`, `coreGateway.virtualModelProfiles`, and `coreGateway.config` declared in config.
-2. It then loads the plugin module. `module` can be an absolute path, a `~/` path, a `./...` path relative to the CCR config directory, or a Node-resolvable package name.
-3. If `module` is missing, CCR tries to match the plugin `id` with built-in marketplace plugins such as `claude-design` and `cursor-proxy`.
+2. It then loads the plugin module. `module` must resolve to an explicit local JavaScript file path, such as an absolute path, a `~/` path, or a `./...` path relative to the CCR config directory.
+3. If `module` is missing, CCR does not load a built-in fallback. Marketplace installs download the selected plugin from the GitHub marketplace manifest into CCR's data directory and then write that local cached module path into config.
 4. A module can export a function or an object with `setup(ctx)` or `activate(ctx)`.
 5. On stop, CCR runs `stop` and `onStop` hooks in reverse order, then closes HTTP backends and SQLite stores registered by the plugin.
+
+The extension marketplace is fetched from GitHub at startup/use time. The default manifest URL is `https://raw.githubusercontent.com/musistudio/claude-code-router/main/marketplace/plugins.json`; set `CCR_PLUGIN_MARKETPLACE_URL` to point CCR at another compatible GitHub-hosted manifest.
 
 Common module shape:
 

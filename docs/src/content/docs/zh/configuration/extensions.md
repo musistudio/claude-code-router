@@ -21,10 +21,12 @@ CCR 的扩展分为两层：
 启动网关时，CCR 会读取配置里的 `plugins` 数组，并按顺序处理每个 `enabled !== false` 的扩展：
 
 1. 先应用配置中声明的 `apps`、`proxy.routes`、`coreGateway.providerPlugins`、`coreGateway.virtualModelProfiles` 和 `coreGateway.config`。
-2. 再加载扩展模块。`module` 可以是绝对路径、`~/` 开头路径、相对配置目录的 `./...` 路径，或 Node 可以解析到的包名。
-3. 如果没有配置 `module`，CCR 会尝试用扩展 `id` 匹配内置市场扩展，例如 `claude-design` 和 `cursor-proxy`。
+2. 再加载扩展模块。`module` 必须解析到明确的本地 JavaScript 文件路径，例如绝对路径、`~/` 开头路径，或相对 CCR 配置目录的 `./...` 路径。
+3. 如果没有配置 `module`，CCR 不会再加载内置兜底扩展。插件市场安装会从 GitHub 市场 manifest 下载选中的插件到 CCR 数据目录，并把本地缓存后的模块路径写入配置。
 4. 模块可以导出函数，也可以导出包含 `setup(ctx)` 或 `activate(ctx)` 的对象。
 5. 扩展停止时，CCR 会反向执行 `stop`、`onStop` 钩子，并关闭该扩展注册的 HTTP 后端和 SQLite store。
+
+扩展市场会从 GitHub 获取。默认 manifest 地址是 `https://raw.githubusercontent.com/musistudio/claude-code-router/main/marketplace/plugins.json`；可以通过 `CCR_PLUGIN_MARKETPLACE_URL` 指向另一个兼容的 GitHub-hosted manifest。
 
 扩展模块常见导出形式：
 

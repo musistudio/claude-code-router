@@ -147,14 +147,6 @@ export function copyBrowserRendererHtml() {
 
 export function copyMarketplacePlugins() {
   ensureDist();
-  for (const filename of ["claude-design-plugin.cjs", "cursor-proxy-plugin.cjs"]) {
-    const source = path.join(projectRoot, "examples", "plugins", filename);
-    if (existsSync(source)) {
-      cpSync(source, path.join(cliMarketplacePluginsDir, filename));
-      cpSync(source, path.join(coreMarketplacePluginsDir, filename));
-      cpSync(source, path.join(electronMarketplacePluginsDir, filename));
-    }
-  }
 }
 
 export function syncUiRendererToRuntimeDists() {
