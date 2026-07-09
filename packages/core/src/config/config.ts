@@ -703,6 +703,10 @@ function parseContextArchive(value: unknown): Partial<ContextArchiveConfig> | un
   if (typeof mcpEnabled === "boolean") {
     contextArchive.mcpEnabled = mcpEnabled;
   }
+  const claudeCodeCompact = value.claudeCodeCompact ?? value.claude_code_compact ?? value.overrideClaudeCodeCompact ?? value.override_claude_code_compact;
+  if (typeof claudeCodeCompact === "boolean") {
+    contextArchive.claudeCodeCompact = claudeCodeCompact;
+  }
   const triggerTokenLimit = readNumber(value.triggerTokenLimit ?? value.trigger_token_limit);
   if (triggerTokenLimit !== undefined) {
     contextArchive.triggerTokenLimit = clampNumber(triggerTokenLimit, 1000, 2_000_000);

@@ -377,11 +377,14 @@ export async function prepareContextArchiveRequest(input: {
   }
 
   const retained = clampInteger(archiveConfig.retainRecentItems, 2, 200, 12);
+  const replaceClientCompact = clientCompact && shouldReplaceClientCompact(client, archiveConfig);
   const prunedEntries = clientCompact
     ? extractArchiveEntries(parsedBody, protocol)
     : extractPrunedEntries(parsedBody, protocol, retained);
   const reason = clientCompact
-    ? `${client} requested a context compaction/summary; CCR archived the full request and injected history-retrieval handoff instructions without pruning the client payload.`
+    ? replaceClientCompact
+      ? `${client} requested a context compaction/summary; CCR replaced the native compaction input with a compact handoff plus recent context while archiving the full request for history retrieval.`
+      : `${client} requested a context compaction/summary; CCR archived the full request and injected history-retrieval handoff instructions without pruning the client payload.`
     : undefined;
   const handoff = await buildHandoff({
     archiveConfig,
@@ -394,18 +397,26 @@ export async function prepareContextArchiveRequest(input: {
     toolName: archiveConfig.toolName || defaultToolName
   });
   const compactedBody = clientCompact
-    ? adaptClientCompactBody(parsedBody, protocol, handoff, {
-        client,
-        sessionId,
-        toolName: archiveConfig.toolName || defaultToolName
-      })
+    ? replaceClientCompact
+      ? replaceClientCompactBody(parsedBody, protocol, clientCompactInstruction(handoff, {
+          client,
+          sessionId,
+          toolName: archiveConfig.toolName || defaultToolName
+        }), retained)
+      : adaptClientCompactBody(parsedBody, protocol, handoff, {
+          client,
+          sessionId,
+          toolName: archiveConfig.toolName || defaultToolName
+        })
     : compactBody(parsedBody, protocol, handoff, retained);
   contextArchiveService.recordHandoff(record, handoff, archiveConfig);
 
   return {
     body: Buffer.from(`${JSON.stringify(compactedBody)}\n`, "utf8"),
     diagnostic: clientCompact
-      ? `client-compact:${client}:${sessionId}:${estimatedTokens}`
+      ? replaceClientCompact
+        ? `client-compact-ccr:${client}:${sessionId}:${estimatedTokens}`
+        : `client-compact:${client}:${sessionId}:${estimatedTokens}`
       : `compacted:${sessionId}:${estimatedTokens}`,
     record
   };
@@ -748,6 +759,105 @@ function compactBody(
   };
 }
 
+function replaceClientCompactBody(
+  body: Record<string, unknown>,
+  protocol: GatewayProviderProtocol,
+  instruction: string,
+  retainRecentItems: number
+): Record<string, unknown> {
+  const base = withoutToolAccess(body);
+  const prompt =
+    "Return the compacted summary as plain assistant message text for the next context window. Do not create, edit, or write files. Do not call tools.";
+  if (protocol === "openai_chat_completions") {
+    const messages = Array.isArray(body.messages) ? body.messages : [];
+    const leading = leadingOpenAiInstructionMessages(messages);
+    const recent = trimClientCompactTailMessages(messages.slice(Math.max(leading.length, messages.length - retainRecentItems)));
+    return {
+      ...base,
+      messages: [
+        ...leading,
+        { content: instruction, role: "system" },
+        ...recent,
+        { content: prompt, role: "user" }
+      ]
+    };
+  }
+
+  if (protocol === "openai_responses") {
+    return {
+      ...base,
+      input: prompt,
+      instructions: appendTextBlock(body.instructions, instruction)
+    };
+  }
+
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  return {
+    ...base,
+    messages: [
+      ...trimClientCompactTailMessages(messages.slice(-retainRecentItems)),
+      { content: prompt, role: "user" }
+    ],
+    system: appendAnthropicSystem(body.system, instruction)
+  };
+}
+
+function withoutToolAccess(body: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...body };
+  delete next.tools;
+  delete next.tool_choice;
+  delete next.parallel_tool_calls;
+  delete next.mcp_servers;
+  return next;
+}
+
+function trimClientCompactTailMessages(messages: unknown[]): unknown[] {
+  let next = [...messages];
+  if (isCompactPromptMessage(next.at(-1))) {
+    next = next.slice(0, -1);
+  }
+
+  while (next.length > 0) {
+    const tail = next.at(-1);
+    if (isToolResultOnlyMessage(tail)) {
+      next = next.slice(0, -1);
+      if (isAssistantToolUseMessage(next.at(-1))) {
+        next = next.slice(0, -1);
+      }
+      continue;
+    }
+    if (isAssistantToolUseMessage(tail)) {
+      next = next.slice(0, -1);
+      continue;
+    }
+    break;
+  }
+
+  return next;
+}
+
+function isCompactPromptMessage(message: unknown): boolean {
+  if (!isRecord(message)) {
+    return false;
+  }
+  const role = stringValue(message.role);
+  return role === "user" && matchesClientCompactPrompt(contentText(message.content));
+}
+
+function isToolResultOnlyMessage(message: unknown): boolean {
+  if (!isRecord(message) || !Array.isArray(message.content) || message.content.length === 0) {
+    return false;
+  }
+  return message.content.every((block) => isRecord(block) && block.type === "tool_result");
+}
+
+function isAssistantToolUseMessage(message: unknown): boolean {
+  if (!isRecord(message) || stringValue(message.role) !== "assistant" || !Array.isArray(message.content)) {
+    return false;
+  }
+  return message.content.some((block) => isRecord(block) && block.type === "tool_use");
+}
+
 function adaptClientCompactBody(
   body: Record<string, unknown>,
   protocol: GatewayProviderProtocol,
@@ -796,7 +906,7 @@ function clientCompactInstruction(
   const clientName = input.client === "codex" ? "Codex" : input.client === "claude-code" ? "Claude Code" : "the client";
   return [
     `CCR detected this as a ${clientName} context compaction request.`,
-    "When you write the compacted summary for the next context window, include a preserved 'Archived history access' section. Keep the archive session id and tool call shape exact so the next agent can retrieve details that are not in the summary.",
+    "When you produce the compacted summary for the next context window, include a preserved 'Archived history access' section. Return the summary as assistant message text only; do not create or modify files or call tools. Keep the archive session id and tool call shape exact so the next agent can retrieve details that are not in the summary.",
     "",
     "Archived history access:",
     `- Archive session id: ${input.sessionId}`,
@@ -906,11 +1016,11 @@ function isClientCompactRequest(input: {
   if (hasCompactHeader(input.headers) || hasStructuralCompactMarker(input.body)) {
     return true;
   }
-  const text = extractArchiveEntries(input.body, input.protocol)
-    .map((entry) => entry.text)
-    .join("\n")
-    .slice(-200000);
-  return matchesClientCompactPrompt(text);
+  return matchesClientCompactPrompt(clientCompactPromptCandidate(input.body, input.protocol));
+}
+
+function shouldReplaceClientCompact(client: ContextArchiveClient, config: ContextArchiveConfig): boolean {
+  return client === "claude-code" && config.claudeCodeCompact;
 }
 
 function hasCompactHeader(headers: IncomingHttpHeaders | Record<string, string | string[] | undefined>): boolean {
@@ -924,13 +1034,15 @@ function hasCompactHeader(headers: IncomingHttpHeaders | Record<string, string |
 }
 
 function hasStructuralCompactMarker(body: Record<string, unknown>): boolean {
+  if (recordHasCompactMarker(body)) {
+    return true;
+  }
   return [
-    body,
-    isRecord(body.metadata) ? body.metadata : undefined,
-    isRecord(body.context_management) ? body.context_management : undefined,
-    isRecord(body.contextManagement) ? body.contextManagement : undefined,
-    isRecord(body.experimental) ? body.experimental : undefined
-  ].some((record) => Boolean(record && recordHasCompactMarker(record)));
+    body.metadata,
+    body.context_management,
+    body.contextManagement,
+    body.experimental
+  ].some((record) => structuralValueHasCompactMarker(record));
 }
 
 function recordHasCompactMarker(record: Record<string, unknown>): boolean {
@@ -951,6 +1063,20 @@ function recordHasCompactMarker(record: Record<string, unknown>): boolean {
   ].some((value) => isCompactMarkerValue(stringValue(value)));
 }
 
+function structuralValueHasCompactMarker(value: unknown, depth = 0): boolean {
+  if (depth > 5) {
+    return false;
+  }
+  if (Array.isArray(value)) {
+    return value.some((item) => structuralValueHasCompactMarker(item, depth + 1));
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+  return recordHasCompactMarker(value) ||
+    Object.values(value).some((item) => structuralValueHasCompactMarker(item, depth + 1));
+}
+
 function isCompactMarkerKey(key: string): boolean {
   return key === "compact" ||
     key === "context_compact" ||
@@ -966,16 +1092,74 @@ function isCompactMarkerValue(value: string | undefined): boolean {
     normalized === "compact_20260112";
 }
 
+function clientCompactPromptCandidate(body: Record<string, unknown>, protocol: GatewayProviderProtocol): string {
+  if (protocol === "openai_responses") {
+    if (Array.isArray(body.input)) {
+      return latestUserPromptText(body.input);
+    }
+    return terminalPromptText(body.input);
+  }
+  return latestUserPromptText(Array.isArray(body.messages) ? body.messages : []);
+}
+
+function latestUserPromptText(items: unknown[]): string {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    const role = isRecord(item) ? stringValue(item.role) : undefined;
+    if (role && role !== "user") {
+      continue;
+    }
+    if (isToolResultOnlyMessage(item)) {
+      continue;
+    }
+    const text = terminalPromptText(isRecord(item) && item.content !== undefined ? item.content : item);
+    if (text) {
+      return text;
+    }
+  }
+  return "";
+}
+
+function terminalPromptText(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    for (let index = value.length - 1; index >= 0; index -= 1) {
+      const text = terminalPromptText(value[index]);
+      if (text) {
+        return text;
+      }
+    }
+    return "";
+  }
+  if (!isRecord(value)) {
+    return "";
+  }
+  if (value.type === "tool_result" || value.type === "function_call_output") {
+    return "";
+  }
+  return stringValue(value.text) || stringValue(value.input) || stringValue(value.content) || "";
+}
+
 function matchesClientCompactPrompt(text: string): boolean {
   const normalized = normalizeWhitespace(text).toLowerCase();
   if (!normalized) {
     return false;
   }
-  const englishCompact = "\\b(?:compact(?:ion)?|condense|compress|summari[sz]e|summary)\\b";
-  const englishContext = "\\b(?:conversation|session|history|context|transcript|handoff|messages|work so far|state)\\b";
+  const summaryTerm = "\\b(?:summari[sz]e|summary)\\b";
+  const compactTerm = "\\b(?:compact(?:ion)?|condense|compress)\\b";
+  const historyScope = [
+    "\\b(?:conversation|session|history|transcript|handoff|messages)\\b",
+    "\\bwork so far\\b",
+    "\\b(?:new|next|fresh)\\s+context(?:\\s+window)?\\b",
+    "\\bcontext\\s+(?:window|summary|compaction)\\b"
+  ].join("|");
   return [
-    new RegExp(`${englishCompact}[\\s\\S]{0,240}${englishContext}`, "i"),
-    new RegExp(`${englishContext}[\\s\\S]{0,240}${englishCompact}`, "i"),
+    new RegExp(`${summaryTerm}[\\s\\S]{0,240}(?:${historyScope})`, "i"),
+    new RegExp(`(?:${historyScope})[\\s\\S]{0,240}${summaryTerm}`, "i"),
+    new RegExp(`${compactTerm}[\\s\\S]{0,240}(?:${historyScope})`, "i"),
+    /\bcontext\s+compaction\b/i,
     /\bcontinue\b[\s\S]{0,240}\b(?:new|next|fresh)\s+context(?:\s+window)?\b/i,
     /(?:总结|摘要|压缩|交接)[\s\S]{0,160}(?:会话|上下文|历史|窗口|新上下文|前文)/,
     /(?:会话|上下文|历史|窗口|前文)[\s\S]{0,160}(?:总结|摘要|压缩|交接)/

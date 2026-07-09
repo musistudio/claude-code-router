@@ -16,6 +16,7 @@ import { codexCliMiddlewareRuntimeScript } from "@ccr/core/agents/codex/cli-midd
 import { codexModelCatalogJson } from "@ccr/core/agents/codex/model-catalog";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { resolveZcodeConfigFile, writeZcodeGatewayConfig, zcodeHomeFromConfigFile } from "@ccr/core/agents/zcode/profile-config";
+import { CONTEXT_ARCHIVE_MCP_SERVER_NAME, contextArchiveMcpServer } from "@ccr/core/gateway/context-archive";
 import { normalizeRouteSelector } from "@ccr/core/gateway/claude-code-router-plugin";
 import {
   TOOL_HUB_MCP_RUNTIME_FILE_NAME,
@@ -23,6 +24,7 @@ import {
   bundledToolHubMcpEntryPathCandidates,
   toolHubClaudeCodeMcpConfig,
   toolHubMcpRuntimeConfig,
+  type ClaudeCodeMcpServerConfig,
   type ToolHubMcpRuntimeConfig
 } from "@ccr/core/mcp/toolhub-config";
 
@@ -511,7 +513,7 @@ function claudeCodeToolHubMcpConfigFile(profile: ProfileConfig): string {
 function writeClaudeCodeToolHubMcpConfig(config: AppConfig, profile: ProfileConfig, token: string): { changed: boolean; file?: string } {
   const file = claudeCodeToolHubMcpConfigFile(profile);
   const entryPath = path.join(CONFIGDIR, "bin", TOOL_HUB_MCP_RUNTIME_FILE_NAME);
-  const mcpConfig = toolHubClaudeCodeMcpConfig(config, {
+  const toolHubMcpConfig = toolHubClaudeCodeMcpConfig(config, {
     entryPath,
     resolver: {
       apiKey: token,
@@ -519,6 +521,12 @@ function writeClaudeCodeToolHubMcpConfig(config: AppConfig, profile: ProfileConf
       model: toolHubResolverModel(config)
     }
   });
+  const contextArchiveMcpConfig = claudeCodeContextArchiveMcpConfig(config, token);
+  const mcpServers = {
+    ...(toolHubMcpConfig?.mcpServers ?? {}),
+    ...(contextArchiveMcpConfig ? { [CONTEXT_ARCHIVE_MCP_SERVER_NAME]: contextArchiveMcpConfig } : {})
+  };
+  const mcpConfig = Object.keys(mcpServers).length > 0 ? { mcpServers } : undefined;
   if (!mcpConfig) {
     if (existsSync(file)) {
       rmSync(file, { force: true });
@@ -527,9 +535,25 @@ function writeClaudeCodeToolHubMcpConfig(config: AppConfig, profile: ProfileConf
     return { changed: false };
   }
 
-  const runtimeResult = ensureToolHubMcpRuntimeFile(entryPath);
+  const runtimeResult = toolHubMcpConfig ? ensureToolHubMcpRuntimeFile(entryPath) : { changed: false };
   const writeResult = writeGeneratedFileIfChanged(file, `${JSON.stringify(mcpConfig, null, 2)}\n`, { mode: privateFileMode });
   return { changed: runtimeResult.changed || writeResult.changed, file };
+}
+
+function claudeCodeContextArchiveMcpConfig(config: AppConfig, token: string): ClaudeCodeMcpServerConfig | undefined {
+  const server = contextArchiveMcpServer(config, gatewayEndpoint(config), token);
+  if (!server || !("url" in server)) {
+    return undefined;
+  }
+  const headers = {
+    ...(server.headers ?? {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  };
+  return {
+    ...(Object.keys(headers).length > 0 ? { headers } : {}),
+    type: "http",
+    url: server.url
+  };
 }
 
 function writeCodexToolHubMcpRuntimeConfig(config: AppConfig, token: string): { changed: boolean; file?: string; runtime?: ToolHubMcpRuntimeConfig } {

@@ -402,6 +402,7 @@ export function normalizeConfig(config: AppConfig): AppConfig {
     },
     botConfigs: normalizeBotGatewaySavedConfigs(config.botConfigs),
     botGateway: normalizeBotGatewayRuntimeConfig(config.botGateway) ?? fallbackConfig.botGateway,
+    contextArchive: normalizeContextArchiveConfig(config.contextArchive),
     gateway: {
       ...fallbackConfig.gateway,
       ...(config.gateway || {}),
@@ -442,6 +443,28 @@ export function normalizeConfig(config: AppConfig): AppConfig {
     trayWindowModules: normalizeTrayWindowModules(config.trayWindowModules),
     toolHub: normalizeToolHubConfig(config.toolHub),
     virtualModelProfiles: Array.isArray(config.virtualModelProfiles) ? config.virtualModelProfiles : []
+  };
+}
+
+export function normalizeContextArchiveConfig(config: Partial<AppConfig["contextArchive"]> | undefined): AppConfig["contextArchive"] {
+  return {
+    ...fallbackConfig.contextArchive,
+    ...(config || {}),
+    claudeCodeCompact: Boolean(config?.claudeCodeCompact),
+    enabled: Boolean(config?.enabled),
+    mcpEnabled: config?.mcpEnabled !== false,
+    llm: {
+      ...fallbackConfig.contextArchive.llm,
+      ...(config?.llm || {}),
+      apiKey: typeof config?.llm?.apiKey === "string" ? config.llm.apiKey : "",
+      baseUrl: typeof config?.llm?.baseUrl === "string" && config.llm.baseUrl.trim()
+        ? config.llm.baseUrl.trim()
+        : fallbackConfig.contextArchive.llm.baseUrl,
+      model: typeof config?.llm?.model === "string" ? config.llm.model.trim() : "",
+      timeoutMs: typeof config?.llm?.timeoutMs === "number" && Number.isFinite(config.llm.timeoutMs)
+        ? Math.min(Math.max(Math.floor(config.llm.timeoutMs), 8000), 600000)
+        : fallbackConfig.contextArchive.llm.timeoutMs
+    }
   };
 }
 

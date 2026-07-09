@@ -83,6 +83,7 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
       tenantId: "ccr"
     },
     contextArchive: {
+      claudeCodeCompact: false,
       enabled: false,
       handoffMaxCharacters: 24000,
       llm: {

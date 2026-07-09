@@ -664,6 +664,7 @@ export type ContextArchiveLlmConfig = {
 };
 
 export type ContextArchiveConfig = {
+  claudeCodeCompact: boolean;
   enabled: boolean;
   handoffMaxCharacters: number;
   llm: ContextArchiveLlmConfig;

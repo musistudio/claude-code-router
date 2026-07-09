@@ -19,7 +19,7 @@ import {
   isRoutingRewriteDraftRowValid,
   LayoutGroup, mergeModelDisplayNames, mergeProviderCapabilities, mergeProviderModelLists, modelDescriptionsForModels, modelDisplayNamesForModels,
   navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets,
-  normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterBuiltInRules, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeToolHubConfig, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
+  normalizeContextArchiveConfig, normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterBuiltInRules, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeToolHubConfig, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
   normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
   OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parseProviderAccountDraft,
   providerCredentialsFromDraft,
@@ -188,6 +188,7 @@ function App() {
   const [profileDraft, setProfileDraft] = useState<AddProfileDraft>(() => createProfileDraft());
   const [profileEditDraft, setProfileEditDraft] = useState<AddProfileDraft>(() => createProfileDraft());
   const [profileEditIndex, setProfileEditIndex] = useState<number>();
+  const [profileContextArchiveDraft, setProfileContextArchiveDraft] = useState<AppConfig["contextArchive"]>(() => fallbackConfig.contextArchive);
   const [profileOpenDialog, setProfileOpenDialog] = useState<ProfileOpenDialogState>();
   const [profileActionBusy, setProfileActionBusy] = useState<ProfileActionBusy>();
   const [profileRuntimeStatus, setProfileRuntimeStatus] = useState<ProfileRuntimeStatus>({ profiles: [] });
@@ -2405,6 +2406,7 @@ function App() {
   function openAddProfileDialog(agent: ProfileConfig["agent"] = profileAgentTab) {
     setProfileAgentTab(agent);
     setProfileDraft(createProfileDraft(agent));
+    setProfileContextArchiveDraft(draftConfig.contextArchive);
     setProfileActionError("");
     setProfileAddOpen(true);
   }
@@ -2416,6 +2418,7 @@ function App() {
     }
     setProfileEditIndex(index);
     setProfileEditDraft(createProfileDraftFromProfile(profile, draftConfig.botConfigs));
+    setProfileContextArchiveDraft(draftConfig.contextArchive);
     setProfileActionError("");
   }
 
@@ -2662,6 +2665,17 @@ function App() {
     setProfileActionError("");
   }
 
+  function updateProfileContextArchiveDraft(patch: Partial<AppConfig["contextArchive"]>) {
+    setProfileContextArchiveDraft((current) => normalizeContextArchiveConfig({
+      ...current,
+      ...patch,
+      llm: {
+        ...current.llm,
+        ...(patch.llm ?? {})
+      }
+    }));
+  }
+
   async function submitProfileDraft(): Promise<boolean> {
     if (profileSubmitBusy) {
       return false;
@@ -2677,8 +2691,10 @@ function App() {
     const existingProfile = onboardingProfileIndex >= 0 ? draftConfig.profile.profiles[onboardingProfileIndex] : undefined;
     const profile = profileConfigFromDraft(profileDraft, draftConfig.profile.profiles, existingProfile, draftConfig.botConfigs);
     setProfileAgentTab(profile.agent);
+    const applyContextArchiveDraft = profileAddOpen && profile.agent === "claude-code";
     const next = buildConfigUpdate((config) => ({
       ...config,
+      contextArchive: applyContextArchiveDraft ? profileContextArchiveDraft : config.contextArchive,
       profile: {
         ...config.profile,
         enabled: true,
@@ -2735,6 +2751,7 @@ function App() {
       profiles[profileEditIndex] = nextProfile;
       return {
         ...config,
+        contextArchive: nextProfile.agent === "claude-code" ? profileContextArchiveDraft : config.contextArchive,
         profile: {
           ...config.profile,
           profiles: enforceSingleEnabledGlobalProfilePerAgent(profiles, profileEditIndex)
@@ -3047,10 +3064,12 @@ function App() {
             profileAdd={profileAddOpen ? {
               botConfigs: draftConfig.botConfigs,
               canSubmit: canSubmitProfile,
+              contextArchive: profileContextArchiveDraft,
               draft: profileDraft,
               error: profileActionError,
               mode: "add",
 	              onChange: updateProfileDraft,
+	              onChangeContextArchive: updateProfileContextArchiveDraft,
 	              onCreateBot: openBotSettingsWithAddDialog,
 	              onClose: () => setProfileAddOpen(false),
 	              providers: draftConfig.Providers,
@@ -3061,10 +3080,12 @@ function App() {
             profileEdit={profileEditIndex !== undefined ? {
               botConfigs: draftConfig.botConfigs,
               canSubmit: canSubmitProfileEdit,
+              contextArchive: profileContextArchiveDraft,
               draft: profileEditDraft,
               error: profileActionError,
               mode: "edit",
               onChange: updateProfileEditDraft,
+              onChangeContextArchive: updateProfileContextArchiveDraft,
               onCreateBot: openBotSettingsWithAddDialog,
               onClose: () => {
                 setProfileEditIndex(undefined);

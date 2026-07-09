@@ -139,7 +139,11 @@ test("context archive adapts Claude Code compact requests without pruning messag
       }
     ],
     model: "claude-sonnet-4-5",
-    system: "You are Claude Code."
+    mcp_servers: [{ name: "filesystem" }],
+    parallel_tool_calls: true,
+    system: "You are Claude Code.",
+    tool_choice: { type: "auto" },
+    tools: [{ input_schema: { type: "object" }, name: "Write", type: "custom" }]
   };
 
   const result = await prepareContextArchiveRequest({
@@ -156,6 +160,10 @@ test("context archive adapts Claude Code compact requests without pruning messag
   assert.match(result.diagnostic, /^client-compact:claude-code:claude-s1:/);
   const prepared = JSON.parse(result.body.toString("utf8"));
   assert.equal(prepared.messages.length, body.messages.length);
+  assert.equal(prepared.tools.length, body.tools.length);
+  assert.deepEqual(prepared.tool_choice, body.tool_choice);
+  assert.deepEqual(prepared.mcp_servers, body.mcp_servers);
+  assert.equal(prepared.parallel_tool_calls, true);
   assert.match(prepared.system, /Archived history access/);
   assert.match(prepared.system, /ccr_history_search/);
   assert.match(prepared.system, /claude-s1/);
@@ -165,6 +173,227 @@ test("context archive adapts Claude Code compact requests without pruning messag
     sessionId: "claude-s1"
   }, config.contextArchive);
   assert.match(search.answer, /npm run test:main/);
+});
+
+test("context archive can replace Claude Code compact with CCR handoff and history search", async () => {
+  contextArchiveService.clear();
+  const config = testConfig({ claudeCodeCompact: true, retainRecentItems: 2, triggerTokenLimit: 999999 });
+  const body = {
+    messages: [
+      {
+        content: "Deep historical decision: use PostgreSQL for durable context archive storage.",
+        role: "user"
+      },
+      {
+        content: "Recent progress: added the Claude Code compact switch.",
+        role: "assistant"
+      },
+      {
+        content: "Summarize the conversation so far for handoff into a new context window.",
+        role: "user"
+      }
+    ],
+    model: "claude-sonnet-4-5",
+    mcp_servers: [{ name: "filesystem" }],
+    parallel_tool_calls: true,
+    system: "You are Claude Code.",
+    tool_choice: { type: "auto" },
+    tools: [{ input_schema: { type: "object" }, name: "Write", type: "custom" }]
+  };
+
+  const result = await prepareContextArchiveRequest({
+    body: Buffer.from(JSON.stringify(body)),
+    config,
+    headers: { "user-agent": "claude-code/2.0", "x-claude-code-session-id": "claude-s3" },
+    method: "POST",
+    path: "/v1/messages",
+    protocol: "anthropic_messages",
+    requestId: "request-claude-compact-ccr"
+  });
+
+  assert.ok(result);
+  assert.match(result.diagnostic, /^client-compact-ccr:claude-code:claude-s3:/);
+  const prepared = JSON.parse(result.body.toString("utf8"));
+  assert.equal(prepared.messages.length, 2);
+  assert.equal(JSON.stringify(prepared.messages).includes("Deep historical decision"), false);
+  assert.equal("mcp_servers" in prepared, false);
+  assert.equal("parallel_tool_calls" in prepared, false);
+  assert.equal("tool_choice" in prepared, false);
+  assert.equal("tools" in prepared, false);
+  assert.match(prepared.messages.at(-1).content, /Do not create, edit, or write files/);
+  assert.match(prepared.messages.at(-1).content, /Do not call tools/);
+  assert.match(prepared.system, /CCR detected this as a Claude Code context compaction request/);
+  assert.match(prepared.system, /ccr_history_search/);
+  assert.match(prepared.system, /claude-s3/);
+
+  const search = await contextArchiveService.search({
+    prompt: "Which durable context archive storage was chosen?",
+    sessionId: "claude-s3"
+  }, config.contextArchive);
+  assert.match(search.answer, /PostgreSQL/);
+});
+
+test("context archive replacement trims dangling Claude Code tool tails before compacting", async () => {
+  contextArchiveService.clear();
+  const config = testConfig({ claudeCodeCompact: true, retainRecentItems: 12, triggerTokenLimit: 999999 });
+  const body = {
+    messages: [
+      {
+        content: "Recent implementation context: inspect the gateway compact path.",
+        role: "user"
+      },
+      {
+        content: [
+          { text: "I will inspect the files.", type: "text" },
+          { id: "call_1", input: { command: "rg compact" }, name: "Bash", type: "tool_use" }
+        ],
+        role: "assistant"
+      },
+      {
+        content: [
+          {
+            cache_control: { type: "ephemeral" },
+            content: "packages/core/src/gateway/context-archive.ts: compactBody",
+            tool_use_id: "call_1",
+            type: "tool_result"
+          }
+        ],
+        role: "user"
+      }
+    ],
+    model: "claude-sonnet-4-5",
+    system: "You are Claude Code.",
+    tool_choice: { type: "auto" },
+    tools: [{ input_schema: { type: "object" }, name: "Bash", type: "custom" }]
+  };
+
+  const result = await prepareContextArchiveRequest({
+    body: Buffer.from(JSON.stringify(body)),
+    config,
+    headers: {
+      "user-agent": "claude-code/2.0",
+      "x-claude-code-session-id": "claude-tool-tail",
+      "x-ccr-context-compact": "compact"
+    },
+    method: "POST",
+    path: "/v1/messages",
+    protocol: "anthropic_messages",
+    requestId: "request-claude-tool-tail"
+  });
+
+  assert.ok(result);
+  assert.match(result.diagnostic, /^client-compact-ccr:claude-code:claude-tool-tail:/);
+  const prepared = JSON.parse(result.body.toString("utf8"));
+  assert.equal(prepared.messages.at(-1).role, "user");
+  assert.match(prepared.messages.at(-1).content, /plain assistant message text/);
+  assert.equal("tool_choice" in prepared, false);
+  assert.equal("tools" in prepared, false);
+  assert.equal(JSON.stringify(prepared.messages).includes("tool_result"), false);
+  assert.match(prepared.system, /packages\/core\/src\/gateway\/context-archive\.ts/);
+});
+
+test("context archive detects Claude Code compact context-management edits", async () => {
+  contextArchiveService.clear();
+  const config = testConfig({ claudeCodeCompact: true, triggerTokenLimit: 999999 });
+  const body = {
+    context_management: {
+      edits: [{ type: "compact_20260112" }]
+    },
+    messages: [
+      { content: "Recent work: keep CCR compact replacement enabled for slash compact.", role: "user" }
+    ],
+    model: "claude-sonnet-4-5",
+    system: "You are Claude Code."
+  };
+
+  const result = await prepareContextArchiveRequest({
+    body: Buffer.from(JSON.stringify(body)),
+    config,
+    headers: { "user-agent": "claude-code/2.0", "x-claude-code-session-id": "claude-struct-compact" },
+    method: "POST",
+    path: "/v1/messages",
+    protocol: "anthropic_messages",
+    requestId: "request-claude-struct-compact"
+  });
+
+  assert.ok(result);
+  assert.match(result.diagnostic, /^client-compact-ccr:claude-code:claude-struct-compact:/);
+});
+
+test("context archive ignores non-compact context-management edits", async () => {
+  contextArchiveService.clear();
+  const config = testConfig({ claudeCodeCompact: true, triggerTokenLimit: 999999 });
+  const body = {
+    context_management: {
+      edits: [{ keep: "all", type: "clear_thinking_20251015" }]
+    },
+    messages: [
+      { content: "普通请求,不应该被当成 slash compact。", role: "user" }
+    ],
+    model: "claude-sonnet-4-5",
+    system: "You are Claude Code."
+  };
+
+  const result = await prepareContextArchiveRequest({
+    body: Buffer.from(JSON.stringify(body)),
+    config,
+    headers: { "user-agent": "claude-code/2.0", "x-claude-code-session-id": "claude-clear-thinking" },
+    method: "POST",
+    path: "/v1/messages",
+    protocol: "anthropic_messages",
+    requestId: "request-claude-clear-thinking"
+  });
+
+  assert.ok(result);
+  assert.match(result.diagnostic, /^archived:claude-clear-thinking:/);
+  assert.deepEqual(JSON.parse(result.body.toString("utf8")), body);
+});
+
+test("context archive does not re-trigger Claude Code compact from existing CCR summary", async () => {
+  contextArchiveService.clear();
+  const config = testConfig({ claudeCodeCompact: true, triggerTokenLimit: 999999 });
+  const body = {
+    context_management: {
+      edits: [{ keep: "all", type: "clear_thinking_20251015" }]
+    },
+    messages: [
+      {
+        content: [
+          {
+            text: [
+              "该项目是 Claude Code 的核心代码库。",
+              "Archived history access:",
+              "- Archive session id: claude-existing-summary",
+              "- Tool call: ccr_history_search({ \"prompt\": \"specific historical detail to recover\", \"deep\": false, \"session_id\": \"claude-existing-summary\" })",
+              "When you produce the compacted summary for the next context window, include this section."
+            ].join("\n"),
+            type: "text"
+          },
+          {
+            text: "现在始终会有压缩的信息",
+            type: "text"
+          }
+        ],
+        role: "user"
+      }
+    ],
+    model: "claude-sonnet-4-5",
+    system: "You are Claude Code."
+  };
+
+  const result = await prepareContextArchiveRequest({
+    body: Buffer.from(JSON.stringify(body)),
+    config,
+    headers: { "user-agent": "claude-code/2.0", "x-claude-code-session-id": "claude-existing-summary" },
+    method: "POST",
+    path: "/v1/messages",
+    protocol: "anthropic_messages",
+    requestId: "request-claude-existing-summary"
+  });
+
+  assert.ok(result);
+  assert.match(result.diagnostic, /^archived:claude-existing-summary:/);
+  assert.deepEqual(JSON.parse(result.body.toString("utf8")), body);
 });
 
 test("context archive does not treat generic summary prompts as client compact requests", async () => {
@@ -197,6 +426,7 @@ test("context archive does not treat unrelated Claude Code compact wording as co
   const config = testConfig({ triggerTokenLimit: 999999 });
   const body = {
     messages: [
+      { content: "We are benchmarking context archive compression efficiency and retrieval quality.", role: "assistant" },
       { content: "Please set the UI density option to compact.", role: "user" }
     ],
     model: "claude-sonnet-4-5"

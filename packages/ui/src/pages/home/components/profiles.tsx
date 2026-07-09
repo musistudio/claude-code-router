@@ -68,7 +68,7 @@ export function ProfileView({
             </div>
           </div>
         </CardHeader>
-        <CardContent className="min-h-0 flex-1 space-y-4 overflow-auto">
+        <CardContent className="min-h-0 flex-1 space-y-3 overflow-auto">
           <div className="space-y-2">
             {profiles.length === 0 ? (
               <div className="flex h-32 items-center justify-center rounded-md border border-dashed border-border bg-muted/20 text-[12px] text-muted-foreground">
@@ -173,6 +173,55 @@ export function ProfileView({
         </CardContent>
       </Card>
     </motion.div>
+  );
+}
+
+function ClaudeCodeContextArchiveCompactSetting({
+  contextArchive,
+  onChange
+}: {
+  contextArchive: AppConfig["contextArchive"];
+  onChange: (patch: Partial<AppConfig["contextArchive"]>) => void;
+}) {
+  const t = useAppText();
+  const checked = Boolean(contextArchive.claudeCodeCompact);
+  const archiveReady = Boolean(contextArchive.enabled && contextArchive.mcpEnabled !== false);
+
+  return (
+    <div className="rounded-md border border-border bg-muted/20 px-3 py-3">
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <AgentLogo agent="claude-code" className="h-6 w-6 rounded-[5px]" />
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-semibold">{t("CCR compact for Claude Code")}</div>
+              <div className="mt-0.5 text-[12px] leading-5 text-muted-foreground">
+                {t("Use CCR context archive when Claude Code runs /compact.")}
+              </div>
+            </div>
+          </div>
+          {checked && !archiveReady ? (
+            <div className="mt-2 flex min-w-0 items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[12px] leading-5 text-amber-700 dark:text-amber-300">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0">{t("Context archive and MCP access will be enabled for this compact mode.")}</span>
+            </div>
+          ) : null}
+        </div>
+        <Toggle
+          checked={checked}
+          title={t("CCR compact for Claude Code")}
+          onChange={(enabled) => onChange(enabled
+            ? {
+                claudeCodeCompact: true,
+                enabled: true,
+                mcpEnabled: true
+              }
+            : {
+                claudeCodeCompact: false
+              })}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -758,17 +807,21 @@ function ProfileModelSelector({
 
 export function AddProfileForm({
   botConfigs,
+  contextArchive,
   draft,
   error,
   onChange,
+  onChangeContextArchive,
   onCreateBot,
   providers,
   virtualModelProfiles = []
 }: {
   botConfigs: BotGatewaySavedConfig[];
+  contextArchive?: AppConfig["contextArchive"];
   draft: AddProfileDraft;
   error: string;
   onChange: (patch: Partial<AddProfileDraft>) => void;
+  onChangeContextArchive?: (patch: Partial<AppConfig["contextArchive"]>) => void;
   onCreateBot: () => void;
   providers: GatewayProviderConfig[];
   virtualModelProfiles?: VirtualModelProfileConfig[];
@@ -862,6 +915,14 @@ export function AddProfileForm({
             </Field>
           </>
         )}
+        {draft.agent === "claude-code" && contextArchive && onChangeContextArchive ? (
+          <div className="sm:col-span-2">
+            <ClaudeCodeContextArchiveCompactSetting
+              contextArchive={contextArchive}
+              onChange={onChangeContextArchive}
+            />
+          </div>
+        ) : null}
         {draft.surface !== "cli" ? (
           <div className="sm:col-span-2">
             <BotGatewaySelectForm botConfigs={botConfigs} draft={draft} onChange={onChange} onCreateBot={onCreateBot} />
@@ -1186,10 +1247,12 @@ function handoffTargetMatchesSavedValue(target: BotHandoffScanTarget, savedValue
 export function AddProfileDialog({
   botConfigs,
   canSubmit,
+  contextArchive,
   draft,
   error,
   mode = "add",
   onChange,
+  onChangeContextArchive,
   onCreateBot,
   onClose,
   providers,
@@ -1199,10 +1262,12 @@ export function AddProfileDialog({
 }: {
   botConfigs: BotGatewaySavedConfig[];
   canSubmit: boolean;
+  contextArchive: AppConfig["contextArchive"];
   draft: AddProfileDraft;
   error: string;
   mode?: "add" | "edit";
   onChange: (patch: Partial<AddProfileDraft>) => void;
+  onChangeContextArchive: (patch: Partial<AppConfig["contextArchive"]>) => void;
   onCreateBot: () => void;
   onClose: () => void;
   providers: GatewayProviderConfig[];
@@ -1221,7 +1286,17 @@ export function AddProfileDialog({
           </div>
         </DialogHeader>
         <DialogBody>
-	          <AddProfileForm botConfigs={botConfigs} draft={draft} error={error} onChange={onChange} onCreateBot={onCreateBot} providers={providers} virtualModelProfiles={virtualModelProfiles} />
+	          <AddProfileForm
+              botConfigs={botConfigs}
+              contextArchive={contextArchive}
+              draft={draft}
+              error={error}
+              onChange={onChange}
+              onChangeContextArchive={onChangeContextArchive}
+              onCreateBot={onCreateBot}
+              providers={providers}
+              virtualModelProfiles={virtualModelProfiles}
+            />
         </DialogBody>
         <DialogFooter>
           <div className="flex justify-end gap-2">
