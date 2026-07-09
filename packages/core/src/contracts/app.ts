@@ -607,6 +607,21 @@ export type GatewayPluginAppConfig = {
   url: string;
 };
 
+export const GATEWAY_PLUGIN_PERMISSION_IDS = [
+  "apps",
+  "gateway-routes",
+  "proxy-routes",
+  "http-backends",
+  "provider-account-connectors",
+  "core-gateway-config",
+  "core-provider-plugins",
+  "virtual-model-profiles",
+  "sqlite-store",
+  "system-launcher"
+] as const;
+
+export type GatewayPluginPermission = typeof GATEWAY_PLUGIN_PERMISSION_IDS[number];
+
 export type GatewayMcpServerTransport = "stdio" | "streamable-http" | "sse";
 export type GatewayMcpStdioMessageMode = "content-length" | "newline-json";
 
@@ -860,6 +875,7 @@ export type GatewayPluginConfig = {
   enabled?: boolean;
   id: string;
   module?: string;
+  permissions?: GatewayPluginPermission[];
   proxy?: {
     routes?: GatewayPluginProxyRouteConfig[];
   };
@@ -869,6 +885,7 @@ export type PluginDependency = {
   id: string;
   modulePath?: string;
   name?: string;
+  permissions?: GatewayPluginPermission[];
 };
 
 export type PluginDirectorySelection = {
@@ -878,6 +895,7 @@ export type PluginDirectorySelection = {
   id: string;
   modulePath: string;
   name?: string;
+  permissions?: GatewayPluginPermission[];
 };
 
 export type PluginMarketplaceEntry = {
@@ -888,6 +906,7 @@ export type PluginMarketplaceEntry = {
   id: string;
   modulePath: string;
   name: string;
+  permissions?: GatewayPluginPermission[];
 };
 
 export type ProxyRuntimeConfig = {

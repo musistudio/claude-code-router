@@ -129,6 +129,7 @@ import {
   DEFAULT_TRAY_WIDGETS,
   DEFAULT_TRAY_WINDOW_MODULES,
   enforceSingleEnabledGlobalProfilePerAgent,
+  GATEWAY_PLUGIN_PERMISSION_IDS,
   normalizeProfileScopeValue,
   OVERVIEW_WIDGET_SIZE_VALUES,
   TRAY_SINGLETON_WIDGET_TYPES,
@@ -158,6 +159,7 @@ import type {
   GatewayProviderConfig,
   GatewayProviderCapability,
   GatewayPluginAppConfig,
+  GatewayPluginPermission,
   GatewayProviderConnectivityCheckModelResult,
   GatewayProviderConnectivityCheckReport,
   GatewayProviderProbeCandidate,
@@ -376,12 +378,15 @@ import { isPlainRecord, stringValue } from "./common";
 import { isClaudeDesignPluginConfig, isCursorProxyPluginConfig, readClaudeDesignRoutingConfig } from "./routing";
 import type { ExtensionInstallDraft, ExtensionListItem, ExtensionSource, PluginInstallCandidate, PluginSettingsDraft } from "./types";
 
+const gatewayPluginPermissionIdSet = new Set<string>(GATEWAY_PLUGIN_PERMISSION_IDS);
+
 export function createPluginSettingsDraft(plugin?: AppConfig["plugins"][number]): PluginSettingsDraft {
   return {
     appsText: formatEditableJson(plugin?.apps ?? []),
     configText: formatEditableJson(pluginSettingsConfigWithoutRouting(plugin?.config)),
     enabled: plugin?.enabled !== false,
-    modulePath: plugin?.module ?? ""
+    modulePath: plugin?.module ?? "",
+    permissionsText: formatEditableJson(plugin?.permissions ?? [])
   };
 }
 
@@ -450,6 +455,118 @@ export function parsePluginConfigSettingsText(value: string): { ok: true; value?
 
   const { routing: _routing, ...rest } = parsed;
   return { ok: true, value: rest };
+}
+
+export function parsePluginPermissionsSettingsText(value: string): { ok: true; value?: GatewayPluginPermission[] } | { ok: false; message: string } {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { ok: true };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed) as unknown;
+  } catch {
+    return { ok: false, message: "Invalid JSON." };
+  }
+
+  const permissions = parsePluginPermissionsValue(parsed);
+  if (!permissions) {
+    return { ok: false, message: "Plugin permissions must be a JSON array, string, or object." };
+  }
+  return { ok: true, value: permissions };
+}
+
+function parsePluginPermissionsValue(value: unknown): GatewayPluginPermission[] | undefined {
+  const permissions: GatewayPluginPermission[] = [];
+  const seen = new Set<GatewayPluginPermission>();
+  const add = (rawValue: unknown) => {
+    const permission = normalizePluginPermission(rawValue);
+    if (!permission || seen.has(permission)) {
+      return;
+    }
+    seen.add(permission);
+    permissions.push(permission);
+  };
+
+  if (typeof value === "string") {
+    add(value);
+  } else if (Array.isArray(value)) {
+    value.forEach(add);
+  } else if (isPlainRecord(value)) {
+    for (const [key, enabled] of Object.entries(value)) {
+      if (enabled === false) {
+        continue;
+      }
+      if (isAllPluginPermissionsKey(key)) {
+        GATEWAY_PLUGIN_PERMISSION_IDS.forEach(add);
+      } else {
+        add(key);
+      }
+    }
+  } else {
+    return undefined;
+  }
+
+  return permissions;
+}
+
+function normalizePluginPermission(value: unknown): GatewayPluginPermission | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  const mapped = pluginPermissionAlias(normalized);
+  return gatewayPluginPermissionIdSet.has(mapped) ? mapped as GatewayPluginPermission : undefined;
+}
+
+function pluginPermissionAlias(value: string): string {
+  switch (value) {
+    case "app":
+    case "browser-app":
+    case "browser-apps":
+      return "apps";
+    case "gateway-route":
+    case "route":
+    case "routes":
+      return "gateway-routes";
+    case "proxy":
+    case "proxy-route":
+      return "proxy-routes";
+    case "backend":
+    case "backends":
+    case "http-backend":
+      return "http-backends";
+    case "provider-account":
+    case "provider-account-connector":
+      return "provider-account-connectors";
+    case "core-gateway":
+      return "core-gateway-config";
+    case "provider-plugin":
+    case "provider-plugins":
+    case "core-provider-plugin":
+      return "core-provider-plugins";
+    case "fusion-profile":
+    case "fusion-profiles":
+    case "virtual-model":
+    case "virtual-models":
+    case "virtual-model-profile":
+      return "virtual-model-profiles";
+    case "sqlite":
+    case "data-store":
+    case "store":
+      return "sqlite-store";
+    case "launcher":
+    case "mac-launcher":
+      return "system-launcher";
+    default:
+      return value;
+  }
+}
+
+function isAllPluginPermissionsKey(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "*" || normalized === "all";
 }
 
 export function pluginSettingsConfigFromDraft(previousConfig: unknown, nonRoutingConfig: Record<string, unknown> | undefined): unknown {
@@ -596,7 +713,8 @@ export function pluginDependencyCandidate(
       dependencies: [],
       id: dependency.id,
       modulePath: dependency.modulePath,
-      name: dependency.name
+      name: dependency.name,
+      permissions: dependency.permissions
     };
   }
 
@@ -609,7 +727,8 @@ export function pluginDependencyCandidate(
     dependencies: entry.dependencies,
     id: entry.id,
     modulePath: entry.modulePath,
-    name: entry.name
+    name: entry.name,
+    permissions: entry.permissions
   };
 }
 
@@ -681,6 +800,10 @@ export function extensionMatchesQuery(extension: ExtensionListItem, query: strin
 export function wrapperPluginCapability(item: Record<string, unknown>): string {
   const capabilities: string[] = ["Wrapper runtime"];
   if (stringValue(item.module)) capabilities.push("Module");
+  const permissions = Array.isArray(item.permissions)
+    ? item.permissions.map(stringValue).filter((value): value is string => Boolean(value))
+    : [];
+  if (permissions.length > 0) capabilities.push(`Permissions: ${permissions.join(", ")}`);
   const apps = Array.isArray(item.apps) ? item.apps.length : 0;
   if (apps > 0) capabilities.push(`${apps} browser ${apps === 1 ? "app" : "apps"}`);
 

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { DATADIR } from "@ccr/core/config/constants";
-import type { GatewayPluginAppConfig, PluginDependency, PluginMarketplaceEntry } from "@ccr/core/contracts/app";
+import { GATEWAY_PLUGIN_PERMISSION_IDS, type GatewayPluginAppConfig, type GatewayPluginPermission, type PluginDependency, type PluginMarketplaceEntry } from "@ccr/core/contracts/app";
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
 
 type MarketplaceCache = {
@@ -19,6 +19,7 @@ const marketplaceFetchTimeoutMs = 10_000;
 const marketplaceCacheTtlMs = 5 * 60 * 1000;
 const maxMarketplaceManifestBytes = 1024 * 1024;
 const maxMarketplaceModuleBytes = 8 * 1024 * 1024;
+const gatewayPluginPermissionIdSet = new Set<string>(GATEWAY_PLUGIN_PERMISSION_IDS);
 
 let marketplaceCache: MarketplaceCache | undefined;
 let marketplaceRequest: Promise<PluginMarketplaceEntry[]> | undefined;
@@ -152,7 +153,8 @@ async function normalizeMarketplaceEntry(
     description,
     id,
     modulePath,
-    name
+    name,
+    permissions: parsePluginPermissions(value.permissions)
   };
 }
 
@@ -207,7 +209,8 @@ async function parsePluginDependency(
   return {
     id,
     ...(modulePath ? { modulePath } : {}),
-    ...(name ? { name } : {})
+    ...(name ? { name } : {}),
+    permissions: parsePluginPermissions(value.permissions)
   };
 }
 
@@ -317,6 +320,100 @@ function readStringArray(value: unknown): string[] {
     : [];
 }
 
+function parsePluginPermissions(value: unknown): GatewayPluginPermission[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const permissions: GatewayPluginPermission[] = [];
+  const seen = new Set<GatewayPluginPermission>();
+  const add = (rawValue: unknown): void => {
+    const permission = normalizePluginPermission(rawValue);
+    if (!permission || seen.has(permission)) {
+      return;
+    }
+    seen.add(permission);
+    permissions.push(permission);
+  };
+
+  if (typeof value === "string") {
+    add(value);
+  } else if (Array.isArray(value)) {
+    value.forEach(add);
+  } else if (isRecord(value)) {
+    for (const [key, enabled] of Object.entries(value)) {
+      if (enabled === false) {
+        continue;
+      }
+      if (isAllPluginPermissionsKey(key)) {
+        GATEWAY_PLUGIN_PERMISSION_IDS.forEach(add);
+      } else {
+        add(key);
+      }
+    }
+  }
+
+  return permissions;
+}
+
+function normalizePluginPermission(value: unknown): GatewayPluginPermission | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  const mapped = pluginPermissionAlias(normalized);
+  return gatewayPluginPermissionIdSet.has(mapped) ? mapped as GatewayPluginPermission : undefined;
+}
+
+function pluginPermissionAlias(value: string): string {
+  switch (value) {
+    case "app":
+    case "browser-app":
+    case "browser-apps":
+      return "apps";
+    case "gateway-route":
+    case "route":
+    case "routes":
+      return "gateway-routes";
+    case "proxy":
+    case "proxy-route":
+      return "proxy-routes";
+    case "backend":
+    case "backends":
+    case "http-backend":
+      return "http-backends";
+    case "provider-account":
+    case "provider-account-connector":
+      return "provider-account-connectors";
+    case "core-gateway":
+      return "core-gateway-config";
+    case "provider-plugin":
+    case "provider-plugins":
+    case "core-provider-plugin":
+      return "core-provider-plugins";
+    case "fusion-profile":
+    case "fusion-profiles":
+    case "virtual-model":
+    case "virtual-models":
+    case "virtual-model-profile":
+      return "virtual-model-profiles";
+    case "sqlite":
+    case "data-store":
+    case "store":
+      return "sqlite-store";
+    case "launcher":
+    case "mac-launcher":
+      return "system-launcher";
+    default:
+      return value;
+  }
+}
+
+function isAllPluginPermissionsKey(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "*" || normalized === "all";
+}
+
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
@@ -338,7 +435,11 @@ function cloneMarketplaceEntry(entry: PluginMarketplaceEntry): PluginMarketplace
     ...entry,
     apps: entry.apps?.map((app) => ({ ...app })),
     capabilities: [...entry.capabilities],
-    dependencies: entry.dependencies.map((dependency) => ({ ...dependency }))
+    dependencies: entry.dependencies.map((dependency) => ({
+      ...dependency,
+      permissions: dependency.permissions ? [...dependency.permissions] : undefined
+    })),
+    permissions: entry.permissions ? [...entry.permissions] : undefined
   };
 }
 

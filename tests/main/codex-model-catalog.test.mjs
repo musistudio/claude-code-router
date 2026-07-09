@@ -56,9 +56,45 @@ test("codex catalog enables multimodal reasoning and search when provider protoc
   assert.equal(model.supports_reasoning_summaries, true);
   assert.equal(model.supports_search_tool, true);
   assert.equal(model.web_search_tool_type, "text_and_image");
-  assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), ["low", "medium", "high"]);
-  assert.equal(model.default_reasoning_level, "medium");
+  assert.deepEqual(model.supported_reasoning_levels, []);
+  assert.equal(model.default_reasoning_level, null);
   assert.equal(model.apply_patch_tool_type, "freeform");
+});
+
+test("codex catalog uses provider-specific reasoning effort levels when declared", () => {
+  const model = catalogModelFor({
+    Providers: [
+      { name: "openrouter", type: "openai_responses", models: ["z-ai/glm-5.2"] }
+    ]
+  }, "openrouter/z-ai/glm-5.2");
+
+  assert.equal(model.supports_reasoning_summaries, true);
+  assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), ["xhigh", "high"]);
+  assert.equal(model.default_reasoning_level, "high");
+});
+
+test("codex catalog provides GPT reasoning levels for Codex API models", () => {
+  const model = catalogModelFor({
+    Providers: [
+      { name: "Codex API", type: "openai_responses", models: ["gpt-5.5"] }
+    ]
+  }, "Codex API/gpt-5.5");
+
+  assert.equal(model.supports_reasoning_summaries, true);
+  assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), ["minimal", "low", "medium", "high"]);
+  assert.equal(model.default_reasoning_level, "medium");
+});
+
+test("codex catalog does not merge reasoning efforts from unrelated providers", () => {
+  const model = catalogModelFor({
+    Providers: [
+      { name: "wrapped-zhipu", type: "openai_responses", models: ["glm-5.2"] }
+    ]
+  }, "wrapped-zhipu/glm-5.2");
+
+  assert.equal(model.supports_reasoning_summaries, true);
+  assert.deepEqual(model.supported_reasoning_levels, []);
+  assert.equal(model.default_reasoning_level, null);
 });
 
 test("codex catalog enables native search for Gemini Interactions providers", () => {
@@ -94,6 +130,8 @@ test("codex catalog keeps freeform apply_patch for GPT-named chat-compatible mod
   }, "gateway/gpt-compatible-coder");
 
   assert.equal(model.apply_patch_tool_type, "freeform");
+  assert.deepEqual(model.supported_reasoning_levels, []);
+  assert.equal(model.default_reasoning_level, null);
 });
 
 test("codex catalog keeps freeform apply_patch when provider advertises Responses capability", () => {

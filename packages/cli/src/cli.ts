@@ -9,11 +9,14 @@ import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "@ccr
 import { launchCodexAppProfile, launchZcodeAppProfile } from "@ccr/core/agents/codex/app-launch";
 import { loadAppConfig } from "@ccr/core/config/config";
 import { CONFIGDIR } from "@ccr/core/config/constants";
+import { installSocketTypeOfServiceCompat } from "@ccr/core/platform/socket-compat";
 import { applyProfileConfig, applyProfileRuntimeConfig } from "@ccr/core/profiles/service";
 import { ensureProfileGateway } from "@ccr/core/profiles/launch-service";
 import { buildProfileLaunchPlan, defaultProfileOpenSurface, findProfileForOpen, profileLaunchSpawnCommand, resolveProfileOpenSurface } from "@ccr/core/profiles/launch-core";
 import { openSystemExternal, startWebManagementServer } from "@ccr/core/web/management-server";
 import { assertAvailableGatewayModels, type ProfileConfig, type ProfileOpenSurface } from "@ccr/core/contracts/app";
+
+installSocketTypeOfServiceCompat();
 
 type ProfileCliOptions = {
   agentArgs: string[];

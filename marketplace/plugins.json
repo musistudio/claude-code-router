@@ -6,6 +6,7 @@
       "name": "Agent Console",
       "description": "Launches the local Agent Console Electron renderer as a CCR-hosted app and routes Codex/Claude agents through the CCR gateway.",
       "capabilities": ["Wrapper runtime", "PWA bridge", "System launcher", "Agent Console", "Model routing"],
+      "permissions": ["apps", "gateway-routes", "system-launcher"],
       "module": "plugins/agent-console/index.cjs",
       "apps": [
         {
@@ -22,6 +23,7 @@
       "name": "Claude Design",
       "description": "Routes Claude App Design traffic through the local CCR wrapper backend with configurable model routing.",
       "capabilities": ["Wrapper runtime", "Claude App proxy", "Claude Design", "Model routing"],
+      "permissions": ["gateway-routes", "proxy-routes", "http-backends", "sqlite-store"],
       "module": "../examples/plugins/claude-design-plugin.cjs"
     },
     {
@@ -29,6 +31,7 @@
       "name": "Cursor Proxy",
       "description": "Routes Cursor-compatible LLM traffic captured by proxy mode into the local CCR gateway.",
       "capabilities": ["Wrapper runtime", "Proxy mode", "Cursor", "Model routing", "OpenAI/Anthropic/Gemini forwarding"],
+      "permissions": ["gateway-routes", "proxy-routes", "http-backends"],
       "module": "../examples/plugins/cursor-proxy-plugin.cjs"
     }
   ]

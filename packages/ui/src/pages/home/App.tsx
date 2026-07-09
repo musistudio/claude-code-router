@@ -21,7 +21,7 @@ import {
   navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets,
   normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterBuiltInRules, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeToolHubConfig, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
   normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
-  OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parseProviderAccountDraft,
+  OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parsePluginPermissionsSettingsText, parseProviderAccountDraft,
   providerCredentialsFromDraft,
   persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
@@ -1758,6 +1758,7 @@ function App() {
         key: selection.id,
         marketplaceId: "",
         modulePath: selection.modulePath,
+        permissions: selection.permissions,
         selectedName: selection.name || selection.id
       }));
       setExtensionInstallError("");
@@ -1778,7 +1779,8 @@ function App() {
         dependencies: extensionInstallDraft.dependencies,
         id: extensionInstallDraft.key.trim(),
         modulePath: extensionInstallDraft.modulePath.trim(),
-        name: extensionInstallDraft.selectedName
+        name: extensionInstallDraft.selectedName,
+        permissions: extensionInstallDraft.permissions
       },
       pluginMarketplace,
       draftConfig.plugins ?? []
@@ -1796,7 +1798,8 @@ function App() {
           ...(item.apps?.length ? { apps: item.apps } : {}),
           enabled: true,
           id: item.id,
-          module: item.modulePath
+          module: item.modulePath,
+          ...(item.permissions !== undefined ? { permissions: item.permissions } : {})
         }));
       config.plugins = [...(config.plugins ?? []), ...pluginsToAdd];
       return config;
@@ -1862,6 +1865,12 @@ function App() {
       return;
     }
 
+    const permissionsResult = parsePluginPermissionsSettingsText(pluginSettingsDraft.permissionsText);
+    if (!permissionsResult.ok) {
+      setPluginSettingsError(permissionsResult.message);
+      return;
+    }
+
     updateConfig((config) => {
       const values = [...(config.plugins ?? [])];
       const item = values[extensionConfigTarget.index];
@@ -1874,7 +1883,8 @@ function App() {
         ...(appsResult.value && appsResult.value.length > 0 ? { apps: appsResult.value } : { apps: undefined }),
         config: nextConfig,
         enabled: pluginSettingsDraft.enabled,
-        module: pluginSettingsDraft.modulePath.trim()
+        module: pluginSettingsDraft.modulePath.trim(),
+        ...(permissionsResult.value !== undefined ? { permissions: permissionsResult.value } : { permissions: undefined })
       };
       config.plugins = values;
       return config;

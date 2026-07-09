@@ -158,6 +158,7 @@ import type {
   GatewayProviderConfig,
   GatewayProviderCapability,
   GatewayPluginAppConfig,
+  GatewayPluginPermission,
   GatewayProviderConnectivityCheckModelResult,
   GatewayProviderConnectivityCheckReport,
   GatewayProviderProbeCandidate,
@@ -663,6 +664,7 @@ export type ExtensionInstallDraft = {
   key: string;
   marketplaceId: string;
   modulePath: string;
+  permissions?: GatewayPluginPermission[];
   selectedName: string;
 };
 
@@ -710,6 +712,7 @@ export type PluginInstallCandidate = {
   id: string;
   modulePath: string;
   name?: string;
+  permissions?: GatewayPluginPermission[];
 };
 
 export type PluginSettingsDraft = {
@@ -717,6 +720,7 @@ export type PluginSettingsDraft = {
   enabled: boolean;
   modulePath: string;
   configText: string;
+  permissionsText: string;
 };
 
 export type RoutingRuleRow = {

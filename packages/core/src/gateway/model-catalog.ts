@@ -18,6 +18,18 @@ type ModelCatalogModalities = {
   output?: string[];
 };
 
+export type ModelCatalogReasoningEffortConfig = {
+  defaultEffort: string;
+  efforts: string[];
+  supportsReasoning: boolean;
+};
+
+type ModelCatalogSourceRecord = {
+  metadata?: Record<string, unknown>;
+  provider?: string;
+  providerName?: string;
+};
+
 export type ModelCatalogEntry = {
   aliases: string[];
   capabilities?: ModelCatalogCapabilities;
@@ -25,9 +37,11 @@ export type ModelCatalogEntry = {
   family?: string;
   id: string;
   limits?: ModelCatalogLimits;
+  metadata?: Record<string, unknown>;
   modalities?: ModelCatalogModalities;
   model?: string;
   providers?: string[];
+  sourceRecords?: ModelCatalogSourceRecord[];
 };
 
 type ModelCatalogIndex = {
@@ -86,6 +100,38 @@ export function modelCatalogMaxOutputTokens(entry: ModelCatalogEntry | undefined
 
 export function readCatalogCapability(capabilities: ModelCatalogCapabilities, key: string): boolean {
   return capabilities[key] === true;
+}
+
+export function modelCatalogReasoningEffortConfig(entry: ModelCatalogEntry | undefined, providerName = ""): ModelCatalogReasoningEffortConfig {
+  if (!entry) {
+    return { defaultEffort: "", efforts: [], supportsReasoning: false };
+  }
+
+  const records = sourceRecordsForProvider(entry.sourceRecords ?? [], providerName);
+  const metadataValues = [
+    entry.metadata,
+    ...records.map((record) => record.metadata)
+  ].filter(isRecord);
+
+  let defaultEffort = "";
+  let supportsReasoning = false;
+  const efforts: string[] = [];
+  for (const metadata of metadataValues) {
+    const config = reasoningConfigFromMetadata(metadata);
+    if (config.supportsReasoning) {
+      supportsReasoning = true;
+    }
+    if (!defaultEffort && config.defaultEffort) {
+      defaultEffort = config.defaultEffort;
+    }
+    for (const effort of config.efforts) {
+      if (!efforts.includes(effort)) {
+        efforts.push(effort);
+      }
+    }
+  }
+
+  return { defaultEffort, efforts, supportsReasoning };
 }
 
 function loadModelCatalogIndex(): ModelCatalogIndex {
@@ -162,10 +208,24 @@ function parseModelCatalogEntry(value: unknown): ModelCatalogEntry | undefined {
     family: stringValue(value.family),
     id,
     limits,
+    metadata: isRecord(value.metadata) ? value.metadata : undefined,
     modalities,
     model: stringValue(value.model),
-    providers: stringListValue(value.providers)
+    providers: stringListValue(value.providers),
+    sourceRecords: parseModelCatalogSourceRecords(value.sourceRecords)
   };
+}
+
+function parseModelCatalogSourceRecords(value: unknown): ModelCatalogSourceRecord[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const records = value.filter(isRecord).map((record) => ({
+    metadata: isRecord(record.metadata) ? record.metadata : undefined,
+    provider: stringValue(record.provider),
+    providerName: stringValue(record.providerName)
+  }));
+  return records.length > 0 ? records : undefined;
 }
 
 function parseModelCatalogLimits(value: unknown): ModelCatalogLimits | undefined {
@@ -231,6 +291,90 @@ function normalizeModelCatalogToken(value: string): string {
 
 function modelCatalogLastSegmentKey(value: string): string {
   return value.split("/").filter(Boolean).at(-1) ?? "";
+}
+
+function sourceRecordsForProvider(records: ModelCatalogSourceRecord[], providerName: string): ModelCatalogSourceRecord[] {
+  const normalizedProviderName = normalizeModelCatalogToken(providerName);
+  if (!normalizedProviderName) {
+    return [];
+  }
+  return records.filter((record) => {
+    const provider = normalizeModelCatalogToken(record.provider ?? "");
+    const displayName = normalizeModelCatalogToken(record.providerName ?? "");
+    return [provider, displayName].some((value) =>
+      value &&
+      (
+        value === normalizedProviderName ||
+        value.includes(normalizedProviderName) ||
+        normalizedProviderName.includes(value)
+      )
+    );
+  });
+}
+
+function reasoningConfigFromMetadata(metadata: Record<string, unknown>): ModelCatalogReasoningEffortConfig {
+  const efforts: string[] = [];
+  let defaultEffort = "";
+  let supportsReasoning = false;
+
+  const reasoning = isRecord(metadata.reasoning) ? metadata.reasoning : undefined;
+  if (reasoning) {
+    supportsReasoning = true;
+    for (const effort of normalizeReasoningEfforts(reasoning.supported_efforts)) {
+      if (!efforts.includes(effort)) {
+        efforts.push(effort);
+      }
+    }
+    defaultEffort = normalizeReasoningEffort(reasoning.default_effort);
+  }
+
+  const options = Array.isArray(metadata.reasoningOptions) ? metadata.reasoningOptions : [];
+  for (const option of options) {
+    if (!isRecord(option)) {
+      continue;
+    }
+    const type = stringValue(option.type)?.toLowerCase();
+    if (type === "toggle" || type === "budget_tokens") {
+      supportsReasoning = true;
+    }
+    if (type !== "effort") {
+      continue;
+    }
+    supportsReasoning = true;
+    for (const effort of normalizeReasoningEfforts(option.values)) {
+      if (!efforts.includes(effort)) {
+        efforts.push(effort);
+      }
+    }
+  }
+
+  return { defaultEffort, efforts, supportsReasoning };
+}
+
+function normalizeReasoningEfforts(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const efforts: string[] = [];
+  for (const item of value) {
+    const effort = normalizeReasoningEffort(item);
+    if (effort && !efforts.includes(effort)) {
+      efforts.push(effort);
+    }
+  }
+  return efforts;
+}
+
+function normalizeReasoningEffort(value: unknown): string {
+  const normalized = stringValue(value)?.toLowerCase().replace(/[_\s-]+/g, "") ?? "";
+  if (!normalized || normalized === "default") return "";
+  if (normalized === "none" || normalized === "off" || normalized === "disabled") return "none";
+  if (normalized === "minimal") return "minimal";
+  if (normalized === "low") return "low";
+  if (normalized === "medium") return "medium";
+  if (normalized === "high") return "high";
+  if (normalized === "xhigh" || normalized === "extrahigh" || normalized === "max") return "xhigh";
+  return "";
 }
 
 function readCatalogPositiveInteger(value: unknown): number | undefined {

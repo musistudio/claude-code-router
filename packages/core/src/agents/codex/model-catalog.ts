@@ -3,13 +3,16 @@ import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, Virtual
 import {
   findModelCatalogEntry,
   modelCatalogMaxInputTokens,
+  modelCatalogReasoningEffortConfig,
   readCatalogCapability,
+  type ModelCatalogReasoningEffortConfig,
   type ModelCatalogEntry
 } from "@ccr/core/gateway/model-catalog";
 
 const fusionModelProviderName = "Fusion";
 const codexDefaultContextWindow = 128_000;
 const codexEffectiveContextWindowPercent = 95;
+const openAiReasoningEfforts = ["minimal", "low", "medium", "high"];
 
 export type CodexModelCatalog = {
   models: CodexModelCatalogItem[];
@@ -120,7 +123,7 @@ function codexModelCatalogItem(
     availability_nux: null,
     base_instructions: "You are Codex, a coding agent.",
     context_window: contextWindow,
-    default_reasoning_level: profile.supportsReasoning ? "medium" : null,
+    default_reasoning_level: profile.defaultReasoningLevel,
     default_reasoning_summary: "none",
     description: `CCR gateway model ${model}`,
     display_name: model,
@@ -149,6 +152,7 @@ function codexModelCatalogItem(
 type CodexCapabilityProfile = {
   applyPatchToolType: string | null;
   catalogEntry?: ModelCatalogEntry;
+  defaultReasoningLevel: string | null;
   inputModalities: string[];
   supportedReasoningLevels: Array<{ description: string; effort: string }>;
   supportsImageInput: boolean;
@@ -168,7 +172,14 @@ function codexModelCapabilityProfile(
   const providerProtocol = provider ? codexProviderProtocol(provider) : undefined;
   const providerSupportsResponses = provider ? codexProviderSupportsResponses(provider) : false;
   const supportsFusionWebSearch = codexVirtualModelSupportsFusionWebSearch(model, config);
-  const supportsReasoning = readCatalogCapability(capabilities, "reasoning");
+  const reasoningConfig = modelCatalogReasoningEffortConfig(catalogEntry, selector?.provider);
+  const fallbackEfforts = reasoningConfig.efforts.length === 0 && openAiGptReasoningFallbackApplies(model, selector?.provider)
+    ? openAiReasoningEfforts
+    : [];
+  const effectiveReasoningConfig = fallbackEfforts.length > 0
+    ? { ...reasoningConfig, defaultEffort: "medium", efforts: fallbackEfforts, supportsReasoning: true }
+    : reasoningConfig;
+  const supportsReasoning = readCatalogCapability(capabilities, "reasoning") || effectiveReasoningConfig.supportsReasoning;
   const supportsImageInput = catalogEntrySupportsImageInput(catalogEntry);
   const supportsParallelToolCalls = readCatalogCapability(capabilities, "parallelFunctionCalling");
   const applyPatchToolType = providerSupportsResponses || catalogModelLooksLikeGpt(model, catalogEntry) || codexPatchBridgeApplies(model, catalogEntry, config)
@@ -188,8 +199,9 @@ function codexModelCapabilityProfile(
   return {
     applyPatchToolType,
     catalogEntry,
+    defaultReasoningLevel: defaultReasoningLevel(effectiveReasoningConfig),
     inputModalities: supportsImageInput ? ["text", "image"] : ["text"],
-    supportedReasoningLevels: supportsReasoning ? supportedReasoningLevels(capabilities) : [],
+    supportedReasoningLevels: effectiveReasoningConfig.efforts.map(reasoningLevel),
     supportsImageInput,
     supportsParallelToolCalls,
     supportsReasoning,
@@ -210,16 +222,42 @@ function catalogEntrySupportsImageInput(entry: ModelCatalogEntry | undefined): b
     readCatalogCapability(capabilities, "multimodal");
 }
 
-function supportedReasoningLevels(capabilities: Record<string, unknown>): Array<{ description: string; effort: string }> {
-  const levels = [
-    { effort: "low", description: "Low reasoning" },
-    { effort: "medium", description: "Medium reasoning" },
-    { effort: "high", description: "High reasoning" }
-  ];
-  if (readCatalogCapability(capabilities, "xhighReasoningEffort") || readCatalogCapability(capabilities, "maxReasoningEffort")) {
-    levels.push({ effort: "xhigh", description: "Extra high reasoning" });
-  }
-  return levels;
+function openAiGptReasoningFallbackApplies(model: string, providerName?: string): boolean {
+  const selector = parseModelSelector(model);
+  const provider = normalizeReasoningFallbackToken(providerName ?? selector?.provider ?? "");
+  const modelName = normalizeReasoningFallbackToken(selector?.model ?? model);
+  const openAiProvider = provider.includes("openai") || provider.includes("codex-api");
+  return openAiProvider && (/^gpt-[0-9]/.test(modelName) || /^o[0-9]/.test(modelName));
+}
+
+function normalizeReasoningFallbackToken(value: string): string {
+  return value
+    .trim()
+    .replace(/^hf:/i, "")
+    .replace(/^@/, "")
+    .replace(/[_\s]+/g, "-")
+    .replace(/-+/g, "-")
+    .toLowerCase();
+}
+
+function defaultReasoningLevel(config: ModelCatalogReasoningEffortConfig): string | null {
+  if (!config.defaultEffort || config.defaultEffort === "none") return null;
+  return config.efforts.includes(config.defaultEffort) ? config.defaultEffort : null;
+}
+
+function reasoningLevel(effort: string): { description: string; effort: string } {
+  const descriptions: Record<string, string> = {
+    high: "High reasoning",
+    low: "Low reasoning",
+    medium: "Medium reasoning",
+    minimal: "Minimal reasoning",
+    none: "No reasoning",
+    xhigh: "Extra high reasoning"
+  };
+  return {
+    effort,
+    description: descriptions[effort] || `${effort} reasoning`
+  };
 }
 
 function findConfiguredProvider(

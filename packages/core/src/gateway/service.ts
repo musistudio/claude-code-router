@@ -99,6 +99,7 @@ type ApiKeyLimitRule = {
 };
 
 type GatewayStopOptions = {
+  nextConfig?: AppConfig;
   proxyRestoreTimeoutMs?: number;
 };
 
@@ -352,7 +353,7 @@ class GatewayService {
         state: "error"
       };
     }
-    await this.stop();
+    await this.stop({ nextConfig: config });
     this.config = config;
     this.coreAuthToken = generateCoreGatewayAuthToken();
     this.plugin = new ClaudeCodeRouterPlugin(config);
@@ -445,7 +446,7 @@ class GatewayService {
     }
 
     await proxyService.stop(options.proxyRestoreTimeoutMs);
-    await pluginService.stop();
+    await pluginService.stop({ nextConfig: options.nextConfig });
     await backendService.stopAll();
     await this.browserWebSearchMcpIntegration?.stopBrowserWebSearchMcpServers().catch((error) => {
       console.warn(`[gateway] Failed to stop browser web search MCP: ${formatError(error)}`);

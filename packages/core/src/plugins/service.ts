@@ -4,16 +4,18 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import type {
-  AppConfig,
-  GatewayPluginAppConfig,
-  GatewayPluginConfig,
-  GatewayPluginProxyRouteConfig,
-  GatewayProviderConfig,
-  InstalledBrowserApp,
-  ProviderAccountMeter,
-  ProviderAccountPluginConnectorConfig,
-  ProviderAccountSnapshot
+import {
+  GATEWAY_PLUGIN_PERMISSION_IDS,
+  type AppConfig,
+  type GatewayPluginAppConfig,
+  type GatewayPluginConfig,
+  type GatewayPluginPermission,
+  type GatewayPluginProxyRouteConfig,
+  type GatewayProviderConfig,
+  type InstalledBrowserApp,
+  type ProviderAccountMeter,
+  type ProviderAccountPluginConnectorConfig,
+  type ProviderAccountSnapshot
 } from "@ccr/core/contracts/app";
 import { backendService, type RegisteredHttpBackend, type SqliteStore, type SqliteStoreOptions } from "@ccr/core/plugins/backend-service";
 import { CONFIGDIR, DATADIR } from "@ccr/core/config/constants";
@@ -65,6 +67,14 @@ export type GatewayPluginProviderAccountConnector = {
   resolve: (request: GatewayPluginProviderAccountRequest) => MaybePromise<ProviderAccountMeter[] | ProviderAccountSnapshot | undefined>;
 };
 
+export type GatewayPluginStopReason = "disabled" | "reload" | "stop";
+
+export type GatewayPluginStopEvent = {
+  reason: GatewayPluginStopReason;
+};
+
+type GatewayPluginStopHandler = (event?: GatewayPluginStopEvent) => MaybePromise<void>;
+
 export type GatewayPluginRegistration = {
   apps?: GatewayPluginAppConfig[];
   coreGateway?: {
@@ -73,10 +83,10 @@ export type GatewayPluginRegistration = {
     virtualModelProfiles?: unknown[];
   };
   gatewayRoutes?: GatewayPluginRouteRegistration[];
-  onStop?: () => MaybePromise<void>;
+  onStop?: GatewayPluginStopHandler;
   providerAccountConnectors?: GatewayPluginProviderAccountConnector[];
   proxyRoutes?: GatewayPluginProxyRouteRegistration[];
-  stop?: () => MaybePromise<void>;
+  stop?: GatewayPluginStopHandler;
   virtualModelProfiles?: unknown[];
 };
 
@@ -90,6 +100,7 @@ export type GatewayPluginContext = {
   };
   pluginConfig: unknown;
   pluginId: string;
+  permissions: GatewayPluginPermission[];
   openSqliteStore: (options?: PluginSqliteStoreOptions) => Promise<PluginSqliteStore>;
   registerCoreGatewayProviderPlugin: (providerPlugin: unknown) => void;
   registerCoreGatewayVirtualModelProfile: (profile: unknown) => void;
@@ -102,7 +113,7 @@ export type GatewayPluginContext = {
 
 export type GatewayPluginRouteContext = Pick<
   GatewayPluginContext,
-  "config" | "logger" | "openSqliteStore" | "paths" | "pluginConfig" | "pluginId"
+  "config" | "logger" | "openSqliteStore" | "paths" | "permissions" | "pluginConfig" | "pluginId"
 > & {
   readBody: (request: IncomingMessage) => Promise<Buffer>;
   readJson: (request: IncomingMessage) => Promise<unknown>;
@@ -141,7 +152,18 @@ type RegisteredProxyRoute = Omit<GatewayPluginProxyRouteRegistration, "host" | "
 type LoadedPlugin = {
   activate?: (context: GatewayPluginContext) => MaybePromise<GatewayPluginRegistration | void>;
   setup?: (context: GatewayPluginContext) => MaybePromise<GatewayPluginRegistration | void>;
-  stop?: () => MaybePromise<void>;
+  stop?: GatewayPluginStopHandler;
+};
+
+type StopHook = {
+  pluginId: string;
+  stop: GatewayPluginStopHandler;
+};
+
+type PluginPermissionAccess = {
+  explicit: boolean;
+  permissions: Set<GatewayPluginPermission>;
+  pluginId: string;
 };
 
 const requireFromHere = createRequire(__filename);
@@ -154,13 +176,14 @@ class GatewayPluginService {
   private gatewayRoutes: RegisteredGatewayRoute[] = [];
   private proxyRoutes: RegisteredProxyRoute[] = [];
   private providerAccountConnectors = new Map<string, GatewayPluginProviderAccountConnector>();
+  private legacyPermissionWarningIds = new Set<string>();
   private resourceOwnerIds = new Set<string>();
   private running = false;
-  private stopHooks: Array<() => MaybePromise<void>> = [];
+  private stopHooks: StopHook[] = [];
   private virtualModelProfiles: unknown[] = [];
 
   async start(config: AppConfig): Promise<void> {
-    await this.stop();
+    await this.stop({ nextConfig: config });
     this.config = config;
     this.running = true;
 
@@ -173,13 +196,14 @@ class GatewayPluginService {
     }
   }
 
-  async stop(): Promise<void> {
+  async stop(options: { nextConfig?: AppConfig } = {}): Promise<void> {
     const stopHooks = [...this.stopHooks].reverse();
+    const nextEnabledPluginIds = options.nextConfig ? enabledPluginIds(options.nextConfig) : undefined;
     this.stopHooks = [];
 
     for (const stopHook of stopHooks) {
       try {
-        await stopHook();
+        await stopHook.stop({ reason: stopReasonForPlugin(stopHook.pluginId, nextEnabledPluginIds) });
       } catch (error) {
         console.warn(`[plugin] Stop hook failed: ${formatError(error)}`);
       }
@@ -287,8 +311,12 @@ class GatewayPluginService {
   }
 
   private async loadConfiguredPlugin(pluginConfig: GatewayPluginConfig): Promise<void> {
-    this.registerConfiguredCoreGateway(pluginConfig);
-    this.registerConfiguredApps(pluginConfig);
+    const permissions = pluginPermissionAccess(pluginConfig);
+    this.registerConfiguredCoreGateway(pluginConfig, permissions);
+    this.registerConfiguredApps(pluginConfig, permissions);
+    if ((pluginConfig.proxy?.routes ?? []).length > 0) {
+      this.requirePluginPermission(permissions, "proxy-routes", "register configured proxy routes");
+    }
     for (const route of pluginConfig.proxy?.routes ?? []) {
       this.registerProxyRoute(pluginConfig.id, route);
     }
@@ -300,7 +328,7 @@ class GatewayPluginService {
 
     const loadedPlugin = await loadPluginModule(modulePath);
     const plugin = normalizeLoadedPlugin(loadedPlugin);
-    const context = this.createPluginContext(pluginConfig);
+    const context = this.createPluginContext(pluginConfig, permissions);
     const registration = plugin.setup
       ? await plugin.setup(context)
       : plugin.activate
@@ -308,28 +336,49 @@ class GatewayPluginService {
         : undefined;
 
     if (registration) {
-      this.applyPluginRegistration(pluginConfig.id, registration);
+      this.applyPluginRegistration(pluginConfig.id, registration, permissions);
     }
     if (plugin.stop) {
-      this.stopHooks.push(() => plugin.stop?.());
+      this.stopHooks.push({
+        pluginId: pluginConfig.id,
+        stop: (event) => plugin.stop?.(event)
+      });
     }
   }
 
-  private applyPluginRegistration(pluginId: string, registration: GatewayPluginRegistration): void {
+  private applyPluginRegistration(pluginId: string, registration: GatewayPluginRegistration, permissions: PluginPermissionAccess): void {
+    if ((registration.apps ?? []).length > 0) {
+      this.requirePluginPermission(permissions, "apps", "register browser apps");
+    }
     for (const app of registration.apps ?? []) {
       this.registerApp(pluginId, app);
+    }
+    if ((registration.gatewayRoutes ?? []).length > 0) {
+      this.requirePluginPermission(permissions, "gateway-routes", "register gateway routes");
     }
     for (const route of registration.gatewayRoutes ?? []) {
       this.registerGatewayRoute(pluginId, route);
     }
+    if ((registration.proxyRoutes ?? []).length > 0) {
+      this.requirePluginPermission(permissions, "proxy-routes", "register proxy routes");
+    }
     for (const route of registration.proxyRoutes ?? []) {
       this.registerProxyRoute(pluginId, route);
+    }
+    if ((registration.providerAccountConnectors ?? []).length > 0) {
+      this.requirePluginPermission(permissions, "provider-account-connectors", "register provider account connectors");
     }
     for (const connector of registration.providerAccountConnectors ?? []) {
       this.registerProviderAccountConnector(pluginId, connector);
     }
+    if ((registration.coreGateway?.providerPlugins ?? []).length > 0) {
+      this.requirePluginPermission(permissions, "core-provider-plugins", "register core provider plugins");
+    }
     for (const providerPlugin of registration.coreGateway?.providerPlugins ?? []) {
       this.coreProviderPlugins.push(providerPlugin);
+    }
+    if (((registration.coreGateway?.virtualModelProfiles ?? []).length + (registration.virtualModelProfiles ?? []).length) > 0) {
+      this.requirePluginPermission(permissions, "virtual-model-profiles", "register virtual model profiles");
     }
     for (const profile of [
       ...(registration.coreGateway?.virtualModelProfiles ?? []),
@@ -338,20 +387,24 @@ class GatewayPluginService {
       this.virtualModelProfiles.push(profile);
     }
     if (registration.coreGateway?.config) {
+      this.requirePluginPermission(permissions, "core-gateway-config", "register core gateway config");
       this.coreGatewayConfig = {
         ...this.coreGatewayConfig,
         ...registration.coreGateway.config
       };
     }
     if (registration.stop) {
-      this.stopHooks.push(registration.stop);
+      this.stopHooks.push({ pluginId, stop: registration.stop });
     }
     if (registration.onStop) {
-      this.stopHooks.push(registration.onStop);
+      this.stopHooks.push({ pluginId, stop: registration.onStop });
     }
   }
 
-  private registerConfiguredApps(pluginConfig: GatewayPluginConfig): void {
+  private registerConfiguredApps(pluginConfig: GatewayPluginConfig, permissions: PluginPermissionAccess): void {
+    if ((pluginConfig.apps ?? []).length > 0) {
+      this.requirePluginPermission(permissions, "apps", "register configured browser apps");
+    }
     for (const app of pluginConfig.apps ?? []) {
       this.registerApp(pluginConfig.id, app);
     }
@@ -366,14 +419,21 @@ class GatewayPluginService {
     this.apps.push(normalized);
   }
 
-  private registerConfiguredCoreGateway(pluginConfig: GatewayPluginConfig): void {
+  private registerConfiguredCoreGateway(pluginConfig: GatewayPluginConfig, permissions: PluginPermissionAccess): void {
+    if ((pluginConfig.coreGateway?.providerPlugins ?? []).length > 0) {
+      this.requirePluginPermission(permissions, "core-provider-plugins", "register configured core provider plugins");
+    }
     for (const providerPlugin of pluginConfig.coreGateway?.providerPlugins ?? []) {
       this.coreProviderPlugins.push(providerPlugin);
+    }
+    if ((pluginConfig.coreGateway?.virtualModelProfiles ?? []).length > 0) {
+      this.requirePluginPermission(permissions, "virtual-model-profiles", "register configured virtual model profiles");
     }
     for (const profile of pluginConfig.coreGateway?.virtualModelProfiles ?? []) {
       this.virtualModelProfiles.push(profile);
     }
     if (pluginConfig.coreGateway?.config) {
+      this.requirePluginPermission(permissions, "core-gateway-config", "register configured core gateway config");
       this.coreGatewayConfig = {
         ...this.coreGatewayConfig,
         ...pluginConfig.coreGateway.config
@@ -412,10 +472,11 @@ class GatewayPluginService {
     });
   }
 
-  private createPluginContext(pluginConfig: GatewayPluginConfig): GatewayPluginContext {
+  private createPluginContext(pluginConfig: GatewayPluginConfig, permissions: PluginPermissionAccess): GatewayPluginContext {
     const pluginDataDir = path.join(DATADIR, "plugins", sanitizeFileSegment(pluginConfig.id));
     mkdirSync(pluginDataDir, { recursive: true });
     const logger = createPluginLogger(pluginConfig.id);
+    const pluginPermissions = pluginPermissionList(permissions);
 
     return {
       config: this.config ?? ({} as AppConfig),
@@ -427,18 +488,39 @@ class GatewayPluginService {
       },
       pluginConfig: pluginConfig.config,
       pluginId: pluginConfig.id,
-      openSqliteStore: (options) => this.openSqliteStore(pluginConfig.id, pluginDataDir, options),
+      permissions: pluginPermissions,
+      openSqliteStore: (options) => {
+        this.requirePluginPermission(permissions, "sqlite-store", "open a SQLite store");
+        return this.openSqliteStore(pluginConfig.id, pluginDataDir, options);
+      },
       registerCoreGatewayProviderPlugin: (providerPlugin) => {
+        this.requirePluginPermission(permissions, "core-provider-plugins", "register core provider plugins");
         this.coreProviderPlugins.push(providerPlugin);
       },
       registerCoreGatewayVirtualModelProfile: (profile) => {
+        this.requirePluginPermission(permissions, "virtual-model-profiles", "register virtual model profiles");
         this.virtualModelProfiles.push(profile);
       },
-      registerApp: (app) => this.registerApp(pluginConfig.id, app),
-      registerGatewayRoute: (route) => this.registerGatewayRoute(pluginConfig.id, route),
-      registerHttpBackend: (backend) => this.registerHttpBackend(pluginConfig.id, pluginDataDir, logger, backend),
-      registerProviderAccountConnector: (connector) => this.registerProviderAccountConnector(pluginConfig.id, connector),
-      registerProxyRoute: (route) => this.registerProxyRoute(pluginConfig.id, route)
+      registerApp: (app) => {
+        this.requirePluginPermission(permissions, "apps", "register browser apps");
+        this.registerApp(pluginConfig.id, app);
+      },
+      registerGatewayRoute: (route) => {
+        this.requirePluginPermission(permissions, "gateway-routes", "register gateway routes");
+        this.registerGatewayRoute(pluginConfig.id, route);
+      },
+      registerHttpBackend: (backend) => {
+        this.requirePluginPermission(permissions, "http-backends", "register HTTP backends");
+        return this.registerHttpBackend(pluginConfig.id, pluginDataDir, logger, permissions, backend);
+      },
+      registerProviderAccountConnector: (connector) => {
+        this.requirePluginPermission(permissions, "provider-account-connectors", "register provider account connectors");
+        this.registerProviderAccountConnector(pluginConfig.id, connector);
+      },
+      registerProxyRoute: (route) => {
+        this.requirePluginPermission(permissions, "proxy-routes", "register proxy routes");
+        this.registerProxyRoute(pluginConfig.id, route);
+      }
     };
   }
 
@@ -454,6 +536,9 @@ class GatewayPluginService {
   }
 
   private createRouteContext(pluginId: string): GatewayPluginRouteContext {
+    const pluginConfig = this.config?.plugins.find((plugin) => plugin.id === pluginId);
+    const permissions = pluginPermissionAccess(pluginConfig ?? { id: pluginId });
+    const pluginPermissions = pluginPermissionList(permissions);
     const pluginDataDir = path.join(DATADIR, "plugins", sanitizeFileSegment(pluginId));
     const logger = createPluginLogger(pluginId);
     return {
@@ -464,9 +549,13 @@ class GatewayPluginService {
         dataDir: DATADIR,
         pluginDataDir
       },
-      pluginConfig: this.config?.plugins.find((plugin) => plugin.id === pluginId)?.config,
+      permissions: pluginPermissions,
+      pluginConfig: pluginConfig?.config,
       pluginId,
-      openSqliteStore: (options) => this.openSqliteStore(pluginId, pluginDataDir, options),
+      openSqliteStore: (options) => {
+        this.requirePluginPermission(permissions, "sqlite-store", "open a SQLite store");
+        return this.openSqliteStore(pluginId, pluginDataDir, options);
+      },
       readBody,
       readJson,
       sendJson
@@ -477,8 +566,10 @@ class GatewayPluginService {
     pluginId: string,
     pluginDataDir: string,
     logger: PluginLogger,
+    permissions: PluginPermissionAccess,
     backend: GatewayPluginHttpBackendRegistration
   ): Promise<RegisteredHttpBackend> {
+    const pluginPermissions = pluginPermissionList(permissions);
     return backendService.registerHttpBackend(pluginId, {
       host: backend.host,
       id: backend.id,
@@ -492,9 +583,13 @@ class GatewayPluginService {
             dataDir: DATADIR,
             pluginDataDir
           },
+          permissions: pluginPermissions,
           pluginConfig: this.config?.plugins.find((plugin) => plugin.id === pluginId)?.config,
           pluginId,
-          openSqliteStore: (options) => this.openSqliteStore(pluginId, pluginDataDir, options),
+          openSqliteStore: (options) => {
+            this.requirePluginPermission(permissions, "sqlite-store", "open a SQLite store");
+            return this.openSqliteStore(pluginId, pluginDataDir, options);
+          },
           readBody,
           readJson,
           sendJson
@@ -509,9 +604,39 @@ class GatewayPluginService {
   ): Promise<PluginSqliteStore> {
     return backendService.openSqliteStore(pluginId, pluginDataDir, options);
   }
+
+  private requirePluginPermission(
+    access: PluginPermissionAccess,
+    permission: GatewayPluginPermission,
+    action: string
+  ): void {
+    if (!access.explicit) {
+      if (!this.legacyPermissionWarningIds.has(access.pluginId)) {
+        this.legacyPermissionWarningIds.add(access.pluginId);
+        console.warn(`[plugin] ${access.pluginId} has no permissions declaration; allowing CCR plugin APIs in compatibility mode.`);
+      }
+      return;
+    }
+    if (access.permissions.has(permission)) {
+      return;
+    }
+    throw new Error(`Plugin ${access.pluginId} requires permission "${permission}" to ${action}.`);
+  }
 }
 
 export const pluginService = new GatewayPluginService();
+
+function pluginPermissionAccess(pluginConfig: Pick<GatewayPluginConfig, "id" | "permissions">): PluginPermissionAccess {
+  return {
+    explicit: pluginConfig.permissions !== undefined,
+    permissions: new Set(pluginConfig.permissions ?? []),
+    pluginId: pluginConfig.id
+  };
+}
+
+function pluginPermissionList(access: PluginPermissionAccess): GatewayPluginPermission[] {
+  return access.explicit ? [...access.permissions] : [...GATEWAY_PLUGIN_PERMISSION_IDS];
+}
 
 async function loadPluginModule(modulePath: string): Promise<unknown> {
   const resolved = resolvePluginModule(modulePath);
@@ -736,6 +861,19 @@ function sanitizeFileSegment(value: string): string {
 
 function providerAccountConnectorKey(pluginId: string, connectorId: string): string {
   return `${pluginId.trim()}:${connectorId.trim()}`;
+}
+
+function enabledPluginIds(config: AppConfig): Set<string> {
+  return new Set((config.plugins ?? [])
+    .filter((plugin) => plugin.enabled !== false)
+    .map((plugin) => plugin.id));
+}
+
+function stopReasonForPlugin(pluginId: string, nextEnabledPluginIds: Set<string> | undefined): GatewayPluginStopReason {
+  if (!nextEnabledPluginIds) {
+    return "stop";
+  }
+  return nextEnabledPluginIds.has(pluginId) ? "reload" : "disabled";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

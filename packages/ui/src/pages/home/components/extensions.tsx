@@ -230,6 +230,10 @@ export function PluginSettingsDialog({
               <TextAreaControl minHeight={132} value={draft.appsText} onChange={(appsText) => onChange({ appsText })} />
             </Field>
 
+            <Field label={t("Plugin permissions JSON")}>
+              <TextAreaControl minHeight={120} value={draft.permissionsText} onChange={(permissionsText) => onChange({ permissionsText })} />
+            </Field>
+
             <Field label={t("Plugin config JSON")}>
               <TextAreaControl minHeight={160} value={draft.configText} onChange={(configText) => onChange({ configText })} />
             </Field>

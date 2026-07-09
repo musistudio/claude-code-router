@@ -12,9 +12,12 @@ const DEFAULT_ROUTE_PREFIX = "/plugins/agent-console";
 const DEFAULT_RENDERER_ENTRY_PATH = "/pages/home/";
 const DEFAULT_LAUNCHER_NAME = "Agent Console";
 const LEGACY_LAUNCHER_NAME = "CCR Agent Console";
+const MAC_LAUNCHER_APPS_DIR_NAME = "CCR Apps";
 const DEFAULT_LAUNCHER_BUNDLE_ID = "com.claudecoderouter.plugin.agent-console.launcher";
 const READY_PREFIX = "AGENT_CONSOLE_HEADLESS_READY ";
 const DEFAULT_STARTUP_WAIT_MS = 15000;
+const OPENAI_REASONING_EFFORTS = ["minimal", "low", "medium", "high"];
+let modelCatalogIndex;
 
 module.exports = {
   async setup(ctx) {
@@ -44,6 +47,7 @@ module.exports = {
     const gatewayApiKey = stringValue(options.gatewayApiKey) || configuredGatewayApiKey(ctx.config);
     const appUrl = buildRendererAppUrl(gatewayUrl, routePrefix, bridgeUrl);
     const launcherUrl = `ccr://plugin/${encodeURIComponent(PLUGIN_ID)}/open`;
+    const launcherBundleId = stringValue(options.launcherBundleId) || DEFAULT_LAUNCHER_BUNDLE_ID;
     const runtimeConfigFile = path.join(ctx.paths.pluginDataDir, "ccr-runtime-config.json");
     const modelCatalogFile = path.join(ctx.paths.pluginDataDir, "ccr-codex-model-catalog.json");
     const runtimeConfig = buildRuntimeConfig(ctx.config, {
@@ -88,7 +92,12 @@ module.exports = {
     fs.writeFileSync(runtimeConfigFile, `${JSON.stringify(runtimeConfig, null, 2)}\n`, "utf8");
     fs.writeFileSync(modelCatalogFile, `${JSON.stringify(buildCodexModelCatalog(runtimeConfig.models), null, 2)}\n`, "utf8");
 
-    const launcher = ensureSystemLauncher(ctx, options, launcherUrl);
+    const launcher = canUsePermission(ctx, "system-launcher")
+      ? ensureSystemLauncher(ctx, options, launcherUrl, launcherBundleId)
+      : {
+          error: "Agent Console system launcher requires the system-launcher permission.",
+          installed: false
+        };
     runtime.launcherError = launcher.error || "";
     runtime.launcherInstalled = launcher.installed;
     runtime.launcherPath = launcher.path || "";
@@ -137,8 +146,11 @@ module.exports = {
     }
 
     return {
-      stop() {
+      stop(event) {
         stopAgentConsole(runtime);
+        if (event?.reason === "disabled") {
+          removeSystemLauncher(ctx, runtime, launcherBundleId);
+        }
       }
     };
   }
@@ -313,7 +325,7 @@ function statusPayload(runtime) {
   };
 }
 
-function ensureSystemLauncher(ctx, options, launcherUrl) {
+function ensureSystemLauncher(ctx, options, launcherUrl, launcherBundleId) {
   if (options.systemLauncher === false || options.createSystemLauncher === false) {
     return { installed: false };
   }
@@ -325,22 +337,28 @@ function ensureSystemLauncher(ctx, options, launcherUrl) {
   }
 
   const launcherName = stringValue(options.launcherName) || DEFAULT_LAUNCHER_NAME;
-  const launcherBundleId = stringValue(options.launcherBundleId) || DEFAULT_LAUNCHER_BUNDLE_ID;
   const explicitLauncherPath = Boolean(stringValue(options.launcherPath));
   const launcherPath = path.resolve(
     stringValue(options.launcherPath) ||
-      path.join(os.homedir(), "Applications", `${safeMacFileName(launcherName)}.app`)
+      defaultMacLauncherAppPath(launcherName)
   );
 
-  if (!explicitLauncherPath && launcherName === DEFAULT_LAUNCHER_NAME) {
-    try {
-      migrateLegacyMacLauncherApp({
-        bundleId: launcherBundleId,
-        legacyPath: path.join(os.homedir(), "Applications", `${safeMacFileName(LEGACY_LAUNCHER_NAME)}.app`),
-        launcherPath
-      });
-    } catch (error) {
-      ctx.logger.warn(`Failed to rename legacy Agent Console launcher: ${formatError(error)}`);
+  if (!explicitLauncherPath) {
+    const legacyLauncherPaths = [legacyMacLauncherAppPath(launcherName)];
+    if (launcherName === DEFAULT_LAUNCHER_NAME) {
+      legacyLauncherPaths.push(legacyMacLauncherAppPath(LEGACY_LAUNCHER_NAME));
+    }
+
+    for (const legacyPath of legacyLauncherPaths) {
+      try {
+        migrateLegacyMacLauncherApp({
+          bundleId: launcherBundleId,
+          legacyPath,
+          launcherPath
+        });
+      } catch (error) {
+        ctx.logger.warn(`Failed to rename legacy Agent Console launcher: ${formatError(error)}`);
+      }
     }
   }
 
@@ -366,6 +384,10 @@ function ensureSystemLauncher(ctx, options, launcherUrl) {
   }
 }
 
+function canUsePermission(ctx, permission) {
+  return !Array.isArray(ctx.permissions) || ctx.permissions.includes(permission);
+}
+
 function migrateLegacyMacLauncherApp({ bundleId, legacyPath, launcherPath }) {
   if (legacyPath === launcherPath || fs.existsSync(launcherPath) || !fs.existsSync(legacyPath)) {
     return;
@@ -384,7 +406,20 @@ function migrateLegacyMacLauncherApp({ bundleId, legacyPath, launcherPath }) {
     return;
   }
 
+  fs.mkdirSync(path.dirname(launcherPath), { recursive: true });
   fs.renameSync(legacyPath, launcherPath);
+}
+
+function defaultMacLauncherAppPath(launcherName) {
+  return path.join(macLauncherAppsDir(), `${safeMacFileName(launcherName)}.app`);
+}
+
+function legacyMacLauncherAppPath(launcherName) {
+  return path.join(os.homedir(), "Applications", `${safeMacFileName(launcherName)}.app`);
+}
+
+function macLauncherAppsDir() {
+  return path.join(os.homedir(), "Applications", MAC_LAUNCHER_APPS_DIR_NAME);
 }
 
 function installMacLauncherApp({ bundleId, launcherName, launcherPath, launcherUrl }) {
@@ -408,6 +443,52 @@ function installMacLauncherApp({ bundleId, launcherName, launcherPath, launcherU
   writeTextIfChanged(path.join(contentsDir, "PkgInfo"), "APPL????");
   writeTextIfChanged(executablePath, macLauncherScript(launcherUrl));
   fs.chmodSync(executablePath, 0o755);
+}
+
+function removeSystemLauncher(ctx, runtime, bundleId) {
+  if (process.platform !== "darwin" || !runtime.launcherInstalled || !runtime.launcherPath) {
+    return;
+  }
+
+  try {
+    uninstallMacLauncherApp({
+      bundleId,
+      launcherPath: runtime.launcherPath
+    });
+    runtime.launcherInstalled = false;
+    runtime.launcherPath = "";
+  } catch (error) {
+    ctx.logger.warn(`Failed to remove Agent Console system launcher: ${formatError(error)}`);
+  }
+}
+
+function uninstallMacLauncherApp({ bundleId, launcherPath }) {
+  const resolvedLauncherPath = path.resolve(launcherPath);
+  if (!resolvedLauncherPath.endsWith(".app") || !fs.existsSync(resolvedLauncherPath)) {
+    return;
+  }
+  if (!fs.statSync(resolvedLauncherPath).isDirectory()) {
+    return;
+  }
+
+  const infoPath = path.join(resolvedLauncherPath, "Contents", "Info.plist");
+  if (!fs.existsSync(infoPath)) {
+    return;
+  }
+
+  const info = fs.readFileSync(infoPath, "utf8");
+  if (!info.includes(`<string>${escapeXml(bundleId)}</string>`)) {
+    return;
+  }
+
+  fs.rmSync(resolvedLauncherPath, { force: true, recursive: true });
+  if (path.dirname(resolvedLauncherPath) === macLauncherAppsDir()) {
+    try {
+      fs.rmdirSync(macLauncherAppsDir());
+    } catch {
+      // Keep the shared launcher directory when it still contains other apps.
+    }
+  }
 }
 
 function macLauncherInfoPlist({ bundleId, executableName, launcherName }) {
@@ -1243,22 +1324,27 @@ function buildRuntimeConfig(config, options) {
 
 function buildCodexModelCatalog(models) {
   return {
-    models: models.map((model, index) => ({
-      additional_speed_tiers: [],
-      availability_nux: null,
-      base_instructions: "You are Codex, a coding agent.",
-      default_reasoning_level: null,
-      description: `CCR gateway model ${model.model}`,
-      display_name: model.displayName || model.model,
-      priority: index,
-      service_tiers: [],
-      shell_type: "shell_command",
-      slug: model.model,
-      supported_in_api: true,
-      supported_reasoning_levels: [],
-      upgrade: null,
-      visibility: "list"
-    }))
+    models: models.map((model, index) => {
+      const reasoning = codexModelReasoningProfile(model.model);
+      return {
+        additional_speed_tiers: [],
+        availability_nux: null,
+        base_instructions: "You are Codex, a coding agent.",
+        default_reasoning_level: reasoning.defaultReasoningLevel,
+        default_reasoning_summary: "none",
+        description: `CCR gateway model ${model.model}`,
+        display_name: model.displayName || model.model,
+        priority: index,
+        service_tiers: [],
+        shell_type: "shell_command",
+        slug: model.model,
+        supported_in_api: true,
+        supported_reasoning_levels: reasoning.supportedReasoningLevels,
+        supports_reasoning_summaries: reasoning.supportsReasoning,
+        upgrade: null,
+        visibility: "list"
+      };
+    })
   };
 }
 
@@ -1271,12 +1357,11 @@ function availableGatewayModels(config) {
       const modelName = stringValue(rawModel);
       if (!modelName) continue;
       const id = `${providerName}/${modelName}`;
-      baseEntries.push({
+      baseEntries.push(runtimeModelEntry(id, {
         displayName: displayModelName(provider, modelName, id),
-        id,
         isDefault: id === stringValue(config?.Router?.default),
         model: id
-      });
+      }));
     }
   }
 
@@ -1286,37 +1371,348 @@ function availableGatewayModels(config) {
     const displayName = stringValue(profile.displayName || profile.key || profile.id);
     for (const entry of baseEntries) {
       for (const prefix of normalizeStringArray(profile.match?.prefixes) || []) {
-        virtualEntries.push({
+        const model = `${providerNameFromModel(entry.model)}/${prefix}${modelNameFromModel(entry.model)}`;
+        virtualEntries.push(runtimeModelEntry(model, {
           displayName: displayName || `${prefix}${entry.displayName}`,
-          id: `${providerNameFromModel(entry.model)}/${prefix}${modelNameFromModel(entry.model)}`,
-          model: `${providerNameFromModel(entry.model)}/${prefix}${modelNameFromModel(entry.model)}`
-        });
+          model,
+          reasoningModel: entry.model
+        }));
       }
       for (const suffix of normalizeStringArray(profile.match?.suffixes) || []) {
-        virtualEntries.push({
+        const model = `${providerNameFromModel(entry.model)}/${modelNameFromModel(entry.model)}${suffix}`;
+        virtualEntries.push(runtimeModelEntry(model, {
           displayName: displayName || `${entry.displayName}${suffix}`,
-          id: `${providerNameFromModel(entry.model)}/${modelNameFromModel(entry.model)}${suffix}`,
-          model: `${providerNameFromModel(entry.model)}/${modelNameFromModel(entry.model)}${suffix}`
-        });
+          model,
+          reasoningModel: entry.model
+        }));
       }
     }
     for (const alias of normalizeStringArray(profile.match?.exactAliases) || []) {
       const model = alias.toLowerCase().startsWith("fusion/") ? alias : `Fusion/${alias}`;
-      virtualEntries.push({
+      virtualEntries.push(runtimeModelEntry(model, {
         displayName: displayName || alias,
-        id: model,
         model
-      });
+      }));
     }
   }
 
   return uniqueModels([...baseEntries, ...virtualEntries]);
 }
 
+function runtimeModelEntry(model, options = {}) {
+  const reasoning = codexModelReasoningProfile(options.reasoningModel || model);
+  return {
+    displayName: options.displayName || model,
+    id: options.id || model,
+    isDefault: options.isDefault === true,
+    model,
+    ...(reasoning.defaultReasoningEffort ? { defaultReasoningEffort: reasoning.defaultReasoningEffort } : {}),
+    supportedReasoningEfforts: reasoning.supportedReasoningEfforts,
+    supportedSpeeds: []
+  };
+}
+
 function displayModelName(provider, modelName, fallback) {
   const displayNames = isRecord(provider.modelDisplayNames) ? provider.modelDisplayNames : {};
-  const descriptions = isRecord(provider.modelDescriptions) ? provider.modelDescriptions : {};
-  return stringValue(displayNames[modelName]) || stringValue(descriptions[modelName]) || fallback;
+  return stringValue(displayNames[modelName]) || fallback;
+}
+
+function codexModelReasoningProfile(model) {
+  const entry = findModelCatalogEntry(model);
+  const capabilities = isRecord(entry?.capabilities) ? entry.capabilities : {};
+  const effortConfig = modelCatalogReasoningEffortConfig(entry, providerNameFromModel(model));
+  const fallbackEfforts = effortConfig.efforts.length === 0 && openAiGptReasoningFallbackApplies(model)
+    ? OPENAI_REASONING_EFFORTS
+    : [];
+  const reasoningConfig = fallbackEfforts.length > 0
+    ? { ...effortConfig, defaultEffort: "medium", efforts: fallbackEfforts, supportsReasoning: true }
+    : effortConfig;
+  const supportsReasoning = capabilities.reasoning === true || reasoningConfig.supportsReasoning;
+  return {
+    defaultReasoningEffort: defaultReasoningEffort(reasoningConfig),
+    defaultReasoningLevel: defaultReasoningLevel(reasoningConfig),
+    supportedReasoningEfforts: reasoningConfig.efforts,
+    supportedReasoningLevels: reasoningConfig.efforts.map(reasoningLevel),
+    supportsReasoning
+  };
+}
+
+function openAiGptReasoningFallbackApplies(model) {
+  const provider = normalizeModelCatalogToken(providerNameFromModel(model));
+  const modelName = normalizeModelCatalogToken(modelNameFromModel(model));
+  const openAiProvider = provider.includes("openai") || provider.includes("codex-api");
+  return openAiProvider && (/^gpt-[0-9]/.test(modelName) || /^o[0-9]/.test(modelName));
+}
+
+function modelCatalogReasoningEffortConfig(entry, providerName) {
+  if (!entry) {
+    return { defaultEffort: "", efforts: [], supportsReasoning: false };
+  }
+
+  const records = sourceRecordsForProvider(entry.sourceRecords, providerName);
+  const metadataValues = [
+    entry.metadata,
+    ...records.map((record) => record.metadata)
+  ].filter(isRecord);
+
+  let defaultEffort = "";
+  let supportsReasoning = false;
+  const efforts = [];
+  for (const metadata of metadataValues) {
+    const config = reasoningConfigFromMetadata(metadata);
+    if (config.supportsReasoning) {
+      supportsReasoning = true;
+    }
+    if (!defaultEffort && config.defaultEffort) {
+      defaultEffort = config.defaultEffort;
+    }
+    for (const effort of config.efforts) {
+      if (!efforts.includes(effort)) {
+        efforts.push(effort);
+      }
+    }
+  }
+
+  return { defaultEffort, efforts, supportsReasoning };
+}
+
+function sourceRecordsForProvider(records, providerName) {
+  const normalizedProviderName = normalizeModelCatalogToken(providerName);
+  if (!normalizedProviderName) return [];
+  return records.filter((record) => {
+    const provider = normalizeModelCatalogToken(record.provider);
+    const displayName = normalizeModelCatalogToken(record.providerName);
+    return [provider, displayName].some((value) =>
+      value &&
+      (
+        value === normalizedProviderName ||
+        value.includes(normalizedProviderName) ||
+        normalizedProviderName.includes(value)
+      )
+    );
+  });
+}
+
+function reasoningConfigFromMetadata(metadata) {
+  const efforts = [];
+  let defaultEffort = "";
+  let supportsReasoning = false;
+
+  const reasoning = isRecord(metadata.reasoning) ? metadata.reasoning : undefined;
+  if (reasoning) {
+    supportsReasoning = true;
+    for (const effort of normalizeReasoningEfforts(reasoning.supported_efforts)) {
+      if (!efforts.includes(effort)) {
+        efforts.push(effort);
+      }
+    }
+    defaultEffort = normalizeReasoningEffort(reasoning.default_effort);
+  }
+
+  const options = Array.isArray(metadata.reasoningOptions) ? metadata.reasoningOptions : [];
+  for (const option of options) {
+    if (!isRecord(option)) continue;
+    const type = stringValue(option.type).toLowerCase();
+    if (type === "toggle" || type === "budget_tokens") {
+      supportsReasoning = true;
+    }
+    if (type !== "effort") continue;
+    supportsReasoning = true;
+    for (const effort of normalizeReasoningEfforts(option.values)) {
+      if (!efforts.includes(effort)) {
+        efforts.push(effort);
+      }
+    }
+  }
+
+  return { defaultEffort, efforts, supportsReasoning };
+}
+
+function normalizeReasoningEfforts(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(normalizeReasoningEffort)
+    .filter(Boolean)
+    .filter((effort, index, efforts) => efforts.indexOf(effort) === index);
+}
+
+function normalizeReasoningEffort(value) {
+  const normalized = stringValue(value).toLowerCase().replace(/[_\s-]+/g, "");
+  if (!normalized || normalized === "default") return "";
+  if (normalized === "none" || normalized === "off" || normalized === "disabled") return "none";
+  if (normalized === "minimal") return "minimal";
+  if (normalized === "low") return "low";
+  if (normalized === "medium") return "medium";
+  if (normalized === "high") return "high";
+  if (normalized === "xhigh" || normalized === "extrahigh" || normalized === "max") return "xhigh";
+  return "";
+}
+
+function defaultReasoningLevel(config) {
+  if (!config.defaultEffort || config.defaultEffort === "none") return null;
+  return config.efforts.includes(config.defaultEffort) ? config.defaultEffort : null;
+}
+
+function defaultReasoningEffort(config) {
+  return defaultReasoningLevel(config) || "";
+}
+
+function reasoningLevel(effort) {
+  const descriptions = {
+    high: "High reasoning",
+    low: "Low reasoning",
+    medium: "Medium reasoning",
+    minimal: "Minimal reasoning",
+    none: "No reasoning",
+    xhigh: "Extra high reasoning"
+  };
+  return {
+    effort,
+    description: descriptions[effort] || `${effort} reasoning`
+  };
+}
+
+function findModelCatalogEntry(model) {
+  const index = loadModelCatalogIndex();
+  const candidates = modelCatalogLookupKeys(model);
+  for (const key of candidates) {
+    const entry = index.byKey.get(key);
+    if (entry) return entry;
+  }
+
+  for (const key of candidates) {
+    const modelKey = modelCatalogLastSegmentKey(key);
+    if (!modelKey) continue;
+    const entry = index.byModelKey.get(modelKey);
+    if (entry) return entry;
+  }
+
+  return undefined;
+}
+
+function loadModelCatalogIndex() {
+  if (modelCatalogIndex) return modelCatalogIndex;
+
+  const payload = loadModelCatalogPayload();
+  modelCatalogIndex = buildModelCatalogIndex(payload);
+  return modelCatalogIndex;
+}
+
+function loadModelCatalogPayload() {
+  for (const candidate of modelCatalogPathCandidates()) {
+    if (!fs.existsSync(candidate)) continue;
+    try {
+      return JSON.parse(fs.readFileSync(candidate, "utf8"));
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function modelCatalogPathCandidates() {
+  return uniqueStrings([
+    stringValue(process.env.CCR_MODEL_CATALOG_PATH),
+    stringValue(process.env.CCR_MODELS_JSON_PATH),
+    path.resolve(process.cwd(), "models.json"),
+    path.resolve(process.cwd(), "packages", "core", "models.json"),
+    path.resolve(process.cwd(), "packages", "cli", "models.json"),
+    path.resolve(__dirname, "models.json"),
+    path.resolve(__dirname, "..", "models.json"),
+    path.resolve(__dirname, "..", "..", "models.json"),
+    path.resolve(__dirname, "..", "..", "..", "models.json"),
+    path.resolve(__dirname, "..", "..", "..", "packages", "core", "models.json"),
+    path.resolve(__dirname, "..", "..", "..", "packages", "cli", "models.json")
+  ]);
+}
+
+function buildModelCatalogIndex(payload) {
+  const byKey = new Map();
+  const byModelKey = new Map();
+  const models = isRecord(payload) && Array.isArray(payload.models) ? payload.models : [];
+
+  for (const item of models) {
+    const entry = parseModelCatalogEntry(item);
+    if (!entry) continue;
+
+    for (const key of modelCatalogEntryKeys(entry)) {
+      byKey.set(key, entry);
+    }
+
+    const shortKeys = uniqueStrings([
+      entry.model ? normalizeModelCatalogToken(entry.model) : "",
+      ...entry.aliases.map((alias) => modelCatalogLastSegmentKey(normalizeModelCatalogKey(alias)))
+    ]);
+    for (const key of shortKeys) {
+      if (!key) continue;
+      if (byModelKey.has(key) && byModelKey.get(key) !== entry) {
+        byModelKey.set(key, undefined);
+      } else {
+        byModelKey.set(key, entry);
+      }
+    }
+  }
+
+  return { byKey, byModelKey };
+}
+
+function parseModelCatalogEntry(value) {
+  if (!isRecord(value)) return undefined;
+  const id = stringValue(value.id);
+  if (!id) return undefined;
+  return {
+    aliases: uniqueStrings([id, ...stringListValue(value.aliases)]),
+    capabilities: isRecord(value.capabilities) ? value.capabilities : undefined,
+    id,
+    metadata: isRecord(value.metadata) ? value.metadata : undefined,
+    model: stringValue(value.model),
+    providers: stringListValue(value.providers),
+    sourceRecords: sourceRecordListValue(value.sourceRecords)
+  };
+}
+
+function sourceRecordListValue(value) {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function modelCatalogEntryKeys(entry) {
+  return uniqueStrings([
+    normalizeModelCatalogKey(entry.id),
+    ...entry.aliases.map(normalizeModelCatalogKey),
+    ...entry.providers.map((provider) => entry.model ? normalizeModelCatalogKey(`${provider}/${entry.model}`) : "")
+  ]);
+}
+
+function modelCatalogLookupKeys(value) {
+  const raw = String(value || "").trim();
+  const normalized = normalizeModelCatalogKey(raw);
+  const withoutClaudePrefix = raw.toLowerCase().startsWith("claude-") && raw.includes("/")
+    ? normalizeModelCatalogKey(raw.replace(/^claude-/i, ""))
+    : "";
+  return uniqueStrings([normalized, withoutClaudePrefix]);
+}
+
+function normalizeModelCatalogKey(value) {
+  return String(value || "")
+    .trim()
+    .split("/")
+    .map(normalizeModelCatalogToken)
+    .filter(Boolean)
+    .join("/");
+}
+
+function normalizeModelCatalogToken(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^hf:/i, "")
+    .replace(/^@/, "")
+    .replace(/[_\s]+/g, "-")
+    .replace(/-+/g, "-")
+    .toLowerCase();
+}
+
+function modelCatalogLastSegmentKey(value) {
+  return value.split("/").filter(Boolean).at(-1) || "";
 }
 
 function isVisibleVirtualProfile(profile) {
@@ -1436,6 +1832,22 @@ function normalizeStringArray(value) {
   if (!Array.isArray(value)) return undefined;
   const items = value.map((item) => stringValue(item)).filter(Boolean);
   return items.length ? items : undefined;
+}
+
+function stringListValue(value) {
+  return Array.isArray(value) ? value.map((item) => stringValue(item)).filter(Boolean) : [];
+}
+
+function uniqueStrings(values) {
+  const seen = new Set();
+  const strings = [];
+  for (const value of values) {
+    const trimmed = stringValue(value);
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    strings.push(trimmed);
+  }
+  return strings;
 }
 
 function stringValue(value) {

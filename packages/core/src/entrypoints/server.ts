@@ -1,5 +1,8 @@
 #!/usr/bin/env node
+import { installSocketTypeOfServiceCompat } from "@ccr/core/platform/socket-compat";
 import { startWebManagementServer } from "@ccr/core/web/management-server";
+
+installSocketTypeOfServiceCompat();
 
 type CoreServerOptions = {
   help: boolean;

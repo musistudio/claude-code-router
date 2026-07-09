@@ -4,7 +4,7 @@ import { loadPersistedAppConfig, replacePersistedAppConfig } from "@ccr/core/con
 import { loadPersistedApiKeys, replacePersistedApiKeys } from "@ccr/core/config/api-key-store";
 import { CONFIG_FILE, GATEWAY_CONFIG_FILE, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FILE } from "@ccr/core/config/constants";
 import { normalizeCodexProviderAccountConfig } from "@ccr/core/agents/local-providers/codex";
-import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "@ccr/core/contracts/app";
+import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, GATEWAY_PLUGIN_PERMISSION_IDS, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "@ccr/core/contracts/app";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
 import type {
@@ -21,6 +21,7 @@ import type {
   GatewayPluginConfig,
   GatewayPluginAppConfig,
   GatewayPluginProxyRouteConfig,
+  GatewayPluginPermission,
   GatewayProviderCapability,
   GatewayProviderConfig,
   GatewayProviderProtocol,
@@ -95,6 +96,7 @@ const REMOVED_LEGACY_ROUTER_RULE_IDS = new Set([
 ]);
 const INTERNAL_GATEWAY_CORE_HOST = "127.0.0.1";
 const GENERATED_GATEWAY_API_KEY_ID = "local-gateway";
+const GATEWAY_PLUGIN_PERMISSION_ID_SET = new Set<string>(GATEWAY_PLUGIN_PERMISSION_IDS);
 
 const DEFAULT_CONFIG: AppConfig = createDefaultAppConfig({
   coreHost: INTERNAL_GATEWAY_CORE_HOST,
@@ -1955,6 +1957,7 @@ function parseGatewayPlugins(value: unknown): GatewayPluginConfig[] | undefined 
       const apps = parseGatewayPluginApps(item.apps);
       const proxyRoutes = parseGatewayPluginProxyRoutes(isObject(item.proxy) ? item.proxy.routes : undefined);
       const coreGateway = parseGatewayPluginCoreGateway(item.coreGateway);
+      const permissions = parseGatewayPluginPermissions(item.permissions);
 
       return {
         ...(apps ? { apps } : {}),
@@ -1963,12 +1966,107 @@ function parseGatewayPlugins(value: unknown): GatewayPluginConfig[] | undefined 
         enabled: typeof item.enabled === "boolean" ? item.enabled : true,
         id,
         ...(modulePath ? { module: modulePath } : {}),
+        ...(permissions !== undefined ? { permissions } : {}),
         ...(proxyRoutes ? { proxy: { routes: proxyRoutes } } : {})
       };
     })
     .filter((item): item is GatewayPluginConfig => Boolean(item));
 
   return plugins.length ? plugins : undefined;
+}
+
+function parseGatewayPluginPermissions(value: unknown): GatewayPluginPermission[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const permissions: GatewayPluginPermission[] = [];
+  const seen = new Set<GatewayPluginPermission>();
+  const add = (rawValue: unknown): void => {
+    const permission = normalizeGatewayPluginPermission(rawValue);
+    if (!permission || seen.has(permission)) {
+      return;
+    }
+    seen.add(permission);
+    permissions.push(permission);
+  };
+
+  if (typeof value === "string") {
+    add(value);
+  } else if (Array.isArray(value)) {
+    value.forEach(add);
+  } else if (isObject(value)) {
+    for (const [key, enabled] of Object.entries(value)) {
+      if (enabled === false) {
+        continue;
+      }
+      if (isAllGatewayPluginPermissionsKey(key)) {
+        GATEWAY_PLUGIN_PERMISSION_IDS.forEach(add);
+      } else {
+        add(key);
+      }
+    }
+  }
+
+  return permissions;
+}
+
+function normalizeGatewayPluginPermission(value: unknown): GatewayPluginPermission | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  const mapped = gatewayPluginPermissionAlias(normalized);
+  return GATEWAY_PLUGIN_PERMISSION_ID_SET.has(mapped) ? mapped as GatewayPluginPermission : undefined;
+}
+
+function gatewayPluginPermissionAlias(value: string): string {
+  switch (value) {
+    case "app":
+    case "browser-app":
+    case "browser-apps":
+      return "apps";
+    case "gateway-route":
+    case "route":
+    case "routes":
+      return "gateway-routes";
+    case "proxy":
+    case "proxy-route":
+      return "proxy-routes";
+    case "backend":
+    case "backends":
+    case "http-backend":
+      return "http-backends";
+    case "provider-account":
+    case "provider-account-connector":
+      return "provider-account-connectors";
+    case "core-gateway":
+      return "core-gateway-config";
+    case "provider-plugin":
+    case "provider-plugins":
+    case "core-provider-plugin":
+      return "core-provider-plugins";
+    case "fusion-profile":
+    case "fusion-profiles":
+    case "virtual-model":
+    case "virtual-models":
+    case "virtual-model-profile":
+      return "virtual-model-profiles";
+    case "sqlite":
+    case "data-store":
+    case "store":
+      return "sqlite-store";
+    case "launcher":
+    case "mac-launcher":
+      return "system-launcher";
+    default:
+      return value;
+  }
+}
+
+function isAllGatewayPluginPermissionsKey(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "*" || normalized === "all";
 }
 
 function parseGatewayPluginApps(value: unknown): GatewayPluginAppConfig[] | undefined {
