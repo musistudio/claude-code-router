@@ -62,14 +62,30 @@ export function buildClaudeAppGatewayModelRoutes(
       rawTargetModel === targetModel ? "" : claudeAppGatewayGeneratedRouteId(targetModel),
       targetModel
     ]).filter((id) => id.toLowerCase() !== routeId.toLowerCase());
-    return [{
+
+    const baseRoute = {
       displayName: displayNames[index],
       id: routeId,
       legacyId: legacyIds[0],
       legacyIds,
       oneMillionContext,
       targetModel
-    }];
+    };
+
+    if (oneMillionContext && !hasClaudeAppGatewayOneMillionContextSuffix(routeId)) {
+      const oneMillionRouteId = `${routeId}${CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX}`;
+      const oneMillionRoute = {
+        displayName: `${displayNames[index]} (1M)`,
+        id: oneMillionRouteId,
+        legacyId: `${legacyIds[0] || routeId}${CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX}`,
+        legacyIds: legacyIds.map((id) => `${id}${CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX}`),
+        oneMillionContext: true,
+        targetModel
+      };
+      return [baseRoute, oneMillionRoute];
+    }
+
+    return [baseRoute];
   });
 }
 

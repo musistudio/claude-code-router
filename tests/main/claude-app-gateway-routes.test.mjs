@@ -106,4 +106,13 @@ test("Sakana 1M metadata is limited to Claude-compatible model responses", () =>
   assert.equal(sakanaClaudeModel.capabilities.context_window.supported, true);
   assert.equal(sakanaClaudeModel.capabilities.context_window.supports_1m_context, true);
   assert.equal(sakanaClaudeModel.capabilities.context_window.one_million_context_variant, true);
+
+  const sakanaClaudeModel1m = claudeResponse.data.find((item) => item.id.endsWith("[1m]"));
+  assert.ok(sakanaClaudeModel1m, "expected Claude-compatible response to include Sakana/fugu-ultra[1m]");
+  assert.equal(sakanaClaudeModel1m.max_input_tokens, 1_000_000);
+  assert.equal(sakanaClaudeModel1m.capabilities.context_management.max_input_tokens, 1_000_000);
+  assert.equal(sakanaClaudeModel1m.capabilities.context_window.max_input_tokens, 1_000_000);
+  assert.equal(sakanaClaudeModel1m.capabilities.context_window.supported, true);
+  assert.equal(sakanaClaudeModel1m.capabilities.context_window.supports_1m_context, true);
+  assert.equal(sakanaClaudeModel1m.capabilities.context_window.one_million_context_variant, true);
 });

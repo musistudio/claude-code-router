@@ -7853,9 +7853,18 @@ function buildClaudeCodeDiscoverableModels(config: AppConfig): ClaudeCodeDiscove
   };
 
   for (const id of buildClaudeCodeDiscoverableModelIds(config)) {
-    pushModel(id, hasClaudeCodeOneMillionContextSuffix(id));
+    const isOneMillionSuffix = hasClaudeCodeOneMillionContextSuffix(id);
     const baseId = stripClaudeCodeOneMillionContextSuffix(id);
-    if (!hasClaudeCodeOneMillionContextSuffix(id) && findModelCatalogEntry(baseId)?.limits?.supports1MContext) {
+    const supports1m = isOneMillionSuffix ||
+      Boolean(findModelCatalogEntry(baseId)?.limits?.supports1MContext) ||
+      buildClaudeAppGatewayModelRoutes(config, claudeAppGatewayModelRouteOptions).some((route) =>
+        route.oneMillionContext &&
+        (route.id.toLowerCase() === id.toLowerCase() ||
+         stripClaudeAppGatewayOneMillionContextSuffix(route.id).toLowerCase() === baseId.toLowerCase())
+      );
+
+    pushModel(id, supports1m);
+    if (!isOneMillionSuffix && supports1m) {
       pushModel(claudeCodeOneMillionContextModelId(baseId), true);
     }
   }
