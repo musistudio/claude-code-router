@@ -1076,18 +1076,7 @@ function isProtocolSupported(
     if (/not found|unknown endpoint|unknown route|no route/.test(normalized)) {
       return false;
     }
-    if (protocol === "openai_responses") {
-      return /model|max_output|max output|input|required/.test(normalized);
-    }
-    if (protocol === "openai_chat_completions" || protocol === "anthropic_messages") {
-      return /model|max_tokens|messages|required/.test(normalized);
-    }
-    if (protocol === "gemini_generate_content") {
-      return /contents|generatecontentrequest|generationconfig/.test(normalized);
-    }
-    if (protocol === "gemini_interactions") {
-      return /model|input|required|interaction|generation_config|generationconfig|system_instruction/.test(normalized);
-    }
+    return true;
   }
 
   return false;
