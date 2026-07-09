@@ -8,11 +8,43 @@
   <a href="https://ccrdesk.top/"><img alt="Documentation" src="https://img.shields.io/badge/Docs-ccrdesk.top-0ea5e9?style=flat" /></a>
 </p>
 
+<div align="center">
+
+<table width="100%">
+  <tr>
+    <td align="center">
+      <a href="https://www.kimi.com/code?aff=ccr">
+        <img src="https://gcdn.moonshot.cn/growth-cdn/sponsor/kimi-en.png" width="960" alt="Kimi K2.7 Code sponsor banner" />
+      </a>
+      <br />
+      <sub>
+        <a href="https://www.kimi.com/code?aff=ccr"><strong>Kimi Code Subscription</strong></a>
+        &nbsp;·&nbsp;
+        <a href="https://platform.kimi.ai?aff=ccr"><strong>API Global</strong></a>
+        &nbsp;·&nbsp;
+        <a href="https://platform.kimi.com?aff=ccr">API China</a>
+      </sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="left">
+      <p>
+        <strong>Thanks to Kimi for sponsoring this project!</strong> Kimi K2.7 Code is an open-source, coding-focused agentic model developed by Moonshot AI, with substantial gains on real-world long-horizon coding tasks and higher end-to-end success across complex software engineering workflows. It also cuts thinking-token usage by approximately 30% compared with K2.6. Inside CCR, Kimi ships as built-in provider presets: import the pay-as-you-go API or the Kimi Code subscription in one click and route your coding agent's requests to Kimi, the subscription endpoint passes straight through natively with no protocol conversion, API endpoints are adapted automatically, and your balance and subscription usage show up right in the CCR dashboard.
+      </p>
+      <p align="center">
+        CCR already supports Kimi. Visit the Kimi Open Platform (<a href="https://platform.kimi.com?aff=ccr">中文站</a> | <a href="https://platform.kimi.ai?aff=ccr">Global</a>) to try the API, or explore the <a href="https://www.kimi.com/code?aff=ccr">cost-effective Coding Plan</a>.
+      </p>
+    </td>
+  </tr>
+</table>
+
+</div>
+
+Claude Code Router Desktop is a local gateway and desktop control panel for routing agent requests from Claude Code, Codex, ZCode, and compatible clients to the model provider you actually want to use.
+
 <p align="center">
   <img src="blog/images/claude-code-router.png" width="720" alt="Claude Code Router Desktop screenshot" />
 </p>
-
-Claude Code Router Desktop is a local gateway and desktop control panel for routing agent requests from Claude Code, Codex, ZCode, and compatible clients to the model provider you actually want to use.
 
 ## Why Use CCR
 
