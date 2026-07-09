@@ -1693,15 +1693,17 @@ export function providerDraftSafetyIssue(draft: AddProviderDraft, baseUrl = draf
 
 export function providerProbeCandidates(draft: AddProviderDraft): ProviderProbeCandidate[] {
   const preset = findProviderPreset(draft.presetId);
-  const protocols = providerProtocolOptions.map((option) => option.value);
   if (preset) {
+    // Respect the preset endpoint's declared protocols instead of probing all.
+    // This prevents false protocol detection against unrelated endpoint paths.
     return preset.endpoints.map((endpoint) => ({
-      ...endpoint,
-      protocols,
+      baseUrl: endpoint.baseUrl,
+      protocols: endpoint.protocols,
       source: "preset"
     }));
   }
 
+  const protocols = providerProtocolOptions.map((option) => option.value);
   return [
     {
       baseUrl: draft.baseUrl.trim(),
