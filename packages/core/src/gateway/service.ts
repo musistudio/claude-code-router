@@ -1033,7 +1033,14 @@ class GatewayService {
           this.browserWebSearchMcpIntegration
         )
       : patchedResponseBody;
-    const responseStreams = uniqueStreams([upstreamBody, patchedResponseBody, responseBody]);
+
+    const isClaudeRequest = isClaudeCodeUserAgent(request.headers);
+    const isSse = responseHeaders.get("content-type")?.toLowerCase().includes("text/event-stream");
+    const responseBodyWithUsage = isClaudeRequest && isSse
+      ? claudeCodeTokenUsageInjectorStream(responseBody, bodyToForward)
+      : responseBody;
+
+    const responseStreams = uniqueStreams([upstreamBody, patchedResponseBody, responseBody, responseBodyWithUsage]);
     const sampler = createBodySampler();
     const sseErrorDetector = createSseErrorDetector(responseHeaders.get("content-type") ?? undefined);
     let streamDetectedError: string | undefined;
@@ -1054,7 +1061,7 @@ class GatewayService {
     };
     onClientDisconnect = () => {
       writeStreamLog(clientDisconnectMessage);
-      responseBody.unpipe(response);
+      responseBodyWithUsage.unpipe(response);
       destroyResponseStreams(responseStreams);
     };
     onResponseFinish = () => {
@@ -1069,11 +1076,11 @@ class GatewayService {
     for (const stream of responseStreams) {
       stream.on("error", onResponseStreamError);
     }
-    responseBody.on("data", (chunk) => {
+    responseBodyWithUsage.on("data", (chunk) => {
       sampler.append(chunk);
       streamDetectedError ??= sseErrorDetector.append(chunk);
     });
-    responseBody.once("end", () => {
+    responseBodyWithUsage.once("end", () => {
       upstreamStreamEnded = true;
       streamDetectedError ??= sseErrorDetector.finish();
       if (responseCompleted || response.writableEnded) {
@@ -1081,7 +1088,7 @@ class GatewayService {
       }
     });
     if (shouldCaptureUsage) {
-      responseBody.once("end", () => {
+      responseBodyWithUsage.once("end", () => {
         void recordGatewayUsageCapture({
           bodyText: sampler.read(),
           client,
@@ -1101,7 +1108,7 @@ class GatewayService {
       onClientDisconnect();
       return;
     }
-    responseBody.pipe(response);
+    responseBodyWithUsage.pipe(response);
   }
 
   private async handleRawTraceSync(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -8492,4 +8499,81 @@ function shouldSendBody(method: string | undefined): boolean {
 
 function shouldCaptureGatewayUsage(method: string, _path: string): boolean {
   return shouldSendBody(method);
+}
+
+function claudeCodeTokenUsageInjectorStream(input: Readable, requestBody: Buffer | undefined): Readable {
+  let pending = "";
+  let estimatedInputTokens = 0;
+  let estimatedOutputText = "";
+
+  if (requestBody) {
+    try {
+      const parsedBody = JSON.parse(requestBody.toString("utf8"));
+      const inputCharacters = countUnknownCharacters(parsedBody.messages) + countUnknownCharacters(parsedBody.system) + countUnknownCharacters(parsedBody.tools);
+      estimatedInputTokens = Math.max(1, Math.ceil(inputCharacters / 4));
+    } catch {
+      estimatedInputTokens = 0;
+    }
+  }
+
+  return input.pipe(new Transform({
+    transform(chunk, _encoding, callback) {
+      const text = chunk.toString();
+      pending += text;
+
+      const parts = pending.split("\n\n");
+      pending = parts.pop() ?? "";
+
+      for (const part of parts) {
+        const event = parseSseEventBlock(part);
+        if (event.data && typeof event.data === "object") {
+          const data = event.data as Record<string, any>;
+          if (data.type === "content_block_delta" && data.delta && data.delta.type === "text_delta" && typeof data.delta.text === "string") {
+            estimatedOutputText += data.delta.text;
+          }
+
+          if (data.type === "message_delta") {
+            const usage = data.usage && typeof data.usage === "object" ? data.usage as Record<string, any> : {};
+            const inputTokens = usage.input_tokens || estimatedInputTokens || 1;
+            const asciiWordsOut = estimatedOutputText.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
+            const cjkCharsOut = estimatedOutputText.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+            const outputTokens = usage.output_tokens || Math.max(1, Math.ceil((asciiWordsOut + cjkCharsOut) * 1.15));
+
+            data.usage = {
+              ...usage,
+              input_tokens: inputTokens,
+              output_tokens: outputTokens
+            };
+            event.raw = `event: message_delta\ndata: ${JSON.stringify(data)}`;
+          }
+        }
+        this.push(`${serializeSseEvent(event)}\n\n`);
+      }
+      callback();
+    },
+    flush(callback) {
+      if (pending.trim()) {
+        const event = parseSseEventBlock(pending);
+        if (event.data && typeof event.data === "object") {
+          const data = event.data as Record<string, any>;
+          if (data.type === "message_delta") {
+            const usage = data.usage && typeof data.usage === "object" ? data.usage as Record<string, any> : {};
+            const inputTokens = usage.input_tokens || estimatedInputTokens || 1;
+            const asciiWordsOut = estimatedOutputText.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
+            const cjkCharsOut = estimatedOutputText.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+            const outputTokens = usage.output_tokens || Math.max(1, Math.ceil((asciiWordsOut + cjkCharsOut) * 1.15));
+
+            data.usage = {
+              ...usage,
+              input_tokens: inputTokens,
+              output_tokens: outputTokens
+            };
+            event.raw = `event: message_delta\ndata: ${JSON.stringify(data)}`;
+          }
+        }
+        this.push(`${serializeSseEvent(event)}\n\n`);
+      }
+      callback();
+    }
+  }));
 }
