@@ -1034,10 +1034,12 @@ class GatewayService {
         )
       : patchedResponseBody;
 
-    const isClaudeRequest = isClaudeCodeUserAgent(request.headers);
+    const requestPath = normalizeGatewayPathname(path);
+    const isMessages = requestPath === "/v1/messages" || requestPath === "/messages" || requestPath.endsWith("/v1/messages");
+    const isResponses = requestPath === "/v1/responses" || requestPath === "/responses" || requestPath.endsWith("/responses");
     const isSse = responseHeaders.get("content-type")?.toLowerCase().includes("text/event-stream");
-    const responseBodyWithUsage = isClaudeRequest && isSse
-      ? claudeCodeTokenUsageInjectorStream(responseBody, bodyToForward)
+    const responseBodyWithUsage = isSse && (isMessages || isResponses)
+      ? gatewayTokenUsageInjectorStream(responseBody, bodyToForward, isMessages ? "anthropic_messages" : "openai_responses")
       : responseBody;
 
     const responseStreams = uniqueStreams([upstreamBody, patchedResponseBody, responseBody, responseBodyWithUsage]);
@@ -8501,7 +8503,11 @@ function shouldCaptureGatewayUsage(method: string, _path: string): boolean {
   return shouldSendBody(method);
 }
 
-function claudeCodeTokenUsageInjectorStream(input: Readable, requestBody: Buffer | undefined): Readable {
+function gatewayTokenUsageInjectorStream(
+  input: Readable,
+  requestBody: Buffer | undefined,
+  protocol: "anthropic_messages" | "openai_responses"
+): Readable {
   let pending = "";
   let estimatedInputTokens = 0;
   let estimatedOutputText = "";
@@ -8509,7 +8515,10 @@ function claudeCodeTokenUsageInjectorStream(input: Readable, requestBody: Buffer
   if (requestBody) {
     try {
       const parsedBody = JSON.parse(requestBody.toString("utf8"));
-      const inputCharacters = countUnknownCharacters(parsedBody.messages) + countUnknownCharacters(parsedBody.system) + countUnknownCharacters(parsedBody.tools);
+      const messages = parsedBody.messages || parsedBody.input || [];
+      const system = parsedBody.system || parsedBody.instructions || "";
+      const tools = parsedBody.tools || [];
+      const inputCharacters = countUnknownCharacters(messages) + countUnknownCharacters(system) + countUnknownCharacters(tools);
       estimatedInputTokens = Math.max(1, Math.ceil(inputCharacters / 4));
     } catch {
       estimatedInputTokens = 0;
@@ -8528,23 +8537,49 @@ function claudeCodeTokenUsageInjectorStream(input: Readable, requestBody: Buffer
         const event = parseSseEventBlock(part);
         if (event.data && typeof event.data === "object") {
           const data = event.data as Record<string, any>;
-          if (data.type === "content_block_delta" && data.delta && data.delta.type === "text_delta" && typeof data.delta.text === "string") {
-            estimatedOutputText += data.delta.text;
-          }
 
-          if (data.type === "message_delta") {
-            const usage = data.usage && typeof data.usage === "object" ? data.usage as Record<string, any> : {};
-            const inputTokens = usage.input_tokens || estimatedInputTokens || 1;
-            const asciiWordsOut = estimatedOutputText.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
-            const cjkCharsOut = estimatedOutputText.match(/[\u3400-\u9fff]/g)?.length ?? 0;
-            const outputTokens = usage.output_tokens || Math.max(1, Math.ceil((asciiWordsOut + cjkCharsOut) * 1.15));
+          if (protocol === "anthropic_messages") {
+            if (data.type === "content_block_delta" && data.delta && data.delta.type === "text_delta" && typeof data.delta.text === "string") {
+              estimatedOutputText += data.delta.text;
+            }
 
-            data.usage = {
-              ...usage,
-              input_tokens: inputTokens,
-              output_tokens: outputTokens
-            };
-            event.raw = `event: message_delta\ndata: ${JSON.stringify(data)}`;
+            if (data.type === "message_delta") {
+              const usage = data.usage && typeof data.usage === "object" ? data.usage as Record<string, any> : {};
+              const inputTokens = usage.input_tokens || estimatedInputTokens || 1;
+              const asciiWordsOut = estimatedOutputText.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
+              const cjkCharsOut = estimatedOutputText.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+              const outputTokens = usage.output_tokens || Math.max(1, Math.ceil((asciiWordsOut + cjkCharsOut) * 1.15));
+
+              data.usage = {
+                ...usage,
+                input_tokens: inputTokens,
+                output_tokens: outputTokens
+              };
+              event.raw = `event: message_delta\ndata: ${JSON.stringify(data)}`;
+            }
+          } else if (protocol === "openai_responses") {
+            if (data.type === "response.content_part.delta" && data.delta && typeof data.delta.text === "string") {
+              estimatedOutputText += data.delta.text;
+            } else if (data.type === "response.text.delta" && typeof data.value === "string") {
+              estimatedOutputText += data.value;
+            }
+
+            if (data.type === "response.done" && data.response && typeof data.response === "object") {
+              const responseObj = data.response as Record<string, any>;
+              const usage = responseObj.usage && typeof responseObj.usage === "object" ? responseObj.usage as Record<string, any> : {};
+              const inputTokens = usage.prompt_tokens || estimatedInputTokens || 1;
+              const asciiWordsOut = estimatedOutputText.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
+              const cjkCharsOut = estimatedOutputText.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+              const outputTokens = usage.completion_tokens || Math.max(1, Math.ceil((asciiWordsOut + cjkCharsOut) * 1.15));
+
+              responseObj.usage = {
+                ...usage,
+                prompt_tokens: inputTokens,
+                completion_tokens: outputTokens,
+                total_tokens: inputTokens + outputTokens
+              };
+              event.raw = `event: response.done\ndata: ${JSON.stringify(data)}`;
+            }
           }
         }
         this.push(`${serializeSseEvent(event)}\n\n`);
@@ -8556,19 +8591,38 @@ function claudeCodeTokenUsageInjectorStream(input: Readable, requestBody: Buffer
         const event = parseSseEventBlock(pending);
         if (event.data && typeof event.data === "object") {
           const data = event.data as Record<string, any>;
-          if (data.type === "message_delta") {
-            const usage = data.usage && typeof data.usage === "object" ? data.usage as Record<string, any> : {};
-            const inputTokens = usage.input_tokens || estimatedInputTokens || 1;
-            const asciiWordsOut = estimatedOutputText.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
-            const cjkCharsOut = estimatedOutputText.match(/[\u3400-\u9fff]/g)?.length ?? 0;
-            const outputTokens = usage.output_tokens || Math.max(1, Math.ceil((asciiWordsOut + cjkCharsOut) * 1.15));
+          if (protocol === "anthropic_messages") {
+            if (data.type === "message_delta") {
+              const usage = data.usage && typeof data.usage === "object" ? data.usage as Record<string, any> : {};
+              const inputTokens = usage.input_tokens || estimatedInputTokens || 1;
+              const asciiWordsOut = estimatedOutputText.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
+              const cjkCharsOut = estimatedOutputText.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+              const outputTokens = usage.output_tokens || Math.max(1, Math.ceil((asciiWordsOut + cjkCharsOut) * 1.15));
 
-            data.usage = {
-              ...usage,
-              input_tokens: inputTokens,
-              output_tokens: outputTokens
-            };
-            event.raw = `event: message_delta\ndata: ${JSON.stringify(data)}`;
+              data.usage = {
+                ...usage,
+                input_tokens: inputTokens,
+                output_tokens: outputTokens
+              };
+              event.raw = `event: message_delta\ndata: ${JSON.stringify(data)}`;
+            }
+          } else if (protocol === "openai_responses") {
+            if (data.type === "response.done" && data.response && typeof data.response === "object") {
+              const responseObj = data.response as Record<string, any>;
+              const usage = responseObj.usage && typeof responseObj.usage === "object" ? responseObj.usage as Record<string, any> : {};
+              const inputTokens = usage.prompt_tokens || estimatedInputTokens || 1;
+              const asciiWordsOut = estimatedOutputText.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
+              const cjkCharsOut = estimatedOutputText.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+              const outputTokens = usage.completion_tokens || Math.max(1, Math.ceil((asciiWordsOut + cjkCharsOut) * 1.15));
+
+              responseObj.usage = {
+                ...usage,
+                prompt_tokens: inputTokens,
+                completion_tokens: outputTokens,
+                total_tokens: inputTokens + outputTokens
+              };
+              event.raw = `event: response.done\ndata: ${JSON.stringify(data)}`;
+            }
           }
         }
         this.push(`${serializeSseEvent(event)}\n\n`);
