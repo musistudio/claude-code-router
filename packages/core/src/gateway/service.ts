@@ -8605,6 +8605,8 @@ function gatewayTokenUsageInjectorStream(
               estimatedOutputText += data.delta.text;
             } else if (data.type === "response.text.delta" && typeof data.value === "string") {
               estimatedOutputText += data.value;
+            } else if (data.type === "response.function_call_arguments.delta" && typeof data.delta === "string") {
+              estimatedOutputText += data.delta;
             }
 
             if (data.type === "response.done" && data.response && typeof data.response === "object") {
@@ -8628,8 +8630,26 @@ function gatewayTokenUsageInjectorStream(
             lastModel = data.model || lastModel;
             lastSystemFingerprint = data.system_fingerprint || lastSystemFingerprint;
 
-            if (data.choices && Array.isArray(data.choices) && data.choices[0]?.delta?.content) {
-              estimatedOutputText += data.choices[0].delta.content;
+            if (data.choices && Array.isArray(data.choices)) {
+              const delta = data.choices[0]?.delta;
+              if (delta) {
+                if (typeof delta.content === "string") {
+                  estimatedOutputText += delta.content;
+                }
+                if (Array.isArray(delta.tool_calls)) {
+                  for (const tc of delta.tool_calls) {
+                    if (tc.function?.arguments) {
+                      estimatedOutputText += tc.function.arguments;
+                    }
+                    if (tc.id) {
+                      estimatedOutputText += tc.id;
+                    }
+                    if (tc.name) {
+                      estimatedOutputText += tc.name;
+                    }
+                  }
+                }
+              }
             }
 
             if (data.usage) {
@@ -8644,35 +8664,49 @@ function gatewayTokenUsageInjectorStream(
     flush(callback) {
       pending += decoder.end();
       if (pending.trim()) {
-        if (protocol === "openai_chat_completions" && pending.trim() === "data: [DONE]") {
-          if (!hasUsage) {
-            hasUsage = true;
-            this.push(`${serializeSseEvent(generateOpenAiChatUsageEvent())}\n\n`);
-          }
-        }
-
-        const event = parseSseEventBlock(pending);
-        if (event.data && typeof event.data === "object") {
-          const data = event.data as Record<string, any>;
-          if (protocol === "anthropic_messages") {
-            if (data.type === "message_delta") {
-              const usage = data.usage && typeof data.usage === "object" ? data.usage as Record<string, any> : {};
-              const inputTokens = usage.input_tokens || estimatedInputTokens || 1;
-              const asciiWordsOut = estimatedOutputText.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
-              const cjkCharsOut = estimatedOutputText.match(/[\u3400-\u9fff]/g)?.length ?? 0;
-              const outputTokens = usage.output_tokens || Math.max(1, Math.ceil((asciiWordsOut + cjkCharsOut) * 1.15));
-
-              data.usage = {
-                ...usage,
-                input_tokens: inputTokens,
-                output_tokens: outputTokens
-              };
-              event.raw = `event: message_delta\ndata: ${JSON.stringify(data)}`;
+        const parts = pending.split("\n\n");
+        for (const part of parts) {
+          if (protocol === "openai_chat_completions" && part.trim() === "data: [DONE]") {
+            if (!hasUsage) {
+              hasUsage = true;
+              this.push(`${serializeSseEvent(generateOpenAiChatUsageEvent())}\n\n`);
             }
           }
+
+          const event = parseSseEventBlock(part);
+          if (event.data && typeof event.data === "object") {
+            const data = event.data as Record<string, any>;
+            if (protocol === "anthropic_messages") {
+              if (data.type === "message_delta") {
+                const usage = data.usage && typeof data.usage === "object" ? data.usage as Record<string, any> : {};
+                const inputTokens = usage.input_tokens || estimatedInputTokens || 1;
+                const asciiWordsOut = estimatedOutputText.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
+                const cjkCharsOut = estimatedOutputText.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+                const outputTokens = usage.output_tokens || Math.max(1, Math.ceil((asciiWordsOut + cjkCharsOut) * 1.15));
+
+                data.usage = {
+                  ...usage,
+                  input_tokens: inputTokens,
+                  output_tokens: outputTokens
+                };
+                event.raw = `event: message_delta\ndata: ${JSON.stringify(data)}`;
+              }
+            } else if (protocol === "openai_chat_completions") {
+              if (data.usage) {
+                hasUsage = true;
+              }
+            }
+          }
+          this.push(`${serializeSseEvent(event)}\n\n`);
         }
-        this.push(`${serializeSseEvent(event)}\n\n`);
       }
+
+      if (protocol === "openai_chat_completions" && !hasUsage) {
+        hasUsage = true;
+        this.push(`${serializeSseEvent(generateOpenAiChatUsageEvent())}\n\n`);
+        this.push("data: [DONE]\n\n");
+      }
+
       callback();
     }
   }));
