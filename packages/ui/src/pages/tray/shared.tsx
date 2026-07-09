@@ -609,7 +609,7 @@ export function formatUsdCost(value: number | undefined): string {
   return new Intl.NumberFormat(undefined, {
     currency: "USD",
     maximumFractionDigits: normalized >= 100 ? 0 : 2,
-    minimumFractionDigits: 2,
+    minimumFractionDigits: normalized >= 100 ? 0 : 2,
     style: "currency"
   }).format(normalized);
 }
