@@ -1176,8 +1176,8 @@ async function writeCoreGatewayConfig(
   mkdirSync(dirname(config.gateway.generatedConfigFile), { mode: privateDirMode, recursive: true });
   const pluginCoreGatewayConfig = pluginService.getCoreGatewayConfig();
   const providerPlugins = withCodexOauthRuntimeDefaults([
-    ...(config.providerPlugins ?? []),
-    ...pluginService.getCoreProviderPlugins()
+    ...(config.providerPlugins ?? []).filter(providerPluginEnabled),
+    ...pluginService.getCoreProviderPlugins().filter(providerPluginEnabled)
   ]);
   const codexOauthProviderNames = codexOauthLocalProviderNames(providerPlugins);
   const virtualModelProfiles = normalizeCoreGatewayVirtualModelProfiles(withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases([
@@ -1261,6 +1261,10 @@ function writePrivateTextFile(file: string, content: string): void {
       // Best effort for filesystems that do not support chmod.
     }
   }
+}
+
+function providerPluginEnabled(plugin: unknown): boolean {
+  return !isRecord(plugin) || plugin.enabled !== false;
 }
 
 export function normalizeCoreGatewayVirtualModelProfiles(profiles: unknown[], config: AppConfig): unknown[] {
@@ -5696,7 +5700,7 @@ async function fetchUpstreamWithFallback(input: {
       });
 
       if (hasNextAttempt && shouldFallbackAfterStatus(response.status, fallbackMode)) {
-        const delayMs = retryDelayAfterStatus(response.status, response, failedAttempts.length);
+        const delayMs = retryDelayAfterStatus(response.status, response.headers, failedAttempts.length);
         failedAttempts.push({
           credentialChain: attempt.credentialChain,
           credentialIds: attempt.credentialIds,
@@ -5719,10 +5723,13 @@ async function fetchUpstreamWithFallback(input: {
       };
     } catch (error) {
       const message = formatError(error);
+      const delayMs = hasNextAttempt && !input.signal?.aborted
+        ? retryDelayAfterNetworkError(failedAttempts.length)
+        : 0;
       failedAttempts.push({
         credentialChain: attempt.credentialChain,
         credentialIds: attempt.credentialIds,
-        delayMs: 0,
+        delayMs,
         error: message,
         model: attempt.model
       });
@@ -5734,6 +5741,9 @@ async function fetchUpstreamWithFallback(input: {
         });
       }
       if (hasNextAttempt) {
+        if (delayMs > 0) {
+          await delay(delayMs);
+        }
         continue;
       }
       throw new UpstreamRequestError(message, {
@@ -6185,15 +6195,28 @@ function shouldFallbackAfterStatus(statusCode: number, mode: RouterFallbackMode)
   return false;
 }
 
-function retryDelayAfterStatus(statusCode: number, response: Response, failedAttemptIndex: number): number {
-  if (statusCode !== 429) {
-    return 0;
-  }
-  const retryAfterMs = parseRetryAfterHeaderMs(response.headers.get("retry-after"));
-  if (retryAfterMs !== undefined) {
-    return clampNumber(retryAfterMs, 0, upstreamRetryAfterMaxMs);
+function retryDelayAfterStatus(_statusCode: number, headers: Headers, failedAttemptIndex: number): number {
+  const retryAfterMs = parseRetryAfterHeaderMs(headers.get("retry-after"));
+  if (retryAfterMs !== undefined && retryAfterMs > 0) {
+    return clampNumber(retryAfterMs, 1, upstreamRetryAfterMaxMs);
   }
   return exponentialRetryBackoffMs(failedAttemptIndex);
+}
+
+function retryDelayAfterNetworkError(failedAttemptIndex: number): number {
+  return exponentialRetryBackoffMs(failedAttemptIndex);
+}
+
+export function fallbackRetryDelayAfterStatusForTest(input: { failedAttemptIndex?: number; retryAfter?: string | null; statusCode: number }): number {
+  const headers = new Headers();
+  if (input.retryAfter !== undefined && input.retryAfter !== null) {
+    headers.set("retry-after", input.retryAfter);
+  }
+  return retryDelayAfterStatus(input.statusCode, headers, input.failedAttemptIndex ?? 0);
+}
+
+export function fallbackRetryDelayAfterNetworkErrorForTest(failedAttemptIndex = 0): number {
+  return retryDelayAfterNetworkError(failedAttemptIndex);
 }
 
 function parseRetryAfterHeaderMs(value: string | null): number | undefined {

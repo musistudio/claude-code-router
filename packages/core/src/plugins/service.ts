@@ -144,6 +144,18 @@ type LoadedPlugin = {
   stop?: () => MaybePromise<void>;
 };
 
+type PluginServiceStateSnapshot = {
+  apps: InstalledBrowserApp[];
+  coreGatewayConfig: Record<string, unknown>;
+  coreProviderPlugins: unknown[];
+  gatewayRoutes: RegisteredGatewayRoute[];
+  providerAccountConnectors: Map<string, GatewayPluginProviderAccountConnector>;
+  proxyRoutes: RegisteredProxyRoute[];
+  resourceOwnerIds: Set<string>;
+  stopHooks: Array<() => MaybePromise<void>>;
+  virtualModelProfiles: unknown[];
+};
+
 const requireFromHere = createRequire(__filename);
 const builtInMarketplacePluginModules = new Map<string, string>([
   ["claude-design", path.join(__dirname, "..", "marketplace", "plugins", "claude-design-plugin.cjs")],
@@ -172,8 +184,14 @@ class GatewayPluginService {
       if (pluginConfig.enabled === false) {
         continue;
       }
+      const snapshot = this.createStateSnapshot();
       this.resourceOwnerIds.add(pluginConfig.id);
-      await this.loadConfiguredPlugin(pluginConfig);
+      try {
+        await this.loadConfiguredPlugin(pluginConfig);
+      } catch (error) {
+        await this.rollbackConfiguredPluginLoad(pluginConfig.id, snapshot);
+        console.warn(`[plugin:${pluginConfig.id}] Disabled after startup failure: ${formatError(error)}`);
+      }
     }
   }
 
@@ -512,6 +530,47 @@ class GatewayPluginService {
     options: PluginSqliteStoreOptions = {}
   ): Promise<PluginSqliteStore> {
     return backendService.openSqliteStore(pluginId, pluginDataDir, options);
+  }
+
+  private createStateSnapshot(): PluginServiceStateSnapshot {
+    return {
+      apps: [...this.apps],
+      coreGatewayConfig: { ...this.coreGatewayConfig },
+      coreProviderPlugins: [...this.coreProviderPlugins],
+      gatewayRoutes: [...this.gatewayRoutes],
+      providerAccountConnectors: new Map(this.providerAccountConnectors),
+      proxyRoutes: [...this.proxyRoutes],
+      resourceOwnerIds: new Set(this.resourceOwnerIds),
+      stopHooks: [...this.stopHooks],
+      virtualModelProfiles: [...this.virtualModelProfiles]
+    };
+  }
+
+  private async rollbackConfiguredPluginLoad(pluginId: string, snapshot: PluginServiceStateSnapshot): Promise<void> {
+    const newStopHooks = this.stopHooks.slice(snapshot.stopHooks.length).reverse();
+    this.apps = snapshot.apps;
+    this.coreGatewayConfig = snapshot.coreGatewayConfig;
+    this.coreProviderPlugins = snapshot.coreProviderPlugins;
+    this.gatewayRoutes = snapshot.gatewayRoutes;
+    this.providerAccountConnectors = snapshot.providerAccountConnectors;
+    this.proxyRoutes = snapshot.proxyRoutes;
+    this.resourceOwnerIds = snapshot.resourceOwnerIds;
+    this.stopHooks = snapshot.stopHooks;
+    this.virtualModelProfiles = snapshot.virtualModelProfiles;
+
+    for (const stopHook of newStopHooks) {
+      try {
+        await stopHook();
+      } catch (error) {
+        console.warn(`[plugin:${pluginId}] Rollback stop hook failed: ${formatError(error)}`);
+      }
+    }
+
+    try {
+      await backendService.stopOwner(pluginId);
+    } catch (error) {
+      console.warn(`[plugin:${pluginId}] Rollback resource cleanup failed: ${formatError(error)}`);
+    }
   }
 }
 

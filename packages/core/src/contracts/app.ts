@@ -420,6 +420,7 @@ export type GatewayProviderProbeRequest = {
 
 export type GatewayProviderProbeCandidate = {
   baseUrl: string;
+  declaredProtocols?: GatewayProviderProtocol[];
   label?: string;
   protocols: GatewayProviderProtocol[];
   source: "custom" | "preset";
