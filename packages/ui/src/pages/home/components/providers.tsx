@@ -12,7 +12,7 @@ import {
   providerAccountConnectorsTextWithNewApiUserBalanceTemplate, providerAccountSnapshotCredentialLabel, providerAccountSnapshotLabel, ProviderAccountTestPath,
   ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
   ProviderConnectivityCheckReport, providerDeepLinkDisplayIcon, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
-  providerModelDisplayName, providerModelDisplayTitle, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
+  providerDisplayIcon, providerModelDisplayName, providerModelDisplayTitle, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
   resolveProviderDeepLinkPreset, ShieldCheck, splitLines, splitModelTagInput, Switch, Textarea, translatedProviderProtocolLabel, translateOptions,
   translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppErrorText, useAppText, useEffect, useMemo,
   useRef, useState, X, isPlainRecord
@@ -111,24 +111,25 @@ export function ProvidersView({ accountSnapshots, addProvider, editProvider, not
                 </div>
                 <div className="divide-y divide-border/60">
                   <AnimatePresence initial={false}>
-                  {visibleProviders.map(({ provider, index }) => {
-                    const itemKey = providerListItemKey(provider, index);
-                    const expanded = expandedProviders.has(itemKey);
+                    {visibleProviders.map(({ provider, index }) => {
+                      const itemKey = providerListItemKey(provider, index);
+                      const expanded = expandedProviders.has(itemKey);
                       const providerAccountSnapshots = accountSnapshotsByProvider.get(provider.name) ?? [];
-                    return (
-                      <AnimatedListItem key={itemKey}>
-                        <div
-                          className="grid min-h-[58px] cursor-pointer grid-cols-[minmax(160px,0.8fr)_minmax(220px,1fr)_minmax(160px,0.7fr)_minmax(150px,0.65fr)_80px_84px] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35"
-                          onClick={() => toggleProvider(provider, index)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              toggleProvider(provider, index);
-                            }
-                          }}
-                          role="button"
-                          tabIndex={0}
-                        >
+                      const providerIconUrl = providerDisplayIcon(provider);
+                      return (
+                        <AnimatedListItem key={itemKey}>
+                          <div
+                            className="grid min-h-[58px] cursor-pointer grid-cols-[minmax(160px,0.8fr)_minmax(220px,1fr)_minmax(160px,0.7fr)_minmax(150px,0.65fr)_80px_84px] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35"
+                            onClick={() => toggleProvider(provider, index)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                toggleProvider(provider, index);
+                              }
+                            }}
+                            role="button"
+                            tabIndex={0}
+                          >
                           <div className="flex min-w-0 items-center gap-2">
                             <button
                               aria-expanded={expanded}
@@ -143,6 +144,7 @@ export function ProvidersView({ accountSnapshots, addProvider, editProvider, not
                             >
                               {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                             </button>
+                            <ProviderPresetIcon className="h-8 w-8 rounded-md" iconUrl={providerIconUrl} />
                             <div className="min-w-0">
                               <div className="truncate text-[12px] font-semibold">{provider.name || t("Unnamed")}</div>
                             </div>

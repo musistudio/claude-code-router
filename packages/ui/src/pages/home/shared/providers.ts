@@ -772,6 +772,16 @@ export function providerDeepLinkDisplayIcon(payload: ProviderDeepLinkPayload): s
   return presetIcon || payload.icon?.trim() || "";
 }
 
+export function providerDisplayIcon(provider: GatewayProviderConfig): string {
+  const icon = provider.icon?.trim();
+  if (icon) {
+    return icon;
+  }
+
+  const preset = findProviderPresetByBaseUrl(providerBaseUrl(provider));
+  return preset ? providerPresetIconUrls[preset.id] ?? "" : "";
+}
+
 export type ProviderDeepLinkCatalogModelsResolution = {
   modelDisplayNames?: Record<string, string>;
   models: string[];

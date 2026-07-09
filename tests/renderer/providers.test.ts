@@ -1,15 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import * as React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { newApiKeyUsageAccountConfig } from "../../packages/core/src/providers/new-api.ts";
 import { geminiProviderPreset } from "../../packages/core/src/providers/presets/gemini/index.ts";
+import { ProvidersView } from "../../packages/ui/src/pages/home/components/providers.tsx";
 import {
   applyProviderProbeResult,
   createProviderDraft,
+  providerDisplayIcon,
   providerAccountConnectorsTextWithNewApiUserBalanceTemplate,
+  providerPresetIconUrls,
   providerProtocolOptions,
   providerProbeCandidates,
   setProviderPresets
 } from "../../packages/ui/src/pages/home/shared/index.tsx";
+import { installBrowserGlobals } from "./fixtures.ts";
+
+installBrowserGlobals();
 
 test("Gemini preset keeps full protocol probing candidates", () => {
   setProviderPresets([geminiProviderPreset]);
@@ -110,6 +118,58 @@ test("provider probe result applies detected New API key quota account connector
   assert.equal(connectors[0].mapping.meters[0].id, "new_api_key_quota");
   assert.equal(connectors[0].mapping.meters[0].kind, "quota");
   assert.equal(connectors[0].mapping.meters[0].remaining, "$.data.total_available");
+});
+
+test("provider display icon prefers custom icons and falls back to preset icons", () => {
+  setProviderPresets([geminiProviderPreset]);
+
+  assert.equal(
+    providerDisplayIcon({
+      api_base_url: "https://custom.example/v1",
+      icon: "https://custom.example/icon.png",
+      models: [],
+      name: "Custom Provider",
+      type: "openai_chat_completions"
+    }),
+    "https://custom.example/icon.png"
+  );
+  assert.equal(
+    providerDisplayIcon({
+      api_base_url: "https://generativelanguage.googleapis.com",
+      models: [],
+      name: "Google Gemini",
+      type: "gemini_generate_content"
+    }),
+    providerPresetIconUrls.gemini
+  );
+});
+
+test("ProvidersView renders configured provider icons in the list", () => {
+  const iconUrl = "https://custom.example/icon.png";
+  const html = renderToStaticMarkup(
+    React.createElement(ProvidersView, {
+      accountSnapshots: [],
+      addProvider: () => undefined,
+      editProvider: () => undefined,
+      notify: () => undefined,
+      providers: [
+        {
+          index: 0,
+          provider: {
+            api_base_url: "https://custom.example/v1",
+            icon: iconUrl,
+            models: ["custom-model"],
+            name: "Custom Provider",
+            type: "openai_chat_completions"
+          }
+        }
+      ],
+      removeProvider: () => undefined
+    })
+  );
+
+  assert.match(html, /Custom Provider/);
+  assert.match(html, /src="https:\/\/custom\.example\/icon\.png"/);
 });
 
 test("New API user balance template adds configurable user self connector", () => {
