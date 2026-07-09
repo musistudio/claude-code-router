@@ -8582,8 +8582,12 @@ function gatewayTokenUsageInjectorStream(
           const data = event.data as Record<string, any>;
 
           if (protocol === "anthropic_messages") {
-            if (data.type === "content_block_delta" && data.delta && data.delta.type === "text_delta" && typeof data.delta.text === "string") {
-              estimatedOutputText += data.delta.text;
+            if (data.type === "content_block_delta" && data.delta) {
+              if (data.delta.type === "text_delta" && typeof data.delta.text === "string") {
+                estimatedOutputText += data.delta.text;
+              } else if (data.delta.type === "thinking_delta" && typeof data.delta.thinking === "string") {
+                estimatedOutputText += data.delta.thinking;
+              }
             }
 
             if (data.type === "message_delta") {
@@ -8601,8 +8605,16 @@ function gatewayTokenUsageInjectorStream(
               event.raw = `event: message_delta\ndata: ${JSON.stringify(data)}`;
             }
           } else if (protocol === "openai_responses") {
-            if (data.type === "response.content_part.delta" && data.delta && typeof data.delta.text === "string") {
-              estimatedOutputText += data.delta.text;
+            if (data.type === "response.content_part.delta" && data.delta) {
+              if (typeof data.delta.text === "string") {
+                estimatedOutputText += data.delta.text;
+              }
+              if (typeof data.delta.thinking === "string") {
+                estimatedOutputText += data.delta.thinking;
+              }
+              if (typeof data.delta.reasoning === "string") {
+                estimatedOutputText += data.delta.reasoning;
+              }
             } else if (data.type === "response.text.delta" && typeof data.value === "string") {
               estimatedOutputText += data.value;
             } else if (data.type === "response.function_call_arguments.delta" && typeof data.delta === "string") {
@@ -8635,6 +8647,12 @@ function gatewayTokenUsageInjectorStream(
               if (delta) {
                 if (typeof delta.content === "string") {
                   estimatedOutputText += delta.content;
+                }
+                if (typeof delta.reasoning_content === "string") {
+                  estimatedOutputText += delta.reasoning_content;
+                }
+                if (typeof delta.reasoning === "string") {
+                  estimatedOutputText += delta.reasoning;
                 }
                 if (Array.isArray(delta.tool_calls)) {
                   for (const tc of delta.tool_calls) {
