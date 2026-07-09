@@ -1037,9 +1037,14 @@ class GatewayService {
     const requestPath = normalizeGatewayPathname(path);
     const isMessages = requestPath === "/v1/messages" || requestPath === "/messages" || requestPath.endsWith("/v1/messages");
     const isResponses = requestPath === "/v1/responses" || requestPath === "/responses" || requestPath.endsWith("/responses");
+    const isChat = requestPath === "/v1/chat/completions" || requestPath === "/chat/completions" || requestPath.endsWith("/chat/completions");
     const isSse = responseHeaders.get("content-type")?.toLowerCase().includes("text/event-stream");
-    const responseBodyWithUsage = isSse && (isMessages || isResponses)
-      ? gatewayTokenUsageInjectorStream(responseBody, bodyToForward, isMessages ? "anthropic_messages" : "openai_responses")
+    const responseBodyWithUsage = isSse && (isMessages || isResponses || isChat)
+      ? gatewayTokenUsageInjectorStream(
+          responseBody,
+          bodyToForward,
+          isMessages ? "anthropic_messages" : isResponses ? "openai_responses" : "openai_chat_completions"
+        )
       : responseBody;
 
     const responseStreams = uniqueStreams([upstreamBody, patchedResponseBody, responseBody, responseBodyWithUsage]);
@@ -8506,11 +8511,15 @@ function shouldCaptureGatewayUsage(method: string, _path: string): boolean {
 function gatewayTokenUsageInjectorStream(
   input: Readable,
   requestBody: Buffer | undefined,
-  protocol: "anthropic_messages" | "openai_responses"
+  protocol: "anthropic_messages" | "openai_responses" | "openai_chat_completions"
 ): Readable {
   let pending = "";
   let estimatedInputTokens = 0;
   let estimatedOutputText = "";
+  let hasUsage = false;
+  let lastId = "";
+  let lastModel = "";
+  let lastSystemFingerprint = "";
 
   if (requestBody) {
     try {
@@ -8525,6 +8534,31 @@ function gatewayTokenUsageInjectorStream(
     }
   }
 
+  const generateOpenAiChatUsageEvent = (): ParsedSseEvent => {
+    const asciiWordsOut = estimatedOutputText.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
+    const cjkCharsOut = estimatedOutputText.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+    const outputTokens = Math.max(1, Math.ceil((asciiWordsOut + cjkCharsOut) * 1.15));
+    const inputTokens = estimatedInputTokens || 1;
+
+    const chunk = {
+      id: lastId || `chatcmpl-${Math.random().toString(36).substring(7)}`,
+      object: "chat.completion.chunk",
+      created: Math.floor(Date.now() / 1000),
+      model: lastModel || "model",
+      ...(lastSystemFingerprint ? { system_fingerprint: lastSystemFingerprint } : {}),
+      choices: [],
+      usage: {
+        prompt_tokens: inputTokens,
+        completion_tokens: outputTokens,
+        total_tokens: inputTokens + outputTokens
+      }
+    };
+
+    return {
+      raw: `data: ${JSON.stringify(chunk)}`
+    };
+  };
+
   return input.pipe(new Transform({
     transform(chunk, _encoding, callback) {
       const text = chunk.toString();
@@ -8534,6 +8568,13 @@ function gatewayTokenUsageInjectorStream(
       pending = parts.pop() ?? "";
 
       for (const part of parts) {
+        if (protocol === "openai_chat_completions" && part.trim() === "data: [DONE]") {
+          if (!hasUsage) {
+            hasUsage = true;
+            this.push(`${serializeSseEvent(generateOpenAiChatUsageEvent())}\n\n`);
+          }
+        }
+
         const event = parseSseEventBlock(part);
         if (event.data && typeof event.data === "object") {
           const data = event.data as Record<string, any>;
@@ -8580,6 +8621,18 @@ function gatewayTokenUsageInjectorStream(
               };
               event.raw = `event: response.done\ndata: ${JSON.stringify(data)}`;
             }
+          } else if (protocol === "openai_chat_completions") {
+            lastId = data.id || lastId;
+            lastModel = data.model || lastModel;
+            lastSystemFingerprint = data.system_fingerprint || lastSystemFingerprint;
+
+            if (data.choices && Array.isArray(data.choices) && data.choices[0]?.delta?.content) {
+              estimatedOutputText += data.choices[0].delta.content;
+            }
+
+            if (data.usage) {
+              hasUsage = true;
+            }
           }
         }
         this.push(`${serializeSseEvent(event)}\n\n`);
@@ -8588,6 +8641,13 @@ function gatewayTokenUsageInjectorStream(
     },
     flush(callback) {
       if (pending.trim()) {
+        if (protocol === "openai_chat_completions" && pending.trim() === "data: [DONE]") {
+          if (!hasUsage) {
+            hasUsage = true;
+            this.push(`${serializeSseEvent(generateOpenAiChatUsageEvent())}\n\n`);
+          }
+        }
+
         const event = parseSseEventBlock(pending);
         if (event.data && typeof event.data === "object") {
           const data = event.data as Record<string, any>;
@@ -8605,23 +8665,6 @@ function gatewayTokenUsageInjectorStream(
                 output_tokens: outputTokens
               };
               event.raw = `event: message_delta\ndata: ${JSON.stringify(data)}`;
-            }
-          } else if (protocol === "openai_responses") {
-            if (data.type === "response.done" && data.response && typeof data.response === "object") {
-              const responseObj = data.response as Record<string, any>;
-              const usage = responseObj.usage && typeof responseObj.usage === "object" ? responseObj.usage as Record<string, any> : {};
-              const inputTokens = usage.prompt_tokens || estimatedInputTokens || 1;
-              const asciiWordsOut = estimatedOutputText.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
-              const cjkCharsOut = estimatedOutputText.match(/[\u3400-\u9fff]/g)?.length ?? 0;
-              const outputTokens = usage.completion_tokens || Math.max(1, Math.ceil((asciiWordsOut + cjkCharsOut) * 1.15));
-
-              responseObj.usage = {
-                ...usage,
-                prompt_tokens: inputTokens,
-                completion_tokens: outputTokens,
-                total_tokens: inputTokens + outputTokens
-              };
-              event.raw = `event: response.done\ndata: ${JSON.stringify(data)}`;
             }
           }
         }
