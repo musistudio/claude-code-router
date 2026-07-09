@@ -8566,7 +8566,7 @@ function gatewayTokenUsageInjectorStream(
       const text = decoder.write(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
       pending += text;
 
-      const parts = pending.split("\n\n");
+      const parts = pending.split(/\r?\n\r?\n/);
       pending = parts.pop() ?? "";
 
       for (const part of parts) {
@@ -8664,7 +8664,7 @@ function gatewayTokenUsageInjectorStream(
     flush(callback) {
       pending += decoder.end();
       if (pending.trim()) {
-        const parts = pending.split("\n\n");
+        const parts = pending.split(/\r?\n\r?\n/);
         for (const part of parts) {
           if (protocol === "openai_chat_completions" && part.trim() === "data: [DONE]") {
             if (!hasUsage) {
