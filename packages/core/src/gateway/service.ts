@@ -7683,6 +7683,14 @@ function createGatewayModelsResponse(config: AppConfig, headers: IncomingHttpHea
   return createOpenAICompatibleGatewayModelsResponse(config);
 }
 
+export function createGatewayModelsResponseForTest(
+  config: AppConfig,
+  headers: IncomingHttpHeaders = {},
+  apiKey?: ApiKeyConfig
+): Record<string, unknown> {
+  return createGatewayModelsResponse(config, headers, apiKey);
+}
+
 function createOpenAICompatibleGatewayModelsResponse(config: AppConfig): Record<string, unknown> {
   const data = buildGatewayDiscoverableModelIds(config).map((id) => {
     const catalogEntry = findModelCatalogEntry(id);
@@ -7763,10 +7771,10 @@ function createClaudeCodeModelsResponse(config: AppConfig): Record<string, unkno
 
 function claudeGatewayModelContextWindow(entry: ModelCatalogEntry | undefined, oneMillionContext: boolean): number {
   const contextWindow = modelCatalogMaxInputTokens(entry);
-  if (contextWindow > 0) {
-    return contextWindow;
+  if (oneMillionContext) {
+    return Math.max(contextWindow, 1_000_000);
   }
-  return oneMillionContext ? 1_000_000 : 0;
+  return contextWindow;
 }
 
 function buildClaudeCodeDiscoverableModelIds(config: AppConfig): string[] {
@@ -7957,7 +7965,7 @@ function createClaudeCodeModelCapabilities(
   options: { maxInputTokens?: number; oneMillionContext?: boolean } = {}
 ): Record<string, unknown> {
   if (!entry) {
-    return createDefaultClaudeCodeModelCapabilities();
+    return createDefaultClaudeCodeModelCapabilities(options);
   }
 
   const capabilities = entry.capabilities ?? {};
@@ -7981,7 +7989,7 @@ function createClaudeCodeModelCapabilities(
   const supportsAudioOutput = readCatalogCapability(capabilities, "audioOutput") || outputModalities.has("audio");
   const supportsVideoInput = readCatalogCapability(capabilities, "videoInput") || inputModalities.has("video");
   const maxInputTokens = options.maxInputTokens ?? modelCatalogMaxInputTokens(entry);
-  const supportsOneMillionContext = Boolean(entry.limits?.supports1MContext);
+  const supportsOneMillionContext = Boolean(entry.limits?.supports1MContext) || options.oneMillionContext === true;
 
   return {
     audio_input: { supported: supportsAudioInput },
@@ -8025,8 +8033,11 @@ function createClaudeCodeModelCapabilities(
   };
 }
 
-function createDefaultClaudeCodeModelCapabilities(): Record<string, unknown> {
-  return {
+function createDefaultClaudeCodeModelCapabilities(
+  options: { maxInputTokens?: number; oneMillionContext?: boolean } = {}
+): Record<string, unknown> {
+  const maxInputTokens = options.maxInputTokens ?? (options.oneMillionContext === true ? 1_000_000 : 0);
+  const capabilities: Record<string, unknown> = {
     batch: { supported: true },
     citations: { supported: true },
     code_execution: { supported: true },
@@ -8055,6 +8066,20 @@ function createDefaultClaudeCodeModelCapabilities(): Record<string, unknown> {
       }
     }
   };
+  if (maxInputTokens > 0) {
+    capabilities.context_management = {
+      ...(capabilities.context_management as Record<string, unknown>),
+      max_input_tokens: maxInputTokens,
+      supported: true
+    };
+    capabilities.context_window = {
+      max_input_tokens: maxInputTokens,
+      supported: true,
+      supports_1m_context: options.oneMillionContext === true,
+      one_million_context_variant: options.oneMillionContext === true
+    };
+  }
+  return capabilities;
 }
 
 function normalizeGatewayPathname(path: string): string {

@@ -150,6 +150,34 @@ test("codex catalog disables apply_patch bridge for non-GPT models when the Code
   assert.equal(model.apply_patch_tool_type, null);
 });
 
+test("codex catalog marks Sakana fugu models as 1M context by provider endpoint", () => {
+  const config = {
+    Providers: [
+      { name: "Sakana", baseUrl: "https://api.sakana.ai/v1", type: "openai_chat_completions", models: ["fugu-ultra"] },
+      {
+        name: "SakanaCapability",
+        baseUrl: "https://example.com/v1",
+        capabilities: [{ baseUrl: "https://api.sakana.ai/v1", type: "openai_chat_completions" }],
+        type: "openai_chat_completions",
+        models: ["fugu"]
+      },
+      { name: "Custom", baseUrl: "https://example.com/v1", type: "openai_chat_completions", models: ["fugu-ultra"] }
+    ]
+  };
+
+  const sakanaUltra = catalogModelFor(config, "Sakana/fugu-ultra");
+  assert.equal(sakanaUltra.context_window, 1_000_000);
+  assert.equal(sakanaUltra.max_context_window, 1_000_000);
+
+  const sakanaFugu = catalogModelFor(config, "SakanaCapability/fugu");
+  assert.equal(sakanaFugu.context_window, 1_000_000);
+  assert.equal(sakanaFugu.max_context_window, 1_000_000);
+
+  const customFugu = catalogModelFor(config, "Custom/fugu-ultra");
+  assert.equal(customFugu.context_window, 128_000);
+  assert.equal(customFugu.max_context_window, 128_000);
+});
+
 test("codex catalog marks Fusion aliases with builtin web search as searchable", () => {
   const model = catalogModelFor({
     Providers: [],

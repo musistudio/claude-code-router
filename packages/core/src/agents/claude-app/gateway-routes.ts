@@ -4,6 +4,8 @@ import { normalizeProfileScopeValue } from "@ccr/core/contracts/app";
 export const CLAUDE_APP_FALLBACK_MODEL = "claude-sonnet-4-5";
 export const CLAUDE_APP_ONE_MILLION_CONTEXT_SUFFIX = "[1m]";
 const CLAUDE_APP_ENCODED_ROUTE_PREFIX = "anthropic/claude-ccr-h";
+const SAKANA_API_HOSTNAME = "api.sakana.ai";
+const SAKANA_ONE_MILLION_CONTEXT_MODELS = new Set(["fugu", "fugu-ultra"]);
 
 export type ClaudeAppGatewayModelRoute = {
   displayName: string;
@@ -43,7 +45,7 @@ export function buildClaudeAppGatewayModelRoutes(
   const seenTargets = new Set<string>();
   return targetModels.flatMap((rawTargetModel, index) => {
     const targetModel = stripClaudeAppGatewayOneMillionContextSuffix(rawTargetModel);
-    const oneMillionContext = claudeAppGatewaySupportsOneMillionContext(rawTargetModel, options);
+    const oneMillionContext = claudeAppGatewaySupportsOneMillionContext(rawTargetModel, config, options);
     const targetKey = `${targetModel.toLowerCase()}::${oneMillionContext ? "1m" : "base"}`;
     if (seenTargets.has(targetKey)) {
       return [];
@@ -179,11 +181,60 @@ function claudeAppGatewayTargetModels(config: Pick<AppConfig, "Providers" | "pro
 
 function claudeAppGatewaySupportsOneMillionContext(
   model: string,
+  config: Pick<AppConfig, "Providers">,
   options: ClaudeAppGatewayModelRouteOptions
 ): boolean {
   const baseModel = stripClaudeAppGatewayOneMillionContextSuffix(model);
   return hasClaudeAppGatewayOneMillionContextSuffix(model) ||
-    Boolean(options.supportsOneMillionContext?.(baseModel));
+    Boolean(options.supportsOneMillionContext?.(baseModel)) ||
+    claudeAppGatewayProviderModelSupportsOneMillionContext(baseModel, config);
+}
+
+function claudeAppGatewayProviderModelSupportsOneMillionContext(
+  model: string,
+  config: Pick<AppConfig, "Providers">
+): boolean {
+  const target = splitClaudeAppGatewayProviderModelSelector(model);
+  if (!target || !SAKANA_ONE_MILLION_CONTEXT_MODELS.has(target.modelName.toLowerCase())) {
+    return false;
+  }
+
+  const provider = config.Providers.find((candidate) =>
+    candidate.name?.trim().toLowerCase() === target.providerName.toLowerCase()
+  );
+  return provider ? claudeAppGatewayProviderTargetsSakana(provider) : false;
+}
+
+function splitClaudeAppGatewayProviderModelSelector(model: string): { modelName: string; providerName: string } | undefined {
+  const normalized = stripClaudeAppGatewayOneMillionContextSuffix(model);
+  const separator = normalized.indexOf("/");
+  if (separator <= 0 || separator >= normalized.length - 1) {
+    return undefined;
+  }
+  const providerName = normalized.slice(0, separator).trim();
+  const modelName = normalized.slice(separator + 1).trim();
+  return providerName && modelName ? { modelName, providerName } : undefined;
+}
+
+function claudeAppGatewayProviderTargetsSakana(provider: AppConfig["Providers"][number]): boolean {
+  return [
+    provider.baseUrl,
+    provider.baseurl,
+    provider.api_base_url,
+    ...(provider.capabilities ?? []).map((capability) => capability.baseUrl)
+  ].some(claudeAppGatewayUrlTargetsSakana);
+}
+
+function claudeAppGatewayUrlTargetsSakana(value: string | undefined): boolean {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return false;
+  }
+  try {
+    return new URL(normalized).hostname.toLowerCase() === SAKANA_API_HOSTNAME;
+  } catch {
+    return false;
+  }
 }
 
 function claudeAppGatewayRouteId(

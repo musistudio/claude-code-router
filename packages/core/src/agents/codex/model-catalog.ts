@@ -8,6 +8,8 @@ import {
 } from "@ccr/core/gateway/model-catalog";
 
 const fusionModelProviderName = "Fusion";
+const sakanaApiHostname = "api.sakana.ai";
+const sakanaOneMillionContextModels = new Set(["fugu", "fugu-ultra"]);
 const codexDefaultContextWindow = 128_000;
 const codexEffectiveContextWindowPercent = 95;
 
@@ -113,7 +115,7 @@ function codexModelCatalogItem(
   config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>
 ): CodexModelCatalogItem {
   const profile = codexModelCapabilityProfile(model, config);
-  const contextWindow = codexModelContextWindow(model, profile.catalogEntry);
+  const contextWindow = codexModelContextWindow(model, profile.catalogEntry, config);
   return {
     additional_speed_tiers: [],
     apply_patch_tool_type: profile.applyPatchToolType,
@@ -197,8 +199,49 @@ function codexModelCapabilityProfile(
   };
 }
 
-function codexModelContextWindow(model: string, entry = findModelCatalogEntry(model)): number {
+function codexModelContextWindow(
+  model: string,
+  entry = findModelCatalogEntry(model),
+  config?: Partial<Pick<AppConfig, "Providers">>
+): number {
+  if (codexProviderModelSupportsOneMillionContext(model, config)) {
+    return 1_000_000;
+  }
   return modelCatalogMaxInputTokens(entry) || codexDefaultContextWindow;
+}
+
+function codexProviderModelSupportsOneMillionContext(
+  model: string,
+  config?: Partial<Pick<AppConfig, "Providers">>
+): boolean {
+  const selector = parseModelSelector(model);
+  if (!selector || !sakanaOneMillionContextModels.has(selector.model.toLowerCase())) {
+    return false;
+  }
+
+  const provider = findConfiguredProvider(config, selector.provider);
+  return provider ? codexProviderTargetsSakana(provider) : false;
+}
+
+function codexProviderTargetsSakana(provider: GatewayProviderConfig): boolean {
+  return [
+    provider.baseUrl,
+    provider.baseurl,
+    provider.api_base_url,
+    ...(provider.capabilities ?? []).map((capability) => capability.baseUrl)
+  ].some(codexProviderUrlTargetsSakana);
+}
+
+function codexProviderUrlTargetsSakana(value: string | undefined): boolean {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return false;
+  }
+  try {
+    return new URL(normalized).hostname.toLowerCase() === sakanaApiHostname;
+  } catch {
+    return false;
+  }
 }
 
 function catalogEntrySupportsImageInput(entry: ModelCatalogEntry | undefined): boolean {
