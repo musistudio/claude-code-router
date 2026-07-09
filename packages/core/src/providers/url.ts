@@ -137,12 +137,18 @@ function shouldProbeOpenAiV1Fallback(value: string): boolean {
 }
 
 function shouldProbeAnthropicPrefixFallback(value: string): boolean {
+  // Only add /anthropic fallback when the URL already shows anthropic affinity:
+  // - hostname contains "anthropic" (e.g. api.anthropic.com)
+  // - path contains "anthropic" (e.g. api.z.ai/api/anthropic)
+  // This prevents false positives where a non-anthropic endpoint
+  // coincidentally responds to /anthropic/* with a 401/403.
   const url = new URL(value);
   const segments = url.pathname
     .split("/")
     .map((segment) => segment.trim().toLowerCase())
     .filter(Boolean);
-  return !segments.includes("anthropic");
+  const hostname = url.hostname.toLowerCase();
+  return hostname.includes("anthropic") || segments.includes("anthropic");
 }
 
 function ensureProviderApiVersion(value: string, version: "v1"): string {
