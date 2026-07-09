@@ -49,14 +49,14 @@ export function providerIdentitySafetyIssueInList(
   }
 
   const selectedPreset = findProviderPresetInList(presets, input.presetId);
-  if (selectedPreset && !providerPresetMatchesBaseUrl(selectedPreset, input.baseUrl)) {
+  if (selectedPreset && !providerBaseUrlCanReceiveOfficialKey(selectedPreset, input.baseUrl)) {
     return createProviderIdentitySafetyIssue(selectedPreset);
   }
 
   const namedPresets = findProviderPresetsByIdentity(presets, input.name);
   if (
     namedPresets.length > 0 &&
-    !namedPresets.some((preset) => providerPresetMatchesBaseUrl(preset, input.baseUrl))
+    !namedPresets.some((preset) => providerBaseUrlCanReceiveOfficialKey(preset, input.baseUrl))
   ) {
     return createProviderIdentitySafetyIssue(namedPresets[0]);
   }
@@ -128,15 +128,30 @@ function findProviderPresetsByIdentity(presets: ProviderPreset[], name: string |
     return [];
   }
 
-  return presets.filter((preset) => {
-    const identities = [preset.id, preset.name, ...preset.aliases]
-      .map(normalizeProviderIdentityText)
-      .filter(Boolean);
-    return identities.some((identity) =>
-      normalizedName === identity ||
-      (identity.length >= 4 && normalizedName.includes(identity))
-    );
-  });
+  return presets
+    .map((preset) => ({
+      preset,
+      score: providerPresetIdentityMatchScore(preset, normalizedName)
+    }))
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score)
+    .map((item) => item.preset);
+}
+
+function providerPresetIdentityMatchScore(preset: ProviderPreset, normalizedName: string): number {
+  const identities = [preset.id, preset.name, ...preset.aliases]
+    .map(normalizeProviderIdentityText)
+    .filter(Boolean);
+
+  return Math.max(0, ...identities.map((identity) => {
+    if (normalizedName === identity) {
+      return 10_000 + identity.length;
+    }
+    if (identity.length >= 4 && normalizedName.includes(identity)) {
+      return identity.length;
+    }
+    return 0;
+  }));
 }
 
 function createProviderIdentitySafetyIssue(preset: ProviderPreset): ProviderIdentitySafetyIssue {

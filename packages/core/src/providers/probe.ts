@@ -339,19 +339,28 @@ function providerProbeCapabilities(
   probe: GatewayProviderProbeResult
 ): GatewayProviderCapability[] {
   const detectedCapabilities = mergeProviderCapabilities(probe.capabilities ?? []);
-  if (detectedCapabilities.length > 0) {
-    return detectedCapabilities;
-  }
+  const presetCapabilities = providerProbePresetCapabilities(candidate);
+  return mergeProviderCapabilities(detectedCapabilities, presetCapabilities);
+}
 
+function providerProbePresetCapabilities(candidate: GatewayProviderProbeCandidate): GatewayProviderCapability[] {
   if (candidate.source !== "preset") {
     return [];
   }
 
-  return candidate.protocols.map((type) => ({
-    baseUrl: probe.normalizedBaseUrl || candidate.baseUrl,
+  return uniqueProtocols(candidate.declaredProtocols ?? []).map((type) => ({
+    baseUrl: providerProbeCandidateBaseUrlForProtocol(candidate.baseUrl, type),
     source: "preset" as const,
     type
   }));
+}
+
+function providerProbeCandidateBaseUrlForProtocol(baseUrl: string, protocol: GatewayProviderProtocol): string {
+  try {
+    return providerBaseUrlForProtocol(parseProviderBaseUrl(baseUrl), protocol);
+  } catch {
+    return baseUrl.trim();
+  }
 }
 
 function mergeProviderCapabilities(...groups: GatewayProviderCapability[][]): GatewayProviderCapability[] {

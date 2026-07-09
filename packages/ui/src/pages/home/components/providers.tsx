@@ -11,8 +11,8 @@ import {
   providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountSnapshot,
   providerAccountConnectorsTextWithNewApiUserBalanceTemplate, providerAccountSnapshotCredentialLabel, providerAccountSnapshotLabel, ProviderAccountTestPath,
   ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
-  ProviderConnectivityCheckReport, providerDeepLinkDisplayIcon, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
-  providerDisplayIcon, providerModelDisplayName, providerModelDisplayTitle, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
+  ProviderConnectivityCheckReport, providerCapabilityBaseUrlForProtocol, providerDeepLinkDisplayIcon, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
+  providerDisplayIcon, providerGlobalBaseUrlForProbe, providerModelDisplayName, providerModelDisplayTitle, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
   resolveProviderDeepLinkPreset, ShieldCheck, splitLines, splitModelTagInput, Switch, Textarea, translatedProviderProtocolLabel, translateOptions,
   translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppErrorText, useAppText, useEffect, useMemo,
   useRef, useState, X, isPlainRecord
@@ -1366,8 +1366,11 @@ export function AddProviderForm({
   const customEndpoint = draft.presetId === customProviderPresetId;
   const importMode = Boolean(importProvider);
   const showBaseUrl = customEndpoint || mode === "edit";
-  const detectedProtocol = probe?.detectedProtocol ?? draft.protocol;
-  const detectedBaseUrl = probe?.normalizedBaseUrl || draft.baseUrl;
+  const selectedDisplayProtocols = uniqueProviderProtocols(draft.selectedProtocols);
+  const detectedProtocol = selectedDisplayProtocols.length === 1
+    ? selectedDisplayProtocols[0]
+    : probe?.detectedProtocol ?? draft.protocol;
+  const detectedBaseUrl = providerCapabilityBaseUrlForProtocol(draft.baseUrl, detectedProtocol, probe);
   const safetyIssue = providerDraftSafetyIssue(draft, detectedBaseUrl);
   const localAgentImport = draft.providerPlugins.length > 0;
   const providerPresetOptions = [
@@ -1697,17 +1700,6 @@ export function AddProviderForm({
           {advancedOpen ? (
             <AnimatedDisclosure className="sm:col-span-2" key="provider-advanced">
               <div className="grid grid-cols-1 gap-3 rounded-md border border-border bg-muted/20 p-3 sm:grid-cols-2">
-                {selectedPreset && !customEndpoint && mode === "add" ? (
-                  <Field className="sm:col-span-2" label={t("API endpoint")}>
-                    <Input value={draft.baseUrl} onChange={(event) => onChange({ baseUrl: event.target.value }, true)} />
-                  </Field>
-                ) : null}
-                <Field label={t("Detected compatibility")}>
-                  <Input readOnly value={translatedProviderProtocolLabel(detectedProtocol, t)} />
-                </Field>
-                <Field label={t("Detected endpoint")}>
-                  <Input readOnly value={detectedBaseUrl} />
-                </Field>
                 <ProviderCredentialSettings
                   draft={draft}
                   onChange={onChange}
@@ -1723,7 +1715,8 @@ export function AddProviderForm({
                     {protocolProbeRows.length ? (
                       <div className="space-y-1.5">
                         {protocolProbeRows.map((item) => {
-                          const selectable = item.supported && selectableProtocols.includes(item.protocol);
+                          const available = item.supported || selectableProtocols.includes(item.protocol);
+                          const selectable = available && selectableProtocols.includes(item.protocol);
                           const checked = selectable && draft.selectedProtocols.includes(item.protocol);
                           const itemKey = `${item.protocol}-${item.endpoint}`;
                           return (
@@ -1744,8 +1737,8 @@ export function AddProviderForm({
                                 }}
                               />
                               <span className="truncate font-medium">{translatedProviderProtocolLabel(item.protocol, t)}</span>
-                              <span className={cn("inline-flex min-w-0 items-center justify-end gap-1.5", item.supported ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground")}>
-                                <span className="truncate">{item.supported ? t("Available") : t("Unavailable")}</span>
+                              <span className={cn("inline-flex min-w-0 items-center justify-end gap-1.5", available ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground")}>
+                                <span className="truncate">{available ? t("Available") : t("Unavailable")}</span>
                                 <button
                                   aria-label={t("Protocol detection details")}
                                   aria-pressed={protocolProbeDetails?.key === itemKey}
@@ -2089,6 +2082,7 @@ function ProviderUsageSettings({
   const [testError, setTestError] = useState("");
   const [newApiUserId, setNewApiUserId] = useState("");
   const modeOptions = translateOptions(providerAccountModeOptions, t);
+  const globalBaseUrl = providerGlobalBaseUrlForProbe(draft.baseUrl, probe, draft.selectedProtocols);
   const showNewApiUserBalanceTemplate = probe?.detectedProvider === "new-api" ||
     draft.accountConnectorsText.includes("new-api-key-usage") ||
     draft.accountConnectorsText.includes("new-api-user-self");
@@ -2110,7 +2104,7 @@ function ProviderUsageSettings({
     }
     const safetyIssue = providerAccountConnectorApiKeySafetyIssue(connector, {
       apiKey: draft.apiKey,
-      baseUrl: (probe?.normalizedBaseUrl || draft.baseUrl).trim(),
+      baseUrl: globalBaseUrl,
       providerName: draft.name.trim(),
       providerPresetId: draft.presetId
     });
@@ -2145,7 +2139,7 @@ function ProviderUsageSettings({
     onChange({
       accountConnectorsText: providerAccountConnectorsTextWithNewApiUserBalanceTemplate(
         draft.accountConnectorsText,
-        probe?.normalizedBaseUrl || draft.baseUrl,
+        globalBaseUrl,
         newApiUserId
       )
     });
