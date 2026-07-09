@@ -706,28 +706,28 @@ class GatewayService {
     let responseCompleted = false;
     let onClientDisconnect: (() => void) | undefined;
     let onResponseFinish: (() => void) | undefined;
+    const handleClientDisconnect = () => {
+      if (responseCompleted || response.writableEnded) {
+        return;
+      }
+      if (!clientDisconnected) {
+        clientDisconnected = true;
+        upstreamAbortController.abort(new Error(clientDisconnectMessage));
+      }
+      onClientDisconnect?.();
+    };
 
     response.once("finish", () => {
       responseCompleted = true;
       onResponseFinish?.();
     });
-    response.once("close", () => {
-      if (responseCompleted || response.writableEnded) {
-        return;
-      }
-      clientDisconnected = true;
-      upstreamAbortController.abort(new Error(clientDisconnectMessage));
-      onClientDisconnect?.();
-    });
-    response.on("error", (error) => {
+    response.once("close", handleClientDisconnect);
+    response.on("error", () => {
       // Client-side write failures (EPIPE / ECONNRESET when the client closes
       // mid-stream, common during tool execution) must not crash the main
       // process as an Uncaught Exception. Swallow them here; the close handler
       // above already records the disconnect via writeStreamLog.
-      if (!clientDisconnected) {
-        clientDisconnected = true;
-        upstreamAbortController.abort(new Error(clientDisconnectMessage));
-      }
+      handleClientDisconnect();
     });
 
     const writeRequestLog = (
@@ -976,6 +976,11 @@ class GatewayService {
       this.config
     );
     const upstreamResponse = upstreamResult.response;
+    if (clientDisconnected || upstreamAbortController.signal.aborted) {
+      await cancelResponseBody(upstreamResponse);
+      writeRequestLog(clientClosedRequestStatusCode, responseHeaders, "", false, clientDisconnectMessage);
+      return;
+    }
     if (codexApplyPatchBridgeActive) {
       responseHeaders.delete("content-length");
     }
@@ -989,6 +994,11 @@ class GatewayService {
       responseHeaders.delete("content-length");
     }
     recordProviderCredentialOutcome(this.config, method, upstreamResult.attempt, upstreamResponse.status, responseHeaders);
+    if (clientDisconnected || response.destroyed) {
+      await cancelResponseBody(upstreamResponse);
+      writeRequestLog(clientClosedRequestStatusCode, responseHeaders, "", false, clientDisconnectMessage);
+      return;
+    }
     response.writeHead(upstreamResponse.status, Object.fromEntries(filteredResponseHeaders(responseHeaders)));
     if (!upstreamResponse.body) {
       if (shouldCaptureUsage) {
@@ -1023,6 +1033,7 @@ class GatewayService {
           this.browserWebSearchMcpIntegration
         )
       : patchedResponseBody;
+    const responseStreams = uniqueStreams([upstreamBody, patchedResponseBody, responseBody]);
     const sampler = createBodySampler();
     const sseErrorDetector = createSseErrorDetector(responseHeaders.get("content-type") ?? undefined);
     let streamDetectedError: string | undefined;
@@ -1034,7 +1045,7 @@ class GatewayService {
       }
       logRecorded = true;
       writeRequestLog(
-        upstreamResponse.status,
+        clientDisconnected ? clientClosedRequestStatusCode : upstreamResponse.status,
         responseHeaders,
         sampler.read(),
         sampler.isTruncated(),
@@ -1043,13 +1054,21 @@ class GatewayService {
     };
     onClientDisconnect = () => {
       writeStreamLog(clientDisconnectMessage);
-      responseBody.destroy(new Error(clientDisconnectMessage));
+      responseBody.unpipe(response);
+      destroyResponseStreams(responseStreams);
     };
     onResponseFinish = () => {
       if (upstreamStreamEnded) {
         writeStreamLog();
       }
     };
+    const onResponseStreamError = (error: Error) => {
+      streamDetectedError ??= sseErrorDetector.finish();
+      writeStreamLog(clientDisconnected ? clientDisconnectMessage : formatError(error));
+    };
+    for (const stream of responseStreams) {
+      stream.on("error", onResponseStreamError);
+    }
     responseBody.on("data", (chunk) => {
       sampler.append(chunk);
       streamDetectedError ??= sseErrorDetector.append(chunk);
@@ -1060,10 +1079,6 @@ class GatewayService {
       if (responseCompleted || response.writableEnded) {
         writeStreamLog();
       }
-    });
-    responseBody.on("error", (error) => {
-      streamDetectedError ??= sseErrorDetector.finish();
-      writeStreamLog(clientDisconnected ? clientDisconnectMessage : formatError(error));
     });
     if (shouldCaptureUsage) {
       responseBody.once("end", () => {
@@ -1081,6 +1096,10 @@ class GatewayService {
           statusCode: upstreamResponse.status
         });
       });
+    }
+    if (clientDisconnected || response.destroyed) {
+      onClientDisconnect();
+      return;
     }
     responseBody.pipe(response);
   }
@@ -6202,6 +6221,29 @@ async function drainResponseBody(response: Response): Promise<void> {
     await response.arrayBuffer();
   } catch {
     // The failed attempt is already being skipped; body drain errors should not block the next attempt.
+  }
+}
+
+async function cancelResponseBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // The client already disconnected; best-effort upstream cleanup must not mask that expected path.
+  }
+}
+
+function uniqueStreams(streams: Readable[]): Readable[] {
+  return [...new Set(streams)];
+}
+
+function destroyResponseStreams(streams: Readable[]): void {
+  for (const stream of streams) {
+    if (!stream.destroyed) {
+      // A downstream client close is an expected abort path. Destroying with
+      // an Error would emit another error event on Readable/Transform stages,
+      // and intermediate stages may not be the final responseBody listener.
+      stream.destroy();
+    }
   }
 }
 
