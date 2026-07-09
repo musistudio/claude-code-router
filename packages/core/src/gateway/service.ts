@@ -7875,7 +7875,7 @@ function buildClaudeCodeDiscoverableModels(config: AppConfig): ClaudeCodeDiscove
       buildClaudeAppGatewayModelRoutes(config, claudeAppGatewayModelRouteOptions).some((route) =>
         route.oneMillionContext &&
         (route.id.toLowerCase() === id.toLowerCase() ||
-         stripClaudeAppGatewayOneMillionContextSuffix(route.id).toLowerCase() === baseId.toLowerCase())
+         stripClaudeCodeOneMillionContextSuffix(route.id).toLowerCase() === baseId.toLowerCase())
       );
 
     pushModel(id, supports1m);
