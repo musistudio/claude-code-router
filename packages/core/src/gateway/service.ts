@@ -4,6 +4,7 @@ import { createServer, type IncomingHttpHeaders, type IncomingMessage, type Serv
 import { createRequire } from "node:module";
 import { networkInterfaces } from "node:os";
 import { Readable, Transform } from "node:stream";
+import { StringDecoder } from "node:string_decoder";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join as pathJoin, resolve as pathResolve, sep as pathSep } from "node:path";
 import type {
@@ -8513,6 +8514,7 @@ function gatewayTokenUsageInjectorStream(
   requestBody: Buffer | undefined,
   protocol: "anthropic_messages" | "openai_responses" | "openai_chat_completions"
 ): Readable {
+  const decoder = new StringDecoder("utf8");
   let pending = "";
   let estimatedInputTokens = 0;
   let estimatedOutputText = "";
@@ -8561,7 +8563,7 @@ function gatewayTokenUsageInjectorStream(
 
   return input.pipe(new Transform({
     transform(chunk, _encoding, callback) {
-      const text = chunk.toString();
+      const text = decoder.write(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
       pending += text;
 
       const parts = pending.split("\n\n");
@@ -8640,6 +8642,7 @@ function gatewayTokenUsageInjectorStream(
       callback();
     },
     flush(callback) {
+      pending += decoder.end();
       if (pending.trim()) {
         if (protocol === "openai_chat_completions" && pending.trim() === "data: [DONE]") {
           if (!hasUsage) {
