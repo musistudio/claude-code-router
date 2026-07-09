@@ -17,7 +17,7 @@ import {
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
   isTraySupportedPlatform,
   isRoutingRewriteDraftRowValid,
-  LayoutGroup, mergeModelDisplayNames, mergeProviderCapabilities, mergeProviderModelLists, modelDescriptionsForModels, modelDisplayNamesForModels,
+  LayoutGroup, mergeModelDisplayNames, mergeProviderModelLists, modelDescriptionsForModels, modelDisplayNamesForModels,
   navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets,
   normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterBuiltInRules, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeToolHubConfig, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
   normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
@@ -26,7 +26,7 @@ import {
   persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
-  providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
+  providerCapabilitiesForProtocols, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
   ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkCatalogModels, RouterRule, ServerActionBusy, SettingsPageId,
   routingRewriteFromDraftRow, setProviderPresets, splitLines, translateAppErrorMessage, translateProxyCertificateMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
@@ -1368,8 +1368,6 @@ function App() {
       setProviderProbeError(translateAppErrorMessage(copy, credentials));
       return false;
     }
-    const fallbackProtocol = probe?.detectedProtocol ?? providerDraft.protocol;
-    const fallbackBaseUrl = probe?.normalizedBaseUrl || providerDraft.baseUrl;
     const selectableProtocols = providerSelectableProtocolsFromProbe(probe);
     const selectedProtocols = providerDraft.selectedProtocols.length > 0
       ? providerDraft.selectedProtocols.filter((protocol) => !probe || selectableProtocols.includes(protocol))
@@ -1379,25 +1377,19 @@ function App() {
       return false;
     }
 
-    const protocolsToSave = selectedProtocols.length > 0 ? selectedProtocols : [fallbackProtocol];
+    const protocolsToSave = selectedProtocols.length > 0 ? selectedProtocols : [probe?.detectedProtocol ?? providerDraft.protocol];
+    const fallbackProtocol = protocolsToSave.includes(providerDraft.protocol)
+      ? providerDraft.protocol
+      : protocolsToSave[0] ?? probe?.detectedProtocol ?? providerDraft.protocol;
+    const fallbackBaseUrl = providerGlobalBaseUrlForProbe(providerDraft.baseUrl, probe, protocolsToSave);
     const modelDescriptions = modelDescriptionsForModels(providerDraft.modelDescriptions, models);
     const modelDisplayNames = modelDisplayNamesForModels(providerDraft.modelDisplayNames, models);
-    const selectedProtocolSet = new Set(protocolsToSave);
-    const capabilityCandidates = mergeProviderCapabilities(
-      presetCapabilitiesFromDraft(providerDraft),
-      probe?.capabilities ?? [],
-      protocolsToSave.map((type) => ({
-        baseUrl: fallbackBaseUrl,
-        source: probe?.detectedProtocol ? ("detected" as const) : ("preset" as const),
-        type
-      }))
-    );
-    const capabilities = capabilityCandidates.filter((capability) => selectedProtocolSet.has(capability.type));
+    const capabilities = providerCapabilitiesForProtocols(providerDraft.baseUrl, protocolsToSave, probe, presetCapabilitiesFromDraft(providerDraft));
     const primaryCapability =
       capabilities.find((capability) => capability.type === fallbackProtocol) ??
       capabilities[0];
     const protocol = primaryCapability?.type ?? fallbackProtocol;
-    const baseUrl = primaryCapability?.baseUrl ?? fallbackBaseUrl;
+    const baseUrl = fallbackBaseUrl;
 
     const keySafetyIssue = providerApiKeySafetyIssue({
       apiKey: providerDraft.apiKey,
@@ -1443,7 +1435,7 @@ function App() {
     }
 
     const provider: GatewayProviderConfig = {
-      api_base_url: normalizeProviderBaseUrl(baseUrl, protocol),
+      api_base_url: normalizeProviderBaseUrl(baseUrl),
       api_key: providerDraft.apiKey.trim(),
       capabilities: capabilities.length > 0 ? capabilities : undefined,
       account: accountConfig,
