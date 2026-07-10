@@ -36,8 +36,12 @@ const windowsClaudeExeNames = [
 ];
 const windowsClaudePackageKeywords = ["claude", "anthropic"];
 
+type ClaudeAppCandidateOptions = {
+  allowGenericExecutable?: boolean;
+};
+
 export async function launchClaudeAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): Promise<ClaudeAppLaunchResult> {
-  const lookup = findInstalledClaudeAppExecutable();
+  const lookup = findInstalledClaudeAppExecutable(profile.appPath);
   if (!lookup.executable) {
     throw new Error([
       "Claude App was not found. Install Claude App or set CLAUDE_APP_PATH to its executable, then try again.",
@@ -224,9 +228,14 @@ function claudeElectronUserDataDir(settingsDir: string, profile: ProfileConfig):
   );
 }
 
-function findInstalledClaudeAppExecutable(): ClaudeAppLookupResult {
+export function findInstalledClaudeAppExecutable(profileAppPath?: string): ClaudeAppLookupResult {
   const checked: string[] = [];
-  const envCandidate = findFirstExecutable(envClaudeAppPathCandidates(), checked);
+  const profileCandidate = findFirstExecutable(profileClaudeAppPathCandidates(profileAppPath), checked, { allowGenericExecutable: true });
+  if (profileCandidate) {
+    return { checked, executable: profileCandidate };
+  }
+
+  const envCandidate = findFirstExecutable(envClaudeAppPathCandidates(), checked, { allowGenericExecutable: true });
   if (envCandidate) {
     return { checked, executable: envCandidate };
   }
@@ -240,13 +249,13 @@ function findInstalledClaudeAppExecutable(): ClaudeAppLookupResult {
   return { checked, executable: findFirstExecutable(linuxClaudeAppCandidates(), checked) };
 }
 
-function findFirstExecutable(candidates: string[], checked: string[]): string | undefined {
+function findFirstExecutable(candidates: string[], checked: string[], options: ClaudeAppCandidateOptions = {}): string | undefined {
   for (const candidate of candidates) {
     if (!candidate || checked.includes(candidate)) {
       continue;
     }
     checked.push(candidate);
-    const executable = normalizeClaudeAppCandidate(candidate);
+    const executable = normalizeClaudeAppCandidate(candidate, options);
     if (executable) {
       return executable;
     }
@@ -259,6 +268,11 @@ function envClaudeAppPathCandidates(): string[] {
     .map((key) => process.env[key]?.trim() || "")
     .filter(Boolean)
     .map(resolveUserPath);
+}
+
+function profileClaudeAppPathCandidates(value: string | undefined): string[] {
+  const trimmed = value?.trim() || "";
+  return trimmed ? [resolveUserPath(trimmed)] : [];
 }
 
 function macClaudeAppCandidates(): string[] {
@@ -289,13 +303,20 @@ function windowsClaudeAppCandidates(): string[] {
 function linuxClaudeAppCandidates(): string[] {
   return [
     "/usr/bin/claude",
+    "/usr/bin/claude-desktop",
     "/usr/local/bin/claude",
+    "/usr/local/bin/claude-desktop",
     "/opt/Claude/claude",
-    "/opt/Claude/Claude"
+    "/opt/Claude/Claude",
+    "/opt/Claude Desktop/claude",
+    "/opt/Claude Desktop/Claude",
+    "/opt/Claude Desktop/claude-desktop",
+    "/opt/ClaudeDesktop/ClaudeDesktop",
+    "/opt/AnthropicClaude/AnthropicClaude"
   ];
 }
 
-function normalizeClaudeAppCandidate(candidate: string): string | undefined {
+export function normalizeClaudeAppCandidate(candidate: string, options: ClaudeAppCandidateOptions = {}): string | undefined {
   if (process.platform === "darwin") {
     if (candidate.endsWith(".app")) {
       return executableFromMacAppBundle(candidate);
@@ -303,9 +324,10 @@ function normalizeClaudeAppCandidate(candidate: string): string | undefined {
     return isFile(candidate) ? candidate : undefined;
   }
   if (process.platform === "win32") {
-    return normalizeWindowsClaudeAppCandidate(candidate);
+    const executable = normalizeWindowsClaudeAppCandidate(candidate);
+    return executable && isAllowedClaudeAppExecutable(executable, options) ? executable : undefined;
   }
-  return isFile(candidate) ? candidate : undefined;
+  return isFile(candidate) && isAllowedClaudeAppExecutable(candidate, options) ? candidate : undefined;
 }
 
 function executableFromMacAppBundle(appPath: string): string | undefined {
@@ -356,6 +378,25 @@ function normalizeWindowsClaudeAppCandidate(candidate: string): string | undefin
     exeNames: windowsClaudeExeNames,
     packageKeywords: windowsClaudePackageKeywords
   });
+}
+
+function isAllowedClaudeAppExecutable(executable: string, options: ClaudeAppCandidateOptions): boolean {
+  if (options.allowGenericExecutable || !isGenericClaudeExecutableName(executable)) {
+    return true;
+  }
+  return hasElectronDesktopAppResources(executable);
+}
+
+function isGenericClaudeExecutableName(executable: string): boolean {
+  const name = path.basename(executable).toLowerCase();
+  return name === "claude" || name === "claude.exe";
+}
+
+function hasElectronDesktopAppResources(executable: string): boolean {
+  const resourcesDir = path.join(path.dirname(executable), "resources");
+  return isFile(path.join(resourcesDir, "app.asar")) ||
+    isDirectory(path.join(resourcesDir, "app")) ||
+    isDirectory(path.join(resourcesDir, "app.asar.unpacked"));
 }
 
 function profileEnv(profile: ProfileConfig): Record<string, string> {

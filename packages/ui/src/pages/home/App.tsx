@@ -17,7 +17,7 @@ import {
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
   isTraySupportedPlatform,
   isRoutingRewriteDraftRowValid,
-  LayoutGroup, mergeModelDisplayNames, mergeProviderModelLists, modelDescriptionsForModels, modelDisplayNamesForModels,
+  LayoutGroup, mergeModelDisplayNames, mergeModelMetadata, mergeProviderModelLists, modelDescriptionsForModels, modelDisplayNamesForModels, modelMetadataForModels,
   navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets,
   normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterBuiltInRules, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeToolHubConfig, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
   normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
@@ -56,6 +56,23 @@ const providerNamePlaceholder = "__CCR_PROVIDER_NAME__";
 const providerNameSlugPlaceholder = "__CCR_PROVIDER_NAME_SLUG__";
 const providerInternalNamePlaceholder = "__CCR_PROVIDER_INTERNAL_NAME__";
 const localAgentProviderApiKey = "ccr-local-agent-login";
+const localCodexDefaultBaseUrl = "https://chatgpt.com/backend-api/codex";
+const localCodexProviderId = "codex-api";
+
+function isLocalCodexProviderDraft(draft: AddProviderDraft): boolean {
+  return (
+    draft.apiKey.trim() === localAgentProviderApiKey &&
+    normalizeProviderBaseUrl(draft.baseUrl) === normalizeProviderBaseUrl(localCodexDefaultBaseUrl)
+  );
+}
+
+function localCodexProviderDraftProbeKey(draft: AddProviderDraft): string {
+  return JSON.stringify([
+    draft.apiKey.trim(),
+    normalizeProviderBaseUrl(draft.baseUrl),
+    draft.protocol
+  ]);
+}
 
 function materializeProviderPluginTemplates(
   templates: unknown[],
@@ -651,6 +668,9 @@ function App() {
   }, [draftConfig.plugins, pluginRoutingConfigTarget]);
   const providers = useMemo(() => draftConfig.Providers.map((provider, index) => ({ provider, index })), [draftConfig.Providers]);
   const gatewayEndpoint = gatewayStatus.endpoint || draftConfig.routerEndpoint;
+  const gatewayStartupError = gatewayStatus.state === "error"
+    ? translateAppErrorMessage(copy, gatewayStatus.lastError || "Service did not start.")
+    : "";
   const networkCaptureEnabled = draftConfig.proxy.enabled && draftConfig.proxy.captureNetwork;
   const visibleNavigation = useMemo(
     () => navigation.filter((item) =>
@@ -1104,6 +1124,7 @@ function App() {
     setProviderDeepLinkBusy(true);
     let nextPayload = payload;
     let catalogModelDisplayNames: Record<string, string> | undefined;
+    let catalogModelMetadata: ProviderDeepLinkPayload["modelMetadata"] | undefined;
     let probe: GatewayProviderProbeResult | undefined;
     if (nextPayload.models.length === 0) {
       const catalogModels = await resolveProviderDeepLinkCatalogModels(nextPayload);
@@ -1112,6 +1133,7 @@ function App() {
         return;
       }
       catalogModelDisplayNames = catalogModels.modelDisplayNames;
+      catalogModelMetadata = catalogModels.modelMetadata;
       if (catalogModels.models.length > 0) {
         nextPayload = {
           ...nextPayload,
@@ -1134,7 +1156,8 @@ function App() {
     const initialDraftFromPayload = createProviderDraftFromDeepLinkPayload(nextPayload, draftConfig.Providers);
     const initialDraft = {
       ...initialDraftFromPayload,
-      modelDisplayNames: mergeModelDisplayNames(initialDraftFromPayload.modelDisplayNames, catalogModelDisplayNames)
+      modelDisplayNames: mergeModelDisplayNames(initialDraftFromPayload.modelDisplayNames, catalogModelDisplayNames),
+      modelMetadata: mergeModelMetadata(initialDraftFromPayload.modelMetadata, catalogModelMetadata)
     };
     setProviderEditIndex(undefined);
     setProviderImportOpen(true);
@@ -1175,6 +1198,7 @@ function App() {
         ...next,
         modelDescriptions: patch.modelDescriptions ?? current.modelDescriptions,
         modelDisplayNames: patch.modelDisplayNames,
+        modelMetadata: patch.modelMetadata ?? current.modelMetadata,
         modelsText: mergeProviderModelLists(current.selectedModels, splitLines(next.modelsText)).join("\n"),
         selectedModels: [],
         selectedProtocols: patch.selectedProtocols ?? current.selectedProtocols
@@ -1197,6 +1221,54 @@ function App() {
     const providerFormVisible = providerAddOpen || (activeView === "onboarding" && onboardingStep === "provider");
     if (!window.ccr || !providerFormVisible) {
       return;
+    }
+    if (isLocalCodexProviderDraft(providerDraft)) {
+      providerProbeRequestId.current += 1;
+      const requestId = providerProbeRequestId.current;
+      const inputKey = localCodexProviderDraftProbeKey(providerDraft);
+
+      setProviderProbeError("");
+      if (!window.ccr.probeLocalAgentProvider) {
+        setProviderProbe(undefined);
+        setProviderProbeLoading(false);
+        return undefined;
+      }
+      setProviderProbeLoading(true);
+
+      const timer = window.setTimeout(() => {
+        void window.ccr?.probeLocalAgentProvider?.({ id: localCodexProviderId })
+          .then((result) => {
+            if (providerProbeRequestId.current !== requestId) {
+              return;
+            }
+            setProviderProbe(result.probe);
+            setProviderDraft((current) => {
+              if (!isLocalCodexProviderDraft(current) || localCodexProviderDraftProbeKey(current) !== inputKey) {
+                return current;
+              }
+              return applyProviderProbeResult(current, result.probe);
+            });
+          })
+          .catch((error) => {
+            if (providerProbeRequestId.current === requestId) {
+              setProviderProbe(undefined);
+              setProviderProbeError(formatError(error));
+            }
+          })
+          .finally(() => {
+            if (providerProbeRequestId.current === requestId) {
+              setProviderProbeLoading(false);
+            }
+          });
+      }, 350);
+
+      return () => {
+        window.clearTimeout(timer);
+        if (providerProbeRequestId.current === requestId) {
+          providerProbeRequestId.current += 1;
+          setProviderProbeLoading(false);
+        }
+      };
     }
     if (providerDraft.providerPlugins.length > 0) {
       providerProbeRequestId.current += 1;
@@ -1389,6 +1461,7 @@ function App() {
     const fallbackBaseUrl = providerGlobalBaseUrlForProbe(providerDraft.baseUrl, probe, protocolsToSave);
     const modelDescriptions = modelDescriptionsForModels(providerDraft.modelDescriptions, models);
     const modelDisplayNames = modelDisplayNamesForModels(providerDraft.modelDisplayNames, models);
+    const modelMetadata = modelMetadataForModels(providerDraft.modelMetadata, models);
     const capabilities = providerCapabilitiesForProtocols(providerDraft.baseUrl, protocolsToSave, probe, presetCapabilitiesFromDraft(providerDraft));
     const primaryCapability =
       capabilities.find((capability) => capability.type === fallbackProtocol) ??
@@ -1451,6 +1524,7 @@ function App() {
       id: providerId,
       modelDescriptions,
       modelDisplayNames,
+      modelMetadata,
       models,
       name: providerName,
       type: protocol
@@ -2789,6 +2863,7 @@ function App() {
         <div className="relative flex h-full min-h-0 w-full min-w-0 overflow-hidden bg-background text-foreground max-[720px]:flex-col">
           {activeView === "onboarding" ? (
             <OnboardingLayout
+              gatewayStartupError={gatewayStartupError}
               loaded={configLoaded && onboardingStatusLoaded && providerPresetsLoaded}
               onboarding={{
                 activeStep: onboardingStep,
@@ -2823,11 +2898,13 @@ function App() {
               copy={copy}
               gatewayActionBusy={gatewayActionBusy}
               gatewayEndpoint={gatewayEndpoint}
+              gatewayStartupError={gatewayStartupError}
               gatewayStatus={gatewayStatus}
               isMac={isMac}
               needsTrafficLightSafeArea={needsTrafficLightSafeArea}
               networkCaptureEnabled={networkCaptureEnabled}
               onOpenUpdate={openSidebarUpdateDialog}
+              onOpenServerSettings={() => setActiveView("server")}
               onOpenSettings={openSettingsDialog}
               onSelectNavigationItem={selectNavigationItem}
               onToggleSidebar={() => setSidebarOpen((current) => !current)}

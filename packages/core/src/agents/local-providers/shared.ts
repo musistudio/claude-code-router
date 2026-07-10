@@ -4,7 +4,8 @@ import type {
   LocalAgentProviderCandidate,
   LocalAgentProviderKind,
   ProviderAccountConfig,
-  ProviderDeepLinkPayload
+  ProviderDeepLinkPayload,
+  ProviderModelMetadata
 } from "@ccr/core/contracts/app";
 
 export type OAuthTokenSet = {
@@ -39,8 +40,8 @@ export function missingCandidate(
     importable: false,
     kind,
     modelDisplayNames: modelDisplayNamesForModels(modelDisplayNames, models),
-    models,
-    name,
+  models,
+  name,
     protocol,
     status: "missing"
   };
@@ -58,10 +59,22 @@ export function providerPayload(
     apiKey: localAgentProviderApiKey,
     baseUrl,
     modelDisplayNames: modelDisplayNamesForModels(candidate.modelDisplayNames, models),
+    modelMetadata: modelMetadataForModels(candidate.modelMetadata, models),
     models,
     name,
     protocol: candidate.protocol
   };
+}
+
+export function modelMetadataForModels(
+  value: Record<string, ProviderModelMetadata> | undefined,
+  models: string[]
+): Record<string, ProviderModelMetadata> | undefined {
+  const modelIds = new Set(models);
+  const entries = Object.entries(value ?? {})
+    .map(([rawModel, metadata]) => [rawModel.trim(), metadata] as const)
+    .filter(([model, metadata]) => model && modelIds.has(model) && metadata && typeof metadata === "object");
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 export function modelDisplayNamesForModels(

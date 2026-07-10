@@ -610,12 +610,6 @@ export function ProviderDeepLinkDialog({
                   </div>
                 </div>
               ) : null}
-              {showExternalProviderWarnings ? (
-                <div className="flex items-start gap-2 rounded-md border border-border bg-background px-3 py-2 text-[11px] leading-4 text-muted-foreground">
-                  <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <span>{t("Only enter an API key issued for this endpoint. Official provider keys must only be used with official endpoints.")}</span>
-                </div>
-              ) : null}
               <div className="flex min-w-0 items-center gap-3 rounded-md border border-border bg-background px-3 py-2.5">
                 <div className="relative shrink-0">
                   <ProviderPresetIcon className="h-10 w-10 rounded-md" iconUrl={providerIconUrl} preset={providerPreset} />
@@ -1198,6 +1192,7 @@ function LocalAgentProviderImportPanel({
         icon: result.provider.icon ?? "",
         modelDescriptions: result.provider.modelDescriptions,
         modelDisplayNames: result.provider.modelDisplayNames,
+        modelMetadata: result.provider.modelMetadata,
         modelSearch: "",
         modelsText: result.provider.models.join("\n"),
         name: result.provider.name?.trim() || inferProviderNameFromBaseUrl(result.provider.baseUrl),
@@ -1467,6 +1462,7 @@ export function AddProviderForm({
         icon: "",
         modelDescriptions: undefined,
         modelDisplayNames: undefined,
+        modelMetadata: undefined,
         modelSearch: "",
         presetId,
         providerPlugins: [],
@@ -1483,6 +1479,7 @@ export function AddProviderForm({
         icon: "",
         modelDescriptions: undefined,
         modelDisplayNames: undefined,
+        modelMetadata: undefined,
         modelSearch: "",
         presetId,
         providerPlugins: [],
@@ -1503,6 +1500,7 @@ export function AddProviderForm({
       icon: "",
       modelDescriptions: undefined,
       modelDisplayNames: preset?.defaultModelDisplayNames,
+      modelMetadata: undefined,
       modelSearch: "",
       modelsText: draft.modelsText.trim() || preset?.defaultModels?.join("\n") || "",
       name: mode === "add" && preset && generatedName ? uniqueProviderName(providers, t(preset.name)) : draft.name,
@@ -1571,10 +1569,6 @@ export function AddProviderForm({
         ) : null}
         <Field className="sm:col-span-2" label={t("API key")}>
           <Input type="password" value={draft.apiKey} onChange={(event) => onChange({ apiKey: event.target.value }, true)} />
-          <div className="flex items-start gap-1.5 text-[11px] leading-4 text-muted-foreground">
-            <CircleAlert className="mt-0.5 h-3 w-3 shrink-0" />
-            <span>{t("Only enter an API key issued for this endpoint. Official provider keys must only be used with official endpoints.")}</span>
-          </div>
         </Field>
         {safetyIssue ? (
           <div className="sm:col-span-2 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] leading-5 text-amber-900 dark:text-amber-100">
@@ -1715,8 +1709,8 @@ export function AddProviderForm({
                     {protocolProbeRows.length ? (
                       <div className="space-y-1.5">
                         {protocolProbeRows.map((item) => {
-                          const available = item.supported || selectableProtocols.includes(item.protocol);
-                          const selectable = available && selectableProtocols.includes(item.protocol);
+                          const available = item.supported;
+                          const selectable = item.supported && selectableProtocols.includes(item.protocol);
                           const checked = selectable && draft.selectedProtocols.includes(item.protocol);
                           const itemKey = `${item.protocol}-${item.endpoint}`;
                           return (

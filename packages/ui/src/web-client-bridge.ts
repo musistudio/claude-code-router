@@ -148,6 +148,7 @@ const webClientBridge: CcrApi = {
     window.open(normalizeExternalHttpUrl(url), "_blank", "noopener,noreferrer");
   },
   openProfile: (request) => rpc("openProfile", [request]) as ReturnType<CcrApi["openProfile"]>,
+  probeLocalAgentProvider: (request) => rpc("probeLocalAgentProvider", [request]) as ReturnType<NonNullable<CcrApi["probeLocalAgentProvider"]>>,
   probeProvider: (request) => rpc("probeProvider", [request]) as ReturnType<CcrApi["probeProvider"]>,
   probeProviderCandidates: (request) => rpc("probeProviderCandidates", [request]) as ReturnType<CcrApi["probeProviderCandidates"]>,
   quitApp: () => rpc("quitApp") as ReturnType<CcrApi["quitApp"]>,

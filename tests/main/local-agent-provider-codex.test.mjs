@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   attachCodexRateLimitResetCreditDetails,
   codexDefaultBaseUrl,
+  codexModelCatalogFromPayloadForTest,
   codexProviderAccountConfig,
   codexRateLimitResetCreditDetails,
   normalizeCodexProviderAccountConfig
@@ -203,4 +204,45 @@ test("Codex local provider account config keeps custom connectors", () => {
   });
 
   assert.equal(provider.account, account);
+});
+
+test("Codex model catalog parser accepts live model endpoint shapes", () => {
+  const catalog = codexModelCatalogFromPayloadForTest({
+    data: [
+      {
+        additional_speed_tiers: [{ id: "fast", label: "Fast" }],
+        default_reasoning_level: "high",
+        display_name: "GPT-5 Codex",
+        service_tiers: [{ id: "auto" }],
+        slug: "gpt-5-codex",
+        supported_reasoning_levels: [
+          { description: "Low", effort: "low" },
+          { description: "High", effort: "high" }
+        ],
+        supports_reasoning_summaries: true
+      },
+      { displayName: "GPT-5.1 Codex", id: "gpt-5.1-codex" }
+    ],
+    models: [
+      "gpt-5-codex",
+      { label: "GPT-5.2 Codex", name: "gpt-5.2-codex" }
+    ]
+  });
+
+  assert.deepEqual(catalog.models, ["gpt-5-codex", "gpt-5.1-codex", "gpt-5.2-codex"]);
+  assert.deepEqual(catalog.modelDisplayNames, {
+    "gpt-5-codex": "GPT-5 Codex",
+    "gpt-5.1-codex": "GPT-5.1 Codex",
+    "gpt-5.2-codex": "GPT-5.2 Codex"
+  });
+  assert.deepEqual(catalog.modelMetadata["gpt-5-codex"], {
+    additionalSpeedTiers: [{ id: "fast", label: "Fast" }],
+    defaultReasoningLevel: "high",
+    serviceTiers: [{ id: "auto" }],
+    supportedReasoningLevels: [
+      { description: "Low", effort: "low" },
+      { description: "High", effort: "high" }
+    ],
+    supportsReasoningSummaries: true
+  });
 });

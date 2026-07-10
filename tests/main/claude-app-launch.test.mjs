@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { claudeAppLaunchCommand } from "../../packages/core/src/agents/claude-app/launch.ts";
+import { claudeAppLaunchCommand, findInstalledClaudeAppExecutable, normalizeClaudeAppCandidate } from "../../packages/core/src/agents/claude-app/launch.ts";
 
 test("claudeAppLaunchCommand opens macOS app bundles through LaunchServices", (t) => {
   const tempDir = mkdtempForTest();
@@ -49,6 +49,88 @@ test("claudeAppLaunchCommand opens macOS app bundles through LaunchServices", (t
   assert.ok(launch.args.includes(`--user-data-dir=${path.join(tempDir, "profile data")}`));
 });
 
+test("Claude App discovery rejects generic Claude Code CLI shims", (t) => {
+  const tempDir = mkdtempForTest();
+  t.after(() => rmSync(tempDir, { force: true, recursive: true }));
+
+  const windowsCliShim = path.join(tempDir, ".local", "bin", "claude.exe");
+  mkdirSync(path.dirname(windowsCliShim), { recursive: true });
+  writeFileSync(windowsCliShim, "");
+  withPlatform("win32", () => {
+    assert.equal(normalizeClaudeAppCandidate(windowsCliShim), undefined);
+  });
+
+  const linuxCliShim = path.join(tempDir, "usr", "bin", "claude");
+  mkdirSync(path.dirname(linuxCliShim), { recursive: true });
+  writeFileSync(linuxCliShim, "");
+  withPlatform("linux", () => {
+    assert.equal(normalizeClaudeAppCandidate(linuxCliShim), undefined);
+  });
+});
+
+test("Claude App discovery accepts generic Electron desktop app executables", (t) => {
+  const tempDir = mkdtempForTest();
+  t.after(() => rmSync(tempDir, { force: true, recursive: true }));
+
+  const windowsApp = path.join(tempDir, "Programs", "Claude", "Claude.exe");
+  mkdirSync(path.join(path.dirname(windowsApp), "resources", "app"), { recursive: true });
+  writeFileSync(windowsApp, "");
+  writeFileSync(path.join(path.dirname(windowsApp), "resources", "app", "package.json"), "{}");
+  withPlatform("win32", () => {
+    assert.equal(normalizeClaudeAppCandidate(windowsApp), windowsApp);
+  });
+
+  const linuxApp = path.join(tempDir, "opt", "Claude", "claude");
+  mkdirSync(path.join(path.dirname(linuxApp), "resources", "app"), { recursive: true });
+  writeFileSync(linuxApp, "");
+  writeFileSync(path.join(path.dirname(linuxApp), "resources", "app", "package.json"), "{}");
+  withPlatform("linux", () => {
+    assert.equal(normalizeClaudeAppCandidate(linuxApp), linuxApp);
+  });
+});
+
+test("Claude App profile appPath overrides process env discovery", (t) => {
+  const tempDir = mkdtempForTest();
+  const previous = process.env.CLAUDE_APP_PATH;
+  t.after(() => {
+    if (previous === undefined) {
+      delete process.env.CLAUDE_APP_PATH;
+    } else {
+      process.env.CLAUDE_APP_PATH = previous;
+    }
+    rmSync(tempDir, { force: true, recursive: true });
+  });
+
+  const envCliShim = path.join(tempDir, ".local", "bin", "claude");
+  mkdirSync(path.dirname(envCliShim), { recursive: true });
+  writeFileSync(envCliShim, "");
+  process.env.CLAUDE_APP_PATH = envCliShim;
+
+  const profileApp = path.join(tempDir, "opt", "Claude", "claude");
+  mkdirSync(path.join(path.dirname(profileApp), "resources", "app"), { recursive: true });
+  writeFileSync(profileApp, "");
+  writeFileSync(path.join(path.dirname(profileApp), "resources", "app", "package.json"), "{}");
+
+  withPlatform("linux", () => {
+    const result = findInstalledClaudeAppExecutable(profileApp);
+    assert.equal(result.executable, profileApp);
+    assert.equal(result.checked[0], profileApp);
+  });
+});
+
 function mkdtempForTest() {
   return mkdtempSync(path.join(os.tmpdir(), "ccr-claude-app-launch-"));
+}
+
+function withPlatform(platform, callback) {
+  const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", {
+    configurable: true,
+    value: platform
+  });
+  try {
+    return callback();
+  } finally {
+    Object.defineProperty(process, "platform", descriptor);
+  }
 }

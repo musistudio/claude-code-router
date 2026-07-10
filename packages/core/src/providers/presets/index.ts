@@ -3,6 +3,7 @@ import { bailianProviderPreset } from "@ccr/core/providers/presets/bailian/index
 import { claudeApiProviderPreset } from "@ccr/core/providers/presets/claudeapi/index";
 import { code0ProviderPreset } from "@ccr/core/providers/presets/code0/index";
 import { deepSeekProviderPreset } from "@ccr/core/providers/presets/deepseek/index";
+import { fennoProviderPreset } from "@ccr/core/providers/presets/fenno/index";
 import { geminiProviderPreset } from "@ccr/core/providers/presets/gemini/index";
 import { kimiCodingProviderPreset } from "@ccr/core/providers/presets/kimi-coding/index";
 import { minimaxChinaProviderPreset, minimaxGlobalProviderPreset } from "@ccr/core/providers/presets/minimax/index";
@@ -10,6 +11,7 @@ import { mistralProviderPreset } from "@ccr/core/providers/presets/mistral/index
 import { moonshotChinaProviderPreset, moonshotGlobalProviderPreset } from "@ccr/core/providers/presets/moonshot/index";
 import { openaiProviderPreset } from "@ccr/core/providers/presets/openai/index";
 import { openRouterProviderPreset } from "@ccr/core/providers/presets/openrouter/index";
+import { qiniuAiProviderPreset } from "@ccr/core/providers/presets/qiniu-ai/index";
 import { runApiProviderPreset } from "@ccr/core/providers/presets/runapi/index";
 import { siliconFlowProviderPreset } from "@ccr/core/providers/presets/siliconflow/index";
 import { teamoRouterProviderPreset } from "@ccr/core/providers/presets/teamorouter/index";
@@ -46,6 +48,8 @@ export const providerPresets: ProviderPreset[] = [
   moonshotGlobalProviderPreset,
   bailianProviderPreset,
   siliconFlowProviderPreset,
+  qiniuAiProviderPreset,
+  fennoProviderPreset,
   runApiProviderPreset,
   teamoRouterProviderPreset,
   code0ProviderPreset,

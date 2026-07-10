@@ -465,7 +465,7 @@ async function fetchModelsForSource(parsed: ParsedProviderUrl, source: ModelSour
     };
   }
 
-  const result = await requestJson(withGeminiKey(`${parsed.geminiBaseUrl}/v1beta/models`, apiKey), {
+  const result = await requestJson(withGeminiKey(geminiApiEndpoint(parsed.geminiBaseUrl, "models"), apiKey), {
     headers: {
       ...geminiHeaders(apiKey)
     },
@@ -762,11 +762,11 @@ function endpointsForProtocol(
     return [
       {
         baseUrl: parsed.geminiBaseUrl,
-        endpoint: `${parsed.geminiBaseUrl}/v1beta/interactions`
+        endpoint: geminiApiEndpoint(parsed.geminiBaseUrl, "interactions", "v1beta")
       },
       {
         baseUrl: parsed.geminiBaseUrl,
-        endpoint: `${parsed.geminiBaseUrl}/v1/interactions`
+        endpoint: geminiApiEndpoint(parsed.geminiBaseUrl, "interactions", "v1")
       }
     ];
   }
@@ -775,9 +775,17 @@ function endpointsForProtocol(
   return [
     {
       baseUrl: parsed.geminiBaseUrl,
-      endpoint: `${parsed.geminiBaseUrl}/v1beta/models/${encodedModel}:generateContent`
+      endpoint: geminiApiEndpoint(parsed.geminiBaseUrl, `models/${encodedModel}:generateContent`)
     }
   ];
+}
+
+function geminiApiEndpoint(baseUrl: string, path: string, defaultVersion: "v1" | "v1beta" = "v1beta"): string {
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
+  if (/\/v1(?:beta)?$/i.test(normalizedBaseUrl)) {
+    return `${normalizedBaseUrl}/${path}`;
+  }
+  return `${normalizedBaseUrl}/${defaultVersion}/${path}`;
 }
 
 function withGeminiKey(url: string, apiKey: string | undefined): string {

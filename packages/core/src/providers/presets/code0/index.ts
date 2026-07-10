@@ -11,5 +11,5 @@ export const code0ProviderPreset: ProviderPreset = {
   ],
   id: "code0",
   name: "code0.ai",
-  websiteUrl: "https://code0.ai?source=claudecoderouter"
+  websiteUrl: "https://code0.ai/agent/register/9n9jOsSnYQoemIVL?utm_source=claudecoderouter&utm_medium=partner&utm_campaign=claudecoderouter_2026&utm_content=default"
 };

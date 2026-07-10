@@ -1,11 +1,14 @@
 import { BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME } from "@ccr/core/contracts/app";
-import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
+import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, ProviderModelMetadata, ProviderReasoningLevel, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
 import {
   findModelCatalogEntry,
   modelCatalogMaxInputTokens,
   readCatalogCapability,
   type ModelCatalogEntry
 } from "@ccr/core/gateway/model-catalog";
+import { codexDefaultBaseUrl, readCodexLocalModelCatalog } from "@ccr/core/agents/local-providers/codex";
+import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/shared";
+import { normalizeProviderBaseUrl } from "@ccr/core/providers/url";
 
 const fusionModelProviderName = "Fusion";
 const codexDefaultContextWindow = 128_000;
@@ -115,13 +118,13 @@ function codexModelCatalogItem(
   const profile = codexModelCapabilityProfile(model, config);
   const contextWindow = codexModelContextWindow(model, profile.catalogEntry);
   return {
-    additional_speed_tiers: [],
+    additional_speed_tiers: profile.additionalSpeedTiers,
     apply_patch_tool_type: profile.applyPatchToolType,
     availability_nux: null,
     base_instructions: "You are Codex, a coding agent.",
     context_window: contextWindow,
-    default_reasoning_level: profile.supportsReasoning ? "medium" : null,
-    default_reasoning_summary: "none",
+    default_reasoning_level: profile.defaultReasoningLevel,
+    default_reasoning_summary: profile.defaultReasoningSummary,
     description: `CCR gateway model ${model}`,
     display_name: model,
     effective_context_window_percent: codexEffectiveContextWindowPercent,
@@ -129,7 +132,7 @@ function codexModelCatalogItem(
     input_modalities: profile.inputModalities,
     max_context_window: contextWindow,
     priority,
-    service_tiers: [],
+    service_tiers: profile.serviceTiers,
     shell_type: "shell_command",
     slug: model,
     support_verbosity: true,
@@ -147,10 +150,14 @@ function codexModelCatalogItem(
 }
 
 type CodexCapabilityProfile = {
+  additionalSpeedTiers: unknown[];
   applyPatchToolType: string | null;
   catalogEntry?: ModelCatalogEntry;
+  defaultReasoningLevel: string | null;
+  defaultReasoningSummary: string;
   inputModalities: string[];
   supportedReasoningLevels: Array<{ description: string; effort: string }>;
+  serviceTiers: unknown[];
   supportsImageInput: boolean;
   supportsParallelToolCalls: boolean;
   supportsReasoning: boolean;
@@ -162,13 +169,18 @@ function codexModelCapabilityProfile(
   config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>
 ): CodexCapabilityProfile {
   const selector = parseModelSelector(model);
-  const provider = selector?.provider ? findConfiguredProvider(config, selector.provider) : undefined;
+  const provider = selector?.provider ? findConfiguredProvider(config, selector.provider) : findConfiguredProviderForModel(config, model);
+  const providerModel = selector?.model ?? model;
+  const providerModelMetadata = provider
+    ? providerModelMetadataFor(provider, providerModel) ?? localCodexModelMetadataFor(provider, providerModel)
+    : undefined;
   const catalogEntry = findModelCatalogEntry(model);
   const capabilities = catalogEntry?.capabilities ?? {};
   const providerProtocol = provider ? codexProviderProtocol(provider) : undefined;
   const providerSupportsResponses = provider ? codexProviderSupportsResponses(provider) : false;
   const supportsFusionWebSearch = codexVirtualModelSupportsFusionWebSearch(model, config);
-  const supportsReasoning = readCatalogCapability(capabilities, "reasoning");
+  const metadataReasoningLevels = normalizeProviderReasoningLevels(providerModelMetadata?.supportedReasoningLevels);
+  const supportsReasoning = providerModelMetadata?.supportsReasoningSummaries ?? (metadataReasoningLevels ? true : readCatalogCapability(capabilities, "reasoning"));
   const supportsImageInput = catalogEntrySupportsImageInput(catalogEntry);
   const supportsParallelToolCalls = readCatalogCapability(capabilities, "parallelFunctionCalling");
   const applyPatchToolType = providerSupportsResponses || catalogModelLooksLikeGpt(model, catalogEntry) || codexPatchBridgeApplies(model, catalogEntry, config)
@@ -186,15 +198,81 @@ function codexModelCapabilityProfile(
     );
 
   return {
+    additionalSpeedTiers: providerModelMetadata?.additionalSpeedTiers ?? [],
     applyPatchToolType,
     catalogEntry,
+    defaultReasoningLevel: providerModelMetadata && providerModelMetadata.defaultReasoningLevel !== undefined
+      ? providerModelMetadata.defaultReasoningLevel
+      : supportsReasoning
+      ? "medium"
+      : null,
+    defaultReasoningSummary: providerModelMetadata?.defaultReasoningSummary ?? "none",
     inputModalities: supportsImageInput ? ["text", "image"] : ["text"],
-    supportedReasoningLevels: supportsReasoning ? supportedReasoningLevels(capabilities) : [],
+    serviceTiers: providerModelMetadata?.serviceTiers ?? [],
+    supportedReasoningLevels: metadataReasoningLevels ?? (supportsReasoning ? supportedReasoningLevels(capabilities) : []),
     supportsImageInput,
     supportsParallelToolCalls,
     supportsReasoning,
     supportsSearchTool
   };
+}
+
+function providerModelMetadataFor(provider: GatewayProviderConfig, model: string): ProviderModelMetadata | undefined {
+  const metadata = provider.modelMetadata ?? {};
+  const direct = metadata[model];
+  if (direct) {
+    return direct;
+  }
+  const normalized = model.trim().toLowerCase();
+  const match = Object.entries(metadata).find(([candidate]) => candidate.trim().toLowerCase() === normalized);
+  return match?.[1];
+}
+
+function localCodexModelMetadataFor(provider: GatewayProviderConfig, model: string): ProviderModelMetadata | undefined {
+  if (!isLocalCodexProvider(provider)) {
+    return undefined;
+  }
+  return readCodexLocalModelCatalog().modelMetadata?.[model];
+}
+
+function isLocalCodexProvider(provider: GatewayProviderConfig): boolean {
+  const baseUrl = providerBaseUrl(provider).trim().replace(/\/+$/g, "");
+  const normalizedBaseUrl = normalizeProviderBaseUrl(baseUrl);
+  const normalizedCodexBaseUrl = normalizeProviderBaseUrl(codexDefaultBaseUrl);
+  return (
+    providerApiKey(provider) === localAgentProviderApiKey &&
+    (
+      baseUrl.toLowerCase() === codexDefaultBaseUrl.toLowerCase() ||
+      baseUrl.toLowerCase().includes("chatgpt.com/backend-api/codex") ||
+      normalizedBaseUrl === normalizedCodexBaseUrl
+    )
+  );
+}
+
+function providerBaseUrl(provider: GatewayProviderConfig): string {
+  return provider.api_base_url || provider.baseUrl || provider.baseurl || "";
+}
+
+function providerApiKey(provider: GatewayProviderConfig): string {
+  return provider.api_key || provider.apiKey || provider.apikey || "";
+}
+
+function normalizeProviderReasoningLevels(levels: ProviderReasoningLevel[] | undefined): Array<{ description: string; effort: string }> | undefined {
+  const normalized = (levels ?? [])
+    .map((level) => ({
+      description: level.description.trim() || effortDescription(level.effort),
+      effort: level.effort.trim()
+    }))
+    .filter((level) => level.effort);
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function effortDescription(effort: string): string {
+  const normalized = effort.trim().toLowerCase();
+  if (normalized === "xhigh") {
+    return "Extra high reasoning";
+  }
+  return `${effort.slice(0, 1).toUpperCase()}${effort.slice(1)} reasoning`;
 }
 
 function codexModelContextWindow(model: string, entry = findModelCatalogEntry(model)): number {
@@ -231,6 +309,19 @@ function findConfiguredProvider(
     return undefined;
   }
   return (config?.Providers ?? []).find((provider) => provider.name.trim().toLowerCase() === normalized);
+}
+
+function findConfiguredProviderForModel(
+  config: Partial<Pick<AppConfig, "Providers" | "virtualModelProfiles">> | undefined,
+  model: string
+): GatewayProviderConfig | undefined {
+  const normalized = model.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  return (config?.Providers ?? []).find((provider) =>
+    provider.models.some((candidate) => candidate.trim().toLowerCase() === normalized)
+  );
 }
 
 function codexProviderProtocol(provider: GatewayProviderConfig): GatewayProviderProtocol | undefined {

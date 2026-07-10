@@ -11,5 +11,5 @@ export const claudeApiProviderPreset: ProviderPreset = {
   ],
   id: "claudeapi",
   name: "claudeapi",
-  websiteUrl: "https://www.claudeapi.com?source=claudecoderouter"
+  websiteUrl: "https://console.claudeapi.com/agent/register/LbmB7Y9kPloyzhwF?utm_source=claudecoderouter&utm_medium=partner&utm_campaign=claudecoderouter_2026&utm_content=default"
 };

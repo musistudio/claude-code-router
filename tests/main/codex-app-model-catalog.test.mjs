@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { writeCodexCompatibleAppModelCatalog } from "../../packages/core/src/agents/codex/app-launch.ts";
+import {
+  codexDesktopAppName,
+  findInstalledCodexAppExecutable,
+  removeLegacyCodexVirtualAuthMarker,
+  writeCodexCompatibleAppModelCatalog
+} from "../../packages/core/src/agents/codex/app-launch.ts";
 
-test("Codex App model catalog write includes patch bridge capabilities", () => {
+test("ChatGPT model catalog write includes patch bridge capabilities", () => {
   const configDir = mkdtempSync(path.join(os.tmpdir(), "ccr-codex-app-catalog-"));
   try {
     const config = {
@@ -50,5 +55,108 @@ test("Codex App model catalog write includes patch bridge capabilities", () => {
     assert.equal(second.file, result.file);
   } finally {
     rmSync(configDir, { force: true, recursive: true });
+  }
+});
+
+test("ChatGPT desktop app path override discovers the renamed executable", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-chatgpt-app-"));
+  const previous = process.env.CHATGPT_APP_PATH;
+  try {
+    let configuredPath;
+    let expectedExecutable;
+    if (process.platform === "darwin") {
+      configuredPath = path.join(root, "ChatGPT.app");
+      const macosDir = path.join(configuredPath, "Contents", "MacOS");
+      mkdirSync(macosDir, { recursive: true });
+      expectedExecutable = path.join(macosDir, "ChatGPT");
+      writeFileSync(expectedExecutable, "");
+      writeFileSync(
+        path.join(configuredPath, "Contents", "Info.plist"),
+        "<plist><dict><key>CFBundleExecutable</key><string>ChatGPT</string></dict></plist>"
+      );
+    } else {
+      expectedExecutable = path.join(root, process.platform === "win32" ? "ChatGPT.exe" : "chatgpt");
+      configuredPath = expectedExecutable;
+      writeFileSync(expectedExecutable, "");
+    }
+
+    process.env.CHATGPT_APP_PATH = configuredPath;
+    const result = findInstalledCodexAppExecutable();
+    assert.equal(codexDesktopAppName, "ChatGPT");
+    assert.equal(result.executable, expectedExecutable);
+    assert.equal(result.checked[0], configuredPath);
+  } finally {
+    if (previous === undefined) {
+      delete process.env.CHATGPT_APP_PATH;
+    } else {
+      process.env.CHATGPT_APP_PATH = previous;
+    }
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("ChatGPT profile appPath overrides process env discovery", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-chatgpt-profile-app-"));
+  const previous = process.env.CHATGPT_APP_PATH;
+  try {
+    const envExecutable = path.join(root, "env", "ChatGPT");
+    mkdirSync(path.dirname(envExecutable), { recursive: true });
+    writeFileSync(envExecutable, "");
+    process.env.CHATGPT_APP_PATH = envExecutable;
+
+    const profileExecutable = path.join(root, "profile", "ChatGPT");
+    mkdirSync(path.dirname(profileExecutable), { recursive: true });
+    writeFileSync(profileExecutable, "");
+
+    withPlatform("linux", () => {
+      const result = findInstalledCodexAppExecutable(profileExecutable);
+      assert.equal(result.executable, profileExecutable);
+      assert.equal(result.checked[0], profileExecutable);
+    });
+  } finally {
+    if (previous === undefined) {
+      delete process.env.CHATGPT_APP_PATH;
+    } else {
+      process.env.CHATGPT_APP_PATH = previous;
+    }
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+function withPlatform(platform, callback) {
+  const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", {
+    configurable: true,
+    value: platform
+  });
+  try {
+    return callback();
+  } finally {
+    Object.defineProperty(process, "platform", descriptor);
+  }
+}
+
+test("ChatGPT migration removes only the exact legacy CCR auth marker", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-chatgpt-auth-migration-"));
+  const authFile = path.join(root, "auth.json");
+  try {
+    writeFileSync(authFile, JSON.stringify({
+      auth_mode: "apikey",
+      OPENAI_API_KEY: "ccr-local-profile"
+    }));
+    assert.equal(removeLegacyCodexVirtualAuthMarker(root), true);
+    assert.equal(existsSync(authFile), false);
+
+    const realAuth = { auth_mode: "chatgpt", tokens: { access_token: "preserve-me" } };
+    writeFileSync(authFile, JSON.stringify(realAuth));
+    assert.equal(removeLegacyCodexVirtualAuthMarker(root), false);
+    assert.deepEqual(JSON.parse(readFileSync(authFile, "utf8")), realAuth);
+
+    const customApiKey = { auth_mode: "apikey", OPENAI_API_KEY: "user-key" };
+    writeFileSync(authFile, JSON.stringify(customApiKey));
+    assert.equal(removeLegacyCodexVirtualAuthMarker(root), false);
+    assert.deepEqual(JSON.parse(readFileSync(authFile, "utf8")), customApiKey);
+  } finally {
+    rmSync(root, { force: true, recursive: true });
   }
 });

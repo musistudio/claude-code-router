@@ -188,6 +188,7 @@ import type {
   ProviderCredentialConfig,
   ProviderDeepLinkPayload,
   ProviderDeepLinkRequest,
+  ProviderModelMetadata,
   ProfileConfig,
   ProfileOpenSurface,
   CodexProfileConfigFormat,
@@ -424,6 +425,7 @@ export type AddProviderDraft = {
   icon: string;
   modelDescriptions?: Record<string, string>;
   modelDisplayNames?: Record<string, string>;
+  modelMetadata?: Record<string, ProviderModelMetadata>;
   modelSearch: string;
   modelsText: string;
   name: string;
@@ -483,6 +485,7 @@ export type AddApiKeyDraft = {
 
 export type AddProfileDraft = {
   agent: ProfileConfig["agent"];
+  appPath: string;
   botConfigId: string;
   botAuthFields: Record<string, string>;
   botAuthType: string;

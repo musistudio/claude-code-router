@@ -27,6 +27,18 @@ test("provider URL parsing handles local and Gemini endpoint variants", () => {
   assert.equal(parsed.geminiBaseUrl, "http://localhost:8787");
 });
 
+test("provider URL parsing preserves versioned Vertex bypass bases for Gemini", () => {
+  const parsed = parseProviderBaseUrl("https://api.qnaigc.com/bypass/vertex/v1/models/gemini-pro:generateContent");
+
+  assert.equal(parsed.normalizedInputBaseUrl, "https://api.qnaigc.com/bypass/vertex/v1");
+  assert.equal(parsed.rootBaseUrl, "https://api.qnaigc.com/bypass/vertex");
+  assert.equal(parsed.geminiBaseUrl, "https://api.qnaigc.com/bypass/vertex/v1");
+  assert.equal(
+    normalizeProviderBaseUrl("https://api.qnaigc.com/bypass/vertex/v1", "gemini_generate_content"),
+    "https://api.qnaigc.com/bypass/vertex/v1"
+  );
+});
+
 test("provider URL parsing handles Gemini Interactions endpoint variants", () => {
   const parsed = parseProviderBaseUrl("localhost:8787/v1/interactions/interaction-123/cancel");
 

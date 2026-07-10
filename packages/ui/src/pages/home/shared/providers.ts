@@ -190,6 +190,7 @@ import type {
   ProviderCredentialConfig,
   ProviderDeepLinkPayload,
   ProviderDeepLinkRequest,
+  ProviderModelMetadata,
   ProfileConfig,
   ProfileOpenSurface,
   CodexProfileConfigFormat,
@@ -784,6 +785,7 @@ export function providerDisplayIcon(provider: GatewayProviderConfig): string {
 
 export type ProviderDeepLinkCatalogModelsResolution = {
   modelDisplayNames?: Record<string, string>;
+  modelMetadata?: Record<string, ProviderModelMetadata>;
   models: string[];
 };
 
@@ -804,6 +806,7 @@ export async function resolveProviderDeepLinkCatalogModels(payload: ProviderDeep
     });
     return {
       modelDisplayNames: mergeModelDisplayNames(result.modelDisplayNames),
+      modelMetadata: modelMetadataForModels(result.modelMetadata, result.models),
       models: mergeProviderModelLists(result.models)
     };
   } catch {
@@ -872,6 +875,7 @@ export function createProviderDraftFromDeepLinkPayload(
       mergeModelDisplayNames(providerPresetModelDisplayNames(preset), payload.modelDisplayNames),
       models
     ),
+    modelMetadata: modelMetadataForModels(payload.modelMetadata, models),
     modelSearch: "",
     modelsText: models.join("\n"),
     name: uniqueProviderName(providers, baseName),
@@ -930,6 +934,7 @@ export function createProviderConfigFromDeepLink(
     icon: payload.icon?.trim() || undefined,
     modelDescriptions: modelDescriptionsForModels(payload.modelDescriptions, models),
     modelDisplayNames: modelDisplayNamesForModels(mergeModelDisplayNames(payload.modelDisplayNames, probe?.modelDisplayNames), models),
+    modelMetadata: modelMetadataForModels(mergeModelMetadata(payload.modelMetadata, probe?.modelMetadata), models),
     models,
     name,
     type: protocol
@@ -956,6 +961,7 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
     icon: "",
     modelDescriptions: undefined,
     modelDisplayNames: undefined,
+    modelMetadata: undefined,
     modelSearch: "",
     modelsText: "",
     name: uniqueProviderName(providers),
@@ -983,6 +989,7 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
       mergeModelDisplayNames(providerPresetModelDisplayNames(preset), provider.modelDisplayNames),
       provider.models
     ),
+    modelMetadata: modelMetadataForModels(provider.modelMetadata, provider.models),
     modelSearch: "",
     modelsText: provider.models.join("\n"),
     name: provider.name,
@@ -1544,12 +1551,14 @@ export function createProviderInstallLinkFromDraft(draft: AddProviderDraft, prob
 
   const modelDescriptions = modelDescriptionsForModels(draft.modelDescriptions, models);
   const modelDisplayNames = modelDisplayNamesForModels(draft.modelDisplayNames, models);
+  const modelMetadata = modelMetadataForModels(draft.modelMetadata, models);
   const payload: ProviderDeepLinkPayload = {
     ...(account ? { account } : {}),
     baseUrl,
     ...(draft.icon.trim() ? { icon: draft.icon.trim() } : {}),
     ...(modelDescriptions ? { modelDescriptions } : {}),
     ...(modelDisplayNames ? { modelDisplayNames } : {}),
+    ...(modelMetadata ? { modelMetadata } : {}),
     models,
     name: providerName,
     protocol
@@ -1707,10 +1716,11 @@ export function providerProbeCandidates(draft: AddProviderDraft): ProviderProbeC
   const preset = findProviderPreset(draft.presetId);
   const protocols = providerProtocolOptions.map((option) => option.value);
   if (preset) {
+    const probeAllProtocols = preset.endpoints.length === 1;
     return preset.endpoints.map((endpoint) => ({
       ...endpoint,
       declaredProtocols: endpoint.protocols,
-      protocols,
+      protocols: probeAllProtocols ? protocols : endpoint.protocols,
       source: "preset"
     }));
   }
@@ -1959,6 +1969,7 @@ export function applyProviderProbeResult(draft: AddProviderDraft, probe: Gateway
     ? detectedProtocol
     : selectedProtocols[0] ?? detectedProtocol;
   const modelDisplayNames = mergeModelDisplayNames(draft.modelDisplayNames, probe.modelDisplayNames);
+  const modelMetadata = mergeModelMetadata(draft.modelMetadata, probe.modelMetadata);
   const accountDraft = providerProbeAccountDraftPatch(draft, probe.account);
   const baseUrl = providerGlobalBaseUrlForProbe(draft.baseUrl, probe, selectedProtocols);
 
@@ -1968,6 +1979,7 @@ export function applyProviderProbeResult(draft: AddProviderDraft, probe: Gateway
       ...accountDraft,
       baseUrl,
       modelDisplayNames,
+      modelMetadata,
       protocol,
       selectedModels: mergeProviderModelLists(draft.selectedModels),
       selectedProtocols
@@ -1991,6 +2003,7 @@ export function applyProviderProbeResult(draft: AddProviderDraft, probe: Gateway
     ...accountDraft,
     baseUrl,
     modelDisplayNames,
+    modelMetadata,
     protocol,
     modelsText: customModels.join("\n"),
     selectedModels: nextSelectedModels,
@@ -2023,6 +2036,33 @@ export function mergeModelDisplayNames(
     }
   }
   return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+export function mergeModelMetadata(
+  ...groups: Array<Record<string, ProviderModelMetadata> | undefined>
+): Record<string, ProviderModelMetadata> | undefined {
+  const merged: Record<string, ProviderModelMetadata> = {};
+  for (const group of groups) {
+    for (const [rawModel, metadata] of Object.entries(group ?? {})) {
+      const model = rawModel.trim();
+      if (!model || !metadata || typeof metadata !== "object") {
+        continue;
+      }
+      merged[model] = metadata;
+    }
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+export function modelMetadataForModels(
+  value: Record<string, ProviderModelMetadata> | undefined,
+  models: string[]
+): Record<string, ProviderModelMetadata> | undefined {
+  const modelIds = new Set(models);
+  const entries = Object.entries(value ?? {})
+    .map(([rawModel, metadata]) => [rawModel.trim(), metadata] as const)
+    .filter(([model, metadata]) => model && modelIds.has(model) && metadata && typeof metadata === "object");
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 export function modelDisplayNamesForModels(
