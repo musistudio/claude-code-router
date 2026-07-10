@@ -13,6 +13,16 @@ import { normalizeProviderBaseUrl } from "@ccr/core/providers/url";
 const fusionModelProviderName = "Fusion";
 const codexDefaultContextWindow = 128_000;
 const codexEffectiveContextWindowPercent = 95;
+const openAiReasoningFallbackLevels = [
+  { effort: "minimal", description: "Minimal reasoning" },
+  { effort: "low", description: "Low reasoning" },
+  { effort: "medium", description: "Medium reasoning" },
+  { effort: "high", description: "High reasoning" }
+];
+const openAiExtendedReasoningFallbackLevels = [
+  ...openAiReasoningFallbackLevels,
+  { effort: "xhigh", description: "Extra high reasoning" }
+];
 
 export type CodexModelCatalog = {
   models: CodexModelCatalogItem[];
@@ -24,20 +34,27 @@ export type CodexModelCatalogItem = {
   availability_nux: null;
   base_instructions: string;
   context_window: number;
+  defaultReasoningEffort: string | null;
   default_reasoning_level: string | null;
+  default_reasoning_effort: string | null;
   default_reasoning_summary: string;
   description: string;
+  displayName: string;
   display_name: string;
   effective_context_window_percent: number;
   experimental_supported_tools: unknown[];
+  id: string;
   input_modalities: string[];
   max_context_window: number;
+  model: string;
   priority: number;
   service_tiers: unknown[];
   shell_type: string;
   slug: string;
   support_verbosity: boolean;
   supported_in_api: boolean;
+  supportedReasoningEfforts: Array<{ description: string; reasoningEffort: string; reasoning_effort: string }>;
+  supported_reasoning_efforts: string[];
   supported_reasoning_levels: Array<{ description: string; effort: string }>;
   supports_image_detail_original: boolean;
   supports_parallel_tool_calls: boolean;
@@ -123,20 +140,27 @@ function codexModelCatalogItem(
     availability_nux: null,
     base_instructions: "You are Codex, a coding agent.",
     context_window: contextWindow,
+    defaultReasoningEffort: profile.defaultReasoningLevel,
     default_reasoning_level: profile.defaultReasoningLevel,
+    default_reasoning_effort: profile.defaultReasoningLevel,
     default_reasoning_summary: profile.defaultReasoningSummary,
     description: `CCR gateway model ${model}`,
+    displayName: model,
     display_name: model,
     effective_context_window_percent: codexEffectiveContextWindowPercent,
     experimental_supported_tools: [],
+    id: model,
     input_modalities: profile.inputModalities,
     max_context_window: contextWindow,
+    model,
     priority,
     service_tiers: profile.serviceTiers,
     shell_type: "shell_command",
     slug: model,
     support_verbosity: true,
     supported_in_api: true,
+    supportedReasoningEfforts: profile.supportedReasoningLevels.map(reasoningEffortOption),
+    supported_reasoning_efforts: profile.supportedReasoningLevels.map((level) => level.effort),
     supported_reasoning_levels: profile.supportedReasoningLevels,
     supports_image_detail_original: profile.supportsImageInput,
     supports_parallel_tool_calls: profile.supportsParallelToolCalls,
@@ -146,6 +170,14 @@ function codexModelCatalogItem(
     upgrade: null,
     visibility: "list",
     web_search_tool_type: profile.supportsSearchTool && profile.supportsImageInput ? "text_and_image" : "text"
+  };
+}
+
+function reasoningEffortOption(level: { description: string; effort: string }): { description: string; reasoningEffort: string; reasoning_effort: string } {
+  return {
+    description: level.description,
+    reasoningEffort: level.effort,
+    reasoning_effort: level.effort
   };
 }
 
@@ -180,7 +212,8 @@ function codexModelCapabilityProfile(
   const providerSupportsResponses = provider ? codexProviderSupportsResponses(provider) : false;
   const supportsFusionWebSearch = codexVirtualModelSupportsFusionWebSearch(model, config);
   const metadataReasoningLevels = normalizeProviderReasoningLevels(providerModelMetadata?.supportedReasoningLevels);
-  const supportsReasoning = providerModelMetadata?.supportsReasoningSummaries ?? (metadataReasoningLevels ? true : readCatalogCapability(capabilities, "reasoning"));
+  const fallbackReasoningLevels = openAiGptReasoningFallbackLevels(provider, providerModel);
+  const supportsReasoning = providerModelMetadata?.supportsReasoningSummaries ?? (metadataReasoningLevels || fallbackReasoningLevels ? true : readCatalogCapability(capabilities, "reasoning"));
   const supportsImageInput = catalogEntrySupportsImageInput(catalogEntry);
   const supportsParallelToolCalls = readCatalogCapability(capabilities, "parallelFunctionCalling");
   const applyPatchToolType = providerSupportsResponses || catalogModelLooksLikeGpt(model, catalogEntry) || codexPatchBridgeApplies(model, catalogEntry, config)
@@ -209,12 +242,36 @@ function codexModelCapabilityProfile(
     defaultReasoningSummary: providerModelMetadata?.defaultReasoningSummary ?? "none",
     inputModalities: supportsImageInput ? ["text", "image"] : ["text"],
     serviceTiers: providerModelMetadata?.serviceTiers ?? [],
-    supportedReasoningLevels: metadataReasoningLevels ?? (supportsReasoning ? supportedReasoningLevels(capabilities) : []),
+    supportedReasoningLevels: metadataReasoningLevels ?? fallbackReasoningLevels ?? (supportsReasoning ? supportedReasoningLevels(capabilities) : []),
     supportsImageInput,
     supportsParallelToolCalls,
     supportsReasoning,
     supportsSearchTool
   };
+}
+
+function openAiGptReasoningFallbackLevels(
+  provider: GatewayProviderConfig | undefined,
+  model: string
+): Array<{ description: string; effort: string }> | undefined {
+  if (!provider) {
+    return undefined;
+  }
+  const normalizedModel = model.trim().toLowerCase();
+  if (openAiGptSupportsXHighFallback(normalizedModel)) {
+    return openAiExtendedReasoningFallbackLevels;
+  }
+  return /^gpt-[0-9]/.test(normalizedModel) || /^o[0-9]/.test(normalizedModel)
+    ? openAiReasoningFallbackLevels
+    : undefined;
+}
+
+function openAiGptSupportsXHighFallback(model: string): boolean {
+  const match = model.match(/^gpt-(\d+)(?:[.-](\d+))?/);
+  if (!match) return false;
+  const major = Number.parseInt(match[1], 10);
+  const minor = Number.parseInt(match[2] || "0", 10);
+  return major > 5 || (major === 5 && minor >= 6);
 }
 
 function providerModelMetadataFor(provider: GatewayProviderConfig, model: string): ProviderModelMetadata | undefined {

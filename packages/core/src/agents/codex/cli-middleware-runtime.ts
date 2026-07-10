@@ -2310,7 +2310,7 @@ function modelList(params, existingResult) {
   const fallbackIds = isClaudeCodeRuntime
     ? [configured].filter(Boolean)
     : [configured].filter((model) => model && !isClaudeCodeOnlyModel(model));
-  const models = mergeModelListItems(extractModelListItems(existingResult), [...catalogModelIds(), ...fallbackIds], selected);
+  const models = mergeModelListItems(extractModelListItems(existingResult), [...catalogModelItems(), ...fallbackIds], selected);
   const offset = Number(params.cursor || 0) || 0;
   const limit = Number(params.limit || models.length) || models.length;
   const data = models.slice(offset, offset + limit);
@@ -2323,8 +2323,15 @@ function modelList(params, existingResult) {
 }
 
 function catalogModelIds() {
-  const values = parseModelCatalogEnv();
-  return values.map(normalizeModelSelector).filter(Boolean);
+  return catalogModelItems()
+    .map(modelItemId)
+    .map(normalizeModelSelector)
+    .filter(Boolean);
+}
+
+function catalogModelItems() {
+  return parseModelCatalogEnv()
+    .filter((item) => normalizeModelSelector(modelItemId(item)));
 }
 
 function parseModelCatalogEnv() {
@@ -2332,14 +2339,14 @@ function parseModelCatalogEnv() {
   if (file) {
     const parsed = readJsonFile(file);
     if (parsed) {
-      return modelIdsFromJson(parsed);
+      return modelItemsFromJson(parsed);
     }
     log("model_catalog_parse_error", { source: "file", file });
   }
   const encoded = agentEnv(codexRuntimeAgent(), "MODEL_CATALOG_B64");
   if (encoded) {
     try {
-      return modelIdsFromJson(JSON.parse(Buffer.from(encoded, "base64").toString("utf8")));
+      return modelItemsFromJson(JSON.parse(Buffer.from(encoded, "base64").toString("utf8")));
     } catch (error) {
       log("model_catalog_parse_error", { source: "base64", error: formatError(error) });
     }
@@ -2347,7 +2354,7 @@ function parseModelCatalogEnv() {
   const raw = agentEnv(codexRuntimeAgent(), "MODEL_CATALOG");
   if (raw) {
     try {
-      return modelIdsFromJson(JSON.parse(raw));
+      return modelItemsFromJson(JSON.parse(raw));
     } catch (error) {
       log("model_catalog_parse_error", { source: "json", error: formatError(error) });
     }
@@ -2355,16 +2362,16 @@ function parseModelCatalogEnv() {
   return [];
 }
 
-function modelIdsFromJson(value) {
+function modelItemsFromJson(value) {
   const output = [];
-  collectModelIdsFromJson(value, output);
+  collectModelItemsFromJson(value, output);
   return output;
 }
 
-function collectModelIdsFromJson(value, output) {
+function collectModelItemsFromJson(value, output) {
   if (Array.isArray(value)) {
     for (const item of value) {
-      collectModelIdFromJsonItem(item, output);
+      collectModelItemFromJson(item, output);
     }
     return;
   }
@@ -2373,42 +2380,81 @@ function collectModelIdsFromJson(value, output) {
     for (const key of ["models", "data", "items", "results", "model_list"]) {
       if (Array.isArray(value[key])) {
         foundList = true;
-        collectModelIdsFromJson(value[key], output);
+        collectModelItemsFromJson(value[key], output);
       }
     }
     if (!foundList) {
-      collectModelIdFromJsonItem(value, output);
+      collectModelItemFromJson(value, output);
     }
   }
 }
 
-function collectModelIdFromJsonItem(item, output) {
+function collectModelItemFromJson(item, output) {
   if (typeof item === "string") {
     output.push(item);
     return;
   }
   if (item && typeof item === "object") {
     const id = firstString(item, ["/model", "/id", "/slug", "/display_name", "/displayName", "/name", "/label"]);
-    if (id) output.push(id);
+    if (id) output.push(item);
   }
 }
 
-function mergeModelListItems(existingItems, catalogIds, selectedModel) {
+function mergeModelListItems(existingItems, catalogItems, selectedModel) {
   const seen = new Set();
   const output = [];
   for (const item of existingItems) {
     const id = normalizeModelSelector(modelItemId(item));
     if (!id || seen.has(id.toLowerCase())) continue;
     seen.add(id.toLowerCase());
-    output.push(typeof item === "object" && item !== null ? { ...item, id: item.id || id, model: item.model || id } : codexModelItem(id, selectedModel));
+    output.push(typeof item === "object" && item !== null ? normalizeModelListItem(item, id, selectedModel) : codexModelItem(id, selectedModel));
   }
-  for (const rawId of catalogIds) {
-    const id = normalizeModelSelector(rawId);
+  for (const item of catalogItems) {
+    const id = normalizeModelSelector(modelItemId(item));
     if (!id || seen.has(id.toLowerCase())) continue;
     seen.add(id.toLowerCase());
-    output.push(codexModelItem(id, selectedModel));
+    output.push(typeof item === "object" && item !== null ? normalizeModelListItem(item, id, selectedModel) : codexModelItem(id, selectedModel));
   }
   return output;
+}
+
+function normalizeModelListItem(item, id, selectedModel) {
+  const normalized = { ...item, id: item.id || id, model: item.model || id };
+  if (!normalized.displayName && typeof normalized.display_name === "string") {
+    normalized.displayName = normalized.display_name;
+  }
+  if (normalized.defaultReasoningEffort === undefined) {
+    normalized.defaultReasoningEffort = firstString(normalized, ["/default_reasoning_effort", "/default_reasoning_level", "/defaultReasoningLevel"]) || null;
+  }
+  const supportedReasoningEfforts =
+    normalizeSupportedReasoningEfforts(normalized.supportedReasoningEfforts) ||
+    normalizeSupportedReasoningEfforts(normalized.supported_reasoning_efforts) ||
+    normalizeSupportedReasoningEfforts(normalized.supported_reasoning_levels) ||
+    [];
+  normalized.supportedReasoningEfforts = supportedReasoningEfforts;
+  if (normalized.isDefault === undefined) normalized.isDefault = id === selectedModel;
+  return normalized;
+}
+
+function normalizeSupportedReasoningEfforts(value) {
+  if (!Array.isArray(value)) return undefined;
+  const seen = new Set();
+  const output = [];
+  for (const item of value) {
+    const record = item && typeof item === "object" ? item : {};
+    const effort = typeof item === "string"
+      ? item.trim()
+      : firstString(record, ["/reasoningEffort", "/reasoning_effort", "/effort", "/value", "/id"]);
+    if (!effort || seen.has(effort)) continue;
+    seen.add(effort);
+    const description = firstString(record, ["/description", "/label", "/name"]);
+    output.push({
+      ...(description ? { description } : {}),
+      reasoningEffort: effort,
+      reasoning_effort: effort
+    });
+  }
+  return output.length ? output : undefined;
 }
 
 function extractModelListItems(result) {
@@ -2533,10 +2579,17 @@ function modelCatalogFileEnv() {
 
 function modelCatalogConfigItem(model, priority) {
   return {
+    id: model,
+    model,
     slug: model,
+    displayName: model,
     display_name: model,
     description: "CCR gateway model " + model,
+    defaultReasoningEffort: null,
     default_reasoning_level: null,
+    default_reasoning_effort: null,
+    supportedReasoningEfforts: [],
+    supported_reasoning_efforts: [],
     supported_reasoning_levels: [],
     shell_type: "shell_command",
     visibility: "list",

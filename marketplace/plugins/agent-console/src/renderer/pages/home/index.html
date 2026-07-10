@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' app-plugin: data: blob: https:; font-src 'self' app-plugin: data:; connect-src 'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; worker-src 'self' blob:; child-src 'self' app-plugin: blob: https: http://127.0.0.1:* http://localhost:*; frame-src 'self' app-plugin: blob: https: http://127.0.0.1:* http://localhost:*; object-src 'none'; base-uri 'self'; form-action 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Codex Agent Console</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      (() => {
+        const searchParams = new URLSearchParams(window.location.search);
+        const requestedMode = searchParams.get("mode");
+        document.documentElement.dataset.windowMode = requestedMode === "small-chat" ? "small-chat" : "main";
+        document.documentElement.dataset.formFactor = "desktop";
+        try {
+          const rawPreferences = window.localStorage.getItem("agent-console:settings-preferences");
+          const preferences = JSON.parse(rawPreferences || "{}");
+          const preference = preferences?.theme;
+          const themePreference = preference === "light" || preference === "dark" || preference === "system" ? preference : "system";
+          const resolvedTheme =
+            themePreference === "system"
+              ? window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light"
+              : themePreference;
+          document.documentElement.dataset.theme = resolvedTheme;
+          document.documentElement.dataset.themePreference = themePreference;
+          document.documentElement.dataset.density = preferences?.compactDensity ? "compact" : "comfortable";
+          document.documentElement.dataset.reduceMotion = preferences?.reduceMotion ? "true" : "false";
+          document.documentElement.classList.toggle("dark", resolvedTheme === "dark");
+          document.documentElement.style.colorScheme = resolvedTheme;
+        } catch {
+          document.documentElement.dataset.theme = "light";
+          document.documentElement.dataset.themePreference = "system";
+          document.documentElement.dataset.density = "comfortable";
+          document.documentElement.dataset.reduceMotion = "false";
+        }
+      })();
+    </script>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

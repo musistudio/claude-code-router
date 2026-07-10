@@ -15,7 +15,9 @@ import {
   type InstalledBrowserApp,
   type ProviderAccountMeter,
   type ProviderAccountPluginConnectorConfig,
-  type ProviderAccountSnapshot
+  type ProviderAccountSnapshot,
+  knownGatewayPluginDefaultPermissions,
+  knownGatewayPluginDefaultSurfaces
 } from "@ccr/core/contracts/app";
 import { backendService, type RegisteredHttpBackend, type SqliteStore, type SqliteStoreOptions } from "@ccr/core/plugins/backend-service";
 import { CONFIGDIR, DATADIR } from "@ccr/core/config/constants";
@@ -714,9 +716,10 @@ class GatewayPluginService {
 export const pluginService = new GatewayPluginService();
 
 function pluginPermissionAccess(pluginConfig: Pick<GatewayPluginConfig, "id" | "permissions">): PluginPermissionAccess {
+  const permissions = pluginConfig.permissions ?? knownGatewayPluginDefaultPermissions(pluginConfig.id);
   return {
-    explicit: pluginConfig.permissions !== undefined,
-    permissions: new Set(pluginConfig.permissions ?? []),
+    explicit: permissions !== undefined,
+    permissions: new Set(permissions ?? []),
     pluginId: pluginConfig.id
   };
 }
@@ -969,11 +972,12 @@ function providerAccountConnectorKey(pluginId: string, connectorId: string): str
   return `${pluginId.trim()}:${connectorId.trim()}`;
 }
 
-function pluginSurfaceEnabled(pluginConfig: Pick<GatewayPluginConfig, "surfaces">, surface: GatewayPluginSurface): boolean {
-  return pluginConfig.surfaces?.[surface] !== false;
+function pluginSurfaceEnabled(pluginConfig: Pick<GatewayPluginConfig, "id" | "surfaces">, surface: GatewayPluginSurface): boolean {
+  const surfaces = pluginConfig.surfaces ?? knownGatewayPluginDefaultSurfaces(pluginConfig.id);
+  return surfaces?.[surface] !== false;
 }
 
-function pluginRuntimeSurfacesEnabled(pluginConfig: Pick<GatewayPluginConfig, "surfaces">): boolean {
+function pluginRuntimeSurfacesEnabled(pluginConfig: Pick<GatewayPluginConfig, "id" | "surfaces">): boolean {
   return pluginSurfaceEnabled(pluginConfig, "apps") ||
     pluginSurfaceEnabled(pluginConfig, "gateway") ||
     pluginSurfaceEnabled(pluginConfig, "provider");

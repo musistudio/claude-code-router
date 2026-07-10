@@ -663,6 +663,36 @@ export const GATEWAY_PLUGIN_PERMISSION_IDS = [
 
 export type GatewayPluginPermission = typeof GATEWAY_PLUGIN_PERMISSION_IDS[number];
 
+export type KnownGatewayPluginDefaults = {
+  permissions: GatewayPluginPermission[];
+  surfaces: GatewayPluginSurfacesConfig;
+};
+
+export const KNOWN_GATEWAY_PLUGIN_DEFAULTS: Record<string, KnownGatewayPluginDefaults> = {
+  "agent-console": {
+    permissions: ["trusted-code", "apps", "gateway-routes", "system-launcher"],
+    surfaces: { apps: true, gateway: true, provider: false }
+  },
+  "claude-design": {
+    permissions: ["trusted-code", "gateway-routes", "proxy-routes", "http-backends", "sqlite-store"],
+    surfaces: { apps: false, gateway: true, provider: false }
+  },
+  "cursor-proxy": {
+    permissions: ["trusted-code", "gateway-routes", "proxy-routes", "http-backends"],
+    surfaces: { apps: false, gateway: true, provider: false }
+  }
+};
+
+export function knownGatewayPluginDefaultPermissions(id: string): GatewayPluginPermission[] | undefined {
+  const permissions = KNOWN_GATEWAY_PLUGIN_DEFAULTS[id.trim().toLowerCase()]?.permissions;
+  return permissions ? [...permissions] : undefined;
+}
+
+export function knownGatewayPluginDefaultSurfaces(id: string): GatewayPluginSurfacesConfig | undefined {
+  const surfaces = KNOWN_GATEWAY_PLUGIN_DEFAULTS[id.trim().toLowerCase()]?.surfaces;
+  return surfaces ? { ...surfaces } : undefined;
+}
+
 export type GatewayMcpServerTransport = "stdio" | "streamable-http" | "sse";
 export type GatewayMcpStdioMessageMode = "content-length" | "newline-json";
 

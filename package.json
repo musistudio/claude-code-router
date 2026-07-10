@@ -37,6 +37,7 @@
     "build": "node build/build.mjs && electron-builder",
     "build:assets": "node build/build.mjs",
     "build:docker": "node build/docker-build.mjs",
+    "build:plugin:agent-console": "npm --prefix marketplace/plugins/agent-console run build",
     "build:app:mac": "npm run build:app:mac:local",
     "build:app:mac:local": "npm run build:assets && electron-builder --config build/electron-builder.local.cjs --mac --publish never",
     "build:app:mac:release": "node build/macos-release-preflight.mjs && npm run build:assets && electron-builder --mac --publish never",

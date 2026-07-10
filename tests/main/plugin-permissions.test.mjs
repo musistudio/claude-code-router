@@ -93,6 +93,45 @@ test("plugin permissions gate configured browser apps", { skip: !process.env.CCR
   }
 });
 
+test("known bundled plugins without persisted permissions receive scoped defaults", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-plugin-known-defaults-"));
+  try {
+    const pluginFile = path.join(dir, "agent-console-plugin.cjs");
+    writeFileSync(pluginFile, [
+      "\"use strict\";",
+      "module.exports = {",
+      "  setup(ctx) {",
+      "    ctx.registerGatewayRoute({",
+      "      auth: \"none\",",
+      "      id: \"agent-console-status\",",
+      "      path: \"/plugins/agent-console/__status\",",
+      "      handler(_request, response, helpers) {",
+      "        helpers.sendJson(response, 200, { ok: true });",
+      "      }",
+      "    });",
+      "  }",
+      "};",
+      ""
+    ].join("\n"), "utf8");
+
+    await pluginService.start({
+      ...baseConfig(dir),
+      plugins: [{
+        apps: [{ id: "agent-console", name: "Agent Console", url: "/plugins/agent-console/pages/home/" }],
+        enabled: true,
+        id: "agent-console",
+        module: pluginFile
+      }]
+    });
+
+    assert.deepEqual(pluginService.getApps().map((app) => app.id), ["agent-console"]);
+    assert.equal(pluginService.hasGatewayRoutes(), true);
+  } finally {
+    await pluginService.stop();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("app-only plugin surface can execute trusted JavaScript and register apps", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-plugin-app-surface-"));
   try {

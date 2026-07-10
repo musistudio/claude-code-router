@@ -218,6 +218,44 @@ test("Codex app-server delegates the native model catalog unchanged", { skip: pr
   });
 });
 
+test("Codex standalone app-server preserves catalog reasoning metadata for model list", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-catalog-models-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const codexHome = path.join(dir, "codex-home");
+  mkdirSync(codexHome, { recursive: true });
+
+  const result = spawnSync(process.execPath, [runtimeFile, "app-server"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CCR_CODEX_MODEL_CATALOG: JSON.stringify({
+        models: [
+          {
+            default_reasoning_level: "high",
+            display_name: "Gateway GPT",
+            slug: "Provider/gpt-5-codex",
+            supported_reasoning_levels: [
+              { description: "Low", effort: "low" },
+              { description: "High", effort: "high" }
+            ]
+          }
+        ]
+      }),
+      CCR_CODEX_REMOTE_FRONTEND_MODE: "claude-code",
+      CODEX_HOME: codexHome
+    },
+    input: JSON.stringify({ id: 1, method: "model/list", params: {} }) + "\n"
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const response = JSON.parse(result.stdout.trim());
+  const model = response.result.data.find((item) => item.model === "Provider/gpt-5-codex");
+  assert.ok(model);
+  assert.equal(model.displayName, "Gateway GPT");
+  assert.equal(model.defaultReasoningEffort, "high");
+  assert.deepEqual(model.supportedReasoningEfforts.map((level) => level.reasoningEffort), ["low", "high"]);
+});
+
 test("Claude Code wrapper injects the scoped profile model into real CLI args", { skip: process.platform === "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-wrapper-"));
   const runtimeFile = writeRuntimeScript(dir);

@@ -1,0 +1,200 @@
+:root {
+  color-scheme: light;
+  --spotlight-text: #20242a;
+  --spotlight-muted: #5f6875;
+  --spotlight-border: rgba(15, 23, 42, 0.28);
+  --spotlight-glass-highlight: rgba(255, 255, 255, 0.72);
+  --spotlight-glass-surface: rgba(248, 250, 253, 0.76);
+  --spotlight-glass-blur: 44px;
+  --spotlight-glass-saturate: 1.85;
+  --spotlight-row: rgba(255, 255, 255, 0.5);
+  --spotlight-row-hover: rgba(255, 255, 255, 0.66);
+  --spotlight-accent: #2f343b;
+  --spotlight-accent-soft: rgba(255, 255, 255, 0.58);
+  --spotlight-shadow: rgba(15, 23, 42, 0.34);
+  --spotlight-shadow-tight: rgba(15, 23, 42, 0.22);
+  --spotlight-radius: 999px;
+  --spotlight-font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --spotlight-text: #f4f7fb;
+  --spotlight-muted: #a8b0bb;
+  --spotlight-border: rgba(255, 255, 255, 0.14);
+  --spotlight-glass-highlight: rgba(255, 255, 255, 0.08);
+  --spotlight-glass-surface: rgba(17, 19, 24, 0.88);
+  --spotlight-glass-blur: 30px;
+  --spotlight-glass-saturate: 1.55;
+  --spotlight-row: rgba(255, 255, 255, 0.08);
+  --spotlight-row-hover: rgba(255, 255, 255, 0.13);
+  --spotlight-accent: #e5e7eb;
+  --spotlight-accent-soft: rgba(255, 255, 255, 0.09);
+  --spotlight-shadow: rgba(0, 0, 0, 0.56);
+  --spotlight-shadow-tight: rgba(0, 0, 0, 0.28);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --spotlight-text: #f4f7fb;
+    --spotlight-muted: #a8b0bb;
+    --spotlight-border: rgba(255, 255, 255, 0.14);
+    --spotlight-glass-highlight: rgba(255, 255, 255, 0.08);
+    --spotlight-glass-surface: rgba(17, 19, 24, 0.88);
+    --spotlight-glass-blur: 30px;
+    --spotlight-glass-saturate: 1.55;
+    --spotlight-row: rgba(255, 255, 255, 0.08);
+    --spotlight-row-hover: rgba(255, 255, 255, 0.13);
+    --spotlight-accent: #e5e7eb;
+    --spotlight-accent-soft: rgba(255, 255, 255, 0.09);
+    --spotlight-shadow: rgba(0, 0, 0, 0.56);
+    --spotlight-shadow-tight: rgba(0, 0, 0, 0.28);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: var(--spotlight-radius);
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+  background-color: transparent;
+  color: var(--spotlight-text);
+  font-family: var(--spotlight-font-sans);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.spotlight-page {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border-radius: var(--spotlight-radius);
+  background: transparent;
+  background-color: transparent;
+  -webkit-app-region: drag;
+}
+
+.spotlight-shell {
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--spotlight-border);
+  border-radius: var(--spotlight-radius);
+  background: var(--spotlight-glass-surface);
+  box-shadow:
+    0 20px 48px var(--spotlight-shadow),
+    0 2px 8px var(--spotlight-shadow-tight),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  backdrop-filter: blur(var(--spotlight-glass-blur)) saturate(var(--spotlight-glass-saturate));
+  -webkit-backdrop-filter: blur(var(--spotlight-glass-blur)) saturate(var(--spotlight-glass-saturate));
+  clip-path: inset(0 round var(--spotlight-radius));
+  opacity: 0;
+  transform: translateY(-5px) scale(0.985);
+  transform-origin: center top;
+  transition:
+    opacity 120ms ease,
+    transform 150ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: opacity, transform;
+}
+
+.spotlight-page--shown .spotlight-shell {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.spotlight-search {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  height: 100%;
+  gap: 10px;
+  padding: 6px 16px;
+  border-bottom: 0;
+  background: transparent;
+  -webkit-app-region: drag;
+}
+
+.spotlight-mark,
+.spotlight-input {
+  -webkit-app-region: no-drag;
+}
+
+.spotlight-mark {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 8px;
+  color: var(--spotlight-accent);
+  background: var(--spotlight-accent-soft);
+  overflow: hidden;
+}
+
+.spotlight-mark--app {
+  border: 0;
+  background: transparent;
+}
+
+.spotlight-source-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  object-fit: contain;
+}
+
+.spotlight-input {
+  min-width: 0;
+  height: 36px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--spotlight-text);
+  font-size: 20px;
+  font-weight: 560;
+  letter-spacing: 0;
+  line-height: 36px;
+}
+
+.spotlight-input::placeholder {
+  color: color-mix(in srgb, var(--spotlight-muted) 72%, transparent);
+}
+
+.spotlight-spin {
+  animation: spotlight-spin 0.9s linear infinite;
+}
+
+@keyframes spotlight-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spotlight-shell {
+    transition: none;
+  }
+}

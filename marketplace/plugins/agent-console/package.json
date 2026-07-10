@@ -1,0 +1,45 @@
+{
+  "name": "@claude-code-router/plugin-agent-console",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "index.cjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "build:main": "node build.mjs --main-only",
+    "build:renderer": "node build.mjs --renderer-only",
+    "check": "node --check src/index.cjs && npm run build && node --check index.cjs"
+  },
+  "dependencies": {
+    "@radix-ui/react-slot": "^1.2.4",
+    "@tiptap/core": "^3.26.1",
+    "@tiptap/extension-link": "^3.26.1",
+    "@tiptap/extension-placeholder": "^3.26.1",
+    "@tiptap/pm": "^3.26.1",
+    "@tiptap/react": "^3.26.1",
+    "@tiptap/starter-kit": "^3.26.1",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "dompurify": "^3.4.7",
+    "lucide-react": "^1.17.0",
+    "marked": "^18.0.4",
+    "monaco-editor": "^0.55.1",
+    "motion": "^12.40.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss": "^4.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.0",
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "esbuild": "^0.27.7",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.6"
+  }
+}
