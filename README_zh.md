@@ -209,14 +209,14 @@ CCR 可以完全通过桌面 UI 完成配置。首次使用建议按下面顺序
       </a>
     </td>
     <td align="center" width="330">
-      <a href="https://code0.ai?source=claudecoderouter">
+      <a href="https://code0.ai/agent/register/9n9jOsSnYQoemIVL?utm_source=claudecoderouter&amp;utm_medium=partner&amp;utm_campaign=claudecoderouter_2026&amp;utm_content=default">
         <img src="/docs/public/provider-icons/code0.png" width="42" height="42" alt="code0.ai 图标" />
         <br />
         <strong>code0.ai</strong>
       </a>
     </td>
     <td align="center" width="330">
-      <a href="https://www.claudeapi.com?source=claudecoderouter">
+      <a href="https://console.claudeapi.com/agent/register/LbmB7Y9kPloyzhwF?utm_source=claudecoderouter&amp;utm_medium=partner&amp;utm_campaign=claudecoderouter_2026&amp;utm_content=default">
         <img src="/docs/public/provider-icons/claudeapi.png" width="42" height="42" alt="claudeapi 图标" />
         <br />
         <strong>claudeapi</strong>
