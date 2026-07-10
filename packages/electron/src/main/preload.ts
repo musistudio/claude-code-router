@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { browserErrorI18nLanguage, formatLocalizedErrorMessage } from "@ccr/core/contracts/i18n";
 import { IPC_CHANNELS } from "@ccr/core/contracts/ipc-channels";
 import type {
@@ -41,6 +41,8 @@ import type {
   LocalAgentProviderCandidate,
   LocalAgentProviderImportRequest,
   LocalAgentProviderImportResult,
+  LocalAgentProviderProbeRequest,
+  LocalAgentProviderProbeResult,
   PluginDirectorySelection,
   PluginMarketplaceEntry,
   ProfileOpenCommandResult,
@@ -106,6 +108,7 @@ contextBridge.exposeInMainWorld("ccr", {
   getAgentTracePayload: (request: AgentAnalysisTracePayloadRequest) => invoke(IPC_CHANNELS.appGetAgentTracePayload, request) as Promise<AgentAnalysisTracePayloadFullResult>,
   getAppInfo: () => invoke(IPC_CHANNELS.appGetInfo) as Promise<AppInfo>,
   getConfig: () => invoke(IPC_CHANNELS.appGetConfig) as Promise<AppConfig>,
+  getFilePath: (file: File) => webUtils.getPathForFile(file),
   getGatewayStatus: () => invoke(IPC_CHANNELS.appGetGatewayStatus) as Promise<GatewayStatus>,
   getLocalAgentProviderCandidates: () => invoke(IPC_CHANNELS.appGetLocalAgentProviderCandidates) as Promise<LocalAgentProviderCandidate[]>,
   getOnboardingFinished: () => invoke(IPC_CHANNELS.appGetOnboardingFinished) as Promise<boolean>,
@@ -131,6 +134,7 @@ contextBridge.exposeInMainWorld("ccr", {
   openExternal: (url: string) => invoke(IPC_CHANNELS.appOpenExternal, url) as Promise<void>,
   openProfile: (request: ProfileOpenRequest) => invoke(IPC_CHANNELS.appOpenProfile, request) as Promise<ProfileOpenResult>,
   prepareImageExportTarget: (request: AppImageExportTargetRequest) => invoke(IPC_CHANNELS.appPrepareImageExportTarget, request) as Promise<AppImageExportTargetResult>,
+  probeLocalAgentProvider: (request: LocalAgentProviderProbeRequest) => invoke(IPC_CHANNELS.appProbeLocalAgentProvider, request) as Promise<LocalAgentProviderProbeResult>,
   probeProviderCandidates: (request: GatewayProviderProbeCandidatesRequest) => invoke(IPC_CHANNELS.appProbeProviderCandidates, request) as Promise<GatewayProviderProbeCandidateResult | undefined>,
   probeProvider: (request: GatewayProviderProbeRequest) => invoke(IPC_CHANNELS.appProbeProvider, request) as Promise<GatewayProviderProbeResult>,
   quitApp: () => invoke(IPC_CHANNELS.appQuit) as Promise<void>,

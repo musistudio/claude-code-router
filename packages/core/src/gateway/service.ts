@@ -347,11 +347,12 @@ class GatewayService {
   async start(config: AppConfig): Promise<GatewayStatus> {
     const coreHostError = loopbackCoreHostError(config.gateway.coreHost);
     if (coreHostError) {
-      return {
+      this.status = {
         ...this.getStatus(),
         lastError: coreHostError,
         state: "error"
       };
+      return this.status;
     }
     await this.stop({ nextConfig: config });
     this.config = config;
@@ -707,28 +708,28 @@ class GatewayService {
     let responseCompleted = false;
     let onClientDisconnect: (() => void) | undefined;
     let onResponseFinish: (() => void) | undefined;
+    const handleClientDisconnect = () => {
+      if (responseCompleted || response.writableEnded) {
+        return;
+      }
+      if (!clientDisconnected) {
+        clientDisconnected = true;
+        upstreamAbortController.abort(new Error(clientDisconnectMessage));
+      }
+      onClientDisconnect?.();
+    };
 
     response.once("finish", () => {
       responseCompleted = true;
       onResponseFinish?.();
     });
-    response.once("close", () => {
-      if (responseCompleted || response.writableEnded) {
-        return;
-      }
-      clientDisconnected = true;
-      upstreamAbortController.abort(new Error(clientDisconnectMessage));
-      onClientDisconnect?.();
-    });
-    response.on("error", (error) => {
+    response.once("close", handleClientDisconnect);
+    response.on("error", () => {
       // Client-side write failures (EPIPE / ECONNRESET when the client closes
       // mid-stream, common during tool execution) must not crash the main
       // process as an Uncaught Exception. Swallow them here; the close handler
       // above already records the disconnect via writeStreamLog.
-      if (!clientDisconnected) {
-        clientDisconnected = true;
-        upstreamAbortController.abort(new Error(clientDisconnectMessage));
-      }
+      handleClientDisconnect();
     });
 
     const writeRequestLog = (
@@ -977,6 +978,11 @@ class GatewayService {
       this.config
     );
     const upstreamResponse = upstreamResult.response;
+    if (clientDisconnected || upstreamAbortController.signal.aborted) {
+      await cancelResponseBody(upstreamResponse);
+      writeRequestLog(clientClosedRequestStatusCode, responseHeaders, "", false, clientDisconnectMessage);
+      return;
+    }
     if (codexApplyPatchBridgeActive) {
       responseHeaders.delete("content-length");
     }
@@ -990,6 +996,11 @@ class GatewayService {
       responseHeaders.delete("content-length");
     }
     recordProviderCredentialOutcome(this.config, method, upstreamResult.attempt, upstreamResponse.status, responseHeaders);
+    if (clientDisconnected || response.destroyed) {
+      await cancelResponseBody(upstreamResponse);
+      writeRequestLog(clientClosedRequestStatusCode, responseHeaders, "", false, clientDisconnectMessage);
+      return;
+    }
     response.writeHead(upstreamResponse.status, Object.fromEntries(filteredResponseHeaders(responseHeaders)));
     if (!upstreamResponse.body) {
       if (shouldCaptureUsage) {
@@ -1024,6 +1035,7 @@ class GatewayService {
           this.browserWebSearchMcpIntegration
         )
       : patchedResponseBody;
+    const responseStreams = uniqueStreams([upstreamBody, patchedResponseBody, responseBody]);
     const sampler = createBodySampler();
     const sseErrorDetector = createSseErrorDetector(responseHeaders.get("content-type") ?? undefined);
     let streamDetectedError: string | undefined;
@@ -1035,7 +1047,7 @@ class GatewayService {
       }
       logRecorded = true;
       writeRequestLog(
-        upstreamResponse.status,
+        clientDisconnected ? clientClosedRequestStatusCode : upstreamResponse.status,
         responseHeaders,
         sampler.read(),
         sampler.isTruncated(),
@@ -1044,13 +1056,21 @@ class GatewayService {
     };
     onClientDisconnect = () => {
       writeStreamLog(clientDisconnectMessage);
-      responseBody.destroy(new Error(clientDisconnectMessage));
+      responseBody.unpipe(response);
+      destroyResponseStreams(responseStreams);
     };
     onResponseFinish = () => {
       if (upstreamStreamEnded) {
         writeStreamLog();
       }
     };
+    const onResponseStreamError = (error: Error) => {
+      streamDetectedError ??= sseErrorDetector.finish();
+      writeStreamLog(clientDisconnected ? clientDisconnectMessage : formatError(error));
+    };
+    for (const stream of responseStreams) {
+      stream.on("error", onResponseStreamError);
+    }
     responseBody.on("data", (chunk) => {
       sampler.append(chunk);
       streamDetectedError ??= sseErrorDetector.append(chunk);
@@ -1061,10 +1081,6 @@ class GatewayService {
       if (responseCompleted || response.writableEnded) {
         writeStreamLog();
       }
-    });
-    responseBody.on("error", (error) => {
-      streamDetectedError ??= sseErrorDetector.finish();
-      writeStreamLog(clientDisconnected ? clientDisconnectMessage : formatError(error));
     });
     if (shouldCaptureUsage) {
       responseBody.once("end", () => {
@@ -1082,6 +1098,10 @@ class GatewayService {
           statusCode: upstreamResponse.status
         });
       });
+    }
+    if (clientDisconnected || response.destroyed) {
+      onClientDisconnect();
+      return;
     }
     responseBody.pipe(response);
   }
@@ -1158,8 +1178,8 @@ async function writeCoreGatewayConfig(
   mkdirSync(dirname(config.gateway.generatedConfigFile), { mode: privateDirMode, recursive: true });
   const pluginCoreGatewayConfig = pluginService.getCoreGatewayConfig();
   const providerPlugins = withCodexOauthRuntimeDefaults([
-    ...(config.providerPlugins ?? []),
-    ...pluginService.getCoreProviderPlugins()
+    ...(config.providerPlugins ?? []).filter(providerPluginEnabled),
+    ...pluginService.getCoreProviderPlugins().filter(providerPluginEnabled)
   ]);
   const codexOauthProviderNames = codexOauthLocalProviderNames(providerPlugins);
   const virtualModelProfiles = normalizeCoreGatewayVirtualModelProfiles(withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases([
@@ -1243,6 +1263,10 @@ function writePrivateTextFile(file: string, content: string): void {
       // Best effort for filesystems that do not support chmod.
     }
   }
+}
+
+function providerPluginEnabled(plugin: unknown): boolean {
+  return !isRecord(plugin) || plugin.enabled !== false;
 }
 
 export function normalizeCoreGatewayVirtualModelProfiles(profiles: unknown[], config: AppConfig): unknown[] {
@@ -5678,7 +5702,7 @@ async function fetchUpstreamWithFallback(input: {
       });
 
       if (hasNextAttempt && shouldFallbackAfterStatus(response.status, fallbackMode)) {
-        const delayMs = retryDelayAfterStatus(response.status, response, failedAttempts.length);
+        const delayMs = retryDelayAfterStatus(response.status, response.headers, failedAttempts.length);
         failedAttempts.push({
           credentialChain: attempt.credentialChain,
           credentialIds: attempt.credentialIds,
@@ -5701,10 +5725,13 @@ async function fetchUpstreamWithFallback(input: {
       };
     } catch (error) {
       const message = formatError(error);
+      const delayMs = hasNextAttempt && !input.signal?.aborted
+        ? retryDelayAfterNetworkError(failedAttempts.length)
+        : 0;
       failedAttempts.push({
         credentialChain: attempt.credentialChain,
         credentialIds: attempt.credentialIds,
-        delayMs: 0,
+        delayMs,
         error: message,
         model: attempt.model
       });
@@ -5716,6 +5743,9 @@ async function fetchUpstreamWithFallback(input: {
         });
       }
       if (hasNextAttempt) {
+        if (delayMs > 0) {
+          await delay(delayMs);
+        }
         continue;
       }
       throw new UpstreamRequestError(message, {
@@ -6167,15 +6197,28 @@ function shouldFallbackAfterStatus(statusCode: number, mode: RouterFallbackMode)
   return false;
 }
 
-function retryDelayAfterStatus(statusCode: number, response: Response, failedAttemptIndex: number): number {
-  if (statusCode !== 429) {
-    return 0;
-  }
-  const retryAfterMs = parseRetryAfterHeaderMs(response.headers.get("retry-after"));
-  if (retryAfterMs !== undefined) {
-    return clampNumber(retryAfterMs, 0, upstreamRetryAfterMaxMs);
+function retryDelayAfterStatus(_statusCode: number, headers: Headers, failedAttemptIndex: number): number {
+  const retryAfterMs = parseRetryAfterHeaderMs(headers.get("retry-after"));
+  if (retryAfterMs !== undefined && retryAfterMs > 0) {
+    return clampNumber(retryAfterMs, 1, upstreamRetryAfterMaxMs);
   }
   return exponentialRetryBackoffMs(failedAttemptIndex);
+}
+
+function retryDelayAfterNetworkError(failedAttemptIndex: number): number {
+  return exponentialRetryBackoffMs(failedAttemptIndex);
+}
+
+export function fallbackRetryDelayAfterStatusForTest(input: { failedAttemptIndex?: number; retryAfter?: string | null; statusCode: number }): number {
+  const headers = new Headers();
+  if (input.retryAfter !== undefined && input.retryAfter !== null) {
+    headers.set("retry-after", input.retryAfter);
+  }
+  return retryDelayAfterStatus(input.statusCode, headers, input.failedAttemptIndex ?? 0);
+}
+
+export function fallbackRetryDelayAfterNetworkErrorForTest(failedAttemptIndex = 0): number {
+  return retryDelayAfterNetworkError(failedAttemptIndex);
 }
 
 function parseRetryAfterHeaderMs(value: string | null): number | undefined {
@@ -6203,6 +6246,29 @@ async function drainResponseBody(response: Response): Promise<void> {
     await response.arrayBuffer();
   } catch {
     // The failed attempt is already being skipped; body drain errors should not block the next attempt.
+  }
+}
+
+async function cancelResponseBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // The client already disconnected; best-effort upstream cleanup must not mask that expected path.
+  }
+}
+
+function uniqueStreams(streams: Readable[]): Readable[] {
+  return [...new Set(streams)];
+}
+
+function destroyResponseStreams(streams: Readable[]): void {
+  for (const stream of streams) {
+    if (!stream.destroyed) {
+      // A downstream client close is an expected abort path. Destroying with
+      // an Error would emit another error event on Readable/Transform stages,
+      // and intermediate stages may not be the final responseBody listener.
+      stream.destroy();
+    }
   }
 }
 

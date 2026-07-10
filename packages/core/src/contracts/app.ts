@@ -133,11 +133,26 @@ export type GatewayProviderConfig = {
   id?: string;
   modelDescriptions?: Record<string, string>;
   modelDisplayNames?: Record<string, string>;
+  modelMetadata?: Record<string, ProviderModelMetadata>;
   models: string[];
   name: string;
   provider?: string;
   transformer?: unknown;
   type?: GatewayProviderProtocol | string;
+};
+
+export type ProviderReasoningLevel = {
+  description: string;
+  effort: string;
+};
+
+export type ProviderModelMetadata = {
+  additionalSpeedTiers?: unknown[];
+  defaultReasoningLevel?: string | null;
+  defaultReasoningSummary?: string;
+  serviceTiers?: unknown[];
+  supportedReasoningLevels?: ProviderReasoningLevel[];
+  supportsReasoningSummaries?: boolean;
 };
 
 export type ProviderCredentialConfig = {
@@ -293,6 +308,7 @@ export type ProviderDeepLinkPayload = {
   icon?: string;
   modelDescriptions?: Record<string, string>;
   modelDisplayNames?: Record<string, string>;
+  modelMetadata?: Record<string, ProviderModelMetadata>;
   models: string[];
   name?: string;
   protocol?: GatewayProviderProtocol;
@@ -323,6 +339,7 @@ export type LocalAgentProviderCandidate = {
   importable: boolean;
   kind: LocalAgentProviderKind;
   modelDisplayNames?: Record<string, string>;
+  modelMetadata?: Record<string, ProviderModelMetadata>;
   models: string[];
   name: string;
   protocol: GatewayProviderProtocol;
@@ -341,6 +358,16 @@ export type LocalAgentProviderImportResult = {
   providerPlugins: unknown[];
 };
 
+export type LocalAgentProviderProbeRequest = {
+  forceRefresh?: boolean;
+  id: string;
+};
+
+export type LocalAgentProviderProbeResult = {
+  candidate: LocalAgentProviderCandidate;
+  probe: GatewayProviderProbeResult;
+};
+
 export type ProviderCatalogModelsRequest = {
   baseUrl?: string;
   name?: string;
@@ -352,6 +379,7 @@ export type ProviderCatalogModelsResult = {
   loadedFrom?: string;
   matchedBy?: "base-url" | "provider-id" | "provider-name";
   modelDisplayNames?: Record<string, string>;
+  modelMetadata?: Record<string, ProviderModelMetadata>;
   models: string[];
   provider?: string;
   providerName?: string;
@@ -420,6 +448,7 @@ export type GatewayProviderProbeRequest = {
 
 export type GatewayProviderProbeCandidate = {
   baseUrl: string;
+  declaredProtocols?: GatewayProviderProtocol[];
   label?: string;
   protocols: GatewayProviderProtocol[];
   source: "custom" | "preset";
@@ -462,6 +491,7 @@ export type GatewayProviderProbeResult = {
   detectedProvider?: GatewayProviderDetectedProvider;
   detectedProtocol?: GatewayProviderProtocol;
   modelDisplayNames?: Record<string, string>;
+  modelMetadata?: Record<string, ProviderModelMetadata>;
   modelSource?: "anthropic" | "gemini" | "openai";
   models: string[];
   normalizedBaseUrl: string;
@@ -1143,6 +1173,7 @@ export type CodexProfileConfig = {
 
 export type ProfileConfig = {
   agent: ProfileClientKind;
+  appPath?: string;
   botConfigId?: string;
   botGateway?: BotGatewayRuntimeConfig;
   configFile?: string;

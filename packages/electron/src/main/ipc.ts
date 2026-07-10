@@ -17,7 +17,7 @@ import { shouldRestartGatewayForRuntimeConfigChange } from "@ccr/core/gateway/ru
 import { getProviderAccountSnapshots, invalidateProviderAccountSnapshotCache, resetCodexRateLimitCredit, testProviderAccountConnector } from "@ccr/core/providers/account-service";
 import { detectProviderIcon } from "@ccr/core/providers/icons";
 import { fetchProviderManifest } from "@ccr/core/providers/manifest-service";
-import { getLocalAgentProviderCandidates, importLocalAgentProvider } from "@ccr/core/agents/local-providers/service";
+import { getLocalAgentProviderCandidates, importLocalAgentProvider, probeLocalAgentProvider } from "@ccr/core/agents/local-providers/service";
 import { isLaunchAtLoginSupported, syncLaunchAtLogin } from "./launch-at-login";
 import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
 import { getProviderPresets } from "@ccr/core/providers/presets/index";
@@ -101,6 +101,7 @@ ipcMain.handle(IPC_CHANNELS.appGetUpdateStatus, () => appUpdateService.getStatus
 ipcMain.handle(IPC_CHANNELS.appGetUsageStats, (_event, range?: UsageStatsRange, filter?: UsageStatsFilter) => getUsageStats(range, filter));
 ipcMain.handle(IPC_CHANNELS.appFetchProviderManifest, (_event, request: ProviderManifestFetchRequest) => fetchProviderManifest(request));
 ipcMain.handle(IPC_CHANNELS.appImportLocalAgentProvider, (_event, request: LocalAgentProviderImportRequest) => importLocalAgentProvider(request));
+ipcMain.handle(IPC_CHANNELS.appProbeLocalAgentProvider, (_event, request) => probeLocalAgentProvider(request));
 ipcMain.handle(IPC_CHANNELS.appInstallProxyCertificate, () => proxyService.installCertificate());
 ipcMain.handle(IPC_CHANNELS.appListMcpServerTools, async (_event, serverName: string) => {
   const name = typeof serverName === "string" ? serverName.trim() : "";

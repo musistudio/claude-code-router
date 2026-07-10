@@ -6,7 +6,7 @@ import {
   normalizeProfileScope, normalizeProfileSurface, parseProfileModelValue, Pencil, Plus, PopoverContent,
   profileAgentLabel, profileAgentOptions, ProfileConfig, profileModelDisplayValue, profileModelMatchesQuery, profileModelProviderMatchesQuery,
   profileModelOptionDisplayName, profileModelProviderOptions, profileOpenSurfaces, profileScopeLabel, profileScopeOptions, profileSummaryItems, profileSurfaceLabel, profileSurfaceOptions,
-  Play, Power, RefreshCw, Search, Select, SelectControl, Terminal, Toggle, translateOptions, Trash2, useAppErrorText, useAppText, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactNode, type VirtualModelProfileConfig,
+  Play, Power, RefreshCw, Search, Select, SelectControl, Terminal, Toggle, translateOptions, Trash2, useAppErrorText, useAppText, type ProfileOpenSurface, type ProfileRuntimeStatus, type ReactDragEvent, type ReactNode, type VirtualModelProfileConfig,
   copyTextToClipboard,
   useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, X
 } from "../shared/index";
@@ -774,10 +774,41 @@ export function AddProfileForm({
   virtualModelProfiles?: VirtualModelProfileConfig[];
 }) {
   const t = useAppText();
+  const [appPathDragActive, setAppPathDragActive] = useState(false);
+  const appPathLabel = profileAppPathLabel(draft.agent);
+  const showAppPathField = draft.surface !== "cli" && Boolean(appPathLabel);
+  const handleAppPathDrop = useCallback((event: ReactDragEvent<HTMLElement>) => {
+    if (!showAppPathField) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    setAppPathDragActive(false);
+    const appPath = appPathFromDropEvent(event);
+    if (appPath) {
+      onChange({ appPath });
+    }
+  }, [onChange, showAppPathField]);
+  const handleAppPathDragOver = useCallback((event: ReactDragEvent<HTMLElement>) => {
+    if (!showAppPathField) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setAppPathDragActive(true);
+  }, [showAppPathField]);
+  const handleAppPathDragLeave = useCallback(() => {
+    setAppPathDragActive(false);
+  }, []);
 
   return (
     <>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div
+        className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+        onDragLeave={showAppPathField ? handleAppPathDragLeave : undefined}
+        onDragOver={showAppPathField ? handleAppPathDragOver : undefined}
+        onDrop={showAppPathField ? handleAppPathDrop : undefined}
+      >
         <Field label={t("Agent")}>
           <AgentSelectControl
             onChange={(agent) => onChange({ agent })}
@@ -816,6 +847,20 @@ export function AddProfileForm({
             value={draft.surface}
           />
         </Field>
+        {showAppPathField && appPathLabel ? (
+          <Field className="sm:col-span-2" label={t(appPathLabel)}>
+            <div className={cn(
+              "rounded-md border border-border bg-background p-1 transition-colors",
+              appPathDragActive ? "border-primary bg-primary/5" : "border-border"
+            )}>
+              <Input
+                placeholder={t("Drop the app here or paste the executable path")}
+                value={draft.appPath}
+                onChange={(event) => onChange({ appPath: event.target.value })}
+              />
+            </div>
+          </Field>
+        ) : null}
         {draft.agent === "claude-code" ? (
           <>
             <Field label={t("Model override")}>
@@ -882,6 +927,63 @@ export function AddProfileForm({
       ) : null}
     </>
   );
+}
+
+function profileAppPathLabel(agent: ProfileConfig["agent"]): "CLAUDE_APP_PATH" | "CHATGPT_APP_PATH" | undefined {
+  if (agent === "claude-code") {
+    return "CLAUDE_APP_PATH";
+  }
+  if (agent === "codex") {
+    return "CHATGPT_APP_PATH";
+  }
+  return undefined;
+}
+
+function appPathFromDropEvent(event: ReactDragEvent<HTMLElement>): string {
+  for (const file of Array.from(event.dataTransfer.files ?? [])) {
+    const path = filePathFromDroppedFile(file);
+    if (path) {
+      return path;
+    }
+  }
+  return appPathFromDroppedText(
+    event.dataTransfer.getData("text/uri-list") ||
+    event.dataTransfer.getData("text/plain")
+  );
+}
+
+function filePathFromDroppedFile(file: File): string {
+  try {
+    const bridgedPath = window.ccr?.getFilePath?.(file)?.trim();
+    if (bridgedPath) {
+      return bridgedPath;
+    }
+  } catch {
+    // Fall through to Electron versions that still expose File.path.
+  }
+  const legacyPath = (file as File & { path?: string }).path?.trim();
+  return legacyPath || "";
+}
+
+function appPathFromDroppedText(value: string): string {
+  const line = value
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .find((item) => item && !item.startsWith("#")) || "";
+  if (!line) {
+    return "";
+  }
+  if (!line.startsWith("file:")) {
+    return line;
+  }
+  try {
+    const pathname = decodeURIComponent(new URL(line).pathname);
+    return /^\/[A-Za-z]:\//.test(pathname)
+      ? pathname.slice(1)
+      : pathname;
+  } catch {
+    return "";
+  }
 }
 
 const ADD_BOT_SELECT_VALUE = "__add_bot__";

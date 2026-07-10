@@ -273,8 +273,8 @@ const zhPatternErrorMessages: PatternTranslator[] = [
     translate: (endpoint, status) => `CDP ${endpoint} 返回 HTTP ${status}`
   },
   {
-    pattern: /^Timed out waiting for Codex App response: (.+)$/,
-    translate: (requestId) => `等待 Codex App 响应超时：${requestId}`
+    pattern: /^Timed out waiting for (?:ChatGPT|Codex App) response: (.+)$/,
+    translate: (requestId) => `等待 ChatGPT 响应超时：${requestId}`
   },
   {
     pattern: /^No active turn for thread (.+)$/,

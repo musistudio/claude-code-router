@@ -11,8 +11,8 @@ import {
   providerAccountConnectorApiKeySafetyIssue, providerAccountConnectorExample, ProviderAccountDraftMode, providerAccountModeOptions, ProviderAccountSnapshot,
   providerAccountConnectorsTextWithNewApiUserBalanceTemplate, providerAccountSnapshotCredentialLabel, providerAccountSnapshotLabel, ProviderAccountTestPath,
   ProviderAccountTestResult, providerBaseUrl, providerCapabilitiesSummary, ProviderCredentialDraft, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerDraftSafetyIssue, providerCredentialDraftPatchFromJson, providerHttpJsonConnectorFromDraft,
-  ProviderConnectivityCheckReport, providerDeepLinkDisplayIcon, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
-  providerModelDisplayName, providerModelDisplayTitle, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
+  ProviderConnectivityCheckReport, providerCapabilityBaseUrlForProtocol, providerDeepLinkDisplayIcon, providerListItemKey, providerMatchesQuery, ProviderPreset, providerPresetIconUrls, providerProbeHasSupportedProtocol,
+  providerDisplayIcon, providerGlobalBaseUrlForProbe, providerModelDisplayName, providerModelDisplayTitle, providerSelectableProtocolsFromProbe, providerUsageFieldPatch, ProviderUsageFieldTarget, providerUsageMethodOptions, Search, SelectControl,
   resolveProviderDeepLinkPreset, ShieldCheck, splitLines, splitModelTagInput, Switch, Textarea, translatedProviderProtocolLabel, translateOptions,
   translateProbeProtocolMessage, Trash2, uniqueProviderName, uniqueProviderProtocols, useAppErrorText, useAppText, useEffect, useMemo,
   useRef, useState, X, isPlainRecord
@@ -111,24 +111,25 @@ export function ProvidersView({ accountSnapshots, addProvider, editProvider, not
                 </div>
                 <div className="divide-y divide-border/60">
                   <AnimatePresence initial={false}>
-                  {visibleProviders.map(({ provider, index }) => {
-                    const itemKey = providerListItemKey(provider, index);
-                    const expanded = expandedProviders.has(itemKey);
+                    {visibleProviders.map(({ provider, index }) => {
+                      const itemKey = providerListItemKey(provider, index);
+                      const expanded = expandedProviders.has(itemKey);
                       const providerAccountSnapshots = accountSnapshotsByProvider.get(provider.name) ?? [];
-                    return (
-                      <AnimatedListItem key={itemKey}>
-                        <div
-                          className="grid min-h-[58px] cursor-pointer grid-cols-[minmax(160px,0.8fr)_minmax(220px,1fr)_minmax(160px,0.7fr)_minmax(150px,0.65fr)_80px_84px] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35"
-                          onClick={() => toggleProvider(provider, index)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              toggleProvider(provider, index);
-                            }
-                          }}
-                          role="button"
-                          tabIndex={0}
-                        >
+                      const providerIconUrl = providerDisplayIcon(provider);
+                      return (
+                        <AnimatedListItem key={itemKey}>
+                          <div
+                            className="grid min-h-[58px] cursor-pointer grid-cols-[minmax(160px,0.8fr)_minmax(220px,1fr)_minmax(160px,0.7fr)_minmax(150px,0.65fr)_80px_84px] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/35"
+                            onClick={() => toggleProvider(provider, index)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                toggleProvider(provider, index);
+                              }
+                            }}
+                            role="button"
+                            tabIndex={0}
+                          >
                           <div className="flex min-w-0 items-center gap-2">
                             <button
                               aria-expanded={expanded}
@@ -143,6 +144,7 @@ export function ProvidersView({ accountSnapshots, addProvider, editProvider, not
                             >
                               {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                             </button>
+                            <ProviderPresetIcon className="h-8 w-8 rounded-md" iconUrl={providerIconUrl} />
                             <div className="min-w-0">
                               <div className="truncate text-[12px] font-semibold">{provider.name || t("Unnamed")}</div>
                             </div>
@@ -1196,6 +1198,7 @@ function LocalAgentProviderImportPanel({
         icon: result.provider.icon ?? "",
         modelDescriptions: result.provider.modelDescriptions,
         modelDisplayNames: result.provider.modelDisplayNames,
+        modelMetadata: result.provider.modelMetadata,
         modelSearch: "",
         modelsText: result.provider.models.join("\n"),
         name: result.provider.name?.trim() || inferProviderNameFromBaseUrl(result.provider.baseUrl),
@@ -1364,8 +1367,11 @@ export function AddProviderForm({
   const customEndpoint = draft.presetId === customProviderPresetId;
   const importMode = Boolean(importProvider);
   const showBaseUrl = customEndpoint || mode === "edit";
-  const detectedProtocol = probe?.detectedProtocol ?? draft.protocol;
-  const detectedBaseUrl = probe?.normalizedBaseUrl || draft.baseUrl;
+  const selectedDisplayProtocols = uniqueProviderProtocols(draft.selectedProtocols);
+  const detectedProtocol = selectedDisplayProtocols.length === 1
+    ? selectedDisplayProtocols[0]
+    : probe?.detectedProtocol ?? draft.protocol;
+  const detectedBaseUrl = providerCapabilityBaseUrlForProtocol(draft.baseUrl, detectedProtocol, probe);
   const safetyIssue = providerDraftSafetyIssue(draft, detectedBaseUrl);
   const localAgentImport = draft.providerPlugins.length > 0;
   const providerPresetOptions = [
@@ -1462,6 +1468,7 @@ export function AddProviderForm({
         icon: "",
         modelDescriptions: undefined,
         modelDisplayNames: undefined,
+        modelMetadata: undefined,
         modelSearch: "",
         presetId,
         providerPlugins: [],
@@ -1478,6 +1485,7 @@ export function AddProviderForm({
         icon: "",
         modelDescriptions: undefined,
         modelDisplayNames: undefined,
+        modelMetadata: undefined,
         modelSearch: "",
         presetId,
         providerPlugins: [],
@@ -1498,6 +1506,7 @@ export function AddProviderForm({
       icon: "",
       modelDescriptions: undefined,
       modelDisplayNames: preset?.defaultModelDisplayNames,
+      modelMetadata: undefined,
       modelSearch: "",
       modelsText: draft.modelsText.trim() || preset?.defaultModels?.join("\n") || "",
       name: mode === "add" && preset && generatedName ? uniqueProviderName(providers, t(preset.name)) : draft.name,
@@ -1695,17 +1704,6 @@ export function AddProviderForm({
           {advancedOpen ? (
             <AnimatedDisclosure className="sm:col-span-2" key="provider-advanced">
               <div className="grid grid-cols-1 gap-3 rounded-md border border-border bg-muted/20 p-3 sm:grid-cols-2">
-                {selectedPreset && !customEndpoint && mode === "add" ? (
-                  <Field className="sm:col-span-2" label={t("API endpoint")}>
-                    <Input value={draft.baseUrl} onChange={(event) => onChange({ baseUrl: event.target.value }, true)} />
-                  </Field>
-                ) : null}
-                <Field label={t("Detected compatibility")}>
-                  <Input readOnly value={translatedProviderProtocolLabel(detectedProtocol, t)} />
-                </Field>
-                <Field label={t("Detected endpoint")}>
-                  <Input readOnly value={detectedBaseUrl} />
-                </Field>
                 <ProviderCredentialSettings
                   draft={draft}
                   onChange={onChange}
@@ -1721,7 +1719,8 @@ export function AddProviderForm({
                     {protocolProbeRows.length ? (
                       <div className="space-y-1.5">
                         {protocolProbeRows.map((item) => {
-                          const selectable = item.supported && selectableProtocols.includes(item.protocol);
+                          const available = item.supported || selectableProtocols.includes(item.protocol);
+                          const selectable = available && selectableProtocols.includes(item.protocol);
                           const checked = selectable && draft.selectedProtocols.includes(item.protocol);
                           const itemKey = `${item.protocol}-${item.endpoint}`;
                           return (
@@ -1742,8 +1741,8 @@ export function AddProviderForm({
                                 }}
                               />
                               <span className="truncate font-medium">{translatedProviderProtocolLabel(item.protocol, t)}</span>
-                              <span className={cn("inline-flex min-w-0 items-center justify-end gap-1.5", item.supported ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground")}>
-                                <span className="truncate">{item.supported ? t("Available") : t("Unavailable")}</span>
+                              <span className={cn("inline-flex min-w-0 items-center justify-end gap-1.5", available ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground")}>
+                                <span className="truncate">{available ? t("Available") : t("Unavailable")}</span>
                                 <button
                                   aria-label={t("Protocol detection details")}
                                   aria-pressed={protocolProbeDetails?.key === itemKey}
@@ -2087,6 +2086,7 @@ function ProviderUsageSettings({
   const [testError, setTestError] = useState("");
   const [newApiUserId, setNewApiUserId] = useState("");
   const modeOptions = translateOptions(providerAccountModeOptions, t);
+  const globalBaseUrl = providerGlobalBaseUrlForProbe(draft.baseUrl, probe, draft.selectedProtocols);
   const showNewApiUserBalanceTemplate = probe?.detectedProvider === "new-api" ||
     draft.accountConnectorsText.includes("new-api-key-usage") ||
     draft.accountConnectorsText.includes("new-api-user-self");
@@ -2108,7 +2108,7 @@ function ProviderUsageSettings({
     }
     const safetyIssue = providerAccountConnectorApiKeySafetyIssue(connector, {
       apiKey: draft.apiKey,
-      baseUrl: (probe?.normalizedBaseUrl || draft.baseUrl).trim(),
+      baseUrl: globalBaseUrl,
       providerName: draft.name.trim(),
       providerPresetId: draft.presetId
     });
@@ -2143,7 +2143,7 @@ function ProviderUsageSettings({
     onChange({
       accountConnectorsText: providerAccountConnectorsTextWithNewApiUserBalanceTemplate(
         draft.accountConnectorsText,
-        probe?.normalizedBaseUrl || draft.baseUrl,
+        globalBaseUrl,
         newApiUserId
       )
     });
@@ -2516,7 +2516,7 @@ export function AddProviderDialog({
       </Dialog>
 
       {checkConfirmOpen ? (
-        <Dialog className="z-[60]" onOpenChange={(open) => !open && !checkConfirmBusy && setCheckConfirmOpen(false)}>
+        <Dialog className="z-[110]" onOpenChange={(open) => !open && !checkConfirmBusy && setCheckConfirmOpen(false)}>
           <DialogContent className="max-w-[520px]">
             <DialogHeader>
               <div className="min-w-0">

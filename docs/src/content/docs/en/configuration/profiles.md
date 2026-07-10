@@ -24,7 +24,7 @@ Every Agent Config has its own `id` and name. When CCR opens an agent, it finds 
 | --- | --- |
 | Separate config files | With **Only opened from CCR**, Claude Code and Codex write CCR-managed config files in directories separated by config `id` |
 | Separate launchers | Claude Code uses a separate launch wrapper; Codex and ZCode use separate middleware launchers; filenames are also separated by config `id` or name |
-| Separate app data directories | When opening App mode, Claude App, Codex App, and ZCode App use user-data directories separated by config `id` |
+| Separate app data directories | When opening App mode, Claude App, ChatGPT (the renamed Codex desktop app), and ZCode App use user-data directories separated by config `id` |
 | Runtime state | CCR tracks running app instances by entry mode and config `id`; reopening the same config activates the existing window, while a different config can open a separate instance |
 
 This lets you create multiple configs for the same agent, such as "Claude Code - Work Project", "Claude Code - Test Model", or "Codex - Fusion Vision". They can use different models, scopes, and Bots, then open as separate agent instances.
@@ -74,10 +74,12 @@ Claude App and Claude Code CLI use different model-list adapters:
 | Codex model | Default Codex model. It can be a provider model or Fusion model; if left empty, CCR uses the first available default model. |
 | Show all sessions | Lets Codex show all sessions. ZCode does not expose this option. |
 | Config file | Defaults to `~/.codex/config.toml`. Only opened from CCR writes into CCR-managed isolated config directories. |
-| Environment variables | Injected into Codex CLI or Codex App. Claude Code-specific model discovery variables are not passed to Codex. |
-| Bot | Applies only to the Codex App entry. |
+| Environment variables | Injected into Codex CLI or ChatGPT. Claude Code-specific model discovery variables are not passed to Codex. |
+| Bot | Applies only to the ChatGPT app entry. |
 
-After saving, use the terminal button on the config card to copy the Codex CLI command, for example `ccr "Codex - Work"`. Use the play button to open Codex App. CCR generates `config.toml`, a model catalog file, and a middleware launcher so Codex CLI and Codex App use the same CCR model and provider information.
+After saving, use the terminal button on the config card to copy the Codex CLI command, for example `ccr "Codex - Work"`. Use the play button to open ChatGPT. Following the CodexL launch model, CCR starts the Electron executable inside the ChatGPT app bundle directly, gives it an isolated user-data directory, and points `CODEX_CLI_PATH` at the CCR middleware. The middleware forwards app-server traffic to ChatGPT's bundled Codex CLI and only adapts the account display: an existing valid ChatGPT token is shown as the real ChatGPT account, while a profile without credentials uses a tokenless ChatGPT-shaped workspace identity so the desktop renderer keeps model selection available without storing a real user login. To make the native app-server select its official API marketplace, CCR creates the exact `ccr-local-profile` bootstrap only during process startup and removes it after the first native response; it is also cleaned after startup or abnormal exit and is never retained as login state. Every other authentication file is preserved. Older `Codex.app` installations remain supported.
+
+Model and public plugin listings are not synthesized by the middleware. The native Codex app-server reads the generated `model_catalog_json` and handles `model/list` plus public `plugin/list` requests unchanged. This lets Codex refresh the official public [`openai/plugins`](https://github.com/openai/plugins) Git marketplace over the network. In a virtual workspace, only account-private marketplace requests are answered with an explicit empty result because the native service requires real ChatGPT authentication for those sections; they are never replaced with local plugins. Any downloaded Git checkout is owned only by Codex as its normal last-known-good data, not used by CCR as a replacement catalog.
 
 ### ZCode
 
@@ -112,7 +114,7 @@ When opening Claude App from the desktop app, CCR also prepares a separate user-
 
 Codex config writes `config.toml` and a model catalog file. With **Only opened from CCR**, CCR stores those files in a directory separated by config `id`.
 
-Codex supports CLI and App. CLI opens through the launcher for the selected config; App uses a separate user-data directory and passes the selected model and provider into Codex App.
+Codex supports CLI and App. CLI opens through the launcher for the selected config; App launches ChatGPT, uses a separate user-data directory, and passes the selected model and provider into the app.
 
 ### ZCode
 

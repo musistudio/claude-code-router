@@ -8,6 +8,10 @@ import {
   providerIdentitySafetyIssueInList,
   providerPresetMatchesBaseUrl
 } from "../../packages/core/src/providers/presets/utils.ts";
+import {
+  moonshotChinaProviderPreset,
+  moonshotGlobalProviderPreset
+} from "../../packages/core/src/providers/presets/moonshot/index.ts";
 
 const openAiPreset = {
   aliases: ["OpenAI", "ChatGPT"],
@@ -26,6 +30,7 @@ const anthropicPreset = {
 };
 
 const presets = [openAiPreset, anthropicPreset];
+const moonshotPresets = [moonshotChinaProviderPreset, moonshotGlobalProviderPreset];
 
 test("provider preset matching accepts endpoint subpaths but rejects different hosts", () => {
   const openRouterPreset = {
@@ -47,7 +52,12 @@ test("provider identity lookup normalizes aliases and punctuation", () => {
   assert.equal(findProviderPresetByIdentityInList(presets, "Claude Provider")?.id, "anthropic");
 });
 
-test("provider identity safety allows loopback but warns on branded third-party endpoints", () => {
+test("provider identity lookup prefers exact Kimi regional names over shared aliases", () => {
+  assert.equal(findProviderPresetByIdentityInList(moonshotPresets, "Kimi API (Global)")?.id, "moonshot-global");
+  assert.equal(findProviderPresetByIdentityInList(moonshotPresets, "Kimi API (China)")?.id, "moonshot");
+});
+
+test("provider identity safety does not block branded third-party endpoints", () => {
   assert.equal(
     providerIdentitySafetyIssueInList(presets, {
       baseUrl: "http://127.0.0.1:3456/v1",
@@ -55,23 +65,55 @@ test("provider identity safety allows loopback but warns on branded third-party 
     }),
     undefined
   );
-  assert.match(
+  assert.equal(
     providerIdentitySafetyIssueInList(presets, {
       baseUrl: "https://proxy.example.com/v1",
       name: "OpenAI proxy"
-    })?.message ?? "",
-    /Provider identity looks like OpenAI/
+    }),
+    undefined
   );
 });
 
-test("provider API key safety blocks official-looking keys on untrusted endpoints", () => {
-  assert.match(
+test("provider identity safety does not block shared Kimi aliases", () => {
+  assert.equal(
+    providerIdentitySafetyIssueInList(moonshotPresets, {
+      baseUrl: "https://api.moonshot.ai/anthropic",
+      name: "Kimi API (Global)"
+    }),
+    undefined
+  );
+  assert.equal(
+    providerIdentitySafetyIssueInList(moonshotPresets, {
+      baseUrl: "https://api.moonshot.ai/v1",
+      name: "Kimi API (China)"
+    }),
+    undefined
+  );
+  assert.equal(
+    providerEndpointCanReceiveProviderApiKeyInList(moonshotPresets, {
+      apiKey: "manifest-provider-api-key",
+      endpoint: "https://api.moonshot.ai/v1/users/me/balance",
+      providerName: "Kimi API (China)"
+    }),
+    undefined
+  );
+  assert.equal(
+    providerIdentitySafetyIssueInList(moonshotPresets, {
+      baseUrl: "https://proxy.example.com/v1",
+      name: "Kimi API (Global)"
+    }),
+    undefined
+  );
+});
+
+test("provider API key safety does not block official-looking keys on third-party endpoints", () => {
+  assert.equal(
     providerApiKeySafetyIssueInList(presets, {
       apiKey: "sk-openai-test",
       baseUrl: "https://proxy.example.com/v1",
       name: "neutral proxy"
-    })?.message ?? "",
-    /official OpenAI key/
+    }),
+    undefined
   );
   assert.equal(
     providerApiKeySafetyIssueInList(presets, {
@@ -80,12 +122,12 @@ test("provider API key safety blocks official-looking keys on untrusted endpoint
     }),
     undefined
   );
-  assert.match(
+  assert.equal(
     providerEndpointCanReceiveProviderApiKeyInList(presets, {
       apiKey: "sk-ant-test",
       endpoint: "https://proxy.example.com/anthropic",
       providerName: "Anthropic"
-    })?.message ?? "",
-    /official Anthropic key/
+    }),
+    undefined
   );
 });

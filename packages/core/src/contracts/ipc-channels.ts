@@ -43,6 +43,7 @@ export const IPC_CHANNELS = {
   appBotHandoffBluetoothTargetsScan: "ccr:app:bot-handoff-bluetooth-targets-scan",
   appBotHandoffWifiTargetsScan: "ccr:app:bot-handoff-wifi-targets-scan",
   appCheckProviderConnectivity: "ccr:app:check-provider-connectivity",
+  appProbeLocalAgentProvider: "ccr:app:probe-local-agent-provider",
   appProbeProvider: "ccr:app:probe-provider",
   appProbeProviderCandidates: "ccr:app:probe-provider-candidates",
   appProviderDeepLink: "ccr:app:provider-deep-link",

@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { buildCodexModelCatalog } from "../../packages/core/src/agents/codex/model-catalog.ts";
 
@@ -95,6 +98,97 @@ test("codex catalog does not merge reasoning efforts from unrelated providers", 
   assert.equal(model.supports_reasoning_summaries, true);
   assert.deepEqual(model.supported_reasoning_levels, []);
   assert.equal(model.default_reasoning_level, null);
+});
+
+test("codex catalog uses provider model metadata for reasoning effort and speed tiers", () => {
+  const model = catalogModelFor({
+    Providers: [
+      {
+        modelMetadata: {
+          "gpt-5-codex": {
+            additionalSpeedTiers: [{ id: "fast", label: "Fast" }],
+            defaultReasoningLevel: "high",
+            defaultReasoningSummary: "auto",
+            serviceTiers: [{ id: "auto" }],
+            supportedReasoningLevels: [
+              { description: "Low", effort: "low" },
+              { description: "High", effort: "high" }
+            ],
+            supportsReasoningSummaries: true
+          }
+        },
+        models: ["gpt-5-codex"],
+        name: "Codex API",
+        type: "openai_responses"
+      }
+    ]
+  }, "Codex API/gpt-5-codex");
+
+  assert.deepEqual(model.additional_speed_tiers, [{ id: "fast", label: "Fast" }]);
+  assert.equal(model.default_reasoning_level, "high");
+  assert.equal(model.default_reasoning_summary, "auto");
+  assert.deepEqual(model.service_tiers, [{ id: "auto" }]);
+  assert.deepEqual(model.supported_reasoning_levels, [
+    { description: "Low", effort: "low" },
+    { description: "High", effort: "high" }
+  ]);
+  assert.equal(model.supports_reasoning_summaries, true);
+});
+
+test("codex catalog falls back to local Codex model cache metadata", () => {
+  const previousCcrHome = process.env.CCR_INTERNAL_HOME_DIR;
+  const previousHome = process.env.HOME;
+  const home = mkdtempSync(path.join(os.tmpdir(), "ccr-codex-model-catalog-"));
+  try {
+    process.env.CCR_INTERNAL_HOME_DIR = home;
+    process.env.HOME = home;
+    const codexHome = path.join(home, ".codex");
+    mkdirSync(codexHome, { recursive: true });
+    writeFileSync(path.join(codexHome, "models_cache.json"), JSON.stringify({
+      models: [
+        {
+          additional_speed_tiers: [{ id: "fast", label: "Fast" }],
+          default_reasoning_level: "high",
+          service_tiers: [{ id: "auto" }],
+          slug: "gpt-5-codex",
+          supported_reasoning_levels: [
+            { description: "Low", effort: "low" },
+            { description: "High", effort: "high" }
+          ],
+          supports_reasoning_summaries: true
+        }
+      ]
+    }));
+
+    const model = catalogModelFor({
+      Providers: [
+        {
+          api_base_url: "https://chatgpt.com/backend-api/codex",
+          api_key: "ccr-local-agent-login",
+          models: ["gpt-5-codex"],
+          name: "Codex API",
+          type: "openai_responses"
+        }
+      ]
+    }, "Codex API/gpt-5-codex");
+
+    assert.deepEqual(model.additional_speed_tiers, [{ id: "fast", label: "Fast" }]);
+    assert.equal(model.default_reasoning_level, "high");
+    assert.deepEqual(model.service_tiers, [{ id: "auto" }]);
+    assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), ["low", "high"]);
+  } finally {
+    if (previousCcrHome === undefined) {
+      delete process.env.CCR_INTERNAL_HOME_DIR;
+    } else {
+      process.env.CCR_INTERNAL_HOME_DIR = previousCcrHome;
+    }
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+    rmSync(home, { force: true, recursive: true });
+  }
 });
 
 test("codex catalog enables native search for Gemini Interactions providers", () => {

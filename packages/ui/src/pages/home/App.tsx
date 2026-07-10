@@ -17,7 +17,7 @@ import {
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
   isTraySupportedPlatform,
   isRoutingRewriteDraftRowValid,
-  LayoutGroup, mergeModelDisplayNames, mergeProviderCapabilities, mergeProviderModelLists, modelDescriptionsForModels, modelDisplayNamesForModels,
+  LayoutGroup, mergeModelDisplayNames, mergeModelMetadata, mergeProviderModelLists, modelDescriptionsForModels, modelDisplayNamesForModels, modelMetadataForModels,
   navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets,
   normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterBuiltInRules, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeToolHubConfig, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
   normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
@@ -26,7 +26,7 @@ import {
   persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginRuntimeSurfacesEnabled, pluginSettingsConfigFromDraft, PluginSettingsDraft, pluginSurfacesFromDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
-  providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
+  providerCapabilitiesForProtocols, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
   ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkCatalogModels, RouterRule, ServerActionBusy, SettingsPageId,
   routingRewriteFromDraftRow, setProviderPresets, splitLines, translateAppErrorMessage, translateProxyCertificateMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
@@ -56,16 +56,38 @@ const providerNamePlaceholder = "__CCR_PROVIDER_NAME__";
 const providerNameSlugPlaceholder = "__CCR_PROVIDER_NAME_SLUG__";
 const providerInternalNamePlaceholder = "__CCR_PROVIDER_INTERNAL_NAME__";
 const localAgentProviderApiKey = "ccr-local-agent-login";
+const localCodexDefaultBaseUrl = "https://chatgpt.com/backend-api/codex";
+const localCodexProviderId = "codex-api";
+
+function isLocalCodexProviderDraft(draft: AddProviderDraft): boolean {
+  return (
+    draft.apiKey.trim() === localAgentProviderApiKey &&
+    normalizeProviderBaseUrl(draft.baseUrl) === normalizeProviderBaseUrl(localCodexDefaultBaseUrl)
+  );
+}
+
+function localCodexProviderDraftProbeKey(draft: AddProviderDraft): string {
+  return JSON.stringify([
+    draft.apiKey.trim(),
+    normalizeProviderBaseUrl(draft.baseUrl),
+    draft.protocol
+  ]);
+}
 
 function materializeProviderPluginTemplates(
   templates: unknown[],
   providerName: string,
-  protocol: GatewayProviderConfig["type"]
+  protocol: GatewayProviderConfig["type"],
+  providerId: string
 ): unknown[] {
   if (templates.length === 0) {
     return [];
   }
-  const internalName = protocol ? `${providerName}::${protocol}` : providerName;
+  // The core gateway matches provider plugins against the provider's runtime
+  // identifier (provider.id, or its slug), not the human-readable display name
+  // — the internal name here must mirror providerCapabilityInternalName() in
+  // gateway/service.ts or the plugin's auth-header override silently never applies.
+  const internalName = protocol ? `${providerId}::${protocol}` : providerId;
   const replacements: Record<string, string> = {
     [providerInternalNamePlaceholder]: internalName,
     [providerNamePlaceholder]: providerName,
@@ -646,6 +668,9 @@ function App() {
   }, [draftConfig.plugins, pluginRoutingConfigTarget]);
   const providers = useMemo(() => draftConfig.Providers.map((provider, index) => ({ provider, index })), [draftConfig.Providers]);
   const gatewayEndpoint = gatewayStatus.endpoint || draftConfig.routerEndpoint;
+  const gatewayStartupError = gatewayStatus.state === "error"
+    ? translateAppErrorMessage(copy, gatewayStatus.lastError || "Service did not start.")
+    : "";
   const networkCaptureEnabled = draftConfig.proxy.enabled && draftConfig.proxy.captureNetwork;
   const visibleNavigation = useMemo(
     () => navigation.filter((item) =>
@@ -827,12 +852,23 @@ function App() {
     void checkForAppUpdate();
   }
 
-  function openUpdateDownloadDialog() {
+  function openSidebarUpdateDialog() {
     setUpdateDialogOpen(true);
     setUpdateActionError("");
     if (updateDialogStatus.canDownload || updateDialogStatus.state === "available") {
       void downloadAppUpdate();
+      return;
     }
+    if (
+      updateDialogStatus.canInstall ||
+      updateDialogStatus.state === "checking" ||
+      updateDialogStatus.state === "downloading" ||
+      updateDialogStatus.state === "downloaded" ||
+      updateDialogStatus.state === "installing"
+    ) {
+      return;
+    }
+    void checkForAppUpdate();
   }
 
   async function checkForAppUpdate() {
@@ -1088,6 +1124,7 @@ function App() {
     setProviderDeepLinkBusy(true);
     let nextPayload = payload;
     let catalogModelDisplayNames: Record<string, string> | undefined;
+    let catalogModelMetadata: ProviderDeepLinkPayload["modelMetadata"] | undefined;
     let probe: GatewayProviderProbeResult | undefined;
     if (nextPayload.models.length === 0) {
       const catalogModels = await resolveProviderDeepLinkCatalogModels(nextPayload);
@@ -1096,6 +1133,7 @@ function App() {
         return;
       }
       catalogModelDisplayNames = catalogModels.modelDisplayNames;
+      catalogModelMetadata = catalogModels.modelMetadata;
       if (catalogModels.models.length > 0) {
         nextPayload = {
           ...nextPayload,
@@ -1118,7 +1156,8 @@ function App() {
     const initialDraftFromPayload = createProviderDraftFromDeepLinkPayload(nextPayload, draftConfig.Providers);
     const initialDraft = {
       ...initialDraftFromPayload,
-      modelDisplayNames: mergeModelDisplayNames(initialDraftFromPayload.modelDisplayNames, catalogModelDisplayNames)
+      modelDisplayNames: mergeModelDisplayNames(initialDraftFromPayload.modelDisplayNames, catalogModelDisplayNames),
+      modelMetadata: mergeModelMetadata(initialDraftFromPayload.modelMetadata, catalogModelMetadata)
     };
     setProviderEditIndex(undefined);
     setProviderImportOpen(true);
@@ -1159,6 +1198,7 @@ function App() {
         ...next,
         modelDescriptions: patch.modelDescriptions ?? current.modelDescriptions,
         modelDisplayNames: patch.modelDisplayNames,
+        modelMetadata: patch.modelMetadata ?? current.modelMetadata,
         modelsText: mergeProviderModelLists(current.selectedModels, splitLines(next.modelsText)).join("\n"),
         selectedModels: [],
         selectedProtocols: patch.selectedProtocols ?? current.selectedProtocols
@@ -1181,6 +1221,54 @@ function App() {
     const providerFormVisible = providerAddOpen || (activeView === "onboarding" && onboardingStep === "provider");
     if (!window.ccr || !providerFormVisible) {
       return;
+    }
+    if (isLocalCodexProviderDraft(providerDraft)) {
+      providerProbeRequestId.current += 1;
+      const requestId = providerProbeRequestId.current;
+      const inputKey = localCodexProviderDraftProbeKey(providerDraft);
+
+      setProviderProbeError("");
+      if (!window.ccr.probeLocalAgentProvider) {
+        setProviderProbe(undefined);
+        setProviderProbeLoading(false);
+        return undefined;
+      }
+      setProviderProbeLoading(true);
+
+      const timer = window.setTimeout(() => {
+        void window.ccr?.probeLocalAgentProvider?.({ id: localCodexProviderId })
+          .then((result) => {
+            if (providerProbeRequestId.current !== requestId) {
+              return;
+            }
+            setProviderProbe(result.probe);
+            setProviderDraft((current) => {
+              if (!isLocalCodexProviderDraft(current) || localCodexProviderDraftProbeKey(current) !== inputKey) {
+                return current;
+              }
+              return applyProviderProbeResult(current, result.probe);
+            });
+          })
+          .catch((error) => {
+            if (providerProbeRequestId.current === requestId) {
+              setProviderProbe(undefined);
+              setProviderProbeError(formatError(error));
+            }
+          })
+          .finally(() => {
+            if (providerProbeRequestId.current === requestId) {
+              setProviderProbeLoading(false);
+            }
+          });
+      }, 350);
+
+      return () => {
+        window.clearTimeout(timer);
+        if (providerProbeRequestId.current === requestId) {
+          providerProbeRequestId.current += 1;
+          setProviderProbeLoading(false);
+        }
+      };
     }
     if (providerDraft.providerPlugins.length > 0) {
       providerProbeRequestId.current += 1;
@@ -1357,8 +1445,6 @@ function App() {
       setProviderProbeError(translateAppErrorMessage(copy, credentials));
       return false;
     }
-    const fallbackProtocol = probe?.detectedProtocol ?? providerDraft.protocol;
-    const fallbackBaseUrl = probe?.normalizedBaseUrl || providerDraft.baseUrl;
     const selectableProtocols = providerSelectableProtocolsFromProbe(probe);
     const selectedProtocols = providerDraft.selectedProtocols.length > 0
       ? providerDraft.selectedProtocols.filter((protocol) => !probe || selectableProtocols.includes(protocol))
@@ -1368,25 +1454,20 @@ function App() {
       return false;
     }
 
-    const protocolsToSave = selectedProtocols.length > 0 ? selectedProtocols : [fallbackProtocol];
+    const protocolsToSave = selectedProtocols.length > 0 ? selectedProtocols : [probe?.detectedProtocol ?? providerDraft.protocol];
+    const fallbackProtocol = protocolsToSave.includes(providerDraft.protocol)
+      ? providerDraft.protocol
+      : protocolsToSave[0] ?? probe?.detectedProtocol ?? providerDraft.protocol;
+    const fallbackBaseUrl = providerGlobalBaseUrlForProbe(providerDraft.baseUrl, probe, protocolsToSave);
     const modelDescriptions = modelDescriptionsForModels(providerDraft.modelDescriptions, models);
     const modelDisplayNames = modelDisplayNamesForModels(providerDraft.modelDisplayNames, models);
-    const selectedProtocolSet = new Set(protocolsToSave);
-    const capabilityCandidates = mergeProviderCapabilities(
-      presetCapabilitiesFromDraft(providerDraft),
-      probe?.capabilities ?? [],
-      protocolsToSave.map((type) => ({
-        baseUrl: fallbackBaseUrl,
-        source: probe?.detectedProtocol ? ("detected" as const) : ("preset" as const),
-        type
-      }))
-    );
-    const capabilities = capabilityCandidates.filter((capability) => selectedProtocolSet.has(capability.type));
+    const modelMetadata = modelMetadataForModels(providerDraft.modelMetadata, models);
+    const capabilities = providerCapabilitiesForProtocols(providerDraft.baseUrl, protocolsToSave, probe, presetCapabilitiesFromDraft(providerDraft));
     const primaryCapability =
       capabilities.find((capability) => capability.type === fallbackProtocol) ??
       capabilities[0];
     const protocol = primaryCapability?.type ?? fallbackProtocol;
-    const baseUrl = primaryCapability?.baseUrl ?? fallbackBaseUrl;
+    const baseUrl = fallbackBaseUrl;
 
     const keySafetyIssue = providerApiKeySafetyIssue({
       apiKey: providerDraft.apiKey,
@@ -1431,20 +1512,24 @@ function App() {
       return false;
     }
 
+    const existingProvider = providerEditIndex !== undefined ? draftConfig.Providers[providerEditIndex] : undefined;
+    const providerId = existingProvider?.id ?? providerNameSlug(providerName);
     const provider: GatewayProviderConfig = {
-      api_base_url: normalizeProviderBaseUrl(baseUrl, protocol),
+      api_base_url: normalizeProviderBaseUrl(baseUrl),
       api_key: providerDraft.apiKey.trim(),
       capabilities: capabilities.length > 0 ? capabilities : undefined,
       account: accountConfig,
       credentials: credentials.length > 0 ? credentials : undefined,
       icon: providerDraft.icon.trim() || undefined,
+      id: providerId,
       modelDescriptions,
       modelDisplayNames,
+      modelMetadata,
       models,
       name: providerName,
       type: protocol
     };
-    const importedProviderPlugins = materializeProviderPluginTemplates(providerDraft.providerPlugins, providerName, protocol);
+    const importedProviderPlugins = materializeProviderPluginTemplates(providerDraft.providerPlugins, providerName, protocol, providerId);
     const wasImport = providerImportOpen;
 
     const next = buildConfigUpdate((config) => {
@@ -2824,6 +2909,7 @@ function App() {
         <div className="relative flex h-full min-h-0 w-full min-w-0 overflow-hidden bg-background text-foreground max-[720px]:flex-col">
           {activeView === "onboarding" ? (
             <OnboardingLayout
+              gatewayStartupError={gatewayStartupError}
               loaded={configLoaded && onboardingStatusLoaded && providerPresetsLoaded}
               onboarding={{
                 activeStep: onboardingStep,
@@ -2858,11 +2944,13 @@ function App() {
               copy={copy}
               gatewayActionBusy={gatewayActionBusy}
               gatewayEndpoint={gatewayEndpoint}
+              gatewayStartupError={gatewayStartupError}
               gatewayStatus={gatewayStatus}
               isMac={isMac}
               needsTrafficLightSafeArea={needsTrafficLightSafeArea}
               networkCaptureEnabled={networkCaptureEnabled}
-              onDownloadUpdate={openUpdateDownloadDialog}
+              onOpenUpdate={openSidebarUpdateDialog}
+              onOpenServerSettings={() => setActiveView("server")}
               onOpenSettings={openSettingsDialog}
               onSelectNavigationItem={selectNavigationItem}
               onToggleSidebar={() => setSidebarOpen((current) => !current)}

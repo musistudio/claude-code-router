@@ -14,7 +14,7 @@ import { loadAppConfig, saveApiKeysConfig, saveAppConfig } from "@ccr/core/confi
 import { API_KEYS_DB_FILE, APP_CONFIG_DB_FILE, APP_NAME, CONFIGDIR, CONFIG_FILE, DATADIR, GATEWAY_CONFIG_FILE, LEGACY_CONFIG_FILE, ONBOARDING_FINISHED_FILE, PROXY_CA_CERT_FILE, REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "@ccr/core/config/constants";
 import { detectProviderIcon } from "@ccr/core/providers/icons";
 import { fetchProviderManifest } from "@ccr/core/providers/manifest-service";
-import { getLocalAgentProviderCandidates, importLocalAgentProvider } from "@ccr/core/agents/local-providers/service";
+import { getLocalAgentProviderCandidates, importLocalAgentProvider, probeLocalAgentProvider } from "@ccr/core/agents/local-providers/service";
 import { getProviderCatalogModels } from "@ccr/core/providers/model-catalog";
 import { getProviderPresets } from "@ccr/core/providers/presets/index";
 import { checkGatewayProviderConnectivity, probeGatewayProvider, probeGatewayProviderCandidates } from "@ccr/core/providers/probe";
@@ -50,6 +50,7 @@ import type {
   GatewayProviderProbeRequest,
   GatewayStatus,
   LocalAgentProviderImportRequest,
+  LocalAgentProviderProbeRequest,
   PluginDependency,
   PluginDirectorySelection,
   ProfileApplyResult,
@@ -328,6 +329,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
     logProfileApplyResult(await applyProfileConfig(config));
     return openProfileFromCcr(config, request as ProfileOpenRequest);
   },
+  probeLocalAgentProvider: (request) => probeLocalAgentProvider(request as LocalAgentProviderProbeRequest),
   probeProvider: (request) => probeGatewayProvider(request as GatewayProviderProbeRequest),
   probeProviderCandidates: (request) => probeGatewayProviderCandidates(request as GatewayProviderProbeCandidatesRequest),
   quitApp: async () => {

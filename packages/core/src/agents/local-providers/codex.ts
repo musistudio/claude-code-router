@@ -3,18 +3,23 @@ import path from "node:path";
 import type {
   LocalAgentProviderCandidate,
   LocalAgentProviderImportResult,
+  LocalAgentProviderProbeResult,
   GatewayProviderConfig,
   ProviderAccountConfig,
   ProviderAccountConnectorConfig,
   ProviderAccountMappingConfig,
   ProviderAccountMeter,
-  ProviderAccountMeterDetail
+  ProviderAccountMeterDetail,
+  ProviderModelMetadata,
+  ProviderReasoningLevel
 } from "@ccr/core/contracts/app";
 import { normalizeProviderBaseUrl } from "@ccr/core/providers/url";
+import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
 import {
   isRecord,
   localAgentProviderApiKey,
   missingCandidate,
+  modelMetadataForModels,
   modelDisplayNamesForModels,
   providerInternalNamePlaceholder,
   providerNamePlaceholder,
@@ -32,9 +37,11 @@ export const codexDefaultBaseUrl = "https://chatgpt.com/backend-api/codex";
 
 const codexAccountBaseUrl = "https://chatgpt.com/backend-api";
 const codexDefaultModels = ["gpt-5-codex"];
+const codexProbeTimeoutMs = 8_000;
 
-type LocalAgentModelCatalog = {
+export type LocalAgentModelCatalog = {
   modelDisplayNames?: Record<string, string>;
+  modelMetadata?: Record<string, ProviderModelMetadata>;
   models: string[];
 };
 
@@ -233,7 +240,7 @@ const codexAccountTokenUsageMapping: ProviderAccountMappingConfig = {
 
 export function codexCandidate(): LocalAgentProviderCandidate {
   const auth = readCodexAuth();
-  const catalog = readCodexModelCatalog();
+  const catalog = readCodexLocalModelCatalog();
   if (auth?.refreshToken || auth?.accessToken) {
     return {
       detail: "ChatGPT login detected. Click Import to add it as a gateway provider.",
@@ -241,6 +248,7 @@ export function codexCandidate(): LocalAgentProviderCandidate {
       importable: true,
       kind: "codex",
       modelDisplayNames: catalog.modelDisplayNames,
+      modelMetadata: catalog.modelMetadata,
       models: catalog.models,
       name: "Codex API",
       protocol: "openai_responses",
@@ -251,14 +259,15 @@ export function codexCandidate(): LocalAgentProviderCandidate {
   return missingCandidate("codex", "codex-api", "Codex API", "openai_responses", catalog.models, catalog.modelDisplayNames);
 }
 
-export function importCodexProvider(candidate: LocalAgentProviderCandidate, providerNames: string[]): LocalAgentProviderImportResult {
+export async function importCodexProvider(candidate: LocalAgentProviderCandidate, providerNames: string[]): Promise<LocalAgentProviderImportResult> {
   const auth = readCodexAuth();
   if (!auth?.refreshToken && !auth?.accessToken) {
     throw new Error("Codex login token was not found.");
   }
-  const provider = providerPayload(candidate, uniqueProviderName(providerNames, "Codex API"), codexDefaultBaseUrl, codexProviderAccountConfig());
+  const probedCandidate = await codexCandidateWithProbedModels(candidate).catch(() => candidate);
+  const provider = providerPayload(probedCandidate, uniqueProviderName(providerNames, "Codex API"), codexDefaultBaseUrl, codexProviderAccountConfig());
   return {
-    candidate,
+    candidate: probedCandidate,
     provider,
     providerPlugins: [
       codexOauthPlugin("codex-oauth"),
@@ -277,8 +286,16 @@ export function importCodexProvider(candidate: LocalAgentProviderCandidate, prov
   };
 }
 
+export async function probeCodexProvider(candidate: LocalAgentProviderCandidate): Promise<LocalAgentProviderProbeResult> {
+  const probedCandidate = await codexCandidateWithProbedModels(candidate).catch(() => candidate);
+  return {
+    candidate: probedCandidate,
+    probe: codexProviderProbe(probedCandidate)
+  };
+}
+
 export function readCodexAuth(): OAuthTokenSet | undefined {
-  const sourceFile = path.join(os.homedir(), ".codex", "auth.json");
+  const sourceFile = path.join(codexHomeDir(), ".codex", "auth.json");
   const record = readJsonRecord(sourceFile);
   if (!record) {
     return undefined;
@@ -588,31 +605,232 @@ function codexBackendRequestTransform(): Record<string, unknown> {
   };
 }
 
-function readCodexModelCatalog(): LocalAgentModelCatalog {
-  const modelsFile = path.join(os.homedir(), ".codex", "models_cache.json");
+export function readCodexLocalModelCatalog(): LocalAgentModelCatalog {
+  const modelsFile = path.join(codexHomeDir(), ".codex", "models_cache.json");
   const record = readJsonRecord(modelsFile);
+  const catalog = codexModelCatalogFromPayload(record);
+  const uniqueModels = uniqueStrings([...catalog.models, ...codexDefaultModels]);
+  return {
+    modelDisplayNames: modelDisplayNamesForModels(catalog.modelDisplayNames, uniqueModels),
+    modelMetadata: modelMetadataForModels(catalog.modelMetadata, uniqueModels),
+    models: uniqueModels
+  };
+}
+
+async function codexCandidateWithProbedModels(candidate: LocalAgentProviderCandidate): Promise<LocalAgentProviderCandidate> {
+  const catalog = await fetchCodexModelCatalog();
+  if (catalog.models.length === 0) {
+    return candidate;
+  }
+  return {
+    ...candidate,
+    modelDisplayNames: catalog.modelDisplayNames,
+    modelMetadata: catalog.modelMetadata,
+    models: catalog.models
+  };
+}
+
+async function fetchCodexModelCatalog(): Promise<LocalAgentModelCatalog> {
+  const auth = readCodexAuth();
+  if (!auth?.accessToken) {
+    throw new Error("Codex access token was not found.");
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), codexProbeTimeoutMs);
+  try {
+    const response = await fetchWithSystemProxy(`${codexDefaultBaseUrl}/models`, {
+      headers: {
+        accept: "application/json",
+        authorization: `Bearer ${auth.accessToken}`,
+        "User-Agent": "codex-cli",
+        ...(auth.accountId ? { "ChatGPT-Account-Id": auth.accountId } : {}),
+        ...(auth.isFedrampAccount ? { "X-OpenAI-Fedramp": "true" } : {})
+      },
+      method: "GET",
+      signal: controller.signal
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`Codex model probe returned HTTP ${response.status}.`);
+    }
+    const payload = parseJson(text);
+    const catalog = codexModelCatalogFromPayload(payload);
+    if (catalog.models.length === 0) {
+      throw new Error("Codex model probe returned no models.");
+    }
+    return catalog;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function codexProviderProbe(candidate: LocalAgentProviderCandidate) {
+  return {
+    capabilities: [
+      {
+        baseUrl: codexDefaultBaseUrl,
+        source: "detected" as const,
+        type: "openai_responses" as const
+      }
+    ],
+    detectedProtocol: "openai_responses" as const,
+    modelDisplayNames: candidate.modelDisplayNames,
+    modelMetadata: candidate.modelMetadata,
+    modelSource: "openai" as const,
+    models: candidate.models,
+    normalizedBaseUrl: codexDefaultBaseUrl,
+    protocols: [
+      {
+        baseUrl: codexDefaultBaseUrl,
+        endpoint: `${codexDefaultBaseUrl}/responses`,
+        message: "",
+        protocol: "openai_responses" as const,
+        supported: true
+      }
+    ]
+  };
+}
+
+function codexModelCatalogFromPayload(payload: unknown): LocalAgentModelCatalog {
   const models: string[] = [];
   const modelDisplayNames: Record<string, string> = {};
-  for (const item of Array.isArray(record?.models) ? record.models : []) {
+  const modelMetadata: Record<string, ProviderModelMetadata> = {};
+  for (const item of codexModelCatalogItems(payload)) {
     const model = isRecord(item)
-      ? readString(item.slug) || readString(item.id) || readString(item.name)
+      ? readString(item.slug) || readString(item.id) || readString(item.model) || readString(item.name)
       : readString(item);
     if (!model) {
       continue;
     }
     models.push(model);
     if (isRecord(item)) {
-      const displayName = readString(item.display_name) || readString(item.displayName) || readString(item.label) || readString(item.name);
+      const displayName = readString(item.display_name) || readString(item.displayName) || readString(item.label) || readString(item.title) || readString(item.name);
       if (displayName && displayName !== model) {
         modelDisplayNames[model] = displayName;
       }
+      const metadata = codexModelMetadataFromItem(item);
+      if (metadata) {
+        modelMetadata[model] = metadata;
+      }
     }
   }
-  const uniqueModels = uniqueStrings([...models, ...codexDefaultModels]);
+  const uniqueModels = uniqueStrings(models);
   return {
     modelDisplayNames: modelDisplayNamesForModels(modelDisplayNames, uniqueModels),
+    modelMetadata: modelMetadataForModels(modelMetadata, uniqueModels),
     models: uniqueModels
   };
+}
+
+function codexModelMetadataFromItem(item: Record<string, unknown>): ProviderModelMetadata | undefined {
+  const additionalSpeedTiers = readArray(item.additional_speed_tiers) ?? readArray(item.additionalSpeedTiers) ?? readArray(item.speed_tiers) ?? readArray(item.speedTiers);
+  const serviceTiers = readArray(item.service_tiers) ?? readArray(item.serviceTiers);
+  const supportedReasoningLevels =
+    readReasoningLevels(item.supported_reasoning_levels) ??
+    readReasoningLevels(item.supportedReasoningLevels) ??
+    readReasoningEfforts(item.supported_reasoning_efforts) ??
+    readReasoningEfforts(item.supportedReasoningEfforts) ??
+    readReasoningEfforts(item.reasoning_efforts) ??
+    readReasoningEfforts(item.reasoningEfforts);
+  const defaultReasoningLevel = readNullableString(item.default_reasoning_level) ?? readNullableString(item.defaultReasoningLevel);
+  const defaultReasoningSummary = readString(item.default_reasoning_summary) || readString(item.defaultReasoningSummary);
+  const supportsReasoningSummaries = readBoolean(item.supports_reasoning_summaries) ?? readBoolean(item.supportsReasoningSummaries);
+  const metadata: ProviderModelMetadata = {
+    ...(additionalSpeedTiers ? { additionalSpeedTiers } : {}),
+    ...(defaultReasoningLevel !== undefined ? { defaultReasoningLevel } : {}),
+    ...(defaultReasoningSummary ? { defaultReasoningSummary } : {}),
+    ...(serviceTiers ? { serviceTiers } : {}),
+    ...(supportedReasoningLevels ? { supportedReasoningLevels } : {}),
+    ...(supportsReasoningSummaries !== undefined ? { supportsReasoningSummaries } : {})
+  };
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+function readArray(value: unknown): unknown[] | undefined {
+  return Array.isArray(value) ? value : undefined;
+}
+
+function readNullableString(value: unknown): string | null | undefined {
+  if (value === null) {
+    return null;
+  }
+  const text = readString(value);
+  return text || undefined;
+}
+
+function readReasoningLevels(value: unknown): ProviderReasoningLevel[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const levels = value
+    .map((item): ProviderReasoningLevel | undefined => {
+      if (!isRecord(item)) {
+        const effort = readString(item);
+        return effort ? { description: effortDescription(effort), effort } : undefined;
+      }
+      const effort = readString(item.effort) || readString(item.name) || readString(item.id) || readString(item.value);
+      if (!effort) {
+        return undefined;
+      }
+      return {
+        description: readString(item.description) || readString(item.label) || effortDescription(effort),
+        effort
+      };
+    })
+    .filter((item): item is ProviderReasoningLevel => Boolean(item));
+  return levels.length > 0 ? levels : undefined;
+}
+
+function readReasoningEfforts(value: unknown): ProviderReasoningLevel[] | undefined {
+  if (Array.isArray(value)) {
+    return readReasoningLevels(value);
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  return readReasoningLevels(Object.values(value));
+}
+
+function effortDescription(effort: string): string {
+  const normalized = effort.trim().toLowerCase();
+  if (normalized === "xhigh") {
+    return "Extra high reasoning";
+  }
+  return `${effort.slice(0, 1).toUpperCase()}${effort.slice(1)} reasoning`;
+}
+
+function codexModelCatalogItems(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+  if (!isRecord(payload)) {
+    return [];
+  }
+
+  const items: unknown[] = [];
+  for (const candidate of [payload.data, payload.models]) {
+    if (Array.isArray(candidate)) {
+      items.push(...candidate);
+    }
+  }
+  return items;
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+export function codexModelCatalogFromPayloadForTest(payload: unknown): LocalAgentModelCatalog {
+  return codexModelCatalogFromPayload(payload);
+}
+
+function codexHomeDir(): string {
+  return process.env.CCR_INTERNAL_HOME_DIR?.trim() || process.env.HOME?.trim() || process.env.USERPROFILE?.trim() || os.homedir();
 }
 
 function readCodexIdTokenClaims(idToken: string | undefined): { accountId?: string; isFedrampAccount?: boolean } {

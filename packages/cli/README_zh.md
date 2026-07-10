@@ -8,11 +8,43 @@
   <a href="https://ccrdesk.top/"><img alt="文档" src="https://img.shields.io/badge/%E6%96%87%E6%A1%A3-ccrdesk.top-0ea5e9?style=flat" /></a>
 </p>
 
+<div align="center">
+
+<table width="100%">
+  <tr>
+    <td align="center">
+      <a href="https://www.kimi.com/code?aff=ccr">
+        <img src="https://gcdn.moonshot.cn/growth-cdn/sponsor/kimi-zh.png" width="960" alt="Kimi K2.7 Code 赞助横幅" />
+      </a>
+      <br />
+      <sub>
+        <a href="https://www.kimi.com/code?aff=ccr"><strong>Kimi Code 订阅</strong></a>
+        &nbsp;·&nbsp;
+        <a href="https://platform.kimi.com?aff=ccr"><strong>API 中文站</strong></a>
+        &nbsp;·&nbsp;
+        <a href="https://platform.kimi.ai?aff=ccr">API Global</a>
+      </sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="left">
+      <p>
+        <strong>感谢 Kimi 赞助本项目！</strong>Kimi K2.7 Code 是 Moonshot AI 推出的编程专用开源智能体模型，在真实长程编程与复杂软件工程工作流中显著提升端到端任务成功率，同时优化推理效率，相比 K2.6 平均减少约 30% 的推理 token 消耗。在 CCR 中，Kimi 已作为内置供应商预设开箱即用：无论按量付费 API 还是 Kimi Code 订阅，一键导入即可把你的编程 Agent 请求路由到 Kimi，订阅端点原生直通、无需协议转换，API 端点自动适配，账户余额与订阅用量也能直接在 CCR 面板中查看。
+      </p>
+      <p align="center">
+        CCR 已内置 Kimi 供应商预设。前往 Kimi 开放平台（<a href="https://platform.kimi.com?aff=ccr">中文站</a>｜<a href="https://platform.kimi.ai?aff=ccr">Global</a>）体验 API，或了解高性价比 <a href="https://www.kimi.com/code?aff=ccr">Coding Plan</a> 套餐。
+      </p>
+    </td>
+  </tr>
+</table>
+
+</div>
+
+Claude Code Router Desktop 是一个本地网关和桌面控制台，用来把 Claude Code、Codex、ZCode 以及兼容客户端的 Agent 请求路由到你真正想使用的模型服务。
+
 <p align="center">
   <img src="blog/images/claude-code-router.png" width="720" alt="Claude Code Router Desktop 项目截图" />
 </p>
-
-Claude Code Router Desktop 是一个本地网关和桌面控制台，用来把 Claude Code、Codex、ZCode 以及兼容客户端的 Agent 请求路由到你真正想使用的模型服务。
 
 ## 为什么使用 CCR
 

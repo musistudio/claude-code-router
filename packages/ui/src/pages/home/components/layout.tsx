@@ -1,10 +1,10 @@
 import type { ComponentProps } from "react";
 import {
-  AnimatedIconSwap, AnimatePresence, AppConfig, AppCopy, Button, cn, EndpointTitleBar,
+  AnimatedIconSwap, AnimatePresence, AppConfig, AppCopy, Button, Check, CircleAlert, cn, EndpointTitleBar,
   AppUpdateStatus, Download, GatewayStatus, listSpringTransition, LucideIcon, motion, motionEase,
-  LoaderCircle, NavigationId, PanelLeftClose, PanelLeftOpen,
+  LoaderCircle, NavigationId, PanelLeftClose, PanelLeftOpen, RefreshCw,
   reducedMotionTransition, ServiceControlButton, Settings, ViewId,
-  ViewMotionShell, viewUsesInternalScroll
+  useAppText, ViewMotionShell, viewUsesInternalScroll
 } from "../shared/index";
 import { ApiKeysView } from "./api-keys";
 import { AgentAnalysisView, OverviewView } from "./dashboard";
@@ -38,15 +38,20 @@ type MainViewProps = {
 };
 
 export function OnboardingLayout({
+  gatewayStartupError,
   loaded,
   onboarding
 }: {
+  gatewayStartupError?: string;
   loaded: boolean;
   onboarding: ComponentProps<typeof OnboardingView>;
 }) {
   return (
     <main className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
       <div className="app-drag absolute inset-x-0 top-0 z-10 h-10" />
+      <div className="pointer-events-none absolute inset-x-0 top-12 z-30 px-5 max-[720px]:top-10 max-[720px]:px-3">
+        <GatewayStartupErrorBanner className="pointer-events-auto mx-auto max-w-2xl shadow-lg" message={gatewayStartupError} />
+      </div>
       {loaded ? <OnboardingView {...onboarding} /> : null}
     </main>
   );
@@ -58,12 +63,14 @@ export function MainLayout({
   copy,
   gatewayActionBusy,
   gatewayEndpoint,
+  gatewayStartupError,
   gatewayStatus,
   isMac,
   needsTrafficLightSafeArea,
   agentAnalysisEnabled,
   networkCaptureEnabled,
-  onDownloadUpdate,
+  onOpenUpdate,
+  onOpenServerSettings,
   onOpenSettings,
   onSelectNavigationItem,
   onToggleSidebar,
@@ -82,11 +89,13 @@ export function MainLayout({
   copy: AppCopy;
   gatewayActionBusy: boolean;
   gatewayEndpoint: string;
+  gatewayStartupError?: string;
   gatewayStatus: GatewayStatus;
   isMac: boolean;
   needsTrafficLightSafeArea: boolean;
   networkCaptureEnabled: boolean;
-  onDownloadUpdate: () => void;
+  onOpenUpdate: () => void;
+  onOpenServerSettings: () => void;
   onOpenSettings: () => void;
   onSelectNavigationItem: (id: NavigationId) => void;
   onToggleSidebar: () => void;
@@ -99,15 +108,24 @@ export function MainLayout({
   requestLogsEnabled: boolean;
   visibleNavigation: MainNavigationItem[];
 }) {
-  const windowControlSafeAreaWidth = isMac ? 152 : 88;
-  const showUpdateDownloadButton =
-    updateStatus.supported &&
-    (updateStatus.state === "available" || updateStatus.state === "downloading" || updateStatus.state === "downloaded");
-  const updateDownloadLabel = updateStatus.state === "downloaded"
+  const showUpdateButton = updateStatus.supported;
+  const windowControlSafeAreaWidth = showUpdateButton
+    ? (isMac ? 188 : 124)
+    : (isMac ? 152 : 88);
+  const updateBusy =
+    updateActionBusy ||
+    updateStatus.state === "checking" ||
+    updateStatus.state === "downloading" ||
+    updateStatus.state === "installing";
+  const updateLabel = updateStatus.state === "downloaded"
     ? copy.text["Update ready to install"] ?? "Update ready to install"
     : updateStatus.state === "downloading"
       ? copy.text["Downloading update"] ?? "Downloading update"
-      : copy.text["Download update"] ?? "Download update";
+      : updateStatus.state === "checking"
+        ? copy.text["Checking for updates"] ?? "Checking for updates"
+        : updateStatus.state === "available"
+          ? copy.text["Download update"] ?? "Download update"
+          : copy.text["Check for updates"] ?? "Check for updates";
 
   return (
     <>
@@ -132,17 +150,25 @@ export function MainLayout({
           onClick={toggleGatewayService}
           state={gatewayStatus.state}
         />
-        {showUpdateDownloadButton ? (
+        {showUpdateButton ? (
           <Button
-            aria-label={updateDownloadLabel}
+            aria-label={updateLabel}
             className="app-no-drag inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-primary outline-none transition-colors hover:bg-primary/10 hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/25"
             onMouseDown={(event) => event.stopPropagation()}
-            onClick={onDownloadUpdate}
-            title={updateDownloadLabel}
+            onClick={onOpenUpdate}
+            title={updateLabel}
             type="button"
             unstyled
           >
-            {updateActionBusy || updateStatus.state === "downloading" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            {updateBusy ? (
+              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+            ) : updateStatus.state === "downloaded" ? (
+              <Check className="h-3.5 w-3.5" />
+            ) : updateStatus.state === "available" ? (
+              <Download className="h-3.5 w-3.5" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
           </Button>
         ) : null}
       </div>
@@ -238,6 +264,11 @@ export function MainLayout({
             gatewayStatus={gatewayStatus}
           />
         </div>
+        <GatewayStartupErrorBanner
+          className="mx-5 mt-3 max-[720px]:mx-3"
+          message={gatewayStartupError}
+          onOpenServerSettings={onOpenServerSettings}
+        />
         <div
           className={cn(
             "min-h-0 flex-1 px-5 pb-5 pt-5 max-[720px]:px-3 max-[720px]:pb-3 max-[720px]:pt-3",
@@ -254,6 +285,51 @@ export function MainLayout({
         </div>
       </main>
     </>
+  );
+}
+
+export function GatewayStartupErrorBanner({
+  className,
+  message,
+  onOpenServerSettings
+}: {
+  className?: string;
+  message?: string;
+  onOpenServerSettings?: () => void;
+}) {
+  const t = useAppText();
+  const detail = message?.trim();
+  if (!detail) {
+    return null;
+  }
+
+  return (
+    <div
+      aria-live="assertive"
+      className={cn(
+        "app-no-drag flex min-w-0 items-start gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive",
+        className
+      )}
+      role="alert"
+    >
+      <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      <div className="min-w-0 flex-1">
+        <div className="font-semibold">{t("Service failed to start")}</div>
+        <div className="mt-0.5 whitespace-pre-wrap break-words">{detail}</div>
+      </div>
+      {onOpenServerSettings ? (
+        <Button
+          className="shrink-0 border-destructive/30 bg-background/80 text-destructive hover:bg-destructive/10"
+          onClick={onOpenServerSettings}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          <Settings className="h-3.5 w-3.5" />
+          {t("Server")}
+        </Button>
+      ) : null}
+    </div>
   );
 }
 

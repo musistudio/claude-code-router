@@ -70,6 +70,13 @@ type BrowserSessionRef = {
   userId?: string;
 };
 
+type SnapshotOptions = {
+  limit?: number;
+  maxElements: number;
+  maxText?: number;
+  offset?: number;
+};
+
 type AttachedSession = {
   attachedAt: number;
   leaseId: string;
@@ -140,6 +147,8 @@ const defaultSnapshotMaxElements = 80;
 const defaultSnapshotMaxText = 3_000;
 const defaultEventAwaitTimeoutMs = 10_000;
 const defaultJavascriptTimeoutMs = 8_000;
+const maxSnapshotTextLimit = 20_000;
+const maxSnapshotTextOffset = 1_000_000_000;
 const maxMcpRequestBytes = 2 * 1024 * 1024;
 const maxSubscriptionEvents = 512;
 const maxToolResultChars = 60_000;
@@ -148,7 +157,7 @@ const maxToolResultStringChars = 2_000;
 const maxToolResultObjectKeys = 120;
 const maxSnapshotResultElements = 80;
 const maxAxSnapshotResultNodes = 80;
-const maxBrowserResultTextChars = 3_000;
+const maxBrowserResultTextChars = maxSnapshotTextLimit;
 const defaultWaitTimeoutMs = 10_000;
 
 const sessionSchema = objectSchema({
@@ -552,8 +561,10 @@ function browserLegacyAliasTools(): McpTool[] {
   {
     description: "Capture page text plus interactable element refs for browser automation. Use returned refs for browser_click, browser_type, browser_select, browser_press_key, or browser_scroll.",
     inputSchema: objectSchema({
+      limit: { description: "Maximum page text characters to include. Overrides maxText when both are provided.", maximum: maxSnapshotTextLimit, minimum: 0, type: "number" },
       maxElements: { description: "Maximum interactable elements to include.", maximum: 300, minimum: 1, type: "number" },
-      maxText: { description: "Maximum page text characters to include.", maximum: 20000, minimum: 0, type: "number" },
+      maxText: { description: "Legacy alias for limit.", maximum: maxSnapshotTextLimit, minimum: 0, type: "number" },
+      offset: { description: "Starting character offset into the normalized page text.", maximum: maxSnapshotTextOffset, minimum: 0, type: "number" },
       tabId: { description: "Optional tab id. Defaults to the active tab.", type: "string" }
     }),
     name: "browser_snapshot",
@@ -1014,8 +1025,9 @@ class BrowserAutomationMcpService implements BrowserAutomationMcpIntegration {
           builtInBrowserService.getAutomationWebContents(readString(args.tabId)),
           readString(args.tabId),
           {
+            limit: clampInteger(readNumber(args.limit) ?? readNumber(args.maxText) ?? defaultSnapshotMaxText, 0, maxSnapshotTextLimit),
             maxElements: clampInteger(readNumber(args.maxElements) ?? defaultSnapshotMaxElements, 1, 300),
-            maxText: clampInteger(readNumber(args.maxText) ?? defaultSnapshotMaxText, 0, 20000)
+            offset: clampInteger(readNumber(args.offset) ?? 0, 0, maxSnapshotTextOffset)
           }
         );
       case "browser_click":
@@ -2339,7 +2351,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: s
   }
 }
 
-async function captureSnapshot(webContents: WebContents, options: { maxElements: number; maxText: number }): Promise<unknown> {
+async function captureSnapshot(webContents: WebContents, options: SnapshotOptions): Promise<unknown> {
   return await executeJavaScriptWithTimeout(
     webContents,
     `(${snapshotScript})(${JSON.stringify(options)})`,
@@ -2351,7 +2363,7 @@ async function captureSnapshot(webContents: WebContents, options: { maxElements:
 async function captureSnapshotWithHandoff(
   webContents: WebContents,
   tabId: string | undefined,
-  options: { maxElements: number; maxText: number }
+  options: SnapshotOptions
 ): Promise<unknown> {
   const snapshot = await captureSnapshot(webContents, options);
   const handoff = await maybeRequestPageHandoff(webContents, {
@@ -2670,9 +2682,11 @@ async function waitForPageCondition(
   };
 }
 
-const snapshotScript = function(options: { maxElements: number; maxText: number }) {
+const snapshotScript = function(options: { limit?: number; maxElements: number; maxText?: number; offset?: number }) {
   const maxElements = Math.max(1, Math.min(300, Math.floor(options.maxElements || 80)));
-  const maxText = Math.max(0, Math.min(20000, Math.floor(options.maxText || 3000)));
+  const textLimitInput = options.limit ?? options.maxText ?? 3000;
+  const textLimit = Math.max(0, Math.min(20000, Math.floor(textLimitInput)));
+  const requestedTextOffset = Math.max(0, Math.floor(options.offset || 0));
   const refAttribute = "data-ccr-browser-ref";
   const elementSelector = [
     "a[href]",
@@ -2860,6 +2874,11 @@ const snapshotScript = function(options: { maxElements: number; maxText: number 
       };
     });
 
+  const pageText = (document.body?.innerText || "").replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  const textOffset = Math.min(requestedTextOffset, pageText.length);
+  const textWindow = pageText.slice(textOffset, textOffset + textLimit);
+  const textNextOffset = textOffset + textWindow.length;
+
   return {
     activeElement: document.activeElement ? {
       name: nameOf(document.activeElement).slice(0, 240),
@@ -2868,7 +2887,15 @@ const snapshotScript = function(options: { maxElements: number; maxText: number 
       tag: document.activeElement.tagName.toLowerCase()
     } : undefined,
     elements,
-    text: (document.body?.innerText || "").replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, maxText),
+    text: textWindow,
+    textHasMore: textNextOffset < pageText.length,
+    textLength: pageText.length,
+    textLimit,
+    textNextOffset,
+    textOffset,
+    textRemaining: Math.max(0, pageText.length - textNextOffset),
+    textReturned: textWindow.length,
+    textRequestedOffset: requestedTextOffset !== textOffset ? requestedTextOffset : undefined,
     title: document.title,
     url: location.href
   };
@@ -3437,7 +3464,7 @@ function truncateString(value: string, maxChars: number): string {
 
 function largeResultGuidance(toolName: string): string {
   if (toolName === "browser_snapshot") {
-    return "Result was compacted. Re-run browser_snapshot with lower maxElements/maxText, or use browser_ax_query to fetch targeted elements.";
+    return "Result was compacted. Re-run browser_snapshot with lower maxElements/limit, page text with offset/limit, or use browser_ax_query to fetch targeted elements.";
   }
   if (toolName === "browser_ax_snapshot") {
     return "Result was compacted. Re-run browser_ax_snapshot with lower limit or scope=outline, or use browser_ax_query with role/name/text filters.";

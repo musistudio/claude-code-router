@@ -3705,7 +3705,7 @@ function ToolPayloadDialog({
     : undefined;
 
   return (
-    <Dialog className="z-[70] items-start" onOpenChange={(open) => !open && onClose()} open>
+    <Dialog className="z-[110] items-start" onOpenChange={(open) => !open && onClose()} open>
       <DialogContent className="h-[calc(100dvh-1.5rem)] max-w-[1180px] origin-top sm:h-[min(820px,calc(100dvh-3rem))]">
         <DialogHeader>
           <div className="min-w-0">

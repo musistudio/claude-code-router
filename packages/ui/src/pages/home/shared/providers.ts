@@ -190,6 +190,7 @@ import type {
   ProviderCredentialConfig,
   ProviderDeepLinkPayload,
   ProviderDeepLinkRequest,
+  ProviderModelMetadata,
   ProfileConfig,
   ProfileOpenSurface,
   CodexProfileConfigFormat,
@@ -772,8 +773,19 @@ export function providerDeepLinkDisplayIcon(payload: ProviderDeepLinkPayload): s
   return presetIcon || payload.icon?.trim() || "";
 }
 
+export function providerDisplayIcon(provider: GatewayProviderConfig): string {
+  const icon = provider.icon?.trim();
+  if (icon) {
+    return icon;
+  }
+
+  const preset = findProviderPresetByBaseUrl(providerBaseUrl(provider));
+  return preset ? providerPresetIconUrls[preset.id] ?? "" : "";
+}
+
 export type ProviderDeepLinkCatalogModelsResolution = {
   modelDisplayNames?: Record<string, string>;
+  modelMetadata?: Record<string, ProviderModelMetadata>;
   models: string[];
 };
 
@@ -794,6 +806,7 @@ export async function resolveProviderDeepLinkCatalogModels(payload: ProviderDeep
     });
     return {
       modelDisplayNames: mergeModelDisplayNames(result.modelDisplayNames),
+      modelMetadata: modelMetadataForModels(result.modelMetadata, result.models),
       models: mergeProviderModelLists(result.models)
     };
   } catch {
@@ -862,6 +875,7 @@ export function createProviderDraftFromDeepLinkPayload(
       mergeModelDisplayNames(providerPresetModelDisplayNames(preset), payload.modelDisplayNames),
       models
     ),
+    modelMetadata: modelMetadataForModels(payload.modelMetadata, models),
     modelSearch: "",
     modelsText: models.join("\n"),
     name: uniqueProviderName(providers, baseName),
@@ -878,8 +892,8 @@ export function createProviderConfigFromDeepLink(
   providers: GatewayProviderConfig[],
   probe: GatewayProviderProbeResult | undefined
 ): GatewayProviderConfig {
-  const protocol = probe?.detectedProtocol ?? payload.protocol ?? "openai_chat_completions";
-  const baseUrl = probe?.normalizedBaseUrl || payload.baseUrl;
+  const protocol = payload.protocol ?? probe?.detectedProtocol ?? "openai_chat_completions";
+  const baseUrl = providerGlobalBaseUrlForProbe(payload.baseUrl, probe, [protocol]);
   const apiKey = payload.apiKey?.trim() || "";
   const models = apiKey && probe?.models.length
     ? mergeProviderModelLists(probe.models)
@@ -910,19 +924,17 @@ export function createProviderConfigFromDeepLink(
     throw new Error(accountKeySafetyIssue.message);
   }
 
-  const capabilities = mergeProviderCapabilities(
-    probe?.capabilities ?? [],
-    protocol && baseUrl ? [{ baseUrl, source: probe?.detectedProtocol ? "detected" : "preset", type: protocol }] : []
-  );
+  const capabilities = providerCapabilitiesForProtocols(payload.baseUrl, [protocol], probe);
 
   return {
     account: cloneProviderAccountConfig(account),
-    api_base_url: normalizeProviderBaseUrl(baseUrl, protocol),
+    api_base_url: normalizeProviderBaseUrl(baseUrl),
     api_key: apiKey,
     capabilities: capabilities.length > 0 ? capabilities : undefined,
     icon: payload.icon?.trim() || undefined,
     modelDescriptions: modelDescriptionsForModels(payload.modelDescriptions, models),
     modelDisplayNames: modelDisplayNamesForModels(mergeModelDisplayNames(payload.modelDisplayNames, probe?.modelDisplayNames), models),
+    modelMetadata: modelMetadataForModels(mergeModelMetadata(payload.modelMetadata, probe?.modelMetadata), models),
     models,
     name,
     type: protocol
@@ -949,6 +961,7 @@ export function createProviderDraft(providers: GatewayProviderConfig[]): AddProv
     icon: "",
     modelDescriptions: undefined,
     modelDisplayNames: undefined,
+    modelMetadata: undefined,
     modelSearch: "",
     modelsText: "",
     name: uniqueProviderName(providers),
@@ -976,6 +989,7 @@ export function createProviderDraftFromProvider(provider: GatewayProviderConfig)
       mergeModelDisplayNames(providerPresetModelDisplayNames(preset), provider.modelDisplayNames),
       provider.models
     ),
+    modelMetadata: modelMetadataForModels(provider.modelMetadata, provider.models),
     modelSearch: "",
     modelsText: provider.models.join("\n"),
     name: provider.name,
@@ -1489,8 +1503,13 @@ export function providerUsageFieldPatch(target: ProviderUsageFieldTarget, path: 
 
 export function createProviderInstallLinkFromDraft(draft: AddProviderDraft, probe: GatewayProviderProbeResult | undefined): string {
   const providerName = draft.name.trim();
-  const baseUrl = (probe?.normalizedBaseUrl || draft.baseUrl).trim();
-  const protocol = probe?.detectedProtocol ?? draft.protocol;
+  const selectedProtocols = uniqueProviderProtocols(draft.selectedProtocols);
+  const protocol = selectedProtocols.includes(draft.protocol)
+    ? draft.protocol
+    : selectedProtocols.length === 1
+    ? selectedProtocols[0]
+    : probe?.detectedProtocol ?? draft.protocol;
+  const baseUrl = providerGlobalBaseUrlForProbe(draft.baseUrl, probe, selectedProtocols.length > 0 ? selectedProtocols : [protocol]);
   const models = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
   if (!providerName || !baseUrl) {
     return "Provider name and Base URL are required.";
@@ -1532,12 +1551,14 @@ export function createProviderInstallLinkFromDraft(draft: AddProviderDraft, prob
 
   const modelDescriptions = modelDescriptionsForModels(draft.modelDescriptions, models);
   const modelDisplayNames = modelDisplayNamesForModels(draft.modelDisplayNames, models);
+  const modelMetadata = modelMetadataForModels(draft.modelMetadata, models);
   const payload: ProviderDeepLinkPayload = {
     ...(account ? { account } : {}),
     baseUrl,
     ...(draft.icon.trim() ? { icon: draft.icon.trim() } : {}),
     ...(modelDescriptions ? { modelDescriptions } : {}),
     ...(modelDisplayNames ? { modelDisplayNames } : {}),
+    ...(modelMetadata ? { modelMetadata } : {}),
     models,
     name: providerName,
     protocol
@@ -1697,6 +1718,7 @@ export function providerProbeCandidates(draft: AddProviderDraft): ProviderProbeC
   if (preset) {
     return preset.endpoints.map((endpoint) => ({
       ...endpoint,
+      declaredProtocols: endpoint.protocols,
       protocols,
       source: "preset"
     }));
@@ -1786,7 +1808,10 @@ export function providerSelectableProtocolsFromProbe(probe: GatewayProviderProbe
     return [];
   }
 
-  return uniqueProviderProtocols(probe.protocols.filter((item) => item.supported).map((item) => item.protocol));
+  return uniqueProviderProtocols([
+    ...probe.protocols.filter((item) => item.supported).map((item) => item.protocol),
+    ...(probe.capabilities ?? []).map((capability) => capability.type)
+  ]);
 }
 
 export function selectedProviderProtocolsFromCapabilities(
@@ -1877,18 +1902,83 @@ export function mergeProviderCapabilities(...groups: GatewayProviderCapability[]
   return capabilities;
 }
 
+export function providerGlobalBaseUrlForProbe(
+  inputBaseUrl: string,
+  _probe: GatewayProviderProbeResult | undefined,
+  _protocols: GatewayProviderProtocol[] = []
+): string {
+  return normalizeProviderBaseUrl(inputBaseUrl) || inputBaseUrl.trim();
+}
+
+export function providerCapabilityBaseUrlForProtocol(
+  inputBaseUrl: string,
+  protocol: GatewayProviderProtocol,
+  probe: GatewayProviderProbeResult | undefined
+): string {
+  const detectedCapability = (probe?.capabilities ?? []).find((capability) =>
+    capability.type === protocol && capability.baseUrl.trim()
+  );
+  if (detectedCapability) {
+    return detectedCapability.baseUrl.trim();
+  }
+
+  if (probe?.detectedProtocol === protocol && probe.normalizedBaseUrl.trim()) {
+    return probe.normalizedBaseUrl.trim();
+  }
+
+  return normalizeProviderBaseUrl(inputBaseUrl, protocol) || normalizeProviderBaseUrl(inputBaseUrl) || inputBaseUrl.trim();
+}
+
+export function providerCapabilitiesForProtocols(
+  inputBaseUrl: string,
+  protocols: GatewayProviderProtocol[],
+  probe: GatewayProviderProbeResult | undefined,
+  presetCapabilities: GatewayProviderCapability[] = []
+): GatewayProviderCapability[] {
+  const detectedCapabilities = probe?.capabilities ?? [];
+  const selectedCapabilities = uniqueProviderProtocols(protocols)
+    .map((type) => {
+      const capability =
+        detectedCapabilities.find((item) => item.type === type && item.baseUrl.trim()) ??
+        presetCapabilities.find((item) => item.type === type && item.baseUrl.trim());
+      if (capability) {
+        return capability;
+      }
+
+      const baseUrl = providerCapabilityBaseUrlForProtocol(inputBaseUrl, type, probe);
+      return baseUrl
+        ? {
+            baseUrl,
+            source: probe?.detectedProtocol ? ("detected" as const) : ("preset" as const),
+            type
+          }
+        : undefined;
+    })
+    .filter((item): item is GatewayProviderCapability => Boolean(item));
+
+  return mergeProviderCapabilities(selectedCapabilities);
+}
+
 export function applyProviderProbeResult(draft: AddProviderDraft, probe: GatewayProviderProbeResult): AddProviderDraft {
-  const protocol = probe.detectedProtocol ?? draft.protocol;
-  const selectedProtocols = selectedProviderProtocolsForProbe(draft.selectedProtocols, probe, protocol, draft.presetId);
+  const detectedProtocol = probe.detectedProtocol ?? draft.protocol;
+  const selectedProtocols = selectedProviderProtocolsForProbe(draft.selectedProtocols, probe, detectedProtocol, draft.presetId);
+  const protocol = selectedProtocols.includes(draft.protocol)
+    ? draft.protocol
+    : selectedProtocols.includes(detectedProtocol)
+    ? detectedProtocol
+    : selectedProtocols[0] ?? detectedProtocol;
   const modelDisplayNames = mergeModelDisplayNames(draft.modelDisplayNames, probe.modelDisplayNames);
+  const modelMetadata = mergeModelMetadata(draft.modelMetadata, probe.modelMetadata);
   const accountDraft = providerProbeAccountDraftPatch(draft, probe.account);
+  const baseUrl = providerGlobalBaseUrlForProbe(draft.baseUrl, probe, selectedProtocols);
 
   if (probe.models.length === 0) {
     return {
       ...draft,
       ...accountDraft,
-      baseUrl: probe.normalizedBaseUrl || draft.baseUrl,
+      baseUrl,
       modelDisplayNames,
+      modelMetadata,
       protocol,
       selectedModels: mergeProviderModelLists(draft.selectedModels),
       selectedProtocols
@@ -1910,8 +2000,9 @@ export function applyProviderProbeResult(draft: AddProviderDraft, probe: Gateway
   return {
     ...draft,
     ...accountDraft,
-    baseUrl: probe.normalizedBaseUrl || draft.baseUrl,
+    baseUrl,
     modelDisplayNames,
+    modelMetadata,
     protocol,
     modelsText: customModels.join("\n"),
     selectedModels: nextSelectedModels,
@@ -1944,6 +2035,33 @@ export function mergeModelDisplayNames(
     }
   }
   return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+export function mergeModelMetadata(
+  ...groups: Array<Record<string, ProviderModelMetadata> | undefined>
+): Record<string, ProviderModelMetadata> | undefined {
+  const merged: Record<string, ProviderModelMetadata> = {};
+  for (const group of groups) {
+    for (const [rawModel, metadata] of Object.entries(group ?? {})) {
+      const model = rawModel.trim();
+      if (!model || !metadata || typeof metadata !== "object") {
+        continue;
+      }
+      merged[model] = metadata;
+    }
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+export function modelMetadataForModels(
+  value: Record<string, ProviderModelMetadata> | undefined,
+  models: string[]
+): Record<string, ProviderModelMetadata> | undefined {
+  const modelIds = new Set(models);
+  const entries = Object.entries(value ?? {})
+    .map(([rawModel, metadata]) => [rawModel.trim(), metadata] as const)
+    .filter(([model, metadata]) => model && modelIds.has(model) && metadata && typeof metadata === "object");
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 export function modelDisplayNamesForModels(

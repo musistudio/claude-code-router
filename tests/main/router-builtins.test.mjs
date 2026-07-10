@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ClaudeCodeRouterPlugin } from "../../packages/core/src/gateway/claude-code-router-plugin.ts";
-import { prepareGatewayUpstreamAttemptForTest } from "../../packages/core/src/gateway/service.ts";
+import {
+  fallbackRetryDelayAfterNetworkErrorForTest,
+  fallbackRetryDelayAfterStatusForTest,
+  prepareGatewayUpstreamAttemptForTest
+} from "../../packages/core/src/gateway/service.ts";
 
 function createRouterPlugin(options = {}) {
   const agent = options.agent ?? "claude-code";
@@ -41,6 +45,18 @@ function createRouterPlugin(options = {}) {
     virtualModelProfiles: options.virtualModelProfiles ?? []
   });
 }
+
+test("fallback retry delay backs off retryable HTTP statuses", () => {
+  assert.equal(fallbackRetryDelayAfterStatusForTest({ statusCode: 503 }), 1000);
+  assert.equal(fallbackRetryDelayAfterStatusForTest({ failedAttemptIndex: 1, statusCode: 408 }), 2000);
+  assert.equal(fallbackRetryDelayAfterStatusForTest({ retryAfter: "3", statusCode: 429 }), 3000);
+  assert.equal(fallbackRetryDelayAfterStatusForTest({ retryAfter: "0", statusCode: 429 }), 1000);
+});
+
+test("fallback retry delay backs off network errors", () => {
+  assert.equal(fallbackRetryDelayAfterNetworkErrorForTest(), 1000);
+  assert.equal(fallbackRetryDelayAfterNetworkErrorForTest(2), 4000);
+});
 
 function createIssue1480UserConfig() {
   return {

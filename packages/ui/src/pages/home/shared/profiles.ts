@@ -754,6 +754,7 @@ export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code"
   const surface = agent === "zcode" ? "app" : "cli";
   return {
     agent,
+    appPath: "",
     ...createBotGatewayDraft(),
     configFile: defaultCodexConfigFile(agent),
     envRows: agent === "claude-code" ? keyValueRowsFromRecord(claudeCodeProfileEnv()) : [],
@@ -778,6 +779,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
     return {
       ...createProfileDraft("claude-code", profile.name),
       ...botDraft,
+      appPath: profile.appPath ?? "",
       botConfigId,
       botEnabled: surface !== "cli" && Boolean(selectedBot || profile.botGateway?.enabled),
       envRows: keyValueRowsFromRecord(claudeCodeProfileEnv(profile.env ?? {})),
@@ -792,6 +794,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
   return {
     ...createProfileDraft(profile.agent, profile.name),
     ...botDraft,
+    appPath: profile.appPath ?? "",
     botConfigId,
     botEnabled: surface !== "cli" && Boolean(selectedBot || profile.botGateway?.enabled),
     configFile: profile.configFile ?? defaultCodexConfigFile(profile.agent),
@@ -863,6 +866,7 @@ export function profileConfigFromDraft(
     : {};
   return normalizeProfileItem({
     agent: draft.agent,
+    appPath: draft.appPath,
     ...botGateway,
     configFile: draft.configFile,
     enabled: existingProfile?.enabled ?? true,
@@ -1362,6 +1366,10 @@ export function profileSummaryItems(
   const envSummaryItems = envCount > 0
     ? [{ label: t("Environment variables"), value: String(envCount) }]
     : [];
+  const appPath = profile.appPath?.trim() || "";
+  const appPathSummaryItems = appPath && surface !== "cli" && profile.agent !== "zcode"
+    ? [{ label: t(profile.agent === "claude-code" ? "CLAUDE_APP_PATH" : "CHATGPT_APP_PATH"), value: appPath }]
+    : [];
   const savedBot = profile.botConfigId
     ? config.botConfigs.find((item) => item.id === profile.botConfigId)
     : undefined;
@@ -1400,6 +1408,7 @@ export function profileSummaryItems(
           : t("Keep Claude Code default")
       },
       ...botSummaryItems,
+      ...appPathSummaryItems,
       ...envSummaryItems
     ];
   }
@@ -1408,6 +1417,7 @@ export function profileSummaryItems(
     { label: t("Model"), value: modelValue },
     { label: t("Provider ID"), value: profile.providerId ?? "claude-code-router" },
     ...(profile.agent === "zcode" ? [] : [{ label: t("Show all sessions"), value: profile.showAllSessions ? t("Enabled") : t("Disabled") }]),
+    ...appPathSummaryItems,
     ...botSummaryItems,
     ...envSummaryItems
   ];
@@ -1423,8 +1433,10 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
   const botGateway = surface !== "cli" ? normalizeBotGatewayRuntimeConfig(profile.botGateway) : undefined;
   const botConfigId = surface !== "cli" ? stringValue(profile.botConfigId) : "";
   if (agent === "claude-code") {
+    const appPath = profile.appPath?.trim() || "";
     return {
       agent: "claude-code",
+      ...(surface !== "cli" && appPath ? { appPath } : {}),
       ...(botConfigId ? { botConfigId } : {}),
       ...(botGateway ? { botGateway } : {}),
       enabled: profile.enabled,
@@ -1440,6 +1452,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
   }
   return {
     agent: normalizeCodexCompatibleAgent(agent),
+    ...(surface !== "cli" && agent !== "zcode" && profile.appPath?.trim() ? { appPath: profile.appPath.trim() } : {}),
     ...(botConfigId ? { botConfigId } : {}),
     ...(botGateway ? { botGateway } : {}),
     cliMiddleware: true,
@@ -1518,6 +1531,27 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
   }
   return normalizeProfileItem({
     agent,
+    appPath: typeof value.appPath === "string"
+      ? value.appPath
+      : typeof value.app_path === "string"
+        ? value.app_path
+        : typeof value.appExecutablePath === "string"
+          ? value.appExecutablePath
+          : typeof value.app_executable_path === "string"
+            ? value.app_executable_path
+            : agent === "claude-code" && typeof value.claudeAppPath === "string"
+              ? value.claudeAppPath
+              : agent === "claude-code" && typeof value.claude_app_path === "string"
+                ? value.claude_app_path
+                : agent === "codex" && typeof value.chatgptAppPath === "string"
+                  ? value.chatgptAppPath
+                  : agent === "codex" && typeof value.chatgpt_app_path === "string"
+                    ? value.chatgpt_app_path
+                    : agent === "codex" && typeof value.codexAppPath === "string"
+                      ? value.codexAppPath
+                      : agent === "codex" && typeof value.codex_app_path === "string"
+                        ? value.codex_app_path
+                        : undefined,
     botConfigId: typeof value.botConfigId === "string" ? value.botConfigId : typeof value.bot_config_id === "string" ? value.bot_config_id : undefined,
     botGateway: normalizeBotGatewayRuntimeConfig(value.botGateway ?? value.bot_gateway ?? value.bot),
     cliMiddleware: typeof value.cliMiddleware === "boolean" ? value.cliMiddleware : undefined,

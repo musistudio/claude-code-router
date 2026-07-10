@@ -43,7 +43,7 @@ test("protocol support probe keeps auth-only fallback for unhinted endpoints", (
   );
 });
 
-test("protocol support probe treats Gemini contents validation as Gemini support only", () => {
+test("protocol support probe treats HTTP 400 validation as protocol support", () => {
   const message = "HTTP 400: * GenerateContentRequest.contents: contents is not specified";
 
   assert.equal(
@@ -52,11 +52,11 @@ test("protocol support probe treats Gemini contents validation as Gemini support
   );
   assert.equal(
     isProviderProtocolEndpointSupportedForProbe(400, message, "openai_chat_completions", ["openai_chat_completions"]),
-    false
+    true
   );
 });
 
-test("protocol support probe treats Gemini Interactions input validation as Interactions support", () => {
+test("protocol support probe treats HTTP 400 input validation as protocol support", () => {
   const message = "HTTP 400: Gemini Interactions request requires input.";
 
   assert.equal(
@@ -65,6 +65,15 @@ test("protocol support probe treats Gemini Interactions input validation as Inte
   );
   assert.equal(
     isProviderProtocolEndpointSupportedForProbe(400, message, "gemini_generate_content", ["gemini_generate_content"]),
+    true
+  );
+});
+
+test("protocol support probe still rejects HTTP 400 route misses", () => {
+  const message = "HTTP 400: unknown route";
+
+  assert.equal(
+    isProviderProtocolEndpointSupportedForProbe(400, message, "openai_chat_completions", ["openai_chat_completions"]),
     false
   );
 });

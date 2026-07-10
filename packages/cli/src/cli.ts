@@ -6,7 +6,7 @@ import path from "node:path";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import { applyClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "@ccr/core/agents/claude-app/launch";
-import { launchCodexAppProfile, launchZcodeAppProfile } from "@ccr/core/agents/codex/app-launch";
+import { codexDesktopAppName, launchCodexAppProfile, launchZcodeAppProfile } from "@ccr/core/agents/codex/app-launch";
 import { loadAppConfig } from "@ccr/core/config/config";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { installSocketTypeOfServiceCompat } from "@ccr/core/platform/socket-compat";
@@ -153,9 +153,9 @@ async function main(): Promise<void> {
       const launch = launchCodexAppProfile(configDir, profile, launchConfig);
       const spawnError = await waitForImmediateSpawnError(launch.child, 500);
       if (spawnError) {
-        throw new Error(`Failed to open Codex App: ${spawnError}`);
+        throw new Error(`Failed to open ${codexDesktopAppName}: ${spawnError}`);
       }
-      process.stdout.write(`Opened Codex App with ${profile.name || profile.id}.\n`);
+      process.stdout.write(`Opened ${codexDesktopAppName} with ${profile.name || profile.id}.\n`);
     }
     return;
   }
@@ -241,7 +241,7 @@ function profileAppName(profile: Pick<ProfileConfig, "agent">): string {
   if (profile.agent === "zcode") {
     return "ZCode App";
   }
-  return "Codex App";
+  return codexDesktopAppName;
 }
 
 function parseStopArgs(args: string[]): StopCliOptions {

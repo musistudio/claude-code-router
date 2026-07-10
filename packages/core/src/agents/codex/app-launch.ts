@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AppConfig, ProfileConfig } from "@ccr/core/contracts/app";
@@ -9,7 +9,7 @@ import { buildProfileLaunchPlan, resolveCodexConfigFile } from "@ccr/core/profil
 import { normalizeWindowsDesktopAppCandidate, windowsDesktopAppCandidates } from "@ccr/core/platform/windows-app-discovery";
 import { writeZcodeGatewayConfig, zcodeHomeFromConfigFile } from "@ccr/core/agents/zcode/profile-config";
 
-type CodexAppLookupResult = {
+export type CodexAppLookupResult = {
   checked: string[];
   executable?: string;
 };
@@ -47,13 +47,21 @@ export type CodexCompatibleAppModelCatalogWriteResult = {
   userDataDir: string;
 };
 
+export const codexDesktopAppName = "ChatGPT";
+
 const codexAppSpec: CodexCompatibleAppSpec = {
   bundledCliNames: ["codex", "Codex", "OpenAI Codex"],
   defaultCliCommand: "codex",
-  displayName: "Codex App",
-  envPathKeys: ["CCR_CODEX_APP_PATH", "CODEX_APP_PATH", "CODEXL_CODEX_PATH"],
+  displayName: codexDesktopAppName,
+  envPathKeys: ["CCR_CHATGPT_APP_PATH", "CHATGPT_APP_PATH", "CODEXL_CHATGPT_PATH", "CCR_CODEX_APP_PATH", "CODEX_APP_PATH", "CODEXL_CODEX_PATH"],
   kind: "codex",
   linuxCandidates: [
+    "/opt/ChatGPT/chatgpt",
+    "/opt/ChatGPT/ChatGPT",
+    "/opt/OpenAI ChatGPT/chatgpt",
+    "/opt/OpenAI ChatGPT/ChatGPT",
+    "/usr/local/bin/chatgpt-app",
+    "/usr/bin/chatgpt-app",
     "/opt/Codex/codex",
     "/opt/Codex/Codex",
     "/opt/OpenAI Codex/codex",
@@ -61,11 +69,18 @@ const codexAppSpec: CodexCompatibleAppSpec = {
     "/usr/local/bin/codex-app",
     "/usr/bin/codex-app"
   ],
-  macAppNames: ["Codex.app", "OpenAI Codex.app"],
+  macAppNames: ["ChatGPT.app", "OpenAI ChatGPT.app", "Codex.app", "OpenAI Codex.app"],
   modelCatalogFilename: "ccr-codex-model-catalog.json",
   userDataDirName: "codex-app-user-data",
-  windowsAppDirs: ["Codex", "OpenAI Codex", "OpenAICodex"],
+  windowsAppDirs: ["ChatGPT", "OpenAI ChatGPT", "OpenAIChatGPT", "Codex", "OpenAI Codex", "OpenAICodex"],
   windowsExeNames: [
+    "ChatGPT.exe",
+    "chatgpt.exe",
+    "OpenAI ChatGPT.exe",
+    "OpenAIChatGPT.exe",
+    "OpenAIChatGPTApp.exe",
+    "chatgpt-app.exe",
+    "openai-chatgpt.exe",
     "Codex.exe",
     "codex.exe",
     "OpenAI Codex.exe",
@@ -74,9 +89,16 @@ const codexAppSpec: CodexCompatibleAppSpec = {
     "codex-app.exe",
     "openai-codex.exe"
   ],
-  windowsPackageKeywords: ["codex", "openaicodex"],
+  windowsPackageKeywords: ["chatgpt", "openaichatgpt", "codex", "openaicodex"],
   windowsVendorDirs: ["OpenAI"],
   windowsWhereNames: [
+    "ChatGPT",
+    "chatgpt",
+    "OpenAI ChatGPT",
+    "OpenAIChatGPT",
+    "OpenAIChatGPTApp",
+    "chatgpt-app",
+    "openai-chatgpt",
     "Codex",
     "codex",
     "OpenAI Codex",
@@ -135,6 +157,10 @@ export function launchCodexAppProfile(configDir: string, profile: ProfileConfig,
   return launchCodexCompatibleAppProfile(configDir, profile, codexAppSpec, config);
 }
 
+export function findInstalledCodexAppExecutable(profileAppPath?: string): CodexAppLookupResult {
+  return findInstalledCodexCompatibleAppExecutable(codexAppSpec, profileAppPath);
+}
+
 export function launchZcodeAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): CodexAppLaunchResult {
   return launchCodexCompatibleAppProfile(configDir, profile, zcodeAppSpec, config);
 }
@@ -164,6 +190,9 @@ export function writeCodexCompatibleAppModelCatalog(
   const spec = profile.agent === "zcode" ? zcodeAppSpec : codexAppSpec;
   const configFile = resolveCodexConfigFile(configDir, profile);
   const codexHome = codexCompatibleHomeFromConfigFile(spec, configFile);
+  if (spec.kind === "codex") {
+    removeLegacyCodexVirtualAuthMarker(codexHome);
+  }
   const userDataDir = codexElectronUserDataDir(codexHome, profile, spec);
   mkdirSync(userDataDir, { recursive: true });
   const file = codexAppModelCatalogFile(userDataDir, spec);
@@ -175,13 +204,37 @@ export function writeCodexCompatibleAppModelCatalog(
   return { changed: previous !== content, file, userDataDir };
 }
 
+export function removeLegacyCodexVirtualAuthMarker(codexHome: string): boolean {
+  const authFile = path.join(codexHome, "auth.json");
+  if (!isFile(authFile)) {
+    return false;
+  }
+  try {
+    const value = JSON.parse(readFileSync(authFile, "utf8")) as Record<string, unknown>;
+    const keys = Object.keys(value).sort();
+    if (
+      keys.length !== 2 ||
+      keys[0] !== "OPENAI_API_KEY" ||
+      keys[1] !== "auth_mode" ||
+      value.auth_mode !== "apikey" ||
+      value.OPENAI_API_KEY !== "ccr-local-profile"
+    ) {
+      return false;
+    }
+    unlinkSync(authFile);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function launchCodexCompatibleAppProfile(
   configDir: string,
   profile: ProfileConfig,
   spec: CodexCompatibleAppSpec,
   config?: AppConfig
 ): CodexAppLaunchResult {
-  const lookup = findInstalledCodexAppExecutable(spec);
+  const lookup = findInstalledCodexCompatibleAppExecutable(spec, profile.appPath);
   if (!lookup.executable) {
     throw new Error([
       `${spec.displayName} was not found. Install ${spec.displayName} or set ${spec.envPathKeys[1]} to its executable, then try again.`,
@@ -218,7 +271,7 @@ function launchCodexCompatibleAppProfile(
   delete env.CODEXL_ZCODE_MODEL_CATALOG_B64;
   sanitizeCodexCompatibleAppEnv(env, spec.kind);
 
-  const launch = codexAppLaunchCommand(lookup.executable, userDataDir, appEnv);
+  const launch = codexAppLaunchCommand(lookup.executable, userDataDir);
   const child = spawn(launch.command, launch.args, {
     detached: true,
     env,
@@ -255,6 +308,9 @@ function codexProfileEnv(profile: ProfileConfig, appExecutable: string, spec: Co
   }
   return {
     ...(profile.model.trim() ? { CCR_CODEX_MODEL: profile.model.trim() } : {}),
+    ...(process.env.CCR_CODEX_CLI_MIDDLEWARE_LOG?.trim()
+      ? { CCR_CODEX_CLI_MIDDLEWARE_LOG: process.env.CCR_CODEX_CLI_MIDDLEWARE_LOG.trim() }
+      : {}),
     CCR_CODEX_MODEL_PROVIDER: providerId,
     CCR_CODEX_PROFILE: providerId,
     CCR_CODEX_REMOTE_FRONTEND_MODE: remoteFrontendMode,
@@ -351,32 +407,11 @@ function codexElectronArgs(userDataDir: string): string[] {
   ];
 }
 
-function codexAppLaunchCommand(executable: string, userDataDir: string, env: Record<string, string>): { args: string[]; command: string; pidIsLauncher?: boolean } {
-  const appBundle = process.platform === "darwin" ? macAppBundleFromExecutable(executable) : undefined;
-  if (appBundle) {
-    return {
-      command: "/usr/bin/open",
-      pidIsLauncher: true,
-      args: [
-        "-W",
-        "-n",
-        ...macOpenEnvArgs(env),
-        appBundle,
-        "--args",
-        ...codexElectronArgs(userDataDir)
-      ]
-    };
-  }
+function codexAppLaunchCommand(executable: string, userDataDir: string): { args: string[]; command: string; pidIsLauncher?: boolean } {
   return {
     command: executable,
     args: codexElectronArgs(userDataDir)
   };
-}
-
-function macOpenEnvArgs(env: Record<string, string>): string[] {
-  return Object.entries(env)
-    .filter(([key, value]) => isEnvName(key) && typeof value === "string")
-    .flatMap(([key, value]) => ["--env", `${key}=${value}`]);
 }
 
 function macAppBundleFromExecutable(executable: string): string | undefined {
@@ -387,10 +422,6 @@ function macAppBundleFromExecutable(executable: string): string | undefined {
   }
   const appBundle = executable.slice(0, index + ".app".length);
   return isDirectory(appBundle) ? appBundle : undefined;
-}
-
-function isEnvName(value: string): boolean {
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
 }
 
 function codexElectronUserDataDir(codexHome: string, profile: ProfileConfig, spec: CodexCompatibleAppSpec): string {
@@ -410,8 +441,13 @@ function codexCompatibleHomeFromConfigFile(spec: CodexCompatibleAppSpec, configF
   return spec.kind === "zcode" ? zcodeHomeFromConfigFile(configFile) : path.dirname(configFile);
 }
 
-function findInstalledCodexAppExecutable(spec: CodexCompatibleAppSpec): CodexAppLookupResult {
+function findInstalledCodexCompatibleAppExecutable(spec: CodexCompatibleAppSpec, profileAppPath?: string): CodexAppLookupResult {
   const checked: string[] = [];
+  const profileCandidate = findFirstExecutable(profileCodexAppPathCandidates(profileAppPath), checked, spec);
+  if (profileCandidate) {
+    return { checked, executable: profileCandidate };
+  }
+
   const envCandidate = findFirstExecutable(envCodexAppPathCandidates(spec), checked, spec);
   if (envCandidate) {
     return { checked, executable: envCandidate };
@@ -445,6 +481,11 @@ function envCodexAppPathCandidates(spec: CodexCompatibleAppSpec): string[] {
     .map((key) => process.env[key]?.trim() || "")
     .filter(Boolean)
     .map(resolveUserPath);
+}
+
+function profileCodexAppPathCandidates(value: string | undefined): string[] {
+  const trimmed = value?.trim() || "";
+  return trimmed ? [resolveUserPath(trimmed)] : [];
 }
 
 function macCodexAppCandidates(spec: CodexCompatibleAppSpec): string[] {

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
   closestCenter,
   DndContext,
@@ -571,7 +571,7 @@ export {
   providerIdentitySafetyIssue, getProviderPresets, setProviderPresets, standardProviderAccountConfig, normalizeProviderBaseUrl, providerUrlWithDefaultScheme
 };
 export type {
-  HTMLAttributes, ReactPointerEvent, ReactNode, CollisionDetection, DragEndEvent, DragOverEvent, DragStartEvent,
+  HTMLAttributes, ReactDragEvent, ReactPointerEvent, ReactNode, CollisionDetection, DragEndEvent, DragOverEvent, DragStartEvent,
   LucideIcon, AgentAnalysisFilter, AgentAnalysisSessionSelection, AgentAnalysisSnapshot, AgentAnalysisTrace, AgentAnalysisTracePayloadFullResult, AgentAnalysisTracePayloadRequest, AgentAnalysisTraceRun, AgentAnalysisTraceRunKind, AgentKind, AppConfig, AppInfo, AppSaveConfigOptions, AppUpdateStatus, ApiKeyConfig,
   ApiKeyLimitConfig, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginCancelResult, BotGatewayQrLoginStartRequest, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitRequest, BotGatewayQrLoginWaitResult, BotGatewayQrWindowOpenResult, BotGatewayRuntimeConfig, BotGatewaySavedConfig, BotHandoffScanTarget, GatewayProviderConfig, GatewayProviderCapability, GatewayPluginAppConfig, GatewayProviderProbeResult, GatewayProviderProtocol, GatewayMcpServerConfig,
   GatewayMcpServerTransport, GatewayMcpStdioMessageMode, GatewayMcpToolInfo, GatewayStatus, OverviewMetricKind, OverviewWidgetConfig, OverviewWidgetSize, OverviewWidgetType,

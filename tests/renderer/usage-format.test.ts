@@ -1,12 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { formatLogTokenSummary } from "../../packages/ui/src/pages/home/shared/logs.ts";
-import { formatCompactNumber } from "../../packages/ui/src/pages/home/shared/usage.ts";
+import { formatCompactNumber, formatUsdCost as formatHomeUsdCost } from "../../packages/ui/src/pages/home/shared/usage.ts";
+import { formatUsdCost as formatTrayUsdCost } from "../../packages/ui/src/pages/tray/shared.tsx";
 import type { RequestLogEntry } from "../../packages/core/src/contracts/app.ts";
 
 test("formatCompactNumber can be bound to the UI language locale", () => {
   assert.equal(formatCompactNumber(123456, "en-US"), "123.5K");
   assert.equal(formatCompactNumber(123456, "zh-CN"), "12.3万");
+});
+
+test("formatUsdCost formats large values without conflicting fraction digits", () => {
+  assert.doesNotThrow(() => formatHomeUsdCost(100));
+  assert.doesNotThrow(() => formatTrayUsdCost(100));
+  assert.doesNotMatch(formatHomeUsdCost(123.45), /[.,]45/);
+  assert.doesNotMatch(formatTrayUsdCost(123.45), /[.,]45/);
 });
 
 test("formatLogTokenSummary uses the provided locale for token counts", () => {
