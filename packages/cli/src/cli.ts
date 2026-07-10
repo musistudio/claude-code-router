@@ -115,7 +115,7 @@ async function main(): Promise<void> {
 
   const launchConfig = await ensureProfileGateway(config, profile, resolvedSurface === "app" ? profileAppName(profile) : profile.name || profile.id || "profile", {
     reuseExisting: true,
-    startIfMissing: false
+    startIfMissing: true
   });
   if (resolvedSurface === "cli") {
     const runtimeResult = applyProfileRuntimeConfig(launchConfig, profile, launchConfig.APIKEY);
