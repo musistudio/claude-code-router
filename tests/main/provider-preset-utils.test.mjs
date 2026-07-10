@@ -9,9 +9,15 @@ import {
   providerPresetMatchesBaseUrl
 } from "../../packages/core/src/providers/presets/utils.ts";
 import {
+  fennoProviderPreset
+} from "../../packages/core/src/providers/presets/fenno/index.ts";
+import {
   moonshotChinaProviderPreset,
   moonshotGlobalProviderPreset
 } from "../../packages/core/src/providers/presets/moonshot/index.ts";
+import {
+  qiniuAiProviderPreset
+} from "../../packages/core/src/providers/presets/qiniu-ai/index.ts";
 
 const openAiPreset = {
   aliases: ["OpenAI", "ChatGPT"],
@@ -55,6 +61,30 @@ test("provider identity lookup normalizes aliases and punctuation", () => {
 test("provider identity lookup prefers exact Kimi regional names over shared aliases", () => {
   assert.equal(findProviderPresetByIdentityInList(moonshotPresets, "Kimi API (Global)")?.id, "moonshot-global");
   assert.equal(findProviderPresetByIdentityInList(moonshotPresets, "Kimi API (China)")?.id, "moonshot");
+});
+
+test("sponsor provider presets expose requested endpoints and protocols", () => {
+  assert.equal(fennoProviderPreset.websiteUrl, "https://api.fenno.ai/register?redirect=/purchase?tab=subscription%26group=16&aff=9HHHAB5QLAES");
+  assert.deepEqual(fennoProviderPreset.endpoints[0]?.protocols, [
+    "openai_chat_completions",
+    "openai_responses",
+    "anthropic_messages"
+  ]);
+
+  assert.equal(qiniuAiProviderPreset.websiteUrl, "https://s.qiniu.com/AVjMVf");
+  assert.equal(providerPresetMatchesBaseUrl(qiniuAiProviderPreset, "https://api.qnaigc.com"), true);
+  assert.equal(providerPresetMatchesBaseUrl(qiniuAiProviderPreset, "https://api.modelink.ai/v1/models"), false);
+  assert.equal(providerPresetMatchesBaseUrl(qiniuAiProviderPreset, "https://api.qnaigc.com/bypass/openai/v1/responses"), true);
+  assert.equal(providerPresetMatchesBaseUrl(qiniuAiProviderPreset, "https://api.qnaigc.com/bypass/vertex/v1/models/gemini-pro:generateContent"), true);
+  assert.deepEqual(qiniuAiProviderPreset.endpoints.map((endpoint) => [endpoint.label, endpoint.baseUrl, endpoint.protocols]), [
+    ["China mainland OpenAI", "https://api.qnaigc.com", ["openai_chat_completions"]],
+    ["China mainland OpenAI Responses", "https://api.qnaigc.com/bypass/openai/v1", ["openai_responses"]],
+    ["China mainland Anthropic", "https://api.qnaigc.com", ["anthropic_messages"]],
+    ["China mainland Gemini Generate", "https://api.qnaigc.com/bypass/vertex/v1", ["gemini_generate_content"]]
+  ]);
+  assert.deepEqual(qiniuAiProviderPreset.endpoints[0]?.protocols, [
+    "openai_chat_completions"
+  ]);
 });
 
 test("provider identity safety does not block branded third-party endpoints", () => {

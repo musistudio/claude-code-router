@@ -224,6 +224,22 @@ Codex support is powered by [musistudio/codexl](https://github.com/musistudio/co
       </a>
     </td>
   </tr>
+  <tr>
+    <td align="center" width="330">
+      <a href="https://s.qiniu.com/AVjMVf">
+        <img src="/docs/public/provider-icons/qiniu-ai.png" width="42" height="42" alt="Qiniu Cloud AI icon" />
+        <br />
+        <strong>Qiniu Cloud AI</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://api.fenno.ai/register?redirect=/purchase?tab=subscription%26group=16&amp;aff=9HHHAB5QLAES">
+        <img src="/docs/public/provider-icons/fenno.jpg" width="42" height="42" alt="Fenno.ai icon" />
+        <br />
+        <strong>Fenno.ai</strong>
+      </a>
+    </td>
+  </tr>
 </table>
 
 <h4>Community Sponsors</h4>

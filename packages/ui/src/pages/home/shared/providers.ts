@@ -1716,10 +1716,11 @@ export function providerProbeCandidates(draft: AddProviderDraft): ProviderProbeC
   const preset = findProviderPreset(draft.presetId);
   const protocols = providerProtocolOptions.map((option) => option.value);
   if (preset) {
+    const probeAllProtocols = preset.endpoints.length === 1;
     return preset.endpoints.map((endpoint) => ({
       ...endpoint,
       declaredProtocols: endpoint.protocols,
-      protocols,
+      protocols: probeAllProtocols ? protocols : endpoint.protocols,
       source: "preset"
     }));
   }

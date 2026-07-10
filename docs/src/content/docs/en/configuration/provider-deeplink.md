@@ -86,6 +86,14 @@ Choose a provider below to get started. CCR shows what will be added before savi
     <span class="provider-import-icon-shell"><img src="../../../provider-icons/claudeapi.png" alt="" loading="lazy" /></span>
     <span class="provider-import-copy"><span class="provider-import-name">claudeapi</span><span class="provider-import-meta">Anthropic Messages</span></span>
   </a>
+  <a class="provider-import-button provider-qiniu-ai" href="ccr://provider?name=%E4%B8%83%E7%89%9B%E4%BA%91+AI&amp;base_url=https%3A%2F%2Fapi.qnaigc.com&amp;protocol=openai_chat_completions&amp;source=https%3A%2F%2Fs.qiniu.com%2FAVjMVf" aria-label="Import Qiniu Cloud AI provider">
+    <span class="provider-import-icon-shell"><img src="../../../provider-icons/qiniu-ai.png" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">Qiniu Cloud AI</span><span class="provider-import-meta">Chat / Responses / Anthropic / Gemini Generate</span></span>
+  </a>
+  <a class="provider-import-button provider-fenno" href="ccr://provider?name=Fenno.ai&amp;base_url=https%3A%2F%2Fapi.fenno.ai&amp;protocol=openai_chat_completions&amp;source=https%3A%2F%2Fapi.fenno.ai%2Fregister%3Fredirect%3D%2Fpurchase%3Ftab%3Dsubscription%2526group%3D16%26aff%3D9HHHAB5QLAES" aria-label="Import Fenno.ai provider">
+    <span class="provider-import-icon-shell"><img src="../../../provider-icons/fenno.jpg" alt="" loading="lazy" /></span>
+    <span class="provider-import-copy"><span class="provider-import-name">Fenno.ai</span><span class="provider-import-meta">Chat / Responses / Anthropic</span></span>
+  </a>
 </div>
 
 ## Embeddable Button Component

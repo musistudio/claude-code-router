@@ -207,6 +207,20 @@ CCR 可以完全通过桌面 UI 完成配置。首次使用建议按下面顺序
         <strong>TeamoRouter</strong>
       </a>
     </td>
+    <td align="center" width="330">
+      <a href="https://s.qiniu.com/AVjMVf">
+        <img src="/docs/public/provider-icons/qiniu-ai.png" width="42" height="42" alt="七牛云 AI 图标" />
+        <br />
+        <strong>七牛云 AI</strong>
+      </a>
+    </td>
+    <td align="center" width="330">
+      <a href="https://api.fenno.ai/register?redirect=/purchase?tab=subscription%26group=16&amp;aff=9HHHAB5QLAES">
+        <img src="/docs/public/provider-icons/fenno.jpg" width="42" height="42" alt="Fenno.ai 图标" />
+        <br />
+        <strong>Fenno.ai</strong>
+      </a>
+    </td>
   </tr>
 </table>
 

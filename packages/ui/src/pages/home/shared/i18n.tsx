@@ -587,7 +587,6 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "API key created": "API 密钥已创建",
       "API keys database": "API 密钥数据库",
       "Copy this key now. It may not be shown again.": "请现在复制保存这个密钥，之后可能不会再次完整显示。",
-      "Only enter an API key issued for this endpoint. Official provider keys must only be used with official endpoints.": "只输入由当前端点签发的 API 密钥。官方供应商密钥只能用于官方端点。",
       "Add": "添加",
       "Add env variable": "添加环境变量",
       "Add header": "添加请求头",

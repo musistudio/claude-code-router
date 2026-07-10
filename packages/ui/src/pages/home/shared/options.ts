@@ -46,11 +46,13 @@ import bailianProviderIconUrl from "@/assets/provider-icons/bailian.ico";
 import claudeapiProviderIconUrl from "@/assets/provider-icons/claudeapi.png";
 import code0ProviderIconUrl from "@/assets/provider-icons/code0.png";
 import deepseekProviderIconUrl from "@/assets/provider-icons/deepseek.ico";
+import fennoProviderIconUrl from "@/assets/provider-icons/fenno.jpg";
 import geminiProviderIconUrl from "@/assets/provider-icons/gemini.svg";
 import mistralProviderIconUrl from "@/assets/provider-icons/mistral.webp";
 import moonshotProviderIconUrl from "@/assets/provider-icons/moonshot.ico";
 import openaiProviderIconUrl from "@/assets/provider-icons/openai.png";
 import openrouterProviderIconUrl from "@/assets/provider-icons/openrouter.ico";
+import qiniuAiProviderIconUrl from "@/assets/provider-icons/qiniu-ai.png";
 import runapiProviderIconUrl from "@/assets/provider-icons/runapi.jpg";
 import siliconflowProviderIconUrl from "@/assets/provider-icons/siliconflow.png";
 import teamorouterProviderIconUrl from "@/assets/provider-icons/teamorouter.png";
@@ -324,6 +326,7 @@ export const providerPresetIconUrls: Record<string, string> = {
   claudeapi: claudeapiProviderIconUrl,
   code0: code0ProviderIconUrl,
   deepseek: deepseekProviderIconUrl,
+  fenno: fennoProviderIconUrl,
   gemini: geminiProviderIconUrl,
   "kimi-coding": moonshotProviderIconUrl,
   mistral: mistralProviderIconUrl,
@@ -331,6 +334,7 @@ export const providerPresetIconUrls: Record<string, string> = {
   "moonshot-global": moonshotProviderIconUrl,
   openai: openaiProviderIconUrl,
   openrouter: openrouterProviderIconUrl,
+  "qiniu-ai": qiniuAiProviderIconUrl,
   runapi: runapiProviderIconUrl,
   siliconflow: siliconflowProviderIconUrl,
   teamorouter: teamorouterProviderIconUrl,
