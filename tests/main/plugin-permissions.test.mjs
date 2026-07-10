@@ -28,12 +28,12 @@ test("plugin permissions gate dynamic gateway route registration", { skip: !proc
     ].join("\n"), "utf8");
 
     await assert.rejects(
-      () => pluginService.start(configWithPlugin(dir, pluginFile, [])),
+      () => pluginService.start(configWithPlugin(dir, pluginFile, ["trusted-code"])),
       /Plugin permission-test requires permission "gateway-routes" to register gateway routes\./
     );
     await pluginService.stop();
 
-    await pluginService.start(configWithPlugin(dir, pluginFile, ["gateway-routes"]));
+    await pluginService.start(configWithPlugin(dir, pluginFile, ["trusted-code", "gateway-routes"]));
     assert.equal(pluginService.hasGatewayRoutes(), true);
   } finally {
     await pluginService.stop();
@@ -41,10 +41,10 @@ test("plugin permissions gate dynamic gateway route registration", { skip: !proc
   }
 });
 
-test("plugins without permissions declarations keep legacy compatibility", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-plugin-legacy-permissions-"));
+test("plugins without permissions declarations are rejected", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-plugin-missing-permissions-"));
   try {
-    const pluginFile = path.join(dir, "legacy-route-plugin.cjs");
+    const pluginFile = path.join(dir, "missing-permissions-plugin.cjs");
     writeFileSync(pluginFile, [
       "\"use strict\";",
       "module.exports = {",
@@ -62,8 +62,10 @@ test("plugins without permissions declarations keep legacy compatibility", { ski
       ""
     ].join("\n"), "utf8");
 
-    await pluginService.start(configWithPlugin(dir, pluginFile, undefined));
-    assert.equal(pluginService.hasGatewayRoutes(), true);
+    await assert.rejects(
+      () => pluginService.start(configWithPlugin(dir, pluginFile, undefined)),
+      /Plugin permission-test must explicitly declare permissions to load and execute plugin JavaScript\./
+    );
   } finally {
     await pluginService.stop();
     rmSync(dir, { force: true, recursive: true });
@@ -85,6 +87,24 @@ test("plugin permissions gate configured browser apps", { skip: !process.env.CCR
       }),
       /Plugin static-app requires permission "apps" to register configured browser apps\./
     );
+  } finally {
+    await pluginService.stop();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("plugin modules are reloaded from the same path after gateway restart", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-plugin-reload-"));
+  try {
+    const pluginFile = path.join(dir, "reload-plugin.cjs");
+    writeReloadPlugin(pluginFile, "Version 1", "/v1");
+    await pluginService.start(configWithPlugin(dir, pluginFile, ["trusted-code", "apps"]));
+    assert.equal(pluginService.getApps()[0]?.name, "Version 1");
+
+    await pluginService.stop();
+    writeReloadPlugin(pluginFile, "Version 2", "/v2");
+    await pluginService.start(configWithPlugin(dir, pluginFile, ["trusted-code", "apps"]));
+    assert.equal(pluginService.getApps()[0]?.name, "Version 2");
   } finally {
     await pluginService.stop();
     rmSync(dir, { force: true, recursive: true });
@@ -113,4 +133,16 @@ function baseConfig(dir) {
   config.gateway.enabled = false;
   config.plugins = [];
   return config;
+}
+
+function writeReloadPlugin(pluginFile, name, url) {
+  writeFileSync(pluginFile, [
+    "\"use strict\";",
+    "module.exports = {",
+    "  setup(ctx) {",
+    `    ctx.registerApp({ id: "reload-app", name: ${JSON.stringify(name)}, url: ${JSON.stringify(url)} });`,
+    "  }",
+    "};",
+    ""
+  ].join("\n"), "utf8");
 }

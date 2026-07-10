@@ -1001,7 +1001,7 @@ function parsePluginAppItem(value: unknown): GatewayPluginAppConfig | undefined 
 
   const record = value as Record<string, unknown>;
   const name = readString(record.name) || readString(record.title);
-  const url = readString(record.url) || readString(record.href) || readString(record.target);
+  const url = normalizePluginAppUrl(readString(record.url) || readString(record.href) || readString(record.target));
   if (!name || !url) {
     return undefined;
   }
@@ -1015,6 +1015,23 @@ function parsePluginAppItem(value: unknown): GatewayPluginAppConfig | undefined 
     name,
     url
   };
+}
+
+function normalizePluginAppUrl(value: string | undefined): string {
+  const trimmed = value?.trim() || "";
+  if (!trimmed) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    return new URL(trimmed).toString();
+  }
+  if (trimmed.startsWith("//")) {
+    throw new Error("Plugin app URL cannot be protocol-relative.");
+  }
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
+    throw new Error("Plugin app URL must be an http(s) URL or a CCR gateway path.");
+  }
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
 
 function readPluginPermissions(
@@ -1083,6 +1100,11 @@ function normalizePluginPermission(value: unknown): GatewayPluginPermission | un
 
 function pluginPermissionAlias(value: string): string {
   switch (value) {
+    case "code":
+    case "execute-code":
+    case "trusted":
+    case "trusted-code":
+      return "trusted-code";
     case "app":
     case "browser-app":
     case "browser-apps":

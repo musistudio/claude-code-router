@@ -136,12 +136,13 @@ async function normalizeMarketplaceEntry(
   const name = readString(value.name) || readString(value.title) || id;
   const description = readString(value.description) || "";
   const moduleValue = readString(value.moduleUrl) || readString(value.module) || readString(value.modulePath) || readString(value.path);
+  const integrity = readString(value.integrity) || readString(value.sha256) || readString(value.hash);
   if (!id || !name || !moduleValue) {
     return undefined;
   }
 
   const moduleUrl = resolveRemoteMarketplaceUrl(moduleValue, manifestUrl);
-  const modulePath = await cachedMarketplaceModulePath(id, moduleUrl, options);
+  const modulePath = await cachedMarketplaceModulePath(id, moduleUrl, integrity, options);
   if (!modulePath) {
     return undefined;
   }
@@ -152,6 +153,7 @@ async function normalizeMarketplaceEntry(
     dependencies: await parsePluginDependencies(value.dependencies ?? value.pluginDependencies, manifestUrl, options),
     description,
     id,
+    ...(integrity ? { integrity } : {}),
     modulePath,
     name,
     permissions: parsePluginPermissions(value.permissions)
@@ -202,12 +204,14 @@ async function parsePluginDependency(
   }
 
   const moduleValue = readString(value.moduleUrl) || readString(value.module) || readString(value.modulePath) || readString(value.path);
+  const integrity = readString(value.integrity) || readString(value.sha256) || readString(value.hash);
   const modulePath = moduleValue
-    ? await cachedMarketplaceModulePath(id, resolveRemoteMarketplaceUrl(moduleValue, manifestUrl), options)
+    ? await cachedMarketplaceModulePath(id, resolveRemoteMarketplaceUrl(moduleValue, manifestUrl), integrity, options)
     : undefined;
   const name = readString(value.name);
   return {
     id,
+    ...(integrity ? { integrity } : {}),
     ...(modulePath ? { modulePath } : {}),
     ...(name ? { name } : {}),
     permissions: parsePluginPermissions(value.permissions)
@@ -217,11 +221,12 @@ async function parsePluginDependency(
 async function cachedMarketplaceModulePath(
   id: string,
   moduleUrl: string,
+  integrity: string | undefined,
   options: { offline?: boolean }
 ): Promise<string | undefined> {
   const url = new URL(moduleUrl);
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new Error(`Marketplace module must be an HTTP(S) URL: ${moduleUrl}`);
+  if (url.protocol !== "https:") {
+    throw new Error(`Marketplace module must be an HTTPS URL: ${moduleUrl}`);
   }
 
   const extension = path.extname(url.pathname).toLowerCase();
@@ -229,8 +234,13 @@ async function cachedMarketplaceModulePath(
     throw new Error(`Marketplace module must be a JavaScript file: ${moduleUrl}`);
   }
 
-  const file = path.join(marketplaceModuleCacheDir, `${sanitizeFileSegment(id)}-${hashString(moduleUrl)}${extension}`);
-  if (existsSync(file)) {
+  const expectedSha256 = normalizeSha256Integrity(integrity);
+  const cacheKey = expectedSha256 || hashString(moduleUrl);
+  const file = path.join(marketplaceModuleCacheDir, `${sanitizeFileSegment(id)}-${cacheKey.slice(0, 24)}${extension}`);
+  if (existsSync(file) && (options.offline || expectedSha256)) {
+    if (expectedSha256) {
+      verifySha256(readFileSync(file, "utf8"), expectedSha256, moduleUrl);
+    }
     return file;
   }
   if (options.offline) {
@@ -239,12 +249,16 @@ async function cachedMarketplaceModulePath(
   }
 
   const source = await fetchText(moduleUrl, maxMarketplaceModuleBytes);
+  if (expectedSha256) {
+    verifySha256(source, expectedSha256, moduleUrl);
+  }
   ensureMarketplaceCacheDir();
   writeFileSync(file, source, "utf8");
   return file;
 }
 
 async function fetchText(url: string, maxBytes: number): Promise<string> {
+  assertHttpsUrl(url, "Marketplace URL");
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), marketplaceFetchTimeoutMs);
   try {
@@ -283,6 +297,13 @@ function resolveRemoteMarketplaceUrl(value: string, manifestUrl: string): string
   }
 }
 
+function assertHttpsUrl(value: string, label: string): void {
+  const url = new URL(value);
+  if (url.protocol !== "https:") {
+    throw new Error(`${label} must use https: ${value}`);
+  }
+}
+
 function parsePluginApps(value: unknown): GatewayPluginAppConfig[] | undefined {
   if (!Array.isArray(value)) {
     return undefined;
@@ -297,7 +318,7 @@ function parsePluginApp(value: unknown): GatewayPluginAppConfig | undefined {
   }
 
   const name = readString(value.name) || readString(value.title);
-  const url = readString(value.url) || readString(value.href) || readString(value.target);
+  const url = normalizeMarketplacePluginAppUrl(readString(value.url) || readString(value.href) || readString(value.target));
   if (!name || !url) {
     return undefined;
   }
@@ -312,6 +333,23 @@ function parsePluginApp(value: unknown): GatewayPluginAppConfig | undefined {
     name,
     url
   };
+}
+
+function normalizeMarketplacePluginAppUrl(value: string | undefined): string {
+  const trimmed = value?.trim() || "";
+  if (!trimmed) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    return new URL(trimmed).toString();
+  }
+  if (trimmed.startsWith("//")) {
+    throw new Error("Marketplace plugin app URL cannot be protocol-relative.");
+  }
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
+    throw new Error("Marketplace plugin app URL must be an http(s) URL or a CCR gateway path.");
+  }
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
 
 function readStringArray(value: unknown): string[] {
@@ -367,6 +405,11 @@ function normalizePluginPermission(value: unknown): GatewayPluginPermission | un
 
 function pluginPermissionAlias(value: string): string {
   switch (value) {
+    case "code":
+    case "execute-code":
+    case "trusted":
+    case "trusted-code":
+      return "trusted-code";
     case "app":
     case "browser-app":
     case "browser-apps":
@@ -409,6 +452,29 @@ function pluginPermissionAlias(value: string): string {
   }
 }
 
+function normalizeSha256Integrity(value: string | undefined): string | undefined {
+  const raw = value?.trim();
+  if (!raw) {
+    return undefined;
+  }
+  const prefixed = raw.match(/^sha256-([A-Za-z0-9+/=]+)$/);
+  if (prefixed) {
+    return Buffer.from(prefixed[1], "base64").toString("hex");
+  }
+  const hex = raw.replace(/^sha256:/i, "").replace(/^sha256=/i, "");
+  if (/^[a-f0-9]{64}$/i.test(hex)) {
+    return hex.toLowerCase();
+  }
+  throw new Error(`Marketplace module has invalid SHA-256 integrity: ${raw}`);
+}
+
+function verifySha256(source: string, expectedHex: string, label: string): void {
+  const actual = createHash("sha256").update(source, "utf8").digest("hex");
+  if (actual !== expectedHex) {
+    throw new Error(`Marketplace module hash mismatch for ${label}.`);
+  }
+}
+
 function isAllPluginPermissionsKey(value: string): boolean {
   const normalized = value.trim().toLowerCase();
   return normalized === "*" || normalized === "all";
@@ -437,8 +503,10 @@ function cloneMarketplaceEntry(entry: PluginMarketplaceEntry): PluginMarketplace
     capabilities: [...entry.capabilities],
     dependencies: entry.dependencies.map((dependency) => ({
       ...dependency,
+      integrity: dependency.integrity,
       permissions: dependency.permissions ? [...dependency.permissions] : undefined
     })),
+    integrity: entry.integrity,
     permissions: entry.permissions ? [...entry.permissions] : undefined
   };
 }

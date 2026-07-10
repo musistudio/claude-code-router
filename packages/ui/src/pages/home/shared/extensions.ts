@@ -383,10 +383,12 @@ const gatewayPluginPermissionIdSet = new Set<string>(GATEWAY_PLUGIN_PERMISSION_I
 export function createPluginSettingsDraft(plugin?: AppConfig["plugins"][number]): PluginSettingsDraft {
   return {
     appsText: formatEditableJson(plugin?.apps ?? []),
+    coreGatewayText: formatEditableJson(plugin?.coreGateway ?? {}),
     configText: formatEditableJson(pluginSettingsConfigWithoutRouting(plugin?.config)),
     enabled: plugin?.enabled !== false,
     modulePath: plugin?.module ?? "",
-    permissionsText: formatEditableJson(plugin?.permissions ?? [])
+    permissionsText: formatEditableJson(plugin?.permissions ?? []),
+    proxyText: formatEditableJson(plugin?.proxy ?? {})
   };
 }
 
@@ -421,7 +423,11 @@ export function parsePluginAppsSettingsText(value: string): { ok: true; value?: 
       return { ok: false, message: "Each plugin app requires name and url." };
     }
     const name = stringValue(item.name);
-    const url = stringValue(item.url);
+    const urlResult = normalizePluginAppUrlForSettings(stringValue(item.url));
+    if (!urlResult.ok) {
+      return { ok: false, message: urlResult.message };
+    }
+    const url = urlResult.value;
     if (!name || !url) {
       return { ok: false, message: "Each plugin app requires name and url." };
     }
@@ -437,6 +443,16 @@ export function parsePluginAppsSettingsText(value: string): { ok: true; value?: 
 }
 
 export function parsePluginConfigSettingsText(value: string): { ok: true; value?: Record<string, unknown> } | { ok: false; message: string } {
+  const result = parsePluginObjectSettingsText(value, "Plugin config must be a JSON object.");
+  if (!result.ok || !result.value) {
+    return result;
+  }
+
+  const { routing: _routing, ...rest } = result.value;
+  return { ok: true, value: rest };
+}
+
+export function parsePluginObjectSettingsText(value: string, objectMessage: string): { ok: true; value?: Record<string, unknown> } | { ok: false; message: string } {
   const trimmed = value.trim();
   if (!trimmed) {
     return { ok: true };
@@ -450,11 +466,10 @@ export function parsePluginConfigSettingsText(value: string): { ok: true; value?
   }
 
   if (!isPlainRecord(parsed)) {
-    return { ok: false, message: "Plugin config must be a JSON object." };
+    return { ok: false, message: objectMessage };
   }
 
-  const { routing: _routing, ...rest } = parsed;
-  return { ok: true, value: rest };
+  return { ok: true, value: parsed };
 }
 
 export function parsePluginPermissionsSettingsText(value: string): { ok: true; value?: GatewayPluginPermission[] } | { ok: false; message: string } {
@@ -522,6 +537,11 @@ function normalizePluginPermission(value: unknown): GatewayPluginPermission | un
 
 function pluginPermissionAlias(value: string): string {
   switch (value) {
+    case "code":
+    case "execute-code":
+    case "trusted":
+    case "trusted-code":
+      return "trusted-code";
     case "app":
     case "browser-app":
     case "browser-apps":
@@ -562,6 +582,27 @@ function pluginPermissionAlias(value: string): string {
     default:
       return value;
   }
+}
+
+function normalizePluginAppUrlForSettings(value: string | undefined): { ok: true; value: string } | { ok: false; message: string } {
+  const trimmed = value?.trim() || "";
+  if (!trimmed) {
+    return { ok: true, value: "" };
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      return { ok: true, value: new URL(trimmed).toString() };
+    } catch {
+      return { ok: false, message: "Plugin app URL must be valid." };
+    }
+  }
+  if (trimmed.startsWith("//")) {
+    return { ok: false, message: "Plugin app URL cannot be protocol-relative." };
+  }
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
+    return { ok: false, message: "Plugin app URL must be an http(s) URL or a CCR gateway path." };
+  }
+  return { ok: true, value: trimmed.startsWith("/") ? trimmed : `/${trimmed}` };
 }
 
 function isAllPluginPermissionsKey(value: string): boolean {

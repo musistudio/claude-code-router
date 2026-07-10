@@ -2022,6 +2022,11 @@ function normalizeGatewayPluginPermission(value: unknown): GatewayPluginPermissi
 
 function gatewayPluginPermissionAlias(value: string): string {
   switch (value) {
+    case "code":
+    case "execute-code":
+    case "trusted":
+    case "trusted-code":
+      return "trusted-code";
     case "app":
     case "browser-app":
     case "browser-apps":

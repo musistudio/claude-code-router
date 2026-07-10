@@ -53,7 +53,8 @@ function configWithPlugin(dir, pluginFile, enabled) {
   config.plugins = [{
     enabled,
     id: "stop-reason-plugin",
-    module: pluginFile
+    module: pluginFile,
+    permissions: ["trusted-code"]
   }];
   return config;
 }

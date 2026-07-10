@@ -234,6 +234,14 @@ export function PluginSettingsDialog({
               <TextAreaControl minHeight={120} value={draft.permissionsText} onChange={(permissionsText) => onChange({ permissionsText })} />
             </Field>
 
+            <Field label={t("Plugin proxy JSON")}>
+              <TextAreaControl minHeight={120} value={draft.proxyText} onChange={(proxyText) => onChange({ proxyText })} />
+            </Field>
+
+            <Field label={t("Plugin core gateway JSON")}>
+              <TextAreaControl minHeight={132} value={draft.coreGatewayText} onChange={(coreGatewayText) => onChange({ coreGatewayText })} />
+            </Field>
+
             <Field label={t("Plugin config JSON")}>
               <TextAreaControl minHeight={160} value={draft.configText} onChange={(configText) => onChange({ configText })} />
             </Field>

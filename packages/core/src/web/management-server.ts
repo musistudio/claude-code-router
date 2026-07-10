@@ -43,6 +43,7 @@ import type {
   BotGatewayQrLoginWaitRequest,
   BotGatewayQrWindowOpenRequest,
   GatewayPluginAppConfig,
+  GatewayPluginPermission,
   GatewayProviderConnectivityCheckRequest,
   GatewayProviderProbeCandidatesRequest,
   GatewayProviderProbeRequest,
@@ -63,6 +64,9 @@ import type {
   UsageStatsFilter,
   UsageStatsRange
 } from "@ccr/core/contracts/app";
+import { GATEWAY_PLUGIN_PERMISSION_IDS } from "@ccr/core/contracts/app";
+
+const gatewayPluginPermissionIdSet = new Set<string>(GATEWAY_PLUGIN_PERMISSION_IDS);
 
 export type WebManagementServerOptions = {
   authToken?: string;
@@ -802,14 +806,134 @@ function inspectPluginDirectory(directory: string): PluginDirectorySelection {
     "plugin";
   const name = readString(manifest?.name) || readString(packageJsonManifest?.displayName) || readString(packageJsonManifest?.name);
   const apps = readPluginApps(manifest, packageJsonManifest);
+  const permissions = readPluginPermissions(manifest, packageJsonManifest);
   return {
     ...(apps.length ? { apps } : {}),
     dependencies: readPluginDependencies(directory, manifest, packageJsonManifest),
     directory,
     id,
     modulePath: resolvePluginDirectoryModule(directory, moduleValue),
-    ...(name ? { name } : {})
+    ...(name ? { name } : {}),
+    ...(permissions ? { permissions } : {})
   };
+}
+
+function readPluginPermissions(
+  manifest: Record<string, unknown> | undefined,
+  packageJsonManifest: Record<string, unknown> | undefined
+): GatewayPluginPermission[] | undefined {
+  const values = [
+    manifest?.permissions,
+    readRecord(manifest?.ccr)?.permissions,
+    readRecord(manifest?.ccrPlugin)?.permissions,
+    readRecord(packageJsonManifest?.ccr)?.permissions,
+    readRecord(packageJsonManifest?.ccrPlugin)?.permissions
+  ];
+  const parsedValues = values.map(parsePluginPermissions).filter((value): value is GatewayPluginPermission[] => Boolean(value));
+  return parsedValues.length > 0 ? [...new Set(parsedValues.flat())] : undefined;
+}
+
+function parsePluginPermissions(value: unknown): GatewayPluginPermission[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const permissions: GatewayPluginPermission[] = [];
+  const seen = new Set<GatewayPluginPermission>();
+  const add = (rawValue: unknown): void => {
+    const permission = normalizePluginPermission(rawValue);
+    if (!permission || seen.has(permission)) {
+      return;
+    }
+    seen.add(permission);
+    permissions.push(permission);
+  };
+
+  if (typeof value === "string") {
+    add(value);
+  } else if (Array.isArray(value)) {
+    value.forEach(add);
+  } else {
+    const record = readRecord(value);
+    if (!record) {
+      return permissions;
+    }
+    for (const [key, enabled] of Object.entries(record)) {
+      if (enabled === false) {
+        continue;
+      }
+      if (isAllPluginPermissionsKey(key)) {
+        GATEWAY_PLUGIN_PERMISSION_IDS.forEach(add);
+      } else {
+        add(key);
+      }
+    }
+  }
+
+  return permissions;
+}
+
+function normalizePluginPermission(value: unknown): GatewayPluginPermission | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  const mapped = pluginPermissionAlias(normalized);
+  return gatewayPluginPermissionIdSet.has(mapped) ? mapped as GatewayPluginPermission : undefined;
+}
+
+function pluginPermissionAlias(value: string): string {
+  switch (value) {
+    case "code":
+    case "execute-code":
+    case "trusted":
+    case "trusted-code":
+      return "trusted-code";
+    case "app":
+    case "browser-app":
+    case "browser-apps":
+      return "apps";
+    case "gateway-route":
+    case "route":
+    case "routes":
+      return "gateway-routes";
+    case "proxy":
+    case "proxy-route":
+      return "proxy-routes";
+    case "backend":
+    case "backends":
+    case "http-backend":
+      return "http-backends";
+    case "provider-account":
+    case "provider-account-connector":
+      return "provider-account-connectors";
+    case "core-gateway":
+      return "core-gateway-config";
+    case "provider-plugin":
+    case "provider-plugins":
+    case "core-provider-plugin":
+      return "core-provider-plugins";
+    case "fusion-profile":
+    case "fusion-profiles":
+    case "virtual-model":
+    case "virtual-models":
+    case "virtual-model-profile":
+      return "virtual-model-profiles";
+    case "sqlite":
+    case "data-store":
+    case "store":
+      return "sqlite-store";
+    case "launcher":
+    case "mac-launcher":
+      return "system-launcher";
+    default:
+      return value;
+  }
+}
+
+function isAllPluginPermissionsKey(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "*" || normalized === "all";
 }
 
 function readPluginApps(
@@ -848,7 +972,7 @@ function parsePluginAppItem(value: unknown): GatewayPluginAppConfig | undefined 
 
   const record = value as Record<string, unknown>;
   const name = readString(record.name) || readString(record.title);
-  const url = readString(record.url) || readString(record.href) || readString(record.target);
+  const url = normalizePluginAppUrl(readString(record.url) || readString(record.href) || readString(record.target));
   if (!name || !url) {
     return undefined;
   }
@@ -862,6 +986,23 @@ function parsePluginAppItem(value: unknown): GatewayPluginAppConfig | undefined 
     name,
     url
   };
+}
+
+function normalizePluginAppUrl(value: string | undefined): string {
+  const trimmed = value?.trim() || "";
+  if (!trimmed) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    return new URL(trimmed).toString();
+  }
+  if (trimmed.startsWith("//")) {
+    throw new Error("Plugin app URL cannot be protocol-relative.");
+  }
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
+    throw new Error("Plugin app URL must be an http(s) URL or a CCR gateway path.");
+  }
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
 
 function readPluginDependencies(

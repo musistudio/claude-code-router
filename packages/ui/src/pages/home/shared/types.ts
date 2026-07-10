@@ -717,10 +717,12 @@ export type PluginInstallCandidate = {
 
 export type PluginSettingsDraft = {
   appsText: string;
+  coreGatewayText: string;
   enabled: boolean;
   modulePath: string;
   configText: string;
   permissionsText: string;
+  proxyText: string;
 };
 
 export type RoutingRuleRow = {

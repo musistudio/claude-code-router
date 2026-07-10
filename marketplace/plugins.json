@@ -6,7 +6,8 @@
       "name": "Agent Console",
       "description": "Launches the local Agent Console Electron renderer as a CCR-hosted app and routes Codex/Claude agents through the CCR gateway.",
       "capabilities": ["Wrapper runtime", "PWA bridge", "System launcher", "Agent Console", "Model routing"],
-      "permissions": ["apps", "gateway-routes", "system-launcher"],
+      "permissions": ["trusted-code", "apps", "gateway-routes", "system-launcher"],
+      "integrity": "sha256:c3f5d7b85d14b5b2b8c138b61d8170a0e47285e28e4e124bb4b599f564870e37",
       "module": "plugins/agent-console/index.cjs",
       "apps": [
         {
@@ -23,7 +24,8 @@
       "name": "Claude Design",
       "description": "Routes Claude App Design traffic through the local CCR wrapper backend with configurable model routing.",
       "capabilities": ["Wrapper runtime", "Claude App proxy", "Claude Design", "Model routing"],
-      "permissions": ["gateway-routes", "proxy-routes", "http-backends", "sqlite-store"],
+      "permissions": ["trusted-code", "gateway-routes", "proxy-routes", "http-backends", "sqlite-store"],
+      "integrity": "sha256:d58f31975789f27082ea6542b9ad07c2502d396dbbaa678143d945063cf43836",
       "module": "../examples/plugins/claude-design-plugin.cjs"
     },
     {
@@ -31,7 +33,8 @@
       "name": "Cursor Proxy",
       "description": "Routes Cursor-compatible LLM traffic captured by proxy mode into the local CCR gateway.",
       "capabilities": ["Wrapper runtime", "Proxy mode", "Cursor", "Model routing", "OpenAI/Anthropic/Gemini forwarding"],
-      "permissions": ["gateway-routes", "proxy-routes", "http-backends"],
+      "permissions": ["trusted-code", "gateway-routes", "proxy-routes", "http-backends"],
+      "integrity": "sha256:53464f7a6fd97a931f807b282e08ac5b433014d2cde376a72df91e008f1fb28f",
       "module": "../examples/plugins/cursor-proxy-plugin.cjs"
     }
   ]

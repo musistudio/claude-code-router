@@ -608,6 +608,7 @@ export type GatewayPluginAppConfig = {
 };
 
 export const GATEWAY_PLUGIN_PERMISSION_IDS = [
+  "trusted-code",
   "apps",
   "gateway-routes",
   "proxy-routes",
@@ -883,6 +884,7 @@ export type GatewayPluginConfig = {
 
 export type PluginDependency = {
   id: string;
+  integrity?: string;
   modulePath?: string;
   name?: string;
   permissions?: GatewayPluginPermission[];
@@ -904,6 +906,7 @@ export type PluginMarketplaceEntry = {
   dependencies: PluginDependency[];
   description: string;
   id: string;
+  integrity?: string;
   modulePath: string;
   name: string;
   permissions?: GatewayPluginPermission[];

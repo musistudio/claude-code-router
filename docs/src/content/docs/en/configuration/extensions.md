@@ -22,11 +22,12 @@ When the gateway starts, CCR reads the `plugins` array and processes each plugin
 
 1. It first applies `apps`, `proxy.routes`, `coreGateway.providerPlugins`, `coreGateway.virtualModelProfiles`, and `coreGateway.config` declared in config.
 2. It then loads the plugin module. `module` must resolve to an explicit local JavaScript file path, such as an absolute path, a `~/` path, or a `./...` path relative to the CCR config directory.
-3. If `module` is missing, CCR does not load a built-in fallback. Marketplace installs download the selected plugin from the GitHub marketplace manifest into CCR's data directory and then write that local cached module path into config.
-4. A module can export a function or an object with `setup(ctx)` or `activate(ctx)`.
-5. On stop, CCR runs `stop` and `onStop` hooks in reverse order, then closes HTTP backends and SQLite stores registered by the plugin.
+3. Any extension that loads JavaScript with `module` must explicitly declare the `trusted-code` permission. Permissions are not an OS sandbox; they gate CCR plugin APIs and make code-execution trust explicit.
+4. If `module` is missing, CCR does not load a built-in fallback. Marketplace installs download the selected plugin from the GitHub marketplace manifest into CCR's data directory and then write that local cached module path into config.
+5. A module can export a function or an object with `setup(ctx)` or `activate(ctx)`.
+6. On stop, CCR runs `stop` and `onStop` hooks in reverse order, then closes HTTP backends and SQLite stores registered by the plugin.
 
-The extension marketplace is fetched from GitHub at startup/use time. The default manifest URL is `https://raw.githubusercontent.com/musistudio/claude-code-router/main/marketplace/plugins.json`; set `CCR_PLUGIN_MARKETPLACE_URL` to point CCR at another compatible GitHub-hosted manifest.
+The extension marketplace is fetched from GitHub at startup/use time. The default manifest URL is `https://raw.githubusercontent.com/musistudio/claude-code-router/main/marketplace/plugins.json`; set `CCR_PLUGIN_MARKETPLACE_URL` to point CCR at another compatible HTTPS manifest. Marketplace module URLs must use HTTPS, and marketplace entries can include `integrity`, `sha256`, or `hash` with a SHA-256 digest.
 
 Common module shape:
 
@@ -104,6 +105,7 @@ hello-extension/
   "id": "hello-extension",
   "name": "Hello Extension",
   "module": "index.cjs",
+  "permissions": ["trusted-code", "gateway-routes", "http-backends", "proxy-routes"],
   "apps": [
     {
       "id": "hello-status",
@@ -188,6 +190,7 @@ CCR stores runtime configuration in SQLite. Add extensions through the UI; the l
       "id": "hello-extension",
       "enabled": true,
       "module": "/Users/you/ccr-extensions/hello-extension/index.cjs",
+      "permissions": ["trusted-code", "gateway-routes", "http-backends", "proxy-routes"],
       "config": {
         "message": "hello from my config"
       }
@@ -270,7 +273,7 @@ Proxy route matching rules:
 | Extension does not load | Check `plugins[].enabled`, `plugins[].module`, and terminal errors prefixed with `[plugin:<id>]` |
 | `GET /plugins/hello` returns 404 | Restart the gateway and confirm `path` or `pathPrefix` starts with `/` |
 | Response is 401 | Routes require gateway API key by default; set `auth: "none"` for debug routes |
-| Code changes do not apply | Wrapper plugins are not hot reloaded; restart the gateway or CCR |
+| Code changes do not apply | Wrapper plugins are reloaded when the gateway restarts; restart CCR only if the process is stuck |
 | Port is already in use | Omit `port` in `registerHttpBackend` so CCR can allocate one automatically |
 | Proxy route misses requests | Confirm proxy mode is enabled, the certificate is installed, and host matches the real request hostname |
 

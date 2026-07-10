@@ -385,7 +385,7 @@ function ensureSystemLauncher(ctx, options, launcherUrl, launcherBundleId) {
 }
 
 function canUsePermission(ctx, permission) {
-  return !Array.isArray(ctx.permissions) || ctx.permissions.includes(permission);
+  return Array.isArray(ctx.permissions) && ctx.permissions.includes(permission);
 }
 
 function migrateLegacyMacLauncherApp({ bundleId, legacyPath, launcherPath }) {

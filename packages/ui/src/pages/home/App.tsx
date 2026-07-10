@@ -21,7 +21,7 @@ import {
   navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets,
   normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterBuiltInRules, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeToolHubConfig, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
   normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
-  OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parsePluginPermissionsSettingsText, parseProviderAccountDraft,
+  OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parsePluginObjectSettingsText, parsePluginPermissionsSettingsText, parseProviderAccountDraft,
   providerCredentialsFromDraft,
   persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
@@ -1772,6 +1772,10 @@ function App() {
     if (!canInstallExtension) {
       return;
     }
+    if (extensionInstallDraft.modulePath.trim() && !extensionInstallDraft.permissions?.includes("trusted-code")) {
+      setExtensionInstallError("Plugins that load JavaScript must declare trusted-code permission.");
+      return;
+    }
 
     const installPlan = resolvePluginInstallPlan(
       {
@@ -1787,6 +1791,13 @@ function App() {
     );
     if (installPlan.missing.length > 0) {
       setExtensionInstallError(`Missing plugin dependencies: ${installPlan.missing.join(", ")}`);
+      return;
+    }
+    const missingTrustedCode = installPlan.items
+      .filter((item) => item.modulePath.trim() && !item.permissions?.includes("trusted-code"))
+      .map((item) => item.name || item.id);
+    if (missingTrustedCode.length > 0) {
+      setExtensionInstallError(`Plugins that load JavaScript must declare trusted-code permission: ${missingTrustedCode.join(", ")}`);
       return;
     }
 
@@ -1870,6 +1881,22 @@ function App() {
       setPluginSettingsError(permissionsResult.message);
       return;
     }
+    if (pluginSettingsDraft.modulePath.trim() && !permissionsResult.value?.includes("trusted-code")) {
+      setPluginSettingsError("Plugins that load JavaScript must declare trusted-code permission.");
+      return;
+    }
+
+    const proxyResult = parsePluginObjectSettingsText(pluginSettingsDraft.proxyText, "Plugin proxy must be a JSON object.");
+    if (!proxyResult.ok) {
+      setPluginSettingsError(proxyResult.message);
+      return;
+    }
+
+    const coreGatewayResult = parsePluginObjectSettingsText(pluginSettingsDraft.coreGatewayText, "Plugin core gateway must be a JSON object.");
+    if (!coreGatewayResult.ok) {
+      setPluginSettingsError(coreGatewayResult.message);
+      return;
+    }
 
     updateConfig((config) => {
       const values = [...(config.plugins ?? [])];
@@ -1878,13 +1905,17 @@ function App() {
         return config;
       }
       const nextConfig = pluginSettingsConfigFromDraft(item.config, configResult.value);
+      const nextCoreGateway = coreGatewayResult.value as AppConfig["plugins"][number]["coreGateway"] | undefined;
+      const nextProxy = proxyResult.value as AppConfig["plugins"][number]["proxy"] | undefined;
       values[extensionConfigTarget.index] = {
         ...item,
         ...(appsResult.value && appsResult.value.length > 0 ? { apps: appsResult.value } : { apps: undefined }),
         config: nextConfig,
+        ...(nextCoreGateway && Object.keys(nextCoreGateway).length > 0 ? { coreGateway: nextCoreGateway } : { coreGateway: undefined }),
         enabled: pluginSettingsDraft.enabled,
         module: pluginSettingsDraft.modulePath.trim(),
-        ...(permissionsResult.value !== undefined ? { permissions: permissionsResult.value } : { permissions: undefined })
+        ...(permissionsResult.value !== undefined ? { permissions: permissionsResult.value } : { permissions: undefined }),
+        ...(nextProxy && Object.keys(nextProxy).length > 0 ? { proxy: nextProxy } : { proxy: undefined })
       };
       config.plugins = values;
       return config;

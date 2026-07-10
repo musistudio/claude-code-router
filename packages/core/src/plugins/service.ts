@@ -5,7 +5,6 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
-  GATEWAY_PLUGIN_PERMISSION_IDS,
   type AppConfig,
   type GatewayPluginAppConfig,
   type GatewayPluginConfig,
@@ -176,7 +175,6 @@ class GatewayPluginService {
   private gatewayRoutes: RegisteredGatewayRoute[] = [];
   private proxyRoutes: RegisteredProxyRoute[] = [];
   private providerAccountConnectors = new Map<string, GatewayPluginProviderAccountConnector>();
-  private legacyPermissionWarningIds = new Set<string>();
   private resourceOwnerIds = new Set<string>();
   private running = false;
   private stopHooks: StopHook[] = [];
@@ -326,6 +324,7 @@ class GatewayPluginService {
       return;
     }
 
+    this.requirePluginPermission(permissions, "trusted-code", "load and execute plugin JavaScript");
     const loadedPlugin = await loadPluginModule(modulePath);
     const plugin = normalizeLoadedPlugin(loadedPlugin);
     const context = this.createPluginContext(pluginConfig, permissions);
@@ -611,11 +610,7 @@ class GatewayPluginService {
     action: string
   ): void {
     if (!access.explicit) {
-      if (!this.legacyPermissionWarningIds.has(access.pluginId)) {
-        this.legacyPermissionWarningIds.add(access.pluginId);
-        console.warn(`[plugin] ${access.pluginId} has no permissions declaration; allowing CCR plugin APIs in compatibility mode.`);
-      }
-      return;
+      throw new Error(`Plugin ${access.pluginId} must explicitly declare permissions to ${action}.`);
     }
     if (access.permissions.has(permission)) {
       return;
@@ -635,12 +630,14 @@ function pluginPermissionAccess(pluginConfig: Pick<GatewayPluginConfig, "id" | "
 }
 
 function pluginPermissionList(access: PluginPermissionAccess): GatewayPluginPermission[] {
-  return access.explicit ? [...access.permissions] : [...GATEWAY_PLUGIN_PERMISSION_IDS];
+  return [...access.permissions];
 }
 
 async function loadPluginModule(modulePath: string): Promise<unknown> {
   const resolved = resolvePluginModule(modulePath);
-  return import(pathToFileURL(resolved).href);
+  delete requireFromHere.cache[resolved];
+  const cacheBust = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return import(`${pathToFileURL(resolved).href}?v=${cacheBust}`);
 }
 
 function resolvePluginModule(modulePath: string): string {
@@ -759,7 +756,7 @@ function resolveStripPathPrefix(value: boolean | string | undefined, matchedPath
 
 function normalizePluginApp(pluginId: string, app: GatewayPluginAppConfig, index: number): InstalledBrowserApp | undefined {
   const name = app.name?.trim();
-  const url = app.url?.trim();
+  const url = normalizePluginAppUrl(app.url);
   if (!name || !url) {
     return undefined;
   }
@@ -772,6 +769,23 @@ function normalizePluginApp(pluginId: string, app: GatewayPluginAppConfig, index
     pluginId,
     url
   };
+}
+
+function normalizePluginAppUrl(value: string | undefined): string {
+  const trimmed = value?.trim() || "";
+  if (!trimmed) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    return new URL(trimmed).toString();
+  }
+  if (trimmed.startsWith("//")) {
+    throw new Error("Plugin app URL cannot be protocol-relative.");
+  }
+  if (isProtocolSpecifier(trimmed)) {
+    throw new Error("Plugin app URL must be an http(s) URL or a CCR gateway path.");
+  }
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
 
 function normalizeMethods(route: GatewayPluginRouteRegistration): string[] | undefined {

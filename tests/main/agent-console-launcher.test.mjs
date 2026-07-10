@@ -281,6 +281,7 @@ function createPluginContext({ config = {}, pluginConfig, pluginDataDir, routes 
     },
     paths: { pluginDataDir },
     pluginConfig,
+    permissions: ["apps", "gateway-routes", "system-launcher", "trusted-code"],
     registerApp() {},
     registerGatewayRoute(route) {
       routes.push(route);

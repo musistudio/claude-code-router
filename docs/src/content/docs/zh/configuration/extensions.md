@@ -22,11 +22,12 @@ CCR 的扩展分为两层：
 
 1. 先应用配置中声明的 `apps`、`proxy.routes`、`coreGateway.providerPlugins`、`coreGateway.virtualModelProfiles` 和 `coreGateway.config`。
 2. 再加载扩展模块。`module` 必须解析到明确的本地 JavaScript 文件路径，例如绝对路径、`~/` 开头路径，或相对 CCR 配置目录的 `./...` 路径。
-3. 如果没有配置 `module`，CCR 不会再加载内置兜底扩展。插件市场安装会从 GitHub 市场 manifest 下载选中的插件到 CCR 数据目录，并把本地缓存后的模块路径写入配置。
-4. 模块可以导出函数，也可以导出包含 `setup(ctx)` 或 `activate(ctx)` 的对象。
-5. 扩展停止时，CCR 会反向执行 `stop`、`onStop` 钩子，并关闭该扩展注册的 HTTP 后端和 SQLite store。
+3. 任何通过 `module` 加载 JavaScript 的扩展都必须显式声明 `trusted-code` 权限。权限不是操作系统级沙箱；它用于限制 CCR 插件 API，并把“执行本地代码”的信任边界显式化。
+4. 如果没有配置 `module`，CCR 不会再加载内置兜底扩展。插件市场安装会从 GitHub 市场 manifest 下载选中的插件到 CCR 数据目录，并把本地缓存后的模块路径写入配置。
+5. 模块可以导出函数，也可以导出包含 `setup(ctx)` 或 `activate(ctx)` 的对象。
+6. 扩展停止时，CCR 会反向执行 `stop`、`onStop` 钩子，并关闭该扩展注册的 HTTP 后端和 SQLite store。
 
-扩展市场会从 GitHub 获取。默认 manifest 地址是 `https://raw.githubusercontent.com/musistudio/claude-code-router/main/marketplace/plugins.json`；可以通过 `CCR_PLUGIN_MARKETPLACE_URL` 指向另一个兼容的 GitHub-hosted manifest。
+扩展市场会从 GitHub 获取。默认 manifest 地址是 `https://raw.githubusercontent.com/musistudio/claude-code-router/main/marketplace/plugins.json`；可以通过 `CCR_PLUGIN_MARKETPLACE_URL` 指向另一个兼容的 HTTPS manifest。市场模块 URL 必须使用 HTTPS，市场条目可以通过 `integrity`、`sha256` 或 `hash` 提供 SHA-256 摘要。
 
 扩展模块常见导出形式：
 
@@ -104,6 +105,7 @@ hello-extension/
   "id": "hello-extension",
   "name": "Hello Extension",
   "module": "index.cjs",
+  "permissions": ["trusted-code", "gateway-routes", "http-backends", "proxy-routes"],
   "apps": [
     {
       "id": "hello-status",
@@ -188,6 +190,7 @@ CCR 的运行配置存储在 SQLite 中。请通过 UI 添加扩展；旧版 JSO
       "id": "hello-extension",
       "enabled": true,
       "module": "/Users/you/ccr-extensions/hello-extension/index.cjs",
+      "permissions": ["trusted-code", "gateway-routes", "http-backends", "proxy-routes"],
       "config": {
         "message": "hello from my config"
       }
@@ -270,7 +273,7 @@ curl -H "x-api-key: <CCR_API_KEY>" http://127.0.0.1:3456/plugins/hello
 | 扩展没有加载 | 检查 `plugins[].enabled`、`plugins[].module` 路径和终端里的 `[plugin:<id>]` 报错 |
 | `GET /plugins/hello` 返回 404 | 确认网关已重启，路由 `path` 或 `pathPrefix` 是否以 `/` 开头 |
 | 返回 401 | 路由默认需要 gateway API Key；调试路由可显式设置 `auth: "none"` |
-| 修改代码不生效 | Wrapper plugin 不会热重载，修改后需要重启网关或重启 CCR |
+| 修改代码不生效 | Wrapper plugin 会在网关重启时重新加载；只有进程卡住时才需要重启 CCR |
 | 端口被占用 | `registerHttpBackend` 不传 `port` 会自动分配端口；固定端口冲突时改回自动分配 |
 | 代理规则不命中 | 检查代理模式是否开启、证书是否安装、host 是否匹配真实请求的 hostname |
 

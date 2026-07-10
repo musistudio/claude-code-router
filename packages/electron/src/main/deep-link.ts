@@ -310,7 +310,7 @@ function configuredPluginApps(_pluginId: string, apps: GatewayPluginAppConfig[] 
 }
 
 function resolveGatewayPluginAppUrl(config: AppConfig, url: string): string {
-  const trimmed = url.trim();
+  const trimmed = normalizePluginAppUrl(url);
   if (/^https?:\/\//i.test(trimmed)) {
     return trimmed;
   }
@@ -318,6 +318,23 @@ function resolveGatewayPluginAppUrl(config: AppConfig, url: string): string {
   const host = normalizeGatewayPluginAppHost(config.gateway?.host || config.HOST || "127.0.0.1");
   const port = config.gateway?.port || config.PORT || 3456;
   return `http://${host}:${port}${urlPath}`;
+}
+
+function normalizePluginAppUrl(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error("Plugin app URL is required.");
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    return new URL(trimmed).toString();
+  }
+  if (trimmed.startsWith("//")) {
+    throw new Error("Plugin app URL cannot be protocol-relative.");
+  }
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
+    throw new Error("Plugin app URL must be an http(s) URL or a CCR gateway path.");
+  }
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
 
 function normalizeGatewayPluginAppHost(host: string): string {

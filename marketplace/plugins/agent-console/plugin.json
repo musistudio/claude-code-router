@@ -2,7 +2,7 @@
   "id": "agent-console",
   "name": "Agent Console",
   "module": "index.cjs",
-  "permissions": ["apps", "gateway-routes", "system-launcher"],
+  "permissions": ["trusted-code", "apps", "gateway-routes", "system-launcher"],
   "apps": [
     {
       "id": "agent-console",
