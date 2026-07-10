@@ -1,6 +1,6 @@
 {
   "name": "claude-code-router-monorepo",
-  "version": "3.0.10",
+  "version": "3.0.11",
   "private": true,
   "license": "MIT",
   "description": "Local Claude Code Router gateway with CLI and web management UI.",
