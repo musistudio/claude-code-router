@@ -6,6 +6,9 @@ import {
   readCatalogCapability,
   type ModelCatalogEntry
 } from "@ccr/core/gateway/model-catalog";
+import { codexDefaultBaseUrl, readCodexLocalModelCatalog } from "@ccr/core/agents/local-providers/codex";
+import { localAgentProviderApiKey } from "@ccr/core/agents/local-providers/shared";
+import { normalizeProviderBaseUrl } from "@ccr/core/providers/url";
 
 const fusionModelProviderName = "Fusion";
 const codexDefaultContextWindow = 128_000;
@@ -168,7 +171,9 @@ function codexModelCapabilityProfile(
   const selector = parseModelSelector(model);
   const provider = selector?.provider ? findConfiguredProvider(config, selector.provider) : findConfiguredProviderForModel(config, model);
   const providerModel = selector?.model ?? model;
-  const providerModelMetadata = provider ? providerModelMetadataFor(provider, providerModel) : undefined;
+  const providerModelMetadata = provider
+    ? providerModelMetadataFor(provider, providerModel) ?? localCodexModelMetadataFor(provider, providerModel)
+    : undefined;
   const catalogEntry = findModelCatalogEntry(model);
   const capabilities = catalogEntry?.capabilities ?? {};
   const providerProtocol = provider ? codexProviderProtocol(provider) : undefined;
@@ -221,6 +226,35 @@ function providerModelMetadataFor(provider: GatewayProviderConfig, model: string
   const normalized = model.trim().toLowerCase();
   const match = Object.entries(metadata).find(([candidate]) => candidate.trim().toLowerCase() === normalized);
   return match?.[1];
+}
+
+function localCodexModelMetadataFor(provider: GatewayProviderConfig, model: string): ProviderModelMetadata | undefined {
+  if (!isLocalCodexProvider(provider)) {
+    return undefined;
+  }
+  return readCodexLocalModelCatalog().modelMetadata?.[model];
+}
+
+function isLocalCodexProvider(provider: GatewayProviderConfig): boolean {
+  const baseUrl = providerBaseUrl(provider).trim().replace(/\/+$/g, "");
+  const normalizedBaseUrl = normalizeProviderBaseUrl(baseUrl);
+  const normalizedCodexBaseUrl = normalizeProviderBaseUrl(codexDefaultBaseUrl);
+  return (
+    providerApiKey(provider) === localAgentProviderApiKey &&
+    (
+      baseUrl.toLowerCase() === codexDefaultBaseUrl.toLowerCase() ||
+      baseUrl.toLowerCase().includes("chatgpt.com/backend-api/codex") ||
+      normalizedBaseUrl === normalizedCodexBaseUrl
+    )
+  );
+}
+
+function providerBaseUrl(provider: GatewayProviderConfig): string {
+  return provider.api_base_url || provider.baseUrl || provider.baseurl || "";
+}
+
+function providerApiKey(provider: GatewayProviderConfig): string {
+  return provider.api_key || provider.apiKey || provider.apikey || "";
 }
 
 function normalizeProviderReasoningLevels(levels: ProviderReasoningLevel[] | undefined): Array<{ description: string; effort: string }> | undefined {

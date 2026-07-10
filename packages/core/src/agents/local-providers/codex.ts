@@ -39,7 +39,7 @@ const codexAccountBaseUrl = "https://chatgpt.com/backend-api";
 const codexDefaultModels = ["gpt-5-codex"];
 const codexProbeTimeoutMs = 8_000;
 
-type LocalAgentModelCatalog = {
+export type LocalAgentModelCatalog = {
   modelDisplayNames?: Record<string, string>;
   modelMetadata?: Record<string, ProviderModelMetadata>;
   models: string[];
@@ -240,7 +240,7 @@ const codexAccountTokenUsageMapping: ProviderAccountMappingConfig = {
 
 export function codexCandidate(): LocalAgentProviderCandidate {
   const auth = readCodexAuth();
-  const catalog = readCodexModelCatalog();
+  const catalog = readCodexLocalModelCatalog();
   if (auth?.refreshToken || auth?.accessToken) {
     return {
       detail: "ChatGPT login detected. Click Import to add it as a gateway provider.",
@@ -295,7 +295,7 @@ export async function probeCodexProvider(candidate: LocalAgentProviderCandidate)
 }
 
 export function readCodexAuth(): OAuthTokenSet | undefined {
-  const sourceFile = path.join(os.homedir(), ".codex", "auth.json");
+  const sourceFile = path.join(codexHomeDir(), ".codex", "auth.json");
   const record = readJsonRecord(sourceFile);
   if (!record) {
     return undefined;
@@ -605,13 +605,14 @@ function codexBackendRequestTransform(): Record<string, unknown> {
   };
 }
 
-function readCodexModelCatalog(): LocalAgentModelCatalog {
-  const modelsFile = path.join(os.homedir(), ".codex", "models_cache.json");
+export function readCodexLocalModelCatalog(): LocalAgentModelCatalog {
+  const modelsFile = path.join(codexHomeDir(), ".codex", "models_cache.json");
   const record = readJsonRecord(modelsFile);
   const catalog = codexModelCatalogFromPayload(record);
   const uniqueModels = uniqueStrings([...catalog.models, ...codexDefaultModels]);
   return {
     modelDisplayNames: modelDisplayNamesForModels(catalog.modelDisplayNames, uniqueModels),
+    modelMetadata: modelMetadataForModels(catalog.modelMetadata, uniqueModels),
     models: uniqueModels
   };
 }
@@ -826,6 +827,10 @@ function parseJson(text: string): unknown {
 
 export function codexModelCatalogFromPayloadForTest(payload: unknown): LocalAgentModelCatalog {
   return codexModelCatalogFromPayload(payload);
+}
+
+function codexHomeDir(): string {
+  return process.env.CCR_INTERNAL_HOME_DIR?.trim() || process.env.HOME?.trim() || process.env.USERPROFILE?.trim() || os.homedir();
 }
 
 function readCodexIdTokenClaims(idToken: string | undefined): { accountId?: string; isFedrampAccount?: boolean } {
