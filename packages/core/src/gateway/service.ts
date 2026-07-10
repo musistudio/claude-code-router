@@ -346,11 +346,12 @@ class GatewayService {
   async start(config: AppConfig): Promise<GatewayStatus> {
     const coreHostError = loopbackCoreHostError(config.gateway.coreHost);
     if (coreHostError) {
-      return {
+      this.status = {
         ...this.getStatus(),
         lastError: coreHostError,
         state: "error"
       };
+      return this.status;
     }
     await this.stop();
     this.config = config;

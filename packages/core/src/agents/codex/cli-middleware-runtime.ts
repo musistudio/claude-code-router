@@ -30,6 +30,11 @@ const CLAUDE_CODE_CHINA_TIME_ZONES = new Set([
   "china standard time",
   "prc"
 ]);
+const ACCOUNT_REMOTE_PLUGIN_MARKETPLACE_KINDS = new Set([
+  "created-by-me-remote",
+  "shared-with-me",
+  "workspace-directory"
+]);
 let BOT_BRIDGE_INSTANCE = null;
 
 function claudeCodeUtcTimezoneEnvOverride() {
@@ -284,6 +289,7 @@ async function runCodexCliMiddleware(args) {
     return;
   }
 
+  ensureVirtualCodexAuthMarker(runtimeAgent);
   const child = childProcess.spawn(realCli, realArgs, {
     env: childEnvForAgent(runtimeAgent),
     stdio: ["pipe", "pipe", "inherit"]
@@ -295,17 +301,29 @@ async function runCodexCliMiddleware(args) {
   const requestMap = new Map();
   const current = { cwd: "" };
   const stdinRl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity, terminal: false });
+  let stdinQueue = Promise.resolve();
   stdinRl.on("line", (line) => {
-    const custom = customAppServerLineResponse(line);
-    if (custom) {
-      writeLine(process.stdout, custom);
-      return;
-    }
-    const rewritten = rewriteCodexStdinLine(line);
-    trackRequestLine(rewritten, requestMap, current);
-    child.stdin.write(rewritten + "\n");
+    stdinQueue = stdinQueue.then(async () => {
+      if (shouldWaitForOfficialPluginMarketplace(line)) {
+        await waitForOfficialPluginMarketplace();
+      }
+      const custom = customAppServerLineResponse(line);
+      if (custom) {
+        writeLine(process.stdout, custom);
+        return;
+      }
+      const rewritten = rewriteCodexStdinLine(line);
+      trackRequestLine(rewritten, requestMap, current);
+      if (!child.stdin.destroyed) child.stdin.write(rewritten + "\n");
+    }).catch((error) => {
+      log("codex_app_server_stdin_error", { error: formatError(error) });
+    });
   });
-  stdinRl.on("close", () => child.stdin.end());
+  stdinRl.on("close", () => {
+    stdinQueue.finally(() => {
+      if (!child.stdin.destroyed) child.stdin.end();
+    });
+  });
 
   const stdoutRl = readline.createInterface({ input: child.stdout, crlfDelay: Infinity, terminal: false });
   stdoutRl.on("line", (line) => {
@@ -319,6 +337,61 @@ async function runCodexCliMiddleware(args) {
   const exit = await waitForChildResult(child);
   log("codex_cli_exit", { code: exit.code, signal: exit.signal, exitCode: exit.exitCode });
   process.exitCode = exit.exitCode;
+}
+
+function ensureVirtualCodexAuthMarker(runtimeAgent) {
+  if (runtimeAgent !== "codex") return;
+  const scope = nonEmptyEnv("CCR_PROFILE_SCOPE");
+  if (scope !== "ccr" && scope !== "custom") return;
+  const authFile = path.join(codexRuntimeHome(), "auth.json");
+  if (fs.existsSync(authFile)) return;
+  const temporary = authFile + ".tmp-" + process.pid;
+  try {
+    fs.mkdirSync(path.dirname(authFile), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(temporary, JSON.stringify({
+      auth_mode: "apikey",
+      OPENAI_API_KEY: "ccr-local-profile"
+    }, null, 2) + "\n", { mode: 0o600 });
+    fs.renameSync(temporary, authFile);
+    log("virtual_codex_auth_marker_created", { authFile });
+  } catch (error) {
+    try {
+      fs.unlinkSync(temporary);
+    } catch {
+    }
+    log("virtual_codex_auth_marker_error", { authFile, error: formatError(error) });
+  }
+}
+
+function shouldWaitForOfficialPluginMarketplace(line) {
+  if (codexRuntimeAgent() !== "codex") return false;
+  let value;
+  try {
+    value = JSON.parse(line);
+  } catch {
+    return false;
+  }
+  if (!value || value.method !== "plugin/list") return false;
+  const kinds = value.params && Array.isArray(value.params.marketplaceKinds)
+    ? value.params.marketplaceKinds.map((kind) => String(kind || ""))
+    : null;
+  return kinds === null || kinds.includes("local");
+}
+
+async function waitForOfficialPluginMarketplace() {
+  const marketplaceFile = path.join(codexRuntimeHome(), ".tmp", "plugins", ".agents", "plugins", "marketplace.json");
+  if (fs.existsSync(marketplaceFile)) return;
+  const timeoutMs = numberEnv("CCR_CODEX_PLUGIN_SYNC_WAIT_MS", 15_000);
+  const startedAt = Date.now();
+  log("official_plugin_marketplace_wait", { marketplaceFile, timeoutMs });
+  while (Date.now() - startedAt < timeoutMs) {
+    await sleep(100);
+    if (fs.existsSync(marketplaceFile)) {
+      log("official_plugin_marketplace_ready", { elapsedMs: Date.now() - startedAt, marketplaceFile });
+      return;
+    }
+  }
+  log("official_plugin_marketplace_wait_timeout", { marketplaceFile, timeoutMs });
 }
 
 async function runDirectCodexCli(realCli, realArgs) {
@@ -407,7 +480,12 @@ function rewriteCodexStdoutLine(line, requestMap) {
   if (!id || !requestMap.has(id)) return line;
   const request = requestMap.get(id);
   requestMap.delete(id);
-  if (value.error) return line;
+  if (value.error) {
+    if (request.method === "model/list" || request.method === "plugin/list") {
+      log("app_server_list_error", { method: request.method, error: value.error });
+    }
+    return line;
+  }
   if (request.method === "account/read") {
     value.result = mockAccountRead();
   } else if (request.method === "getAuthStatus") {
@@ -416,6 +494,17 @@ function rewriteCodexStdoutLine(line, requestMap) {
     value = mergeForeignThreadList(value, request.params);
   } else if (request.method === "model/list") {
     value.result = modelList(request.params, value.result);
+    log("app_server_model_list_response", {
+      count: extractModelListItems(value.result).length,
+      nextCursor: value.result && value.result.nextCursor
+    });
+  } else if (request.method === "plugin/list") {
+    const marketplaces = value.result && Array.isArray(value.result.marketplaces) ? value.result.marketplaces : [];
+    log("app_server_plugin_list_response", {
+      marketplaceCount: marketplaces.length,
+      pluginCount: marketplaces.reduce((count, marketplace) =>
+        count + (marketplace && Array.isArray(marketplace.plugins) ? marketplace.plugins.length : 0), 0)
+    });
   }
   return JSON.stringify(value);
 }
@@ -432,6 +521,9 @@ function rewriteCodexStdinLine(line) {
   }
   if (!value || typeof value !== "object" || typeof value.method !== "string") {
     return line;
+  }
+  if (value.method === "model/list" || value.method === "plugin/list") {
+    log("app_server_list_request", { method: value.method, params: value.params || {} });
   }
   let changed = false;
   if (normalizeCliAppServerRequest(value)) {
@@ -777,7 +869,7 @@ function trackRequestLine(line, requestMap, current) {
   if (!id || !method) return;
   const cwd = requestWorkspaceCwd(value, method);
   if (cwd) current.cwd = cwd;
-  if (!["account/read", "getAuthStatus", "thread/list", "config/read", "model/list"].includes(method)) return;
+  if (!["account/read", "getAuthStatus", "thread/list", "config/read", "model/list", "plugin/list"].includes(method)) return;
   const params = clone(value.params || {});
   if (method === "thread/list" && current.cwd && !params.codexlWorkspaceCwd) {
     params.codexlWorkspaceCwd = current.cwd;
@@ -796,6 +888,13 @@ function customAppServerLineResponse(line) {
   } catch {
     return undefined;
   }
+  if (value && typeof value.method === "string") {
+    log("app_server_request", {
+      id: jsonRpcIdKey(value.id),
+      method: value.method,
+      params: value.params || {}
+    });
+  }
   if (value && value.type === "fetch" && String(value.method || "").toUpperCase() === "POST" && fetchUrlIsTranscribe(value.url)) {
     return {
       requestId: value.requestId || value.id || uuid(),
@@ -805,7 +904,23 @@ function customAppServerLineResponse(line) {
       headers: { "content-type": "application/json" }
     };
   }
+  if (value && value.method === "plugin/list" && jsonRpcIdKey(value.id) && accountRemoteOnlyPluginList(value.params)) {
+    log("app_server_account_remote_plugin_list_empty", {
+      marketplaceKinds: value.params.marketplaceKinds
+    });
+    return {
+      id: value.id,
+      result: { marketplaces: [], marketplaceLoadErrors: [], featuredPluginIds: [] }
+    };
+  }
   return undefined;
+}
+
+function accountRemoteOnlyPluginList(params) {
+  const kinds = params && Array.isArray(params.marketplaceKinds)
+    ? params.marketplaceKinds.map((kind) => String(kind || "")).filter(Boolean)
+    : [];
+  return kinds.length > 0 && kinds.every((kind) => ACCOUNT_REMOTE_PLUGIN_MARKETPLACE_KINDS.has(kind));
 }
 
 function fetchUrlIsTranscribe(url) {
@@ -2464,14 +2579,15 @@ function configWriteResponse(params) {
 }
 
 function mockAccountRead() {
-  const runtimeAgent = codexRuntimeAgent();
-  const email = agentEnv(runtimeAgent, "WORKSPACE_NAME") || (runtimeAgent === "zcode" ? "ZCode" : "Claude Code");
-  return { account: { type: "chatgpt", email, planType: "unknown" }, requiresOpenaiAuth: false };
+  return {
+    account: { type: "amazonBedrock", credentialSource: "codexManaged" },
+    requiresOpenaiAuth: false
+  };
 }
 
 function mockAuthStatus(includeToken) {
-  const result = { authMethod: "chatgpt", account: mockAccountRead().account, requiresOpenaiAuth: false };
-  if (includeToken) result.authToken = null;
+  const result = { authMethod: "amazonBedrock", authToken: null, requiresOpenaiAuth: false };
+  if (includeToken) result.authToken = "ccr-local-profile";
   return result;
 }
 
@@ -2519,7 +2635,7 @@ function claudeControlPermissionResponse(message, requestId, approval) {
   const allows = permissionResponseAllows(approval);
   const response = allows
     ? { behavior: "allow", updatedInput: pointer(message, "/request/input") || pointer(message, "/params/input") || {} }
-    : { behavior: "deny", message: "Denied in Codex App" };
+    : { behavior: "deny", message: "Denied in ChatGPT" };
   const toolUseId = firstString(message, ["/request/tool_use_id", "/request/toolUseId", "/params/tool_use_id"]);
   if (toolUseId) response.toolUseID = toolUseId;
   return { type: "control_response", response: { subtype: "success", request_id: requestId, response } };
@@ -2539,7 +2655,7 @@ async function waitForAppResponse(map, requestId, timeoutMs) {
     }
     await sleep(100);
   }
-  throw new Error("Timed out waiting for Codex App response: " + requestId);
+  throw new Error("Timed out waiting for ChatGPT response: " + requestId);
 }
 
 function permissionResponseAllows(value) {

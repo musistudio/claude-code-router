@@ -651,6 +651,9 @@ function App() {
   }, [draftConfig.plugins, pluginRoutingConfigTarget]);
   const providers = useMemo(() => draftConfig.Providers.map((provider, index) => ({ provider, index })), [draftConfig.Providers]);
   const gatewayEndpoint = gatewayStatus.endpoint || draftConfig.routerEndpoint;
+  const gatewayStartupError = gatewayStatus.state === "error"
+    ? translateAppErrorMessage(copy, gatewayStatus.lastError || "Service did not start.")
+    : "";
   const networkCaptureEnabled = draftConfig.proxy.enabled && draftConfig.proxy.captureNetwork;
   const visibleNavigation = useMemo(
     () => navigation.filter((item) =>
@@ -2789,6 +2792,7 @@ function App() {
         <div className="relative flex h-full min-h-0 w-full min-w-0 overflow-hidden bg-background text-foreground max-[720px]:flex-col">
           {activeView === "onboarding" ? (
             <OnboardingLayout
+              gatewayStartupError={gatewayStartupError}
               loaded={configLoaded && onboardingStatusLoaded && providerPresetsLoaded}
               onboarding={{
                 activeStep: onboardingStep,
@@ -2823,11 +2827,13 @@ function App() {
               copy={copy}
               gatewayActionBusy={gatewayActionBusy}
               gatewayEndpoint={gatewayEndpoint}
+              gatewayStartupError={gatewayStartupError}
               gatewayStatus={gatewayStatus}
               isMac={isMac}
               needsTrafficLightSafeArea={needsTrafficLightSafeArea}
               networkCaptureEnabled={networkCaptureEnabled}
               onOpenUpdate={openSidebarUpdateDialog}
+              onOpenServerSettings={() => setActiveView("server")}
               onOpenSettings={openSettingsDialog}
               onSelectNavigationItem={selectNavigationItem}
               onToggleSidebar={() => setSidebarOpen((current) => !current)}

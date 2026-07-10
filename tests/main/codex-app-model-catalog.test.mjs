@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { writeCodexCompatibleAppModelCatalog } from "../../packages/core/src/agents/codex/app-launch.ts";
+import {
+  codexDesktopAppName,
+  findInstalledCodexAppExecutable,
+  writeCodexCompatibleAppModelCatalog
+} from "../../packages/core/src/agents/codex/app-launch.ts";
 
-test("Codex App model catalog write includes patch bridge capabilities", () => {
+test("ChatGPT model catalog write includes patch bridge capabilities", () => {
   const configDir = mkdtempSync(path.join(os.tmpdir(), "ccr-codex-app-catalog-"));
   try {
     const config = {
@@ -50,5 +54,42 @@ test("Codex App model catalog write includes patch bridge capabilities", () => {
     assert.equal(second.file, result.file);
   } finally {
     rmSync(configDir, { force: true, recursive: true });
+  }
+});
+
+test("ChatGPT desktop app path override discovers the renamed executable", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-chatgpt-app-"));
+  const previous = process.env.CHATGPT_APP_PATH;
+  try {
+    let configuredPath;
+    let expectedExecutable;
+    if (process.platform === "darwin") {
+      configuredPath = path.join(root, "ChatGPT.app");
+      const macosDir = path.join(configuredPath, "Contents", "MacOS");
+      mkdirSync(macosDir, { recursive: true });
+      expectedExecutable = path.join(macosDir, "ChatGPT");
+      writeFileSync(expectedExecutable, "");
+      writeFileSync(
+        path.join(configuredPath, "Contents", "Info.plist"),
+        "<plist><dict><key>CFBundleExecutable</key><string>ChatGPT</string></dict></plist>"
+      );
+    } else {
+      expectedExecutable = path.join(root, process.platform === "win32" ? "ChatGPT.exe" : "chatgpt");
+      configuredPath = expectedExecutable;
+      writeFileSync(expectedExecutable, "");
+    }
+
+    process.env.CHATGPT_APP_PATH = configuredPath;
+    const result = findInstalledCodexAppExecutable();
+    assert.equal(codexDesktopAppName, "ChatGPT");
+    assert.equal(result.executable, expectedExecutable);
+    assert.equal(result.checked[0], configuredPath);
+  } finally {
+    if (previous === undefined) {
+      delete process.env.CHATGPT_APP_PATH;
+    } else {
+      process.env.CHATGPT_APP_PATH = previous;
+    }
+    rmSync(root, { force: true, recursive: true });
   }
 });

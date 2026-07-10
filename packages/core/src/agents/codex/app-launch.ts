@@ -9,7 +9,7 @@ import { buildProfileLaunchPlan, resolveCodexConfigFile } from "@ccr/core/profil
 import { normalizeWindowsDesktopAppCandidate, windowsDesktopAppCandidates } from "@ccr/core/platform/windows-app-discovery";
 import { writeZcodeGatewayConfig, zcodeHomeFromConfigFile } from "@ccr/core/agents/zcode/profile-config";
 
-type CodexAppLookupResult = {
+export type CodexAppLookupResult = {
   checked: string[];
   executable?: string;
 };
@@ -47,13 +47,21 @@ export type CodexCompatibleAppModelCatalogWriteResult = {
   userDataDir: string;
 };
 
+export const codexDesktopAppName = "ChatGPT";
+
 const codexAppSpec: CodexCompatibleAppSpec = {
   bundledCliNames: ["codex", "Codex", "OpenAI Codex"],
   defaultCliCommand: "codex",
-  displayName: "Codex App",
-  envPathKeys: ["CCR_CODEX_APP_PATH", "CODEX_APP_PATH", "CODEXL_CODEX_PATH"],
+  displayName: codexDesktopAppName,
+  envPathKeys: ["CCR_CHATGPT_APP_PATH", "CHATGPT_APP_PATH", "CCR_CODEX_APP_PATH", "CODEX_APP_PATH", "CODEXL_CODEX_PATH"],
   kind: "codex",
   linuxCandidates: [
+    "/opt/ChatGPT/chatgpt",
+    "/opt/ChatGPT/ChatGPT",
+    "/opt/OpenAI ChatGPT/chatgpt",
+    "/opt/OpenAI ChatGPT/ChatGPT",
+    "/usr/local/bin/chatgpt-app",
+    "/usr/bin/chatgpt-app",
     "/opt/Codex/codex",
     "/opt/Codex/Codex",
     "/opt/OpenAI Codex/codex",
@@ -61,11 +69,18 @@ const codexAppSpec: CodexCompatibleAppSpec = {
     "/usr/local/bin/codex-app",
     "/usr/bin/codex-app"
   ],
-  macAppNames: ["Codex.app", "OpenAI Codex.app"],
+  macAppNames: ["ChatGPT.app", "OpenAI ChatGPT.app", "Codex.app", "OpenAI Codex.app"],
   modelCatalogFilename: "ccr-codex-model-catalog.json",
   userDataDirName: "codex-app-user-data",
-  windowsAppDirs: ["Codex", "OpenAI Codex", "OpenAICodex"],
+  windowsAppDirs: ["ChatGPT", "OpenAI ChatGPT", "OpenAIChatGPT", "Codex", "OpenAI Codex", "OpenAICodex"],
   windowsExeNames: [
+    "ChatGPT.exe",
+    "chatgpt.exe",
+    "OpenAI ChatGPT.exe",
+    "OpenAIChatGPT.exe",
+    "OpenAIChatGPTApp.exe",
+    "chatgpt-app.exe",
+    "openai-chatgpt.exe",
     "Codex.exe",
     "codex.exe",
     "OpenAI Codex.exe",
@@ -74,9 +89,16 @@ const codexAppSpec: CodexCompatibleAppSpec = {
     "codex-app.exe",
     "openai-codex.exe"
   ],
-  windowsPackageKeywords: ["codex", "openaicodex"],
+  windowsPackageKeywords: ["chatgpt", "openaichatgpt", "codex", "openaicodex"],
   windowsVendorDirs: ["OpenAI"],
   windowsWhereNames: [
+    "ChatGPT",
+    "chatgpt",
+    "OpenAI ChatGPT",
+    "OpenAIChatGPT",
+    "OpenAIChatGPTApp",
+    "chatgpt-app",
+    "openai-chatgpt",
     "Codex",
     "codex",
     "OpenAI Codex",
@@ -135,6 +157,10 @@ export function launchCodexAppProfile(configDir: string, profile: ProfileConfig,
   return launchCodexCompatibleAppProfile(configDir, profile, codexAppSpec, config);
 }
 
+export function findInstalledCodexAppExecutable(): CodexAppLookupResult {
+  return findInstalledCodexCompatibleAppExecutable(codexAppSpec);
+}
+
 export function launchZcodeAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): CodexAppLaunchResult {
   return launchCodexCompatibleAppProfile(configDir, profile, zcodeAppSpec, config);
 }
@@ -181,7 +207,7 @@ function launchCodexCompatibleAppProfile(
   spec: CodexCompatibleAppSpec,
   config?: AppConfig
 ): CodexAppLaunchResult {
-  const lookup = findInstalledCodexAppExecutable(spec);
+  const lookup = findInstalledCodexCompatibleAppExecutable(spec);
   if (!lookup.executable) {
     throw new Error([
       `${spec.displayName} was not found. Install ${spec.displayName} or set ${spec.envPathKeys[1]} to its executable, then try again.`,
@@ -255,6 +281,9 @@ function codexProfileEnv(profile: ProfileConfig, appExecutable: string, spec: Co
   }
   return {
     ...(profile.model.trim() ? { CCR_CODEX_MODEL: profile.model.trim() } : {}),
+    ...(process.env.CCR_CODEX_CLI_MIDDLEWARE_LOG?.trim()
+      ? { CCR_CODEX_CLI_MIDDLEWARE_LOG: process.env.CCR_CODEX_CLI_MIDDLEWARE_LOG.trim() }
+      : {}),
     CCR_CODEX_MODEL_PROVIDER: providerId,
     CCR_CODEX_PROFILE: providerId,
     CCR_CODEX_REMOTE_FRONTEND_MODE: remoteFrontendMode,
@@ -410,7 +439,7 @@ function codexCompatibleHomeFromConfigFile(spec: CodexCompatibleAppSpec, configF
   return spec.kind === "zcode" ? zcodeHomeFromConfigFile(configFile) : path.dirname(configFile);
 }
 
-function findInstalledCodexAppExecutable(spec: CodexCompatibleAppSpec): CodexAppLookupResult {
+function findInstalledCodexCompatibleAppExecutable(spec: CodexCompatibleAppSpec): CodexAppLookupResult {
   const checked: string[] = [];
   const envCandidate = findFirstExecutable(envCodexAppPathCandidates(spec), checked, spec);
   if (envCandidate) {
