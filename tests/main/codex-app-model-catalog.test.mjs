@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
   codexDesktopAppName,
   findInstalledCodexAppExecutable,
+  removeLegacyCodexVirtualAuthMarker,
   writeCodexCompatibleAppModelCatalog
 } from "../../packages/core/src/agents/codex/app-launch.ts";
 
@@ -90,6 +91,31 @@ test("ChatGPT desktop app path override discovers the renamed executable", () =>
     } else {
       process.env.CHATGPT_APP_PATH = previous;
     }
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("ChatGPT migration removes only the exact legacy CCR auth marker", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-chatgpt-auth-migration-"));
+  const authFile = path.join(root, "auth.json");
+  try {
+    writeFileSync(authFile, JSON.stringify({
+      auth_mode: "apikey",
+      OPENAI_API_KEY: "ccr-local-profile"
+    }));
+    assert.equal(removeLegacyCodexVirtualAuthMarker(root), true);
+    assert.equal(existsSync(authFile), false);
+
+    const realAuth = { auth_mode: "chatgpt", tokens: { access_token: "preserve-me" } };
+    writeFileSync(authFile, JSON.stringify(realAuth));
+    assert.equal(removeLegacyCodexVirtualAuthMarker(root), false);
+    assert.deepEqual(JSON.parse(readFileSync(authFile, "utf8")), realAuth);
+
+    const customApiKey = { auth_mode: "apikey", OPENAI_API_KEY: "user-key" };
+    writeFileSync(authFile, JSON.stringify(customApiKey));
+    assert.equal(removeLegacyCodexVirtualAuthMarker(root), false);
+    assert.deepEqual(JSON.parse(readFileSync(authFile, "utf8")), customApiKey);
+  } finally {
     rmSync(root, { force: true, recursive: true });
   }
 });

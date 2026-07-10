@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AppConfig, ProfileConfig } from "@ccr/core/contracts/app";
@@ -53,7 +53,7 @@ const codexAppSpec: CodexCompatibleAppSpec = {
   bundledCliNames: ["codex", "Codex", "OpenAI Codex"],
   defaultCliCommand: "codex",
   displayName: codexDesktopAppName,
-  envPathKeys: ["CCR_CHATGPT_APP_PATH", "CHATGPT_APP_PATH", "CCR_CODEX_APP_PATH", "CODEX_APP_PATH", "CODEXL_CODEX_PATH"],
+  envPathKeys: ["CCR_CHATGPT_APP_PATH", "CHATGPT_APP_PATH", "CODEXL_CHATGPT_PATH", "CCR_CODEX_APP_PATH", "CODEX_APP_PATH", "CODEXL_CODEX_PATH"],
   kind: "codex",
   linuxCandidates: [
     "/opt/ChatGPT/chatgpt",
@@ -190,6 +190,9 @@ export function writeCodexCompatibleAppModelCatalog(
   const spec = profile.agent === "zcode" ? zcodeAppSpec : codexAppSpec;
   const configFile = resolveCodexConfigFile(configDir, profile);
   const codexHome = codexCompatibleHomeFromConfigFile(spec, configFile);
+  if (spec.kind === "codex") {
+    removeLegacyCodexVirtualAuthMarker(codexHome);
+  }
   const userDataDir = codexElectronUserDataDir(codexHome, profile, spec);
   mkdirSync(userDataDir, { recursive: true });
   const file = codexAppModelCatalogFile(userDataDir, spec);
@@ -199,6 +202,30 @@ export function writeCodexCompatibleAppModelCatalog(
     writeFileSync(file, content, "utf8");
   }
   return { changed: previous !== content, file, userDataDir };
+}
+
+export function removeLegacyCodexVirtualAuthMarker(codexHome: string): boolean {
+  const authFile = path.join(codexHome, "auth.json");
+  if (!isFile(authFile)) {
+    return false;
+  }
+  try {
+    const value = JSON.parse(readFileSync(authFile, "utf8")) as Record<string, unknown>;
+    const keys = Object.keys(value).sort();
+    if (
+      keys.length !== 2 ||
+      keys[0] !== "OPENAI_API_KEY" ||
+      keys[1] !== "auth_mode" ||
+      value.auth_mode !== "apikey" ||
+      value.OPENAI_API_KEY !== "ccr-local-profile"
+    ) {
+      return false;
+    }
+    unlinkSync(authFile);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function launchCodexCompatibleAppProfile(
@@ -244,7 +271,7 @@ function launchCodexCompatibleAppProfile(
   delete env.CODEXL_ZCODE_MODEL_CATALOG_B64;
   sanitizeCodexCompatibleAppEnv(env, spec.kind);
 
-  const launch = codexAppLaunchCommand(lookup.executable, userDataDir, appEnv);
+  const launch = codexAppLaunchCommand(lookup.executable, userDataDir);
   const child = spawn(launch.command, launch.args, {
     detached: true,
     env,
@@ -380,32 +407,11 @@ function codexElectronArgs(userDataDir: string): string[] {
   ];
 }
 
-function codexAppLaunchCommand(executable: string, userDataDir: string, env: Record<string, string>): { args: string[]; command: string; pidIsLauncher?: boolean } {
-  const appBundle = process.platform === "darwin" ? macAppBundleFromExecutable(executable) : undefined;
-  if (appBundle) {
-    return {
-      command: "/usr/bin/open",
-      pidIsLauncher: true,
-      args: [
-        "-W",
-        "-n",
-        ...macOpenEnvArgs(env),
-        appBundle,
-        "--args",
-        ...codexElectronArgs(userDataDir)
-      ]
-    };
-  }
+function codexAppLaunchCommand(executable: string, userDataDir: string): { args: string[]; command: string; pidIsLauncher?: boolean } {
   return {
     command: executable,
     args: codexElectronArgs(userDataDir)
   };
-}
-
-function macOpenEnvArgs(env: Record<string, string>): string[] {
-  return Object.entries(env)
-    .filter(([key, value]) => isEnvName(key) && typeof value === "string")
-    .flatMap(([key, value]) => ["--env", `${key}=${value}`]);
 }
 
 function macAppBundleFromExecutable(executable: string): string | undefined {
@@ -416,10 +422,6 @@ function macAppBundleFromExecutable(executable: string): string | undefined {
   }
   const appBundle = executable.slice(0, index + ".app".length);
   return isDirectory(appBundle) ? appBundle : undefined;
-}
-
-function isEnvName(value: string): boolean {
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
 }
 
 function codexElectronUserDataDir(codexHome: string, profile: ProfileConfig, spec: CodexCompatibleAppSpec): string {

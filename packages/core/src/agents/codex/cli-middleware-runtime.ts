@@ -289,45 +289,38 @@ async function runCodexCliMiddleware(args) {
     return;
   }
 
-  ensureVirtualCodexAuthMarker(runtimeAgent);
+  const cleanupAuthBootstrap = createEphemeralCodexApiKeyBootstrap(runtimeAgent);
   const child = childProcess.spawn(realCli, realArgs, {
     env: childEnvForAgent(runtimeAgent),
     stdio: ["pipe", "pipe", "inherit"]
   });
   child.on("error", (error) => {
+    cleanupAuthBootstrap();
     log("codex_cli_spawn_error", { error: formatError(error) });
   });
 
   const requestMap = new Map();
   const current = { cwd: "" };
+  const chatGptAuth = loadChatGptAuth();
   const stdinRl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity, terminal: false });
-  let stdinQueue = Promise.resolve();
   stdinRl.on("line", (line) => {
-    stdinQueue = stdinQueue.then(async () => {
-      if (shouldWaitForOfficialPluginMarketplace(line)) {
-        await waitForOfficialPluginMarketplace();
-      }
-      const custom = customAppServerLineResponse(line);
-      if (custom) {
-        writeLine(process.stdout, custom);
-        return;
-      }
-      const rewritten = rewriteCodexStdinLine(line);
-      trackRequestLine(rewritten, requestMap, current);
-      if (!child.stdin.destroyed) child.stdin.write(rewritten + "\n");
-    }).catch((error) => {
-      log("codex_app_server_stdin_error", { error: formatError(error) });
-    });
+    const custom = customAppServerLineResponse(line);
+    if (custom) {
+      writeLine(process.stdout, custom);
+      return;
+    }
+    const rewritten = rewriteCodexStdinLine(line);
+    trackRequestLine(rewritten, requestMap, current);
+    if (!child.stdin.destroyed) child.stdin.write(rewritten + "\n");
   });
   stdinRl.on("close", () => {
-    stdinQueue.finally(() => {
-      if (!child.stdin.destroyed) child.stdin.end();
-    });
+    if (!child.stdin.destroyed) child.stdin.end();
   });
 
   const stdoutRl = readline.createInterface({ input: child.stdout, crlfDelay: Infinity, terminal: false });
   stdoutRl.on("line", (line) => {
-    const rewritten = rewriteCodexStdoutLine(line, requestMap);
+    cleanupAuthBootstrap();
+    const rewritten = rewriteCodexStdoutLine(line, requestMap, chatGptAuth);
     botBridge().handleJsonRpcLine(rewritten);
     if (!shouldSuppressBotBridgeLine(rewritten)) {
       process.stdout.write(rewritten + "\n");
@@ -335,17 +328,19 @@ async function runCodexCliMiddleware(args) {
   });
 
   const exit = await waitForChildResult(child);
+  cleanupAuthBootstrap();
   log("codex_cli_exit", { code: exit.code, signal: exit.signal, exitCode: exit.exitCode });
   process.exitCode = exit.exitCode;
 }
 
-function ensureVirtualCodexAuthMarker(runtimeAgent) {
-  if (runtimeAgent !== "codex") return;
+function createEphemeralCodexApiKeyBootstrap(runtimeAgent) {
+  if (runtimeAgent !== "codex") return () => {};
   const scope = nonEmptyEnv("CCR_PROFILE_SCOPE");
-  if (scope !== "ccr" && scope !== "custom") return;
+  if (scope !== "ccr" && scope !== "custom") return () => {};
   const authFile = path.join(codexRuntimeHome(), "auth.json");
-  if (fs.existsSync(authFile)) return;
+  if (fs.existsSync(authFile)) return () => {};
   const temporary = authFile + ".tmp-" + process.pid;
+  let active = false;
   try {
     fs.mkdirSync(path.dirname(authFile), { recursive: true, mode: 0o700 });
     fs.writeFileSync(temporary, JSON.stringify({
@@ -353,45 +348,43 @@ function ensureVirtualCodexAuthMarker(runtimeAgent) {
       OPENAI_API_KEY: "ccr-local-profile"
     }, null, 2) + "\n", { mode: 0o600 });
     fs.renameSync(temporary, authFile);
-    log("virtual_codex_auth_marker_created", { authFile });
+    active = true;
+    log("codex_auth_bootstrap_created", { authFile });
   } catch (error) {
     try {
       fs.unlinkSync(temporary);
     } catch {
     }
-    log("virtual_codex_auth_marker_error", { authFile, error: formatError(error) });
+    log("codex_auth_bootstrap_create_error", { authFile, error: formatError(error) });
   }
-}
 
-function shouldWaitForOfficialPluginMarketplace(line) {
-  if (codexRuntimeAgent() !== "codex") return false;
-  let value;
-  try {
-    value = JSON.parse(line);
-  } catch {
-    return false;
-  }
-  if (!value || value.method !== "plugin/list") return false;
-  const kinds = value.params && Array.isArray(value.params.marketplaceKinds)
-    ? value.params.marketplaceKinds.map((kind) => String(kind || ""))
-    : null;
-  return kinds === null || kinds.includes("local");
-}
-
-async function waitForOfficialPluginMarketplace() {
-  const marketplaceFile = path.join(codexRuntimeHome(), ".tmp", "plugins", ".agents", "plugins", "marketplace.json");
-  if (fs.existsSync(marketplaceFile)) return;
-  const timeoutMs = numberEnv("CCR_CODEX_PLUGIN_SYNC_WAIT_MS", 15_000);
-  const startedAt = Date.now();
-  log("official_plugin_marketplace_wait", { marketplaceFile, timeoutMs });
-  while (Date.now() - startedAt < timeoutMs) {
-    await sleep(100);
-    if (fs.existsSync(marketplaceFile)) {
-      log("official_plugin_marketplace_ready", { elapsedMs: Date.now() - startedAt, marketplaceFile });
-      return;
+  return () => {
+    if (!active) return;
+    try {
+      if (!fs.existsSync(authFile)) {
+        active = false;
+        return;
+      }
+      const value = readJsonFile(authFile);
+      const keys = value && typeof value === "object" ? Object.keys(value).sort() : [];
+      if (
+        keys.length === 2 &&
+        keys[0] === "OPENAI_API_KEY" &&
+        keys[1] === "auth_mode" &&
+        value.auth_mode === "apikey" &&
+        value.OPENAI_API_KEY === "ccr-local-profile"
+      ) {
+        fs.unlinkSync(authFile);
+        active = false;
+        log("codex_auth_bootstrap_removed", { authFile });
+        return;
+      }
+      active = false;
+      log("codex_auth_bootstrap_preserved_changed_file", { authFile });
+    } catch (error) {
+      log("codex_auth_bootstrap_remove_error", { authFile, error: formatError(error) });
     }
-  }
-  log("official_plugin_marketplace_wait_timeout", { marketplaceFile, timeoutMs });
+  };
 }
 
 async function runDirectCodexCli(realCli, realArgs) {
@@ -469,7 +462,7 @@ function cliConfigString(key, value) {
   return key + "=\"" + tomlEscape(value) + "\"";
 }
 
-function rewriteCodexStdoutLine(line, requestMap) {
+function rewriteCodexStdoutLine(line, requestMap, chatGptAuth) {
   let value;
   try {
     value = JSON.parse(line);
@@ -487,24 +480,30 @@ function rewriteCodexStdoutLine(line, requestMap) {
     return line;
   }
   if (request.method === "account/read") {
-    value.result = mockAccountRead();
+    value.result = codexAppAccountRead(chatGptAuth);
   } else if (request.method === "getAuthStatus") {
-    value.result = mockAuthStatus(request.includeToken);
+    value.result = codexAppAuthStatus(chatGptAuth, request.includeToken);
   } else if (request.method === "thread/list") {
     value = mergeForeignThreadList(value, request.params);
   } else if (request.method === "model/list") {
-    value.result = modelList(request.params, value.result);
     log("app_server_model_list_response", {
       count: extractModelListItems(value.result).length,
       nextCursor: value.result && value.result.nextCursor
     });
+    return line;
   } else if (request.method === "plugin/list") {
     const marketplaces = value.result && Array.isArray(value.result.marketplaces) ? value.result.marketplaces : [];
     log("app_server_plugin_list_response", {
       marketplaceCount: marketplaces.length,
-      pluginCount: marketplaces.reduce((count, marketplace) =>
-        count + (marketplace && Array.isArray(marketplace.plugins) ? marketplace.plugins.length : 0), 0)
+      marketplaces: marketplaces.map((marketplace) => ({
+        name: marketplace && marketplace.name,
+        path: marketplace && marketplace.path,
+        pluginCount: marketplace && Array.isArray(marketplace.plugins) ? marketplace.plugins.length : 0
+      }))
     });
+    return line;
+  } else {
+    return line;
   }
   return JSON.stringify(value);
 }
@@ -2576,6 +2575,73 @@ function applyConfigWrite(method, params, values) {
 
 function configWriteResponse(params) {
   return { config: params.config || null, ok: true };
+}
+
+function loadChatGptAuth() {
+  const workspaceName = nonEmptyEnv("CCR_CODEX_WORKSPACE_NAME") ||
+    nonEmptyEnv("CODEXL_CODEX_WORKSPACE_NAME") ||
+    nonEmptyEnv("CODEXL_CODEX_INSTANCE_NAME") ||
+    agentEnv("codex", "PROFILE");
+  const fallback = {
+    authToken: "",
+    email: "",
+    planType: "",
+    workspaceName
+  };
+  const value = readJsonFile(path.join(codexRuntimeHome(), "auth.json"));
+  if (!value || !isPlainObject(value)) return fallback;
+  if (typeof value.auth_mode === "string" && value.auth_mode !== "chatgpt") return fallback;
+  if (!isPlainObject(value.tokens)) return fallback;
+
+  const authToken = stringValue(value.tokens.access_token);
+  const idToken = stringValue(value.tokens.id_token);
+  const claims = jwtPayloadClaims(authToken) || jwtPayloadClaims(idToken) || {};
+  const profileClaims = isPlainObject(claims["https://api.openai.com/profile"])
+    ? claims["https://api.openai.com/profile"]
+    : {};
+  const authClaims = isPlainObject(claims["https://api.openai.com/auth"])
+    ? claims["https://api.openai.com/auth"]
+    : {};
+  return {
+    authToken,
+    email: stringValue(profileClaims.email) || stringValue(claims.email) || stringValue(value.email),
+    planType: stringValue(authClaims.chatgpt_plan_type) || stringValue(claims.chatgpt_plan_type),
+    workspaceName
+  };
+}
+
+function jwtPayloadClaims(token) {
+  if (!token) return undefined;
+  const payload = String(token).split(".")[1];
+  if (!payload) return undefined;
+  try {
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+    const value = JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+    return isPlainObject(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function codexAppAccountRead(auth) {
+  return {
+    account: {
+      type: "chatgpt",
+      email: auth.email || auth.workspaceName || "codex",
+      planType: auth.planType || "unknown"
+    },
+    requiresOpenaiAuth: true
+  };
+}
+
+function codexAppAuthStatus(auth, includeToken) {
+  const result = {
+    authMethod: "chatgpt",
+    requiresOpenaiAuth: true
+  };
+  if (includeToken) result.authToken = auth.authToken || null;
+  return result;
 }
 
 function mockAccountRead() {

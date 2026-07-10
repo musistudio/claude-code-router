@@ -77,9 +77,9 @@ Claude App 和 Claude Code CLI 的模型列表适配方式不同：
 | 环境变量 | 注入 Codex CLI 或 ChatGPT。Claude Code 专用的模型发现变量不会传给 Codex。 |
 | Bot | 只在 ChatGPT App 入口生效。 |
 
-保存后，Codex CLI 使用配置卡片里的终端图标复制命令，例如 `ccr "Codex - Work"`。ChatGPT 使用播放图标打开。CCR 会生成 `config.toml`、模型目录文件和中间层启动器，让 Codex CLI 与 ChatGPT 都使用同一套 CCR 模型和供应商信息。隔离 App 会使用由 CCR 网关承载的本地虚拟兼容身份，不要求也不会复制真实 ChatGPT 或 AWS 登录态。隔离目录没有 `auth.json` 时，CCR 会写入一个固定、仅供本地识别的 API Key 标记，让原生运行时从启动阶段就有稳定的认证模式；已有认证文件绝不会被覆盖。仅限 ChatGPT 账号的功能在此模式下不可用。旧版 `Codex.app` 仍然兼容。
+保存后，Codex CLI 使用配置卡片里的终端图标复制命令，例如 `ccr "Codex - Work"`。ChatGPT 使用播放图标打开。CCR 按照 CodexL 的启动方式，直接运行 ChatGPT App bundle 内的 Electron 可执行文件，为它设置隔离的用户数据目录，并把 `CODEX_CLI_PATH` 指向 CCR 中间层。中间层把 app-server 流量转发给 ChatGPT 内置的 Codex CLI，只适配账号展示：隔离目录已有有效 ChatGPT token 时显示真实账号；没有凭据时使用无 token、ChatGPT 形态的虚拟工作区身份，让桌面端在不保存真实用户登录的情况下仍可使用模型选择。为让原生 app-server 选择官方 API marketplace，CCR 只在进程启动阶段创建精确的 `ccr-local-profile` 引导标记，收到第一条原生响应后立即删除；正常启动后或异常退出时也会清理，不会把它保留成登录状态。其他认证文件全部保留。旧版 `Codex.app` 仍然兼容。
 
-OpenAI Curated 私有服务目录要求 ChatGPT 鉴权，API Key 鉴权不能访问。虚拟配置改用 Codex 官方公开 Git marketplace：Codex 运行时会联网刷新 [`openai/plugins`](https://github.com/openai/plugins)，再通过原生 `plugin/list` 解析该 marketplace。CCR 会等待首次 Git 同步完成，再转发第一次公共目录请求，并且不会把 bundled 本地插件伪装成公共目录；账号私有分区在虚拟模式下返回空列表，不再让整个页面因鉴权错误一直加载。只有后续联网刷新临时失败时，Codex 才使用最近一次成功下载的 Git 快照。
+模型和公共插件列表不再由中间层合成。原生 Codex app-server 读取生成的 `model_catalog_json`，并原样处理 `model/list` 与公共 `plugin/list` 请求，因此 Codex 可以自行联网刷新官方公开 [`openai/plugins`](https://github.com/openai/plugins) Git marketplace。虚拟 workspace 中，只有必须使用真实 ChatGPT 鉴权的账号私有 marketplace 请求会得到明确空结果，绝不会用本地插件替代。下载后的 Git checkout 只作为 Codex 自己的常规 last-known-good 数据，CCR 不会拿它替代远端目录。
 
 ### ZCode
 
