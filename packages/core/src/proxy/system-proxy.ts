@@ -702,7 +702,9 @@ async function readWindowsWinHttpProxySettings(): Promise<WindowsWinHttpProxySet
 function parseWindowsWinHttpProxySettings(output: string): WindowsWinHttpProxySettings {
   const proxyServer = normalizeWindowsNetshValue(readWindowsNetshProxyLine(output, "Proxy Server"));
   const bypassList = normalizeWindowsNetshValue(readWindowsNetshProxyLine(output, "Bypass List"));
-  const direct = /Direct access\s*\(no proxy server\)/i.test(output);
+  const direct = /Direct access\s*\(no proxy server\)/i.test(output) ||
+    /直接存取/i.test(output) ||
+    /直接访问/i.test(output);
   if (!direct && !proxyServer) {
     throw new Error("Could not parse Windows WinHTTP proxy settings.");
   }
@@ -716,8 +718,8 @@ function parseWindowsWinHttpProxySettings(output: string): WindowsWinHttpProxySe
 
 function readWindowsNetshProxyLine(output: string, label: "Bypass List" | "Proxy Server"): string | undefined {
   const pattern = label === "Proxy Server"
-    ? /^\s*Proxy Server(?:\(s\))?\s*:\s*(.+?)\s*$/im
-    : /^\s*Bypass List\s*:\s*(.+?)\s*$/im;
+    ? /^\s*(?:Proxy Server(?:\(s\))?|Proxy 伺服器|代理服务器)\s*:\s*(.+?)\s*$/im
+    : /^\s*(?:Bypass List|略過清單|绕过列表)\s*:\s*(.+?)\s*$/im;
   return pattern.exec(output)?.[1]?.trim();
 }
 

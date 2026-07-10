@@ -4,6 +4,7 @@ import { createServer, type IncomingHttpHeaders, type IncomingMessage, type Serv
 import { createRequire } from "node:module";
 import { networkInterfaces } from "node:os";
 import { Readable, Transform } from "node:stream";
+import { StringDecoder } from "node:string_decoder";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join as pathJoin, resolve as pathResolve, sep as pathSep } from "node:path";
 import type {
@@ -1033,7 +1034,21 @@ class GatewayService {
           this.browserWebSearchMcpIntegration
         )
       : patchedResponseBody;
-    const responseStreams = uniqueStreams([upstreamBody, patchedResponseBody, responseBody]);
+
+    const requestPath = normalizeGatewayPathname(path);
+    const isMessages = requestPath === "/v1/messages" || requestPath === "/messages" || requestPath.endsWith("/v1/messages");
+    const isResponses = requestPath === "/v1/responses" || requestPath === "/responses" || requestPath.endsWith("/responses");
+    const isChat = requestPath === "/v1/chat/completions" || requestPath === "/chat/completions" || requestPath.endsWith("/chat/completions");
+    const isSse = responseHeaders.get("content-type")?.toLowerCase().includes("text/event-stream");
+    const responseBodyWithUsage = isSse && (isMessages || isResponses || isChat)
+      ? gatewayTokenUsageInjectorStream(
+          responseBody,
+          bodyToForward,
+          isMessages ? "anthropic_messages" : isResponses ? "openai_responses" : "openai_chat_completions"
+        )
+      : responseBody;
+
+    const responseStreams = uniqueStreams([upstreamBody, patchedResponseBody, responseBody, responseBodyWithUsage]);
     const sampler = createBodySampler();
     const sseErrorDetector = createSseErrorDetector(responseHeaders.get("content-type") ?? undefined);
     let streamDetectedError: string | undefined;
@@ -1054,7 +1069,7 @@ class GatewayService {
     };
     onClientDisconnect = () => {
       writeStreamLog(clientDisconnectMessage);
-      responseBody.unpipe(response);
+      responseBodyWithUsage.unpipe(response);
       destroyResponseStreams(responseStreams);
     };
     onResponseFinish = () => {
@@ -1069,11 +1084,11 @@ class GatewayService {
     for (const stream of responseStreams) {
       stream.on("error", onResponseStreamError);
     }
-    responseBody.on("data", (chunk) => {
+    responseBodyWithUsage.on("data", (chunk) => {
       sampler.append(chunk);
       streamDetectedError ??= sseErrorDetector.append(chunk);
     });
-    responseBody.once("end", () => {
+    responseBodyWithUsage.once("end", () => {
       upstreamStreamEnded = true;
       streamDetectedError ??= sseErrorDetector.finish();
       if (responseCompleted || response.writableEnded) {
@@ -1081,7 +1096,7 @@ class GatewayService {
       }
     });
     if (shouldCaptureUsage) {
-      responseBody.once("end", () => {
+      responseBodyWithUsage.once("end", () => {
         void recordGatewayUsageCapture({
           bodyText: sampler.read(),
           client,
@@ -1101,7 +1116,7 @@ class GatewayService {
       onClientDisconnect();
       return;
     }
-    responseBody.pipe(response);
+    responseBodyWithUsage.pipe(response);
   }
 
   private async handleRawTraceSync(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -7683,6 +7698,14 @@ function createGatewayModelsResponse(config: AppConfig, headers: IncomingHttpHea
   return createOpenAICompatibleGatewayModelsResponse(config);
 }
 
+export function createGatewayModelsResponseForTest(
+  config: AppConfig,
+  headers: IncomingHttpHeaders = {},
+  apiKey?: ApiKeyConfig
+): Record<string, unknown> {
+  return createGatewayModelsResponse(config, headers, apiKey);
+}
+
 function createOpenAICompatibleGatewayModelsResponse(config: AppConfig): Record<string, unknown> {
   const data = buildGatewayDiscoverableModelIds(config).map((id) => {
     const catalogEntry = findModelCatalogEntry(id);
@@ -7763,10 +7786,10 @@ function createClaudeCodeModelsResponse(config: AppConfig): Record<string, unkno
 
 function claudeGatewayModelContextWindow(entry: ModelCatalogEntry | undefined, oneMillionContext: boolean): number {
   const contextWindow = modelCatalogMaxInputTokens(entry);
-  if (contextWindow > 0) {
-    return contextWindow;
+  if (oneMillionContext) {
+    return Math.max(contextWindow, 1_000_000);
   }
-  return oneMillionContext ? 1_000_000 : 0;
+  return contextWindow;
 }
 
 function buildClaudeCodeDiscoverableModelIds(config: AppConfig): string[] {
@@ -7845,9 +7868,18 @@ function buildClaudeCodeDiscoverableModels(config: AppConfig): ClaudeCodeDiscove
   };
 
   for (const id of buildClaudeCodeDiscoverableModelIds(config)) {
-    pushModel(id, hasClaudeCodeOneMillionContextSuffix(id));
+    const isOneMillionSuffix = hasClaudeCodeOneMillionContextSuffix(id);
     const baseId = stripClaudeCodeOneMillionContextSuffix(id);
-    if (!hasClaudeCodeOneMillionContextSuffix(id) && findModelCatalogEntry(baseId)?.limits?.supports1MContext) {
+    const supports1m = isOneMillionSuffix ||
+      Boolean(findModelCatalogEntry(baseId)?.limits?.supports1MContext) ||
+      buildClaudeAppGatewayModelRoutes(config, claudeAppGatewayModelRouteOptions).some((route) =>
+        route.oneMillionContext &&
+        (route.id.toLowerCase() === id.toLowerCase() ||
+         stripClaudeCodeOneMillionContextSuffix(route.id).toLowerCase() === baseId.toLowerCase())
+      );
+
+    pushModel(id, supports1m);
+    if (!isOneMillionSuffix && supports1m) {
       pushModel(claudeCodeOneMillionContextModelId(baseId), true);
     }
   }
@@ -7957,7 +7989,7 @@ function createClaudeCodeModelCapabilities(
   options: { maxInputTokens?: number; oneMillionContext?: boolean } = {}
 ): Record<string, unknown> {
   if (!entry) {
-    return createDefaultClaudeCodeModelCapabilities();
+    return createDefaultClaudeCodeModelCapabilities(options);
   }
 
   const capabilities = entry.capabilities ?? {};
@@ -7981,7 +8013,7 @@ function createClaudeCodeModelCapabilities(
   const supportsAudioOutput = readCatalogCapability(capabilities, "audioOutput") || outputModalities.has("audio");
   const supportsVideoInput = readCatalogCapability(capabilities, "videoInput") || inputModalities.has("video");
   const maxInputTokens = options.maxInputTokens ?? modelCatalogMaxInputTokens(entry);
-  const supportsOneMillionContext = Boolean(entry.limits?.supports1MContext);
+  const supportsOneMillionContext = Boolean(entry.limits?.supports1MContext) || options.oneMillionContext === true;
 
   return {
     audio_input: { supported: supportsAudioInput },
@@ -8025,8 +8057,11 @@ function createClaudeCodeModelCapabilities(
   };
 }
 
-function createDefaultClaudeCodeModelCapabilities(): Record<string, unknown> {
-  return {
+function createDefaultClaudeCodeModelCapabilities(
+  options: { maxInputTokens?: number; oneMillionContext?: boolean } = {}
+): Record<string, unknown> {
+  const maxInputTokens = options.maxInputTokens ?? (options.oneMillionContext === true ? 1_000_000 : 0);
+  const capabilities: Record<string, unknown> = {
     batch: { supported: true },
     citations: { supported: true },
     code_execution: { supported: true },
@@ -8055,6 +8090,20 @@ function createDefaultClaudeCodeModelCapabilities(): Record<string, unknown> {
       }
     }
   };
+  if (maxInputTokens > 0) {
+    capabilities.context_management = {
+      ...(capabilities.context_management as Record<string, unknown>),
+      max_input_tokens: maxInputTokens,
+      supported: true
+    };
+    capabilities.context_window = {
+      max_input_tokens: maxInputTokens,
+      supported: true,
+      supports_1m_context: options.oneMillionContext === true,
+      one_million_context_variant: options.oneMillionContext === true
+    };
+  }
+  return capabilities;
 }
 
 function normalizeGatewayPathname(path: string): string {
@@ -8458,4 +8507,225 @@ function shouldSendBody(method: string | undefined): boolean {
 
 function shouldCaptureGatewayUsage(method: string, _path: string): boolean {
   return shouldSendBody(method);
+}
+
+function gatewayTokenUsageInjectorStream(
+  input: Readable,
+  requestBody: Buffer | undefined,
+  protocol: "anthropic_messages" | "openai_responses" | "openai_chat_completions"
+): Readable {
+  const decoder = new StringDecoder("utf8");
+  let pending = "";
+  let estimatedInputTokens = 0;
+  let estimatedOutputText = "";
+  let hasUsage = false;
+  let lastId = "";
+  let lastModel = "";
+  let lastSystemFingerprint = "";
+
+  if (requestBody) {
+    try {
+      const parsedBody = JSON.parse(requestBody.toString("utf8"));
+      const messages = parsedBody.messages || parsedBody.input || [];
+      const system = parsedBody.system || parsedBody.instructions || "";
+      const tools = parsedBody.tools || [];
+      const inputCharacters = countUnknownCharacters(messages) + countUnknownCharacters(system) + countUnknownCharacters(tools);
+      estimatedInputTokens = Math.max(1, Math.ceil(inputCharacters / 4));
+    } catch {
+      estimatedInputTokens = 0;
+    }
+  }
+
+  const generateOpenAiChatUsageEvent = (): ParsedSseEvent => {
+    const asciiWordsOut = estimatedOutputText.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
+    const cjkCharsOut = estimatedOutputText.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+    const outputTokens = Math.max(1, Math.ceil((asciiWordsOut + cjkCharsOut) * 1.15));
+    const inputTokens = estimatedInputTokens || 1;
+
+    const chunk = {
+      id: lastId || `chatcmpl-${Math.random().toString(36).substring(7)}`,
+      object: "chat.completion.chunk",
+      created: Math.floor(Date.now() / 1000),
+      model: lastModel || "model",
+      ...(lastSystemFingerprint ? { system_fingerprint: lastSystemFingerprint } : {}),
+      choices: [],
+      usage: {
+        prompt_tokens: inputTokens,
+        completion_tokens: outputTokens,
+        total_tokens: inputTokens + outputTokens
+      }
+    };
+
+    return {
+      raw: `data: ${JSON.stringify(chunk)}`
+    };
+  };
+
+  return input.pipe(new Transform({
+    transform(chunk, _encoding, callback) {
+      const text = decoder.write(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      pending += text;
+
+      const parts = pending.split(/\r?\n\r?\n/);
+      pending = parts.pop() ?? "";
+
+      for (const part of parts) {
+        if (protocol === "openai_chat_completions" && part.trim() === "data: [DONE]") {
+          if (!hasUsage) {
+            hasUsage = true;
+            this.push(`${serializeSseEvent(generateOpenAiChatUsageEvent())}\n\n`);
+          }
+        }
+
+        const event = parseSseEventBlock(part);
+        if (event.data && typeof event.data === "object") {
+          const data = event.data as Record<string, any>;
+
+          if (protocol === "anthropic_messages") {
+            if (data.type === "content_block_delta" && data.delta) {
+              if (data.delta.type === "text_delta" && typeof data.delta.text === "string") {
+                estimatedOutputText += data.delta.text;
+              } else if (data.delta.type === "thinking_delta" && typeof data.delta.thinking === "string") {
+                estimatedOutputText += data.delta.thinking;
+              }
+            }
+
+            if (data.type === "message_delta") {
+              const usage = data.usage && typeof data.usage === "object" ? data.usage as Record<string, any> : {};
+              const inputTokens = usage.input_tokens || estimatedInputTokens || 1;
+              const asciiWordsOut = estimatedOutputText.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
+              const cjkCharsOut = estimatedOutputText.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+              const outputTokens = usage.output_tokens || Math.max(1, Math.ceil((asciiWordsOut + cjkCharsOut) * 1.15));
+
+              data.usage = {
+                ...usage,
+                input_tokens: inputTokens,
+                output_tokens: outputTokens
+              };
+              event.raw = `event: message_delta\ndata: ${JSON.stringify(data)}`;
+            }
+          } else if (protocol === "openai_responses") {
+            if (data.type === "response.content_part.delta" && data.delta) {
+              if (typeof data.delta.text === "string") {
+                estimatedOutputText += data.delta.text;
+              }
+              if (typeof data.delta.thinking === "string") {
+                estimatedOutputText += data.delta.thinking;
+              }
+              if (typeof data.delta.reasoning === "string") {
+                estimatedOutputText += data.delta.reasoning;
+              }
+            } else if (data.type === "response.text.delta" && typeof data.value === "string") {
+              estimatedOutputText += data.value;
+            } else if (data.type === "response.function_call_arguments.delta" && typeof data.delta === "string") {
+              estimatedOutputText += data.delta;
+            }
+
+            if (data.type === "response.done" && data.response && typeof data.response === "object") {
+              const responseObj = data.response as Record<string, any>;
+              const usage = responseObj.usage && typeof responseObj.usage === "object" ? responseObj.usage as Record<string, any> : {};
+              const inputTokens = usage.prompt_tokens || estimatedInputTokens || 1;
+              const asciiWordsOut = estimatedOutputText.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
+              const cjkCharsOut = estimatedOutputText.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+              const outputTokens = usage.completion_tokens || Math.max(1, Math.ceil((asciiWordsOut + cjkCharsOut) * 1.15));
+
+              responseObj.usage = {
+                ...usage,
+                prompt_tokens: inputTokens,
+                completion_tokens: outputTokens,
+                total_tokens: inputTokens + outputTokens
+              };
+              event.raw = `event: response.done\ndata: ${JSON.stringify(data)}`;
+            }
+          } else if (protocol === "openai_chat_completions") {
+            lastId = data.id || lastId;
+            lastModel = data.model || lastModel;
+            lastSystemFingerprint = data.system_fingerprint || lastSystemFingerprint;
+
+            if (data.choices && Array.isArray(data.choices)) {
+              const delta = data.choices[0]?.delta;
+              if (delta) {
+                if (typeof delta.content === "string") {
+                  estimatedOutputText += delta.content;
+                }
+                if (typeof delta.reasoning_content === "string") {
+                  estimatedOutputText += delta.reasoning_content;
+                }
+                if (typeof delta.reasoning === "string") {
+                  estimatedOutputText += delta.reasoning;
+                }
+                if (Array.isArray(delta.tool_calls)) {
+                  for (const tc of delta.tool_calls) {
+                    if (tc.function?.arguments) {
+                      estimatedOutputText += tc.function.arguments;
+                    }
+                    if (tc.id) {
+                      estimatedOutputText += tc.id;
+                    }
+                    if (tc.name) {
+                      estimatedOutputText += tc.name;
+                    }
+                  }
+                }
+              }
+            }
+
+            if (data.usage) {
+              hasUsage = true;
+            }
+          }
+        }
+        this.push(`${serializeSseEvent(event)}\n\n`);
+      }
+      callback();
+    },
+    flush(callback) {
+      pending += decoder.end();
+      if (pending.trim()) {
+        const parts = pending.split(/\r?\n\r?\n/);
+        for (const part of parts) {
+          if (protocol === "openai_chat_completions" && part.trim() === "data: [DONE]") {
+            if (!hasUsage) {
+              hasUsage = true;
+              this.push(`${serializeSseEvent(generateOpenAiChatUsageEvent())}\n\n`);
+            }
+          }
+
+          const event = parseSseEventBlock(part);
+          if (event.data && typeof event.data === "object") {
+            const data = event.data as Record<string, any>;
+            if (protocol === "anthropic_messages") {
+              if (data.type === "message_delta") {
+                const usage = data.usage && typeof data.usage === "object" ? data.usage as Record<string, any> : {};
+                const inputTokens = usage.input_tokens || estimatedInputTokens || 1;
+                const asciiWordsOut = estimatedOutputText.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g)?.length ?? 0;
+                const cjkCharsOut = estimatedOutputText.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+                const outputTokens = usage.output_tokens || Math.max(1, Math.ceil((asciiWordsOut + cjkCharsOut) * 1.15));
+
+                data.usage = {
+                  ...usage,
+                  input_tokens: inputTokens,
+                  output_tokens: outputTokens
+                };
+                event.raw = `event: message_delta\ndata: ${JSON.stringify(data)}`;
+              }
+            } else if (protocol === "openai_chat_completions") {
+              if (data.usage) {
+                hasUsage = true;
+              }
+            }
+          }
+          this.push(`${serializeSseEvent(event)}\n\n`);
+        }
+      }
+
+      if (protocol === "openai_chat_completions" && !hasUsage) {
+        hasUsage = true;
+        this.push(`${serializeSseEvent(generateOpenAiChatUsageEvent())}\n\n`);
+        this.push("data: [DONE]\n\n");
+      }
+
+      callback();
+    }
+  }));
 }
