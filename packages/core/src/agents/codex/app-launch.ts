@@ -157,8 +157,8 @@ export function launchCodexAppProfile(configDir: string, profile: ProfileConfig,
   return launchCodexCompatibleAppProfile(configDir, profile, codexAppSpec, config);
 }
 
-export function findInstalledCodexAppExecutable(): CodexAppLookupResult {
-  return findInstalledCodexCompatibleAppExecutable(codexAppSpec);
+export function findInstalledCodexAppExecutable(profileAppPath?: string): CodexAppLookupResult {
+  return findInstalledCodexCompatibleAppExecutable(codexAppSpec, profileAppPath);
 }
 
 export function launchZcodeAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): CodexAppLaunchResult {
@@ -234,7 +234,7 @@ function launchCodexCompatibleAppProfile(
   spec: CodexCompatibleAppSpec,
   config?: AppConfig
 ): CodexAppLaunchResult {
-  const lookup = findInstalledCodexCompatibleAppExecutable(spec);
+  const lookup = findInstalledCodexCompatibleAppExecutable(spec, profile.appPath);
   if (!lookup.executable) {
     throw new Error([
       `${spec.displayName} was not found. Install ${spec.displayName} or set ${spec.envPathKeys[1]} to its executable, then try again.`,
@@ -441,8 +441,13 @@ function codexCompatibleHomeFromConfigFile(spec: CodexCompatibleAppSpec, configF
   return spec.kind === "zcode" ? zcodeHomeFromConfigFile(configFile) : path.dirname(configFile);
 }
 
-function findInstalledCodexCompatibleAppExecutable(spec: CodexCompatibleAppSpec): CodexAppLookupResult {
+function findInstalledCodexCompatibleAppExecutable(spec: CodexCompatibleAppSpec, profileAppPath?: string): CodexAppLookupResult {
   const checked: string[] = [];
+  const profileCandidate = findFirstExecutable(profileCodexAppPathCandidates(profileAppPath), checked, spec);
+  if (profileCandidate) {
+    return { checked, executable: profileCandidate };
+  }
+
   const envCandidate = findFirstExecutable(envCodexAppPathCandidates(spec), checked, spec);
   if (envCandidate) {
     return { checked, executable: envCandidate };
@@ -476,6 +481,11 @@ function envCodexAppPathCandidates(spec: CodexCompatibleAppSpec): string[] {
     .map((key) => process.env[key]?.trim() || "")
     .filter(Boolean)
     .map(resolveUserPath);
+}
+
+function profileCodexAppPathCandidates(value: string | undefined): string[] {
+  const trimmed = value?.trim() || "";
+  return trimmed ? [resolveUserPath(trimmed)] : [];
 }
 
 function macCodexAppCandidates(spec: CodexCompatibleAppSpec): string[] {

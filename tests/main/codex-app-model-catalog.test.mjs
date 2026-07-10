@@ -95,6 +95,47 @@ test("ChatGPT desktop app path override discovers the renamed executable", () =>
   }
 });
 
+test("ChatGPT profile appPath overrides process env discovery", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-chatgpt-profile-app-"));
+  const previous = process.env.CHATGPT_APP_PATH;
+  try {
+    const envExecutable = path.join(root, "env", "ChatGPT");
+    mkdirSync(path.dirname(envExecutable), { recursive: true });
+    writeFileSync(envExecutable, "");
+    process.env.CHATGPT_APP_PATH = envExecutable;
+
+    const profileExecutable = path.join(root, "profile", "ChatGPT");
+    mkdirSync(path.dirname(profileExecutable), { recursive: true });
+    writeFileSync(profileExecutable, "");
+
+    withPlatform("linux", () => {
+      const result = findInstalledCodexAppExecutable(profileExecutable);
+      assert.equal(result.executable, profileExecutable);
+      assert.equal(result.checked[0], profileExecutable);
+    });
+  } finally {
+    if (previous === undefined) {
+      delete process.env.CHATGPT_APP_PATH;
+    } else {
+      process.env.CHATGPT_APP_PATH = previous;
+    }
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+function withPlatform(platform, callback) {
+  const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", {
+    configurable: true,
+    value: platform
+  });
+  try {
+    return callback();
+  } finally {
+    Object.defineProperty(process, "platform", descriptor);
+  }
+}
+
 test("ChatGPT migration removes only the exact legacy CCR auth marker", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "ccr-chatgpt-auth-migration-"));
   const authFile = path.join(root, "auth.json");

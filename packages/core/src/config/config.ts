@@ -2263,8 +2263,10 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       const botGateway = surface !== "cli" && parsedBotGateway ? completeBotGatewayConfig(parsedBotGateway) : undefined;
 
       if (agent === "claude-code") {
+        const appPath = readProfileAppPath(item, agent);
         return {
           agent,
+          ...(appPath ? { appPath } : {}),
           ...(botConfigId ? { botConfigId } : {}),
           ...(botGateway ? { botGateway } : {}),
           enabled,
@@ -2279,8 +2281,10 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         };
       }
 
+      const appPath = readProfileAppPath(item, agent);
       return {
         agent,
+        ...(appPath ? { appPath } : {}),
         ...(botConfigId ? { botConfigId } : {}),
         ...(botGateway ? { botGateway } : {}),
         cliMiddleware: true,
@@ -2308,6 +2312,18 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
       };
     })
     .filter((item): item is ProfileConfig => Boolean(item));
+}
+
+function readProfileAppPath(item: Record<string, unknown>, agent: ProfileConfig["agent"]): string | undefined {
+  return readString(item.appPath) ||
+    readString(item.app_path) ||
+    readString(item.appExecutablePath) ||
+    readString(item.app_executable_path) ||
+    (agent === "claude-code"
+      ? readString(item.claudeAppPath) || readString(item.claude_app_path)
+      : agent === "codex"
+        ? readString(item.chatgptAppPath) || readString(item.chatgpt_app_path) || readString(item.codexAppPath) || readString(item.codex_app_path)
+        : readString(item.zcodeAppPath) || readString(item.zcode_app_path));
 }
 
 function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {

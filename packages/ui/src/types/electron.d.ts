@@ -95,6 +95,7 @@ declare global {
       getAgentTracePayload: (request: AgentAnalysisTracePayloadRequest) => Promise<AgentAnalysisTracePayloadFullResult>;
       getAppInfo: () => Promise<AppInfo>;
       getConfig: () => Promise<AppConfig>;
+      getFilePath?: (file: File) => string;
       getGatewayStatus: () => Promise<GatewayStatus>;
       getLocalAgentProviderCandidates: () => Promise<LocalAgentProviderCandidate[]>;
       getOnboardingFinished: () => Promise<boolean>;

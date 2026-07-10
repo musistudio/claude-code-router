@@ -41,7 +41,7 @@ type ClaudeAppCandidateOptions = {
 };
 
 export async function launchClaudeAppProfile(configDir: string, profile: ProfileConfig, config?: AppConfig): Promise<ClaudeAppLaunchResult> {
-  const lookup = findInstalledClaudeAppExecutable();
+  const lookup = findInstalledClaudeAppExecutable(profile.appPath);
   if (!lookup.executable) {
     throw new Error([
       "Claude App was not found. Install Claude App or set CLAUDE_APP_PATH to its executable, then try again.",
@@ -228,8 +228,13 @@ function claudeElectronUserDataDir(settingsDir: string, profile: ProfileConfig):
   );
 }
 
-function findInstalledClaudeAppExecutable(): ClaudeAppLookupResult {
+export function findInstalledClaudeAppExecutable(profileAppPath?: string): ClaudeAppLookupResult {
   const checked: string[] = [];
+  const profileCandidate = findFirstExecutable(profileClaudeAppPathCandidates(profileAppPath), checked, { allowGenericExecutable: true });
+  if (profileCandidate) {
+    return { checked, executable: profileCandidate };
+  }
+
   const envCandidate = findFirstExecutable(envClaudeAppPathCandidates(), checked, { allowGenericExecutable: true });
   if (envCandidate) {
     return { checked, executable: envCandidate };
@@ -263,6 +268,11 @@ function envClaudeAppPathCandidates(): string[] {
     .map((key) => process.env[key]?.trim() || "")
     .filter(Boolean)
     .map(resolveUserPath);
+}
+
+function profileClaudeAppPathCandidates(value: string | undefined): string[] {
+  const trimmed = value?.trim() || "";
+  return trimmed ? [resolveUserPath(trimmed)] : [];
 }
 
 function macClaudeAppCandidates(): string[] {

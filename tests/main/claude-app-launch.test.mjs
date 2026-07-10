@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { claudeAppLaunchCommand, normalizeClaudeAppCandidate } from "../../packages/core/src/agents/claude-app/launch.ts";
+import { claudeAppLaunchCommand, findInstalledClaudeAppExecutable, normalizeClaudeAppCandidate } from "../../packages/core/src/agents/claude-app/launch.ts";
 
 test("claudeAppLaunchCommand opens macOS app bundles through LaunchServices", (t) => {
   const tempDir = mkdtempForTest();
@@ -86,6 +86,35 @@ test("Claude App discovery accepts generic Electron desktop app executables", (t
   writeFileSync(path.join(path.dirname(linuxApp), "resources", "app", "package.json"), "{}");
   withPlatform("linux", () => {
     assert.equal(normalizeClaudeAppCandidate(linuxApp), linuxApp);
+  });
+});
+
+test("Claude App profile appPath overrides process env discovery", (t) => {
+  const tempDir = mkdtempForTest();
+  const previous = process.env.CLAUDE_APP_PATH;
+  t.after(() => {
+    if (previous === undefined) {
+      delete process.env.CLAUDE_APP_PATH;
+    } else {
+      process.env.CLAUDE_APP_PATH = previous;
+    }
+    rmSync(tempDir, { force: true, recursive: true });
+  });
+
+  const envCliShim = path.join(tempDir, ".local", "bin", "claude");
+  mkdirSync(path.dirname(envCliShim), { recursive: true });
+  writeFileSync(envCliShim, "");
+  process.env.CLAUDE_APP_PATH = envCliShim;
+
+  const profileApp = path.join(tempDir, "opt", "Claude", "claude");
+  mkdirSync(path.join(path.dirname(profileApp), "resources", "app"), { recursive: true });
+  writeFileSync(profileApp, "");
+  writeFileSync(path.join(path.dirname(profileApp), "resources", "app", "package.json"), "{}");
+
+  withPlatform("linux", () => {
+    const result = findInstalledClaudeAppExecutable(profileApp);
+    assert.equal(result.executable, profileApp);
+    assert.equal(result.checked[0], profileApp);
   });
 });
 

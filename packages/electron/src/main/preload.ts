@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { browserErrorI18nLanguage, formatLocalizedErrorMessage } from "@ccr/core/contracts/i18n";
 import { IPC_CHANNELS } from "@ccr/core/contracts/ipc-channels";
 import type {
@@ -108,6 +108,7 @@ contextBridge.exposeInMainWorld("ccr", {
   getAgentTracePayload: (request: AgentAnalysisTracePayloadRequest) => invoke(IPC_CHANNELS.appGetAgentTracePayload, request) as Promise<AgentAnalysisTracePayloadFullResult>,
   getAppInfo: () => invoke(IPC_CHANNELS.appGetInfo) as Promise<AppInfo>,
   getConfig: () => invoke(IPC_CHANNELS.appGetConfig) as Promise<AppConfig>,
+  getFilePath: (file: File) => webUtils.getPathForFile(file),
   getGatewayStatus: () => invoke(IPC_CHANNELS.appGetGatewayStatus) as Promise<GatewayStatus>,
   getLocalAgentProviderCandidates: () => invoke(IPC_CHANNELS.appGetLocalAgentProviderCandidates) as Promise<LocalAgentProviderCandidate[]>,
   getOnboardingFinished: () => invoke(IPC_CHANNELS.appGetOnboardingFinished) as Promise<boolean>,

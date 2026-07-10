@@ -485,6 +485,7 @@ export type AddApiKeyDraft = {
 
 export type AddProfileDraft = {
   agent: ProfileConfig["agent"];
+  appPath: string;
   botConfigId: string;
   botAuthFields: Record<string, string>;
   botAuthType: string;
