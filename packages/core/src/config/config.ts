@@ -33,6 +33,8 @@ import type {
   ProviderAccountConfig,
   ProviderAccountConnectorConfig,
   ProviderCredentialConfig,
+  ProviderModelMetadata,
+  ProviderReasoningLevel,
   ProfileConfig,
   ProfileRuntimeConfig,
   ProxyRouteTarget,
@@ -1035,6 +1037,7 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         : [];
       const modelDescriptions = parseModelDescriptions(item.modelDescriptions ?? item.model_descriptions, models);
       const modelDisplayNames = parseModelDisplayNames(item.modelDisplayNames ?? item.model_display_names, models);
+      const modelMetadata = parseModelMetadata(item.modelMetadata ?? item.model_metadata, models);
 
       if (!name) {
         return undefined;
@@ -1057,6 +1060,7 @@ function parseProviders(value: unknown): GatewayProviderConfig[] | undefined {
         id: readString(item.id),
         modelDescriptions,
         modelDisplayNames,
+        modelMetadata,
         models,
         name,
         provider: readString(item.provider),
@@ -1100,6 +1104,68 @@ function parseModelDisplayNames(value: unknown, models: string[]): Record<string
     });
 
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function parseModelMetadata(value: unknown, models: string[]): Record<string, ProviderModelMetadata> | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const modelIds = new Set(models);
+  const entries = Object.entries(value)
+    .map(([rawModel, rawMetadata]) => [rawModel.trim(), parseProviderModelMetadata(rawMetadata)] as const)
+    .filter((entry): entry is [string, ProviderModelMetadata] => {
+      const [model, metadata] = entry;
+      return Boolean(model && metadata && modelIds.has(model));
+    });
+
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function parseProviderModelMetadata(value: unknown): ProviderModelMetadata | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const supportedReasoningLevels = parseProviderReasoningLevels(value.supportedReasoningLevels ?? value.supported_reasoning_levels);
+  const metadata: ProviderModelMetadata = {
+    ...(Array.isArray(value.additionalSpeedTiers) ? { additionalSpeedTiers: value.additionalSpeedTiers } : {}),
+    ...(Array.isArray(value.additional_speed_tiers) ? { additionalSpeedTiers: value.additional_speed_tiers } : {}),
+    ...(value.defaultReasoningLevel === null ? { defaultReasoningLevel: null } : {}),
+    ...(readString(value.defaultReasoningLevel) ? { defaultReasoningLevel: readString(value.defaultReasoningLevel) } : {}),
+    ...(value.default_reasoning_level === null ? { defaultReasoningLevel: null } : {}),
+    ...(readString(value.default_reasoning_level) ? { defaultReasoningLevel: readString(value.default_reasoning_level) } : {}),
+    ...(readString(value.defaultReasoningSummary) ? { defaultReasoningSummary: readString(value.defaultReasoningSummary) } : {}),
+    ...(readString(value.default_reasoning_summary) ? { defaultReasoningSummary: readString(value.default_reasoning_summary) } : {}),
+    ...(Array.isArray(value.serviceTiers) ? { serviceTiers: value.serviceTiers } : {}),
+    ...(Array.isArray(value.service_tiers) ? { serviceTiers: value.service_tiers } : {}),
+    ...(supportedReasoningLevels ? { supportedReasoningLevels } : {}),
+    ...(typeof value.supportsReasoningSummaries === "boolean" ? { supportsReasoningSummaries: value.supportsReasoningSummaries } : {}),
+    ...(typeof value.supports_reasoning_summaries === "boolean" ? { supportsReasoningSummaries: value.supports_reasoning_summaries } : {})
+  };
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+function parseProviderReasoningLevels(value: unknown): ProviderReasoningLevel[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const levels = value
+    .map((item): ProviderReasoningLevel | undefined => {
+      if (!isObject(item)) {
+        const effort = readString(item);
+        return effort ? { description: effort, effort } : undefined;
+      }
+      const effort = readString(item.effort);
+      if (!effort) {
+        return undefined;
+      }
+      return {
+        description: readString(item.description) || effort,
+        effort
+      };
+    })
+    .filter((item): item is ProviderReasoningLevel => Boolean(item));
+  return levels.length > 0 ? levels : undefined;
 }
 
 function withProviderIds(providers: GatewayProviderConfig[]): GatewayProviderConfig[] {

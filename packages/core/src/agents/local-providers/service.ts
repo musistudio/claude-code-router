@@ -1,10 +1,12 @@
 import type {
   LocalAgentProviderCandidate,
   LocalAgentProviderImportRequest,
-  LocalAgentProviderImportResult
+  LocalAgentProviderImportResult,
+  LocalAgentProviderProbeRequest,
+  LocalAgentProviderProbeResult
 } from "@ccr/core/contracts/app";
 import { claudeCodeCandidate, importClaudeCodeProvider } from "@ccr/core/agents/local-providers/claude-code";
-import { codexCandidate, importCodexProvider } from "@ccr/core/agents/local-providers/codex";
+import { codexCandidate, importCodexProvider, probeCodexProvider } from "@ccr/core/agents/local-providers/codex";
 import { importZcodeProvider, zcodeCandidate } from "@ccr/core/agents/local-providers/zcode";
 
 export { codexDefaultBaseUrl, readCodexAuth } from "@ccr/core/agents/local-providers/codex";
@@ -18,7 +20,7 @@ export function getLocalAgentProviderCandidates(): LocalAgentProviderCandidate[]
   ].filter((candidate) => candidate.status !== "missing");
 }
 
-export function importLocalAgentProvider(request: LocalAgentProviderImportRequest): LocalAgentProviderImportResult {
+export async function importLocalAgentProvider(request: LocalAgentProviderImportRequest): Promise<LocalAgentProviderImportResult> {
   const candidate = getLocalAgentProviderCandidates().find((item) => item.id === request.id);
   if (!candidate) {
     throw new Error("Local agent provider was not found.");
@@ -34,4 +36,15 @@ export function importLocalAgentProvider(request: LocalAgentProviderImportReques
     return importClaudeCodeProvider(candidate, request.providerNames ?? []);
   }
   return importZcodeProvider(candidate, request.providerNames ?? []);
+}
+
+export async function probeLocalAgentProvider(request: LocalAgentProviderProbeRequest): Promise<LocalAgentProviderProbeResult> {
+  const candidate = getLocalAgentProviderCandidates().find((item) => item.id === request.id);
+  if (!candidate) {
+    throw new Error("Local agent provider was not found.");
+  }
+  if (candidate.kind === "codex") {
+    return probeCodexProvider(candidate);
+  }
+  throw new Error("Local agent provider model probing is not supported.");
 }

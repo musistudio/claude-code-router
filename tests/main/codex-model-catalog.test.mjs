@@ -61,6 +61,41 @@ test("codex catalog enables multimodal reasoning and search when provider protoc
   assert.equal(model.apply_patch_tool_type, "freeform");
 });
 
+test("codex catalog uses provider model metadata for reasoning effort and speed tiers", () => {
+  const model = catalogModelFor({
+    Providers: [
+      {
+        modelMetadata: {
+          "gpt-5-codex": {
+            additionalSpeedTiers: [{ id: "fast", label: "Fast" }],
+            defaultReasoningLevel: "high",
+            defaultReasoningSummary: "auto",
+            serviceTiers: [{ id: "auto" }],
+            supportedReasoningLevels: [
+              { description: "Low", effort: "low" },
+              { description: "High", effort: "high" }
+            ],
+            supportsReasoningSummaries: true
+          }
+        },
+        models: ["gpt-5-codex"],
+        name: "Codex API",
+        type: "openai_responses"
+      }
+    ]
+  }, "Codex API/gpt-5-codex");
+
+  assert.deepEqual(model.additional_speed_tiers, [{ id: "fast", label: "Fast" }]);
+  assert.equal(model.default_reasoning_level, "high");
+  assert.equal(model.default_reasoning_summary, "auto");
+  assert.deepEqual(model.service_tiers, [{ id: "auto" }]);
+  assert.deepEqual(model.supported_reasoning_levels, [
+    { description: "Low", effort: "low" },
+    { description: "High", effort: "high" }
+  ]);
+  assert.equal(model.supports_reasoning_summaries, true);
+});
+
 test("codex catalog enables native search for Gemini Interactions providers", () => {
   const model = catalogModelFor({
     Providers: [
