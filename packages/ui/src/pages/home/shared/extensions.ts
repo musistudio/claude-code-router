@@ -130,6 +130,7 @@ import {
   DEFAULT_TRAY_WINDOW_MODULES,
   enforceSingleEnabledGlobalProfilePerAgent,
   GATEWAY_PLUGIN_PERMISSION_IDS,
+  GATEWAY_PLUGIN_SURFACE_IDS,
   normalizeProfileScopeValue,
   OVERVIEW_WIDGET_SIZE_VALUES,
   TRAY_SINGLETON_WIDGET_TYPES,
@@ -160,6 +161,7 @@ import type {
   GatewayProviderCapability,
   GatewayPluginAppConfig,
   GatewayPluginPermission,
+  GatewayPluginSurfacesConfig,
   GatewayProviderConnectivityCheckModelResult,
   GatewayProviderConnectivityCheckReport,
   GatewayProviderProbeCandidate,
@@ -383,11 +385,14 @@ const gatewayPluginPermissionIdSet = new Set<string>(GATEWAY_PLUGIN_PERMISSION_I
 export function createPluginSettingsDraft(plugin?: AppConfig["plugins"][number]): PluginSettingsDraft {
   return {
     appsText: formatEditableJson(plugin?.apps ?? []),
+    appsSurfaceEnabled: plugin?.surfaces?.apps !== false,
     coreGatewayText: formatEditableJson(plugin?.coreGateway ?? {}),
     configText: formatEditableJson(pluginSettingsConfigWithoutRouting(plugin?.config)),
     enabled: plugin?.enabled !== false,
+    gatewaySurfaceEnabled: plugin?.surfaces?.gateway !== false,
     modulePath: plugin?.module ?? "",
     permissionsText: formatEditableJson(plugin?.permissions ?? []),
+    providerSurfaceEnabled: plugin?.surfaces?.provider !== false,
     proxyText: formatEditableJson(plugin?.proxy ?? {})
   };
 }
@@ -709,14 +714,21 @@ export function resolvePluginInstallPlan(
   marketplace: PluginMarketplaceEntry[],
   installedPlugins: AppConfig["plugins"]
 ): { items: PluginInstallCandidate[]; missing: string[] } {
-  const installedIds = new Set(installedPlugins.map((plugin) => plugin.id));
+  const installedById = new Map(installedPlugins.map((plugin) => [plugin.id, plugin]));
   const marketplaceById = new Map(marketplace.map((entry) => [entry.id, entry]));
   const planned = new Map<string, PluginInstallCandidate>();
   const missing = new Set<string>();
   const visiting = new Set<string>();
 
   function visit(candidate: PluginInstallCandidate) {
-    if (installedIds.has(candidate.id) || planned.has(candidate.id)) {
+    const installedPlugin = installedById.get(candidate.id);
+    if (installedPlugin) {
+      if (!installedPluginSatisfiesDependency(installedPlugin, candidate)) {
+        missing.add(candidate.id);
+      }
+      return;
+    }
+    if (planned.has(candidate.id)) {
       return;
     }
     if (visiting.has(candidate.id)) {
@@ -727,7 +739,8 @@ export function resolvePluginInstallPlan(
     for (const dependency of candidate.dependencies) {
       const dependencyCandidate = pluginDependencyCandidate(dependency, marketplaceById);
       if (!dependencyCandidate) {
-        if (!installedIds.has(dependency.id)) {
+        const installedDependency = installedById.get(dependency.id);
+        if (!installedDependency || !installedPluginSatisfiesDependency(installedDependency, dependency)) {
           missing.add(dependency.id);
         }
         continue;
@@ -755,7 +768,8 @@ export function pluginDependencyCandidate(
       id: dependency.id,
       modulePath: dependency.modulePath,
       name: dependency.name,
-      permissions: dependency.permissions
+      permissions: dependency.permissions,
+      surfaces: dependency.surfaces
     };
   }
 
@@ -769,7 +783,8 @@ export function pluginDependencyCandidate(
     id: entry.id,
     modulePath: entry.modulePath,
     name: entry.name,
-    permissions: entry.permissions
+    permissions: entry.permissions,
+    surfaces: dependency.surfaces ?? entry.surfaces
   };
 }
 
@@ -789,12 +804,14 @@ export function extensionListItem(source: ExtensionSource, item: unknown, index:
       name: stringValue(item) || `Plugin ${index + 1}`,
       source,
       status: "unsupported",
+      surfaces: undefined,
       target: "Not available"
     };
   }
 
   if (source === "plugins") {
     const enabled = item.enabled !== false;
+    const surfaces = pluginSurfacesFromConfigRecord(item);
     return {
       canConfigure: true,
       canToggle: true,
@@ -805,6 +822,7 @@ export function extensionListItem(source: ExtensionSource, item: unknown, index:
       name: stringValue(item.id) || stringValue(item.key) || `wrapper-plugin-${index + 1}`,
       source,
       status: enabled ? "enabled" : "disabled",
+      surfaces,
       target: wrapperPluginTarget(item)
     };
   }
@@ -820,6 +838,7 @@ export function extensionListItem(source: ExtensionSource, item: unknown, index:
     name: stringValue(item.key) || `provider-plugin-${index + 1}`,
     source,
     status: enabled ? "enabled" : "disabled",
+    surfaces: undefined,
     target: stringValue(item.providerName) || stringValue(item.provider) || "All providers"
   };
 }
@@ -840,6 +859,7 @@ export function extensionMatchesQuery(extension: ExtensionListItem, query: strin
 
 export function wrapperPluginCapability(item: Record<string, unknown>): string {
   const capabilities: string[] = ["Wrapper runtime"];
+  capabilities.push(`Surfaces: ${pluginSurfaceSummary(pluginSurfacesFromConfigRecord(item))}`);
   if (stringValue(item.module)) capabilities.push("Module");
   const permissions = Array.isArray(item.permissions)
     ? item.permissions.map(stringValue).filter((value): value is string => Boolean(value))
@@ -905,8 +925,63 @@ export function createExtensionInstallDraft(): ExtensionInstallDraft {
     key: "",
     marketplaceId: "",
     modulePath: "",
-    selectedName: ""
+    selectedName: "",
+    surfaces: undefined
   };
+}
+
+export function pluginRuntimeSurfacesEnabled(surfaces: GatewayPluginSurfacesConfig | undefined): boolean {
+  return surfaces?.apps !== false || surfaces?.gateway !== false || surfaces?.provider !== false;
+}
+
+export function pluginSurfacesFromDraft(draft: Pick<PluginSettingsDraft, "appsSurfaceEnabled" | "gatewaySurfaceEnabled" | "providerSurfaceEnabled">): GatewayPluginSurfacesConfig | undefined {
+  const surfaces: GatewayPluginSurfacesConfig = {
+    apps: draft.appsSurfaceEnabled,
+    gateway: draft.gatewaySurfaceEnabled,
+    provider: draft.providerSurfaceEnabled
+  };
+  return allPluginSurfacesEnabled(surfaces) ? undefined : surfaces;
+}
+
+export function pluginSurfaceSummary(surfaces: GatewayPluginSurfacesConfig | undefined): string {
+  return GATEWAY_PLUGIN_SURFACE_IDS
+    .map((surface) => `${surface}:${surfaces?.[surface] === false ? "off" : "on"}`)
+    .join(", ");
+}
+
+function pluginSurfacesFromConfigRecord(item: Record<string, unknown>): GatewayPluginSurfacesConfig | undefined {
+  const value = item.surfaces;
+  if (!isPlainRecord(value)) {
+    return undefined;
+  }
+  const surfaces: GatewayPluginSurfacesConfig = {};
+  for (const surface of GATEWAY_PLUGIN_SURFACE_IDS) {
+    if (typeof value[surface] === "boolean") {
+      surfaces[surface] = value[surface];
+    }
+  }
+  return Object.keys(surfaces).length > 0 ? surfaces : undefined;
+}
+
+function allPluginSurfacesEnabled(surfaces: GatewayPluginSurfacesConfig): boolean {
+  return GATEWAY_PLUGIN_SURFACE_IDS.every((surface) => surfaces[surface] !== false);
+}
+
+function installedPluginSatisfiesDependency(
+  installedPlugin: AppConfig["plugins"][number],
+  dependency: Pick<PluginInstallCandidate, "surfaces"> | Pick<PluginDependency, "surfaces">
+): boolean {
+  if (installedPlugin.enabled === false) {
+    return false;
+  }
+  return pluginSurfacesSatisfy(installedPlugin.surfaces, dependency.surfaces);
+}
+
+function pluginSurfacesSatisfy(installedSurfaces: GatewayPluginSurfacesConfig | undefined, requiredSurfaces: GatewayPluginSurfacesConfig | undefined): boolean {
+  if (!requiredSurfaces) {
+    return true;
+  }
+  return GATEWAY_PLUGIN_SURFACE_IDS.every((surface) => requiredSurfaces[surface] !== true || installedSurfaces?.[surface] !== false);
 }
 
 export function providerSelectOptions(providers: GatewayProviderConfig[], value: string): Array<{ label: string; value: string }> {

@@ -23,7 +23,7 @@ import {
   normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
   OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parsePluginObjectSettingsText, parsePluginPermissionsSettingsText, parseProviderAccountDraft,
   providerCredentialsFromDraft,
-  persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
+  persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginRuntimeSurfacesEnabled, pluginSettingsConfigFromDraft, PluginSettingsDraft, pluginSurfacesFromDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
   providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
@@ -687,7 +687,7 @@ function App() {
     [copy, virtualModelValidationError]
   );
   const canSubmitVirtualModel = !virtualModelValidationError;
-  const canInstallExtension = Boolean(extensionInstallDraft.key.trim() && extensionInstallDraft.modulePath.trim());
+  const canInstallExtension = Boolean(extensionInstallDraft.key.trim() && (extensionInstallDraft.modulePath.trim() || (extensionInstallDraft.apps?.length ?? 0) > 0));
   const onboardingReadiness = useMemo<OnboardingReadinessOptions>(() => ({
     profileConfirmed: onboardingProfileConfirmed,
     requireProfileConfirmation: activeView === "onboarding" && !onboardingFinished
@@ -1759,7 +1759,8 @@ function App() {
         marketplaceId: "",
         modulePath: selection.modulePath,
         permissions: selection.permissions,
-        selectedName: selection.name || selection.id
+        selectedName: selection.name || selection.id,
+        surfaces: selection.surfaces
       }));
       setExtensionInstallError("");
       setActionError("");
@@ -1772,7 +1773,7 @@ function App() {
     if (!canInstallExtension) {
       return;
     }
-    if (extensionInstallDraft.modulePath.trim() && !extensionInstallDraft.permissions?.includes("trusted-code")) {
+    if (extensionInstallDraft.modulePath.trim() && pluginRuntimeSurfacesEnabled(extensionInstallDraft.surfaces) && !extensionInstallDraft.permissions?.includes("trusted-code")) {
       setExtensionInstallError("Plugins that load JavaScript must declare trusted-code permission.");
       return;
     }
@@ -1784,7 +1785,8 @@ function App() {
         id: extensionInstallDraft.key.trim(),
         modulePath: extensionInstallDraft.modulePath.trim(),
         name: extensionInstallDraft.selectedName,
-        permissions: extensionInstallDraft.permissions
+        permissions: extensionInstallDraft.permissions,
+        surfaces: extensionInstallDraft.surfaces
       },
       pluginMarketplace,
       draftConfig.plugins ?? []
@@ -1794,7 +1796,7 @@ function App() {
       return;
     }
     const missingTrustedCode = installPlan.items
-      .filter((item) => item.modulePath.trim() && !item.permissions?.includes("trusted-code"))
+      .filter((item) => item.modulePath.trim() && pluginRuntimeSurfacesEnabled(item.surfaces) && !item.permissions?.includes("trusted-code"))
       .map((item) => item.name || item.id);
     if (missingTrustedCode.length > 0) {
       setExtensionInstallError(`Plugins that load JavaScript must declare trusted-code permission: ${missingTrustedCode.join(", ")}`);
@@ -1809,8 +1811,9 @@ function App() {
           ...(item.apps?.length ? { apps: item.apps } : {}),
           enabled: true,
           id: item.id,
-          module: item.modulePath,
-          ...(item.permissions !== undefined ? { permissions: item.permissions } : {})
+          ...(item.modulePath.trim() ? { module: item.modulePath } : {}),
+          ...(item.permissions !== undefined ? { permissions: item.permissions } : {}),
+          ...(item.surfaces !== undefined ? { surfaces: item.surfaces } : {})
         }));
       config.plugins = [...(config.plugins ?? []), ...pluginsToAdd];
       return config;
@@ -1881,7 +1884,8 @@ function App() {
       setPluginSettingsError(permissionsResult.message);
       return;
     }
-    if (pluginSettingsDraft.modulePath.trim() && !permissionsResult.value?.includes("trusted-code")) {
+    const nextSurfaces = pluginSurfacesFromDraft(pluginSettingsDraft);
+    if (pluginSettingsDraft.modulePath.trim() && pluginRuntimeSurfacesEnabled(nextSurfaces) && !permissionsResult.value?.includes("trusted-code")) {
       setPluginSettingsError("Plugins that load JavaScript must declare trusted-code permission.");
       return;
     }
@@ -1913,9 +1917,10 @@ function App() {
         config: nextConfig,
         ...(nextCoreGateway && Object.keys(nextCoreGateway).length > 0 ? { coreGateway: nextCoreGateway } : { coreGateway: undefined }),
         enabled: pluginSettingsDraft.enabled,
-        module: pluginSettingsDraft.modulePath.trim(),
+        module: pluginSettingsDraft.modulePath.trim() || undefined,
         ...(permissionsResult.value !== undefined ? { permissions: permissionsResult.value } : { permissions: undefined }),
-        ...(nextProxy && Object.keys(nextProxy).length > 0 ? { proxy: nextProxy } : { proxy: undefined })
+        ...(nextProxy && Object.keys(nextProxy).length > 0 ? { proxy: nextProxy } : { proxy: undefined }),
+        ...(nextSurfaces !== undefined ? { surfaces: nextSurfaces } : { surfaces: undefined })
       };
       config.plugins = values;
       return config;

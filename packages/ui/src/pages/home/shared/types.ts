@@ -159,6 +159,7 @@ import type {
   GatewayProviderCapability,
   GatewayPluginAppConfig,
   GatewayPluginPermission,
+  GatewayPluginSurfacesConfig,
   GatewayProviderConnectivityCheckModelResult,
   GatewayProviderConnectivityCheckReport,
   GatewayProviderProbeCandidate,
@@ -666,6 +667,7 @@ export type ExtensionInstallDraft = {
   modulePath: string;
   permissions?: GatewayPluginPermission[];
   selectedName: string;
+  surfaces?: GatewayPluginSurfacesConfig;
 };
 
 export type ExtensionSource = "plugins" | "providerPlugins";
@@ -694,6 +696,7 @@ export type ExtensionListItem = {
   name: string;
   source: ExtensionSource;
   status: "enabled" | "disabled" | "unsupported";
+  surfaces?: GatewayPluginSurfacesConfig;
   target: string;
 };
 
@@ -713,12 +716,16 @@ export type PluginInstallCandidate = {
   modulePath: string;
   name?: string;
   permissions?: GatewayPluginPermission[];
+  surfaces?: GatewayPluginSurfacesConfig;
 };
 
 export type PluginSettingsDraft = {
   appsText: string;
   coreGatewayText: string;
   enabled: boolean;
+  appsSurfaceEnabled: boolean;
+  gatewaySurfaceEnabled: boolean;
+  providerSurfaceEnabled: boolean;
   modulePath: string;
   configText: string;
   permissionsText: string;

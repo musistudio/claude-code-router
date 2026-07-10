@@ -16,14 +16,24 @@ CCR has two extension layers:
 
 Most custom extensions should start as a Wrapper plugin. It receives CCR config, a private data directory, a logger, and registration helpers through `ctx`.
 
+`plugins[]` is the extension package install unit. Each package can expose separate runtime surfaces:
+
+| Surface | Config key | What it enables |
+| --- | --- | --- |
+| App | `surfaces.apps` | Browser app entries from `apps` or `ctx.registerApp` |
+| Gateway | `surfaces.gateway` | Gateway routes, proxy routes, HTTP backends, core gateway config, and virtual model profiles |
+| Provider | `surfaces.provider` | Core provider plugins and provider account connectors |
+
+All surfaces default to enabled for backwards compatibility. Set a surface to `false` to keep the package installed while disabling that part. Static App entries can be declared with `apps` and no `module`; dynamic App entries can still be registered from JavaScript through the App surface and require `trusted-code`.
+
 ## Loading Flow
 
 When the gateway starts, CCR reads the `plugins` array and processes each plugin whose `enabled !== false`:
 
-1. It first applies `apps`, `proxy.routes`, `coreGateway.providerPlugins`, `coreGateway.virtualModelProfiles`, and `coreGateway.config` declared in config.
-2. It then loads the plugin module. `module` must resolve to an explicit local JavaScript file path, such as an absolute path, a `~/` path, or a `./...` path relative to the CCR config directory.
+1. It first applies enabled surfaces from config: `apps` for the App surface, `proxy.routes`, `coreGateway.virtualModelProfiles`, and `coreGateway.config` for the Gateway surface, and `coreGateway.providerPlugins` for the Provider surface.
+2. It then loads the plugin module when any enabled surface can use JavaScript registration. `module` must resolve to an explicit local JavaScript file path, such as an absolute path, a `~/` path, or a `./...` path relative to the CCR config directory.
 3. Any extension that loads JavaScript with `module` must explicitly declare the `trusted-code` permission. Permissions are not an OS sandbox; they gate CCR plugin APIs and make code-execution trust explicit.
-4. If `module` is missing, CCR does not load a built-in fallback. Marketplace installs download the selected plugin from the GitHub marketplace manifest into CCR's data directory and then write that local cached module path into config.
+4. If `module` is missing, CCR does not load a built-in fallback. Marketplace installs with a JavaScript module download the selected plugin from the GitHub marketplace manifest into CCR's data directory and then write that local cached module path into config.
 5. A module can export a function or an object with `setup(ctx)` or `activate(ctx)`.
 6. On stop, CCR runs `stop` and `onStop` hooks in reverse order, then closes HTTP backends and SQLite stores registered by the plugin.
 
@@ -105,7 +115,8 @@ hello-extension/
   "id": "hello-extension",
   "name": "Hello Extension",
   "module": "index.cjs",
-  "permissions": ["trusted-code", "gateway-routes", "http-backends", "proxy-routes"],
+  "surfaces": ["apps", "gateway"],
+  "permissions": ["trusted-code", "apps", "gateway-routes", "http-backends", "proxy-routes"],
   "apps": [
     {
       "id": "hello-status",
@@ -190,7 +201,8 @@ CCR stores runtime configuration in SQLite. Add extensions through the UI; the l
       "id": "hello-extension",
       "enabled": true,
       "module": "/Users/you/ccr-extensions/hello-extension/index.cjs",
-      "permissions": ["trusted-code", "gateway-routes", "http-backends", "proxy-routes"],
+      "surfaces": { "apps": true, "gateway": true, "provider": false },
+      "permissions": ["trusted-code", "apps", "gateway-routes", "http-backends", "proxy-routes"],
       "config": {
         "message": "hello from my config"
       }

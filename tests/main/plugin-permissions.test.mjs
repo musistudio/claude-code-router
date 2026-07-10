@@ -93,6 +93,85 @@ test("plugin permissions gate configured browser apps", { skip: !process.env.CCR
   }
 });
 
+test("app-only plugin surface can execute trusted JavaScript and register apps", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-plugin-app-surface-"));
+  try {
+    const pluginFile = path.join(dir, "app-only-plugin.cjs");
+    writeFileSync(pluginFile, [
+      "\"use strict\";",
+      "module.exports = {",
+      "  setup(ctx) {",
+      "    ctx.registerApp({ id: \"dynamic-app\", name: \"Dynamic App\", url: \"/plugins/dynamic-app\" });",
+      "  }",
+      "};",
+      ""
+    ].join("\n"), "utf8");
+
+    await assert.rejects(
+      () => pluginService.start({
+        ...baseConfig(dir),
+        plugins: [{
+          enabled: true,
+          id: "app-only",
+          module: pluginFile,
+          permissions: ["apps"],
+          surfaces: { gateway: false, provider: false }
+        }]
+      }),
+      /Plugin app-only requires permission "trusted-code" to load and execute plugin JavaScript\./
+    );
+    await pluginService.stop();
+
+    await pluginService.start({
+      ...baseConfig(dir),
+      plugins: [{
+        enabled: true,
+        id: "app-only",
+        module: pluginFile,
+        permissions: ["trusted-code", "apps"],
+        surfaces: { gateway: false, provider: false }
+      }]
+    });
+
+    assert.deepEqual(pluginService.getApps().map((app) => app.id), ["dynamic-app"]);
+    assert.equal(pluginService.hasGatewayRoutes(), false);
+  } finally {
+    await pluginService.stop();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("plugin surfaces gate dynamic gateway registration", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-plugin-surface-gate-"));
+  try {
+    const pluginFile = path.join(dir, "gateway-surface-plugin.cjs");
+    writeFileSync(pluginFile, [
+      "\"use strict\";",
+      "module.exports = {",
+      "  setup(ctx) {",
+      "    ctx.registerGatewayRoute({",
+      "      auth: \"none\",",
+      "      id: \"surface-status\",",
+      "      path: \"/plugins/surface-test\",",
+      "      handler(_request, response, helpers) {",
+      "        helpers.sendJson(response, 200, { ok: true });",
+      "      }",
+      "    });",
+      "  }",
+      "};",
+      ""
+    ].join("\n"), "utf8");
+
+    await assert.rejects(
+      () => pluginService.start(configWithPlugin(dir, pluginFile, ["trusted-code", "gateway-routes"], { surfaces: { gateway: false, provider: true } })),
+      /Plugin permission-test has gateway surface disabled and cannot register gateway routes\./
+    );
+  } finally {
+    await pluginService.stop();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("plugin modules are reloaded from the same path after gateway restart", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-plugin-reload-"));
   try {
@@ -111,11 +190,12 @@ test("plugin modules are reloaded from the same path after gateway restart", { s
   }
 });
 
-function configWithPlugin(dir, pluginFile, permissions) {
+function configWithPlugin(dir, pluginFile, permissions, overrides = {}) {
   const plugin = {
     enabled: true,
     id: "permission-test",
-    module: pluginFile
+    module: pluginFile,
+    ...overrides
   };
   if (permissions !== undefined) {
     plugin.permissions = permissions;

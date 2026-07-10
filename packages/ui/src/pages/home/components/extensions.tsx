@@ -218,6 +218,15 @@ export function PluginSettingsDialog({
               <Field label={t("Enabled")}>
                 <Toggle checked={draft.enabled} onChange={(enabled) => onChange({ enabled })} />
               </Field>
+              <Field label={t("App surface")}>
+                <Toggle checked={draft.appsSurfaceEnabled} onChange={(appsSurfaceEnabled) => onChange({ appsSurfaceEnabled })} />
+              </Field>
+              <Field label={t("Gateway surface")}>
+                <Toggle checked={draft.gatewaySurfaceEnabled} onChange={(gatewaySurfaceEnabled) => onChange({ gatewaySurfaceEnabled })} />
+              </Field>
+              <Field label={t("Provider surface")}>
+                <Toggle checked={draft.providerSurfaceEnabled} onChange={(providerSurfaceEnabled) => onChange({ providerSurfaceEnabled })} />
+              </Field>
               <Field label={t("Name")}>
                 <Input readOnly value={extension.name} />
               </Field>

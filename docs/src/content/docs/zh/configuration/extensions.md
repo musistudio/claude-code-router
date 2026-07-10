@@ -16,14 +16,24 @@ CCR 的扩展分为两层：
 
 多数用户自定义扩展应从 Wrapper plugin 开始。它能拿到 CCR 配置、私有数据目录和日志对象，并通过 `ctx` 注册能力。
 
+`plugins[]` 是扩展包的安装单位。一个扩展包可以分别暴露三个运行面：
+
+| 运行面 | 配置键 | 启用内容 |
+| --- | --- | --- |
+| App | `surfaces.apps` | 来自 `apps` 或 `ctx.registerApp` 的内置浏览器入口 |
+| Gateway | `surfaces.gateway` | 网关路由、代理路由、HTTP 后端、core gateway 配置和虚拟模型配置 |
+| Provider | `surfaces.provider` | Core provider plugins 和 Provider 账号连接器 |
+
+为了兼容旧配置，三个运行面默认都启用。可以把某个运行面设为 `false`，保留扩展包但禁用对应能力。静态 App 入口可以只声明 `apps` 且不配置 `module`；动态 App 入口仍可通过 App 运行面从 JavaScript 注册，并且必须声明 `trusted-code`。
+
 ## 加载机制
 
 启动网关时，CCR 会读取配置里的 `plugins` 数组，并按顺序处理每个 `enabled !== false` 的扩展：
 
-1. 先应用配置中声明的 `apps`、`proxy.routes`、`coreGateway.providerPlugins`、`coreGateway.virtualModelProfiles` 和 `coreGateway.config`。
-2. 再加载扩展模块。`module` 必须解析到明确的本地 JavaScript 文件路径，例如绝对路径、`~/` 开头路径，或相对 CCR 配置目录的 `./...` 路径。
+1. 先按启用的运行面应用配置：App 运行面的 `apps`，Gateway 运行面的 `proxy.routes`、`coreGateway.virtualModelProfiles` 和 `coreGateway.config`，以及 Provider 运行面的 `coreGateway.providerPlugins`。
+2. 当任一启用的运行面需要 JavaScript 注册能力时，会加载扩展模块。`module` 必须解析到明确的本地 JavaScript 文件路径，例如绝对路径、`~/` 开头路径，或相对 CCR 配置目录的 `./...` 路径。
 3. 任何通过 `module` 加载 JavaScript 的扩展都必须显式声明 `trusted-code` 权限。权限不是操作系统级沙箱；它用于限制 CCR 插件 API，并把“执行本地代码”的信任边界显式化。
-4. 如果没有配置 `module`，CCR 不会再加载内置兜底扩展。插件市场安装会从 GitHub 市场 manifest 下载选中的插件到 CCR 数据目录，并把本地缓存后的模块路径写入配置。
+4. 如果没有配置 `module`，CCR 不会再加载内置兜底扩展。带 JavaScript 模块的插件市场安装会从 GitHub 市场 manifest 下载选中的插件到 CCR 数据目录，并把本地缓存后的模块路径写入配置。
 5. 模块可以导出函数，也可以导出包含 `setup(ctx)` 或 `activate(ctx)` 的对象。
 6. 扩展停止时，CCR 会反向执行 `stop`、`onStop` 钩子，并关闭该扩展注册的 HTTP 后端和 SQLite store。
 
@@ -105,7 +115,8 @@ hello-extension/
   "id": "hello-extension",
   "name": "Hello Extension",
   "module": "index.cjs",
-  "permissions": ["trusted-code", "gateway-routes", "http-backends", "proxy-routes"],
+  "surfaces": ["apps", "gateway"],
+  "permissions": ["trusted-code", "apps", "gateway-routes", "http-backends", "proxy-routes"],
   "apps": [
     {
       "id": "hello-status",
@@ -190,7 +201,8 @@ CCR 的运行配置存储在 SQLite 中。请通过 UI 添加扩展；旧版 JSO
       "id": "hello-extension",
       "enabled": true,
       "module": "/Users/you/ccr-extensions/hello-extension/index.cjs",
-      "permissions": ["trusted-code", "gateway-routes", "http-backends", "proxy-routes"],
+      "surfaces": { "apps": true, "gateway": true, "provider": false },
+      "permissions": ["trusted-code", "apps", "gateway-routes", "http-backends", "proxy-routes"],
       "config": {
         "message": "hello from my config"
       }

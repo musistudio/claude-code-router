@@ -10,6 +10,7 @@ import {
   type GatewayPluginConfig,
   type GatewayPluginPermission,
   type GatewayPluginProxyRouteConfig,
+  type GatewayPluginSurface,
   type GatewayProviderConfig,
   type InstalledBrowserApp,
   type ProviderAccountMeter,
@@ -310,17 +311,24 @@ class GatewayPluginService {
 
   private async loadConfiguredPlugin(pluginConfig: GatewayPluginConfig): Promise<void> {
     const permissions = pluginPermissionAccess(pluginConfig);
-    this.registerConfiguredCoreGateway(pluginConfig, permissions);
-    this.registerConfiguredApps(pluginConfig, permissions);
-    if ((pluginConfig.proxy?.routes ?? []).length > 0) {
-      this.requirePluginPermission(permissions, "proxy-routes", "register configured proxy routes");
+    if (pluginSurfaceEnabled(pluginConfig, "provider")) {
+      this.registerConfiguredProvider(pluginConfig, permissions);
     }
-    for (const route of pluginConfig.proxy?.routes ?? []) {
-      this.registerProxyRoute(pluginConfig.id, route);
+    if (pluginSurfaceEnabled(pluginConfig, "gateway")) {
+      this.registerConfiguredGateway(pluginConfig, permissions);
+      if ((pluginConfig.proxy?.routes ?? []).length > 0) {
+        this.requirePluginPermission(permissions, "proxy-routes", "register configured proxy routes");
+      }
+      for (const route of pluginConfig.proxy?.routes ?? []) {
+        this.registerProxyRoute(pluginConfig.id, route);
+      }
+    }
+    if (pluginSurfaceEnabled(pluginConfig, "apps")) {
+      this.registerConfiguredApps(pluginConfig, permissions);
     }
 
     const modulePath = pluginConfig.module;
-    if (!modulePath) {
+    if (!modulePath || !pluginRuntimeSurfacesEnabled(pluginConfig)) {
       return;
     }
 
@@ -335,7 +343,7 @@ class GatewayPluginService {
         : undefined;
 
     if (registration) {
-      this.applyPluginRegistration(pluginConfig.id, registration, permissions);
+      this.applyPluginRegistration(pluginConfig, registration, permissions);
     }
     if (plugin.stop) {
       this.stopHooks.push({
@@ -345,38 +353,45 @@ class GatewayPluginService {
     }
   }
 
-  private applyPluginRegistration(pluginId: string, registration: GatewayPluginRegistration, permissions: PluginPermissionAccess): void {
+  private applyPluginRegistration(pluginConfig: GatewayPluginConfig, registration: GatewayPluginRegistration, permissions: PluginPermissionAccess): void {
+    const pluginId = pluginConfig.id;
     if ((registration.apps ?? []).length > 0) {
+      this.requirePluginSurface(pluginConfig, "apps", "register browser apps");
       this.requirePluginPermission(permissions, "apps", "register browser apps");
     }
     for (const app of registration.apps ?? []) {
       this.registerApp(pluginId, app);
     }
     if ((registration.gatewayRoutes ?? []).length > 0) {
+      this.requirePluginSurface(pluginConfig, "gateway", "register gateway routes");
       this.requirePluginPermission(permissions, "gateway-routes", "register gateway routes");
     }
     for (const route of registration.gatewayRoutes ?? []) {
       this.registerGatewayRoute(pluginId, route);
     }
     if ((registration.proxyRoutes ?? []).length > 0) {
+      this.requirePluginSurface(pluginConfig, "gateway", "register proxy routes");
       this.requirePluginPermission(permissions, "proxy-routes", "register proxy routes");
     }
     for (const route of registration.proxyRoutes ?? []) {
       this.registerProxyRoute(pluginId, route);
     }
     if ((registration.providerAccountConnectors ?? []).length > 0) {
+      this.requirePluginSurface(pluginConfig, "provider", "register provider account connectors");
       this.requirePluginPermission(permissions, "provider-account-connectors", "register provider account connectors");
     }
     for (const connector of registration.providerAccountConnectors ?? []) {
       this.registerProviderAccountConnector(pluginId, connector);
     }
     if ((registration.coreGateway?.providerPlugins ?? []).length > 0) {
+      this.requirePluginSurface(pluginConfig, "provider", "register core provider plugins");
       this.requirePluginPermission(permissions, "core-provider-plugins", "register core provider plugins");
     }
     for (const providerPlugin of registration.coreGateway?.providerPlugins ?? []) {
       this.coreProviderPlugins.push(providerPlugin);
     }
     if (((registration.coreGateway?.virtualModelProfiles ?? []).length + (registration.virtualModelProfiles ?? []).length) > 0) {
+      this.requirePluginSurface(pluginConfig, "gateway", "register virtual model profiles");
       this.requirePluginPermission(permissions, "virtual-model-profiles", "register virtual model profiles");
     }
     for (const profile of [
@@ -386,6 +401,7 @@ class GatewayPluginService {
       this.virtualModelProfiles.push(profile);
     }
     if (registration.coreGateway?.config) {
+      this.requirePluginSurface(pluginConfig, "gateway", "register core gateway config");
       this.requirePluginPermission(permissions, "core-gateway-config", "register core gateway config");
       this.coreGatewayConfig = {
         ...this.coreGatewayConfig,
@@ -418,13 +434,16 @@ class GatewayPluginService {
     this.apps.push(normalized);
   }
 
-  private registerConfiguredCoreGateway(pluginConfig: GatewayPluginConfig, permissions: PluginPermissionAccess): void {
+  private registerConfiguredProvider(pluginConfig: GatewayPluginConfig, permissions: PluginPermissionAccess): void {
     if ((pluginConfig.coreGateway?.providerPlugins ?? []).length > 0) {
       this.requirePluginPermission(permissions, "core-provider-plugins", "register configured core provider plugins");
     }
     for (const providerPlugin of pluginConfig.coreGateway?.providerPlugins ?? []) {
       this.coreProviderPlugins.push(providerPlugin);
     }
+  }
+
+  private registerConfiguredGateway(pluginConfig: GatewayPluginConfig, permissions: PluginPermissionAccess): void {
     if ((pluginConfig.coreGateway?.virtualModelProfiles ?? []).length > 0) {
       this.requirePluginPermission(permissions, "virtual-model-profiles", "register configured virtual model profiles");
     }
@@ -493,30 +512,37 @@ class GatewayPluginService {
         return this.openSqliteStore(pluginConfig.id, pluginDataDir, options);
       },
       registerCoreGatewayProviderPlugin: (providerPlugin) => {
+        this.requirePluginSurface(pluginConfig, "provider", "register core provider plugins");
         this.requirePluginPermission(permissions, "core-provider-plugins", "register core provider plugins");
         this.coreProviderPlugins.push(providerPlugin);
       },
       registerCoreGatewayVirtualModelProfile: (profile) => {
+        this.requirePluginSurface(pluginConfig, "gateway", "register virtual model profiles");
         this.requirePluginPermission(permissions, "virtual-model-profiles", "register virtual model profiles");
         this.virtualModelProfiles.push(profile);
       },
       registerApp: (app) => {
+        this.requirePluginSurface(pluginConfig, "apps", "register browser apps");
         this.requirePluginPermission(permissions, "apps", "register browser apps");
         this.registerApp(pluginConfig.id, app);
       },
       registerGatewayRoute: (route) => {
+        this.requirePluginSurface(pluginConfig, "gateway", "register gateway routes");
         this.requirePluginPermission(permissions, "gateway-routes", "register gateway routes");
         this.registerGatewayRoute(pluginConfig.id, route);
       },
       registerHttpBackend: (backend) => {
+        this.requirePluginSurface(pluginConfig, "gateway", "register HTTP backends");
         this.requirePluginPermission(permissions, "http-backends", "register HTTP backends");
         return this.registerHttpBackend(pluginConfig.id, pluginDataDir, logger, permissions, backend);
       },
       registerProviderAccountConnector: (connector) => {
+        this.requirePluginSurface(pluginConfig, "provider", "register provider account connectors");
         this.requirePluginPermission(permissions, "provider-account-connectors", "register provider account connectors");
         this.registerProviderAccountConnector(pluginConfig.id, connector);
       },
       registerProxyRoute: (route) => {
+        this.requirePluginSurface(pluginConfig, "gateway", "register proxy routes");
         this.requirePluginPermission(permissions, "proxy-routes", "register proxy routes");
         this.registerProxyRoute(pluginConfig.id, route);
       }
@@ -616,6 +642,13 @@ class GatewayPluginService {
       return;
     }
     throw new Error(`Plugin ${access.pluginId} requires permission "${permission}" to ${action}.`);
+  }
+
+  private requirePluginSurface(pluginConfig: GatewayPluginConfig, surface: GatewayPluginSurface, action: string): void {
+    if (pluginSurfaceEnabled(pluginConfig, surface)) {
+      return;
+    }
+    throw new Error(`Plugin ${pluginConfig.id} has ${surface} surface disabled and cannot ${action}.`);
   }
 }
 
@@ -877,9 +910,19 @@ function providerAccountConnectorKey(pluginId: string, connectorId: string): str
   return `${pluginId.trim()}:${connectorId.trim()}`;
 }
 
+function pluginSurfaceEnabled(pluginConfig: Pick<GatewayPluginConfig, "surfaces">, surface: GatewayPluginSurface): boolean {
+  return pluginConfig.surfaces?.[surface] !== false;
+}
+
+function pluginRuntimeSurfacesEnabled(pluginConfig: Pick<GatewayPluginConfig, "surfaces">): boolean {
+  return pluginSurfaceEnabled(pluginConfig, "apps") ||
+    pluginSurfaceEnabled(pluginConfig, "gateway") ||
+    pluginSurfaceEnabled(pluginConfig, "provider");
+}
+
 function enabledPluginIds(config: AppConfig): Set<string> {
   return new Set((config.plugins ?? [])
-    .filter((plugin) => plugin.enabled !== false)
+    .filter((plugin) => plugin.enabled !== false && pluginRuntimeSurfacesEnabled(plugin))
     .map((plugin) => plugin.id));
 }
 

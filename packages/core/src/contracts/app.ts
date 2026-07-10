@@ -607,6 +607,16 @@ export type GatewayPluginAppConfig = {
   url: string;
 };
 
+export const GATEWAY_PLUGIN_SURFACE_IDS = [
+  "apps",
+  "gateway",
+  "provider"
+] as const;
+
+export type GatewayPluginSurface = typeof GATEWAY_PLUGIN_SURFACE_IDS[number];
+
+export type GatewayPluginSurfacesConfig = Partial<Record<GatewayPluginSurface, boolean>>;
+
 export const GATEWAY_PLUGIN_PERMISSION_IDS = [
   "trusted-code",
   "apps",
@@ -880,6 +890,7 @@ export type GatewayPluginConfig = {
   proxy?: {
     routes?: GatewayPluginProxyRouteConfig[];
   };
+  surfaces?: GatewayPluginSurfacesConfig;
 };
 
 export type PluginDependency = {
@@ -888,6 +899,7 @@ export type PluginDependency = {
   modulePath?: string;
   name?: string;
   permissions?: GatewayPluginPermission[];
+  surfaces?: GatewayPluginSurfacesConfig;
 };
 
 export type PluginDirectorySelection = {
@@ -898,6 +910,7 @@ export type PluginDirectorySelection = {
   modulePath: string;
   name?: string;
   permissions?: GatewayPluginPermission[];
+  surfaces?: GatewayPluginSurfacesConfig;
 };
 
 export type PluginMarketplaceEntry = {
@@ -910,6 +923,7 @@ export type PluginMarketplaceEntry = {
   modulePath: string;
   name: string;
   permissions?: GatewayPluginPermission[];
+  surfaces?: GatewayPluginSurfacesConfig;
 };
 
 export type ProxyRuntimeConfig = {

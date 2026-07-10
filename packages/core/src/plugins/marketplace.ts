@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { DATADIR } from "@ccr/core/config/constants";
-import { GATEWAY_PLUGIN_PERMISSION_IDS, type GatewayPluginAppConfig, type GatewayPluginPermission, type PluginDependency, type PluginMarketplaceEntry } from "@ccr/core/contracts/app";
+import { GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, type GatewayPluginAppConfig, type GatewayPluginPermission, type GatewayPluginSurface, type PluginDependency, type PluginMarketplaceEntry } from "@ccr/core/contracts/app";
 import { fetchWithSystemProxy } from "@ccr/core/proxy/system-proxy-fetch";
 
 type MarketplaceCache = {
@@ -137,18 +137,23 @@ async function normalizeMarketplaceEntry(
   const description = readString(value.description) || "";
   const moduleValue = readString(value.moduleUrl) || readString(value.module) || readString(value.modulePath) || readString(value.path);
   const integrity = readString(value.integrity) || readString(value.sha256) || readString(value.hash);
-  if (!id || !name || !moduleValue) {
+  const apps = parsePluginApps(value.apps) ?? [];
+  if (!id || !name || (!moduleValue && apps.length === 0)) {
     return undefined;
   }
 
-  const moduleUrl = resolveRemoteMarketplaceUrl(moduleValue, manifestUrl);
-  const modulePath = await cachedMarketplaceModulePath(id, moduleUrl, integrity, options);
-  if (!modulePath) {
-    return undefined;
+  const moduleUrl = moduleValue ? resolveRemoteMarketplaceUrl(moduleValue, manifestUrl) : "";
+  let modulePath = "";
+  if (moduleUrl) {
+    const cachedModulePath = await cachedMarketplaceModulePath(id, moduleUrl, integrity, options);
+    if (!cachedModulePath) {
+      return undefined;
+    }
+    modulePath = cachedModulePath;
   }
 
   return {
-    apps: parsePluginApps(value.apps),
+    ...(apps.length ? { apps } : {}),
     capabilities: readStringArray(value.capabilities),
     dependencies: await parsePluginDependencies(value.dependencies ?? value.pluginDependencies, manifestUrl, options),
     description,
@@ -156,7 +161,8 @@ async function normalizeMarketplaceEntry(
     ...(integrity ? { integrity } : {}),
     modulePath,
     name,
-    permissions: parsePluginPermissions(value.permissions)
+    permissions: parsePluginPermissions(value.permissions),
+    surfaces: parsePluginSurfaces(value.surfaces ?? value.surface)
   };
 }
 
@@ -214,7 +220,8 @@ async function parsePluginDependency(
     ...(integrity ? { integrity } : {}),
     ...(modulePath ? { modulePath } : {}),
     ...(name ? { name } : {}),
-    permissions: parsePluginPermissions(value.permissions)
+    permissions: parsePluginPermissions(value.permissions),
+    surfaces: parsePluginSurfaces(value.surfaces ?? value.surface)
   };
 }
 
@@ -394,6 +401,67 @@ function parsePluginPermissions(value: unknown): GatewayPluginPermission[] | und
   return permissions;
 }
 
+function parsePluginSurfaces(value: unknown): PluginMarketplaceEntry["surfaces"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const surfaces: PluginMarketplaceEntry["surfaces"] = {};
+  const setSurface = (rawValue: unknown, enabled = true): boolean => {
+    const surface = normalizePluginSurface(rawValue);
+    if (!surface) {
+      return false;
+    }
+    surfaces[surface] = enabled;
+    return true;
+  };
+
+  if (typeof value === "string") {
+    if (isAllPluginSurfacesKey(value)) {
+      for (const surface of GATEWAY_PLUGIN_SURFACE_IDS) {
+        surfaces[surface] = true;
+      }
+      return surfaces;
+    }
+    if (!setSurface(value)) {
+      return undefined;
+    }
+    GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+      surfaces[surface] ??= false;
+    });
+  } else if (Array.isArray(value)) {
+    let matched = false;
+    for (const item of value) {
+      if (typeof item === "string" && isAllPluginSurfacesKey(item)) {
+        for (const surface of GATEWAY_PLUGIN_SURFACE_IDS) {
+          surfaces[surface] = true;
+        }
+        matched = true;
+      } else {
+        matched = setSurface(item) || matched;
+      }
+    }
+    if (!matched) {
+      return undefined;
+    }
+    GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+      surfaces[surface] ??= false;
+    });
+  } else if (isRecord(value)) {
+    for (const [key, enabled] of Object.entries(value)) {
+      if (isAllPluginSurfacesKey(key)) {
+        for (const surface of GATEWAY_PLUGIN_SURFACE_IDS) {
+          surfaces[surface] = enabled !== false;
+        }
+      } else {
+        setSurface(key, enabled !== false);
+      }
+    }
+  }
+
+  return Object.keys(surfaces).length > 0 ? surfaces : undefined;
+}
+
 function normalizePluginPermission(value: unknown): GatewayPluginPermission | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -401,6 +469,56 @@ function normalizePluginPermission(value: unknown): GatewayPluginPermission | un
   const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, "-");
   const mapped = pluginPermissionAlias(normalized);
   return gatewayPluginPermissionIdSet.has(mapped) ? mapped as GatewayPluginPermission : undefined;
+}
+
+function normalizePluginSurface(value: unknown): GatewayPluginSurface | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = pluginSurfaceAlias(value.trim().toLowerCase().replace(/[\s_]+/g, "-"));
+  return (GATEWAY_PLUGIN_SURFACE_IDS as readonly string[]).includes(normalized) ? normalized as GatewayPluginSurface : undefined;
+}
+
+function pluginSurfaceAlias(value: string): string {
+  switch (value) {
+    case "app":
+    case "browser-app":
+    case "browser-apps":
+    case "ui":
+      return "apps";
+    case "gateway-route":
+    case "route":
+    case "routes":
+    case "gateway-routes":
+    case "proxy-route":
+    case "proxy":
+    case "proxy-routes":
+    case "http-backend":
+    case "http-backends":
+    case "backend":
+    case "backends":
+    case "core-gateway":
+    case "core-gateway-config":
+    case "fusion-profile":
+    case "fusion-profiles":
+    case "virtual-model":
+    case "virtual-models":
+    case "virtual-model-profile":
+    case "virtual-model-profiles":
+    case "request":
+    case "requests":
+      return "gateway";
+    case "core-provider-plugin":
+    case "provider-plugin":
+    case "provider-plugins":
+    case "provider-account":
+    case "provider-account-connector":
+    case "provider-account-connectors":
+    case "providers":
+      return "provider";
+    default:
+      return value;
+  }
 }
 
 function pluginPermissionAlias(value: string): string {
@@ -480,6 +598,11 @@ function isAllPluginPermissionsKey(value: string): boolean {
   return normalized === "*" || normalized === "all";
 }
 
+function isAllPluginSurfacesKey(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "*" || normalized === "all";
+}
+
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
@@ -504,10 +627,12 @@ function cloneMarketplaceEntry(entry: PluginMarketplaceEntry): PluginMarketplace
     dependencies: entry.dependencies.map((dependency) => ({
       ...dependency,
       integrity: dependency.integrity,
-      permissions: dependency.permissions ? [...dependency.permissions] : undefined
+      permissions: dependency.permissions ? [...dependency.permissions] : undefined,
+      surfaces: dependency.surfaces ? { ...dependency.surfaces } : undefined
     })),
     integrity: entry.integrity,
-    permissions: entry.permissions ? [...entry.permissions] : undefined
+    permissions: entry.permissions ? [...entry.permissions] : undefined,
+    surfaces: entry.surfaces ? { ...entry.surfaces } : undefined
   };
 }
 

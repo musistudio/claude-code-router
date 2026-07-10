@@ -4,7 +4,7 @@ import { loadPersistedAppConfig, replacePersistedAppConfig } from "@ccr/core/con
 import { loadPersistedApiKeys, replacePersistedApiKeys } from "@ccr/core/config/api-key-store";
 import { CONFIG_FILE, GATEWAY_CONFIG_FILE, LEGACY_CONFIG_FILE, LEGACY_WINDOWS_CONFIG_FILE } from "@ccr/core/config/constants";
 import { normalizeCodexProviderAccountConfig } from "@ccr/core/agents/local-providers/codex";
-import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, GATEWAY_PLUGIN_PERMISSION_IDS, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "@ccr/core/contracts/app";
+import { CLAUDE_CODE_DEFAULT_ENV, CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, DEFAULT_OVERVIEW_WIDGETS, DEFAULT_TRAY_COMPONENT_VARIANTS, DEFAULT_TRAY_WIDGETS, DEFAULT_TRAY_WINDOW_MODULES, GATEWAY_PLUGIN_PERMISSION_IDS, GATEWAY_PLUGIN_SURFACE_IDS, OVERVIEW_WIDGET_SIZE_VALUES, ROUTER_FALLBACK_MAX_RETRY_COUNT, TRAY_SINGLETON_WIDGET_TYPES, TRAY_TOP_WIDGET_TYPES, TRAY_WINDOW_MODULE_IDS, enforceSingleEnabledGlobalProfilePerAgent } from "@ccr/core/contracts/app";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
 import type {
@@ -22,6 +22,7 @@ import type {
   GatewayPluginAppConfig,
   GatewayPluginProxyRouteConfig,
   GatewayPluginPermission,
+  GatewayPluginSurface,
   GatewayProviderCapability,
   GatewayProviderConfig,
   GatewayProviderProtocol,
@@ -1958,6 +1959,7 @@ function parseGatewayPlugins(value: unknown): GatewayPluginConfig[] | undefined 
       const proxyRoutes = parseGatewayPluginProxyRoutes(isObject(item.proxy) ? item.proxy.routes : undefined);
       const coreGateway = parseGatewayPluginCoreGateway(item.coreGateway);
       const permissions = parseGatewayPluginPermissions(item.permissions);
+      const surfaces = parseGatewayPluginSurfaces(item.surfaces ?? item.surface);
 
       return {
         ...(apps ? { apps } : {}),
@@ -1967,12 +1969,129 @@ function parseGatewayPlugins(value: unknown): GatewayPluginConfig[] | undefined 
         id,
         ...(modulePath ? { module: modulePath } : {}),
         ...(permissions !== undefined ? { permissions } : {}),
-        ...(proxyRoutes ? { proxy: { routes: proxyRoutes } } : {})
+        ...(proxyRoutes ? { proxy: { routes: proxyRoutes } } : {}),
+        ...(surfaces ? { surfaces } : {})
       };
     })
     .filter((item): item is GatewayPluginConfig => Boolean(item));
 
   return plugins.length ? plugins : undefined;
+}
+
+function parseGatewayPluginSurfaces(value: unknown): GatewayPluginConfig["surfaces"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const surfaces: GatewayPluginConfig["surfaces"] = {};
+  const setSurface = (rawValue: unknown, enabled = true): boolean => {
+    const surface = normalizeGatewayPluginSurface(rawValue);
+    if (!surface) {
+      return false;
+    }
+    surfaces[surface] = enabled;
+    return true;
+  };
+
+  if (typeof value === "string") {
+    if (isAllGatewayPluginSurfacesKey(value)) {
+      for (const surface of GATEWAY_PLUGIN_SURFACE_IDS) {
+        surfaces[surface] = true;
+      }
+      return surfaces;
+    }
+    if (!setSurface(value)) {
+      return undefined;
+    }
+    GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+      surfaces[surface] ??= false;
+    });
+  } else if (Array.isArray(value)) {
+    let matched = false;
+    for (const item of value) {
+      if (typeof item === "string" && isAllGatewayPluginSurfacesKey(item)) {
+        for (const surface of GATEWAY_PLUGIN_SURFACE_IDS) {
+          surfaces[surface] = true;
+        }
+        matched = true;
+      } else {
+        matched = setSurface(item) || matched;
+      }
+    }
+    if (!matched) {
+      return undefined;
+    }
+    GATEWAY_PLUGIN_SURFACE_IDS.forEach((surface) => {
+      surfaces[surface] ??= false;
+    });
+  } else if (isObject(value)) {
+    for (const [key, enabled] of Object.entries(value)) {
+      if (isAllGatewayPluginSurfacesKey(key)) {
+        for (const surface of GATEWAY_PLUGIN_SURFACE_IDS) {
+          surfaces[surface] = enabled !== false;
+        }
+      } else {
+        setSurface(key, enabled !== false);
+      }
+    }
+  }
+
+  return Object.keys(surfaces).length > 0 ? surfaces : undefined;
+}
+
+function normalizeGatewayPluginSurface(value: unknown): GatewayPluginSurface | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = gatewayPluginSurfaceAlias(value.trim().toLowerCase().replace(/[\s_]+/g, "-"));
+  return (GATEWAY_PLUGIN_SURFACE_IDS as readonly string[]).includes(normalized) ? normalized as GatewayPluginSurface : undefined;
+}
+
+function gatewayPluginSurfaceAlias(value: string): string {
+  switch (value) {
+    case "app":
+    case "browser-app":
+    case "browser-apps":
+    case "ui":
+      return "apps";
+    case "gateway-route":
+    case "route":
+    case "routes":
+    case "gateway-routes":
+    case "proxy-route":
+    case "proxy":
+    case "proxy-routes":
+    case "http-backend":
+    case "http-backends":
+    case "backend":
+    case "backends":
+    case "core-gateway":
+    case "core-gateway-config":
+    case "fusion-profile":
+    case "fusion-profiles":
+    case "virtual-model":
+    case "virtual-models":
+    case "virtual-model-profile":
+    case "virtual-model-profiles":
+    case "request":
+    case "requests":
+      return "gateway";
+    case "core-provider-plugin":
+    case "provider-plugin":
+    case "provider-plugins":
+    case "provider-account":
+    case "provider-account-connector":
+    case "provider-account-connectors":
+    case "providers":
+      return "provider";
+    default:
+      return value;
+  }
+}
+
+function isAllGatewayPluginSurfacesKey(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "*" || normalized === "all";
 }
 
 function parseGatewayPluginPermissions(value: unknown): GatewayPluginPermission[] | undefined {
