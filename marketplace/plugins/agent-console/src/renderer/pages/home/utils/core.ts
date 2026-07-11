@@ -320,13 +320,26 @@ export type AgentProviderCapabilities = {
   protocolVersions?: string[];
   reasoningEfforts?: ChatAgentEffort[];
   resumeSession?: boolean;
+  runtimeAdapter?: string;
   sessionHistory?: boolean;
   sessions?: boolean;
   slashCommands?: AgentProviderSlashCommand[];
   speeds?: ChatAgentSpeed[];
+  subagents?: AgentProviderSubagentCapabilities;
   toolEvents?: boolean;
   transports?: string[];
+  wireProtocol?: string;
 };
+
+export type AgentProviderSubagentCapabilities = {
+  description?: string;
+  emulated?: boolean;
+  mode?: AgentSubagentProviderMode;
+  native?: boolean;
+};
+
+export type AgentSubagentProviderMode = "emulated" | "native" | "none";
+export type AgentSubagentRuntimeMode = "auto" | "emulated" | "native";
 
 export type AgentProviderSlashCommand = {
   category?: string;
@@ -351,6 +364,7 @@ export type RawAgentProviderInfo = {
 
 export type ActiveStream = {
   id: string;
+  runId?: string;
   running: boolean;
   streamKey: number;
 };
@@ -538,27 +552,76 @@ export type AgentProviderSettingsForm = {
 
 export type ConfiguredSubagentSettings = {
   approvalMode?: ChatAgentApprovalMode;
+  budget?: AgentSubagentBudget;
+  capabilities: string[];
+  contextScope?: string;
   description?: string;
   effort?: ChatAgentEffort;
   id: string;
   label: string;
   mcpServers: AgentMcpServerMap;
   model?: string;
+  outputContract?: string;
   providerId: ChatAgentProviderId;
+  qualityGates: string[];
+  runtimeMode?: AgentSubagentRuntimeMode;
   speed?: ChatAgentSpeed;
   systemPrompt: string;
   timeoutMs?: number;
 };
 
+export type AgentSubagentBudget = {
+  maxDurationMs?: number;
+  maxTokens?: number;
+  maxToolCalls?: number;
+};
+
+export type AgentSubagentRuntimeDefinition = {
+  approvalMode?: ChatAgentApprovalMode;
+  budget?: AgentSubagentBudget;
+  capabilities: string[];
+  contextScope?: string;
+  description?: string;
+  effort?: ChatAgentEffort;
+  id: string;
+  label: string;
+  mcpServerIds: string[];
+  model?: string;
+  outputContract?: string;
+  providerId: ChatAgentProviderId;
+  providerLabel?: string;
+  providerSubagentMode?: AgentSubagentProviderMode;
+  qualityGates: string[];
+  runtimeMode: AgentSubagentRuntimeMode;
+  speed?: ChatAgentSpeed;
+  systemPrompt: string;
+  timeoutMs?: number;
+};
+
+export type AgentSubagentRuntimePayload = {
+  instructions: string;
+  mcpServers?: AgentMcpServerMap;
+  subagents: AgentSubagentRuntimeDefinition[];
+  version: 1;
+};
+
 export type SubagentSettingsForm = {
   approvalMode: ChatAgentApprovalMode;
+  capabilitiesText: string;
+  contextScope: string;
   description: string;
   effort: ChatAgentEffort;
   id: string;
   label: string;
+  maxDurationMs: string;
+  maxTokens: string;
+  maxToolCalls: string;
   model: string;
   originalId?: string;
+  outputContract: string;
   providerId: ChatAgentProviderId;
+  qualityGatesText: string;
+  runtimeMode: AgentSubagentRuntimeMode;
   speed: ChatAgentSpeed;
   systemPrompt: string;
   toolsText: string;
@@ -789,6 +852,7 @@ export function normalizeAgentProviderCapabilities(value: unknown): AgentProvide
       part === "raw"
     ));
   const slashCommands = normalizeAgentProviderSlashCommands(record.slashCommands ?? record.slash_commands ?? record.commands);
+  const subagents = normalizeAgentProviderSubagentCapabilities(record.subagents ?? record.subagentCapabilities ?? record.subagent_capabilities ?? record);
 
   return {
     approvalModes: approvalModes.length ? approvalModes : undefined,
@@ -803,13 +867,44 @@ export function normalizeAgentProviderCapabilities(value: unknown): AgentProvide
     protocolVersions: normalizeStringArray(record.protocolVersions),
     reasoningEfforts: hasReasoningEfforts ? reasoningEfforts : undefined,
     resumeSession: typeof record.resumeSession === "boolean" ? record.resumeSession : undefined,
+    runtimeAdapter: getTrimmedString(record.runtimeAdapter ?? record.runtime_adapter ?? record.adapter) || undefined,
     sessionHistory: typeof record.sessionHistory === "boolean" ? record.sessionHistory : undefined,
     sessions: typeof record.sessions === "boolean" ? record.sessions : undefined,
     slashCommands: slashCommands.length ? slashCommands : undefined,
     speeds: hasSpeeds ? speeds : undefined,
+    subagents,
     toolEvents: typeof record.toolEvents === "boolean" ? record.toolEvents : undefined,
-    transports: normalizeStringArray(record.transports)
+    transports: normalizeStringArray(record.transports),
+    wireProtocol: getTrimmedString(record.wireProtocol ?? record.wire_protocol) || undefined
   };
+}
+
+function normalizeAgentProviderSubagentCapabilities(value: unknown): AgentProviderSubagentCapabilities | undefined {
+  const record = getRecord(value);
+  const mode = normalizeAgentSubagentProviderMode(record.mode ?? record.subagentMode ?? record.subagent_mode);
+  const native = normalizeOptionalBoolean(record.native ?? record.nativeSubagents ?? record.native_subagents);
+  const emulated = normalizeOptionalBoolean(record.emulated ?? record.emulatedSubagents ?? record.emulated_subagents);
+  const description = getTrimmedString(record.description ?? record.subagentDescription ?? record.subagent_description);
+  const resolvedMode = mode ?? (native ? "native" : emulated ? "emulated" : undefined);
+  if (!resolvedMode && native === undefined && emulated === undefined && !description) return undefined;
+  return {
+    description: description || undefined,
+    emulated,
+    mode: resolvedMode,
+    native
+  };
+}
+
+function normalizeAgentSubagentProviderMode(value: unknown): AgentSubagentProviderMode | undefined {
+  const mode = getTrimmedString(value);
+  return mode === "native" || mode === "emulated" || mode === "none" ? mode : undefined;
+}
+
+function normalizeOptionalBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  if (value === "true" || value === "1") return true;
+  if (value === "false" || value === "0") return false;
+  return undefined;
 }
 
 export function normalizeAgentProviderSlashCommands(value: unknown): AgentProviderSlashCommand[] {
@@ -934,6 +1029,24 @@ export function getAgentProviderConnectionMode(provider: AgentProviderOption | u
     return "remote";
   }
   return "local";
+}
+
+export function getAgentProviderSubagentMode(provider: AgentProviderOption | undefined | null): AgentSubagentProviderMode {
+  const mode = provider?.capabilities?.subagents?.mode;
+  if (mode === "native" || mode === "emulated" || mode === "none") return mode;
+  if (provider?.capabilities?.subagents?.native) return "native";
+  if (provider?.capabilities?.subagents?.emulated) return "emulated";
+  if (provider?.id === "claude-code") return "native";
+  if (provider?.id === "codex") return "emulated";
+  return "none";
+}
+
+export function getAgentProviderRuntimeAdapter(provider: AgentProviderOption | undefined | null): string {
+  return provider?.capabilities?.runtimeAdapter || provider?.kind || "";
+}
+
+export function getAgentProviderWireProtocol(provider: AgentProviderOption | undefined | null): string {
+  return provider?.capabilities?.wireProtocol || provider?.capabilities?.protocolVersions?.[0] || "";
 }
 
 export function getAgentProviderLogoDataUrl(providers: AgentProviderOption[], providerId: ChatAgentProviderId | undefined): string | undefined {
@@ -2325,15 +2438,19 @@ export function normalizeConfiguredSubagent(value: unknown): ConfiguredSubagentS
   const label = getTrimmedString(record.label);
   const description = getTrimmedString(record.description);
   const mcpServers = normalizeAgentMcpServerMap(record.mcpServers ?? record.tools);
+  const budget = normalizeAgentSubagentBudget(record.budget ?? record);
   const systemPrompt = typeof record.systemPrompt === "string"
     ? record.systemPrompt.trim()
     : typeof record.instructions === "string"
       ? record.instructions.trim()
       : "";
-  if (!id || !providerId || !label || !description || !systemPrompt || !Object.keys(mcpServers).length) return null;
+  if (!id || !providerId || !label || !description || !systemPrompt) return null;
 
   return {
     approvalMode: normalizeOptionalAgentApprovalMode(record.approvalMode ?? record.permissionMode),
+    budget,
+    capabilities: normalizeSubagentTextList(record.capabilities ?? record.skills),
+    contextScope: getTrimmedString(record.contextScope ?? record.context_scope ?? record.context) || undefined,
     description,
     effort: isChatAgentEffort(getTrimmedString(record.effort ?? record.reasoningEffort))
       ? getTrimmedString(record.effort ?? record.reasoningEffort) as ChatAgentEffort
@@ -2342,7 +2459,10 @@ export function normalizeConfiguredSubagent(value: unknown): ConfiguredSubagentS
     label,
     mcpServers,
     model: getTrimmedString(record.model) || undefined,
+    outputContract: getTrimmedString(record.outputContract ?? record.output_contract) || undefined,
     providerId,
+    qualityGates: normalizeSubagentTextList(record.qualityGates ?? record.quality_gates ?? record.gates),
+    runtimeMode: normalizeAgentSubagentRuntimeMode(record.runtimeMode ?? record.runtime_mode),
     speed: isChatAgentSpeed(getTrimmedString(record.speed ?? record.responseSpeed))
       ? getTrimmedString(record.speed ?? record.responseSpeed) as ChatAgentSpeed
       : undefined,
@@ -2350,9 +2470,44 @@ export function normalizeConfiguredSubagent(value: unknown): ConfiguredSubagentS
   };
 }
 
+function normalizeAgentSubagentBudget(value: unknown): AgentSubagentBudget | undefined {
+  const record = getRecord(value);
+  const maxDurationMs = getPositiveNumber(record.maxDurationMs ?? record.max_duration_ms);
+  const maxTokens = getPositiveNumber(record.maxTokens ?? record.max_tokens);
+  const maxToolCalls = getPositiveNumber(record.maxToolCalls ?? record.max_tool_calls);
+  const budget: AgentSubagentBudget = {
+    ...(maxDurationMs ? { maxDurationMs } : {}),
+    ...(maxTokens ? { maxTokens } : {}),
+    ...(maxToolCalls ? { maxToolCalls } : {})
+  };
+  return budget.maxDurationMs || budget.maxTokens || budget.maxToolCalls ? budget : undefined;
+}
+
+function normalizeSubagentTextList(value: unknown): string[] {
+  if (Array.isArray(value)) return normalizeStringArray(value);
+  return splitSubagentTextList(getTrimmedString(value));
+}
+
+function splitSubagentTextList(value: string): string[] {
+  const seen = new Set<string>();
+  const items: string[] = [];
+  for (const rawItem of value.split(/[\n,]+/g)) {
+    const item = rawItem.trim();
+    if (!item || seen.has(item)) continue;
+    seen.add(item);
+    items.push(item);
+  }
+  return items;
+}
+
 function normalizeOptionalAgentApprovalMode(value: unknown): ChatAgentApprovalMode | undefined {
   const mode = getTrimmedString(value);
   return mode === "request" || mode === "auto" || mode === "full" ? mode : undefined;
+}
+
+function normalizeAgentSubagentRuntimeMode(value: unknown): AgentSubagentRuntimeMode | undefined {
+  const mode = getTrimmedString(value);
+  return mode === "auto" || mode === "native" || mode === "emulated" ? mode : undefined;
 }
 
 export function normalizeAgentMcpServerMap(value: unknown): AgentMcpServerMap {
@@ -2594,13 +2749,21 @@ export function createSubagentSettingsForm(subagent?: ConfiguredSubagentSettings
   const providerId = subagent?.providerId ?? providers[0]?.id ?? "codex";
   return getAdaptedSubagentSettingsForm({
     approvalMode: subagent?.approvalMode ?? "request",
+    capabilitiesText: stringifySubagentTextList(subagent?.capabilities),
+    contextScope: subagent?.contextScope ?? "",
     description: subagent?.description ?? "",
     effort: subagent?.effort ?? "medium",
     id: subagent?.id ?? getUniqueAgentProviderId("reviewer", []),
     label: subagent?.label ?? "",
+    maxDurationMs: subagent?.budget?.maxDurationMs ? String(subagent.budget.maxDurationMs) : "",
+    maxTokens: subagent?.budget?.maxTokens ? String(subagent.budget.maxTokens) : "",
+    maxToolCalls: subagent?.budget?.maxToolCalls ? String(subagent.budget.maxToolCalls) : "",
     model: subagent?.model ?? "",
     originalId: subagent?.id,
+    outputContract: subagent?.outputContract ?? "",
     providerId,
+    qualityGatesText: stringifySubagentTextList(subagent?.qualityGates),
+    runtimeMode: subagent?.runtimeMode ?? "auto",
     speed: subagent?.speed ?? "default",
     systemPrompt: subagent?.systemPrompt ?? "",
     toolsText: stringifySubagentTools(subagent?.mcpServers)
@@ -2610,12 +2773,20 @@ export function createSubagentSettingsForm(subagent?: ConfiguredSubagentSettings
 export function createBlankSubagentSettingsForm(subagents: ConfiguredSubagentSettings[], providers: AgentProviderOption[]): SubagentSettingsForm {
   return getAdaptedSubagentSettingsForm({
     approvalMode: "request",
+    capabilitiesText: "",
+    contextScope: "",
     description: "",
     effort: "medium",
     id: getUniqueAgentProviderId("reviewer", subagents.map((subagent) => subagent.id)),
     label: "",
+    maxDurationMs: "",
+    maxTokens: "",
+    maxToolCalls: "",
     model: "",
+    outputContract: "",
     providerId: providers[0]?.id ?? "codex",
+    qualityGatesText: "",
+    runtimeMode: "auto",
     speed: "default",
     systemPrompt: "",
     toolsText: ""
@@ -2651,6 +2822,7 @@ export function getAdaptedSubagentSettingsForm(form: SubagentSettingsForm, provi
     effort,
     model,
     providerId,
+    runtimeMode: normalizeAgentSubagentRuntimeMode(form.runtimeMode) ?? "auto",
     speed
   };
 }
@@ -2658,6 +2830,150 @@ export function getAdaptedSubagentSettingsForm(form: SubagentSettingsForm, provi
 function stringifySubagentTools(mcpServers: AgentMcpServerMap | undefined): string {
   if (!mcpServers || Object.keys(mcpServers).length === 0) return "";
   return JSON.stringify({ mcpServers }, null, 2);
+}
+
+function stringifySubagentTextList(items: string[] | undefined): string {
+  return items?.length ? items.join("\n") : "";
+}
+
+export function buildAgentSubagentRuntimePayload(
+  configuredSubagents: ConfiguredSubagentSettings[],
+  selectedSubagentIds: string[],
+  providers: AgentProviderOption[]
+): AgentSubagentRuntimePayload | null {
+  const selectedSubagents = getSelectedConfiguredSubagents(configuredSubagents, selectedSubagentIds);
+  if (!selectedSubagents.length) return null;
+
+  const usedMcpServerIds = new Set<string>();
+  const mcpServers: AgentMcpServerMap = {};
+  const subagents = selectedSubagents.map((subagent) => {
+    const mcpServerIds: string[] = [];
+    for (const [serverId, server] of Object.entries(subagent.mcpServers ?? {})) {
+      const runtimeServerId = getRuntimeSubagentMcpServerId(subagent.id, serverId, usedMcpServerIds);
+      usedMcpServerIds.add(runtimeServerId);
+      mcpServerIds.push(runtimeServerId);
+      mcpServers[runtimeServerId] = {
+        ...server,
+        description: getRuntimeSubagentMcpDescription(subagent, server.description)
+      };
+    }
+
+    const provider = providers.find((option) => option.id === subagent.providerId);
+    return {
+      approvalMode: subagent.approvalMode,
+      budget: subagent.budget,
+      capabilities: subagent.capabilities,
+      contextScope: subagent.contextScope,
+      description: subagent.description,
+      effort: subagent.effort,
+      id: subagent.id,
+      label: subagent.label,
+      mcpServerIds,
+      model: subagent.model,
+      outputContract: subagent.outputContract,
+      providerId: subagent.providerId,
+      providerLabel: provider?.label,
+      providerSubagentMode: getAgentProviderSubagentMode(provider),
+      qualityGates: subagent.qualityGates,
+      runtimeMode: subagent.runtimeMode ?? "auto",
+      speed: subagent.speed,
+      systemPrompt: subagent.systemPrompt,
+      timeoutMs: subagent.timeoutMs
+    };
+  });
+
+  return {
+    instructions: buildAgentSubagentRuntimeInstructions(subagents),
+    ...(Object.keys(mcpServers).length ? { mcpServers } : {}),
+    subagents,
+    version: 1
+  };
+}
+
+function getSelectedConfiguredSubagents(configuredSubagents: ConfiguredSubagentSettings[], selectedSubagentIds: string[]) {
+  const selectedIds = new Set<string>();
+  const selectedSubagents: ConfiguredSubagentSettings[] = [];
+
+  for (const subagentId of selectedSubagentIds) {
+    if (selectedIds.has(subagentId)) continue;
+    const subagent = configuredSubagents.find((candidate) => candidate.id === subagentId);
+    if (!subagent) continue;
+    selectedIds.add(subagentId);
+    selectedSubagents.push(subagent);
+  }
+
+  return selectedSubagents;
+}
+
+function getRuntimeSubagentMcpServerId(subagentId: string, serverId: string, usedIds: Set<string>) {
+  const baseId = `${sanitizeRuntimeIdentifier(subagentId)}__${sanitizeRuntimeIdentifier(serverId)}`.slice(0, 80) || "subagent__mcp";
+  if (!usedIds.has(baseId)) return baseId;
+
+  for (let index = 2; index < 1000; index += 1) {
+    const nextId = `${baseId}_${index}`;
+    if (!usedIds.has(nextId)) return nextId;
+  }
+
+  return `${baseId}_${Date.now()}`;
+}
+
+function sanitizeRuntimeIdentifier(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, "_")
+    .replace(/^_+/, "")
+    .replace(/_+$/g, "") || "item";
+}
+
+function getRuntimeSubagentMcpDescription(subagent: ConfiguredSubagentSettings, description: string | undefined) {
+  const prefix = `Agent Console subagent ${subagent.label}`;
+  const trimmedDescription = description?.trim();
+  return trimmedDescription ? `${prefix}: ${trimmedDescription}` : `${prefix} scoped tool server.`;
+}
+
+function buildAgentSubagentRuntimeInstructions(subagents: AgentSubagentRuntimeDefinition[]) {
+  const lines = [
+    "<agent-console-subagents>",
+    "Agent Console selected subagents are available for this task.",
+    "Claude Code adaptation: use the native Agent/Task subagent capability when it is available. If a selected subagent has a model, start the delegated prompt with <CCR-SUBAGENT-MODEL>Provider/model</CCR-SUBAGENT-MODEL> on its own first line, replacing Provider/model with the configured model below.",
+    "Codex adaptation: the detected Codex CLI has no native subagent flag, so emulate delegation by following the selected subagent profile and using its listed MCP servers.",
+    ""
+  ];
+
+  subagents.forEach((subagent, index) => {
+    lines.push(`Subagent ${index + 1}: ${subagent.id} (${subagent.label})`);
+    lines.push(`Provider: ${subagent.providerLabel || subagent.providerId}`);
+    if (subagent.model) lines.push(`Model: ${subagent.model}`);
+    if (subagent.effort) lines.push(`Effort: ${subagent.effort}`);
+    if (subagent.speed) lines.push(`Speed: ${subagent.speed}`);
+    if (subagent.approvalMode) lines.push(`Approval mode: ${subagent.approvalMode}`);
+    lines.push(`Runtime mode: ${subagent.runtimeMode}`);
+    lines.push(`Provider subagent mode: ${subagent.providerSubagentMode ?? "none"}`);
+    lines.push(`Capabilities: ${subagent.capabilities.length ? subagent.capabilities.join(", ") : "unspecified"}`);
+    if (subagent.contextScope) lines.push(`Context scope: ${subagent.contextScope}`);
+    const budget = formatSubagentBudget(subagent.budget);
+    if (budget) lines.push(`Budget: ${budget}`);
+    lines.push(`Description: ${subagent.description || "No description provided."}`);
+    if (subagent.outputContract) lines.push(`Output contract: ${subagent.outputContract}`);
+    lines.push(`Quality gates: ${subagent.qualityGates.length ? subagent.qualityGates.join("; ") : "none"}`);
+    lines.push(`MCP servers: ${subagent.mcpServerIds.length ? subagent.mcpServerIds.join(", ") : "none"}`);
+    lines.push("System prompt:");
+    lines.push(subagent.systemPrompt);
+    lines.push("");
+  });
+
+  lines.push("</agent-console-subagents>");
+  return lines.join("\n").trim();
+}
+
+function formatSubagentBudget(budget: AgentSubagentBudget | undefined): string {
+  if (!budget) return "";
+  return [
+    budget.maxDurationMs ? `maxDurationMs=${budget.maxDurationMs}` : "",
+    budget.maxTokens ? `maxTokens=${budget.maxTokens}` : "",
+    budget.maxToolCalls ? `maxToolCalls=${budget.maxToolCalls}` : ""
+  ].filter(Boolean).join(", ");
 }
 
 export function getConfiguredSubagentFromForm(
@@ -2694,26 +3010,64 @@ export function getConfiguredSubagentFromForm(
   if (toolsResult.error) {
     return { error: toolsResult.error, subagent: null };
   }
+  const { budget, error: budgetError } = getSubagentBudgetFromForm(form, t);
+  if (budgetError) {
+    return { error: budgetError, subagent: null };
+  }
 
   return {
     error: null,
     subagent: {
       approvalMode: form.approvalMode,
+      budget,
+      capabilities: splitSubagentTextList(form.capabilitiesText),
+      contextScope: form.contextScope.trim() || undefined,
       description: form.description.trim() || undefined,
       effort,
       id,
       label,
       mcpServers: toolsResult.mcpServers,
       model: model || undefined,
+      outputContract: form.outputContract.trim() || undefined,
       providerId,
+      qualityGates: splitSubagentTextList(form.qualityGatesText),
+      runtimeMode: normalizeAgentSubagentRuntimeMode(form.runtimeMode) ?? "auto",
       speed: speedOptions.length && speed === "fast" ? speed : undefined,
       systemPrompt
     }
   };
 }
 
+function getSubagentBudgetFromForm(form: SubagentSettingsForm, t: TFunction): { budget: AgentSubagentBudget | undefined; error: string | null } {
+  const maxDurationMs = parseOptionalPositiveInteger(form.maxDurationMs);
+  const maxTokens = parseOptionalPositiveInteger(form.maxTokens);
+  const maxToolCalls = parseOptionalPositiveInteger(form.maxToolCalls);
+  if (
+    (form.maxDurationMs.trim() && !maxDurationMs) ||
+    (form.maxTokens.trim() && !maxTokens) ||
+    (form.maxToolCalls.trim() && !maxToolCalls)
+  ) {
+    return { budget: undefined, error: t("settings.subagents.budgetInvalid") };
+  }
+  const budget: AgentSubagentBudget = {
+    ...(maxDurationMs ? { maxDurationMs } : {}),
+    ...(maxTokens ? { maxTokens } : {}),
+    ...(maxToolCalls ? { maxToolCalls } : {})
+  };
+  return budget.maxDurationMs || budget.maxTokens || budget.maxToolCalls
+    ? { budget, error: null }
+    : { budget: undefined, error: null };
+}
+
+function parseOptionalPositiveInteger(value: string): number | undefined {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) return undefined;
+  const number = Number(trimmedValue);
+  return Number.isInteger(number) && number > 0 ? number : undefined;
+}
+
 function getSubagentToolsFromText(value: string, t: TFunction): { error: string | null; mcpServers: AgentMcpServerMap } {
-  if (!value.trim()) return { error: t("settings.subagents.toolsRequired"), mcpServers: {} };
+  if (!value.trim()) return { error: null, mcpServers: {} };
 
   let parsed: unknown;
   try {

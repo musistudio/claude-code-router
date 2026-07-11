@@ -66,6 +66,9 @@ import {
   getAgentSpeedLabel,
   getAgentSpeedOptionsForModel,
   getAgentEnvironmentRows,
+  getAgentProviderRuntimeAdapter,
+  getAgentProviderSubagentMode,
+  getAgentProviderWireProtocol,
   getValidAgentModel,
   getConfiguredAgentProviderDescription,
   getConfiguredAgentProviderFromForm,
@@ -4511,6 +4514,7 @@ export function AgentSettingsPanel({
         <div className="space-y-1">
           {configuredSubagents.length ? configuredSubagents.map((subagent) => {
             const provider = providerOptions.find((option) => option.id === subagent.providerId);
+            const providerMode = getAgentProviderSubagentMode(provider);
             return (
               <div className="flex min-h-[64px] items-center justify-between gap-3 rounded-md px-1 py-3" key={subagent.id}>
                 <div className="flex min-w-0 items-start gap-3">
@@ -4519,6 +4523,10 @@ export function AgentSettingsPanel({
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <span className="truncate text-[13px] font-semibold text-foreground">{subagent.label}</span>
                       <span className="rounded-md border border-border bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">{provider?.label ?? subagent.providerId}</span>
+                      <span className="rounded-md border border-border bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">{t(`settings.subagents.providerMode.${providerMode}`)}</span>
+                      {subagent.capabilities.slice(0, 2).map((capability) => (
+                        <span className="rounded-md border border-border bg-background px-1.5 py-0.5 text-[11px] text-muted-foreground" key={capability}>{capability}</span>
+                      ))}
                     </div>
                     <p className="mt-1 line-clamp-2 max-w-[620px] text-[12px] leading-5 text-muted-foreground">{subagent.description || t("settings.subagents.defaultDescription")}</p>
                   </div>
@@ -5181,6 +5189,15 @@ export function SubagentConfigurationEditor({
     label: t(`agent.permission.${mode}`),
     value: mode
   }));
+  const providerSubagentMode = getAgentProviderSubagentMode(selectedProvider);
+  const runtimeModeOptions = [
+    { label: t("settings.subagents.runtime.auto"), value: "auto" },
+    { label: t("settings.subagents.runtime.native"), value: "native" },
+    { label: t("settings.subagents.runtime.emulated"), value: "emulated" }
+  ];
+  const runtimeAdapter = getAgentProviderRuntimeAdapter(selectedProvider);
+  const wireProtocol = getAgentProviderWireProtocol(selectedProvider);
+  const transportLabel = selectedProvider?.capabilities?.transports?.join(", ") || selectedProvider?.kind || "";
 
   return (
     <div className="pb-4">
@@ -5225,6 +5242,38 @@ export function SubagentConfigurationEditor({
               options={approvalOptions}
               selectClassName="h-8 w-full max-w-none border border-input bg-card px-2 text-[12px] font-normal"
               value={form.approvalMode}
+            />
+          </label>
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+          <div className="min-w-0 rounded-md border border-border bg-muted/30 px-3 py-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <span className="rounded-md border border-border bg-background px-1.5 py-0.5 text-[11px] font-medium text-foreground">
+                {t(`settings.subagents.providerMode.${providerSubagentMode}`)}
+              </span>
+              {runtimeAdapter ? (
+                <span className="rounded-md border border-border bg-background px-1.5 py-0.5 text-[11px] text-muted-foreground">{runtimeAdapter}</span>
+              ) : null}
+              {wireProtocol ? (
+                <span className="rounded-md border border-border bg-background px-1.5 py-0.5 text-[11px] text-muted-foreground">{wireProtocol}</span>
+              ) : null}
+              {transportLabel ? (
+                <span className="rounded-md border border-border bg-background px-1.5 py-0.5 text-[11px] text-muted-foreground">{transportLabel}</span>
+              ) : null}
+            </div>
+            <p className="mt-1.5 truncate text-[11px] text-muted-foreground">
+              {selectedProvider?.capabilities?.subagents?.description || selectedProvider?.description || t("settings.subagents.providerRuntimeFallback")}
+            </p>
+          </div>
+          <label className="block min-w-0">
+            <span className="mb-1.5 block text-[11px] font-medium uppercase text-muted-foreground">{t("settings.subagents.runtimeMode")}</span>
+            <Select
+              aria-label={t("settings.subagents.runtimeMode")}
+              className="w-full"
+              onValueChange={(value) => onChange("runtimeMode", value)}
+              options={runtimeModeOptions}
+              selectClassName="h-8 w-full max-w-none border border-input bg-card px-2 text-[12px] font-normal"
+              value={form.runtimeMode}
             />
           </label>
         </div>
@@ -5273,6 +5322,18 @@ export function SubagentConfigurationEditor({
             />
           </label>
         </div>
+        <AgentSettingsTextArea
+          label={t("settings.subagents.capabilities")}
+          onChange={(value) => onChange("capabilitiesText", value)}
+          placeholder={t("settings.subagents.capabilitiesPlaceholder")}
+          value={form.capabilitiesText}
+        />
+        <AgentSettingsTextArea
+          label={t("settings.subagents.contextScope")}
+          onChange={(value) => onChange("contextScope", value)}
+          placeholder={t("settings.subagents.contextScopePlaceholder")}
+          value={form.contextScope}
+        />
         <AgentSettingsTextField
           label={t("settings.subagents.description")}
           onChange={(value) => onChange("description", value)}
@@ -5285,6 +5346,38 @@ export function SubagentConfigurationEditor({
           placeholder={t("settings.subagents.systemPromptPlaceholder")}
           value={form.systemPrompt}
         />
+        <AgentSettingsTextArea
+          label={t("settings.subagents.outputContract")}
+          onChange={(value) => onChange("outputContract", value)}
+          placeholder={t("settings.subagents.outputContractPlaceholder")}
+          value={form.outputContract}
+        />
+        <AgentSettingsTextArea
+          label={t("settings.subagents.qualityGates")}
+          onChange={(value) => onChange("qualityGatesText", value)}
+          placeholder={t("settings.subagents.qualityGatesPlaceholder")}
+          value={form.qualityGatesText}
+        />
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <AgentSettingsTextField
+            label={t("settings.subagents.maxDurationMs")}
+            onChange={(value) => onChange("maxDurationMs", value)}
+            placeholder="600000"
+            value={form.maxDurationMs}
+          />
+          <AgentSettingsTextField
+            label={t("settings.subagents.maxToolCalls")}
+            onChange={(value) => onChange("maxToolCalls", value)}
+            placeholder="20"
+            value={form.maxToolCalls}
+          />
+          <AgentSettingsTextField
+            label={t("settings.subagents.maxTokens")}
+            onChange={(value) => onChange("maxTokens", value)}
+            placeholder="12000"
+            value={form.maxTokens}
+          />
+        </div>
         <SubagentMcpServerEditor
           onChange={(value) => onChange("toolsText", value)}
           value={form.toolsText}

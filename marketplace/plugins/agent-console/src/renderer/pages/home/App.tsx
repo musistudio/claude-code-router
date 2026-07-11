@@ -25,6 +25,7 @@ import {
   ChatAgentRunEvent,
   ChatAttachment,
   ChatMessage,
+  buildAgentSubagentRuntimePayload,
   ConfiguredAgentProviderSettings,
   ConfiguredSubagentSettings,
   createBlankSubagentSettingsForm,
@@ -134,6 +135,10 @@ type LocalRunMessageIds = {
   userMessageId: string;
 };
 
+type PendingRunBinding = LocalRunMessageIds & {
+  canceled?: boolean;
+};
+
 type PendingRunLocalMessageIds = LocalRunMessageIds & {
   runId?: string;
 };
@@ -149,6 +154,205 @@ type PendingRunSnapshot = {
 
 const pendingRunSnapshotsStorageKey = "agentConsole.pendingRunSnapshots.v1";
 const pendingRunSnapshotMaxAgeMs = 7 * 24 * 60 * 60 * 1000;
+const appSessionStateStorageKey = "agentConsole.sessionState.v1";
+const composerDraftsStorageKey = "agentConsole.composerDrafts.v1";
+const layoutStateStorageKey = "agentConsole.layoutState.v1";
+const composerDraftMaxAgeMs = 30 * 24 * 60 * 60 * 1000;
+
+type AppSessionState = {
+  newSessionProjectId?: string;
+  selectedThread?: string;
+};
+
+type ComposerDraft = {
+  attachments: ChatAttachment[];
+  selectedSubagentIds: string[];
+  updatedAt: number;
+  value: string;
+};
+
+type LayoutStateSnapshot = {
+  leftOpen: boolean;
+  leftWidth: number;
+  rightOpen: boolean;
+  rightSidebarState: RightSidebarState;
+  rightWidth: number;
+};
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function loadAppSessionState(): AppSessionState {
+  if (typeof window === "undefined") return {};
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(appSessionStateStorageKey) ?? "{}");
+    const record = isRecord(parsed) ? parsed : {};
+    return {
+      newSessionProjectId: typeof record.newSessionProjectId === "string" ? record.newSessionProjectId : undefined,
+      selectedThread: typeof record.selectedThread === "string" ? record.selectedThread : undefined
+    };
+  } catch {
+    return {};
+  }
+}
+
+function saveAppSessionState(state: AppSessionState) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(appSessionStateStorageKey, JSON.stringify(state));
+  } catch (error) {
+    console.warn("[agent] Failed to persist app session state.", error);
+  }
+}
+
+function getComposerDraftKey(threadId: string, projectId: string) {
+  return threadId === newSessionThreadId ? `${newSessionThreadId}:${projectId || "default"}` : threadId;
+}
+
+function normalizeComposerDraft(value: unknown): ComposerDraft | null {
+  const record = isRecord(value) ? value : {};
+  const draftValue = typeof record.value === "string" ? record.value : "";
+  const attachments = Array.isArray(record.attachments)
+    ? record.attachments.filter((attachment): attachment is ChatAttachment => (
+      isRecord(attachment) &&
+      typeof attachment.name === "string" &&
+      typeof attachment.path === "string"
+    ))
+    : [];
+  const selectedSubagentIds = Array.isArray(record.selectedSubagentIds)
+    ? record.selectedSubagentIds.filter((subagentId): subagentId is string => typeof subagentId === "string")
+    : [];
+  const updatedAt = typeof record.updatedAt === "number" && Number.isFinite(record.updatedAt)
+    ? record.updatedAt
+    : Date.now();
+
+  if (!draftValue.trim() && attachments.length === 0 && selectedSubagentIds.length === 0) return null;
+  return {
+    attachments,
+    selectedSubagentIds,
+    updatedAt,
+    value: draftValue
+  };
+}
+
+function loadComposerDrafts(): Map<string, ComposerDraft> {
+  const drafts = new Map<string, ComposerDraft>();
+  if (typeof window === "undefined") return drafts;
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(composerDraftsStorageKey) ?? "[]");
+    const rawEntries = Array.isArray(parsed) ? parsed : [];
+    const now = Date.now();
+    let pruned = false;
+    for (const rawEntry of rawEntries) {
+      if (!Array.isArray(rawEntry) || rawEntry.length !== 2 || typeof rawEntry[0] !== "string") {
+        pruned = true;
+        continue;
+      }
+      const draft = normalizeComposerDraft(rawEntry[1]);
+      if (!draft || now - draft.updatedAt > composerDraftMaxAgeMs) {
+        pruned = true;
+        continue;
+      }
+      drafts.set(rawEntry[0], draft);
+    }
+    if (pruned) saveComposerDrafts(drafts);
+  } catch {
+    try {
+      window.localStorage.removeItem(composerDraftsStorageKey);
+    } catch {
+      // Ignore storage cleanup failures.
+    }
+  }
+
+  return drafts;
+}
+
+function saveComposerDrafts(drafts: Map<string, ComposerDraft>) {
+  if (typeof window === "undefined") return;
+
+  try {
+    if (drafts.size === 0) {
+      window.localStorage.removeItem(composerDraftsStorageKey);
+      return;
+    }
+    window.localStorage.setItem(composerDraftsStorageKey, JSON.stringify([...drafts.entries()]));
+  } catch (error) {
+    console.warn("[agent] Failed to persist composer drafts.", error);
+  }
+}
+
+function normalizeRightSidebarStateSnapshot(value: unknown): RightSidebarState {
+  const record = isRecord(value) ? value : {};
+  const rawTabs = Array.isArray(record.tabs) ? record.tabs : [];
+  const seenTabIds = new Set<string>();
+  const tabs = rawTabs
+    .map((rawTab): RightSidebarTab | null => {
+      const tab = isRecord(rawTab) ? rawTab : {};
+      const id = typeof tab.id === "string" && tab.id.trim() ? tab.id : "";
+      const pluginId = typeof tab.pluginId === "string" && tab.pluginId.trim() ? tab.pluginId : "";
+      if (!id || !pluginId || seenTabIds.has(id)) return null;
+      seenTabIds.add(id);
+      return { id, pluginId };
+    })
+    .filter((tab): tab is RightSidebarTab => Boolean(tab));
+
+  const normalizedTabs = tabs.length ? tabs : [{ id: defaultRightSidebarTabId, pluginId: defaultRightSidebarPluginId }];
+  const activeTabId = typeof record.activeTabId === "string" && normalizedTabs.some((tab) => tab.id === record.activeTabId)
+    ? record.activeTabId
+    : normalizedTabs[0].id;
+
+  return { activeTabId, tabs: normalizedTabs };
+}
+
+function loadLayoutState(): LayoutStateSnapshot {
+  const fallback: LayoutStateSnapshot = {
+    leftOpen: true,
+    leftWidth: 300,
+    rightOpen: false,
+    rightSidebarState: {
+      activeTabId: defaultRightSidebarTabId,
+      tabs: [{ id: defaultRightSidebarTabId, pluginId: defaultRightSidebarPluginId }]
+    },
+    rightWidth: 360
+  };
+  if (typeof window === "undefined") return fallback;
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(layoutStateStorageKey) ?? "{}");
+    const record = isRecord(parsed) ? parsed : {};
+    return {
+      leftOpen: typeof record.leftOpen === "boolean" ? record.leftOpen : fallback.leftOpen,
+      leftWidth: clampNumber(
+        typeof record.leftWidth === "number" && Number.isFinite(record.leftWidth) ? record.leftWidth : fallback.leftWidth,
+        leftSidebarBounds.min,
+        leftSidebarBounds.max
+      ),
+      rightOpen: typeof record.rightOpen === "boolean" ? record.rightOpen : fallback.rightOpen,
+      rightSidebarState: normalizeRightSidebarStateSnapshot(record.rightSidebarState),
+      rightWidth: clampNumber(
+        typeof record.rightWidth === "number" && Number.isFinite(record.rightWidth) ? record.rightWidth : fallback.rightWidth,
+        rightSidebarBounds.min,
+        rightSidebarBounds.max
+      )
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function saveLayoutState(state: LayoutStateSnapshot) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(layoutStateStorageKey, JSON.stringify(state));
+  } catch (error) {
+    console.warn("[agent] Failed to persist layout state.", error);
+  }
+}
 
 function mergeMessagesPreservingInFlight(baseMessages: ChatMessage[], inFlightMessages: ChatMessage[] | undefined): ChatMessage[] {
   if (!inFlightMessages?.length) return baseMessages;
@@ -337,6 +541,7 @@ function normalizePendingActiveStream(value: unknown): ActiveStream | undefined 
 
   return {
     id,
+    runId: typeof record.runId === "string" && record.runId ? record.runId : undefined,
     running: record.running !== false,
     streamKey: typeof record.streamKey === "number" && Number.isFinite(record.streamKey) ? record.streamKey : Date.now()
   };
@@ -400,6 +605,8 @@ function App() {
   const smallWindowOpeningTransitionRequested = useMemo(() => getSmallWindowOpeningTransitionRequested(), []);
   const initialSelectedThread = useMemo(() => getInitialSelectedThread(), []);
   const initialPendingRunSnapshots = useMemo(() => loadPendingRunSnapshots(), []);
+  const initialAppSessionState = useMemo(() => loadAppSessionState(), []);
+  const initialLayoutState = useMemo(() => loadLayoutState(), []);
   const isSmallChatWindow = appWindowMode === "small-chat";
   const [smallWindowOpeningPhase, setSmallWindowOpeningPhase] = useState<SmallWindowOpeningPhase>(
     smallWindowOpeningTransitionRequested ? "compact" : "done"
@@ -408,17 +615,14 @@ function App() {
   const [selectedThread, setSelectedThread] = useState(initialSelectedThread);
   const [activePage, setActivePage] = useState<AppPage>("chat");
   const [activeSettingsSection, setActiveSettingsSection] = useState<SettingsSectionId>("general");
-  const [leftOpen, setLeftOpen] = useState(true);
-  const [rightOpen, setRightOpen] = useState(false);
-  const [leftWidth, setLeftWidth] = useState(300);
-  const [rightWidth, setRightWidth] = useState(360);
+  const [leftOpen, setLeftOpen] = useState(initialLayoutState.leftOpen);
+  const [rightOpen, setRightOpen] = useState(initialLayoutState.rightOpen);
+  const [leftWidth, setLeftWidth] = useState(initialLayoutState.leftWidth);
+  const [rightWidth, setRightWidth] = useState(initialLayoutState.rightWidth);
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
   const [resizingSide, setResizingSide] = useState<ResizeSide | null>(null);
   const nextRightPanelTabIndexRef = useRef(1);
-  const [rightSidebarState, setRightSidebarState] = useState<RightSidebarState>(() => ({
-    activeTabId: defaultRightSidebarTabId,
-    tabs: [{ id: defaultRightSidebarTabId, pluginId: defaultRightSidebarPluginId }]
-  }));
+  const [rightSidebarState, setRightSidebarState] = useState<RightSidebarState>(initialLayoutState.rightSidebarState);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [activeStream, setActiveStream] = useState<ActiveStream | null>(null);
   const [contextUsageByThread, setContextUsageByThread] = useState<Record<string, UsageTokenMetrics>>({});
@@ -441,7 +645,7 @@ function App() {
   const [renamingSidebarThreadId, setRenamingSidebarThreadId] = useState<string | null>(null);
   const [renamingHeaderThreadId, setRenamingHeaderThreadId] = useState<string | null>(null);
   const [projectBranchState, setProjectBranchState] = useState<ProjectBranchState>(defaultProjectBranchState);
-  const [newSessionProjectId, setNewSessionProjectId] = useState("");
+  const [newSessionProjectId, setNewSessionProjectId] = useState(initialAppSessionState.newSessionProjectId ?? "");
   const [transcriptionConfig, setTranscriptionConfig] = useState<TranscriptionConfig>(() => loadTranscriptionConfig());
   const [settingsPreferences, setSettingsPreferences] = useState<SettingsPreferences>(() => loadSettingsPreferences());
   const [pluginState, setPluginState] = useState<AgentConsolePluginState>(defaultPluginState);
@@ -488,7 +692,10 @@ function App() {
   const runMessageIdsRef = useRef(new Map<string, string>());
   const runThreadIdsRef = useRef(new Map<string, string>());
   const runLocalMessageIdsRef = useRef(createPendingLocalRunMessagesMap(initialPendingRunSnapshots));
+  const pendingRunBindingsByThreadRef = useRef(new Map<string, PendingRunBinding>());
   const pendingRunSnapshotsRef = useRef(initialPendingRunSnapshots);
+  const composerDraftsRef = useRef(loadComposerDrafts());
+  const lastRestoredComposerDraftKeyRef = useRef<string | null>(null);
   const approvalQueueRef = useRef<AgentApprovalPrompt[]>([]);
   const questionQueueRef = useRef<AgentQuestionPrompt[]>([]);
   const ignoredApprovalPromptIdsRef = useRef(new Set<string>());
@@ -671,6 +878,15 @@ function App() {
       }
     }
 
+    const pendingRunBinding = pendingRunBindingsByThreadRef.current.get(fromThreadId);
+    if (pendingRunBinding) {
+      pendingRunBindingsByThreadRef.current.delete(fromThreadId);
+      pendingRunBindingsByThreadRef.current.set(toThreadId, {
+        ...pendingRunBinding,
+        threadId: toThreadId
+      });
+    }
+
     deletePendingRunSnapshot(fromThreadId);
     persistPendingRunSnapshotForThread(toThreadId);
   }, [deletePendingRunSnapshot, persistPendingRunSnapshotForThread]);
@@ -851,6 +1067,28 @@ function App() {
     });
   }, []);
 
+  const closeRightPanelTab = useCallback((tabId: string) => {
+    const tabIndex = rightSidebarState.tabs.findIndex((tab) => tab.id === tabId);
+    if (tabIndex < 0) return;
+
+    if (rightSidebarState.tabs.length === 1) {
+      setRightOpen(false);
+      return;
+    }
+
+    setRightSidebarState((currentState) => {
+      const currentTabIndex = currentState.tabs.findIndex((tab) => tab.id === tabId);
+      if (currentTabIndex < 0 || currentState.tabs.length === 1) return currentState;
+
+      const nextTabs = currentState.tabs.filter((tab) => tab.id !== tabId);
+      const activeTabId = currentState.activeTabId === tabId
+        ? nextTabs[Math.max(0, currentTabIndex - 1)]?.id ?? nextTabs[0].id
+        : currentState.activeTabId;
+
+      return { activeTabId, tabs: nextTabs };
+    });
+  }, [rightSidebarState.tabs]);
+
   useEffect(() => {
     const onSelectRightPanel = (event: Event) => {
       openRightPanelTab((event as CustomEvent<RightSidebarPluginId>).detail);
@@ -867,6 +1105,62 @@ function App() {
   useEffect(() => {
     saveSettingsPreferences(settingsPreferences);
   }, [settingsPreferences]);
+
+  useEffect(() => {
+    saveLayoutState({
+      leftOpen,
+      leftWidth,
+      rightOpen,
+      rightSidebarState,
+      rightWidth
+    });
+  }, [leftOpen, leftWidth, rightOpen, rightSidebarState, rightWidth]);
+
+  useEffect(() => {
+    if (!settingsPreferences.restoreLastThread) return;
+    if (!resolvedInitialThreadRef.current) return;
+    saveAppSessionState({
+      newSessionProjectId,
+      selectedThread
+    });
+  }, [newSessionProjectId, selectedThread, settingsPreferences.restoreLastThread]);
+
+  useEffect(() => {
+    const draftKey = getComposerDraftKey(selectedThread, newSessionProjectId);
+    if (!settingsPreferences.autoSaveDrafts) {
+      lastRestoredComposerDraftKeyRef.current = draftKey;
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const draftHasContent = Boolean(composerValue.trim() || composerAttachments.length || selectedSubagentIds.length);
+      if (draftHasContent) {
+        composerDraftsRef.current.set(draftKey, {
+          attachments: composerAttachments,
+          selectedSubagentIds,
+          updatedAt: Date.now(),
+          value: composerValue
+        });
+      } else {
+        composerDraftsRef.current.delete(draftKey);
+      }
+      saveComposerDrafts(composerDraftsRef.current);
+    }, 250);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [composerAttachments, composerValue, newSessionProjectId, selectedSubagentIds, selectedThread, settingsPreferences.autoSaveDrafts]);
+
+  useEffect(() => {
+    const draftKey = getComposerDraftKey(selectedThread, newSessionProjectId);
+    if (lastRestoredComposerDraftKeyRef.current === draftKey) return;
+    lastRestoredComposerDraftKeyRef.current = draftKey;
+    if (!settingsPreferences.autoSaveDrafts) return;
+
+    const draft = composerDraftsRef.current.get(draftKey);
+    setComposerValue(draft?.value ?? "");
+    setComposerAttachments(draft?.attachments ?? []);
+    setSelectedSubagentIds(draft?.selectedSubagentIds ?? []);
+  }, [newSessionProjectId, selectedThread, settingsPreferences.autoSaveDrafts]);
 
   useEffect(() => {
     let canceled = false;
@@ -902,7 +1196,10 @@ function App() {
 
     if (!resolvedInitialThreadRef.current) {
       resolvedInitialThreadRef.current = true;
-      const requestedThreadId = initialSelectedThread;
+      const savedThreadId = settingsPreferences.restoreLastThread ? initialAppSessionState.selectedThread : undefined;
+      const requestedThreadId = initialSelectedThread !== newSessionThreadId
+        ? initialSelectedThread
+        : savedThreadId ?? newSessionThreadId;
       const nextThreadId = requestedThreadId !== newSessionThreadId && hasSidebarThread(projects, requestedThreadId)
         ? requestedThreadId
         : newSessionThreadId;
@@ -929,7 +1226,7 @@ function App() {
       return;
     }
 
-  }, [initialSelectedThread, projects, selectedThread]);
+  }, [initialAppSessionState.selectedThread, initialSelectedThread, projects, selectedThread, settingsPreferences.restoreLastThread]);
 
   useEffect(() => {
     if (selectedThread !== newSessionThreadId) return undefined;
@@ -2106,14 +2403,68 @@ function App() {
     [toast]
   );
 
-  const toggleStreaming = useCallback(() => {
-    setActiveStream((currentStream) => {
-      if (!currentStream) return currentStream;
-      const nextStream = { ...currentStream, running: !currentStream.running };
-      activeStreamsByThreadRef.current.set(selectedThreadRef.current, nextStream);
-      return nextStream;
-    });
-  }, []);
+  const abortActiveRun = useCallback(() => {
+    const threadId = selectedThreadRef.current;
+    const stream = activeStreamsByThreadRef.current.get(threadId) ?? activeStream;
+    const runId = stream?.runId;
+    if (!stream) {
+      toast.warning({ content: t("agent.abortRunUnavailable"), title: t("agent.toastTitle") });
+      return;
+    }
+
+    const agentApi = window.agentConsole?.agent;
+    if (!agentApi?.abortRun) {
+      toast.error({ content: t("agent.apiUnavailable"), title: t("agent.toastTitle") });
+      return;
+    }
+
+    if (!runId) {
+      const pendingRunBinding = pendingRunBindingsByThreadRef.current.get(threadId);
+      if (!pendingRunBinding) {
+        toast.warning({ content: t("agent.abortRunUnavailable"), title: t("agent.toastTitle") });
+        return;
+      }
+
+      pendingRunBindingsByThreadRef.current.set(threadId, {
+        ...pendingRunBinding,
+        canceled: true
+      });
+      updateInFlightMessage(threadId, stream.id, (message) => ({
+        ...message,
+        content: message.content || `> ${t("agent.runStopped")}`,
+        streaming: false
+      }));
+      setVisibleActiveStream(null, threadId);
+      persistPendingRunSnapshotForThread(threadId);
+      toast.success({ content: t("agent.runStopped"), title: t("agent.toastTitle") });
+      return;
+    }
+
+    void agentApi.abortRun({ runId })
+      .then((result) => {
+        if (!result?.success) {
+          throw new Error(t("agent.abortRunFailed"));
+        }
+
+        updateInFlightMessage(threadId, stream.id, (message) => ({
+          ...message,
+          content: message.content || `> ${t("agent.runStopped")}`,
+          streaming: false
+        }));
+        setVisibleActiveStream(null, threadId);
+        runMessageIdsRef.current.delete(runId);
+        runThreadIdsRef.current.delete(runId);
+        runLocalMessageIdsRef.current.delete(runId);
+        persistPendingRunSnapshotForThread(threadId);
+        toast.success({ content: t("agent.runStopped"), title: t("agent.toastTitle") });
+      })
+      .catch((error) => {
+        toast.error({
+          content: error instanceof Error && error.message ? error.message : t("agent.abortRunFailed"),
+          title: t("agent.toastTitle")
+        });
+      });
+  }, [activeStream, persistPendingRunSnapshotForThread, setVisibleActiveStream, t, toast, updateInFlightMessage]);
 
   const changeAgentModel = useCallback((nextModel: string) => {
     const modelOptions = getAgentModelOptions(enabledAgentProviders, activeAgentProviderId);
@@ -2292,19 +2643,38 @@ function App() {
       if (!event || !event.runId) return;
 
       if (event.type === "run_started") {
-        const pendingMessageId = pendingAssistantMessageIdRef.current;
-        if (pendingMessageId) {
-          runMessageIdsRef.current.set(event.runId, pendingMessageId);
+        const pendingRunBinding = pendingRunBindingsByThreadRef.current.get(event.threadId);
+        if (pendingRunBinding) {
+          pendingRunBindingsByThreadRef.current.delete(event.threadId);
+          if (pendingRunBinding.canceled) {
+            void agentApi.abortRun?.({ runId: event.runId }).catch((error) => {
+              console.warn("[agent] Failed to abort a canceled pending run.", error);
+            });
+            return;
+          }
+
+          runMessageIdsRef.current.set(event.runId, pendingRunBinding.assistantMessageId);
           runThreadIdsRef.current.set(event.runId, event.threadId);
           runLocalMessageIdsRef.current.set(event.runId, {
-            assistantMessageId: pendingMessageId,
+            assistantMessageId: pendingRunBinding.assistantMessageId,
             threadId: event.threadId,
-            userMessageId: pendingUserMessageIdRef.current ?? ""
+            userMessageId: pendingRunBinding.userMessageId
           });
-          persistPendingRunSnapshotForThread(event.threadId);
-          pendingAssistantMessageIdRef.current = null;
-          pendingUserMessageIdRef.current = null;
-          pendingAssistantThreadIdRef.current = null;
+          const currentStream = activeStreamsByThreadRef.current.get(event.threadId) ?? activeStreamsByThreadRef.current.get(pendingRunBinding.threadId);
+          if (pendingRunBinding.threadId !== event.threadId) {
+            activeStreamsByThreadRef.current.delete(pendingRunBinding.threadId);
+          }
+          setVisibleActiveStream({
+            id: currentStream?.id ?? pendingRunBinding.assistantMessageId,
+            runId: event.runId,
+            running: true,
+            streamKey: currentStream?.streamKey ?? Date.now()
+          }, event.threadId);
+          if (pendingAssistantMessageIdRef.current === pendingRunBinding.assistantMessageId) {
+            pendingAssistantMessageIdRef.current = null;
+            pendingUserMessageIdRef.current = null;
+            pendingAssistantThreadIdRef.current = null;
+          }
         }
         return;
       }
@@ -2324,9 +2694,38 @@ function App() {
         return;
       }
 
-      const messageId = runMessageIdsRef.current.get(event.runId) ?? pendingAssistantMessageIdRef.current;
+      const pendingRunBinding = pendingRunBindingsByThreadRef.current.get(event.threadId);
+      if (pendingRunBinding && !runMessageIdsRef.current.has(event.runId)) {
+        pendingRunBindingsByThreadRef.current.delete(event.threadId);
+        if (pendingRunBinding.canceled) {
+          void agentApi.abortRun?.({ runId: event.runId }).catch((error) => {
+            console.warn("[agent] Failed to abort a canceled pending run.", error);
+          });
+          return;
+        }
+
+        runMessageIdsRef.current.set(event.runId, pendingRunBinding.assistantMessageId);
+        runThreadIdsRef.current.set(event.runId, event.threadId);
+        runLocalMessageIdsRef.current.set(event.runId, {
+          assistantMessageId: pendingRunBinding.assistantMessageId,
+          threadId: event.threadId,
+          userMessageId: pendingRunBinding.userMessageId
+        });
+        const currentStream = activeStreamsByThreadRef.current.get(event.threadId) ?? activeStreamsByThreadRef.current.get(pendingRunBinding.threadId);
+        if (pendingRunBinding.threadId !== event.threadId) {
+          activeStreamsByThreadRef.current.delete(pendingRunBinding.threadId);
+        }
+        setVisibleActiveStream({
+          id: currentStream?.id ?? pendingRunBinding.assistantMessageId,
+          runId: event.runId,
+          running: true,
+          streamKey: currentStream?.streamKey ?? Date.now()
+        }, event.threadId);
+      }
+
+      const messageId = runMessageIdsRef.current.get(event.runId) ?? pendingRunBinding?.assistantMessageId;
       if (!messageId) return;
-      const threadId = event.threadId || runThreadIdsRef.current.get(event.runId) || pendingAssistantThreadIdRef.current || selectedThreadRef.current;
+      const threadId = event.threadId || runThreadIdsRef.current.get(event.runId) || pendingRunBinding?.threadId || selectedThreadRef.current;
 
       if (event.type === "message_delta" && event.data) {
         updateInFlightMessage(threadId, messageId, (message) => ({
@@ -2405,7 +2804,7 @@ function App() {
       canceled = true;
       dispose();
     };
-  }, [clearLocalRunMessages, enqueueApprovalPrompt, enqueueQuestionPrompt, persistPendingRunSnapshotForThread, reloadProjects, setVisibleActiveStream, t, toast, updateContextUsage, updateInFlightMessage]);
+  }, [clearLocalRunMessages, enqueueApprovalPrompt, enqueueQuestionPrompt, reloadProjects, setVisibleActiveStream, t, toast, updateContextUsage, updateInFlightMessage]);
 
   const enqueuePrompt = useCallback((rawPrompt: string) => {
     const userPrompt = rawPrompt.trim();
@@ -2430,6 +2829,12 @@ function App() {
       providerId: runProviderId,
       usage: contextUsageByThread[selectedThread] ?? null
     }));
+    const subagentRuntime = buildAgentSubagentRuntimePayload(appSettings.subagents, selectedSubagentIds, subagentProviderOptions);
+    const subagentRuntimePayload = subagentRuntime ? {
+      additionalDeveloperInstructions: subagentRuntime.instructions,
+      agentConsoleSubagents: subagentRuntime,
+      ...(subagentRuntime.mcpServers ? { mcpServers: subagentRuntime.mcpServers } : {})
+    } : {};
 
     const createdAt = Date.now();
     const userMessage: ChatMessage = {
@@ -2464,6 +2869,11 @@ function App() {
       running: true,
       streamKey: Date.now()
     };
+    pendingRunBindingsByThreadRef.current.set(provisionalThreadId, {
+      assistantMessageId: assistantMessage.id,
+      threadId: provisionalThreadId,
+      userMessageId: userMessage.id
+    });
     pendingAssistantMessageIdRef.current = assistantMessage.id;
     pendingUserMessageIdRef.current = userMessage.id;
     pendingAssistantThreadIdRef.current = provisionalThreadId;
@@ -2487,7 +2897,8 @@ function App() {
           projectPath: selectedProject?.path,
           prompt,
           providerId: agentProviderId,
-          title: userPrompt.replace(/\s+/g, " ").slice(0, 80)
+          title: userPrompt.replace(/\s+/g, " ").slice(0, 80),
+          ...subagentRuntimePayload
         });
         threadId = threadResult.thread.id;
         suppressThreadHistoryLoadRef.current = threadId;
@@ -2500,6 +2911,10 @@ function App() {
         });
       }
 
+      if (pendingRunBindingsByThreadRef.current.get(threadId)?.canceled) {
+        return;
+      }
+
       await agentApi.sendMessage({
         approvalMode: agentApprovalMode,
         attachments: composerAttachments,
@@ -2510,11 +2925,13 @@ function App() {
         providerId: runProviderId,
         speed: runSpeed,
         subagentIds: selectedSubagentIds,
-        threadId
+        threadId,
+        ...subagentRuntimePayload
       });
     })().catch((error) => {
       const errorMessage = error instanceof Error && error.message ? error.message : t("agent.sendFailed");
-      const failureThreadId = pendingAssistantThreadIdRef.current || provisionalThreadId;
+      const failureThreadId = pendingAssistantThreadIdRef.current || pendingRunBindingsByThreadRef.current.get(provisionalThreadId)?.threadId || provisionalThreadId;
+      pendingRunBindingsByThreadRef.current.delete(failureThreadId);
       updateInFlightMessage(failureThreadId, assistantMessage.id, (message) => ({
         ...message,
         content: `${message.content}${message.content ? "\n\n" : ""}> ${errorMessage}`,
@@ -2527,7 +2944,7 @@ function App() {
     });
 
     return true;
-  }, [activeStream, agentApprovalMode, agentEffort, agentModel, agentProviderId, agentSpeed, composerAttachments, contextUsageByThread, enabledAgentProviders, messages, moveInFlightThreadState, newSessionProjectId, persistPendingRunSnapshotForThread, projects, reloadProjects, selectedSubagentIds, selectedThread, setInFlightMessagesForThread, setVisibleActiveStream, t, toast, updateInFlightMessage]);
+  }, [activeStream, agentApprovalMode, agentEffort, agentModel, agentProviderId, agentSpeed, appSettings.subagents, composerAttachments, contextUsageByThread, enabledAgentProviders, messages, moveInFlightThreadState, newSessionProjectId, persistPendingRunSnapshotForThread, projects, reloadProjects, selectedSubagentIds, selectedThread, setInFlightMessagesForThread, setVisibleActiveStream, subagentProviderOptions, t, toast, updateInFlightMessage]);
 
   const submitMessage = useCallback(() => {
     if (enqueuePrompt(composerValue)) {
@@ -2646,7 +3063,7 @@ function App() {
           onRemoveAttachment={removeComposerAttachment}
           onSlashCommandSelect={runSlashCommand}
           onSubmit={submitMessage}
-          onToggleStreaming={toggleStreaming}
+          onAbortRun={abortActiveRun}
           projects={projects}
           questionPrompt={visibleQuestionPrompt}
           runtimeAgentProviders={agentProviders}
@@ -2745,7 +3162,7 @@ function App() {
               onRemoveAttachment={removeComposerAttachment}
               onSlashCommandSelect={runSlashCommand}
               onSubmit={submitMessage}
-              onToggleStreaming={toggleStreaming}
+              onAbortRun={abortActiveRun}
               projects={projects}
               questionPrompt={visibleQuestionPrompt}
               runtimeAgentProviders={agentProviders}
@@ -2763,6 +3180,7 @@ function App() {
           activeTabId={rightSidebarState.activeTabId}
           agentContext={rightSidebarAgentContext}
           onAddPanel={openRightPanelTab}
+          onCloseTab={closeRightPanelTab}
           onResizeStart={(event) => startSidebarResize("right", event)}
           onSelectThread={setSelectedThread}
           onThreadsChanged={reloadProjects}
@@ -2930,7 +3348,7 @@ function App() {
                       onRemoveAttachment={removeComposerAttachment}
                       onSlashCommandSelect={runSlashCommand}
                       onSubmit={submitMessage}
-                      onToggleStreaming={toggleStreaming}
+                      onAbortRun={abortActiveRun}
                       projects={projects}
                       questionPrompt={visibleQuestionPrompt}
                       runtimeAgentProviders={agentProviders}
@@ -2950,6 +3368,7 @@ function App() {
               activeTabId={rightSidebarState.activeTabId}
               agentContext={rightSidebarAgentContext}
               onAddPanel={openRightPanelTab}
+              onCloseTab={closeRightPanelTab}
               onResizeStart={(event) => startSidebarResize("right", event)}
               onSelectThread={setSelectedThread}
               onThreadsChanged={reloadProjects}

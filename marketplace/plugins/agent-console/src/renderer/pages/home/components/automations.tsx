@@ -3,6 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import {
   Activity,
@@ -19,7 +20,7 @@ import {
   X
 } from "lucide-react";
 import type { KeyboardEvent, ReactNode } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AutomationDefinition,
   AutomationListResult,
@@ -59,38 +60,9 @@ type AutomationFormState = {
 
 const defaultCronExpression = "0 * * * * *";
 const defaultEvery = "1m";
-const approvalModeOptions = [
-  { label: "Auto", value: "auto" },
-  { label: "Full", value: "full" },
-  { label: "Request", value: "request" }
-];
-const concurrencyPolicyOptions = [
-  { label: "Skip overlap", value: "skip" },
-  { label: "Queue overlap", value: "queue" }
-];
-const intervalOptions = [
-  { label: "1 second", value: "1s" },
-  { label: "5 seconds", value: "5s" },
-  { label: "10 seconds", value: "10s" },
-  { label: "30 seconds", value: "30s" },
-  { label: "1 minute", value: "1m" },
-  { label: "5 minutes", value: "5m" },
-  { label: "15 minutes", value: "15m" },
-  { label: "1 hour", value: "1h" },
-  { label: "1 day", value: "1d" }
-];
-const pollConditionOptions = [
-  { label: "Text contains", value: "text-contains" },
-  { label: "JSON exists", value: "json-exists" },
-  { label: "JSON equals", value: "json-equals" }
-];
 const pollMethodOptions = [
   { label: "GET", value: "GET" },
   { label: "POST", value: "POST" }
-];
-const threadPolicyOptions = [
-  { label: "Reuse", value: "reuse" },
-  { label: "New each run", value: "new" }
 ];
 
 export function AutomationsPage({
@@ -103,11 +75,14 @@ export function AutomationsPage({
   onBack: () => void;
   projects: SidebarProject[];
 }) {
+  const { t } = useI18n();
   const toast = useToast();
   const [automations, setAutomations] = useState<AutomationDefinition[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [webhookBaseUrl, setWebhookBaseUrl] = useState<string | null>(null);
-  const [draft, setDraft] = useState<AutomationFormState>(() => createDefaultDraft(agentProviders, projects));
+  const defaultDraftName = t("automations.new");
+  const previousDefaultDraftNameRef = useRef(defaultDraftName);
+  const [draft, setDraft] = useState<AutomationFormState>(() => createDefaultDraft(agentProviders, projects, defaultDraftName));
   const [dialogOpen, setDialogOpen] = useState(false);
   const selectedProvider = agentProviders.find((provider) => provider.id === draft.providerId) ?? agentProviders[0];
   const webhookUrl = draft.triggerType === "webhook" && webhookBaseUrl && draft.webhookSlug
@@ -132,6 +107,20 @@ export function AutomationsPage({
   }, [reloadAutomations]);
 
   useEffect(() => {
+    const previousDefaultDraftName = previousDefaultDraftNameRef.current;
+    previousDefaultDraftNameRef.current = defaultDraftName;
+    setDraft((currentDraft) => {
+      if (currentDraft.id || currentDraft.name !== previousDefaultDraftName) {
+        return currentDraft;
+      }
+      return {
+        ...currentDraft,
+        name: defaultDraftName
+      };
+    });
+  }, [defaultDraftName]);
+
+  useEffect(() => {
     const api = window.agentConsole?.automations;
     if (!api?.onEvent) return undefined;
     return api.onEvent(() => {
@@ -142,12 +131,12 @@ export function AutomationsPage({
   }, [reloadAutomations]);
 
   const startNewAutomation = () => {
-    setDraft(createDefaultDraft(agentProviders, projects));
+    setDraft(createDefaultDraft(agentProviders, projects, defaultDraftName));
     setDialogOpen(true);
   };
 
   const editAutomation = (automation: AutomationDefinition) => {
-    setDraft(formStateFromAutomation(automation, agentProviders, projects));
+    setDraft(formStateFromAutomation(automation, agentProviders, projects, defaultDraftName));
     setDialogOpen(true);
   };
 
@@ -160,9 +149,9 @@ export function AutomationsPage({
       const result = draft.id ? await api.update(payload as AutomationDefinition & { id: string }) : await api.create(payload);
       applyListResult(result);
       setDialogOpen(false);
-      toast.success({ content: "Automation saved.", title: "Automations" });
+      toast.success({ content: t("automations.saved"), title: t("automations.title") });
     } catch (error) {
-      toast.error({ content: error instanceof Error ? error.message : String(error), title: "Automations" });
+      toast.error({ content: error instanceof Error ? error.message : String(error), title: t("automations.title") });
     } finally {
       setSubmitting(false);
     }
@@ -175,11 +164,11 @@ export function AutomationsPage({
     setSubmitting(true);
     try {
       applyListResult(await api.delete({ id }));
-      setDraft(createDefaultDraft(agentProviders, projects));
+      setDraft(createDefaultDraft(agentProviders, projects, defaultDraftName));
       setDialogOpen(false);
-      toast.success({ content: "Automation deleted.", title: "Automations" });
+      toast.success({ content: t("automations.deleted"), title: t("automations.title") });
     } catch (error) {
-      toast.error({ content: error instanceof Error ? error.message : String(error), title: "Automations" });
+      toast.error({ content: error instanceof Error ? error.message : String(error), title: t("automations.title") });
     } finally {
       setSubmitting(false);
     }
@@ -192,7 +181,7 @@ export function AutomationsPage({
     try {
       applyListResult(await api.setEnabled({ enabled, id }));
     } catch (error) {
-      toast.error({ content: error instanceof Error ? error.message : String(error), title: "Automations" });
+      toast.error({ content: error instanceof Error ? error.message : String(error), title: t("automations.title") });
     } finally {
       setSubmitting(false);
     }
@@ -204,9 +193,9 @@ export function AutomationsPage({
     setSubmitting(true);
     try {
       applyListResult(await api.runNow({ id }));
-      toast.success({ content: "Run started.", title: "Automations" });
+      toast.success({ content: t("automations.runStarted"), title: t("automations.title") });
     } catch (error) {
-      toast.error({ content: error instanceof Error ? error.message : String(error), title: "Automations" });
+      toast.error({ content: error instanceof Error ? error.message : String(error), title: t("automations.title") });
     } finally {
       setSubmitting(false);
     }
@@ -217,19 +206,19 @@ export function AutomationsPage({
       <header className={cn("drag-region flex h-[46px] shrink-0 items-center justify-between bg-background px-4 pr-[58px]", !leftOpen && "pl-[118px]")}>
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <ListChecks className="h-5 w-5 shrink-0 text-primary" />
-          <h1 className="min-w-0 truncate text-[15px] font-semibold text-foreground">Automations</h1>
+          <h1 className="min-w-0 truncate text-[15px] font-semibold text-foreground">{t("automations.title")}</h1>
         </div>
       </header>
 
       <section className="min-h-0 flex-1 overflow-auto border-t border-border">
         <main className="mx-auto flex w-full max-w-[920px] flex-col px-7 py-6">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <div className="text-[12px] font-semibold uppercase text-muted-foreground">Tasks</div>
+            <div className="text-[12px] font-semibold uppercase text-muted-foreground">{t("automations.tasks")}</div>
             <button
-              aria-label="New automation"
+              aria-label={t("automations.new")}
               className="grid h-8 w-8 place-items-center rounded-md border border-border bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground"
               onClick={startNewAutomation}
-              title="New automation"
+              title={t("automations.new")}
               type="button"
             >
               <Plus className="h-4 w-4" />
@@ -249,7 +238,7 @@ export function AutomationsPage({
                     <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", automation.enabled ? "bg-emerald-500" : "bg-muted-foreground/50")} />
                   </div>
                   <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-                    <span className="shrink-0 font-medium uppercase">Trigger</span>
+                    <span className="shrink-0 font-medium uppercase">{t("automations.trigger")}</span>
                     <span className="min-w-0 truncate">{formatTrigger(automation.trigger)}</span>
                   </div>
                 </div>
@@ -266,24 +255,24 @@ export function AutomationsPage({
                     onClick={() => void setEnabled(automation.id, !automation.enabled)}
                     type="button"
                   >
-                    {automation.enabled ? "Enabled" : "Disabled"}
+                    {automation.enabled ? t("automations.enabled") : t("automations.disabled")}
                   </button>
                   <button
-                    aria-label={`Run ${automation.name}`}
+                    aria-label={t("automations.runNamed", { name: automation.name })}
                     className="grid h-8 w-8 place-items-center rounded-md border border-border bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-50"
                     disabled={submitting}
                     onClick={() => void runNow(automation.id)}
-                    title="Run"
+                    title={t("automations.run")}
                     type="button"
                   >
                     <Play className="h-[13px] w-[13px]" />
                   </button>
                   <button
-                    aria-label={`Edit ${automation.name}`}
+                    aria-label={t("automations.editNamed", { name: automation.name })}
                     className="grid h-8 w-8 place-items-center rounded-md border border-border bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-50"
                     disabled={submitting}
                     onClick={() => editAutomation(automation)}
-                    title="Edit"
+                    title={t("automations.edit")}
                     type="button"
                   >
                     <Pencil className="h-[13px] w-[13px]" />
@@ -291,7 +280,7 @@ export function AutomationsPage({
                 </div>
               </div>
             )) : (
-              <div className="py-6 text-center text-[12px] text-muted-foreground">No automation tasks</div>
+              <div className="py-6 text-center text-[12px] text-muted-foreground">{t("automations.noTasks")}</div>
             )}
           </div>
         </main>
@@ -342,9 +331,29 @@ function AutomationTaskDialog({
   submitting: boolean;
   webhookUrl: string;
 }) {
+  const { t } = useI18n();
   if (!open) return null;
 
-  const title = draft.id ? "Edit automation task" : "New automation task";
+  const approvalModeOptions = [
+    { label: t("agent.permission.auto"), value: "auto" },
+    { label: t("agent.permission.full"), value: "full" },
+    { label: t("agent.permission.request"), value: "request" }
+  ];
+  const concurrencyPolicyOptions = [
+    { label: t("automations.concurrency.skip"), value: "skip" },
+    { label: t("automations.concurrency.queue"), value: "queue" }
+  ];
+  const threadPolicyOptions = [
+    { label: t("automations.thread.reuse"), value: "reuse" },
+    { label: t("automations.thread.new"), value: "new" }
+  ];
+  const triggerTypeLabels: Record<AutomationTriggerType, string> = {
+    cron: t("automations.triggerType.cron"),
+    interval: t("automations.triggerType.interval"),
+    poll: t("automations.triggerType.poll"),
+    webhook: t("automations.triggerType.webhook")
+  };
+  const title = draft.id ? t("automations.dialog.editTitle") : t("automations.dialog.newTitle");
   const handleKeyDown = (event: KeyboardEvent<HTMLFormElement>) => {
     if (event.key === "Escape") {
       event.stopPropagation();
@@ -369,11 +378,11 @@ function AutomationTaskDialog({
         <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
           <div className="min-w-0 truncate text-[14px] font-semibold text-foreground">{title}</div>
           <Button
-            aria-label="Close"
+            aria-label={t("automations.close")}
             className="h-7 w-7 shrink-0 bg-card text-muted-foreground hover:bg-accent hover:text-accent-foreground"
             onClick={onClose}
             size="icon"
-            title="Close"
+            title={t("automations.close")}
             type="button"
             variant="outline"
           >
@@ -383,12 +392,12 @@ function AutomationTaskDialog({
 
         <div className="min-h-0 flex-1 space-y-5 overflow-auto p-4">
           <section className="space-y-3">
-            <SectionTitle icon={Activity} title="Definition" />
+            <SectionTitle icon={Activity} title={t("automations.definition")} />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="Name">
+              <Field label={t("automations.name")}>
                 <Input className="h-9 bg-background" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
               </Field>
-              <Field label="State">
+              <Field label={t("automations.state")}>
                 <Button
                   className={cn(
                     "h-9 px-3",
@@ -400,14 +409,14 @@ function AutomationTaskDialog({
                   type="button"
                   variant="outline"
                 >
-                  {draft.enabled ? "Enabled" : "Disabled"}
+                  {draft.enabled ? t("automations.enabled") : t("automations.disabled")}
                 </Button>
               </Field>
             </div>
           </section>
 
           <section className="space-y-3">
-            <SectionTitle icon={Clock3} title="Trigger" />
+            <SectionTitle icon={Clock3} title={t("automations.trigger")} />
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {(["interval", "cron", "poll", "webhook"] as AutomationTriggerType[]).map((triggerType) => (
                 <Button
@@ -421,7 +430,7 @@ function AutomationTaskDialog({
                   variant="outline"
                 >
                   <TriggerIcon triggerType={triggerType} />
-                  <span className="capitalize">{triggerType}</span>
+                  <span>{triggerTypeLabels[triggerType]}</span>
                 </Button>
               ))}
             </div>
@@ -429,9 +438,9 @@ function AutomationTaskDialog({
           </section>
 
           <section className="space-y-3">
-            <SectionTitle icon={Globe2} title="Agent" />
+            <SectionTitle icon={Globe2} title={t("automations.agent")} />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="Provider">
+              <Field label={t("automations.provider")}>
                 <Select
                   className="w-full"
                   onValueChange={(providerId) => setDraft({ ...draft, model: "", providerId })}
@@ -440,31 +449,31 @@ function AutomationTaskDialog({
                   value={draft.providerId}
                 />
               </Field>
-              <Field label="Model">
+              <Field label={t("automations.model")}>
                 <Select
                   className="w-full"
                   onValueChange={(model) => setDraft({ ...draft, model })}
                   options={[
-                    { label: "Default", value: "" },
+                    { label: t("automations.default"), value: "" },
                     ...(selectedProvider?.models.map((model) => ({ label: model.label, value: model.value })) ?? [])
                   ]}
                   selectClassName="h-9 w-full max-w-none border border-input bg-background px-2.5"
                   value={draft.model}
                 />
               </Field>
-              <Field label="Project">
+              <Field label={t("automations.project")}>
                 <Select
                   className="w-full"
                   onValueChange={(projectId) => setDraft({ ...draft, projectId })}
                   options={[
-                    { label: "Current workspace", value: "" },
+                    { label: t("automations.currentWorkspace"), value: "" },
                     ...projects.map((project) => ({ label: getSidebarProjectLabel(project) || project.name, value: project.id }))
                   ]}
                   selectClassName="h-9 w-full max-w-none border border-input bg-background px-2.5"
                   value={draft.projectId}
                 />
               </Field>
-              <Field label="Approval">
+              <Field label={t("automations.approval")}>
                 <Select
                   className="w-full"
                   onValueChange={(approvalMode) => setDraft({ ...draft, approvalMode: approvalMode as AutomationFormState["approvalMode"] })}
@@ -473,7 +482,7 @@ function AutomationTaskDialog({
                   value={draft.approvalMode}
                 />
               </Field>
-              <Field label="Thread">
+              <Field label={t("automations.thread")}>
                 <Select
                   className="w-full"
                   onValueChange={(threadPolicy) => setDraft({ ...draft, threadPolicy: threadPolicy as AutomationFormState["threadPolicy"] })}
@@ -482,7 +491,7 @@ function AutomationTaskDialog({
                   value={draft.threadPolicy}
                 />
               </Field>
-              <Field label="Concurrency">
+              <Field label={t("automations.concurrency")}>
                 <Select
                   className="w-full"
                   onValueChange={(concurrencyPolicy) => setDraft({ ...draft, concurrencyPolicy: concurrencyPolicy as AutomationFormState["concurrencyPolicy"] })}
@@ -492,7 +501,7 @@ function AutomationTaskDialog({
                 />
               </Field>
             </div>
-            <Field label="Prompt">
+            <Field label={t("automations.prompt")}>
               <Textarea
                 className="min-h-[160px] resize-y bg-background text-[12px]"
                 value={draft.prompt}
@@ -513,7 +522,7 @@ function AutomationTaskDialog({
                 variant="outline"
               >
                 <Play className="h-4 w-4" />
-                <span>Run</span>
+                <span>{t("automations.run")}</span>
               </Button>
             ) : null}
             {onDelete ? (
@@ -525,7 +534,7 @@ function AutomationTaskDialog({
                 variant="outline"
               >
                 <Trash2 className="h-4 w-4" />
-                <span>Delete</span>
+                <span>{t("automations.delete")}</span>
               </Button>
             ) : null}
           </div>
@@ -537,7 +546,7 @@ function AutomationTaskDialog({
               type="button"
               variant="outline"
             >
-              Cancel
+              {t("automations.cancel")}
             </Button>
             <Button
               className="h-9"
@@ -545,7 +554,7 @@ function AutomationTaskDialog({
               type="submit"
             >
               <Save className="h-4 w-4" />
-              <span>Save</span>
+              <span>{t("automations.save")}</span>
             </Button>
           </div>
         </div>
@@ -563,16 +572,34 @@ function TriggerFields({
   setDraft: (draft: AutomationFormState) => void;
   webhookUrl: string;
 }) {
+  const { t } = useI18n();
+  const intervalOptions = [
+    { label: t("automations.interval.1s"), value: "1s" },
+    { label: t("automations.interval.5s"), value: "5s" },
+    { label: t("automations.interval.10s"), value: "10s" },
+    { label: t("automations.interval.30s"), value: "30s" },
+    { label: t("automations.interval.1m"), value: "1m" },
+    { label: t("automations.interval.5m"), value: "5m" },
+    { label: t("automations.interval.15m"), value: "15m" },
+    { label: t("automations.interval.1h"), value: "1h" },
+    { label: t("automations.interval.1d"), value: "1d" }
+  ];
+  const pollConditionOptions = [
+    { label: t("automations.condition.textContains"), value: "text-contains" },
+    { label: t("automations.condition.jsonExists"), value: "json-exists" },
+    { label: t("automations.condition.jsonEquals"), value: "json-equals" }
+  ];
+
   if (draft.triggerType === "webhook") {
     return (
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Slug">
+        <Field label={t("automations.slug")}>
           <Input className="h-9 bg-background" value={draft.webhookSlug} onChange={(event) => setDraft({ ...draft, webhookSlug: event.target.value })} />
         </Field>
-        <Field label="Secret">
+        <Field label={t("automations.secret")}>
           <Input className="h-9 bg-background" value={draft.webhookSecret} onChange={(event) => setDraft({ ...draft, webhookSecret: event.target.value })} />
         </Field>
-        <Field className="col-span-2" label="URL">
+        <Field className="col-span-2" label={t("automations.url")}>
           <Input className="h-9 bg-background" readOnly value={webhookUrl} />
         </Field>
       </div>
@@ -582,10 +609,10 @@ function TriggerFields({
   if (draft.triggerType === "poll") {
     return (
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Cron">
+        <Field label={t("automations.cron")}>
           <Input className="h-9 bg-background" value={draft.cronExpression} onChange={(event) => setDraft({ ...draft, cronExpression: event.target.value })} />
         </Field>
-        <Field label="Method">
+        <Field label={t("automations.method")}>
           <Select
             className="w-full"
             onValueChange={(pollMethod) => setDraft({ ...draft, pollMethod: pollMethod as "GET" | "POST" })}
@@ -594,10 +621,10 @@ function TriggerFields({
             value={draft.pollMethod}
           />
         </Field>
-        <Field className="col-span-2" label="URL">
+        <Field className="col-span-2" label={t("automations.url")}>
           <Input className="h-9 bg-background" value={draft.pollUrl} onChange={(event) => setDraft({ ...draft, pollUrl: event.target.value })} />
         </Field>
-        <Field label="Condition">
+        <Field label={t("automations.condition")}>
           <Select
             className="w-full"
             value={draft.pollConditionType}
@@ -606,16 +633,16 @@ function TriggerFields({
             selectClassName="h-9 w-full max-w-none border border-input bg-background px-2.5"
           />
         </Field>
-        <Field label="Path">
+        <Field label={t("automations.path")}>
           <Input className="h-9 bg-background" value={draft.pollPath} onChange={(event) => setDraft({ ...draft, pollPath: event.target.value })} />
         </Field>
-        <Field label="Value">
+        <Field label={t("automations.value")}>
           <Input className="h-9 bg-background" value={draft.pollValue} onChange={(event) => setDraft({ ...draft, pollValue: event.target.value })} />
         </Field>
-        <Field label="Dedupe path">
+        <Field label={t("automations.dedupePath")}>
           <Input className="h-9 bg-background" value={draft.pollDedupeKeyPath} onChange={(event) => setDraft({ ...draft, pollDedupeKeyPath: event.target.value })} />
         </Field>
-        <Field className="col-span-2" label="Body">
+        <Field className="col-span-2" label={t("automations.body")}>
           <Textarea className="min-h-[72px] resize-y bg-background text-[12px]" value={draft.pollBody} onChange={(event) => setDraft({ ...draft, pollBody: event.target.value })} />
         </Field>
       </div>
@@ -625,10 +652,10 @@ function TriggerFields({
   if (draft.triggerType === "cron") {
     return (
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Cron">
+        <Field label={t("automations.cron")}>
           <Input className="h-9 bg-background" value={draft.cronExpression} onChange={(event) => setDraft({ ...draft, cronExpression: event.target.value })} />
         </Field>
-        <Field label="Timezone">
+        <Field label={t("automations.timezone")}>
           <Input className="h-9 bg-background" value={draft.timezone} onChange={(event) => setDraft({ ...draft, timezone: event.target.value })} />
         </Field>
       </div>
@@ -637,7 +664,7 @@ function TriggerFields({
 
   return (
     <div className="grid grid-cols-2 gap-3">
-      <Field label="Every">
+      <Field label={t("automations.every")}>
         <Select
           className="w-full"
           value={draft.every}
@@ -648,7 +675,7 @@ function TriggerFields({
           selectClassName="h-9 w-full max-w-none border border-input bg-background px-2.5"
         />
       </Field>
-      <Field label="Cron">
+      <Field label={t("automations.cron")}>
         <Input className="h-9 bg-background" value={draft.cronExpression} onChange={(event) => setDraft({ ...draft, cronExpression: event.target.value })} />
       </Field>
     </div>
@@ -679,7 +706,7 @@ function TriggerIcon({ triggerType }: { triggerType: AutomationTriggerType }) {
   return <Clock3 className="h-4 w-4 shrink-0" />;
 }
 
-function createDefaultDraft(agentProviders: AgentProviderOption[], projects: SidebarProject[]): AutomationFormState {
+function createDefaultDraft(agentProviders: AgentProviderOption[], projects: SidebarProject[], defaultName: string): AutomationFormState {
   return {
     approvalMode: "auto",
     concurrencyPolicy: "skip",
@@ -688,7 +715,7 @@ function createDefaultDraft(agentProviders: AgentProviderOption[], projects: Sid
     every: defaultEvery,
     id: "",
     model: "",
-    name: "New automation",
+    name: defaultName,
     pollBody: "",
     pollConditionType: "text-contains",
     pollDedupeKeyPath: "",
@@ -708,8 +735,8 @@ function createDefaultDraft(agentProviders: AgentProviderOption[], projects: Sid
   };
 }
 
-function formStateFromAutomation(automation: AutomationDefinition, agentProviders: AgentProviderOption[], projects: SidebarProject[]): AutomationFormState {
-  const base = createDefaultDraft(agentProviders, projects);
+function formStateFromAutomation(automation: AutomationDefinition, agentProviders: AgentProviderOption[], projects: SidebarProject[], defaultName: string): AutomationFormState {
+  const base = createDefaultDraft(agentProviders, projects, defaultName);
   const trigger = automation.trigger;
   const pollCondition = trigger.type === "poll" ? trigger.condition : null;
   return {

@@ -1137,6 +1137,7 @@ export function RightSidebar({
   activeTabId,
   agentContext,
   onAddPanel,
+  onCloseTab,
   onResizeStart,
   onSelectThread,
   onThreadsChanged,
@@ -1150,6 +1151,7 @@ export function RightSidebar({
   activeTabId: string;
   agentContext?: RightSidebarAgentContext;
   onAddPanel: (panel: RightSidebarPluginId) => void;
+  onCloseTab: (tabId: string) => void;
   onResizeStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onSelectThread?: (threadId: string) => void;
   onThreadsChanged?: () => void | Promise<void>;
@@ -1241,21 +1243,37 @@ export function RightSidebar({
                 const selected = tab.id === activeTab?.id;
 
                 return (
-                  <button
-                    aria-selected={selected}
+                  <div
                     className={cn(
-                      "relative flex h-7 min-w-max shrink-0 items-center gap-1 rounded-md bg-background px-1.5 text-[12px] font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/20",
+                      "group relative flex h-7 min-w-max shrink-0 items-center rounded-md bg-background text-[12px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
                       selected && "text-foreground after:absolute after:inset-x-1.5 after:bottom-[2px] after:h-0.5 after:rounded-full after:bg-primary"
                     )}
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    role="tab"
-                    title={tab.title}
-                    type="button"
                   >
-                    <Icon className={cn("h-[15px] w-[15px] shrink-0 text-muted-foreground", selected && "text-primary")} />
-                    <span className="truncate">{tab.label}</span>
-                  </button>
+                    <button
+                      aria-selected={selected}
+                      className="flex h-full min-w-0 items-center gap-1 rounded-l-md py-0 pl-1.5 pr-1 outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
+                      onClick={() => setActiveTab(tab.id)}
+                      role="tab"
+                      title={tab.title}
+                      type="button"
+                    >
+                      <Icon className={cn("h-[15px] w-[15px] shrink-0 text-muted-foreground", selected && "text-primary")} />
+                      <span className="max-w-[92px] truncate">{tab.label}</span>
+                    </button>
+                    <button
+                      aria-label={t("rightSidebar.closeTabAria", { label: tab.label })}
+                      className="mr-0.5 grid h-5 w-5 place-items-center rounded-sm text-muted-foreground opacity-0 outline-none transition-opacity hover:bg-background hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/20 group-hover:opacity-100"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onCloseTab(tab.id);
+                      }}
+                      title={t("rightSidebar.closeTabAria", { label: tab.label })}
+                      type="button"
+                    >
+                      <X className="h-[12px] w-[12px]" />
+                    </button>
+                  </div>
                 );
               })}
             </div>

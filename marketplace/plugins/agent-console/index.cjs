@@ -61,16 +61,48 @@ module.exports = {
     if (codexRuntime.command) {
       runtimeConfig.codex = {
         ...isRecord(runtimeConfig.codex) ? runtimeConfig.codex : {},
+        adapter: "codex-app-server",
         command: codexRuntime.command,
-        env: codexRuntime.env
+        env: codexRuntime.env,
+        kind: "asp",
+        transport: "stdio",
+        wireProtocol: "codex-app-server"
       };
+      upsertAgentConsoleAspRuntimeProvider(runtimeConfig, {
+        ...runtimeConfig.codex,
+        capabilities: builtinAgentConsoleAspCapabilities({
+          runtimeAdapter: "codex-app-server",
+          subagentMode: "emulated",
+          subagentDescription: "Codex is adapted through ASP and emulates Agent Console subagents with scoped instructions and MCP servers.",
+          wireProtocol: "codex-app-server"
+        }),
+        description: "Runs Codex as a native Agent Server Protocol provider backed by codex app-server.",
+        id: "codex",
+        label: "Codex"
+      });
     }
     if (claudeCodeRuntime.command) {
       runtimeConfig.claudeCode = {
         ...isRecord(runtimeConfig.claudeCode) ? runtimeConfig.claudeCode : {},
+        adapter: "claude-code-stream-json",
         command: claudeCodeRuntime.command,
-        env: claudeCodeRuntime.env
+        env: claudeCodeRuntime.env,
+        kind: "asp",
+        transport: "stdio",
+        wireProtocol: "claude-code-stream-json"
       };
+      upsertAgentConsoleAspRuntimeProvider(runtimeConfig, {
+        ...runtimeConfig.claudeCode,
+        capabilities: builtinAgentConsoleAspCapabilities({
+          runtimeAdapter: "claude-code-stream-json",
+          subagentMode: "native",
+          subagentDescription: "Claude Code is adapted through ASP and receives Agent Console subagents through its native --agents interface.",
+          wireProtocol: "claude-code-stream-json"
+        }),
+        description: "Runs Claude Code as a native Agent Server Protocol provider backed by its stream-json SDK protocol.",
+        id: "claude-code",
+        label: "Claude Code"
+      });
     }
     const runtime = {
       appRoot,
@@ -1241,6 +1273,51 @@ function buildRuntimeConfig(config, options) {
     gatewayUrl,
     models,
     openAiBaseUrl
+  };
+}
+function upsertAgentConsoleAspRuntimeProvider(runtimeConfig, provider) {
+  if (!isRecord(runtimeConfig) || !isRecord(provider)) return;
+  const providerId = stringValue(provider.id);
+  if (!providerId) return;
+  const normalizedProvider = {
+    ...provider,
+    id: providerId,
+    kind: "asp",
+    transport: stringValue(provider.transport) || "stdio"
+  };
+  const agents = isRecord(runtimeConfig.agents) ? { ...runtimeConfig.agents } : {};
+  agents.providers = upsertRuntimeProviderList(agents.providers, normalizedProvider);
+  runtimeConfig.agents = agents;
+  runtimeConfig.runtimeProviders = upsertRuntimeProviderList(runtimeConfig.runtimeProviders, normalizedProvider);
+}
+function upsertRuntimeProviderList(value, provider) {
+  const providerId = stringValue(provider.id);
+  const providers = Array.isArray(value) ? value.filter((candidate) => !isRecord(candidate) || stringValue(candidate.id) !== providerId) : [];
+  providers.push(provider);
+  return providers;
+}
+function builtinAgentConsoleAspCapabilities(options = {}) {
+  const subagentMode = stringValue(options.subagentMode);
+  return {
+    approvalModes: ["request", "auto", "full"],
+    contentParts: ["text", "tool", "reasoning", "plan", "status", "resource", "raw"],
+    contextWindow: true,
+    humanInput: true,
+    models: true,
+    protocolVersions: ["1"],
+    resumeSession: true,
+    runtimeAdapter: stringValue(options.runtimeAdapter) || void 0,
+    sessionHistory: true,
+    sessions: true,
+    subagents: {
+      description: stringValue(options.subagentDescription) || void 0,
+      emulated: subagentMode === "emulated",
+      mode: subagentMode === "native" || subagentMode === "emulated" ? subagentMode : "none",
+      native: subagentMode === "native"
+    },
+    toolEvents: true,
+    transports: ["stdio"],
+    wireProtocol: stringValue(options.wireProtocol) || void 0
   };
 }
 function ensureAgentConsoleCodexRuntime(ctx, options, runtimeConfig) {

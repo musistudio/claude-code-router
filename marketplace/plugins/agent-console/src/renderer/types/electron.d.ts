@@ -300,16 +300,60 @@ type AgentConsoleConfiguredAgentProvider = {
 
 type AgentConsoleConfiguredSubagent = {
   approvalMode?: AgentConsoleAgentApprovalMode;
+  budget?: AgentConsoleSubagentBudget;
+  capabilities: string[];
+  contextScope?: string;
   description?: string;
   effort?: AgentConsoleAgentReasoningEffort;
   id: string;
   label: string;
   mcpServers: AgentMcpServerMap;
   model?: string;
+  outputContract?: string;
   providerId: string;
+  qualityGates: string[];
+  runtimeMode?: AgentConsoleSubagentRuntimeMode;
   speed?: AgentConsoleAgentRunSpeed;
   systemPrompt: string;
   timeoutMs?: number;
+};
+
+type AgentConsoleSubagentBudget = {
+  maxDurationMs?: number;
+  maxTokens?: number;
+  maxToolCalls?: number;
+};
+
+type AgentConsoleSubagentRuntimeMode = "auto" | "emulated" | "native";
+type AgentConsoleSubagentProviderMode = "emulated" | "native" | "none";
+
+type AgentConsoleSubagentRuntimeDefinition = {
+  approvalMode?: AgentConsoleAgentApprovalMode;
+  budget?: AgentConsoleSubagentBudget;
+  capabilities: string[];
+  contextScope?: string;
+  description?: string;
+  effort?: AgentConsoleAgentReasoningEffort;
+  id: string;
+  label: string;
+  mcpServerIds: string[];
+  model?: string;
+  outputContract?: string;
+  providerId: string;
+  providerLabel?: string;
+  providerSubagentMode?: AgentConsoleSubagentProviderMode;
+  qualityGates: string[];
+  runtimeMode: AgentConsoleSubagentRuntimeMode;
+  speed?: AgentConsoleAgentRunSpeed;
+  systemPrompt: string;
+  timeoutMs?: number;
+};
+
+type AgentConsoleSubagentRuntimePayload = {
+  instructions: string;
+  mcpServers?: AgentMcpServerMap;
+  subagents: AgentConsoleSubagentRuntimeDefinition[];
+  version: 1;
 };
 
 type AgentConsoleSmallWindowState = {
@@ -364,12 +408,20 @@ type AgentConsoleAgentProviderCapabilities = {
   protocolVersions?: string[];
   reasoningEfforts?: AgentConsoleAgentReasoningEffort[];
   resumeSession?: boolean;
+  runtimeAdapter?: string;
   sessionHistory?: boolean;
   sessions?: boolean;
   slashCommands?: AgentConsoleAgentProviderSlashCommand[];
   speeds?: AgentConsoleAgentRunSpeed[];
+  subagents?: {
+    description?: string;
+    emulated?: boolean;
+    mode?: AgentConsoleSubagentProviderMode;
+    native?: boolean;
+  };
   toolEvents?: boolean;
   transports?: string[];
+  wireProtocol?: string;
 };
 
 type AgentConsoleAgentProviderSlashCommand = {
@@ -1105,7 +1157,9 @@ declare global {
           unanswered?: boolean;
         }): Promise<{ questionId: string; resolved: boolean; success: boolean }>;
         sendMessage(payload: {
+          additionalDeveloperInstructions?: string;
           agentCommand?: string;
+          agentConsoleSubagents?: AgentConsoleSubagentRuntimePayload;
           args?: string[];
           approvalMode?: AgentConsoleAgentApprovalMode;
           attachments?: AgentConsoleAttachment[];
@@ -1131,7 +1185,10 @@ declare global {
           title?: string;
         }): Promise<AgentConsoleAgentSendMessageResult>;
         startThread(payload?: {
+          additionalDeveloperInstructions?: string;
+          agentConsoleSubagents?: AgentConsoleSubagentRuntimePayload;
           cwd?: string;
+          mcpServers?: AgentMcpServerMap;
           prompt?: string;
           projectId?: string;
           projectName?: string;

@@ -19,8 +19,6 @@ import {
   HardDriveUpload,
   Loader2,
   Mic,
-  Pause,
-  Play,
   Plus,
   SquarePen,
   Square,
@@ -77,6 +75,7 @@ import {
   getAgentProviderConnectionMode,
   getAgentProviderLabel,
   getAgentProviderOptions,
+  getAgentProviderSubagentMode,
   getAgentSpeedLabel,
   getConfiguredAgentProviderFromForm,
   getContextWindowMetrics,
@@ -154,7 +153,7 @@ export function ChatbotPage({
   onSlashCommandSelect,
   onSubagentSelectionChange,
   onSubmit,
-  onToggleStreaming,
+  onAbortRun,
   onNewSessionProjectChange,
   projects,
   questionPrompt,
@@ -205,7 +204,7 @@ export function ChatbotPage({
   onRemoveAttachment: (attachmentPath: string) => void;
   onSlashCommandSelect: (command: SlashCommand) => void;
   onSubmit: () => void;
-  onToggleStreaming: () => void;
+  onAbortRun: () => void;
   onNewSessionProjectChange: (projectId: string) => void;
   projects: SidebarProject[];
   questionPrompt: AgentQuestionPrompt | null;
@@ -380,7 +379,7 @@ export function ChatbotPage({
         onSlashCommandSelect={onSlashCommandSelect}
         onSubagentSelectionChange={onSubagentSelectionChange}
         onSubmit={onSubmit}
-        onToggleStreaming={onToggleStreaming}
+        onAbortRun={onAbortRun}
         questionPrompt={questionPrompt}
         selectedSubagentIds={selectedSubagentIds}
         slashCommands={slashCommands}
@@ -949,6 +948,7 @@ function AgentRunSettingsSelect({
 type ComposerAttachmentSubmenuSide = "left" | "right";
 
 function ComposerAttachmentMenu({
+  agentProviders,
   buttonClassName,
   onAttachFiles,
   onCreateSubagent,
@@ -957,6 +957,7 @@ function ComposerAttachmentMenu({
   selectedSubagentIds,
   subagents
 }: {
+  agentProviders: AgentProviderOption[];
   buttonClassName?: string;
   onAttachFiles: () => Promise<void>;
   onCreateSubagent: () => void;
@@ -1092,6 +1093,9 @@ function ComposerAttachmentMenu({
                 <div className="max-h-[260px] overflow-y-auto">
                   {subagents.length ? subagents.map((subagent) => {
                     const selected = selectedIdSet.has(subagent.id);
+                    const provider = agentProviders.find((candidate) => candidate.id === subagent.providerId);
+                    const providerMode = getAgentProviderSubagentMode(provider);
+                    const capabilitySummary = subagent.capabilities.slice(0, 2).join(", ");
                     return (
                       <button
                         aria-checked={selected}
@@ -1110,7 +1114,9 @@ function ComposerAttachmentMenu({
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate font-medium">{subagent.label}</span>
-                          <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{subagent.providerId}</span>
+                          <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                            {[provider?.label ?? subagent.providerId, t(`settings.subagents.providerMode.${providerMode}`), capabilitySummary].filter(Boolean).join(" · ")}
+                          </span>
                         </span>
                       </button>
                     );
@@ -1307,6 +1313,7 @@ export function NewSessionComposer({
           <div className={cn("flex items-center justify-between gap-2", mobile ? "flex-col items-stretch" : "flex-wrap")}>
             <div className={cn("flex min-w-0 items-center gap-1.5", mobile && "overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden")}>
               <ComposerAttachmentMenu
+                agentProviders={agentProviders}
                 buttonClassName={cn(mobile ? "h-10 w-10 shrink-0" : "h-7 w-7")}
                 onAttachFiles={onAttachFiles}
                 onCreateSubagent={onCreateSubagent}
@@ -3466,7 +3473,7 @@ export function FollowUpComposer({
   onSlashCommandSelect,
   onSubagentSelectionChange,
   onSubmit,
-  onToggleStreaming,
+  onAbortRun,
   questionPrompt,
   selectedSubagentIds,
   slashCommands,
@@ -3502,7 +3509,7 @@ export function FollowUpComposer({
   onSlashCommandSelect: (command: SlashCommand) => void;
   onSubagentSelectionChange: (subagentIds: string[]) => void;
   onSubmit: () => void;
-  onToggleStreaming: () => void;
+  onAbortRun: () => void;
   questionPrompt: AgentQuestionPrompt | null;
   selectedSubagentIds: string[];
   slashCommands: SlashCommand[];
@@ -3849,6 +3856,7 @@ export function FollowUpComposer({
             <div className="flex items-center justify-between gap-2">
               <div className="flex min-w-0 items-center gap-1.5">
                 <ComposerAttachmentMenu
+                  agentProviders={agentProviders}
                   buttonClassName={cn(mobile ? "h-10 w-10 shrink-0" : "h-7 w-7")}
                   onAttachFiles={onAttachFiles}
                   onCreateSubagent={onCreateSubagent}
@@ -3895,9 +3903,10 @@ export function FollowUpComposer({
                 </button>
                 {activeStream ? (
                   <button
-                    aria-label={activeStream.running ? t("chat.pauseStream") : t("chat.resumeStream")}
+                    aria-label={t("chat.stopRun")}
                     className={cn("grid place-items-center rounded-full bg-foreground text-background transition-transform hover:scale-105 active:scale-95", mobile ? "h-10 w-10" : "h-7 w-7")}
-                    onClick={onToggleStreaming}
+                    onClick={onAbortRun}
+                    title={t("chat.stopRun")}
                     type="button"
                   >
                     <AnimatePresence initial={false} mode="wait">
@@ -3905,10 +3914,10 @@ export function FollowUpComposer({
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.82 }}
                         initial={{ opacity: 0, scale: 0.82 }}
-                        key={activeStream.running ? "pause" : "play"}
+                        key="stop"
                         transition={iconSpringTransition}
                       >
-                        {activeStream.running ? <Pause className="h-[15px] w-[15px] fill-current" /> : <Play className="h-[17px] w-[17px] fill-current" />}
+                        <Square className="h-[13px] w-[13px] fill-current" />
                       </motion.span>
                     </AnimatePresence>
                   </button>

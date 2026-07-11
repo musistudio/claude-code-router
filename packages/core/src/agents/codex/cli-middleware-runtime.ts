@@ -20,6 +20,8 @@ const CONFIG_DIR = resolveConfigDir();
 const LOG_PATH = process.env.CCR_CODEX_CLI_MIDDLEWARE_LOG || "";
 const CLAUDE_CODE_MCP_CONFIG_ENV = "CCR_CLAUDE_CODE_MCP_CONFIG";
 const CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV = "CODEXL_CLAUDE_CODE_MCP_CONFIG";
+const AGENT_CONSOLE_SUBAGENTS_START = "<agent-console-subagents>";
+const AGENT_CONSOLE_SUBAGENTS_END = "</agent-console-subagents>";
 const CLAUDE_CODE_CHINA_TIME_ZONES = new Set([
   "asia/chongqing",
   "asia/chungking",
@@ -230,6 +232,8 @@ function firstClaudeCodePositionalArg(args) {
 function claudeCodeOptionTakesValue(arg) {
   return new Set([
     "--add-dir",
+    "--agent",
+    "--agents",
     "--append-system-prompt",
     "--config",
     "--continue",
@@ -573,11 +577,14 @@ function cliThreadStartParams(params) {
     "developerInstructions",
     "personality",
     "ephemeral",
-    "persistExtendedHistory"
+    "persistExtendedHistory",
+    "mcpServers",
+    "agentConsoleSubagents"
   ]) {
     copyJsonField(source, output, key);
   }
   copyJsonField(source, output, "additionalDeveloperInstructions", "developerInstructions");
+  appendAgentConsoleSubagentRuntime(output, source);
   ensureCliProjectlessOutputDirectory(source, output);
   copyPermissionFields(source, output);
   copyCollaborationModelFields(source, output);
@@ -610,10 +617,14 @@ function cliThreadResumeParams(params) {
     "developerInstructions",
     "personality",
     "excludeTurns",
-    "persistExtendedHistory"
+    "persistExtendedHistory",
+    "mcpServers",
+    "agentConsoleSubagents"
   ]) {
     copyJsonField(source, output, key);
   }
+  copyJsonField(source, output, "additionalDeveloperInstructions", "developerInstructions");
+  appendAgentConsoleSubagentRuntime(output, source);
   copyPermissionFields(source, output);
   copyCollaborationModelFields(source, output);
   return output;
@@ -633,10 +644,15 @@ function cliTurnStartParamsForAppServer(params) {
     "effort",
     "reasoningEffort",
     "workspaceKind",
-    "projectlessOutputDirectory"
+    "projectlessOutputDirectory",
+    "developerInstructions",
+    "mcpServers",
+    "agentConsoleSubagents"
   ]) {
     copyJsonField(source, output, key);
   }
+  copyJsonField(source, output, "additionalDeveloperInstructions", "developerInstructions");
+  appendAgentConsoleSubagentRuntime(output, source);
   copyPermissionFields(source, output);
   copyCollaborationModelFields(source, output);
   return output;
@@ -663,6 +679,222 @@ function ensureCliProjectlessOutputDirectory(source, target) {
 function appendDeveloperInstruction(target, instruction) {
   const existing = typeof target.developerInstructions === "string" ? target.developerInstructions.trim() : "";
   target.developerInstructions = existing ? existing + "\n\n" + instruction : instruction;
+}
+
+function appendAgentConsoleSubagentRuntime(target, source) {
+  const runtime = normalizeAgentConsoleSubagentRuntime(
+    source.agentConsoleSubagents ||
+    source.agent_console_subagents ||
+    source.subagentRuntime ||
+    source.subagent_runtime
+  );
+  const runtimeMcpServers = runtime ? normalizeAgentConsoleMcpServerMap(runtime.mcpServers) : null;
+  const sourceMcpServers = normalizeAgentConsoleMcpServerMap(source.mcpServers || source.mcp_servers);
+  const mergedMcpServers = mergeAgentConsoleMcpServerMaps(sourceMcpServers, runtimeMcpServers);
+  if (mergedMcpServers) {
+    target.mcpServers = mergeAgentConsoleMcpServerMaps(normalizeAgentConsoleMcpServerMap(target.mcpServers), mergedMcpServers);
+  }
+  if (!runtime) return;
+  target.agentConsoleSubagents = runtime;
+  target.developerInstructions = withAgentConsoleSubagentInstructions(target.developerInstructions, runtime);
+}
+
+function normalizeAgentConsoleSubagentRuntime(value) {
+  if (!value) return null;
+  const record = isPlainObject(value) ? value : {};
+  const rawSubagents = Array.isArray(record.subagents) ? record.subagents : Array.isArray(value) ? value : [];
+  const subagents = [];
+  const seen = new Set();
+  for (const rawSubagent of rawSubagents) {
+    if (!isPlainObject(rawSubagent)) continue;
+    const id = runtimeString(rawSubagent.id);
+    const label = runtimeString(rawSubagent.label) || id;
+    const systemPrompt = runtimeString(rawSubagent.systemPrompt || rawSubagent.system_prompt);
+    if (!id || !label || !systemPrompt || seen.has(id)) continue;
+    seen.add(id);
+    subagents.push({
+      approvalMode: runtimeString(rawSubagent.approvalMode || rawSubagent.approval_mode) || undefined,
+      budget: normalizeAgentConsoleSubagentBudget(rawSubagent.budget || rawSubagent),
+      capabilities: runtimeStringArray(rawSubagent.capabilities || rawSubagent.skills),
+      contextScope: runtimeString(rawSubagent.contextScope || rawSubagent.context_scope || rawSubagent.context) || undefined,
+      description: runtimeString(rawSubagent.description) || undefined,
+      effort: runtimeString(rawSubagent.effort || rawSubagent.reasoningEffort || rawSubagent.reasoning_effort) || undefined,
+      id,
+      label,
+      mcpServerIds: Array.isArray(rawSubagent.mcpServerIds || rawSubagent.mcp_server_ids)
+        ? (rawSubagent.mcpServerIds || rawSubagent.mcp_server_ids).map(runtimeString).filter(Boolean)
+        : [],
+      model: runtimeString(rawSubagent.model) || undefined,
+      outputContract: runtimeString(rawSubagent.outputContract || rawSubagent.output_contract) || undefined,
+      providerId: runtimeString(rawSubagent.providerId || rawSubagent.provider_id) || undefined,
+      providerLabel: runtimeString(rawSubagent.providerLabel || rawSubagent.provider_label) || undefined,
+      providerSubagentMode: normalizeAgentConsoleSubagentProviderMode(rawSubagent.providerSubagentMode || rawSubagent.provider_subagent_mode),
+      qualityGates: runtimeStringArray(rawSubagent.qualityGates || rawSubagent.quality_gates || rawSubagent.gates),
+      runtimeMode: normalizeAgentConsoleSubagentRuntimeMode(rawSubagent.runtimeMode || rawSubagent.runtime_mode) || "auto",
+      speed: runtimeString(rawSubagent.speed) || undefined,
+      systemPrompt,
+      timeoutMs: numberOrUndefined(rawSubagent.timeoutMs || rawSubagent.timeout_ms)
+    });
+  }
+  if (!subagents.length) return null;
+  return {
+    instructions: runtimeString(record.instructions),
+    mcpServers: normalizeAgentConsoleMcpServerMap(record.mcpServers || record.mcp_servers) || {},
+    subagents,
+    version: 1
+  };
+}
+
+function normalizeAgentConsoleSubagentBudget(value) {
+  const record = isPlainObject(value) ? value : {};
+  const budget = {
+    maxDurationMs: numberOrUndefined(record.maxDurationMs || record.max_duration_ms),
+    maxTokens: numberOrUndefined(record.maxTokens || record.max_tokens),
+    maxToolCalls: numberOrUndefined(record.maxToolCalls || record.max_tool_calls)
+  };
+  return budget.maxDurationMs || budget.maxTokens || budget.maxToolCalls ? budget : undefined;
+}
+
+function normalizeAgentConsoleSubagentRuntimeMode(value) {
+  const mode = runtimeString(value);
+  return mode === "auto" || mode === "native" || mode === "emulated" ? mode : "";
+}
+
+function normalizeAgentConsoleSubagentProviderMode(value) {
+  const mode = runtimeString(value);
+  return mode === "native" || mode === "emulated" || mode === "none" ? mode : undefined;
+}
+
+function normalizeAgentConsoleMcpServerMap(value) {
+  if (!isPlainObject(value)) return null;
+  const output = {};
+  for (const [name, rawServer] of Object.entries(value)) {
+    const serverName = runtimeString(name);
+    if (!serverName || !isPlainObject(rawServer)) continue;
+    output[serverName] = normalizeAgentConsoleMcpServer(rawServer);
+  }
+  return Object.keys(output).length ? output : null;
+}
+
+function normalizeAgentConsoleMcpServer(server) {
+  const output = { ...server };
+  const type = runtimeString(output.type || output.transport).toLowerCase();
+  if (type === "streamable-http") {
+    output.type = "http";
+  } else if (type === "http" || type === "sse" || type === "stdio") {
+    output.type = type;
+  } else if (output.url) {
+    output.type = "http";
+  } else if (output.command) {
+    output.type = "stdio";
+  }
+  return output;
+}
+
+function mergeAgentConsoleMcpServerMaps(...maps) {
+  const output = {};
+  for (const map of maps) {
+    if (!isPlainObject(map)) continue;
+    for (const [name, server] of Object.entries(map)) {
+      if (runtimeString(name) && isPlainObject(server)) {
+        output[name] = server;
+      }
+    }
+  }
+  return Object.keys(output).length ? output : null;
+}
+
+function withAgentConsoleSubagentInstructions(existing, runtime) {
+  const base = removeAgentConsoleSubagentInstructionBlock(runtimeString(existing)).trim();
+  const block = agentConsoleSubagentInstructionBlock(runtime);
+  if (!block) return base || null;
+  return base ? base + "\n\n" + block : block;
+}
+
+function removeAgentConsoleSubagentInstructionBlock(value) {
+  const text = runtimeString(value);
+  const start = text.indexOf(AGENT_CONSOLE_SUBAGENTS_START);
+  if (start < 0) return text;
+  const end = text.indexOf(AGENT_CONSOLE_SUBAGENTS_END, start);
+  if (end < 0) return text.slice(0, start).trim();
+  return (text.slice(0, start) + text.slice(end + AGENT_CONSOLE_SUBAGENTS_END.length)).trim();
+}
+
+function agentConsoleSubagentInstructionBlock(runtime) {
+  const normalized = normalizeAgentConsoleSubagentRuntime(runtime);
+  if (!normalized) return "";
+  const lines = [
+    AGENT_CONSOLE_SUBAGENTS_START,
+    "Agent Console selected subagents are available for this task.",
+    "Claude Code adaptation: use the native Agent/Task subagent capability when it is available. If a selected subagent has a model, start the delegated prompt with <CCR-SUBAGENT-MODEL>Provider/model</CCR-SUBAGENT-MODEL> on its own first line, replacing Provider/model with the configured model below.",
+    "Codex adaptation: the detected Codex CLI has no native subagent flag, so emulate delegation by following the selected subagent profile and using its listed MCP servers.",
+    ""
+  ];
+  normalized.subagents.forEach((subagent, index) => {
+    lines.push("Subagent " + (index + 1) + ": " + subagent.id + " (" + subagent.label + ")");
+    lines.push("Provider: " + (subagent.providerLabel || subagent.providerId || "unknown"));
+    if (subagent.model) lines.push("Model: " + subagent.model);
+    if (subagent.effort) lines.push("Effort: " + subagent.effort);
+    if (subagent.speed) lines.push("Speed: " + subagent.speed);
+    if (subagent.approvalMode) lines.push("Approval mode: " + subagent.approvalMode);
+    lines.push("Runtime mode: " + (subagent.runtimeMode || "auto"));
+    lines.push("Provider subagent mode: " + (subagent.providerSubagentMode || "none"));
+    lines.push("Capabilities: " + (subagent.capabilities.length ? subagent.capabilities.join(", ") : "unspecified"));
+    if (subagent.contextScope) lines.push("Context scope: " + subagent.contextScope);
+    const budget = agentConsoleSubagentBudgetText(subagent.budget);
+    if (budget) lines.push("Budget: " + budget);
+    lines.push("Description: " + (subagent.description || "No description provided."));
+    if (subagent.outputContract) lines.push("Output contract: " + subagent.outputContract);
+    lines.push("Quality gates: " + (subagent.qualityGates.length ? subagent.qualityGates.join("; ") : "none"));
+    lines.push("MCP servers: " + (subagent.mcpServerIds.length ? subagent.mcpServerIds.join(", ") : "none"));
+    lines.push("System prompt:");
+    lines.push(subagent.systemPrompt);
+    lines.push("");
+  });
+  lines.push(AGENT_CONSOLE_SUBAGENTS_END);
+  return lines.join("\n").trim();
+}
+
+function agentConsoleSubagentBudgetText(budget) {
+  if (!budget) return "";
+  return [
+    budget.maxDurationMs ? "maxDurationMs=" + budget.maxDurationMs : "",
+    budget.maxTokens ? "maxTokens=" + budget.maxTokens : "",
+    budget.maxToolCalls ? "maxToolCalls=" + budget.maxToolCalls : ""
+  ].filter(Boolean).join(", ");
+}
+
+function mergeDeveloperInstructionText(existing, addition) {
+  const base = runtimeString(existing);
+  const next = runtimeString(addition);
+  if (!next) return base || null;
+  if (!base) return next;
+  if (base.includes(next)) return base;
+  return base + "\n\n" + next;
+}
+
+function numberOrUndefined(value) {
+  const number = typeof value === "number" ? value : Number.NaN;
+  return Number.isFinite(number) && number > 0 ? number : undefined;
+}
+
+function runtimeString(value) {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return "";
+}
+
+function runtimeStringArray(value) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  const items = [];
+  for (const rawItem of value) {
+    const item = runtimeString(rawItem);
+    if (!item || seen.has(item)) continue;
+    seen.add(item);
+    items.push(item);
+  }
+  return items;
 }
 
 function copyPermissionFields(source, target) {
@@ -1642,6 +1874,11 @@ class ClaudeCodeAppServer {
     const id = uuid();
     const cwd = normalizeCwd(params.cwd);
     const now = nowSeconds();
+    const agentConsoleSubagents = normalizeAgentConsoleSubagentRuntime(params.agentConsoleSubagents || params.agent_console_subagents);
+    const mcpServers = mergeAgentConsoleMcpServerMaps(
+      normalizeAgentConsoleMcpServerMap(params.mcpServers || params.mcp_servers),
+      agentConsoleSubagents ? normalizeAgentConsoleMcpServerMap(agentConsoleSubagents.mcpServers) : null
+    ) || {};
     const thread = {
       id,
       sessionId: id,
@@ -1658,7 +1895,9 @@ class ClaudeCodeAppServer {
       workspaceBrowserRoot: params.workspaceBrowserRoot || params.workspaceRoot || cwd,
       projectlessOutputDirectory: params.projectlessOutputDirectory || null,
       baseInstructions: params.baseInstructions || null,
-      developerInstructions: combinedDeveloperInstructions(params),
+      developerInstructions: withAgentConsoleSubagentInstructions(combinedDeveloperInstructions(params), agentConsoleSubagents),
+      agentConsoleSubagents,
+      mcpServers,
       personality: params.personality ?? null,
       persistExtendedHistory: params.persistExtendedHistory ?? null,
       model: params.model || agentEnv(codexRuntimeAgent(), "MODEL") || DEFAULT_MODEL,
@@ -1749,6 +1988,9 @@ class ClaudeCodeAppServer {
       resumeExisting: Boolean(thread.claudeSessionId),
       claudeSessionId: thread.claudeSessionId,
       claudeConfigDir: thread.claudeConfigDir,
+      developerInstructions: thread.developerInstructions,
+      agentConsoleSubagents: thread.agentConsoleSubagents,
+      mcpServers: thread.mcpServers,
       model: thread.model
     };
     const userItem = userItemJson(turn);
@@ -2076,6 +2318,12 @@ function claudeCommand(work) {
   ];
   const model = nonEmptyEnv("CCR_CLAUDE_CODE_MODEL") || nonEmptyEnv("CODEXL_CLAUDE_CODE_MODEL") || work.model;
   if (model) args.push("--model", model);
+  const developerInstructions = runtimeString(work.developerInstructions);
+  if (developerInstructions) args.push("--append-system-prompt", developerInstructions);
+  const agentConsoleAgents = claudeCodeAgentsJson(work.agentConsoleSubagents);
+  if (agentConsoleAgents && !claudeCodeArgsHaveAgents(args)) args.push("--agents", agentConsoleAgents);
+  const agentConsoleMcpConfig = claudeCodeMcpConfigJson(work.mcpServers);
+  if (agentConsoleMcpConfig) args.push("--mcp-config", agentConsoleMcpConfig);
   if (work.resumeExisting && work.claudeSessionId) args.push("--resume", work.claudeSessionId);
   const extra = splitShellLike(nonEmptyEnv("CCR_CLAUDE_CODE_EXTRA_ARGS") || nonEmptyEnv("CODEXL_CLAUDE_CODE_EXTRA_ARGS") || "");
   args.push(...extra);
@@ -2096,6 +2344,85 @@ function claudeCommand(work) {
     args: claudeCodeArgsWithMcpConfig(args, env),
     env
   };
+}
+
+function claudeCodeAgentsJson(runtime) {
+  const normalized = normalizeAgentConsoleSubagentRuntime(runtime);
+  if (!normalized) return "";
+  const agents = {};
+  const usedNames = new Set();
+  for (const subagent of normalized.subagents) {
+    const name = uniqueClaudeCodeAgentName(subagent.id || subagent.label, usedNames);
+    usedNames.add(name);
+    agents[name] = {
+      description: subagent.description || "Agent Console subagent " + subagent.label,
+      prompt: claudeCodeAgentPrompt(subagent)
+    };
+  }
+  return Object.keys(agents).length ? JSON.stringify(agents) : "";
+}
+
+function uniqueClaudeCodeAgentName(value, usedNames) {
+  const base = runtimeString(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+/, "")
+    .replace(/-+$/g, "")
+    .slice(0, 48) || "agent-console-subagent";
+  if (!usedNames.has(base)) return base;
+  for (let index = 2; index < 1000; index += 1) {
+    const next = (base + "-" + index).slice(0, 58);
+    if (!usedNames.has(next)) return next;
+  }
+  return (base + "-" + Date.now()).slice(0, 64);
+}
+
+function claudeCodeAgentPrompt(subagent) {
+  const lines = [
+    "You are the Agent Console subagent " + subagent.label + " (" + subagent.id + ").",
+    subagent.systemPrompt
+  ];
+  if (subagent.model) {
+    lines.push("Preferred CCR model for this subagent: " + subagent.model + ".");
+  }
+  lines.push("Runtime mode requested by Agent Console: " + (subagent.runtimeMode || "auto") + ".");
+  if (subagent.capabilities && subagent.capabilities.length) {
+    lines.push("Worker capabilities: " + subagent.capabilities.join(", ") + ".");
+  }
+  if (subagent.contextScope) {
+    lines.push("Context scope: " + subagent.contextScope);
+  }
+  const budget = agentConsoleSubagentBudgetText(subagent.budget);
+  if (budget) {
+    lines.push("Budget limits: " + budget + ".");
+  }
+  if (subagent.outputContract) {
+    lines.push("Output contract: " + subagent.outputContract);
+  }
+  if (subagent.qualityGates && subagent.qualityGates.length) {
+    lines.push("Quality gates: " + subagent.qualityGates.join("; ") + ".");
+  }
+  if (subagent.mcpServerIds && subagent.mcpServerIds.length) {
+    lines.push("Prefer the MCP servers scoped to this subagent: " + subagent.mcpServerIds.join(", ") + ".");
+  } else {
+    lines.push("No MCP servers are scoped to this subagent; stay within the main task context and available native tools.");
+  }
+  return lines.join("\n\n").trim();
+}
+
+function claudeCodeMcpConfigJson(mcpServers) {
+  const normalized = normalizeAgentConsoleMcpServerMap(mcpServers);
+  return normalized ? JSON.stringify({ mcpServers: normalized }) : "";
+}
+
+function claudeCodeArgsHaveAgents(args) {
+  for (const arg of args) {
+    if (arg === "--agents" || arg.startsWith("--agents=")) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function claudeInputMessage(input, sessionId = "") {
@@ -2265,6 +2592,22 @@ function applyThreadMetadata(thread, params) {
   if (params.approvalPolicy) thread.approvalPolicy = params.approvalPolicy;
   if (params.approvalsReviewer) thread.approvalsReviewer = params.approvalsReviewer;
   if (params.name !== undefined || params.title !== undefined) thread.name = params.name || params.title || null;
+  const runtime = normalizeAgentConsoleSubagentRuntime(params.agentConsoleSubagents || params.agent_console_subagents);
+  const mcpServers = mergeAgentConsoleMcpServerMaps(
+    normalizeAgentConsoleMcpServerMap(params.mcpServers || params.mcp_servers),
+    runtime ? normalizeAgentConsoleMcpServerMap(runtime.mcpServers) : null
+  );
+  if (mcpServers) {
+    thread.mcpServers = mergeAgentConsoleMcpServerMaps(normalizeAgentConsoleMcpServerMap(thread.mcpServers), mcpServers) || {};
+  }
+  const developerInstructions = combinedDeveloperInstructions(params);
+  if (developerInstructions) {
+    thread.developerInstructions = mergeDeveloperInstructionText(thread.developerInstructions, developerInstructions);
+  }
+  if (runtime) {
+    thread.agentConsoleSubagents = runtime;
+    thread.developerInstructions = withAgentConsoleSubagentInstructions(thread.developerInstructions, runtime);
+  }
   thread.updatedAt = nowSeconds();
 }
 
@@ -4346,7 +4689,12 @@ function normalizeWorkspaceRoots(value, cwd) {
 }
 
 function combinedDeveloperInstructions(params) {
-  return params.developerInstructions || params.developer_instructions || null;
+  const primary = runtimeString(params.developerInstructions || params.developer_instructions);
+  const additional = runtimeString(params.additionalDeveloperInstructions || params.additional_developer_instructions);
+  if (primary && additional && !primary.includes(additional)) {
+    return primary + "\n\n" + additional;
+  }
+  return primary || additional || null;
 }
 
 function normalizeCwd(value) {

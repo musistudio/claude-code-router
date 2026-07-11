@@ -348,6 +348,130 @@ test("Claude Code wrapper does not duplicate an explicit MCP config argument", {
   assert.deepEqual(observed.argv, ["--mcp-config", explicitMcpConfigFile, "-p", "hi"]);
 });
 
+test("Claude app-server maps Agent Console subagents to native Claude Code args", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-subagents-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const codexHome = path.join(dir, "codex-home");
+  const fakeClaude = path.join(dir, "fake-claude");
+  const outputFile = path.join(dir, "fake-claude-output.json");
+  mkdirSync(codexHome, { recursive: true });
+  writeFileSync(fakeClaude, [
+    "#!/usr/bin/env node",
+    "const fs = require('node:fs');",
+    "let stdin = '';",
+    "const writeObserved = () => fs.writeFileSync(process.env.CCR_FAKE_CLAUDE_OUT, JSON.stringify({ argv: process.argv.slice(2), stdin }));",
+    "writeObserved();",
+    "process.stdin.on('data', (chunk) => { stdin += chunk.toString('utf8'); });",
+    "setTimeout(() => {",
+    "  writeObserved();",
+    "  process.stdout.write(JSON.stringify({ type: 'result', result: 'ok' }) + '\\n');",
+    "}, 50);",
+    ""
+  ].join("\n"));
+  chmodSync(fakeClaude, 0o700);
+
+  const runtime = {
+    instructions: "renderer instructions",
+    mcpServers: {
+      reviewer__github: {
+        args: ["server.js"],
+        command: "node",
+        env: { TOKEN: "secret" },
+        type: "stdio"
+      }
+    },
+    subagents: [
+      {
+        budget: {
+          maxDurationMs: 600000,
+          maxTokens: 12000,
+          maxToolCalls: 20
+        },
+        capabilities: ["code review", "test planning"],
+        contextScope: "Only inspect files related to the patch.",
+        description: "Reviews code",
+        id: "reviewer",
+        label: "Reviewer",
+        mcpServerIds: ["reviewer__github"],
+        model: "Provider/model",
+        outputContract: "Return findings, risk summary, and verification notes.",
+        providerId: "claude-code",
+        providerLabel: "Claude Code",
+        providerSubagentMode: "native",
+        qualityGates: ["List residual risks", "Call out missing tests"],
+        runtimeMode: "native",
+        systemPrompt: "Review code carefully."
+      }
+    ],
+    version: 1
+  };
+
+  const result = spawnSync(process.execPath, [runtimeFile, "app-server"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CCR_CLAUDE_CODE_BIN: fakeClaude,
+      CCR_CODEX_REMOTE_FRONTEND_MODE: "claude-code",
+      CCR_FAKE_CLAUDE_OUT: outputFile,
+      CODEX_HOME: codexHome
+    },
+    input: [
+      JSON.stringify({ id: 1, method: "initialize", params: {} }),
+      JSON.stringify({
+        id: 2,
+        method: "thread/resume",
+        params: {
+          additionalDeveloperInstructions: "Base instruction.",
+          agentConsoleSubagents: runtime,
+          cwd: dir,
+          threadId: "thread-subagents"
+        }
+      }),
+      JSON.stringify({
+        id: 3,
+        method: "turn/start",
+        params: {
+          agentConsoleSubagents: runtime,
+          input: [{ type: "text", text: "Check the patch." }],
+          threadId: "thread-subagents"
+        }
+      }),
+      ""
+    ].join("\n")
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(existsSync(outputFile), true, `fake Claude was not spawned\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+  const observed = JSON.parse(readFileSync(outputFile, "utf8"));
+  const appendSystemIndex = observed.argv.indexOf("--append-system-prompt");
+  const agentsIndex = observed.argv.indexOf("--agents");
+  const mcpConfigIndex = observed.argv.indexOf("--mcp-config");
+  assert.notEqual(appendSystemIndex, -1);
+  assert.notEqual(agentsIndex, -1);
+  assert.notEqual(mcpConfigIndex, -1);
+  assert.match(observed.argv[appendSystemIndex + 1], /Base instruction\./);
+  assert.match(observed.argv[appendSystemIndex + 1], /<agent-console-subagents>/);
+  assert.match(observed.argv[appendSystemIndex + 1], /Model: Provider\/model/);
+  assert.match(observed.argv[appendSystemIndex + 1], /Capabilities: code review, test planning/);
+  assert.match(observed.argv[appendSystemIndex + 1], /Output contract: Return findings, risk summary, and verification notes\./);
+  assert.deepEqual(JSON.parse(observed.argv[agentsIndex + 1]), {
+    reviewer: {
+      description: "Reviews code",
+      prompt: "You are the Agent Console subagent Reviewer (reviewer).\n\nReview code carefully.\n\nPreferred CCR model for this subagent: Provider/model.\n\nRuntime mode requested by Agent Console: native.\n\nWorker capabilities: code review, test planning.\n\nContext scope: Only inspect files related to the patch.\n\nBudget limits: maxDurationMs=600000, maxTokens=12000, maxToolCalls=20.\n\nOutput contract: Return findings, risk summary, and verification notes.\n\nQuality gates: List residual risks; Call out missing tests.\n\nPrefer the MCP servers scoped to this subagent: reviewer__github."
+    }
+  });
+  assert.deepEqual(JSON.parse(observed.argv[mcpConfigIndex + 1]), {
+    mcpServers: {
+      reviewer__github: {
+        args: ["server.js"],
+        command: "node",
+        env: { TOKEN: "secret" },
+        type: "stdio"
+      }
+    }
+  });
+});
+
 function writeRuntimeScript(dir) {
   const file = path.join(dir, "ccr-codex-cli-middleware.js");
   writeFileSync(file, codexCliMiddlewareRuntimeScript());
