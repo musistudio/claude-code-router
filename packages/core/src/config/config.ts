@@ -1968,11 +1968,67 @@ function parseProxy(value: unknown): Partial<ProxyRuntimeConfig> | undefined {
   } else if (typeof value.systemProxyEnabled === "boolean") {
     proxy.systemProxy = value.systemProxyEnabled;
   }
+  const upstream = parseProxyUpstream(value.upstream ?? value.upstreamProxy ?? value.outboundProxy);
+  if (upstream) {
+    proxy.upstream = upstream;
+  }
   const targets = parseProxyTargets(value.targets);
   if (targets) {
     proxy.targets = targets;
   }
   return proxy;
+}
+
+function parseProxyUpstream(value: unknown): ProxyRuntimeConfig["upstream"] | undefined {
+  const fallback = DEFAULT_CONFIG.proxy.upstream;
+  if (typeof value === "string") {
+    const mode = parseProxyUpstreamMode(value);
+    return mode ? { ...fallback, mode } : undefined;
+  }
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const mode = parseProxyUpstreamMode(value.mode ?? value.type);
+  const customInput = isObject(value.custom) ? value.custom : value;
+  const server = readString(customInput.server ?? customInput.host ?? customInput.hostname);
+  const port = readPort(customInput.port);
+  const username = readString(customInput.username ?? customInput.user);
+  const password = typeof customInput.password === "string"
+    ? customInput.password
+    : typeof customInput.pass === "string"
+      ? customInput.pass
+      : undefined;
+  const hasCustomInput = server !== undefined || port !== undefined || username !== undefined || password !== undefined;
+
+  return {
+    ...fallback,
+    custom: {
+      ...fallback.custom,
+      ...(server !== undefined ? { server } : {}),
+      ...(port !== undefined ? { port } : {}),
+      ...(username !== undefined ? { username } : {}),
+      ...(password !== undefined ? { password } : {})
+    },
+    mode: mode ?? (hasCustomInput ? "custom" : fallback.mode)
+  };
+}
+
+function parseProxyUpstreamMode(value: unknown): ProxyRuntimeConfig["upstream"]["mode"] | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[\s_-]+/g, "");
+  if (["none", "off", "disabled", "direct", "noproxy"].includes(normalized)) {
+    return "none";
+  }
+  if (["system", "systemproxy", "os", "osproxy", "env", "environment"].includes(normalized)) {
+    return "system";
+  }
+  if (["custom", "manual", "http", "httpproxy"].includes(normalized)) {
+    return "custom";
+  }
+  return undefined;
 }
 
 function parseProxyTargets(value: unknown): ProxyRouteTarget[] | undefined {

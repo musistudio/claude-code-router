@@ -399,7 +399,7 @@ class GatewayService {
         }
         await proxyService.refreshUpstreamProxyFromCurrentSystem();
         const runtimeId = randomUUID();
-        const upstreamProxyUrl = proxyService.getUpstreamProxyUrl("https") ?? await getSystemProxyUrlForProtocol("https");
+        const upstreamProxyUrl = proxyService.getUpstreamProxyUrl("https") ?? await getSystemProxyUrlForProtocol("https", config);
         this.child = spawnGatewayProcess(config, upstreamProxyUrl, runtimeId, this.coreAuthToken);
         const managedChild = this.child;
         writeManagedCoreGatewayMarker(config, this.child, runtimeId);

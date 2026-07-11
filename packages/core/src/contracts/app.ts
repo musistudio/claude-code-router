@@ -613,6 +613,20 @@ export type ProxyMode = "gateway" | "transparent";
 
 export type ProxyForwardMode = ProxyMode | "plugin";
 
+export type ProxyUpstreamMode = "none" | "system" | "custom";
+
+export type ProxyUpstreamCustomConfig = {
+  password: string;
+  port: number;
+  server: string;
+  username: string;
+};
+
+export type ProxyUpstreamConfig = {
+  custom: ProxyUpstreamCustomConfig;
+  mode: ProxyUpstreamMode;
+};
+
 export type ProxyRouteTarget = {
   host: string;
   paths?: string[];
@@ -929,6 +943,7 @@ export type ProxyRuntimeConfig = {
   port: number;
   systemProxy: boolean;
   targets: ProxyRouteTarget[];
+  upstream: ProxyUpstreamConfig;
 };
 
 export type ObservabilityConfig = {

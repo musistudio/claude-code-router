@@ -37,7 +37,16 @@ import {
   readProxyCertificateAuthority,
   type CertificateAuthority
 } from "@ccr/core/proxy/certificates";
-import { formatUpstreamProxy, readCurrentSystemUpstreamProxy, systemProxyManager, type UpstreamProxyConfig, type UpstreamProxyServer } from "@ccr/core/proxy/system-proxy";
+import {
+  customUpstreamProxyFromConfig,
+  formatUpstreamProxy,
+  readCurrentSystemUpstreamProxy,
+  systemProxyManager,
+  upstreamProxyAuthorizationHeader,
+  upstreamProxyUrl,
+  type UpstreamProxyConfig,
+  type UpstreamProxyServer
+} from "@ccr/core/proxy/system-proxy";
 
 type MitmServer = {
   host: string;
@@ -147,6 +156,7 @@ class ProxyService {
   async start(config: AppConfig): Promise<ProxyStatus> {
     await this.stop();
     this.config = config;
+    this.upstreamProxy = configuredCustomUpstreamProxy(config);
     this.networkCaptureEnabled = config.proxy.captureNetwork;
     this.status = createProxyStatus(config, proxyEndpoint(config), config.proxy.port);
 
@@ -195,6 +205,7 @@ class ProxyService {
   async attach(config: AppConfig, server: Server): Promise<ProxyStatus> {
     await this.stop();
     this.config = config;
+    this.upstreamProxy = configuredCustomUpstreamProxy(config);
     this.networkCaptureEnabled = config.proxy.captureNetwork;
     this.status = createProxyStatus(config, sharedProxyEndpoint(config), config.gateway.port);
 
@@ -351,10 +362,13 @@ class ProxyService {
     if (!upstreamProxy) {
       return undefined;
     }
-    return `http://${formatProxyHost(upstreamProxy.host)}:${upstreamProxy.port}`;
+    return upstreamProxyUrl(upstreamProxy);
   }
 
   async refreshUpstreamProxyFromCurrentSystem(): Promise<void> {
+    if (this.config?.proxy.upstream?.mode === "none" || this.config?.proxy.upstream?.mode === "custom") {
+      return;
+    }
     if (this.upstreamProxy || this.status.state !== "running" || !this.status.endpoint) {
       return;
     }
@@ -800,7 +814,9 @@ class ProxyService {
 
   private async activateSystemProxy(): Promise<void> {
     const result = await systemProxyManager.enable(this.status.endpoint);
-    this.upstreamProxy = result.upstreamProxy;
+    this.upstreamProxy = this.config?.proxy.upstream?.mode === "none"
+      ? undefined
+      : configuredCustomUpstreamProxy(this.config) ?? result.upstreamProxy;
     const effectiveUpstream = formatUpstreamProxy(this.upstreamProxy);
     this.status = {
       ...this.status,
@@ -988,10 +1004,14 @@ function forwardHttpRequestViaHttpProxy({
   upstreamUrl: URL;
 }): Promise<void> {
   return new Promise((resolve) => {
+    const proxyAuthorization = upstreamProxyAuthorizationHeader(proxyServer);
     const upstreamRequest = http.request(
       {
         agent: false,
-        headers: createForwardHeaders(request.headers, upstreamUrl, routedToGateway, config, { pluginRoute, targetUrl }),
+        headers: {
+          ...createForwardHeaders(request.headers, upstreamUrl, routedToGateway, config, { pluginRoute, targetUrl }),
+          ...(proxyAuthorization ? { "proxy-authorization": proxyAuthorization } : {})
+        },
         hostname: proxyServer.host,
         method: request.method,
         path: upstreamUrl.toString(),
@@ -1070,10 +1090,12 @@ function forwardHttpsRequestViaHttpProxy({
 }): Promise<void> {
   return new Promise((resolve) => {
     const targetPort = Number(upstreamUrl.port || 443);
+    const proxyAuthorization = upstreamProxyAuthorizationHeader(proxyServer);
     const connectRequest = http.request({
       agent: false,
       headers: {
         host: `${upstreamUrl.hostname}:${targetPort}`,
+        ...(proxyAuthorization ? { "proxy-authorization": proxyAuthorization } : {}),
         "proxy-connection": "keep-alive"
       },
       hostname: proxyServer.host,
@@ -1376,6 +1398,10 @@ function cloneUpstreamProxy(upstreamProxy: UpstreamProxyConfig | undefined): Ups
     http: upstreamProxy.http ? { ...upstreamProxy.http } : undefined,
     https: upstreamProxy.https ? { ...upstreamProxy.https } : undefined
   };
+}
+
+function configuredCustomUpstreamProxy(config: AppConfig | undefined): UpstreamProxyConfig | undefined {
+  return customUpstreamProxyFromConfig(config?.proxy.upstream);
 }
 
 function selectUpstreamProxy(upstreamProxy: UpstreamProxyConfig | undefined, protocol: "http" | "https"): UpstreamProxyServer | undefined {

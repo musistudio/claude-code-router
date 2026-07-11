@@ -18,7 +18,7 @@ import {
   isTraySupportedPlatform,
   isRoutingRewriteDraftRowValid,
   LayoutGroup, mergeModelDisplayNames, mergeModelMetadata, mergeProviderModelLists, modelDescriptionsForModels, modelDisplayNamesForModels, modelMetadataForModels,
-  navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets,
+  navigation, NavigationId, normalizeApiKeys, normalizeBotGatewaySavedConfigs, normalizeConfig, normalizeLanguagePreference, normalizeObservabilityConfig, normalizeOverviewWidgets, normalizeProxyConfig,
   normalizeProfileItem, normalizeProfileScope, normalizeProviderBaseUrl, normalizeRouterBuiltInRules, normalizeRouterFallbackConfig, normalizeThemePreference, normalizeToolHubConfig, normalizeTrayBalanceProgressConfig, normalizeTrayIconPreference,
   normalizeTrayWidgets, normalizeTrayWindowModules, normalizeVirtualModelDraftPatch, numberValue, OnboardingReadinessOptions, OnboardingStepId, onboardingStepOrder,
   OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parseProviderAccountDraft,
@@ -2188,6 +2188,24 @@ function App() {
     }));
   }
 
+  function changeProxyConfig(patch: Partial<AppConfig["proxy"]>) {
+    updateConfig((config) => ({
+      ...config,
+      proxy: normalizeProxyConfig({
+        ...config.proxy,
+        ...patch,
+        upstream: {
+          ...config.proxy.upstream,
+          ...(patch.upstream ?? {}),
+          custom: {
+            ...config.proxy.upstream.custom,
+            ...(patch.upstream?.custom ?? {})
+          }
+        }
+      })
+    }));
+  }
+
   function changeToolHubConfig(patch: Partial<AppConfig["toolHub"]>) {
     updateConfig((config) => ({
       ...config,
@@ -3235,6 +3253,7 @@ function App() {
               onChangeLaunchAtLogin: changeLaunchAtLogin,
               onChangeLanguage: changeLanguagePreference,
               onChangeObservability: changeObservabilityConfig,
+              onChangeProxy: changeProxyConfig,
               onChangeTheme: changeThemePreference,
               onChangeToolHub: changeToolHubConfig,
               onChangeTrayBalanceProgress: changeTrayBalanceProgress,
@@ -3243,6 +3262,7 @@ function App() {
               onClose: () => setSettingsOpen(false),
               observability: draftConfig.observability,
               profiles: draftConfig.profile.profiles,
+              proxy: draftConfig.proxy,
               providers: draftConfig.Providers,
               systemLanguage,
               systemTheme,

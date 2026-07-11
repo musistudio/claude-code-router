@@ -6,9 +6,9 @@ import {
   DialogFooter, DialogHeader, DialogTitle, Field, formatAppError, formatProviderAccountMeterValue, formatSystemOption, Gauge,
   Globe,
   createBotGatewayConfigDraft, createMcpServerDraft, createMcpServerDraftFromConfig, createMcpServerDraftFromUnknown, createRouteModelOptions, DndContext, DragEndEvent, GatewayMcpServerConfig, GatewayProviderConfig, Input, isBotGatewayConfigDraftSubmittable, KeyboardSensor, KeyRound, KeyValueRowsControl, languageDisplayName, Layers3, LoaderCircle,
-  mcpServerConfigFromDraft, mcpServerEndpointSummary, mcpServerTransportOptions, mcpStdioMessageModeOptions, McpServerDraft, normalizeBotGatewayAuthType, normalizeBotGatewayPlatform, normalizeToolHubConfig, Palette, Pencil, Plus, ProfileConfig, profileAgentLabel,
+  mcpServerConfigFromDraft, mcpServerEndpointSummary, mcpServerTransportOptions, mcpStdioMessageModeOptions, McpServerDraft, normalizeBotGatewayAuthType, normalizeBotGatewayPlatform, normalizeProxyUpstreamConfig, normalizeToolHubConfig, Palette, Pencil, Plus, ProfileConfig, profileAgentLabel,
   PanelLeftOpen, Power, ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ResolvedLanguage, ResolvedTheme, Select, SelectControl,
-  PointerSensor, rectSortingStrategy, SettingsPageId, SortableContext, sortableKeyboardCoordinates, themeDisplayName,
+  PointerSensor, rectSortingStrategy, Settings, SettingsPageId, SortableContext, sortableKeyboardCoordinates, themeDisplayName,
   translateOptions, TrayBalanceProgressConfig, TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant,
   appLogoUrl, trayMascotIconUrls, arrayMove, defaultTrayWidgetVariant, isTraySingletonWidgetType, normalizeTrayWidget, normalizeTrayWidgets, Switch, Textarea, Trash2, trayWidgetVariantOptions, useAppText, useEffect, useMemo, useRef, useSensor, useSensors, useSortable, useState, validateMcpServerDraft,
   X
@@ -27,6 +27,7 @@ export function AppSettingsDialog({
   onChangeBotConfigs,
   onChangeLaunchAtLogin,
   onChangeObservability,
+  onChangeProxy,
   onChangeToolHub,
   onChangeTrayBalanceProgress,
   onChangeLanguage,
@@ -36,6 +37,7 @@ export function AppSettingsDialog({
   onClose,
   observability,
   profiles,
+  proxy,
   providers,
   providerAccountSnapshots,
   systemLanguage,
@@ -57,6 +59,7 @@ export function AppSettingsDialog({
   onChangeBotConfigs: (configs: BotGatewaySavedConfig[]) => void;
   onChangeLaunchAtLogin: (checked: boolean) => void;
   onChangeObservability: (patch: Partial<AppConfig["observability"]>) => void;
+  onChangeProxy: (patch: Partial<AppConfig["proxy"]>) => void;
   onChangeToolHub: (patch: Partial<AppConfig["toolHub"]>) => void;
   onChangeTrayBalanceProgress: (config: TrayBalanceProgressConfig) => void;
   onChangeLanguage: (value: string) => void;
@@ -66,6 +69,7 @@ export function AppSettingsDialog({
   onClose: () => void;
   observability: AppConfig["observability"];
   profiles: ProfileConfig[];
+  proxy: AppConfig["proxy"];
   providers: GatewayProviderConfig[];
   providerAccountSnapshots: ProviderAccountSnapshot[];
   systemLanguage: ResolvedLanguage;
@@ -83,14 +87,24 @@ export function AppSettingsDialog({
       initialPage={initialPage}
       onClose={onClose}
       renderPage={(activePage) => {
+        if (activePage === "general") {
+          return (
+            <GeneralSettingsPage
+              appInfo={appInfo}
+              copy={copy}
+              launchAtLogin={launchAtLogin}
+              launchAtLoginSupported={appInfo.launchAtLoginSupported}
+              onChangeLaunchAtLogin={onChangeLaunchAtLogin}
+              onChangeProxy={onChangeProxy}
+              proxy={proxy}
+            />
+          );
+        }
         if (activePage === "appearance") {
           return (
             <AppearanceSettingsPage
               copy={copy}
               languagePreference={languagePreference}
-              launchAtLogin={launchAtLogin}
-              launchAtLoginSupported={appInfo.launchAtLoginSupported}
-              onChangeLaunchAtLogin={onChangeLaunchAtLogin}
               onChangeLanguage={onChangeLanguage}
               onChangeTheme={onChangeTheme}
               systemLanguage={systemLanguage}
@@ -143,14 +157,6 @@ export function AppSettingsDialog({
             />
           );
         }
-        if (activePage === "data") {
-          return (
-            <DataSettingsPage
-              appInfo={appInfo}
-              copy={copy}
-            />
-          );
-        }
         return null;
       }}
       traySupported={traySupported}
@@ -199,6 +205,13 @@ function SettingsLayout({
               onClick={() => setActivePage("appearance")}
             />
             <SettingsPageButton
+              active={visiblePage === "general"}
+              className="mt-1"
+              icon={Settings}
+              label={copy.settings.general}
+              onClick={() => setActivePage("general")}
+            />
+            <SettingsPageButton
               active={visiblePage === "observability"}
               className="mt-1"
               icon={Activity}
@@ -219,13 +232,6 @@ function SettingsLayout({
               label={copy.settings.bots}
               onClick={() => setActivePage("bots")}
             />
-            <SettingsPageButton
-              active={visiblePage === "data"}
-              className="mt-1"
-              icon={Database}
-              label={copy.settings.data}
-              onClick={() => setActivePage("data")}
-            />
             {traySupported ? (
               <SettingsPageButton
                 active={visiblePage === "tray"}
@@ -241,12 +247,6 @@ function SettingsLayout({
             {renderPage(visiblePage)}
           </section>
         </DialogBody>
-
-        <DialogFooter>
-          <Button onClick={onClose} type="button">
-            {copy.settings.done}
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -292,9 +292,6 @@ function SettingsPageButton({
 function AppearanceSettingsPage({
   copy,
   languagePreference,
-  launchAtLogin,
-  launchAtLoginSupported,
-  onChangeLaunchAtLogin,
   onChangeLanguage,
   onChangeTheme,
   systemLanguage,
@@ -303,9 +300,6 @@ function AppearanceSettingsPage({
 }: {
   copy: AppCopy;
   languagePreference: AppLanguagePreference;
-  launchAtLogin: boolean;
-  launchAtLoginSupported: boolean;
-  onChangeLaunchAtLogin: (checked: boolean) => void;
   onChangeLanguage: (value: string) => void;
   onChangeTheme: (value: string) => void;
   systemLanguage: ResolvedLanguage;
@@ -333,17 +327,138 @@ function AppearanceSettingsPage({
         <Field label={copy.settings.language}>
           <SelectControl onChange={onChangeLanguage} options={languageOptions} value={languagePreference} />
         </Field>
-        {launchAtLoginSupported ? (
-          <SettingsSwitchRow
-            checked={launchAtLogin}
-            description={copy.settings.launchAtLoginDescription}
-            icon={Power}
-            label={copy.settings.launchAtLogin}
-            onChange={onChangeLaunchAtLogin}
-          />
-        ) : null}
       </div>
     </div>
+  );
+}
+
+function GeneralSettingsPage({
+  appInfo,
+  copy,
+  launchAtLogin,
+  launchAtLoginSupported,
+  onChangeLaunchAtLogin,
+  onChangeProxy,
+  proxy
+}: {
+  appInfo: AppInfo;
+  copy: AppCopy;
+  launchAtLogin: boolean;
+  launchAtLoginSupported: boolean;
+  onChangeLaunchAtLogin: (checked: boolean) => void;
+  onChangeProxy: (patch: Partial<AppConfig["proxy"]>) => void;
+  proxy: AppConfig["proxy"];
+}) {
+  return (
+    <div className={cn(settingsPageContentWidthClassName, "grid grid-cols-1 gap-5")}>
+      <h3 className="text-[15px] font-semibold text-foreground">{copy.settings.general}</h3>
+      {launchAtLoginSupported ? (
+        <SettingsSwitchRow
+          checked={launchAtLogin}
+          description={copy.settings.launchAtLoginDescription}
+          icon={Power}
+          label={copy.settings.launchAtLogin}
+          onChange={onChangeLaunchAtLogin}
+        />
+      ) : null}
+      <ProxySettingsSection copy={copy} onChange={onChangeProxy} proxy={proxy} />
+      <DataSettingsSection appInfo={appInfo} copy={copy} />
+    </div>
+  );
+}
+
+function ProxySettingsSection({
+  copy,
+  onChange,
+  proxy
+}: {
+  copy: AppCopy;
+  onChange: (patch: Partial<AppConfig["proxy"]>) => void;
+  proxy: AppConfig["proxy"];
+}) {
+  const t = (value: string) => copy.text[value] ?? value;
+  const upstream = normalizeProxyUpstreamConfig(proxy.upstream);
+  const modeOptions = [
+    { label: t("Do not use proxy"), value: "none" },
+    { label: t("Use system proxy"), value: "system" },
+    { label: t("Use custom proxy"), value: "custom" }
+  ];
+
+  const patchUpstream = (patch: Partial<AppConfig["proxy"]["upstream"]>) => {
+    onChange({
+      upstream: normalizeProxyUpstreamConfig({
+        ...upstream,
+        ...patch,
+        custom: {
+          ...upstream.custom,
+          ...(patch.custom ?? {})
+        }
+      })
+    });
+  };
+  const patchCustom = (custom: Partial<AppConfig["proxy"]["upstream"]["custom"]>) => {
+    patchUpstream({
+      custom: {
+        ...upstream.custom,
+        ...custom
+      }
+    });
+  };
+
+  return (
+    <section className="grid grid-cols-1 gap-3">
+      <h4 className="text-[13px] font-semibold text-foreground">{copy.settings.proxy}</h4>
+      <div className="grid grid-cols-1 gap-3 rounded-md border border-border/70 bg-card/70 p-3 md:grid-cols-2">
+        <Field className="md:col-span-2" label={t("Proxy source")}>
+          <SelectControl
+            onChange={(mode) => patchUpstream({ mode: mode as AppConfig["proxy"]["upstream"]["mode"] })}
+            options={modeOptions}
+            value={upstream.mode}
+          />
+        </Field>
+
+        {upstream.mode === "custom" ? (
+          <>
+            <Field label={t("Proxy server")}>
+              <Input
+                onChange={(event) => patchCustom({ server: event.target.value })}
+                placeholder="127.0.0.1"
+                value={upstream.custom.server}
+              />
+            </Field>
+            <Field label={t("Port")}>
+              <Input
+                max={65535}
+                min={1}
+                onChange={(event) => {
+                  const port = Number(event.target.value);
+                  if (Number.isFinite(port)) {
+                    patchCustom({ port });
+                  }
+                }}
+                type="number"
+                value={String(upstream.custom.port)}
+              />
+            </Field>
+            <Field label={t("Username")}>
+              <Input
+                autoComplete="off"
+                onChange={(event) => patchCustom({ username: event.target.value })}
+                value={upstream.custom.username}
+              />
+            </Field>
+            <Field label={t("Password")}>
+              <Input
+                autoComplete="new-password"
+                onChange={(event) => patchCustom({ password: event.target.value })}
+                type="password"
+                value={upstream.custom.password}
+              />
+            </Field>
+          </>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -935,7 +1050,7 @@ function SettingsSwitchRow({
   );
 }
 
-function DataSettingsPage({
+function DataSettingsSection({
   appInfo,
   copy
 }: {
@@ -971,10 +1086,9 @@ function DataSettingsPage({
   }
 
   return (
-    <div className={cn(settingsPageContentWidthClassName, "grid grid-cols-1 gap-5")}>
+    <section className="grid grid-cols-1 gap-3">
       <div className="min-w-0">
-        <h3 className="text-[15px] font-semibold text-foreground">{copy.settings.data}</h3>
-        <div className="mt-1 text-[12px] text-muted-foreground">{t("Configuration is stored in SQLite. The legacy JSON file is only read once for migration.")}</div>
+        <h4 className="text-[13px] font-semibold text-foreground">{copy.settings.data}</h4>
       </div>
 
       <div className="grid gap-2 rounded-md border border-border bg-background p-3">
@@ -1011,7 +1125,7 @@ function DataSettingsPage({
           </div>
         ) : null}
       </div>
-    </div>
+    </section>
   );
 }
 

@@ -24,3 +24,19 @@ test("ToolHub config changes restart the gateway runtime", () => {
 
   assert.equal(shouldRestartGatewayForRuntimeConfigChange(previous, next), true);
 });
+
+test("upstream proxy config changes restart the gateway runtime", () => {
+  const previous = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  const next = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });
+  next.proxy.upstream = {
+    custom: {
+      password: "secret",
+      port: 8888,
+      server: "proxy.example.com",
+      username: "alice"
+    },
+    mode: "custom"
+  };
+
+  assert.equal(shouldRestartGatewayForRuntimeConfigChange(previous, next), true);
+});

@@ -15,6 +15,7 @@ export type AppCopy = {
     close: string;
     data: string;
     done: string;
+    general: string;
     language: string;
     languageChinese: string;
     languageEnglish: string;
@@ -22,6 +23,7 @@ export type AppCopy = {
     launchAtLogin: string;
     launchAtLoginDescription: string;
     observability: string;
+    proxy: string;
     requestLogs: string;
     requestLogsDescription: string;
     theme: string;
@@ -127,6 +129,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       close: "Close",
       data: "Data",
       done: "Done",
+      general: "General",
       language: "Language",
       languageChinese: "Chinese",
       languageEnglish: "English",
@@ -134,6 +137,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       launchAtLogin: "Launch at login",
       launchAtLoginDescription: "Open Claude Code Router automatically when you sign in to this computer.",
       observability: "Logs & Observability",
+      proxy: "Proxy",
       requestLogs: "Request logs",
       requestLogsDescription: "Record gateway requests and show the Logs page.",
       theme: "Theme",
@@ -489,6 +493,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       close: "关闭",
       data: "数据",
       done: "完成",
+      general: "通用",
       language: "语言",
       languageChinese: "中文",
       languageEnglish: "英文",
@@ -496,6 +501,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       launchAtLogin: "开机自启",
       launchAtLoginDescription: "登录系统后自动打开 Claude Code Router。",
       observability: "日志与观测",
+      proxy: "代理",
       requestLogs: "请求日志",
       requestLogsDescription: "记录网关请求并显示日志页。",
       theme: "主题",
@@ -980,8 +986,13 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Provider website": "供应商网站",
       "Open provider website": "打开供应商网站",
       "Providers": "供应商",
+      "Do not use proxy": "不使用代理",
       "Proxy": "代理",
       "Proxy mode": "代理模式",
+      "Proxy server": "代理服务器",
+      "Proxy source": "代理来源",
+      "Use custom proxy": "使用自定义代理",
+      "Use system proxy": "使用系统代理",
       "Preset provider": "预设供应商",
       "Profile": "配置",
       "Profile name": "配置档案名称",
@@ -991,6 +1002,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Profile opening is only available in the Electron app.": "配置档案打开功能仅在 Electron App 中可用。",
       "Profile stopping is only available in the Electron app.": "配置档案停止功能仅在 Electron App 中可用。",
       "Profile ready": "配置档案已就绪",
+      "Password": "密码",
       "Recent Errors": "最近错误",
       "Recent Requests": "最近请求",
       "Refresh": "刷新",
@@ -1205,6 +1217,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Token Mix": "令牌构成",
       "Total": "总计",
       "Total tokens": "总令牌",
+      "Username": "用户名",
       "Today": "今天",
       "Token threshold": "令牌阈值",
       "Truncated": "已截断",

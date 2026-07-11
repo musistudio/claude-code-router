@@ -158,7 +158,16 @@ export function createDefaultAppConfig(options: DefaultAppConfigOptions): AppCon
       mode: "gateway",
       port: 7890,
       systemProxy: false,
-      targets: DEFAULT_PROXY_TARGETS
+      targets: DEFAULT_PROXY_TARGETS,
+      upstream: {
+        custom: {
+          password: "",
+          port: 7890,
+          server: "",
+          username: ""
+        },
+        mode: "system"
+      }
     },
     providerPlugins: [],
     overviewWidgets: DEFAULT_OVERVIEW_WIDGETS,
