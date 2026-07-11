@@ -5775,9 +5775,7 @@ function prepareUpstreamCredentialAttempt(input: {
     target
   });
   if (!target) {
-    const body = bodyHasConfiguredProviderModelSelector(input.attempt.body, input.config)
-      ? input.attempt.body
-      : normalizedBody?.body ?? input.attempt.body;
+    const body = normalizedBody?.body ?? input.attempt.body;
     return {
       ...input.attempt,
       body: attemptBody(body),
@@ -5887,12 +5885,6 @@ function normalizeConfiguredProviderModelBody(
     body: serializeJsonBodyWithModel(parsedBody, selector.model),
     model: selector.model
   };
-}
-
-function bodyHasConfiguredProviderModelSelector(body: Buffer | undefined, config: AppConfig): boolean {
-  const parsedBody = parseJsonObjectSafe(body);
-  const model = stringValue(parsedBody?.model);
-  return Boolean(resolveConfiguredProviderModelSelector(model, config));
 }
 
 function resolveProviderCredentialRoutingTarget(
