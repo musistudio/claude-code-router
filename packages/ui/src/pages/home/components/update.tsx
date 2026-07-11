@@ -50,14 +50,20 @@ export function UpdateDialog({
               <div className="text-[13px] font-semibold text-foreground">{updateStateLabel(status, t)}</div>
               <div className="mt-1 text-[12px] leading-5 text-muted-foreground">{updateStateDescription(status, t)}</div>
             </div>
-            <UpdateStateBadge label={updateStateLabel(status, t)} status={status} />
+            <UpdateStateBadge
+              label={status.state === "not-available" ? t("Update check complete") : updateStateLabel(status, t)}
+              status={status}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-2 max-[520px]:grid-cols-1">
             <UpdateInfoRow label={t("Current version")} value={status.currentVersion} />
-            <UpdateInfoRow label={t("Available version")} value={status.availableVersion || "-"} />
+            <UpdateInfoRow
+              label={t("Available version")}
+              value={status.availableVersion || (status.state === "not-available" ? t("No updates available") : "-")}
+            />
             <UpdateInfoRow label={t("Last checked")} value={formatUpdateDate(status.lastCheckedAt) || "-"} />
-            <UpdateInfoRow label={t("Feed URL")} value={status.feedUrl || "-"} />
+            <UpdateInfoRow label={t("Feed URL")} scroll value={status.feedUrl || "-"} />
           </div>
 
           {status.state === "downloading" ? (
@@ -129,11 +135,17 @@ export function UpdateDialog({
   );
 }
 
-function UpdateInfoRow({ label, value }: { label: string; value: string }) {
+function UpdateInfoRow({ label, scroll = false, value }: { label: string; scroll?: boolean; value: string }) {
   return (
     <div className="min-w-0 rounded-md border border-border/70 bg-muted/20 px-3 py-2">
       <div className="text-[10px] font-medium uppercase text-muted-foreground">{label}</div>
-      <div className="mt-1 min-w-0 truncate text-[12px] font-medium text-foreground" title={value}>{value}</div>
+      <div
+        className={cn("mt-1 min-w-0 text-[12px] font-medium text-foreground", scroll ? "overflow-x-auto whitespace-nowrap" : "truncate")}
+        tabIndex={scroll ? 0 : undefined}
+        title={value}
+      >
+        {value}
+      </div>
     </div>
   );
 }

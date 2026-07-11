@@ -1688,6 +1688,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Update downloaded": "更新已下载",
       "Update downloaded. Restart to finish updating.": "更新已下载，请重启应用以完成版本更新。",
       "Update failed": "更新失败",
+      "Update check complete": "检查完成",
       "Update ready to install": "更新已准备安装",
       "Updates are only available in packaged builds.": "在线更新仅在打包后的应用中可用。",
       "After deletion, this bot data cannot be recovered.": "删除后数据不可恢复。",

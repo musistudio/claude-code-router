@@ -1027,15 +1027,15 @@ function nodeRuntimeCmdExecLines(runtimeFile: string): string[] {
   const quotedRuntime = cmdQuote(runtimeFile);
   const quotedHost = cmdQuote(process.execPath);
   return [
-    "if defined CCR_NODE_BIN (",
-    `  "%CCR_NODE_BIN%" ${quotedRuntime} %*`,
-    "  exit /b %ERRORLEVEL%",
-    ")",
+    "if not defined CCR_NODE_BIN goto ccr_try_system_node",
+    `"%CCR_NODE_BIN%" ${quotedRuntime} %*`,
+    "exit /b %ERRORLEVEL%",
+    ":ccr_try_system_node",
     "where node >nul 2>nul",
-    "if %ERRORLEVEL%==0 (",
-    `  node ${quotedRuntime} %*`,
-    "  exit /b %ERRORLEVEL%",
-    ")",
+    "if errorlevel 1 goto ccr_use_electron_node",
+    `node ${quotedRuntime} %*`,
+    "exit /b %ERRORLEVEL%",
+    ":ccr_use_electron_node",
     "set \"ELECTRON_RUN_AS_NODE=1\"",
     `${quotedHost} ${quotedRuntime} %*`,
     "exit /b %ERRORLEVEL%"

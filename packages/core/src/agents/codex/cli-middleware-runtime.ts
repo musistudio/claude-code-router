@@ -76,7 +76,7 @@ function botBridge() {
 }
 
 async function main() {
-  const args = process.argv.slice(2);
+  const args = directProfileDispatchArgs(process.argv.slice(2));
   if (process.env.CCR_CLAUDE_CODE_BOT_WORKER === "1" || args[0] === "claude-bot-worker") {
     await runClaudeCodeBotWorker(args);
     return;
@@ -92,6 +92,20 @@ async function main() {
   await runCodexCliMiddleware(args.length === 0 ? defaultCodexArgs() : args);
 }
 
+function directProfileDispatchArgs(args) {
+  if (process.env.CCR_CLI_DIRECT_PROFILE_DISPATCH !== "1") {
+    return args;
+  }
+  const forwarded = args.slice(1);
+  if (forwarded[0] === "cli" || forwarded[0] === "--cli") {
+    forwarded.shift();
+  }
+  if (forwarded[0] === "--") {
+    forwarded.shift();
+  }
+  return forwarded;
+}
+
 async function runClaudeCodeCliWrapper(args) {
   const realCli = expandHome(nonEmptyEnv("CCR_REAL_CLAUDE_CODE_BIN") || nonEmptyEnv("CCR_CLAUDE_CODE_BIN") || nonEmptyEnv("CODEXL_CLAUDE_CODE_BIN") || "claude");
   const realArgs = claudeCodeCliWrapperArgs(args);
@@ -104,7 +118,7 @@ async function runClaudeCodeCliWrapper(args) {
     title: nonEmptyEnv("CCR_REMOTE_SYNC_PROFILE_NAME") || "Claude Code"
   });
   const injectRemoteStdin = boolEnv("CCR_REMOTE_SYNC_INJECT_STDIN");
-  const child = childProcess.spawn(realCli, realArgs, {
+  const child = spawnAgentCli(realCli, realArgs, {
     env: {
       ...withoutKeys(process.env, ["CCR_CLAUDE_CODE_WRAPPER", "CCR_REAL_CLAUDE_CODE_BIN"]),
       ...claudeCodeUtcTimezoneEnvOverride()
@@ -127,6 +141,7 @@ async function runClaudeCodeCliWrapper(args) {
   });
   child.on("error", (error) => {
     log("claude_code_wrapper_spawn_error", { error: formatError(error) });
+    process.stderr.write("Failed to start " + realCli + ": " + formatError(error) + "\n");
     remoteSync.postEvent("claude.spawn.error", { error: formatError(error) }, { direction: "system" });
   });
   let pending = "";
@@ -290,13 +305,14 @@ async function runCodexCliMiddleware(args) {
   }
 
   const cleanupAuthBootstrap = createEphemeralCodexApiKeyBootstrap(runtimeAgent);
-  const child = childProcess.spawn(realCli, realArgs, {
+  const child = spawnAgentCli(realCli, realArgs, {
     env: childEnvForAgent(runtimeAgent),
     stdio: ["pipe", "pipe", "inherit"]
   });
   child.on("error", (error) => {
     cleanupAuthBootstrap();
     log("codex_cli_spawn_error", { error: formatError(error) });
+    process.stderr.write("Failed to start " + realCli + ": " + formatError(error) + "\n");
   });
 
   const requestMap = new Map();
@@ -389,12 +405,13 @@ function createEphemeralCodexApiKeyBootstrap(runtimeAgent) {
 
 async function runDirectCodexCli(realCli, realArgs) {
   const runtimeAgent = codexRuntimeAgent();
-  const child = childProcess.spawn(realCli, realArgs, {
+  const child = spawnAgentCli(realCli, realArgs, {
     env: childEnvForAgent(runtimeAgent),
     stdio: "inherit"
   });
   child.on("error", (error) => {
     log("codex_cli_spawn_error", { error: formatError(error) });
+    process.stderr.write("Failed to start " + realCli + ": " + formatError(error) + "\n");
   });
   const exit = await waitForChildResult(child);
   log("codex_cli_exit", { code: exit.code, signal: exit.signal, exitCode: exit.exitCode });
@@ -403,6 +420,69 @@ async function runDirectCodexCli(realCli, realArgs) {
 
 function shouldRunDirectCodexCli(args) {
   return codexPositionalArgs(args)[0] !== "app-server";
+}
+
+function spawnAgentCli(command, args, options) {
+  if (process.platform !== "win32") {
+    return childProcess.spawn(command, args, options);
+  }
+
+  const commandFile = resolveWindowsCommandFile(command, options && options.env);
+  if (commandFile && /\.(?:com|exe)$/i.test(commandFile)) {
+    return childProcess.spawn(commandFile, args, options);
+  }
+
+  const shellCommand = [escapeWindowsCmdCommand(commandFile || command)]
+    .concat(args.map(escapeWindowsCmdArgument))
+    .join(" ");
+  return childProcess.spawn(
+    process.env.ComSpec || process.env.COMSPEC || "cmd.exe",
+    ["/d", "/s", "/c", '"' + shellCommand + '"'],
+    { ...options, windowsVerbatimArguments: true }
+  );
+}
+
+function resolveWindowsCommandFile(command, env) {
+  const value = String(command || "").trim().replace(/^"|"$/g, "");
+  if (!value) return "";
+  const commandExt = path.extname(value);
+  const pathExt = String((env && (env.PATHEXT || env.Pathext)) || process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD")
+    .split(";")
+    .map((extension) => extension.trim())
+    .filter(Boolean);
+  const extensions = commandExt ? [""] : ["", ...pathExt];
+  const hasPath = path.isAbsolute(value) || value.includes("\\") || value.includes("/");
+  const directories = hasPath
+    ? [""]
+    : String((env && (env.PATH || env.Path)) || process.env.PATH || "")
+      .split(path.delimiter)
+      .map((directory) => directory.replace(/^"|"$/g, ""))
+      .filter(Boolean);
+
+  for (const directory of directories) {
+    for (const extension of extensions) {
+      const candidate = directory ? path.join(directory, value + extension) : value + extension;
+      try {
+        if (fs.statSync(candidate).isFile()) return candidate;
+      } catch {
+      }
+    }
+  }
+  return "";
+}
+
+const WINDOWS_CMD_META_CHARS = /([()\][%!^"\`<>&|;, *?])/g;
+
+function escapeWindowsCmdCommand(value) {
+  return String(value).replace(WINDOWS_CMD_META_CHARS, "^$1");
+}
+
+function escapeWindowsCmdArgument(value) {
+  let escaped = String(value);
+  escaped = escaped.replace(/(?=(\\+?)?)\1"/g, "$1$1\\\"");
+  escaped = escaped.replace(/(?=(\\+?)?)\1$/g, "$1$1");
+  escaped = '"' + escaped + '"';
+  return escaped.replace(WINDOWS_CMD_META_CHARS, "^$1");
 }
 
 function realCliArgs(profile, modelProvider, configFormat, args) {
