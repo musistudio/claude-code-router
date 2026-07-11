@@ -14,7 +14,7 @@ import { gatewayService } from "@ccr/core/gateway/service";
 import { TOOL_HUB_MCP_RUNTIME_FILE_NAME, bundledToolHubMcpEntryPathCandidates } from "@ccr/core/mcp/toolhub-config";
 import { buildProfileLaunchPlan, findProfileForOpen, profileLaunchSpawnCommand, profileOpenCommand, profileOpenSurfaces, resolveClaudeCodeSettingsFile, resolveProfileOpenSurface } from "@ccr/core/profiles/launch-core";
 import { applyProfileConfig, cleanupGeneratedBinBackups } from "@ccr/core/profiles/service";
-import { broadcastWindowsEnvironmentChanged, windowsSystemCommand } from "@ccr/core/platform/windows-system";
+import { windowsEnvironmentChangedPowerShellLines, windowsSystemCommand } from "@ccr/core/platform/windows-system";
 
 const ccrPathBlockStart = "# >>> Claude Code Router CLI >>>";
 const ccrPathBlockEnd = "# <<< Claude Code Router CLI <<<";
@@ -27,6 +27,15 @@ let claudeAppBotWorkerProfileId: string | undefined;
 type ProfileOpenCommandOptions = {
   commandName?: string;
   ensureLauncher?: boolean;
+};
+
+export type CcrCliLauncherPreparation = {
+  binDir: string;
+  persistentPathRequired: boolean;
+};
+
+type EnsureCcrCliLauncherOptions = {
+  persistPath?: boolean;
 };
 
 type ProfileAppLaunchResult = {
@@ -1090,8 +1099,9 @@ function commandProfileRef(config: AppConfig, profile: ReturnType<typeof findPro
   return duplicateName ? profile.id : name;
 }
 
-export function ensureCcrCliLauncher(config?: AppConfig): string {
+export function prepareCcrCliLauncherRuntime(): CcrCliLauncherPreparation {
   const binDir = path.join(CONFIGDIR, "bin");
+  const persistentPathRequired = !processPathIncludes(binDir);
   mkdirSync(binDir, { recursive: true });
   cleanupGeneratedBinBackups();
   cleanupLegacyCcrCliLauncher(binDir);
@@ -1101,6 +1111,22 @@ export function ensureCcrCliLauncher(config?: AppConfig): string {
   writeFileIfChanged(runtimeFile, readFileSync(runtimeSource, "utf8"));
   chmodSafe(runtimeFile);
   ensureBundledToolHubMcpRuntime(path.join(binDir, TOOL_HUB_MCP_RUNTIME_FILE_NAME));
+  prependProcessPath(binDir);
+
+  return { binDir, persistentPathRequired };
+}
+
+export function persistPreparedCcrCliPath(preparation: CcrCliLauncherPreparation): void {
+  if (!preparation.persistentPathRequired) {
+    return;
+  }
+  persistCcrBinOnPath(preparation.binDir);
+}
+
+export function ensureCcrCliLauncher(config?: AppConfig, options: EnsureCcrCliLauncherOptions = {}): string {
+  const preparation = prepareCcrCliLauncherRuntime();
+  const { binDir } = preparation;
+  const runtimeFile = path.join(binDir, desktopCliRuntimeFileName);
 
   const launcherFile = path.join(binDir, process.platform === "win32" ? `${desktopCliCommandName}.cmd` : desktopCliCommandName);
   const launcherContent = process.platform === "win32"
@@ -1108,7 +1134,9 @@ export function ensureCcrCliLauncher(config?: AppConfig): string {
     : posixCcrLauncher(runtimeFile);
   writeFileIfChanged(launcherFile, launcherContent);
   chmodSafe(launcherFile);
-  ensureCcrBinOnPath(binDir);
+  if (options.persistPath !== false) {
+    persistPreparedCcrCliPath(preparation);
+  }
 
   return launcherFile;
 }
@@ -1283,8 +1311,7 @@ function writeFileIfChanged(file: string, content: string): void {
   writeFileSync(file, content, "utf8");
 }
 
-function ensureCcrBinOnPath(binDir: string): void {
-  prependProcessPath(binDir);
+function persistCcrBinOnPath(binDir: string): void {
   try {
     if (process.platform === "win32") {
       ensureWindowsUserPath(binDir);
@@ -1294,6 +1321,13 @@ function ensureCcrBinOnPath(binDir: string): void {
   } catch (error) {
     console.warn(`[profile] Failed to persist ccr PATH: ${formatError(error)}`);
   }
+}
+
+function processPathIncludes(binDir: string): boolean {
+  const pathKey = process.platform === "win32"
+    ? Object.keys(process.env).find((key) => key.toLowerCase() === "path") || "Path"
+    : "PATH";
+  return pathSegmentsInclude((process.env[pathKey] || "").split(path.delimiter).filter(Boolean), binDir);
 }
 
 function prependProcessPath(binDir: string): void {
@@ -1309,7 +1343,8 @@ function prependProcessPath(binDir: string): void {
   process.env[pathKey] = [binDir, ...segments].join(delimiter);
 }
 
-function ensureWindowsUserPath(binDir: string): void {
+function ensureWindowsUserPath(binDir: string): boolean {
+  const broadcastLines = windowsEnvironmentChangedPowerShellLines().map((line) => `  ${line}`);
   const script = [
     "$ErrorActionPreference = 'Stop'",
     `$bin = ${powershellString(binDir)}`,
@@ -1322,6 +1357,10 @@ function ensureWindowsUserPath(binDir: string): void {
     "$expandedSegments = $segments | ForEach-Object { [Environment]::ExpandEnvironmentVariables($_).TrimEnd('\\\\') }",
     "if ($expandedSegments -notcontains $expandedBin) {",
     "  [Environment]::SetEnvironmentVariable('Path', ((@($bin) + $segments) -join ';'), 'User')",
+    ...broadcastLines,
+    "  Write-Output 'CHANGED'",
+    "} else {",
+    "  Write-Output 'UNCHANGED'",
     "}"
   ].join("\n");
   const result = spawnSync(windowsSystemCommand("powershell.exe"), [
@@ -1341,7 +1380,7 @@ function ensureWindowsUserPath(binDir: string): void {
   if (result.status !== 0) {
     throw new Error((result.stderr || result.stdout || `powershell.exe exited with ${result.status}`).trim());
   }
-  broadcastWindowsEnvironmentChanged();
+  return result.stdout.trim().split(/\r?\n/).includes("CHANGED");
 }
 
 function ensurePosixShellPath(binDir: string): void {

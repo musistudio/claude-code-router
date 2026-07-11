@@ -32,12 +32,7 @@ export function broadcastWindowsEnvironmentChanged(): void {
     return;
   }
 
-  const script = [
-    "$signature = '[DllImport(\"user32.dll\", SetLastError=true, CharSet=CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);';",
-    "Add-Type -MemberDefinition $signature -Namespace Win32 -Name NativeMethods;",
-    "$result = [UIntPtr]::Zero;",
-    "[Win32.NativeMethods]::SendMessageTimeout([IntPtr]0xffff, 0x1a, [UIntPtr]::Zero, 'Environment', 0x2, 5000, [ref]$result) | Out-Null;"
-  ].join(" ");
+  const script = windowsEnvironmentChangedPowerShellLines().join(" ");
 
   spawnSync(windowsSystemCommand("powershell.exe"), [
     "-NoProfile",
@@ -50,4 +45,13 @@ export function broadcastWindowsEnvironmentChanged(): void {
     stdio: "ignore",
     windowsHide: true
   });
+}
+
+export function windowsEnvironmentChangedPowerShellLines(): string[] {
+  return [
+    "$signature = '[DllImport(\"user32.dll\", SetLastError=true, CharSet=CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);';",
+    "Add-Type -MemberDefinition $signature -Namespace Win32 -Name NativeMethods;",
+    "$result = [UIntPtr]::Zero;",
+    "[Win32.NativeMethods]::SendMessageTimeout([IntPtr]0xffff, 0x1a, [UIntPtr]::Zero, 'Environment', 0x2, 5000, [ref]$result) | Out-Null;"
+  ];
 }

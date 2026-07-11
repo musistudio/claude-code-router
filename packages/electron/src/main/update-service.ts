@@ -10,7 +10,7 @@ type UpdateCheckOptions = {
 };
 
 const startupCheckDelayMs = 12_000;
-const defaultUpdateSource = "GitHub Releases (musistudio/claude-code-router)";
+const defaultUpdateSource = "GitHub Releases";
 
 class AppUpdateService {
   private activeSilentCheckFailureRestoreStatus?: AppUpdateStatus;

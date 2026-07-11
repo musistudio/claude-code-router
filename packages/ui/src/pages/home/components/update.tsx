@@ -46,12 +46,13 @@ export function UpdateDialog({
 
         <DialogBody className="grid gap-4">
           <div className="flex min-w-0 items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-[13px] font-semibold text-foreground">{updateStateLabel(status, t)}</div>
-              <div className="mt-1 text-[12px] leading-5 text-muted-foreground">{updateStateDescription(status, t)}</div>
+            <div className="min-w-0 flex-1">
+              {updateStateDescription(status, t) ? (
+                <div className="text-[12px] leading-5 text-muted-foreground">{updateStateDescription(status, t)}</div>
+              ) : null}
             </div>
             <UpdateStateBadge
-              label={status.state === "not-available" ? t("Update check complete") : updateStateLabel(status, t)}
+              label={updateStateLabel(status, t)}
               status={status}
             />
           </div>
@@ -59,8 +60,8 @@ export function UpdateDialog({
           <div className="grid grid-cols-2 gap-2 max-[520px]:grid-cols-1">
             <UpdateInfoRow label={t("Current version")} value={status.currentVersion} />
             <UpdateInfoRow
-              label={t("Available version")}
-              value={status.availableVersion || (status.state === "not-available" ? t("No updates available") : "-")}
+              label={t("Latest version")}
+              value={status.availableVersion || (status.state === "not-available" ? status.currentVersion : "-")}
             />
             <UpdateInfoRow label={t("Last checked")} value={formatUpdateDate(status.lastCheckedAt) || "-"} />
             <UpdateInfoRow label={t("Feed URL")} scroll value={status.feedUrl || "-"} />
@@ -156,8 +157,10 @@ function UpdateStateBadge({ label, status }: { label: string; status: AppUpdateS
       "shrink-0 rounded-full border px-2 py-1 text-[11px] font-medium",
       status.state === "error"
         ? "border-destructive/25 bg-destructive/10 text-destructive"
+        : status.state === "not-available"
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
         : status.state === "available" || status.state === "downloaded" || status.state === "downloading"
-          ? "border-primary/25 bg-primary/10 text-primary"
+          ? "border-amber-200 bg-amber-50 text-amber-700"
           : "border-border bg-muted/40 text-muted-foreground"
     )}>
       {label}
@@ -181,7 +184,7 @@ function updateStateDescription(status: AppUpdateStatus, t: (value: string) => s
   if (!status.supported) return t("Updates are only available in packaged builds.");
   if (status.state === "available" && status.availableVersion) return `${t("Available version")}: ${status.availableVersion}`;
   if (status.state === "downloaded") return t("Update downloaded");
-  if (status.state === "not-available") return t("No updates available");
+  if (status.state === "not-available") return "";
   if (status.state === "downloading") return t("Downloading update");
   return t("Online updates");
 }

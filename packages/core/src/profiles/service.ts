@@ -34,11 +34,23 @@ const managedToolHubMcpStart = "# BEGIN CCR managed ToolHub MCP";
 const managedToolHubMcpEnd = "# END CCR managed ToolHub MCP";
 const originalBackupSuffix = ".ccr-original";
 const originalMissingSuffix = ".ccr-original-missing";
+const globalProfileTakeoverFile = path.join(CONFIGDIR, "global-profile-takeover.json");
 const fallbackClientToken = "ccr-local";
 const privateDirMode = 0o700;
 const privateExecutableMode = 0o700;
 const privateFileMode = 0o600;
 const publicExecutableMode = 0o755;
+let ownedGlobalProfileTakeovers: GlobalProfileTakeoverRecord[] | undefined;
+
+type GlobalProfileTakeoverRecord = {
+  agent: ProfileClientKind;
+  codexHome?: string;
+  configFile?: string;
+  id: string;
+  name: string;
+  providerId?: string;
+  settingsFile?: string;
+};
 
 export async function applyProfileConfig(config: AppConfig): Promise<ProfileApplyResult> {
   cleanupGeneratedBinBackups();
@@ -49,9 +61,15 @@ export async function applyProfileConfig(config: AppConfig): Promise<ProfileAppl
     clients: [],
     enabled: profiles.some((profile) => profile.enabled)
   };
+  const takeoverStatuses = synchronizeGlobalProfileTakeovers(
+    profiles,
+    result.enabled && hasAvailableGatewayModels(config)
+  );
 
   if (!result.enabled) {
     result.clients = profiles.map(disabledProfileStatus);
+    result.clients.push(...takeoverStatuses);
+    result.clients.push(...restoreInactiveGlobalProfileConfigs(profiles));
     return result;
   }
 
@@ -76,6 +94,8 @@ export async function applyProfileConfig(config: AppConfig): Promise<ProfileAppl
           }
         : status;
     });
+    result.clients.push(...takeoverStatuses);
+    result.clients.push(...restoreInactiveGlobalProfileConfigs(profiles));
     return result;
   }
 
@@ -91,6 +111,7 @@ export async function applyProfileConfig(config: AppConfig): Promise<ProfileAppl
           : applyCodexProfile(config, profile, token, appliedAt)
     );
   }
+  result.clients.push(...takeoverStatuses);
   cleanupManagedClaudeCodeToolHubArtifacts(profiles, { includeActive: false });
   result.clients.push(...restoreInactiveGlobalProfileConfigs(profiles));
   return result;
@@ -1404,7 +1425,158 @@ export function restoreInactiveGlobalProfileConfigs(profiles: ProfileConfig[]): 
       }
     }
   }
+  const codexProfiles = profiles.filter((profile) => profile.agent === "codex");
+  if (codexProfiles.length > 0 && !codexProfiles.some((profile) => profile.enabled && isGlobalProfile(profile))) {
+    for (const file of uniqueResolvedPaths([
+      ...codexProfiles.map(globalCodexConfigCandidate)
+    ])) {
+      const restoreResult = restoreGlobalConfigFile(file, {
+        isManagedContent: (content) => isManagedCodexConfigContent(content, "claude-code-router"),
+        mode: privateFileMode
+      });
+      if (restoreResult.changed || restoreResult.missingBackup) {
+        statuses.push(inactiveGlobalCleanupStatus("codex", file, restoreResult));
+      }
+    }
+  }
+  const zcodeProfiles = profiles.filter((profile) => profile.agent === "zcode");
+  if (zcodeProfiles.length > 0 && !zcodeProfiles.some((profile) => profile.enabled && isGlobalProfile(profile))) {
+    const providerIds = [...new Set([
+      "claude-code-router",
+      ...zcodeProfiles.map((profile) => sanitizeCodexProviderId(profile.providerId || "")).filter(Boolean)
+    ])];
+    const configFiles = uniqueResolvedPaths([
+      ...zcodeProfiles.map((profile) => resolveZcodeConfigFile(profile))
+    ]);
+    for (const configFile of configFiles) {
+      const storageRoot = zcodeHomeFromConfigFile(configFile);
+      for (const file of [
+        configFile,
+        path.join(storageRoot, "v2", "config.json"),
+        path.join(storageRoot, "v2", "bots-model-cache.v2.json")
+      ]) {
+        const restoreResult = restoreGlobalConfigFile(file, {
+          isManagedContent: (content) => providerIds.some((providerId) => isManagedZcodeConfigContent(content, providerId)),
+          mode: privateFileMode
+        });
+        if (restoreResult.changed || restoreResult.missingBackup) {
+          statuses.push(inactiveGlobalCleanupStatus("zcode", file, restoreResult));
+        }
+      }
+    }
+  }
   return statuses;
+}
+
+function globalCodexConfigCandidate(profile: ProfileConfig): string {
+  const codexHome = profile.codexHome?.trim();
+  if (codexHome) {
+    return path.join(resolveUserPath(codexHome), "config.toml");
+  }
+  return profile.configFile || "~/.codex/config.toml";
+}
+
+export function restoreGlobalProfileConfigsOnExit(
+  profiles: ProfileConfig[],
+  options: { manageMarker?: boolean } = {}
+): ProfileClientApplyStatus[] {
+  const manageMarker = options.manageMarker !== false;
+  const records = dedupeGlobalProfileTakeovers([
+    ...(manageMarker ? ownedGlobalProfileTakeovers ?? readGlobalProfileTakeoverMarker() : []),
+    ...globalProfileTakeoverRecords(profiles)
+  ]);
+  const statuses = restoreGlobalProfileTakeoverRecords(records);
+  if (manageMarker && statuses.every((status) => status.ok)) {
+    clearGlobalProfileTakeoverMarker();
+    ownedGlobalProfileTakeovers = [];
+  }
+  return statuses;
+}
+
+function synchronizeGlobalProfileTakeovers(profiles: ProfileConfig[], canTakeOver: boolean): ProfileClientApplyStatus[] {
+  const next = canTakeOver ? globalProfileTakeoverRecords(profiles) : [];
+  const previous = ownedGlobalProfileTakeovers ?? readGlobalProfileTakeoverMarker();
+  if (ownedGlobalProfileTakeovers !== undefined && JSON.stringify(previous) === JSON.stringify(next)) {
+    return [];
+  }
+
+  const statuses = previous.length > 0 ? restoreGlobalProfileTakeoverRecords(previous) : [];
+  const markerRecords = statuses.every((status) => status.ok)
+    ? next
+    : dedupeGlobalProfileTakeovers([...previous, ...next]);
+  if (markerRecords.length > 0) {
+    writeGlobalProfileTakeoverMarker(markerRecords);
+  } else {
+    clearGlobalProfileTakeoverMarker();
+  }
+  ownedGlobalProfileTakeovers = markerRecords;
+  return statuses;
+}
+
+function globalProfileTakeoverRecords(profiles: ProfileConfig[]): GlobalProfileTakeoverRecord[] {
+  return dedupeGlobalProfileTakeovers(profiles
+    .filter((profile) => profile.enabled && isGlobalProfile(profile))
+    .map((profile) => ({
+      agent: profile.agent,
+      codexHome: profile.codexHome?.trim() || undefined,
+      configFile: profile.configFile?.trim() || undefined,
+      id: profile.id,
+      name: profile.name,
+      providerId: profile.providerId?.trim() || undefined,
+      settingsFile: profile.settingsFile?.trim() || undefined
+    })));
+}
+
+function restoreGlobalProfileTakeoverRecords(records: GlobalProfileTakeoverRecord[]): ProfileClientApplyStatus[] {
+  return records.map((record) => disabledProfileStatus({
+    ...record,
+    enabled: false,
+    env: {},
+    model: "",
+    scope: "global",
+    surface: "auto"
+  }));
+}
+
+function dedupeGlobalProfileTakeovers(records: GlobalProfileTakeoverRecord[]): GlobalProfileTakeoverRecord[] {
+  const seen = new Set<string>();
+  return records.filter((record) => {
+    const key = JSON.stringify(record);
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function readGlobalProfileTakeoverMarker(): GlobalProfileTakeoverRecord[] {
+  try {
+    const parsed = JSON.parse(readFileSync(globalProfileTakeoverFile, "utf8")) as { profiles?: unknown };
+    if (!Array.isArray(parsed.profiles)) {
+      return [];
+    }
+    return parsed.profiles.filter((value): value is GlobalProfileTakeoverRecord =>
+      isRecord(value) &&
+      (value.agent === "claude-code" || value.agent === "codex" || value.agent === "zcode") &&
+      typeof value.id === "string" &&
+      typeof value.name === "string"
+    );
+  } catch {
+    return [];
+  }
+}
+
+function writeGlobalProfileTakeoverMarker(records: GlobalProfileTakeoverRecord[]): void {
+  mkdirSync(path.dirname(globalProfileTakeoverFile), { recursive: true });
+  writeFileSync(globalProfileTakeoverFile, `${JSON.stringify({ profiles: records, version: 1 }, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: privateFileMode
+  });
+}
+
+function clearGlobalProfileTakeoverMarker(): void {
+  rmSync(globalProfileTakeoverFile, { force: true });
 }
 
 function inactiveGlobalCleanupStatus(
@@ -1513,6 +1685,20 @@ function restoreGlobalConfigFile(
     return { changed: false, file, missingBackup: false, restored: false };
   }
 
+  const snapshot = originalSnapshotCandidate(file, options.isManagedContent);
+  if (snapshot) {
+    if (current === snapshot.content) {
+      chmodFileIfRequested(file, options.mode);
+      return { changed: false, file, missingBackup: false, restored: true };
+    }
+
+    const backupFile = current === undefined ? undefined : backupCurrentConfigFile(file, options.mode);
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, snapshot.content, options.mode === undefined ? "utf8" : { encoding: "utf8", mode: options.mode });
+    chmodFileIfRequested(file, options.mode);
+    return { backupFile, changed: true, file, missingBackup: false, restored: true };
+  }
+
   if (existsSync(originalMissingFilePath(file))) {
     if (currentManaged) {
       const backupFile = backupCurrentConfigFile(file, options.mode);
@@ -1522,33 +1708,22 @@ function restoreGlobalConfigFile(
     return { changed: false, file, missingBackup: false, restored: current === undefined };
   }
 
-  const snapshot = originalSnapshotCandidate(file, options.isManagedContent);
-  if (!snapshot) {
-    return {
-      changed: false,
-      file,
-      missingBackup: Boolean(currentManaged),
-      restored: false
-    };
-  }
-
-  if (current === snapshot.content) {
-    chmodFileIfRequested(file, options.mode);
-    return { changed: false, file, missingBackup: false, restored: true };
-  }
-
-  const backupFile = current === undefined ? undefined : backupCurrentConfigFile(file, options.mode);
-  mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, snapshot.content, options.mode === undefined ? "utf8" : { encoding: "utf8", mode: options.mode });
-  chmodFileIfRequested(file, options.mode);
-  return { backupFile, changed: true, file, missingBackup: false, restored: true };
+  return {
+    changed: false,
+    file,
+    missingBackup: Boolean(currentManaged),
+    restored: false
+  };
 }
 
 function originalSnapshotCandidate(
   file: string,
   isManagedContent: (content: string) => boolean
 ): { content: string; file: string } | undefined {
-  for (const candidate of [originalBackupFilePath(file), ...backupFiles(file)]) {
+  // Prefer the most recent non-CCR snapshot captured immediately before the
+  // latest takeover. The permanent .ccr-original file can be stale when the
+  // user changes the agent config between separate CCR sessions.
+  for (const candidate of [...backupFiles(file).reverse(), originalBackupFilePath(file)]) {
     if (!existsSync(candidate)) {
       continue;
     }

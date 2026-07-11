@@ -1679,6 +1679,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "System status": "系统状态",
       "System Proxy": "系统代理",
       "Available version": "可用版本",
+      "Latest version": "最新版本",
       "Download update": "下载更新",
       "Downloading update": "正在下载更新",
       "Feed URL": "更新源",
