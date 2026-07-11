@@ -10,6 +10,7 @@ import { codexCandidate, importCodexProvider, probeCodexProvider } from "@ccr/co
 import { importZcodeProvider, zcodeCandidate } from "@ccr/core/agents/local-providers/zcode";
 
 export { codexDefaultBaseUrl, readCodexAuth } from "@ccr/core/agents/local-providers/codex";
+export { readZcodeLocalProviderCredential, zcodeDefaultBaseUrl } from "@ccr/core/agents/local-providers/zcode";
 export { localAgentProviderApiKey, type OAuthTokenSet } from "@ccr/core/agents/local-providers/shared";
 
 export function getLocalAgentProviderCandidates(): LocalAgentProviderCandidate[] {
