@@ -1183,20 +1183,12 @@ function posixCcrLauncher(runtimeFile: string): string {
   ].join("\n") + "\n";
 }
 
-function windowsCcrLauncher(runtimeFile: string, config?: AppConfig): string {
+export function windowsCcrLauncher(runtimeFile: string, config?: AppConfig): string {
   const nodePath = bundledNodePath();
   const dispatches = config ? windowsProfileCliDispatches(config) : [];
   return [
     "@echo off",
     "setlocal",
-    ...(dispatches.length > 0
-      ? [
-          "if /I \"%~2\"==\"app\" goto ccr_run_cli",
-          "if /I \"%~2\"==\"--app\" goto ccr_run_cli",
-          ...dispatches.map((dispatch, index) => `if /I \"%~1\"==\"${cmdValue(dispatch.profileRef)}\" goto ccr_profile_${index}`),
-          ":ccr_run_cli"
-        ]
-      : []),
     `set "${desktopCliCommandNameEnv}=${desktopCliCommandName}"`,
     `set "CCR_CLI_RUNTIME=${cmdEnvValue(runtimeFile)}"`,
     `set "CCR_CLI_NODE_PATH=${cmdEnvValue(nodePath)}"`,
@@ -1205,6 +1197,14 @@ function windowsCcrLauncher(runtimeFile: string, config?: AppConfig): string {
     ") else (",
     "  set \"NODE_PATH=%CCR_CLI_NODE_PATH%\"",
     ")",
+    ...(dispatches.length > 0
+      ? [
+          "if /I \"%~2\"==\"app\" goto ccr_run_cli",
+          "if /I \"%~2\"==\"--app\" goto ccr_run_cli",
+          ...dispatches.map((dispatch, index) => `if /I \"%~1\"==\"${cmdValue(dispatch.profileRef)}\" goto ccr_profile_${index}`),
+          ":ccr_run_cli"
+        ]
+      : []),
     "if defined CCR_NODE_BIN (",
     '  "%CCR_NODE_BIN%" "%CCR_CLI_RUNTIME%" %*',
     "  exit /b %ERRORLEVEL%",
@@ -1214,6 +1214,12 @@ function windowsCcrLauncher(runtimeFile: string, config?: AppConfig): string {
     "exit /b %ERRORLEVEL%",
     ...dispatches.flatMap((dispatch, index) => [
       `:ccr_profile_${index}`,
+      "set \"CCR_CLI_PREPARE_PROFILE_ONLY=1\"",
+      "set \"ELECTRON_RUN_AS_NODE=1\"",
+      `${cmdQuote(process.execPath)} "%CCR_CLI_RUNTIME%" %*`,
+      "if errorlevel 1 exit /b %ERRORLEVEL%",
+      "set \"CCR_CLI_PREPARE_PROFILE_ONLY=\"",
+      "set \"ELECTRON_RUN_AS_NODE=\"",
       "set \"CCR_CLI_DIRECT_PROFILE_DISPATCH=1\"",
       `call ${cmdQuote(dispatch.launcher)} %*`,
       "exit /b %ERRORLEVEL%"
