@@ -860,12 +860,72 @@ class GatewayService {
     });
 
     if (hostedWebSearchProtocolContext && !this.browserWebSearchMcpIntegration) {
-      const message = browserWebSearchUnavailableMessage(hostedWebSearchProtocolContext.toolName);
-      const responseHeaders = new Headers({ "content-type": "application/json; charset=utf-8" });
-      const responseBody = JSON.stringify({ error: { message } });
-      writeRequestLog(503, responseHeaders, responseBody, false, message);
-      sendJson(response, 503, { error: { message } });
-      return;
+      const body = parseJsonObjectSafe(bodyToForward);
+      if (body) {
+        const queryHint = extractHostedWebSearchQueryHint(body, hostedWebSearchProtocolContext.protocol);
+        if (queryHint) {
+          const provider = fusionWebSearchProviderForToolName(this.config, hostedWebSearchProtocolContext.toolName);
+          const records = provider ? await runWebSearch(queryHint, provider) : [];
+          if (records.length > 0) {
+            // Short-circuit: return synthetic response (LiteLLM-style).
+            // Use server_tool_use + web_search_tool_result (nested) format
+            // matching https://docs.anthropic.com/en/api/web-search-tool
+            const toolUseId = `srvtoolu_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
+            const content: Record<string, unknown>[] = [];
+            content.push({
+              type: "server_tool_use",
+              id: toolUseId,
+              name: "web_search",
+              input: { query: queryHint }
+            });
+            const resultItems: Record<string, unknown>[] = [];
+            const textParts: string[] = [];
+            for (const record of records) {
+              for (const result of record.results) {
+                resultItems.push({
+                  type: "web_search_result",
+                  url: result.url,
+                  title: result.title,
+                  page_age: null,
+                  encrypted_content: ""
+                });
+                const snippet = (result.snippet || result.content || "").slice(0, 500);
+                textParts.push(`Title: ${result.title}\nURL: ${result.url}\nSnippet: ${snippet}`);
+              }
+            }
+            content.push({
+              type: "web_search_tool_result",
+              tool_use_id: toolUseId,
+              content: resultItems
+            });
+            if (textParts.length > 0) {
+              content.push({ type: "text", text: textParts.join("\n\n") });
+            }
+            const syntheticPayload: Record<string, unknown> = {
+              id: `msg_${randomUUID().replace(/-/g, "").slice(0, 24)}`,
+              type: "message",
+              role: "assistant",
+              model: routedModel,
+              content,
+              stop_reason: "end_turn",
+              stop_sequence: null,
+              usage: { input_tokens: 0, output_tokens: 0, server_tool_use: { web_search_requests: records.length } }
+            };
+            const responseBody = JSON.stringify(syntheticPayload);
+            writeRequestLog(200, new Headers({ "content-type": "application/json" }), responseBody, false);
+            sendJson(response, 200, syntheticPayload);
+            return;
+          }
+        }
+      }
+      if (!hostedWebSearchProtocolContext.records) {
+        const message = browserWebSearchUnavailableMessage(hostedWebSearchProtocolContext.toolName);
+        const responseHeaders = new Headers({ "content-type": "application/json; charset=utf-8" });
+        const responseBody = JSON.stringify({ error: { message } });
+        writeRequestLog(503, responseHeaders, responseBody, false, message);
+        sendJson(response, 503, { error: { message } });
+        return;
+      }
     }
 
     if (hostedWebSearchProtocolContext && this.browserWebSearchMcpIntegration) {
@@ -3301,15 +3361,16 @@ export function hostedWebSearchProtocolResponseStream(
   context: HostedWebSearchProtocolContext,
   integration: BrowserWebSearchMcpIntegration | undefined
 ): Readable {
-  if (!integration?.recentBrowserWebSearchResults && !integration?.runBrowserWebSearch) {
+  const hasIntegration = integration?.recentBrowserWebSearchResults !== undefined || integration?.runBrowserWebSearch !== undefined;
+  if (!hasIntegration && !context.records?.length) {
     return input;
   }
   const contentType = headers.get("content-type")?.toLowerCase() ?? "";
   if (contentType.includes("text/event-stream")) {
     if (context.protocol === "anthropic_messages") {
-      return anthropicHostedWebSearchProtocolSseStream(input, context, integration);
+      return anthropicHostedWebSearchProtocolSseStream(input, context, integration!);
     }
-    return hostedWebSearchProtocolSseStream(input, context, integration);
+    return hostedWebSearchProtocolSseStream(input, context, integration!);
   }
   if (!contentType.includes("application/json")) {
     return input;
@@ -3324,7 +3385,7 @@ export function hostedWebSearchProtocolResponseStream(
     flush(callback) {
       const body = Buffer.concat(chunks).toString("utf8");
       void (async () => {
-        const records = await selectHostedWebSearchProtocolRecords(context, integration);
+        const records = context.records?.length ? context.records : await selectHostedWebSearchProtocolRecords(context, integration!);
         if (records.length === 0) {
           this.push(body);
           return;
@@ -3346,7 +3407,9 @@ function hostedWebSearchProtocolSseStream(
   context: HostedWebSearchProtocolContext,
   integration: BrowserWebSearchMcpIntegration
 ): Readable {
-  const recordsPromise = selectHostedWebSearchProtocolRecords(context, integration);
+  const recordsPromise = context.records?.length
+    ? Promise.resolve(context.records)
+    : selectHostedWebSearchProtocolRecords(context, integration);
   let records: BrowserWebSearchProtocolRecord[] | undefined;
   let pending = "";
   let passThrough = false;
@@ -3542,7 +3605,9 @@ function anthropicHostedWebSearchProtocolSseStream(
   context: HostedWebSearchProtocolContext,
   integration: BrowserWebSearchMcpIntegration
 ): Readable {
-  const recordsPromise = selectHostedWebSearchProtocolRecords(context, integration);
+  const recordsPromise = context.records?.length
+    ? Promise.resolve(context.records)
+    : selectHostedWebSearchProtocolRecords(context, integration);
   let records: BrowserWebSearchProtocolRecord[] | undefined;
   let pending = "";
   let passThrough = false;
@@ -4767,13 +4832,50 @@ function textPartsFromGeminiContents(contents: unknown): string[] {
 }
 
 export function fusionWebSearchToolNameForRequest(config: AppConfig, model: string | undefined): string | undefined {
+  // Router already determines which Fusion profile handles web search.
+  // Match the requested model against all web search candidates (browser + non-browser).
   const normalizedModel = model ? fusionModelNameFromSelector(model) : "";
-  for (const candidate of fusionBrowserWebSearchToolCandidates(config)) {
+  for (const candidate of allWebSearchToolCandidates(config)) {
     if (!normalizedModel || candidate.aliases.some((alias) => fusionModelNameFromSelector(alias).toLowerCase() === normalizedModel.toLowerCase())) {
       return candidate.toolName;
     }
   }
   return undefined;
+}
+
+function allWebSearchToolCandidates(config: AppConfig): Array<{ aliases: string[]; toolName: string; provider: string | undefined }> {
+  const browser = fusionBrowserWebSearchToolCandidates(config).map((c) => ({ ...c, provider: "browser" as const }));
+  const nonBrowser = fusionWebSearchToolCandidates(config);
+  return [...browser, ...nonBrowser];
+}
+
+function fusionWebSearchToolCandidates(config: AppConfig): Array<{ aliases: string[]; toolName: string; provider: string | undefined }> {
+  const rawProfiles = Array.isArray(config.virtualModelProfiles) ? config.virtualModelProfiles : [];
+  const profiles = normalizeCoreGatewayVirtualModelProfiles(
+    withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases(rawProfiles)),
+    config
+  );
+  const candidates: Array<{ aliases: string[]; toolName: string; provider: string | undefined }> = [];
+  for (const profile of profiles) {
+    if (!isRecord(profile) || profile.enabled === false) {
+      continue;
+    }
+    const metadata = isRecord(profile.metadata) ? profile.metadata : undefined;
+    const fusionWebSearch = isRecord(metadata?.fusionWebSearch) ? metadata.fusionWebSearch : undefined;
+    const webSearchConfig = readFusionWebSearchConfig(fusionWebSearch);
+    if (!webSearchConfig?.toolName) {
+      continue;
+    }
+    const match = isRecord(profile.match) ? profile.match : undefined;
+    const aliases = uniqueStrings([
+      stringValue(profile.id),
+      stringValue(profile.key),
+      stringValue(profile.displayName),
+      ...stringListValue(match?.exactAliases)
+    ].filter((item): item is string => Boolean(item)));
+    candidates.push({ aliases, provider: webSearchConfig.provider, toolName: webSearchConfig.toolName });
+  }
+  return candidates;
 }
 
 function fusionBrowserWebSearchToolCandidates(config: AppConfig): Array<{ aliases: string[]; toolName: string }> {
@@ -4803,6 +4905,149 @@ function fusionBrowserWebSearchToolCandidates(config: AppConfig): Array<{ aliase
     candidates.push({ aliases, toolName: webSearchConfig.toolName });
   }
   return candidates;
+}
+
+function fusionWebSearchProviderForToolName(config: AppConfig, toolName: string): string | undefined {
+  const candidate = fusionWebSearchToolCandidates(config).find((c) => c.toolName === toolName);
+  return candidate && candidate.provider !== "browser" ? candidate.provider : undefined;
+}
+
+async function runWebSearch(query: string, provider: string): Promise<BrowserWebSearchProtocolRecord[]> {
+  switch (provider) {
+    case "tavily": return searchTavily(query);
+    case "brave": return searchBrave(query);
+    case "bing": return searchBing(query);
+    case "google_cse": return searchGoogleCse(query);
+    case "serper": return searchSerper(query);
+    case "serpapi": return searchSerpApi(query);
+    case "exa": return searchExa(query);
+    default:
+      console.log(`[gateway] Unknown search provider: ${provider}`);
+      return [];
+  }
+}
+
+async function searchTavily(query: string): Promise<BrowserWebSearchProtocolRecord[]> {
+  const apiKey = process.env.TAVILY_API_KEY;
+  if (!apiKey) { console.log(`[gateway] Tavily: API key not set`); return []; }
+  try {
+    const response = await fetchWithSystemProxy("https://api.tavily.com/search", {
+      body: JSON.stringify({ api_key: apiKey, query, max_results: 5, search_depth: "basic" }),
+      headers: { "content-type": "application/json" },
+      method: "POST", signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok) { console.log(`[gateway] Tavily returned ${response.status}`); return []; }
+    const data: Record<string, unknown> = await response.json() as Record<string, unknown>;
+    const items = Array.isArray(data.results) ? data.results : [];
+    if (items.length === 0) return [];
+    return [{ completedAtMs: Date.now(), engine: "tavily", query,
+      results: items.map((item: unknown) => { const r = item as Record<string, unknown>; return { snippet: stringValue(r.content), title: stringValue(r.title) || "", url: stringValue(r.url) || "" }; }).filter((r) => r.title || r.url),
+      searchUrl: "https://tavily.com", toolName: "web_search" }];
+  } catch (error) { console.log(`[gateway] Tavily error: ${formatError(error)}`); return []; }
+}
+
+async function searchBrave(query: string): Promise<BrowserWebSearchProtocolRecord[]> {
+  const apiKey = process.env.BRAVE_SEARCH_API_KEY;
+  if (!apiKey) { console.log(`[gateway] Brave: API key not set`); return []; }
+  try {
+    const url = new URL("https://api.search.brave.com/res/v1/web/search");
+    url.searchParams.set("q", query); url.searchParams.set("count", "5");
+    const response = await fetchWithSystemProxy(url.toString(), { headers: { "x-subscription-token": apiKey }, signal: AbortSignal.timeout(15000) });
+    if (!response.ok) { console.log(`[gateway] Brave returned ${response.status}`); return []; }
+    const data: Record<string, unknown> = await response.json() as Record<string, unknown>;
+    const items = isRecord(data.web) && Array.isArray(data.web.results) ? data.web.results : [];
+    if (items.length === 0) return [];
+    return [{ completedAtMs: Date.now(), engine: "brave", query,
+      results: items.map((item: unknown) => { const r = item as Record<string, unknown>; return { snippet: stringValue(r.description), title: stringValue(r.title) || "", url: stringValue(r.url) || "" }; }).filter((r) => r.title || r.url),
+      searchUrl: "https://search.brave.com", toolName: "web_search" }];
+  } catch (error) { console.log(`[gateway] Brave error: ${formatError(error)}`); return []; }
+}
+
+async function searchBing(query: string): Promise<BrowserWebSearchProtocolRecord[]> {
+  const apiKey = process.env.BING_SEARCH_API_KEY;
+  if (!apiKey) { console.log(`[gateway] Bing: API key not set`); return []; }
+  try {
+    const url = new URL("https://api.bing.microsoft.com/v7.0/search");
+    url.searchParams.set("q", query); url.searchParams.set("count", "5"); url.searchParams.set("mkt", "en-US");
+    const response = await fetchWithSystemProxy(url.toString(), { headers: { "ocp-apim-subscription-key": apiKey }, signal: AbortSignal.timeout(15000) });
+    if (!response.ok) { console.log(`[gateway] Bing returned ${response.status}`); return []; }
+    const data: Record<string, unknown> = await response.json() as Record<string, unknown>;
+    const items = isRecord(data.webPages) && Array.isArray(data.webPages.value) ? data.webPages.value : [];
+    if (items.length === 0) return [];
+    return [{ completedAtMs: Date.now(), engine: "bing", query,
+      results: items.map((item: unknown) => { const r = item as Record<string, unknown>; return { snippet: stringValue(r.snippet), title: stringValue(r.name) || "", url: stringValue(r.url) || "" }; }).filter((r) => r.title || r.url),
+      searchUrl: "https://www.bing.com", toolName: "web_search" }];
+  } catch (error) { console.log(`[gateway] Bing error: ${formatError(error)}`); return []; }
+}
+
+async function searchGoogleCse(query: string): Promise<BrowserWebSearchProtocolRecord[]> {
+  const apiKey = process.env.GOOGLE_SEARCH_API_KEY; const cx = process.env.GOOGLE_SEARCH_CX;
+  if (!apiKey || !cx) { console.log(`[gateway] Google CSE: API key or CX not set`); return []; }
+  try {
+    const url = new URL("https://www.googleapis.com/customsearch/v1");
+    url.searchParams.set("key", apiKey); url.searchParams.set("cx", cx); url.searchParams.set("q", query); url.searchParams.set("num", "5");
+    const response = await fetchWithSystemProxy(url.toString(), { signal: AbortSignal.timeout(15000) });
+    if (!response.ok) { console.log(`[gateway] Google CSE returned ${response.status}`); return []; }
+    const data: Record<string, unknown> = await response.json() as Record<string, unknown>;
+    const items = Array.isArray(data.items) ? data.items : [];
+    if (items.length === 0) return [];
+    return [{ completedAtMs: Date.now(), engine: "google_cse", query,
+      results: items.map((item: unknown) => { const r = item as Record<string, unknown>; return { snippet: stringValue(r.snippet), title: stringValue(r.title) || "", url: stringValue(r.link) || "" }; }).filter((r) => r.title || r.url),
+      searchUrl: "https://cse.google.com", toolName: "web_search" }];
+  } catch (error) { console.log(`[gateway] Google CSE error: ${formatError(error)}`); return []; }
+}
+
+async function searchSerper(query: string): Promise<BrowserWebSearchProtocolRecord[]> {
+  const apiKey = process.env.SERPER_API_KEY;
+  if (!apiKey) { console.log(`[gateway] Serper: API key not set`); return []; }
+  try {
+    const response = await fetchWithSystemProxy("https://google.serper.dev/search", {
+      body: JSON.stringify({ q: query, num: 5 }), headers: { "content-type": "application/json", "x-api-key": apiKey },
+      method: "POST", signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok) { console.log(`[gateway] Serper returned ${response.status}`); return []; }
+    const data: Record<string, unknown> = await response.json() as Record<string, unknown>;
+    const items = Array.isArray(data.organic) ? data.organic : [];
+    if (items.length === 0) return [];
+    return [{ completedAtMs: Date.now(), engine: "serper", query,
+      results: items.map((item: unknown) => { const r = item as Record<string, unknown>; return { snippet: stringValue(r.snippet), title: stringValue(r.title) || "", url: stringValue(r.link) || "" }; }).filter((r) => r.title || r.url),
+      searchUrl: "https://serper.dev", toolName: "web_search" }];
+  } catch (error) { console.log(`[gateway] Serper error: ${formatError(error)}`); return []; }
+}
+
+async function searchSerpApi(query: string): Promise<BrowserWebSearchProtocolRecord[]> {
+  const apiKey = process.env.SERPAPI_API_KEY;
+  if (!apiKey) { console.log(`[gateway] SerpAPI: API key not set`); return []; }
+  try {
+    const url = new URL("https://serpapi.com/search.json");
+    url.searchParams.set("api_key", apiKey); url.searchParams.set("engine", "google"); url.searchParams.set("q", query); url.searchParams.set("num", "5");
+    const response = await fetchWithSystemProxy(url.toString(), { signal: AbortSignal.timeout(15000) });
+    if (!response.ok) { console.log(`[gateway] SerpAPI returned ${response.status}`); return []; }
+    const data: Record<string, unknown> = await response.json() as Record<string, unknown>;
+    const items = Array.isArray(data.organic_results) ? data.organic_results : [];
+    if (items.length === 0) return [];
+    return [{ completedAtMs: Date.now(), engine: "serpapi", query,
+      results: items.map((item: unknown) => { const r = item as Record<string, unknown>; return { snippet: stringValue(r.snippet), title: stringValue(r.title) || "", url: stringValue(r.link) || "" }; }).filter((r) => r.title || r.url),
+      searchUrl: "https://serpapi.com", toolName: "web_search" }];
+  } catch (error) { console.log(`[gateway] SerpAPI error: ${formatError(error)}`); return []; }
+}
+
+async function searchExa(query: string): Promise<BrowserWebSearchProtocolRecord[]> {
+  const apiKey = process.env.EXA_API_KEY;
+  if (!apiKey) { console.log(`[gateway] Exa: API key not set`); return []; }
+  try {
+    const response = await fetchWithSystemProxy("https://api.exa.ai/search", {
+      body: JSON.stringify({ query, numResults: 5 }), headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+      method: "POST", signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok) { console.log(`[gateway] Exa returned ${response.status}`); return []; }
+    const data: Record<string, unknown> = await response.json() as Record<string, unknown>;
+    const items = Array.isArray(data.results) ? data.results : [];
+    if (items.length === 0) return [];
+    return [{ completedAtMs: Date.now(), engine: "exa", query,
+      results: items.map((item: unknown) => { const r = item as Record<string, unknown>; return { snippet: stringValue(r.text), title: stringValue(r.title) || "", url: stringValue(r.url) || "" }; }).filter((r) => r.title || r.url),
+      searchUrl: "https://exa.ai", toolName: "web_search" }];
+  } catch (error) { console.log(`[gateway] Exa error: ${formatError(error)}`); return []; }
 }
 
 async function selectHostedWebSearchProtocolRecords(
