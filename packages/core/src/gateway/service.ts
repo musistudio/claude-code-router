@@ -5827,29 +5827,62 @@ function prepareUpstreamCredentialAttempt(input: {
   };
 }
 
+const unsupportedOpenAiUpstreamParams = ["thinking", "reasoning_split"] as const;
+
+export function stripUnsupportedOpenAiUpstreamParams(
+  body: Buffer | undefined,
+  providerProtocol: GatewayProviderProtocol | undefined
+): Buffer | undefined {
+  if (
+    !body ||
+    !providerProtocol ||
+    (providerProtocol !== "openai_responses" && providerProtocol !== "openai_chat_completions")
+  ) {
+    return body;
+  }
+
+  const parsedBody = parseJsonObjectSafe(body);
+  if (!parsedBody) {
+    return body;
+  }
+
+  let changed = false;
+  const next = { ...parsedBody };
+  for (const key of unsupportedOpenAiUpstreamParams) {
+    if (key in next) {
+      delete next[key];
+      changed = true;
+    }
+  }
+
+  return changed ? Buffer.from(`${JSON.stringify(next)}\n`, "utf8") : body;
+}
+
 function usageAwareOpenAiChatAttemptBody(input: {
   body: Buffer | undefined;
   config: AppConfig;
   path: string;
   target?: { protocol: GatewayProviderProtocol };
 }): Buffer | undefined {
-  if (input.target?.protocol === "openai_chat_completions") {
-    return usageAwareOpenAiChatBody(input.body);
-  }
-
   const protocol = requestProtocolForPath(input.path);
-  if (!protocol) {
-    return input.body;
-  }
-
   const parsedBody = parseJsonObjectSafe(input.body);
   const modelSelector = resolveConfiguredProviderModelSelector(stringValue(parsedBody?.model), input.config);
-  const providerProtocol = modelSelector
-    ? providerProtocolForClientProtocol(modelSelector.provider, protocol)
-    : undefined;
-  return providerProtocol === "openai_chat_completions"
-    ? usageAwareOpenAiChatBody(input.body)
-    : input.body;
+  const providerProtocol = input.target?.protocol ?? (
+    protocol && modelSelector
+      ? providerProtocolForClientProtocol(modelSelector.provider, protocol)
+      : undefined
+  );
+  const strippedBody = stripUnsupportedOpenAiUpstreamParams(input.body, providerProtocol);
+
+  if (providerProtocol === "openai_chat_completions") {
+    return usageAwareOpenAiChatBody(strippedBody);
+  }
+
+  if (!protocol) {
+    return strippedBody;
+  }
+
+  return strippedBody;
 }
 
 function usageAwareOpenAiChatBody(body: Buffer | undefined): Buffer | undefined {

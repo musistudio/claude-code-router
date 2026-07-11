@@ -613,6 +613,45 @@ test("OpenAI chat completion streaming attempts request upstream usage chunks", 
   assert.equal(upstreamAttempt.body.stream_options.extra_flag, "keep");
 });
 
+test("gateway strips unsupported thinking from openai_responses upstream requests", () => {
+  const config = {
+    Providers: [
+      {
+        api_base_url: "https://example.openai.azure.com/openai/v1",
+        capabilities: [
+          { baseUrl: "https://example.openai.azure.com/openai/v1", type: "openai_responses" }
+        ],
+        models: ["gpt-4.1"],
+        name: "Azure",
+        type: "openai_responses"
+      }
+    ],
+    Router: {
+      fallback: { mode: "off", models: [], retryCount: 0 },
+      rules: []
+    },
+    virtualModelProfiles: []
+  };
+
+  const upstreamAttempt = prepareGatewayUpstreamAttemptForTest({
+    body: {
+      input: "hello",
+      model: "Azure/gpt-4.1",
+      thinking: { type: "enabled" },
+      reasoning_split: true
+    },
+    config,
+    headers: {
+      "x-target-provider": "Azure"
+    },
+    method: "POST",
+    path: "/v1/responses"
+  });
+
+  assert.equal(upstreamAttempt.body.thinking, undefined);
+  assert.equal(upstreamAttempt.body.reasoning_split, undefined);
+});
+
 test("explicit OpenAI chat provider selectors request upstream usage chunks without credential routing", () => {
   const config = {
     CUSTOM_ROUTER_PATH: "",
