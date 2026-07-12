@@ -20,6 +20,7 @@ const DEFAULT_STARTUP_WAIT_MS = 15000;
 const DEFAULT_CODEX_CONTEXT_WINDOW_TOKENS = 128000;
 const OPENAI_REASONING_EFFORTS = ["minimal", "low", "medium", "high"];
 const OPENAI_EXTENDED_REASONING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh"];
+const UNSUPPORTED_AGENT_PROVIDER_IDS = ["opencat", "open-cat"];
 let modelCatalogIndex;
 
 module.exports = {
@@ -266,6 +267,7 @@ function delay(ms) {
 function launchAgentConsole(ctx, runtime, options) {
   const userDataDir = path.resolve(stringValue(options.userDataDir) || path.join(ctx.paths.pluginDataDir, "user-data"));
   fs.mkdirSync(userDataDir, { recursive: true });
+  prepareAgentConsoleUserData(ctx, userDataDir);
 
   const env = {
     ...process.env,
@@ -329,6 +331,66 @@ function handleAgentConsoleOutput(ctx, runtime, chunk) {
       ctx.logger.debug(trimmed);
     }
   }
+}
+
+function prepareAgentConsoleUserData(ctx, userDataDir) {
+  const configFile = path.join(userDataDir, "config", "config.json");
+  let config = {};
+  try {
+    if (fs.existsSync(configFile)) {
+      const parsed = JSON.parse(fs.readFileSync(configFile, "utf8"));
+      config = isRecord(parsed) ? parsed : {};
+    }
+  } catch (error) {
+    ctx.logger.warn(`Failed to read Agent Console user config before disabling unsupported providers: ${formatError(error)}`);
+    config = {};
+  }
+
+  const agents = isRecord(config.agents) ? { ...config.agents } : {};
+  const disabledProviders = uniqueStrings([
+    ...stringListValue(agents.disabledProviders),
+    ...stringListValue(config.disabledAgentProviders),
+    ...UNSUPPORTED_AGENT_PROVIDER_IDS
+  ]);
+  const nextConfig = {
+    ...config,
+    agentProviders: filterUnsupportedAgentProviderConfigs(config.agentProviders),
+    agents: {
+      ...agents,
+      disabledProviders,
+      providers: filterUnsupportedAgentProviderConfigs(agents.providers),
+      subagents: filterUnsupportedSubagentConfigs(agents.subagents)
+    },
+    disabledAgentProviders: disabledProviders
+  };
+
+  fs.mkdirSync(path.dirname(configFile), { recursive: true });
+  writeTextIfChanged(configFile, `${JSON.stringify(nextConfig, null, 2)}\n`);
+}
+
+function filterUnsupportedAgentProviderConfigs(value) {
+  return Array.isArray(value)
+    ? value.filter((provider) => !isUnsupportedAgentProviderConfig(provider))
+    : value;
+}
+
+function filterUnsupportedSubagentConfigs(value) {
+  return Array.isArray(value)
+    ? value.filter((subagent) => !isUnsupportedAgentSubagentConfig(subagent))
+    : value;
+}
+
+function isUnsupportedAgentProviderConfig(value) {
+  return isRecord(value) && isUnsupportedAgentProviderId(value.id);
+}
+
+function isUnsupportedAgentSubagentConfig(value) {
+  return isRecord(value) && isUnsupportedAgentProviderId(value.providerId || value.provider || value.baseProviderId);
+}
+
+function isUnsupportedAgentProviderId(value) {
+  const normalized = stringValue(value).toLowerCase();
+  return UNSUPPORTED_AGENT_PROVIDER_IDS.includes(normalized);
 }
 
 function stopAgentConsole(runtime) {
@@ -814,10 +876,106 @@ function agentConsolePreloadScript(bridgeUrl) {
   }
 
   const bridge = new AgentConsoleBridge();
-  const invoke = (channel) => (...args) => bridge.invoke(channel, ...args);
-  const on = (channel) => (callback) => bridge.on(channel, callback);
-  const unavailable = (feature) => () => Promise.reject(new Error(feature + " is not available in CCR plugin mode."));
   const isRecord = (value) => value && typeof value === "object" && !Array.isArray(value);
+  const unsupportedAgentProviderIds = new Set(${JSON.stringify(UNSUPPORTED_AGENT_PROVIDER_IDS)});
+  const unsupportedAgentProviderMessage = "OpenCat is not supported in CCR Agent Console plugin mode.";
+  const skippedAgentConsoleEvent = Symbol("skippedAgentConsoleEvent");
+  const normalizeAgentProviderId = (value) => typeof value === "string" ? value.trim().toLowerCase() : "";
+  const isUnsupportedAgentProviderId = (value) => unsupportedAgentProviderIds.has(normalizeAgentProviderId(value));
+  const hasUnsupportedProviderId = (value) => isRecord(value) && isUnsupportedAgentProviderId(value.providerId);
+  const filterUnsupportedAgentProviders = (providers) => Array.isArray(providers)
+    ? providers.filter((provider) => !isRecord(provider) || !isUnsupportedAgentProviderId(provider.id))
+    : providers;
+  const filterUnsupportedSubagents = (subagents) => Array.isArray(subagents)
+    ? subagents.filter((subagent) => !isRecord(subagent) || !isUnsupportedAgentProviderId(subagent.providerId || subagent.provider || subagent.baseProviderId))
+    : subagents;
+  const filterUnsupportedAgentEnvironments = (environments) => {
+    if (!isRecord(environments)) return environments;
+    const next = {};
+    for (const [providerId, environment] of Object.entries(environments)) {
+      if (!isUnsupportedAgentProviderId(providerId)) next[providerId] = environment;
+    }
+    return next;
+  };
+  const sanitizeDisabledAgentProviders = (providers) => {
+    const next = Array.isArray(providers)
+      ? providers.filter((providerId) => typeof providerId === "string" && providerId.trim())
+      : [];
+    for (const providerId of unsupportedAgentProviderIds) {
+      if (!next.some((candidate) => normalizeAgentProviderId(candidate) === providerId)) next.push(providerId);
+    }
+    return next;
+  };
+  const sanitizeAgentSettings = (settings) => {
+    if (!isRecord(settings)) return settings;
+    return {
+      ...settings,
+      agentEnvironments: filterUnsupportedAgentEnvironments(settings.agentEnvironments),
+      agentProviders: filterUnsupportedAgentProviders(settings.agentProviders),
+      disabledAgentProviders: sanitizeDisabledAgentProviders(settings.disabledAgentProviders),
+      subagents: filterUnsupportedSubagents(settings.subagents)
+    };
+  };
+  const filterUnsupportedThreads = (threads) => Array.isArray(threads)
+    ? threads.filter((thread) => !hasUnsupportedProviderId(thread))
+    : threads;
+  const sanitizeAgentProjects = (projects) => Array.isArray(projects)
+    ? projects.map((project) => isRecord(project) ? { ...project, threads: filterUnsupportedThreads(project.threads) } : project)
+    : projects;
+  const sanitizeAgentResult = (result) => {
+    if (!isRecord(result)) return result;
+    const next = { ...result };
+    if (Array.isArray(next.projects)) next.projects = sanitizeAgentProjects(next.projects);
+    if (hasUnsupportedProviderId(next.thread)) delete next.thread;
+    return next;
+  };
+  const sanitizeAgentConsoleResult = (channel, result) => {
+    if (channel === "agent-console:agent:list-providers") return filterUnsupportedAgentProviders(result);
+    if (channel.startsWith("agent-console:settings:")) return sanitizeAgentSettings(result);
+    if (channel.startsWith("agent-console:agent:") || channel === "agent-console:start-thread" || channel === "agent-console:send-message") {
+      return sanitizeAgentResult(result);
+    }
+    return result;
+  };
+  const sanitizeAgentConsoleEvent = (channel, payload) => {
+    if (channel === "agent-console:agent:event" && hasUnsupportedProviderId(payload)) return skippedAgentConsoleEvent;
+    return sanitizeAgentConsoleResult(channel, payload);
+  };
+  const sanitizeAgentConsoleArgs = (channel, args) => {
+    if (channel === "agent-console:settings:set-agent-providers" && isRecord(args[0])) {
+      return [{ ...args[0], providers: filterUnsupportedAgentProviders(args[0].providers) }];
+    }
+    if (channel === "agent-console:settings:set-subagents" && isRecord(args[0])) {
+      return [{ ...args[0], subagents: filterUnsupportedSubagents(args[0].subagents) }];
+    }
+    return args;
+  };
+  const blockedAgentProviderChannels = new Set([
+    "agent-console:agent:get-provider-capabilities",
+    "agent-console:agent:get-provider-session-messages",
+    "agent-console:agent:list-provider-sessions",
+    "agent-console:agent:restore-provider-session",
+    "agent-console:send-message",
+    "agent-console:start-thread",
+    "agent-console:settings:set-agent-environment",
+    "agent-console:settings:set-agent-provider-enabled"
+  ]);
+  const isBlockedAgentProviderRequest = (channel, args) => (
+    blockedAgentProviderChannels.has(channel) &&
+    args.some((arg) => hasUnsupportedProviderId(arg))
+  );
+  const invoke = (channel) => (...args) => {
+    if (isBlockedAgentProviderRequest(channel, args)) {
+      return Promise.reject(new Error(unsupportedAgentProviderMessage));
+    }
+    return bridge.invoke(channel, ...sanitizeAgentConsoleArgs(channel, args))
+      .then((result) => sanitizeAgentConsoleResult(channel, result));
+  };
+  const on = (channel) => (callback) => bridge.on(channel, (payload) => {
+    const sanitized = sanitizeAgentConsoleEvent(channel, payload);
+    if (sanitized !== skippedAgentConsoleEvent) callback(sanitized);
+  });
+  const unavailable = (feature) => () => Promise.reject(new Error(feature + " is not available in CCR plugin mode."));
   let activeProjectPath = null;
   const withActiveProject = (payload) => {
     if (!activeProjectPath || (payload && typeof payload === "object" && !Array.isArray(payload) && (payload.cwd || payload.projectPath))) {
@@ -1363,6 +1521,9 @@ function buildRuntimeConfig(config, options) {
 
   return {
     apiKey: options.apiKey || configuredGatewayApiKey(config),
+    agents: {
+      disabledProviders: UNSUPPORTED_AGENT_PROVIDER_IDS
+    },
     claudeCode: {
       defaultModel,
       models
@@ -1373,6 +1534,7 @@ function buildRuntimeConfig(config, options) {
       models
     },
     defaultModel,
+    disabledAgentProviders: UNSUPPORTED_AGENT_PROVIDER_IDS,
     gatewayUrl,
     models,
     openAiBaseUrl
@@ -1521,7 +1683,7 @@ function ensureAgentConsoleClaudeCodeRuntime(ctx, options, runtimeConfig, shared
   const model = stringValue(runtimeConfig.claudeCode?.defaultModel) || stringValue(runtimeConfig.defaultModel) || runtimeConfig.models?.[0]?.model || "";
   const gatewayUrl = trimTrailingSlash(stringValue(runtimeConfig.gatewayUrl));
   const apiKey = stringValue(runtimeConfig.apiKey);
-  const baseEnv = agentConsoleClaudeCodeBaseEnv({ gatewayUrl, model, settingsDir });
+  const baseEnv = agentConsoleClaudeCodeBaseEnv({ gatewayUrl, model, settingsFile });
   const remoteEndpoint = `${gatewayUrl}/__ccr/remote`;
 
   fs.mkdirSync(binDir, { recursive: true });
@@ -1585,13 +1747,14 @@ function ensureAgentConsoleCliMiddlewareRuntime(ctx, runtimeFile) {
   return file;
 }
 
-function agentConsoleClaudeCodeBaseEnv({ gatewayUrl, model, settingsDir }) {
+function agentConsoleClaudeCodeBaseEnv({ gatewayUrl, model, settingsFile }) {
   const env = {
     ANTHROPIC_API_BASE_URL: gatewayUrl,
     ANTHROPIC_BASE_URL: gatewayUrl,
     CLAUDE_AGENT_API_BASE_URL: gatewayUrl,
     CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
-    CLAUDE_CONFIG_DIR: settingsDir
+    CCR_CLAUDE_CODE_SETTINGS_FILE: settingsFile,
+    CODEXL_CLAUDE_CODE_SETTINGS_FILE: settingsFile
   };
   if (model) {
     env.ANTHROPIC_MODEL = model;

@@ -20,6 +20,8 @@ const CONFIG_DIR = resolveConfigDir();
 const LOG_PATH = process.env.CCR_CODEX_CLI_MIDDLEWARE_LOG || "";
 const CLAUDE_CODE_MCP_CONFIG_ENV = "CCR_CLAUDE_CODE_MCP_CONFIG";
 const CODEXL_CLAUDE_CODE_MCP_CONFIG_ENV = "CODEXL_CLAUDE_CODE_MCP_CONFIG";
+const CLAUDE_CODE_SETTINGS_FILE_ENV = "CCR_CLAUDE_CODE_SETTINGS_FILE";
+const CODEXL_CLAUDE_CODE_SETTINGS_FILE_ENV = "CODEXL_CLAUDE_CODE_SETTINGS_FILE";
 const AGENT_CONSOLE_SUBAGENTS_START = "<agent-console-subagents>";
 const AGENT_CONSOLE_SUBAGENTS_END = "</agent-console-subagents>";
 const CLAUDE_CODE_CHINA_TIME_ZONES = new Set([
@@ -156,8 +158,17 @@ async function runClaudeCodeCliWrapper(args) {
 }
 
 function claudeCodeCliWrapperArgs(args) {
-  const modelArgs = claudeCodeArgsWithModel(args);
+  const settingsArgs = claudeCodeArgsWithSettings(args);
+  const modelArgs = claudeCodeArgsWithModel(settingsArgs);
   return claudeCodeArgsWithMcpConfig(modelArgs, process.env);
+}
+
+function claudeCodeArgsWithSettings(args) {
+  const settingsFile = nonEmptyEnv(CLAUDE_CODE_SETTINGS_FILE_ENV) || nonEmptyEnv(CODEXL_CLAUDE_CODE_SETTINGS_FILE_ENV);
+  if (!settingsFile || claudeCodeArgsHaveSettings(args) || claudeCodeArgsShouldSkipModelInjection(args)) {
+    return args;
+  }
+  return ["--settings", settingsFile, ...args];
 }
 
 function claudeCodeArgsWithModel(args) {
@@ -188,6 +199,15 @@ function claudeCodeArgsHaveModel(args) {
 function claudeCodeArgsHaveMcpConfig(args) {
   for (const arg of args) {
     if (arg === "--mcp-config" || arg.startsWith("--mcp-config=")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function claudeCodeArgsHaveSettings(args) {
+  for (const arg of args) {
+    if (arg === "--settings" || arg.startsWith("--settings=")) {
       return true;
     }
   }
@@ -234,19 +254,39 @@ function claudeCodeOptionTakesValue(arg) {
     "--add-dir",
     "--agent",
     "--agents",
+    "--allowedTools",
+    "--allowed-tools",
     "--append-system-prompt",
+    "--betas",
     "--config",
     "--continue",
     "--debug-to",
+    "--disallowedTools",
+    "--disallowed-tools",
+    "--effort",
     "--fallback-model",
+    "--file",
+    "--input-format",
+    "--json-schema",
+    "--max-budget-usd",
     "--model",
     "--mcp-config",
+    "--name",
     "--output-format",
     "--permission-mode",
+    "--plugin-dir",
+    "--plugin-url",
+    "--remote-control",
+    "--remote-control-session-name-prefix",
     "--resume",
+    "--resume-session-at",
+    "--session-id",
     "--settings",
+    "--setting-sources",
     "--system-prompt",
+    "--tools",
     "-c",
+    "-n",
     "-m",
     "-p",
     "-r"

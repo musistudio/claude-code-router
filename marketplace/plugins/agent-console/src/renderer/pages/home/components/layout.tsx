@@ -997,9 +997,26 @@ export function ThreadHeaderRenameForm({
   );
 }
 
-export function createNativeMenuSvgIcon(children: string): string {
+export function getNativeMenuIconStroke(): string {
+  if (typeof document === "undefined") {
+    return "#2f2f2f";
+  }
+
+  const root = document.documentElement;
+  if (typeof window !== "undefined" && typeof window.getComputedStyle === "function") {
+    const foreground = window.getComputedStyle(root).getPropertyValue("--foreground").trim();
+    if (foreground) return foreground;
+  }
+  return root.dataset.theme === "dark" ? "#e6e8eb" : "#2f2f2f";
+}
+
+function escapeSvgAttribute(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
+
+export function createNativeMenuSvgIcon(children: string, stroke = getNativeMenuIconStroke()): string {
   const svg = [
-    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">',
+    `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${escapeSvgAttribute(stroke)}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">`,
     children,
     "</svg>"
   ].join("");
@@ -1011,12 +1028,23 @@ export function createNativeMenuSvgIcon(children: string): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-export const threadHeaderNativeMenuIcons = {
-  copy: createNativeMenuSvgIcon('<rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />'),
-  markdown: createNativeMenuSvgIcon('<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" />'),
-  rename: createNativeMenuSvgIcon('<path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" />'),
-  smallWindow: createNativeMenuSvgIcon('<rect width="18" height="18" x="3" y="3" rx="2" /><path d="M3 9h18" /><path d="m15 14-3-3-3 3" />')
+const threadHeaderNativeMenuIconPaths = {
+  copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />',
+  markdown: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" />',
+  rename: '<path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" />',
+  smallWindow: '<rect width="18" height="18" x="3" y="3" rx="2" /><path d="M3 9h18" /><path d="m15 14-3-3-3 3" />'
 };
+
+export function createThreadHeaderNativeMenuIcons(stroke = getNativeMenuIconStroke()) {
+  return {
+    copy: createNativeMenuSvgIcon(threadHeaderNativeMenuIconPaths.copy, stroke),
+    markdown: createNativeMenuSvgIcon(threadHeaderNativeMenuIconPaths.markdown, stroke),
+    rename: createNativeMenuSvgIcon(threadHeaderNativeMenuIconPaths.rename, stroke),
+    smallWindow: createNativeMenuSvgIcon(threadHeaderNativeMenuIconPaths.smallWindow, stroke)
+  };
+}
+
+export const threadHeaderNativeMenuIcons = createThreadHeaderNativeMenuIcons();
 
 export function ThreadHeaderMenu({
   canCopyMarkdown,
@@ -1047,21 +1075,22 @@ export function ThreadHeaderMenu({
 
     try {
       const triggerRect = event.currentTarget.getBoundingClientRect();
+      const nativeMenuIcons = createThreadHeaderNativeMenuIcons();
       const result = await nativeMenu.popup({
         items: [
-          { enabled: canRename, icon: threadHeaderNativeMenuIcons.rename, id: "rename-thread", label: t("thread.rename") },
+          { enabled: canRename, icon: nativeMenuIcons.rename, id: "rename-thread", label: t("thread.rename") },
           { type: "separator" },
           {
             enabled: canCopyThreadId || canCopyMarkdown,
-            icon: threadHeaderNativeMenuIcons.copy,
+            icon: nativeMenuIcons.copy,
             label: t("thread.copy"),
             submenu: [
-              { enabled: canCopyThreadId, icon: threadHeaderNativeMenuIcons.copy, id: "copy-thread-id", label: t("thread.copySessionId") },
-              { enabled: canCopyMarkdown, icon: threadHeaderNativeMenuIcons.markdown, id: "copy-markdown", label: t("thread.copyMarkdown") }
+              { enabled: canCopyThreadId, icon: nativeMenuIcons.copy, id: "copy-thread-id", label: t("thread.copySessionId") },
+              { enabled: canCopyMarkdown, icon: nativeMenuIcons.markdown, id: "copy-markdown", label: t("thread.copyMarkdown") }
             ]
           },
           { type: "separator" },
-          { icon: threadHeaderNativeMenuIcons.smallWindow, id: "open-small-window", label: t("thread.openSmallWindow") }
+          { icon: nativeMenuIcons.smallWindow, id: "open-small-window", label: t("thread.openSmallWindow") }
         ],
         x: Math.round(triggerRect.left),
         y: Math.round(triggerRect.bottom + 4)

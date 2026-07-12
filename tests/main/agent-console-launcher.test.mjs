@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import vm from "node:vm";
 import agentConsolePlugin from "../../marketplace/plugins/agent-console/index.cjs";
 
 const DEFAULT_LAUNCHER_BUNDLE_ID = "com.claudecoderouter.plugin.agent-console.launcher";
@@ -45,6 +46,8 @@ test("Agent Console catalog uses model ids for display names and model-specific 
       const runtimeConfig = JSON.parse(readFileSync(path.join(pluginDataDir, "ccr-runtime-config.json"), "utf8"));
       const catalog = JSON.parse(readFileSync(path.join(pluginDataDir, "ccr-codex-model-catalog.json"), "utf8"));
 
+      assert.deepEqual(runtimeConfig.disabledAgentProviders, ["opencat", "open-cat"]);
+      assert.deepEqual(runtimeConfig.agents.disabledProviders, ["opencat", "open-cat"]);
       assert.equal(runtimeConfig.models[0].displayName, "Zhipu AI (China) - Coding Plan/glm-4.5");
       assert.ok(runtimeConfig.codex.command.endsWith(process.platform === "win32" ? "ccr-agent-console-codex.cmd" : "ccr-agent-console-codex"));
       assert.ok(existsSync(runtimeConfig.codex.command));
@@ -60,14 +63,18 @@ test("Agent Console catalog uses model ids for display names and model-specific 
       assert.ok(existsSync(runtimeConfig.claudeCode.command));
       assert.equal(runtimeConfig.claudeCode.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:3456");
       assert.equal(runtimeConfig.claudeCode.env.CLAUDE_AGENT_API_BASE_URL, "http://127.0.0.1:3456");
-      assert.equal(runtimeConfig.claudeCode.env.CLAUDE_CONFIG_DIR, path.join(pluginDataDir, "claude-code", "claude"));
+      assert.equal(runtimeConfig.claudeCode.env.CCR_CLAUDE_CODE_SETTINGS_FILE, path.join(pluginDataDir, "claude-code", "claude", "settings.json"));
+      assert.equal(runtimeConfig.claudeCode.env.CODEXL_CLAUDE_CODE_SETTINGS_FILE, path.join(pluginDataDir, "claude-code", "claude", "settings.json"));
+      assert.equal(Object.hasOwn(runtimeConfig.claudeCode.env, "CLAUDE_CONFIG_DIR"), false);
       assert.equal(runtimeConfig.claudeCode.env.CCR_CLAUDE_CODE_WRAPPER, "1");
       assert.equal(runtimeConfig.claudeCode.env.CCR_REAL_CLAUDE_CODE_BIN, "claude");
       assert.equal(runtimeConfig.claudeCode.env.CCR_REMOTE_SYNC_PROFILE_ID, "agent-console-claude-code");
       assert.ok(existsSync(path.join(pluginDataDir, "bin", process.platform === "win32" ? "ccr-agent-console-claude-code-api-key.cmd" : "ccr-agent-console-claude-code-api-key")));
       const claudeSettings = JSON.parse(readFileSync(path.join(pluginDataDir, "claude-code", "claude", "settings.json"), "utf8"));
       assert.equal(claudeSettings.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:3456");
-      assert.equal(claudeSettings.env.CLAUDE_CONFIG_DIR, path.join(pluginDataDir, "claude-code", "claude"));
+      assert.equal(claudeSettings.env.CCR_CLAUDE_CODE_SETTINGS_FILE, path.join(pluginDataDir, "claude-code", "claude", "settings.json"));
+      assert.equal(claudeSettings.env.CODEXL_CLAUDE_CODE_SETTINGS_FILE, path.join(pluginDataDir, "claude-code", "claude", "settings.json"));
+      assert.equal(Object.hasOwn(claudeSettings.env, "CLAUDE_CONFIG_DIR"), false);
       assert.equal(claudeSettings.env.CCR_CLAUDE_CODE_MODEL, "Zhipu AI (China) - Coding Plan/glm-4.5");
       assert.match(readFileSync(runtimeConfig.claudeCode.command, "utf8"), /CCR_CLAUDE_CODE_WRAPPER/);
       const runtimeToggleReasoningModel = runtimeConfig.models.find((item) => item.model === "Zhipu AI (China) - Coding Plan/glm-4.5");
@@ -194,6 +201,50 @@ test("Agent Console catalog uses model ids for display names and model-specific 
   }
 });
 
+test("Agent Console plugin bridge removes OpenCat provider support", async () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "ccr-agent-console-home-"));
+  try {
+    await withHome(home, async () => {
+      const routes = [];
+      await agentConsolePlugin.setup(createPluginContext({
+        pluginConfig: { bridgePort: 34567, launch: false, systemLauncher: false },
+        pluginDataDir: path.join(home, "plugin-data"),
+        routes
+      }));
+
+      const preload = await readRendererRouteBody(routes, "/plugins/agent-console/__agent-console-preload.js");
+      const { requests, window } = evaluateAgentConsolePreload(preload);
+
+      const providers = await window.agentConsole.agent.listProviders();
+      assert.deepEqual(plainValue(providers.map((provider) => provider.id)), ["codex"]);
+
+      const settings = await window.agentConsole.settings.get();
+      assert.deepEqual(plainValue(settings.agentProviders.map((provider) => provider.id)), ["codex"]);
+      assert.deepEqual(plainValue(settings.subagents.map((subagent) => subagent.id)), ["reviewer"]);
+      assert.deepEqual(plainValue(Object.keys(settings.agentEnvironments)), ["codex"]);
+      assert.ok(settings.disabledAgentProviders.includes("opencat"));
+      assert.ok(settings.disabledAgentProviders.includes("open-cat"));
+
+      await assert.rejects(
+        () => window.agentConsole.agent.startThread({ providerId: "opencat" }),
+        /OpenCat is not supported in CCR Agent Console plugin mode/
+      );
+
+      await window.agentConsole.settings.setAgentProviders({
+        providers: [
+          { id: "opencat", label: "OpenCat" },
+          { id: "codex", label: "Codex" }
+        ]
+      });
+      const setProviderRequest = requests.findLast((request) => request.channel === "agent-console:settings:set-agent-providers");
+      assert.ok(setProviderRequest);
+      assert.deepEqual(plainValue(setProviderRequest.args[0].providers.map((provider) => provider.id)), ["codex"]);
+    });
+  } finally {
+    rmSync(home, { force: true, recursive: true });
+  }
+});
+
 test("Agent Console React composer omits the floating status row", async () => {
   const chatSource = readFileSync(path.resolve("marketplace/plugins/agent-console/src/renderer/pages/home/components/chat.tsx"), "utf8");
   assert.doesNotMatch(chatSource, /chat-floating-status/);
@@ -245,6 +296,17 @@ test("Agent Console context window indicator only uses runtime usage", () => {
   assert.match(coreSource, /const usedTokens = hasUsageTokens \? usageTokens : null/);
   assert.match(chatSource, /const usedLabel = hasRuntimeUsage \? formatTokenCount\(runtimeUsedTokens\) : t\("contextWindow\.unknown"\)/);
   assert.match(chatSource, /const percentLabel = hasRuntimeUsage && metrics\.limitTokens \? formatContextWindowPercent/);
+});
+
+test("Agent Console native thread menu icons match the resolved theme", () => {
+  const layoutSource = readFileSync(path.resolve("marketplace/plugins/agent-console/src/renderer/pages/home/components/layout.tsx"), "utf8");
+
+  assert.match(layoutSource, /function getNativeMenuIconStroke/);
+  assert.match(layoutSource, /getComputedStyle\(root\)\.getPropertyValue\("--foreground"\)/);
+  assert.match(layoutSource, /root\.dataset\.theme === "dark" \? "#e6e8eb" : "#2f2f2f"/);
+  assert.match(layoutSource, /escapeSvgAttribute\(stroke\)/);
+  assert.match(layoutSource, /const nativeMenuIcons = createThreadHeaderNativeMenuIcons\(\)/);
+  assert.doesNotMatch(layoutSource, /stroke="#111827"/);
 });
 
 test("Agent Console persists in-flight runs across renderer exits", () => {
@@ -477,4 +539,144 @@ async function readRendererRouteBody(routes, url) {
   });
 
   return body;
+}
+
+function evaluateAgentConsolePreload(preload) {
+  const requests = [];
+  const localStorage = new Map();
+  const document = {
+    body: { appendChild() {} },
+    createElement() {
+      return {
+        addEventListener() {},
+        appendChild() {},
+        className: "",
+        contains() { return false; },
+        focus() {},
+        offsetHeight: 32,
+        offsetWidth: 220,
+        setAttribute() {},
+        style: {}
+      };
+    },
+    getElementById() { return null; },
+    head: { appendChild() {} },
+    removeEventListener() {}
+  };
+  const window = {
+    addEventListener() {},
+    clearTimeout,
+    document,
+    innerHeight: 800,
+    innerWidth: 1200,
+    localStorage: {
+      getItem(key) {
+        return localStorage.get(key) ?? null;
+      },
+      setItem(key, value) {
+        localStorage.set(key, String(value));
+      }
+    },
+    location: {
+      href: "http://127.0.0.1/plugins/agent-console/pages/home/?mode=main",
+      search: "?mode=main"
+    },
+    open() { return null; },
+    setTimeout
+  };
+
+  class FakeWebSocket {
+    static OPEN = 1;
+
+    constructor(url) {
+      this.listeners = new Map();
+      this.readyState = FakeWebSocket.OPEN;
+      this.url = url;
+      queueMicrotask(() => this.emit("open", {}));
+    }
+
+    addEventListener(type, callback) {
+      const listeners = this.listeners.get(type) ?? [];
+      listeners.push(callback);
+      this.listeners.set(type, listeners);
+    }
+
+    close() {
+      this.readyState = 3;
+      this.emit("close", {});
+    }
+
+    send(message) {
+      const request = JSON.parse(message);
+      requests.push(request);
+      queueMicrotask(() => {
+        this.emit("message", {
+          data: JSON.stringify({
+            id: request.id,
+            result: preloadBridgeResponse(request.channel, request.args),
+            type: "result"
+          })
+        });
+      });
+    }
+
+    emit(type, event) {
+      for (const listener of this.listeners.get(type) ?? []) {
+        listener(event);
+      }
+    }
+  }
+
+  window.WebSocket = FakeWebSocket;
+  vm.runInNewContext(preload, {
+    clearTimeout,
+    console,
+    document,
+    queueMicrotask,
+    setTimeout,
+    URL,
+    URLSearchParams,
+    WebSocket: FakeWebSocket,
+    window
+  });
+
+  return { requests, window };
+}
+
+function plainValue(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function preloadBridgeResponse(channel, args) {
+  if (channel === "agent-console:agent:list-providers") {
+    return [
+      { enabled: true, id: "opencat", label: "OpenCat", models: [] },
+      { enabled: true, id: "codex", label: "Codex", models: [] }
+    ];
+  }
+  if (channel === "agent-console:settings:get") {
+    return {
+      agentEnvironments: {
+        codex: { CODEX_HOME: "codex-home" },
+        opencat: { OPENCAT_HOME: "cat-home" }
+      },
+      agentProviders: [
+        { id: "opencat", label: "OpenCat" },
+        { id: "codex", label: "Codex" }
+      ],
+      disabledAgentProviders: [],
+      subagents: [
+        { id: "cat-reviewer", providerId: "opencat" },
+        { id: "reviewer", providerId: "codex" }
+      ]
+    };
+  }
+  if (channel === "agent-console:settings:set-agent-providers") {
+    return {
+      agentProviders: args[0]?.providers ?? [],
+      disabledAgentProviders: [],
+      subagents: []
+    };
+  }
+  return {};
 }

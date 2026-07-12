@@ -302,6 +302,52 @@ test("Claude Code wrapper does not duplicate an explicit model argument", { skip
   assert.deepEqual(observed.argv, ["--model", "Provider/manual", "-p", "hi"]);
 });
 
+test("Claude Code wrapper injects the scoped settings file into real CLI args", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-wrapper-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const { fakeCli, outputFile } = writeFakeClaudeCli(dir);
+  const settingsFile = path.join(dir, "claude-settings.json");
+
+  execFileSync(process.execPath, [runtimeFile, "-p", "hi"], {
+    env: {
+      ...process.env,
+      CCR_CLAUDE_CODE_SETTINGS_FILE: settingsFile,
+      CCR_CLAUDE_CODE_WRAPPER: "1",
+      CCR_FAKE_CLAUDE_OUT: outputFile,
+      CCR_REAL_CLAUDE_CODE_BIN: fakeCli,
+      CCR_REMOTE_SYNC_ENABLED: "0"
+    },
+    stdio: "pipe"
+  });
+
+  const observed = JSON.parse(readFileSync(outputFile, "utf8"));
+  assert.deepEqual(observed.argv, ["--settings", settingsFile, "-p", "hi"]);
+  assert.equal(observed.env.CCR_CLAUDE_CODE_SETTINGS_FILE, settingsFile);
+});
+
+test("Claude Code wrapper does not duplicate an explicit settings argument", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-wrapper-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const { fakeCli, outputFile } = writeFakeClaudeCli(dir);
+  const envSettingsFile = path.join(dir, "claude-settings.json");
+  const explicitSettingsFile = path.join(dir, "manual-settings.json");
+
+  execFileSync(process.execPath, [runtimeFile, "--settings", explicitSettingsFile, "-p", "hi"], {
+    env: {
+      ...process.env,
+      CCR_CLAUDE_CODE_SETTINGS_FILE: envSettingsFile,
+      CCR_CLAUDE_CODE_WRAPPER: "1",
+      CCR_FAKE_CLAUDE_OUT: outputFile,
+      CCR_REAL_CLAUDE_CODE_BIN: fakeCli,
+      CCR_REMOTE_SYNC_ENABLED: "0"
+    },
+    stdio: "pipe"
+  });
+
+  const observed = JSON.parse(readFileSync(outputFile, "utf8"));
+  assert.deepEqual(observed.argv, ["--settings", explicitSettingsFile, "-p", "hi"]);
+});
+
 test("Claude Code wrapper injects the ToolHub MCP config into real CLI args", { skip: process.platform === "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-wrapper-"));
   const runtimeFile = writeRuntimeScript(dir);
@@ -490,7 +536,8 @@ function writeFakeClaudeCli(dir) {
     "  env: {",
     "    ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL || '',",
     "    CCR_CLAUDE_CODE_MODEL: process.env.CCR_CLAUDE_CODE_MODEL || '',",
-    "    CCR_CLAUDE_CODE_MCP_CONFIG: process.env.CCR_CLAUDE_CODE_MCP_CONFIG || ''",
+    "    CCR_CLAUDE_CODE_MCP_CONFIG: process.env.CCR_CLAUDE_CODE_MCP_CONFIG || '',",
+    "    CCR_CLAUDE_CODE_SETTINGS_FILE: process.env.CCR_CLAUDE_CODE_SETTINGS_FILE || ''",
     "  }",
     "}));",
     ""
