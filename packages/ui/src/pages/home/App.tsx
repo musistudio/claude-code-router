@@ -10,8 +10,8 @@ import {
   createVirtualModelDraft, createVirtualModelDraftFromProfile, customProviderPresetId, DEFAULT_TRAY_WIDGETS, detectSystemLanguage, detectSystemTheme,
   enforceSingleEnabledGlobalProfilePerAgent,
   ExtensionConfigTarget, ExtensionDeleteTarget, ExtensionInstallDraft, ExtensionSource, fallbackAgentAnalysis, fallbackConfig,
-  fallbackGatewayStatus, fallbackInfo, fallbackProxyCertificateStatus, fallbackProxyNetworkSnapshot, fallbackProxyStatus, fallbackRequestLogPage,
-  fallbackUpdateStatus, fallbackUsageStats, formatAppError, formatProxyCertificateInstallMessage, GatewayProviderConfig,
+  fallbackGatewayStatus, fallbackInfo, fallbackProxyNetworkSnapshot, fallbackProxyStatus, fallbackRequestLogPage,
+  fallbackUpdateStatus, fallbackUsageStats, formatAppError, GatewayProviderConfig,
   fusionCustomMcpServerFromDraft, fusionCustomToolConfigFromProfile,
   GatewayProviderProbeResult, gatewayServiceMessage, GatewayStatus, getDefaultOnboardingStep, isClaudeDesignPluginConfig, isClaudeDesignRoutingDraftValid,
   isCursorProxyPluginConfig, isMacPlatform, isPlainRecord, isProfileDraftSubmittable, isProviderNameDuplicate, isProviderProbeCandidateReady,
@@ -26,10 +26,10 @@ import {
   persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
   probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
-  providerCapabilitiesForProtocols, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyCertificateStatus, ProxyNetworkSnapshot, proxyRestartMessage,
+  providerCapabilitiesForProtocols, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyNetworkSnapshot,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
-  ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkCatalogModels, RouterRule, ServerActionBusy, SettingsPageId,
-  routingRewriteFromDraftRow, setProviderPresets, splitLines, translateAppErrorMessage, translateProxyCertificateMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
+  ResolvedTheme, resolvePluginInstallPlan, resolveProviderDeepLinkCatalogModels, RouterRule, SettingsPageId,
+  routingRewriteFromDraftRow, setProviderPresets, splitLines, translateAppErrorMessage, translateText, TrayBalanceProgressConfig, TrayWidgetConfig,
   uniqueRoutingRuleId, updateApiKeyEditableConfig, UsageStatsFilter, UsageStatsRange, UsageStatsSnapshot, useEffect,
   useMemo, useReducedMotion, useRef, useState, validateVirtualModelDraft, ViewId,
   VirtualModelDraft, virtualModelProfileFromDraft
@@ -193,10 +193,8 @@ function App() {
   const [onboardingStatusLoaded, setOnboardingStatusLoaded] = useState(() => !window.ccr);
   const [providerPresetsLoaded, setProviderPresetsLoaded] = useState(() => !window.ccr);
   const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus>(fallbackGatewayStatus);
-  const [proxyCertificateStatus, setProxyCertificateStatus] = useState<ProxyCertificateStatus>(fallbackProxyCertificateStatus);
   const [proxyNetworkSnapshot, setProxyNetworkSnapshot] = useState<ProxyNetworkSnapshot>(fallbackProxyNetworkSnapshot);
   const [proxyStatus, setProxyStatus] = useState<ProxyStatus>(fallbackProxyStatus);
-  const [actionBusy, setActionBusy] = useState<ServerActionBusy>("");
   const [updateActionBusy, setUpdateActionBusy] = useState<"" | "check" | "download" | "install">("");
   const [updateActionError, setUpdateActionError] = useState("");
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
@@ -233,8 +231,6 @@ function App() {
   const [providerDeepLinkRequest, setProviderDeepLinkRequest] = useState<ProviderDeepLinkRequest>();
   const [providerDeepLinkBusy, setProviderDeepLinkBusy] = useState(false);
   const [providerDeepLinkError, setProviderDeepLinkError] = useState("");
-  const [proxyCertificateChecking, setProxyCertificateChecking] = useState(false);
-  const [proxyEnablePending, setProxyEnablePending] = useState(false);
   const [providerProbeError, setProviderProbeError] = useState("");
   const [extensionInstallOpen, setExtensionInstallOpen] = useState(false);
   const [extensionInstallDraft, setExtensionInstallDraft] = useState<ExtensionInstallDraft>(() => createExtensionInstallDraft());
@@ -351,7 +347,6 @@ function App() {
       .catch(() => setActiveView("onboarding"))
       .finally(() => setOnboardingStatusLoaded(true));
     void window.ccr.getPluginMarketplace().then(setPluginMarketplace).catch(() => setPluginMarketplace([]));
-    void window.ccr.getProxyCertificateStatus().then(setProxyCertificateStatus);
     const unsubscribeOpenSettings = window.ccr.onOpenSettingsRequest(openSettingsDialog);
     const unsubscribeOpenUpdate = window.ccr.onOpenUpdateRequest(openUpdateDialog);
     const refreshRuntimeStatus = () => {
@@ -721,7 +716,7 @@ function App() {
 
   useEffect(() => {
     if (!networkCaptureEnabled && activeView === "networking") {
-      setActiveView("server");
+      setActiveView("overview");
     }
   }, [activeView, networkCaptureEnabled]);
 
@@ -2231,6 +2226,11 @@ function App() {
     setSettingsOpen(true);
   }
 
+  function openGeneralSettingsDialog() {
+    setSettingsInitialPage("general");
+    setSettingsOpen(true);
+  }
+
   function changeOverviewWidgets(widgets: OverviewWidgetConfig[]) {
     updateConfig((config) => ({
       ...config,
@@ -2242,26 +2242,6 @@ function App() {
     const language = normalizeLanguagePreference(value);
     setLanguagePreference(language);
     persistLanguagePreference(language);
-  }
-
-  async function restartProxy() {
-    if (!window.ccr) {
-      setActionError(t("Proxy restart is available in the Electron app."));
-      return;
-    }
-
-    setActionBusy("proxy");
-    setActionError("");
-    setActionMessage("");
-    try {
-      const status = await window.ccr.restartProxy();
-      setProxyStatus(status);
-      setActionMessage(translateAppErrorMessage(copy, proxyRestartMessage(status)));
-    } catch (error) {
-      setActionError(formatError(error));
-    } finally {
-      setActionBusy("");
-    }
   }
 
   async function completeOnboarding() {
@@ -2280,60 +2260,6 @@ function App() {
 
   function selectNavigationItem(id: NavigationId) {
     setActiveView(id);
-  }
-
-  async function refreshProxyCertificateStatus(): Promise<ProxyCertificateStatus | undefined> {
-    if (!window.ccr) {
-      setProxyCertificateStatus(fallbackProxyCertificateStatus);
-      return undefined;
-    }
-    const status = await window.ccr.getProxyCertificateStatus();
-    setProxyCertificateStatus(status);
-    return status;
-  }
-
-  async function checkProxyCertificateStatus() {
-    setProxyCertificateChecking(true);
-    setActionError("");
-    setActionMessage("");
-    try {
-      const status = await refreshProxyCertificateStatus();
-      setActionMessage(status?.trusted ? t("Proxy CA certificate is trusted.") : translateProxyCertificateMessage(status?.message, t) || t("Proxy CA certificate is not trusted."));
-    } catch (error) {
-      setActionError(formatError(error));
-    } finally {
-      setProxyCertificateChecking(false);
-    }
-  }
-
-  async function setProxyEnabled(checked: boolean) {
-    setActionError("");
-    setActionMessage("");
-    if (!checked) {
-      setProxyEnablePending(false);
-      updateConfig((next) => ({ ...next, proxy: { ...next.proxy, enabled: false } }));
-      return;
-    }
-    if (!window.ccr) {
-      setActionError(t("Proxy certificate detection is available in the Electron app."));
-      return;
-    }
-
-    setProxyCertificateChecking(true);
-    try {
-      const status = await refreshProxyCertificateStatus();
-      if (status?.trusted) {
-        setProxyEnablePending(false);
-        updateConfig((next) => ({ ...next, proxy: { ...next.proxy, enabled: true } }));
-        return;
-      }
-      setProxyEnablePending(true);
-      setActionMessage(translateProxyCertificateMessage(status?.message, t) || t("Install and trust the proxy CA certificate before enabling proxy mode."));
-    } catch (error) {
-      setActionError(formatError(error));
-    } finally {
-      setProxyCertificateChecking(false);
-    }
   }
 
   async function toggleGatewayService() {
@@ -2356,33 +2282,6 @@ function App() {
       setActionError(formatError(error));
     } finally {
       setGatewayActionBusy(false);
-    }
-  }
-
-  async function installProxyCertificate() {
-    if (!window.ccr) {
-      setActionError(t("Certificate install is available in the Electron app."));
-      return;
-    }
-
-    setActionBusy("cert");
-    setActionError("");
-    setActionMessage("");
-    try {
-      const result = await window.ccr.installProxyCertificate();
-      setProxyCertificateStatus(result.status);
-      const status = result.status.trusted ? result.status : await refreshProxyCertificateStatus();
-      if (proxyEnablePending && status?.trusted) {
-        updateConfig((next) => ({ ...next, proxy: { ...next.proxy, enabled: true } }));
-        setProxyEnablePending(false);
-        setActionMessage(t("Certificate installed and trusted. Proxy mode enabled."));
-        return;
-      }
-      setActionMessage(formatProxyCertificateInstallMessage(result, status, t));
-    } catch (error) {
-      setActionError(formatError(error));
-    } finally {
-      setActionBusy("");
     }
   }
 
@@ -2475,7 +2374,7 @@ function App() {
     updateConfig((next) => ({ ...next, proxy: { ...next.proxy, captureNetwork: enabled } }));
     setProxyNetworkSnapshot((current) => ({ ...current, captureEnabled: enabled }));
     if (!enabled && activeView === "networking") {
-      setActiveView("server");
+      setActiveView("overview");
     }
     if (!window.ccr) {
       return;
@@ -2486,12 +2385,6 @@ function App() {
     } catch (error) {
       setActionError(formatError(error));
     }
-  }
-
-  function setProxySystemProxyEnabled(enabled: boolean) {
-    setActionError("");
-    setActionMessage("");
-    updateConfig((next) => ({ ...next, proxy: { ...next.proxy, systemProxy: enabled } }));
   }
 
   function openAddProfileDialog(agent: ProfileConfig["agent"] = profileAgentTab) {
@@ -2913,6 +2806,7 @@ function App() {
               activeView={activeView}
               agentAnalysisEnabled={agentAnalysisEnabled}
               compactLayout={compactLayout}
+              config={draftConfig}
               copy={copy}
               gatewayActionBusy={gatewayActionBusy}
               gatewayEndpoint={gatewayEndpoint}
@@ -2922,7 +2816,7 @@ function App() {
               needsTrafficLightSafeArea={needsTrafficLightSafeArea}
               networkCaptureEnabled={networkCaptureEnabled}
               onOpenUpdate={openSidebarUpdateDialog}
-              onOpenServerSettings={() => setActiveView("server")}
+              onOpenServerSettings={openGeneralSettingsDialog}
               onOpenSettings={openSettingsDialog}
               onSelectNavigationItem={selectNavigationItem}
               onToggleSidebar={() => setSidebarOpen((current) => !current)}
@@ -3038,22 +2932,6 @@ function App() {
                     return config;
                   }),
                   updateRule: updateRoutingRule
-                },
-                server: {
-                  actionBusy,
-                  actionError,
-                  actionMessage,
-                  config: draftConfig,
-                  installProxyCertificate,
-                  onProxyEnabledChange: (checked) => void setProxyEnabled(checked),
-                  onProxyNetworkCaptureChange: (enabled) => void setProxyNetworkCaptureEnabled(enabled),
-                  onProxySystemProxyChange: setProxySystemProxyEnabled,
-                  proxyCertificateChecking,
-                  proxyCertificateStatus,
-                  proxyStatus,
-                  refreshProxyCertificateStatus: () => void checkProxyCertificateStatus(),
-                  restartProxy,
-                  updateConfig
                 },
                 virtualModels: {
                   addVirtualModel: openAddVirtualModelDialog,
@@ -3245,6 +3123,7 @@ function App() {
               appInfo,
               botAddRequestKey: settingsBotAddRequestKey,
               botConfigs: draftConfig.botConfigs,
+              config: draftConfig,
               copy,
               initialPage: settingsInitialPage,
               languagePreference,
@@ -3272,7 +3151,8 @@ function App() {
               trayBalanceProgress: normalizeTrayBalanceProgressConfig(draftConfig.trayBalanceProgress),
               trayIconPreference: draftConfig.trayIcon || "random",
               traySupported,
-              trayWidgets: normalizeTrayWidgets(draftConfig.trayWidgets ?? DEFAULT_TRAY_WIDGETS, draftConfig.trayWindowModules, draftConfig.trayComponentVariants)
+              trayWidgets: normalizeTrayWidgets(draftConfig.trayWidgets ?? DEFAULT_TRAY_WIDGETS, draftConfig.trayWindowModules, draftConfig.trayComponentVariants),
+              updateConfig
             } : undefined}
             update={updateDialogOpen ? {
               actionBusy: updateActionBusy,

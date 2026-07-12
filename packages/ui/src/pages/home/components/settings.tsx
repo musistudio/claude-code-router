@@ -3,10 +3,10 @@ import {
   botGatewayDefaultAuthType, botGatewayFieldsForAuth, botGatewayPickAuthFields, botGatewayPlatformLabel, botGatewayPlatformOptions,
   botGatewaySavedConfigFromDraft, botGatewaySavedConfigLabel, BotGatewayQrLoginStartResult, BotGatewayQrLoginWaitResult, BotGatewayQrWindowOpenResult, BotGatewaySavedConfig, Button,
   CircleAlert, closestCenter, cn, CSS, Database, Dialog, DialogBody, DialogContent,
-  DialogFooter, DialogHeader, DialogTitle, Field, formatAppError, formatProviderAccountMeterValue, formatSystemOption, Gauge,
+  DialogFooter, DialogHeader, DialogTitle, endpointFromHostPort, Field, formatAppError, formatProviderAccountMeterValue, formatSystemOption, Gauge,
   Globe,
   createBotGatewayConfigDraft, createMcpServerDraft, createMcpServerDraftFromConfig, createMcpServerDraftFromUnknown, createRouteModelOptions, DndContext, DragEndEvent, GatewayMcpServerConfig, GatewayProviderConfig, Input, isBotGatewayConfigDraftSubmittable, KeyboardSensor, KeyRound, KeyValueRowsControl, languageDisplayName, Layers3, LoaderCircle,
-  mcpServerConfigFromDraft, mcpServerEndpointSummary, mcpServerTransportOptions, mcpStdioMessageModeOptions, McpServerDraft, normalizeBotGatewayAuthType, normalizeBotGatewayPlatform, normalizeProxyUpstreamConfig, normalizeToolHubConfig, Palette, Pencil, Plus, ProfileConfig, profileAgentLabel,
+  mcpServerConfigFromDraft, mcpServerEndpointSummary, mcpServerTransportOptions, mcpStdioMessageModeOptions, McpServerDraft, normalizeBotGatewayAuthType, normalizeBotGatewayPlatform, normalizeProxyUpstreamConfig, normalizeToolHubConfig, numberValue, Palette, Pencil, Plus, ProfileConfig, profileAgentLabel,
   PanelLeftOpen, Power, ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ResolvedLanguage, ResolvedTheme, Select, SelectControl,
   PointerSensor, rectSortingStrategy, Settings, SettingsPageId, SortableContext, sortableKeyboardCoordinates, themeDisplayName,
   translateOptions, TrayBalanceProgressConfig, TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant,
@@ -20,6 +20,7 @@ export function AppSettingsDialog({
   appInfo,
   botAddRequestKey,
   botConfigs,
+  config,
   copy,
   initialPage = "appearance",
   languagePreference,
@@ -47,11 +48,13 @@ export function AppSettingsDialog({
   traySupported,
   trayBalanceProgress,
   trayIconPreference,
-  trayWidgets
+  trayWidgets,
+  updateConfig
 }: {
   appInfo: AppInfo;
   botAddRequestKey?: number;
   botConfigs: BotGatewaySavedConfig[];
+  config: AppConfig;
   copy: AppCopy;
   initialPage?: SettingsPageId;
   languagePreference: AppLanguagePreference;
@@ -80,6 +83,7 @@ export function AppSettingsDialog({
   trayBalanceProgress?: TrayBalanceProgressConfig;
   trayIconPreference: AppConfig["trayIcon"];
   trayWidgets: TrayWidgetConfig[];
+  updateConfig: (mutator: (config: AppConfig) => AppConfig) => void;
 }) {
   return (
     <SettingsLayout
@@ -91,12 +95,14 @@ export function AppSettingsDialog({
           return (
             <GeneralSettingsPage
               appInfo={appInfo}
+              config={config}
               copy={copy}
               launchAtLogin={launchAtLogin}
               launchAtLoginSupported={appInfo.launchAtLoginSupported}
               onChangeLaunchAtLogin={onChangeLaunchAtLogin}
               onChangeProxy={onChangeProxy}
               proxy={proxy}
+              updateConfig={updateConfig}
             />
           );
         }
@@ -334,24 +340,29 @@ function AppearanceSettingsPage({
 
 function GeneralSettingsPage({
   appInfo,
+  config,
   copy,
   launchAtLogin,
   launchAtLoginSupported,
   onChangeLaunchAtLogin,
   onChangeProxy,
-  proxy
+  proxy,
+  updateConfig
 }: {
   appInfo: AppInfo;
+  config: AppConfig;
   copy: AppCopy;
   launchAtLogin: boolean;
   launchAtLoginSupported: boolean;
   onChangeLaunchAtLogin: (checked: boolean) => void;
   onChangeProxy: (patch: Partial<AppConfig["proxy"]>) => void;
   proxy: AppConfig["proxy"];
+  updateConfig: (mutator: (config: AppConfig) => AppConfig) => void;
 }) {
   return (
     <div className={cn(settingsPageContentWidthClassName, "grid grid-cols-1 gap-5")}>
       <h3 className="text-[15px] font-semibold text-foreground">{copy.settings.general}</h3>
+      <ServerSettingsSection config={config} copy={copy} updateConfig={updateConfig} />
       {launchAtLoginSupported ? (
         <SettingsSwitchRow
           checked={launchAtLogin}
@@ -364,6 +375,55 @@ function GeneralSettingsPage({
       <ProxySettingsSection copy={copy} onChange={onChangeProxy} proxy={proxy} />
       <DataSettingsSection appInfo={appInfo} copy={copy} />
     </div>
+  );
+}
+
+function ServerSettingsSection({
+  config,
+  copy,
+  updateConfig
+}: {
+  config: AppConfig;
+  copy: AppCopy;
+  updateConfig: (mutator: (config: AppConfig) => AppConfig) => void;
+}) {
+  const t = (value: string) => copy.text[value] ?? value;
+
+  return (
+    <section className="grid grid-cols-1 gap-3">
+      <h4 className="text-[13px] font-semibold text-foreground">{t("Server")}</h4>
+      <div className="grid grid-cols-1 gap-3 rounded-md border border-border/70 bg-card/70 p-3 md:grid-cols-2">
+        <Field label={t("Host")}>
+          <Input
+            value={config.HOST}
+            onChange={(event) => updateConfig((next) => {
+              const host = event.target.value;
+              return {
+                ...next,
+                HOST: host,
+                gateway: { ...next.gateway, host },
+                routerEndpoint: endpointFromHostPort(host, next.PORT)
+              };
+            })}
+          />
+        </Field>
+        <Field label={t("Port")}>
+          <Input
+            type="number"
+            value={String(config.PORT)}
+            onChange={(event) => updateConfig((next) => {
+              const port = numberValue(event.target.value);
+              return {
+                ...next,
+                PORT: port,
+                gateway: { ...next.gateway, port },
+                routerEndpoint: endpointFromHostPort(next.HOST, port)
+              };
+            })}
+          />
+        </Field>
+      </div>
+    </section>
   );
 }
 

@@ -14,7 +14,6 @@ import { OnboardingView } from "./onboarding";
 import { ProfileView } from "./profiles";
 import { ModelsView, ProvidersView } from "./providers";
 import { RoutingView } from "./routing";
-import { ServerView } from "./server";
 import { VirtualModelsView } from "./virtual-models";
 
 type MainNavigationItem = {
@@ -33,7 +32,6 @@ type MainViewProps = {
   profile: ComponentProps<typeof ProfileView>;
   providers: ComponentProps<typeof ProvidersView>;
   routing: ComponentProps<typeof RoutingView>;
-  server: ComponentProps<typeof ServerView>;
   virtualModels: ComponentProps<typeof VirtualModelsView>;
 };
 
@@ -60,6 +58,7 @@ export function OnboardingLayout({
 export function MainLayout({
   activeView,
   compactLayout,
+  config,
   copy,
   gatewayActionBusy,
   gatewayEndpoint,
@@ -86,6 +85,7 @@ export function MainLayout({
   activeView: ViewId;
   agentAnalysisEnabled: boolean;
   compactLayout: boolean;
+  config: AppConfig;
   copy: AppCopy;
   gatewayActionBusy: boolean;
   gatewayEndpoint: string;
@@ -259,7 +259,7 @@ export function MainLayout({
             <div className="app-no-drag absolute left-0 top-0 h-full" style={{ width: windowControlSafeAreaWidth }} />
           ) : null}
           <EndpointTitleBar
-            config={viewProps.server.config as AppConfig}
+            config={config}
             endpoint={gatewayEndpoint}
             gatewayStatus={gatewayStatus}
           />
@@ -352,7 +352,6 @@ function MainViewSwitch({
         {activeView === "overview" ? <OverviewView {...viewProps.overview} /> : null}
         {activeView === "observability" && agentAnalysisEnabled ? <AgentAnalysisView {...viewProps.observability} /> : null}
         {activeView === "api-keys" ? <ApiKeysView {...viewProps.apiKeys} /> : null}
-        {activeView === "server" ? <ServerView {...viewProps.server} /> : null}
         {activeView === "profile" ? <ProfileView {...viewProps.profile} /> : null}
         {activeView === "networking" && networkCaptureEnabled ? <NetworkingView {...viewProps.networking} /> : null}
         {activeView === "logs" && requestLogsEnabled ? <LogsView {...viewProps.logs} /> : null}

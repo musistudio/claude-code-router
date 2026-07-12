@@ -9,7 +9,6 @@ import {
   Layers3,
   Network,
   Route,
-  Server,
   UserRound,
   type LucideIcon
 } from "lucide-react";
@@ -362,7 +361,6 @@ export const navigation: Array<{ icon: LucideIcon; id: NavigationId }> = [
   { icon: Box, id: "models" },
   { icon: Activity, id: "observability" },
   { icon: Database, id: "logs" },
-  { icon: Server, id: "server" },
   { icon: Network, id: "networking" },
   { icon: Braces, id: "extensions" }
 ];
