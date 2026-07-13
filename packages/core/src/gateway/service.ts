@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { createServer, type IncomingHttpHeaders, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import { networkInterfaces } from "node:os";
@@ -34,7 +34,6 @@ import {
   BUILTIN_FUSION_VISION_TOOL_NAME,
   BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME,
   NO_AVAILABLE_GATEWAY_MODELS_MESSAGE,
-  ROUTER_FALLBACK_MAX_RETRY_COUNT,
   hasAvailableGatewayModels
 } from "@ccr/core/contracts/app";
 import { findProviderPresetByBaseUrl, providerApiKeySafetyIssue } from "@ccr/core/providers/presets/index";
@@ -51,7 +50,21 @@ import { pluginService } from "@ccr/core/plugins/service";
 import { proxyService } from "@ccr/core/proxy/service";
 import { createSseErrorDetector, recordGatewayRequestLog, updateGatewayRequestLogFromRawTrace, type RequestLogRawTraceUpdateInput } from "@ccr/core/observability/request-log-store";
 import { recordGatewayUsageCapture } from "@ccr/core/usage/store";
-import { ClaudeCodeRouterPlugin, normalizeRouteSelector } from "@ccr/core/gateway/claude-code-router-plugin";
+import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin";
+import { createRouteExecutionPlan } from "@ccr/core/routing/execution-plan";
+import type { RouteModelRef } from "@ccr/core/routing/contracts";
+import { classifyRouteFailure } from "@ccr/core/routing/failure-classifier";
+import {
+  adaptRouteRequestBody,
+  restoreRouteRequestBody,
+  rewriteRouteModelInUrl
+} from "@ccr/core/routing/protocol-adapter";
+import {
+  modelRegistryForConfig,
+  normalizeRouteSelector,
+  parseProviderModelSelector,
+  providerRuntimeId
+} from "@ccr/core/routing/model-registry";
 import { ccrRemoteControlPathPrefix, ccrRemoteControlService } from "@ccr/core/gateway/remote-control-service";
 import {
   claudeCodeEffectiveMaxInputTokens,
@@ -211,6 +224,7 @@ type UpstreamAttempt = {
   index: number;
   logicalProvider?: string;
   model?: string;
+  target?: RouteModelRef;
 };
 
 type UpstreamFailedAttempt = {
@@ -226,6 +240,14 @@ type UpstreamFetchResult = {
   attempt: UpstreamAttempt;
   failedAttempts: UpstreamFailedAttempt[];
   response: Response;
+};
+
+type ProviderCredentialRoutingTarget = {
+  body?: Buffer;
+  model?: string;
+  provider: GatewayProviderConfig;
+  protocol: GatewayProviderProtocol;
+  source: "header" | "model" | "plan";
 };
 
 class UpstreamRequestError extends Error {
@@ -786,35 +808,21 @@ class GatewayService {
       return;
     }
 
-    if (method === "POST" && path === "/v1/messages") {
-      const body = parseJsonObject(bodyToForward ?? requestBody);
+    if (shouldApplyGatewayRouting(method, path)) {
+      const adaptation = adaptRouteRequestBody(path, parseJsonObject(bodyToForward ?? requestBody));
       const routed = await this.plugin.routeRequest({
-        body,
+        body: adaptation.body,
         headers: headers as Record<string, string | string[] | undefined>,
         method,
         url: request.url ?? path
       });
-      const serialized = Buffer.from(`${JSON.stringify(routed.body)}\n`, "utf8");
+      const serialized = Buffer.from(`${JSON.stringify(restoreRouteRequestBody(routed.body, adaptation))}\n`, "utf8");
       headers["content-type"] = "application/json";
       headers["x-ccr-route-reason"] = sanitizeHeaderValue(routed.decision.reason);
-      routeFallback = routed.decision.fallback ?? routeFallback;
-      if (routed.decision.model) {
-        headers["x-ccr-routed-model"] = sanitizeHeaderValue(routed.decision.model);
-        routedModel = routed.decision.model;
+      headers["x-ccr-route-source"] = routed.decision.source;
+      if (routed.decision.diagnostics.length > 0) {
+        headers["x-ccr-route-diagnostics"] = String(routed.decision.diagnostics.length);
       }
-      bodyToForward = serialized;
-    }
-    if (method === "POST" && requestProtocolForPath(path) === "openai_responses" && isCodexUserAgent(request.headers)) {
-      const body = parseJsonObject(bodyToForward ?? requestBody);
-      const routed = await this.plugin.routeRequest({
-        body,
-        headers: headers as Record<string, string | string[] | undefined>,
-        method,
-        url: request.url ?? path
-      });
-      const serialized = Buffer.from(`${JSON.stringify(routed.body)}\n`, "utf8");
-      headers["content-type"] = "application/json";
-      headers["x-ccr-route-reason"] = sanitizeHeaderValue(routed.decision.reason);
       routeFallback = routed.decision.fallback ?? routeFallback;
       if (routed.decision.model) {
         headers["x-ccr-routed-model"] = sanitizeHeaderValue(routed.decision.model);
@@ -4782,7 +4790,7 @@ function textPartsFromGeminiContents(contents: unknown): string[] {
 
 export function fusionWebSearchToolNameForRequest(config: AppConfig, model: string | undefined): string | undefined {
   const normalizedModel = model ? fusionModelNameFromSelector(model) : "";
-  for (const candidate of fusionBrowserWebSearchToolCandidates(config)) {
+  for (const candidate of fusionWebSearchToolCandidates(config)) {
     if (!normalizedModel || candidate.aliases.some((alias) => fusionModelNameFromSelector(alias).toLowerCase() === normalizedModel.toLowerCase())) {
       return candidate.toolName;
     }
@@ -4790,7 +4798,7 @@ export function fusionWebSearchToolNameForRequest(config: AppConfig, model: stri
   return undefined;
 }
 
-function fusionBrowserWebSearchToolCandidates(config: AppConfig): Array<{ aliases: string[]; toolName: string }> {
+function fusionWebSearchToolCandidates(config: AppConfig): Array<{ aliases: string[]; toolName: string }> {
   const rawProfiles = Array.isArray(config.virtualModelProfiles) ? config.virtualModelProfiles : [];
   const profiles = normalizeCoreGatewayVirtualModelProfiles(
     withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases(rawProfiles)),
@@ -4804,7 +4812,7 @@ function fusionBrowserWebSearchToolCandidates(config: AppConfig): Array<{ aliase
     const metadata = isRecord(profile.metadata) ? profile.metadata : undefined;
     const fusionWebSearch = isRecord(metadata?.fusionWebSearch) ? metadata.fusionWebSearch : undefined;
     const webSearchConfig = readFusionWebSearchConfig(fusionWebSearch);
-    if (!webSearchConfig?.toolName || webSearchConfig.provider !== "browser") {
+    if (!webSearchConfig?.toolName) {
       continue;
     }
     const match = isRecord(profile.match) ? profile.match : undefined;
@@ -5487,6 +5495,17 @@ function requestProtocolForPath(path: string): GatewayProviderProtocol | undefin
   return undefined;
 }
 
+export function shouldApplyGatewayRouting(method: string, path: string): boolean {
+  if (method.toUpperCase() !== "POST") {
+    return false;
+  }
+  const protocol = requestProtocolForPath(path);
+  if (protocol === "gemini_interactions") {
+    return /\/v1(?:beta)?\/interactions$/i.test(path);
+  }
+  return Boolean(protocol);
+}
+
 function rewriteProviderHeader(
   headers: Record<string, string>,
   headerName: string,
@@ -5649,15 +5668,7 @@ function findProviderByPublicOrInternalName(config: AppConfig, name: string): Ga
       providerRuntimeId(provider).toLowerCase() === internalProviderId
     );
   }
-  return config.Providers.find((provider) =>
-    provider.name.trim().toLowerCase() === normalized ||
-    provider.id?.trim().toLowerCase() === normalized ||
-    provider.provider?.trim().toLowerCase() === normalized ||
-    providerRuntimeId(provider).toLowerCase() === normalized ||
-    normalizedProviderCapabilities(provider).some((capability) =>
-      providerCapabilityNameMatches(provider, capability.type, normalized)
-    )
-  );
+  return modelRegistryForConfig(config).findProvider(normalized);
 }
 
 function rewriteCapabilityResponseHeaders(headers: Headers, config: AppConfig): Headers {
@@ -5707,7 +5718,14 @@ async function fetchUpstreamWithFallback(input: {
   upstreamUrl: string;
 }): Promise<UpstreamFetchResult> {
   const fallbackMode = input.fallback.mode;
-  const attempts = buildUpstreamAttempts(input.fallback, input.method, input.body, input.routedModel);
+  const attempts = buildUpstreamAttempts(
+    input.config,
+    input.fallback,
+    input.method,
+    input.path,
+    input.body,
+    input.routedModel
+  );
   const failedAttempts: UpstreamFailedAttempt[] = [];
 
   for (let index = 0; index < attempts.length; index += 1) {
@@ -5727,7 +5745,7 @@ async function fetchUpstreamWithFallback(input: {
     const hasNextAttempt = index < attempts.length - 1;
 
     try {
-      const response = await fetchWithSystemProxy(input.upstreamUrl, {
+      const response = await fetchWithSystemProxy(rewriteRouteModelInUrl(input.upstreamUrl, attempt.model), {
         body: shouldSendBody(input.method) ? attempt.body?.toString("utf8") : undefined,
         headers: withCoreGatewayAuthHeader(omitLocalObservabilityHeaders(attempt.headers ?? input.headers), input.coreAuthToken),
         method: input.method,
@@ -5802,7 +5820,8 @@ function prepareUpstreamCredentialAttempt(input: {
   path: string;
 }): UpstreamAttempt {
   const normalizedBody = normalizeConfiguredProviderModelBody(input.attempt.body, input.config);
-  const target = resolveProviderCredentialRoutingTarget(input.config, input.headers, input.path, input.attempt.body);
+  const target = resolvePlannedProviderCredentialRoutingTarget(input.attempt, input.path) ??
+    resolveProviderCredentialRoutingTarget(input.config, input.headers, input.path, input.attempt.body);
   const attemptBody = (body: Buffer | undefined) => usageAwareOpenAiChatAttemptBody({
     body,
     config: input.config,
@@ -5822,20 +5841,26 @@ function prepareUpstreamCredentialAttempt(input: {
 
   const credentials = activeProviderCredentials(target.provider);
   if (credentials.length === 0) {
+    const preserveModelSelector = shouldPreserveCapabilityModelSelector(input.attempt.body, target);
     return {
       ...input.attempt,
-      body: attemptBody(target.body ?? normalizedBody?.body ?? input.attempt.body),
-      headers: input.headers
+      body: attemptBody(preserveModelSelector ? input.attempt.body : target.body ?? normalizedBody?.body ?? input.attempt.body),
+      headers: preserveModelSelector
+        ? clearTargetProviderHeaders(input.headers)
+        : targetProviderFallbackHeaders(input.headers, target.provider, target.protocol)
     };
   }
 
   const usage = estimateLimitUsage(input.method, input.attempt.body ?? Buffer.alloc(0));
   const selection = selectProviderCredentials(target.provider, target.protocol, credentials, usage);
   if (selection.credentials.length === 0) {
+    const preserveModelSelector = shouldPreserveCapabilityModelSelector(input.attempt.body, target);
     return {
       ...input.attempt,
-      body: attemptBody(target.body ?? normalizedBody?.body ?? input.attempt.body),
-      headers: input.headers
+      body: attemptBody(preserveModelSelector ? input.attempt.body : target.body ?? normalizedBody?.body ?? input.attempt.body),
+      headers: preserveModelSelector
+        ? clearTargetProviderHeaders(input.headers)
+        : targetProviderFallbackHeaders(input.headers, target.provider, target.protocol)
     };
   }
 
@@ -5861,29 +5886,96 @@ function prepareUpstreamCredentialAttempt(input: {
   };
 }
 
+function targetProviderFallbackHeaders(
+  headers: Record<string, string>,
+  provider: GatewayProviderConfig,
+  protocol: GatewayProviderProtocol
+): Record<string, string> {
+  const next = { ...headers };
+  next["x-target-provider"] = targetProviderHeaderValue(provider, protocol);
+  delete next["x-target-providers"];
+  delete next["x-gateway-target-provider"];
+  return next;
+}
+
+function clearTargetProviderHeaders(headers: Record<string, string>): Record<string, string> {
+  const next = { ...headers };
+  delete next["x-target-provider"];
+  delete next["x-target-providers"];
+  delete next["x-gateway-target-provider"];
+  return next;
+}
+
+function shouldPreserveCapabilityModelSelector(body: Buffer | undefined, target: ProviderCredentialRoutingTarget): boolean {
+  if (target.source === "header" || target.protocol !== "gemini_interactions") {
+    return false;
+  }
+  return Boolean(parseProviderModelSelector(stringValue(parseJsonObjectSafe(body)?.model)));
+}
+
+function resolvePlannedProviderCredentialRoutingTarget(
+  attempt: UpstreamAttempt,
+  path: string
+): ProviderCredentialRoutingTarget | undefined {
+  if (attempt.target?.kind !== "provider") {
+    return undefined;
+  }
+  const clientProtocol = requestProtocolForPath(path);
+  const protocol = clientProtocol
+    ? providerProtocolForClientProtocol(attempt.target.provider, clientProtocol)
+    : undefined;
+  if (!protocol) {
+    return undefined;
+  }
+  const parsedBody = parseJsonObjectSafe(attempt.body);
+  return {
+    body: parsedBody && clientProtocol !== "gemini_generate_content"
+      ? serializeJsonBodyWithModel(parsedBody, attempt.target.model)
+      : attempt.body,
+    model: attempt.target.model,
+    provider: attempt.target.provider,
+    protocol,
+    source: "plan"
+  };
+}
+
+function targetProviderHeaderValue(provider: GatewayProviderConfig, protocol: GatewayProviderProtocol): string {
+  const capability = normalizedProviderCapabilities(provider).find((item) => item.type === protocol);
+  return capability ? providerCapabilityInternalName(provider, capability.type) : provider.name || providerRuntimeId(provider);
+}
+
 function usageAwareOpenAiChatAttemptBody(input: {
   body: Buffer | undefined;
   config: AppConfig;
   path: string;
   target?: { protocol: GatewayProviderProtocol };
 }): Buffer | undefined {
-  if (input.target?.protocol === "openai_chat_completions") {
-    return usageAwareOpenAiChatBody(input.body);
-  }
-
-  const protocol = requestProtocolForPath(input.path);
-  if (!protocol) {
-    return input.body;
-  }
-
+  const clientProtocol = requestProtocolForPath(input.path);
   const parsedBody = parseJsonObjectSafe(input.body);
   const modelSelector = resolveConfiguredProviderModelSelector(stringValue(parsedBody?.model), input.config);
-  const providerProtocol = modelSelector
-    ? providerProtocolForClientProtocol(modelSelector.provider, protocol)
-    : undefined;
+  const providerProtocol = input.target?.protocol ?? (
+    modelSelector && clientProtocol
+      ? providerProtocolForClientProtocol(modelSelector.provider, clientProtocol)
+      : undefined
+  );
+  if (providerProtocol !== "openai_chat_completions" && providerProtocol !== "openai_responses") {
+    return input.body;
+  }
+  const sanitizedBody = stripUnsupportedOpenAiRequestParameters(input.body);
   return providerProtocol === "openai_chat_completions"
-    ? usageAwareOpenAiChatBody(input.body)
-    : input.body;
+    ? usageAwareOpenAiChatBody(sanitizedBody)
+    : sanitizedBody;
+}
+
+function stripUnsupportedOpenAiRequestParameters(body: Buffer | undefined): Buffer | undefined {
+  const parsedBody = parseJsonObjectSafe(body);
+  if (!parsedBody || (!("thinking" in parsedBody) && !("reasoning_split" in parsedBody))) {
+    return body;
+  }
+  const next = { ...parsedBody };
+  delete next.thinking;
+  delete next.reasoning_split;
+  return Buffer.from(`${JSON.stringify(next)}\n`, "utf8");
 }
 
 function usageAwareOpenAiChatBody(body: Buffer | undefined): Buffer | undefined {
@@ -5935,7 +6027,7 @@ function resolveProviderCredentialRoutingTarget(
   headers: Record<string, string>,
   path: string,
   body: Buffer | undefined
-): { body?: Buffer; model?: string; provider: GatewayProviderConfig; protocol: GatewayProviderProtocol } | undefined {
+): ProviderCredentialRoutingTarget | undefined {
   const protocol = requestProtocolForPath(path);
   if (!protocol) {
     return undefined;
@@ -5943,16 +6035,18 @@ function resolveProviderCredentialRoutingTarget(
 
   const parsedBody = parseJsonObjectSafe(body);
   const bodyModel = stringValue(parsedBody?.model);
-  const modelSelector = resolveConfiguredProviderModelSelector(bodyModel, config);
+  const modelSelector = resolveConfiguredProviderModelSelector(bodyModel, config) ??
+    resolveUniqueConfiguredProviderModelSelector(bodyModel, config);
   if (modelSelector) {
     const provider = modelSelector.provider;
     const providerProtocol = provider ? providerProtocolForClientProtocol(provider, protocol) : undefined;
-    if (provider && providerProtocol && activeProviderCredentials(provider).length > 0) {
+    if (provider && providerProtocol) {
       return {
         body: parsedBody ? serializeJsonBodyWithModel(parsedBody, modelSelector.model) : body,
         model: modelSelector.model,
         provider,
-        protocol: providerProtocol
+        protocol: providerProtocol,
+        source: "model"
       };
     }
   }
@@ -5963,7 +6057,7 @@ function resolveProviderCredentialRoutingTarget(
   }
 
   const provider = findProviderByPublicOrInternalName(config, targetProviderName);
-  if (!provider || activeProviderCredentials(provider).length === 0) {
+  if (!provider) {
     return undefined;
   }
   const providerProtocol = providerProtocolForClientProtocol(provider, protocol);
@@ -5978,7 +6072,8 @@ function resolveProviderCredentialRoutingTarget(
       : body,
     model: providerModel ?? bodyModel,
     provider,
-    protocol: providerProtocol
+    protocol: providerProtocol,
+    source: "header"
   };
 }
 
@@ -6002,99 +6097,18 @@ function providerHasModel(provider: GatewayProviderConfig, model: string): boole
   return Boolean(normalized) && provider.models.some((candidate) => candidate.trim().toLowerCase() === normalized);
 }
 
-function parseProviderModelSelector(value: string | undefined): { model: string; provider: string } | undefined {
-  const normalized = normalizeRouteSelector(value);
-  if (!normalized) {
-    return undefined;
-  }
-  const separator = normalized.indexOf("/");
-  if (separator <= 0 || separator >= normalized.length - 1) {
-    return undefined;
-  }
-  const provider = normalized.slice(0, separator).trim();
-  const model = normalized.slice(separator + 1).trim();
-  return provider && model ? { model, provider } : undefined;
-}
-
 function resolveConfiguredProviderModelSelector(
   value: string | undefined,
   config: AppConfig
 ): { model: string; provider: GatewayProviderConfig } | undefined {
-  let current = normalizeRouteSelector(value);
-  if (!current) {
-    return undefined;
-  }
-
-  let selectedProvider: GatewayProviderConfig | undefined;
-  for (let depth = 0; depth < 4; depth += 1) {
-    const parsed = parseProviderModelSelector(current);
-    if (!parsed) {
-      break;
-    }
-
-    const provider = findProviderByPublicOrInternalName(config, parsed.provider);
-    if (!provider) {
-      break;
-    }
-
-    selectedProvider = provider;
-    current = parsed.model;
-
-    const nested = parseProviderModelSelector(current);
-    if (!nested) {
-      return current ? { model: current, provider } : undefined;
-    }
-
-    const nestedProvider = findProviderByPublicOrInternalName(config, nested.provider);
-    if (!nestedProvider || providerRuntimeId(nestedProvider) !== providerRuntimeId(provider)) {
-      return current ? { model: current, provider } : undefined;
-    }
-  }
-
-  return selectedProvider && current ? { model: current, provider: selectedProvider } : undefined;
+  return modelRegistryForConfig(config).resolveProviderModel(value);
 }
 
 function resolveUniqueConfiguredProviderModelSelector(
   value: string | undefined,
   config: AppConfig
 ): { model: string; provider: GatewayProviderConfig } | undefined {
-  const model = normalizeRouteSelector(value);
-  if (!model) {
-    return undefined;
-  }
-
-  const exactMatches = configuredProviderModelMatches(model, config, false);
-  if (exactMatches.length === 1) {
-    return exactMatches[0];
-  }
-  if (exactMatches.length > 1) {
-    return undefined;
-  }
-
-  const caseInsensitiveMatches = configuredProviderModelMatches(model, config, true);
-  return caseInsensitiveMatches.length === 1 ? caseInsensitiveMatches[0] : undefined;
-}
-
-function configuredProviderModelMatches(
-  model: string,
-  config: AppConfig,
-  caseInsensitive: boolean
-): Array<{ model: string; provider: GatewayProviderConfig }> {
-  const normalized = caseInsensitive ? model.toLowerCase() : model;
-  const matches: Array<{ model: string; provider: GatewayProviderConfig }> = [];
-  for (const provider of config.Providers) {
-    for (const candidate of provider.models) {
-      const configuredModel = candidate.trim();
-      if (!configuredModel) {
-        continue;
-      }
-      const comparable = caseInsensitive ? configuredModel.toLowerCase() : configuredModel;
-      if (comparable === normalized) {
-        matches.push({ model: configuredModel, provider });
-      }
-    }
-  }
-  return matches;
+  return modelRegistryForConfig(config).resolveUniqueProviderModel(value);
 }
 
 function firstTargetProviderHeader(headers: Record<string, string>): string | undefined {
@@ -6182,52 +6196,35 @@ function providerCredentialPriority(credential: ProviderCredentialConfig, index:
   return Number.isFinite(credential.priority) ? Number(credential.priority) : index + 1;
 }
 
-function buildUpstreamAttempts(fallback: RouterFallbackConfig, method: string, body: Buffer | undefined, routedModel: string | undefined): UpstreamAttempt[] {
-  const initialAttempt: UpstreamAttempt = {
-    body,
-    index: 0,
-    model: normalizeRouteSelector(routedModel)
-  };
-  if (fallback.mode === "off" || !shouldSendBody(method)) {
-    return [initialAttempt];
-  }
-
-  if (fallback.mode === "retry") {
-    const retryCount = clampNumber(fallback.retryCount, 0, ROUTER_FALLBACK_MAX_RETRY_COUNT);
-    return Array.from({ length: retryCount + 1 }, (_unused, index) => ({
-      body,
-      index,
-      model: initialAttempt.model
-    }));
-  }
-
+function buildUpstreamAttempts(
+  config: AppConfig,
+  fallback: RouterFallbackConfig,
+  method: string,
+  path: string,
+  body: Buffer | undefined,
+  routedModel: string | undefined
+): UpstreamAttempt[] {
   const parsedBody = parseJsonObjectSafe(body);
-  const currentModel = normalizeRouteSelector(stringValue(parsedBody?.model)) ?? initialAttempt.model;
-  const configuredModels = uniqueStrings(
-    fallback.models
-      .map((model) => normalizeRouteSelector(model))
-      .filter((model): model is string => Boolean(model))
-  );
-  const modelChain = uniqueStrings([currentModel, ...configuredModels].filter((model): model is string => Boolean(model)));
-  if (modelChain.length === 0 || !parsedBody) {
-    return [initialAttempt];
-  }
-
-  return modelChain.map((model, index) => ({
-    body: serializeJsonBodyWithModel(parsedBody, model),
-    index,
-    model
+  const modelInPath = requestProtocolForPath(path) === "gemini_generate_content";
+  const plan = createRouteExecutionPlan({
+    bodyModel: modelInPath ? undefined : stringValue(parsedBody?.model),
+    fallback,
+    hasRequestBody: shouldSendBody(method) && (fallback.mode !== "model-chain" || Boolean(parsedBody)),
+    modelRegistry: modelRegistryForConfig(config),
+    primaryModel: routedModel
+  });
+  return plan.attempts.map((attempt) => ({
+    body: parsedBody && !modelInPath && fallback.mode === "model-chain" && attempt.model
+      ? serializeJsonBodyWithModel(parsedBody, attempt.model)
+      : body,
+    index: attempt.index,
+    model: attempt.model,
+    target: attempt.target
   }));
 }
 
 function shouldFallbackAfterStatus(statusCode: number, mode: RouterFallbackMode): boolean {
-  if (mode === "model-chain" && statusCode >= 400) {
-    return true;
-  }
-  if (statusCode === 408 || statusCode === 409 || statusCode === 429 || statusCode >= 500) {
-    return true;
-  }
-  return false;
+  return classifyRouteFailure(statusCode, mode).shouldFallback;
 }
 
 function retryDelayAfterStatus(_statusCode: number, headers: Headers, failedAttemptIndex: number): number {
@@ -6729,31 +6726,6 @@ function providerCapabilityNameMatches(provider: GatewayProviderConfig, protocol
   const normalized = value.trim().toLowerCase();
   return providerCapabilityInternalName(provider, protocol).toLowerCase() === normalized ||
     providerCapabilityLegacyInternalName(provider.name, protocol).toLowerCase() === normalized;
-}
-
-function providerRuntimeId(provider: GatewayProviderConfig): string {
-  const explicit = sanitizeProviderHeaderId(provider.id);
-  if (explicit) {
-    return explicit;
-  }
-  const normalized = provider.name
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9_.-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-  const hash = createHash("sha256").update(`${provider.name}\n${readBaseUrl(provider) ?? ""}`).digest("hex").slice(0, 10);
-  return `provider-${normalized || "provider"}-${hash}`;
-}
-
-function sanitizeProviderHeaderId(value: string | undefined): string | undefined {
-  const normalized = value
-    ?.trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_.-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return normalized || undefined;
 }
 
 function sanitizeHeaderValue(value: unknown): string {

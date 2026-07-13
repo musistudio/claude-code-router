@@ -509,7 +509,7 @@ test("gateway does not route hosted web search through an unrelated Fusion searc
   assert.equal(fusionWebSearchToolNameForRequest(config, "Fusion/kimisearch"), "fusion_2_web_search");
 });
 
-test("gateway resolves only browser-backed Fusion web search tools for hosted protocol bridging", () => {
+test("gateway resolves non-browser Fusion web search tools for hosted protocol bridging", () => {
   const config = {
     Providers: [],
     Router: { fallback: { mode: "off", models: [], retryCount: 0 } },
@@ -538,7 +538,7 @@ test("gateway resolves only browser-backed Fusion web search tools for hosted pr
     ]
   };
 
-  assert.equal(fusionWebSearchToolNameForRequest(config, "Fusion/research"), undefined);
+  assert.equal(fusionWebSearchToolNameForRequest(config, "Fusion/research"), "research_web_search");
   assert.equal(fusionWebSearchToolNameForRequest(config, "gpt-5"), undefined);
 });
 
