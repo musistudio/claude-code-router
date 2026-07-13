@@ -10,9 +10,11 @@ type UpdateCheckOptions = {
 };
 
 const startupCheckDelayMs = 12_000;
+const defaultUpdateSource = "GitHub Releases";
 
 class AppUpdateService {
   private activeSilentCheckFailureRestoreStatus?: AppUpdateStatus;
+  private configuredUpdateSource = defaultUpdateSource;
   private initialized = false;
   private installingUpdate = false;
   private prepareInstall?: InstallPreparation;
@@ -34,7 +36,7 @@ class AppUpdateService {
     this.initialized = true;
     this.configureUpdater();
     this.registerUpdaterEvents();
-    this.publishStatus({ feedUrl: autoUpdater.getFeedURL() || undefined });
+    this.publishStatus({ feedUrl: this.configuredUpdateSource });
 
     if (this.isUpdaterSupported()) {
       this.queueStartupCheck();
@@ -177,6 +179,7 @@ class AppUpdateService {
   private configureUpdater(): void {
     const feedUrl = readEnvString("CCR_UPDATE_FEED_URL");
     if (feedUrl) {
+      this.configuredUpdateSource = feedUrl;
       autoUpdater.setFeedURL({
         provider: "generic",
         url: feedUrl
@@ -304,7 +307,7 @@ class AppUpdateService {
       ...this.status,
       ...patch,
       currentVersion: app.getVersion(),
-      feedUrl: autoUpdater.getFeedURL() || this.status.feedUrl,
+      feedUrl: this.configuredUpdateSource,
       supported: this.isUpdaterSupported()
     });
     windowsManager.broadcast(IPC_CHANNELS.appUpdateStatusChanged, this.status);

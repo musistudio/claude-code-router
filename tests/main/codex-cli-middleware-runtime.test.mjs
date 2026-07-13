@@ -13,6 +13,63 @@ test("generated Codex CLI middleware runtime is valid JavaScript", () => {
   execFileSync(process.execPath, ["--check", file], { stdio: "pipe" });
 });
 
+test("Codex CLI middleware launches Windows cmd shims", { skip: process.platform !== "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-windows-cmd-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const fakeCliScript = path.join(dir, "fake-codex.js");
+  const fakeCli = path.join(dir, "fake-codex.cmd");
+  writeFileSync(fakeCliScript, "process.stdout.write(JSON.stringify(process.argv.slice(2)));\n");
+  writeFileSync(fakeCli, [
+    "@echo off",
+    `"${process.execPath}" "%~dp0fake-codex.js" %*`,
+    "exit /b %ERRORLEVEL%",
+    ""
+  ].join("\r\n"));
+
+  const result = spawnSync(process.execPath, [runtimeFile, "--version"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CCR_CODEX_MODEL_PROVIDER: "claude-code-router",
+      CCR_CODEX_PROFILE: "claude-code-router",
+      CCR_REAL_CODEX_CLI_PATH: fakeCli
+    }
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const forwardedArgs = JSON.parse(result.stdout);
+  assert.equal(forwardedArgs.at(-1), "--version");
+  assert.equal(forwardedArgs.includes("claude-code-router"), true);
+});
+
+test("Windows direct profile dispatch strips the profile command arguments", { skip: process.platform !== "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-windows-dispatch-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const fakeCliScript = path.join(dir, "fake-claude.js");
+  const fakeCli = path.join(dir, "fake-claude.cmd");
+  writeFileSync(fakeCliScript, "process.stdout.write(JSON.stringify(process.argv.slice(2)));\n");
+  writeFileSync(fakeCli, [
+    "@echo off",
+    `"${process.execPath}" "%~dp0fake-claude.js" %*`,
+    "exit /b %ERRORLEVEL%",
+    ""
+  ].join("\r\n"));
+
+  const result = spawnSync(process.execPath, [runtimeFile, "Claude Code", "cli", "--", "--version"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CCR_CLAUDE_CODE_WRAPPER: "1",
+      CCR_CLI_DIRECT_PROFILE_DISPATCH: "1",
+      CCR_REAL_CLAUDE_CODE_BIN: fakeCli,
+      CCR_REMOTE_SYNC_ENABLED: "0"
+    }
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), ["--version"]);
+});
+
 test("Codex app-server exposes a ChatGPT-shaped workspace identity without credentials", { skip: process.platform === "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-virtual-auth-"));
   const runtimeFile = writeRuntimeScript(dir);
