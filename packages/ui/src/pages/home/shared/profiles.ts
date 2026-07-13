@@ -374,7 +374,7 @@ import type { AgentFilterValue, RouterConditionSource } from "./options";
 import type { MotionSafeDivAttributes } from "./motion";
 
 
-import { isPlainRecord, stringValue, uniqueStrings } from "./common";
+import { isPlainRecord, normalizeProviderModelSelector, stringValue, uniqueStrings } from "./common";
 import { virtualModelProfileModelNames } from "./providers";
 import { endpointFromHostPort } from "./services";
 import { keyValueRowsFromRecord, recordFromKeyValueRows, stringRecordValue, validateProfileEnvRows } from "./virtual-models";
@@ -397,17 +397,7 @@ export function defaultProfileClientModel(config: AppConfig): string {
 }
 
 export function normalizeProfileClientModel(value: string | undefined): string {
-  const trimmed = value?.trim();
-  if (!trimmed) {
-    return "";
-  }
-  const commaIndex = trimmed.indexOf(",");
-  if (commaIndex > 0 && commaIndex < trimmed.length - 1) {
-    const provider = trimmed.slice(0, commaIndex).trim();
-    const model = trimmed.slice(commaIndex + 1).trim();
-    return provider && model ? `${provider}/${model}` : "";
-  }
-  return trimmed;
+  return normalizeProviderModelSelector(value);
 }
 
 export type ProfileModelProviderOption = {
@@ -453,12 +443,8 @@ export function parseProfileModelValue(
   const providerOptions = profileModelProviderOptions(providers, virtualModelProfiles);
   for (const provider of providerOptions) {
     const slashPrefix = `${provider.name}/`;
-    const commaPrefix = `${provider.name},`;
     if (trimmed.startsWith(slashPrefix)) {
       return { model: trimmed.slice(slashPrefix.length).trim(), provider: provider.name };
-    }
-    if (trimmed.startsWith(commaPrefix)) {
-      return { model: trimmed.slice(commaPrefix.length).trim(), provider: provider.name };
     }
   }
   const slashIndex = trimmed.indexOf("/");

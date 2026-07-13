@@ -5,14 +5,15 @@ import {
   CircleAlert, closestCenter, cn, CSS, Database, Dialog, DialogBody, DialogContent,
   DialogFooter, DialogHeader, DialogTitle, endpointFromHostPort, Field, formatAppError, formatProviderAccountMeterValue, formatSystemOption, Gauge,
   Globe,
-  createBotGatewayConfigDraft, createMcpServerDraft, createMcpServerDraftFromConfig, createMcpServerDraftFromUnknown, createRouteModelOptions, DndContext, DragEndEvent, GatewayMcpServerConfig, GatewayProviderConfig, Input, isBotGatewayConfigDraftSubmittable, KeyboardSensor, KeyRound, KeyValueRowsControl, languageDisplayName, Layers3, LoaderCircle,
-  mcpServerConfigFromDraft, mcpServerEndpointSummary, mcpServerTransportOptions, mcpStdioMessageModeOptions, McpServerDraft, normalizeBotGatewayAuthType, normalizeBotGatewayPlatform, normalizeProxyUpstreamConfig, normalizeToolHubConfig, numberValue, Palette, Pencil, Plus, ProfileConfig, profileAgentLabel,
+  createBotGatewayConfigDraft, createMcpServerDraft, createMcpServerDraftFromConfig, createMcpServerDraftFromUnknown, DndContext, DragEndEvent, GatewayMcpServerConfig, GatewayProviderConfig, Input, isBotGatewayConfigDraftSubmittable, KeyboardSensor, KeyRound, KeyValueRowsControl, languageDisplayName, Layers3, LoaderCircle,
+  mcpServerConfigFromDraft, mcpServerEndpointSummary, mcpServerTransportOptions, mcpStdioMessageModeOptions, McpServerDraft, normalizeBotGatewayAuthType, normalizeBotGatewayPlatform, normalizeProviderModelSelector, normalizeProxyUpstreamConfig, normalizeToolHubConfig, numberValue, Palette, Pencil, Plus, ProfileConfig, profileAgentLabel,
   PanelLeftOpen, Power, ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ResolvedLanguage, ResolvedTheme, Select, SelectControl,
   PointerSensor, rectSortingStrategy, Settings, SettingsPageId, SortableContext, sortableKeyboardCoordinates, themeDisplayName,
   translateOptions, TrayBalanceProgressConfig, TrayComponentVariants, TrayWidgetConfig, TrayWidgetType, TrayWidgetVariant,
   appLogoUrl, trayMascotIconUrls, arrayMove, defaultTrayWidgetVariant, isTraySingletonWidgetType, normalizeTrayWidget, normalizeTrayWidgets, Switch, Textarea, Trash2, trayWidgetVariantOptions, useAppText, useEffect, useMemo, useRef, useSensor, useSensors, useSortable, useState, validateMcpServerDraft,
   X
 } from "../shared/index";
+import { ModelSelector } from "./model-selector";
 
 const settingsPageContentWidthClassName = "mx-auto w-full max-w-[900px]";
 
@@ -566,7 +567,6 @@ function ToolHubSettingsPage({
   toolHub: AppConfig["toolHub"];
 }) {
   const t = useAppText();
-  const modelOptions = useMemo(() => createRouteModelOptions(providers), [providers]);
   const selectedProviderModel = useMemo(() => selectedToolHubProviderModelValue(toolHub, providers), [providers, toolHub]);
   const [mcpDialogDraft, setMcpDialogDraft] = useState<McpServerDraft>(() => createMcpServerDraft(toolHub.mcpServers));
   const [mcpDialogError, setMcpDialogError] = useState("");
@@ -578,6 +578,12 @@ function ToolHubSettingsPage({
 
   const selectProviderModel = (value: string) => {
     if (!value) {
+      onChange({
+        llm: {
+          ...toolHub.llm,
+          model: ""
+        }
+      });
       return;
     }
     const parsed = parseProviderModelSelectValue(value);
@@ -697,12 +703,10 @@ function ToolHubSettingsPage({
           />
           <div className="grid grid-cols-1 gap-3 rounded-md border border-border/70 bg-card/70 p-3 md:grid-cols-2">
             <Field className="md:col-span-2" label={copy.settings.toolHubModel}>
-              <SelectControl
+              <ModelSelector
                 onChange={selectProviderModel}
-                options={[
-                  { disabled: true, label: copy.settings.toolHubModelPlaceholder, value: "" },
-                  ...modelOptions
-                ]}
+                placeholder={copy.settings.toolHubModelPlaceholder}
+                providers={providers}
                 value={selectedProviderModel}
               />
             </Field>
@@ -1054,16 +1058,17 @@ function selectedToolHubProviderModelValue(toolHub: AppConfig["toolHub"], provid
     provider.models?.includes(model) &&
     (!baseUrl || !providerBaseUrl(provider) || providerBaseUrl(provider) === baseUrl)
   ) ?? providers.find((provider) => provider.models?.includes(model));
-  return matchedProvider ? `${matchedProvider.name},${model}` : "";
+  return matchedProvider ? `${matchedProvider.name}/${model}` : normalizeProviderModelSelector(model);
 }
 
 function parseProviderModelSelectValue(value: string): { model: string; provider: string } | undefined {
-  const commaIndex = value.indexOf(",");
-  if (commaIndex <= 0 || commaIndex >= value.length - 1) {
+  const normalized = normalizeProviderModelSelector(value);
+  const slashIndex = normalized.indexOf("/");
+  if (slashIndex <= 0 || slashIndex >= normalized.length - 1) {
     return undefined;
   }
-  const provider = value.slice(0, commaIndex).trim();
-  const model = value.slice(commaIndex + 1).trim();
+  const provider = normalized.slice(0, slashIndex).trim();
+  const model = normalized.slice(slashIndex + 1).trim();
   return provider && model ? { model, provider } : undefined;
 }
 

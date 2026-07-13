@@ -432,6 +432,82 @@ test("router rules override the built-in Claude Code profile route", async () =>
   assert.equal(result.decision.reason, "rule:default");
 });
 
+test("router rules normalize legacy comma provider selectors before gateway provider routing", async () => {
+  const config = {
+    CUSTOM_ROUTER_PATH: "",
+    Providers: [
+      {
+        capabilities: [
+          {
+            baseUrl: "https://provider.example/v1",
+            type: "openai_chat_completions"
+          }
+        ],
+        credentials: [{ apiKey: "provider-key", id: "provider-main" }],
+        models: ["gpt-5-codex"],
+        name: "Provider"
+      }
+    ],
+    Router: {
+      builtInRules: {
+        "claude-code": { enabled: false },
+        codex: { enabled: false }
+      },
+      fallback: { mode: "off", models: [], retryCount: 1 },
+      rules: [
+        {
+          condition: {
+            left: "request.url",
+            operator: "contains",
+            right: "/v1"
+          },
+          enabled: true,
+          id: "comma-selector",
+          name: "Legacy comma selector",
+          rewrites: [
+            { key: "request.body.model", operation: "set", value: "Provider,gpt-5-codex" }
+          ],
+          type: "condition"
+        }
+      ]
+    },
+    profile: {
+      enabled: false,
+      profiles: []
+    },
+    virtualModelProfiles: []
+  };
+  const plugin = new ClaudeCodeRouterPlugin(config);
+  const headers = {};
+  const result = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "claude-default"
+    },
+    headers,
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(result.body.model, "Provider/gpt-5-codex");
+  assert.equal(result.decision.model, "Provider/gpt-5-codex");
+  assert.equal(result.decision.reason, "rule:comma-selector");
+
+  const upstreamAttempt = prepareGatewayUpstreamAttemptForTest({
+    body: result.body,
+    config,
+    fallback: result.decision.fallback,
+    headers,
+    method: "POST",
+    path: "/v1/messages",
+    routedModel: result.decision.model
+  });
+
+  assert.equal(upstreamAttempt.logicalProvider, "Provider");
+  assert.equal(upstreamAttempt.credentialProtocol, "openai_chat_completions");
+  assert.equal(upstreamAttempt.body.model, "gpt-5-codex");
+});
+
 test("router rules can add headers after the built-in Claude Code profile route", async () => {
   const plugin = createRouterPlugin({
     profileModel: "Provider/claude-sonnet",

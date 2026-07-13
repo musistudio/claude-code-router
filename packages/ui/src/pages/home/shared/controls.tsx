@@ -372,7 +372,7 @@ import type { AgentFilterValue, RouterConditionSource } from "./options";
 import type { MotionSafeDivAttributes } from "./motion";
 
 
-import { metricToneBar } from "./common";
+import { metricToneBar, normalizeProviderModelSelector } from "./common";
 import { profileAgentLabel, profileAgentLogoUrl } from "./profiles";
 import { routeTargetOptions } from "./providers";
 import { createKeyValueDraftRow } from "./virtual-models";
@@ -424,13 +424,14 @@ export function RouteTargetControl({
   value: string;
 }) {
   const t = useAppText();
+  const normalizedValue = normalizeProviderModelSelector(value);
 
   if (modelOptions.length === 0) {
-    return <Input onChange={(event) => onChange(event.target.value)} value={value} />;
+    return <Input onChange={(event) => onChange(event.target.value)} value={normalizedValue} />;
   }
 
-  const options = routeTargetOptions(modelOptions, value);
-  return <SelectControl onChange={onChange} options={translateOptions(options, t)} value={value} />;
+  const options = routeTargetOptions(modelOptions, normalizedValue);
+  return <SelectControl onChange={onChange} options={translateOptions(options, t)} value={normalizedValue} />;
 }
 
 export function TextAreaControl({
