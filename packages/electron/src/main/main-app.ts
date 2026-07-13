@@ -5,8 +5,8 @@ import { restoreClaudeAppGatewayConfig, syncClaudeAppGatewayConfig } from "@ccr/
 import { deepLinkService } from "./deep-link";
 import { gatewayService } from "@ccr/core/gateway/service";
 import "./ipc";
-import { applyProfileConfig } from "@ccr/core/profiles/service";
-import { ensureCcrCliLauncher } from "@ccr/core/profiles/launch-service";
+import { applyProfileConfig, restoreGlobalProfileConfigsOnExit } from "@ccr/core/profiles/service";
+import { ensureCcrCliLauncher, persistPreparedCcrCliPath, prepareCcrCliLauncherRuntime, type CcrCliLauncherPreparation } from "@ccr/core/profiles/launch-service";
 import { syncLaunchAtLogin } from "./launch-at-login";
 import { proxyService } from "@ccr/core/proxy/service";
 import trayController from "./tray-controller";
@@ -43,13 +43,25 @@ function startPrimaryInstance(): void {
 
   void app.whenReady().then(() => {
     configureProxyDesktopIntegration();
+    let ccrLauncherPreparation: CcrCliLauncherPreparation | undefined;
     try {
-      ensureCcrCliLauncher();
+      ccrLauncherPreparation = prepareCcrCliLauncherRuntime();
     } catch (error) {
-      console.error(`Failed to install ccr CLI launcher: ${formatError(error)}`);
+      console.error(`Failed to prepare ccr CLI runtime: ${formatError(error)}`);
     }
     setupApplicationMenu();
-    windowsManager.createMainWindow();
+    const mainWindow = windowsManager.createMainWindow();
+    if (ccrLauncherPreparation?.persistentPathRequired) {
+      mainWindow.once("ready-to-show", () => {
+        setTimeout(() => {
+          try {
+            persistPreparedCcrCliPath(ccrLauncherPreparation);
+          } catch (error) {
+            console.error(`Failed to persist ccr CLI PATH: ${formatError(error)}`);
+          }
+        }, 0);
+      });
+    }
     trayController.start();
     appUpdateService.start();
     appUpdateService.setInstallPreparation(prepareForUpdateInstall);
@@ -164,7 +176,17 @@ function stopServicesForQuit(): Promise<void> {
       .catch((error) => {
         console.error(`Failed to stop services before quit: ${formatError(error)}`);
       })
-      .finally(() => {
+      .finally(async () => {
+        try {
+          const config = await loadAppConfig();
+          for (const status of restoreGlobalProfileConfigsOnExit(config.profile.profiles)) {
+            if (!status.ok) {
+              console.error(`Failed to restore ${status.client} global profile config before quit: ${status.message}`);
+            }
+          }
+        } catch (error) {
+          console.error(`Failed to restore global profile configs before quit: ${formatError(error)}`);
+        }
         try {
           restoreClaudeAppGatewayConfig();
         } catch (error) {
@@ -184,6 +206,11 @@ function startConfiguredServices(reason: string): Promise<void> {
           config = (await syncClaudeAppGatewayConfig(config)).config;
         } catch (error) {
           console.error(`Failed to sync Claude App gateway config during ${reason}: ${formatError(error)}`);
+        }
+        try {
+          ensureCcrCliLauncher(config, { persistPath: false });
+        } catch (error) {
+          console.error(`Failed to install ccr CLI launcher during ${reason}: ${formatError(error)}`);
         }
         try {
           syncLaunchAtLogin(config);

@@ -64,6 +64,7 @@ const profileGatewayLeasePollMs = 500;
 const webAuthHeader = "x-ccr-web-auth";
 const webAuthQueryParam = "ccr_web_token";
 const defaultCliCommandName = "ccr";
+const prepareProfileOnlyEnv = "CCR_CLI_PREPARE_PROFILE_ONLY";
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
@@ -155,7 +156,10 @@ async function main(): Promise<void> {
         throw new Error(runtimeResult.message);
       }
     }
-    if (profile.agent === "claude-code" && resolvedSurface === "app") {
+    if (resolvedSurface === "cli" && process.env[prepareProfileOnlyEnv] === "1") {
+    return;
+  }
+  if (profile.agent === "claude-code" && resolvedSurface === "app") {
       applyClaudeAppGatewayConfig(launchConfig);
       applyClaudeAppGatewayConfig(launchConfig, {
         backup: false,

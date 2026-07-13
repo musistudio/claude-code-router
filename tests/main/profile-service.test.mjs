@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { createDefaultAppConfig } from "../../packages/core/src/config/default-config.ts";
 import { CONFIGDIR } from "../../packages/core/src/config/constants.ts";
-import { applyProfileConfig, cleanupGeneratedBinBackups, resolveGrokSourceHome, restoreInactiveGlobalProfileConfigs } from "../../packages/core/src/profiles/service.ts";
+import { applyProfileConfig, cleanupGeneratedBinBackups, resolveGrokSourceHome, restoreInactiveGlobalProfileConfigs, restoreGlobalProfileConfigsOnExit } from "../../packages/core/src/profiles/service.ts";
 
 test("Grok profile source home follows profile and process environment overrides", () => {
   const previous = {
@@ -487,5 +487,89 @@ test("profile service keeps managed global Claude settings when a global Claude 
       process.env.HOME = previousHome;
     }
     rmSync(home, { force: true, recursive: true });
+  }
+});
+
+test("profile service restores global agent configs on exit", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-global-profile-exit-"));
+  try {
+    const claudeFile = path.join(root, "claude", "settings.json");
+    const codexFile = path.join(root, "codex", "config.toml");
+    const zcodeFile = path.join(root, "zcode", "cli", "config.json");
+    const zcodeRoot = path.dirname(path.dirname(zcodeFile));
+    const zcodeV2File = path.join(zcodeRoot, "v2", "config.json");
+    const zcodeCacheFile = path.join(zcodeRoot, "v2", "bots-model-cache.v2.json");
+    const files = [claudeFile, codexFile, zcodeFile, zcodeV2File, zcodeCacheFile];
+    const originals = new Map(files.map((file, index) => [file, `original-${index}\n`]));
+    const latestSnapshots = new Map(files.map((file, index) => [file, `latest-${index}\n`]));
+
+    for (const [file, original] of originals) {
+      mkdirSync(path.dirname(file), { recursive: true });
+      if (file === zcodeCacheFile) {
+        writeFileSync(`${file}.ccr-original-missing`, "");
+      } else {
+        writeFileSync(`${file}.ccr-original`, original);
+      }
+      writeFileSync(`${file}.ccr-backup-2026-07-11T00-00-00-000Z`, latestSnapshots.get(file));
+    }
+    writeFileSync(claudeFile, `${JSON.stringify({
+      apiKeyHelper: "ccr-claude-code-api-key-test",
+      env: {
+        ANTHROPIC_API_BASE_URL: "http://127.0.0.1:3456",
+        ANTHROPIC_BASE_URL: "http://127.0.0.1:3456",
+        CLAUDE_AGENT_API_BASE_URL: "http://127.0.0.1:3456"
+      }
+    })}\n`);
+    writeFileSync(codexFile, "# BEGIN CCR managed profile\nmodel = \"test\"\n# END CCR managed profile\n");
+    for (const file of [zcodeFile, zcodeV2File]) {
+      writeFileSync(file, `${JSON.stringify({ provider: { "claude-code-router": {} } })}\n`);
+    }
+    writeFileSync(zcodeCacheFile, `${JSON.stringify({ providers: [{ id: "claude-code-router" }] })}\n`);
+
+    const statuses = restoreGlobalProfileConfigsOnExit([
+      {
+        agent: "claude-code", enabled: true, env: {}, id: "claude", model: "test", name: "Claude",
+        scope: "global", settingsFile: claudeFile, smallFastModel: "", surface: "cli"
+      },
+      {
+        agent: "codex", configFile: codexFile, enabled: true, env: {}, id: "codex", model: "test", name: "Codex",
+        providerId: "claude-code-router", scope: "global", surface: "cli"
+      },
+      {
+        agent: "zcode", configFile: zcodeFile, enabled: true, env: {}, id: "zcode", model: "test", name: "ZCode",
+        providerId: "claude-code-router", scope: "global", surface: "app"
+      }
+    ], { manageMarker: false });
+
+    assert.equal(statuses.length, 3);
+    assert.equal(statuses.every((status) => status.ok), true);
+    for (const [file, latest] of latestSnapshots) {
+      assert.equal(readFileSync(file, "utf8"), latest);
+    }
+
+    writeFileSync(codexFile, "# BEGIN CCR managed profile\nmodel = \"test\"\n# END CCR managed profile\n");
+    for (const file of [zcodeFile, zcodeV2File]) {
+      writeFileSync(file, `${JSON.stringify({ provider: { "claude-code-router": {} } })}\n`);
+    }
+    writeFileSync(zcodeCacheFile, `${JSON.stringify({ providers: [{ id: "claude-code-router" }] })}\n`);
+    const inactiveStatuses = restoreInactiveGlobalProfileConfigs([
+      {
+        agent: "codex", configFile: codexFile, enabled: false, env: {}, id: "codex", model: "test", name: "Codex",
+        providerId: "claude-code-router", scope: "ccr", surface: "cli"
+      },
+      {
+        agent: "zcode", configFile: zcodeFile, enabled: false, env: {}, id: "zcode", model: "test", name: "ZCode",
+        providerId: "claude-code-router", scope: "ccr", surface: "app"
+      }
+    ]);
+    assert.equal(inactiveStatuses.filter((status) => status.client === "codex").length, 1);
+    assert.equal(inactiveStatuses.filter((status) => status.client === "zcode").length, 3);
+    for (const [file, latest] of latestSnapshots) {
+      if (file !== claudeFile) {
+        assert.equal(readFileSync(file, "utf8"), latest);
+      }
+    }
+  } finally {
+    rmSync(root, { force: true, recursive: true });
   }
 });
