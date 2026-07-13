@@ -1,11 +1,35 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createDefaultAppConfig } from "../../packages/core/src/config/default-config.ts";
 import { CONFIGDIR } from "../../packages/core/src/config/constants.ts";
-import { applyProfileConfig, cleanupGeneratedBinBackups, restoreInactiveGlobalProfileConfigs } from "../../packages/core/src/profiles/service.ts";
+import { applyProfileConfig, cleanupGeneratedBinBackups, resolveGrokSourceHome, restoreInactiveGlobalProfileConfigs } from "../../packages/core/src/profiles/service.ts";
+
+test("Grok profile source home follows profile and process environment overrides", () => {
+  const previous = {
+    GROK_CONFIG_DIR: process.env.GROK_CONFIG_DIR,
+    GROK_HOME: process.env.GROK_HOME,
+    GROK_STORAGE_DIR: process.env.GROK_STORAGE_DIR
+  };
+  try {
+    process.env.GROK_HOME = "/tmp/process-grok-home";
+    process.env.GROK_STORAGE_DIR = "/tmp/process-grok-storage";
+    process.env.GROK_CONFIG_DIR = "/tmp/process-grok-config";
+    assert.equal(resolveGrokSourceHome({ env: {} }), path.resolve("/tmp/process-grok-home"));
+    assert.equal(resolveGrokSourceHome({ env: { GROK_HOME: "/tmp/profile-grok-home" } }), path.resolve("/tmp/profile-grok-home"));
+    assert.equal(resolveGrokSourceHome({ env: { GROK_STORAGE_DIR: "/tmp/profile-grok-storage" } }), path.resolve("/tmp/profile-grok-storage"));
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+});
 
 test("profile service cleans stale generated bin backups only", () => {
   const configDir = mkdtempSync(path.join(os.tmpdir(), "ccr-generated-bin-cleanup-"));
@@ -207,6 +231,85 @@ test("profile service injects ToolHub MCP into Codex config", { skip: !process.e
   assert.match(content, /TOOLHUB_OPENAI_API_KEY = "ccr-codex-profile-test"/);
   assert.match(content, new RegExp(`TOOLHUB_OPENAI_BASE_URL = "http://127\\.0\\.0\\.1:${config.gateway.port}/v1"`));
   assert.match(content, /TOOLHUB_OPENAI_MODEL = "Provider\/model"/);
+});
+
+test("profile service writes a Grok CLI wrapper that points model discovery and inference to CCR", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const profileId = "grok-gateway-test";
+  const sourceGrokHome = path.join(process.env.HOME, ".grok");
+  mkdirSync(path.join(sourceGrokHome, "sessions"), { recursive: true });
+  mkdirSync(path.join(sourceGrokHome, "skills"), { recursive: true });
+  writeFileSync(path.join(sourceGrokHome, "auth.json"), "oauth credentials must not be shared");
+  writeFileSync(path.join(sourceGrokHome, "config.toml"), "[ui]\ncompact_mode = false\n");
+  const profileGrokHome = path.join(CONFIGDIR, "profiles", profileId, "grok");
+  const profileGrokConfig = path.join(profileGrokHome, "config.toml");
+  if (process.platform !== "win32") {
+    mkdirSync(profileGrokHome, { recursive: true });
+    symlinkSync(path.join(sourceGrokHome, "config.toml"), profileGrokConfig);
+  }
+  const config = createDefaultAppConfig({
+    generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
+  });
+  config.Providers = [
+    {
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      models: ["model"],
+      name: "Provider"
+    }
+  ];
+  config.preferredProvider = "Provider";
+  config.APIKEY = "ccr-grok-profile-test";
+  config.APIKEYS = [
+    {
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: `profile:${profileId}`,
+      key: "ccr-grok-profile-test",
+      name: "Profile: Grok Gateway Test"
+    }
+  ];
+  config.profile.profiles = [
+    {
+      agent: "grok",
+      enabled: true,
+      env: {
+        CCR_GROK_BIN: "/custom/bin/grok",
+        GROK_HOME: "~/.grok",
+        GROK_MODELS_BASE_URL: "https://ignored.example/v1",
+        USER_VALUE: "kept"
+      },
+      id: profileId,
+      model: "Provider/model",
+      name: "Grok Gateway Test",
+      scope: "ccr",
+      surface: "cli"
+    }
+  ];
+
+  const result = await applyProfileConfig(config);
+  assert.equal(result.clients.length, 1);
+  assert.equal(result.clients[0].client, "grok");
+  assert.equal(result.clients[0].ok, true);
+
+  const commandExtension = process.platform === "win32" ? ".cmd" : "";
+  const wrapperFile = path.join(CONFIGDIR, "bin", `ccr-grok-cli-wrapper-${profileId}${commandExtension}`);
+  const content = readFileSync(wrapperFile, "utf8");
+  assert.match(content, new RegExp(`GROK_MODELS_BASE_URL.*http://127\\.0\\.0\\.1:${config.gateway.port}/v1`));
+  assert.match(content, new RegExp(`GROK_MODELS_LIST_URL.*http://127\\.0\\.0\\.1:${config.gateway.port}/v1/models`));
+  assert.match(content, /XAI_API_KEY.*ccr-grok-profile-test/);
+  assert.match(content, /GROK_DEFAULT_MODEL.*Provider\/model/);
+  assert.match(content, new RegExp(`GROK_HOME.*profiles.*${profileId}.*grok`));
+  assert.match(content, /USER_VALUE.*kept/);
+  assert.match(content, /NO_PROXY.*127\.0\.0\.1,localhost,::1/);
+  assert.match(content, /\/custom\/bin\/grok/);
+  assert.equal(content.includes("https://ignored.example/v1"), false);
+
+  assert.equal(readFileSync(profileGrokConfig, "utf8"), "[ui]\ncompact_mode = false\n");
+  assert.equal(lstatSync(profileGrokConfig).isSymbolicLink(), false);
+  writeFileSync(profileGrokConfig, "[ui]\ncompact_mode = true\n");
+  assert.equal(readFileSync(path.join(sourceGrokHome, "config.toml"), "utf8"), "[ui]\ncompact_mode = false\n");
+  assert.equal(existsSync(path.join(profileGrokHome, "sessions")), true);
+  assert.equal(existsSync(path.join(profileGrokHome, "skills")), true);
+  assert.equal(existsSync(path.join(profileGrokHome, "auth.json")), false);
 });
 
 test("profile service clears stale Claude Code ToolHub artifacts when no gateway models are available", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {

@@ -102,6 +102,7 @@ import { cn } from "@/lib/utils";
 import appLogoUrl from "@/assets/logo.png";
 import claudeCodeLogoUrl from "@/assets/agent-logos/claude-code.png";
 import codexLogoUrl from "@/assets/agent-logos/codex.png";
+import grokLogoUrl from "@/assets/agent-logos/grok.ico";
 import zcodeLogoUrl from "@/assets/agent-logos/zcode.png";
 import onboardingMascotSpriteUrl from "@/assets/onboarding/mascot-transition.svg";
 import anthropicProviderIconUrl from "@/assets/provider-icons/anthropic.png";
@@ -784,6 +785,15 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
       surface
     };
   }
+  if (profile.agent === "grok") {
+    return {
+      ...createProfileDraft("grok", profile.name),
+      envRows: keyValueRowsFromRecord(codexCompatibleProfileEnv(profile.env ?? {})),
+      model: profile.model,
+      scope: "ccr",
+      surface: "cli"
+    };
+  }
   const surface = profile.agent === "zcode" ? "app" : normalizeProfileSurfaceForForm(profile.surface);
   return {
     ...createProfileDraft(profile.agent, profile.name),
@@ -817,6 +827,9 @@ export function isProfileDraftSubmittable(draft: AddProfileDraft): boolean {
     return false;
   }
   if (draft.agent === "claude-code") {
+    return true;
+  }
+  if (draft.agent === "grok") {
     return true;
   }
   return (
@@ -1407,6 +1420,13 @@ export function profileSummaryItems(
     ];
   }
 
+  if (profile.agent === "grok") {
+    return [
+      { label: t("Model"), value: modelValue },
+      ...envSummaryItems
+    ];
+  }
+
   return [
     { label: t("Model"), value: modelValue },
     { label: t("Provider ID"), value: profile.providerId ?? "claude-code-router" },
@@ -1442,6 +1462,18 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
       settingsFile: profile.settingsFile?.trim() || "~/.claude/settings.json",
       smallFastModel: profile.smallFastModel?.trim() || "",
       surface
+    };
+  }
+  if (agent === "grok") {
+    return {
+      agent: "grok",
+      enabled: profile.enabled,
+      env: codexCompatibleProfileEnv(env),
+      id: profile.id || `profile-${index + 1}`,
+      model,
+      name,
+      scope: "ccr",
+      surface: "cli"
     };
   }
   return {
@@ -1517,6 +1549,8 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
     ? "claude-code"
     : rawAgent === "codex"
       ? "codex"
+      : rawAgent === "grok" || rawAgent === "grok-cli" || rawAgent === "grok cli"
+        ? "grok"
       : rawAgent === "zcode" || rawAgent === "z-code" || rawAgent === "z code"
         ? "zcode"
         : undefined;
@@ -1594,6 +1628,9 @@ export function profileAgentLabel(agent: ProfileConfig["agent"]): string {
   if (agent === "zcode") {
     return "ZCode";
   }
+  if (agent === "grok") {
+    return "Grok CLI";
+  }
   return "Codex";
 }
 
@@ -1620,6 +1657,9 @@ export function profileSurfaceLabel(surface: ProfileSurface): string {
 export function profileOpenSurfaces(profile: ProfileConfig): ProfileOpenSurface[] {
   if (profile.agent === "zcode") {
     return ["app"];
+  }
+  if (profile.agent === "grok") {
+    return ["cli"];
   }
   const surface = normalizeProfileSurface(profile.surface);
   if (surface === "cli") {
@@ -1649,6 +1689,9 @@ export function profileAgentLogoUrl(agent: ProfileConfig["agent"]): string {
   if (agent === "zcode") {
     return zcodeLogoUrl;
   }
+  if (agent === "grok") {
+    return grokLogoUrl;
+  }
   return codexLogoUrl;
 }
 
@@ -1657,11 +1700,11 @@ function normalizeCodexCompatibleAgent(agent: ProfileConfig["agent"]): "codex" |
 }
 
 function normalizeProfileAgent(agent: ProfileConfig["agent"]): ProfileConfig["agent"] {
-  return agent === "zcode" ? "zcode" : agent === "codex" ? "codex" : "claude-code";
+  return agent === "zcode" ? "zcode" : agent === "grok" ? "grok" : agent === "codex" ? "codex" : "claude-code";
 }
 
 function normalizeProfileSurfaceForAgent(agent: ProfileConfig["agent"], surface: unknown): ProfileSurface {
-  return agent === "zcode" ? "app" : normalizeProfileSurface(surface);
+  return agent === "zcode" ? "app" : agent === "grok" ? "cli" : normalizeProfileSurface(surface);
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {

@@ -2341,6 +2341,19 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         };
       }
 
+      if (agent === "grok") {
+        return {
+          agent,
+          enabled,
+          env: codexCompatibleProfileEnv(env),
+          id,
+          model,
+          name,
+          scope: "ccr",
+          surface: "cli"
+        };
+      }
+
       const appPath = readProfileAppPath(item, agent);
       return {
         agent,
@@ -2397,6 +2410,9 @@ function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
   if (normalized === "codex") {
     return "codex";
   }
+  if (normalized === "grok" || normalized === "grok-cli" || normalized === "grok cli") {
+    return "grok";
+  }
   if (normalized === "zcode" || normalized === "z-code" || normalized === "z code") {
     return "zcode";
   }
@@ -2409,6 +2425,9 @@ function defaultProfileAgentName(agent: ProfileConfig["agent"]): string {
   }
   if (agent === "zcode") {
     return "ZCode";
+  }
+  if (agent === "grok") {
+    return "Grok CLI";
   }
   return "Codex";
 }

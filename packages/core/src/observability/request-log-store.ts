@@ -160,6 +160,7 @@ type AgentLogDetails = {
 
 type AgentTextSignalOptions = {
   allowStandaloneCodex?: boolean;
+  allowStandaloneGrok?: boolean;
 };
 
 type AgentToolCallDetail = {
@@ -997,7 +998,10 @@ function inferAgentKind(
     stringifyForSearch(responsePayloads)
   ].join(" ").toLowerCase();
 
-  const bodyAgent = inferAgentFromText(haystack, { allowStandaloneCodex: false });
+  const bodyAgent = inferAgentFromText(haystack, {
+    allowStandaloneCodex: false,
+    allowStandaloneGrok: false
+  });
   if (bodyAgent) {
     return bodyAgent;
   }
@@ -1041,6 +1045,7 @@ function readAgentUserAgent(headers: Record<string, string | string[]>): string 
 function inferAgentFromText(value: string, options: AgentTextSignalOptions = {}): AgentKind | undefined {
   const normalized = value.toLowerCase();
   const allowStandaloneCodex = options.allowStandaloneCodex ?? true;
+  const allowStandaloneGrok = options.allowStandaloneGrok ?? true;
   if (normalized.includes("claude design") || normalized.includes("claude-design") || normalized.includes("claude.ai/design")) {
     return "claude-design";
   }
@@ -1051,6 +1056,16 @@ function inferAgentFromText(value: string, options: AgentTextSignalOptions = {})
     /(^|[^a-z0-9])zcode([/_\s-]|$)/.test(normalized)
   ) {
     return "zcode";
+  }
+  if (
+    normalized.includes("xai-grok-cli") ||
+    (allowStandaloneGrok && (
+      normalized.includes("grok-cli") ||
+      normalized.includes("grok cli") ||
+      /(^|[^a-z0-9])grok([/_\s-]|$)/.test(normalized)
+    ))
+  ) {
+    return "grok";
   }
   if (
     normalized.includes("openai-codex") ||
@@ -2475,11 +2490,11 @@ function normalizeAgentAnalysisRange(value: UsageStatsRange | undefined): UsageS
 }
 
 function normalizeAgentFilter(value: AgentAnalysisFilter["agent"] | undefined): AgentKind | "all" {
-  return value === "claude-code" || value === "codex" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : "all";
 }
 
 function normalizeSessionAgentFilter(value: AgentAnalysisFilter["sessionAgent"] | undefined): AgentKind | undefined {
-  return value === "claude-code" || value === "codex" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
+  return value === "claude-code" || value === "codex" || value === "grok" || value === "zcode" || value === "claude-design" || value === "unknown" ? value : undefined;
 }
 
 function agentDisplayName(agent: AgentKind): string {
@@ -2491,6 +2506,9 @@ function agentDisplayName(agent: AgentKind): string {
   }
   if (agent === "codex") {
     return "Codex";
+  }
+  if (agent === "grok") {
+    return "Grok CLI";
   }
   if (agent === "zcode") {
     return "ZCode";

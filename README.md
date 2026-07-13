@@ -41,7 +41,7 @@
 
 </div>
 
-Claude Code Router Desktop is a local control plane for coding agents. It gives Claude Code, Codex, ZCode, and compatible API clients one stable local endpoint, then lets you decide which provider, model, routing policy, tool stack, and account should handle each request.
+Claude Code Router Desktop is a local control plane for coding agents. It gives Claude Code, Codex, Grok CLI, ZCode, and compatible API clients one stable local endpoint, then lets you decide which provider, model, routing policy, tool stack, and account should handle each request.
 
 Instead of wiring every agent to every model service by hand, CCR centralizes the model layer on your own machine: provider presets, custom endpoints, credential pools, fallback chains, Fusion-enhanced models, MCP tools, request logs, account usage, and desktop launch profiles all live in one app.
 
@@ -53,7 +53,7 @@ Instead of wiring every agent to every model service by hand, CCR centralizes th
 
 | Goal | CCR gives you |
 | --- | --- |
-| Keep the same agent workflow while switching models | Local profiles for Claude Code, Codex, and ZCode, with CLI/app launch entries and per-profile model selection |
+| Keep the same agent workflow while switching models | Local profiles for Claude Code, Codex, Grok CLI, and ZCode, with CLI/app launch entries and per-profile model selection |
 | Try many providers without rebuilding config every time | Built-in provider presets, custom OpenAI/Anthropic/Gemini-compatible endpoints, protocol probing, model discovery, and connectivity checks |
 | Make routing a runtime policy | Built-in agent routing, conditional rules, request rewrites, model-prefix routing, retries, and fallback model chains |
 | Control cost and quota pressure | Credential pools, key rotation, local usage limits, account balance snapshots, token/cost dashboards, and tray status |
@@ -71,7 +71,7 @@ Instead of wiring every agent to every model service by hand, CCR centralizes th
 
 ## Feature Highlights
 
-- **Agent profiles**: create profiles for Claude Code, Codex, and ZCode with model overrides, scopes, CLI/app launch surfaces, environment settings, and multi-instance app workflows.
+- **Agent profiles**: create profiles for Claude Code, Codex, Grok CLI, and ZCode with model overrides, scopes, CLI/app launch surfaces, environment settings, and multi-instance app workflows.
 - **Provider management**: add preset providers or custom endpoints; probe supported protocols; detect model lists; run real connectivity checks; manage single keys or credential pools; import local agent login state where supported.
 - **Model catalog**: search all configured models, edit model descriptions, and use those descriptions to guide Claude Code subagent, Task, and Workflow model selection.
 - **Routing engine**: combine built-in agent routing, request-header/body conditions, model-prefix routing, request rewrites, retry policy, and ordered fallback targets.
@@ -122,7 +122,7 @@ Open **Server** and click **Start**. After the page shows Running, CCR listens o
 
 ### 4. Connect your agent tool
 
-Open **Agent Config** and choose the client you want to use. Configure Claude Code, Codex, or ZCode, select the target model and effect scope, then apply the config. For app entries, use **Open Agent** to launch the target app through CCR.
+Open **Agent Config** and choose the client you want to use. Configure Claude Code, Codex, Grok CLI, or ZCode, select the target model and effect scope, then apply the config. For app entries, use **Open Agent** to launch the target app through CCR.
 
 ### 5. Monitor and adjust
 

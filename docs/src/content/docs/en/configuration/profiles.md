@@ -2,7 +2,7 @@
 title: Agent Config
 pageTitle: Agent Config
 eyebrow: Detailed Configuration
-lead: Create reusable launch configurations for Claude Code, Codex, and ZCode, and open separate agent instances from different configs.
+lead: Create reusable launch configurations for Claude Code, Codex, Grok CLI, and ZCode, and open separate agent instances from different configs.
 ---
 
 ## Configuration Flow
@@ -14,7 +14,7 @@ lead: Create reusable launch configurations for Claude Code, Codex, and ZCode, a
 5. If the entry mode includes App, optionally bind a Bot and choose whether to forward agent messages or enable handoff.
 6. Save the config, then open it from the Agent Config card: the terminal button copies the CLI command, and the play button starts the App instance.
 
-During trial, prefer **Only opened from CCR** and always open the agent from CCR. That keeps the config limited to CCR-launched instances and avoids changing the Claude Code, Codex, or ZCode setup you open directly from the system.
+During trial, prefer **Only opened from CCR** and always open the agent from CCR. That keeps the config limited to CCR-launched instances and avoids changing the Claude Code, Codex, Grok CLI, or ZCode setup you open directly from the system.
 
 ## Multi-Instance Mechanism
 
@@ -23,7 +23,7 @@ Every Agent Config has its own `id` and name. When CCR opens an agent, it finds 
 | Mechanism | Actual behavior |
 | --- | --- |
 | Separate config files | With **Only opened from CCR**, Claude Code and Codex write CCR-managed config files in directories separated by config `id` |
-| Separate launchers | Claude Code uses a separate launch wrapper; Codex and ZCode use separate middleware launchers; filenames are also separated by config `id` or name |
+| Separate launchers | Claude Code and Grok CLI use separate launch wrappers; Codex and ZCode use separate middleware launchers; filenames are also separated by config `id` or name |
 | Separate app data directories | When opening App mode, Claude App, ChatGPT (the renamed Codex desktop app), and ZCode App use user-data directories separated by config `id` |
 | Runtime state | CCR tracks running app instances by entry mode and config `id`; reopening the same config activates the existing window, while a different config can open a separate instance |
 
@@ -33,11 +33,11 @@ This lets you create multiple configs for the same agent, such as "Claude Code -
 
 | Option | Applies to | Description |
 | --- | --- | --- |
-| Agent | All | Claude Code, Codex, or ZCode. ZCode supports App only. |
-| Config name | All | Identifies the config in CCR and can be used as the `ccr <config-name>` launch target. Names can contain spaces; copied commands are quoted automatically. |
+| Agent | All | Claude Code, Codex, Grok CLI, or ZCode. Grok CLI supports CLI only; ZCode supports App only. |
+| Config name | All | Identifies the config in CCR and can be used as the `ccr-app <config-name>` launch target. Names can contain spaces; copied commands are quoted automatically. |
 | Enabled | All | Disabled configs are not exposed as active launch entries and are not applied as effective startup configs. |
 | Effect scope | All | **Only opened from CCR** uses CCR-managed isolated config; **System default** writes the agent's default config. Only one enabled system-default config is allowed per agent. |
-| Entry mode | Claude Code, Codex | `CLI & APP` exposes both CLI and App entry points; `CLI only` only generates a CLI command; `App only` only exposes the App entry point. |
+| Entry mode | Claude Code, Codex, Grok CLI | `CLI & APP` exposes both CLI and App entry points; `CLI only` only generates a CLI command; `App only` only exposes the App entry point. Grok CLI is fixed to `CLI only`. |
 | Model | All | Default model for the opened agent, either a provider model or Fusion model. For Claude Code, leaving it empty keeps the Claude Code default. |
 | Bot | App entry | Bot forwarding only works for App mode opened from CCR. CLI does not forward Bot messages yet. |
 | Environment variables | All | Extra environment variables injected into this config. Claude Code includes `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1` by default so gateway model discovery is enabled. |
@@ -77,9 +77,15 @@ Claude App and Claude Code CLI use different model-list adapters:
 | Environment variables | Injected into Codex CLI or ChatGPT. Claude Code-specific model discovery variables are not passed to Codex. |
 | Bot | Applies only to the ChatGPT app entry. |
 
-After saving, use the terminal button on the config card to copy the Codex CLI command, for example `ccr "Codex - Work"`. Use the play button to open ChatGPT. Following the CodexL launch model, CCR starts the Electron executable inside the ChatGPT app bundle directly, gives it an isolated user-data directory, and points `CODEX_CLI_PATH` at the CCR middleware. The middleware forwards app-server traffic to ChatGPT's bundled Codex CLI and only adapts the account display: an existing valid ChatGPT token is shown as the real ChatGPT account, while a profile without credentials uses a tokenless ChatGPT-shaped workspace identity so the desktop renderer keeps model selection available without storing a real user login. To make the native app-server select its official API marketplace, CCR creates the exact `ccr-local-profile` bootstrap only during process startup and removes it after the first native response; it is also cleaned after startup or abnormal exit and is never retained as login state. Every other authentication file is preserved. Older `Codex.app` installations remain supported.
+After saving, use the terminal button on the config card to copy the Codex CLI command, for example `ccr-app "Codex - Work"`. Use the play button to open ChatGPT. Following the CodexL launch model, CCR starts the Electron executable inside the ChatGPT app bundle directly, gives it an isolated user-data directory, and points `CODEX_CLI_PATH` at the CCR middleware. The middleware forwards app-server traffic to ChatGPT's bundled Codex CLI and only adapts the account display: an existing valid ChatGPT token is shown as the real ChatGPT account, while a profile without credentials uses a tokenless ChatGPT-shaped workspace identity so the desktop renderer keeps model selection available without storing a real user login. To make the native app-server select its official API marketplace, CCR creates the exact `ccr-local-profile` bootstrap only during process startup and removes it after the first native response; it is also cleaned after startup or abnormal exit and is never retained as login state. Every other authentication file is preserved. Older `Codex.app` installations remain supported.
 
 Model and public plugin listings are not synthesized by the middleware. The native Codex app-server reads the generated `model_catalog_json` and handles `model/list` plus public `plugin/list` requests unchanged. This lets Codex refresh the official public [`openai/plugins`](https://github.com/openai/plugins) Git marketplace over the network. In a virtual workspace, only account-private marketplace requests are answered with an explicit empty result because the native service requires real ChatGPT authentication for those sections; they are never replaced with local plugins. Any downloaded Git checkout is owned only by Codex as its normal last-known-good data, not used by CCR as a replacement catalog.
+
+### Grok CLI
+
+Grok CLI profiles are fixed to **Only opened from CCR** and **CLI only**. After saving, copy and run the card command, for example `ccr-app "Grok - Work"`.
+
+The generated wrapper sets Grok's model base URL and model-list URL to CCR's `/v1` gateway, supplies the profile-specific CCR API key, and sets the selected CCR model as the default. If the CCR Desktop gateway is not running, `ccr-app` starts a shared temporary service for Grok sessions and cleans it up after the last session exits. Grok CLI does not expose a separate user-config-file option, so CCR points `GROK_HOME` at a profile-specific directory. Its `config.toml` starts as a private copy of the user's config and can change independently, while `auth.json` is excluded to prevent a local xAI OAuth token from overriding the CCR key. Plugins, skills, and sessions remain shared with the original Grok home. Inside Grok CLI, use `/model` to switch among the provider and Fusion models returned by CCR; switched requests continue through CCR.
 
 ### ZCode
 
@@ -98,7 +104,7 @@ ZCode supports App only, so its entry mode is fixed to `App only`. The `Show all
 
 | Mode | How to open | Best for | Key differences |
 | --- | --- | --- | --- |
-| CLI | Click the terminal button to copy the command, then run `ccr <config-name>` in a terminal | Working inside a project directory, shell workflows, scripting | Uses the config-specific wrapper or middleware launcher; usually stays in the terminal without opening a desktop window; Bot forwarding support is pending. |
+| CLI | Click the terminal button to copy the command, then run `ccr-app <config-name>` in a terminal | Working inside a project directory, shell workflows, scripting | Uses the config-specific wrapper or middleware launcher; usually stays in the terminal without opening a desktop window; Bot forwarding support is pending. |
 | App | Click the play button in the CCR desktop app | Desktop windows, side-by-side instances, Bot forwarding, handoff | Uses a separate user-data directory per Agent Config; reopening the same config activates the existing window, while different configs can run in parallel. |
 | CLI & APP | One config exposes both CLI and App entry points | Reusing the same model config in both terminal and desktop App workflows | Both entries share the config name, model, effect scope, and environment variables, but launch differently. |
 
@@ -115,6 +121,10 @@ When opening Claude App from the desktop app, CCR also prepares a separate user-
 Codex config writes `config.toml` and a model catalog file. With **Only opened from CCR**, CCR stores those files in a directory separated by config `id`.
 
 Codex supports CLI and App. CLI opens through the launcher for the selected config; App launches ChatGPT, uses a separate user-data directory, and passes the selected model and provider into the app.
+
+### Grok CLI
+
+Grok CLI supports CLI only. CCR opens it through a profile-specific wrapper that injects the CCR model gateway, model discovery endpoint, API key, and default model. A profile-specific Grok home excludes xAI OAuth credentials so inference reliably uses the CCR key without rewriting the user's original Grok home.
 
 ### ZCode
 

@@ -39,6 +39,7 @@ const grokProviderId = "grok-cli-api";
 const grokProviderName = "Grok CLI API";
 const grokDefaultOidcIssuer = "https://auth.x.ai";
 const grokOauthDefaultTimeoutMs = 8_000;
+const grokFallbackClientVersion = "0.2.93";
 
 const grokBillingResetPaths = [
   "$.billingPeriodEnd",
@@ -435,6 +436,7 @@ function importGrokProviderWithAuth(
 }
 
 export function grokProviderAccountConfig(): ProviderAccountConfig {
+  const clientVersion = grokClientVersion();
   return {
     connectors: [
       {
@@ -442,7 +444,7 @@ export function grokProviderAccountConfig(): ProviderAccountConfig {
         endpoint: grokBillingEndpoint(),
         headers: {
           "x-grok-client-identifier": "xai-grok-cli",
-          "x-grok-client-version": "0.2.93"
+          "x-grok-client-version": clientVersion
         },
         mapping: grokBillingMapping,
         type: "http-json"
@@ -452,7 +454,7 @@ export function grokProviderAccountConfig(): ProviderAccountConfig {
         endpoint: grokSubscriptionEndpoint(),
         headers: {
           "x-grok-client-identifier": "xai-grok-cli",
-          "x-grok-client-version": "0.2.93"
+          "x-grok-client-version": clientVersion
         },
         mapping: { meters: [] },
         parser: "grok-subscription",
@@ -521,11 +523,22 @@ function grokOauthPlugin(suffix: string, token: string, providerName?: string): 
     ...bearerAuthPlugin(suffix, token, {}, providerName),
     request: {
       headers: {
+        "x-grok-client-identifier": "xai-grok-cli",
+        "x-grok-client-version": grokClientVersion(),
         "x-grok-model-override": "{{ model }}"
       },
       strict: true
     }
   };
+}
+
+export function grokClientVersion(): string {
+  const explicit = process.env.GROK_CLI_VERSION?.trim();
+  if (explicit) {
+    return explicit;
+  }
+  const payload = readJsonRecord(path.join(grokStorageRoot(), "version.json"));
+  return readString(payload?.version) || grokFallbackClientVersion;
 }
 
 async function refreshGrokAuth(auth: GrokTokenSet): Promise<GrokTokenSet> {

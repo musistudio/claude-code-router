@@ -29,6 +29,13 @@ type ProfileOpenCommandOptions = {
   ensureLauncher?: boolean;
 };
 
+export class ProfileGatewayUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProfileGatewayUnavailableError";
+  }
+}
+
 type ProfileAppLaunchResult = {
   child: ChildProcess;
   claudeDesignProxy?: boolean;
@@ -227,7 +234,7 @@ async function ensureGatewayConfigRunning(
     }
     if (existingGateway.state === "unavailable") {
       if (!startIfMissing) {
-        throw new Error(`CCR gateway is not running at ${profileGatewayEndpoint(config)}. Start CCR Desktop or run ccr start before opening ${appName}.`);
+        throw new ProfileGatewayUnavailableError(`CCR gateway is not running at ${profileGatewayEndpoint(config)}. Start CCR Desktop or run ccr start before opening ${appName}.`);
       }
     } else {
       throw new Error(existingGatewayConflictMessage(existingGateway, appName));
@@ -235,7 +242,7 @@ async function ensureGatewayConfigRunning(
   }
 
   if (!startIfMissing) {
-    throw new Error(`CCR gateway is not running at ${profileGatewayEndpoint(config)}. Start CCR Desktop or run ccr start before opening ${appName}.`);
+    throw new ProfileGatewayUnavailableError(`CCR gateway is not running at ${profileGatewayEndpoint(config)}. Start CCR Desktop or run ccr start before opening ${appName}.`);
   }
 
   const startedStatus = await gatewayService.start(config);

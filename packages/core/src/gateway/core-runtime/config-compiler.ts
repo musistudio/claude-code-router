@@ -3,7 +3,7 @@
  */
 import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol } from "@ccr/core/contracts/app";
 import { codexDefaultBaseUrl, readCodexAuth, readGrokAuth, resolveGrokAuth } from "@ccr/core/agents/local-providers/service";
-import { grokAccessTokenExpired } from "@ccr/core/agents/local-providers/grok";
+import { grokAccessTokenExpired, grokClientVersion } from "@ccr/core/agents/local-providers/grok";
 import { pluginService } from "@ccr/core/plugins/service";
 import { normalizeRouteSelector, providerRuntimeId } from "@ccr/core/routing/model-registry";
 import { isRecord, stringValue } from "@ccr/core/gateway/internal/value";
@@ -72,7 +72,8 @@ export async function compileCoreGatewayConfig(
       staticApiKeys: {
         keyBearerOnly: false,
         keyEnv: coreGatewayAuthTokenEnv,
-        keyHeader: coreGatewayAuthHeader
+        keyHeader: coreGatewayAuthHeader,
+        keys: [coreAuthToken]
       }
     },
     billing: {
@@ -255,6 +256,8 @@ async function withGrokOauthRuntimeDefaults(providerPlugins: unknown[]): Promise
     }
     const currentAuth = isRecord(plugin.auth) ? plugin.auth : {};
     const currentHeaders = isRecord(currentAuth.headers) ? currentAuth.headers : {};
+    const currentRequest = isRecord(plugin.request) ? plugin.request : {};
+    const currentRequestHeaders = isRecord(currentRequest.headers) ? currentRequest.headers : {};
     return {
       ...plugin,
       auth: {
@@ -263,6 +266,16 @@ async function withGrokOauthRuntimeDefaults(providerPlugins: unknown[]): Promise
           ...currentHeaders,
           authorization: `Bearer ${grokAuth.accessToken}`
         }
+      },
+      request: {
+        ...currentRequest,
+        headers: {
+          ...currentRequestHeaders,
+          "x-grok-client-identifier": "xai-grok-cli",
+          "x-grok-client-version": grokClientVersion(),
+          "x-grok-model-override": currentRequestHeaders["x-grok-model-override"] ?? "{{ model }}"
+        },
+        strict: currentRequest.strict ?? true
       }
     };
   });

@@ -57,7 +57,7 @@ If you want the overview to show balance or remaining quota, open the provider's
 
 ## Connect Agent Config
 
-Agent Config lets Claude Code, Codex, ZCode, and other agents use CCR's providers, routing, and model selection.
+Agent Config lets Claude Code, Codex, Grok CLI, ZCode, and other agents use CCR's providers, routing, and model selection.
 
 General guidance:
 
@@ -73,13 +73,17 @@ In **Agent Config**, choose Claude Code, set the model, small fast model, and se
 
 In **Agent Config**, choose Codex and confirm Provider ID, Provider Name, model, and config file. Only fill Codex CLI path and Codex home when you need a specific CLI or home directory.
 
+### Grok CLI
+
+Choose Grok CLI and select a default model, then run the copied `ccr-app <profile-name>` command. The command starts a shared temporary gateway service when CCR Desktop is not already serving one; concurrent Grok sessions keep it alive until the last session exits. CCR points Grok model discovery and inference at the local gateway; use `/model` inside Grok to switch CCR models.
+
 ### ZCode
 
 ZCode mainly uses model, Provider ID, Provider Name, and whether it is launched from CCR. It uses the App surface and does not need Codex CLI path fields.
 
 ### Reuse A Locally Logged-In Agent
 
-If Claude Code, Codex, or ZCode is already logged in on this machine, import it as a **Local Agent Provider** from **Providers** to reuse the existing authorization without applying for another key.
+If Claude Code, Codex, Grok CLI, or ZCode is already logged in on this machine, import it as a **Local Agent Provider** from **Providers** to reuse the existing authorization without applying for another key.
 
 ## Logs & Observability
 

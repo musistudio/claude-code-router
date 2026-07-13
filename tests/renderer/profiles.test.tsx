@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ProfileConfig } from "../../packages/core/src/contracts/app.ts";
 import { DeleteProfileDialog } from "../../packages/ui/src/pages/home/components/profiles.tsx";
 import { AppI18nContext, appCopy } from "../../packages/ui/src/pages/home/shared/i18n.tsx";
-import { createProfileDraft, profileDraftWithDetectedAppPath } from "../../packages/ui/src/pages/home/shared/profiles.ts";
+import { createProfileDraft, normalizeUnknownProfileItem, profileDraftWithDetectedAppPath } from "../../packages/ui/src/pages/home/shared/profiles.ts";
 
 const profile: ProfileConfig = {
   agent: "claude-code",
@@ -48,4 +48,28 @@ test("detected CHATGPT_APP_PATH is used as the Codex profile default", () => {
   assert.equal(draft.appPath, detectedPath);
   assert.equal(profileDraftWithDetectedAppPath({ ...draft, appPath: "/custom/chatgpt" }, detectedPath).appPath, "/custom/chatgpt");
   assert.equal(profileDraftWithDetectedAppPath(createProfileDraft("claude-code"), detectedPath).appPath, "");
+});
+
+test("Grok CLI profile defaults to a CCR-scoped CLI entry", () => {
+  const draft = createProfileDraft("grok");
+
+  assert.equal(draft.name, "Grok CLI");
+  assert.equal(draft.scope, "ccr");
+  assert.equal(draft.surface, "cli");
+});
+
+test("persisted Grok profiles are normalized to the supported launch scope", () => {
+  const profile = normalizeUnknownProfileItem({
+    agent: "grok-cli",
+    enabled: true,
+    id: "grok-work",
+    model: "Provider/model",
+    name: "Grok Work",
+    scope: "global",
+    surface: "app"
+  }, 0);
+
+  assert.equal(profile?.agent, "grok");
+  assert.equal(profile?.scope, "ccr");
+  assert.equal(profile?.surface, "cli");
 });

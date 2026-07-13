@@ -359,6 +359,98 @@ test("built-in Codex route preserves the requested model when the authenticated 
   assert.equal(result.decision.reason, "default");
 });
 
+test("Grok internal title requests use the authenticated profile model", async () => {
+  const plugin = createRouterPlugin({
+    agent: "grok",
+    profileModel: "Provider/claude-sonnet"
+  });
+  const result = await plugin.routeRequest({
+    body: {
+      model: "grok-build"
+    },
+    headers: {
+      "user-agent": "grok/0.2.99"
+    },
+    method: "POST",
+    url: "/v1/responses"
+  });
+
+  assert.equal(result.body.model, "Provider/claude-sonnet");
+  assert.equal(result.decision.model, "Provider/claude-sonnet");
+  assert.equal(result.decision.reason, "builtin:grok-internal");
+});
+
+test("Grok internal title requests use the gateway default when the profile model is unset", async () => {
+  const plugin = createRouterPlugin({
+    agent: "grok",
+    profileModel: ""
+  });
+  const result = await plugin.routeRequest({
+    body: {
+      model: "grok-build"
+    },
+    headers: {
+      "user-agent": "grok/0.2.99"
+    },
+    method: "POST",
+    url: "/v1/responses"
+  });
+
+  assert.equal(result.body.model, "Provider/claude-sonnet");
+  assert.equal(result.decision.reason, "builtin:grok-internal");
+});
+
+test("Grok explicit model selection routes chat requests through a Responses provider", async () => {
+  const config = {
+    CUSTOM_ROUTER_PATH: "",
+    Providers: [{
+      api_base_url: "https://cli-chat-proxy.grok.com/v1",
+      api_key: "ccr-local-agent-login",
+      capabilities: [{
+        baseUrl: "https://cli-chat-proxy.grok.com/v1",
+        type: "openai_responses"
+      }],
+      models: ["grok-4.5"],
+      name: "Grok CLI API",
+      type: "openai_responses"
+    }],
+    Router: {
+      builtInRules: {
+        "claude-code": { enabled: true },
+        codex: { enabled: true }
+      },
+      fallback: { mode: "off", models: [], retryCount: 1 },
+      rules: []
+    },
+    profile: {
+      enabled: true,
+      profiles: [{
+        agent: "grok",
+        enabled: true,
+        id: "grok-cli",
+        model: "Grok CLI API/grok-4.5",
+        name: "Grok CLI",
+        scope: "ccr"
+      }]
+    },
+    virtualModelProfiles: []
+  };
+  const attempt = prepareGatewayUpstreamAttemptForTest({
+    body: {
+      messages: [{ content: "OK", role: "user" }],
+      model: "Grok CLI API/grok-4.5"
+    },
+    config,
+    headers: {},
+    method: "POST",
+    path: "/v1/chat/completions",
+    routedModel: "Grok CLI API/grok-4.5"
+  });
+
+  assert.equal(attempt.body.model, "grok-4.5");
+  assert.match(attempt.headers["x-target-provider"], /^provider-grok-cli-api-[a-f0-9]{10}::openai_responses$/);
+});
+
 test("built-in Claude Code route does not inject Claude Code native tool search", async () => {
   const plugin = createRouterPlugin({
     profileModel: "Provider/claude-sonnet",

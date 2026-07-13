@@ -35,6 +35,8 @@ import {
 
 let electronProcess = null;
 let restartTimer = null;
+let restartInFlight = false;
+let restartQueued = false;
 let pendingRestartReasons = [];
 const watchSignatures = new Map();
 let shuttingDown = false;
@@ -281,34 +283,81 @@ function scheduleRestart(reason = "unknown trigger") {
   restartTimer = setTimeout(restartElectron, restartDelayMs);
 }
 
-function restartElectron() {
+async function restartElectron() {
+  if (restartInFlight) {
+    restartQueued = true;
+    return;
+  }
+  restartInFlight = true;
   const reasons = Array.from(new Set(pendingRestartReasons));
   pendingRestartReasons = [];
   restartTimer = null;
 
-  if (electronProcess) {
-    logDev(`stopping Electron pid=${electronProcess.pid ?? "unknown"}`);
-    electronProcess.kill();
-    electronProcess = null;
-  }
+  try {
+    if (electronProcess) {
+      await stopElectron(electronProcess);
+    }
 
-  logDev(`starting Electron; reasons=${reasons.join(" | ") || "initial start"}`);
-  const child = spawn(electron, ["."], {
-    cwd: projectRoot,
-    env: {
-      ...process.env,
-      NODE_ENV: "development"
-    },
-    stdio: "inherit"
-  });
-  electronProcess = child;
-  logDev(`Electron started pid=${child.pid ?? "unknown"}`);
-  child.on("exit", (code, signal) => {
-    logDev(`Electron exited pid=${child.pid ?? "unknown"} code=${code ?? "null"} signal=${signal ?? "null"}`);
+    if (shuttingDown) {
+      return;
+    }
+    logDev(`starting Electron; reasons=${reasons.join(" | ") || "initial start"}`);
+    const child = spawn(electron, ["."], {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        NODE_ENV: "development"
+      },
+      stdio: "inherit"
+    });
+    electronProcess = child;
+    logDev(`Electron started pid=${child.pid ?? "unknown"}`);
+    child.on("exit", (code, signal) => {
+      logDev(`Electron exited pid=${child.pid ?? "unknown"} code=${code ?? "null"} signal=${signal ?? "null"}`);
+      if (electronProcess === child) {
+        electronProcess = null;
+      }
+    });
+  } finally {
+    restartInFlight = false;
+    if (restartQueued || pendingRestartReasons.length > 0) {
+      restartQueued = false;
+      scheduleRestart("changes queued during Electron restart");
+    }
+  }
+}
+
+async function stopElectron(child) {
+  logDev(`stopping Electron pid=${child.pid ?? "unknown"}`);
+  if (child.exitCode !== null || child.signalCode !== null) {
     if (electronProcess === child) {
       electronProcess = null;
     }
+    return;
+  }
+
+  await new Promise((resolve) => {
+    let forceTimer = null;
+    let giveUpTimer = null;
+    const finish = () => {
+      if (forceTimer) clearTimeout(forceTimer);
+      if (giveUpTimer) clearTimeout(giveUpTimer);
+      child.off("exit", finish);
+      resolve();
+    };
+    child.once("exit", finish);
+    child.kill();
+    forceTimer = setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) {
+        logDev(`force stopping Electron pid=${child.pid ?? "unknown"}`);
+        child.kill("SIGKILL");
+      }
+    }, 2_000);
+    giveUpTimer = setTimeout(finish, 5_000);
   });
+  if (electronProcess === child) {
+    electronProcess = null;
+  }
 }
 
 logDev(`starting dev build target=${devTarget} ui=${enabled.ui ? "on" : "off"} cli=${enabled.cli ? "on" : "off"} electron=${enabled.electron ? "on" : "off"}`);
@@ -467,7 +516,7 @@ async function shutdown() {
     clearTimeout(restartTimer);
   }
   if (electronProcess) {
-    electronProcess.kill();
+    await stopElectron(electronProcess);
   }
   if (styleBuildTimer) {
     clearTimeout(styleBuildTimer);

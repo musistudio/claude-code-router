@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
-import { type AppConfig, type RouterBuiltInAgentRuleId, type RouterFallbackConfig, type RouterRule, type RouterRuleCondition, type RouterRuleRewrite } from "@ccr/core/contracts/app";
+import { type AppConfig, type ProfileClientKind, type RouterBuiltInAgentRuleId, type RouterFallbackConfig, type RouterRule, type RouterRuleCondition, type RouterRuleRewrite } from "@ccr/core/contracts/app";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { applyAgentRequestEnrichers } from "@ccr/core/agents/request-enricher";
 import { compileRouterConfig, type CompiledRouterConfig, type CompiledRouterRule } from "@ccr/core/routing/config-compiler";
@@ -304,6 +304,10 @@ function resolveBuiltInAgentRouteDecision(
   modelRegistry: ModelRegistry,
   fallback: RouterFallbackConfig
 ): ConfiguredRouteDecision | undefined {
+  const grokInternalDecision = resolveGrokInternalRouteDecision(request, config, modelRegistry, fallback);
+  if (grokInternalDecision) {
+    return grokInternalDecision;
+  }
   for (const agent of builtInAgentRuleIds) {
     if (!builtInAgentRouteMatches(request, config, agent)) {
       continue;
@@ -327,6 +331,48 @@ function resolveBuiltInAgentRouteDecision(
   return undefined;
 }
 
+function resolveGrokInternalRouteDecision(
+  request: MutableRequestLike,
+  config: AppConfig,
+  modelRegistry: ModelRegistry,
+  fallback: RouterFallbackConfig
+): ConfiguredRouteDecision | undefined {
+  const requestedModel = normalizeRouteSelector(readString(request.body.model));
+  if (requestedModel?.toLowerCase() !== "grok-build") {
+    return undefined;
+  }
+  const profile = resolveAuthenticatedProfile(request, config, "grok");
+  const userAgent = readRequestHeader(request.headers, "user-agent")?.toLowerCase() ?? "";
+  const target = userAgent.includes("grok")
+    ? modelRegistry.resolve(resolveGrokProfileRouteTarget(config, profile?.model))
+    : undefined;
+  if (!target) {
+    return undefined;
+  }
+  return {
+    fallback,
+    model: target,
+    reason: "builtin:grok-internal",
+    rewrites: [{
+      key: "request.body.model",
+      operation: "set",
+      value: target.selector
+    }],
+    source: "builtin"
+  };
+}
+
+function resolveGrokProfileRouteTarget(config: AppConfig, profileModel: string | undefined): string | undefined {
+  const configured = normalizeRouteSelector(profileModel);
+  if (configured) {
+    return configured;
+  }
+  const preferred = config.Providers.find((provider) => provider.name === config.preferredProvider) ?? config.Providers[0];
+  return preferred?.name && preferred.models[0]
+    ? `${preferred.name}/${preferred.models[0]}`
+    : undefined;
+}
+
 const builtInAgentRuleIds: RouterBuiltInAgentRuleId[] = ["claude-code", "codex"];
 
 function builtInAgentRouteMatches(
@@ -348,6 +394,14 @@ function resolveBuiltInAgentProfile(
   request: MutableRequestLike,
   config: AppConfig,
   agent: RouterBuiltInAgentRuleId
+) {
+  return resolveAuthenticatedProfile(request, config, agent);
+}
+
+function resolveAuthenticatedProfile(
+  request: MutableRequestLike,
+  config: AppConfig,
+  agent: ProfileClientKind
 ) {
   if (config.profile.enabled === false) {
     return undefined;

@@ -730,6 +730,8 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Code": "代码",
       "Codex": "Codex",
       "Codex model": "Codex 模型",
+      "Grok CLI": "Grok CLI",
+      "Grok model": "Grok 模型",
       "CLI only": "仅 CLI",
       "Concurrency": "并发",
       "Condition": "条件",

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readlinkSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY_ENV, NO_AVAILABLE_GATEWAY_MODELS_MESSAGE, enforceSingleEnabledGlobalProfilePerAgent, hasAvailableGatewayModels, type ApiKeyConfig, type AppConfig, type ProfileApplyResult, type ProfileClientApplyStatus, type ProfileClientKind, type ProfileConfig } from "@ccr/core/contracts/app";
@@ -86,6 +86,8 @@ export async function applyProfileConfig(config: AppConfig): Promise<ProfileAppl
     result.clients.push(
       profile.agent === "claude-code"
         ? applyClaudeCodeProfile(config, profile, token, appliedAt)
+        : profile.agent === "grok"
+          ? applyGrokProfile(config, profile, token, appliedAt)
         : profile.agent === "zcode"
           ? applyZcodeProfile(config, profile, token, appliedAt)
           : applyCodexProfile(config, profile, token, appliedAt)
@@ -223,6 +225,8 @@ export function applyProfileRuntimeConfig(config: AppConfig, profile: ProfileCon
   const appliedAt = new Date().toISOString();
   return profile.agent === "claude-code"
     ? applyClaudeCodeProfile(config, profile, token, appliedAt)
+    : profile.agent === "grok"
+      ? applyGrokProfile(config, profile, token, appliedAt)
     : profile.agent === "zcode"
       ? applyZcodeProfile(config, profile, token, appliedAt)
       : applyCodexProfile(config, profile, token, appliedAt);
@@ -384,6 +388,36 @@ function applyCodexProfile(config: AppConfig, profile: ProfileConfig, token: str
   }
 }
 
+function applyGrokProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
+  const wrapperFile = grokWrapperPath(profile);
+  if (!profile.enabled) {
+    return disabledStatus("grok", wrapperFile, "Grok CLI profile is disabled.");
+  }
+
+  try {
+    const model = normalizeClientModel(profile.model) || defaultClientModel(config);
+    const wrapperResult = writeGrokWrapper(config, profile, token, model);
+    return {
+      appliedAt,
+      client: "grok",
+      enabled: true,
+      message: wrapperResult.changed
+        ? `Grok CLI is configured to use CCR (wrapper ${wrapperResult.file}).`
+        : "Grok CLI already points to CCR.",
+      ok: true,
+      path: wrapperResult.file
+    };
+  } catch (error) {
+    return {
+      client: "grok",
+      enabled: true,
+      message: formatError(error),
+      ok: false,
+      path: wrapperFile
+    };
+  }
+}
+
 function applyZcodeProfile(config: AppConfig, profile: ProfileConfig, token: string, appliedAt: string): ProfileClientApplyStatus {
   const configFile = resolveZcodeConfigFile(profile);
   if (!profile.enabled) {
@@ -494,6 +528,8 @@ function randomBase64Url(byteLength: number): string {
 function profilePath(profile: ProfileConfig): string {
   return profile.agent === "claude-code"
     ? resolveClaudeCodeSettingsFile(profile)
+    : profile.agent === "grok"
+      ? grokWrapperPath(profile)
     : resolveCodexConfigFile(profile);
 }
 
@@ -829,6 +865,205 @@ function claudeCodeWrapperCmdScript(config: AppConfig, profile: ProfileConfig, r
     ...nodeRuntimeCmdExecLines(runtimeFile),
     ""
   ].join("\r\n");
+}
+
+function writeGrokWrapper(config: AppConfig, profile: ProfileConfig, token: string, model: string): { changed: boolean; file: string } {
+  const binDir = path.join(CONFIGDIR, "bin");
+  mkdirSync(binDir, { mode: privateDirMode, recursive: true });
+  const profileHome = ensureGrokProfileHome(profile);
+  const file = grokWrapperPath(profile);
+  const content = process.platform === "win32"
+    ? grokWrapperCmdScript(config, profile, token, model, profileHome)
+    : grokWrapperShellScript(config, profile, token, model, profileHome);
+  const writeResult = writeGeneratedFileIfChanged(file, content, { mode: privateExecutableMode });
+  return {
+    changed: writeResult.changed,
+    file
+  };
+}
+
+function grokWrapperPath(profile: ProfileConfig): string {
+  return path.join(CONFIGDIR, "bin", grokWrapperFilename(profile));
+}
+
+function grokWrapperFilename(profile: ProfileConfig): string {
+  const slug = sanitizeProfilePathSegment(profile.id || profile.name || profile.agent).toLowerCase() || "grok";
+  return process.platform === "win32"
+    ? `ccr-grok-cli-wrapper-${slug}.cmd`
+    : `ccr-grok-cli-wrapper-${slug}`;
+}
+
+function grokWrapperShellScript(config: AppConfig, profile: ProfileConfig, token: string, model: string, profileHome: string): string {
+  const realGrok = profile.env?.CCR_GROK_BIN?.trim() || "grok";
+  const envExports = Object.entries(profileEnv(profile))
+    .filter(([key]) => key !== "CCR_GROK_BIN" && !isGrokManagedEnvKey(key))
+    .map(([key, value]) => `export ${key}=${shellQuote(value)}`);
+  const gatewayBaseUrl = `${gatewayEndpoint(config).replace(/\/+$/g, "")}/v1`;
+  const noProxyHosts = grokGatewayNoProxyHosts(config);
+  return [
+    "#!/bin/sh",
+    ...envExports,
+    `if [ -n "\${NO_PROXY:-}" ]; then NO_PROXY="$NO_PROXY,${noProxyHosts}"; else NO_PROXY=${shellQuote(noProxyHosts)}; fi`,
+    `if [ -n "\${no_proxy:-}" ]; then no_proxy="$no_proxy,${noProxyHosts}"; else no_proxy=${shellQuote(noProxyHosts)}; fi`,
+    "export NO_PROXY no_proxy",
+    `export GROK_MODELS_BASE_URL=${shellQuote(gatewayBaseUrl)}`,
+    `export GROK_MODELS_LIST_URL=${shellQuote(`${gatewayBaseUrl}/models`)}`,
+    `export XAI_API_KEY=${shellQuote(token)}`,
+    `export GROK_DEFAULT_MODEL=${shellQuote(model)}`,
+    `export GROK_HOME=${shellQuote(profileHome)}`,
+    `export CCR_PROFILE_SURFACE=cli`,
+    `exec ${shellQuote(realGrok)} "$@"`,
+    ""
+  ].join("\n");
+}
+
+function grokWrapperCmdScript(config: AppConfig, profile: ProfileConfig, token: string, model: string, profileHome: string): string {
+  const realGrok = profile.env?.CCR_GROK_BIN?.trim() || "grok";
+  const envExports = Object.entries(profileEnv(profile))
+    .filter(([key]) => key !== "CCR_GROK_BIN" && !isGrokManagedEnvKey(key))
+    .map(([key, value]) => cmdSetLine(key, value));
+  const gatewayBaseUrl = `${gatewayEndpoint(config).replace(/\/+$/g, "")}/v1`;
+  const noProxyHosts = grokGatewayNoProxyHosts(config);
+  return [
+    "@echo off",
+    ...envExports,
+    `set "NO_PROXY=%NO_PROXY%,${cmdValue(noProxyHosts)}"`,
+    `set "no_proxy=%no_proxy%,${cmdValue(noProxyHosts)}"`,
+    cmdSetLine("GROK_MODELS_BASE_URL", gatewayBaseUrl),
+    cmdSetLine("GROK_MODELS_LIST_URL", `${gatewayBaseUrl}/models`),
+    cmdSetLine("XAI_API_KEY", token),
+    cmdSetLine("GROK_DEFAULT_MODEL", model),
+    cmdSetLine("GROK_HOME", profileHome),
+    cmdSetLine("CCR_PROFILE_SURFACE", "cli"),
+    `${cmdQuote(realGrok)} %*`,
+    "exit /b %ERRORLEVEL%",
+    ""
+  ].join("\r\n");
+}
+
+function grokGatewayNoProxyHosts(config: AppConfig): string {
+  const configuredHost = config.gateway.host === "0.0.0.0" || config.gateway.host === "::"
+    ? "127.0.0.1"
+    : config.gateway.host?.trim().replace(/^\[|\]$/g, "") || "127.0.0.1";
+  return [...new Set([configuredHost, "127.0.0.1", "localhost", "::1"])].join(",");
+}
+
+function isGrokManagedEnvKey(key: string): boolean {
+  return key === "GROK_MODELS_BASE_URL" ||
+    key === "GROK_MODELS_LIST_URL" ||
+    key === "GROK_DEFAULT_MODEL" ||
+    key === "GROK_HOME" ||
+    key === "GROK_STORAGE_DIR" ||
+    key === "GROK_CONFIG_DIR" ||
+    key === "XAI_API_KEY" ||
+    key === "CCR_PROFILE_SURFACE";
+}
+
+function ensureGrokProfileHome(profile: ProfileConfig): string {
+  const slug = sanitizeProfilePathSegment(profile.id || profile.name || profile.agent).toLowerCase() || "grok";
+  const profileHome = path.join(CONFIGDIR, "profiles", slug, "grok");
+  const sourceHome = resolveGrokSourceHome(profile);
+  mkdirSync(profileHome, { mode: privateDirMode, recursive: true });
+
+  if (path.resolve(sourceHome) === path.resolve(profileHome)) {
+    return profileHome;
+  }
+
+  ensureGrokProfileConfigCopy(
+    path.join(sourceHome, "config.toml"),
+    path.join(profileHome, "config.toml")
+  );
+  for (const entry of [
+    "agents",
+    "commands",
+    "downloads",
+    "hooks",
+    "marketplace-cache",
+    "plugins",
+    "sessions",
+    "skills",
+    "upload_queue",
+    "worktrees.db"
+  ]) {
+    linkGrokProfileHomeEntry(path.join(sourceHome, entry), path.join(profileHome, entry));
+  }
+  return profileHome;
+}
+
+export function resolveGrokSourceHome(profile: Pick<ProfileConfig, "env">): string {
+  const explicitRoot = profile.env?.GROK_HOME?.trim() ||
+    profile.env?.GROK_STORAGE_DIR?.trim() ||
+    profile.env?.GROK_CONFIG_DIR?.trim() ||
+    process.env.GROK_HOME?.trim() ||
+    process.env.GROK_STORAGE_DIR?.trim() ||
+    process.env.GROK_CONFIG_DIR?.trim();
+  if (explicitRoot) {
+    return resolveUserPath(explicitRoot);
+  }
+  const internalHome = process.env.CCR_INTERNAL_HOME_DIR?.trim();
+  return internalHome
+    ? path.join(internalHome, ".grok")
+    : resolveUserPath("~/.grok");
+}
+
+function ensureGrokProfileConfigCopy(source: string, target: string): void {
+  let targetStat: ReturnType<typeof lstatSync> | undefined;
+  try {
+    targetStat = lstatSync(target);
+  } catch {
+    targetStat = undefined;
+  }
+
+  if (targetStat?.isSymbolicLink()) {
+    let content: Buffer | undefined;
+    try {
+      content = readFileSync(target);
+    } catch {
+      if (existsSync(source)) {
+        content = readFileSync(source);
+      }
+    }
+    rmSync(target, { force: true });
+    if (content) {
+      writeFileSync(target, content, { mode: privateFileMode });
+      chmodSync(target, privateFileMode);
+    }
+    return;
+  }
+
+  if (targetStat || !existsSync(source)) {
+    return;
+  }
+  copyFileSync(source, target);
+  chmodSync(target, privateFileMode);
+}
+
+function linkGrokProfileHomeEntry(source: string, target: string): void {
+  if (!existsSync(source) || pathEntryExists(target)) {
+    return;
+  }
+  const sourceStat = statSync(source);
+  try {
+    symlinkSync(source, target, sourceStat.isDirectory() && process.platform === "win32" ? "junction" : undefined);
+  } catch {
+    if (sourceStat.isFile()) {
+      copyFileSync(source, target);
+      chmodSync(target, privateFileMode);
+    }
+  }
+}
+
+function pathEntryExists(file: string): boolean {
+  try {
+    const stat = lstatSync(file);
+    if (!stat.isSymbolicLink()) {
+      return true;
+    }
+    const target = readlinkSync(file);
+    return Boolean(target);
+  } catch {
+    return false;
+  }
 }
 
 function writeCodexCliMiddleware(
@@ -1344,6 +1579,7 @@ function isManagedGeneratedBinFile(fileName: string): boolean {
     normalized === codexMiddlewareRuntimeFilename() ||
     normalized.startsWith("ccr-claude-code-api-key-") ||
     normalized.startsWith("ccr-claude-code-wrapper-") ||
+    normalized.startsWith("ccr-grok-cli-wrapper-") ||
     normalized.startsWith("ccr-codex-cli-stdio-");
 }
 
@@ -1375,6 +1611,9 @@ function disabledProfileStatus(profile: ProfileConfig): ProfileClientApplyStatus
   }
   if (profile.agent === "zcode") {
     return restoreDisabledZcodeProfile(profile, resolveZcodeConfigFile(profile));
+  }
+  if (profile.agent === "grok") {
+    return disabledStatus("grok", grokWrapperPath(profile), "Grok CLI profile is disabled.");
   }
   const providerId = sanitizeCodexProviderId(profile.providerId || "") || "claude-code-router";
   return restoreDisabledGlobalProfile(
@@ -1643,6 +1882,9 @@ function disabledProfileMessage(profile: ProfileConfig): string {
   if (profile.agent === "claude-code") {
     return "Claude Code profile is disabled.";
   }
+  if (profile.agent === "grok") {
+    return "Grok CLI profile is disabled.";
+  }
   return `${codexCompatibleClientName(profile.agent)} profile is disabled.`;
 }
 
@@ -1788,6 +2030,9 @@ function normalizeProfileSurface(value: ProfileConfig["surface"]): "auto" | "cli
 function codexCompatibleClientName(agent: ProfileConfig["agent"]): string {
   if (agent === "claude-code") {
     return "Claude Code";
+  }
+  if (agent === "grok") {
+    return "Grok CLI";
   }
   return agent === "zcode" ? "ZCode" : "Codex";
 }

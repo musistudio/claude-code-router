@@ -42,6 +42,9 @@ function providerProtocolPreferenceForClient(clientProtocol: GatewayProviderProt
   if (clientProtocol === "openai_responses") {
     return ["openai_responses", "openai_chat_completions", "anthropic_messages", "gemini_interactions"];
   }
+  if (clientProtocol === "openai_chat_completions") {
+    return ["openai_chat_completions", "openai_responses"];
+  }
   if (clientProtocol === "anthropic_messages") {
     return uniqueProviderProtocols([clientProtocol, ...gatewayProviderProtocolFallbackOrder]);
   }

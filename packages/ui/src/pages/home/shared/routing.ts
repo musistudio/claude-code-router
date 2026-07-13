@@ -894,7 +894,11 @@ export function routerBuiltInAgentProfile(config: AppConfig, agent: RouterBuiltI
   if (config.profile.enabled === false) {
     return undefined;
   }
-  return config.profile.profiles.find((profile) => profile.enabled && profile.agent === agent);
+  return config.profile.profiles.find((profile) =>
+    profile.enabled &&
+    profile.agent === agent &&
+    Boolean(profile.model.trim())
+  );
 }
 
 export function routerBuiltInAgentRouteTarget(config: AppConfig, agent: RouterBuiltInAgentRuleId): string {
@@ -906,11 +910,12 @@ export function routerBuiltInAgentRuleDisabledReason(config: AppConfig, agent: R
     return "Agent profiles are disabled.";
   }
   const agentName = routerBuiltInAgentRuleName(agent);
-  const profile = routerBuiltInAgentProfile(config, agent);
-  if (!profile) {
+  const enabledProfile = config.profile.profiles.find((profile) => profile.enabled && profile.agent === agent);
+  if (!enabledProfile) {
     return `Enable a ${agentName} profile before enabling this built-in route.`;
   }
-  if (!profile.model.trim()) {
+  const profile = routerBuiltInAgentProfile(config, agent);
+  if (!profile) {
     return `Set a model on the ${agentName} profile before enabling this built-in route.`;
   }
   return undefined;

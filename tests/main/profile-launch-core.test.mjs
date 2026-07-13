@@ -10,7 +10,8 @@ import {
   profileOpenSurfaces,
   resolveClaudeCodeSettingsFile,
   resolveCodexConfigFile,
-  resolveProfileOpenSurface
+  resolveProfileOpenSurface,
+  shouldAutoStartProfileGateway
 } from "../../packages/core/src/profiles/launch-core.ts";
 
 const claudeProfile = {
@@ -35,6 +36,16 @@ const codexProfile = {
   surface: "auto"
 };
 
+const grokProfile = {
+  agent: "grok",
+  enabled: true,
+  id: "grok-main",
+  model: "provider,model",
+  name: "Grok Main",
+  scope: "ccr",
+  surface: "cli"
+};
+
 test("findProfileForOpen resolves enabled profiles and reports ambiguous names", () => {
   const config = {
     profile: {
@@ -57,8 +68,10 @@ test("profile open surfaces enforce agent capabilities", () => {
   assert.deepEqual(profileOpenSurfaces(claudeProfile), ["cli", "app"]);
   assert.deepEqual(profileOpenSurfaces({ ...claudeProfile, surface: "cli" }), ["cli"]);
   assert.deepEqual(profileOpenSurfaces({ ...codexProfile, agent: "zcode" }), ["app"]);
+  assert.deepEqual(profileOpenSurfaces(grokProfile), ["cli"]);
   assert.equal(resolveProfileOpenSurface(codexProfile, "app"), "app");
   assert.throws(() => resolveProfileOpenSurface({ ...claudeProfile, surface: "cli" }, "app"), /does not support APP/);
+  assert.throws(() => resolveProfileOpenSurface(grokProfile, "app"), /does not support APP/);
 });
 
 test("default profile command surface is CLI unless the agent is app-only", () => {
@@ -68,10 +81,17 @@ test("default profile command surface is CLI unless the agent is app-only", () =
   assert.equal(defaultProfileOpenSurface({ ...codexProfile, agent: "zcode" }), "app");
 });
 
+test("Grok CLI starts a temporary CCR gateway when none is already running", () => {
+  assert.equal(shouldAutoStartProfileGateway(grokProfile, "cli"), true);
+  assert.equal(shouldAutoStartProfileGateway(codexProfile, "cli"), false);
+  assert.equal(shouldAutoStartProfileGateway(claudeProfile, "app"), false);
+});
+
 test("buildProfileLaunchPlan creates CCR-managed launcher paths", () => {
   const configDir = path.join(path.sep, "tmp", "ccr-config");
   const codexPlan = buildProfileLaunchPlan(configDir, codexProfile, "app");
   const claudePlan = buildProfileLaunchPlan(configDir, claudeProfile, "cli", ["--debug"]);
+  const grokPlan = buildProfileLaunchPlan(configDir, grokProfile, "cli", ["--debug"]);
 
   assert.equal(codexPlan.surface, "app");
   assert.deepEqual(codexPlan.args, ["app"]);
@@ -87,6 +107,11 @@ test("buildProfileLaunchPlan creates CCR-managed launcher paths", () => {
   assert.equal(claudePlan.env.CCR_CLAUDE_CODE_MODEL, "provider/model");
   assert.equal(claudePlan.env.CODEXL_CLAUDE_CODE_MODEL, "provider/model");
   assert.equal(claudePlan.env.ANTHROPIC_SMALL_FAST_MODEL, "provider/small");
+
+  assert.equal(grokPlan.surface, "cli");
+  assert.deepEqual(grokPlan.args, ["--debug"]);
+  assert.equal(path.basename(grokPlan.command), process.platform === "win32" ? "ccr-grok-cli-wrapper-grok-main.cmd" : "ccr-grok-cli-wrapper-grok-main");
+  assert.equal(grokPlan.env.CCR_PROFILE_SURFACE, "cli");
 
   assert.throws(() => buildProfileLaunchPlan(configDir, claudeProfile, "app"), /Claude App opening/);
 });

@@ -402,7 +402,7 @@ function ProfileAgentTabs({
   return (
     <div
       aria-label={t("Agent profiles")}
-      className="grid grid-cols-1 gap-1 rounded-md border border-border bg-muted/20 p-1 sm:grid-cols-3"
+      className="grid grid-cols-1 gap-1 rounded-md border border-border bg-muted/20 p-1 sm:grid-cols-4"
       role="tablist"
     >
       {profileAgentOptions.map((option) => {
@@ -601,7 +601,12 @@ export function AddProfileForm({
         <Field label={t("Effect scope")}>
           <SelectControl
             onChange={(scope) => onChange({ scope: normalizeProfileScope(scope) })}
-            options={translateOptions(profileScopeOptions, t)}
+            options={translateOptions(
+              draft.agent === "grok"
+                ? profileScopeOptions.filter((option) => option.value === "ccr")
+                : profileScopeOptions,
+              t
+            )}
             value={draft.scope}
           />
         </Field>
@@ -621,6 +626,8 @@ export function AddProfileForm({
             options={translateOptions(
               draft.agent === "zcode"
                 ? profileSurfaceOptions.filter((option) => option.value === "app")
+                : draft.agent === "grok"
+                  ? profileSurfaceOptions.filter((option) => option.value === "cli")
                 : profileSurfaceOptions,
               t
             )}
@@ -662,6 +669,16 @@ export function AddProfileForm({
               />
             </Field>
           </>
+        ) : draft.agent === "grok" ? (
+          <Field className="sm:col-span-2" label={t("Grok model")}>
+            <ModelSelector
+              placeholder={providers[0]?.models[0] && providers[0]?.name ? `${providers[0].name}/${providers[0].models[0]}` : ""}
+              providers={providers}
+              value={draft.model}
+              virtualModelProfiles={virtualModelProfiles}
+              onChange={(model) => onChange({ model })}
+            />
+          </Field>
         ) : (
           <>
             <Field label={t("Provider ID")}>
