@@ -18,6 +18,9 @@ import {
 import {
   qiniuAiProviderPreset
 } from "../../packages/core/src/providers/presets/qiniu-ai/index.ts";
+import {
+  unity2ProviderPreset
+} from "../../packages/core/src/providers/presets/unity2/index.ts";
 
 const openAiPreset = {
   aliases: ["OpenAI", "ChatGPT"],
@@ -83,6 +86,13 @@ test("sponsor provider presets expose requested endpoints and protocols", () => 
     ["China mainland Gemini Generate", "https://api.qnaigc.com/bypass/vertex/v1", ["gemini_generate_content"]]
   ]);
   assert.deepEqual(qiniuAiProviderPreset.endpoints[0]?.protocols, [
+    "openai_chat_completions"
+  ]);
+
+  assert.equal(unity2ProviderPreset.websiteUrl, "https://unity2.ai/register?source=claudecoderouter");
+  assert.equal(providerPresetMatchesBaseUrl(unity2ProviderPreset, "https://unity2.ai/v1/chat/completions"), true);
+  assert.equal(providerPresetMatchesBaseUrl(unity2ProviderPreset, "https://api.unity2.ai/v1"), false);
+  assert.deepEqual(unity2ProviderPreset.endpoints[0]?.protocols, [
     "openai_chat_completions"
   ]);
 });

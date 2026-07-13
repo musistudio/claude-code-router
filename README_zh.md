@@ -256,6 +256,13 @@ CCR 可以完全通过桌面 UI 完成配置。首次使用建议按下面顺序
         <strong>Fenno.ai</strong>
       </a>
     </td>
+    <td align="center" width="330">
+      <a href="https://unity2.ai/register?source=claudecoderouter">
+        <img src="/docs/public/provider-icons/unity2.jpg" width="42" height="42" alt="Unity2.Ai 图标" />
+        <br />
+        <strong>Unity2.Ai</strong>
+      </a>
+    </td>
   </tr>
 </table>
 

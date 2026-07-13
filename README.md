@@ -256,6 +256,13 @@ Codex support is powered by [musistudio/codexl](https://github.com/musistudio/co
         <strong>Fenno.ai</strong>
       </a>
     </td>
+    <td align="center" width="330">
+      <a href="https://unity2.ai/register?source=claudecoderouter">
+        <img src="/docs/public/provider-icons/unity2.jpg" width="42" height="42" alt="Unity2.Ai icon" />
+        <br />
+        <strong>Unity2.Ai</strong>
+      </a>
+    </td>
   </tr>
 </table>
 

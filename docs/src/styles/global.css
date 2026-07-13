@@ -1318,6 +1318,12 @@ h1 {
   --provider-brand-3: #f4f4f5;
 }
 
+.doc-markdown a.provider-import-button.provider-unity2 {
+  --provider-brand: #050505;
+  --provider-brand-2: #7a7f85;
+  --provider-brand-3: #f4f5f6;
+}
+
 .doc-markdown a.provider-import-button.provider-code0 {
   --provider-brand: #101214;
   --provider-brand-2: #267dff;
