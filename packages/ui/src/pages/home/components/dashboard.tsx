@@ -18,13 +18,24 @@ import {
   ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ReactPointerEvent, rectSortingStrategy, RefreshCw, Select,
   SelectControl, SortableContext, sortableKeyboardCoordinates, systemStatusIconClass, systemStatusPointTooltip, systemStatusSegmentClass,
   systemStatusTooltipPositionClass, Tooltip, translateOptions, Trash2, UsageComparisonRow, usageRangeOptions,
-  UsageSeriesPoint, UsageStatsRange, UsageStatsSnapshot, usageStatusTone, UsageTotals, useAppText,
+  GatewayProviderConfig, UsageSeriesPoint, UsageStatsRange, UsageStatsSnapshot, usageStatusTone, UsageTotals, useAppText,
   useEffect, useMemo, useRef, useSensor, useSensors, useSortable,
   useState, X, XAxis, YAxis
 } from "../shared/index";
 import { buildTokenActivity, type TokenActivityCell } from "@/lib/usage-activity";
 import { ShareCardWidget } from "./share-cards";
 import { Cloud, Rocket } from "lucide-react";
+
+type OverviewUsageFilters = {
+  modelFilter: string;
+  providerFilter: string;
+  providers: GatewayProviderConfig[];
+  setModelFilter: (model: string) => void;
+  setProviderFilter: (provider: string) => void;
+};
+
+const emptyOverviewProviders: GatewayProviderConfig[] = [];
+
 export function OverviewView({
   onWidgetsChange,
   overviewWidgets,
@@ -32,6 +43,7 @@ export function OverviewView({
   providerAccountRefreshing = false,
   refreshProviderAccounts,
   setUsageRange,
+  usageFilters,
   usageRange,
   usageStats
 }: {
@@ -41,6 +53,7 @@ export function OverviewView({
   providerAccountRefreshing?: boolean;
   refreshProviderAccounts?: () => void | Promise<void>;
   setUsageRange: (range: UsageStatsRange) => void;
+  usageFilters?: OverviewUsageFilters;
   usageRange: UsageStatsRange;
   usageStats: UsageStatsSnapshot;
 }) {
@@ -67,6 +80,11 @@ export function OverviewView({
   const visibleWidgets = displayWidgets.filter((widget) => widget.enabled);
   const activeWidget = visibleWidgets.find((widget) => widget.id === activeWidgetId);
   const selectedWidget = widgets.find((widget) => widget.id === selectedWidgetId);
+  const filterProviders = usageFilters?.providers ?? emptyOverviewProviders;
+  const providerFilter = usageFilters?.providerFilter ?? "";
+  const modelFilter = usageFilters?.modelFilter ?? "";
+  const providerOptions = useMemo(() => overviewProviderFilterOptions(filterProviders, t), [filterProviders, t]);
+  const modelOptions = useMemo(() => overviewModelFilterOptions(filterProviders, providerFilter, t), [filterProviders, providerFilter, t]);
 
   useEffect(() => {
     if (!editing) {
@@ -151,6 +169,17 @@ export function OverviewView({
   function removeWidget(id: string) {
     onWidgetsChange(widgets.filter((widget) => widget.id !== id));
     setSelectedWidgetId((current) => current === id ? undefined : current);
+  }
+
+  function changeProviderFilter(provider: string) {
+    usageFilters?.setProviderFilter(provider);
+    if (modelFilter && provider && !overviewProviderHasModel(filterProviders, provider, modelFilter)) {
+      usageFilters?.setModelFilter("");
+    }
+  }
+
+  function changeModelFilter(model: string) {
+    usageFilters?.setModelFilter(model);
   }
 
   useEffect(() => {
@@ -308,8 +337,21 @@ export function OverviewView({
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <h2 className="truncate text-[18px] font-semibold tracking-tight">{t("Overview")}</h2>
           <OverviewUsageRangeSelector range={usageRange} setRange={setUsageRange} />
+          <Select
+            aria-label={t("Provider")}
+            className="h-8 w-[168px] bg-[length:14px] px-2 pr-7 text-[12px]"
+            onValueChange={changeProviderFilter}
+            options={providerOptions}
+            value={providerFilter}
+          />
+          <Select
+            aria-label={t("Model")}
+            className="h-8 w-[220px] bg-[length:14px] px-2 pr-7 text-[12px]"
+            onValueChange={changeModelFilter}
+            options={modelOptions}
+            value={modelFilter}
+          />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {editing ? (
@@ -400,6 +442,50 @@ function OverviewUsageRangeSelector({
         </Button>
       ))}
     </div>
+  );
+}
+
+function overviewProviderFilterOptions(providers: GatewayProviderConfig[], translate: (value: string) => string): Array<{ label: string; value: string }> {
+  const providerNames = new Set<string>();
+  for (const provider of providers) {
+    const name = provider.name.trim();
+    if (name) {
+      providerNames.add(name);
+    }
+  }
+  return [
+    { label: translate("All providers"), value: "" },
+    ...Array.from(providerNames).map((provider) => ({ label: provider, value: provider }))
+  ];
+}
+
+function overviewModelFilterOptions(
+  providers: GatewayProviderConfig[],
+  providerFilter: string,
+  translate: (value: string) => string
+): Array<{ label: string; value: string }> {
+  const models = new Set<string>();
+  for (const provider of providers) {
+    if (providerFilter && provider.name !== providerFilter) {
+      continue;
+    }
+    for (const rawModel of provider.models) {
+      const model = rawModel.trim();
+      if (model) {
+        models.add(model);
+      }
+    }
+  }
+  return [
+    { label: translate("All models"), value: "" },
+    ...Array.from(models).map((model) => ({ label: model, value: model }))
+  ];
+}
+
+function overviewProviderHasModel(providers: GatewayProviderConfig[], providerName: string, modelName: string): boolean {
+  return providers.some((provider) =>
+    provider.name === providerName &&
+    provider.models.some((model) => model.trim() === modelName)
   );
 }
 

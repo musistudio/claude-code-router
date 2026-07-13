@@ -276,6 +276,8 @@ function App() {
   const [agentAnalysisLoading, setAgentAnalysisLoading] = useState(false);
   const [agentAnalysisRange, setAgentAnalysisRange] = useState<UsageStatsRange>("7d");
   const [agentAnalysisSession, setAgentAnalysisSession] = useState<AgentAnalysisSessionSelection>();
+  const [usageModelFilter, setUsageModelFilter] = useState("");
+  const [usageProviderFilter, setUsageProviderFilter] = useState("");
   const [usageRange, setUsageRange] = useState<UsageStatsRange>("7d");
   const [usageStats, setUsageStats] = useState<UsageStatsSnapshot>(fallbackUsageStats);
   const [providerAccountSnapshots, setProviderAccountSnapshots] = useState<ProviderAccountSnapshot[]>([]);
@@ -454,7 +456,11 @@ function App() {
 
     let cancelled = false;
     const refreshUsageStats = () => {
-      const filter: UsageStatsFilter | undefined = usageRange === "today" ? { includeProxy: true } : undefined;
+      const filter: UsageStatsFilter = {
+        ...(usageRange === "today" ? { includeProxy: true } : {}),
+        ...(usageProviderFilter ? { provider: usageProviderFilter } : {}),
+        ...(usageModelFilter ? { model: usageModelFilter } : {})
+      };
       void window.ccr?.getUsageStats(usageRange, filter).then((snapshot) => {
         if (!cancelled) {
           setUsageStats(snapshot);
@@ -466,7 +472,29 @@ function App() {
       cancelled = true;
       stopPolling();
     };
-  }, [usageRange]);
+  }, [usageModelFilter, usageProviderFilter, usageRange]);
+
+  useEffect(() => {
+    if (!usageProviderFilter) {
+      return;
+    }
+    if (!draftConfig.Providers.some((provider) => provider.name === usageProviderFilter)) {
+      setUsageProviderFilter("");
+    }
+  }, [draftConfig.Providers, usageProviderFilter]);
+
+  useEffect(() => {
+    if (!usageModelFilter) {
+      return;
+    }
+    const modelAvailable = draftConfig.Providers.some((provider) =>
+      (!usageProviderFilter || provider.name === usageProviderFilter) &&
+      provider.models.some((model) => model.trim() === usageModelFilter)
+    );
+    if (!modelAvailable) {
+      setUsageModelFilter("");
+    }
+  }, [draftConfig.Providers, usageModelFilter, usageProviderFilter]);
 
   useEffect(() => {
     if (!window.ccr) {
@@ -2900,6 +2928,13 @@ function App() {
                   snapshot: agentAnalysis
                 },
                 overview: {
+                  usageFilters: {
+                    modelFilter: usageModelFilter,
+                    providerFilter: usageProviderFilter,
+                    providers: draftConfig.Providers,
+                    setModelFilter: setUsageModelFilter,
+                    setProviderFilter: setUsageProviderFilter
+                  },
                   onWidgetsChange: changeOverviewWidgets,
                   overviewWidgets: normalizeOverviewWidgets(draftConfig.overviewWidgets),
                   providerAccounts: providerAccountSnapshots,

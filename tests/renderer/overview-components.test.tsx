@@ -42,7 +42,9 @@ test("OverviewView renders every overview widget type", () => {
     />
   );
 
-  assert.match(html, /<h2 class="[^"]*">Overview<\/h2>/);
+  assert.doesNotMatch(html, /<h2 class="[^"]*">Overview<\/h2>/);
+  assert.match(html, /All providers/);
+  assert.match(html, /All models/);
   assert.match(html, /aria-label="Edit widgets"/);
   assert.match(html, /System status/);
   assert.match(html, /API Service/);
@@ -79,7 +81,9 @@ test("OverviewView renders the empty widget layout state", () => {
     />
   );
 
-  assert.match(html, /Overview/);
+  assert.doesNotMatch(html, /<h2 class="[^"]*">Overview<\/h2>/);
+  assert.match(html, /All providers/);
+  assert.match(html, /All models/);
   assert.match(html, /No widgets configured/);
   assert.match(html, /aria-label="Edit widgets"/);
 });

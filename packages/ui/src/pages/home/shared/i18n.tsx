@@ -596,6 +596,7 @@ export const appCopy: Record<ResolvedLanguage, AppCopy> = {
       "Agent Mix": "Agent 分布",
       "Agent profiles": "Agent 配置档案",
       "All agents": "全部 Agent",
+      "All models": "全部模型",
       "All providers": "全部供应商",
       "API key": "API 密钥",
       "API key created": "API 密钥已创建",
