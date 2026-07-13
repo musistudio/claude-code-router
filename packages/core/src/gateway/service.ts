@@ -264,6 +264,8 @@ class UpstreamRequestError extends Error {
 }
 
 const requireFromHere = createRequire(__filename);
+const claudeCodeOauthBetaHeader = "anthropic-beta";
+const claudeCodeOauthRequiredBeta = "oauth-2025-04-20";
 const coreGatewayAuthHeader = "x-ccr-core-auth";
 const coreGatewayAuthTokenEnv = "CCR_CORE_GATEWAY_AUTH_TOKEN";
 const clientClosedRequestStatusCode = 499;
@@ -1185,10 +1187,11 @@ async function writeCoreGatewayConfig(
   assertLoopbackCoreHost(config.gateway.coreHost);
   mkdirSync(dirname(config.gateway.generatedConfigFile), { mode: privateDirMode, recursive: true });
   const pluginCoreGatewayConfig = pluginService.getCoreGatewayConfig();
-  const providerPlugins = await withGrokOauthRuntimeDefaults(withCodexOauthRuntimeDefaults([
+  const configuredProviderPlugins = normalizeClaudeCodeOauthProviderPlugins([
     ...(config.providerPlugins ?? []).filter(providerPluginEnabled),
     ...pluginService.getCoreProviderPlugins().filter(providerPluginEnabled)
-  ]));
+  ]);
+  const providerPlugins = await withGrokOauthRuntimeDefaults(withCodexOauthRuntimeDefaults(configuredProviderPlugins));
   const codexOauthProviderNames = codexOauthLocalProviderNames(providerPlugins);
   const virtualModelProfiles = normalizeCoreGatewayVirtualModelProfiles(withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases([
     ...(config.virtualModelProfiles ?? []),
@@ -1487,6 +1490,58 @@ function isLocalCodexOauthProviderPlugin(value: unknown): value is Record<string
   }
   const key = stringValue(value.key)?.toLowerCase() ?? "";
   return key.startsWith("ccr-local-agent-") && key.includes("codex-oauth");
+}
+
+function isLocalClaudeCodeOauthProviderPlugin(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const key = stringValue(value.key)?.toLowerCase() ?? "";
+  return key.startsWith("ccr-local-agent-") && key.includes("claude-code-oauth");
+}
+
+export function normalizeClaudeCodeOauthProviderPlugins(providerPlugins: unknown[]): unknown[] {
+  return providerPlugins.map((plugin) => {
+    if (!isLocalClaudeCodeOauthProviderPlugin(plugin)) {
+      return plugin;
+    }
+
+    const auth = isRecord(plugin.auth) ? plugin.auth : {};
+    const headers = isRecord(auth.headers) ? auth.headers : {};
+    const configuredBeta = Object.entries(headers)
+      .find(([name]) => name.trim().toLowerCase() === claudeCodeOauthBetaHeader)?.[1];
+    const defaultBeta = mergeAnthropicBetaValues(
+      configuredAnthropicBetaDefault(configuredBeta),
+      claudeCodeOauthRequiredBeta
+    );
+    const normalizedHeaders = Object.fromEntries(
+      Object.entries(headers).filter(([name]) => name.trim().toLowerCase() !== claudeCodeOauthBetaHeader)
+    );
+
+    return {
+      ...plugin,
+      auth: {
+        ...auth,
+        headers: {
+          ...normalizedHeaders,
+          [claudeCodeOauthBetaHeader]: {
+            default: defaultBeta,
+            from: `request.headers.${claudeCodeOauthBetaHeader}`
+          }
+        }
+      }
+    };
+  });
+}
+
+function configuredAnthropicBetaDefault(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  return stringValue(value.default);
 }
 
 function isLocalGrokOauthProviderPlugin(value: unknown): value is Record<string, unknown> {
@@ -5839,6 +5894,8 @@ function prepareUpstreamCredentialAttempt(input: {
     };
   }
 
+  const attemptHeaders = withClaudeCodeOauthBetaHeader(input.headers, input.config, target);
+
   const credentials = activeProviderCredentials(target.provider);
   if (credentials.length === 0) {
     const preserveModelSelector = shouldPreserveCapabilityModelSelector(input.attempt.body, target);
@@ -5846,8 +5903,8 @@ function prepareUpstreamCredentialAttempt(input: {
       ...input.attempt,
       body: attemptBody(preserveModelSelector ? input.attempt.body : target.body ?? normalizedBody?.body ?? input.attempt.body),
       headers: preserveModelSelector
-        ? clearTargetProviderHeaders(input.headers)
-        : targetProviderFallbackHeaders(input.headers, target.provider, target.protocol)
+        ? clearTargetProviderHeaders(attemptHeaders)
+        : targetProviderFallbackHeaders(attemptHeaders, target.provider, target.protocol)
     };
   }
 
@@ -5859,13 +5916,13 @@ function prepareUpstreamCredentialAttempt(input: {
       ...input.attempt,
       body: attemptBody(preserveModelSelector ? input.attempt.body : target.body ?? normalizedBody?.body ?? input.attempt.body),
       headers: preserveModelSelector
-        ? clearTargetProviderHeaders(input.headers)
-        : targetProviderFallbackHeaders(input.headers, target.provider, target.protocol)
+        ? clearTargetProviderHeaders(attemptHeaders)
+        : targetProviderFallbackHeaders(attemptHeaders, target.provider, target.protocol)
     };
   }
 
   const headers: Record<string, string> = {
-    ...input.headers,
+    ...attemptHeaders,
     "x-target-providers": selection.credentials.map((candidate) => candidate.internalName).join(","),
     "x-ccr-logical-provider": providerRuntimeId(target.provider),
     "x-ccr-provider-credential-chain": selection.credentials.map((candidate) => candidate.credentialId).join(",")
@@ -5884,6 +5941,68 @@ function prepareUpstreamCredentialAttempt(input: {
     headers,
     logicalProvider: target.provider.name
   };
+}
+
+function withClaudeCodeOauthBetaHeader(
+  headers: Record<string, string>,
+  config: AppConfig,
+  target: ProviderCredentialRoutingTarget
+): Record<string, string> {
+  if (
+    target.protocol !== "anthropic_messages" ||
+    !claudeCodeOauthPluginMatchesTarget(config, target.provider, target.protocol)
+  ) {
+    return headers;
+  }
+
+  const existingEntry = Object.entries(headers)
+    .find(([name]) => name.trim().toLowerCase() === claudeCodeOauthBetaHeader);
+  const merged = mergeAnthropicBetaValues(existingEntry?.[1], claudeCodeOauthRequiredBeta);
+  if (existingEntry?.[0] === claudeCodeOauthBetaHeader && existingEntry[1] === merged) {
+    return headers;
+  }
+
+  const next = Object.fromEntries(
+    Object.entries(headers).filter(([name]) => name.trim().toLowerCase() !== claudeCodeOauthBetaHeader)
+  );
+  next[claudeCodeOauthBetaHeader] = merged;
+  return next;
+}
+
+function claudeCodeOauthPluginMatchesTarget(
+  config: AppConfig,
+  provider: GatewayProviderConfig,
+  protocol: GatewayProviderProtocol
+): boolean {
+  const targetNames = new Set([
+    provider.name,
+    providerRuntimeId(provider),
+    providerCapabilityInternalName(provider, protocol)
+  ].map((name) => name.trim().toLowerCase()));
+  return (config.providerPlugins ?? []).some((plugin) => {
+    if (!isLocalClaudeCodeOauthProviderPlugin(plugin)) {
+      return false;
+    }
+    const providerName = stringValue(plugin.providerName)?.toLowerCase();
+    return Boolean(providerName && targetNames.has(providerName));
+  });
+}
+
+function mergeAnthropicBetaValues(...values: Array<string | undefined>): string {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const value of values) {
+    for (const token of value?.split(",") ?? []) {
+      const normalized = token.trim();
+      const key = normalized.toLowerCase();
+      if (!normalized || seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      merged.push(normalized);
+    }
+  }
+  return merged.join(",");
 }
 
 function targetProviderFallbackHeaders(
