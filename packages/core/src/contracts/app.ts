@@ -175,7 +175,7 @@ export type ProviderAccountStatus = "ok" | "warning" | "critical" | "error" | "u
 export type ProviderAccountMeterKind = "balance" | "subscription" | "quota" | "time_window" | "tokens" | "requests";
 export type ProviderAccountMeterUnit = "USD" | "CNY" | "hours" | "minutes" | "tokens" | "requests" | string;
 export type ProviderAccountMeterWindow = "5h" | "daily" | "weekly" | "monthly" | string;
-export type ProviderAccountHttpJsonParser = "kimi-code-usages" | "new-api-key-usage" | "new-api-user-self";
+export type ProviderAccountHttpJsonParser = "grok-subscription" | "kimi-code-usages" | "new-api-key-usage" | "new-api-user-self";
 
 export type ProviderAccountConfig = {
   connectors?: ProviderAccountConnectorConfig[];
@@ -329,7 +329,7 @@ export type ProviderManifestFetchResult = {
   url: string;
 };
 
-export type LocalAgentProviderKind = "claude-code" | "codex" | "zcode";
+export type LocalAgentProviderKind = "claude-code" | "codex" | "grok" | "zcode";
 
 export type LocalAgentProviderStatus = "available" | "locked" | "missing";
 

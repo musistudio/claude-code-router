@@ -5,12 +5,101 @@ import path from "node:path";
 import test from "node:test";
 import {
   localAgentProviderAccountCredentialForTest,
-  localCodexAccountCredentialForTest
+  localCodexAccountCredentialForTest,
+  testProviderAccountConnector
 } from "../../packages/core/src/providers/account-service.ts";
+import {
+  grokDefaultBillingEndpoint,
+  grokDefaultBaseUrl,
+  grokDefaultSubscriptionEndpoint,
+  grokProviderAccountConfig
+} from "../../packages/core/src/agents/local-providers/grok.ts";
 
 const localAgentProviderApiKey = "ccr-local-agent-login";
 const codexDefaultBaseUrl = "https://chatgpt.com/backend-api/codex";
 const zcodeDefaultBaseUrl = "https://zcode.z.ai/api/v1/zcode-plan/anthropic";
+
+test("Grok billing connector maps credit usage payload", async (t) => {
+  const previousFetch = globalThis.fetch;
+  let authorization = "";
+  let clientIdentifier = "";
+  let clientVersion = "";
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), grokDefaultBillingEndpoint);
+    authorization = init?.headers?.authorization ?? "";
+    clientIdentifier = init?.headers?.["x-grok-client-identifier"] ?? "";
+    clientVersion = init?.headers?.["x-grok-client-version"] ?? "";
+    return new Response(JSON.stringify({
+      config: {
+        billingPeriodEnd: "2026-08-01T00:00:00Z",
+        creditUsagePercent: { val: 25 },
+        includedUsed: { val: 10 },
+        monthlyLimit: { val: 40 },
+        onDemandCap: { val: 100 },
+        onDemandUsed: { val: 5 },
+        prepaidBalance: { val: 12 },
+        totalUsed: { val: 15 }
+      }
+    }), { headers: { "content-type": "application/json" }, status: 200 });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+  });
+
+  const connector = grokProviderAccountConfig().connectors?.[0];
+  assert.equal(connector?.type, "http-json");
+  const result = await testProviderAccountConnector({
+    apiKey: "grok-access-token",
+    baseUrl: grokDefaultBaseUrl,
+    connector,
+    providerName: "Grok CLI API"
+  });
+
+  assert.equal(authorization, "Bearer grok-access-token");
+  assert.equal(clientIdentifier, "xai-grok-cli");
+  assert.equal(clientVersion, "0.2.93");
+  assert.equal(result.meters.find((meter) => meter.id === "grok_credit_usage_percent")?.remaining, 75);
+  assert.equal(result.meters.find((meter) => meter.id === "grok_included_credits")?.remaining, 30);
+  assert.equal(result.meters.find((meter) => meter.id === "grok_total_credits")?.used, 15);
+  assert.equal(result.meters.find((meter) => meter.id === "grok_pay_as_you_go_cap")?.remaining, 95);
+  assert.equal(result.meters.find((meter) => meter.id === "grok_prepaid_balance")?.remaining, 12);
+});
+
+test("Grok subscription connector maps access status payload", async (t) => {
+  const previousFetch = globalThis.fetch;
+  let authorization = "";
+  let clientIdentifier = "";
+  let clientVersion = "";
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), grokDefaultSubscriptionEndpoint);
+    authorization = init?.headers?.authorization ?? "";
+    clientIdentifier = init?.headers?.["x-grok-client-identifier"] ?? "";
+    clientVersion = init?.headers?.["x-grok-client-version"] ?? "";
+    return new Response(JSON.stringify({
+      hasGrokCodeAccess: true,
+      subscriptionTier: "SuperGrok Heavy"
+    }), { headers: { "content-type": "application/json" }, status: 200 });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+  });
+
+  const connector = grokProviderAccountConfig().connectors?.[1];
+  assert.equal(connector?.type, "http-json");
+  const result = await testProviderAccountConnector({
+    apiKey: "grok-access-token",
+    baseUrl: grokDefaultBaseUrl,
+    connector,
+    providerName: "Grok CLI API"
+  });
+
+  assert.equal(authorization, "Bearer grok-access-token");
+  assert.equal(clientIdentifier, "xai-grok-cli");
+  assert.equal(clientVersion, "0.2.93");
+  assert.equal(result.status, "ok");
+  assert.equal(result.message, "SuperGrok Heavy");
+  assert.equal(result.meters.find((meter) => meter.id === "grok_subscription_access")?.remaining, 100);
+});
 
 test("Codex local account credential refreshes when only a refresh token is available", async (t) => {
   const previousHome = process.env.CCR_INTERNAL_HOME_DIR;

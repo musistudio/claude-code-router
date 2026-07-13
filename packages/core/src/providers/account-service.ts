@@ -5,9 +5,12 @@ import {
   codexDefaultBaseUrl,
   localAgentProviderApiKey,
   readCodexAuth,
+  readGrokAuth,
+  resolveGrokAuth,
   readZcodeLocalProviderCredential,
   zcodeDefaultBaseUrl
 } from "@ccr/core/agents/local-providers/service";
+import { grokAccessTokenExpired } from "@ccr/core/agents/local-providers/grok";
 import { pluginService } from "@ccr/core/plugins/service";
 import { getUsageTotalsSince } from "@ccr/core/usage/store";
 import { findProviderPresetByBaseUrl, providerEndpointCanReceiveProviderApiKey } from "@ccr/core/providers/presets/index";
@@ -163,6 +166,16 @@ export async function testProviderAccountConnector(request: ProviderAccountTestR
     type: "http-json"
   };
   const payload = await fetchJson(connector.endpoint, provider, connector.auth, connector.headers, connector.method, connector.body);
+  if (connector.parser === "grok-subscription") {
+    const meters = grokSubscriptionMeters(payload);
+    return {
+      meters,
+      message: grokSubscriptionMessage(payload),
+      paths: flattenJsonPaths(payload),
+      payload,
+      status: grokSubscriptionStatus(payload) ?? statusFromMeters(meters, [], 1)
+    };
+  }
   if (connector.parser === "kimi-code-usages") {
     const meters = kimiCodeUsageMeters(payload);
     return {
@@ -647,6 +660,15 @@ async function resolveHttpJsonConnector(
     ...(connector.headers ?? {}),
     ...(request.headers ?? {})
   }, connector.method, connector.body);
+  if (connector.parser === "grok-subscription") {
+    return {
+      errors: [],
+      message: grokSubscriptionMessage(payload),
+      meters: grokSubscriptionMeters(payload),
+      source: "http-json",
+      status: grokSubscriptionStatus(payload)
+    };
+  }
   if (connector.parser === "kimi-code-usages") {
     const meters = kimiCodeUsageMeters(payload);
     return {
@@ -844,6 +866,110 @@ function normalizeRemoteSnapshot(
     status: normalizeStatus(readString(payload.status)) ?? statusFromMeters(meters, [], 1),
     updatedAt: readString(payload.updatedAt) || new Date().toISOString()
   };
+}
+
+function grokSubscriptionMeters(payload: unknown): ProviderAccountMeter[] {
+  const allowAccess = grokSubscriptionBoolean(payload, [
+    "allow_access",
+    "allowAccess",
+    "has_grok_code_access",
+    "hasGrokCodeAccess"
+  ]);
+  if (allowAccess === undefined) {
+    return [];
+  }
+  return [
+    {
+      id: "grok_subscription_access",
+      kind: "subscription",
+      label: "Subscription access",
+      limit: 100,
+      remaining: allowAccess ? 100 : 0,
+      source: "http-json",
+      unit: "%",
+      used: allowAccess ? 0 : 100,
+      window: "subscription"
+    }
+  ];
+}
+
+function grokSubscriptionMessage(payload: unknown): string | undefined {
+  return grokSubscriptionString(payload, [
+    "gate_message",
+    "gateMessage",
+    "subscription_tier_display",
+    "subscriptionTierDisplay",
+    "subscription_tier",
+    "subscriptionTier",
+    "tier_display",
+    "tierDisplay",
+    "tier",
+    "user_blocked_reason",
+    "userBlockedReason",
+    "team_blocked_reason",
+    "teamBlockedReason"
+  ]);
+}
+
+function grokSubscriptionStatus(payload: unknown): ProviderAccountStatus | undefined {
+  const allowAccess = grokSubscriptionBoolean(payload, [
+    "allow_access",
+    "allowAccess",
+    "has_grok_code_access",
+    "hasGrokCodeAccess"
+  ]);
+  if (allowAccess === false) {
+    return "critical";
+  }
+  if (grokSubscriptionString(payload, ["gate_message", "gateMessage", "gate_label", "gateLabel"])) {
+    return "warning";
+  }
+  return undefined;
+}
+
+function grokSubscriptionBoolean(payload: unknown, keys: string[]): boolean | undefined {
+  for (const record of grokSubscriptionRecords(payload)) {
+    for (const key of keys) {
+      const value = readBoolean(readJsonRecordValue(record, key));
+      if (value !== undefined) {
+        return value;
+      }
+    }
+  }
+  return undefined;
+}
+
+function grokSubscriptionString(payload: unknown, keys: string[]): string | undefined {
+  for (const record of grokSubscriptionRecords(payload)) {
+    for (const key of keys) {
+      const value = readString(readJsonRecordValue(record, key));
+      if (value) {
+        return value;
+      }
+    }
+  }
+  return undefined;
+}
+
+function grokSubscriptionRecords(payload: unknown): Record<string, unknown>[] {
+  if (!isRecord(payload)) {
+    return [];
+  }
+  const records: Record<string, unknown>[] = [];
+  const queue = [payload];
+  for (const record of queue) {
+    if (records.includes(record)) {
+      continue;
+    }
+    records.push(record);
+    for (const key of ["account", "data", "meta", "subscription", "user", "viewer_context", "viewerContext"]) {
+      const nested = readJsonRecordValue(record, key);
+      if (isRecord(nested)) {
+        queue.push(nested);
+      }
+    }
+  }
+  return records;
 }
 
 function newApiKeyUsageMeters(payload: unknown): ProviderAccountMeter[] {
@@ -1252,6 +1378,9 @@ async function localAgentProviderAccountCredential(
     if (key.includes("claude-code-oauth")) {
       return localBearerAccountCredential(plugin);
     }
+    if (key.includes("grok-cli-oauth")) {
+      return await localGrokAccountCredential(plugin);
+    }
     if (key.includes("zcode-api-key")) {
       return localApiKeyHeaderAccountCredential(plugin);
     }
@@ -1567,6 +1696,18 @@ function codexJwtPayload(token: string | undefined): Record<string, unknown> | u
 function localBearerAccountCredential(plugin: Record<string, unknown>): { apiKey?: string; headers?: Record<string, string> } {
   const headers = localProviderPluginAuthHeaders(plugin);
   const apiKey = readBearerToken(headers.authorization || headers.Authorization);
+  return {
+    apiKey,
+    headers: withoutHeader(headers, "authorization")
+  };
+}
+
+async function localGrokAccountCredential(plugin: Record<string, unknown>): Promise<{ apiKey?: string; headers?: Record<string, string> }> {
+  const headers = localProviderPluginAuthHeaders(plugin);
+  const auth = await resolveGrokAuth().catch(() => readGrokAuth());
+  const apiKey = auth?.accessToken && !grokAccessTokenExpired(auth)
+    ? auth.accessToken
+    : readBearerToken(headers.authorization || headers.Authorization);
   return {
     apiKey,
     headers: withoutHeader(headers, "authorization")

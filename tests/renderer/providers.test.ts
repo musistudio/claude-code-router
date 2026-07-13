@@ -12,6 +12,7 @@ import {
   createProviderConfigFromDeepLink,
   createProviderDraft,
   createProviderInstallLinkFromDraft,
+  localAgentProviderIconUrls,
   providerCapabilitiesForProtocols,
   providerCapabilityBaseUrlForProtocol,
   providerDisplayIcon,
@@ -466,6 +467,17 @@ test("provider display icon prefers custom icons and falls back to preset icons"
       type: "gemini_generate_content"
     }),
     providerPresetIconUrls.gemini
+  );
+  assert.equal(
+    providerDisplayIcon({
+      api_base_url: "https://cli-chat-proxy.grok.com/v1",
+      api_key: "ccr-local-agent-login",
+      icon: "/assets/grok-old.svg",
+      models: [],
+      name: "Grok CLI API",
+      type: "openai_responses"
+    }),
+    localAgentProviderIconUrls.grok
   );
 });
 

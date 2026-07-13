@@ -1189,7 +1189,7 @@ function LocalAgentProviderImportPanel({
         apiKey: result.provider.apiKey ?? "",
         baseUrl: result.provider.baseUrl,
         credentials: [],
-        icon: result.provider.icon ?? "",
+        icon: result.provider.icon?.trim() || localAgentProviderIconUrls[candidate.kind] || "",
         modelDescriptions: result.provider.modelDescriptions,
         modelDisplayNames: result.provider.modelDisplayNames,
         modelMetadata: result.provider.modelMetadata,
@@ -1214,7 +1214,7 @@ function LocalAgentProviderImportPanel({
       <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
         <div className="min-w-0">
           <div className="truncate text-[12px] font-semibold text-foreground">{t("Import local agent login")}</div>
-          <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t("CCR scanned this computer for Claude Code, Codex, and ZCode login states. Click Import to add one as a gateway provider.")}</div>
+          <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t("CCR scanned this computer for Claude Code, Codex, Grok CLI, and ZCode login states. Click Import to add one as a gateway provider.")}</div>
         </div>
         {loading ? <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" /> : null}
       </div>
@@ -1281,6 +1281,7 @@ const localAgentProviderApiKey = "ccr-local-agent-login";
 const localAgentProviderPluginSuffixes: Record<LocalAgentProviderCandidate["kind"], string[]> = {
   "claude-code": ["-claude-code-oauth", "-claude-code-oauth-internal"],
   codex: ["-codex-oauth", "-codex-oauth-internal"],
+  grok: ["-grok-cli-oauth", "-grok-cli-oauth-internal"],
   zcode: ["-zcode-api-key", "-zcode-api-key-internal"]
 };
 

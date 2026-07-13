@@ -42,7 +42,8 @@ import { normalizeProviderBaseUrl as normalizeProviderBaseUrlInput } from "@ccr/
 import { backendService } from "@ccr/core/plugins/backend-service";
 import { RAW_TRACE_SPOOL_DIR } from "@ccr/core/config/constants";
 import { loadPersistedApiKeys } from "@ccr/core/config/api-key-store";
-import { codexDefaultBaseUrl, readCodexAuth } from "@ccr/core/agents/local-providers/service";
+import { codexDefaultBaseUrl, readCodexAuth, readGrokAuth, resolveGrokAuth } from "@ccr/core/agents/local-providers/service";
+import { grokAccessTokenExpired } from "@ccr/core/agents/local-providers/grok";
 import { fetchWithSystemProxy, getSystemProxyUrlForProtocol } from "@ccr/core/proxy/system-proxy-fetch";
 import { handleNetworkCaptureMcpRequest, isNetworkCaptureMcpPath } from "@ccr/core/mcp/network-capture-mcp";
 import { BROWSER_AUTOMATION_MCP_PATH, TOOL_HUB_MCP_SERVER_NAME, browserAutomationMcpEnabled, toolHubBuiltInBackendServers, toolHubMcpRuntimeConfig, toolHubRequestTimeoutMs } from "@ccr/core/mcp/toolhub-config";
@@ -1176,10 +1177,10 @@ async function writeCoreGatewayConfig(
   assertLoopbackCoreHost(config.gateway.coreHost);
   mkdirSync(dirname(config.gateway.generatedConfigFile), { mode: privateDirMode, recursive: true });
   const pluginCoreGatewayConfig = pluginService.getCoreGatewayConfig();
-  const providerPlugins = withCodexOauthRuntimeDefaults([
+  const providerPlugins = await withGrokOauthRuntimeDefaults(withCodexOauthRuntimeDefaults([
     ...(config.providerPlugins ?? []).filter(providerPluginEnabled),
     ...pluginService.getCoreProviderPlugins().filter(providerPluginEnabled)
-  ]);
+  ]));
   const codexOauthProviderNames = codexOauthLocalProviderNames(providerPlugins);
   const virtualModelProfiles = normalizeCoreGatewayVirtualModelProfiles(withCodexCompatibleVirtualModelProfiles(withFusionVirtualModelAliases([
     ...(config.virtualModelProfiles ?? []),
@@ -1398,6 +1399,31 @@ function withCodexOauthRuntimeDefaults(providerPlugins: unknown[]): unknown[] {
   });
 }
 
+async function withGrokOauthRuntimeDefaults(providerPlugins: unknown[]): Promise<unknown[]> {
+  const grokAuth = await resolveGrokAuth().catch(() => readGrokAuth());
+  if (!grokAuth?.accessToken || grokAccessTokenExpired(grokAuth)) {
+    return providerPlugins;
+  }
+
+  return providerPlugins.map((plugin) => {
+    if (!isLocalGrokOauthProviderPlugin(plugin)) {
+      return plugin;
+    }
+    const currentAuth = isRecord(plugin.auth) ? plugin.auth : {};
+    const currentHeaders = isRecord(currentAuth.headers) ? currentAuth.headers : {};
+    return {
+      ...plugin,
+      auth: {
+        ...currentAuth,
+        headers: {
+          ...currentHeaders,
+          authorization: `Bearer ${grokAuth.accessToken}`
+        }
+      }
+    };
+  });
+}
+
 function codexOauthLocalProviderNames(providerPlugins: unknown[]): Set<string> {
   const names = new Set<string>();
   for (const plugin of providerPlugins) {
@@ -1453,6 +1479,14 @@ function isLocalCodexOauthProviderPlugin(value: unknown): value is Record<string
   }
   const key = stringValue(value.key)?.toLowerCase() ?? "";
   return key.startsWith("ccr-local-agent-") && key.includes("codex-oauth");
+}
+
+function isLocalGrokOauthProviderPlugin(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const key = stringValue(value.key)?.toLowerCase() ?? "";
+  return key.startsWith("ccr-local-agent-") && key.includes("grok-cli-oauth");
 }
 
 function withCodexBackendRequestTransform(request: unknown): Record<string, unknown> {

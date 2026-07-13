@@ -102,6 +102,7 @@ import { cn } from "@/lib/utils";
 import appLogoUrl from "@/assets/logo.png";
 import claudeCodeLogoUrl from "@/assets/agent-logos/claude-code.png";
 import codexLogoUrl from "@/assets/agent-logos/codex.png";
+import grokLogoUrl from "@/assets/agent-logos/grok.ico";
 import zcodeLogoUrl from "@/assets/agent-logos/zcode.png";
 import onboardingMascotSpriteUrl from "@/assets/onboarding/mascot-transition.svg";
 import anthropicProviderIconUrl from "@/assets/provider-icons/anthropic.png";
@@ -388,8 +389,11 @@ import type { AddProviderDraft, AddRoutingRuleDraft, ModelCatalogItem, ProviderC
 export const localAgentProviderIconUrls: Record<LocalAgentProviderKind, string> = {
   "claude-code": claudeCodeLogoUrl,
   codex: codexLogoUrl,
+  grok: grokLogoUrl,
   zcode: zcodeLogoUrl
 };
+
+const localAgentProviderApiKeyValue = "ccr-local-agent-login";
 
 export function createModelCatalogItems(config: AppConfig): ModelCatalogItem[] {
   const rows: ModelCatalogItem[] = [];
@@ -774,6 +778,9 @@ export function providerDeepLinkDisplayIcon(payload: ProviderDeepLinkPayload): s
 }
 
 export function providerDisplayIcon(provider: GatewayProviderConfig): string {
+  if (isLocalGrokProvider(provider)) {
+    return grokLogoUrl;
+  }
   const icon = provider.icon?.trim();
   if (icon) {
     return icon;
@@ -781,6 +788,15 @@ export function providerDisplayIcon(provider: GatewayProviderConfig): string {
 
   const preset = findProviderPresetByBaseUrl(providerBaseUrl(provider));
   return preset ? providerPresetIconUrls[preset.id] ?? "" : "";
+}
+
+function isLocalGrokProvider(provider: GatewayProviderConfig): boolean {
+  if (providerApiKey(provider) !== localAgentProviderApiKeyValue) {
+    return false;
+  }
+  const baseUrl = normalizeProviderBaseUrl(providerBaseUrl(provider)).toLowerCase();
+  const name = provider.name?.toLowerCase() ?? "";
+  return baseUrl.includes("cli-chat-proxy.grok.com") || name.includes("grok");
 }
 
 export type ProviderDeepLinkCatalogModelsResolution = {
