@@ -10,6 +10,7 @@ import { loadPersistedAppSetting, replacePersistedAppSetting } from "@ccr/core/c
 import { scanBotHandoffBluetoothTargets, scanBotHandoffWifiTargets } from "@ccr/core/agents/bot-gateway/handoff-scan-service";
 import { cancelBotGatewayQrLogin, startBotGatewayQrLogin, waitBotGatewayQrLogin } from "@ccr/core/agents/bot-gateway/qr-login-service";
 import { syncClaudeAppGatewayConfig, restoreClaudeAppGatewayConfig } from "@ccr/core/agents/claude-app/gateway-service";
+import { findInstalledCodexAppExecutable } from "@ccr/core/agents/codex/app-launch";
 import { loadAppConfig, saveApiKeysConfig, saveAppConfig } from "@ccr/core/config/config";
 import { API_KEYS_DB_FILE, APP_CONFIG_DB_FILE, APP_NAME, CONFIGDIR, CONFIG_FILE, DATADIR, GATEWAY_CONFIG_FILE, LEGACY_CONFIG_FILE, ONBOARDING_FINISHED_FILE, PROXY_CA_CERT_FILE, REQUEST_LOGS_DB_FILE, USAGE_DB_FILE } from "@ccr/core/config/constants";
 import { detectProviderIcon } from "@ccr/core/providers/icons";
@@ -481,9 +482,11 @@ function logProfileApplyResult(result: ProfileApplyResult): void {
 }
 
 function getCliAppInfo(): AppInfo {
+  const chatgptAppPath = findInstalledCodexAppExecutable().executable;
   return {
     appConfigDbFile: APP_CONFIG_DB_FILE,
     apiKeysDbFile: API_KEYS_DB_FILE,
+    ...(chatgptAppPath ? { chatgptAppPath } : {}),
     configDir: CONFIGDIR,
     configFile: CONFIG_FILE,
     dataDir: DATADIR,

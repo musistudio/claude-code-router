@@ -9,7 +9,17 @@ import {
 
 function createRouterPlugin(options = {}) {
   const agent = options.agent ?? "claude-code";
-  return new ClaudeCodeRouterPlugin({
+  const profiles = options.profiles ?? [
+    {
+      agent,
+      enabled: options.profileEnabled ?? true,
+      id: `${agent}-profile`,
+      model: options.profileModel ?? "",
+      name: agent,
+      scope: "global"
+    }
+  ];
+  const plugin = new ClaudeCodeRouterPlugin({
     CUSTOM_ROUTER_PATH: "",
     Providers: options.providers ?? [
       {
@@ -30,20 +40,22 @@ function createRouterPlugin(options = {}) {
     },
     profile: {
       enabled: options.profileRuntimeEnabled ?? true,
-      profiles: [
-        {
-          agent,
-          enabled: options.profileEnabled ?? true,
-          id: `${agent}-profile`,
-          model: options.profileModel ?? "",
-          name: agent,
-          scope: "global"
-        }
-      ]
+      profiles
     },
     toolHub: options.toolHub,
     virtualModelProfiles: options.virtualModelProfiles ?? []
   });
+  return {
+    routeRequest(input) {
+      if (options.authenticatedProfileId !== null && input.headers["x-auth-api-key-id"] === undefined) {
+        const authenticatedProfileId = options.authenticatedProfileId ?? profiles[0]?.id;
+        if (authenticatedProfileId) {
+          input.headers["x-auth-api-key-id"] = `profile:${authenticatedProfileId}`;
+        }
+      }
+      return plugin.routeRequest(input);
+    }
+  };
 }
 
 test("fallback retry delay backs off retryable HTTP statuses", () => {
@@ -272,6 +284,79 @@ test("built-in Claude Code route matches user-agent case-insensitively", async (
   assert.equal(result.body.model, "Provider/claude-sonnet");
   assert.equal(result.decision.model, "Provider/claude-sonnet");
   assert.equal(result.decision.reason, "builtin:claude-code");
+});
+
+test("built-in Codex route uses the authenticated profile instead of the first Codex profile", async () => {
+  const plugin = createRouterPlugin({
+    agent: "codex",
+    authenticatedProfileId: "bs-2",
+    profiles: [
+      {
+        agent: "codex",
+        enabled: true,
+        id: "codex",
+        model: "Codex API/gpt-5.6-sol",
+        name: "Codex",
+        scope: "ccr"
+      },
+      {
+        agent: "codex",
+        enabled: true,
+        id: "bs-2",
+        model: "uuroute/gpt-5.5",
+        name: "bs",
+        scope: "ccr"
+      }
+    ],
+    providers: [
+      {
+        models: ["gpt-5.6-sol"],
+        name: "Codex API",
+        type: "openai_responses"
+      },
+      {
+        models: ["gpt-5.5"],
+        name: "uuroute",
+        type: "openai_responses"
+      }
+    ]
+  });
+  const result = await plugin.routeRequest({
+    body: {
+      model: "gpt-5"
+    },
+    headers: {
+      "user-agent": "Codex Desktop/0.144.0"
+    },
+    method: "POST",
+    url: "/v1/responses"
+  });
+
+  assert.equal(result.body.model, "uuroute/gpt-5.5");
+  assert.equal(result.decision.model, "uuroute/gpt-5.5");
+  assert.equal(result.decision.reason, "builtin:codex");
+});
+
+test("built-in Codex route preserves the requested model when the authenticated profile does not match", async () => {
+  const plugin = createRouterPlugin({
+    agent: "codex",
+    authenticatedProfileId: "missing-profile",
+    profileModel: "Provider/gpt-5-codex"
+  });
+  const result = await plugin.routeRequest({
+    body: {
+      model: "Provider/gpt-5-codex"
+    },
+    headers: {
+      "user-agent": "Codex Desktop/0.144.0"
+    },
+    method: "POST",
+    url: "/v1/responses"
+  });
+
+  assert.equal(result.body.model, "Provider/gpt-5-codex");
+  assert.equal(result.decision.model, "Provider/gpt-5-codex");
+  assert.equal(result.decision.reason, "default");
 });
 
 test("built-in Claude Code route does not inject Claude Code native tool search", async () => {
@@ -808,6 +893,7 @@ test("issue 1480 raw user config reproduces the old failure precondition when Ro
     }
   });
   const headers = {
+    "x-auth-api-key-id": "profile:claude-code-main",
     "user-agent": "claude-cli/2.1.187 (external, cli)"
   };
   const result = await plugin.routeRequest({
@@ -831,6 +917,7 @@ test("issue 1480 raw user config ignores an unreplaced Provider/model subagent p
   const config = createIssue1480UserConfig();
   const plugin = new ClaudeCodeRouterPlugin(config);
   const headers = {
+    "x-auth-api-key-id": "profile:claude-code-main",
     "user-agent": "claude-cli/2.1.187 (external, cli)"
   };
   const result = await plugin.routeRequest({
@@ -856,6 +943,7 @@ test("issue 1480 config routes Claude Code profile traffic through the user defa
   const config = createIssue1480RouterConfig();
   const plugin = new ClaudeCodeRouterPlugin(config);
   const headers = {
+    "x-auth-api-key-id": "profile:claude-code-main",
     "user-agent": "claude-cli/2.1.187 (external, cli)"
   };
   const result = await plugin.routeRequest({

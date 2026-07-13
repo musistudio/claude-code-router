@@ -24,7 +24,7 @@ import {
   OverviewWidgetConfig, parsePluginAppsSettingsText, parsePluginConfigSettingsText, parseProviderAccountDraft,
   providerCredentialsFromDraft,
   persistLanguagePreference, PluginMarketplaceEntry, PluginRoutingConfigTarget, pluginSettingsConfigFromDraft, PluginSettingsDraft, presetCapabilitiesFromDraft,
-  probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
+  probeProviderCandidates, probeProviderDeepLinkPayload, profileAgentLabel, profileDraftWithDetectedAppPath, profileEnvRowsForAgent, ProfileConfig, ProfileOpenSurface, ProfileRuntimeStatus, profileConfigFromDraft, providerAccountApiKeySafetyIssue,
   profileOpenCommandFallback, profileOpenSurfaces, ProviderAccountSnapshot, providerApiKeySafetyIssue, ProviderConnectivityCheckReport, ProviderDeepLinkPayload, ProviderDeepLinkRequest, providerIdentitySafetyIssue, providerProbeCandidates,
   providerCapabilitiesForProtocols, providerGlobalBaseUrlForProbe, providerProbeCandidatesApiKeySafetyIssue, providerProbeHasSupportedProtocol, providerProbeInputKey, providerSelectableProtocolsFromProbe, ProxyNetworkSnapshot,
   ProxyStatus, readLanguagePreference, RequestLogListFilter, RequestLogPage, ResolvedLanguage,
@@ -208,6 +208,7 @@ function App() {
   const [profileDraft, setProfileDraft] = useState<AddProfileDraft>(() => createProfileDraft());
   const [profileEditDraft, setProfileEditDraft] = useState<AddProfileDraft>(() => createProfileDraft());
   const [profileEditIndex, setProfileEditIndex] = useState<number>();
+  const [profileDeleteIndex, setProfileDeleteIndex] = useState<number>();
   const [profileOpenDialog, setProfileOpenDialog] = useState<ProfileOpenDialogState>();
   const [profileActionBusy, setProfileActionBusy] = useState<ProfileActionBusy>();
   const [profileRuntimeStatus, setProfileRuntimeStatus] = useState<ProfileRuntimeStatus>({ profiles: [] });
@@ -361,6 +362,14 @@ function App() {
       unsubscribeOpenUpdate();
     };
   }, []);
+
+  useEffect(() => {
+    if (!appInfo.chatgptAppPath) {
+      return;
+    }
+    setProfileDraft((current) => profileDraftWithDetectedAppPath(current, appInfo.chatgptAppPath));
+    setProfileEditDraft((current) => profileDraftWithDetectedAppPath(current, appInfo.chatgptAppPath));
+  }, [appInfo.chatgptAppPath]);
 
   useEffect(() => {
     if (!window.ccr) {
@@ -637,6 +646,7 @@ function App() {
   const dirty = draftConfig !== savedConfig;
   const apiKeys = useMemo(() => createApiKeyList(draftConfig), [draftConfig.APIKEY, draftConfig.APIKEYS]);
   const apiKeyEditItem = apiKeyEditIndex === undefined ? undefined : apiKeys.find((apiKey) => apiKey.index === apiKeyEditIndex);
+  const profileDeleteItem = profileDeleteIndex === undefined ? undefined : draftConfig.profile.profiles[profileDeleteIndex];
   const providerDeleteItem = providerDeleteIndex === undefined ? undefined : draftConfig.Providers[providerDeleteIndex];
   const routingDeleteRule = routingDeleteIndex === undefined ? undefined : draftConfig.Router.rules[routingDeleteIndex];
   const extensionDeleteItem = useMemo(() => {
@@ -763,7 +773,10 @@ function App() {
 
     onboardingProfileDraftSource.current = source;
     setProfileAgentTab(profile.agent);
-    setProfileDraft(createProfileDraftFromProfile(profile, draftConfig.botConfigs));
+    setProfileDraft(profileDraftWithDetectedAppPath(
+      createProfileDraftFromProfile(profile, draftConfig.botConfigs),
+      appInfo.chatgptAppPath
+    ));
     setProfileActionError("");
   }, [activeView, onboardingStep, onboardingProfileConfirmed, configLoaded, draftConfig.profile.profiles, draftConfig.botConfigs, profileDraft.agent]);
 
@@ -2390,7 +2403,7 @@ function App() {
 
   function openAddProfileDialog(agent: ProfileConfig["agent"] = profileAgentTab) {
     setProfileAgentTab(agent);
-    setProfileDraft(createProfileDraft(agent));
+    setProfileDraft(profileDraftWithDetectedAppPath(createProfileDraft(agent), appInfo.chatgptAppPath));
     setProfileActionError("");
     setProfileAddOpen(true);
   }
@@ -2401,7 +2414,10 @@ function App() {
       return;
     }
     setProfileEditIndex(index);
-    setProfileEditDraft(createProfileDraftFromProfile(profile, draftConfig.botConfigs));
+    setProfileEditDraft(profileDraftWithDetectedAppPath(
+      createProfileDraftFromProfile(profile, draftConfig.botConfigs),
+      appInfo.chatgptAppPath
+    ));
     setProfileActionError("");
   }
 
@@ -2623,10 +2639,10 @@ function App() {
       const next = { ...current, ...patch };
       if (patch.agent && patch.agent !== current.agent) {
         const name = current.name === profileAgentLabel(current.agent) ? undefined : next.name;
-        return {
+        return profileDraftWithDetectedAppPath({
           ...createProfileDraft(patch.agent, name),
           envRows: profileEnvRowsForAgent(patch.agent, current.envRows)
-        };
+        }, appInfo.chatgptAppPath);
       }
       return next;
     });
@@ -2638,10 +2654,10 @@ function App() {
       const next = { ...current, ...patch };
       if (patch.agent && patch.agent !== current.agent) {
         const name = current.name === profileAgentLabel(current.agent) ? undefined : next.name;
-        return {
+        return profileDraftWithDetectedAppPath({
           ...createProfileDraft(patch.agent, name),
           envRows: profileEnvRowsForAgent(patch.agent, current.envRows)
-        };
+        }, appInfo.chatgptAppPath);
       }
       return next;
     });
@@ -2769,6 +2785,14 @@ function App() {
     }));
   }
 
+  function confirmProfileDelete() {
+    if (profileDeleteIndex === undefined) {
+      return;
+    }
+    removeProfile(profileDeleteIndex);
+    setProfileDeleteIndex(undefined);
+  }
+
   return (
     <AppI18nContext.Provider value={copy}>
       <LayoutGroup id="home-shell">
@@ -2894,7 +2918,7 @@ function App() {
                   openProfileApp: (index) => void openProfileAppFromList(index),
                   profileActionBusy,
                   profileRuntimeStatus,
-                  removeProfile,
+                  removeProfile: setProfileDeleteIndex,
                   stopProfileApp: (index) => void stopProfileAppFromList(index),
                   updateProfileItem
                 },
@@ -3032,6 +3056,11 @@ function App() {
 	              virtualModelProfiles: draftConfig.virtualModelProfiles ?? [],
 	              onSubmit: submitProfileDraft
 	            } : undefined}
+            profileDelete={profileDeleteItem ? {
+              onClose: () => setProfileDeleteIndex(undefined),
+              onConfirm: confirmProfileDelete,
+              profile: profileDeleteItem
+            } : undefined}
             profileEdit={profileEditIndex !== undefined ? {
               botConfigs: draftConfig.botConfigs,
               canSubmit: canSubmitProfileEdit,

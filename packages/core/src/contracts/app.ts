@@ -1,6 +1,7 @@
 export type AppInfo = {
   appConfigDbFile: string;
   apiKeysDbFile: string;
+  chatgptAppPath?: string;
   configDir: string;
   configFile: string;
   dataDir: string;

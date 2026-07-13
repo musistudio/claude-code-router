@@ -756,6 +756,14 @@ export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code"
   };
 }
 
+export function profileDraftWithDetectedAppPath(draft: AddProfileDraft, chatgptAppPath?: string): AddProfileDraft {
+  const detectedPath = chatgptAppPath?.trim() || "";
+  if (draft.agent !== "codex" || draft.appPath.trim() || !detectedPath) {
+    return draft;
+  }
+  return { ...draft, appPath: detectedPath };
+}
+
 export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs: BotGatewaySavedConfig[] = []): AddProfileDraft {
   const botDraft = createBotGatewayDraft(profile.botGateway);
   const botConfigId = profile.botConfigId || matchingBotConfigId(profile.botGateway, botConfigs);

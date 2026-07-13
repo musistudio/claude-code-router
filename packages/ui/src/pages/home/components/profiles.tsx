@@ -1,6 +1,6 @@
 import {
   AddProfileDraft, AgentLogo, AnimatedIconSwap, AnimatedPopover, AnimatePresence, AppConfig, Badge, BotGatewaySavedConfig, botGatewaySavedConfigLabel, BotHandoffScanTarget, Button,
-  Card, CardContent, CardHeader, CardTitle, Check, ChevronDown, Copy,
+  Card, CardContent, CardHeader, CardTitle, Check, ChevronDown, CircleAlert, Copy,
   cn, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader,
   DialogTitle, Field, GatewayProviderConfig, Info, Input, KeyValueRowsControl, LoaderCircle, motion,
   normalizeProfileScope, normalizeProfileSurface, Pencil, Plus, PopoverContent,
@@ -173,6 +173,63 @@ export function ProfileView({
         </CardContent>
       </Card>
     </motion.div>
+  );
+}
+
+export function DeleteProfileDialog({
+  onClose,
+  onConfirm,
+  profile
+}: {
+  onClose: () => void;
+  onConfirm: () => void;
+  profile: ProfileConfig;
+}) {
+  const t = useAppText();
+  const name = profile.name || t("Unnamed");
+  const agent = t(profileAgentLabel(profile.agent));
+
+  return (
+    <Dialog onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-[520px]">
+        <DialogHeader>
+          <div className="min-w-0">
+            <DialogTitle>{t("Delete Profile")}</DialogTitle>
+          </div>
+          <Button aria-label={t("Close dialog")} onClick={onClose} size="iconSm" title={t("Close")} type="button" variant="ghost">
+            <X className="h-4 w-4" />
+          </Button>
+        </DialogHeader>
+
+        <DialogBody>
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5">
+            <div className="flex items-start gap-2 text-[12px] font-medium text-destructive">
+              <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{t("Delete this agent profile from the configuration?")}</span>
+            </div>
+            <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+              <div className="truncate" title={name}>
+                <span className="font-medium text-foreground">{t("Name")}:</span> {name}
+              </div>
+              <div className="truncate" title={agent}>
+                <span className="font-medium text-foreground">{t("Agent")}:</span> {agent}
+              </div>
+              <div>{t("This action is applied immediately to the draft config and will auto-save with other changes.")}</div>
+            </div>
+          </div>
+        </DialogBody>
+
+        <DialogFooter>
+          <Button autoFocus onClick={onClose} type="button" variant="outline">
+            {t("Cancel")}
+          </Button>
+          <Button onClick={onConfirm} type="button" variant="destructive">
+            <Trash2 className="h-4 w-4" />
+            {t("Delete")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

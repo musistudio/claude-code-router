@@ -6,7 +6,7 @@ export { AppSettingsDialog } from "./settings";
 export { UpdateDialog } from "./update";
 export { OverviewView, AgentAnalysisView } from "./dashboard";
 export { ApiKeysView, AddApiKeyDialog, EditApiKeyDialog } from "./api-keys";
-export { ProfileView, AddProfileForm, AddProfileDialog } from "./profiles";
+export { ProfileView, AddProfileForm, AddProfileDialog, DeleteProfileDialog } from "./profiles";
 export { NetworkingView, LogsView } from "./network-logs";
 export { ProvidersView, ModelsView, DeleteProviderDialog, ProviderDeepLinkDialog, AddProviderForm, AddProviderDialog } from "./providers";
 export { RoutingView, DeleteRoutingRuleDialog, AddRoutingRuleDialog } from "./routing";

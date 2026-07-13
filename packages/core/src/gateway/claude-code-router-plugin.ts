@@ -308,7 +308,7 @@ function resolveBuiltInAgentRouteDecision(
     if (!builtInAgentRouteMatches(request, config, agent)) {
       continue;
     }
-    const target = modelRegistry.resolve(resolveBuiltInAgentRouteTarget(config, agent));
+    const target = modelRegistry.resolve(resolveBuiltInAgentRouteTarget(request, config, agent));
     if (!target) {
       continue;
     }
@@ -337,22 +337,43 @@ function builtInAgentRouteMatches(
   if (config.Router.builtInRules?.[agent]?.enabled === false) {
     return false;
   }
-  if (!resolveBuiltInAgentProfile(config, agent)) {
+  if (!resolveBuiltInAgentProfile(request, config, agent)) {
     return false;
   }
   const userAgent = readRequestHeader(request.headers, "user-agent")?.toLowerCase() ?? "";
   return userAgent.includes(builtInAgentUserAgentNeedle(agent));
 }
 
-function resolveBuiltInAgentProfile(config: AppConfig, agent: RouterBuiltInAgentRuleId) {
+function resolveBuiltInAgentProfile(
+  request: MutableRequestLike,
+  config: AppConfig,
+  agent: RouterBuiltInAgentRuleId
+) {
   if (config.profile.enabled === false) {
     return undefined;
   }
-  return config.profile.profiles.find((profile) => profile.enabled && profile.agent === agent);
+  const authenticatedApiKeyId = readRequestHeader(request.headers, "x-auth-api-key-id")?.trim();
+  if (!authenticatedApiKeyId) {
+    return undefined;
+  }
+  return config.profile.profiles.find((profile) =>
+    profile.enabled &&
+    profile.agent === agent &&
+    profileApiKeyId(profile.id || profile.name || profile.agent) === authenticatedApiKeyId
+  );
 }
 
-function resolveBuiltInAgentRouteTarget(config: AppConfig, agent: RouterBuiltInAgentRuleId): string | undefined {
-  return normalizeRouteSelector(resolveBuiltInAgentProfile(config, agent)?.model);
+function resolveBuiltInAgentRouteTarget(
+  request: MutableRequestLike,
+  config: AppConfig,
+  agent: RouterBuiltInAgentRuleId
+): string | undefined {
+  return normalizeRouteSelector(resolveBuiltInAgentProfile(request, config, agent)?.model);
+}
+
+function profileApiKeyId(value: string): string {
+  const profileId = value.trim().replace(/[^a-zA-Z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
+  return `profile:${profileId || "profile"}`;
 }
 
 function builtInAgentUserAgentNeedle(agent: RouterBuiltInAgentRuleId): string {
