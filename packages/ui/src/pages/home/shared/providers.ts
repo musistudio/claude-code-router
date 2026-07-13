@@ -103,6 +103,7 @@ import appLogoUrl from "@/assets/logo.png";
 import claudeCodeLogoUrl from "@/assets/agent-logos/claude-code.png";
 import codexLogoUrl from "@/assets/agent-logos/codex.png";
 import grokLogoUrl from "@/assets/agent-logos/grok.ico";
+import openCodeLogoUrl from "@/assets/agent-logos/opencode.ico";
 import zcodeLogoUrl from "@/assets/agent-logos/zcode.png";
 import onboardingMascotSpriteUrl from "@/assets/onboarding/mascot-transition.svg";
 import anthropicProviderIconUrl from "@/assets/provider-icons/anthropic.png";
@@ -390,6 +391,7 @@ export const localAgentProviderIconUrls: Record<LocalAgentProviderKind, string> 
   "claude-code": claudeCodeLogoUrl,
   codex: codexLogoUrl,
   grok: grokLogoUrl,
+  opencode: openCodeLogoUrl,
   zcode: zcodeLogoUrl
 };
 

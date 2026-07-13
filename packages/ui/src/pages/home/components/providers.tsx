@@ -1213,8 +1213,8 @@ function LocalAgentProviderImportPanel({
     <div className="sm:col-span-2 rounded-md border border-border bg-muted/20 p-3">
       <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
         <div className="min-w-0">
-          <div className="truncate text-[12px] font-semibold text-foreground">{t("Import local agent login")}</div>
-          <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t("CCR scanned this computer for Claude Code, Codex, Grok CLI, and ZCode login states. Click Import to add one as a gateway provider.")}</div>
+          <div className="truncate text-[12px] font-semibold text-foreground">{t("Import local agent provider")}</div>
+          <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t("CCR scanned this computer for local Claude Code, Codex, Grok CLI, OpenCode CLI, and ZCode providers. Click Import to add one as a gateway provider.")}</div>
         </div>
         {loading ? <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" /> : null}
       </div>
@@ -1278,19 +1278,27 @@ function LocalAgentProviderImportPanel({
 }
 
 const localAgentProviderApiKey = "ccr-local-agent-login";
-const localAgentProviderPluginSuffixes: Record<LocalAgentProviderCandidate["kind"], string[]> = {
+const localAgentProviderPluginSuffixes: Record<Exclude<LocalAgentProviderCandidate["kind"], "opencode">, string[]> = {
   "claude-code": ["-claude-code-oauth", "-claude-code-oauth-internal"],
   codex: ["-codex-oauth", "-codex-oauth-internal"],
   grok: ["-grok-cli-oauth", "-grok-cli-oauth-internal"],
   zcode: ["-zcode-api-key", "-zcode-api-key-internal"]
 };
 
+function localAgentProviderPluginSuffixesForCandidate(candidate: LocalAgentProviderCandidate): string[] {
+  if (candidate.kind === "opencode") {
+    const baseSuffix = `-opencode-${candidate.protocol.replaceAll("_", "-")}-api-key`;
+    return [baseSuffix, `${baseSuffix}-internal`];
+  }
+  return localAgentProviderPluginSuffixes[candidate.kind];
+}
+
 function localAgentProviderAlreadyImported(
   candidate: LocalAgentProviderCandidate,
   providers: GatewayProviderConfig[],
   providerPlugins: unknown[]
 ): boolean {
-  const suffixes = localAgentProviderPluginSuffixes[candidate.kind];
+  const suffixes = localAgentProviderPluginSuffixesForCandidate(candidate);
   const localProviderNames = new Set(providers
     .filter((provider) => provider.api_key === localAgentProviderApiKey)
     .flatMap((provider) => [
@@ -1378,7 +1386,6 @@ export function AddProviderForm({
   const protocolProbeRows = useMemo(() => uniqueProviderProbeProtocolRows(probe?.protocols ?? []), [probe]);
   const configuredModels = mergeProviderModelLists(draft.selectedModels, splitLines(draft.modelsText));
   const hasConnectivityCheckInputs = Boolean(
-    !localAgentImport &&
     draft.baseUrl.trim() &&
     draft.apiKey.trim() &&
     configuredModels.length > 0

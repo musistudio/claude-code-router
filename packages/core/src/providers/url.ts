@@ -127,7 +127,8 @@ function stripProviderApiVersion(value: string): string {
 }
 
 function providerGeminiBaseUrl(normalizedInputBaseUrl: string, rootBaseUrl: string): string {
-  return isVersionedVertexBypassBaseUrl(normalizedInputBaseUrl)
+  return isVersionedVertexBypassBaseUrl(normalizedInputBaseUrl) ||
+    isNestedVersionedGeminiBaseUrl(normalizedInputBaseUrl)
     ? normalizedInputBaseUrl
     : rootBaseUrl;
 }
@@ -142,6 +143,19 @@ function isVersionedVertexBypassBaseUrl(value: string): boolean {
     return segments.includes("bypass") &&
       segments.includes("vertex") &&
       /^(v1|v1beta)$/.test(segments[segments.length - 1] ?? "");
+  } catch {
+    return false;
+  }
+}
+
+function isNestedVersionedGeminiBaseUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    const segments = url.pathname
+      .split("/")
+      .map((segment) => segment.trim().toLowerCase())
+      .filter(Boolean);
+    return segments.length > 1 && /^(v1|v1beta)$/.test(segments[segments.length - 1] ?? "");
   } catch {
     return false;
   }

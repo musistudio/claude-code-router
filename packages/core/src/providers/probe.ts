@@ -137,6 +137,7 @@ export async function probeGatewayProviderCandidates(
         forceRefresh: request.forceRefresh,
         mode,
         models: mode === "connectivity" ? request.models ?? [] : [],
+        providerPlugins: request.providerPlugins,
         protocols
       });
       results.push({ candidate, probe });
@@ -161,6 +162,7 @@ export async function checkGatewayProviderConnectivity(
           forceRefresh: request.forceRefresh,
           mode: "connectivity",
           models: [model],
+          providerPlugins: request.providerPlugins,
           protocols: request.protocols
         });
         if (!result) {
@@ -231,7 +233,7 @@ async function resolveGatewayProviderProbe(request: GatewayProviderProbeRequest)
   const models = (mode === "connectivity" || mode === "models") && modelProbe.models.length > 0
     ? modelProbe.models
     : typedModels;
-  const protocolResults = await probeProtocols(parsed, request.apiKey, models, protocols, mode);
+  const protocolResults = await probeProtocols(parsed, request.apiKey, models, protocols, mode, request.providerPlugins ?? []);
   const detectedProtocol = detectProtocol(parsed, protocolResults, modelProbe.source, protocols);
   const normalizedBaseUrl = detectedProtocol
     ? resolveProbeBaseUrl(parsed, detectedProtocol, protocolResults, modelProbe)
@@ -258,6 +260,7 @@ function providerProbeCacheKey(request: GatewayProviderProbeRequest): string {
     baseUrl: request.baseUrl.trim(),
     mode: request.mode ?? "protocols",
     models: uniqueStrings(request.models ?? []),
+    providerPluginsHash: hashSensitiveValue(JSON.stringify(request.providerPlugins ?? [])),
     protocols: uniqueProtocols(request.protocols ?? []),
     skipModelDiscovery: request.skipModelDiscovery === true
   });
@@ -482,14 +485,15 @@ async function probeProtocols(
   apiKey: string | undefined,
   models: string[],
   allowedProtocols: GatewayProviderProtocol[] = [],
-  mode: NonNullable<GatewayProviderProbeRequest["mode"]> = "protocols"
+  mode: NonNullable<GatewayProviderProbeRequest["mode"]> = "protocols",
+  providerPlugins: unknown[] = []
 ): Promise<GatewayProviderProbeProtocolResult[]> {
   const results: GatewayProviderProbeProtocolResult[] = [];
 
   for (const protocol of orderedProtocols(parsed, allowedProtocols)) {
     results.push(
       mode === "connectivity"
-        ? await probeProtocolConnectivity(parsed, apiKey, models, protocol)
+        ? await probeProtocolConnectivity(parsed, apiKey, models, protocol, providerPlugins)
         : await probeProtocolSupport(parsed, apiKey, protocol)
     );
   }
@@ -538,7 +542,8 @@ async function probeProtocolConnectivity(
   parsed: ParsedProviderUrl,
   apiKey: string | undefined,
   models: string[],
-  protocol: GatewayProviderProtocol
+  protocol: GatewayProviderProtocol,
+  providerPlugins: unknown[] = []
 ): Promise<GatewayProviderProbeProtocolResult> {
   const model = pickProbeModel(models, protocol);
   const endpoints = endpointsForProtocol(parsed, protocol, model);
@@ -556,7 +561,12 @@ async function probeProtocolConnectivity(
   let firstResult: GatewayProviderProbeProtocolResult | undefined;
 
   for (const candidate of endpoints) {
-    const result = await requestJson(candidate.endpoint, requestForProtocol(protocol, model, apiKey));
+    const request = providerProbeAuthRequest(
+      candidate.endpoint,
+      requestForProtocol(protocol, model, apiKey),
+      providerPlugins
+    );
+    const result = await requestJson(request.url, request.init);
     const message = readResponseMessage(result);
     const supported = isProtocolSupported(result.status, message, protocol);
     const probeResult = {
@@ -674,6 +684,59 @@ function requestForProtocolSupport(protocol: GatewayProviderProtocol, apiKey: st
     },
     method: "POST"
   };
+}
+
+function providerProbeAuthRequest(
+  url: string,
+  init: RequestInit,
+  providerPlugins: unknown[]
+): { init: RequestInit; url: string } {
+  const auth = providerPlugins
+    .map(providerPluginAuth)
+    .find((item): item is Record<string, unknown> => Boolean(item));
+  if (!auth) {
+    return { init, url };
+  }
+
+  const headers = new Headers(init.headers);
+  for (const header of readStringArray(auth.removeHeaders)) {
+    headers.delete(header);
+  }
+  for (const [name, value] of Object.entries(isRecord(auth.headers) ? auth.headers : {})) {
+    const headerValue = readString(value);
+    if (headerValue) {
+      headers.set(name, headerValue);
+    }
+  }
+
+  const nextUrl = new URL(url);
+  for (const [name, value] of Object.entries(isRecord(auth.query) ? auth.query : {})) {
+    const queryValue = readString(value);
+    if (queryValue) {
+      nextUrl.searchParams.set(name, queryValue);
+    }
+  }
+
+  return {
+    init: {
+      ...init,
+      headers
+    },
+    url: nextUrl.toString()
+  };
+}
+
+function providerPluginAuth(plugin: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(plugin) || !isRecord(plugin.auth)) {
+    return undefined;
+  }
+  return plugin.auth;
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map(readString).filter((item): item is string => Boolean(item))
+    : [];
 }
 
 async function requestJson(url: string, init: RequestInit): Promise<FetchJsonResult> {

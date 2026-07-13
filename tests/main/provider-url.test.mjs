@@ -39,6 +39,18 @@ test("provider URL parsing preserves versioned Vertex bypass bases for Gemini", 
   );
 });
 
+test("provider URL parsing preserves nested versioned Gemini bases", () => {
+  const parsed = parseProviderBaseUrl("https://opencode.ai/zen/v1/models/gemini-3-flash:generateContent");
+
+  assert.equal(parsed.normalizedInputBaseUrl, "https://opencode.ai/zen/v1");
+  assert.equal(parsed.rootBaseUrl, "https://opencode.ai/zen");
+  assert.equal(parsed.geminiBaseUrl, "https://opencode.ai/zen/v1");
+  assert.equal(
+    normalizeProviderBaseUrl("https://opencode.ai/zen/v1", "gemini_generate_content"),
+    "https://opencode.ai/zen/v1"
+  );
+});
+
 test("provider URL parsing handles Gemini Interactions endpoint variants", () => {
   const parsed = parseProviderBaseUrl("localhost:8787/v1/interactions/interaction-123/cancel");
 

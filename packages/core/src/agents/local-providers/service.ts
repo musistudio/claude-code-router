@@ -8,6 +8,7 @@ import type {
 import { claudeCodeCandidate, importClaudeCodeProvider } from "@ccr/core/agents/local-providers/claude-code";
 import { codexCandidate, importCodexProvider, probeCodexProvider } from "@ccr/core/agents/local-providers/codex";
 import { grokCandidate, importGrokProvider } from "@ccr/core/agents/local-providers/grok";
+import { importOpenCodeProvider, opencodeCandidates } from "@ccr/core/agents/local-providers/opencode";
 import { importZcodeProvider, zcodeCandidate } from "@ccr/core/agents/local-providers/zcode";
 
 export { codexDefaultBaseUrl, readCodexAuth } from "@ccr/core/agents/local-providers/codex";
@@ -20,6 +21,7 @@ export function getLocalAgentProviderCandidates(): LocalAgentProviderCandidate[]
     codexCandidate(),
     claudeCodeCandidate(),
     grokCandidate(),
+    ...opencodeCandidates(),
     zcodeCandidate()
   ].filter((candidate) => candidate.status !== "missing");
 }
@@ -41,6 +43,9 @@ export async function importLocalAgentProvider(request: LocalAgentProviderImport
   }
   if (candidate.kind === "grok") {
     return importGrokProvider(candidate, request.providerNames ?? []);
+  }
+  if (candidate.kind === "opencode") {
+    return importOpenCodeProvider(candidate, request.providerNames ?? []);
   }
   return importZcodeProvider(candidate, request.providerNames ?? []);
 }

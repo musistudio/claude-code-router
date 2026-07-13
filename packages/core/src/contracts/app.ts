@@ -329,7 +329,7 @@ export type ProviderManifestFetchResult = {
   url: string;
 };
 
-export type LocalAgentProviderKind = "claude-code" | "codex" | "grok" | "zcode";
+export type LocalAgentProviderKind = "claude-code" | "codex" | "grok" | "opencode" | "zcode";
 
 export type LocalAgentProviderStatus = "available" | "locked" | "missing";
 
@@ -442,6 +442,7 @@ export type GatewayProviderProbeRequest = {
   forceRefresh?: boolean;
   mode?: "connectivity" | "models" | "protocols";
   models?: string[];
+  providerPlugins?: unknown[];
   protocols?: GatewayProviderProtocol[];
   skipModelDiscovery?: boolean;
 };
@@ -460,6 +461,7 @@ export type GatewayProviderProbeCandidatesRequest = {
   forceRefresh?: boolean;
   mode?: "connectivity" | "models" | "protocols";
   models?: string[];
+  providerPlugins?: unknown[];
   protocols?: GatewayProviderProtocol[];
 };
 
@@ -515,6 +517,7 @@ export type GatewayProviderConnectivityCheckRequest = {
   candidates: GatewayProviderProbeCandidate[];
   forceRefresh?: boolean;
   models: string[];
+  providerPlugins?: unknown[];
   protocols?: GatewayProviderProtocol[];
 };
 

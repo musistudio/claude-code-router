@@ -1384,6 +1384,7 @@ function App() {
         candidates,
         forceRefresh: true,
         models,
+        providerPlugins: providerDraft.providerPlugins,
         protocols
       });
       if (providerConnectivityRequestId.current !== requestId) {
