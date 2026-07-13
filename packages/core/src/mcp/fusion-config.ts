@@ -15,7 +15,9 @@ export async function fusionBuiltinToolArtifacts(
   profiles: unknown[],
   coreEndpoint: string,
   coreAuthToken: string,
-  browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration
+  browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration,
+  proxyPreloadFile?: string,
+  proxyEnv?: Record<string, string>
 ): Promise<{ mcpServers: GatewayMcpServerConfig[]; providers: CoreGatewayProvider[] }> {
   const providers: CoreGatewayProvider[] = [];
   const mcpServers: GatewayMcpServerConfig[] = [];
@@ -49,7 +51,9 @@ export async function fusionBuiltinToolArtifacts(
             ...(visionConfig.baseUrl && visionConfig.apiKey ? { VISION_API_KEY: visionConfig.apiKey } : {}),
             ...(visionConfig.timeoutMs ? { VISION_TIMEOUT_MS: String(visionConfig.timeoutMs) } : {})
           },
-          name: `fusion-vision-${sanitizedProfileId}`
+          name: `fusion-vision-${sanitizedProfileId}`,
+          proxyEnv,
+          proxyPreloadFile
         }));
       }
     }
@@ -82,7 +86,9 @@ export async function fusionBuiltinToolArtifacts(
               ...(webSearchConfig.timeoutMs ? { SEARCH_TIMEOUT_MS: String(webSearchConfig.timeoutMs) } : {}),
               ...(webSearchConfig.env ?? {})
             },
-            name: `fusion-web-search-${sanitizedProfileId}`
+            name: `fusion-web-search-${sanitizedProfileId}`,
+            proxyEnv,
+            proxyPreloadFile
           }));
         }
       }
@@ -97,26 +103,33 @@ export async function fusionBuiltinToolArtifactsForTest(
   profiles: unknown[],
   coreEndpoint: string,
   coreAuthToken: string,
-  browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration
+  browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration,
+  proxyPreloadFile?: string,
+  proxyEnv?: Record<string, string>
 ): Promise<{ mcpServers: GatewayMcpServerConfig[]; providers: unknown[] }> {
-  return fusionBuiltinToolArtifacts(profiles, coreEndpoint, coreAuthToken, browserWebSearchMcpIntegration);
+  return fusionBuiltinToolArtifacts(profiles, coreEndpoint, coreAuthToken, browserWebSearchMcpIntegration, proxyPreloadFile, proxyEnv);
 }
 
 
 function fusionBuiltinMcpServer({
   entry,
   env,
-  name
+  name,
+  proxyEnv,
+  proxyPreloadFile
 }: {
   entry: string;
   env: Record<string, string>;
   name: string;
+  proxyEnv?: Record<string, string>;
+  proxyPreloadFile?: string;
 }): GatewayMcpServerConfig {
   return {
-    args: [entry],
+    args: proxyPreloadFile ? ["--require", proxyPreloadFile, entry] : [entry],
     command: process.execPath,
     env: {
       ELECTRON_RUN_AS_NODE: "1",
+      ...(proxyEnv ?? {}),
       ...env
     },
     name,

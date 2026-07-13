@@ -13,7 +13,8 @@ export async function writeCoreGatewayConfig(
   config: AppConfig,
   rawTraceSyncToken: string,
   coreAuthToken: string,
-  browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration
+  browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration,
+  upstreamProxyUrl?: string
 ): Promise<void> {
   assertLoopbackCoreHost(config.gateway.coreHost);
   mkdirSync(dirname(config.gateway.generatedConfigFile), {
@@ -25,7 +26,8 @@ export async function writeCoreGatewayConfig(
     config,
     rawTraceSyncToken,
     coreAuthToken,
-    browserWebSearchMcpIntegration
+    browserWebSearchMcpIntegration,
+    upstreamProxyUrl
   );
   writePrivateTextFile(
     config.gateway.generatedConfigFile,

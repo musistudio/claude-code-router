@@ -11,7 +11,7 @@ import { fusionBuiltinToolArtifacts, fusionToolFallbackMcpServer, normalizeFusio
 import { resolveGatewayPublicModelId } from "@ccr/core/gateway/features/model-discovery";
 import { activeProviderCredentials, inferProtocol, normalizedProviderCapabilities, normalizeProviderProtocol, providerCapabilityForClientProtocol, providerCapabilityInternalName, providerCredentialInternalName, providerProtocolForClientProtocol, sortProviderCredentialsForConfig, toCoreGatewayProviders } from "@ccr/core/providers/runtime-topology";
 import { buildRawTraceConfig } from "@ccr/core/observability/raw-trace-sync";
-import { endpoint } from "@ccr/core/gateway/core-runtime/supervisor";
+import { endpoint, resolveUndiciProxyAgentModule, writeGatewayProxyPreloadFile } from "@ccr/core/gateway/core-runtime/supervisor";
 import { claudeCodeOauthBetaHeader, claudeCodeOauthRequiredBeta, coreGatewayAuthHeader, coreGatewayAuthTokenEnv } from "@ccr/core/gateway/internal/shared";
 import type { BrowserWebSearchMcpIntegration, CoreGatewayProvider } from "@ccr/core/gateway/internal/shared";
 import { uniqueStrings } from "@ccr/core/gateway/internal/collections";
@@ -23,7 +23,8 @@ export async function compileCoreGatewayConfig(
   config: AppConfig,
   rawTraceSyncToken: string,
   coreAuthToken: string,
-  browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration
+  browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration,
+  upstreamProxyUrl?: string
 ): Promise<Record<string, unknown>> {
   const pluginCoreGatewayConfig = pluginService.getCoreGatewayConfig();
   const configuredProviderPlugins = normalizeClaudeCodeOauthProviderPlugins([
@@ -37,7 +38,18 @@ export async function compileCoreGatewayConfig(
     ...pluginService.getVirtualModelProfiles()
   ])), config);
   const coreEndpoint = endpoint(config.gateway.coreHost, config.gateway.corePort);
-  const builtinToolArtifacts = await fusionBuiltinToolArtifacts(virtualModelProfiles, coreEndpoint, coreAuthToken, browserWebSearchMcpIntegration);
+  const proxyPreloadFile = upstreamProxyUrl ? writeGatewayProxyPreloadFile(config, upstreamProxyUrl) : undefined;
+  const proxyEnv = upstreamProxyUrl
+    ? { CCR_UPSTREAM_PROXY_URL: upstreamProxyUrl, CCR_UNDICI_MODULE: resolveUndiciProxyAgentModule() }
+    : undefined;
+  const builtinToolArtifacts = await fusionBuiltinToolArtifacts(
+    virtualModelProfiles,
+    coreEndpoint,
+    coreAuthToken,
+    browserWebSearchMcpIntegration,
+    proxyPreloadFile,
+    proxyEnv
+  );
   const providers = [
     ...config.Providers
       .flatMap((provider) => toCoreGatewayProviders(withCodexOauthProviderBaseUrl(provider, codexOauthProviderNames)))

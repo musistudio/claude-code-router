@@ -9,6 +9,7 @@ import {
   extractHostedWebSearchQueryHint,
   hostedWebSearchProtocolResponseStream,
   prepareGatewayUpstreamAttemptForTest,
+  selectHostedWebSearchProtocolRecords,
   prepareAnthropicWebSearchProtocolRequestBody,
   prepareClaudeCodeWebSearchContinuationRequestBody,
   prepareHostedWebSearchProtocolRequestBody,
@@ -237,6 +238,45 @@ test("gateway config does not inject core auth token into external Fusion vision
   assert.equal(server.env.VISION_BASE_URL, "https://vision.example/v1");
   assert.equal(server.env.VISION_API_KEY, "external-key");
   assert.equal(server.env.VISION_GATEWAY_API_KEY, undefined);
+});
+
+test("gateway config passes proxy preload to Fusion built-in MCP runtimes", async () => {
+  const profiles = [
+    {
+      enabled: true,
+      id: "fusion-tavily",
+      key: "fusion-tavily",
+      metadata: {
+        fusionWebSearch: {
+          env: { TAVILY_API_KEY: "tavily-key" },
+          provider: "tavily",
+          toolName: "tavily_web_search"
+        }
+      }
+    }
+  ];
+  const proxyPreloadFile = "/tmp/gateway-proxy-preload.cjs";
+  const proxyEnv = {
+    CCR_UNDICI_MODULE: "/tmp/undici.js",
+    CCR_UPSTREAM_PROXY_URL: "http://127.0.0.1:8888"
+  };
+
+  const artifacts = await fusionBuiltinToolArtifactsForTest(
+    profiles,
+    "http://127.0.0.1:3457",
+    "core-token",
+    undefined,
+    proxyPreloadFile,
+    proxyEnv
+  );
+  const server = artifacts.mcpServers.find((item) => item.name === "fusion-web-search-fusion-tavily");
+
+  assert.ok(server);
+  assert.deepEqual(server.args.slice(0, 2), ["--require", proxyPreloadFile]);
+  assert.equal(server.args[2].endsWith("fusion-vision-mcp.js"), true);
+  assert.equal(server.env.CCR_UPSTREAM_PROXY_URL, proxyEnv.CCR_UPSTREAM_PROXY_URL);
+  assert.equal(server.env.CCR_UNDICI_MODULE, proxyEnv.CCR_UNDICI_MODULE);
+  assert.equal(server.env.TAVILY_API_KEY, "tavily-key");
 });
 
 test("gateway ignores non-Gemini capabilities on Gemini preset providers", () => {
@@ -542,6 +582,65 @@ test("gateway resolves non-browser Fusion web search tools for hosted protocol b
   assert.equal(fusionWebSearchToolNameForRequest(config, "gpt-5"), undefined);
 });
 
+test("gateway prefetches non-browser Fusion web search records without browser integration", async () => {
+  const requests = [];
+  const endpoint = "http://127.0.0.1/tavily-search";
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), endpoint);
+    requests.push(JSON.parse(String(init.body)));
+    return new Response(JSON.stringify({
+      results: [
+        { content: "The result body", title: "Result title", url: "https://example.test/result" }
+      ]
+    }), { headers: { "content-type": "application/json" }, status: 200 });
+  };
+  try {
+    const config = {
+      Providers: [],
+      Router: { fallback: { mode: "off", models: [], retryCount: 0 } },
+      gateway: {},
+      virtualModelProfiles: [
+        {
+          displayName: "Research",
+          enabled: true,
+          id: "research",
+          key: "research",
+          match: { exactAliases: ["Fusion/research"], prefixes: [], suffixes: [] },
+          metadata: {
+            fusionWebSearch: {
+              env: { TAVILY_API_KEY: "tavily-key", TAVILY_SEARCH_ENDPOINT: endpoint },
+              provider: "tavily",
+              resultCount: 3,
+              toolName: "research_web_search"
+            }
+          }
+        }
+      ]
+    };
+
+    const records = await selectHostedWebSearchProtocolRecords({
+      protocol: "anthropic_messages",
+      queryHint: "search query",
+      requestId: "req-1",
+      sinceMs: Date.now() - 1000,
+      toolName: "research_web_search"
+    }, undefined, config);
+
+    assert.equal(records.length, 1);
+    assert.equal(records[0].engine, "tavily");
+    assert.equal(records[0].toolName, "research_web_search");
+    assert.deepEqual(records[0].results, [
+      { snippet: "The result body", title: "Result title", url: "https://example.test/result" }
+    ]);
+    assert.equal(requests[0].api_key, "tavily-key");
+    assert.equal(requests[0].max_results, 3);
+    assert.equal(requests[0].query, "search query");
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test("gateway config does not create fallback tools for MCP-backed Fusion tools", () => {
   const profiles = [
     {
@@ -778,6 +877,40 @@ test("gateway synthesizes final Anthropic text when web search response has no v
   assert.match(transformed.value.content[3].text, /Spot gold traded near \$3,340 per ounce/);
   assert.equal(transformed.value.usage.server_tool_use.web_search_requests, 1);
   assert.equal(transformed.value.stop_reason, "end_turn");
+});
+
+test("gateway hosted web search response stream uses prefetched records without browser integration", async () => {
+  const response = {
+    content: [
+      { thinking: "searched but did not answer", type: "thinking" }
+    ],
+    id: "msg_1",
+    role: "assistant",
+    stop_reason: "max_tokens",
+    type: "message",
+    usage: { output_tokens: 0 }
+  };
+  const stream = hostedWebSearchProtocolResponseStream(
+    Readable.from([Buffer.from(JSON.stringify(response), "utf8")]),
+    new Headers({ "content-type": "application/json; charset=utf-8" }),
+    {
+      protocol: "anthropic_messages",
+      queryHint: "today gold price per ounce USD July 2026",
+      records: [sampleSearchRecord()],
+      requestId: "req-1",
+      sinceMs: Date.now() - 1000,
+      toolName: "fusion_2_web_search"
+    },
+    undefined
+  );
+
+  const transformed = JSON.parse(await readStreamText(stream));
+
+  assert.deepEqual(
+    transformed.content.map((block) => block.type),
+    ["thinking", "server_tool_use", "web_search_tool_result", "text"]
+  );
+  assert.match(transformed.content[3].text, /Spot gold traded near \$3,340 per ounce/);
 });
 
 test("gateway synthesizes useful component changelog answers from extracted pages", () => {

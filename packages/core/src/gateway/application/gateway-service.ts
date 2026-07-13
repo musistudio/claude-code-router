@@ -117,14 +117,14 @@ class GatewayService {
       }
 
       if (shouldRunGateway) {
-        await writeCoreGatewayConfig(config, this.rawTraceSynchronizer.token, coreAuthToken, this.browserWebSearchMcpIntegration);
+        await proxyService.refreshUpstreamProxyFromCurrentSystem();
+        const upstreamProxyUrl = proxyService.getUpstreamProxyUrl("https") ?? await getSystemProxyUrlForProtocol("https", config);
+        await writeCoreGatewayConfig(config, this.rawTraceSynchronizer.token, coreAuthToken, this.browserWebSearchMcpIntegration, upstreamProxyUrl);
         await stopPreviousManagedCoreGateway(config, this.status.coreEndpoint);
         if (await isCoreGatewayHealthy(this.status.coreEndpoint)) {
           throw new Error(`Core gateway endpoint is already in use: ${this.status.coreEndpoint}`);
         }
-        await proxyService.refreshUpstreamProxyFromCurrentSystem();
         const runtimeId = randomUUID();
-        const upstreamProxyUrl = proxyService.getUpstreamProxyUrl("https") ?? await getSystemProxyUrlForProtocol("https", config);
         this.child = spawnGatewayProcess(config, upstreamProxyUrl, runtimeId, coreAuthToken);
         this.coreAuthToken = coreAuthToken;
         const managedChild = this.child;

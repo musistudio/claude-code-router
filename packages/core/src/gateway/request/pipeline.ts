@@ -10,7 +10,6 @@ import { reserveApiKeyLimits } from "@ccr/core/gateway/auth/api-key-authorizer";
 import { recordProviderCredentialOutcome } from "@ccr/core/providers/credential-pool";
 import { codexApplyPatchBridgeResponseStream, prepareCodexApplyPatchBridgeRequest } from "@ccr/core/gateway/features/codex-patch-bridge";
 import { prepareCursorOpenAICompatChatBody } from "@ccr/core/gateway/features/cursor-compat";
-import { browserWebSearchUnavailableMessage } from "@ccr/core/mcp/fusion-config";
 import { filteredResponseHeaders, formatError, forwardHeaders, inferGatewayClient, parseJsonObject, readRequestBody, sendJson, shouldCaptureGatewayUsage, shouldSendBody, stripLocalGatewayAuthHeaders } from "@ccr/core/gateway/http/io";
 import { createGatewayModelsResponse, prepareClaudeAppFallbackModelRequest, prepareClaudeCodeDiscoveredModelRequest, shouldServeGatewayModelsResponse } from "@ccr/core/gateway/features/model-discovery";
 import { resolveProviderLogName, resolveResponseProviderProtocol, sanitizeHeaderValue } from "@ccr/core/providers/runtime-topology";
@@ -20,7 +19,7 @@ import { clientClosedRequestStatusCode, clientDisconnectMessage, UpstreamRequest
 import type { BrowserWebSearchMcpIntegration, BrowserWebSearchProtocolRecord, UpstreamFetchResult } from "@ccr/core/gateway/internal/shared";
 import { applyProviderCapabilityRouting, cancelResponseBody, destroyResponseStreams, fetchUpstreamWithFallback, mergeFallbackResponseHeaders, rewriteCapabilityResponseHeaders, uniqueStreams, upstreamResponseHeaders } from "@ccr/core/gateway/upstream/executor";
 import { shouldApplyGatewayRouting } from "@ccr/core/routing/protocol-endpoints";
-import { createClaudeCodeWebSearchContinuationContext, createHostedWebSearchProtocolContext, hostedWebSearchProtocolResponseStream, prepareClaudeCodeWebSearchContinuationRequestBody, prepareHostedWebSearchProtocolRequestBody, selectClaudeCodeWebSearchContinuationRecords, selectHostedWebSearchProtocolRecords } from "@ccr/core/gateway/features/hosted-web-search/index";
+import { createClaudeCodeWebSearchContinuationContext, createHostedWebSearchProtocolContext, hostedWebSearchProtocolResponseStream, hostedWebSearchUnavailableMessage, prepareClaudeCodeWebSearchContinuationRequestBody, prepareHostedWebSearchProtocolRequestBody, selectClaudeCodeWebSearchContinuationRecords, selectHostedWebSearchProtocolRecords } from "@ccr/core/gateway/features/hosted-web-search/index";
 
 export type GatewayRequestPipelineDependencies = {
   getBrowserWebSearchMcpIntegration: () => BrowserWebSearchMcpIntegration | undefined;
@@ -226,19 +225,11 @@ export class GatewayRequestPipeline {
         sinceMs: startedAt - 1_000
       });
   
-      if (hostedWebSearchProtocolContext && !this.browserWebSearchMcpIntegration) {
-        const message = browserWebSearchUnavailableMessage(hostedWebSearchProtocolContext.toolName);
-        const responseHeaders = new Headers({ "content-type": "application/json; charset=utf-8" });
-        const responseBody = JSON.stringify({ error: { message } });
-        writeRequestLog(503, responseHeaders, responseBody, false, message);
-        sendJson(response, 503, { error: { message } });
-        return;
-      }
-  
-      if (hostedWebSearchProtocolContext && this.browserWebSearchMcpIntegration) {
+      if (hostedWebSearchProtocolContext) {
         const records = await selectHostedWebSearchProtocolRecords(
           hostedWebSearchProtocolContext,
-          this.browserWebSearchMcpIntegration
+          this.browserWebSearchMcpIntegration,
+          this.config
         ).catch((error) => {
           console.warn(`[gateway] Failed to prefetch hosted web search results: ${formatError(error)}`);
           return [] as BrowserWebSearchProtocolRecord[];
@@ -255,6 +246,14 @@ export class GatewayRequestPipeline {
             headers["content-type"] = "application/json";
             headers["x-ccr-hosted-web-search-context"] = hostedWebSearchProtocolContext.protocol;
           }
+        }
+        if (records.length === 0 && !this.browserWebSearchMcpIntegration) {
+          const message = hostedWebSearchUnavailableMessage(this.config, hostedWebSearchProtocolContext.toolName);
+          const responseHeaders = new Headers({ "content-type": "application/json; charset=utf-8" });
+          const responseBody = JSON.stringify({ error: { message } });
+          writeRequestLog(503, responseHeaders, responseBody, false, message);
+          sendJson(response, 503, { error: { message } });
+          return;
         }
       }
   
@@ -357,7 +356,9 @@ export class GatewayRequestPipeline {
         hostedWebSearchProtocolContext &&
         (hostedWebSearchResponseContentType.includes("application/json") ||
           hostedWebSearchResponseContentType.includes("text/event-stream")) &&
-        (this.browserWebSearchMcpIntegration?.recentBrowserWebSearchResults || this.browserWebSearchMcpIntegration?.runBrowserWebSearch)
+        (hostedWebSearchProtocolContext.records?.length ||
+          this.browserWebSearchMcpIntegration?.recentBrowserWebSearchResults ||
+          this.browserWebSearchMcpIntegration?.runBrowserWebSearch)
       ) {
         responseHeaders.delete("content-length");
       }
@@ -472,4 +473,3 @@ export class GatewayRequestPipeline {
       responseBody.pipe(response);
     }
 }
-

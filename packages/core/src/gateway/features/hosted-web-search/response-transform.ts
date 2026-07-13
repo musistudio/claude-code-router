@@ -16,7 +16,8 @@ export function hostedWebSearchProtocolResponseStream(
   context: HostedWebSearchProtocolContext,
   integration: BrowserWebSearchMcpIntegration | undefined
 ): Readable {
-  if (!integration?.recentBrowserWebSearchResults && !integration?.runBrowserWebSearch) {
+  const hasIntegration = integration?.recentBrowserWebSearchResults !== undefined || integration?.runBrowserWebSearch !== undefined;
+  if (!hasIntegration && !context.records?.length) {
     return input;
   }
   const contentType = headers.get("content-type")?.toLowerCase() ?? "";
@@ -39,7 +40,9 @@ export function hostedWebSearchProtocolResponseStream(
     flush(callback) {
       const body = Buffer.concat(chunks).toString("utf8");
       void (async () => {
-        const records = await selectHostedWebSearchProtocolRecords(context, integration);
+        const records = context.records?.length
+          ? context.records
+          : await selectHostedWebSearchProtocolRecords(context, integration);
         if (records.length === 0) {
           this.push(body);
           return;
@@ -61,9 +64,11 @@ export function hostedWebSearchProtocolResponseStream(
 function hostedWebSearchProtocolSseStream(
   input: Readable,
   context: HostedWebSearchProtocolContext,
-  integration: BrowserWebSearchMcpIntegration
+  integration: BrowserWebSearchMcpIntegration | undefined
 ): Readable {
-  const recordsPromise = selectHostedWebSearchProtocolRecords(context, integration);
+  const recordsPromise = context.records?.length
+    ? Promise.resolve(context.records)
+    : selectHostedWebSearchProtocolRecords(context, integration);
   let records: BrowserWebSearchProtocolRecord[] | undefined;
   let pending = "";
   let passThrough = false;
@@ -271,9 +276,11 @@ function hostedWebSearchSseFallbackEvents(
 function anthropicHostedWebSearchProtocolSseStream(
   input: Readable,
   context: HostedWebSearchProtocolContext,
-  integration: BrowserWebSearchMcpIntegration
+  integration: BrowserWebSearchMcpIntegration | undefined
 ): Readable {
-  const recordsPromise = selectHostedWebSearchProtocolRecords(context, integration);
+  const recordsPromise = context.records?.length
+    ? Promise.resolve(context.records)
+    : selectHostedWebSearchProtocolRecords(context, integration);
   let records: BrowserWebSearchProtocolRecord[] | undefined;
   let pending = "";
   let passThrough = false;
@@ -1243,4 +1250,3 @@ function doneSseEventIndex(events: ParsedSseEvent[]): number {
 function sseEventIsDone(event: ParsedSseEvent): boolean {
   return Boolean(event.raw?.includes("[DONE]"));
 }
-

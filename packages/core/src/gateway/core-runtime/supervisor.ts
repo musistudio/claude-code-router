@@ -69,7 +69,7 @@ function resolveBundledGatewayEntry(): string | undefined {
 }
 
 
-function resolveUndiciProxyAgentModule(): string {
+export function resolveUndiciProxyAgentModule(): string {
   const bundled = resolveBundledUndiciProxyAgentModule();
   if (bundled) {
     return bundled;
@@ -140,7 +140,7 @@ function createGatewayProcessEnv(config: AppConfig, upstreamProxyUrl: string | u
 }
 
 
-function writeGatewayProxyPreloadFile(config: AppConfig, upstreamProxyUrl: string): string {
+export function writeGatewayProxyPreloadFile(config: AppConfig, upstreamProxyUrl: string): string {
   const file = pathJoin(dirname(config.gateway.generatedConfigFile), "gateway-proxy-preload.cjs");
   writeFileSync(
     file,
