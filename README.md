@@ -85,7 +85,7 @@ Instead of wiring every agent to every model service by hand, CCR centralizes th
 
 ## Documentation
 
-Read the full documentation at [ccrdesk.top](https://ccrdesk.top/).
+Read the full documentation at [ccrdesk.top](https://ccrdesk.top/), including the [CLI reference](https://ccrdesk.top/en/guides/cli/) and [Docker deployment guide](https://ccrdesk.top/en/guides/docker/).
 
 ## Download And Install
 
@@ -98,11 +98,30 @@ Read the full documentation at [ccrdesk.top](https://ccrdesk.top/).
 3. Install and launch **Claude Code Router**.
 4. On first launch, CCR creates its local configuration database:
    - macOS/Linux: `~/.claude-code-router/config.sqlite`
-   - Windows: `%APPDATA%\Claude Code Router\config.sqlite`
+   - Windows: `%APPDATA%\claude-code-router\config.sqlite`
 
 CCR stores runtime configuration in SQLite. A legacy `config.json` is read only once for migration when no SQLite config exists.
 
 After the service is started from the **Server** page, CCR listens on `http://127.0.0.1:3456` by default. The **Server** page controls the gateway `Host`, `Port`, proxy mode, system proxy, network capture, and CA certificate status.
+
+## CLI And Docker
+
+The npm CLI requires Node.js 22 or newer and provides the browser management UI, gateway, and Agent Config launch commands without Electron:
+
+```sh
+npm install -g @musistudio/claude-code-router
+ccr ui
+```
+
+The CLI management UI defaults to `http://127.0.0.1:3458`, while its model gateway defaults to `http://127.0.0.1:3456`. See the [complete CLI reference](https://ccrdesk.top/en/guides/cli/) for background/foreground service commands, options, profile launching, authentication, and data locations.
+
+To run the browser UI and gateway behind one Nginx port with persistent Docker storage:
+
+```sh
+docker compose up -d --build
+```
+
+Docker exposes both management and gateway routes at `http://127.0.0.1:3458` by default. Read the [Docker deployment guide](https://ccrdesk.top/en/guides/docker/) before remote exposure; it covers the internal port topology, management and gateway authentication, `CCR_PUBLIC_BASE_URL`, volumes, backup/restore, upgrades, and health checks.
 
 ## Quick Start
 

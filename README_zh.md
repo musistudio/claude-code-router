@@ -85,7 +85,7 @@ Claude Code Router Desktop 是给编程 Agent 用的本地控制平面。它为 
 
 ## 文档
 
-完整文档见 [ccrdesk.top](https://ccrdesk.top/)。
+完整文档见 [ccrdesk.top](https://ccrdesk.top/)，其中包括 [CLI 命令参考](https://ccrdesk.top/guides/cli/) 和 [Docker 部署指南](https://ccrdesk.top/guides/docker/)。
 
 ## 下载和安装
 
@@ -98,11 +98,30 @@ Claude Code Router Desktop 是给编程 Agent 用的本地控制平面。它为 
 3. 安装并启动 **Claude Code Router**。
 4. 首次启动后，CCR 会创建本地配置数据库：
    - macOS/Linux：`~/.claude-code-router/config.sqlite`
-   - Windows：`%APPDATA%\Claude Code Router\config.sqlite`
+   - Windows：`%APPDATA%\claude-code-router\config.sqlite`
 
 CCR 的运行配置存储在 SQLite 中。旧版 `config.json` 只会在没有 SQLite 配置时作为迁移来源读取一次。
 
 从 **服务** 页面启动后，CCR 默认监听 `http://127.0.0.1:3456`。**服务** 页面负责配置网关 `Host`、`Port`、代理模式、系统代理、网络捕获和 CA 证书状态。
+
+## CLI 与 Docker
+
+npm CLI 要求 Node.js 22 或更高版本，不依赖 Electron，也能提供浏览器管理界面、模型网关和 Agent 配置启动命令：
+
+```sh
+npm install -g @musistudio/claude-code-router
+ccr ui
+```
+
+CLI 管理界面默认是 `http://127.0.0.1:3458`，模型网关默认是 `http://127.0.0.1:3456`。后台 / 前台服务、全部选项、Profile 启动、鉴权和数据位置见[完整 CLI 参考](https://ccrdesk.top/guides/cli/)。
+
+如果要使用单一 Nginx 端口和持久化 Docker 数据卷运行管理 UI 与网关：
+
+```sh
+docker compose up -d --build
+```
+
+Docker 默认把管理和网关路径都发布在 `http://127.0.0.1:3458`。远程暴露前请先阅读 [Docker 部署指南](https://ccrdesk.top/guides/docker/)，其中包含内部端口拓扑、管理与网关鉴权、`CCR_PUBLIC_BASE_URL`、数据卷、备份恢复、升级和健康检查。
 
 ## 快速开始
 
