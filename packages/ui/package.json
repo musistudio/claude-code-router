@@ -7,6 +7,7 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@musistudio/lucide-morph-react": "^1.0.0",
     "baseui": "^16.1.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.17.0",

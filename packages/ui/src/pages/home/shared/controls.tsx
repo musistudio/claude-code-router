@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { MorphIcon } from "@musistudio/lucide-morph-react";
 import {
   closestCenter,
   DndContext,
@@ -47,9 +48,7 @@ import {
   Palette,
   PanelLeftClose,
   PanelLeftOpen,
-  Pause,
   Pencil,
-  Play,
   Plus,
   Power,
   QrCode,
@@ -98,6 +97,7 @@ import { PopoverContent } from "@/components/ui/popover";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { playPauseMorph } from "@/lib/morph-icon";
 import { cn } from "@/lib/utils";
 import appLogoUrl from "@/assets/logo.png";
 import claudeCodeLogoUrl from "@/assets/agent-logos/claude-code.png";
@@ -637,22 +637,24 @@ export function systemStatusSegmentClass(tone: SystemStatusTone): string {
 export function ServiceControlButton({
   busy,
   onClick,
-  state
+  state,
+  targetActive
 }: {
   busy: boolean;
   onClick: () => void;
   state: GatewayStatus["state"];
+  targetActive?: boolean;
 }) {
   const t = useAppText();
-  const active = state === "running" || state === "starting";
+  const runtimeActive = state === "running" || state === "starting";
+  const active = targetActive ?? runtimeActive;
   const title = active ? t("Pause service") : t("Start service");
-  const Icon = active ? Pause : Play;
 
   return (
     <Button
       aria-label={title}
       className={cn(
-        "app-no-drag app-service-control inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25",
+        "app-no-drag app-service-control inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25",
         active && "text-emerald-700 hover:text-emerald-800"
       )}
       disabled={busy}
@@ -662,7 +664,14 @@ export function ServiceControlButton({
       type="button"
       unstyled
     >
-      {busy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Icon className="h-3.5 w-3.5" />}
+      <MorphIcon
+        active={active}
+        asset={playPauseMorph}
+        color="currentColor"
+        duration={300}
+        size={14}
+        strokeWidth={2}
+      />
     </Button>
   );
 }
