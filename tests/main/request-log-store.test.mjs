@@ -1,9 +1,104 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
+import { getHeapStatistics } from "node:v8";
 import { RequestLogStore } from "../../packages/core/src/observability/request-log-store.ts";
+import { createBetterSqliteDatabase } from "../../packages/core/src/storage/sqlite-native.ts";
+
+const execFileAsync = promisify(execFile);
+const isBoundedHeapWorker = process.env.CCR_REQUEST_LOG_BOUNDED_HEAP_WORKER === "1";
+
+async function recordLargeAgentRequests(store, dbFile, { paddingBytes, requestCount, sessionId }) {
+  const padding = "x".repeat(paddingBytes);
+  const startedAt = new Date().toISOString();
+  const requestBodyText = JSON.stringify({
+    messages: [
+      { content: "inspect repo", role: "user" },
+      {
+        content: JSON.stringify({ ok: true, files: ["README.md"] }),
+        role: "tool",
+        tool_call_id: "call-read"
+      }
+    ],
+    metadata: { padding },
+    model: "gpt-test",
+    session_id: sessionId
+  });
+  const responseBodyText = JSON.stringify({
+    choices: [{
+      message: {
+        role: "assistant",
+        tool_calls: [{
+          function: {
+            arguments: JSON.stringify({ path: "README.md" }),
+            name: "read_file"
+          },
+          id: "call-read",
+          type: "function"
+        }]
+      }
+    }],
+    metadata: { padding },
+    model: "gpt-test"
+  });
+  const requestHeaders = JSON.stringify({
+    "content-type": "application/json",
+    "user-agent": "openai-codex test",
+    "x-codex-session-id": sessionId
+  });
+  const responseHeaders = JSON.stringify({ "content-type": "application/json" });
+  const requestBodySize = Buffer.byteLength(requestBodyText);
+  const responseBodySize = Buffer.byteLength(responseBodyText);
+
+  await store.list({ pageSize: 1 });
+  const database = createBetterSqliteDatabase(dbFile);
+  try {
+    const insert = database.prepare(`
+      INSERT INTO request_logs (
+        created_at,
+        completed_at,
+        request_id,
+        method,
+        path,
+        url,
+        provider,
+        model,
+        status_code,
+        ok,
+        duration_ms,
+        request_headers,
+        response_headers,
+        request_body_text,
+        request_body_size_bytes,
+        response_body_text,
+        response_body_size_bytes
+      ) VALUES (?, ?, ?, 'POST', '/v1/chat/completions', 'http://127.0.0.1:3456/v1/chat/completions', 'test-provider', 'gpt-test', 200, 1, 50, ?, ?, ?, ?, ?, ?)
+    `);
+    database.transaction(() => {
+      for (let index = 0; index < requestCount; index += 1) {
+        insert.run(
+          startedAt,
+          startedAt,
+          `${sessionId}-request-${index}`,
+          requestHeaders,
+          responseHeaders,
+          requestBodyText,
+          requestBodySize,
+          responseBodyText,
+          responseBodySize
+        );
+      }
+    })();
+  } finally {
+    database.close();
+  }
+
+  return requestCount * (requestBodySize + responseBodySize);
+}
 
 test("RequestLogStore keeps list rows lightweight and detail rows complete", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-test-"));
@@ -311,6 +406,136 @@ test("RequestLogStore analyzes agent sessions and exposes trace payloads", async
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }
+});
+
+test("RequestLogStore analyzes large bodies without dropping agent metadata", {
+  skip: isBoundedHeapWorker,
+  timeout: 30000
+}, async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-large-analysis-test-"));
+  try {
+    const dbFile = path.join(dir, "request-logs.sqlite");
+    const store = new RequestLogStore(dbFile);
+    const requestCount = 48;
+    await recordLargeAgentRequests(store, dbFile, {
+      paddingBytes: 256 * 1024,
+      requestCount,
+      sessionId: "large-session"
+    });
+
+    const analysis = await store.analyze({ range: "30d" });
+
+    assert.equal(analysis.scannedRequestCount, requestCount);
+    assert.equal(analysis.totals.requestCount, requestCount);
+    assert.equal(analysis.sessions[0]?.id, "large-session");
+    assert.equal(analysis.tools[0]?.name, "read_file");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore streams more body text than the bounded worker heap", {
+  skip: !isBoundedHeapWorker,
+  timeout: 30000
+}, async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-bounded-heap-test-"));
+  try {
+    const dbFile = path.join(dir, "request-logs.sqlite");
+    const store = new RequestLogStore(dbFile);
+    const requestCount = 384;
+    const totalBodyBytes = await recordLargeAgentRequests(store, dbFile, {
+      paddingBytes: 256 * 1024,
+      requestCount,
+      sessionId: "bounded-heap-session"
+    });
+
+    assert.ok(totalBodyBytes > getHeapStatistics().heap_size_limit);
+    const analysis = await store.analyze({ range: "30d" });
+    assert.equal(analysis.scannedRequestCount, requestCount);
+    assert.equal(analysis.totals.requestCount, requestCount);
+    assert.equal(analysis.sessions[0]?.id, "bounded-heap-session");
+    assert.equal(analysis.tools[0]?.name, "read_file");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore keeps analysis bounded by the maximum row count", {
+  skip: isBoundedHeapWorker,
+  timeout: 30000
+}, async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-analysis-limit-test-"));
+  try {
+    const dbFile = path.join(dir, "request-logs.sqlite");
+    const store = new RequestLogStore(dbFile);
+    const requestCount = 5000;
+    const startedAt = new Date().toISOString();
+    await store.list({ pageSize: 1 });
+    const database = createBetterSqliteDatabase(dbFile);
+    try {
+      const insert = database.prepare(`
+        INSERT INTO request_logs (
+          created_at,
+          completed_at,
+          request_id,
+          method,
+          path,
+          provider,
+          model,
+          status_code,
+          ok,
+          duration_ms,
+          request_headers,
+          response_headers,
+          request_body_text,
+          response_body_text
+        ) VALUES (?, ?, ?, 'POST', '/v1/chat/completions', 'test-provider', 'gpt-test', 200, 1, 1, ?, '{}', ?, '{}')
+      `);
+      const requestHeaders = JSON.stringify({
+        "content-type": "application/json",
+        "user-agent": "openai-codex test",
+        "x-codex-session-id": "max-row-session"
+      });
+      const requestBodyText = JSON.stringify({ model: "gpt-test" });
+      database.transaction(() => {
+        for (let index = 0; index < requestCount; index += 1) {
+          insert.run(startedAt, startedAt, `max-row-request-${index}`, requestHeaders, requestBodyText);
+        }
+      })();
+    } finally {
+      database.close();
+    }
+
+    const analysis = await store.analyze({ range: "30d" });
+    assert.equal(analysis.scannedRequestCount, requestCount);
+    assert.equal(analysis.totals.requestCount, requestCount);
+    assert.equal(analysis.sessions[0]?.id, "max-row-session");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore bounded heap regression", {
+  skip: isBoundedHeapWorker,
+  timeout: 45000
+}, async () => {
+  const workerEnv = {
+    ...process.env,
+    CCR_REQUEST_LOG_BOUNDED_HEAP_WORKER: "1",
+    ELECTRON_RUN_AS_NODE: "1"
+  };
+  delete workerEnv.NODE_TEST_CONTEXT;
+  const { stderr, stdout } = await execFileAsync(
+    process.execPath,
+    ["--max-old-space-size=64", "--test", __filename],
+    {
+      encoding: "utf8",
+      env: workerEnv,
+      maxBuffer: 1024 * 1024,
+      windowsHide: true
+    }
+  );
+  assert.match(`${stdout}\n${stderr}`, /streams more body text than the bounded worker heap/);
 });
 
 test("RequestLogStore identifies Grok CLI requests in agent analysis", async () => {

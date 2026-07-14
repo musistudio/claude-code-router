@@ -631,7 +631,10 @@ export class RequestLogStore {
     }
     const range = normalizeAgentAnalysisRange(filter.range);
     const since = getAgentAnalysisSince(range, now);
-    const rows = queryRows(
+    const requestedAgent = normalizeAgentFilter(filter.agent);
+    const analyzed: AnalyzedAgentRequest[] = [];
+    let scannedRequestCount = 0;
+    const rows = iterateRows(
       database,
         `
           SELECT
@@ -680,14 +683,17 @@ export class RequestLogStore {
           LIMIT ?
         `,
         ["%/count_tokens%", since.toISOString(), maxAgentAnalysisRows]
-    )
-      .map(toRequestLogEntry)
-      .reverse();
+    );
+    // Consume and compact each body before advancing so the query never retains all body text at once.
+    for (const row of rows) {
+      scannedRequestCount += 1;
+      const request = toAnalyzedAgentRequest(toRequestLogEntry(row));
+      if (requestedAgent === "all" || request.agent === requestedAgent) {
+        analyzed.push(request);
+      }
+    }
 
-    const requestedAgent = normalizeAgentFilter(filter.agent);
-    const analyzed = rows
-      .map(toAnalyzedAgentRequest)
-      .filter((request) => requestedAgent === "all" || request.agent === requestedAgent);
+    analyzed.reverse();
     const requests = applyRequestConcurrency(analyzed);
     const sessionScopedRequests = selectAgentSessionRequests(requests, filter);
     const analysisRequests = sessionScopedRequests
@@ -707,7 +713,7 @@ export class RequestLogStore {
       range,
       recentRequests: analysisRequests.slice(-50).reverse().map(stripAnalysisInternals),
       routes: buildAgentRouteRows(analysisRequests),
-      scannedRequestCount: rows.length,
+      scannedRequestCount,
       ...(selectedSession ? { selectedSession } : {}),
       sessions: buildAgentSessionRows(requests),
       subagents: buildAgentSubagentRows(analysisRequests),
@@ -2877,6 +2883,14 @@ function configureSqliteDatabase(database: SqlDatabase): void {
 
 function queryRows(database: SqlDatabase, sql: string, params: SqlValue[] = []): Record<string, SqlValue>[] {
   return database.prepare(sql).all(...params) as Record<string, SqlValue>[];
+}
+
+function iterateRows(
+  database: SqlDatabase,
+  sql: string,
+  params: SqlValue[] = []
+): IterableIterator<Record<string, SqlValue>> {
+  return database.prepare(sql).iterate(...params) as IterableIterator<Record<string, SqlValue>>;
 }
 
 function firstNumber(rows: Record<string, SqlValue>[], column: string): number {
