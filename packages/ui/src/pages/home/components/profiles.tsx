@@ -402,7 +402,7 @@ function ProfileAgentTabs({
   return (
     <div
       aria-label={t("Agent profiles")}
-      className="grid grid-cols-1 gap-1 rounded-md border border-border bg-muted/20 p-1 sm:grid-cols-4"
+      className="grid grid-cols-1 gap-1 rounded-md border border-border bg-muted/20 p-1 sm:grid-cols-5"
       role="tablist"
     >
       {profileAgentOptions.map((option) => {
@@ -687,13 +687,13 @@ export function AddProfileForm({
             <Field label={t("Provider name")}>
               <Input value={draft.providerName} onChange={(event) => onChange({ providerName: event.target.value })} />
             </Field>
-            {draft.agent !== "zcode" ? (
+            {draft.agent !== "zcode" && draft.agent !== "opencode" ? (
               <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
                 <span className="text-[12px] font-medium">{t("Show all sessions")}</span>
                 <Toggle checked={draft.showAllSessions} onChange={(showAllSessions) => onChange({ showAllSessions })} />
               </div>
             ) : null}
-            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : "Codex model")}>
+            <Field className="sm:col-span-2" label={t(draft.agent === "zcode" ? "ZCode model" : draft.agent === "opencode" ? "OpenCode model" : "Codex model")}>
               <ModelSelector
                 placeholder={providers[0]?.models[0] && providers[0]?.name ? `${providers[0].name}/${providers[0].models[0]}` : ""}
                 providers={providers}
@@ -726,12 +726,15 @@ export function AddProfileForm({
   );
 }
 
-function profileAppPathLabel(agent: ProfileConfig["agent"]): "CLAUDE_APP_PATH" | "CHATGPT_APP_PATH" | undefined {
+function profileAppPathLabel(agent: ProfileConfig["agent"]): "CLAUDE_APP_PATH" | "CHATGPT_APP_PATH" | "OPENCODE_APP_PATH" | undefined {
   if (agent === "claude-code") {
     return "CLAUDE_APP_PATH";
   }
   if (agent === "codex") {
     return "CHATGPT_APP_PATH";
+  }
+  if (agent === "opencode") {
+    return "OPENCODE_APP_PATH";
   }
   return undefined;
 }

@@ -604,3 +604,71 @@ test("RequestLogStore does not identify an unknown client as Grok CLI from its m
     rmSync(dir, { force: true, recursive: true });
   }
 });
+
+test("RequestLogStore identifies OpenCode from its explicit client header", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-opencode-agent-test-"));
+  try {
+    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const startedAt = new Date().toISOString();
+    await store.record({
+      completedAt: startedAt,
+      durationMs: 25,
+      method: "POST",
+      path: "/v1/chat/completions",
+      providerName: "test-provider",
+      providerProtocol: "openai_chat_completions",
+      requestBody: Buffer.from(JSON.stringify({ messages: [{ content: "hello", role: "user" }], model: "Provider/model" }), "utf8"),
+      requestHeaders: {
+        "content-type": "application/json",
+        "user-agent": "generic-openai-client/1.0",
+        "x-ccr-client": "opencode"
+      },
+      requestId: "opencode-agent-request",
+      responseBodyText: JSON.stringify({ choices: [], model: "Provider/model" }),
+      responseHeaders: { "content-type": "application/json" },
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/chat/completions"
+    });
+
+    const analysis = await store.analyze({ agent: "opencode", range: "30d" });
+    assert.equal(analysis.scannedRequestCount, 1);
+    assert.equal(analysis.agents[0]?.agent, "opencode");
+    assert.equal(analysis.agents[0]?.label, "OpenCode");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore does not identify an unknown client as OpenCode from its model name", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-opencode-model-test-"));
+  try {
+    const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+    const startedAt = new Date().toISOString();
+    await store.record({
+      completedAt: startedAt,
+      durationMs: 25,
+      method: "POST",
+      path: "/v1/chat/completions",
+      providerName: "test-provider",
+      providerProtocol: "openai_chat_completions",
+      requestBody: Buffer.from(JSON.stringify({ messages: [{ content: "hello", role: "user" }], model: "opencode/qwen3-coder" }), "utf8"),
+      requestHeaders: {
+        "content-type": "application/json",
+        "user-agent": "generic-openai-client/1.0"
+      },
+      requestId: "opencode-model-request",
+      responseBodyText: JSON.stringify({ choices: [], model: "opencode/qwen3-coder" }),
+      responseHeaders: { "content-type": "application/json" },
+      startedAt,
+      statusCode: 200,
+      url: "http://127.0.0.1:3456/v1/chat/completions"
+    });
+
+    const analysis = await store.analyze({ agent: "all", range: "30d" });
+    assert.equal(analysis.scannedRequestCount, 1);
+    assert.equal(analysis.agents[0]?.agent, "unknown");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});

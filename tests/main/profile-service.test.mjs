@@ -358,6 +358,134 @@ test("profile service writes a Grok CLI wrapper that points model discovery and 
   assert.equal(existsSync(path.join(profileGrokHome, "auth.json")), false);
 });
 
+test("profile service writes an OpenCode CLI wrapper and shared CLI/App config", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const profileId = "opencode-gateway-test";
+  const config = createDefaultAppConfig({
+    generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
+  });
+  config.Providers = [
+    {
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      models: ["model"],
+      name: "Provider"
+    }
+  ];
+  config.preferredProvider = "Provider";
+  config.APIKEY = "ccr-opencode-profile-test";
+  config.APIKEYS = [
+    {
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: `profile:${profileId}`,
+      key: "ccr-opencode-profile-test",
+      name: "Profile: OpenCode Gateway Test"
+    }
+  ];
+  config.profile.profiles = [
+    {
+      agent: "opencode",
+      enabled: true,
+      env: {
+        CCR_OPENCODE_BIN: "/custom/bin/opencode",
+        OPENCODE_CONFIG: "/ignored/opencode.json",
+        USER_VALUE: "kept"
+      },
+      id: profileId,
+      model: "Provider/model",
+      name: "OpenCode Gateway Test",
+      providerId: "claude-code-router",
+      providerName: "Claude Code Router",
+      scope: "ccr",
+      surface: "auto"
+    }
+  ];
+
+  const result = await applyProfileConfig(config);
+  assert.equal(result.clients.length, 1);
+  assert.equal(result.clients[0].client, "opencode");
+  assert.equal(result.clients[0].ok, true);
+
+  const configFile = path.join(CONFIGDIR, "profiles", profileId, "opencode", "opencode.jsonc");
+  const openCodeConfig = JSON.parse(readFileSync(configFile, "utf8"));
+  assert.equal(openCodeConfig.model, "claude-code-router/Provider/model");
+  assert.equal(openCodeConfig.small_model, openCodeConfig.model);
+  assert.equal(openCodeConfig.provider["claude-code-router"].options.apiKey, "ccr-opencode-profile-test");
+  assert.equal(openCodeConfig.provider["claude-code-router"].options.baseURL, `http://127.0.0.1:${config.gateway.port}/v1`);
+
+  const commandExtension = process.platform === "win32" ? ".cmd" : "";
+  const wrapperFile = path.join(CONFIGDIR, "bin", `ccr-opencode-wrapper-${profileId}${commandExtension}`);
+  const wrapper = readFileSync(wrapperFile, "utf8");
+  assert.match(wrapper, /OPENCODE_CONFIG/);
+  assert.match(wrapper, /OPENCODE_CONFIG_CONTENT/);
+  assert.match(wrapper, /USER_VALUE.*kept/);
+  assert.match(wrapper, /custom[\\/]bin[\\/]opencode/);
+  assert.equal(wrapper.includes("/ignored/opencode.json"), false);
+});
+
+test("profile service removes disabled and deleted OpenCode wrappers and API keys", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
+  const profileId = "opencode-cleanup-test";
+  const config = createDefaultAppConfig({
+    generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
+  });
+  config.Providers = [
+    {
+      api_base_url: "https://example.test/v1",
+      api_key: "provider-key",
+      models: ["model"],
+      name: "Provider"
+    }
+  ];
+  config.preferredProvider = "Provider";
+  config.APIKEY = "general-key";
+  config.APIKEYS = [
+    {
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: "general-key",
+      key: "general-key",
+      name: "General key"
+    },
+    {
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: `profile:${profileId}`,
+      key: "opencode-profile-key",
+      name: "Profile: OpenCode Cleanup Test"
+    }
+  ];
+  const profile = {
+    agent: "opencode",
+    enabled: true,
+    env: {},
+    id: profileId,
+    model: "Provider/model",
+    name: "OpenCode Cleanup Test",
+    providerId: "claude-code-router",
+    providerName: "Claude Code Router",
+    scope: "ccr",
+    surface: "auto"
+  };
+  config.profile.profiles = [profile];
+  const commandExtension = process.platform === "win32" ? ".cmd" : "";
+  const wrapperFile = path.join(CONFIGDIR, "bin", `ccr-opencode-wrapper-${profileId}${commandExtension}`);
+
+  await applyProfileConfig(config);
+  assert.equal(existsSync(wrapperFile), true);
+
+  profile.enabled = false;
+  await applyProfileConfig(config);
+  assert.equal(existsSync(wrapperFile), false);
+  assert.deepEqual(config.APIKEYS.map((apiKey) => apiKey.id), ["general-key"]);
+
+  profile.enabled = true;
+  await applyProfileConfig(config);
+  assert.equal(existsSync(wrapperFile), true);
+  assert.ok(config.APIKEYS.some((apiKey) => apiKey.id === `profile:${profileId}`));
+
+  config.profile.profiles = [];
+  await applyProfileConfig(config);
+  assert.equal(existsSync(wrapperFile), false);
+  assert.deepEqual(config.APIKEYS.map((apiKey) => apiKey.id), ["general-key"]);
+});
+
 test("profile service clears stale Claude Code ToolHub artifacts when no gateway models are available", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "stale-toolhub-no-models";
   const settingsFile = path.join(CONFIGDIR, "profiles", profileId, "claude", "settings.json");
@@ -541,11 +669,12 @@ test("profile service restores global agent configs on exit", () => {
   try {
     const claudeFile = path.join(root, "claude", "settings.json");
     const codexFile = path.join(root, "codex", "config.toml");
+    const openCodeFile = path.join(root, "opencode", "opencode.jsonc");
     const zcodeFile = path.join(root, "zcode", "cli", "config.json");
     const zcodeRoot = path.dirname(path.dirname(zcodeFile));
     const zcodeV2File = path.join(zcodeRoot, "v2", "config.json");
     const zcodeCacheFile = path.join(zcodeRoot, "v2", "bots-model-cache.v2.json");
-    const files = [claudeFile, codexFile, zcodeFile, zcodeV2File, zcodeCacheFile];
+    const files = [claudeFile, codexFile, openCodeFile, zcodeFile, zcodeV2File, zcodeCacheFile];
     const originals = new Map(files.map((file, index) => [file, `original-${index}\n`]));
     const latestSnapshots = new Map(files.map((file, index) => [file, `latest-${index}\n`]));
 
@@ -567,6 +696,14 @@ test("profile service restores global agent configs on exit", () => {
       }
     })}\n`);
     writeFileSync(codexFile, "# BEGIN CCR managed profile\nmodel = \"test\"\n# END CCR managed profile\n");
+    writeFileSync(openCodeFile, `${JSON.stringify({
+      model: "claude-code-router/test",
+      provider: {
+        "claude-code-router": {
+          options: { headers: { "x-ccr-client": "opencode" } }
+        }
+      }
+    })}\n`);
     for (const file of [zcodeFile, zcodeV2File]) {
       writeFileSync(file, `${JSON.stringify({ provider: { "claude-code-router": {} } })}\n`);
     }
@@ -582,18 +719,25 @@ test("profile service restores global agent configs on exit", () => {
         providerId: "claude-code-router", scope: "global", surface: "cli"
       },
       {
+        agent: "opencode", configFile: openCodeFile, enabled: true, env: {}, id: "opencode", model: "test", name: "OpenCode",
+        providerId: "claude-code-router", scope: "global", surface: "auto"
+      },
+      {
         agent: "zcode", configFile: zcodeFile, enabled: true, env: {}, id: "zcode", model: "test", name: "ZCode",
         providerId: "claude-code-router", scope: "global", surface: "app"
       }
     ], { manageMarker: false });
 
-    assert.equal(statuses.length, 3);
+    assert.equal(statuses.length, 4);
     assert.equal(statuses.every((status) => status.ok), true);
     for (const [file, latest] of latestSnapshots) {
       assert.equal(readFileSync(file, "utf8"), latest);
     }
 
     writeFileSync(codexFile, "# BEGIN CCR managed profile\nmodel = \"test\"\n# END CCR managed profile\n");
+    writeFileSync(openCodeFile, `${JSON.stringify({
+      provider: { "claude-code-router": { options: { headers: { "x-ccr-client": "opencode" } } } }
+    })}\n`);
     for (const file of [zcodeFile, zcodeV2File]) {
       writeFileSync(file, `${JSON.stringify({ provider: { "claude-code-router": {} } })}\n`);
     }
@@ -604,11 +748,16 @@ test("profile service restores global agent configs on exit", () => {
         providerId: "claude-code-router", scope: "ccr", surface: "cli"
       },
       {
+        agent: "opencode", configFile: openCodeFile, enabled: false, env: {}, id: "opencode", model: "test", name: "OpenCode",
+        providerId: "claude-code-router", scope: "global", surface: "auto"
+      },
+      {
         agent: "zcode", configFile: zcodeFile, enabled: false, env: {}, id: "zcode", model: "test", name: "ZCode",
         providerId: "claude-code-router", scope: "ccr", surface: "app"
       }
     ]);
     assert.equal(inactiveStatuses.filter((status) => status.client === "codex").length, 1);
+    assert.equal(inactiveStatuses.filter((status) => status.client === "opencode").length, 1);
     assert.equal(inactiveStatuses.filter((status) => status.client === "zcode").length, 3);
     for (const [file, latest] of latestSnapshots) {
       if (file !== claudeFile) {

@@ -521,7 +521,7 @@ function sanitizeProfileConfigForDisk(profile: AppConfig["profile"]): AppConfig[
     ...profile,
     codex,
     profiles: profile.profiles.map((profileItem) => {
-      if (profileItem.agent !== "codex" && profileItem.agent !== "zcode") {
+      if (profileItem.agent !== "codex" && profileItem.agent !== "opencode" && profileItem.agent !== "zcode") {
         return profileItem;
       }
       const {
@@ -2374,7 +2374,7 @@ function parseProfiles(value: unknown): ProfileConfig[] | undefined {
         providerName: readString(item.providerName) || "Claude Code Router",
         remoteFrontendMode: parseCodexRemoteFrontendMode(readString(item.remoteFrontendMode) || readString(item.frontendMode) || readString(item.coreMode)) || "app",
         scope: parseProfileScope(readString(item.scope) || readString(item.applyScope) || readString(item.effectScope)) || "global",
-        showAllSessions: agent === "zcode"
+        showAllSessions: agent === "zcode" || agent === "opencode"
           ? false
           : typeof item.showAllSessions === "boolean"
             ? item.showAllSessions
@@ -2396,6 +2396,8 @@ function readProfileAppPath(item: Record<string, unknown>, agent: ProfileConfig[
       ? readString(item.claudeAppPath) || readString(item.claude_app_path)
       : agent === "codex"
         ? readString(item.chatgptAppPath) || readString(item.chatgpt_app_path) || readString(item.codexAppPath) || readString(item.codex_app_path)
+        : agent === "opencode"
+          ? readString(item.openCodeAppPath) || readString(item.opencodeAppPath) || readString(item.opencode_app_path)
         : readString(item.zcodeAppPath) || readString(item.zcode_app_path));
 }
 
@@ -2413,6 +2415,9 @@ function parseProfileAgent(value: unknown): ProfileConfig["agent"] | undefined {
   if (normalized === "grok" || normalized === "grok-cli" || normalized === "grok cli") {
     return "grok";
   }
+  if (normalized === "opencode" || normalized === "open-code" || normalized === "open code") {
+    return "opencode";
+  }
   if (normalized === "zcode" || normalized === "z-code" || normalized === "z code") {
     return "zcode";
   }
@@ -2429,11 +2434,18 @@ function defaultProfileAgentName(agent: ProfileConfig["agent"]): string {
   if (agent === "grok") {
     return "Grok CLI";
   }
+  if (agent === "opencode") {
+    return "OpenCode";
+  }
   return "Codex";
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "~/.zcode/cli/config.json" : "~/.codex/config.toml";
+  return agent === "zcode"
+    ? "~/.zcode/cli/config.json"
+    : agent === "opencode"
+      ? "~/.config/opencode/opencode.jsonc"
+      : "~/.codex/config.toml";
 }
 
 function normalizeCodexConfigFileForAgent(agent: ProfileConfig["agent"], value: string | undefined): string {

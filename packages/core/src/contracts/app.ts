@@ -9,6 +9,7 @@ export type AppInfo = {
   launchAtLoginSupported: boolean;
   requestLogsDbFile: string;
   name: string;
+  opencodeAppPath?: string;
   platform: string;
   usageDbFile: string;
   version: string;
@@ -1126,7 +1127,7 @@ export const DEFAULT_TRAY_WIDGETS: TrayWidgetConfig[] = [
   { id: "model-share", type: "model-share", variant: DEFAULT_TRAY_COMPONENT_VARIANTS.modelShare }
 ];
 
-export type ProfileClientKind = "claude-code" | "codex" | "grok" | "zcode";
+export type ProfileClientKind = "claude-code" | "codex" | "grok" | "opencode" | "zcode";
 export type CodexProfileConfigFormat = "legacy" | "separate_profile_files";
 export type CodexRemoteFrontendMode = "app" | "cli" | "claude-code";
 export type ProfileScope = "ccr" | "global" | "custom";
@@ -1785,7 +1786,7 @@ export type UsageStatsSnapshot = {
   totals: UsageTotals;
 };
 
-export type AgentKind = "claude-code" | "codex" | "grok" | "zcode" | "claude-design" | "unknown";
+export type AgentKind = "claude-code" | "codex" | "grok" | "opencode" | "zcode" | "claude-design" | "unknown";
 
 export type AgentAnalysisFilter = {
   agent?: AgentKind | "all";

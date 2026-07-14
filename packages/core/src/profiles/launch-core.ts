@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { AppConfig, ProfileConfig, ProfileOpenSurface } from "@ccr/core/contracts/app";
 import { claudeCodeUtcTimezoneEnvOverride } from "@ccr/core/agents/claude-code/environment";
+import { resolveOpenCodeConfigFile as resolveOpenCodeProfileConfigFile } from "@ccr/core/agents/opencode/profile-config";
 import { resolveZcodeConfigFile } from "@ccr/core/agents/zcode/profile-config";
 
 export type ProfileLaunchPlan = {
@@ -108,10 +109,34 @@ export function buildProfileLaunchPlan(
   if (profile.agent === "grok") {
     return buildGrokLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
   }
+  if (profile.agent === "opencode") {
+    return buildOpenCodeLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
+  }
   if (isCodexCompatibleAgent(profile.agent)) {
     return buildCodexLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
   }
   return buildClaudeCodeLaunchPlan(configDir, profile, resolvedSurface, extraArgs);
+}
+
+function buildOpenCodeLaunchPlan(
+  configDir: string,
+  profile: ProfileConfig,
+  surface: ProfileOpenSurface,
+  extraArgs: string[]
+): ProfileLaunchPlan {
+  if (surface !== "cli") {
+    throw new Error("OpenCode App profiles must be opened through CCR Desktop.");
+  }
+  return {
+    args: extraArgs,
+    command: path.join(configDir, "bin", openCodeWrapperFilename(profile)),
+    env: {
+      CCR_PROFILE_SURFACE: "cli",
+      OPENCODE_CONFIG: resolveOpenCodeProfileConfigFile(configDir, profile)
+    },
+    profile,
+    surface
+  };
 }
 
 function buildGrokLaunchPlan(
@@ -177,6 +202,10 @@ export function resolveCodexConfigFile(configDir: string, profile: ProfileConfig
     return path.join(resolveUserPath(codexHome), "config.toml");
   }
   return resolveUserPath(profile.configFile || defaultCodexConfigFile(profile.agent));
+}
+
+export function resolveOpenCodeConfigFile(configDir: string, profile: ProfileConfig): string {
+  return resolveOpenCodeProfileConfigFile(configDir, profile);
 }
 
 function buildCodexLaunchPlan(
@@ -247,6 +276,13 @@ function grokWrapperFilename(profile: ProfileConfig): string {
   return process.platform === "win32"
     ? `ccr-grok-cli-wrapper-${slug}.cmd`
     : `ccr-grok-cli-wrapper-${slug}`;
+}
+
+function openCodeWrapperFilename(profile: ProfileConfig): string {
+  const slug = sanitizePathSegment(profile.id || profile.name || profile.agent) || "opencode";
+  return process.platform === "win32"
+    ? `ccr-opencode-wrapper-${slug}.cmd`
+    : `ccr-opencode-wrapper-${slug}`;
 }
 
 function codexMiddlewareFilename(profile: ProfileConfig, providerId: string): string {

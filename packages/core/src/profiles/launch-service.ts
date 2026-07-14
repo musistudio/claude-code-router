@@ -2,12 +2,14 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { assertAvailableGatewayModels, type AppConfig, type ProfileOpenCommandResult, type ProfileOpenRequest, type ProfileOpenResult, type ProfileRuntimeEntry, type ProfileRuntimeStatus, type ProfileStopResult } from "@ccr/core/contracts/app";
+import { assertAvailableGatewayModels, type AppConfig, type ProfileConfig, type ProfileOpenCommandResult, type ProfileOpenRequest, type ProfileOpenResult, type ProfileRuntimeEntry, type ProfileRuntimeStatus, type ProfileStopResult } from "@ccr/core/contracts/app";
 import { botGatewayProfileEnv } from "@ccr/core/agents/bot-gateway/env";
 import { applyClaudeAppGatewayConfig, readClaudeAppGatewayApiKeyCandidates } from "@ccr/core/agents/claude-app/gateway-service";
 import { launchClaudeAppProfile, resolveClaudeAppProfileUserDataDir } from "@ccr/core/agents/claude-app/launch";
 import { claudeCodeUtcTimezoneEnvOverride } from "@ccr/core/agents/claude-code/environment";
 import { codexDesktopAppName, launchCodexAppProfile, launchZcodeAppProfile, refreshCodexCompatibleAppProfileFiles } from "@ccr/core/agents/codex/app-launch";
+import { findRunningOpenCodeAppPid, launchOpenCodeAppProfile, openCodeAppLaunchSignature } from "@ccr/core/agents/opencode/app-launch";
+import { writeOpenCodeGatewayConfig } from "@ccr/core/agents/opencode/profile-config";
 import { codexCliMiddlewareRuntimeScript } from "@ccr/core/agents/codex/cli-middleware-runtime";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { gatewayService } from "@ccr/core/gateway/service";
@@ -49,6 +51,7 @@ type ProfileAppLaunchResult = {
   child: ChildProcess;
   claudeDesignProxy?: boolean;
   command: string;
+  launchSignature?: string;
   pidIsLauncher?: boolean;
   pid?: number;
   userDataDir: string;
@@ -58,6 +61,7 @@ type RunningProfileApp = ProfileRuntimeEntry & {
   child: ChildProcess;
   claudeDesignProxy?: boolean;
   command: string;
+  launchSignature?: string;
   pidIsLauncher?: boolean;
   spawnError?: string;
   stopRequested?: boolean;
@@ -93,6 +97,9 @@ export async function openProfileFromCcr(config: AppConfig, request: ProfileOpen
   if ((profile.agent === "codex" || profile.agent === "zcode") && surface === "app") {
     return await openCodexAppProfile(config, profile);
   }
+  if (profile.agent === "opencode" && surface === "app") {
+    return await openOpenCodeAppProfile(config, profile);
+  }
   const plan = buildProfileLaunchPlan(CONFIGDIR, profile, surface);
   if (path.isAbsolute(plan.command) && !existsSync(plan.command)) {
     throw new Error(`Profile launcher was not found: ${plan.command}. Re-save the profile and try again.`);
@@ -120,6 +127,86 @@ export async function openProfileFromCcr(config: AppConfig, request: ProfileOpen
     profileId: profile.id,
     profileName: profile.name,
     surface
+  };
+}
+
+async function openOpenCodeAppProfile(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): Promise<ProfileOpenResult> {
+  const appName = "OpenCode App";
+  const profileGatewayConfig = await ensureProfileGateway(config, profile, appName);
+  const configResult = writeOpenCodeGatewayConfig(
+    CONFIGDIR,
+    profileGatewayConfig,
+    profile,
+    profileGatewayConfig.APIKEY,
+    { backup: false }
+  );
+  const botEnv = botGatewayProfileEnv(profileGatewayConfig, profile, "app");
+  const launchSignature = openCodeAppLaunchSignature(profile, configResult.file, configResult.inlineConfig, botEnv);
+  const existing = runningProfileApp(profile.id, "app");
+  if (existing) {
+    if (existing.launchSignature === launchSignature) {
+      activateProfileAppWindow(existing);
+      return {
+        message: `${appName} is already running with ${profile.name || profile.id}.`,
+        profileId: profile.id,
+        profileName: profile.name,
+        surface: "app"
+      };
+    }
+    const stopped = await stopRunningProfileApp(profileRuntimeKey(profile.id, "app"), existing);
+    if (!stopped && isProfileAppRunning(existing)) {
+      throw new Error(
+        `${appName} is still running with stale settings for ${profile.name || profile.id}. ` +
+        "Close it before reopening this profile."
+      );
+    }
+  }
+  const otherProfile = runningProfileAppForAgent("opencode", "app", profile.id);
+  if (otherProfile) {
+    const stopped = await stopRunningProfileApp(profileRuntimeKey(otherProfile.profileId, "app"), otherProfile);
+    if (!stopped && isProfileAppRunning(otherProfile)) {
+      throw new Error(
+        `OpenCode App is already running with ${otherProfile.profileName || otherProfile.profileId}. ` +
+        "Close it before switching OpenCode App profiles."
+      );
+    }
+  }
+  const unmanagedPid = findRunningOpenCodeAppPid(profile.appPath);
+  if (unmanagedPid) {
+    throw new Error(
+      `OpenCode App is already running outside CCR (PID ${unmanagedPid}). ` +
+      "Close it before opening an OpenCode App profile."
+    );
+  }
+  const launch = {
+    ...launchOpenCodeAppProfile(
+      CONFIGDIR,
+      profile,
+      configResult.file,
+      configResult.inlineConfig,
+      botEnv
+    ),
+    launchSignature
+  };
+  const entry = registerProfileApp(profile, "app", launch);
+  const started = await waitForStableProfileAppStart(entry, 12000, 1000);
+  if (!started) {
+    cleanupProfileAppEntry(profileRuntimeKey(profile.id, "app"), entry);
+    sendProfileProcessSignal(entry.pid, "SIGTERM");
+    throw new Error([
+      `${appName} did not stay open for ${profile.name || profile.id}.`,
+      ...(entry.spawnError ? [`Error: ${entry.spawnError}`] : []),
+      "Close any OpenCode App instance that was not opened by CCR, then try again.",
+      `Command: ${entry.command}`,
+      `User data: ${entry.userDataDir}`
+    ].join(" "));
+  }
+  activateProfileAppWindow(entry);
+  return {
+    message: `Opened ${appName} with ${profile.name || profile.id}.`,
+    profileId: profile.id,
+    profileName: profile.name,
+    surface: "app"
   };
 }
 
@@ -634,6 +721,7 @@ function registerProfileApp(
     child: launch.child,
     claudeDesignProxy: launch.claudeDesignProxy,
     command: launch.command,
+    launchSignature: launch.launchSignature,
     pid: launch.pid,
     pidIsLauncher: launch.pidIsLauncher,
     profileId: profile.id,
@@ -705,6 +793,20 @@ function runningProfileApp(profileId: string, surface: ProfileOpenRequest["surfa
   }
   cleanupProfileAppEntry(key, entry);
   return undefined;
+}
+
+function runningProfileAppForAgent(
+  agent: ProfileConfig["agent"],
+  surface: ProfileOpenRequest["surface"],
+  excludedProfileId?: string
+): RunningProfileApp | undefined {
+  cleanupExitedProfileApps();
+  return [...runningProfileApps.values()].find((entry) =>
+    entry.agent === agent &&
+    entry.surface === surface &&
+    entry.profileId !== excludedProfileId &&
+    isProfileAppRunning(entry)
+  );
 }
 
 function cleanupExitedProfileApps(): void {
@@ -908,6 +1010,34 @@ async function waitForProfileAppStart(entry: Pick<RunningProfileApp, "pid" | "pi
     await sleep(100);
   }
   return !entry.spawnError && (Boolean(profileAppMainPid(entry)) || (!entry.pidIsLauncher && isProcessAlive(entry.pid)));
+}
+
+async function waitForStableProfileAppStart(
+  entry: Pick<RunningProfileApp, "pid" | "pidIsLauncher" | "spawnError" | "userDataDir">,
+  timeoutMs: number,
+  stableMs: number
+): Promise<boolean> {
+  const startedAt = Date.now();
+  let runningSince: number | undefined;
+  while (Date.now() - startedAt < timeoutMs) {
+    if (entry.spawnError) {
+      return false;
+    }
+    const running = Boolean(profileAppMainPid(entry)) || (!entry.pidIsLauncher && isProcessAlive(entry.pid));
+    if (running) {
+      runningSince ??= Date.now();
+      if (Date.now() - runningSince >= stableMs) {
+        return true;
+      }
+    } else {
+      runningSince = undefined;
+      if (!entry.pidIsLauncher && !isProcessAlive(entry.pid)) {
+        return false;
+      }
+    }
+    await sleep(100);
+  }
+  return false;
 }
 
 function waitForImmediateSpawnError(child: ChildProcess, timeoutMs: number): Promise<string | undefined> {

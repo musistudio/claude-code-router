@@ -103,6 +103,7 @@ import appLogoUrl from "@/assets/logo.png";
 import claudeCodeLogoUrl from "@/assets/agent-logos/claude-code.png";
 import codexLogoUrl from "@/assets/agent-logos/codex.png";
 import grokLogoUrl from "@/assets/agent-logos/grok.ico";
+import openCodeLogoUrl from "@/assets/agent-logos/opencode.ico";
 import zcodeLogoUrl from "@/assets/agent-logos/zcode.png";
 import onboardingMascotSpriteUrl from "@/assets/onboarding/mascot-transition.svg";
 import anthropicProviderIconUrl from "@/assets/provider-icons/anthropic.png";
@@ -757,9 +758,13 @@ export function createProfileDraft(agent: ProfileConfig["agent"] = "claude-code"
   };
 }
 
-export function profileDraftWithDetectedAppPath(draft: AddProfileDraft, chatgptAppPath?: string): AddProfileDraft {
-  const detectedPath = chatgptAppPath?.trim() || "";
-  if (draft.agent !== "codex" || draft.appPath.trim() || !detectedPath) {
+export function profileDraftWithDetectedAppPath(
+  draft: AddProfileDraft,
+  chatgptAppPath?: string,
+  opencodeAppPath?: string
+): AddProfileDraft {
+  const detectedPath = (draft.agent === "codex" ? chatgptAppPath : draft.agent === "opencode" ? opencodeAppPath : "")?.trim() || "";
+  if (draft.appPath.trim() || !detectedPath) {
     return draft;
   }
   return { ...draft, appPath: detectedPath };
@@ -807,7 +812,7 @@ export function createProfileDraftFromProfile(profile: ProfileConfig, botConfigs
     providerId: profile.providerId ?? "claude-code-router",
     providerName: profile.providerName ?? "Claude Code Router",
     scope: normalizeProfileFormScope(profile.scope),
-    showAllSessions: profile.agent === "zcode" ? false : Boolean(profile.showAllSessions),
+    showAllSessions: profile.agent === "zcode" || profile.agent === "opencode" ? false : Boolean(profile.showAllSessions),
     surface
   };
 }
@@ -885,7 +890,7 @@ export function profileConfigFromDraft(
     providerName: draft.providerName,
     scope: draft.scope,
     settingsFile: draft.settingsFile,
-    showAllSessions: draft.agent === "zcode" ? false : draft.showAllSessions,
+    showAllSessions: draft.agent === "zcode" || draft.agent === "opencode" ? false : draft.showAllSessions,
     smallFastModel: draft.smallFastModel,
     surface: draft.surface
   }, existingProfiles.length);
@@ -1375,7 +1380,7 @@ export function profileSummaryItems(
     : [];
   const appPath = profile.appPath?.trim() || "";
   const appPathSummaryItems = appPath && surface !== "cli" && profile.agent !== "zcode"
-    ? [{ label: t(profile.agent === "claude-code" ? "CLAUDE_APP_PATH" : "CHATGPT_APP_PATH"), value: appPath }]
+    ? [{ label: t(profile.agent === "claude-code" ? "CLAUDE_APP_PATH" : profile.agent === "opencode" ? "OPENCODE_APP_PATH" : "CHATGPT_APP_PATH"), value: appPath }]
     : [];
   const savedBot = profile.botConfigId
     ? config.botConfigs.find((item) => item.id === profile.botConfigId)
@@ -1430,7 +1435,7 @@ export function profileSummaryItems(
   return [
     { label: t("Model"), value: modelValue },
     { label: t("Provider ID"), value: profile.providerId ?? "claude-code-router" },
-    ...(profile.agent === "zcode" ? [] : [{ label: t("Show all sessions"), value: profile.showAllSessions ? t("Enabled") : t("Disabled") }]),
+    ...(profile.agent === "zcode" || profile.agent === "opencode" ? [] : [{ label: t("Show all sessions"), value: profile.showAllSessions ? t("Enabled") : t("Disabled") }]),
     ...appPathSummaryItems,
     ...botSummaryItems,
     ...envSummaryItems
@@ -1494,7 +1499,7 @@ export function normalizeProfileItem(profile: ProfileConfig, index: number): Pro
     providerId: profile.providerId?.trim() || "claude-code-router",
     providerName: profile.providerName?.trim() || "Claude Code Router",
     scope,
-    showAllSessions: agent === "zcode" ? false : Boolean(profile.showAllSessions),
+    showAllSessions: agent === "zcode" || agent === "opencode" ? false : Boolean(profile.showAllSessions),
     surface
   };
 }
@@ -1551,6 +1556,8 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
       ? "codex"
       : rawAgent === "grok" || rawAgent === "grok-cli" || rawAgent === "grok cli"
         ? "grok"
+      : rawAgent === "opencode" || rawAgent === "open-code" || rawAgent === "open code"
+        ? "opencode"
       : rawAgent === "zcode" || rawAgent === "z-code" || rawAgent === "z code"
         ? "zcode"
         : undefined;
@@ -1579,6 +1586,12 @@ export function normalizeUnknownProfileItem(value: Record<string, unknown>, inde
                       ? value.codexAppPath
                       : agent === "codex" && typeof value.codex_app_path === "string"
                         ? value.codex_app_path
+                        : agent === "opencode" && typeof value.openCodeAppPath === "string"
+                          ? value.openCodeAppPath
+                          : agent === "opencode" && typeof value.opencodeAppPath === "string"
+                            ? value.opencodeAppPath
+                            : agent === "opencode" && typeof value.opencode_app_path === "string"
+                              ? value.opencode_app_path
                         : undefined,
     botConfigId: typeof value.botConfigId === "string" ? value.botConfigId : typeof value.bot_config_id === "string" ? value.bot_config_id : undefined,
     botGateway: normalizeBotGatewayRuntimeConfig(value.botGateway ?? value.bot_gateway ?? value.bot),
@@ -1630,6 +1643,9 @@ export function profileAgentLabel(agent: ProfileConfig["agent"]): string {
   }
   if (agent === "grok") {
     return "Grok CLI";
+  }
+  if (agent === "opencode") {
+    return "OpenCode";
   }
   return "Codex";
 }
@@ -1692,15 +1708,18 @@ export function profileAgentLogoUrl(agent: ProfileConfig["agent"]): string {
   if (agent === "grok") {
     return grokLogoUrl;
   }
+  if (agent === "opencode") {
+    return openCodeLogoUrl;
+  }
   return codexLogoUrl;
 }
 
-function normalizeCodexCompatibleAgent(agent: ProfileConfig["agent"]): "codex" | "zcode" {
-  return agent === "zcode" ? "zcode" : "codex";
+function normalizeCodexCompatibleAgent(agent: ProfileConfig["agent"]): "codex" | "opencode" | "zcode" {
+  return agent === "zcode" ? "zcode" : agent === "opencode" ? "opencode" : "codex";
 }
 
 function normalizeProfileAgent(agent: ProfileConfig["agent"]): ProfileConfig["agent"] {
-  return agent === "zcode" ? "zcode" : agent === "grok" ? "grok" : agent === "codex" ? "codex" : "claude-code";
+  return agent === "zcode" ? "zcode" : agent === "opencode" ? "opencode" : agent === "grok" ? "grok" : agent === "codex" ? "codex" : "claude-code";
 }
 
 function normalizeProfileSurfaceForAgent(agent: ProfileConfig["agent"], surface: unknown): ProfileSurface {
@@ -1708,7 +1727,11 @@ function normalizeProfileSurfaceForAgent(agent: ProfileConfig["agent"], surface:
 }
 
 function defaultCodexConfigFile(agent: ProfileConfig["agent"]): string {
-  return agent === "zcode" ? "~/.zcode/cli/config.json" : "~/.codex/config.toml";
+  return agent === "zcode"
+    ? "~/.zcode/cli/config.json"
+    : agent === "opencode"
+      ? "~/.config/opencode/opencode.jsonc"
+      : "~/.codex/config.toml";
 }
 
 function normalizeCodexConfigFileForAgent(agent: ProfileConfig["agent"], value: string | undefined): string {

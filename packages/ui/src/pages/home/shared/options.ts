@@ -111,6 +111,7 @@ export const agentFilterOptions: Array<{ label: string; value: AgentFilterValue 
   { label: "Claude Code", value: "claude-code" },
   { label: "Codex", value: "codex" },
   { label: "Grok CLI", value: "grok" },
+  { label: "OpenCode", value: "opencode" },
   { label: "ZCode", value: "zcode" },
   { label: "Claude Design", value: "claude-design" },
   { label: "Unknown", value: "unknown" }
@@ -120,6 +121,7 @@ export const profileAgentOptions: Array<{ label: string; value: ProfileConfig["a
   { label: "Claude Code", value: "claude-code" },
   { label: "Codex", value: "codex" },
   { label: "Grok CLI", value: "grok" },
+  { label: "OpenCode", value: "opencode" },
   { label: "ZCode", value: "zcode" }
 ];
 

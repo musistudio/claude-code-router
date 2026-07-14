@@ -50,6 +50,13 @@ test("detected CHATGPT_APP_PATH is used as the Codex profile default", () => {
   assert.equal(profileDraftWithDetectedAppPath(createProfileDraft("claude-code"), detectedPath).appPath, "");
 });
 
+test("detected OPENCODE_APP_PATH is used as the OpenCode profile default", () => {
+  const detectedPath = "/Applications/OpenCode.app/Contents/MacOS/OpenCode";
+  const draft = profileDraftWithDetectedAppPath(createProfileDraft("opencode"), undefined, detectedPath);
+  assert.equal(draft.appPath, detectedPath);
+  assert.equal(profileDraftWithDetectedAppPath({ ...draft, appPath: "/custom/opencode" }, undefined, detectedPath).appPath, "/custom/opencode");
+});
+
 test("Grok CLI profile defaults to a CCR-scoped CLI entry", () => {
   const draft = createProfileDraft("grok");
 
@@ -72,4 +79,25 @@ test("persisted Grok profiles are normalized to the supported launch scope", () 
   assert.equal(profile?.agent, "grok");
   assert.equal(profile?.scope, "ccr");
   assert.equal(profile?.surface, "cli");
+});
+
+test("OpenCode profiles support local CLI and App configuration", () => {
+  const draft = createProfileDraft("opencode");
+  assert.equal(draft.name, "OpenCode");
+  assert.equal(draft.configFile, "~/.config/opencode/opencode.jsonc");
+  assert.equal(draft.surface, "cli");
+
+  const profile = normalizeUnknownProfileItem({
+    agent: "open-code",
+    appPath: "/Applications/OpenCode.app",
+    enabled: true,
+    id: "opencode-work",
+    model: "Provider/model",
+    name: "OpenCode Work",
+    scope: "ccr",
+    surface: "auto"
+  }, 0);
+  assert.equal(profile?.agent, "opencode");
+  assert.equal(profile?.appPath, "/Applications/OpenCode.app");
+  assert.equal(profile?.surface, "auto");
 });
