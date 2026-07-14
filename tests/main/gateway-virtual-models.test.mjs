@@ -201,13 +201,28 @@ test("issue 1480 Fusion vision config injects core auth token into MCP gateway r
   };
 
   const profiles = normalizeCoreGatewayVirtualModelProfiles(config.virtualModelProfiles, config);
-  const artifacts = await fusionBuiltinToolArtifactsForTest(profiles, "http://127.0.0.1:3457", "core-token");
+  const artifacts = await fusionBuiltinToolArtifactsForTest(
+    profiles,
+    "http://127.0.0.1:3457",
+    "core-token",
+    undefined,
+    undefined,
+    undefined,
+    {
+      endpoint: "http://127.0.0.1:3456/__ccr/billing-usage-sync",
+      header: "x-ccr-billing-usage-token",
+      token: "usage-token"
+    }
+  );
   const server = artifacts.mcpServers.find((item) => item.name === "fusion-vision-glm-5.2v");
 
   assert.ok(server);
   assert.equal(server.env.VISION_GATEWAY_BASE_URL, "http://127.0.0.1:3457/v1");
   assert.equal(server.env.VISION_GATEWAY_API_KEY, "core-token");
   assert.equal(server.env.VISION_API_KEY, undefined);
+  assert.equal(server.env.CCR_FUSION_USAGE_SYNC_ENDPOINT, "http://127.0.0.1:3456/__ccr/billing-usage-sync");
+  assert.equal(server.env.CCR_FUSION_USAGE_SYNC_HEADER, "x-ccr-billing-usage-token");
+  assert.equal(server.env.CCR_FUSION_USAGE_SYNC_TOKEN, "usage-token");
   assert.match(
     server.env.VISION_MODEL,
     /^provider-zhipu-ai-china---coding-plan-[a-f0-9]{10}::openai_chat_completions::cred:test-1\/glm-5v-turbo$/
@@ -267,7 +282,12 @@ test("gateway config passes proxy preload to Fusion built-in MCP runtimes", asyn
     "core-token",
     undefined,
     proxyPreloadFile,
-    proxyEnv
+    proxyEnv,
+    {
+      endpoint: "http://127.0.0.1:3456/__ccr/billing-usage-sync",
+      header: "x-ccr-billing-usage-token",
+      token: "usage-token"
+    }
   );
   const server = artifacts.mcpServers.find((item) => item.name === "fusion-web-search-fusion-tavily");
 
@@ -276,6 +296,7 @@ test("gateway config passes proxy preload to Fusion built-in MCP runtimes", asyn
   assert.equal(server.args[2].endsWith("fusion-vision-mcp.js"), true);
   assert.equal(server.env.CCR_UPSTREAM_PROXY_URL, proxyEnv.CCR_UPSTREAM_PROXY_URL);
   assert.equal(server.env.CCR_UNDICI_MODULE, proxyEnv.CCR_UNDICI_MODULE);
+  assert.equal(server.env.CCR_FUSION_USAGE_SYNC_ENDPOINT, undefined);
   assert.equal(server.env.TAVILY_API_KEY, "tavily-key");
 });
 

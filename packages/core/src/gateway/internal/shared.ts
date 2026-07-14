@@ -257,10 +257,14 @@ export const gatewayRuntimeMarkerFile = "gateway-runtime.json";
 
 export const rawTraceSyncHeader = "x-ccr-raw-trace-token";
 
+export const billingUsageSyncHeader = "x-ccr-billing-usage-token";
+
 export const virtualApplyPatchToolName = "virtual_apply_patch";
 
 
 export const rawTraceSyncPath = "/__ccr/raw-trace-sync";
+
+export const billingUsageSyncPath = "/__ccr/billing-usage-sync";
 
 export const gatewayEntryOverrideEnv = "CCR_GATEWAY_ENTRY";
 

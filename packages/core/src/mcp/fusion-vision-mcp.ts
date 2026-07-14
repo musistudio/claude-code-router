@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
 
@@ -57,6 +58,14 @@ const defaultVisionBaseUrl = "https://api.openai.com/v1";
 const defaultVisionModel = "gpt-4o-mini";
 const defaultTimeoutMs = 30000;
 const maxLocalImageBytes = 20 * 1024 * 1024;
+const fusionUsageEventSchema = "ccr.fusion-usage.v1";
+const fusionUsageSyncBaseDelayMs = 100;
+const fusionUsageSyncDrainTimeoutMs = 15_000;
+const fusionUsageSyncMaxAttempts = 3;
+const fusionUsageSyncTimeoutMs = 5_000;
+const pendingUsageSyncs = new Set<Promise<void>>();
+let usageSyncFailureLogged = false;
+let usageSyncShutdownStarted = false;
 
 const toolKind = parseToolKind(env("FUSION_BUILTIN_TOOL_KIND"));
 const toolName = env("FUSION_TOOL_NAME") || env("FUSION_VISION_TOOL_NAME") || (toolKind === "web_search" ? "web_search" : "vision_understand");
@@ -121,6 +130,12 @@ process.stdin.on("data", (chunk) => {
 });
 
 process.stdin.resume();
+process.once("SIGINT", () => {
+  void shutdownAfterUsageSyncDrain(130);
+});
+process.once("SIGTERM", () => {
+  void shutdownAfterUsageSyncDrain(143);
+});
 
 async function drainInputBuffer(): Promise<void> {
   while (true) {
@@ -254,22 +269,262 @@ async function analyzeVision(args: Record<string, unknown>): Promise<string> {
     }
   ];
   const timeoutMs = clampInteger(readNumber(args.timeoutMs) ?? readNumber(env("VISION_TIMEOUT_MS")) ?? defaultTimeoutMs, 100, 600000);
-  const response = await fetch(resolveChatCompletionsUrl(baseUrl), {
-    body: JSON.stringify({ model, messages }),
-    headers: {
-      ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
-      "content-type": "application/json"
-    },
-    method: "POST",
-    signal: AbortSignal.timeout(timeoutMs)
-  });
-  const rawText = await response.text();
-  const payload = parseJson(rawText);
-  if (!response.ok) {
-    throw new Error(`Vision request failed (${response.status}): ${extractProviderError(rawText, payload)}`);
+  const startedAt = Date.now();
+  let response: Response | undefined;
+  let usageScheduled = false;
+  try {
+    response = await fetch(resolveChatCompletionsUrl(baseUrl), {
+      body: JSON.stringify({ model, messages }),
+      headers: {
+        ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+        "content-type": "application/json"
+      },
+      method: "POST",
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    const rawText = await response.text();
+    const payload = parseJson(rawText);
+    scheduleVisionUsageSync({
+      durationMs: Date.now() - startedAt,
+      gatewayRuntime: Boolean(gatewayBaseUrl),
+      model,
+      payload,
+      response
+    });
+    usageScheduled = true;
+    if (!response.ok) {
+      throw new Error(`Vision request failed (${response.status}): ${extractProviderError(rawText, payload)}`);
+    }
+
+    return extractResponseText(payload) || rawText;
+  } catch (error) {
+    if (!usageScheduled) {
+      scheduleVisionUsageSync({
+        durationMs: Date.now() - startedAt,
+        gatewayRuntime: Boolean(gatewayBaseUrl),
+        model,
+        response,
+        statusCode: 502
+      });
+    }
+    throw error;
+  }
+}
+
+function scheduleVisionUsageSync(input: {
+  durationMs: number;
+  gatewayRuntime: boolean;
+  model: string;
+  payload?: unknown;
+  response?: Response;
+  statusCode?: number;
+}): void {
+  const endpoint = env("CCR_FUSION_USAGE_SYNC_ENDPOINT");
+  const header = env("CCR_FUSION_USAGE_SYNC_HEADER");
+  const token = env("CCR_FUSION_USAGE_SYNC_TOKEN");
+  if (!endpoint || !header || !token) {
+    return;
   }
 
-  return extractResponseText(payload) || rawText;
+  const target = input.gatewayRuntime
+    ? splitGatewayVisionModelTarget(input.model)
+    : { model: input.model };
+  const statusCode = input.response?.status ?? input.statusCode ?? 502;
+  const event = {
+    billing: {
+      cost: {
+        total: readVisionCost(input.response, input.payload)
+      },
+      usage: readVisionUsage(input.response, input.payload)
+    },
+    emittedAt: new Date().toISOString(),
+    eventId: randomUUID(),
+    outcome: {
+      status: usageOutcome(statusCode),
+      statusCode
+    },
+    performance: {
+      latency_ms: input.durationMs
+    },
+    route: {
+      method: "POST",
+      url: "/v1/chat/completions"
+    },
+    schema: fusionUsageEventSchema,
+    source: {
+      adapterKey: "openai_chat",
+      provider: "fusion_vision"
+    },
+    target
+  };
+
+  const pending = publishVisionUsage(endpoint, header, token, event);
+  pendingUsageSyncs.add(pending);
+  void pending.then(
+    () => pendingUsageSyncs.delete(pending),
+    () => pendingUsageSyncs.delete(pending)
+  );
+}
+
+async function publishVisionUsage(
+  endpoint: string,
+  header: string,
+  token: string,
+  event: Record<string, unknown>
+): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= fusionUsageSyncMaxAttempts; attempt += 1) {
+    try {
+      const response = await fetch(endpoint, {
+        body: JSON.stringify(event),
+        headers: {
+          [header]: token,
+          "content-type": "application/json"
+        },
+        method: "POST",
+        signal: AbortSignal.timeout(fusionUsageSyncTimeoutMs)
+      });
+      const rawBody = await response.text();
+      if (!response.ok) {
+        throw new FusionUsageSyncHttpError(response.status);
+      }
+      const acknowledgement = rawBody ? parseJson(rawBody) : undefined;
+      if (isRecord(acknowledgement) && acknowledgement.applied === false) {
+        throw new FusionUsageSyncRejectedError();
+      }
+      usageSyncFailureLogged = false;
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= fusionUsageSyncMaxAttempts || !usageSyncErrorIsRetryable(error)) {
+        break;
+      }
+      await wait(fusionUsageSyncBaseDelayMs * 2 ** (attempt - 1));
+    }
+  }
+
+  if (!usageSyncFailureLogged) {
+    usageSyncFailureLogged = true;
+    console.warn(`[fusion-vision] Failed to publish lightweight usage event: ${formatError(lastError)}`);
+  }
+}
+
+class FusionUsageSyncHttpError extends Error {
+  readonly retryable: boolean;
+
+  constructor(readonly statusCode: number) {
+    super(`HTTP ${statusCode}`);
+    this.name = "FusionUsageSyncHttpError";
+    this.retryable = statusCode === 408 || statusCode === 409 || statusCode === 425 || statusCode === 429 || statusCode >= 500;
+  }
+}
+
+class FusionUsageSyncRejectedError extends Error {
+  readonly retryable = false;
+
+  constructor() {
+    super("Usage sync endpoint rejected the event.");
+    this.name = "FusionUsageSyncRejectedError";
+  }
+}
+
+function usageSyncErrorIsRetryable(error: unknown): boolean {
+  return !(error instanceof FusionUsageSyncRejectedError) &&
+    (!(error instanceof FusionUsageSyncHttpError) || error.retryable);
+}
+
+async function shutdownAfterUsageSyncDrain(exitCode: number): Promise<void> {
+  if (usageSyncShutdownStarted) {
+    return;
+  }
+  usageSyncShutdownStarted = true;
+  const deadline = Date.now() + fusionUsageSyncDrainTimeoutMs;
+  while (pendingUsageSyncs.size > 0 && Date.now() < deadline) {
+    const remainingMs = Math.max(1, deadline - Date.now());
+    await Promise.race([
+      Promise.allSettled([...pendingUsageSyncs]),
+      wait(remainingMs)
+    ]);
+  }
+  process.exit(exitCode);
+}
+
+function wait(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+function readVisionUsage(response: Response | undefined, payload: unknown): Record<string, number | undefined> {
+  const root = isRecord(payload) ? payload : {};
+  const usage = isRecord(root.usage) ? root.usage : {};
+  const inputDetails = isRecord(usage.input_tokens_details)
+    ? usage.input_tokens_details
+    : isRecord(usage.prompt_tokens_details)
+      ? usage.prompt_tokens_details
+      : {};
+  const headerNumber = (name: string) => readNumber(response?.headers.get(name));
+  return {
+    cache_read_tokens:
+      headerNumber("x-gateway-billing-cache-read-tokens") ??
+      readNumber(usage.cache_read_tokens) ??
+      readNumber(usage.cache_read_input_tokens) ??
+      readNumber(inputDetails.cached_tokens),
+    cache_write_tokens:
+      headerNumber("x-gateway-billing-cache-write-tokens") ??
+      readNumber(usage.cache_write_tokens) ??
+      readNumber(usage.cache_creation_input_tokens) ??
+      readNumber(inputDetails.cache_creation_tokens),
+    input_tokens:
+      headerNumber("x-gateway-billing-input-tokens") ??
+      readNumber(usage.input_tokens) ??
+      readNumber(usage.prompt_tokens),
+    output_tokens:
+      headerNumber("x-gateway-billing-output-tokens") ??
+      readNumber(usage.output_tokens) ??
+      readNumber(usage.completion_tokens),
+    total_tokens:
+      headerNumber("x-gateway-billing-total-tokens") ??
+      readNumber(usage.total_tokens)
+  };
+}
+
+function readVisionCost(response: Response | undefined, payload: unknown): number | undefined {
+  const headerCost = readNumber(response?.headers.get("x-gateway-billing-total-cost"));
+  if (headerCost !== undefined) {
+    return headerCost;
+  }
+  const root = isRecord(payload) ? payload : {};
+  const billing = isRecord(root.billing) ? root.billing : {};
+  const cost = isRecord(billing.cost) ? billing.cost : {};
+  return readNumber(cost.total);
+}
+
+function splitGatewayVisionModelTarget(model: string): { credentialId?: string; model: string; providerName?: string } {
+  const separator = model.indexOf("/");
+  const providerName = separator > 0 ? model.slice(0, separator).trim() : undefined;
+  const physicalModel = separator > 0 && separator < model.length - 1 ? model.slice(separator + 1).trim() : model;
+  const credentialId = providerName
+    ?.split("::")
+    .find((part) => part.startsWith("cred:"))
+    ?.slice("cred:".length)
+    .trim();
+  return {
+    ...(credentialId ? { credentialId } : {}),
+    model: physicalModel,
+    ...(providerName ? { providerName } : {})
+  };
+}
+
+function usageOutcome(statusCode: number): "error" | "rate-limited" | "success" | "timeout" {
+  if (statusCode >= 200 && statusCode < 400) {
+    return "success";
+  }
+  if (statusCode === 429) {
+    return "rate-limited";
+  }
+  if (statusCode === 408 || statusCode === 504) {
+    return "timeout";
+  }
+  return "error";
 }
 
 async function analyzeWebSearch(args: Record<string, unknown>): Promise<string> {

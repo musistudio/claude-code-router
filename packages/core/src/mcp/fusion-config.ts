@@ -10,6 +10,11 @@ import { defaultFusionWebSearchProvider, fusionModelProviderName } from "@ccr/co
 import type { BrowserWebSearchMcpIntegration, CoreGatewayProvider } from "@ccr/core/gateway/internal/shared";
 import { uniqueStrings } from "@ccr/core/gateway/internal/collections";
 
+type FusionUsageSyncConfig = {
+  endpoint: string;
+  header: string;
+  token: string;
+};
 
 export async function fusionBuiltinToolArtifacts(
   profiles: unknown[],
@@ -17,7 +22,8 @@ export async function fusionBuiltinToolArtifacts(
   coreAuthToken: string,
   browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration,
   proxyPreloadFile?: string,
-  proxyEnv?: Record<string, string>
+  proxyEnv?: Record<string, string>,
+  usageSync?: FusionUsageSyncConfig
 ): Promise<{ mcpServers: GatewayMcpServerConfig[]; providers: CoreGatewayProvider[] }> {
   const providers: CoreGatewayProvider[] = [];
   const mcpServers: GatewayMcpServerConfig[] = [];
@@ -49,7 +55,12 @@ export async function fusionBuiltinToolArtifacts(
             ...(useGatewayVisionRuntime && coreAuthToken ? { VISION_GATEWAY_API_KEY: coreAuthToken } : {}),
             ...(resolvedVision.model ? { VISION_MODEL: resolvedVision.model } : {}),
             ...(visionConfig.baseUrl && visionConfig.apiKey ? { VISION_API_KEY: visionConfig.apiKey } : {}),
-            ...(visionConfig.timeoutMs ? { VISION_TIMEOUT_MS: String(visionConfig.timeoutMs) } : {})
+            ...(visionConfig.timeoutMs ? { VISION_TIMEOUT_MS: String(visionConfig.timeoutMs) } : {}),
+            ...(usageSync ? {
+              CCR_FUSION_USAGE_SYNC_ENDPOINT: usageSync.endpoint,
+              CCR_FUSION_USAGE_SYNC_HEADER: usageSync.header,
+              CCR_FUSION_USAGE_SYNC_TOKEN: usageSync.token
+            } : {})
           },
           name: `fusion-vision-${sanitizedProfileId}`,
           proxyEnv,
@@ -105,9 +116,10 @@ export async function fusionBuiltinToolArtifactsForTest(
   coreAuthToken: string,
   browserWebSearchMcpIntegration?: BrowserWebSearchMcpIntegration,
   proxyPreloadFile?: string,
-  proxyEnv?: Record<string, string>
+  proxyEnv?: Record<string, string>,
+  usageSync?: FusionUsageSyncConfig
 ): Promise<{ mcpServers: GatewayMcpServerConfig[]; providers: unknown[] }> {
-  return fusionBuiltinToolArtifacts(profiles, coreEndpoint, coreAuthToken, browserWebSearchMcpIntegration, proxyPreloadFile, proxyEnv);
+  return fusionBuiltinToolArtifacts(profiles, coreEndpoint, coreAuthToken, browserWebSearchMcpIntegration, proxyPreloadFile, proxyEnv, usageSync);
 }
 
 

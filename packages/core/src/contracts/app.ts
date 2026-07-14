@@ -1768,6 +1768,7 @@ export type UsageComparisonRow = UsageTotals & {
   credentialId?: string;
   key: string;
   label: string;
+  logicalModel?: string;
   maxShare: number;
   model?: string;
   provider?: string;

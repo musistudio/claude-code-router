@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import type { ApiKeyConfig, AppConfig } from "@ccr/core/contracts/app";
 import { createSseErrorDetector, recordGatewayRequestLog, updateGatewayRequestLogFromRawTrace, type RequestLogRawTraceUpdateInput } from "@ccr/core/observability/request-log-store";
-import { recordGatewayUsageCapture } from "@ccr/core/usage/store";
+import { recordGatewayUsageCapture, type UsageCaptureInput } from "@ccr/core/usage/store";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin";
 import { adaptRouteRequestBody, restoreRouteRequestBody } from "@ccr/core/routing/protocol-adapter";
 import { reserveApiKeyLimits } from "@ccr/core/gateway/auth/api-key-authorizer";
@@ -15,6 +15,7 @@ import { createGatewayModelsResponse, prepareClaudeAppFallbackModelRequest, prep
 import { resolveProviderLogName, resolveResponseProviderProtocol, sanitizeHeaderValue } from "@ccr/core/providers/runtime-topology";
 import { createBodySampler, shouldRecordRequestLogs } from "@ccr/core/observability/raw-trace-sync";
 import { endpoint } from "@ccr/core/gateway/core-runtime/supervisor";
+import { coreGatewayUsageAttributionConfig } from "@ccr/core/gateway/core-runtime/config-compiler";
 import { clientClosedRequestStatusCode, clientDisconnectMessage, UpstreamRequestError } from "@ccr/core/gateway/internal/shared";
 import type { BrowserWebSearchMcpIntegration, BrowserWebSearchProtocolRecord, UpstreamFetchResult } from "@ccr/core/gateway/internal/shared";
 import { applyProviderCapabilityRouting, cancelResponseBody, destroyResponseStreams, fetchUpstreamWithFallback, mergeFallbackResponseHeaders, rewriteCapabilityResponseHeaders, uniqueStreams, upstreamResponseHeaders } from "@ccr/core/gateway/upstream/executor";
@@ -81,6 +82,10 @@ export class GatewayRequestPipeline {
       const startedAtIso = new Date(startedAt).toISOString();
       const requestId = randomUUID();
       headers["x-client-request-id"] = requestId;
+      const usageAttributionConfig = coreGatewayUsageAttributionConfig(this.config);
+      const recordUsage = (input: Omit<UsageCaptureInput, "config">) => {
+        void recordGatewayUsageCapture({ ...input, config: usageAttributionConfig });
+      };
       const requestUrl = new URL(request.url || path, this.status.endpoint || "http://127.0.0.1").toString();
       const upstreamAbortController = new AbortController();
       let clientDisconnected = false;
@@ -312,7 +317,7 @@ export class GatewayRequestPipeline {
           return;
         }
         if (shouldCaptureUsage) {
-          void recordGatewayUsageCapture({
+          recordUsage({
             bodyText: "",
             client,
             durationMs: Date.now() - startedAt,
@@ -371,7 +376,7 @@ export class GatewayRequestPipeline {
       response.writeHead(upstreamResponse.status, Object.fromEntries(filteredResponseHeaders(responseHeaders)));
       if (!upstreamResponse.body) {
         if (shouldCaptureUsage) {
-          void recordGatewayUsageCapture({
+          recordUsage({
             bodyText: "",
             client,
             durationMs: Date.now() - startedAt,
@@ -451,7 +456,7 @@ export class GatewayRequestPipeline {
       });
       if (shouldCaptureUsage) {
         responseBody.once("end", () => {
-          void recordGatewayUsageCapture({
+          recordUsage({
             bodyText: sampler.read(),
             client,
             durationMs: Date.now() - startedAt,
