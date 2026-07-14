@@ -63,6 +63,52 @@ test("profile service cleans stale generated bin backups only", () => {
   }
 });
 
+test("profile service can exclude ZCode from automatic synchronization", async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ccr-zcode-auto-sync-"));
+  try {
+    const configFile = path.join(root, ".zcode", "cli", "config.json");
+    const original = `${JSON.stringify({
+      model: { main: "builtin:zai/glm-5" },
+      provider: { "builtin:zai": { name: "Z.AI" } }
+    }, null, 2)}\n`;
+    mkdirSync(path.dirname(configFile), { recursive: true });
+    writeFileSync(configFile, original);
+
+    const config = createDefaultAppConfig({
+      generatedConfigFile: path.join(CONFIGDIR, "gateway.config.json")
+    });
+    config.profile.profiles = [
+      {
+        agent: "zcode",
+        cliMiddleware: true,
+        codexCliPath: "",
+        codexHome: "",
+        configFile,
+        configFormat: "separate_profile_files",
+        enabled: true,
+        env: {},
+        id: "zcode",
+        model: "Provider/model",
+        name: "ZCode",
+        providerId: "claude-code-router",
+        providerName: "Claude Code Router",
+        scope: "global",
+        showAllSessions: false,
+        surface: "app"
+      }
+    ];
+
+    const result = await applyProfileConfig(config, { excludeAgents: ["zcode"] });
+
+    assert.equal(result.enabled, false);
+    assert.deepEqual(result.clients, []);
+    assert.equal(readFileSync(configFile, "utf8"), original);
+    assert.equal(existsSync(path.join(root, ".zcode", "v2", "config.json")), false);
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
 test("profile service overwrites generated bin files without creating backups", { skip: !process.env.CCR_INTERNAL_HOME_DIR }, async () => {
   const profileId = "generated-bin-test";
   const commandExtension = process.platform === "win32" ? ".cmd" : "";

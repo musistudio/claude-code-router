@@ -440,7 +440,7 @@ async function startConfiguredServices(reason: string): Promise<void> {
       console.error(`Failed to start gateway during ${reason}: ${status.lastError}`);
     }
     if (status.state === "running") {
-      const profileResult = await applyProfileConfig(config);
+      const profileResult = await applyProfileConfig(config, { excludeAgents: ["zcode"] });
       logProfileApplyResult(profileResult);
     }
     if (config.proxy.enabled && config.proxy.systemProxy) {

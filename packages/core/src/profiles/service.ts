@@ -52,10 +52,18 @@ type GlobalProfileTakeoverRecord = {
   settingsFile?: string;
 };
 
-export async function applyProfileConfig(config: AppConfig): Promise<ProfileApplyResult> {
+type ApplyProfileConfigOptions = {
+  excludeAgents?: readonly ProfileClientKind[];
+};
+
+export async function applyProfileConfig(
+  config: AppConfig,
+  options: ApplyProfileConfigOptions = {}
+): Promise<ProfileApplyResult> {
   cleanupGeneratedBinBackups();
   const appliedAt = new Date().toISOString();
-  const profiles = profileEntries(config);
+  const excludedAgents = new Set(options.excludeAgents ?? []);
+  const profiles = profileEntries(config).filter((profile) => !excludedAgents.has(profile.agent));
   const result: ProfileApplyResult = {
     appliedAt,
     clients: [],
@@ -63,7 +71,8 @@ export async function applyProfileConfig(config: AppConfig): Promise<ProfileAppl
   };
   const takeoverStatuses = synchronizeGlobalProfileTakeovers(
     profiles,
-    result.enabled && hasAvailableGatewayModels(config)
+    result.enabled && hasAvailableGatewayModels(config),
+    excludedAgents
   );
 
   if (!result.enabled) {
@@ -1732,17 +1741,23 @@ export function restoreGlobalProfileConfigsOnExit(
   return statuses;
 }
 
-function synchronizeGlobalProfileTakeovers(profiles: ProfileConfig[], canTakeOver: boolean): ProfileClientApplyStatus[] {
+function synchronizeGlobalProfileTakeovers(
+  profiles: ProfileConfig[],
+  canTakeOver: boolean,
+  excludedAgents: ReadonlySet<ProfileClientKind> = new Set()
+): ProfileClientApplyStatus[] {
   const next = canTakeOver ? globalProfileTakeoverRecords(profiles) : [];
   const previous = ownedGlobalProfileTakeovers ?? readGlobalProfileTakeoverMarker();
-  if (ownedGlobalProfileTakeovers !== undefined && JSON.stringify(previous) === JSON.stringify(next)) {
+  const preserved = previous.filter((record) => excludedAgents.has(record.agent));
+  const restorable = previous.filter((record) => !excludedAgents.has(record.agent));
+  if (ownedGlobalProfileTakeovers !== undefined && JSON.stringify(restorable) === JSON.stringify(next)) {
     return [];
   }
 
-  const statuses = previous.length > 0 ? restoreGlobalProfileTakeoverRecords(previous) : [];
+  const statuses = restorable.length > 0 ? restoreGlobalProfileTakeoverRecords(restorable) : [];
   const markerRecords = statuses.every((status) => status.ok)
-    ? next
-    : dedupeGlobalProfileTakeovers([...previous, ...next]);
+    ? dedupeGlobalProfileTakeovers([...preserved, ...next])
+    : dedupeGlobalProfileTakeovers([...preserved, ...restorable, ...next]);
   if (markerRecords.length > 0) {
     writeGlobalProfileTakeoverMarker(markerRecords);
   } else {

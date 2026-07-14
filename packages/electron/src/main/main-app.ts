@@ -224,7 +224,7 @@ function startConfiguredServices(reason: string): Promise<void> {
           console.error(`Failed to start gateway during ${reason}: ${status.lastError}`);
         }
         if (status.state === "running") {
-          const profileResult = await applyProfileConfig(config);
+          const profileResult = await applyProfileConfig(config, { excludeAgents: ["zcode"] });
           for (const client of profileResult.clients) {
             if (!client.ok) {
               console.error(`Failed to apply ${client.client} profile during ${reason}: ${client.message}`);
