@@ -3,7 +3,7 @@
  */
 import type { IncomingHttpHeaders } from "node:http";
 import type { ApiKeyConfig, AppConfig } from "@ccr/core/contracts/app";
-import { CLAUDE_APP_FALLBACK_MODEL, buildClaudeAppGatewayModelRoutes, inferClaudeAppGatewayTargetModel, resolveClaudeAppGatewayRouteModel } from "@ccr/core/agents/claude-app/gateway-routes";
+import { buildClaudeAppGatewayModelRoutes, resolveClaudeAppGatewayRouteModel } from "@ccr/core/agents/claude-app/gateway-routes";
 import { normalizeRouteSelector } from "@ccr/core/routing/model-registry";
 import { findModelCatalogEntry, modelCatalogMaxInputTokens, modelCatalogMaxOutputTokens, readCatalogCapability, type ModelCatalogEntry } from "@ccr/core/gateway/model-catalog";
 import { stringValue } from "@ccr/core/gateway/internal/value";
@@ -50,7 +50,7 @@ export function prepareClaudeCodeDiscoveredModelRequest(
 }
 
 
-export function prepareClaudeAppFallbackModelRequest(
+export function prepareClaudeAppDiscoveredModelRequest(
   config: AppConfig,
   method: string,
   path: string,
@@ -70,13 +70,12 @@ export function prepareClaudeAppFallbackModelRequest(
     return undefined;
   }
 
-  const routeModel = resolveClaudeAppGatewayRouteModel(normalizedModel, config, claudeAppGatewayModelRouteOptions);
-  const routedModel = routeModel ??
-    (normalizedModel.toLowerCase() === CLAUDE_APP_FALLBACK_MODEL ? inferClaudeAppGatewayTargetModel(config) : undefined);
+  const routedModel = resolveClaudeAppGatewayRouteModel(
+    normalizedModel,
+    config,
+    claudeAppGatewayModelRouteOptions
+  );
   if (!routedModel || routedModel.toLowerCase() === normalizedModel.toLowerCase()) {
-    return undefined;
-  }
-  if (isConfiguredGatewayModelSelector(normalizedModel, config) && !routeModel) {
     return undefined;
   }
 
