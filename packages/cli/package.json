@@ -36,7 +36,9 @@
   },
   "scripts": {
     "prepack": "npm --prefix ../.. run build:assets",
-    "prepublishOnly": "npm --prefix ../.. run typecheck"
+    "prepublishOnly": "npm --prefix ../.. run typecheck",
+    "test": "node ../../build/test.mjs cli && node ../../build/run-tests.mjs cli",
+    "test:integration": "node ../../build/test.mjs cli --scope integration && node ../../build/run-tests.mjs cli"
   },
   "dependencies": {
     "@the-next-ai/ai-gateway": "^1.0.9",

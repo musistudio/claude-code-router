@@ -10,6 +10,11 @@
   "engines": {
     "node": ">=22"
   },
+  "scripts": {
+    "test": "node ../../build/test.mjs core && node ../../build/run-tests.mjs core",
+    "test:unit": "node ../../build/test.mjs core --scope unit && node ../../build/run-tests.mjs core",
+    "test:integration": "node ../../build/test.mjs core --scope integration && node ../../build/run-tests.mjs core"
+  },
   "dependencies": {
     "@the-next-ai/ai-gateway": "^1.0.9",
     "@the-next-ai/bot-gateway-sdk": "^0.1.0",
