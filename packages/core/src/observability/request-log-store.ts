@@ -67,6 +67,7 @@ type RequestLogUsageContext = {
 
 type RequestLogRecordInput = {
   client?: string;
+  clientIp?: string;
   completedAt?: string;
   durationMs: number;
   error?: string;
@@ -109,6 +110,7 @@ type StoredRequestLogEntry = {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   client: string;
+  clientIp: string;
   completedAt: string;
   costUsd: number | undefined;
   createdAt: string;
@@ -313,6 +315,7 @@ export class RequestLogStore {
         completed_at,
         request_id,
         client,
+        client_ip,
         method,
         path,
         url,
@@ -345,7 +348,7 @@ export class RequestLogStore {
         response_body_size_bytes,
         response_body_truncated,
         error
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     statement.run(
@@ -353,6 +356,7 @@ export class RequestLogStore {
       input.completedAt ?? new Date().toISOString(),
       input.requestId ?? "",
       normalizeLabel(input.client, "unknown"),
+      normalizeFilterValue(input.clientIp) ?? "",
       input.method,
       input.path,
       input.url,
@@ -559,6 +563,7 @@ export class RequestLogStore {
             completed_at,
             request_id,
             client,
+            client_ip,
             method,
             path,
             url,
@@ -640,6 +645,7 @@ export class RequestLogStore {
             completed_at,
             request_id,
             client,
+            client_ip,
             method,
             path,
             url,
@@ -779,6 +785,7 @@ export class RequestLogStore {
         completed_at TEXT NOT NULL DEFAULT '',
         request_id TEXT NOT NULL DEFAULT '',
         client TEXT NOT NULL DEFAULT 'unknown',
+        client_ip TEXT NOT NULL DEFAULT '',
         method TEXT NOT NULL,
         path TEXT NOT NULL,
         url TEXT NOT NULL DEFAULT '',
@@ -919,6 +926,7 @@ function toAnalyzedAgentRequest(entry: StoredRequestLogEntry): AnalyzedAgentRequ
     cacheReadTokens: entry.cacheReadTokens,
     cacheWriteTokens: entry.cacheWriteTokens,
     client: entry.client,
+    clientIp: entry.clientIp || undefined,
     completedAt: entry.completedAt,
     concurrentRequests: 1,
     costUsd: entry.costUsd,
@@ -1876,6 +1884,7 @@ function buildAgentErrorRows(requests: AnalyzedAgentRequest[]): AgentObservabili
     .map((request) => ({
       agent: request.agent,
       client: request.client,
+      clientIp: request.clientIp,
       createdAt: request.createdAt,
       durationMs: request.durationMs,
       error: request.error,
@@ -2666,6 +2675,7 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   addColumn("completed_at", "TEXT NOT NULL DEFAULT ''");
   addColumn("request_id", "TEXT NOT NULL DEFAULT ''");
   addColumn("client", "TEXT NOT NULL DEFAULT 'unknown'");
+  addColumn("client_ip", "TEXT NOT NULL DEFAULT ''");
   addColumn("method", "TEXT NOT NULL DEFAULT ''");
   addColumn("path", "TEXT NOT NULL DEFAULT ''");
   addColumn("url", "TEXT NOT NULL DEFAULT ''");
@@ -2710,6 +2720,8 @@ function ensureRequestLogSchema(database: SqlDatabase): void {
   database.exec("CREATE INDEX IF NOT EXISTS request_logs_model_created_at_idx ON request_logs(model, created_at DESC)");
   database.exec("CREATE INDEX IF NOT EXISTS request_logs_provider_created_at_idx ON request_logs(provider, created_at DESC)");
   database.exec("CREATE INDEX IF NOT EXISTS request_logs_status_created_at_idx ON request_logs(ok, created_at DESC)");
+  database.exec("CREATE INDEX IF NOT EXISTS request_logs_client_ip_idx ON request_logs(client_ip)");
+  database.exec("CREATE INDEX IF NOT EXISTS request_logs_client_ip_created_at_idx ON request_logs(client_ip, created_at DESC)");
 }
 
 function backfillRequestLogStreamFlags(database: SqlDatabase): void {
@@ -2894,6 +2906,7 @@ function readRequestLogById(database: SqlDatabase, id: number): StoredRequestLog
         completed_at,
         request_id,
         client,
+        client_ip,
         method,
         path,
         url,
@@ -2953,6 +2966,7 @@ function toRequestLogEntry(row: Record<string, SqlValue>): StoredRequestLogEntry
     cacheReadTokens: normalizeCount(row.cache_read_tokens),
     cacheWriteTokens: normalizeCount(row.cache_write_tokens),
     client: normalizeLabel(String(row.client ?? ""), "unknown"),
+    clientIp: normalizeLabel(String(row.client_ip ?? ""), ""),
     completedAt: String(row.completed_at ?? ""),
     costUsd,
     createdAt: String(row.created_at ?? ""),

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { RequestLogStore } from "../../packages/core/src/observability/request-log-store.ts";
+import { createBetterSqliteDatabase } from "../../packages/core/src/storage/sqlite-native.ts";
 import { UsageStore } from "../../packages/core/src/usage/store.ts";
 
 test("UsageStore aggregates stats in SQLite without loading all events", async () => {
@@ -178,6 +179,206 @@ test("UsageStore backfills missing events from request logs", async () => {
     const reread = await usageStore.getStats("today", { includeProxy: true });
     assert.equal(reread.totals.requestCount, 1);
     assert.equal(reread.totals.totalTokens, 17);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("UsageStore aggregates client IPs and maps them onto recent requests", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-client-ip-test-"));
+  try {
+    const store = new UsageStore(path.join(dir, "usage.sqlite"));
+    const createdAt = new Date().toISOString();
+
+    await store.record({
+      createdAt,
+      clientIp: "10.0.0.1",
+      durationMs: 30,
+      method: "POST",
+      model: "alpha-model",
+      path: "/v1/messages",
+      provider: "alpha",
+      requestId: "req-ip-1",
+      statusCode: 200,
+      usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 }
+    });
+    await store.record({
+      createdAt,
+      clientIp: "10.0.0.2",
+      durationMs: 30,
+      method: "POST",
+      model: "beta-model",
+      path: "/v1/messages",
+      provider: "beta",
+      requestId: "req-ip-2",
+      statusCode: 200,
+      usage: { inputTokens: 20, outputTokens: 5, totalTokens: 25 }
+    });
+    await store.record({
+      createdAt,
+      durationMs: 30,
+      method: "POST",
+      model: "alpha-model",
+      path: "/v1/messages",
+      provider: "alpha",
+      requestId: "req-no-ip",
+      statusCode: 200,
+      usage: { inputTokens: 2, outputTokens: 1, totalTokens: 3 }
+    });
+
+    const stats = await store.getStats("30d", { includeProxy: true });
+    assert.deepEqual([...stats.clientIps].sort(), ["10.0.0.1", "10.0.0.2"]);
+    assert.equal(stats.recentRequests.find((row) => row.key === "2")?.clientIp, "10.0.0.2");
+    assert.equal(stats.recentRequests.find((row) => row.key === "3")?.clientIp, undefined);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("UsageStore filters totals by client IP while keeping IP options stable", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-client-ip-filter-test-"));
+  try {
+    const store = new UsageStore(path.join(dir, "usage.sqlite"));
+    const createdAt = new Date().toISOString();
+
+    await store.record({
+      createdAt,
+      clientIp: "10.0.0.1",
+      durationMs: 10,
+      method: "POST",
+      model: "alpha-model",
+      path: "/v1/messages",
+      provider: "alpha",
+      requestId: "req-a",
+      statusCode: 200,
+      usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 }
+    });
+    await store.record({
+      createdAt,
+      clientIp: "10.0.0.2",
+      durationMs: 10,
+      method: "POST",
+      model: "beta-model",
+      path: "/v1/messages",
+      provider: "alpha",
+      requestId: "req-b",
+      statusCode: 200,
+      usage: { inputTokens: 20, outputTokens: 5, totalTokens: 25 }
+    });
+
+    const byIp = await store.getStats("30d", { clientIp: "10.0.0.2", includeProxy: true, provider: "alpha" });
+    assert.equal(byIp.totals.requestCount, 1);
+    assert.equal(byIp.totals.totalTokens, 25);
+    assert.equal(byIp.models[0]?.model, "beta-model");
+    assert.deepEqual(byIp.clientIps, ["10.0.0.1", "10.0.0.2"]);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("UsageStore backfills from a legacy request_logs table without client_ip", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-old-request-log-test-"));
+  try {
+    const requestLogDbFile = path.join(dir, "request-logs.sqlite");
+    const createdAt = new Date().toISOString();
+    const legacy = createBetterSqliteDatabase(requestLogDbFile);
+    legacy.exec(`
+      CREATE TABLE request_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_usage_id INTEGER,
+        created_at TEXT NOT NULL,
+        request_id TEXT NOT NULL DEFAULT '',
+        client TEXT NOT NULL DEFAULT 'unknown',
+        method TEXT NOT NULL,
+        path TEXT NOT NULL,
+        model TEXT NOT NULL DEFAULT 'unknown',
+        provider TEXT NOT NULL DEFAULT 'unknown',
+        credential_id TEXT NOT NULL DEFAULT '',
+        status_code INTEGER NOT NULL DEFAULT 0,
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+        total_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_usd REAL
+      )
+    `);
+    legacy.prepare(`
+      INSERT INTO request_logs (
+        created_at, request_id, client, method, path, model, provider, status_code,
+        duration_ms, input_tokens, output_tokens, total_tokens
+      ) VALUES (?, 'req-old-backfill-1', 'Claude Code', 'POST', '/v1/messages',
+        'alpha-model', 'alpha', 200, 25, 12, 5, 17)
+    `).run(createdAt);
+    legacy.close();
+
+    const usageStore = new UsageStore(path.join(dir, "usage.sqlite"), { requestLogDbFile });
+    const stats = await usageStore.getStats("today", { includeProxy: true });
+    assert.equal(stats.totals.requestCount, 1);
+    assert.equal(stats.totals.totalTokens, 17);
+    assert.equal(stats.clientIps.length, 0);
+
+    const reread = await usageStore.getStats("today", { includeProxy: true });
+    assert.equal(reread.totals.requestCount, 1);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("UsageStore migrates a legacy usage_events schema with client_ip", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-usage-migration-test-"));
+  try {
+    const dbFile = path.join(dir, "usage.sqlite");
+    const legacy = createBetterSqliteDatabase(dbFile);
+    legacy.exec(`
+      CREATE TABLE usage_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at TEXT NOT NULL,
+        request_id TEXT NOT NULL DEFAULT '',
+        client TEXT NOT NULL DEFAULT 'unknown',
+        method TEXT NOT NULL,
+        path TEXT NOT NULL,
+        model TEXT NOT NULL DEFAULT 'unknown',
+        provider TEXT NOT NULL DEFAULT 'unknown',
+        credential_id TEXT NOT NULL DEFAULT '',
+        status_code INTEGER NOT NULL DEFAULT 0,
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+        total_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_usd REAL,
+        cost_source TEXT NOT NULL DEFAULT ''
+      )
+    `);
+    legacy.prepare(`
+      INSERT INTO usage_events (created_at, request_id, client, method, path, model, provider, status_code, duration_ms, input_tokens, output_tokens, total_tokens)
+      VALUES (?, 'legacy-1', 'Claude Code', 'POST', '/v1/messages', 'alpha-model', 'alpha', 200, 10, 4, 2, 6)
+    `).run(new Date().toISOString());
+    legacy.close();
+
+    const store = new UsageStore(dbFile);
+    const stats = await store.getStats("30d", { includeProxy: true });
+    assert.equal(stats.totals.requestCount, 1);
+    assert.equal(stats.totals.totalTokens, 6);
+    assert.equal(stats.clientIps.length, 0);
+
+    await store.record({
+      createdAt: new Date().toISOString(),
+      clientIp: "10.0.0.9",
+      durationMs: 5,
+      method: "POST",
+      model: "alpha-model",
+      path: "/v1/messages",
+      provider: "alpha",
+      requestId: "new-1",
+      statusCode: 200,
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+    });
+    const after = await store.getStats("30d", { includeProxy: true });
+    assert.ok(after.clientIps.includes("10.0.0.9"));
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }

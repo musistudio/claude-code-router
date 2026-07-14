@@ -31,6 +31,7 @@ type UsageNumbers = {
 
 type UsageEventInput = {
   client?: string;
+  clientIp?: string;
   createdAt?: string;
   credentialId?: string;
   durationMs: number;
@@ -46,6 +47,7 @@ type UsageEventInput = {
 type UsageCaptureInput = {
   bodyText: string;
   client?: string;
+  clientIp?: string;
   durationMs: number;
   fallbackModel?: string;
   method: string;
@@ -58,6 +60,7 @@ type UsageCaptureInput = {
 };
 
 type UsageStatsQueryOptions = {
+  ignoreClientIpFilter?: boolean;
   includeProxy?: boolean;
 };
 
@@ -74,6 +77,7 @@ type StoredUsageEvent = {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   client: string;
+  clientIp: string;
   costSource: string;
   costUsd: number;
   createdAt: string;
@@ -133,6 +137,7 @@ export class UsageStore {
     const model = normalizeLabel(route.model ?? event.model, "unknown");
     const provider = normalizeLabel(event.provider ?? route.provider, "unknown");
     const credentialId = normalizeLabel(event.credentialId, "");
+    const clientIp = normalizeFilterValue(event.clientIp) ?? "";
     const cost = await estimateUsageCostUsd({
       cacheReadTokens,
       cacheWriteTokens,
@@ -147,6 +152,7 @@ export class UsageStore {
         created_at,
         request_id,
         client,
+        client_ip,
         method,
         path,
         model,
@@ -161,13 +167,14 @@ export class UsageStore {
         total_tokens,
         cost_usd,
         cost_source
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     statement.run(
       event.createdAt ?? new Date().toISOString(),
       event.requestId ?? "",
       normalizeLabel(event.client, "unknown"),
+      clientIp,
       event.method,
       event.path,
       model,
@@ -193,8 +200,10 @@ export class UsageStore {
     const since = getRangeSince(normalizedRange, now);
     this.backfillFromRequestLogs(database, since);
     const query = buildUsageWhereClause(since, filter);
+    const optionQuery = buildUsageWhereClause(since, filter, { ignoreClientIpFilter: true });
 
     return {
+      clientIps: readClientIpRows(database, optionQuery),
       clientModels: readClientModelRows(database, query),
       generatedAt: now.toISOString(),
       models: readModelRows(database, query),
@@ -232,6 +241,7 @@ export class UsageStore {
         created_at TEXT NOT NULL,
         request_id TEXT NOT NULL DEFAULT '',
         client TEXT NOT NULL DEFAULT 'unknown',
+        client_ip TEXT NOT NULL DEFAULT '',
         method TEXT NOT NULL,
         path TEXT NOT NULL,
         model TEXT NOT NULL DEFAULT 'unknown',
@@ -287,11 +297,20 @@ export class UsageStore {
   private backfillFromAttachedRequestLog(database: SqlDatabase, requestLogDbFile: string, since: Date): void {
     database.exec(`ATTACH DATABASE ${sqlString(requestLogDbFile)} AS request_log_source`);
     try {
+      const requestLogColumns = new Set(
+        queryRows(database, "PRAGMA request_log_source.table_info(request_logs)")
+          .map((row) => String(row.name ?? ""))
+          .filter(Boolean)
+      );
+      const hasClientIp = requestLogColumns.has("client_ip");
+      const clientIpExpr = hasClientIp ? "logs.client_ip" : "''";
+
       database.prepare(`
           INSERT INTO usage_events (
             created_at,
             request_id,
             client,
+            client_ip,
             method,
             path,
             model,
@@ -311,6 +330,7 @@ export class UsageStore {
             logs.created_at,
             logs.request_id,
             logs.client,
+            ${clientIpExpr},
             logs.method,
             logs.path,
             logs.model,
@@ -377,6 +397,9 @@ function ensureUsageSchema(database: SqlDatabase): void {
   if (!columns.has("credential_id")) {
     database.exec("ALTER TABLE usage_events ADD COLUMN credential_id TEXT NOT NULL DEFAULT ''");
   }
+  if (!columns.has("client_ip")) {
+    database.exec("ALTER TABLE usage_events ADD COLUMN client_ip TEXT NOT NULL DEFAULT ''");
+  }
 
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_client_idx ON usage_events(client)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_created_at_idx ON usage_events(created_at)");
@@ -387,6 +410,8 @@ function ensureUsageSchema(database: SqlDatabase): void {
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_provider_created_at_idx ON usage_events(provider, created_at)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_model_created_at_idx ON usage_events(model, created_at)");
   database.exec("CREATE INDEX IF NOT EXISTS usage_events_credential_created_at_idx ON usage_events(credential_id, created_at)");
+  database.exec("CREATE INDEX IF NOT EXISTS usage_events_client_ip_idx ON usage_events(client_ip)");
+  database.exec("CREATE INDEX IF NOT EXISTS usage_events_client_ip_created_at_idx ON usage_events(client_ip, created_at)");
 }
 
 export async function getUsageStats(range?: UsageStatsRange | null, filter?: UsageStatsFilter | null): Promise<UsageStatsSnapshot> {
@@ -431,13 +456,15 @@ export async function recordGatewayUsageCapture(input: UsageCaptureInput): Promi
       readHeader(input.responseHeaders, "x-gateway-target-provider-name") ??
       readHeader(input.responseHeaders, "x-gateway-target-provider") ??
       route.provider;
+    const model = bodyUsage?.model ?? route.model ?? input.fallbackModel;
 
     await usageStore.record({
       durationMs: input.durationMs,
       method: input.method,
-      model: bodyUsage?.model ?? route.model ?? input.fallbackModel,
+      model,
       path: input.path,
       client: input.client,
+      clientIp: input.clientIp,
       provider,
       credentialId: readCredentialId(input.responseHeaders),
       requestId: input.requestId,
@@ -461,6 +488,7 @@ function buildUsageWhereClause(
   const credential = normalizeFilterValue(normalizedFilter.credential);
   const provider = normalizeFilterValue(normalizedFilter.provider);
   const model = normalizeFilterValue(normalizedFilter.model);
+  const clientIp = normalizeFilterValue(normalizedFilter.clientIp);
 
   if (provider) {
     where.push("provider = ?");
@@ -472,6 +500,10 @@ function buildUsageWhereClause(
   if (model) {
     where.push("model = ?");
     params.push(model);
+  }
+  if (clientIp && !normalizedOptions.ignoreClientIpFilter) {
+    where.push("client_ip = ?");
+    params.push(clientIp);
   }
   if (credential) {
     where.push("credential_id = ?");
@@ -493,6 +525,7 @@ function normalizeUsageFilter(filter: UsageStatsFilter | null | undefined): Usag
     return {};
   }
   return {
+    clientIp: typeof filter.clientIp === "string" ? filter.clientIp : undefined,
     credential: typeof filter.credential === "string" ? filter.credential : undefined,
     includeProxy: filter.includeProxy === true,
     model: typeof filter.model === "string" ? filter.model : undefined,
@@ -501,7 +534,13 @@ function normalizeUsageFilter(filter: UsageStatsFilter | null | undefined): Usag
 }
 
 function normalizeUsageQueryOptions(options: UsageStatsQueryOptions | null | undefined): UsageStatsQueryOptions {
-  return isRecord(options) && options.includeProxy === true ? { includeProxy: true } : {};
+  if (!isRecord(options)) {
+    return {};
+  }
+  return {
+    ignoreClientIpFilter: options.ignoreClientIpFilter === true,
+    includeProxy: options.includeProxy === true
+  };
 }
 
 function configureSqliteDatabase(database: SqlDatabase): void {
@@ -541,6 +580,7 @@ function toStoredUsageEvent(row: Record<string, SqlValue>): StoredUsageEvent {
     cacheReadTokens: normalizeCount(row.cache_read_tokens),
     cacheWriteTokens: normalizeCount(row.cache_write_tokens),
     client: normalizeLabel(String(row.client ?? ""), "unknown"),
+    clientIp: normalizeFilterValue(String(row.client_ip ?? "")) ?? "",
     costSource: String(row.cost_source ?? ""),
     costUsd: normalizeCost(row.cost_usd),
     createdAt: String(row.created_at ?? ""),
@@ -621,6 +661,23 @@ function readUsageSeries(
     bucket: key,
     label
   }));
+}
+
+function readClientIpRows(database: SqlDatabase, query: UsageWhereClause): string[] {
+  const rows = queryRows(
+    database,
+    `
+      SELECT DISTINCT client_ip
+      FROM usage_events
+      WHERE ${query.where} AND client_ip <> ''
+      ORDER BY client_ip ASC
+      LIMIT 200
+    `,
+    query.params
+  );
+  return rows
+    .map((row) => normalizeFilterValue(String(row.client_ip ?? "")))
+    .filter((value): value is string => Boolean(value));
 }
 
 function readModelRows(database: SqlDatabase, query: UsageWhereClause): UsageComparisonRow[] {
@@ -727,6 +784,7 @@ function readRecentRequestRows(database: SqlDatabase, query: UsageWhereClause): 
         created_at,
         request_id,
         client,
+        client_ip,
         method,
         path,
         model,
@@ -923,6 +981,7 @@ function buildRecentRequestRows(events: StoredUsageEvent[]): UsageComparisonRow[
     ...buildTotals([event]),
     caption: `${formatRequestTime(event.createdAt)} · ${event.client} · ${event.path} · ${event.statusCode}`,
     client: event.client,
+    clientIp: normalizeFilterValue(event.clientIp) || undefined,
     credentialId: event.credentialId || undefined,
     key: String(event.id),
     label: event.model || "unknown",
@@ -1268,6 +1327,7 @@ function sum<T>(items: T[], read: (item: T) => number): number {
 
 function emptySnapshot(range: UsageStatsRange): UsageStatsSnapshot {
   return {
+    clientIps: [],
     clientModels: [],
     generatedAt: new Date().toISOString(),
     models: [],

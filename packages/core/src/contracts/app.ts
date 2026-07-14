@@ -1690,6 +1690,7 @@ export type RequestLogEntry = {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   client: string;
+  clientIp: string;
   completedAt?: string;
   costUsd?: number;
   createdAt: string;
@@ -1738,6 +1739,7 @@ export type RequestLogPage = {
 export type UsageStatsRange = "today" | "24h" | "7d" | "30d";
 
 export type UsageStatsFilter = {
+  clientIp?: string;
   credential?: string;
   includeProxy?: boolean;
   model?: string;
@@ -1765,6 +1767,7 @@ export type UsageSeriesPoint = UsageTotals & {
 export type UsageComparisonRow = UsageTotals & {
   caption: string;
   client?: string;
+  clientIp?: string;
   credentialId?: string;
   key: string;
   label: string;
@@ -1774,6 +1777,7 @@ export type UsageComparisonRow = UsageTotals & {
 };
 
 export type UsageStatsSnapshot = {
+  clientIps: string[];
   clientModels: UsageComparisonRow[];
   generatedAt: string;
   models: UsageComparisonRow[];
@@ -1826,6 +1830,7 @@ export type AgentAnalysisRequestRow = {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   client: string;
+  clientIp?: string;
   concurrentRequests: number;
   costUsd?: number;
   createdAt: string;
@@ -2017,6 +2022,7 @@ export type AgentObservabilityRouteRow = {
 export type AgentObservabilityErrorRow = {
   agent: AgentKind;
   client: string;
+  clientIp?: string;
   createdAt: string;
   durationMs: number;
   error?: string;
