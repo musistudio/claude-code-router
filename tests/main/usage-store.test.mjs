@@ -148,6 +148,7 @@ test("UsageStore backfills missing events from request logs", async () => {
 
     await requestLogStore.record({
       client: "Claude Code",
+      clientIp: "198.51.100.23",
       completedAt: createdAt,
       durationMs: 25,
       method: "POST",
@@ -175,6 +176,8 @@ test("UsageStore backfills missing events from request logs", async () => {
     assert.equal(stats.totals.totalTokens, 17);
     assert.equal(stats.providerModels[0]?.provider, "alpha");
     assert.equal(stats.providerModels[0]?.model, "alpha-model");
+    assert.deepEqual(stats.clientIps, ["198.51.100.23"]);
+    assert.equal(stats.recentRequests[0]?.clientIp, "198.51.100.23");
 
     const reread = await usageStore.getStats("today", { includeProxy: true });
     assert.equal(reread.totals.requestCount, 1);
