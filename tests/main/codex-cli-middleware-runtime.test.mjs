@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -367,6 +367,133 @@ test("Claude Code wrapper does not duplicate an explicit MCP config argument", {
   assert.deepEqual(observed.argv, ["--mcp-config", explicitMcpConfigFile, "-p", "hi"]);
 });
 
+test("OpenCode bot worker keeps commands responsive while preserving per-conversation turn order", { skip: process.platform === "win32" }, async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-opencode-bot-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const fakeOpenCode = path.join(dir, "fake-opencode");
+  const fakeSdk = path.join(dir, "fake-bot-gateway-sdk.mjs");
+  const callsFile = path.join(dir, "opencode-calls.jsonl");
+  const repliesFile = path.join(dir, "bot-replies.jsonl");
+  const stateDir = path.join(dir, "bot-state");
+  const configFile = path.join(dir, "opencode.json");
+  mkdirSync(stateDir, { recursive: true });
+  writeFileSync(path.join(stateDir, "opencode-bot-sessions.json"), JSON.stringify({
+    version: 1,
+    conversations: {
+      "ccr:bot-test:conversation-1:": {
+        sessionId: "ses_stale_directory",
+        directory: "/stale/project",
+        title: "Stale session"
+      }
+    }
+  }));
+  writeFileSync(configFile, "{}\n");
+  writeFileSync(fakeOpenCode, [
+    "#!/usr/bin/env node",
+    "const fs = require('node:fs');",
+    "const argv = process.argv.slice(2);",
+    "fs.appendFileSync(process.env.CCR_FAKE_OPENCODE_CALLS, JSON.stringify({",
+    "  argv,",
+    "  cwd: process.cwd(),",
+    "  pwd: process.env.PWD || '',",
+    "  config: process.env.OPENCODE_CONFIG || '',",
+    "  configContent: process.env.OPENCODE_CONFIG_CONTENT || '',",
+    "  client: process.env.OPENCODE_CLIENT || '',",
+    "  workerMarker: process.env.CCR_OPENCODE_BOT_WORKER || ''",
+    "}) + '\\n');",
+    "if (argv[0] === 'session') {",
+    "  process.stdout.write(JSON.stringify([{ id: 'ses_existing', title: 'Existing session', directory: process.cwd(), time: { updated: Date.now() } }]) + '\\n');",
+    "} else {",
+    "  const prompt = argv[argv.length - 1];",
+    "  const reply = () => process.stdout.write(JSON.stringify({",
+    "    type: 'text',",
+    "    sessionID: 'ses_bot_1',",
+    "    part: { id: 'part-' + prompt, type: 'text', text: 'reply:' + prompt, time: { end: Date.now() } }",
+    "  }) + '\\n');",
+    "  if (prompt === 'first') setTimeout(reply, 1000); else reply();",
+    "}",
+    ""
+  ].join("\n"));
+  chmodSync(fakeOpenCode, 0o700);
+  writeFileSync(fakeSdk, [
+    "import fs from 'node:fs';",
+    "let delivered = false;",
+    "export function createBotGatewayClient() {",
+    "  return {",
+    "    health: async () => ({}),",
+    "    events: async () => {",
+    "      if (delivered) return { events: [] };",
+    "      delivered = true;",
+    "      const event = (id, text) => ({",
+    "        id,",
+    "        event: {",
+    "          id, tenantId: 'ccr', integrationId: 'bot-test', platform: 'slack',",
+    "          actor: { isBot: false },",
+    "          conversation: { id: 'conversation-1', type: 'dm' },",
+    "          message: { id: 'message-' + id, text }",
+    "        }",
+    "      });",
+    "      return { events: [event('event-1', 'first'), event('event-ls', 'ls'), event('event-2', 'second')] };",
+    "    },",
+    "    send: async (payload) => fs.appendFileSync(process.env.CCR_FAKE_BOT_REPLIES, JSON.stringify(payload) + '\\n'),",
+    "    ackEvent: async () => ({}),",
+    "    close: async () => ({})",
+    "  };",
+    "}",
+    ""
+  ].join("\n"));
+
+  let stderr = "";
+  const child = spawn(process.execPath, [runtimeFile, "opencode-bot-worker", "--workspace-name", "OpenCode Test"], {
+    env: {
+      ...process.env,
+      CCR_OPENCODE_BOT_WORKER: "1",
+      CCR_OPENCODE_BOT_CWD: dir,
+      CCR_OPENCODE_BIN: fakeOpenCode,
+      CCR_BOT_GATEWAY_ENABLED: "true",
+      CCR_BOT_GATEWAY_PLATFORM: "slack",
+      CCR_BOT_GATEWAY_INTEGRATION_ID: "bot-test",
+      CCR_BOT_GATEWAY_TENANT_ID: "ccr",
+      CCR_BOT_GATEWAY_ACK_EVENTS: "true",
+      CCR_BOT_GATEWAY_POLL_INTERVAL_MS: "50",
+      CCR_BOT_GATEWAY_REQUEST_TIMEOUT_MS: "2000",
+      CCR_BOT_GATEWAY_STARTUP_TIMEOUT_MS: "2000",
+      CCR_BOT_GATEWAY_SDK_MODULE: fakeSdk,
+      CCR_BOT_GATEWAY_STATE_DIR: stateDir,
+      CCR_FAKE_OPENCODE_CALLS: callsFile,
+      CCR_FAKE_BOT_REPLIES: repliesFile,
+      OPENCODE_CONFIG: configFile,
+      OPENCODE_CONFIG_CONTENT: "{\"provider\":{}}"
+    },
+    stdio: ["ignore", "ignore", "pipe"]
+  });
+  child.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
+  try {
+    const replies = await waitForJsonLines(repliesFile, 3, 7000, () => stderr);
+    const calls = await waitForJsonLines(callsFile, 3, 2000, () => stderr);
+    assert.match(replies[0].intent.text, /^OpenCode sessions:/);
+    assert.deepEqual(replies.slice(1).map((reply) => reply.intent.text), ["reply:first", "reply:second"]);
+    const runCalls = calls.filter((call) => call.argv[0] === "run");
+    assert.deepEqual(runCalls[0].argv.slice(0, 7), ["run", "--format", "json", "--dir", dir, "--title", "Bot: OpenCode Test"]);
+    assert.equal(runCalls[0].argv.at(-1), "first");
+    assert.deepEqual(runCalls[1].argv.slice(0, 7), ["run", "--format", "json", "--dir", dir, "--session", "ses_bot_1"]);
+    assert.equal(runCalls[1].argv.at(-1), "second");
+    assert.equal(realpathSync(runCalls[0].cwd), realpathSync(dir));
+    assert.equal(runCalls[0].pwd, dir);
+    assert.equal(runCalls[0].config, configFile);
+    assert.equal(runCalls[0].configContent, "{\"provider\":{}}");
+    assert.equal(runCalls[0].client, "cli");
+    assert.equal(runCalls[0].workerMarker, "");
+    const store = JSON.parse(readFileSync(path.join(stateDir, "opencode-bot-sessions.json"), "utf8"));
+    assert.equal(store.version, 2);
+    assert.equal(Object.values(store.conversations)[0].sessionId, "ses_bot_1");
+    assert.equal(Object.values(store.conversations)[0].directory, dir);
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+    await waitForChildExit(child, 3000);
+  }
+});
+
 function writeRuntimeScript(dir) {
   const file = path.join(dir, "ccr-codex-cli-middleware.js");
   writeFileSync(file, codexCliMiddlewareRuntimeScript());
@@ -392,4 +519,30 @@ function writeFakeClaudeCli(dir) {
   ].join("\n"));
   chmodSync(fakeCli, 0o700);
   return { fakeCli, outputFile };
+}
+
+async function waitForJsonLines(file, count, timeoutMs, diagnostic) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (existsSync(file)) {
+      const lines = readFileSync(file, "utf8").trim().split(/\r?\n/).filter(Boolean);
+      if (lines.length >= count) return lines.map((line) => JSON.parse(line));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Timed out waiting for ${count} JSON lines in ${file}. ${diagnostic()}`);
+}
+
+function waitForChildExit(child, timeoutMs) {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      resolve();
+    }, timeoutMs);
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
 }

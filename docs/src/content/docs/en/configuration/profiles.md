@@ -33,11 +33,11 @@ This lets you create multiple configs for the same agent, such as "Claude Code -
 
 | Option | Applies to | Description |
 | --- | --- | --- |
-| Agent | All | Claude Code, Codex, Grok CLI, or ZCode. Grok CLI supports CLI only; ZCode supports App only. |
+| Agent | All | Claude Code, Codex, OpenCode, Grok CLI, or ZCode. Grok CLI supports CLI only; ZCode supports App only. |
 | Config name | All | Identifies the config in CCR and can be used as the `ccr-app <config-name>` launch target. Names can contain spaces; copied commands are quoted automatically. |
 | Enabled | All | Disabled configs are not exposed as active launch entries and are not applied as effective startup configs. |
 | Effect scope | All | **Only opened from CCR** uses CCR-managed isolated config; **System default** writes the agent's default config. Only one enabled system-default config is allowed per agent. |
-| Entry mode | Claude Code, Codex, Grok CLI | `CLI & APP` exposes both CLI and App entry points; `CLI only` only generates a CLI command; `App only` only exposes the App entry point. Grok CLI is fixed to `CLI only`. |
+| Entry mode | Claude Code, Codex, OpenCode, Grok CLI | `CLI & APP` exposes both CLI and App entry points; `CLI only` only generates a CLI command; `App only` only exposes the App entry point. Grok CLI is fixed to `CLI only`. |
 | Model | All | Default model for the opened agent, either a provider model or Fusion model. For Claude Code, leaving it empty keeps the Claude Code default. |
 | Bot | App entry | Bot forwarding only works for App mode opened from CCR. CLI does not forward Bot messages yet. |
 | Environment variables | All | Extra environment variables injected into this config. Claude Code includes `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1` by default so gateway model discovery is enabled. |
@@ -64,6 +64,21 @@ Claude App and Claude Code CLI use different model-list adapters:
 | --- | --- | --- |
 | Claude Code CLI | CCR gateway model discovery | Use `/model` in the CLI to view the list; selected requests still go through CCR providers, routing, and Fusion. |
 | Claude App | CCR-generated Claude App inference models | Claude App needs Claude-compatible model names. CCR maps `Provider/model` and Fusion models into model entries Claude App can recognize, while display labels keep the real model meaning visible. |
+
+### OpenCode
+
+| Option | What it does |
+| --- | --- |
+| Provider ID | Writes the OpenCode provider reference, defaulting to `claude-code-router`. |
+| Provider name | Display name shown in OpenCode, defaulting to `Claude Code Router`. |
+| OpenCode model | Default model for OpenCode CLI and App. It can be a provider model or Fusion model. |
+| Config file | System-default mode uses OpenCode's default config; Only opened from CCR writes a profile-specific config under CCR's config directory. |
+| Environment variables | Injected into OpenCode CLI, OpenCode App, and its Bot worker. |
+| Bot | Applies to the OpenCode App entry opened from CCR. Incoming Bot messages run through OpenCode CLI and replies are sent back to the same Bot conversation. |
+
+CCR keeps one OpenCode Bot worker next to the OpenCode App process. The worker stores a Bot-conversation-to-OpenCode-session mapping, so later messages continue the same session. Send `help`, `ls`, `current`, `new`, `reset`, or `select <number-or-id>` in the Bot conversation to manage the selected session.
+
+The OpenCode CLI must be available as `opencode` in the CCR Desktop process environment. If it is installed elsewhere, set `CCR_OPENCODE_BIN` in the Agent Config environment variables. Bot sessions default to the filesystem root used by a fresh OpenCode Desktop workspace; set `CCR_OPENCODE_BOT_CWD` to the same project directory currently opened in OpenCode App when using another workspace. CCR passes that directory explicitly through `opencode run --dir`, so the resulting session appears under the matching App project. Permissions are not auto-approved by default; `CCR_OPENCODE_BOT_AUTO_APPROVE=true` enables OpenCode's dangerous `--auto` mode and should be used only in a trusted environment.
 
 ### Codex
 
@@ -105,7 +120,7 @@ ZCode supports App only, so its entry mode is fixed to `App only`. The `Show all
 | Mode | How to open | Best for | Key differences |
 | --- | --- | --- | --- |
 | CLI | Click the terminal button to copy the command, then run `ccr-app <config-name>` in a terminal | Working inside a project directory, shell workflows, scripting | Uses the config-specific wrapper or middleware launcher; usually stays in the terminal without opening a desktop window; Bot forwarding support is pending. |
-| App | Click the play button in the CCR desktop app | Desktop windows, side-by-side instances, Bot forwarding, handoff | Uses a separate user-data directory per Agent Config; reopening the same config activates the existing window, while different configs can run in parallel. |
+| App | Click the play button in the CCR desktop app | Desktop windows, Bot forwarding, handoff | Reopening the same config activates the existing window. Multi-instance behavior depends on the Agent; OpenCode Desktop is single-instance, so CCR stops the managed instance before switching OpenCode profiles. |
 | CLI & APP | One config exposes both CLI and App entry points | Reusing the same model config in both terminal and desktop App workflows | Both entries share the config name, model, effect scope, and environment variables, but launch differently. |
 
 ## Agent Differences
@@ -121,6 +136,12 @@ When opening Claude App from the desktop app, CCR also prepares a separate user-
 Codex config writes `config.toml` and a model catalog file. With **Only opened from CCR**, CCR stores those files in a directory separated by config `id`.
 
 Codex supports CLI and App. CLI opens through the launcher for the selected config; App launches ChatGPT, uses a separate user-data directory, and passes the selected model and provider into the app.
+
+### OpenCode
+
+OpenCode config writes a JSON/JSONC config that routes the selected provider and model through CCR. CLI opens through a profile-specific wrapper; App launches the installed OpenCode Desktop executable with the same effective config.
+
+When a Bot is selected and the App is opened from CCR, CCR starts a companion worker that handles incoming Bot messages through `opencode run --format json`, persists the returned OpenCode session ID, and sends the final text event back through Bot Gateway. The worker stops when the managed OpenCode App exits or the profile is switched.
 
 ### Grok CLI
 

@@ -14,6 +14,7 @@ const VERSION = "3.0.0";
 const DEFAULT_MODEL = "claude-sonnet-4-5";
 const PROTOCOL_VERSION = "2025-06-18";
 const BOT_SESSION_ENTRY_VERSION = 2;
+const OPENCODE_BOT_SESSION_STORE_VERSION = 2;
 const REQUEST_TIMEOUT_MS = numberEnv("CCR_CODEX_APP_REQUEST_TIMEOUT_MS", 10 * 60 * 1000);
 const TURN_IDLE_TIMEOUT_MS = numberEnv("CCR_CODEX_CLAUDE_TURN_IDLE_TIMEOUT_MS", 10 * 60 * 1000);
 const CONFIG_DIR = resolveConfigDir();
@@ -77,6 +78,10 @@ function botBridge() {
 
 async function main() {
   const args = directProfileDispatchArgs(process.argv.slice(2));
+  if (process.env.CCR_OPENCODE_BOT_WORKER === "1" || args[0] === "opencode-bot-worker") {
+    await runOpenCodeBotWorker(args);
+    return;
+  }
   if (process.env.CCR_CLAUDE_CODE_BOT_WORKER === "1" || args[0] === "claude-bot-worker") {
     await runClaudeCodeBotWorker(args);
     return;
@@ -1024,7 +1029,7 @@ async function runClaudeCodeAppServer(args) {
 
 async function runClaudeCodeBotWorker(args) {
   const options = parseAppServerOptions(args);
-  const lock = acquireClaudeBotWorkerLock();
+  const lock = acquireBotWorkerLock("claude");
   if (!lock) return;
   try {
     const server = new ClaudeCodeAppServer(options);
@@ -1041,12 +1046,463 @@ async function runClaudeCodeBotWorker(args) {
     await botBridge().stop();
     log("claude_bot_worker_stop", { pid: process.pid });
   } finally {
-    releaseClaudeBotWorkerLock(lock);
+    releaseBotWorkerLock(lock);
   }
 }
 
-function acquireClaudeBotWorkerLock() {
-  const lockPath = claudeBotWorkerLockPath();
+async function runOpenCodeBotWorker(args) {
+  const options = parseOpenCodeBotWorkerOptions(args);
+  const lock = acquireBotWorkerLock("opencode");
+  if (!lock) return;
+  try {
+    const worker = new OpenCodeBotWorker(options);
+    worker.ensureBotBridgeRegistered();
+    log("opencode_bot_worker_start", {
+      workspaceName: options.workspaceName,
+      pid: process.pid,
+      lockPath: lock.path,
+      cwd: worker.defaultCwd,
+      command: worker.command
+    });
+    await waitForTerminationSignal();
+    await botBridge().stop();
+    log("opencode_bot_worker_stop", { pid: process.pid });
+  } finally {
+    releaseBotWorkerLock(lock);
+  }
+}
+
+class OpenCodeBotWorker {
+  constructor(options) {
+    this.workspaceName = options.workspaceName || "OpenCode";
+    this.command = expandHome(nonEmptyEnv("CCR_OPENCODE_BIN") || nonEmptyEnv("OPENCODE_BIN") || "opencode");
+    this.defaultCwd = resolveOpenCodeBotCwd(nonEmptyEnv("CCR_OPENCODE_BOT_CWD"));
+    this.store = null;
+    this.turnQueues = new Map();
+  }
+
+  ensureBotBridgeRegistered() {
+    botBridge().setInboundHandler((event, queued, eventId, bridge) => this.handleInbound(event, queued, eventId, bridge));
+  }
+
+  async handleInbound(event, _queued, eventId, bridge) {
+    const text = botEventText(event);
+    if (!text) {
+      log("bot_gateway_inbound_skip", { eventId, reason: "empty_text", agent: "opencode" });
+      return;
+    }
+    const commandReply = await this.handleCommand(event, text);
+    if (commandReply !== null) {
+      await bridge.sendReplyToEvent(event, commandReply, "ccr:opencode:command:" + eventId);
+      log("bot_gateway_command_replied", { eventId, agent: "opencode", textLen: commandReply.length });
+      return;
+    }
+
+    this.enqueueTurn(event, eventId, bridge, text);
+  }
+
+  enqueueTurn(event, eventId, bridge, text) {
+    const key = botConversationKey(event);
+    const previous = this.turnQueues.get(key);
+    const task = (previous || Promise.resolve()).catch(() => {}).then(() => this.runTurn(event, eventId, bridge, text, key));
+    this.turnQueues.set(key, task);
+    log("opencode_bot_turn_queued", { eventId, queuedBehindActiveTurn: Boolean(previous) });
+    void task.then(
+      () => {},
+      async (error) => {
+        const responseText = "Agent turn failed: " + conciseError(error);
+        try {
+          await bridge.sendReplyToEvent(event, responseText, "ccr:opencode:error:" + eventId);
+        } catch (replyError) {
+          log("opencode_bot_turn_error_reply_failed", {
+            eventId,
+            error: formatError(error),
+            replyError: formatError(replyError)
+          });
+        }
+        log("opencode_bot_turn_failed", { eventId, error: formatError(error) });
+      }
+    ).finally(() => {
+      if (this.turnQueues.get(key) === task) this.turnQueues.delete(key);
+    });
+  }
+
+  async runTurn(event, eventId, bridge, text, key) {
+    const entry = this.conversationEntry(key);
+    const cwd = resolveOpenCodeBotCwd(entry && entry.directory, this.defaultCwd);
+    const args = ["run", "--format", "json", "--dir", cwd];
+    if (entry && entry.sessionId) {
+      args.push("--session", entry.sessionId);
+    } else {
+      args.push("--title", "Bot: " + this.workspaceName);
+    }
+    if (boolEnv("CCR_OPENCODE_BOT_AUTO_APPROVE")) args.push("--auto");
+    args.push("--", text);
+
+    const result = await runOpenCodeBotCli(this.command, args, cwd);
+    const parsed = parseOpenCodeRunOutput(result.stdout);
+    const sessionId = parsed.sessionId || (entry && entry.sessionId) || "";
+    if (sessionId) {
+      this.setConversationEntry(key, {
+        sessionId,
+        directory: cwd,
+        title: (entry && entry.title) || "Bot: " + this.workspaceName,
+        updatedAt: Date.now()
+      });
+    }
+    const errorText = parsed.error || result.error || (result.exitCode !== 0
+      ? result.stderr || "OpenCode exited with code " + result.exitCode
+      : "");
+    const responseText = errorText
+      ? "Agent turn failed: " + errorText
+      : parsed.text || parsed.fallbackText || "OpenCode completed the turn without a text response.";
+    await bridge.sendReplyToEvent(event, responseText, "ccr:opencode:" + eventId + ":" + (sessionId || uuid()));
+    log("bot_gateway_inbound_replied", {
+      eventId,
+      agent: "opencode",
+      sessionId,
+      exitCode: result.exitCode,
+      textLen: responseText.length
+    });
+  }
+
+  async handleCommand(event, text) {
+    const command = parseBotCommand(text);
+    if (!command) return null;
+    const key = botConversationKey(event);
+    try {
+      if (command.name === "help") return openCodeBotCommandHelpText();
+      if (command.name === "current") return this.renderCurrentSession(key);
+      if (command.name === "reset" || command.name === "new") {
+        this.clearConversationEntry(key);
+        return command.name === "new"
+          ? "Ready. The next message will create a new OpenCode session."
+          : "Reset. The next message will create a new OpenCode session.";
+      }
+      if (command.name === "ls") {
+        const sessions = await this.listSessions();
+        return renderOpenCodeSessionList(sessions, this.conversationEntry(key));
+      }
+      if (command.name === "select" || command.name === "use") {
+        if (!command.args) return "Usage: select <session-number-or-id>. Send 'ls' to list sessions.";
+        const sessions = await this.listSessions();
+        const session = resolveOpenCodeSession(command.args, sessions);
+        if (!session) return "Session '" + command.args + "' was not found. Send 'ls' to list sessions.";
+        this.setConversationEntry(key, {
+          sessionId: session.id,
+          directory: resolveOpenCodeBotCwd(session.directory, this.defaultCwd),
+          title: session.title,
+          updatedAt: session.updatedAt || Date.now()
+        });
+        return "Selected session " + shortSessionId(session.id) + ": " + session.title + "\nNext message will continue in this OpenCode session.";
+      }
+      return null;
+    } catch (error) {
+      return "OpenCode bot command failed: " + conciseError(error);
+    }
+  }
+
+  async listSessions() {
+    const result = await runOpenCodeBotCli(this.command, ["session", "list", "--format", "json", "-n", "10"], this.defaultCwd);
+    if (result.exitCode !== 0) {
+      throw new Error(result.error || result.stderr || "OpenCode session list exited with code " + result.exitCode);
+    }
+    return parseOpenCodeSessionList(result.stdout);
+  }
+
+  loadStore() {
+    if (this.store) return this.store;
+    const value = readJsonFile(openCodeBotSessionStorePath());
+    const conversations = value && typeof value === "object" &&
+      Number(value.version || 0) >= OPENCODE_BOT_SESSION_STORE_VERSION &&
+      value.conversations && typeof value.conversations === "object"
+      ? value.conversations
+      : {};
+    this.store = { version: OPENCODE_BOT_SESSION_STORE_VERSION, conversations };
+    return this.store;
+  }
+
+  saveStore() {
+    const file = openCodeBotSessionStorePath();
+    const temporary = file + "." + process.pid + ".tmp";
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(temporary, JSON.stringify(this.loadStore(), null, 2) + "\n", { mode: 0o600 });
+    fs.renameSync(temporary, file);
+  }
+
+  conversationEntry(key) {
+    const entry = this.loadStore().conversations[key];
+    return entry && typeof entry === "object" && stringValue(entry.sessionId) ? entry : null;
+  }
+
+  setConversationEntry(key, entry) {
+    this.loadStore().conversations[key] = entry;
+    this.saveStore();
+  }
+
+  clearConversationEntry(key) {
+    delete this.loadStore().conversations[key];
+    this.saveStore();
+  }
+
+  renderCurrentSession(key) {
+    const entry = this.conversationEntry(key);
+    if (!entry) return "No selected OpenCode session. Send any message to create one, or send 'ls' and then 'select <n>'.";
+    return [
+      "Current OpenCode session:",
+      shortSessionId(entry.sessionId) + " " + (entry.title || "OpenCode session"),
+      "cwd: " + (entry.directory || this.defaultCwd)
+    ].join("\n");
+  }
+}
+
+function parseOpenCodeBotWorkerOptions(args) {
+  let workspaceName = nonEmptyEnv("CCR_OPENCODE_WORKSPACE_NAME") || "OpenCode";
+  for (let i = 0; i < args.length; i += 1) {
+    if (args[i] === "--workspace-name" && args[i + 1]) {
+      workspaceName = args[i + 1];
+      i += 1;
+    }
+  }
+  return { workspaceName };
+}
+
+function openCodeBotSessionStorePath() {
+  const stateDir = nonEmptyEnv("CCR_BOT_GATEWAY_STATE_DIR") ||
+    nonEmptyEnv("CODEXL_BOT_GATEWAY_STATE_DIR") ||
+    nonEmptyEnv("BOT_GATEWAY_STATE_DIR") ||
+    path.join(CONFIG_DIR, "bot-gateway", safePathSegment(nonEmptyEnv("CCR_BOT_PROFILE_ID") || "default"));
+  return path.join(expandHome(stateDir), "opencode-bot-sessions.json");
+}
+
+function resolveOpenCodeBotCwd() {
+  const candidates = Array.from(arguments).concat([openCodeDesktopDefaultCwd(), os.homedir(), process.cwd()]);
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const resolved = expandHome(candidate);
+    try {
+      if (fs.statSync(resolved).isDirectory()) return resolved;
+    } catch {
+      // Try the next configured directory.
+    }
+  }
+  return process.cwd();
+}
+
+function openCodeDesktopDefaultCwd() {
+  return path.parse(os.homedir()).root || process.cwd();
+}
+
+async function runOpenCodeBotCli(command, args, cwd) {
+  const env = withoutKeys(process.env, [
+    "CCR_OPENCODE_BOT_WORKER",
+    "CCR_CLI_DIRECT_PROFILE_DISPATCH",
+    "ELECTRON_RUN_AS_NODE"
+  ]);
+  env.OPENCODE_CLIENT = "cli";
+  if (process.platform !== "win32") env.PWD = cwd;
+  let child;
+  try {
+    child = spawnAgentCli(command, args, {
+      cwd,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
+    });
+  } catch (error) {
+    return { exitCode: 1, stdout: "", stderr: "", error: conciseError(error) };
+  }
+
+  let stdout = "";
+  let stderr = "";
+  let spawnError = "";
+  const append = (current, chunk) => {
+    const next = current + chunk.toString("utf8");
+    return next.length > 4 * 1024 * 1024 ? next.slice(-4 * 1024 * 1024) : next;
+  };
+  child.stdout.on("data", (chunk) => { stdout = append(stdout, chunk); });
+  child.stderr.on("data", (chunk) => { stderr = append(stderr, chunk); });
+  child.once("error", (error) => { spawnError = conciseError(error); });
+
+  let timedOut = false;
+  let forceKillTimer = null;
+  const timeoutMs = numberEnv("CCR_OPENCODE_BOT_TURN_TIMEOUT_MS", 10 * 60 * 1000);
+  const timer = setTimeout(() => {
+    timedOut = true;
+    try {
+      child.kill("SIGTERM");
+    } catch {
+      // The process may have already exited.
+    }
+    forceKillTimer = setTimeout(() => {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // The process may have already exited.
+      }
+    }, 5000);
+  }, timeoutMs);
+  const result = await waitForChildResult(child);
+  clearTimeout(timer);
+  if (forceKillTimer) clearTimeout(forceKillTimer);
+  return {
+    exitCode: result.exitCode,
+    stdout: stdout.trim(),
+    stderr: stderr.trim(),
+    error: timedOut ? "OpenCode timed out after " + timeoutMs + "ms" : spawnError
+  };
+}
+
+function parseOpenCodeRunOutput(output) {
+  let sessionId = "";
+  let error = "";
+  const textParts = new Map();
+  const fallback = [];
+  let unnamedPart = 0;
+  for (const rawLine of String(output || "").split(/\r?\n/g)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    let value;
+    try {
+      value = JSON.parse(line);
+    } catch {
+      fallback.push(line);
+      continue;
+    }
+    if (!value || typeof value !== "object") continue;
+    sessionId = valueStringAtPaths(value, ["/sessionID", "/sessionId", "/session/id", "/part/sessionID"]) || sessionId;
+    const type = stringValue(value.type) || "";
+    if (type === "text") {
+      const part = value.part && typeof value.part === "object" ? value.part : value;
+      const text = stringValue(part.text) || stringValue(value.text);
+      if (text) {
+        const partId = stringValue(part.id) || "part-" + (++unnamedPart);
+        textParts.set(partId, text);
+      }
+    } else if (type === "error") {
+      error = openCodeEventError(value) || error;
+    }
+  }
+  return {
+    sessionId,
+    error,
+    text: Array.from(textParts.values()).join("\n").trim(),
+    fallbackText: fallback.join("\n").trim()
+  };
+}
+
+function openCodeEventError(value) {
+  return valueStringAtPaths(value, [
+    "/error/data/message",
+    "/error/message",
+    "/error/data/name",
+    "/error/name",
+    "/message"
+  ]) || stringValue(value && value.error) || "OpenCode returned an error";
+}
+
+function parseOpenCodeSessionList(output) {
+  const text = String(output || "").trim();
+  if (!text) return [];
+  let value;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    const lines = text.split(/\r?\n/g).map((line) => line.trim()).filter(Boolean);
+    for (let i = lines.length - 1; i >= 0; i -= 1) {
+      try {
+        const parsed = JSON.parse(lines[i]);
+        if (Array.isArray(parsed)) {
+          value = parsed;
+          break;
+        }
+      } catch {
+        // Ignore non-JSON diagnostic lines.
+      }
+    }
+  }
+  const values = Array.isArray(value)
+    ? value
+    : value && Array.isArray(value.sessions)
+      ? value.sessions
+      : value && Array.isArray(value.data)
+        ? value.data
+        : [];
+  return values.map(normalizeOpenCodeSession).filter(Boolean).sort((left, right) => right.updatedAt - left.updatedAt);
+}
+
+function normalizeOpenCodeSession(value) {
+  if (!value || typeof value !== "object") return null;
+  const id = valueStringAtPaths(value, ["/id", "/sessionID", "/sessionId"]);
+  if (!id) return null;
+  const title = valueStringAtPaths(value, ["/title", "/name", "/summary/title"]) || "Untitled";
+  const directory = valueStringAtPaths(value, ["/directory", "/cwd", "/path"]);
+  const rawUpdatedAt = valueAtPointer(value, "/time/updated") ?? value.updatedAt ?? value.updated_at ?? valueAtPointer(value, "/time/created");
+  const numericUpdatedAt = Number(rawUpdatedAt);
+  const parsedUpdatedAt = typeof rawUpdatedAt === "string" ? Date.parse(rawUpdatedAt) : 0;
+  return {
+    id,
+    title,
+    directory,
+    updatedAt: Number.isFinite(numericUpdatedAt) && numericUpdatedAt > 0
+      ? numericUpdatedAt
+      : Number.isFinite(parsedUpdatedAt) ? parsedUpdatedAt : 0
+  };
+}
+
+function resolveOpenCodeSession(query, sessions) {
+  const text = String(query || "").trim();
+  const index = Number(text);
+  if (Number.isInteger(index) && index >= 1 && index <= sessions.length) return sessions[index - 1];
+  const lower = text.toLowerCase();
+  const matches = sessions.filter((session) =>
+    session.id.toLowerCase() === lower ||
+    session.id.toLowerCase().startsWith(lower) ||
+    session.title.toLowerCase().includes(lower)
+  );
+  if (!matches.length) return null;
+  matches.sort((left, right) => {
+    const leftExact = left.id.toLowerCase() === lower ? 0 : left.id.toLowerCase().startsWith(lower) ? 1 : 2;
+    const rightExact = right.id.toLowerCase() === lower ? 0 : right.id.toLowerCase().startsWith(lower) ? 1 : 2;
+    return leftExact - rightExact || right.updatedAt - left.updatedAt;
+  });
+  return matches[0];
+}
+
+function renderOpenCodeSessionList(sessions, current) {
+  if (!sessions.length) return "No OpenCode sessions found. Send any message to create a new session.";
+  const lines = ["OpenCode sessions:"];
+  for (let i = 0; i < sessions.length; i += 1) {
+    const session = sessions[i];
+    const selected = current && current.sessionId === session.id ? " [selected]" : "";
+    lines.push("[" + (i + 1) + "] " + shortSessionId(session.id) + " " + session.title + selected);
+    if (session.directory) lines.push("    cwd: " + session.directory);
+  }
+  lines.push("Commands: select <n>, new, current, reset, help");
+  return lines.join("\n");
+}
+
+function openCodeBotCommandHelpText() {
+  return [
+    "Bot commands:",
+    "ls - list OpenCode sessions",
+    "new - clear the selection; the next message creates a new OpenCode session",
+    "select <n|id> - continue a listed session",
+    "use <n|id> - alias for select",
+    "current - show selected session",
+    "reset - clear selected session",
+    "help - show this message"
+  ].join("\n");
+}
+
+function conciseError(error) {
+  return error && typeof error.message === "string" && error.message.trim()
+    ? error.message.trim()
+    : String(error || "Unknown error");
+}
+
+function acquireBotWorkerLock(agent) {
+  const lockPath = botWorkerLockPath(agent);
   const token = uuid();
   const payload = {
     pid: process.pid,
@@ -1058,30 +1514,30 @@ function acquireClaudeBotWorkerLock() {
     try {
       fs.writeFileSync(lockPath, JSON.stringify(payload, null, 2), { flag: "wx" });
       const lock = { path: lockPath, token };
-      process.once("exit", () => releaseClaudeBotWorkerLock(lock));
+      process.once("exit", () => releaseBotWorkerLock(lock));
       return lock;
     } catch (error) {
       if (!error || error.code !== "EEXIST") throw error;
       const existing = readJsonFile(lockPath) || {};
       const existingPid = Number(existing.pid);
       if (existingPid && existingPid !== process.pid && processIsRunning(existingPid)) {
-        log("claude_bot_worker_lock_held", { lockPath, pid: process.pid, ownerPid: existingPid });
+        log(agent + "_bot_worker_lock_held", { lockPath, pid: process.pid, ownerPid: existingPid });
         return null;
       }
       try {
         fs.unlinkSync(lockPath);
-        log("claude_bot_worker_stale_lock_removed", { lockPath, pid: process.pid, ownerPid: existingPid || null });
+        log(agent + "_bot_worker_stale_lock_removed", { lockPath, pid: process.pid, ownerPid: existingPid || null });
       } catch (unlinkError) {
-        log("claude_bot_worker_lock_remove_failed", { lockPath, pid: process.pid, error: formatError(unlinkError) });
+        log(agent + "_bot_worker_lock_remove_failed", { lockPath, pid: process.pid, error: formatError(unlinkError) });
         return null;
       }
     }
   }
-  log("claude_bot_worker_lock_failed", { lockPath, pid: process.pid });
+  log(agent + "_bot_worker_lock_failed", { lockPath, pid: process.pid });
   return null;
 }
 
-function releaseClaudeBotWorkerLock(lock) {
+function releaseBotWorkerLock(lock) {
   if (!lock || !lock.path) return;
   try {
     const existing = readJsonFile(lock.path) || {};
@@ -1092,12 +1548,12 @@ function releaseClaudeBotWorkerLock(lock) {
   }
 }
 
-function claudeBotWorkerLockPath() {
+function botWorkerLockPath(agent) {
   const stateDir = nonEmptyEnv("CCR_BOT_GATEWAY_STATE_DIR") ||
     nonEmptyEnv("CODEXL_BOT_GATEWAY_STATE_DIR") ||
     nonEmptyEnv("BOT_GATEWAY_STATE_DIR") ||
     path.join(CONFIG_DIR, "bot-gateway", safePathSegment(nonEmptyEnv("CCR_BOT_PROFILE_ID") || "default"));
-  return path.join(expandHome(stateDir), "claude-bot-worker.lock");
+  return path.join(expandHome(stateDir), safePathSegment(agent) + "-bot-worker.lock");
 }
 
 function processIsRunning(pid) {
