@@ -17,7 +17,7 @@ import {
   providerAccountSnapshotKey, providerAccountSnapshotLabel,
   ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ReactPointerEvent, rectSortingStrategy, RefreshCw, Select,
   SelectControl, SortableContext, sortableKeyboardCoordinates, systemStatusPointTooltip,
-  systemStatusTooltipPositionClass, Tooltip, translateOptions, Trash2, UsageComparisonRow, usageRangeOptions,
+  Tooltip, translateOptions, Trash2, UsageComparisonRow, usageRangeOptions,
   GatewayProviderConfig, UsageSeriesPoint, UsageStatsRange, UsageStatsSnapshot, usageStatusTone, UsageTotals, useAppText,
   useEffect, useMemo, useRef, useSensor, useSensors, useSortable,
   useState, X, XAxis, YAxis
@@ -28,6 +28,7 @@ import {
   CalendarDays, ChartNoAxesCombined, ChartPie, Cloud, GripHorizontal, Inbox, Layers3,
   Rocket, Server, UsersRound, WalletCards
 } from "lucide-react";
+import { createPortal } from "react-dom";
 
 type OverviewUsageFilters = {
   modelFilter: string;
@@ -2105,6 +2106,43 @@ type SystemStatusPoint = {
   tone: SystemStatusTone;
 };
 
+type SystemStatusTooltipState = {
+  arrowLeft: number;
+  left: number;
+  placement: "above" | "below";
+  segment: SystemStatusPoint;
+  top: number;
+};
+
+const systemStatusTooltipWidth = 190;
+const systemStatusTooltipHeight = 104;
+const systemStatusTooltipGap = 10;
+const systemStatusTooltipViewportMargin = 12;
+
+function resolveSystemStatusTooltipPosition(rect: DOMRect): Omit<SystemStatusTooltipState, "segment"> {
+  const availableWidth = Math.max(0, window.innerWidth - systemStatusTooltipViewportMargin * 2);
+  const width = Math.min(systemStatusTooltipWidth, availableWidth);
+  const maxLeft = Math.max(systemStatusTooltipViewportMargin, window.innerWidth - width - systemStatusTooltipViewportMargin);
+  const left = Math.min(
+    Math.max(systemStatusTooltipViewportMargin, rect.left + rect.width / 2 - width / 2),
+    maxLeft
+  );
+  const spaceAbove = rect.top - systemStatusTooltipViewportMargin - systemStatusTooltipGap;
+  const spaceBelow = window.innerHeight - rect.bottom - systemStatusTooltipViewportMargin - systemStatusTooltipGap;
+  const placement = spaceAbove >= systemStatusTooltipHeight || spaceAbove >= spaceBelow ? "above" : "below";
+  const preferredTop = placement === "above"
+    ? rect.top - systemStatusTooltipGap - systemStatusTooltipHeight
+    : rect.bottom + systemStatusTooltipGap;
+  const maxTop = Math.max(
+    systemStatusTooltipViewportMargin,
+    window.innerHeight - systemStatusTooltipHeight - systemStatusTooltipViewportMargin
+  );
+  const top = Math.min(Math.max(systemStatusTooltipViewportMargin, preferredTop), maxTop);
+  const arrowLeft = Math.min(Math.max(12, rect.left + rect.width / 2 - left), Math.max(12, width - 12));
+
+  return { arrowLeft, left, placement, top };
+}
+
 function SystemStatusBar({
   variant = "timeline",
   usageRange,
@@ -2115,6 +2153,7 @@ function SystemStatusBar({
   usageStats: UsageStatsSnapshot;
 }) {
   const t = useAppText();
+  const [statusTooltip, setStatusTooltip] = useState<SystemStatusTooltipState>();
   const segments = usageStats.series.map((point) => ({
     dateLabel: formatStatusBucketDate(point.bucket, usageRange),
     point,
@@ -2124,6 +2163,23 @@ function SystemStatusBar({
   const overallTone = usageStatusTone(usageStats.totals);
   const StatusIcon = overallTone === "ok" ? Check : CircleAlert;
   const rangeLabel = formatSystemStatusRange(segments, usageRange);
+
+  useEffect(() => {
+    if (!statusTooltip) {
+      return;
+    }
+    const dismiss = () => setStatusTooltip(undefined);
+    window.addEventListener("resize", dismiss);
+    window.addEventListener("scroll", dismiss, true);
+    return () => {
+      window.removeEventListener("resize", dismiss);
+      window.removeEventListener("scroll", dismiss, true);
+    };
+  }, [statusTooltip]);
+
+  const showStatusTooltip = (segment: SystemStatusPoint, target: HTMLElement) => {
+    setStatusTooltip({ segment, ...resolveSystemStatusTooltipPosition(target.getBoundingClientRect()) });
+  };
 
   if (variant === "compact") {
     return (
@@ -2171,40 +2227,58 @@ function SystemStatusBar({
           <div className="flex min-w-0 gap-1" aria-label={t("System status")}>
             {segments.map((segment, index) => (
               <span
-                className="group relative flex h-5 min-w-[3px] flex-1"
+                aria-label={systemStatusPointTooltip(segment, t)}
+                className="relative flex h-5 min-w-[3px] flex-1 outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                 key={`${segment.point.bucket}-${index}`}
+                onBlur={() => setStatusTooltip(undefined)}
+                onFocus={(event) => showStatusTooltip(segment, event.currentTarget)}
+                onMouseEnter={(event) => showStatusTooltip(segment, event.currentTarget)}
+                onMouseLeave={() => setStatusTooltip(undefined)}
+                tabIndex={0}
               >
                 <span
                   aria-label={systemStatusPointTooltip(segment, t)}
                   className="overview-status-segment h-full w-full rounded-[4px]"
                   data-tone={segment.tone}
                 />
-                <span
-                  className={cn(
-                    "pointer-events-none absolute bottom-full z-50 mb-2 hidden w-[190px] max-w-[calc(100vw-32px)] rounded-md border border-border/70 bg-popover px-3 py-2 text-left text-[11px] text-popover-foreground shadow-card-elevated group-hover:block",
-                    systemStatusTooltipPositionClass(index, segments.length)
-                  )}
-                >
-                  <span className="block font-semibold">{segment.dateLabel}</span>
-                  <span className="mt-1 flex justify-between gap-3">
-                    <span className="text-muted-foreground">{t("Requests")}</span>
-                    <span className="font-medium">{formatCompactNumber(segment.point.requestCount)}</span>
-                  </span>
-                  <span className="flex justify-between gap-3">
-                    <span className="text-muted-foreground">{t("Success rate")}</span>
-                    <span className="font-medium">{formatPercent(segment.point.successRate)}</span>
-                  </span>
-                  <span className="flex justify-between gap-3">
-                    <span className="text-muted-foreground">{t("Failed requests")}</span>
-                    <span className="font-medium">{formatCompactNumber(segment.point.errorCount)}</span>
-                  </span>
-                  <span className="flex justify-between gap-3">
-                    <span className="text-muted-foreground">{t("Duration")}</span>
-                    <span className="font-medium">{formatDuration(segment.point.avgDurationMs)}</span>
-                  </span>
-                </span>
               </span>
             ))}
+            {statusTooltip ? createPortal(
+              <span
+                className="pointer-events-none fixed z-[150] w-[190px] max-w-[calc(100vw-24px)] rounded-md border border-border/70 bg-popover px-3 py-2 text-left text-[11px] leading-4 text-popover-foreground shadow-card-elevated ring-1 ring-black/5"
+                role="tooltip"
+                style={{ left: statusTooltip.left, top: statusTooltip.top }}
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "absolute h-2 w-2 -translate-x-1/2 rotate-45 bg-popover",
+                    statusTooltip.placement === "above"
+                      ? "-bottom-1 border-b border-r border-border/70"
+                      : "-top-1 border-l border-t border-border/70"
+                  )}
+                  style={{ left: statusTooltip.arrowLeft }}
+                />
+                <span className="block font-semibold">{statusTooltip.segment.dateLabel}</span>
+                <span className="mt-1 flex justify-between gap-3">
+                  <span className="text-muted-foreground">{t("Requests")}</span>
+                  <span className="font-medium">{formatCompactNumber(statusTooltip.segment.point.requestCount)}</span>
+                </span>
+                <span className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{t("Success rate")}</span>
+                  <span className="font-medium">{formatPercent(statusTooltip.segment.point.successRate)}</span>
+                </span>
+                <span className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{t("Failed requests")}</span>
+                  <span className="font-medium">{formatCompactNumber(statusTooltip.segment.point.errorCount)}</span>
+                </span>
+                <span className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{t("Duration")}</span>
+                  <span className="font-medium">{formatDuration(statusTooltip.segment.point.avgDurationMs)}</span>
+                </span>
+              </span>,
+              document.body
+            ) : null}
           </div>
         </div>
       </CardContent>

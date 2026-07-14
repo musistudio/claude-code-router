@@ -16,7 +16,7 @@ import { resolveProviderLogName, resolveResponseProviderProtocol, sanitizeHeader
 import { createBodySampler, shouldRecordRequestLogs } from "@ccr/core/observability/raw-trace-sync";
 import { endpoint } from "@ccr/core/gateway/core-runtime/supervisor";
 import { coreGatewayUsageAttributionConfig } from "@ccr/core/gateway/core-runtime/config-compiler";
-import { clientClosedRequestStatusCode, clientDisconnectMessage, UpstreamRequestError } from "@ccr/core/gateway/internal/shared";
+import { clientClosedRequestStatusCode, clientDisconnectMessage, resolveStreamRequestLogOutcome, UpstreamRequestError } from "@ccr/core/gateway/internal/shared";
 import type { BrowserWebSearchMcpIntegration, BrowserWebSearchProtocolRecord, UpstreamFetchResult } from "@ccr/core/gateway/internal/shared";
 import { applyProviderCapabilityRouting, cancelResponseBody, destroyResponseStreams, fetchUpstreamWithFallback, mergeFallbackResponseHeaders, rewriteCapabilityResponseHeaders, uniqueStreams, upstreamResponseHeaders } from "@ccr/core/gateway/upstream/executor";
 import { shouldApplyGatewayRouting } from "@ccr/core/routing/protocol-endpoints";
@@ -418,16 +418,24 @@ export class GatewayRequestPipeline {
           return;
         }
         logRecorded = true;
+        const outcome = resolveStreamRequestLogOutcome({
+          clientDisconnected,
+          detectedError: streamDetectedError,
+          streamError: error,
+          terminalEventSeen: sseErrorDetector.hasTerminalEvent(),
+          upstreamStatus: upstreamResponse.status
+        });
         writeRequestLog(
-          clientDisconnected ? clientClosedRequestStatusCode : upstreamResponse.status,
+          outcome.statusCode,
           responseHeaders,
           sampler.read(),
           sampler.isTruncated(),
-          error ?? streamDetectedError
+          outcome.error
         );
       };
       onClientDisconnect = () => {
-        writeStreamLog(clientDisconnectMessage);
+        streamDetectedError ??= sseErrorDetector.finish();
+        writeStreamLog();
         responseBody.unpipe(response);
         destroyResponseStreams(responseStreams);
       };
