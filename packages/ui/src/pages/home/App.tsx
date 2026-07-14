@@ -278,6 +278,8 @@ function App() {
   const [agentAnalysisSession, setAgentAnalysisSession] = useState<AgentAnalysisSessionSelection>();
   const [usageModelFilter, setUsageModelFilter] = useState("");
   const [usageProviderFilter, setUsageProviderFilter] = useState("");
+  const [usageClientIpFilter, setUsageClientIpFilter] = useState("");
+  const lastClientIpsRef = useRef<string[]>([]);
   const [usageRange, setUsageRange] = useState<UsageStatsRange>("7d");
   const [usageStats, setUsageStats] = useState<UsageStatsSnapshot>(fallbackUsageStats);
   const [providerAccountSnapshots, setProviderAccountSnapshots] = useState<ProviderAccountSnapshot[]>([]);
@@ -459,11 +461,20 @@ function App() {
       const filter: UsageStatsFilter = {
         ...(usageRange === "today" ? { includeProxy: true } : {}),
         ...(usageProviderFilter ? { provider: usageProviderFilter } : {}),
-        ...(usageModelFilter ? { model: usageModelFilter } : {})
+        ...(usageModelFilter ? { model: usageModelFilter } : {}),
+        ...(usageClientIpFilter ? { clientIp: usageClientIpFilter } : {})
       };
       void window.ccr?.getUsageStats(usageRange, filter).then((snapshot) => {
-        if (!cancelled) {
-          setUsageStats(snapshot);
+        if (cancelled) {
+          return;
+        }
+        setUsageStats(snapshot);
+        // Cache the IP list whenever the request is NOT narrowed by a client IP
+        // filter, so the dropdown keeps the full set of selectable IPs after a
+        // user picks one (which would otherwise shrink the returned list to a
+        // single entry and prevent switching back).
+        if (!usageClientIpFilter) {
+          lastClientIpsRef.current = snapshot.clientIps ?? [];
         }
       });
     };
@@ -472,7 +483,7 @@ function App() {
       cancelled = true;
       stopPolling();
     };
-  }, [usageModelFilter, usageProviderFilter, usageRange]);
+  }, [usageModelFilter, usageProviderFilter, usageRange, usageClientIpFilter]);
 
   useEffect(() => {
     if (!usageProviderFilter) {
@@ -495,6 +506,18 @@ function App() {
       setUsageModelFilter("");
     }
   }, [draftConfig.Providers, usageModelFilter, usageProviderFilter]);
+
+  useEffect(() => {
+    if (!usageClientIpFilter) {
+      return;
+    }
+    // The cached (unfiltered) IP list is the source of truth for whether the
+    // selected IP is still valid — the live snapshot is narrowed by the filter
+    // itself and would otherwise appear to drop the selected IP.
+    if (!lastClientIpsRef.current.includes(usageClientIpFilter)) {
+      setUsageClientIpFilter("");
+    }
+  }, [usageClientIpFilter, usageStats.clientIps]);
 
   useEffect(() => {
     if (!window.ccr) {
@@ -672,6 +695,16 @@ function App() {
   }, [activeView, draftConfig.proxy.captureNetwork]);
 
   const dirty = draftConfig !== savedConfig;
+  const usageClientIpOptions = useMemo(() => {
+    const ips = lastClientIpsRef.current.slice();
+    if (usageClientIpFilter && !ips.includes(usageClientIpFilter)) {
+      ips.push(usageClientIpFilter);
+    }
+    return [
+      { label: t("All IPs"), value: "" },
+      ...ips.map((ip) => ({ label: ip, value: ip }))
+    ];
+  }, [t, usageClientIpFilter, usageStats.clientIps]);
   const apiKeys = useMemo(() => createApiKeyList(draftConfig), [draftConfig.APIKEY, draftConfig.APIKEYS]);
   const apiKeyEditItem = apiKeyEditIndex === undefined ? undefined : apiKeys.find((apiKey) => apiKey.index === apiKeyEditIndex);
   const profileDeleteItem = profileDeleteIndex === undefined ? undefined : draftConfig.profile.profiles[profileDeleteIndex];
@@ -2929,9 +2962,12 @@ function App() {
                 },
                 overview: {
                   usageFilters: {
+                    clientIpFilter: usageClientIpFilter,
+                    clientIpOptions: usageClientIpOptions,
                     modelFilter: usageModelFilter,
                     providerFilter: usageProviderFilter,
                     providers: draftConfig.Providers,
+                    setClientIpFilter: setUsageClientIpFilter,
                     setModelFilter: setUsageModelFilter,
                     setProviderFilter: setUsageProviderFilter
                   },

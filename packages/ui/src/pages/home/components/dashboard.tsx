@@ -27,14 +27,18 @@ import { ShareCardWidget } from "./share-cards";
 import { Cloud, Rocket } from "lucide-react";
 
 type OverviewUsageFilters = {
+  clientIpFilter: string;
+  clientIpOptions: Array<{ label: string; value: string }>;
   modelFilter: string;
   providerFilter: string;
   providers: GatewayProviderConfig[];
+  setClientIpFilter: (clientIp: string) => void;
   setModelFilter: (model: string) => void;
   setProviderFilter: (provider: string) => void;
 };
 
 const emptyOverviewProviders: GatewayProviderConfig[] = [];
+const emptyOverviewClientIpOptions: Array<{ label: string; value: string }> = [];
 
 export function OverviewView({
   onWidgetsChange,
@@ -83,6 +87,8 @@ export function OverviewView({
   const filterProviders = usageFilters?.providers ?? emptyOverviewProviders;
   const providerFilter = usageFilters?.providerFilter ?? "";
   const modelFilter = usageFilters?.modelFilter ?? "";
+  const clientIpFilter = usageFilters?.clientIpFilter ?? "";
+  const clientIpOptions = usageFilters?.clientIpOptions ?? emptyOverviewClientIpOptions;
   const providerOptions = useMemo(() => overviewProviderFilterOptions(filterProviders, t), [filterProviders, t]);
   const modelOptions = useMemo(() => overviewModelFilterOptions(filterProviders, providerFilter, t), [filterProviders, providerFilter, t]);
 
@@ -180,6 +186,10 @@ export function OverviewView({
 
   function changeModelFilter(model: string) {
     usageFilters?.setModelFilter(model);
+  }
+
+  function changeClientIpFilter(clientIp: string) {
+    usageFilters?.setClientIpFilter(clientIp);
   }
 
   useEffect(() => {
@@ -351,6 +361,13 @@ export function OverviewView({
             onValueChange={changeModelFilter}
             options={modelOptions}
             value={modelFilter}
+          />
+          <Select
+            aria-label={t("All IPs")}
+            className="h-8 w-[168px] bg-[length:14px] px-2 pr-7 text-[12px]"
+            onValueChange={changeClientIpFilter}
+            options={clientIpOptions}
+            value={clientIpFilter}
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -3524,6 +3541,7 @@ function AgentErrorsCard({ errors }: { errors: AgentAnalysisSnapshot["errors"] }
                 <tr>
                   <th className="px-3 py-2 font-semibold">{t("Time")}</th>
                   <th className="px-3 py-2 font-semibold">{t("Status")}</th>
+                  <th className="px-3 py-2 font-semibold">{t("Client IP")}</th>
                   <th className="px-3 py-2 font-semibold">{t("Path")}</th>
                   <th className="px-3 py-2 font-semibold">{t("Agent")}</th>
                   <th className="px-3 py-2 font-semibold">{t("Route")}</th>
@@ -3535,6 +3553,7 @@ function AgentErrorsCard({ errors }: { errors: AgentAnalysisSnapshot["errors"] }
                   <tr className={agentListRowClassName({ danger: true })} key={error.id}>
                     <td className="px-3 py-2 font-mono">{formatLogDateTime(error.createdAt)}</td>
                     <td className="px-3 py-2 font-semibold" title={error.error}>{error.statusCode || "-"}</td>
+                    <td className="px-3 py-2 font-mono" title={error.clientIp ?? ""}>{(error.clientIp ?? "").trim() || "—"}</td>
                     <td className="max-w-[260px] px-3 py-2" title={`${error.method} ${error.path}`}>{error.method} {error.path}</td>
                     <td className="px-3 py-2">{t(agentKindLabel(error.agent))}</td>
                     <td className="max-w-[140px] px-3 py-2" title={formatRouteReason(error.routeReason)}>{formatRouteReason(error.routeReason)}</td>
@@ -3601,6 +3620,7 @@ function AgentSessionDetailCard({
                       <tr>
                         <th className="px-3 py-2 font-semibold">{t("Time")}</th>
                         <th className="px-3 py-2 font-semibold">{t("Status")}</th>
+                        <th className="px-3 py-2 font-semibold">{t("Client IP")}</th>
                         <th className="px-3 py-2 font-semibold">{t("Route")}</th>
                         <th className="px-3 py-2 font-semibold">{t("Model")}</th>
                         <th className="px-3 py-2 text-right font-semibold">{t("Tools")}</th>
@@ -3613,6 +3633,7 @@ function AgentSessionDetailCard({
                         <tr className={agentListRowClassName()} key={request.id}>
                           <td className="px-3 py-2 font-mono">{formatLogDateTime(request.createdAt)}</td>
                           <td className="px-3 py-2 font-semibold">{request.statusCode || "-"}</td>
+                          <td className="px-3 py-2 font-mono" title={request.clientIp ?? ""}>{(request.clientIp ?? "").trim() || "—"}</td>
                           <td className="max-w-[140px] px-3 py-2" title={formatRouteReason(request.routeReason)}>{formatRouteReason(request.routeReason)}</td>
                           <td className="max-w-[300px] px-3 py-2" title={`${request.provider}/${request.model}`}>{request.provider}/{request.model}</td>
                           <td className="px-3 py-2 text-right" title={request.tools.join(", ")}>{formatCompactNumber(request.toolCallCount)}</td>
@@ -4307,6 +4328,7 @@ function AgentRecentRequestsCard({ requests }: { requests: AgentAnalysisSnapshot
                   <th className="px-3 py-2 font-semibold">{t("Time")}</th>
                   <th className="px-3 py-2 font-semibold">{t("Agent")}</th>
                   <th className="px-3 py-2 font-semibold">{t("Client")}</th>
+                  <th className="px-3 py-2 font-semibold">{t("Client IP")}</th>
                   <th className="px-3 py-2 font-semibold">{t("Status")}</th>
                   <th className="px-3 py-2 font-semibold">{t("Session")}</th>
                   <th className="px-3 py-2 font-semibold">{t("Route")}</th>
@@ -4324,6 +4346,7 @@ function AgentRecentRequestsCard({ requests }: { requests: AgentAnalysisSnapshot
                     <td className="px-3 py-2 font-mono">{formatLogDateTime(request.createdAt)}</td>
                     <td className="px-3 py-2">{t(agentKindLabel(request.agent))}</td>
                     <td className="max-w-[160px] px-3 py-2" title={request.userAgent || request.client}>{request.client}</td>
+                    <td className="px-3 py-2 font-mono" title={request.clientIp ?? ""}>{(request.clientIp ?? "").trim() || "—"}</td>
                     <td className="px-3 py-2 font-semibold">{request.statusCode || "-"}</td>
                     <td className="max-w-[150px] px-3 py-2 font-mono font-semibold" title={request.sessionId}>{compactId(request.sessionId)}</td>
                     <td className="max-w-[130px] px-3 py-2" title={formatRouteReason(request.routeReason)}>{formatRouteReason(request.routeReason)}</td>

@@ -248,3 +248,35 @@ test("provider account reset credit detail progress uses each validity window", 
     expiresAt
   }, Date.parse("2026-07-06T00:00:00.000Z")), undefined);
 });
+
+test("OverviewView renders the client IP filter dropdown from usageFilters options", () => {
+  const html = renderToStaticMarkup(
+    <OverviewView
+      overviewWidgets={[]}
+      providerAccounts={[]}
+      setUsageRange={() => undefined}
+      usageFilters={{
+        clientIpFilter: "192.168.1.10",
+        clientIpOptions: [
+          { label: "All IPs", value: "" },
+          { label: "127.0.0.1", value: "127.0.0.1" },
+          { label: "192.168.1.10", value: "192.168.1.10" }
+        ],
+        modelFilter: "",
+        providerFilter: "",
+        providers: [],
+        setClientIpFilter: () => undefined,
+        setModelFilter: () => undefined,
+        setProviderFilter: () => undefined
+      }}
+      usageRange="7d"
+      usageStats={usageStats("7d")}
+      onWidgetsChange={() => undefined}
+    />
+  );
+
+  assert.match(html, /aria-label="All IPs"/);
+  assert.match(html, /<option value="">All IPs<\/option>/);
+  assert.match(html, /<option value="127.0.0.1">127.0.0.1<\/option>/);
+  assert.match(html, /<option value="192.168.1.10" selected="">192.168.1.10<\/option>/);
+});

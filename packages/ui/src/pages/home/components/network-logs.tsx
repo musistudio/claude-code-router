@@ -22,7 +22,7 @@ const logJsonAutoExpandEntryLimit = 60;
 const logJsonContainerPreviewLimit = 80;
 const logJsonAutoExpandTextLimit = 160 * 1024;
 const logBodyViewCache = new Map<string, ReturnType<typeof formatLogBodyView>>();
-type LogTableColumnId = "time" | "status" | "stream" | "model" | "credential" | "tokens" | "duration";
+type LogTableColumnId = "time" | "status" | "stream" | "model" | "clientIp" | "credential" | "tokens" | "duration";
 type LogTableColumn = {
   id: LogTableColumnId;
   minWidth: number;
@@ -38,6 +38,7 @@ const baseLogTableColumns: LogTableColumn[] = [
   { id: "status", minWidth: 116 },
   { id: "stream", minWidth: 108 },
   { id: "model", minWidth: 180 },
+  { id: "clientIp", minWidth: 128 },
   { id: "tokens", minWidth: 140 },
   { id: "duration", minWidth: 92 }
 ];
@@ -317,8 +318,8 @@ export function LogsView({
     page.items.some(logHasCredentialInfo);
   const visibleLogColumns = useMemo(() => getLogTableColumns(hasAnyCredentialInfo), [hasAnyCredentialInfo]);
   const logTableGridClass = hasAnyCredentialInfo
-    ? "grid-cols-[minmax(0,0.8fr)_minmax(92px,0.38fr)_minmax(98px,0.4fr)_minmax(0,0.78fr)_minmax(120px,0.42fr)_minmax(0,0.68fr)_82px]"
-    : "grid-cols-[minmax(0,0.8fr)_minmax(92px,0.38fr)_minmax(98px,0.4fr)_minmax(0,0.9fr)_minmax(0,0.74fr)_82px]";
+    ? "grid-cols-[minmax(0,0.7fr)_minmax(92px,0.38fr)_minmax(98px,0.4fr)_minmax(0,0.7fr)_minmax(110px,0.42fr)_minmax(120px,0.42fr)_minmax(0,0.68fr)_82px]"
+    : "grid-cols-[minmax(0,0.7fr)_minmax(92px,0.38fr)_minmax(98px,0.4fr)_minmax(0,0.8fr)_minmax(110px,0.42fr)_minmax(0,0.74fr)_82px]";
   const logTableGridStyle = useMemo(
     () => createLogTableGridStyle(visibleLogColumns, logColumnWidths),
     [logColumnWidths, visibleLogColumns]
@@ -588,6 +589,8 @@ function logTableColumnLabel(columnId: LogTableColumnId, t: (value: string) => s
       return t("Stream");
     case "model":
       return t("模型");
+    case "clientIp":
+      return t("Client IP");
     case "credential":
       return t("Credential");
     case "tokens":
@@ -655,6 +658,7 @@ const LogRow = memo(function LogRow({
         </div>
         <LogStreamCell entry={item} />
         <LogModelRouteCell entry={item} />
+        <LogClientIpCell entry={item} />
         {hasCredentialInfo ? <LogCredentialCell entry={item} /> : null}
         <div className="network-row-secondary truncate px-2" title={tokenSummary}>{tokenSummary}</div>
         <div className="network-row-secondary truncate px-2">{formatDuration(item.durationMs)}</div>
@@ -693,6 +697,7 @@ function LogExpandedDetails({
       <div className={cn("network-body-meta grid grid-cols-2 gap-y-2 border-b px-3 py-2 text-[12px] sm:grid-cols-4", hasCredentialInfo ? "lg:grid-cols-12" : "lg:grid-cols-9")}>
         <LogMetric label={t("持续时间")} value={formatDuration(entry.durationMs)} />
         <LogMetric label={t("Stream")} value={entry.isStream ? t("Streaming") : t("Non-streaming")} />
+        <LogMetric label={t("Client IP")} value={(entry.clientIp ?? "").trim() || "—"} />
         {entry.credentialId ? <LogMetric label={t("Credential")} value={entry.credentialId} /> : null}
         {entry.credentialChain.length ? <LogMetric label={t("Credential chain")} value={entry.credentialChain.join(" > ")} /> : null}
         {hasCredentialInfo ? <LogMetric label={t("Credential saturated")} value={entry.credentialSaturated ? t("Yes") : t("No")} /> : null}
@@ -792,6 +797,14 @@ function LogCredentialCell({ entry }: { entry: RequestLogEntry }) {
 
   return (
     <div className="network-row-secondary truncate px-2" title={title}>{label}</div>
+  );
+}
+
+function LogClientIpCell({ entry }: { entry: RequestLogEntry }) {
+  const clientIp = (entry.clientIp ?? "").trim();
+  // Unified empty state when no client IP was captured (legacy records or local requests).
+  return (
+    <div className="network-row-secondary truncate px-2 font-mono" title={clientIp}>{clientIp || "—"}</div>
   );
 }
 

@@ -16,6 +16,7 @@ function positiveInteger(value: unknown): number | undefined {
 
 export function createEmptyUsageStats(range: UsageStatsRange): UsageStatsSnapshot {
   return {
+    clientIps: [],
     clientModels: [],
     generatedAt: new Date().toISOString(),
     models: [],

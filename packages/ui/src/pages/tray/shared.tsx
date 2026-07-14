@@ -438,6 +438,7 @@ export function isTrayMascotIconPreference(value: AppConfig["trayIcon"]): value 
 
 export function createEmptySnapshot(range: UsageStatsRange): UsageStatsSnapshot {
   return {
+    clientIps: [],
     clientModels: [],
     generatedAt: new Date().toISOString(),
     models: [],

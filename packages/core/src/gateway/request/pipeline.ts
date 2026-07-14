@@ -10,7 +10,7 @@ import { reserveApiKeyLimits } from "@ccr/core/gateway/auth/api-key-authorizer";
 import { recordProviderCredentialOutcome } from "@ccr/core/providers/credential-pool";
 import { codexApplyPatchBridgeResponseStream, prepareCodexApplyPatchBridgeRequest } from "@ccr/core/gateway/features/codex-patch-bridge";
 import { prepareCursorOpenAICompatChatBody } from "@ccr/core/gateway/features/cursor-compat";
-import { filteredResponseHeaders, formatError, forwardHeaders, inferGatewayClient, parseJsonObject, readRequestBody, sendJson, shouldCaptureGatewayUsage, shouldSendBody, stripLocalGatewayAuthHeaders } from "@ccr/core/gateway/http/io";
+import { filteredResponseHeaders, formatError, forwardHeaders, inferGatewayClient, parseJsonObject, readRequestBody, resolveClientIp, sendJson, shouldCaptureGatewayUsage, shouldSendBody, stripLocalGatewayAuthHeaders } from "@ccr/core/gateway/http/io";
 import { createGatewayModelsResponse, prepareClaudeAppFallbackModelRequest, prepareClaudeCodeDiscoveredModelRequest, shouldServeGatewayModelsResponse } from "@ccr/core/gateway/features/model-discovery";
 import { resolveProviderLogName, resolveResponseProviderProtocol, sanitizeHeaderValue } from "@ccr/core/providers/runtime-topology";
 import { createBodySampler, shouldRecordRequestLogs } from "@ccr/core/observability/raw-trace-sync";
@@ -55,6 +55,11 @@ export class GatewayRequestPipeline {
       const method = request.method ?? "GET";
       const requestBody = await readRequestBody(request);
       const client = inferGatewayClient(apiKey, request.headers);
+      // Fix the client IP from the original request BEFORE any body rewrite /
+      // routing / fallback can mutate it, then thread it through every
+      // usage-capture and request-log branch (success, empty body, stream,
+      // 502/disconnect).
+      const clientIp = resolveClientIp(request);
       const cursorCompatPreparation = prepareCursorOpenAICompatChatBody(this.config, client, method, path, requestBody);
       if (cursorCompatPreparation) {
         headers["x-ccr-cursor-openai-compat"] = sanitizeHeaderValue(cursorCompatPreparation.diagnostic);
@@ -125,6 +130,7 @@ export class GatewayRequestPipeline {
         void (async () => {
           await recordGatewayRequestLog({
             client,
+            clientIp,
             completedAt: new Date().toISOString(),
             durationMs: Date.now() - startedAt,
             error,
@@ -315,6 +321,7 @@ export class GatewayRequestPipeline {
           void recordGatewayUsageCapture({
             bodyText: "",
             client,
+            clientIp,
             durationMs: Date.now() - startedAt,
             fallbackModel: routedModel,
             method,
@@ -374,6 +381,7 @@ export class GatewayRequestPipeline {
           void recordGatewayUsageCapture({
             bodyText: "",
             client,
+            clientIp,
             durationMs: Date.now() - startedAt,
             fallbackModel: routedModel,
             method,
@@ -454,6 +462,7 @@ export class GatewayRequestPipeline {
           void recordGatewayUsageCapture({
             bodyText: sampler.read(),
             client,
+            clientIp,
             durationMs: Date.now() - startedAt,
             fallbackModel: routedModel,
             method,

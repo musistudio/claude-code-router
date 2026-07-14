@@ -113,6 +113,7 @@ export function usageStats(range: UsageStatsRange = "30d", patch: Partial<UsageS
   ];
 
   return {
+    clientIps: ["127.0.0.1", "192.168.1.10"],
     clientModels: [
       usageRow("client:claude-code", "Claude Code", { client: "claude-code", model: "gpt-4.1", provider: "openai", totalTokens: 6800 }),
       usageRow("client:codex", "Codex", { client: "codex", model: "claude-sonnet", provider: "anthropic", totalTokens: 5200 })

@@ -2,6 +2,7 @@
  * Extracted from gateway/service.ts. Keep this module focused on its named gateway boundary.
  */
 import type { IncomingHttpHeaders, IncomingMessage, Server, ServerResponse } from "node:http";
+import { isIP } from "node:net";
 import type { ApiKeyConfig } from "@ccr/core/contracts/app";
 import { ccrRemoteControlPathPrefix } from "@ccr/core/gateway/remote-control-service";
 import { coreGatewayAuthHeader, localObservabilityHeaderNames, proxyHeaderDenyList, responseHeaderDenyList } from "@ccr/core/gateway/internal/shared";
@@ -221,3 +222,81 @@ export function shouldCaptureGatewayUsage(method: string, _path: string): boolea
   return shouldSendBody(method);
 }
 
+
+
+const ipv4MappedIpv6Prefix = "::ffff:";
+
+/**
+ * Resolve the client IP for a gateway request. The socket peer address is
+ * authoritative; forwarding headers (`X-Forwarded-For` / `X-Real-IP`) are only
+ * honored when the direct peer is loopback — i.e. a trusted local reverse proxy
+ * — so a remote client cannot forge attribution. IPv4-mapped IPv6 addresses
+ * (`::ffff:1.2.3.4`) are normalized to plain IPv4. Invalid/empty values yield
+ * undefined rather than throwing.
+ */
+export function resolveClientIp(request: IncomingMessage, trustedProxyHeaders = true): string | undefined {
+  const remoteAddress = request.socket?.remoteAddress;
+  const peer = normalizeIpAddress(remoteAddress);
+  if (!peer) {
+    return undefined;
+  }
+
+  if (trustedProxyHeaders && isLoopbackAddress(peer)) {
+    const forwarded = readForwardedClientIp(request.headers);
+    if (forwarded) {
+      return forwarded;
+    }
+  }
+  return peer;
+}
+
+function readForwardedClientIp(headers: IncomingHttpHeaders): string | undefined {
+  const realIp = normalizeIpAddress(readHeader(headers["x-real-ip"]));
+  if (realIp) {
+    return realIp;
+  }
+  const forwardedFor = readHeader(headers["x-forwarded-for"]);
+  if (!forwardedFor) {
+    return undefined;
+  }
+  // XFF is a comma-separated client chain; the leftmost entry is the original
+  // client. Trust it only because the direct peer is already verified loopback.
+  const first = forwardedFor.split(",")[0]?.trim();
+  return normalizeIpAddress(first);
+}
+
+function normalizeIpAddress(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (trimmed.toLowerCase().startsWith(ipv4MappedIpv6Prefix)) {
+    const ipv4 = trimmed.slice(ipv4MappedIpv6Prefix.length);
+    return isValidIpv4(ipv4) ? ipv4 : undefined;
+  }
+  // Accept anything that parses as IPv4 or IPv6; reject garbage such as
+  // forged header junk so invalid forwarding values yield undefined.
+  if (isIP(trimmed) !== 0) {
+    return trimmed;
+  }
+  return undefined;
+}
+
+function isValidIpv4(value: string): boolean {
+  const octets = value.split(".");
+  if (octets.length !== 4) {
+    return false;
+  }
+  return octets.every((octet) => {
+    const number = Number(octet);
+    return Number.isInteger(number) && number >= 0 && number <= 255 && String(number) === octet;
+  });
+}
+
+function isLoopbackAddress(value: string): boolean {
+  const normalized = value.toLowerCase();
+  return normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized.startsWith("127.") ||
+    normalized === "::ffff:127.0.0.1";
+}
