@@ -32,6 +32,7 @@ import { getAgentAnalysis, getAgentTracePayload, getRequestLogDetail, getRequest
 import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
 import { getUsageStats } from "@ccr/core/usage/store";
+import { applyNativeThemePreference } from "./native-theme";
 import windowsManager from "./windows";
 import type { AgentAnalysisFilter, AgentAnalysisTracePayloadRequest, ApiKeyConfig, AppCaptureElementPngRequest, AppCaptureElementPngResult, AppConfig, AppDataExportResult, AppImageExportTargetRequest, AppImageExportTargetResult, AppInfo, AppRenderHtmlPngRequest, AppRenderHtmlPngResult, AppSaveConfigOptions, BotGatewayQrLoginCancelRequest, BotGatewayQrLoginStartRequest, BotGatewayQrLoginWaitRequest, BotGatewayQrWindowCloseRequest, BotGatewayQrWindowOpenRequest, GatewayPluginAppConfig, GatewayProviderConnectivityCheckRequest, GatewayProviderProbeCandidatesRequest, GatewayProviderProbeRequest, GatewayStatus, LocalAgentProviderImportRequest, PluginDependency, PluginDirectorySelection, PluginMarketplaceEntry, ProfileApplyResult, ProfileOpenRequest, ProviderAccountResetRequest, ProviderAccountSnapshotRequestOptions, ProviderAccountTestRequest, ProviderCatalogModelsRequest, ProviderIconDetectionRequest, ProviderManifestFetchRequest, RequestLogListFilter, UsageStatsFilter, UsageStatsRange } from "@ccr/core/contracts/app";
 
@@ -181,6 +182,7 @@ ipcMain.handle(IPC_CHANNELS.appOpenProfile, async (_event, request: ProfileOpenR
 ipcMain.handle(IPC_CHANNELS.appApplyClaudeAppGateway, async (_event, config?: AppConfig) => {
   const previousConfig = await loadAppConfig();
   const baseConfig = config ? await saveAppConfig(config) : previousConfig;
+  applyNativeThemePreference(baseConfig.theme);
   const synced = await syncClaudeAppGatewayConfig(baseConfig);
   const savedConfig = synced.config;
   let runtimeStatus = gatewayService.getStatus();
@@ -266,6 +268,7 @@ ipcMain.handle(IPC_CHANNELS.appSaveConfig, async (_event, config: AppConfig, opt
   }
   const launchAtLoginChanged = Boolean(config.launchAtLogin) !== Boolean(previousConfig.launchAtLogin);
   let savedConfig = await saveAppConfig(config);
+  applyNativeThemePreference(savedConfig.theme);
   if (launchAtLoginChanged) {
     try {
       syncLaunchAtLogin(savedConfig);

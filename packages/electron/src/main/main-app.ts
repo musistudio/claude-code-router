@@ -13,6 +13,7 @@ import trayController from "./tray-controller";
 import { appUpdateService } from "./update-service";
 import { browserAutomationMcpService } from "./browser-automation-mcp";
 import { browserWebSearchMcpService } from "./electron-web-search-mcp";
+import { applyNativeThemePreference } from "./native-theme";
 import windowsManager from "./windows";
 
 const gotTheLock = app.requestSingleInstanceLock();
@@ -41,7 +42,8 @@ function startPrimaryInstance(): void {
     queueEnsureConfiguredProxyModeActive("second-instance");
   });
 
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
+    applyNativeThemePreference((await loadAppConfig()).theme);
     configureProxyDesktopIntegration();
     let ccrLauncherPreparation: CcrCliLauncherPreparation | undefined;
     try {

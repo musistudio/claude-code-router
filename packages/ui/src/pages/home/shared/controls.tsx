@@ -536,9 +536,9 @@ export function Toggle({ checked, disabled = false, onChange, title }: { checked
 
 export type MetricTone = "amber" | "blue" | "indigo" | "rose" | "slate" | "teal";
 
-export function MetricCard({ label, tone, value }: { label: string; tone: MetricTone; value: string }) {
+export function MetricCard({ className, label, tone, value }: { className?: string; label: string; tone: MetricTone; value: string }) {
   return (
-    <Card className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+    <Card className={cn("flex h-full min-h-0 min-w-0 flex-col overflow-hidden", className)}>
       <div className={cn("h-1", metricToneBar(tone))} />
       <CardContent className="flex min-h-[88px] flex-1 flex-col justify-center">
         <div className="min-w-0">
@@ -586,6 +586,12 @@ export function formatStatusBucketDate(bucket: string, range: UsageStatsRange): 
 }
 
 export function parseStatusBucketDate(bucket: string): Date | undefined {
+  if (/^\d{4}-\d{1,2}-\d{1,2}T\d{1,2}:\d{2}/.test(bucket)) {
+    const isoDate = new Date(bucket);
+    if (Number.isFinite(isoDate.getTime())) {
+      return isoDate;
+    }
+  }
   const match = bucket.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2})(?::00)?)?$/);
   if (!match) {
     return undefined;

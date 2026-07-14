@@ -7,6 +7,7 @@ import type {
 } from "../../packages/core/src/contracts/app.ts";
 
 export function installBrowserGlobals() {
+  const documentThemeDataset: Record<string, string> = {};
   const localStorage = {
     getItem: () => null,
     removeItem: () => undefined,
@@ -48,7 +49,13 @@ export function installBrowserGlobals() {
         style: {}
       },
       documentElement: {
-        lang: "en"
+        dataset: documentThemeDataset,
+        lang: "en",
+        removeAttribute: (name: string) => {
+          if (name === "data-theme") {
+            delete documentThemeDataset.theme;
+          }
+        }
       }
     }
   });

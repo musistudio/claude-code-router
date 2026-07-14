@@ -20,6 +20,7 @@ import {
 } from "../../packages/ui/src/pages/tray/components/index.ts";
 import { TrayApp } from "../../packages/ui/src/pages/tray/TrayApp.tsx";
 import { TrayDetailApp } from "../../packages/ui/src/pages/tray/TrayDetailApp.tsx";
+import { applyTrayThemePreference, createSourceTabs } from "../../packages/ui/src/pages/tray/shared.tsx";
 import { accountSnapshots, installBrowserGlobals, usageStats, usageTotals } from "./fixtures.ts";
 
 installBrowserGlobals();
@@ -32,6 +33,17 @@ const componentVariants = {
   tokenFlow: "line",
   tokenMix: "bars"
 } as const;
+
+test("Tray theme follows the explicit app preference and resets to system", () => {
+  applyTrayThemePreference("dark");
+  assert.equal(document.documentElement.dataset.theme, "dark");
+
+  applyTrayThemePreference("light");
+  assert.equal(document.documentElement.dataset.theme, "light");
+
+  applyTrayThemePreference("system");
+  assert.equal(document.documentElement.dataset.theme, undefined);
+});
 
 test("UsageOverviewPanel renders every enabled overview tray module", () => {
   const activeStats = usageStats("30d");
@@ -118,17 +130,36 @@ test("SourceGrid renders provider tabs with the selected state", () => {
       selectedProvider="openai"
       tabs={[
         { id: "all", label: "All" },
-        { id: "provider:openai", label: "OpenAI", provider: "openai" },
+        { id: "provider:openai", iconUrl: "data:image/png;base64,AA==", label: "OpenAI", provider: "openai" },
         { id: "provider:anthropic", label: "Anthropic", provider: "anthropic" }
       ]}
       onSelect={() => undefined}
     />
   );
 
-  assert.match(html, />All<\/button>/);
-  assert.match(html, /border-teal-300\/35 bg-teal-300\/16 text-teal-50/);
-  assert.match(html, />OpenAI<\/button>/);
-  assert.match(html, />Anthropic<\/button>/);
+  assert.match(html, /data-icon-kind="all"/);
+  assert.match(html, /data-icon-kind="provider"/);
+  assert.match(html, /data-icon-kind="fallback"/);
+  assert.match(html, /class="tray-source-tab[^"]*" data-active="true"/);
+  assert.match(html, />All<\/span>/);
+  assert.match(html, />OpenAI<\/span>/);
+  assert.match(html, />Anthropic<\/span>/);
+});
+
+test("Tray source tabs resolve configured, preset, local, and fallback provider icons", () => {
+  const tabs = createSourceTabs([], [
+    { icon: "data:image/png;base64,custom", models: [], name: "Custom Provider" },
+    { baseUrl: "https://generativelanguage.googleapis.com", models: [], name: "Google Gemini" },
+    { baseUrl: "https://chatgpt.com/backend-api/codex", models: [], name: "Codex API" },
+    { models: [], name: "unknown" }
+  ]);
+  const tabByProvider = new Map(tabs.map((tab) => [tab.provider, tab]));
+
+  assert.equal(tabByProvider.get("Custom Provider")?.iconUrl, "data:image/png;base64,custom");
+  assert.ok(tabByProvider.get("Google Gemini")?.iconUrl);
+  assert.ok(tabByProvider.get("Codex API")?.iconUrl);
+  assert.notEqual(tabByProvider.get("Google Gemini")?.iconUrl, tabByProvider.get("Codex API")?.iconUrl);
+  assert.equal(tabByProvider.get("unknown")?.iconUrl, undefined);
 });
 
 test("AccountSummaryPanel covers empty and metered account states", () => {
@@ -211,7 +242,7 @@ test("RangeSwitch renders every usage range option", () => {
 
   assert.match(html, />Today<\/button>/);
   assert.match(html, />24h<\/button>/);
-  assert.match(html, /bg-white\/14 text-slate-50/);
+  assert.match(html, /class="tray-segmented-item[^"]*" data-active="true"/);
   assert.match(html, />7d<\/button>/);
   assert.match(html, />30d<\/button>/);
 });
@@ -252,8 +283,9 @@ test("AnimatedUsageChart renders line, area, bar, and sparkline output", () => {
   const sparkHtml = renderToStaticMarkup(<AnimatedUsageChart chartId="spark-chart" series={series} variant="sparkline" />);
 
   assert.match(lineHtml, /aria-label="Usage chart"/);
-  assert.match(lineHtml, /line-chart-glow/);
-  assert.match(areaHtml, /fill="rgba\(45,212,191,.18\)"/);
+  assert.match(lineHtml, /line-chart-primary-fill/);
+  assert.match(lineHtml, /stroke="rgba\(10,132,255,.98\)"/);
+  assert.match(areaHtml, /fill="url\(#area-chart-primary-fill\)"/);
   assert.match(barHtml, /<rect /);
   assert.match(sparkHtml, /stroke-width="3"/);
 });
@@ -276,7 +308,7 @@ test("TokenMixPanel renders bars, stacked, and share chart variants", () => {
 
   assert.match(barsHtml, /Token Mix/);
   assert.match(barsHtml, /Input/);
-  assert.match(stackedHtml, /bg-blue-400/);
+  assert.match(stackedHtml, /bg-\[#0a84ff\]/);
   assert.match(donutHtml, /aria-label="Share chart"/);
 });
 

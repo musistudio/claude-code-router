@@ -3,20 +3,20 @@ import {
   AnimatePresence, AnimatedDisclosure, AnimatedIconSwap,
   Area, arrayMove, Badge, Bar, BarChart, Button,
   Card, CardContent, CardHeader, CardTitle, CartesianGrid, Cell, constrainOverviewWidgetSize,
-  Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, cn, compactId,
+  Check, ChevronDown, ChevronRight, CircleAlert, cn, compactId,
   compactUserAgent, compareProviderAccountSnapshots, ComposedChart, CSS, DEFAULT_OVERVIEW_WIDGETS, DndContext,
   Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle,
   DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent, Field, formatAxisNumber, formatBytes,
   formatCompactNumber, formatDuration, formatLogDateTime, formatPercent, formatProviderAccountDetailDate, formatProviderAccountMeterTitle, formatProviderAccountMeterValue,
   formatStatusBucketDate, formatStatusCodeCounts, formatSystemStatusRange, formatToolCounts, formatUsdCost, KeyboardSensor,
-  LabelList, LayoutGroup, Line, LoaderCircle, MeasuringStrategy, MetricCard, MetricTone,
-  metricToneBar, metricToneStroke, motion, normalizeAgentFilterValue, normalizeOverviewWidget, normalizeOverviewWidgets,
+  LabelList, LayoutGroup, Line, LoaderCircle, MeasuringStrategy, MetricTone,
+  motion, normalizeAgentFilterValue, normalizeOverviewWidget, normalizeOverviewWidgets,
   OverviewMetricKind, overviewMetricOptions, overviewWidgetCollisionDetection, OverviewWidgetConfig, OverviewWidgetSize, overviewWidgetSizeOptions,
   OverviewWidgetType, OverviewWidgetVariant, Pencil, Pie, PieChart, Plus,
   PointerSensor, primaryProviderAccountMeter, providerAccountMeterDetailValidityProgress, providerAccountMeterProgress, providerAccountMetersForDisplay, providerAccountProgressClass, isProviderAccountManualResetMeter,
   providerAccountSnapshotKey, providerAccountSnapshotLabel,
   ProviderAccountMeter, ProviderAccountSnapshot, ReactNode, ReactPointerEvent, rectSortingStrategy, RefreshCw, Select,
-  SelectControl, SortableContext, sortableKeyboardCoordinates, systemStatusIconClass, systemStatusPointTooltip, systemStatusSegmentClass,
+  SelectControl, SortableContext, sortableKeyboardCoordinates, systemStatusPointTooltip,
   systemStatusTooltipPositionClass, Tooltip, translateOptions, Trash2, UsageComparisonRow, usageRangeOptions,
   GatewayProviderConfig, UsageSeriesPoint, UsageStatsRange, UsageStatsSnapshot, usageStatusTone, UsageTotals, useAppText,
   useEffect, useMemo, useRef, useSensor, useSensors, useSortable,
@@ -24,7 +24,10 @@ import {
 } from "../shared/index";
 import { buildTokenActivity, type TokenActivityCell } from "@/lib/usage-activity";
 import { ShareCardWidget } from "./share-cards";
-import { Cloud, Rocket } from "lucide-react";
+import {
+  CalendarDays, ChartNoAxesCombined, ChartPie, Cloud, GripHorizontal, Inbox, Layers3,
+  Rocket, Server, SlidersHorizontal, UsersRound, WalletCards
+} from "lucide-react";
 
 type OverviewUsageFilters = {
   modelFilter: string;
@@ -305,9 +308,7 @@ export function OverviewView({
               </SortableOverviewWidget>
             ))}
             {visibleWidgets.length === 0 ? (
-              <div className="col-span-1 rounded-lg border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-[12px] text-muted-foreground sm:col-span-2 xl:col-span-4">
-                {t("No widgets configured")}
-              </div>
+              <OverviewEmptyState className="col-span-1 sm:col-span-2 xl:col-span-4" label={t("No widgets configured")} />
             ) : null}
           </section>
         </LayoutGroup>
@@ -330,24 +331,28 @@ export function OverviewView({
   return (
     <motion.div
       animate={{ opacity: 1 }}
-      className="space-y-4"
+      className="overview-view space-y-5"
+      data-editing={editing}
       initial={{ opacity: 0 }}
       ref={viewRef}
       transition={{ duration: 0.15 }}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="overview-toolbar flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span aria-hidden="true" className="overview-toolbar-glyph hidden h-8 w-8 shrink-0 items-center justify-center rounded-[9px] sm:flex">
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+          </span>
           <OverviewUsageRangeSelector range={usageRange} setRange={setUsageRange} />
           <Select
             aria-label={t("Provider")}
-            className="h-8 w-[168px] bg-[length:14px] px-2 pr-7 text-[12px]"
+            className="h-9 w-[168px] rounded-[10px] bg-[length:14px] px-3 pr-8 text-[12px] shadow-none"
             onValueChange={changeProviderFilter}
             options={providerOptions}
             value={providerFilter}
           />
           <Select
             aria-label={t("Model")}
-            className="h-8 w-[220px] bg-[length:14px] px-2 pr-7 text-[12px]"
+            className="h-9 w-[220px] rounded-[10px] bg-[length:14px] px-3 pr-8 text-[12px] shadow-none"
             onValueChange={changeModelFilter}
             options={modelOptions}
             value={modelFilter}
@@ -376,7 +381,7 @@ export function OverviewView({
 
       {editing ? (
         <div className="grid min-h-0 grid-cols-1 gap-4 xl:grid-cols-[220px_minmax(0,1fr)_260px]">
-          <aside className="min-w-0 rounded-lg border border-border bg-card p-3 xl:sticky xl:top-4 xl:self-start">
+          <aside className="overview-editor-panel min-w-0 border p-3 xl:sticky xl:top-4 xl:self-start">
             <div className="mb-3 flex items-center justify-between gap-2">
               <h3 className="truncate text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{t("Components")}</h3>
               <Badge variant="outline">{overviewWidgetTemplates().length}</Badge>
@@ -392,7 +397,7 @@ export function OverviewView({
             {widgetGrid}
           </main>
 
-          <aside className="min-w-0 rounded-lg border border-border bg-card p-3 xl:sticky xl:top-4 xl:self-start">
+          <aside className="overview-editor-panel min-w-0 border p-3 xl:sticky xl:top-4 xl:self-start">
             <OverviewWidgetProperties
               providerAccounts={providerAccounts}
               widget={selectedWidget}
@@ -426,13 +431,15 @@ function OverviewUsageRangeSelector({
   const t = useAppText();
 
   return (
-    <div aria-label={t("Usage over time")} className="flex rounded-md border border-input bg-card p-0.5 shadow-sm" role="group">
+    <div aria-label={t("Usage over time")} className="overview-segmented flex" role="group">
       {usageRangeOptions.map((option) => (
         <Button
+          aria-pressed={range === option.value}
           className={cn(
-            "h-7 rounded px-2.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground",
-            range === option.value && "bg-background text-foreground shadow-sm"
+            "overview-segmented-item h-7 px-2.5 text-[11px] font-medium text-muted-foreground hover:text-foreground",
+            range === option.value && "text-foreground"
           )}
+          data-active={range === option.value}
           key={option.value}
           onClick={() => setRange(option.value)}
           type="button"
@@ -441,6 +448,78 @@ function OverviewUsageRangeSelector({
           {t(option.label)}
         </Button>
       ))}
+    </div>
+  );
+}
+
+type OverviewHeadingTone = "blue" | "green" | "orange" | "purple" | "red" | "slate";
+type OverviewHeadingIcon = typeof Inbox;
+
+function OverviewCardHeading({
+  icon: Icon,
+  title,
+  tone = "blue",
+  trailing
+}: {
+  icon: OverviewHeadingIcon;
+  title: string;
+  tone?: OverviewHeadingTone;
+  trailing?: ReactNode;
+}) {
+  return (
+    <CardHeader className="overview-card-header shrink-0 flex-row items-center justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span aria-hidden="true" className="overview-heading-icon" data-tone={tone}>
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+        <CardTitle>{title}</CardTitle>
+      </div>
+      {trailing ? <div className="min-w-0 shrink-0">{trailing}</div> : null}
+    </CardHeader>
+  );
+}
+
+function OverviewEmptyState({
+  className,
+  compact = false,
+  label
+}: {
+  className?: string;
+  compact?: boolean;
+  label: string;
+}) {
+  return (
+    <div className={cn(
+      "overview-empty-state overview-nested-surface flex min-h-0 flex-col items-center justify-center border border-dashed px-4 text-center text-muted-foreground",
+      compact ? "py-7" : "py-10",
+      className
+    )}>
+      <span aria-hidden="true" className="overview-empty-state-icon">
+        <Inbox className="h-4 w-4" />
+      </span>
+      <span className="mt-2 text-[12px] font-medium">{label}</span>
+    </div>
+  );
+}
+
+function OverviewChartLegend({ items }: { items: Array<{ color: string; label: string }> }) {
+  return (
+    <div className="overview-chart-legend hidden items-center gap-3 md:flex">
+      {items.map((item) => (
+        <span className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground" key={item.label}>
+          <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: item.color }} />
+          <span className="max-w-[96px] truncate">{item.label}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function OverviewDonutCenter({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center">
+      <span className="text-[17px] font-semibold tracking-[-0.025em] text-foreground">{value}</span>
+      <span className="mt-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</span>
     </div>
   );
 }
@@ -513,7 +592,7 @@ function OverviewWidgetPalette({
     <div className="grid grid-cols-1 gap-2">
       {templates.map((template) => (
         <Button
-          className="grid h-auto w-full grid-cols-[18px_minmax(0,1fr)] items-center gap-2 rounded-md border border-border bg-background px-2.5 py-2 text-left transition-colors hover:bg-muted/55 focus-visible:ring-2 focus-visible:ring-ring/25"
+          className="overview-palette-item grid h-auto w-full grid-cols-[18px_minmax(0,1fr)] items-center gap-2 border px-2.5 py-2 text-left focus-visible:ring-2 focus-visible:ring-ring/25"
           key={overviewWidgetTemplateKey(template)}
           onClick={() => onAdd(template)}
           type="button"
@@ -558,11 +637,7 @@ function OverviewWidgetProperties({
   const t = useAppText();
 
   if (!widget) {
-    return (
-      <div className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-[12px] text-muted-foreground">
-        {t("No widget selected")}
-      </div>
-    );
+    return <OverviewEmptyState compact label={t("No widget selected")} />;
   }
 
   const category = overviewWidgetCategory(widget.type);
@@ -769,10 +844,9 @@ function OverviewWidgetFrame({
     <div
       aria-selected={editing ? selected : undefined}
       className={cn(
-        "group/overview-widget relative h-full min-h-0 min-w-0 transition-opacity",
-        editing && (selected
-          ? "rounded-xl outline outline-2 outline-primary outline-offset-2 ring-2 ring-primary/20"
-          : "rounded-xl outline outline-2 outline-primary/35 outline-offset-2")
+        "overview-widget-frame group/overview-widget relative h-full min-h-0 min-w-0 transition-opacity",
+        editing && "is-editing",
+        selected && "is-selected"
       )}
       role={editing ? "group" : undefined}
       onFocus={editing ? onSelect : undefined}
@@ -782,6 +856,12 @@ function OverviewWidgetFrame({
       {children}
       {editing ? (
         <>
+          <span
+            aria-hidden="true"
+            className={cn("overview-widget-drag-handle", selected && "is-selected")}
+          >
+            <GripHorizontal className="h-3.5 w-3.5" />
+          </span>
           <OverviewWidgetResizeHandle
             axis="width"
             label={t("Resize widget width")}
@@ -974,13 +1054,17 @@ function OverviewMetricWidget({
 }) {
   const t = useAppText();
   const item = overviewMetricDatum(metric, totals, t);
+  const showsRatio = overviewMetricShowsRatio(metric);
 
   if (variant === "compact") {
     return (
-      <Card className="flex h-full min-h-0 min-w-0 flex-col">
+      <Card className="overview-card overview-metric-card flex h-full min-h-0 min-w-0 flex-col" data-tone={item.tone}>
         <CardContent className="flex min-h-0 flex-1 items-center justify-between gap-3 p-3">
-          <div className="min-w-0 truncate text-[12px] font-medium text-muted-foreground">{item.label}</div>
-          <div className="shrink-0 text-[18px] font-semibold tracking-tight">{item.value}</div>
+          <div className="flex min-w-0 items-center gap-2">
+            <span aria-hidden="true" className="overview-metric-dot" />
+            <div className="min-w-0 truncate text-[12px] font-medium text-muted-foreground">{item.label}</div>
+          </div>
+          <div className="shrink-0 text-[19px] font-semibold tracking-[-0.02em]">{item.value}</div>
         </CardContent>
       </Card>
     );
@@ -988,14 +1072,14 @@ function OverviewMetricWidget({
 
   if (variant === "bar") {
     return (
-      <Card className="flex h-full min-h-0 min-w-0 flex-col">
+      <Card className="overview-card overview-metric-card flex h-full min-h-0 min-w-0 flex-col" data-tone={item.tone}>
         <CardContent className="min-h-0 flex-1 p-3">
           <div className="flex items-end justify-between gap-3">
             <div className="min-w-0 truncate text-[12px] font-medium text-muted-foreground">{item.label}</div>
             <div className="shrink-0 text-[18px] font-semibold tracking-tight">{item.value}</div>
           </div>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
-            <div className={cn("h-full rounded-full", metricToneBar(item.tone))} style={{ width: `${Math.max(3, Math.round(item.ratio * 100))}%` }} />
+          <div className="overview-metric-track mt-3">
+            <div className="overview-metric-fill" style={{ width: `${Math.max(3, Math.round(item.ratio * 100))}%` }} />
           </div>
         </CardContent>
       </Card>
@@ -1004,7 +1088,7 @@ function OverviewMetricWidget({
 
   if (variant === "ring") {
     return (
-      <Card className="flex h-full min-h-0 min-w-0 flex-col">
+      <Card className="overview-card overview-metric-card flex h-full min-h-0 min-w-0 flex-col" data-tone={item.tone}>
         <CardContent className="grid min-h-0 flex-1 grid-cols-[58px_minmax(0,1fr)] items-center gap-3 p-3">
           <OverviewRingMetric ratio={item.ratio} tone={item.tone} />
           <div className="min-w-0">
@@ -1016,7 +1100,27 @@ function OverviewMetricWidget({
     );
   }
 
-  return <MetricCard label={item.label} tone={item.tone} value={item.value} />;
+  return (
+    <Card className="overview-card overview-metric-card flex h-full min-h-0 min-w-0 flex-col" data-tone={item.tone}>
+      <CardContent className="relative flex min-h-0 flex-1 flex-col justify-between p-4">
+        <div className="flex items-center justify-between gap-3">
+          <span aria-hidden="true" className="overview-metric-dot" />
+          {showsRatio ? (
+            <span className="text-[10px] font-semibold text-muted-foreground">{Math.round(Math.max(0, Math.min(1, item.ratio)) * 100)}%</span>
+          ) : null}
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-[11px] font-medium text-muted-foreground">{item.label}</div>
+          <div className="mt-0.5 truncate text-[24px] font-semibold tracking-[-0.035em] text-foreground">{item.value}</div>
+        </div>
+        {showsRatio ? (
+          <div className="overview-metric-track">
+            <div className="overview-metric-fill" style={{ width: `${Math.max(3, Math.round(item.ratio * 100))}%` }} />
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
 }
 
 function OverviewRingMetric({ ratio, tone }: { ratio: number; tone: MetricTone }) {
@@ -1026,13 +1130,13 @@ function OverviewRingMetric({ ratio, tone }: { ratio: number; tone: MetricTone }
 
   return (
     <svg aria-hidden="true" className="h-[58px] w-[58px]" viewBox="0 0 48 48">
-      <circle cx="24" cy="24" fill="none" r={radius} stroke="hsl(var(--muted))" strokeWidth="6" />
+      <circle cx="24" cy="24" fill="none" r={radius} stroke="var(--muted)" strokeWidth="6" />
       <circle
         cx="24"
         cy="24"
         fill="none"
         r={radius}
-        stroke={metricToneStroke(tone)}
+        stroke={overviewMetricToneColor(tone)}
         strokeDasharray={circumference}
         strokeDashoffset={circumference * (1 - clamped)}
         strokeLinecap="round"
@@ -1041,6 +1145,20 @@ function OverviewRingMetric({ ratio, tone }: { ratio: number; tone: MetricTone }
       />
     </svg>
   );
+}
+
+function overviewMetricToneColor(tone: MetricTone): string {
+  if (tone === "blue") return "#007aff";
+  if (tone === "indigo") return "#5856d6";
+  if (tone === "amber") return "#ff9f0a";
+  if (tone === "rose") return "#ff3b30";
+  if (tone === "slate") return "#8e8e93";
+  return "#30b0c7";
+}
+
+function overviewMetricShowsRatio(metric: OverviewMetricKind): boolean {
+  return metric === "cache-ratio" || metric === "success-rate" || metric === "errors" ||
+    metric === "input-tokens" || metric === "output-tokens" || metric === "cache-tokens";
 }
 
 function UsageTrendWidget({
@@ -1058,25 +1176,38 @@ function UsageTrendWidget({
   const chartMargin = dimensions.height <= 1
     ? { bottom: 0, left: 0, right: 4, top: 8 }
     : { bottom: 4, left: 0, right: 8, top: 8 };
+  const legendItems = variant === "composed"
+    ? [
+        { color: "#007aff", label: t("Total tokens") },
+        { color: "#34c759", label: t("Requests") },
+        { color: overviewCacheColor, label: t("Cache tokens") }
+      ]
+    : variant === "bar"
+      ? [
+          { color: "#007aff", label: t("Total tokens") },
+          { color: "#34c759", label: t("Requests") }
+        ]
+      : [
+          { color: "#007aff", label: t("Total tokens") },
+          { color: overviewCacheColor, label: t("Cache tokens") }
+        ];
 
   return (
-    <Card className="flex h-full min-h-0 min-w-0 flex-col">
-      <CardHeader className="shrink-0 flex-row items-center justify-between">
-        <CardTitle>{t("Usage Trend")}</CardTitle>
-      </CardHeader>
+    <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
+      <OverviewCardHeading icon={ChartNoAxesCombined} title={t("Usage Trend")} trailing={dimensions.width >= 2 ? <OverviewChartLegend items={legendItems} /> : null} />
       <CardContent className="min-h-0 flex-1">
         <ChartFrame fill>
           {({ height, width }) => (
             <ComposedChart data={usageStats.series} height={height} margin={chartMargin} width={width}>
-              <CartesianGrid stroke="#dfe3e8" strokeDasharray="3 3" vertical={false} />
-              <XAxis axisLine={false} dataKey="label" hide={dimensions.height <= 1} tick={{ fill: "#5f6b7a", fontSize: 11 }} tickLine={false} />
-              <YAxis axisLine={false} hide={dimensions.width <= 1} tick={{ fill: "#5f6b7a", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} yAxisId="tokens" />
+              <CartesianGrid stroke="var(--overview-chart-grid)" strokeDasharray="2 5" vertical={false} />
+              <XAxis axisLine={false} dataKey="label" hide={dimensions.height <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} />
+              <YAxis axisLine={false} hide={dimensions.width <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} yAxisId="tokens" />
               <YAxis axisLine={false} hide orientation="right" yAxisId="requests" />
               <Tooltip content={<UsageTooltip />} />
               {variant === "composed" ? (
                 <>
-                  <Area dataKey="totalTokens" fill="#0f766e" fillOpacity={0.14} name={t("Total tokens")} stroke="#0f766e" strokeWidth={2} type="monotone" yAxisId="tokens" />
-                  <Bar barSize={12} dataKey="requestCount" fill="#2563eb" name={t("Requests")} radius={[3, 3, 0, 0]} yAxisId="requests">
+                  <Area dataKey="totalTokens" fill="#007aff" fillOpacity={0.12} name={t("Total tokens")} stroke="#007aff" strokeWidth={2.25} type="monotone" yAxisId="tokens" />
+                  <Bar barSize={12} dataKey="requestCount" fill="#34c759" name={t("Requests")} radius={[4, 4, 0, 0]} yAxisId="requests">
                     <LabelList content={<RequestHealthBarLabel />} dataKey="requestCount" />
                   </Bar>
                   <Line dataKey="cacheTokens" dot={false} name={t("Cache tokens")} stroke={overviewCacheColor} strokeWidth={2} type="monotone" yAxisId="tokens" />
@@ -1084,20 +1215,20 @@ function UsageTrendWidget({
               ) : null}
               {variant === "area" ? (
                 <>
-                  <Area dataKey="totalTokens" fill="#0f766e" fillOpacity={0.18} name={t("Total tokens")} stroke="#0f766e" strokeWidth={2} type="monotone" yAxisId="tokens" />
+                  <Area dataKey="totalTokens" fill="#007aff" fillOpacity={0.14} name={t("Total tokens")} stroke="#007aff" strokeWidth={2.25} type="monotone" yAxisId="tokens" />
                   <Area dataKey="cacheTokens" fill={overviewCacheColor} fillOpacity={0.12} name={t("Cache tokens")} stroke={overviewCacheColor} strokeWidth={2} type="monotone" yAxisId="tokens" />
                 </>
               ) : null}
               {variant === "line" ? (
                 <>
-                  <Line dataKey="totalTokens" dot={false} name={t("Total tokens")} stroke="#0f766e" strokeWidth={2.5} type="monotone" yAxisId="tokens" />
+                  <Line dataKey="totalTokens" dot={false} name={t("Total tokens")} stroke="#007aff" strokeWidth={2.5} type="monotone" yAxisId="tokens" />
                   <Line dataKey="cacheTokens" dot={false} name={t("Cache tokens")} stroke={overviewCacheColor} strokeWidth={2} type="monotone" yAxisId="tokens" />
                 </>
               ) : null}
               {variant === "bar" ? (
                 <>
-                  <Bar barSize={14} dataKey="totalTokens" fill="#0f766e" name={t("Total tokens")} radius={[4, 4, 0, 0]} yAxisId="tokens" />
-                  <Line dataKey="requestCount" dot={false} name={t("Requests")} stroke="#2563eb" strokeWidth={2} type="monotone" yAxisId="requests" />
+                  <Bar barSize={14} dataKey="totalTokens" fill="#007aff" name={t("Total tokens")} radius={[4, 4, 0, 0]} yAxisId="tokens" />
+                  <Line dataKey="requestCount" dot={false} name={t("Requests")} stroke="#34c759" strokeWidth={2} type="monotone" yAxisId="requests" />
                 </>
               ) : null}
             </ComposedChart>
@@ -1125,14 +1256,11 @@ function TokenActivityOverviewWidget({
   const showLegend = dimensions.height >= 2 && dimensions.width >= 2;
 
   return (
-    <Card className="flex h-full min-h-0 min-w-0 flex-col">
-      <CardHeader className="shrink-0 flex-row items-center justify-between">
-        <CardTitle>{t("Activity")}</CardTitle>
-        <Badge variant="outline">{t("Tokens")}</Badge>
-      </CardHeader>
+    <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
+      <OverviewCardHeading icon={CalendarDays} title={t("Activity")} tone="green" trailing={<Badge variant="outline">{t("Tokens")}</Badge>} />
       <CardContent className="flex min-h-0 flex-1 flex-col overflow-visible p-3">
         {showSummary ? (
-          <div className={cn("mb-3 grid overflow-hidden rounded-lg border border-border bg-muted/20", dimensions.width >= 2 ? "grid-cols-4" : "grid-cols-2")}>
+          <div className={cn("overview-nested-surface mb-3 grid overflow-hidden border", dimensions.width >= 2 ? "grid-cols-4" : "grid-cols-2")}>
             <OverviewActivityStat label={t("Longest streak")} value={formatCompactNumber(activity.longestStreak)} unit={t(activity.longestStreak === 1 ? "day" : "days")} />
             <OverviewActivityStat label={t("Avg / day")} value={formatCompactNumber(Math.round(activity.avgPerDay))} />
             <OverviewActivityStat label={t("Avg / week")} value={formatCompactNumber(Math.round(activity.avgPerWeek))} />
@@ -1148,7 +1276,7 @@ function TokenActivityOverviewWidget({
             {[0, 1, 2, 3, 4].map((intensity) => (
               <span
                 aria-hidden="true"
-                className="h-3 w-3 rounded-[3px]"
+                className="overview-activity-cell h-3 w-3 rounded-[3px]"
                 key={intensity}
                 style={{ backgroundColor: overviewActivityColor(intensity as TokenActivityCell["intensity"], true) }}
               />
@@ -1184,7 +1312,7 @@ function OverviewActivityStat({
   value: string;
 }) {
   return (
-    <div className="min-w-0 border-r border-border bg-card/60 px-3 py-2 last:border-r-0">
+    <div className="overview-activity-stat min-w-0 border-r border-border/60 bg-transparent px-3 py-2 last:border-r-0">
       <div className="truncate text-[11px] font-medium text-muted-foreground">{label}</div>
       <div className="mt-0.5 flex min-w-0 items-baseline gap-1">
         <span className="truncate text-[17px] font-semibold tracking-tight text-foreground">{value}</span>
@@ -1254,7 +1382,7 @@ function OverviewActivityGrid({
             {activity.cells.map((cell) => (
               <span
                 aria-label={`${cell.dateLabel}: ${formatActivityTokenCount(cell.totalTokens)} ${t("tokens")}`}
-                className="group relative aspect-square w-full rounded-[4px]"
+                className="overview-activity-cell group relative aspect-square w-full rounded-[4px]"
                 key={cell.dateKey}
                 style={{
                   backgroundColor: overviewActivityColor(cell.intensity, cell.inObservedRange),
@@ -1291,12 +1419,12 @@ function overviewActivityTooltipPositionClass(cell: TokenActivityCell, weekCount
 }
 
 function overviewActivityColor(intensity: TokenActivityCell["intensity"], inRange: boolean): string {
-  if (!inRange) return "rgba(99,102,241,.06)";
-  if (intensity === 0) return "rgba(99,102,241,.12)";
-  if (intensity === 1) return "rgba(99,102,241,.30)";
-  if (intensity === 2) return "rgba(99,102,241,.50)";
-  if (intensity === 3) return "rgba(99,102,241,.70)";
-  return "rgba(99,102,241,.92)";
+  if (!inRange) return "rgba(0,122,255,.05)";
+  if (intensity === 0) return "rgba(0,122,255,.12)";
+  if (intensity === 1) return "rgba(0,122,255,.30)";
+  if (intensity === 2) return "rgba(0,122,255,.50)";
+  if (intensity === 3) return "rgba(0,122,255,.72)";
+  return "rgba(0,122,255,.94)";
 }
 
 function TokenMixOverviewWidget({
@@ -1310,8 +1438,8 @@ function TokenMixOverviewWidget({
 }) {
   const t = useAppText();
   const tokenMix = [
-    { color: "#2563eb", name: t("Input"), value: totals.inputTokens },
-    { color: "#d97706", name: t("Output"), value: totals.outputTokens },
+    { color: "#007aff", name: t("Input"), value: totals.inputTokens },
+    { color: "#ff9f0a", name: t("Output"), value: totals.outputTokens },
     { color: overviewCacheColor, name: t("Cache"), value: totals.cacheTokens }
   ];
   const total = tokenMix.reduce((sum, item) => sum + item.value, 0);
@@ -1321,11 +1449,8 @@ function TokenMixOverviewWidget({
     : { bottom: 8, left: 8, right: 12, top: 8 };
 
   return (
-    <Card className="flex h-full min-h-0 min-w-0 flex-col">
-      <CardHeader className="shrink-0 flex-row items-center justify-between">
-        <CardTitle>{t("Token Mix")}</CardTitle>
-        <Badge variant="outline">{formatCompactNumber(totals.totalTokens)}</Badge>
-      </CardHeader>
+    <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
+      <OverviewCardHeading icon={ChartPie} title={t("Token Mix")} tone="purple" trailing={<Badge variant="outline">{formatCompactNumber(totals.totalTokens)}</Badge>} />
       <CardContent className="min-h-0 flex-1 overflow-hidden">
         {variant === "stacked" ? (
           <div className="space-y-3">
@@ -1338,35 +1463,41 @@ function TokenMixOverviewWidget({
           </div>
         ) : null}
         {variant === "donut" || variant === "pie" ? (
-          <ChartFrame fill>
-            {({ height, width }) => (
-              <PieChart height={height} width={width}>
-                <Tooltip content={<TokenTooltip />} />
-                <Pie
-                  cx="50%"
-                  cy="50%"
-                  data={tokenMix}
-                  dataKey="value"
-                  innerRadius={variant === "donut" ? Math.min(height, width) * 0.22 : 0}
-                  nameKey="name"
-                  outerRadius={Math.min(height, width) * 0.34}
-                  paddingAngle={variant === "donut" ? 2 : 0}
-                >
-                  {tokenMix.map((item) => (
-                    <Cell fill={item.color} key={item.name} />
-                  ))}
-                </Pie>
-              </PieChart>
-            )}
-          </ChartFrame>
+          <div className={cn("grid h-full min-h-0 items-center gap-3", showLegend && "grid-cols-[minmax(96px,1fr)_minmax(0,1fr)]")}>
+            <div className="relative h-full min-h-0">
+              <ChartFrame fill>
+                {({ height, width }) => (
+                  <PieChart height={height} width={width}>
+                    <Tooltip content={<TokenTooltip />} />
+                    <Pie
+                      cx="50%"
+                      cy="50%"
+                      data={tokenMix}
+                      dataKey="value"
+                      innerRadius={variant === "donut" ? Math.min(height, width) * 0.22 : 0}
+                      nameKey="name"
+                      outerRadius={Math.min(height, width) * 0.34}
+                      paddingAngle={variant === "donut" ? 2 : 0}
+                    >
+                      {tokenMix.map((item) => (
+                        <Cell fill={item.color} key={item.name} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                )}
+              </ChartFrame>
+              {variant === "donut" ? <OverviewDonutCenter label={t("Tokens")} value={formatCompactNumber(total)} /> : null}
+            </div>
+            {showLegend ? <OverviewTokenLegend rows={tokenMix} /> : null}
+          </div>
         ) : null}
         {variant === "bars" ? (
           <ChartFrame fill>
             {({ height, width }) => (
               <BarChart data={tokenMix} height={height} layout="vertical" margin={chartMargin} width={width}>
-                <CartesianGrid stroke="#dfe3e8" strokeDasharray="3 3" horizontal={false} />
-                <XAxis axisLine={false} hide={dimensions.height <= 1} tick={{ fill: "#5f6b7a", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} type="number" />
-                <YAxis axisLine={false} dataKey="name" tick={{ fill: "#5f6b7a", fontSize: 11 }} tickLine={false} type="category" width={dimensions.width <= 1 ? 42 : 52} />
+                <CartesianGrid stroke="var(--overview-chart-grid)" strokeDasharray="2 5" horizontal={false} />
+                <XAxis axisLine={false} hide={dimensions.height <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} type="number" />
+                <YAxis axisLine={false} dataKey="name" tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} type="category" width={dimensions.width <= 1 ? 42 : 52} />
                 <Tooltip content={<TokenTooltip />} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                   {tokenMix.map((item) => (
@@ -1400,16 +1531,11 @@ function ModelDistributionOverviewWidget({
     : { bottom: 8, left: 8, right: 12, top: 8 };
 
   return (
-    <Card className="flex h-full min-h-0 min-w-0 flex-col">
-      <CardHeader className="shrink-0 flex-row items-center justify-between">
-        <CardTitle>{t("Model Distribution")}</CardTitle>
-        <Badge variant="outline">{formatCompactNumber(total)}</Badge>
-      </CardHeader>
+    <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
+      <OverviewCardHeading icon={Layers3} title={t("Model Distribution")} tone="orange" trailing={<Badge variant="outline">{formatCompactNumber(total)}</Badge>} />
       <CardContent className="min-h-0 flex-1 overflow-hidden">
         {modelRows.length === 0 ? (
-          <div className="flex h-full min-h-0 items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 px-3 py-4 text-center text-[12px] text-muted-foreground">
-            {t("No model activity")}
-          </div>
+          <OverviewEmptyState className="h-full py-4" compact label={t("No model activity")} />
         ) : variant === "stacked" ? (
           <div className="space-y-3">
             <div className="flex h-3 overflow-hidden rounded-full bg-muted">
@@ -1421,36 +1547,39 @@ function ModelDistributionOverviewWidget({
           </div>
         ) : variant === "donut" || variant === "pie" ? (
           <div className={cn("grid h-full min-h-0 items-center gap-3", showLegend && "grid-cols-[minmax(96px,1fr)_minmax(0,1fr)]")}>
-            <ChartFrame fill>
-              {({ height, width }) => (
-                <PieChart height={height} width={width}>
-                  <Tooltip content={<TokenTooltip />} />
-                  <Pie
-                    cx="50%"
-                    cy="50%"
-                    data={modelRows}
-                    dataKey="value"
-                    innerRadius={variant === "donut" ? Math.min(height, width) * 0.22 : 0}
-                    nameKey="name"
-                    outerRadius={Math.min(height, width) * 0.34}
-                    paddingAngle={variant === "donut" ? 2 : 0}
-                  >
-                    {modelRows.map((item) => (
-                      <Cell fill={item.color} key={item.name} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              )}
-            </ChartFrame>
+            <div className="relative h-full min-h-0">
+              <ChartFrame fill>
+                {({ height, width }) => (
+                  <PieChart height={height} width={width}>
+                    <Tooltip content={<TokenTooltip />} />
+                    <Pie
+                      cx="50%"
+                      cy="50%"
+                      data={modelRows}
+                      dataKey="value"
+                      innerRadius={variant === "donut" ? Math.min(height, width) * 0.22 : 0}
+                      nameKey="name"
+                      outerRadius={Math.min(height, width) * 0.34}
+                      paddingAngle={variant === "donut" ? 2 : 0}
+                    >
+                      {modelRows.map((item) => (
+                        <Cell fill={item.color} key={item.name} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                )}
+              </ChartFrame>
+              {variant === "donut" ? <OverviewDonutCenter label={t("Tokens")} value={formatCompactNumber(total)} /> : null}
+            </div>
             {showLegend ? <OverviewTokenLegend rows={modelRows} /> : null}
           </div>
         ) : (
           <ChartFrame fill>
             {({ height, width }) => (
               <BarChart data={modelRows} height={height} layout="vertical" margin={chartMargin} width={width}>
-                <CartesianGrid stroke="#dfe3e8" strokeDasharray="3 3" horizontal={false} />
-                <XAxis axisLine={false} hide={dimensions.height <= 1} tick={{ fill: "#5f6b7a", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} type="number" />
-                <YAxis axisLine={false} dataKey="name" tick={{ fill: "#5f6b7a", fontSize: 11 }} tickLine={false} type="category" width={dimensions.width <= 1 ? 58 : 88} />
+              <CartesianGrid stroke="var(--overview-chart-grid)" strokeDasharray="2 5" horizontal={false} />
+                <XAxis axisLine={false} hide={dimensions.height <= 1} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickFormatter={formatAxisNumber} tickLine={false} type="number" />
+                <YAxis axisLine={false} dataKey="name" tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickLine={false} type="category" width={dimensions.width <= 1 ? 58 : 88} />
                 <Tooltip content={<TokenTooltip />} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                   {modelRows.map((item) => (
@@ -1467,7 +1596,7 @@ function ModelDistributionOverviewWidget({
 }
 
 function overviewModelDistributionRows(rows: UsageComparisonRow[], translate: (value: string) => string): Array<{ color: string; name: string; value: number }> {
-  const colors = ["#2563eb", "#0f766e", "#d97706", "#be123c", "#7c3aed", "#64748b"];
+  const colors = ["#007aff", "#34c759", "#ff9f0a", "#ff3b30", "#af52de", "#8e8e93"];
   const positiveRows = rows
     .filter((row) => row.totalTokens > 0)
     .sort((a, b) => b.totalTokens - a.totalTokens);
@@ -1489,9 +1618,9 @@ function overviewModelDistributionRows(rows: UsageComparisonRow[], translate: (v
 
 function OverviewTokenLegend({ rows }: { rows: Array<{ color: string; name: string; value: number }> }) {
   return (
-    <div className="grid grid-cols-1 gap-2">
+    <div className="grid grid-cols-1 gap-1.5">
       {rows.map((row) => (
-        <div className="flex min-w-0 items-center gap-2 text-[12px]" key={row.name}>
+        <div className="overview-legend-row flex min-w-0 items-center gap-2 rounded-[8px] px-2 py-1.5 text-[11px]" key={row.name}>
           <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: row.color }} />
           <span className="min-w-0 flex-1 truncate text-muted-foreground">{row.name}</span>
           <span className="shrink-0 font-semibold">{formatCompactNumber(row.value)}</span>
@@ -1532,18 +1661,15 @@ function OverviewAnalysisWidget({
 
   if (shouldUseCompact) {
     return (
-      <Card className="flex h-full min-h-0 min-w-0 flex-col">
-        <CardHeader className="shrink-0 flex-row items-center justify-between">
-          <CardTitle>{title}</CardTitle>
-          <Badge variant="outline">{rows.length}</Badge>
-        </CardHeader>
+      <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
+        <OverviewCardHeading icon={UsersRound} title={title} tone="slate" trailing={<Badge variant="outline">{rows.length}</Badge>} />
         <CardContent className="min-h-0 flex-1 overflow-hidden">
           {rows.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-7 text-center text-[12px] text-muted-foreground">{emptyLabel}</div>
+            <OverviewEmptyState compact label={emptyLabel} />
           ) : (
             <div className="space-y-2">
               {rows.slice(0, rowLimit).map((row) => (
-                <div className="flex min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2" key={row.key}>
+                <div className="overview-nested-surface flex min-w-0 items-center justify-between gap-3 border px-3 py-2" key={row.key}>
                   <span className="min-w-0 truncate text-[12px] font-medium">{row.label}</span>
                   <span className="shrink-0 text-[12px] font-semibold">{formatCompactNumber(row.totalTokens)}</span>
                 </div>
@@ -1861,7 +1987,7 @@ function overviewWidgetOverlaySizeClass(size: OverviewWidgetSize): string {
 
 type OverviewWidgetDimensions = { height: 1 | 2 | 3 | 4; width: 1 | 2 | 3 | 4 };
 
-const overviewCacheColor = "#6366f1";
+const overviewCacheColor = "#af52de";
 
 function overviewWidgetDimensions(size: OverviewWidgetSize): OverviewWidgetDimensions {
   const [widthText, heightText] = size.split(":");
@@ -2004,10 +2130,10 @@ function SystemStatusBar({
 
   if (variant === "compact") {
     return (
-      <Card className="flex h-full min-h-0 min-w-0 flex-col border-border/70 bg-card">
+      <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
         <CardContent className="flex min-h-0 min-w-0 flex-1 items-center justify-between gap-3 p-4">
           <div className="flex min-w-0 items-center gap-2">
-            <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full", systemStatusIconClass(overallTone))}>
+            <span className="overview-status-icon flex h-5 w-5 shrink-0 items-center justify-center rounded-full" data-tone={overallTone}>
               <StatusIcon className="h-3.5 w-3.5" />
             </span>
             <div className="min-w-0">
@@ -2024,28 +2150,25 @@ function SystemStatusBar({
   }
 
   return (
-    <Card className="flex h-full min-h-0 min-w-0 flex-col border-border/70 bg-card">
-      <CardContent className="min-h-0 flex-1 space-y-4 overflow-hidden p-4">
-        <div className="flex min-w-0 items-center justify-between gap-3">
-          <h2 className="truncate text-[15px] font-semibold tracking-tight">{t("System status")}</h2>
-          <div className="flex shrink-0 items-center gap-2 text-[12px] font-medium text-muted-foreground">
-            <ChevronLeft aria-hidden="true" className="h-3.5 w-3.5 opacity-60" />
-            <span>{rangeLabel}</span>
-            <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 opacity-60" />
-          </div>
-        </div>
-
+    <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
+      <OverviewCardHeading
+        icon={Server}
+        title={t("System status")}
+        tone={overallTone === "ok" ? "green" : overallTone === "warn" ? "orange" : overallTone === "error" ? "red" : "slate"}
+        trailing={<span className="overview-date-pill block max-w-[320px] truncate">{rangeLabel}</span>}
+      />
+      <CardContent className="min-h-0 flex-1 overflow-hidden p-3">
         <div className="space-y-2.5">
           <div className="flex min-w-0 items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
-              <span className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded-full", systemStatusIconClass(overallTone))}>
+              <span className="overview-status-icon flex h-4 w-4 shrink-0 items-center justify-center rounded-full" data-tone={overallTone}>
                 <StatusIcon className="h-3 w-3" />
               </span>
               <span className="min-w-0 truncate text-[13px] font-semibold">{t("API Service")}</span>
             </div>
-            <div className="shrink-0 text-[12px] font-medium text-muted-foreground">
+            <Badge variant={overallTone === "ok" ? "success" : overallTone === "warn" ? "warning" : overallTone === "error" ? "danger" : "outline"}>
               {formatPercent(availability)} {t("Availability")}
-            </div>
+            </Badge>
           </div>
 
           <div className="flex min-w-0 gap-1" aria-label={t("System status")}>
@@ -2055,8 +2178,9 @@ function SystemStatusBar({
                 key={`${segment.point.bucket}-${index}`}
               >
                 <span
-                  className={cn("h-full w-full rounded-[3px]", systemStatusSegmentClass(segment.tone))}
                   aria-label={systemStatusPointTooltip(segment, t)}
+                  className="overview-status-segment h-full w-full rounded-[4px]"
+                  data-tone={segment.tone}
                 />
                 <span
                   className={cn(
@@ -2114,22 +2238,29 @@ function ProviderAccountsOverview({
     : sortedAccounts
       .filter((account) => account.meters.length > 0 || account.status === "error");
   const isSingleAccount = visibleAccounts.length === 1;
+  const showHeading = dimensions.height >= 2 && dimensions.width >= 2;
 
   return (
-    <Card className="flex h-full min-h-0 min-w-0 flex-col">
+    <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
+      {showHeading ? (
+        <OverviewCardHeading
+          icon={WalletCards}
+          title={t("Account Balance")}
+          tone="green"
+          trailing={<Badge variant="outline">{visibleAccounts.length}</Badge>}
+        />
+      ) : null}
       <CardContent className={cn("min-h-0 flex-1 overflow-hidden", providerAccountContentPaddingClass(dimensions))}>
         {visibleAccounts.length === 0 ? (
-          <div className="flex h-full min-h-0 items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 px-3 py-4 text-center text-[12px] text-muted-foreground">
-            {t("No account balance connectors configured")}
-          </div>
+          <OverviewEmptyState className="h-full py-4" compact label={t("No account balance connectors configured")} />
         ) : isSingleAccount ? (
           <ProviderAccountSinglePanel account={visibleAccounts[0]} dimensions={dimensions} refreshing={refreshing} variant={variant} onRefresh={onRefresh} />
         ) : variant === "compact" ? (
-          <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions))}>
+          <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions, visibleAccounts.length))}>
             {visibleAccounts.map((account) => {
               const meter = primaryProviderAccountDisplayMeter(account);
               return (
-                <div className="flex min-h-0 min-w-0 items-center justify-between gap-3 overflow-hidden rounded-lg border border-border bg-muted/20 px-3 py-2" key={providerAccountSnapshotKey(account)}>
+                <div className="overview-nested-surface flex min-h-0 min-w-0 items-center justify-between gap-3 overflow-hidden border px-3 py-2" key={providerAccountSnapshotKey(account)}>
                   <div className="min-w-0">
                     <div className="truncate text-[12px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
                     {providerAccountShowSource(dimensions) && meter ? <div className="truncate text-[11px] text-muted-foreground">{t(meter.label)}</div> : null}
@@ -2171,7 +2302,7 @@ function ProviderAccountsOverview({
             })}
           </div>
         ) : (
-          <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions))}>
+          <div className={cn("grid h-full min-h-0 grid-cols-1 overflow-y-auto pr-1", providerAccountGapClass(dimensions), providerAccountGridClass(dimensions, visibleAccounts.length))}>
             {visibleAccounts.map((account) => {
               return <ProviderAccountSummaryCard account={account} dimensions={dimensions} key={providerAccountSnapshotKey(account)} refreshing={refreshing} variant={variant} onRefresh={onRefresh} />;
             })}
@@ -2250,7 +2381,7 @@ function ProviderAccountSummaryCard({
   const showQuotaVisual = providerAccountUsesQuotaVisual(variant) && quotaMeters.length > 0;
 
   return (
-    <div className={cn("min-h-0 min-w-0 overflow-hidden rounded-lg border border-border bg-muted/20", providerAccountCardPaddingClass(dimensions))}>
+    <div className={cn("overview-nested-surface min-h-0 min-w-0 overflow-hidden border", providerAccountCardPaddingClass(dimensions))}>
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate text-[13px] font-semibold">{providerAccountSnapshotLabel(account)}</div>
@@ -3028,7 +3159,7 @@ function ProviderAccountQuotaGauge({
     const path = describeSvgArc(60, 66, 42, start, end);
     return (
       <svg aria-hidden="true" className={sizeClass} viewBox="0 0 120 120">
-        <path d={path} fill="none" pathLength={100} stroke="hsl(var(--muted))" strokeLinecap="round" strokeWidth="11" />
+        <path d={path} fill="none" pathLength={100} stroke="var(--muted)" strokeLinecap="round" strokeWidth="11" />
         <path d={path} fill="none" pathLength={100} stroke={stroke} strokeDasharray={`${Math.round(primaryRatio * 100)} 100`} strokeLinecap="round" strokeWidth="11" />
         <text className="fill-foreground text-[18px] font-semibold" dy="0.35em" textAnchor="middle" x="60" y="60">{formatProviderAccountMeterValue(primary)}</text>
       </svg>
@@ -3075,7 +3206,7 @@ function ProviderAccountQuotaCircle({
 
   return (
     <>
-      <circle cx={cx} cy={cy} fill="none" r={radius} stroke="hsl(var(--muted))" strokeWidth={strokeWidth} />
+      <circle cx={cx} cy={cy} fill="none" r={radius} stroke="var(--muted)" strokeWidth={strokeWidth} />
       <circle
         cx={cx}
         cy={cy}
@@ -3241,8 +3372,8 @@ function providerAccountStackClass(dimensions: OverviewWidgetDimensions): string
   return dimensions.height <= 1 ? "space-y-1.5" : "space-y-2.5";
 }
 
-function providerAccountGridClass(dimensions: OverviewWidgetDimensions): string {
-  if (dimensions.width >= 3) return "md:grid-cols-2 xl:grid-cols-3";
+function providerAccountGridClass(dimensions: OverviewWidgetDimensions, itemCount: number): string {
+  if (dimensions.width >= 3) return itemCount <= 2 ? "md:grid-cols-2" : "md:grid-cols-2 xl:grid-cols-3";
   if (dimensions.width >= 2) return "md:grid-cols-2";
   return "";
 }
@@ -4378,14 +4509,11 @@ function UsageAnalysisCard({
   const showCacheRate = dimensions.width >= 4 && dimensions.height >= 3;
 
   return (
-    <Card className="flex h-full min-h-0 min-w-0 flex-col">
-      <CardHeader className="shrink-0 flex-row items-center justify-between">
-        <CardTitle>{title}</CardTitle>
-        <Badge variant="outline">{rows.length}</Badge>
-      </CardHeader>
+    <Card className="overview-card flex h-full min-h-0 min-w-0 flex-col">
+      <OverviewCardHeading icon={UsersRound} title={title} tone="slate" trailing={<Badge variant="outline">{rows.length}</Badge>} />
       <CardContent className="min-h-0 flex-1 overflow-hidden">
         {rows.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-[12px] text-muted-foreground">{emptyLabel}</div>
+          <OverviewEmptyState compact label={emptyLabel} />
         ) : (
           <div className={cn("h-full overflow-hidden", agentListSurfaceClassName)}>
             <table className={cn("table-fixed", agentListTableClassName)}>
@@ -4485,7 +4613,7 @@ function UsageTooltip({
   const point = payload.find((item) => item.payload)?.payload;
 
   return (
-    <div className="rounded-lg border border-border/60 bg-card/95 glass-surface px-3 py-2.5 text-[11px] shadow-card-elevated">
+    <div className="overview-tooltip rounded-xl border px-3 py-2.5 text-[11px]">
       <div className="mb-1 font-semibold">{label}</div>
       <div className="space-y-1">
         {payload.map((item) => (
@@ -4572,7 +4700,7 @@ function TokenTooltip({
   const title = label || payload[0]?.name || "";
 
   return (
-    <div className="rounded-lg border border-border/60 bg-card/95 glass-surface px-3 py-2.5 text-[11px] shadow-card-elevated">
+    <div className="overview-tooltip rounded-xl border px-3 py-2.5 text-[11px]">
       <div className="font-semibold">{title}</div>
       <div className="mt-1 text-muted-foreground">{formatCompactNumber(Number(payload[0]?.value) || 0)} tokens</div>
     </div>
