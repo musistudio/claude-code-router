@@ -6333,10 +6333,20 @@ function firstTargetProviderHeader(headers: Record<string, string>): string | un
 }
 
 function activeProviderCredentials(provider: GatewayProviderConfig): ProviderCredentialConfig[] {
-  return (provider.credentials ?? []).filter((credential) =>
+  const credentials = (provider.credentials ?? []).filter((credential) =>
     credential.enabled !== false &&
     Boolean(providerCredentialApiKey(credential))
   );
+  if (credentials.length > 0) {
+    return credentials;
+  }
+
+  const topLevelApiKey = provider.apikey || provider.apiKey || provider.api_key;
+  if (topLevelApiKey) {
+    return [{ api_key: topLevelApiKey }];
+  }
+
+  return [];
 }
 
 function selectProviderCredentials(
