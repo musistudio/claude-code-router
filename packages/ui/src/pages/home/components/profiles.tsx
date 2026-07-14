@@ -82,9 +82,10 @@ export function ProfileView({
               const summaryItems = profileSummaryItems(profile, config, t);
               const cliBusy = profileActionBusy?.profileId === profile.id && profileActionBusy.surface === "cli";
               const appBusy = profileActionBusy?.profileId === profile.id && profileActionBusy.surface === "app";
-              const appRunning = profileRuntimeStatus.profiles.some((entry) =>
+              const runtimeEntry = profileRuntimeStatus.profiles.find((entry) =>
                 entry.profileId === profile.id && entry.surface === "app" && entry.state === "running"
               );
+              const appRunning = Boolean(runtimeEntry);
               const appActionLabel = appRunning ? "Stop" : "Start";
               const appActionTooltip = `${t(appActionLabel)} ${t("App")}`;
               const cliActionTooltip = `${t("Copy")} ${t("CLI command")}`;
@@ -106,6 +107,11 @@ export function ProfileView({
                               {t(profileScopeLabel(scope))}
                             </Badge>
                             <Badge variant="outline">{t(profileSurfaceLabel(surface))}</Badge>
+                            {runtimeEntry?.botGateway ? (
+                              <Badge variant={runtimeEntry.botGateway.state === "connected" ? "success" : runtimeEntry.botGateway.lastError ? "warning" : "outline"}>
+                                {t("Bot")} · {t(runtimeEntry.botGateway.state === "connected" ? "Connected" : runtimeEntry.botGateway.state === "starting" ? "Starting" : runtimeEntry.botGateway.state)}
+                              </Badge>
+                            ) : null}
                           </div>
                         </div>
                         <div className="mt-2 min-w-0 space-y-1.5">
@@ -115,6 +121,19 @@ export function ProfileView({
                               <div className="min-w-0 truncate font-medium text-foreground" title={item.value}>{item.value}</div>
                             </div>
                           ))}
+                          {runtimeEntry?.botGateway ? (
+                            <div className="grid min-w-0 grid-cols-[96px_minmax(0,1fr)] items-baseline gap-2 text-[12px] sm:grid-cols-[128px_minmax(0,1fr)]">
+                              <div className="truncate text-muted-foreground">{t("Bot activity")}</div>
+                              <div className="min-w-0 truncate font-medium text-foreground" title={runtimeEntry.botGateway.lastError || runtimeEntry.botGateway.lastEventAt || ""}>
+                                {runtimeEntry.botGateway.lastError
+                                  ? runtimeEntry.botGateway.lastError
+                                  : runtimeEntry.botGateway.lastEventAt
+                                    ? `${t("Last event")}: ${new Date(runtimeEntry.botGateway.lastEventAt).toLocaleString()}`
+                                    : t("Waiting for messages")}
+                                {runtimeEntry.botGateway.outboxCount > 0 ? ` · ${runtimeEntry.botGateway.outboxCount} ${t("pending")}` : ""}
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -968,6 +987,9 @@ function BotGatewaySelectForm({
                       onRefresh={() => void scanHandoffTargets("bluetooth")}
                       onSelect={(botHandoffPhoneBluetoothTargets) => onChange({ botHandoffPhoneBluetoothTargets })}
                     />
+                    <div className="sm:col-span-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] leading-4 text-amber-700 dark:text-amber-300">
+                      {t("Phone presence targets are experimental and do not affect runtime handoff yet. Handoff currently uses screen lock and idle time.")}
+                    </div>
                   </div>
                 ) : null}
               </div>

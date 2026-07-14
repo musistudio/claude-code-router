@@ -1256,12 +1256,25 @@ export type ProfileOpenResult = {
 
 export type ProfileRuntimeEntry = {
   agent: AgentKind;
+  botGateway?: BotGatewayRuntimeStatus;
   pid?: number;
   profileId: string;
   profileName: string;
   startedAt: string;
   state: "running";
   surface: ProfileOpenSurface;
+};
+
+export type BotGatewayRuntimeStatus = {
+  lastDeliveryAt?: string;
+  lastDeliveryStatus?: string;
+  lastError?: string;
+  lastErrorAt?: string;
+  lastEventAt?: string;
+  lastEventType?: string;
+  outboxCount: number;
+  state: "connected" | "error" | "starting" | "stopped" | "unknown";
+  updatedAt?: string;
 };
 
 export type ProfileRuntimeStatus = {
@@ -1358,12 +1371,20 @@ export type BotGatewayRuntimeConfig = {
   handoff: BotGatewayHandoffConfig;
   integrationConfig: Record<string, unknown>;
   integrationId: string;
+  language: "auto" | "en" | "zh-CN";
+  maxAttachmentBytes: number;
+  maxTurnTimeMs: number;
+  mediaEnabled: boolean;
+  messageChunkChars: number;
   platform: string;
   pollIntervalMs: number;
   requestTimeoutMs: number;
+  sessionIdleMinutes: number;
+  shellEnabled: boolean;
   sourceDir: string;
   startupTimeoutMs: number;
   stateDir: string;
+  streamReplies: boolean;
   tenantId: string;
 };
 

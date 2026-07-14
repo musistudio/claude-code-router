@@ -1756,6 +1756,44 @@ function BotConfigDialog({
                 />
               </Field>
             ))}
+            <Field label={t("Bot language")}>
+              <SelectControl
+                onChange={(value) => update({ botLanguage: value as BotGatewayConfigDraft["botLanguage"] })}
+                options={[
+                  { label: t("Automatic"), value: "auto" },
+                  { label: "English", value: "en" },
+                  { label: "简体中文", value: "zh-CN" }
+                ]}
+                value={draft.botLanguage}
+              />
+            </Field>
+            <Field label={t("Maximum turn time (minutes)")}>
+              <Input min="1" max="60" type="number" value={draft.botMaxTurnMinutes} onChange={(event) => update({ botMaxTurnMinutes: event.target.value })} />
+            </Field>
+            <Field label={t("Session idle reset (minutes, 0 disables)")}>
+              <Input min="0" max="43200" type="number" value={draft.botSessionIdleMinutes} onChange={(event) => update({ botSessionIdleMinutes: event.target.value })} />
+            </Field>
+            <Field label={t("Long message chunk size")}>
+              <Input min="500" max="20000" type="number" value={draft.botMessageChunkChars} onChange={(event) => update({ botMessageChunkChars: event.target.value })} />
+            </Field>
+            <Field label={t("Maximum attachment size (MB)")}>
+              <Input min="1" max="100" type="number" value={draft.botMaxAttachmentMb} onChange={(event) => update({ botMaxAttachmentMb: event.target.value })} />
+            </Field>
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+              <span className="text-[12px] font-medium">{t("Stream replies and progress")}</span>
+              <Switch checked={draft.botStreamReplies} onCheckedChange={(checked) => update({ botStreamReplies: checked })} />
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+              <span className="text-[12px] font-medium">{t("Send and receive attachments")}</span>
+              <Switch checked={draft.botMediaEnabled} onCheckedChange={(checked) => update({ botMediaEnabled: checked })} />
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+              <div>
+                <div className="text-[12px] font-medium">{t("Allow Agent shell tools")}</div>
+                <div className="mt-0.5 text-[11px] text-muted-foreground">{t("Controls Agent tool permission; it does not add a Bot shell command.")}</div>
+              </div>
+              <Switch checked={draft.botShellEnabled} onCheckedChange={(checked) => update({ botShellEnabled: checked })} />
+            </div>
           </fieldset>
           {error ? (
             <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">

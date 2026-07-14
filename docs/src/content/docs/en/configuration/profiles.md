@@ -76,7 +76,7 @@ Claude App and Claude Code CLI use different model-list adapters:
 | Environment variables | Injected into OpenCode CLI, OpenCode App, and its Bot worker. |
 | Bot | Applies to the OpenCode App entry opened from CCR. Incoming Bot messages run through OpenCode CLI and replies are sent back to the same Bot conversation. |
 
-CCR keeps one OpenCode Bot worker next to the OpenCode App process. The worker stores a Bot-conversation-to-OpenCode-session mapping, so later messages continue the same session. Send `help`, `ls`, `current`, `new`, `reset`, or `select <number-or-id>` in the Bot conversation to manage the selected session.
+CCR keeps one OpenCode Bot worker next to the OpenCode App process. The worker stores a project and optional session for each Bot conversation. Send `/project list|current|use` to select an Agent project, then use `/session list|current|new|use|reset` to manage sessions inside that project. Selecting another project clears the previous session, and sessions from another project cannot be selected. Only these slash-command domains are intercepted; removed `/task` and legacy flat commands are not supported.
 
 The OpenCode CLI must be available as `opencode` in the CCR Desktop process environment. If it is installed elsewhere, set `CCR_OPENCODE_BIN` in the Agent Config environment variables. Bot sessions default to the filesystem root used by a fresh OpenCode Desktop workspace; set `CCR_OPENCODE_BOT_CWD` to the same project directory currently opened in OpenCode App when using another workspace. CCR passes that directory explicitly through `opencode run --dir`, so the resulting session appears under the matching App project. Permissions are not auto-approved by default; `CCR_OPENCODE_BOT_AUTO_APPROVE=true` enables OpenCode's dangerous `--auto` mode and should be used only in a trusted environment.
 
@@ -131,17 +131,21 @@ Claude Code CLI config writes a settings file. With **Only opened from CCR**, CC
 
 When opening Claude App from the desktop app, CCR also prepares a separate user-data directory for that config. Different Agent Config entries use different directories, so multiple Claude App instances can run at the same time.
 
+With a Bot bound, Claude App's companion worker exposes Projects/Sessions, streaming replies, attachments, Session usage, and native permission/Ask User requests to IM. The worker stops with the App.
+
 ### Codex
 
 Codex config writes `config.toml` and a model catalog file. With **Only opened from CCR**, CCR stores those files in a directory separated by config `id`.
 
 Codex supports CLI and App. CLI opens through the launcher for the selected config; App launches ChatGPT, uses a separate user-data directory, and passes the selected model and provider into the app.
 
+With a Bot bound, the Codex App companion worker uses native Codex rollout Sessions for Project/Session browsing and continuation, queueing, cancellation, model settings, usage, attachments, and diagnostics. It exists only alongside the managed App.
+
 ### OpenCode
 
 OpenCode config writes a JSON/JSONC config that routes the selected provider and model through CCR. CLI opens through a profile-specific wrapper; App launches the installed OpenCode Desktop executable with the same effective config.
 
-When a Bot is selected and the App is opened from CCR, CCR starts a companion worker that handles incoming Bot messages through `opencode run --format json`, persists the returned OpenCode session ID, and sends the final text event back through Bot Gateway. The worker stops when the managed OpenCode App exits or the profile is switched.
+When a Bot is selected and the App is opened from CCR, CCR starts a companion worker using OpenCode-native Sessions and the same Project/Session, queue, media, settings, and diagnostics contract as the other Apps. The worker stops when the managed OpenCode App exits or the profile is switched.
 
 ### Grok CLI
 
@@ -150,6 +154,8 @@ Grok CLI supports CLI only. CCR opens it through a profile-specific wrapper that
 ### ZCode
 
 ZCode supports App only. CCR writes ZCode CLI config, v2 config, and model cache based on ZCode home or a custom config file, then starts the App with the current Agent Config's model, provider, and separate user-data directory.
+
+With a Bot bound, ZCode uses the Codex-compatible companion worker and native Session discovery. Closing ZCode App immediately takes the relay offline.
 
 ## Multi-Instance Suggestions
 

@@ -174,6 +174,9 @@ function defaultBotGatewayAuthType(platform: string): string {
   if (platform === "slack" || platform === "discord" || platform === "telegram" || platform === "line") {
     return "bot_token";
   }
+  if (platform === "imessage") {
+    return "local";
+  }
   return "";
 }
 
@@ -1743,6 +1746,22 @@ function parseBotGateway(value: unknown): LoadedBotGatewayConfig | undefined {
     config.forwardAllAgentMessages = Boolean(value.forward_all_agent_messages ?? value.forward_all_codex_messages);
   }
 
+  if (typeof value.mediaEnabled === "boolean") {
+    config.mediaEnabled = value.mediaEnabled;
+  }
+  if (typeof value.streamReplies === "boolean") {
+    config.streamReplies = value.streamReplies;
+  }
+  if (typeof value.shellEnabled === "boolean") {
+    config.shellEnabled = value.shellEnabled;
+  } else if (typeof value.shell_enabled === "boolean") {
+    config.shellEnabled = value.shell_enabled;
+  }
+  const language = readString(value.language);
+  if (language === "auto" || language === "en" || language === "zh-CN") {
+    config.language = language;
+  }
+
   const requestTimeoutMs = readNumber(value.requestTimeoutMs ?? value.request_timeout_ms);
   if (requestTimeoutMs !== undefined) {
     config.requestTimeoutMs = clampNumber(requestTimeoutMs, 1000, 3_600_000);
@@ -1754,6 +1773,22 @@ function parseBotGateway(value: unknown): LoadedBotGatewayConfig | undefined {
   const pollIntervalMs = readNumber(value.pollIntervalMs ?? value.poll_interval_ms);
   if (pollIntervalMs !== undefined) {
     config.pollIntervalMs = clampNumber(pollIntervalMs, 500, 60_000);
+  }
+  const maxTurnTimeMs = readNumber(value.maxTurnTimeMs ?? value.max_turn_time_ms);
+  if (maxTurnTimeMs !== undefined) {
+    config.maxTurnTimeMs = clampNumber(maxTurnTimeMs, 10_000, 3_600_000);
+  }
+  const maxAttachmentBytes = readNumber(value.maxAttachmentBytes ?? value.max_attachment_bytes);
+  if (maxAttachmentBytes !== undefined) {
+    config.maxAttachmentBytes = clampNumber(maxAttachmentBytes, 1024, 100 * 1024 * 1024);
+  }
+  const messageChunkChars = readNumber(value.messageChunkChars ?? value.message_chunk_chars);
+  if (messageChunkChars !== undefined) {
+    config.messageChunkChars = clampNumber(messageChunkChars, 500, 20_000);
+  }
+  const sessionIdleMinutes = readNumber(value.sessionIdleMinutes ?? value.session_idle_minutes);
+  if (sessionIdleMinutes !== undefined) {
+    config.sessionIdleMinutes = clampNumber(sessionIdleMinutes, 0, 43_200);
   }
 
   const handoff = parseBotGatewayHandoff(value.handoff);

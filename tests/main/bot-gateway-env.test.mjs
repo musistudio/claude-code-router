@@ -109,3 +109,23 @@ test("botGatewayProfileEnv disables create integration for QR login platforms", 
   assert.equal(env.CCR_BOT_GATEWAY_CREATE_INTEGRATION, "false");
   assert.equal(JSON.parse(env.CCR_BOT_GATEWAY_CONFIG_JSON).transport, "websocket");
 });
+
+test("botGatewayProfileEnv defaults iMessage to local auth", () => {
+  const env = botGatewayProfileEnv(
+    {
+      botConfigs: [],
+      botGateway: botGateway({
+        authType: "",
+        credentials: {},
+        integrationConfig: {},
+        platform: "imessage"
+      })
+    },
+    { ...profile, botConfigId: undefined },
+    "app"
+  );
+
+  assert.equal(env.CCR_BOT_GATEWAY_PLATFORM, "imessage");
+  assert.equal(env.CCR_BOT_GATEWAY_AUTH_TYPE, "local");
+  assert.equal(JSON.parse(env.CCR_BOT_GATEWAY_CONFIG_JSON).transport, "websocket");
+});

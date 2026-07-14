@@ -25,9 +25,12 @@ const desktopCliRuntimeFileName = "ccr-cli.js";
 const desktopCliCommandNameEnv = "CCR_CLI_COMMAND_NAME";
 let claudeAppBotWorker: ChildProcess | undefined;
 let claudeAppBotWorkerProfileId: string | undefined;
+let claudeAppBotWorkerStateDir: string | undefined;
 let openCodeAppBotWorker: ChildProcess | undefined;
 let openCodeAppBotWorkerProfileId: string | undefined;
 let openCodeAppBotWorkerSignature: string | undefined;
+let openCodeAppBotWorkerStateDir: string | undefined;
+const codexAppBotWorkers = new Map<string, { agent: ProfileConfig["agent"]; child: ChildProcess; stateDir?: string }>();
 
 type ProfileOpenCommandOptions = {
   commandName?: string;
@@ -74,6 +77,7 @@ type RunningProfileApp = ProfileRuntimeEntry & {
 process.once("exit", () => {
   stopClaudeAppBotWorker();
   stopOpenCodeAppBotWorker();
+  stopCodexAppBotWorker();
 });
 
 export async function getProfileOpenCommand(config: AppConfig, request: ProfileOpenRequest, options: ProfileOpenCommandOptions = {}): Promise<ProfileOpenCommandResult> {
@@ -238,6 +242,7 @@ async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof
   const existing = runningProfileApp(profile.id, "app");
   if (existing) {
     refreshCodexCompatibleAppProfileFiles(CONFIGDIR, profile, profileGatewayConfig);
+    startCodexAppBotWorker(profileGatewayConfig, profile);
     activateProfileAppWindow(existing);
     return {
       message: `${appName} is already running with ${profile.name || profile.id}.`,
@@ -262,6 +267,7 @@ async function openCodexAppProfile(config: AppConfig, profile: ReturnType<typeof
     ].join(" "));
   }
   activateProfileAppWindow(entry);
+  startCodexAppBotWorker(profileGatewayConfig, profile);
   return {
     message: `Opened ${appName} with ${profile.name || profile.id}.`,
     profileId: profile.id,
@@ -275,6 +281,7 @@ async function openClaudeAppProfile(config: AppConfig, profile: ReturnType<typeo
   const existing = runningProfileApp(profile.id, "app");
   if (existing) {
     if (!claudeAppDesignProxyRequired(profileGatewayConfig) || existing.claudeDesignProxy) {
+      startClaudeAppBotWorker(config, profile);
       activateProfileAppWindow(existing);
       return {
         message: `Claude App is already running with ${profile.name || profile.id}.`,
@@ -674,6 +681,36 @@ function claudeAppDesignProxyRequired(config: AppConfig): boolean {
   return config.plugins.some((plugin) => plugin.enabled !== false && plugin.id === "claude-design");
 }
 
+function profileBotRuntimeStatus(profileId: string): ProfileRuntimeEntry["botGateway"] | undefined {
+  const codexWorker = codexAppBotWorkers.get(profileId);
+  const stateDir = claudeAppBotWorkerProfileId === profileId
+    ? claudeAppBotWorkerStateDir
+    : openCodeAppBotWorkerProfileId === profileId
+      ? openCodeAppBotWorkerStateDir
+      : codexWorker?.stateDir;
+  if (!stateDir) return undefined;
+  try {
+    const value = JSON.parse(readFileSync(path.join(stateDir, "bot-runtime-state.json"), "utf8")) as Record<string, unknown>;
+    const diagnostics = value.diagnostics && typeof value.diagnostics === "object" ? value.diagnostics as Record<string, unknown> : {};
+    const outbox = Array.isArray(value.outbox) ? value.outbox : [];
+    const rawState = typeof diagnostics.state === "string" ? diagnostics.state : "unknown";
+    const state = rawState === "connected" || rawState === "error" || rawState === "starting" || rawState === "stopped" ? rawState : "unknown";
+    return {
+      state,
+      outboxCount: outbox.length,
+      ...(typeof diagnostics.lastDeliveryAt === "string" ? { lastDeliveryAt: diagnostics.lastDeliveryAt } : {}),
+      ...(typeof diagnostics.lastDeliveryStatus === "string" ? { lastDeliveryStatus: diagnostics.lastDeliveryStatus } : {}),
+      ...(typeof diagnostics.lastError === "string" && diagnostics.lastError ? { lastError: diagnostics.lastError } : {}),
+      ...(typeof diagnostics.lastErrorAt === "string" ? { lastErrorAt: diagnostics.lastErrorAt } : {}),
+      ...(typeof diagnostics.lastEventAt === "string" ? { lastEventAt: diagnostics.lastEventAt } : {}),
+      ...(typeof diagnostics.lastEventType === "string" ? { lastEventType: diagnostics.lastEventType } : {}),
+      ...(typeof diagnostics.updatedAt === "string" ? { updatedAt: diagnostics.updatedAt } : {})
+    };
+  } catch {
+    return { state: "starting", outboxCount: 0 };
+  }
+}
+
 export function getProfileRuntimeStatus(): ProfileRuntimeStatus {
   cleanupExitedProfileApps();
   return {
@@ -681,6 +718,7 @@ export function getProfileRuntimeStatus(): ProfileRuntimeStatus {
       .filter((entry) => !entry.stopRequested)
       .map((entry) => ({
         agent: entry.agent,
+        ...(profileBotRuntimeStatus(entry.profileId) ? { botGateway: profileBotRuntimeStatus(entry.profileId) } : {}),
         pid: entry.pid,
         profileId: entry.profileId,
         profileName: entry.profileName,
@@ -716,6 +754,8 @@ export async function stopProfileFromCcr(config: AppConfig, request: ProfileOpen
       stopClaudeAppBotWorker(profile.id);
     } else if (profile.agent === "opencode") {
       stopOpenCodeAppBotWorker(profile.id);
+    } else if (profile.agent === "codex" || profile.agent === "zcode") {
+      stopCodexAppBotWorker(profile.id);
     }
   }
   return {
@@ -848,11 +888,14 @@ function cleanupProfileAppEntry(key: string, entry: RunningProfileApp): void {
     return;
   }
   runningProfileApps.delete(key);
-  if (entry.stopRequested && entry.agent === "claude-code") {
+  if (entry.agent === "claude-code") {
     stopClaudeAppBotWorker(entry.profileId);
   }
   if (entry.agent === "opencode") {
     stopOpenCodeAppBotWorker(entry.profileId);
+  }
+  if (entry.agent === "codex" || entry.agent === "zcode") {
+    stopCodexAppBotWorker(entry.profileId);
   }
 }
 
@@ -1158,6 +1201,7 @@ function startClaudeAppBotWorker(config: AppConfig, profile: ReturnType<typeof f
   });
   claudeAppBotWorker = child;
   claudeAppBotWorkerProfileId = profile.id;
+  claudeAppBotWorkerStateDir = botEnv.CCR_BOT_GATEWAY_STATE_DIR;
   child.stderr?.on("data", (chunk) => {
     console.warn(`[profile] Claude App bot worker stderr: ${chunk.toString("utf8").trim()}`);
   });
@@ -1165,6 +1209,7 @@ function startClaudeAppBotWorker(config: AppConfig, profile: ReturnType<typeof f
     if (claudeAppBotWorker === child) {
       claudeAppBotWorker = undefined;
       claudeAppBotWorkerProfileId = undefined;
+      claudeAppBotWorkerStateDir = undefined;
     }
     if (code && code !== 0) {
       console.warn(`[profile] Claude App bot worker exited: code=${code}${signal ? ` signal=${signal}` : ""}`);
@@ -1174,6 +1219,7 @@ function startClaudeAppBotWorker(config: AppConfig, profile: ReturnType<typeof f
     if (claudeAppBotWorker === child) {
       claudeAppBotWorker = undefined;
       claudeAppBotWorkerProfileId = undefined;
+      claudeAppBotWorkerStateDir = undefined;
     }
     console.warn(`[profile] Claude App bot worker failed: ${formatError(error)}`);
   });
@@ -1228,6 +1274,7 @@ function startOpenCodeAppBotWorker(
   openCodeAppBotWorker = child;
   openCodeAppBotWorkerProfileId = profile.id;
   openCodeAppBotWorkerSignature = launchSignature;
+  openCodeAppBotWorkerStateDir = botEnv.CCR_BOT_GATEWAY_STATE_DIR;
   child.stderr?.on("data", (chunk) => {
     console.warn(`[profile] OpenCode App bot worker stderr: ${chunk.toString("utf8").trim()}`);
   });
@@ -1236,6 +1283,7 @@ function startOpenCodeAppBotWorker(
       openCodeAppBotWorker = undefined;
       openCodeAppBotWorkerProfileId = undefined;
       openCodeAppBotWorkerSignature = undefined;
+      openCodeAppBotWorkerStateDir = undefined;
     }
     if (code && code !== 0) {
       console.warn(`[profile] OpenCode App bot worker exited: code=${code}${signal ? ` signal=${signal}` : ""}`);
@@ -1246,8 +1294,54 @@ function startOpenCodeAppBotWorker(
       openCodeAppBotWorker = undefined;
       openCodeAppBotWorkerProfileId = undefined;
       openCodeAppBotWorkerSignature = undefined;
+      openCodeAppBotWorkerStateDir = undefined;
     }
     console.warn(`[profile] OpenCode App bot worker failed: ${formatError(error)}`);
+  });
+}
+
+function startCodexAppBotWorker(config: AppConfig, profile: ReturnType<typeof findProfileForOpen>): void {
+  const botEnv = botGatewayProfileEnv(config, profile, "app");
+  if (botEnv.CCR_BOT_GATEWAY_ENABLED !== "true") {
+    stopCodexAppBotWorker(profile.id);
+    return;
+  }
+  const existing = codexAppBotWorkers.get(profile.id);
+  if (existing && !existing.child.killed && existing.child.exitCode === null) {
+    return;
+  }
+  stopCodexAppBotWorker(profile.id);
+  const plan = buildProfileLaunchPlan(CONFIGDIR, profile, "app", ["codex-bot-worker", "--workspace-name", profile.name || profile.id]);
+  const launch = profileLaunchSpawnCommand(plan);
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...plan.env,
+    ...botEnv,
+    CCR_CODEX_BOT_WORKER: "1",
+    CCR_PROFILE_SURFACE: "app",
+    CODEXL_PROFILE_SURFACE: "app"
+  };
+  delete env.ELECTRON_NO_ATTACH_CONSOLE;
+  const child = spawn(launch.command, launch.args, {
+    detached: false,
+    env,
+    stdio: ["ignore", "ignore", "pipe"],
+    windowsHide: true,
+    windowsVerbatimArguments: launch.windowsVerbatimArguments
+  });
+  codexAppBotWorkers.set(profile.id, { agent: profile.agent, child, stateDir: botEnv.CCR_BOT_GATEWAY_STATE_DIR });
+  child.stderr?.on("data", (chunk) => {
+    console.warn(`[profile] ${profile.agent === "zcode" ? "ZCode" : "Codex"} App bot worker stderr: ${chunk.toString("utf8").trim()}`);
+  });
+  child.once("exit", (code, signal) => {
+    if (codexAppBotWorkers.get(profile.id)?.child === child) codexAppBotWorkers.delete(profile.id);
+    if (code && code !== 0) {
+      console.warn(`[profile] ${profile.agent === "zcode" ? "ZCode" : "Codex"} App bot worker exited: code=${code}${signal ? ` signal=${signal}` : ""}`);
+    }
+  });
+  child.once("error", (error) => {
+    if (codexAppBotWorkers.get(profile.id)?.child === child) codexAppBotWorkers.delete(profile.id);
+    console.warn(`[profile] ${profile.agent === "zcode" ? "ZCode" : "Codex"} App bot worker failed: ${formatError(error)}`);
   });
 }
 
@@ -1294,7 +1388,9 @@ function ensureBotWorkerRuntime(runtimeFile: string): void {
     !content.includes("CCR_CLAUDE_CODE_BOT_WORKER") ||
     !content.includes("claude-bot-worker") ||
     !content.includes("CCR_OPENCODE_BOT_WORKER") ||
-    !content.includes("opencode-bot-worker")
+    !content.includes("opencode-bot-worker") ||
+    !content.includes("CCR_CODEX_BOT_WORKER") ||
+    !content.includes("codex-bot-worker")
   ) {
     throw new Error("Bot worker runtime does not contain all required entrypoints.");
   }
@@ -1307,6 +1403,7 @@ function stopClaudeAppBotWorker(profileId?: string): void {
   const child = claudeAppBotWorker;
   claudeAppBotWorker = undefined;
   claudeAppBotWorkerProfileId = undefined;
+  claudeAppBotWorkerStateDir = undefined;
   if (!child || child.killed) {
     return;
   }
@@ -1325,6 +1422,7 @@ function stopOpenCodeAppBotWorker(profileId?: string): void {
   openCodeAppBotWorker = undefined;
   openCodeAppBotWorkerProfileId = undefined;
   openCodeAppBotWorkerSignature = undefined;
+  openCodeAppBotWorkerStateDir = undefined;
   if (!child || child.killed) {
     return;
   }
@@ -1332,6 +1430,22 @@ function stopOpenCodeAppBotWorker(profileId?: string): void {
     child.kill("SIGTERM");
   } catch {
     // The worker may have already exited.
+  }
+}
+
+function stopCodexAppBotWorker(profileId?: string): void {
+  const entries = profileId
+    ? [[profileId, codexAppBotWorkers.get(profileId)] as const]
+    : [...codexAppBotWorkers.entries()];
+  for (const [id, entry] of entries) {
+    if (!entry) continue;
+    codexAppBotWorkers.delete(id);
+    if (entry.child.killed) continue;
+    try {
+      entry.child.kill("SIGTERM");
+    } catch {
+      // The worker may have already exited.
+    }
   }
 }
 

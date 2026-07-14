@@ -375,8 +375,10 @@ test("OpenCode bot worker keeps commands responsive while preserving per-convers
   const callsFile = path.join(dir, "opencode-calls.jsonl");
   const repliesFile = path.join(dir, "bot-replies.jsonl");
   const stateDir = path.join(dir, "bot-state");
+  const otherProject = path.join(dir, "other-project");
   const configFile = path.join(dir, "opencode.json");
   mkdirSync(stateDir, { recursive: true });
+  mkdirSync(otherProject, { recursive: true });
   writeFileSync(path.join(stateDir, "opencode-bot-sessions.json"), JSON.stringify({
     version: 1,
     conversations: {
@@ -402,7 +404,10 @@ test("OpenCode bot worker keeps commands responsive while preserving per-convers
     "  workerMarker: process.env.CCR_OPENCODE_BOT_WORKER || ''",
     "}) + '\\n');",
     "if (argv[0] === 'session') {",
-    "  process.stdout.write(JSON.stringify([{ id: 'ses_existing', title: 'Existing session', directory: process.cwd(), time: { updated: Date.now() } }]) + '\\n');",
+    "  process.stdout.write(JSON.stringify([",
+    "    { id: 'ses_existing', title: 'Existing session', directory: process.cwd(), time: { updated: Date.now() } },",
+    "    { id: 'ses_other', title: 'Other session', directory: process.env.CCR_FAKE_OTHER_PROJECT, time: { updated: Date.now() - 1 } }",
+    "  ]) + '\\n');",
     "} else {",
     "  const prompt = argv[argv.length - 1];",
     "  const reply = () => process.stdout.write(JSON.stringify({",
@@ -433,7 +438,16 @@ test("OpenCode bot worker keeps commands responsive while preserving per-convers
     "          message: { id: 'message-' + id, text }",
     "        }",
     "      });",
-    "      return { events: [event('event-1', 'first'), event('event-ls', 'ls'), event('event-2', 'second')] };",
+    "      return { events: [",
+    "        event('event-1', 'first'),",
+    "        event('event-natural-help', 'help'),",
+    "        event('event-old-task', '/task'),",
+    "        event('event-project-help', '/project'),",
+    "        event('event-project-list', '/project list'),",
+    "        event('event-session-help', '/session'),",
+    "        event('event-session-list', '/session list'),",
+    "        event('event-2', 'second')",
+    "      ] };",
     "    },",
     "    send: async (payload) => fs.appendFileSync(process.env.CCR_FAKE_BOT_REPLIES, JSON.stringify(payload) + '\\n'),",
     "    ackEvent: async () => ({}),",
@@ -457,10 +471,12 @@ test("OpenCode bot worker keeps commands responsive while preserving per-convers
       CCR_BOT_GATEWAY_ACK_EVENTS: "true",
       CCR_BOT_GATEWAY_POLL_INTERVAL_MS: "50",
       CCR_BOT_GATEWAY_REQUEST_TIMEOUT_MS: "2000",
+      CCR_BOT_GATEWAY_SHELL_ENABLED: "true",
       CCR_BOT_GATEWAY_STARTUP_TIMEOUT_MS: "2000",
       CCR_BOT_GATEWAY_SDK_MODULE: fakeSdk,
       CCR_BOT_GATEWAY_STATE_DIR: stateDir,
       CCR_FAKE_OPENCODE_CALLS: callsFile,
+      CCR_FAKE_OTHER_PROJECT: otherProject,
       CCR_FAKE_BOT_REPLIES: repliesFile,
       OPENCODE_CONFIG: configFile,
       OPENCODE_CONFIG_CONTENT: "{\"provider\":{}}"
@@ -469,15 +485,27 @@ test("OpenCode bot worker keeps commands responsive while preserving per-convers
   });
   child.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
   try {
-    const replies = await waitForJsonLines(repliesFile, 3, 7000, () => stderr);
-    const calls = await waitForJsonLines(callsFile, 3, 2000, () => stderr);
-    assert.match(replies[0].intent.text, /^OpenCode sessions:/);
-    assert.deepEqual(replies.slice(1).map((reply) => reply.intent.text), ["reply:first", "reply:second"]);
+    // Three natural-language turns produce two queue-position notices while
+    // the first delayed turn is running, in addition to the command replies.
+    const replies = await waitForJsonLines(repliesFile, 10, 7000, () => stderr);
+    const calls = await waitForJsonLines(callsFile, 5, 2000, () => stderr);
+    const replyTexts = replies.map((reply) => reply.intent.text);
+    assert.ok(replyTexts.includes("Unknown Bot command. Send /project or /session to see available commands."));
+    assert.ok(replyTexts.some((text) => /^CCR App project commands \(OpenCode\):/.test(text)));
+    assert.ok(replyTexts.some((text) => /^OpenCode projects:/.test(text)));
+    assert.ok(replyTexts.some((text) => /^CCR App session commands \(OpenCode\):/.test(text)));
+    assert.ok(replyTexts.some((text) => /^OpenCode sessions in /.test(text)));
+    assert.ok(replyTexts.some((text) => text.includes(otherProject)));
+    assert.ok(!replyTexts.some((text) => text.includes("Other session")));
+    assert.deepEqual(replyTexts.filter((text) => text.startsWith("reply:")), ["reply:first", "reply:help", "reply:second"]);
     const runCalls = calls.filter((call) => call.argv[0] === "run");
     assert.deepEqual(runCalls[0].argv.slice(0, 7), ["run", "--format", "json", "--dir", dir, "--title", "Bot: OpenCode Test"]);
+    assert.ok(!runCalls[0].argv.includes("--auto"));
     assert.equal(runCalls[0].argv.at(-1), "first");
     assert.deepEqual(runCalls[1].argv.slice(0, 7), ["run", "--format", "json", "--dir", dir, "--session", "ses_bot_1"]);
-    assert.equal(runCalls[1].argv.at(-1), "second");
+    assert.equal(runCalls[1].argv.at(-1), "help");
+    assert.deepEqual(runCalls[2].argv.slice(0, 7), ["run", "--format", "json", "--dir", dir, "--session", "ses_bot_1"]);
+    assert.equal(runCalls[2].argv.at(-1), "second");
     assert.equal(realpathSync(runCalls[0].cwd), realpathSync(dir));
     assert.equal(runCalls[0].pwd, dir);
     assert.equal(runCalls[0].config, configFile);
@@ -485,9 +513,394 @@ test("OpenCode bot worker keeps commands responsive while preserving per-convers
     assert.equal(runCalls[0].client, "cli");
     assert.equal(runCalls[0].workerMarker, "");
     const store = JSON.parse(readFileSync(path.join(stateDir, "opencode-bot-sessions.json"), "utf8"));
-    assert.equal(store.version, 2);
+    assert.equal(store.version, 3);
     assert.equal(Object.values(store.conversations)[0].sessionId, "ses_bot_1");
-    assert.equal(Object.values(store.conversations)[0].directory, dir);
+    assert.equal(Object.values(store.conversations)[0].projectDirectory, dir);
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+    await waitForChildExit(child, 3000);
+  }
+});
+
+test("OpenCode bot worker streams without duplicate final text replies or implicit auto approval", { skip: process.platform === "win32" }, async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-opencode-bot-stream-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const fakeOpenCode = path.join(dir, "fake-opencode");
+  const fakeSdk = path.join(dir, "fake-bot-gateway-sdk.mjs");
+  const callsFile = path.join(dir, "opencode-calls.jsonl");
+  const repliesFile = path.join(dir, "bot-replies.jsonl");
+  const stateDir = path.join(dir, "bot-state");
+  mkdirSync(stateDir, { recursive: true });
+  writeFileSync(fakeOpenCode, [
+    "#!/usr/bin/env node",
+    "const fs = require('node:fs');",
+    "const argv = process.argv.slice(2);",
+    "fs.appendFileSync(process.env.CCR_FAKE_OPENCODE_CALLS, JSON.stringify({ argv, cwd: process.cwd() }) + '\\n');",
+    "process.stdout.write(JSON.stringify({ type: 'text', sessionID: 'ses_stream', part: { id: 'part-1', type: 'text', text: 'reply:stream me' } }) + '\\n');",
+    ""
+  ].join("\n"));
+  chmodSync(fakeOpenCode, 0o700);
+  writeFileSync(fakeSdk, [
+    "import fs from 'node:fs';",
+    "let delivered = false;",
+    "export function createBotGatewayClient() {",
+    "  return {",
+    "    health: async () => ({}),",
+    "    events: async () => {",
+    "      if (delivered) return { events: [] };",
+    "      delivered = true;",
+    "      return { events: [{ id: 'event-stream', event: {",
+    "        id: 'event-stream', tenantId: 'ccr', integrationId: 'bot-test', platform: 'slack', actor: { isBot: false },",
+    "        conversation: { id: 'conversation-1', type: 'dm' }, message: { id: 'message-stream', text: 'stream me' }",
+    "      } }] };",
+    "    },",
+    "    send: async (payload) => fs.appendFileSync(process.env.CCR_FAKE_BOT_REPLIES, JSON.stringify(payload) + '\\n'),",
+    "    ackEvent: async () => ({}),",
+    "    close: async () => ({})",
+    "  };",
+    "}",
+    ""
+  ].join("\n"));
+
+  let stderr = "";
+  const child = spawn(process.execPath, [runtimeFile, "opencode-bot-worker", "--workspace-name", "OpenCode Test"], {
+    env: {
+      ...process.env,
+      CCR_OPENCODE_BOT_WORKER: "1",
+      CCR_OPENCODE_BOT_CWD: dir,
+      CCR_OPENCODE_BIN: fakeOpenCode,
+      CCR_BOT_GATEWAY_ENABLED: "true",
+      CCR_BOT_GATEWAY_PLATFORM: "slack",
+      CCR_BOT_GATEWAY_INTEGRATION_ID: "bot-test",
+      CCR_BOT_GATEWAY_TENANT_ID: "ccr",
+      CCR_BOT_GATEWAY_ACK_EVENTS: "true",
+      CCR_BOT_GATEWAY_POLL_INTERVAL_MS: "50",
+      CCR_BOT_GATEWAY_REQUEST_TIMEOUT_MS: "2000",
+      CCR_BOT_GATEWAY_SHELL_ENABLED: "true",
+      CCR_BOT_GATEWAY_STARTUP_TIMEOUT_MS: "2000",
+      CCR_BOT_GATEWAY_STREAM_REPLIES: "true",
+      CCR_BOT_GATEWAY_SDK_MODULE: fakeSdk,
+      CCR_BOT_GATEWAY_STATE_DIR: stateDir,
+      CCR_FAKE_OPENCODE_CALLS: callsFile,
+      CCR_FAKE_BOT_REPLIES: repliesFile
+    },
+    stdio: ["ignore", "ignore", "pipe"]
+  });
+  child.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
+  try {
+    const replies = await waitForJsonLines(repliesFile, 2, 7000, () => stderr);
+    const calls = await waitForJsonLines(callsFile, 1, 2000, () => stderr);
+    assert.equal(calls[0].argv.includes("--auto"), false);
+    assert.equal(replies.every((reply) => reply.intent.type === "stream_text"), true);
+    assert.equal(replies.some((reply) => reply.intent.type === "text" && reply.intent.text === "reply:stream me"), false);
+    assert.equal(replies.filter((reply) => reply.intent.final === true).length, 1);
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+    await waitForChildExit(child, 3000);
+  }
+});
+
+test("Codex App bot worker uses native projects and sessions without enabling shell tools", { skip: process.platform === "win32" }, async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-codex-bot-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const fakeCodex = path.join(dir, "fake-codex");
+  const fakeSdk = path.join(dir, "fake-bot-gateway-sdk.mjs");
+  const callsFile = path.join(dir, "codex-calls.jsonl");
+  const repliesFile = path.join(dir, "bot-replies.jsonl");
+  const stateDir = path.join(dir, "bot-state");
+  const codexHome = path.join(dir, "codex-home");
+  const sessionsDir = path.join(codexHome, "sessions", "2026", "07", "14");
+  mkdirSync(stateDir, { recursive: true });
+  mkdirSync(sessionsDir, { recursive: true });
+  writeFileSync(path.join(sessionsDir, "rollout-ses_existing.jsonl"), [
+    JSON.stringify({ type: "session_meta", payload: { id: "ses_existing", cwd: dir, timestamp: "2026-07-14T00:00:00.000Z" } }),
+    JSON.stringify({ type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "Existing Codex session" }] } }),
+    ""
+  ].join("\n"));
+  writeFileSync(fakeCodex, [
+    "#!/usr/bin/env node",
+    "const fs = require('node:fs');",
+    "const argv = process.argv.slice(2);",
+    "fs.appendFileSync(process.env.CCR_FAKE_CODEX_CALLS, JSON.stringify({ argv, cwd: process.cwd() }) + '\\n');",
+    "const prompt = argv[argv.length - 1];",
+    "const reply = () => {",
+    "  process.stdout.write(JSON.stringify({ type: 'thread.started', thread_id: 'ses_codex' }) + '\\n');",
+    "  process.stdout.write(JSON.stringify({ type: 'item.completed', item: { id: 'answer-' + prompt, type: 'agent_message', text: 'reply:' + prompt } }) + '\\n');",
+    "};",
+    "if (prompt === 'first') setTimeout(reply, 500); else reply();",
+    ""
+  ].join("\n"));
+  chmodSync(fakeCodex, 0o700);
+  writeFileSync(fakeSdk, [
+    "import fs from 'node:fs';",
+    "let delivered = false;",
+    "export function createBotGatewayClient() {",
+    "  return {",
+    "    health: async () => ({}),",
+    "    events: async () => {",
+    "      if (delivered) return { events: [] };",
+    "      delivered = true;",
+    "      const event = (id, text) => ({ id, event: {",
+    "        id, tenantId: 'ccr', integrationId: 'bot-test', platform: 'slack', actor: { isBot: false },",
+    "        conversation: { id: 'conversation-1', type: 'dm' }, message: { id: 'message-' + id, text }",
+    "      } });",
+    "      return { events: [",
+    "        event('project-list', '/project list'),",
+    "        event('project-use', '/project use 1'),",
+    "        event('session-list', '/session list'),",
+    "        event('session-use', '/session use 1'),",
+    "        event('first', 'first'),",
+    "        event('second', 'second')",
+    "      ] };",
+    "    },",
+    "    send: async (payload) => fs.appendFileSync(process.env.CCR_FAKE_BOT_REPLIES, JSON.stringify(payload) + '\\n'),",
+    "    ackEvent: async () => ({}),",
+    "    close: async () => ({})",
+    "  };",
+    "}",
+    ""
+  ].join("\n"));
+
+  let stderr = "";
+  const child = spawn(process.execPath, [runtimeFile, "codex-bot-worker", "--workspace-name", "Codex Test"], {
+    env: {
+      ...process.env,
+      CODEX_HOME: codexHome,
+      CCR_CODEX_BOT_WORKER: "1",
+      CCR_CODEX_PROFILE: "claude-code-router",
+      CCR_REAL_CODEX_CLI_PATH: fakeCodex,
+      CCR_BOT_GATEWAY_CWD: dir,
+      CCR_BOT_GATEWAY_ENABLED: "true",
+      CCR_BOT_GATEWAY_PLATFORM: "slack",
+      CCR_BOT_GATEWAY_INTEGRATION_ID: "bot-test",
+      CCR_BOT_GATEWAY_TENANT_ID: "ccr",
+      CCR_BOT_GATEWAY_ACK_EVENTS: "true",
+      CCR_BOT_GATEWAY_POLL_INTERVAL_MS: "50",
+      CCR_BOT_GATEWAY_REQUEST_TIMEOUT_MS: "2000",
+      CCR_BOT_GATEWAY_STARTUP_TIMEOUT_MS: "2000",
+      CCR_BOT_GATEWAY_SDK_MODULE: fakeSdk,
+      CCR_BOT_GATEWAY_STATE_DIR: stateDir,
+      CCR_FAKE_CODEX_CALLS: callsFile,
+      CCR_FAKE_BOT_REPLIES: repliesFile
+    },
+    stdio: ["ignore", "ignore", "pipe"]
+  });
+  child.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
+  try {
+    const replies = await waitForJsonLines(repliesFile, 7, 7000, () => stderr);
+    const calls = await waitForJsonLines(callsFile, 2, 2000, () => stderr);
+    const replyTexts = replies.map((reply) => reply.intent.text);
+    assert.ok(replyTexts.some((text) => text.startsWith("Codex projects:")));
+    assert.ok(replyTexts.some((text) => text.startsWith("Selected project")));
+    assert.ok(replyTexts.some((text) => text.startsWith("Codex sessions in") && text.includes("Existing Codex session")));
+    assert.ok(replyTexts.some((text) => text.startsWith("Selected session ses_exis")));
+    const agentReplies = replyTexts.filter((text) => text.startsWith("reply:"));
+    assert.equal(agentReplies.length, 2);
+    assert.ok(agentReplies[0].endsWith("first"));
+    assert.ok(agentReplies[1].endsWith("second"));
+    for (const call of calls) {
+      assert.equal(call.argv[0], "exec");
+      assert.ok(call.argv.includes("resume"));
+      assert.ok(call.argv.includes('sandbox_mode="read-only"'));
+      assert.equal(realpathSync(call.cwd), realpathSync(dir));
+    }
+    const store = JSON.parse(readFileSync(path.join(stateDir, "codex-bot-sessions.json"), "utf8"));
+    assert.equal(Object.values(store.conversations)[0].sessionId, "ses_codex");
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+    await waitForChildExit(child, 3000);
+  }
+});
+
+test("Codex App bot worker passes image attachments to exec and avoids duplicate stream replies", { skip: process.platform === "win32" }, async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-codex-bot-image-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const fakeCodex = path.join(dir, "fake-codex");
+  const fakeSdk = path.join(dir, "fake-bot-gateway-sdk.mjs");
+  const callsFile = path.join(dir, "codex-calls.jsonl");
+  const repliesFile = path.join(dir, "bot-replies.jsonl");
+  const stateDir = path.join(dir, "bot-state");
+  const codexHome = path.join(dir, "codex-home");
+  mkdirSync(stateDir, { recursive: true });
+  mkdirSync(codexHome, { recursive: true });
+  writeFileSync(fakeCodex, [
+    "#!/usr/bin/env node",
+    "const fs = require('node:fs');",
+    "const argv = process.argv.slice(2);",
+    "fs.appendFileSync(process.env.CCR_FAKE_CODEX_CALLS, JSON.stringify({ argv, cwd: process.cwd() }) + '\\n');",
+    "process.stdout.write(JSON.stringify({ type: 'thread.started', thread_id: 'ses_image' }) + '\\n');",
+    "process.stdout.write(JSON.stringify({ type: 'item.completed', item: { id: 'answer-image', type: 'agent_message', text: 'reply:describe image' } }) + '\\n');",
+    ""
+  ].join("\n"));
+  chmodSync(fakeCodex, 0o700);
+  writeFileSync(fakeSdk, [
+    "import fs from 'node:fs';",
+    "let delivered = false;",
+    "globalThis.fetch = async () => new Response(Buffer.from([1, 2, 3]), { status: 200, headers: { 'content-length': '3' } });",
+    "export function createBotGatewayClient() {",
+    "  return {",
+    "    health: async () => ({}),",
+    "    events: async () => {",
+    "      if (delivered) return { events: [] };",
+    "      delivered = true;",
+    "      return { events: [{ id: 'event-image', event: {",
+    "        id: 'event-image', tenantId: 'ccr', integrationId: 'bot-test', platform: 'slack', actor: { isBot: false },",
+    "        conversation: { id: 'conversation-1', type: 'dm' },",
+    "        message: { id: 'message-image', text: 'describe image', attachments: [{ id: 'att-1', type: 'image', url: 'https://attachments.local/screenshot.png', name: 'screenshot.png', mimeType: 'image/png', sizeBytes: 3 }] }",
+    "      } }] };",
+    "    },",
+    "    send: async (payload) => fs.appendFileSync(process.env.CCR_FAKE_BOT_REPLIES, JSON.stringify(payload) + '\\n'),",
+    "    ackEvent: async () => ({}),",
+    "    close: async () => ({})",
+    "  };",
+    "}",
+    ""
+  ].join("\n"));
+
+  let stderr = "";
+  const child = spawn(process.execPath, [runtimeFile, "codex-bot-worker", "--workspace-name", "Codex Test"], {
+    env: {
+      ...process.env,
+      CODEX_HOME: codexHome,
+      CCR_CODEX_BOT_WORKER: "1",
+      CCR_CODEX_PROFILE: "claude-code-router",
+      CCR_REAL_CODEX_CLI_PATH: fakeCodex,
+      CCR_BOT_GATEWAY_CWD: dir,
+      CCR_BOT_GATEWAY_ENABLED: "true",
+      CCR_BOT_GATEWAY_MEDIA_ENABLED: "true",
+      CCR_BOT_GATEWAY_PLATFORM: "slack",
+      CCR_BOT_GATEWAY_INTEGRATION_ID: "bot-test",
+      CCR_BOT_GATEWAY_TENANT_ID: "ccr",
+      CCR_BOT_GATEWAY_ACK_EVENTS: "true",
+      CCR_BOT_GATEWAY_POLL_INTERVAL_MS: "50",
+      CCR_BOT_GATEWAY_REQUEST_TIMEOUT_MS: "2000",
+      CCR_BOT_GATEWAY_STARTUP_TIMEOUT_MS: "2000",
+      CCR_BOT_GATEWAY_STREAM_REPLIES: "true",
+      CCR_BOT_GATEWAY_SDK_MODULE: fakeSdk,
+      CCR_BOT_GATEWAY_STATE_DIR: stateDir,
+      CCR_FAKE_CODEX_CALLS: callsFile,
+      CCR_FAKE_BOT_REPLIES: repliesFile
+    },
+    stdio: ["ignore", "ignore", "pipe"]
+  });
+  child.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
+  try {
+    const replies = await waitForJsonLines(repliesFile, 2, 7000, () => stderr);
+    const calls = await waitForJsonLines(callsFile, 1, 2000, () => stderr);
+    const imageFlagIndex = calls[0].argv.indexOf("--image");
+    assert.notEqual(imageFlagIndex, -1);
+    assert.match(calls[0].argv[imageFlagIndex + 1], /screenshot\.png$/);
+    assert.equal(replies.every((reply) => reply.intent.type === "stream_text"), true);
+    assert.equal(replies.some((reply) => reply.intent.type === "text" && reply.intent.text === "reply:describe image"), false);
+    assert.equal(replies.filter((reply) => reply.intent.final === true).length, 1);
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+    await waitForChildExit(child, 3000);
+  }
+});
+
+test("Claude App bot worker keeps project and session selection as separate levels", { skip: process.platform === "win32" }, async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ccr-runtime-claude-bot-projects-"));
+  const runtimeFile = writeRuntimeScript(dir);
+  const fakeSdk = path.join(dir, "fake-bot-gateway-sdk.mjs");
+  const repliesFile = path.join(dir, "bot-replies.jsonl");
+  const stateDir = path.join(dir, "bot-state");
+  const userDataDir = path.join(dir, "claude-user-data");
+  const sessionsDir = path.join(userDataDir, "local-agent-mode-sessions", "account", "organization");
+  const projectA = path.join(dir, "project-a");
+  const projectB = path.join(dir, "project-b");
+  mkdirSync(stateDir, { recursive: true });
+  mkdirSync(sessionsDir, { recursive: true });
+  mkdirSync(projectA, { recursive: true });
+  mkdirSync(projectB, { recursive: true });
+  const writeSession = (id, title, cwd, lastActivityAt) => {
+    writeFileSync(path.join(sessionsDir, `${id}.json`), JSON.stringify({
+      sessionId: id,
+      cliSessionId: `cli-${id}`,
+      cwd,
+      userSelectedFolders: [cwd],
+      title,
+      lastActivityAt,
+      isArchived: false
+    }));
+  };
+  writeSession("local_a", "Session A", projectA, 300);
+  writeSession("local_b", "Session B", projectB, 200);
+  writeFileSync(fakeSdk, [
+    "import fs from 'node:fs';",
+    "let delivered = false;",
+    "export function createBotGatewayClient() {",
+    "  return {",
+    "    health: async () => ({}),",
+    "    events: async () => {",
+    "      if (delivered) return { events: [] };",
+    "      delivered = true;",
+    "      const event = (id, text) => ({",
+    "        id,",
+    "        event: {",
+    "          id, tenantId: 'ccr', integrationId: 'bot-test', platform: 'slack',",
+    "          actor: { isBot: false },",
+    "          conversation: { id: 'conversation-1', type: 'dm' },",
+    "          message: { id: 'message-' + id, text }",
+    "        }",
+    "      });",
+    "      return { events: [",
+    "        event('project-list', '/project list'),",
+    "        event('project-use', '/project use 2'),",
+    "        event('session-list', '/session list'),",
+    "        event('session-use', '/session use 1'),",
+    "        event('session-current', '/session current'),",
+    "        event('session-reset', '/session reset'),",
+    "        event('session-current-reset', '/session current'),",
+    "        event('old-task', '/task')",
+    "      ] };",
+    "    },",
+    "    send: async (payload) => fs.appendFileSync(process.env.CCR_FAKE_BOT_REPLIES, JSON.stringify(payload) + '\\n'),",
+    "    ackEvent: async () => ({}),",
+    "    close: async () => ({})",
+    "  };",
+    "}",
+    ""
+  ].join("\n"));
+
+  let stderr = "";
+  const child = spawn(process.execPath, [runtimeFile, "claude-bot-worker", "--workspace-name", "Claude Test"], {
+    env: {
+      ...process.env,
+      CCR_CLAUDE_CODE_BOT_WORKER: "1",
+      CCR_CLAUDE_APP_USER_DATA_PATH: userDataDir,
+      CLAUDE_USER_DATA_DIR: userDataDir,
+      CCR_BOT_GATEWAY_ENABLED: "true",
+      CCR_BOT_GATEWAY_PLATFORM: "slack",
+      CCR_BOT_GATEWAY_INTEGRATION_ID: "bot-test",
+      CCR_BOT_GATEWAY_TENANT_ID: "ccr",
+      CCR_BOT_GATEWAY_ACK_EVENTS: "true",
+      CCR_BOT_GATEWAY_POLL_INTERVAL_MS: "50",
+      CCR_BOT_GATEWAY_REQUEST_TIMEOUT_MS: "2000",
+      CCR_BOT_GATEWAY_STARTUP_TIMEOUT_MS: "2000",
+      CCR_BOT_GATEWAY_SDK_MODULE: fakeSdk,
+      CCR_BOT_GATEWAY_STATE_DIR: stateDir,
+      CCR_FAKE_BOT_REPLIES: repliesFile
+    },
+    stdio: ["ignore", "ignore", "pipe"]
+  });
+  child.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
+  try {
+    const replies = await waitForJsonLines(repliesFile, 8, 7000, () => stderr);
+    const replyTexts = replies.map((reply) => reply.intent.text);
+    assert.ok(replyTexts.some((text) => text.startsWith("Claude App projects:") && text.includes(projectA) && text.includes(projectB)));
+    assert.ok(replyTexts.some((text) => text.startsWith("Selected project project-b")));
+    assert.ok(replyTexts.some((text) => text.startsWith("Claude App sessions in project-b:") && text.includes("Session B")));
+    assert.ok(!replyTexts.some((text) => text.startsWith("Claude App sessions in project-b:") && text.includes("Session A")));
+    assert.ok(replyTexts.some((text) => text.startsWith("Selected session local_b: Session B")));
+    assert.ok(replyTexts.some((text) => text.startsWith("Current Claude App session:") && text.includes("Session B")));
+    assert.ok(replyTexts.some((text) => text.startsWith("No selected Claude App session in project project-b.")));
+    assert.ok(replyTexts.includes("Unknown Bot command. Send /project or /session to see available commands."));
+    const store = JSON.parse(readFileSync(path.join(stateDir, "claude-bot-sessions.json"), "utf8"));
+    const entry = Object.values(store.conversations)[0];
+    assert.equal(store.version, 3);
+    assert.equal(realpathSync(entry.projectDirectory), realpathSync(projectB));
+    assert.equal(entry.sessionId, undefined);
   } finally {
     if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
     await waitForChildExit(child, 3000);

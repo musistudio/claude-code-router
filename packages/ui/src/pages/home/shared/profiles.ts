@@ -673,6 +673,11 @@ const botGatewayPlatformSpecs: readonly BotGatewayPlatformSpec[] = [
         ]
       }
     ]
+  },
+  {
+    value: "imessage",
+    label: "iMessage",
+    auth: [{ value: "local", label: "Local App", fields: [] }]
   }
 ];
 
@@ -914,6 +919,7 @@ function botGatewayHandoffFromProfileDraft(
 
 export function createBotGatewayConfigDraft(config?: BotGatewaySavedConfig): BotGatewayConfigDraft {
   const botDraft = createBotGatewayDraft(config?.botGateway);
+  const bot = normalizeBotGatewayRuntimeConfig(config?.botGateway) ?? fallbackConfig.botGateway;
   return {
     botAuthFields: botDraft.botAuthFields,
     botAuthType: botDraft.botAuthType,
@@ -922,7 +928,15 @@ export function createBotGatewayConfigDraft(config?: BotGatewaySavedConfig): Bot
     botHandoffIdleSeconds: botDraft.botHandoffIdleSeconds,
     botHandoffPhoneBluetoothTargets: botDraft.botHandoffPhoneBluetoothTargets,
     botHandoffPhoneWifiTargets: botDraft.botHandoffPhoneWifiTargets,
+    botLanguage: bot.language,
+    botMaxAttachmentMb: String(Math.max(1, Math.round(bot.maxAttachmentBytes / (1024 * 1024)))),
+    botMaxTurnMinutes: String(Math.max(1, Math.round(bot.maxTurnTimeMs / 60_000))),
+    botMediaEnabled: bot.mediaEnabled,
+    botMessageChunkChars: String(bot.messageChunkChars),
     botPlatform: botDraft.botPlatform === "none" ? "weixin-ilink" : botDraft.botPlatform,
+    botSessionIdleMinutes: String(bot.sessionIdleMinutes),
+    botShellEnabled: bot.shellEnabled,
+    botStreamReplies: bot.streamReplies,
     name: config?.name ?? ""
   };
 }
@@ -990,12 +1004,20 @@ function botGatewayConfigFromDraft(
     },
     integrationConfig: authPayload.integrationConfig,
     integrationId: existingBotGateway?.integrationId?.trim() || createBotGatewayIntegrationId(configId),
+    language: draft.botLanguage,
+    maxAttachmentBytes: numberDraftValue(draft.botMaxAttachmentMb, 20, 1, 100) * 1024 * 1024,
+    maxTurnTimeMs: numberDraftValue(draft.botMaxTurnMinutes, 10, 1, 60) * 60_000,
+    mediaEnabled: draft.botMediaEnabled,
+    messageChunkChars: numberDraftValue(draft.botMessageChunkChars, 3500, 500, 20_000),
     platform,
     pollIntervalMs: fallbackConfig.botGateway.pollIntervalMs,
     requestTimeoutMs: fallbackConfig.botGateway.requestTimeoutMs,
+    sessionIdleMinutes: numberDraftValue(draft.botSessionIdleMinutes, 0, 0, 43_200),
+    shellEnabled: draft.botShellEnabled,
     sourceDir: "",
     startupTimeoutMs: fallbackConfig.botGateway.startupTimeoutMs,
     stateDir: existingBotGateway?.stateDir?.trim() || createBotGatewayStateDir(configId),
+    streamReplies: draft.botStreamReplies,
     tenantId: existingBotGateway?.tenantId?.trim() || createBotGatewayTenantId(configName || configId)
   };
   return config;
@@ -1309,6 +1331,17 @@ export function normalizeBotGatewayRuntimeConfig(value: unknown): BotGatewayRunt
     },
     integrationConfig: websocketBotGatewayIntegrationConfig(platform, isPlainRecord(record.integrationConfig) ? record.integrationConfig : {}),
     integrationId: typeof record.integrationId === "string" ? record.integrationId : fallbackConfig.botGateway.integrationId,
+    language: record.language === "en" || record.language === "zh-CN" || record.language === "auto" ? record.language : fallbackConfig.botGateway.language,
+    maxAttachmentBytes: Number.isFinite(Number(record.maxAttachmentBytes))
+      ? numberDraftValue(String(record.maxAttachmentBytes), fallbackConfig.botGateway.maxAttachmentBytes, 1024, 100 * 1024 * 1024)
+      : fallbackConfig.botGateway.maxAttachmentBytes,
+    maxTurnTimeMs: Number.isFinite(Number(record.maxTurnTimeMs))
+      ? numberDraftValue(String(record.maxTurnTimeMs), fallbackConfig.botGateway.maxTurnTimeMs, 10_000, 3_600_000)
+      : fallbackConfig.botGateway.maxTurnTimeMs,
+    mediaEnabled: typeof record.mediaEnabled === "boolean" ? record.mediaEnabled : fallbackConfig.botGateway.mediaEnabled,
+    messageChunkChars: Number.isFinite(Number(record.messageChunkChars))
+      ? numberDraftValue(String(record.messageChunkChars), fallbackConfig.botGateway.messageChunkChars, 500, 20_000)
+      : fallbackConfig.botGateway.messageChunkChars,
     platform,
     pollIntervalMs: Number.isFinite(Number(record.pollIntervalMs))
       ? numberDraftValue(String(record.pollIntervalMs), fallbackConfig.botGateway.pollIntervalMs, 500, 60_000)
@@ -1316,11 +1349,16 @@ export function normalizeBotGatewayRuntimeConfig(value: unknown): BotGatewayRunt
     requestTimeoutMs: Number.isFinite(Number(record.requestTimeoutMs))
       ? numberDraftValue(String(record.requestTimeoutMs), fallbackConfig.botGateway.requestTimeoutMs, 1000, 3_600_000)
       : fallbackConfig.botGateway.requestTimeoutMs,
+    sessionIdleMinutes: Number.isFinite(Number(record.sessionIdleMinutes))
+      ? numberDraftValue(String(record.sessionIdleMinutes), fallbackConfig.botGateway.sessionIdleMinutes, 0, 43_200)
+      : fallbackConfig.botGateway.sessionIdleMinutes,
+    shellEnabled: typeof record.shellEnabled === "boolean" ? record.shellEnabled : fallbackConfig.botGateway.shellEnabled,
     sourceDir: typeof record.sourceDir === "string" ? record.sourceDir : fallbackConfig.botGateway.sourceDir,
     startupTimeoutMs: Number.isFinite(Number(record.startupTimeoutMs))
       ? numberDraftValue(String(record.startupTimeoutMs), fallbackConfig.botGateway.startupTimeoutMs, 1000, 120_000)
       : fallbackConfig.botGateway.startupTimeoutMs,
     stateDir: typeof record.stateDir === "string" ? record.stateDir : fallbackConfig.botGateway.stateDir,
+    streamReplies: typeof record.streamReplies === "boolean" ? record.streamReplies : fallbackConfig.botGateway.streamReplies,
     tenantId: typeof record.tenantId === "string" ? record.tenantId : fallbackConfig.botGateway.tenantId
   };
   if (conversationRef) {
