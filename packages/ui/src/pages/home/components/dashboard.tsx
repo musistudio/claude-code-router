@@ -26,7 +26,7 @@ import { buildTokenActivity, type TokenActivityCell } from "@/lib/usage-activity
 import { ShareCardWidget } from "./share-cards";
 import {
   CalendarDays, ChartNoAxesCombined, ChartPie, Cloud, GripHorizontal, Inbox, Layers3,
-  Rocket, Server, SlidersHorizontal, UsersRound, WalletCards
+  Rocket, Server, UsersRound, WalletCards
 } from "lucide-react";
 
 type OverviewUsageFilters = {
@@ -339,9 +339,6 @@ export function OverviewView({
     >
       <div className="overview-toolbar flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span aria-hidden="true" className="overview-toolbar-glyph hidden h-8 w-8 shrink-0 items-center justify-center rounded-[9px] sm:flex">
-            <SlidersHorizontal className="h-3.5 w-3.5" />
-          </span>
           <OverviewUsageRangeSelector range={usageRange} setRange={setUsageRange} />
           <Select
             aria-label={t("Provider")}

@@ -200,6 +200,7 @@ function App() {
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [updateDialogStatus, setUpdateDialogStatus] = useState<AppUpdateStatus>(fallbackUpdateStatus);
   const [gatewayActionBusy, setGatewayActionBusy] = useState(false);
+  const [gatewayActionTargetActive, setGatewayActionTargetActive] = useState<boolean>();
   const [actionMessage, setActionMessage] = useState("");
   const [actionError, setActionError] = useState("");
   const [profileActionError, setProfileActionError] = useState("");
@@ -2311,6 +2312,7 @@ function App() {
     }
 
     const shouldStop = gatewayStatus.state === "running" || gatewayStatus.state === "starting";
+    setGatewayActionTargetActive(!shouldStop);
     setGatewayActionBusy(true);
     setActionError("");
     setActionMessage("");
@@ -2324,6 +2326,7 @@ function App() {
       setActionError(formatError(error));
     } finally {
       setGatewayActionBusy(false);
+      setGatewayActionTargetActive(undefined);
     }
   }
 
@@ -2865,6 +2868,7 @@ function App() {
               gatewayEndpoint={gatewayEndpoint}
               gatewayStartupError={gatewayStartupError}
               gatewayStatus={gatewayStatus}
+              gatewayTargetActive={gatewayActionTargetActive}
               isMac={isMac}
               needsTrafficLightSafeArea={needsTrafficLightSafeArea}
               networkCaptureEnabled={networkCaptureEnabled}

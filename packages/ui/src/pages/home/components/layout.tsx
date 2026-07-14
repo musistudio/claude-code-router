@@ -1,8 +1,10 @@
 import type { ComponentProps } from "react";
+import { MorphIcon } from "@musistudio/lucide-morph-react";
+import { collapseSidebarToExpandInspectorMorph } from "@/lib/morph-icon";
 import {
-  AnimatedIconSwap, AnimatePresence, AppConfig, AppCopy, Button, Check, CircleAlert, cn, EndpointTitleBar,
+  AnimatePresence, AppConfig, AppCopy, Button, Check, CircleAlert, cn, EndpointTitleBar,
   AppUpdateStatus, Download, GatewayStatus, listSpringTransition, LucideIcon, motion, motionEase,
-  LoaderCircle, NavigationId, PanelLeftClose, PanelLeftOpen, RefreshCw,
+  LoaderCircle, NavigationId, RefreshCw,
   reducedMotionTransition, ServiceControlButton, Settings, ViewId,
   useAppText, ViewMotionShell, viewUsesInternalScroll
 } from "../shared/index";
@@ -64,6 +66,7 @@ export function MainLayout({
   gatewayEndpoint,
   gatewayStartupError,
   gatewayStatus,
+  gatewayTargetActive,
   isMac,
   needsTrafficLightSafeArea,
   agentAnalysisEnabled,
@@ -91,6 +94,7 @@ export function MainLayout({
   gatewayEndpoint: string;
   gatewayStartupError?: string;
   gatewayStatus: GatewayStatus;
+  gatewayTargetActive?: boolean;
   isMac: boolean;
   needsTrafficLightSafeArea: boolean;
   networkCaptureEnabled: boolean;
@@ -129,26 +133,35 @@ export function MainLayout({
 
   return (
     <>
-      <div className={cn("app-no-drag app-window-controls pointer-events-auto absolute top-2 z-[90] flex items-center gap-1", isMac ? "left-[76px]" : "left-3")}>
+      <div className={cn(
+        "app-no-drag app-window-controls pointer-events-auto absolute top-2 z-[90] flex items-center",
+        isMac ? "left-[84px] gap-0.5" : "left-3 gap-1"
+      )}>
         <Button
           aria-controls="primary-sidebar"
           aria-expanded={sidebarOpen}
           aria-label={sidebarOpen ? copy.sidebar.collapse : copy.sidebar.expand}
-          className="app-sidebar-toggle inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
+          className="app-sidebar-toggle inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
           onMouseDown={(event) => event.stopPropagation()}
           onClick={onToggleSidebar}
           title={sidebarOpen ? copy.sidebar.collapse : copy.sidebar.expand}
           type="button"
           unstyled
         >
-          <AnimatedIconSwap iconKey={sidebarOpen ? "close" : "open"}>
-            {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
-          </AnimatedIconSwap>
+          <MorphIcon
+            active={!sidebarOpen}
+            asset={collapseSidebarToExpandInspectorMorph}
+            color="currentColor"
+            duration={300}
+            size={16}
+            strokeWidth={2}
+          />
         </Button>
         <ServiceControlButton
           busy={gatewayActionBusy}
           onClick={toggleGatewayService}
           state={gatewayStatus.state}
+          targetActive={gatewayTargetActive}
         />
         {showUpdateButton ? (
           <Button
@@ -185,15 +198,17 @@ export function MainLayout({
         id="primary-sidebar"
         initial={false}
         style={{ pointerEvents: sidebarOpen ? "auto" : "none" }}
-        transition={shouldReduceMotion ? reducedMotionTransition : { damping: 35, mass: 0.78, stiffness: 430, type: "spring" }}
+        transition={shouldReduceMotion ? reducedMotionTransition : { duration: 0.3, ease: motionEase }}
       >
-        {sidebarOpen ? (
-          <motion.div
-            animate={{ opacity: 1 }}
-            className="flex min-h-0 w-[248px] flex-1 flex-col max-[720px]:w-full"
-            initial={{ opacity: 0 }}
-            transition={shouldReduceMotion ? reducedMotionTransition : { duration: 0.14, ease: motionEase }}
-          >
+        <AnimatePresence initial={false}>
+          {sidebarOpen ? (
+            <motion.div
+              animate={{ opacity: 1 }}
+              className="flex min-h-0 w-[248px] flex-1 flex-col max-[720px]:w-full"
+              exit={{ opacity: 0 }}
+              initial={{ opacity: 0 }}
+              transition={shouldReduceMotion ? reducedMotionTransition : { duration: 0.3, ease: motionEase }}
+            >
             <div className="flex h-14 shrink-0 max-[720px]:h-12">
               <div className="app-no-drag shrink-0" style={{ width: windowControlSafeAreaWidth }} />
               <div className="app-drag min-w-0 flex-1" />
@@ -244,8 +259,9 @@ export function MainLayout({
             </div>
 
             <div className="h-3 shrink-0 max-[720px]:hidden" />
-          </motion.div>
-        ) : null}
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
       </motion.aside>
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
