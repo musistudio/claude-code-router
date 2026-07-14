@@ -725,6 +725,9 @@ function codexModelCatalogFromPayload(payload: unknown): LocalAgentModelCatalog 
 
 function codexModelMetadataFromItem(item: Record<string, unknown>): ProviderModelMetadata | undefined {
   const additionalSpeedTiers = readArray(item.additional_speed_tiers) ?? readArray(item.additionalSpeedTiers) ?? readArray(item.speed_tiers) ?? readArray(item.speedTiers);
+  const contextWindow = readPositiveInteger(item.context_window ?? item.contextWindow);
+  const effectiveContextWindowPercent = readPercentage(item.effective_context_window_percent ?? item.effectiveContextWindowPercent);
+  const maxContextWindow = readPositiveInteger(item.max_context_window ?? item.maxContextWindow);
   const serviceTiers = readArray(item.service_tiers) ?? readArray(item.serviceTiers);
   const supportedReasoningLevels =
     readReasoningLevels(item.supported_reasoning_levels) ??
@@ -738,8 +741,11 @@ function codexModelMetadataFromItem(item: Record<string, unknown>): ProviderMode
   const supportsReasoningSummaries = readBoolean(item.supports_reasoning_summaries) ?? readBoolean(item.supportsReasoningSummaries);
   const metadata: ProviderModelMetadata = {
     ...(additionalSpeedTiers ? { additionalSpeedTiers } : {}),
+    ...(contextWindow ? { contextWindow } : {}),
     ...(defaultReasoningLevel !== undefined ? { defaultReasoningLevel } : {}),
     ...(defaultReasoningSummary ? { defaultReasoningSummary } : {}),
+    ...(effectiveContextWindowPercent ? { effectiveContextWindowPercent } : {}),
+    ...(maxContextWindow ? { maxContextWindow } : {}),
     ...(serviceTiers ? { serviceTiers } : {}),
     ...(supportedReasoningLevels ? { supportedReasoningLevels } : {}),
     ...(supportsReasoningSummaries !== undefined ? { supportsReasoningSummaries } : {})
@@ -749,6 +755,18 @@ function codexModelMetadataFromItem(item: Record<string, unknown>): ProviderMode
 
 function readArray(value: unknown): unknown[] | undefined {
   return Array.isArray(value) ? value : undefined;
+}
+
+function readPercentage(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 && value <= 100
+    ? value
+    : undefined;
+}
+
+function readPositiveInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.trunc(value)
+    : undefined;
 }
 
 function readNullableString(value: unknown): string | null | undefined {
