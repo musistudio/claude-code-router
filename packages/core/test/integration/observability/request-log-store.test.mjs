@@ -13,6 +13,104 @@ import { createBetterSqliteDatabase } from "@ccr/core/storage/sqlite-native.ts";
 const execFileAsync = promisify(execFile);
 const isBoundedHeapWorker = process.env.CCR_REQUEST_LOG_BOUNDED_HEAP_WORKER === "1";
 
+test("RequestLogStore resumes interrupted gateway migrations across bounded batches", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-paged-migration-test-"));
+  const dbFile = path.join(dir, "request-logs.sqlite");
+  let store;
+  try {
+    const legacy = createBetterSqliteDatabase(dbFile);
+    try {
+      legacy.exec(`
+        CREATE TABLE request_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          created_at TEXT NOT NULL,
+          event_id TEXT NOT NULL DEFAULT '',
+          status_code INTEGER NOT NULL DEFAULT 0,
+          ok INTEGER NOT NULL DEFAULT 0,
+          error TEXT NOT NULL DEFAULT '',
+          gateway_status_code INTEGER NOT NULL DEFAULT 0,
+          gateway_ok INTEGER NOT NULL DEFAULT 0,
+          gateway_error TEXT NOT NULL DEFAULT '',
+          gateway_final_attempt INTEGER NOT NULL DEFAULT 1,
+          response_headers TEXT NOT NULL DEFAULT '{}'
+        );
+        CREATE TABLE request_log_schema_migrations (
+          migration TEXT PRIMARY KEY,
+          last_id INTEGER NOT NULL DEFAULT 0,
+          completed INTEGER NOT NULL DEFAULT 0,
+          updated_at INTEGER NOT NULL
+        );
+      `);
+      const insert = legacy.prepare(`
+        INSERT INTO request_logs (created_at, event_id, status_code, ok, error, response_headers)
+        VALUES (?, ?, 503, 0, 'legacy failure', ?)
+      `);
+      const createdAt = new Date().toISOString();
+      legacy.transaction(() => {
+        for (let index = 0; index < 1_205; index += 1) {
+          insert.run(
+            createdAt,
+            `legacy-event-${index}`,
+            JSON.stringify({ "x-ccr-fallback-attempts": String((index % 4) + 1) })
+          );
+        }
+      })();
+      legacy.exec(`
+        UPDATE request_logs
+        SET gateway_final_attempt = ((id - 1) % 4) + 1
+        WHERE id <= 500;
+        INSERT INTO request_log_schema_migrations (migration, last_id, completed, updated_at)
+        VALUES ('gateway-final-attempt-v1', 500, 0, 1);
+      `);
+    } finally {
+      legacy.close();
+    }
+
+    store = new RequestLogStore(dbFile);
+    await store.list({ pageSize: 1 });
+
+    const migrated = createBetterSqliteDatabase(dbFile);
+    try {
+      const rows = migrated.prepare(`
+        SELECT gateway_final_attempt AS attempt, COUNT(*) AS total
+        FROM request_logs
+        GROUP BY gateway_final_attempt
+        ORDER BY gateway_final_attempt
+      `).all();
+      assert.deepEqual(rows.map((row) => [row.attempt, row.total]), [
+        [1, 302],
+        [2, 301],
+        [3, 301],
+        [4, 301]
+      ]);
+      const outcome = migrated.prepare(`
+        SELECT COUNT(*) AS total
+        FROM request_logs
+        WHERE gateway_status_code = 503
+          AND gateway_ok = 0
+          AND gateway_error = 'legacy failure'
+      `).get();
+      assert.equal(outcome.total, 1_205);
+      const migrations = migrated.prepare(`
+        SELECT migration, completed
+        FROM request_log_schema_migrations
+        ORDER BY migration
+      `).all();
+      assert.deepEqual(migrations, [
+        { completed: 1, migration: "gateway-final-attempt-v1" },
+        { completed: 1, migration: "gateway-outcome-v1" }
+      ]);
+      const indexes = migrated.prepare("PRAGMA index_list(request_logs)").all();
+      assert.equal(indexes.some((index) => index.name === "request_logs_request_id_idx"), true);
+    } finally {
+      migrated.close();
+    }
+  } finally {
+    await store?.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 async function recordLargeAgentRequests(store, dbFile, { paddingBytes, requestCount, sessionId }) {
   const padding = "x".repeat(paddingBytes);
   const startedAt = new Date().toISOString();
@@ -232,17 +330,23 @@ test("RequestLogStore redacts secrets and records CCR metadata", async () => {
       requestBody: Buffer.from(JSON.stringify({ model: "gpt-test", stream: true }), "utf8"),
       requestHeaders: {
         accept: "text/event-stream",
+        "api-key": "azure-request-secret",
         authorization: "Bearer request-secret",
         cookie: "session=request-secret",
         "content-type": "application/json",
+        "ocp-apim-subscription-key": "bing-request-secret",
+        "x-amz-security-token": "aws-request-secret",
+        "x-auth-token": "custom-request-secret",
         "x-ccr-provider-credential-chain": "cred-a, cred-b",
-        "x-ccr-provider-credential-id": "cred-a"
+        "x-ccr-provider-credential-id": "cred-a",
+        "x-goog-api-key": "google-request-secret"
       },
       requestId: "request-log-metadata-test",
       responseBodyText: "",
       responseHeaders: {
         "content-type": "text/event-stream",
         "x-api-key": "response-secret",
+        "x-company-client-secret": "custom-response-secret",
         "x-ccr-provider-credential-saturated": "true",
         "x-gateway-billing-cache-read-tokens": "10",
         "x-gateway-billing-input-tokens": "100",
@@ -258,9 +362,15 @@ test("RequestLogStore redacts secrets and records CCR metadata", async () => {
     const detail = await store.getDetail({ id: page.items[0].id });
 
     assert.ok(detail);
+    assert.equal(detail.requestHeaders["api-key"], "[redacted]");
     assert.equal(detail.requestHeaders.authorization, "[redacted]");
     assert.equal(detail.requestHeaders.cookie, "[redacted]");
+    assert.equal(detail.requestHeaders["ocp-apim-subscription-key"], "[redacted]");
+    assert.equal(detail.requestHeaders["x-amz-security-token"], "[redacted]");
+    assert.equal(detail.requestHeaders["x-auth-token"], "[redacted]");
+    assert.equal(detail.requestHeaders["x-goog-api-key"], "[redacted]");
     assert.equal(detail.responseHeaders["x-api-key"], "[redacted]");
+    assert.equal(detail.responseHeaders["x-company-client-secret"], "[redacted]");
     assert.equal(detail.credentialId, "cred-a");
     assert.deepEqual(detail.credentialChain, ["cred-a", "cred-b"]);
     assert.equal(detail.credentialSaturated, true);
@@ -313,6 +423,257 @@ test("RequestLogStore marks interrupted successful-status streams as errors", as
   }
 });
 
+test("RequestLogStore keeps an authoritative gateway failure when a later raw trace reports HTTP 200", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-raw-authority-test-"));
+  const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+  const startedAt = new Date().toISOString();
+  try {
+    await store.record({
+      completedAt: startedAt,
+      durationMs: 25,
+      error: "Client connection closed before response completed.",
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "gateway-provider",
+      requestBody: Buffer.from('{"model":"gateway-model","stream":true}'),
+      requestHeaders: { "content-type": "application/json" },
+      requestId: "gateway-failure-before-raw",
+      responseBodyText: "gateway-captured-error-body",
+      responseHeaders: { "content-type": "text/event-stream" },
+      startedAt,
+      statusCode: 499,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    await store.updateFromRawTrace({
+      bodyCapturePolicy: "errors",
+      isStream: true,
+      requestId: "gateway-failure-before-raw",
+      responseBodySizeBytes: 128,
+      responseBodyText: "",
+      responseBodyTruncated: true,
+      statusCode: 200
+    });
+
+    const page = await store.list({ pageSize: 25 });
+    const detail = await store.getDetail({ id: page.items[0].id });
+    assert.equal(detail.statusCode, 499);
+    assert.equal(detail.ok, false);
+    assert.equal(detail.error, "Client connection closed before response completed.");
+    assert.equal(detail.responseBody.text, "gateway-captured-error-body");
+  } finally {
+    await store.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore keeps an errorless gateway HTTP 500 authoritative over raw HTTP 200", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-status-authority-test-"));
+  const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+  const startedAt = new Date().toISOString();
+  try {
+    await store.record({
+      completedAt: startedAt,
+      durationMs: 25,
+      method: "POST",
+      path: "/v1/messages",
+      providerName: "gateway-provider",
+      requestBody: Buffer.from('{"model":"gateway-model"}'),
+      requestHeaders: { "content-type": "application/json" },
+      requestId: "gateway-status-failure-before-raw",
+      responseBodyText: '{"type":"gateway_failure"}',
+      responseHeaders: { "content-type": "application/json" },
+      startedAt,
+      statusCode: 500,
+      url: "http://127.0.0.1:3456/v1/messages"
+    });
+
+    await store.updateFromRawTrace({
+      requestId: "gateway-status-failure-before-raw",
+      responseBodyText: '{"type":"upstream_success"}',
+      statusCode: 200
+    });
+
+    const page = await store.list({ pageSize: 25 });
+    const detail = await store.getDetail({ id: page.items[0].id });
+    assert.equal(detail.statusCode, 500);
+    assert.equal(detail.ok, false);
+  } finally {
+    await store.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore consumes fallback bundles by unique bundle id and only final attempt mutates outcome", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-fallback-bundles-test-"));
+  const dbFile = path.join(dir, "request-logs.sqlite");
+  const store = new RequestLogStore(dbFile);
+  const startedAt = new Date().toISOString();
+  try {
+    for (const requestId of ["fallback-final-success", "fallback-final-failure"]) {
+      await store.record({
+        completedAt: startedAt,
+        durationMs: 25,
+        method: "POST",
+        path: "/v1/messages",
+        providerName: "gateway-provider",
+        requestBody: Buffer.from('{"model":"gateway-model"}'),
+        requestHeaders: { "content-type": "application/json" },
+        requestId,
+        responseBodyText: "gateway-body",
+        responseHeaders: {
+          "content-type": "application/json",
+          "x-ccr-fallback-attempts": "2"
+        },
+        startedAt,
+        statusCode: 200,
+        url: "http://127.0.0.1:3456/v1/messages"
+      });
+    }
+
+    await store.writeBatch([
+      {
+        input: {
+          attempt: 2,
+          bundleId: "success-final-bundle",
+          requestId: "fallback-final-success",
+          responseBodyText: "final-success-body",
+          statusCode: 200
+        },
+        kind: "raw-trace-update",
+        sequence: 1
+      },
+      {
+        input: {
+          attempt: 1,
+          bundleId: "success-intermediate-bundle",
+          requestId: "fallback-final-success",
+          responseBodyText: "intermediate-failure-body",
+          statusCode: 500
+        },
+        kind: "raw-trace-update",
+        sequence: 2
+      },
+      {
+        input: {
+          attempt: 2,
+          bundleId: "failure-final-bundle",
+          requestId: "fallback-final-failure",
+          responseBodyText: "final-failure-body",
+          statusCode: 502
+        },
+        kind: "raw-trace-update",
+        sequence: 3
+      },
+      {
+        input: {
+          attempt: 1,
+          bundleId: "failure-intermediate-bundle",
+          requestId: "fallback-final-failure",
+          responseBodyText: "intermediate-success-body",
+          statusCode: 200
+        },
+        kind: "raw-trace-update",
+        sequence: 4
+      },
+      {
+        input: {
+          attempt: 2,
+          bundleId: "success-final-bundle",
+          requestId: "fallback-final-success",
+          responseBodyText: "duplicate-must-not-apply",
+          statusCode: 503
+        },
+        kind: "raw-trace-update",
+        sequence: 5
+      }
+    ]);
+
+    const page = await store.list({ pageSize: 25 });
+    const success = await store.getDetail({
+      id: page.items.find((item) => item.requestId === "fallback-final-success").id
+    });
+    const failure = await store.getDetail({
+      id: page.items.find((item) => item.requestId === "fallback-final-failure").id
+    });
+    assert.equal(success.statusCode, 200);
+    assert.equal(success.ok, true);
+    assert.equal(success.responseBody.text, "final-success-body");
+    assert.equal(failure.statusCode, 502);
+    assert.equal(failure.ok, false);
+    assert.equal(failure.responseBody.text, "final-failure-body");
+
+    const database = createBetterSqliteDatabase(dbFile);
+    try {
+      const count = database.prepare("SELECT COUNT(*) AS total FROM request_log_raw_trace_events").get();
+      assert.equal(Number(count.total), 4);
+    } finally {
+      database.close();
+    }
+  } finally {
+    await store.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("RequestLogStore detects raw errors before applying errors-only body suppression", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-raw-error-policy-test-"));
+  const store = new RequestLogStore(path.join(dir, "request-logs.sqlite"));
+  const startedAt = new Date().toISOString();
+  try {
+    for (const requestId of ["raw-http-error", "raw-sse-error"]) {
+      await store.record({
+        completedAt: startedAt,
+        durationMs: 25,
+        method: "POST",
+        path: "/v1/messages",
+        providerName: "gateway-provider",
+        requestBody: Buffer.from('{"model":"gateway-model"}'),
+        requestHeaders: { "content-type": "application/json" },
+        requestId,
+        responseBodyText: "gateway-success-body",
+        responseHeaders: { "content-type": "application/json" },
+        startedAt,
+        statusCode: 200,
+        url: "http://127.0.0.1:3456/v1/messages"
+      });
+    }
+
+    await store.updateFromRawTrace({
+      bodyCapturePolicy: "errors",
+      requestId: "raw-http-error",
+      responseBodyContentType: "application/json",
+      responseBodyText: '{"error":{"message":"upstream failed"}}',
+      responseHeaders: { "content-type": "application/json" },
+      statusCode: 500
+    });
+    await store.updateFromRawTrace({
+      bodyCapturePolicy: "errors",
+      isStream: true,
+      requestId: "raw-sse-error",
+      responseBodyContentType: "text/event-stream",
+      responseBodyText: 'event: error\ndata: {"error":{"message":"late failure"}}\n\n',
+      responseHeaders: { "content-type": "text/event-stream" },
+      statusCode: 200
+    });
+
+    const page = await store.list({ pageSize: 25 });
+    const httpEntry = page.items.find((item) => item.requestId === "raw-http-error");
+    const sseEntry = page.items.find((item) => item.requestId === "raw-sse-error");
+    const httpDetail = await store.getDetail({ id: httpEntry.id });
+    const sseDetail = await store.getDetail({ id: sseEntry.id });
+    assert.equal(httpDetail.ok, false);
+    assert.equal(httpDetail.statusCode, 500);
+    assert.match(httpDetail.responseBody.text, /upstream failed/);
+    assert.equal(sseDetail.ok, false);
+    assert.match(sseDetail.error, /late failure/);
+    assert.match(sseDetail.responseBody.text, /late failure/);
+  } finally {
+    await store.close();
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("RequestLogStore applies raw trace updates to existing request logs", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "ccr-request-log-raw-trace-test-"));
   try {
@@ -344,7 +705,13 @@ test("RequestLogStore applies raw trace updates to existing request logs", async
       isStream: true,
       model: "trace-model",
       provider: "trace-provider",
-      requestHeaders: { "x-client-name": "codex-cli" },
+      requestHeaders: {
+        "api-key": "raw-azure-secret",
+        "ocp-apim-subscription-key": "raw-bing-secret",
+        "x-ccr-provider-credential-id": "raw-credential-id",
+        "x-client-name": "codex-cli",
+        "x-goog-api-key": "raw-google-secret"
+      },
       requestId: "raw-trace-request",
       responseBodyContentType: "text/event-stream",
       responseBodyText: errorStream,
@@ -360,11 +727,16 @@ test("RequestLogStore applies raw trace updates to existing request logs", async
     assert.ok(detail);
     assert.equal(detail.model, "trace-model");
     assert.equal(detail.provider, "trace-provider");
+    assert.equal(detail.credentialId, "raw-credential-id");
     assert.equal(detail.ok, false);
     assert.equal(detail.isStream, true);
     assert.match(detail.error, /rate_limit_error: quota exceeded/);
     assert.match(detail.responseBody?.text ?? "", /quota exceeded/);
+    assert.equal(detail.requestHeaders["api-key"], "[redacted]");
+    assert.equal(detail.requestHeaders["ocp-apim-subscription-key"], "[redacted]");
+    assert.equal(detail.requestHeaders["x-ccr-provider-credential-id"], "[redacted]");
     assert.equal(detail.requestHeaders["x-client-name"], "codex-cli");
+    assert.equal(detail.requestHeaders["x-goog-api-key"], "[redacted]");
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }

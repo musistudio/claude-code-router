@@ -26,15 +26,23 @@ import {
   resolveRawTraceBodyLimit
 } from "@ccr/core/observability/request-log-limits";
 import { compactBase64ImagePayloads } from "@ccr/core/observability/request-log-body";
+import {
+  RequestLogAdmissionStore,
+  type RequestLogAdmission
+} from "@ccr/core/observability/request-log-admission-store";
+import { suppressRouteTraceBodyValues } from "@ccr/core/observability/route-trace";
+import { isSensitiveRequestLogHeaderName } from "@ccr/core/observability/sensitive-headers";
 
 export type RequestLogEnqueueResult = {
   accepted: boolean;
   degraded: boolean;
-  reason?: "body_removed" | "closed" | "queue_full" | "writer_unavailable";
+  reason?: "body_removed" | "closed" | "queue_full" | "record_dropped" | "record_pending" | "writer_unavailable";
 };
 
 export type RequestLogRuntimeMetrics = {
   accepted: number;
+  admissionOverlayItems: number;
+  admissionPendingOperations: number;
   committed: number;
   degraded: number;
   dropped: number;
@@ -45,24 +53,33 @@ export type RequestLogRuntimeMetrics = {
 };
 
 export type RequestLogRuntimeOptions = {
+  admissionDbFile?: string;
+  admissionMaxPendingOperations?: number;
+  admissionOperationMaxAgeMs?: number;
+  admissionOverlayMaxEntries?: number;
+  admissionOverlayTtlMs?: number;
   batchMaxBytes?: number;
   batchMaxItems?: number;
   batchMaxWaitMs?: number;
   dbFile: string;
   queueMaxBytes?: number;
   queueMaxItems?: number;
+  pendingAdmissionTtlMs?: number;
   rawTraceSpoolDir?: string;
   workerFile?: string;
 };
 
-type ResolvedRuntimeOptions = Required<Omit<RequestLogRuntimeOptions, "rawTraceSpoolDir" | "workerFile">> & {
+type ResolvedRuntimeOptions = Required<Omit<RequestLogRuntimeOptions, "admissionDbFile" | "rawTraceSpoolDir" | "workerFile">> & {
+  admissionDbFile: string;
   rawTraceSpoolDir: string;
   workerFile: string;
 };
 
 type QueuedCommand = RequestLogStoreWriteCommand & {
   batchBytes: number;
+  isolated?: boolean;
   sizeBytes: number;
+  writeAttempts: number;
 };
 
 type InFlightBatch = {
@@ -75,7 +92,8 @@ type WorkerResponse = {
   error?: string;
   requestId?: number;
   result?: unknown;
-  type: "ack" | "batch-error" | "ready" | "response";
+  type: "ack" | "batch-error" | "maintenance" | "ready" | "response";
+  updated?: number;
 };
 
 type PendingRpc = {
@@ -83,22 +101,42 @@ type PendingRpc = {
   resolve: (value: unknown) => void;
 };
 
+type AdmissionOperation = {
+  attempts: number;
+  createdAt: number;
+  key?: string;
+  overlayRequestId?: string;
+  overlayVersion?: number;
+  run: (store: RequestLogAdmissionStore) => void;
+};
+
+type AdmissionOverlayEntry = RequestLogAdmission & {
+  version: number;
+};
+
 // One raw-trace event can contain both a maximum-sized request and response.
 // Keep room for exactly that case while retaining byte-based backpressure for
 // concurrent events.
 const defaultQueueMaxBytes = 128 * 1024 * 1024;
-const sensitiveQueueHeaderNames = new Set([
-  "authorization",
-  "cookie",
-  "proxy-authorization",
-  "set-cookie",
-  "x-api-key",
-  "x-auth-api-key-id",
-  "x-auth-sub"
-]);
+const maxCommandWriteAttempts = 3;
+const admissionRetryMaxDelayMs = 5_000;
+const defaultAdmissionMaxPendingOperations = 20_000;
+const defaultAdmissionOperationMaxAgeMs = 10 * 60 * 1_000;
+const defaultAdmissionOverlayMaxEntries = 10_000;
+const defaultAdmissionOverlayTtlMs = 10 * 60 * 1_000;
+const admissionDrainTimeSliceMs = 5;
+const admissionDrainMaxOperations = 100;
 
 export class RequestLogRuntime {
   private accepted = 0;
+  private admissionHeartbeatTimer?: NodeJS.Timeout;
+  private admissionLastPrunedAt = 0;
+  private admissionLastWarningAt = 0;
+  private readonly admissionOperationKeys = new Set<string>();
+  private readonly admissionOperations = new Map<number, AdmissionOperation>();
+  private readonly admissionOverlay = new Map<string, AdmissionOverlayEntry>();
+  private admissionRetryTimer?: NodeJS.Timeout;
+  private admissionStore?: RequestLogAdmissionStore;
   private batchId = 0;
   private closed = false;
   private committed = 0;
@@ -108,6 +146,8 @@ export class RequestLogRuntime {
   private flushTimer?: NodeJS.Timeout;
   private readonly inFlight = new Map<number, InFlightBatch>();
   private nextRequestId = 0;
+  private nextAdmissionOperationId = 0;
+  private nextAdmissionOverlayVersion = 0;
   private nextSequence = 0;
   private readonly options: ResolvedRuntimeOptions;
   private outstandingBytes = 0;
@@ -115,6 +155,8 @@ export class RequestLogRuntime {
   private queryWorker?: Worker;
   private queryWorkerReady?: Promise<void>;
   private readonly queue: QueuedCommand[] = [];
+  private revision = 0;
+  private readonly runtimeId = randomUUID();
   private readonly writerRequests = new Map<number, PendingRpc>();
   private writerRestartCount = 0;
   private writerWorker?: Worker;
@@ -122,10 +164,28 @@ export class RequestLogRuntime {
 
   constructor(options: RequestLogRuntimeOptions) {
     this.options = {
+      admissionDbFile: options.admissionDbFile ?? `${options.dbFile}.admissions.sqlite`,
+      admissionMaxPendingOperations: positiveInteger(
+        options.admissionMaxPendingOperations,
+        defaultAdmissionMaxPendingOperations
+      ),
+      admissionOperationMaxAgeMs: positiveInteger(
+        options.admissionOperationMaxAgeMs,
+        defaultAdmissionOperationMaxAgeMs
+      ),
+      admissionOverlayMaxEntries: positiveInteger(
+        options.admissionOverlayMaxEntries,
+        defaultAdmissionOverlayMaxEntries
+      ),
+      admissionOverlayTtlMs: positiveInteger(
+        options.admissionOverlayTtlMs,
+        defaultAdmissionOverlayTtlMs
+      ),
       batchMaxBytes: positiveInteger(options.batchMaxBytes, 4 * 1024 * 1024),
       batchMaxItems: positiveInteger(options.batchMaxItems, 50),
       batchMaxWaitMs: positiveInteger(options.batchMaxWaitMs, 10),
       dbFile: options.dbFile,
+      pendingAdmissionTtlMs: positiveInteger(options.pendingAdmissionTtlMs, 5 * 60 * 1_000),
       queueMaxBytes: positiveInteger(options.queueMaxBytes, defaultQueueMaxBytes),
       queueMaxItems: positiveInteger(options.queueMaxItems, 2_000),
       rawTraceSpoolDir: options.rawTraceSpoolDir ?? RAW_TRACE_SPOOL_DIR,
@@ -138,7 +198,18 @@ export class RequestLogRuntime {
     const ordinarySuccess = input.statusCode >= 200 && input.statusCode < 400 && !input.error;
     if (pressure >= 0.95 && ordinarySuccess) {
       this.dropped += 1;
-      return { accepted: false, degraded: false, reason: "queue_full" };
+      const result: RequestLogEnqueueResult = {
+        accepted: false,
+        degraded: false,
+        reason: "queue_full"
+      };
+      this.rememberRecordAdmission(
+        input.requestId,
+        result,
+        0,
+        resolveRecordBodyCapturePolicy(input)
+      );
+      return result;
     }
     const prepared = prepareRecordForQueue(input, pressure);
     const sizeBytes = estimateRecordBytes(prepared.input);
@@ -148,32 +219,86 @@ export class RequestLogRuntime {
       kind: "record",
       sequence: ++this.nextSequence,
       batchBytes: sizeBytes,
-      sizeBytes
+      sizeBytes,
+      writeAttempts: 0
     };
     const result = this.enqueue(command, prepared.degraded ? "body_removed" : undefined);
+    this.rememberRecordAdmission(
+      input.requestId,
+      result,
+      prepared.bodyCaptureMaxBytes,
+      resolveRecordBodyCapturePolicy(input)
+    );
     if (result.accepted && prepared.degraded) this.degraded += 1;
     return result;
+  }
+
+  rejectRecord(requestId: string | undefined, reason = "sampled"): void {
+    this.rememberRecordAdmission(requestId, {
+      accepted: false,
+      degraded: false,
+      reason: "record_dropped"
+    }, 0, "none", reason);
   }
 
   enqueueRawTrace(
     input: RequestLogRawTraceUpdateInput,
     rawTraceFiles?: RequestLogRawTraceFiles
   ): RequestLogEnqueueResult {
-    const maxBodyBytes = resolveRawTraceBodyLimit(rawTraceFiles?.maxBodyBytes);
-    const prepared = prepareRawTraceForQueue(input, maxBodyBytes);
+    const recordAdmission = input.deferOutcomeUntilRecord
+      ? this.resolveRecordAdmission(input.requestId)
+      : this.readRecordAdmission(input.requestId);
+    if (recordAdmission === "pending" ||
+      (input.deferOutcomeUntilRecord && recordAdmission?.state === "pending") ||
+      (recordAdmission === undefined && input.deferOutcomeUntilRecord)) {
+      return {
+        accepted: false,
+        degraded: false,
+        reason: "record_pending"
+      };
+    }
+    if (recordAdmission && !recordAdmission.accepted) {
+      this.dropped += 1;
+      return {
+        accepted: false,
+        degraded: false,
+        reason: "record_dropped"
+      };
+    }
+    const ordinarySuccess = input.statusCode !== undefined &&
+      input.statusCode >= 200 && input.statusCode < 400;
+    if (!recordAdmission && this.pressureRatio() >= 0.95 && ordinarySuccess) {
+      this.dropped += 1;
+      return { accepted: false, degraded: false, reason: "queue_full" };
+    }
+    const configuredMaxBodyBytes = resolveRawTraceBodyLimit(rawTraceFiles?.maxBodyBytes);
+    const maxBodyBytes = Math.min(
+      configuredMaxBodyBytes,
+      recordAdmission?.bodyCaptureMaxBytes ?? configuredMaxBodyBytes
+    );
+    const bodyPolicyDegraded = maxBodyBytes < configuredMaxBodyBytes;
+    const admittedInput = recordAdmission
+      ? { ...input, bodyCapturePolicy: recordAdmission.bodyCapturePolicy }
+      : input;
+    const policyInput = maxBodyBytes === 0
+      ? suppressRequestLogRawTraceBodies(admittedInput)
+      : admittedInput;
+    const queuedRawTraceFiles = constrainRawTraceFiles(rawTraceFiles, maxBodyBytes);
+    const prepared = prepareRawTraceForQueue(policyInput, maxBodyBytes);
     const sizeBytes = Math.max(
-      estimateRawTraceBytes(prepared, rawTraceFiles),
-      rawTraceFileBytes(rawTraceFiles, maxBodyBytes)
+      estimateRawTraceBytes(prepared, queuedRawTraceFiles),
+      rawTraceFileBytes(queuedRawTraceFiles, maxBodyBytes)
     );
     const command: QueuedCommand = {
       input: prepared,
       kind: "raw-trace-update",
-      rawTraceFiles,
+      rawTraceFiles: queuedRawTraceFiles,
       sequence: ++this.nextSequence,
       batchBytes: sizeBytes,
-      sizeBytes
+      sizeBytes,
+      writeAttempts: 0
     };
-    return this.enqueue(command);
+    return this.enqueue(command, bodyPolicyDegraded ? "body_removed" : undefined);
   }
 
   async list(filter?: RequestLogListFilter): Promise<RequestLogPage> {
@@ -193,8 +318,11 @@ export class RequestLogRuntime {
   }
 
   metrics(): RequestLogRuntimeMetrics {
+    this.pruneAdmissionOverlay();
     return {
       accepted: this.accepted,
+      admissionOverlayItems: this.admissionOverlay.size,
+      admissionPendingOperations: this.admissionOperations.size,
       committed: this.committed,
       degraded: this.degraded,
       dropped: this.dropped,
@@ -234,6 +362,21 @@ export class RequestLogRuntime {
     ]);
     this.queryWorker = undefined;
     this.writerWorker = undefined;
+    if (this.admissionHeartbeatTimer) clearInterval(this.admissionHeartbeatTimer);
+    this.admissionHeartbeatTimer = undefined;
+    this.drainAdmissionOperations();
+    await waitUntil(() => this.admissionOperations.size === 0, options.timeoutMs);
+    if (this.admissionRetryTimer) clearTimeout(this.admissionRetryTimer);
+    this.admissionRetryTimer = undefined;
+    this.admissionOperations.clear();
+    this.admissionOperationKeys.clear();
+    this.admissionOverlay.clear();
+    try {
+      this.admissionStore?.close();
+    } catch (error) {
+      console.warn(`[request-log] Failed to close admission persistence: ${formatRuntimeError(error)}`);
+    }
+    this.admissionStore = undefined;
   }
 
   private enqueue(command: QueuedCommand, degradedReason?: RequestLogEnqueueResult["reason"]): RequestLogEnqueueResult {
@@ -274,6 +417,239 @@ export class RequestLogRuntime {
     return this.queue.reduce((total, command) => total + command.batchBytes, 0);
   }
 
+  private rememberRecordAdmission(
+    requestId: string | undefined,
+    result: RequestLogEnqueueResult,
+    bodyCaptureMaxBytes: number,
+    bodyCapturePolicy: "all" | "errors" | "none",
+    persistedReason: string | undefined = result.reason
+  ): void {
+    const normalized = requestId?.trim();
+    if (!normalized) return;
+    const overlayVersion = this.setAdmissionOverlay(normalized, {
+      accepted: result.accepted,
+      bodyCapturePolicy,
+      bodyCaptureMaxBytes,
+      reason: persistedReason,
+      recordedAt: Date.now(),
+      state: result.accepted ? "pending" : "rejected"
+    });
+    this.submitAdmissionOperation({
+      attempts: 0,
+      createdAt: Date.now(),
+      overlayRequestId: normalized,
+      overlayVersion,
+      run: (store) => store.remember({
+        accepted: result.accepted,
+        bodyCapturePolicy,
+        bodyCaptureMaxBytes,
+        reason: persistedReason,
+        requestId: normalized,
+        runtimeId: this.runtimeId
+      })
+    });
+  }
+
+  private readRecordAdmission(requestId: string): RequestLogAdmission | undefined {
+    const normalized = requestId.trim();
+    if (!normalized) return undefined;
+    this.pruneAdmissionOverlay();
+    const overlay = this.admissionOverlay.get(normalized);
+    if (overlay) return overlay;
+    return this.useAdmissionStore((store) => store.read(normalized));
+  }
+
+  private resolveRecordAdmission(requestId: string): RequestLogAdmission | "pending" | undefined {
+    const normalized = requestId.trim();
+    if (!normalized) return undefined;
+    this.pruneAdmissionOverlay();
+    const overlay = this.admissionOverlay.get(normalized);
+    if (overlay) return overlay;
+    return this.useAdmissionStore((store) =>
+      store.resolveForRawTrace(normalized, this.options.pendingAdmissionTtlMs));
+  }
+
+  private markRecordAdmissionsCommitted(commands: QueuedCommand[]): void {
+    for (const command of commands) {
+      if (command.kind !== "record") continue;
+      const requestId = command.input.requestId?.trim();
+      if (!requestId) continue;
+      const existing = this.admissionOverlay.get(requestId);
+      const overlayVersion = this.setAdmissionOverlay(requestId, {
+        accepted: true,
+        bodyCaptureMaxBytes: existing?.bodyCaptureMaxBytes ?? nonNegativeInteger(command.input.maxBodyBytes),
+        bodyCapturePolicy: existing?.bodyCapturePolicy ?? resolveRecordBodyCapturePolicy(command.input),
+        recordedAt: Date.now(),
+        state: "committed"
+      });
+      this.submitAdmissionOperation({
+        attempts: 0,
+        createdAt: Date.now(),
+        overlayRequestId: requestId,
+        overlayVersion,
+        run: (store) => store.markCommitted(requestId, this.runtimeId)
+      });
+    }
+  }
+
+  private useAdmissionStore<T>(operation: (store: RequestLogAdmissionStore) => T): T | undefined {
+    try {
+      const store = this.ensureAdmissionStore();
+      return operation(store);
+    } catch (error) {
+      this.handleAdmissionFailure(error);
+      return undefined;
+    }
+  }
+
+  private ensureAdmissionStore(): RequestLogAdmissionStore {
+    this.admissionStore ??= new RequestLogAdmissionStore(
+      this.options.admissionDbFile,
+      this.options.dbFile,
+      this.runtimeId
+    );
+    this.ensureAdmissionHeartbeat();
+    return this.admissionStore;
+  }
+
+  private submitAdmissionOperation(operation: AdmissionOperation): void {
+    if (operation.key && this.admissionOperationKeys.has(operation.key)) return;
+    const operationId = ++this.nextAdmissionOperationId;
+    this.admissionOperations.set(operationId, operation);
+    if (operation.key) this.admissionOperationKeys.add(operation.key);
+    while (this.admissionOperations.size > this.options.admissionMaxPendingOperations) {
+      const oldest = this.admissionOperations.entries().next().value as
+        [number, AdmissionOperation] | undefined;
+      if (!oldest) break;
+      this.settleAdmissionOperation(oldest[0], oldest[1]);
+      this.warnAdmissionBound("pending operation capacity");
+    }
+    this.drainAdmissionOperations();
+  }
+
+  private drainAdmissionOperations(): void {
+    if (this.admissionRetryTimer) return;
+    const startedAt = Date.now();
+    let processed = 0;
+    while (this.admissionOperations.size > 0) {
+      if (processed >= admissionDrainMaxOperations || Date.now() - startedAt >= admissionDrainTimeSliceMs) {
+        this.scheduleAdmissionDrain(0);
+        return;
+      }
+      const next = this.admissionOperations.entries().next().value as
+        [number, AdmissionOperation] | undefined;
+      if (!next) return;
+      const [operationId, operation] = next;
+      if (Date.now() - operation.createdAt >= this.options.admissionOperationMaxAgeMs) {
+        this.settleAdmissionOperation(operationId, operation);
+        this.warnAdmissionBound("pending operation TTL");
+        processed += 1;
+        continue;
+      }
+      try {
+        operation.run(this.ensureAdmissionStore());
+        this.settleAdmissionOperation(operationId, operation);
+        processed += 1;
+      } catch (error) {
+        operation.attempts += 1;
+        this.handleAdmissionFailure(error);
+        const delayMs = Math.min(
+          admissionRetryMaxDelayMs,
+          25 * (2 ** Math.min(8, operation.attempts - 1))
+        );
+        this.scheduleAdmissionDrain(delayMs);
+        return;
+      }
+    }
+  }
+
+  private scheduleAdmissionDrain(delayMs: number): void {
+    if (this.admissionRetryTimer) return;
+    this.admissionRetryTimer = setTimeout(() => {
+      this.admissionRetryTimer = undefined;
+      this.drainAdmissionOperations();
+    }, delayMs);
+    this.admissionRetryTimer.unref?.();
+  }
+
+  private handleAdmissionFailure(error: unknown): void {
+    if (!isTransientSqliteLock(error)) {
+      try {
+        this.admissionStore?.close();
+      } catch {
+        // The original persistence failure is the actionable error.
+      }
+      this.admissionStore = undefined;
+    }
+    const now = Date.now();
+    if (now - this.admissionLastWarningAt >= 30_000) {
+      this.admissionLastWarningAt = now;
+      console.warn(`[request-log] Admission persistence operation queued for retry: ${formatRuntimeError(error)}`);
+    }
+  }
+
+  private setAdmissionOverlay(
+    requestId: string,
+    admission: RequestLogAdmission
+  ): number {
+    this.pruneAdmissionOverlay(admission.recordedAt);
+    const version = ++this.nextAdmissionOverlayVersion;
+    this.admissionOverlay.delete(requestId);
+    this.admissionOverlay.set(requestId, { ...admission, version });
+    while (this.admissionOverlay.size > this.options.admissionOverlayMaxEntries) {
+      const oldestRequestId = this.admissionOverlay.keys().next().value as string | undefined;
+      if (!oldestRequestId) break;
+      this.admissionOverlay.delete(oldestRequestId);
+      this.warnAdmissionBound("overlay capacity");
+    }
+    return version;
+  }
+
+  private pruneAdmissionOverlay(now = Date.now()): void {
+    const cutoff = now - this.options.admissionOverlayTtlMs;
+    for (const [requestId, admission] of this.admissionOverlay) {
+      if (admission.recordedAt > cutoff) break;
+      this.admissionOverlay.delete(requestId);
+    }
+  }
+
+  private settleAdmissionOperation(operationId: number, operation: AdmissionOperation): void {
+    this.admissionOperations.delete(operationId);
+    if (operation.key) this.admissionOperationKeys.delete(operation.key);
+    if (!operation.overlayRequestId || operation.overlayVersion === undefined) return;
+    const overlay = this.admissionOverlay.get(operation.overlayRequestId);
+    if (overlay?.version === operation.overlayVersion) {
+      this.admissionOverlay.delete(operation.overlayRequestId);
+    }
+  }
+
+  private warnAdmissionBound(bound: string): void {
+    const now = Date.now();
+    if (now - this.admissionLastWarningAt < 30_000) return;
+    this.admissionLastWarningAt = now;
+    console.warn(`[request-log] Admission ${bound} reached; oldest fail-closed state was released.`);
+  }
+
+  private ensureAdmissionHeartbeat(): void {
+    if (this.admissionHeartbeatTimer || this.closed) return;
+    this.admissionHeartbeatTimer = setInterval(() => {
+      this.submitAdmissionOperation({
+        attempts: 0,
+        createdAt: Date.now(),
+        key: "heartbeat",
+        run: (store) => {
+          store.heartbeat(this.runtimeId);
+          const now = Date.now();
+          if (now - this.admissionLastPrunedAt >= 60 * 60 * 1_000) {
+            store.prune(now);
+            this.admissionLastPrunedAt = now;
+          }
+        }
+      });
+    }, 10_000);
+    this.admissionHeartbeatTimer.unref?.();
+  }
+
   private schedulePump(immediate = false): void {
     if (this.inFlight.size > 0 || this.queue.length === 0) return;
     if (immediate) {
@@ -298,10 +674,14 @@ export class RequestLogRuntime {
     }
     const commands: QueuedCommand[] = [];
     let bytes = 0;
+    const isolatedBatch = Boolean(this.queue[0]?.isolated);
     while (this.queue.length > 0 && commands.length < this.options.batchMaxItems) {
       const next = this.queue[0];
-      if (commands.length > 0 && bytes + next.batchBytes > this.options.batchMaxBytes) break;
-      commands.push(this.queue.shift()!);
+      if (commands.length > 0 &&
+        (isolatedBatch || next.isolated || bytes + next.batchBytes > this.options.batchMaxBytes)) break;
+      const command = this.queue.shift()!;
+      command.writeAttempts += 1;
+      commands.push(command);
       bytes += next.batchBytes;
     }
     if (commands.length === 0 || !this.writerWorker) return;
@@ -351,15 +731,58 @@ export class RequestLogRuntime {
       this.inFlight.delete(message.batchId);
       this.outstandingBytes = Math.max(0, this.outstandingBytes - batch.bytes);
       this.committed += batch.commands.length;
+      this.revision += batch.commands.length;
+      this.markRecordAdmissionsCommitted(batch.commands);
       this.scheduleRawTraceCleanup(batch.commands);
       this.schedulePump(true);
       return;
     }
     if (message.type === "batch-error") {
-      this.handleWriterFailure(this.writerWorker, new Error(message.error || "request log batch failed"));
+      this.handleBatchError(message);
+      return;
+    }
+    if (message.type === "maintenance" && (message.updated ?? 0) > 0) {
+      this.revision += 1;
       return;
     }
     settleRpc(this.writerRequests, message);
+  }
+
+  private handleBatchError(message: WorkerResponse): void {
+    if (message.batchId === undefined) {
+      this.handleWriterFailure(this.writerWorker, new Error(message.error || "request log batch failed"));
+      return;
+    }
+    const batch = this.inFlight.get(message.batchId);
+    if (!batch) return;
+    this.inFlight.delete(message.batchId);
+    if (batch.commands.length > 1) {
+      this.queue.unshift(...batch.commands.map((command) => ({ ...command, isolated: true })));
+      this.schedulePump(true);
+      return;
+    }
+
+    const command = batch.commands[0];
+    if (command.writeAttempts < maxCommandWriteAttempts) {
+      this.queue.unshift({ ...command, isolated: true });
+    } else {
+      this.outstandingBytes = Math.max(0, this.outstandingBytes - command.sizeBytes);
+      this.dropped += 1;
+      if (command.kind === "record") {
+        this.rememberRecordAdmission(command.input.requestId, {
+          accepted: false,
+          degraded: false,
+          reason: "writer_unavailable"
+        }, 0, resolveRecordBodyCapturePolicy(command.input));
+        this.scheduleRawTraceCleanup([command]);
+      }
+      console.warn(
+        `[request-log] ${command.kind === "raw-trace-update" ? "Retaining" : "Dropping"} ` +
+        `${command.kind} sequence ${command.sequence} after ` +
+        `${command.writeAttempts} failed write attempts: ${message.error || "request log batch failed"}`
+      );
+    }
+    this.schedulePump(true);
   }
 
   private handleWriterFailure(worker: Worker | undefined, error: Error): void {
@@ -453,7 +876,7 @@ export class RequestLogRuntime {
     await this.ensureQueryWorker();
     if (!this.queryWorker) throw new Error("Request log query worker is unavailable.");
     return await rpc<T>(this.queryWorker, this.queryRequests, ++this.nextRequestId, method, args, {
-      revision: this.committed
+      revision: this.revision
     });
   }
 
@@ -484,11 +907,20 @@ export function createRequestLogRuntime(options: RequestLogRuntimeOptions): Requ
   return new RequestLogRuntime(options);
 }
 
-function prepareRecordForQueue(input: RequestLogRecordInput, pressure: number): { degraded: boolean; input: RequestLogRecordInput } {
+function prepareRecordForQueue(
+  input: RequestLogRecordInput,
+  pressure: number
+): { bodyCaptureMaxBytes: number; degraded: boolean; input: RequestLogRecordInput } {
   const maxBodyBytes = Math.max(0, Math.min(maxRequestLogBodyBytes, input.maxBodyBytes ?? defaultRequestLogBodyBytes));
   const ordinarySuccess = input.statusCode >= 200 && input.statusCode < 400 && !input.error;
   const removeBodies = input.captureBody === false || (pressure >= 0.7 && ordinarySuccess);
+  const bodyCapturePolicy = resolveRecordBodyCapturePolicy(input);
+  const admissionBodyCaptureMaxBytes = bodyCapturePolicy === "none" ||
+    (pressure >= 0.7 && ordinarySuccess)
+    ? 0
+    : maxBodyBytes;
   const removeTrace = pressure >= 0.85 && ordinarySuccess;
+  const suppressTraceBodyValues = (removeBodies || maxBodyBytes === 0) && input.routeTrace !== undefined;
   const compactedRequest = removeBodies
     ? { buffer: Buffer.alloc(0), compacted: false }
     : compactBase64ImagePayloads(input.requestBody);
@@ -502,17 +934,25 @@ function prepareRecordForQueue(input: RequestLogRecordInput, pressure: number): 
   const responseBodySizeBytes = input.responseBodySizeBytes ?? Buffer.byteLength(input.responseBodyText ?? "");
   const responseBodyCapturedBytes = Buffer.byteLength(responseBodyText);
   return {
-    degraded: removeBodies || removeTrace || compactedRequest.compacted || compactedResponse.compacted ||
+    bodyCaptureMaxBytes: admissionBodyCaptureMaxBytes,
+    degraded: removeBodies || removeTrace || suppressTraceBodyValues || compactedRequest.compacted || compactedResponse.compacted ||
       requestBody.byteLength < compactedRequest.buffer.byteLength ||
       responseBodyCapturedBytes < responseBodySizeBytes,
     input: {
       ...input,
+      bodyCapturePolicy,
+      captureBody: !removeBodies,
+      maxBodyBytes: admissionBodyCaptureMaxBytes,
       requestBody,
       requestBodySizeBytes: input.requestBodySizeBytes ?? input.requestBody.byteLength,
       requestBodyTruncated: removeBodies || compactedRequest.compacted || Boolean(input.requestBodyTruncated) ||
         requestBody.byteLength < compactedRequest.buffer.byteLength,
       requestHeaders: plainHeaderRecord(input.requestHeaders),
-      routeTrace: removeTrace ? undefined : input.routeTrace,
+      routeTrace: removeTrace
+        ? undefined
+        : (suppressTraceBodyValues && input.routeTrace
+            ? suppressRouteTraceBodyValues(input.routeTrace)
+            : input.routeTrace),
       responseBodyText,
       responseBodySizeBytes,
       responseBodyTruncated: removeBodies || compactedResponse.compacted || Boolean(input.responseBodyTruncated) ||
@@ -520,6 +960,15 @@ function prepareRecordForQueue(input: RequestLogRecordInput, pressure: number): 
       responseHeaders: plainHeaderRecord(input.responseHeaders)
     }
   };
+}
+
+function resolveRecordBodyCapturePolicy(
+  input: RequestLogRecordInput
+): "all" | "errors" | "none" {
+  if (input.bodyCapturePolicy === "errors" || input.bodyCapturePolicy === "none") {
+    return input.bodyCapturePolicy;
+  }
+  return input.bodyCapturePolicy === "all" || input.captureBody !== false ? "all" : "none";
 }
 
 function prepareRawTraceForQueue(
@@ -557,6 +1006,46 @@ function prepareRawTraceForQueue(
   };
 }
 
+function constrainRawTraceFiles(
+  files: RequestLogRawTraceFiles | undefined,
+  maxBodyBytes: number
+): RequestLogRawTraceFiles | undefined {
+  if (!files) return undefined;
+  const {
+    requestBody: _requestBody,
+    responseBody: _responseBody,
+    ...metadata
+  } = files;
+  return {
+    ...metadata,
+    maxBodyBytes,
+    ...(maxBodyBytes > 0 && files.requestBody ? { requestBody: files.requestBody } : {}),
+    ...(maxBodyBytes > 0 && files.responseBody ? { responseBody: files.responseBody } : {})
+  };
+}
+
+export function suppressRequestLogRawTraceBodies(
+  input: RequestLogRawTraceUpdateInput
+): RequestLogRawTraceUpdateInput {
+  const requestSize = input.requestBodySizeBytes ??
+    (input.requestBodyText === undefined ? undefined : Buffer.byteLength(input.requestBodyText));
+  const responseSize = input.responseBodySizeBytes ??
+    (input.responseBodyText === undefined ? undefined : Buffer.byteLength(input.responseBodyText));
+  return {
+    ...input,
+    ...(requestSize === undefined ? {} : {
+      requestBodySizeBytes: requestSize,
+      requestBodyText: "",
+      requestBodyTruncated: Boolean(input.requestBodyTruncated) || requestSize > 0
+    }),
+    ...(responseSize === undefined ? {} : {
+      responseBodySizeBytes: responseSize,
+      responseBodyText: "",
+      responseBodyTruncated: Boolean(input.responseBodyTruncated) || responseSize > 0
+    })
+  };
+}
+
 function boundedBuffer(value: Buffer, maxBytes: number): Buffer {
   return value.byteLength <= maxBytes ? value : Buffer.from(value.subarray(0, maxBytes));
 }
@@ -577,7 +1066,7 @@ function plainHeaderRecord(value: Headers | Record<string, string | string[] | u
     : Object.entries(value).filter((entry): entry is [string, string | string[]] => entry[1] !== undefined);
   return Object.fromEntries(entries.map(([key, headerValue]) => [
     key,
-    sensitiveQueueHeaderNames.has(key.toLowerCase()) ? "[redacted]" : headerValue
+    isSensitiveRequestLogHeaderName(key) ? "[redacted]" : headerValue
   ]));
 }
 
@@ -609,12 +1098,22 @@ function jsonBytes(value: unknown): number {
 }
 
 function withoutSize(command: QueuedCommand): RequestLogStoreWriteCommand {
-  const { batchBytes: _batchBytes, sizeBytes: _sizeBytes, ...output } = command;
+  const {
+    batchBytes: _batchBytes,
+    isolated: _isolated,
+    sizeBytes: _sizeBytes,
+    writeAttempts: _writeAttempts,
+    ...output
+  } = command;
   return output;
 }
 
 function positiveInteger(value: number | undefined, fallback: number): number {
   return Number.isFinite(value) && Number(value) > 0 ? Math.floor(Number(value)) : fallback;
+}
+
+function nonNegativeInteger(value: number | undefined): number {
+  return Number.isFinite(value) ? Math.max(0, Math.floor(Number(value))) : 0;
 }
 
 function rpc<T>(
@@ -649,6 +1148,12 @@ function errorCode(error: unknown): string | undefined {
   return typeof error === "object" && error !== null && "code" in error
     ? String((error as { code?: unknown }).code ?? "") || undefined
     : undefined;
+}
+
+function isTransientSqliteLock(error: unknown): boolean {
+  const code = errorCode(error);
+  return code === "SQLITE_BUSY" || code === "SQLITE_LOCKED" ||
+    (error instanceof Error && /database is (?:busy|locked)/i.test(error.message));
 }
 
 function formatRuntimeError(error: unknown): string {

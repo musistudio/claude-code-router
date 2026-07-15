@@ -2,7 +2,11 @@ import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import type { ApiKeyConfig, AppConfig, RequestRouteTraceChange } from "@ccr/core/contracts/app";
-import { createSseErrorDetector, recordGatewayRequestLog } from "@ccr/core/observability/request-log-store";
+import {
+  createSseErrorDetector,
+  markGatewayRequestLogDropped,
+  recordGatewayRequestLog
+} from "@ccr/core/observability/request-log-store";
 import { recordGatewayUsageCapture, type UsageCaptureInput } from "@ccr/core/usage/store";
 import { ClaudeCodeRouterPlugin } from "@ccr/core/gateway/claude-code-router-plugin";
 import { adaptRouteRequestBody, restoreRouteRequestBody } from "@ccr/core/routing/protocol-adapter";
@@ -220,11 +224,14 @@ export class GatewayRequestPipeline {
         const successful = statusCode >= 200 && statusCode < 400 && !error;
         const successSampleRate = config.observability.requestLogSuccessSampleRate ?? 1;
         if (successful && !requestLogSampled(requestId, successSampleRate)) {
+          markGatewayRequestLogDropped(requestId, "sampled");
           return;
         }
         const bodyCapture = config.observability.requestLogBodyCapture ?? "all";
+        const captureBody = bodyCapture === "all" || (bodyCapture === "errors" && !successful);
         recordGatewayRequestLog({
-          captureBody: bodyCapture === "all" || (bodyCapture === "errors" && !successful),
+          bodyCapturePolicy: bodyCapture,
+          captureBody,
           client,
           completedAt: new Date().toISOString(),
           durationMs: Date.now() - startedAt,
@@ -239,7 +246,7 @@ export class GatewayRequestPipeline {
           requestBody: shouldSendBody(method) ? bodyToForward ?? Buffer.alloc(0) : Buffer.alloc(0),
           requestHeaders: headers,
           requestId,
-          routeTrace: routeTrace?.finish(),
+          routeTrace: routeTrace?.finish({ captureBodyValues: captureBody }),
           responseBodyText,
           responseBodySizeBytes,
           responseBodyTruncated,

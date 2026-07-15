@@ -44,13 +44,50 @@ let catalog: PriceCatalog | undefined;
 let catalogPromise: Promise<PriceCatalog> | undefined;
 
 export async function estimateUsageCostUsd(input: UsageCostInput): Promise<UsageCostEstimate | undefined> {
+  if (!hasBillableUsage(input)) {
+    return undefined;
+  }
   const model = input.model?.trim();
   if (!model || model === "unknown") {
     return undefined;
   }
 
   const prices = await getPriceCatalog();
-  const price = findModelPrice(prices.index, model, input.provider);
+  return estimateUsageCostFromIndex(input, prices.index, model);
+}
+
+/**
+ * Loads the remote catalog without holding a caller's database transaction.
+ * Callers that own a write transaction can then use the cache-only estimator.
+ */
+export async function preloadUsagePriceCatalog(): Promise<void> {
+  await getPriceCatalog();
+}
+
+export function usagePriceCatalogNeedsRefresh(): boolean {
+  return !catalog || Date.now() - catalog.loadedAt >= catalogTtlMs;
+}
+
+/** Never performs I/O. Returns undefined when no fresh catalog is loaded. */
+export function estimateUsageCostUsdFromLoadedCatalog(
+  input: UsageCostInput
+): UsageCostEstimate | undefined {
+  if (!hasBillableUsage(input)) {
+    return undefined;
+  }
+  const model = input.model?.trim();
+  if (!model || model === "unknown" || usagePriceCatalogNeedsRefresh() || !catalog) {
+    return undefined;
+  }
+  return estimateUsageCostFromIndex(input, catalog.index, model);
+}
+
+function estimateUsageCostFromIndex(
+  input: UsageCostInput,
+  index: PriceIndex,
+  model: string
+): UsageCostEstimate | undefined {
+  const price = findModelPrice(index, model, input.provider);
   if (!price) {
     return undefined;
   }
@@ -74,6 +111,13 @@ export async function estimateUsageCostUsd(input: UsageCostInput): Promise<Usage
     model: price.model,
     source: price.source
   };
+}
+
+function hasBillableUsage(input: UsageCostInput): boolean {
+  return normalizeCount(input.inputTokens) +
+    normalizeCount(input.outputTokens) +
+    normalizeCount(input.cacheReadTokens) +
+    normalizeCount(input.cacheWriteTokens) > 0;
 }
 
 async function getPriceCatalog(): Promise<PriceCatalog> {

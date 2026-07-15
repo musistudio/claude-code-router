@@ -7,6 +7,7 @@ import type {
   RequestRouteTracePhase,
   RequestRouteTraceTarget
 } from "@ccr/core/contracts/app";
+import { isSensitiveRequestLogHeaderName } from "@ccr/core/observability/sensitive-headers";
 
 export type RouteTraceObservation = {
   attempt?: number;
@@ -115,15 +116,18 @@ export class RequestRouteTraceRecorder implements RouteTraceObserver {
     this.pushHop(hop);
   }
 
-  finish(): RequestRouteTrace {
+  finish(options: { captureBodyValues?: boolean } = {}): RequestRouteTrace {
     if (this.finished) {
       return this.finished;
     }
+    const hops = options.captureBodyValues === false
+      ? this.hops.map(suppressRouteTraceHopBodyValues)
+      : this.hops;
     this.finished = {
       attemptCount: this.attempts.size,
       complete: true,
-      hopCount: this.hops.length,
-      hops: this.hops,
+      hopCount: hops.length,
+      hops,
       truncated: this.truncated,
       version: 2
     };
@@ -172,8 +176,29 @@ export class RequestRouteTraceRecorder implements RouteTraceObserver {
   }
 }
 
+export function suppressRouteTraceBodyValues(trace: RequestRouteTrace): RequestRouteTrace {
+  const hops = trace.hops.map(suppressRouteTraceHopBodyValues);
+  return hops.every((hop, index) => hop === trace.hops[index])
+    ? trace
+    : { ...trace, hops };
+}
+
 function boundedObservationValue<T extends object>(value: T): T {
   return previewValue(value).value as T;
+}
+
+function suppressRouteTraceHopBodyValues(hop: RequestRouteTraceHop): RequestRouteTraceHop {
+  if (!hop.changes.some((change) => change.scope === "body")) {
+    return hop;
+  }
+  return {
+    ...hop,
+    changes: hop.changes.map((change) => {
+      if (change.scope !== "body") return change;
+      const { after: _after, before: _before, ...metadata } = change;
+      return metadata;
+    })
+  };
 }
 
 function sanitizeReportedChange(change: RequestRouteTraceChange): RequestRouteTraceChange {
@@ -207,7 +232,7 @@ function sanitizeUrlValue(value: unknown): unknown {
   try {
     const url = new URL(value, "http://127.0.0.1");
     for (const key of [...url.searchParams.keys()]) {
-      if (sensitiveNames.test(key) || /^(?:key|token)$/i.test(key)) {
+      if (isSensitiveName(key) || /^(?:key|token)$/i.test(key)) {
         url.searchParams.set(key, redactedDisplayValue);
       }
     }
@@ -239,7 +264,7 @@ function boundedPreview(
     budget.truncated = true;
     return truncatedDisplayValue;
   }
-  if (key && sensitiveNames.test(key)) {
+  if (key && isSensitiveName(key)) {
     budget.remaining -= redactedDisplayValue.length;
     return redactedDisplayValue;
   }
@@ -323,7 +348,11 @@ function pathContainsSensitiveName(path: string): boolean {
     .split("/")
     .filter(Boolean)
     .map((part) => part.replaceAll("~1", "/").replaceAll("~0", "~"))
-    .some((part) => sensitiveNames.test(part));
+    .some(isSensitiveName);
+}
+
+function isSensitiveName(value: string): boolean {
+  return sensitiveNames.test(value) || isSensitiveRequestLogHeaderName(value);
 }
 
 function normalizePath(value: string): string {

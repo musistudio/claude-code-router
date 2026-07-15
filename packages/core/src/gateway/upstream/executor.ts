@@ -300,10 +300,16 @@ export async function fetchUpstreamWithFallback(input: {
     });
     const hasNextAttempt = index < attempts.length - 1;
     const attemptUrl = rewriteRouteModelInUrl(input.upstreamUrl, attempt.model);
-    const attemptHeaders = withCoreGatewayAuthHeader(
-      omitLocalObservabilityHeaders(attempt.headers ?? input.headers),
-      input.coreAuthToken
-    );
+    const attemptHeaders = {
+      ...withCoreGatewayAuthHeader(
+        omitLocalObservabilityHeaders(attempt.headers ?? input.headers),
+        input.coreAuthToken
+      ),
+      // Core raw traces use a unique request id for every fallback attempt,
+      // while turnKey identifies the outer gateway request. Keep both and mark
+      // the attempt so only the final response may refine the stored outcome.
+      "x-ccr-route-attempt": String(attemptNumber)
+    };
     const attemptProvider = attempt.logicalProvider ?? (
       attempt.target?.kind === "provider" ? attempt.target.provider.name : undefined
     );

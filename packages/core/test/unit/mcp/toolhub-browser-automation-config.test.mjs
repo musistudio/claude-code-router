@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import test from "node:test";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
 import {
@@ -6,8 +7,15 @@ import {
   BROWSER_AUTOMATION_MCP_PATH,
   BROWSER_AUTOMATION_MCP_SERVER_NAME,
   browserAutomationMcpEnabled,
+  bundledToolHubMcpEntryPathCandidates,
   toolHubMcpRuntimeConfig
 } from "@ccr/core/mcp/toolhub-config.ts";
+
+test("ToolHub runtime candidates include the clean Core test build", () => {
+  assert.ok(bundledToolHubMcpEntryPathCandidates().includes(
+    path.join(process.cwd(), ".test-dist", "core", "runtime", "toolhub-mcp.js")
+  ));
+});
 
 test("ToolHub runtime includes the built-in browser automation backend", () => {
   const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-gateway.config.json" });

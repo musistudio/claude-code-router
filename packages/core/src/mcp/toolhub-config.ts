@@ -160,6 +160,11 @@ export function bundledToolHubMcpEntryPathCandidates(): string[] {
           pathJoin(resourcesPath, "app", "dist", "main", TOOL_HUB_MCP_RUNTIME_FILE_NAME)
         ]
       : []),
+    // Core tests bundle runtime entry points here without producing any
+    // packages/*/dist artifacts. Do not prefer test artifacts in normal runs.
+    ...(process.env.NODE_TEST_CONTEXT
+      ? [pathJoin(process.cwd(), ".test-dist", "core", "runtime", TOOL_HUB_MCP_RUNTIME_FILE_NAME)]
+      : []),
     pathJoin(process.cwd(), "packages", "electron", "dist", "main", TOOL_HUB_MCP_RUNTIME_FILE_NAME),
     pathJoin(process.cwd(), "packages", "cli", "dist", "main", TOOL_HUB_MCP_RUNTIME_FILE_NAME),
     pathJoin(process.cwd(), "packages", "core", "dist", "main", TOOL_HUB_MCP_RUNTIME_FILE_NAME),

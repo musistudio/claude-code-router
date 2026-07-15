@@ -115,6 +115,7 @@ class GatewayService {
         return this.status;
       }
 
+      await this.rawTraceSynchronizer.start();
       await this.listen(config);
       if (this.server) {
         const proxyStatus = await proxyService.attach(config, this.server);
@@ -184,6 +185,7 @@ class GatewayService {
     if (server) {
       await closeServer(server);
     }
+    await this.rawTraceSynchronizer.stop();
 
     await proxyService.stop(options.proxyRestoreTimeoutMs);
     await pluginService.stop();
