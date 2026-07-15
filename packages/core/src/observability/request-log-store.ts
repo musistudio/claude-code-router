@@ -187,6 +187,7 @@ type StreamedToolCallInput = {
 export type SseErrorDetector = {
   append: (chunk: Buffer | string) => string | undefined;
   finish: () => string | undefined;
+  hasTerminalEvent: () => boolean;
   read: () => string | undefined;
 };
 
@@ -199,6 +200,22 @@ const maxBodyBytes = 2 * 1024 * 1024;
 const maxAgentAnalysisRows = 5000;
 const maxAgentSessionDetailRequests = 250;
 const maxTracePayloadPreviewChars = 1600;
+const terminalSseEventNames = new Set([
+  "done",
+  "error",
+  "message_stop",
+  "response.completed",
+  "response.error",
+  "response.failed",
+  "response.incomplete"
+]);
+const terminalSseResponseStatuses = new Set([
+  "cancelled",
+  "completed",
+  "error",
+  "failed",
+  "incomplete"
+]);
 const requestLogBodyMetadataSelect = `
             '' AS request_body_text,
             '' AS response_body_text
@@ -3292,13 +3309,15 @@ export function createSseErrorDetector(contentType?: string, force = false): Sse
   let currentEvent = "";
   let dataLines: string[] = [];
   let detectedError: string | undefined;
+  let finished = false;
   let pendingLine = "";
+  let terminalEventSeen = false;
 
   const read = () => detectedError;
   const flushEvent = () => {
-    if (!detectedError) {
-      detectedError = detectSseEventError(currentEvent, dataLines);
-    }
+    const eventError = detectSseEventError(currentEvent, dataLines);
+    terminalEventSeen ||= Boolean(eventError) || isSseTerminalEvent(currentEvent, dataLines);
+    detectedError ??= eventError;
     currentEvent = "";
     dataLines = [];
   };
@@ -3338,16 +3357,17 @@ export function createSseErrorDetector(contentType?: string, force = false): Sse
 
   return {
     append(chunk: Buffer | string) {
-      if (!active || detectedError) {
+      if (!active || detectedError || finished) {
         return detectedError;
       }
       processText(Buffer.isBuffer(chunk) ? decoder.write(chunk) : chunk);
       return detectedError;
     },
     finish() {
-      if (!active || detectedError) {
+      if (!active || finished) {
         return detectedError;
       }
+      finished = true;
       processText(decoder.end());
       if (pendingLine) {
         processLine(pendingLine.endsWith("\r") ? pendingLine.slice(0, -1) : pendingLine);
@@ -3358,8 +3378,30 @@ export function createSseErrorDetector(contentType?: string, force = false): Sse
       }
       return detectedError;
     },
+    hasTerminalEvent() {
+      return terminalEventSeen;
+    },
     read
   };
+}
+
+function isSseTerminalEvent(eventName: string, dataLines: string[]): boolean {
+  const event = eventName.trim().toLowerCase();
+  const data = dataLines.join("\n").trim();
+  if (data === "[DONE]") {
+    return true;
+  }
+
+  const payload = data ? parseJson(data) : undefined;
+  const payloadType = isRecord(payload) ? asString(payload.type)?.toLowerCase() : undefined;
+  const response = isRecord(payload) && isRecord(payload.response) ? payload.response : undefined;
+  const responseStatus = asString(response?.status)?.toLowerCase();
+
+  return (
+    terminalSseEventNames.has(event) ||
+    Boolean(payloadType && terminalSseEventNames.has(payloadType)) ||
+    Boolean(responseStatus && terminalSseResponseStatuses.has(responseStatus))
+  );
 }
 
 function detectSseEventError(eventName: string, dataLines: string[]): string | undefined {
