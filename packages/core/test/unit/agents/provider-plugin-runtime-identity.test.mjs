@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { codexDefaultBaseUrl } from "@ccr/core/agents/local-providers/service.ts";
 import { createDefaultAppConfig } from "@ccr/core/config/default-config.ts";
 import { compileCoreGatewayConfig } from "@ccr/core/gateway/core-runtime/config-compiler.ts";
 import { prepareGatewayUpstreamAttemptForTest } from "@ccr/core/gateway/upstream/executor.ts";
@@ -60,6 +61,36 @@ test("provider plugins use compiled runtime and capability identities", async ()
   assert.equal(capabilityPlugin.providerName, "multi-provider::openai_responses");
   assert.equal(unmatchedPlugin.providerName, "External Provider");
   assert.equal(unscopedPlugin, unchangedPlugin);
+});
+
+test("Codex OAuth plugins retain the default base URL after runtime identity normalization", async () => {
+  const config = createDefaultAppConfig({ generatedConfigFile: "/tmp/ccr-codex-oauth-runtime-identity.json" });
+  config.providerPlugins = [
+    {
+      codexOauth: {},
+      key: "ccr-local-agent-codex-api-codex-oauth",
+      providerName: "Codex API"
+    }
+  ];
+  config.Providers = [
+    {
+      api_base_url: "https://configured.example.test/v1",
+      id: "codex-api",
+      models: ["gpt-5-codex"],
+      name: "Codex API",
+      type: "openai_responses"
+    }
+  ];
+
+  const compiled = await compileCoreGatewayConfig(
+    config,
+    "raw-trace-token",
+    "billing-usage-token",
+    "core-auth-token"
+  );
+
+  assert.equal(compiled.providerPlugins[0].providerName, "codex-api");
+  assert.equal(compiled.providers[0].baseurl, codexDefaultBaseUrl);
 });
 
 test("credential-free fallback headers use the provider runtime identity", () => {

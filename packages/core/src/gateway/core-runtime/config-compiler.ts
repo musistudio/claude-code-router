@@ -40,20 +40,16 @@ export async function compileCoreGatewayConfig(
       )
     : [];
   const pluginBillingConfig = isRecord(pluginCoreGatewayConfig.billing) ? pluginCoreGatewayConfig.billing : {};
-  const configuredProviderPlugins = normalizeClaudeCodeOauthProviderPlugins(
-    normalizeCoreProviderPluginNames(
-      [
-        ...(config.providerPlugins ?? []).filter(providerPluginEnabled),
-        ...pluginService.getCoreProviderPlugins().filter(providerPluginEnabled)
-      ],
-      config.Providers
-    )
-  );
-  const providerPlugins = await withKimiOauthRuntimeDefaults(
+  const configuredProviderPlugins = normalizeClaudeCodeOauthProviderPlugins([
+    ...(config.providerPlugins ?? []).filter(providerPluginEnabled),
+    ...pluginService.getCoreProviderPlugins().filter(providerPluginEnabled)
+  ]);
+  const providerPluginsWithRuntimeDefaults = await withKimiOauthRuntimeDefaults(
     await withGrokOauthRuntimeDefaults(withCodexOauthRuntimeDefaults(configuredProviderPlugins))
   );
+  const codexOauthProviderNames = codexOauthLocalProviderNames(providerPluginsWithRuntimeDefaults);
+  const providerPlugins = normalizeCoreProviderPluginNames(providerPluginsWithRuntimeDefaults, config.Providers);
   const providerPluginsWithCapabilityAliases = withProviderCapabilityPluginAliases(providerPlugins, config.Providers);
-  const codexOauthProviderNames = codexOauthLocalProviderNames(providerPlugins);
   const virtualModelProfiles = coreGatewayVirtualModelProfiles(config);
   const coreEndpoint = endpoint(config.gateway.coreHost, config.gateway.corePort);
   const proxyPreloadFile = upstreamProxyUrl ? writeGatewayProxyPreloadFile(config, upstreamProxyUrl) : undefined;
