@@ -884,12 +884,13 @@ function LogJsonPanel({
       <div className="network-pane-header flex h-10 min-w-0 shrink-0 items-center gap-3 border-b px-3">
         <span className="network-pane-title shrink-0 text-[14px] font-bold">{title}</span>
         {subtitle ? <span className="network-muted shrink-0 text-[12px] font-semibold">{subtitle}</span> : null}
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="network-payload-tabs flex min-w-0 items-center rounded-md border p-0.5">
           {(["body", "header"] as const).map((tab) => (
             <button
+              aria-pressed={selectedTab === tab}
               className={cn(
-                "network-tab border-0 bg-transparent p-0 text-[12px] font-semibold capitalize outline-none",
-                selectedTab === tab && "network-tab-active"
+                "network-payload-tab h-6 rounded-[5px] border border-transparent px-2.5 text-[12px] font-semibold capitalize outline-none transition-[background-color,border-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-ring/30",
+                selectedTab === tab && "network-payload-tab-active"
               )}
               key={tab}
               onClick={() => setSelectedTab(tab)}
