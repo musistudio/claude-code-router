@@ -1386,6 +1386,64 @@ test("built-in Claude Code route injects subagent model instructions into Agent 
   }
 });
 
+test("built-in Claude Code route publishes and accepts client-visible subagent model IDs", async () => {
+  const plugin = createRouterPlugin({
+    modelDescriptions: {
+      "gpt-5-codex": "Use for long refactors and repository-scale reasoning."
+    },
+    profileModel: "Provider/claude-sonnet"
+  });
+  const described = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: "claude-default",
+      tools: [
+        {
+          description: "Start a subagent.",
+          input_schema: {
+            properties: {
+              model: { type: "string" },
+              prompt: { description: "Task prompt.", type: "string" }
+            },
+            type: "object"
+          },
+          name: "Agent"
+        }
+      ]
+    },
+    headers: {
+      "user-agent": "Claude Code"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  const description = described.body.tools[0].description;
+  const routeMatch = /- (anthropic\/claude-ccr-h[0-9a-f]+) -> Provider\/gpt-5-codex: Use for long refactors/.exec(description);
+  assert.ok(routeMatch);
+  const clientModel = routeMatch[1];
+  assert.match(description, /client model -> CCR target/);
+  assert.match(description, /tool model field accepts exact strings, set it to the same client model ID/i);
+
+  const routed = await plugin.routeRequest({
+    body: {
+      messages: [],
+      model: clientModel,
+      system: `Use <CCR-SUBAGENT-MODEL>${clientModel}</CCR-SUBAGENT-MODEL> for this subagent.`
+    },
+    headers: {
+      "user-agent": "Claude Code"
+    },
+    method: "POST",
+    url: "/v1/messages"
+  });
+
+  assert.equal(routed.body.model, "Provider/gpt-5-codex");
+  assert.equal(routed.body.system, "Use  for this subagent.");
+  assert.equal(routed.decision.model, "Provider/gpt-5-codex");
+  assert.equal(routed.decision.reason, "builtin:claude-code-subagent");
+});
+
 test("built-in Claude Code route injects subagent model descriptions in stable order", async () => {
   const providersA = [
     {
@@ -1457,9 +1515,9 @@ test("built-in Claude Code route injects subagent model descriptions in stable o
   const description = resultA.body.tools[0].description;
 
   assert.equal(description, resultB.body.tools[0].description);
-  assert.ok(description.indexOf("- Alpha/a-model: A model.") < description.indexOf("- Alpha/z-model: Z model."));
-  assert.ok(description.indexOf("- Alpha/z-model: Z model.") < description.indexOf("- Zeta/a-model: Alpha model."));
-  assert.ok(description.indexOf("- Zeta/a-model: Alpha model.") < description.indexOf("- Zeta/z-model: Zeta model."));
+  assert.ok(description.indexOf("-> Alpha/a-model: A model.") < description.indexOf("-> Alpha/z-model: Z model."));
+  assert.ok(description.indexOf("-> Alpha/z-model: Z model.") < description.indexOf("-> Zeta/a-model: Alpha model."));
+  assert.ok(description.indexOf("-> Zeta/a-model: Alpha model.") < description.indexOf("-> Zeta/z-model: Zeta model."));
 });
 
 test("built-in Claude Code route injects workflow subagent model instructions into the Workflow tool", async () => {

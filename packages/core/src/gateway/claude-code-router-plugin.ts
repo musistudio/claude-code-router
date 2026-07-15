@@ -5,6 +5,8 @@ import path from "node:path";
 import { type AppConfig, type ProfileClientKind, type RouterBuiltInAgentRuleId, type RouterFallbackConfig, type RouterRule, type RouterRuleCondition, type RouterRuleRewrite } from "@ccr/core/contracts/app";
 import { CONFIGDIR } from "@ccr/core/config/constants";
 import { applyAgentRequestEnrichers } from "@ccr/core/agents/request-enricher";
+import { buildClaudeAppGatewayModelRoutes, type ClaudeAppGatewayModelRoute, resolveClaudeAppGatewayRouteModel } from "@ccr/core/agents/claude-app/gateway-routes";
+import { claudeAppGatewayModelRouteOptions } from "@ccr/core/gateway/internal/shared";
 import { compileRouterConfig, type CompiledRouterConfig, type CompiledRouterRule } from "@ccr/core/routing/config-compiler";
 import type { RouteDecision, RouteDiagnostic, RouteModelRef, RouteRequest, RouteSource } from "@ccr/core/routing/contracts";
 import { ModelRegistry, normalizeRouteSelector } from "@ccr/core/routing/model-registry";
@@ -281,7 +283,10 @@ function resolveBuiltInClaudeCodeSubagentRouteDecision(
     return undefined;
   }
   const target = normalizeRouteSelector(request.builtInSubagentModel);
-  const configuredTarget = modelRegistry.resolve(target);
+  const discoveredTarget = target
+    ? resolveClaudeAppGatewayRouteModel(target, config, claudeAppGatewayModelRouteOptions)
+    : undefined;
+  const configuredTarget = modelRegistry.resolve(discoveredTarget ?? target);
   if (!target || isSubagentModelPlaceholder(target) || !configuredTarget) {
     return undefined;
   }
@@ -441,20 +446,23 @@ const ccrSubagentModelPlaceholder = "provider/model";
 const claudeCodeBillingSystemHeaderPrefix = "x-anthropic-billing-header";
 const ccrSubagentToolModelInstruction =
   `CCR subagent routing is enabled. When calling this tool, the prompt parameter MUST start with ` +
-  `${ccrSubagentModelTagExample} on its own first line, replacing Provider/model with the best configured CCR gateway model. ` +
+  `${ccrSubagentModelTagExample} on its own first line, replacing Provider/model with the best client model ID from the list below. ` +
+  `When the tool model field accepts exact strings, set it to the same client model ID so the client initializes the child with the correct model limits. ` +
   `CCR consumes the tag, removes it from the prompt, and routes the spawned agent request to that model. ` +
-  `Do not omit the tag, do not put it in description or subagent_type, and do not rely on the tool model enum for CCR-specific models. ` +
-  `中文要求：调用该工具时，prompt 参数第一行必须写入 ${ccrSubagentModelTagExample}，并将 Provider/model 替换成最适合的 CCR 模型。`;
+  `If the model field only permits built-in aliases, leave it unset and use the tag as the routing fallback. ` +
+  `Do not omit the tag or put it in description or subagent_type. ` +
+  `中文要求：调用该工具时，prompt 参数第一行必须写入 ${ccrSubagentModelTagExample}，并将 Provider/model 替换成列表中的客户端模型 ID；若 model 字段支持任意字符串，也必须使用同一个 ID。`;
 const ccrWorkflowSubagentModelInstruction =
   `CCR workflow subagent routing is enabled. When this workflow creates Agent/Task subagents, each spawned agent prompt MUST start with ` +
-  `${ccrSubagentModelTagExample} on its own first line, replacing Provider/model with the best configured CCR gateway model. ` +
+  `${ccrSubagentModelTagExample} on its own first line, replacing Provider/model with the best client model ID from the list below. ` +
+  `Set each spawned agent's model option to that same client model ID when the agent API accepts exact strings. ` +
   `Put the tag inside the Agent/Task prompt created by the workflow, not in the workflow description or subagent_type. ` +
   `CCR consumes the tag from the spawned agent request, removes it, and routes that request to the selected model. ` +
-  `Do not rely on the Agent/Task model enum for CCR-specific models. ` +
-  `中文要求：Workflow 中创建 Agent/Task 时，每个被创建 agent 的 prompt 第一行必须写入 ${ccrSubagentModelTagExample}，并替换成最适合的 CCR 模型。`;
+  `中文要求：Workflow 中创建 Agent/Task 时，每个被创建 agent 的 prompt 第一行必须写入 ${ccrSubagentModelTagExample}，并替换成列表中的客户端模型 ID；若 agent API 支持任意模型字符串，也必须将 model 设为同一个 ID。`;
 const ccrSubagentPromptFieldInstruction =
   `CCR subagent routing is enabled. This prompt string MUST start with ${ccrSubagentModelTagExample} on its own first line, ` +
-  `with Provider/model replaced by one configured CCR gateway model. Put the subagent task after that line; CCR removes the tag before the subagent runs. ` +
+  `with Provider/model replaced by one client model ID from the list below. When the adjacent model field accepts exact strings, use the same client model ID there. ` +
+  `Put the subagent task after that line; CCR removes the tag before the subagent runs. ` +
   `中文要求：这个 prompt 字符串第一行必须是替换后的模型标签，后面再写 subagent 任务正文。`;
 type ClaudeCodeSubagentToolKind = "subagent" | "workflow";
 const claudeCodeAgentToolNames = new Set(["agent", "task"]);
@@ -639,7 +647,7 @@ function claudeCodeAgentToolInstructions(config: AppConfig): { prompt: string; t
     return undefined;
   }
   const modelList = [
-    "Configured CCR gateway models:",
+    "Configured CCR gateway models (client model -> CCR target):",
     ...modelRows
   ].join("\n");
   return {
@@ -662,6 +670,14 @@ function claudeCodeAgentToolInstructions(config: AppConfig): { prompt: string; t
 }
 
 function configuredSubagentModelDescriptionRows(config: AppConfig): string[] {
+  const routeByTarget = new Map<string, ClaudeAppGatewayModelRoute>();
+  for (const route of buildClaudeAppGatewayModelRoutes(config, claudeAppGatewayModelRouteOptions)) {
+    const key = route.targetModel.toLowerCase();
+    const current = routeByTarget.get(key);
+    if (!current || (current.oneMillionContext && !route.oneMillionContext)) {
+      routeByTarget.set(key, route);
+    }
+  }
   const candidates: Array<{ key: string; row: string; selector: string }> = [];
   for (const provider of config.Providers) {
     const providerName = provider.name?.trim();
@@ -676,11 +692,15 @@ function configuredSubagentModelDescriptionRows(config: AppConfig): string[] {
       }
       const selector = `${providerName}/${model}`;
       const key = selector.toLowerCase();
+      const clientModel = routeByTarget.get(key)?.id;
+      if (!clientModel) {
+        continue;
+      }
       const displayName = provider.modelDisplayNames?.[model]?.trim();
       const label = displayName && displayName !== model ? `${selector} (${displayName})` : selector;
       candidates.push({
         key,
-        row: `- ${label}: ${singleLineText(description, 320)}`,
+        row: `- ${clientModel} -> ${label}: ${singleLineText(description, 320)}`,
         selector
       });
     }
