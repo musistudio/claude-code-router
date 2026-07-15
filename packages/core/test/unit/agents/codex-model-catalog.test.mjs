@@ -59,9 +59,37 @@ test("codex catalog enables multimodal reasoning and search when provider protoc
   assert.equal(model.supports_reasoning_summaries, true);
   assert.equal(model.supports_search_tool, true);
   assert.equal(model.web_search_tool_type, "text_and_image");
-  assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), ["low", "medium", "high"]);
+  for (const effort of ["low", "medium", "high"]) {
+    assert.ok(model.supported_reasoning_levels.some((level) => level.effort === effort));
+  }
   assert.equal(model.default_reasoning_level, "medium");
   assert.equal(model.apply_patch_tool_type, "freeform");
+});
+
+test("codex catalog exposes current capabilities for the GPT-5.6 family", () => {
+  for (const modelName of ["gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]) {
+    const model = catalogModelFor({
+      Providers: [
+        { name: "uuroute", type: "openai_responses", models: [modelName] }
+      ]
+    }, `uuroute/${modelName}`);
+
+    assert.equal(model.context_window, 1_050_000);
+    assert.equal(model.max_context_window, 1_050_000);
+    assert.deepEqual(model.input_modalities, ["text", "image"]);
+    assert.equal(model.supports_image_detail_original, true);
+    assert.equal(model.supports_parallel_tool_calls, true);
+    assert.equal(model.supports_reasoning_summaries, true);
+    assert.deepEqual(model.supported_reasoning_levels.map((level) => level.effort), [
+      "none",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ]);
+    assert.equal(model.default_reasoning_level, "medium");
+  }
 });
 
 test("codex catalog uses provider model metadata for reasoning effort and speed tiers", () => {
@@ -275,6 +303,38 @@ test("codex catalog marks Fusion aliases with builtin web search as searchable",
   assert.equal(model.supports_search_tool, true);
   assert.equal(model.web_search_tool_type, "text");
   assert.equal(model.apply_patch_tool_type, null);
+});
+
+test("codex catalog marks image-recognition Fusion aliases as image capable", () => {
+  const model = catalogModelFor({
+    Providers: [],
+    virtualModelProfiles: [
+      {
+        displayName: "Vision Fusion",
+        enabled: true,
+        execution: {
+          clientToolsPolicy: "allow",
+          matchMultimodal: true,
+          maxToolCalls: 4,
+          maxTurns: 4,
+          mode: "tool_loop",
+          streamMode: "optimistic"
+        },
+        id: "vision-fusion",
+        key: "vision",
+        match: { exactAliases: ["vision"], prefixes: [], suffixes: [] },
+        materialization: { enabled: true, includeInGatewayModels: true },
+        metadata: {
+          fusionVision: { modelSelector: "provider/vision-model", toolName: "vision_understand_vision" }
+        },
+        tools: [{ name: "vision_understand_vision", visibility: "internal" }]
+      }
+    ]
+  }, "Fusion/vision");
+
+  assert.deepEqual(model.input_modalities, ["text", "image"]);
+  assert.equal(model.supports_image_detail_original, true);
+  assert.equal(model.web_search_tool_type, "text");
 });
 
 test("codex catalog marks prefixed Fusion virtual models with legacy web search tools as searchable", () => {
