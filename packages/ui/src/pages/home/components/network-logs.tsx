@@ -460,37 +460,38 @@ export function LogsView({
               value={filter.credential ?? ""}
             />
           ) : null}
-          <span className="network-count rounded-full px-2 py-0.5 text-[11px] font-semibold">{page.total}</span>
-          <button
-            aria-label={t("Previous page")}
-            className="network-control-button flex h-7 w-7 items-center justify-center rounded-md border outline-none disabled:cursor-not-allowed disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-ring/30"
-            disabled={page.page <= 1}
-            onClick={() => updateFilter({ page: page.page - 1 }, false)}
-            title={t("上一页")}
-            type="button"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </button>
-          <span className="network-count min-w-[132px] rounded-full px-2 py-0.5 text-center text-[11px] font-semibold">
-            {firstItem}-{lastItem} / {page.total}
-          </span>
-          <button
-            aria-label={t("Next page")}
-            className="network-control-button flex h-7 w-7 items-center justify-center rounded-md border outline-none disabled:cursor-not-allowed disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-ring/30"
-            disabled={page.page >= page.totalPages}
-            onClick={() => updateFilter({ page: page.page + 1 }, false)}
-            title={t("下一页")}
-            type="button"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-          <Select
-            aria-label={t("Request log page size")}
-            className="h-7 w-[92px] bg-[length:14px] px-2 pr-7 text-[11px]"
-            onValueChange={(value) => updateFilter({ pageSize: Number(value) })}
-            options={requestLogPageSizeOptions}
-            value={String(page.pageSize)}
-          />
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              aria-label={t("Previous page")}
+              className="network-control-button flex h-7 w-7 items-center justify-center rounded-md border outline-none disabled:cursor-not-allowed disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-ring/30"
+              disabled={page.page <= 1}
+              onClick={() => updateFilter({ page: page.page - 1 }, false)}
+              title={t("上一页")}
+              type="button"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            <span className="network-count min-w-[132px] rounded-full px-2 py-0.5 text-center text-[11px] font-semibold">
+              {firstItem}-{lastItem} / {page.total}
+            </span>
+            <button
+              aria-label={t("Next page")}
+              className="network-control-button flex h-7 w-7 items-center justify-center rounded-md border outline-none disabled:cursor-not-allowed disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-ring/30"
+              disabled={page.page >= page.totalPages}
+              onClick={() => updateFilter({ page: page.page + 1 }, false)}
+              title={t("下一页")}
+              type="button"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+            <Select
+              aria-label={t("Request log page size")}
+              className="h-7 w-[92px] bg-[length:14px] px-2 pr-7 text-[11px]"
+              onValueChange={(value) => updateFilter({ pageSize: Number(value) })}
+              options={requestLogPageSizeOptions}
+              value={String(page.pageSize)}
+            />
+          </div>
           <button
             aria-label={t("Refresh request logs")}
             className="network-control-button flex h-7 w-7 items-center justify-center rounded-md border outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
@@ -1209,12 +1210,13 @@ function LogJsonPanel({
       <div className="network-pane-header flex h-10 min-w-0 shrink-0 items-center gap-3 border-b px-3">
         <span className="network-pane-title shrink-0 text-[14px] font-bold">{title}</span>
         {subtitle ? <span className="network-muted shrink-0 text-[12px] font-semibold">{subtitle}</span> : null}
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="network-payload-tabs flex min-w-0 items-center rounded-md border p-0.5">
           {(["body", "header"] as const).map((tab) => (
             <button
+              aria-pressed={selectedTab === tab}
               className={cn(
-                "network-tab border-0 bg-transparent p-0 text-[12px] font-semibold capitalize outline-none",
-                selectedTab === tab && "network-tab-active"
+                "network-payload-tab h-6 rounded-[5px] border border-transparent px-2.5 text-[12px] font-semibold capitalize outline-none transition-[background-color,border-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-ring/30",
+                selectedTab === tab && "network-payload-tab-active"
               )}
               key={tab}
               onClick={() => setSelectedTab(tab)}

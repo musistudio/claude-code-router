@@ -116,7 +116,9 @@ function codexModelCatalogItem(
   config?: Partial<Pick<AppConfig, "Providers" | "Router" | "virtualModelProfiles">>
 ): CodexModelCatalogItem {
   const profile = codexModelCapabilityProfile(model, config);
-  const contextWindow = codexModelContextWindow(model, profile.catalogEntry);
+  const contextWindow = positiveInteger(profile.contextWindow) ?? positiveInteger(profile.maxContextWindow) ?? codexModelContextWindow(model, profile.catalogEntry);
+  const maxContextWindow = Math.max(contextWindow, positiveInteger(profile.maxContextWindow) ?? contextWindow);
+  const effectiveContextWindowPercent = percentage(profile.effectiveContextWindowPercent) ?? codexEffectiveContextWindowPercent;
   return {
     additional_speed_tiers: profile.additionalSpeedTiers,
     apply_patch_tool_type: profile.applyPatchToolType,
@@ -127,10 +129,10 @@ function codexModelCatalogItem(
     default_reasoning_summary: profile.defaultReasoningSummary,
     description: `CCR gateway model ${model}`,
     display_name: model,
-    effective_context_window_percent: codexEffectiveContextWindowPercent,
+    effective_context_window_percent: effectiveContextWindowPercent,
     experimental_supported_tools: [],
     input_modalities: profile.inputModalities,
-    max_context_window: contextWindow,
+    max_context_window: maxContextWindow,
     priority,
     service_tiers: profile.serviceTiers,
     shell_type: "shell_command",
@@ -153,11 +155,14 @@ type CodexCapabilityProfile = {
   additionalSpeedTiers: unknown[];
   applyPatchToolType: string | null;
   catalogEntry?: ModelCatalogEntry;
+  contextWindow?: number;
   defaultReasoningLevel: string | null;
   defaultReasoningSummary: string;
+  effectiveContextWindowPercent?: number;
   inputModalities: string[];
   supportedReasoningLevels: Array<{ description: string; effort: string }>;
   serviceTiers: unknown[];
+  maxContextWindow?: number;
   supportsImageInput: boolean;
   supportsParallelToolCalls: boolean;
   supportsReasoning: boolean;
@@ -202,14 +207,17 @@ function codexModelCapabilityProfile(
     additionalSpeedTiers: providerModelMetadata?.additionalSpeedTiers ?? [],
     applyPatchToolType,
     catalogEntry,
+    contextWindow: providerModelMetadata?.contextWindow,
     defaultReasoningLevel: providerModelMetadata && providerModelMetadata.defaultReasoningLevel !== undefined
       ? providerModelMetadata.defaultReasoningLevel
       : supportsReasoning
       ? "medium"
       : null,
     defaultReasoningSummary: providerModelMetadata?.defaultReasoningSummary ?? "none",
+    effectiveContextWindowPercent: providerModelMetadata?.effectiveContextWindowPercent,
     inputModalities: supportsImageInput ? ["text", "image"] : ["text"],
     serviceTiers: providerModelMetadata?.serviceTiers ?? [],
+    maxContextWindow: providerModelMetadata?.maxContextWindow,
     supportedReasoningLevels: metadataReasoningLevels ?? (supportsReasoning ? supportedReasoningLevels(capabilities) : []),
     supportsImageInput,
     supportsParallelToolCalls,
@@ -278,6 +286,18 @@ function effortDescription(effort: string): string {
 
 function codexModelContextWindow(model: string, entry = findModelCatalogEntry(model)): number {
   return modelCatalogMaxInputTokens(entry) || codexDefaultContextWindow;
+}
+
+function percentage(value: number | undefined): number | undefined {
+  return value !== undefined && Number.isFinite(value) && value > 0 && value <= 100
+    ? value
+    : undefined;
+}
+
+function positiveInteger(value: number | undefined): number | undefined {
+  return value !== undefined && Number.isFinite(value) && value > 0
+    ? Math.trunc(value)
+    : undefined;
 }
 
 function catalogEntrySupportsImageInput(entry: ModelCatalogEntry | undefined): boolean {

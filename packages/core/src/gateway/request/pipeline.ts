@@ -14,7 +14,7 @@ import { reserveApiKeyLimits } from "@ccr/core/gateway/auth/api-key-authorizer";
 import { recordProviderCredentialOutcome } from "@ccr/core/providers/credential-pool";
 import { codexApplyPatchBridgeResponseStream, prepareCodexApplyPatchBridgeRequest } from "@ccr/core/gateway/features/codex-patch-bridge";
 import { prepareCursorOpenAICompatChatBody } from "@ccr/core/gateway/features/cursor-compat";
-import { filteredResponseHeaders, formatError, forwardHeaders, inferGatewayClient, readRequestBody, sendJson, shouldCaptureGatewayUsage, shouldSendBody, stripLocalGatewayAuthHeaders } from "@ccr/core/gateway/http/io";
+import { filteredResponseHeaders, formatError, formatUpstreamErrorForLog, forwardHeaders, inferGatewayClient, readRequestBody, sendJson, shouldCaptureGatewayUsage, shouldSendBody, stripLocalGatewayAuthHeaders } from "@ccr/core/gateway/http/io";
 import { serializeJsonBody, takeJsonObject } from "@ccr/core/gateway/http/body";
 import { createGatewayModelsResponse, prepareClaudeAppDiscoveredModelRequest, prepareClaudeCodeDiscoveredModelRequest, shouldServeGatewayModelsResponse } from "@ccr/core/gateway/features/model-discovery";
 import { resolveProviderLogName, resolveResponseProviderProtocol, sanitizeHeaderValue } from "@ccr/core/providers/runtime-topology";
@@ -22,7 +22,7 @@ import { createBodySampler, requestLogSampled, shouldRecordRequestLogs } from "@
 import { RequestRouteTraceRecorder } from "@ccr/core/observability/route-trace";
 import { endpoint } from "@ccr/core/gateway/core-runtime/supervisor";
 import { coreGatewayUsageAttributionConfig } from "@ccr/core/gateway/core-runtime/config-compiler";
-import { clientClosedRequestStatusCode, clientDisconnectMessage, UpstreamRequestError } from "@ccr/core/gateway/internal/shared";
+import { clientClosedRequestStatusCode, clientDisconnectMessage, resolveStreamRequestLogOutcome, UpstreamRequestError } from "@ccr/core/gateway/internal/shared";
 import type { BrowserWebSearchMcpIntegration, BrowserWebSearchProtocolRecord, UpstreamFetchResult } from "@ccr/core/gateway/internal/shared";
 import { applyProviderCapabilityRouting, cancelResponseBody, destroyResponseStreams, fetchUpstreamWithFallback, mergeFallbackResponseHeaders, rewriteCapabilityResponseHeaders, uniqueStreams, upstreamResponseHeaders } from "@ccr/core/gateway/upstream/executor";
 import { shouldApplyGatewayRouting } from "@ccr/core/routing/protocol-endpoints";
@@ -509,7 +509,15 @@ export class GatewayRequestPipeline {
           upstreamUrl
         });
       } catch (error) {
-        const message = formatError(error);
+        const failedAttempts = error instanceof UpstreamRequestError ? error.failedAttempts : [];
+        const message = formatUpstreamErrorForLog(error, {
+          attempts: Math.max(1, failedAttempts.length),
+          elapsedMs: Date.now() - startedAt,
+          fallbackFailures: Math.max(0, failedAttempts.length - 1),
+          operation: "fetch",
+          responseStarted: false,
+          retryDelayMs: failedAttempts.reduce((total, attempt) => total + Math.max(0, attempt.delayMs ?? 0), 0)
+        });
         if (error instanceof UpstreamRequestError) {
           bodyToForward = error.attempt?.body ?? bodyToForward;
           routedModel = error.attempt?.model ?? routedModel;
@@ -620,17 +628,25 @@ export class GatewayRequestPipeline {
           return;
         }
         logRecorded = true;
+        const outcome = resolveStreamRequestLogOutcome({
+          clientDisconnected,
+          detectedError: streamDetectedError,
+          streamError: error,
+          terminalEventSeen: sseErrorDetector.hasTerminalEvent(),
+          upstreamStatus: upstreamResponse.status
+        });
         writeRequestLog(
-          clientDisconnected ? clientClosedRequestStatusCode : upstreamResponse.status,
+          outcome.statusCode,
           responseHeaders,
           sampler.read(),
           sampler.isTruncated(),
-          error ?? streamDetectedError,
+          outcome.error,
           sampler.sizeBytes()
         );
       };
       onClientDisconnect = () => {
-        writeStreamLog(clientDisconnectMessage);
+        streamDetectedError ??= sseErrorDetector.finish();
+        writeStreamLog();
         responseBody.unpipe(response);
         destroyResponseStreams(responseStreams);
       };
@@ -641,7 +657,17 @@ export class GatewayRequestPipeline {
       };
       const onResponseStreamError = (error: Error) => {
         streamDetectedError ??= sseErrorDetector.finish();
-        writeStreamLog(clientDisconnected ? clientDisconnectMessage : formatError(error));
+        writeStreamLog(clientDisconnected ? clientDisconnectMessage : formatUpstreamErrorForLog(error, {
+          attempts: upstreamResult.failedAttempts.length + 1,
+          elapsedMs: Date.now() - startedAt,
+          fallbackFailures: upstreamResult.failedAttempts.length,
+          operation: "stream",
+          responseStarted: true,
+          retryDelayMs: upstreamResult.failedAttempts.reduce(
+            (total, attempt) => total + Math.max(0, attempt.delayMs ?? 0),
+            0
+          )
+        }));
       };
       for (const stream of responseStreams) {
         stream.on("error", onResponseStreamError);

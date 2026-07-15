@@ -211,8 +211,11 @@ test("Codex model catalog parser accepts live model endpoint shapes", () => {
     data: [
       {
         additional_speed_tiers: [{ id: "fast", label: "Fast" }],
+        context_window: 272000,
         default_reasoning_level: "high",
         display_name: "GPT-5 Codex",
+        effective_context_window_percent: 95,
+        max_context_window: 300000,
         service_tiers: [{ id: "auto" }],
         slug: "gpt-5-codex",
         supported_reasoning_levels: [
@@ -237,7 +240,10 @@ test("Codex model catalog parser accepts live model endpoint shapes", () => {
   });
   assert.deepEqual(catalog.modelMetadata["gpt-5-codex"], {
     additionalSpeedTiers: [{ id: "fast", label: "Fast" }],
+    contextWindow: 272000,
     defaultReasoningLevel: "high",
+    effectiveContextWindowPercent: 95,
+    maxContextWindow: 300000,
     serviceTiers: [{ id: "auto" }],
     supportedReasoningLevels: [
       { description: "Low", effort: "low" },
@@ -245,4 +251,19 @@ test("Codex model catalog parser accepts live model endpoint shapes", () => {
     ],
     supportsReasoningSummaries: true
   });
+});
+
+test("Codex model catalog parser ignores invalid context metadata", () => {
+  const catalog = codexModelCatalogFromPayloadForTest({
+    models: [
+      {
+        context_window: -1,
+        effective_context_window_percent: 101,
+        max_context_window: 0,
+        slug: "invalid-context-model"
+      }
+    ]
+  });
+
+  assert.equal(catalog.modelMetadata?.["invalid-context-model"], undefined);
 });

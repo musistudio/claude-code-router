@@ -6,7 +6,8 @@ import path from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
 import { getHeapStatistics } from "node:v8";
-import { RequestLogStore } from "@ccr/core/observability/request-log-store.ts";
+import { createSseErrorDetector, RequestLogStore } from "@ccr/core/observability/request-log-store.ts";
+import { resolveStreamRequestLogOutcome } from "@ccr/core/gateway/internal/shared.ts";
 import { RequestRouteTraceRecorder } from "@ccr/core/observability/route-trace.ts";
 import { createBetterSqliteDatabase } from "@ccr/core/storage/sqlite-native.ts";
 
@@ -672,6 +673,95 @@ test("RequestLogStore detects raw errors before applying errors-only body suppre
     await store.close();
     rmSync(dir, { force: true, recursive: true });
   }
+});
+
+test("SSE terminal detection distinguishes completed streams from interrupted streams", () => {
+  const completed = createSseErrorDetector("text/event-stream");
+  completed.append("event: response.completed\n");
+  completed.append('data: {"type":"response.completed","response":{"status":"completed"}}\n\n');
+  assert.equal(completed.hasTerminalEvent(), true);
+  assert.equal(completed.read(), undefined);
+
+  const done = createSseErrorDetector("text/event-stream");
+  done.append("data: [DONE]\n\n");
+  assert.equal(done.hasTerminalEvent(), true);
+
+  const anthropic = createSseErrorDetector("text/event-stream");
+  anthropic.append('event: message_stop\ndata: {"type":"message_stop"}\n\n');
+  assert.equal(anthropic.hasTerminalEvent(), true);
+
+  const failed = createSseErrorDetector("text/event-stream");
+  failed.append('event: response.failed\ndata: {"type":"response.failed","response":{"status":"failed","error":{"message":"upstream failed"}}}');
+  assert.equal(failed.hasTerminalEvent(), false);
+  assert.match(failed.finish() ?? "", /upstream failed/);
+  assert.equal(failed.hasTerminalEvent(), true);
+
+  const responseStatusError = createSseErrorDetector("text/event-stream");
+  responseStatusError.append('data: {"response":{"status":"error"}}\n\n');
+  assert.equal(responseStatusError.hasTerminalEvent(), true);
+
+  const topLevelError = createSseErrorDetector("text/event-stream");
+  topLevelError.append('data: {"error":{"type":"server_error","message":"provider unavailable"}}\n\n');
+  assert.match(topLevelError.read() ?? "", /provider unavailable/);
+  assert.equal(topLevelError.hasTerminalEvent(), true);
+
+  const interrupted = createSseErrorDetector("text/event-stream");
+  interrupted.append('event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"partial"}\n\n');
+  interrupted.finish();
+  assert.equal(interrupted.hasTerminalEvent(), false);
+});
+
+test("stream request log outcomes preserve completed client closures and mark real interruptions", () => {
+  assert.deepEqual(
+    resolveStreamRequestLogOutcome({
+      clientDisconnected: true,
+      terminalEventSeen: true,
+      upstreamStatus: 200
+    }),
+    {
+      error: undefined,
+      statusCode: 200
+    }
+  );
+
+  assert.deepEqual(
+    resolveStreamRequestLogOutcome({
+      clientDisconnected: true,
+      terminalEventSeen: false,
+      upstreamStatus: 200
+    }),
+    {
+      error: "Client connection closed before response completed.",
+      statusCode: 499
+    }
+  );
+
+  assert.deepEqual(
+    resolveStreamRequestLogOutcome({
+      clientDisconnected: false,
+      streamError: "fetch failed",
+      terminalEventSeen: false,
+      upstreamStatus: 502
+    }),
+    {
+      error: "fetch failed",
+      statusCode: 502
+    }
+  );
+
+  assert.deepEqual(
+    resolveStreamRequestLogOutcome({
+      clientDisconnected: true,
+      detectedError: "upstream failed",
+      streamError: "The operation was aborted",
+      terminalEventSeen: true,
+      upstreamStatus: 200
+    }),
+    {
+      error: "upstream failed",
+      statusCode: 200
+    }
+  );
 });
 
 test("RequestLogStore applies raw trace updates to existing request logs", async () => {

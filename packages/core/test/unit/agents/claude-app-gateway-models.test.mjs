@@ -14,7 +14,7 @@ import { ModelRegistry } from "@ccr/core/routing/model-registry.ts";
 
 function createConfig({ profileModel, providers = [], virtualModelProfiles = [] } = {}) {
   return {
-    Providers: providers.map(({ models, name }) => ({ models, name })),
+    Providers: providers.map((provider) => ({ ...provider })),
     profile: {
       enabled: true,
       profiles: profileModel === undefined
@@ -162,4 +162,58 @@ test("issue 1535 canonical profile resolution preserves the Claude App 1M contex
   assert.equal(routes[0].targetModel, "Anthropic/claude-opus-4-1");
   assert.equal(routes[0].oneMillionContext, true);
   assertPublishedRoutesResolveUniquely(config);
+});
+
+test("Claude App discovery publishes the effective provider context for uncatalogued models", () => {
+  const config = createConfig({
+    providers: [
+      {
+        modelMetadata: {
+          "gpt-5.6-sol": {
+            contextWindow: 272000,
+            effectiveContextWindowPercent: 95,
+            maxContextWindow: 272000
+          }
+        },
+        models: ["gpt-5.6-sol"],
+        name: "Codex API",
+        type: "openai_responses"
+      }
+    ]
+  });
+  const route = buildClaudeAppGatewayModelRoutes(config)[0];
+  const response = createClaudeModelsResponse(config);
+  const model = response.data.find((item) => item.id === route.id);
+
+  assert.ok(model);
+  assert.equal(model.max_input_tokens, 258400);
+  assert.equal(model.capabilities.context_management.max_input_tokens, 258400);
+  assert.equal(model.capabilities.context_window.max_input_tokens, 258400);
+});
+
+test("Claude App discovery prefers provider context metadata over the static catalog", () => {
+  const config = createConfig({
+    providers: [
+      {
+        modelMetadata: {
+          "gpt-5-codex": {
+            contextWindow: 272000,
+            effectiveContextWindowPercent: 90,
+            maxContextWindow: 272000
+          }
+        },
+        models: ["gpt-5-codex"],
+        name: "Codex API",
+        type: "openai_responses"
+      }
+    ]
+  });
+  const route = buildClaudeAppGatewayModelRoutes(config)[0];
+  const response = createClaudeModelsResponse(config);
+  const model = response.data.find((item) => item.id === route.id);
+
+  assert.ok(model);
+  assert.equal(model.max_input_tokens, 244800);
+  assert.equal(model.capabilities.context_management.max_input_tokens, 244800);
+  assert.equal(model.capabilities.context_window.max_input_tokens, 244800);
 });

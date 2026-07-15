@@ -610,16 +610,6 @@ export function systemStatusPointTooltip(segment: SystemStatusPoint, t: (value: 
   ].join("\n");
 }
 
-export function systemStatusTooltipPositionClass(index: number, total: number): string {
-  if (index <= 1) {
-    return "left-0";
-  }
-  if (index >= total - 2) {
-    return "right-0";
-  }
-  return "left-1/2 -translate-x-1/2";
-}
-
 export function systemStatusIconClass(tone: SystemStatusTone): string {
   if (tone === "ok") return "bg-emerald-500 text-white";
   if (tone === "warn") return "bg-amber-400 text-amber-950";

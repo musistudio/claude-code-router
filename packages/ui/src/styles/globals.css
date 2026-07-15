@@ -1221,6 +1221,28 @@
     color: var(--network-text);
   }
 
+  .network-payload-tabs {
+    background: var(--network-panel-muted);
+    border-color: var(--network-control-border);
+  }
+
+  .network-payload-tab {
+    color: var(--network-text-subtle);
+  }
+
+  .network-payload-tab:hover {
+    background: var(--network-control-hover);
+    color: var(--network-text);
+  }
+
+  .network-payload-tab-active,
+  .network-payload-tab-active:hover {
+    background: var(--network-control);
+    border-color: var(--network-border-strong);
+    box-shadow: 0 1px 2px color-mix(in oklab, var(--network-border-strong) 32%, transparent);
+    color: var(--network-accent);
+  }
+
   .network-tab-divider,
   .network-pane-split,
   .network-kv-key-head {
