@@ -3,7 +3,7 @@
  */
 import type { AppConfig } from "@ccr/core/contracts/app";
 import { isRecord, stringValue } from "@ccr/core/gateway/internal/value";
-import { parseJsonObject } from "@ccr/core/gateway/http/io";
+import { serializeJsonBody, takeJsonObject } from "@ccr/core/gateway/http/body";
 import type { CursorOpenAICompatContext, CursorOpenAICompatPreparation } from "@ccr/core/gateway/internal/shared";
 
 let warnedMissingCursorOpenAICompatContext = false;
@@ -22,7 +22,7 @@ export function prepareCursorOpenAICompatChatBody(
 
   let body: Record<string, unknown>;
   try {
-    body = parseJsonObject(requestBody);
+    body = takeJsonObject(requestBody);
   } catch {
     return undefined;
   }
@@ -61,7 +61,7 @@ export function prepareCursorOpenAICompatChatBody(
   }
 
   return {
-    body: Buffer.from(`${JSON.stringify(body)}\n`, "utf8"),
+    body: serializeJsonBody(body),
     diagnostic: "fallback-injected"
   };
 }

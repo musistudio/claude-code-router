@@ -1,8 +1,14 @@
 {
   "name": "@claude-code-router/ui",
-  "version": "3.0.13",
+  "version": "3.0.14",
   "private": true,
   "description": "Claude Code Router web management UI.",
+  "scripts": {
+    "test": "node ../../build/test.mjs ui && node ../../build/run-tests.mjs ui",
+    "test:unit": "node ../../build/test.mjs ui --scope unit && node ../../build/run-tests.mjs ui",
+    "test:component": "node ../../build/test.mjs ui --scope component && node ../../build/run-tests.mjs ui",
+    "test:integration": "node ../../build/test.mjs ui --scope integration && node ../../build/run-tests.mjs ui"
+  },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",

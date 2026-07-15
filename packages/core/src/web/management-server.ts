@@ -25,7 +25,7 @@ import { getProfileOpenCommand, getProfileRuntimeStatus, openProfileFromCcr, sto
 import { ensureProxyCertificateAuthority } from "@ccr/core/proxy/certificates";
 import { proxyService } from "@ccr/core/proxy/service";
 import { listMcpServerTools } from "@ccr/core/mcp/tool-discovery";
-import { getAgentAnalysis, getAgentTracePayload, getRequestLogDetail, getRequestLogs } from "@ccr/core/observability/request-log-store";
+import { closeRequestLogRuntime, getAgentAnalysis, getAgentTracePayload, getRequestLogDetail, getRequestLogs } from "@ccr/core/observability/request-log-store";
 import { getUsageStats } from "@ccr/core/usage/store";
 import { gatewayService } from "@ccr/core/gateway/service";
 import { shouldRestartGatewayForRuntimeConfigChange } from "@ccr/core/gateway/runtime-change";
@@ -160,6 +160,7 @@ export async function startWebManagementServer(options: WebManagementServerOptio
     close: async () => {
       await closeServer(server);
       await stopConfiguredServices();
+      await closeRequestLogRuntime();
     },
     server,
     url

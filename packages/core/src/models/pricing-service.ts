@@ -28,9 +28,11 @@ type ModelPrice = {
 };
 
 type PriceCatalog = {
+  index: PriceIndex;
   loadedAt: number;
-  prices: ModelPrice[];
 };
+
+type PriceIndex = Map<ModelPricingSource, Map<string, ModelPrice>>;
 
 const catalogTtlMs = 24 * 60 * 60 * 1000;
 const fetchTimeoutMs = 5000;
@@ -42,13 +44,50 @@ let catalog: PriceCatalog | undefined;
 let catalogPromise: Promise<PriceCatalog> | undefined;
 
 export async function estimateUsageCostUsd(input: UsageCostInput): Promise<UsageCostEstimate | undefined> {
+  if (!hasBillableUsage(input)) {
+    return undefined;
+  }
   const model = input.model?.trim();
   if (!model || model === "unknown") {
     return undefined;
   }
 
   const prices = await getPriceCatalog();
-  const price = findModelPrice(prices.prices, model, input.provider);
+  return estimateUsageCostFromIndex(input, prices.index, model);
+}
+
+/**
+ * Loads the remote catalog without holding a caller's database transaction.
+ * Callers that own a write transaction can then use the cache-only estimator.
+ */
+export async function preloadUsagePriceCatalog(): Promise<void> {
+  await getPriceCatalog();
+}
+
+export function usagePriceCatalogNeedsRefresh(): boolean {
+  return !catalog || Date.now() - catalog.loadedAt >= catalogTtlMs;
+}
+
+/** Never performs I/O. Returns undefined when no fresh catalog is loaded. */
+export function estimateUsageCostUsdFromLoadedCatalog(
+  input: UsageCostInput
+): UsageCostEstimate | undefined {
+  if (!hasBillableUsage(input)) {
+    return undefined;
+  }
+  const model = input.model?.trim();
+  if (!model || model === "unknown" || usagePriceCatalogNeedsRefresh() || !catalog) {
+    return undefined;
+  }
+  return estimateUsageCostFromIndex(input, catalog.index, model);
+}
+
+function estimateUsageCostFromIndex(
+  input: UsageCostInput,
+  index: PriceIndex,
+  model: string
+): UsageCostEstimate | undefined {
+  const price = findModelPrice(index, model, input.provider);
   if (!price) {
     return undefined;
   }
@@ -74,6 +113,13 @@ export async function estimateUsageCostUsd(input: UsageCostInput): Promise<Usage
   };
 }
 
+function hasBillableUsage(input: UsageCostInput): boolean {
+  return normalizeCount(input.inputTokens) +
+    normalizeCount(input.outputTokens) +
+    normalizeCount(input.cacheReadTokens) +
+    normalizeCount(input.cacheWriteTokens) > 0;
+}
+
 async function getPriceCatalog(): Promise<PriceCatalog> {
   if (catalog && Date.now() - catalog.loadedAt < catalogTtlMs) {
     return catalog;
@@ -96,8 +142,8 @@ async function loadPriceCatalog(): Promise<PriceCatalog> {
   ]);
   const prices = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
   return {
-    loadedAt: Date.now(),
-    prices
+    index: buildPriceIndex(prices),
+    loadedAt: Date.now()
   };
 }
 
@@ -247,7 +293,7 @@ function priceFromTokenCosts(input: {
   };
 }
 
-function findModelPrice(prices: ModelPrice[], model: string, provider: string | undefined): ModelPrice | undefined {
+function findModelPrice(index: PriceIndex, model: string, provider: string | undefined): ModelPrice | undefined {
   const candidateKeys = modelCandidateKeys(model, provider);
   const providerIsOpenRouter = normalizeKey(provider).includes("openrouter");
   const sourcePriority: ModelPricingSource[] = providerIsOpenRouter
@@ -255,8 +301,10 @@ function findModelPrice(prices: ModelPrice[], model: string, provider: string | 
     : ["models.dev", "litellm", "openrouter"];
 
   for (const source of sourcePriority) {
+    const sourceIndex = index.get(source);
+    if (!sourceIndex) continue;
     for (const key of candidateKeys) {
-      const price = prices.find((item) => item.source === source && priceMatchesKey(item, key));
+      const price = sourceIndex.get(key);
       if (price) {
         return price;
       }
@@ -265,16 +313,31 @@ function findModelPrice(prices: ModelPrice[], model: string, provider: string | 
   return undefined;
 }
 
-function priceMatchesKey(price: ModelPrice, key: string): boolean {
-  const keys = new Set<string>([
+function buildPriceIndex(prices: ModelPrice[]): PriceIndex {
+  const index: PriceIndex = new Map();
+  for (const price of prices) {
+    let sourceIndex = index.get(price.source);
+    if (!sourceIndex) {
+      sourceIndex = new Map();
+      index.set(price.source, sourceIndex);
+    }
+    for (const key of priceIndexKeys(price)) {
+      if (!sourceIndex.has(key)) sourceIndex.set(key, price);
+    }
+  }
+  return index;
+}
+
+function priceIndexKeys(price: ModelPrice): string[] {
+  const keys = [
     normalizeKey(price.model),
     normalizeKey(lastPathSegment(price.model))
-  ]);
+  ];
   if (price.provider) {
-    keys.add(normalizeKey(`${price.provider}/${price.model}`));
-    keys.add(normalizeKey(`${price.provider}/${lastPathSegment(price.model)}`));
+    keys.push(normalizeKey(`${price.provider}/${price.model}`));
+    keys.push(normalizeKey(`${price.provider}/${lastPathSegment(price.model)}`));
   }
-  return keys.has(key);
+  return unique(keys.filter(Boolean));
 }
 
 function modelCandidateKeys(model: string, provider: string | undefined): string[] {

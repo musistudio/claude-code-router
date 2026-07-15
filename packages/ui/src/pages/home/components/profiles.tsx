@@ -137,8 +137,17 @@ export function ProfileView({
                         </div>
                       </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <Toggle checked={profile.enabled} onChange={(enabled) => updateProfileItem(index, { enabled })} />
+                    <div
+                      aria-label={`${profile.name || t("Profile")} ${t("Profile actions")}`}
+                      className="ml-auto grid shrink-0 grid-cols-[54px_1px_28px_28px_1px_28px_28px] items-center gap-1.5"
+                      role="group"
+                    >
+                      <Toggle
+                        checked={profile.enabled}
+                        onChange={(enabled) => updateProfileItem(index, { enabled })}
+                        title={t(profile.enabled ? "Enabled" : "Disabled")}
+                      />
+                      <span aria-hidden="true" className="h-5 w-px bg-border/80" />
                       {showProfileLaunchActions && openSurfaces.includes("cli") ? (
                         <ProfileActionTooltip label={cliActionTooltip}>
                           <Button
@@ -147,14 +156,14 @@ export function ProfileView({
                             onClick={() => copyProfileCliCommand(index)}
                             size="iconSm"
                             type="button"
-                            variant="ghost"
+                            variant="subtle"
                           >
 	                            <AnimatedIconSwap iconKey={cliBusy ? "busy" : "terminal"}>
 	                              {cliBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Terminal className="h-3.5 w-3.5" />}
 	                            </AnimatedIconSwap>
                           </Button>
                         </ProfileActionTooltip>
-                      ) : null}
+                      ) : <span aria-hidden="true" className="h-7 w-7" />}
                       {showProfileLaunchActions && openSurfaces.includes("app") ? (
                         <ProfileActionTooltip label={appActionTooltip}>
                           <Button
@@ -163,20 +172,32 @@ export function ProfileView({
                             onClick={() => appRunning ? stopProfileApp(index) : openProfileApp(index)}
                             size="iconSm"
                             type="button"
-                            variant={appRunning ? "outline" : "ghost"}
+                            variant={appRunning ? "outline" : "subtle"}
                           >
 	                            <AnimatedIconSwap iconKey={appBusy ? "busy" : appRunning ? "stop" : "play"}>
 	                              {appBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : appRunning ? <Power className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
 	                            </AnimatedIconSwap>
                           </Button>
                         </ProfileActionTooltip>
-                      ) : null}
-                      <Button aria-label={`${t("Edit")} ${profile.name || t("Profile")}`} onClick={() => editProfile(index)} size="iconSm" title={t("Edit")} type="button" variant="ghost">
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button aria-label={t("Remove profile")} onClick={() => removeProfile(index)} size="iconSm" title={t("Remove profile")} type="button" variant="ghost">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      ) : <span aria-hidden="true" className="h-7 w-7" />}
+                      <span aria-hidden="true" className="h-5 w-px bg-border/80" />
+                      <ProfileActionTooltip label={t("Edit")}>
+                        <Button aria-label={`${t("Edit")} ${profile.name || t("Profile")}`} onClick={() => editProfile(index)} size="iconSm" type="button" variant="ghost">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      </ProfileActionTooltip>
+                      <ProfileActionTooltip label={t("Remove profile")}>
+                        <Button
+                          aria-label={t("Remove profile")}
+                          className="hover:bg-destructive/10 hover:text-destructive focus-visible:text-destructive"
+                          onClick={() => removeProfile(index)}
+                          size="iconSm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </ProfileActionTooltip>
                     </div>
                   </div>
                 </div>

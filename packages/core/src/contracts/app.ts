@@ -956,6 +956,9 @@ export type ProxyRuntimeConfig = {
 
 export type ObservabilityConfig = {
   agentAnalysis: boolean;
+  requestLogBodyCapture?: "all" | "errors" | "none";
+  requestLogMaxBodyBytes?: number;
+  requestLogSuccessSampleRate?: number;
   requestLogs: boolean;
 };
 
@@ -1711,6 +1714,94 @@ export type RequestLogRetryAttempt = {
   status?: string;
 };
 
+export type RequestRouteTracePhase =
+  | "ingress"
+  | "compatibility"
+  | "routing"
+  | "capability"
+  | "enrichment"
+  | "planning"
+  | "attempt"
+  | "core"
+  | "outcome";
+
+export type RequestRouteTraceChange = {
+  after?: unknown;
+  before?: unknown;
+  operation: "add" | "remove" | "replace";
+  path: string;
+  redacted?: boolean;
+  scope: "body" | "headers" | "routing" | "url";
+  truncated?: boolean;
+};
+
+export type RequestRouteTraceDecision = {
+  diagnostics?: Array<{
+    code: string;
+    message: string;
+    model?: string;
+    ruleId?: string;
+    source?: string;
+  }>;
+  policyId?: string;
+  reason?: string;
+  ruleId?: string;
+  ruleName?: string;
+  source?: string;
+};
+
+export type RequestRouteTraceTarget = {
+  credentialCandidates?: string[];
+  credentialId?: string;
+  model?: string;
+  protocol?: GatewayProviderProtocol;
+  provider?: string;
+};
+
+export type RequestRouteTraceOutcome = {
+  error?: string;
+  fallbackReason?: string;
+  retryDelayMs?: number;
+  statusCode?: number;
+};
+
+export type RequestRouteTraceSnapshot = {
+  body?: unknown;
+  bodySizeBytes: number;
+  bodyTruncated: boolean;
+  headers: Record<string, unknown>;
+  method: string;
+  routing?: Record<string, unknown>;
+  url: string;
+};
+
+export type RequestRouteTraceHop = {
+  attempt?: number;
+  changes: RequestRouteTraceChange[];
+  decision?: RequestRouteTraceDecision;
+  durationMs: number;
+  kind: "attempt" | "decision" | "mutation" | "outcome" | "snapshot";
+  name: string;
+  outcome?: RequestRouteTraceOutcome;
+  phase: RequestRouteTracePhase;
+  seq: number;
+  startedOffsetMs: number;
+  status: "error" | "noop" | "ok";
+  target?: RequestRouteTraceTarget;
+  truncated?: boolean;
+};
+
+export type RequestRouteTrace = {
+  attemptCount: number;
+  complete: boolean;
+  finalSnapshot?: RequestRouteTraceSnapshot;
+  hopCount: number;
+  hops: RequestRouteTraceHop[];
+  ingressSnapshot?: RequestRouteTraceSnapshot;
+  truncated: boolean;
+  version: 1 | 2;
+};
+
 export type RequestLogEntry = {
   cacheReadTokens: number;
   cacheWriteTokens: number;
@@ -1736,6 +1827,10 @@ export type RequestLogEntry = {
   requestBody: RequestLogBody;
   requestHeaders: Record<string, string | string[]>;
   requestId: string;
+  routeAttemptCount: number;
+  routeHopCount: number;
+  routeTrace?: RequestRouteTrace;
+  routeTraceTruncated: boolean;
   retryAttempts: RequestLogRetryAttempt[];
   responseBody?: RequestLogBody;
   responseHeaders: Record<string, string | string[]>;

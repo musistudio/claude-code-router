@@ -96,6 +96,7 @@ async function main() {
     .map(finalizeEntry)
     .sort((a, b) => a.id.localeCompare(b.id));
   const models = dedupeModels(providerModelRecords);
+  assertUniqueModelCatalog(models);
 
   const payload = {
     schemaVersion,
@@ -150,6 +151,7 @@ function ingestModelsDev(entries, payload) {
         openWeights: readBoolean(model.open_weights),
         pdfInput: modalities.input.includes("pdf"),
         reasoning: readBoolean(model.reasoning),
+        ...reasoningEffortCapabilities(model.reasoning_options),
         structuredOutput: readBoolean(model.structured_output),
         temperature: readBoolean(model.temperature),
         toolCalling: readBoolean(model.tool_call),
@@ -371,6 +373,29 @@ function dedupeModels(providerModelRecords) {
   return Array.from(groups.values())
     .map(({ identity, records }) => mergeDedupedModel(identity, records))
     .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function assertUniqueModelCatalog(models) {
+  const modelIds = new Map();
+  const aliases = new Map();
+
+  for (const model of models) {
+    const id = normalizeEntryKey(model.id);
+    const previousId = modelIds.get(id);
+    if (previousId) {
+      throw new Error(`Duplicate model ID after deduplication: ${model.id} (${previousId})`);
+    }
+    modelIds.set(id, model.id);
+
+    for (const alias of model.aliases ?? []) {
+      const key = normalizeEntryKey(alias);
+      const previousModel = aliases.get(key);
+      if (previousModel && previousModel !== model.id) {
+        throw new Error(`Alias collision after deduplication: ${alias} (${previousModel}, ${model.id})`);
+      }
+      aliases.set(key, model.id);
+    }
+  }
 }
 
 function mergeDedupedModel(identity, records) {
@@ -766,6 +791,22 @@ function capabilitiesFromLiteLlm(model, mode, modalities) {
     vision: readBoolean(model.supports_vision),
     webSearch: readBoolean(model.supports_web_search),
     xhighReasoningEffort: readBoolean(model.supports_xhigh_reasoning_effort)
+  });
+}
+
+function reasoningEffortCapabilities(value) {
+  const efforts = new Set(
+    (Array.isArray(value) ? value : [])
+      .flatMap((option) => isRecord(option) && Array.isArray(option.values) ? option.values : [])
+      .map((effort) => readString(effort)?.toLowerCase() ?? "")
+      .filter(Boolean)
+  );
+  return compactObject({
+    lowReasoningEffort: efforts.has("low") || undefined,
+    maxReasoningEffort: efforts.has("max") || undefined,
+    minimalReasoningEffort: efforts.has("minimal") || undefined,
+    noneReasoningEffort: efforts.has("none") || undefined,
+    xhighReasoningEffort: efforts.has("xhigh") || undefined
   });
 }
 

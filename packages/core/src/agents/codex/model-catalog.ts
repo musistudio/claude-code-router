@@ -1,4 +1,4 @@
-import { BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME } from "@ccr/core/contracts/app";
+import { BUILTIN_FUSION_VISION_TOOL_NAME, BUILTIN_FUSION_WEB_SEARCH_TOOL_NAME } from "@ccr/core/contracts/app";
 import type { AppConfig, GatewayProviderConfig, GatewayProviderProtocol, ProviderModelMetadata, ProviderReasoningLevel, VirtualModelProfileConfig } from "@ccr/core/contracts/app";
 import {
   findModelCatalogEntry,
@@ -183,10 +183,11 @@ function codexModelCapabilityProfile(
   const capabilities = catalogEntry?.capabilities ?? {};
   const providerProtocol = provider ? codexProviderProtocol(provider) : undefined;
   const providerSupportsResponses = provider ? codexProviderSupportsResponses(provider) : false;
+  const supportsFusionVision = codexVirtualModelSupportsFusionVision(model, config);
   const supportsFusionWebSearch = codexVirtualModelSupportsFusionWebSearch(model, config);
   const metadataReasoningLevels = normalizeProviderReasoningLevels(providerModelMetadata?.supportedReasoningLevels);
   const supportsReasoning = providerModelMetadata?.supportsReasoningSummaries ?? (metadataReasoningLevels ? true : readCatalogCapability(capabilities, "reasoning"));
-  const supportsImageInput = catalogEntrySupportsImageInput(catalogEntry);
+  const supportsImageInput = supportsFusionVision || catalogEntrySupportsImageInput(catalogEntry);
   const supportsParallelToolCalls = readCatalogCapability(capabilities, "parallelFunctionCalling");
   const applyPatchToolType = providerSupportsResponses || catalogModelLooksLikeGpt(model, catalogEntry) || codexPatchBridgeApplies(model, catalogEntry, config)
     ? "freeform"
@@ -309,13 +310,23 @@ function catalogEntrySupportsImageInput(entry: ModelCatalogEntry | undefined): b
 }
 
 function supportedReasoningLevels(capabilities: Record<string, unknown>): Array<{ description: string; effort: string }> {
-  const levels = [
+  const levels: Array<{ description: string; effort: string }> = [];
+  if (readCatalogCapability(capabilities, "noneReasoningEffort")) {
+    levels.push({ effort: "none", description: "No reasoning" });
+  }
+  if (readCatalogCapability(capabilities, "minimalReasoningEffort")) {
+    levels.push({ effort: "minimal", description: "Minimal reasoning" });
+  }
+  levels.push(
     { effort: "low", description: "Low reasoning" },
     { effort: "medium", description: "Medium reasoning" },
     { effort: "high", description: "High reasoning" }
-  ];
+  );
   if (readCatalogCapability(capabilities, "xhighReasoningEffort") || readCatalogCapability(capabilities, "maxReasoningEffort")) {
     levels.push({ effort: "xhigh", description: "Extra high reasoning" });
+  }
+  if (readCatalogCapability(capabilities, "maxReasoningEffort")) {
+    levels.push({ effort: "max", description: "Maximum reasoning" });
   }
   return levels;
 }
@@ -475,6 +486,17 @@ function codexVirtualModelSupportsFusionWebSearch(
   );
 }
 
+function codexVirtualModelSupportsFusionVision(
+  model: string,
+  config?: Partial<Pick<AppConfig, "Providers" | "virtualModelProfiles">>
+): boolean {
+  return (config?.virtualModelProfiles ?? []).some((profile) =>
+    virtualModelIsCatalogVisible(profile) &&
+    virtualModelMatchesCatalogModel(profile, model, config) &&
+    virtualModelProfileSupportsFusionVision(profile)
+  );
+}
+
 function virtualModelMatchesCatalogModel(
   profile: VirtualModelProfileConfig,
   model: string,
@@ -545,6 +567,26 @@ function virtualModelProfileSupportsFusionWebSearch(profile: VirtualModelProfile
     const name = tool.name.trim();
     return fusionWebSearchToolNameMatches(name);
   });
+}
+
+function virtualModelProfileSupportsFusionVision(profile: VirtualModelProfileConfig): boolean {
+  const metadata = recordValue(profile.metadata);
+  const fusionVision = recordValue(metadata?.fusionVision);
+  if (stringRecordValue(fusionVision, "toolName")) {
+    return true;
+  }
+
+  if (recordValue(profile.execution)?.matchMultimodal === true) {
+    return true;
+  }
+
+  return (profile.tools ?? []).some((tool) => fusionVisionToolNameMatches(tool.name.trim()));
+}
+
+function fusionVisionToolNameMatches(name: string): boolean {
+  const normalized = name.toLowerCase().replace(/[-.]/g, "_");
+  return normalized === BUILTIN_FUSION_VISION_TOOL_NAME ||
+    normalized.startsWith(`${BUILTIN_FUSION_VISION_TOOL_NAME}_`);
 }
 
 function fusionWebSearchToolNameMatches(name: string): boolean {

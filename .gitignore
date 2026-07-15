@@ -18,3 +18,4 @@ test-results
 playwright-report
 blob-report
 .tmp
+.test-dist

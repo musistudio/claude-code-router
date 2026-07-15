@@ -1,5 +1,5 @@
 import type { ApiKeyLimitConfig } from "@ccr/core/contracts/app";
-import { parseJsonObject } from "@ccr/core/gateway/http/io";
+import { parseJsonObjectCached } from "@ccr/core/gateway/http/body";
 import { isRecord } from "@ccr/core/gateway/internal/value";
 import {
   type ApiKeyLimitRule,
@@ -54,7 +54,7 @@ export function estimateLimitUsage(method: string, requestBody: Buffer): ApiKeyL
     return { imageCount: 0, totalTokens: 0 };
   }
 
-  const body = parseJsonObject(requestBody);
+  const body = parseJsonObjectCached(requestBody);
   const inputCharacters = countUnknownCharacters(body.messages) + countUnknownCharacters(body.system) + countUnknownCharacters(body.tools);
   const inputTokens = Math.ceil(inputCharacters / 4);
   const outputTokens = readPositiveNumber(body.max_tokens) ?? readPositiveNumber(body.max_output_tokens) ?? 1024;
