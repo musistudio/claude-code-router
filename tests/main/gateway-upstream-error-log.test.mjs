@@ -12,7 +12,10 @@ test("upstream fetch diagnostics expose timeout phase and fallback counts withou
       syscall: "read"
     }
   );
-  const error = new TypeError("fetch failed", { cause });
+  const error = new TypeError(
+    "fetch failed for https://api.example.test/v1/responses?api_key=private-value",
+    { cause }
+  );
 
   const message = formatUpstreamErrorForLog(error, {
     attempts: 2,
@@ -24,6 +27,7 @@ test("upstream fetch diagnostics expose timeout phase and fallback counts withou
   });
 
   assert.match(message, /^Upstream fetch failed: fetch failed/);
+  assert.match(message, /https:\/\/api\.example\.test\/v1\/responses\?api_key=\[redacted\]/);
   assert.match(message, /cause=HeadersTimeoutError/);
   assert.match(message, /code=UND_ERR_HEADERS_TIMEOUT/);
   assert.match(message, /errno=-110/);
@@ -34,10 +38,10 @@ test("upstream fetch diagnostics expose timeout phase and fallback counts withou
   assert.match(message, /fallback_failures=1/);
   assert.match(message, /retry_delay_ms=500/);
   assert.match(message, /elapsed_ms=307655/);
-  assert.doesNotMatch(message, /api\.example\.test|private-value|api_key/i);
+  assert.doesNotMatch(message, /private-value/);
 });
 
-test("upstream stream diagnostics redact addresses and bearer credentials", () => {
+test("upstream stream diagnostics redact credentials without hiding the endpoint", () => {
   const error = Object.assign(
     new Error("read ECONNRESET from private.internal:443 using Bearer secret-token-value api_key=another-secret"),
     {
@@ -59,8 +63,24 @@ test("upstream stream diagnostics redact addresses and bearer credentials", () =
   assert.match(message, /code=ECONNRESET/);
   assert.match(message, /phase=response_body/);
   assert.match(message, /response_started=true/);
-  assert.match(message, /from \[redacted-address\]/);
+  assert.match(message, /from private\.internal:443/);
   assert.match(message, /Bearer \[redacted\]/);
   assert.match(message, /api_key=\[redacted\]/);
-  assert.doesNotMatch(message, /private\.internal|secret-token-value|another-secret/);
+  assert.doesNotMatch(message, /secret-token-value|another-secret/);
+});
+
+test("upstream diagnostics preserve non-sensitive error details", () => {
+  const message = formatUpstreamErrorForLog(
+    new Error("failed to parse response from cache at http://10.0.0.5:8080/v1"),
+    {
+      attempts: 1,
+      elapsedMs: 25,
+      fallbackFailures: 0,
+      operation: "fetch",
+      responseStarted: false
+    }
+  );
+
+  assert.match(message, /failed to parse response from cache/);
+  assert.match(message, /http:\/\/10\.0\.0\.5:8080\/v1/);
 });

@@ -151,8 +151,8 @@ export function formatUpstreamErrorForLog(error: unknown, context: UpstreamError
   const code = firstErrorProperty(chain, "code");
   const errno = firstErrorProperty(chain, "errno");
   const syscall = firstErrorProperty(chain, "syscall");
-  const message = sanitizeUpstreamErrorText(outer?.message || formatError(error)) || "Unknown upstream error";
-  const causeMessage = sanitizeUpstreamErrorText(cause?.message || "");
+  const message = redactUpstreamCredentialValues(outer?.message || formatError(error)) || "Unknown upstream error";
+  const causeMessage = redactUpstreamCredentialValues(cause?.message || "");
   const phase = inferUpstreamErrorPhase({
     code,
     message: `${message} ${causeMessage}`,
@@ -161,10 +161,10 @@ export function formatUpstreamErrorForLog(error: unknown, context: UpstreamError
     syscall
   });
   const fields = [
-    `cause=${sanitizeDiagnosticValue(cause?.name || "UnknownError")}`,
-    code ? `code=${sanitizeDiagnosticValue(code)}` : undefined,
-    errno ? `errno=${sanitizeDiagnosticValue(errno)}` : undefined,
-    syscall ? `syscall=${sanitizeDiagnosticValue(syscall)}` : undefined,
+    `cause=${normalizeDiagnosticValue(cause?.name || "UnknownError")}`,
+    code ? `code=${normalizeDiagnosticValue(code)}` : undefined,
+    errno ? `errno=${normalizeDiagnosticValue(errno)}` : undefined,
+    syscall ? `syscall=${normalizeDiagnosticValue(syscall)}` : undefined,
     `phase=${phase}`,
     `response_started=${context.responseStarted}`,
     `attempts=${Math.max(1, Math.trunc(context.attempts))}`,
@@ -240,23 +240,21 @@ function inferUpstreamErrorPhase(input: {
 }
 
 
-function sanitizeUpstreamErrorText(value: string): string {
+function redactUpstreamCredentialValues(value: string): string {
   return value
-    .replace(/\b(?:https?|wss?):\/\/[^\s"'<>]+/gi, "[redacted-url]")
+    .replace(/(\b(?:https?|wss?):\/\/[^/\s:@]+:)[^@\s/]+@/gi, "$1[redacted]@")
+    .replace(/([?&](?:api[-_]?key|key|token|access[-_]?token|refresh[-_]?token|client[-_]?secret|auth|authorization|password)=)[^&\s#]*/gi, "$1[redacted]")
+    .replace(/\b((?:proxy[-_])?authorization)\s*([:=])\s*(?:(?:Bearer|Basic)\s+)?[^\s,;&#]+/gi, "$1$2[redacted]")
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, "Bearer [redacted]")
     .replace(/\b(?:sk|rk|pk)-[A-Za-z0-9_-]{12,}/gi, "[redacted-secret]")
-    .replace(/\b(?:authorization|x-api-key|api-key|api_key|access_token|token)\s*[:=]\s*["']?[^\s,;"']+/gi, (match) => `${match.split(/\s*[:=]/, 1)[0]}=[redacted]`)
-    .replace(/\[[0-9a-f:]+\](?::\d+)?/gi, "[redacted-address]")
-    .replace(/\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b/g, "[redacted-address]")
-    .replace(/\b(connect(?:ing)?(?:\s+to)?|from|to)\s+(?:[A-Za-z0-9.-]+|\[[0-9a-f:]+\])(?::\d+)?/gi, "$1 [redacted-address]")
-    .replace(/([?&](?:api_?key|key|token|access_token|auth)=)[^&\s]+/gi, "$1[redacted]")
+    .replace(/\b((?:x[-_](?:[a-z0-9]+[-_])*)?api[-_]?key|access[-_]?token|refresh[-_]?token|client[-_]?secret|token|password)\s*([:=])\s*(?:"[^"]*"|'[^']*'|[^\s,;&#"']+)/gi, "$1$2[redacted]")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 240);
 }
 
 
-function sanitizeDiagnosticValue(value: string): string {
+function normalizeDiagnosticValue(value: string): string {
   const normalized = value.replace(/[^A-Za-z0-9_.:-]/g, "_").slice(0, 80);
   return normalized || "unknown";
 }
