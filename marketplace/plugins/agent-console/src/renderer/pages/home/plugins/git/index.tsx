@@ -1286,9 +1286,10 @@ function GitToolbarMenu({
   return (
     <div
       className={cn(
-        "absolute top-8 z-50 min-w-[168px] rounded-md border border-[#d8dbe2] bg-white py-1 font-mono text-[12px] shadow-[0_10px_24px_rgba(0,0,0,.16)]",
+        "macos-dropdown absolute top-8 z-50 min-w-[176px] rounded-md border border-border bg-popover p-1 font-mono text-[12px]",
         align === "right" ? "right-0" : "left-0"
       )}
+      role="menu"
     >
       {children}
     </div>
@@ -1306,9 +1307,10 @@ function GitToolbarMenuItem({
 }) {
   return (
     <button
-      className="flex h-7 w-full items-center px-3 text-left text-[#24292f] hover:bg-[#edf3ff] disabled:pointer-events-none disabled:text-[#a6adbb]"
+      className="flex h-8 w-full items-center rounded-md px-2 text-left text-foreground hover:bg-muted disabled:pointer-events-none disabled:text-muted-foreground"
       disabled={disabled}
       onClick={onClick}
+      role="menuitem"
       type="button"
     >
       {label}
@@ -1326,7 +1328,7 @@ function GitToolbarCheckboxItem({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex h-8 cursor-pointer items-center gap-2 px-3 text-[#24292f] hover:bg-[#edf3ff]">
+    <label className="flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-foreground hover:bg-muted">
       <input checked={checked} className="h-4 w-4 rounded border-[#b9c0cc]" onChange={(event) => onChange(event.target.checked)} type="checkbox" />
       <span>{label}</span>
     </label>
@@ -1860,7 +1862,7 @@ function GitLogPanel({
               </span>
               <span className="min-w-0 truncate text-[#111827]">
                 {commit.subject}
-                {commit.decorations.length ? <span className="ml-2 text-[10px] text-[#0f766e]">{commit.decorations.slice(0, 3).join(" ")}</span> : null}
+                {commit.decorations.length ? <span className="ml-2 text-[10px] text-primary">{commit.decorations.slice(0, 3).join(" ")}</span> : null}
               </span>
               <span className="truncate font-semibold">{commit.author}</span>
               <span className="truncate text-[#6b7280]">{formatCommitDate(commit.date, locale, t)}</span>
@@ -1930,9 +1932,10 @@ function GitCommitContextMenu({
 
   return (
     <div
-      className="fixed z-50 w-[332px] overflow-y-auto rounded-md border border-[#d8dbe2] bg-white py-1 font-mono text-[12px] shadow-[0_14px_30px_rgba(0,0,0,.2)]"
+      className="macos-dropdown fixed z-50 w-[332px] overflow-y-auto rounded-md border border-border bg-popover p-1 font-mono text-[12px]"
       onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
+      role="menu"
       style={{ left: position.left, maxHeight: menuHeight, top: position.top }}
     >
       <GitCommitMenuItem icon={Copy} label={t("git.copyRevision")} onClick={() => run(() => actions.copyRevision(commit))} shortcut="⇧⌘C" />
@@ -1990,20 +1993,21 @@ function GitCommitMenuItem({
 }) {
   return (
     <button
-      className="grid h-[26px] w-full grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-1.5 px-3 text-left text-[#24292f] hover:bg-[#edf3ff] disabled:pointer-events-none disabled:text-[#a6adbb]"
+      className="grid h-8 w-full grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-1.5 rounded-md px-2 text-left text-foreground hover:bg-muted disabled:pointer-events-none disabled:text-muted-foreground"
       disabled={disabled}
       onClick={onClick}
+      role="menuitem"
       type="button"
     >
-      <span className="grid h-[18px] w-[18px] place-items-center">{Icon ? <Icon className="h-[14px] w-[14px] text-[#7b8390]" /> : null}</span>
+      <span className="grid h-[18px] w-[18px] place-items-center">{Icon ? <Icon className="h-[14px] w-[14px] text-muted-foreground" /> : null}</span>
       <span className="min-w-0 truncate">{label}</span>
-      {shortcut ? <span className="pl-3 text-[#7b8390]">{shortcut}</span> : null}
+      {shortcut ? <span className="pl-3 text-muted-foreground">{shortcut}</span> : null}
     </button>
   );
 }
 
 function GitMenuSeparator() {
-  return <div className="my-1 h-px bg-[#eceef2]" />;
+  return <div className="menu-separator my-1 h-px bg-border" role="separator" />;
 }
 
 function GitCommitInspector({
@@ -2302,14 +2306,15 @@ function GitBranchTree({
         : null}
       {contextMenu && menuBranch ? (
         <div
-          className="fixed z-50 w-[178px] rounded-md border border-[#d8dbe2] bg-white py-1 text-[12px] shadow-lg"
+          className="macos-dropdown fixed z-50 w-[190px] rounded-md border border-border bg-popover p-1 text-[12px]"
           onClick={(event) => event.stopPropagation()}
+          role="menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <BranchMenuItem disabled={busy || menuBranchIsCurrent} label={t("git.checkout")} onClick={() => runBranchAction(() => onCheckout(menuBranch.name))} />
           <BranchMenuItem disabled={busy} label={t("git.pull")} onClick={() => runBranchAction(() => onPullLatest(false))} />
           <BranchMenuItem disabled={busy} label={t("git.pullRebase")} onClick={() => runBranchAction(() => onPullLatest(true))} />
-          <div className="my-1 h-px bg-[#eceef2]" />
+          <div className="menu-separator my-1 h-px bg-border" role="separator" />
           <BranchMenuItem disabled={busy || menuBranchIsCurrent} label={t("git.merge")} onClick={() => runBranchAction(() => onMergeBranch(menuBranch.name))} />
           <BranchMenuItem disabled={busy || menuBranchIsCurrent} label={t("git.rebaseOnto")} onClick={() => runBranchAction(() => onRebaseBranch(menuBranch.name))} />
         </div>
@@ -2330,10 +2335,11 @@ function BranchMenuItem({
   return (
     <button
       className={cn(
-        "flex h-7 w-full items-center px-3 text-left text-[#24292f] hover:bg-[#f7f9ff] disabled:pointer-events-none disabled:text-[#9aa1ad]"
+        "flex h-8 w-full items-center rounded-md px-2 text-left text-foreground hover:bg-muted disabled:pointer-events-none disabled:text-muted-foreground"
       )}
       disabled={disabled}
       onClick={onClick}
+      role="menuitem"
       type="button"
     >
       {label}
@@ -2406,6 +2412,8 @@ function GitFilterMenu({
   return (
     <div className="relative">
       <button
+        aria-expanded={open}
+        aria-haspopup="listbox"
         className={cn("flex h-7 max-w-[150px] items-center gap-1 rounded-md px-2 font-mono text-[11px] text-[#6b7280] hover:bg-[#f7f8fb]", value && "bg-[#edf3ff] text-[#184b8f]")}
         onClick={() => setOpen((previousOpen) => !previousOpen)}
         type="button"
@@ -2414,15 +2422,17 @@ function GitFilterMenu({
         <ChevronDown className={cn("h-[12px] w-[12px] shrink-0 transition-transform", open && "rotate-180")} />
       </button>
       {open ? (
-        <div className="absolute left-0 top-8 z-40 max-h-[260px] min-w-[190px] overflow-auto rounded-md border border-[#dfe1e5] bg-white p-1 shadow-[0_8px_22px_rgba(0,0,0,.14)]">
+        <div className="macos-dropdown absolute left-0 top-8 z-40 max-h-[260px] min-w-[200px] overflow-auto rounded-md border border-border bg-popover p-1" role="listbox">
           {options.map((option) => (
             <button
-              className={cn("flex h-7 w-full items-center gap-2 rounded px-2 text-left font-mono text-[11px] text-[#30343a] hover:bg-[#f7f9ff]", option.value === value && "bg-[#edf3ff] text-[#184b8f]")}
+              aria-selected={option.value === value}
+              className={cn("flex h-8 w-full items-center gap-2 rounded-md px-2 text-left font-mono text-[11px] text-foreground hover:bg-muted", option.value === value && "bg-accent text-accent-foreground")}
               key={`${label}-${option.value ?? "all"}`}
               onClick={() => {
                 onValueChange(option.value);
                 setOpen(false);
               }}
+              role="option"
               type="button"
             >
               <span className="min-w-0 flex-1 truncate">{option.label}</span>

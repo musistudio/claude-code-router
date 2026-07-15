@@ -53,7 +53,7 @@ function getTerminalTheme() {
   const styles = window.getComputedStyle(document.documentElement);
   const background = getThemeVariable(styles, "--card", "#ffffff");
   const foreground = getThemeVariable(styles, "--card-foreground", getThemeVariable(styles, "--foreground", "#2f2f2f"));
-  const primary = getThemeVariable(styles, "--primary", "#0f766e");
+  const primary = getThemeVariable(styles, "--primary", "#007aff");
   const border = getThemeVariable(styles, "--border", "#d9d9d9");
   const darkTheme = isDarkColor(background) || styles.colorScheme.includes("dark");
 

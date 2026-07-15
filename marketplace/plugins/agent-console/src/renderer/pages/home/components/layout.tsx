@@ -306,7 +306,7 @@ export function ProjectSidebar({
     >
       {open ? (
         <>
-          <div className="drag-region h-[46px] shrink-0" />
+          <div aria-hidden="true" className="project-sidebar-titlebar drag-region h-[52px] shrink-0" />
 
           <div className="project-sidebar-actions space-y-0.5 px-2.5 pb-2.5">
             <SidebarAction active={chatActive && selectedThread === newSessionThreadId} icon={SquarePen} label={t("sidebar.newSession")} onClick={onStartNewSession} />
@@ -344,7 +344,7 @@ export function ProjectSidebar({
             </div>
           </div>
 
-          <div className="relative flex h-[58px] shrink-0 items-center gap-1.5 px-3">
+          <div className="project-sidebar-footer relative flex h-[58px] shrink-0 items-center gap-1.5 px-3">
             <button
               className="no-drag flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-[12px] text-sidebar-foreground hover:bg-muted"
               onClick={() => onOpenSettings(activeSettingsSection)}
@@ -433,20 +433,23 @@ export function ProjectGroup({
 
   return (
     <div className="project-group">
-      <div className="flex min-h-8 w-full items-center gap-1">
+      <div
+        className="project-group-header relative flex min-h-8 w-full items-center overflow-hidden rounded-md"
+        data-selected={selectedCollapsedProject}
+      >
+        {selectedCollapsedProject ? <AnimatedSelectionBackground layoutId="left-sidebar-active" /> : null}
         <button
           aria-expanded={expanded}
           className={cn(
-            "project-group-trigger relative flex min-h-8 min-w-0 flex-1 items-center gap-1.5 overflow-hidden rounded-md px-1.5 text-left text-[12px] font-medium transition-colors",
+            "project-group-trigger relative z-10 flex min-h-8 w-full min-w-0 items-center gap-1.5 overflow-hidden rounded-md py-0 pl-1.5 pr-9 text-left text-[12px] font-medium transition-colors",
             selectedCollapsedProject
               ? "text-accent-foreground"
-              : cn("text-muted-foreground hover:bg-muted hover:text-foreground", containsSelectedThread && "text-foreground")
+              : cn("text-muted-foreground", containsSelectedThread && "text-foreground")
           )}
           onContextMenu={handleProjectContextMenu}
           onClick={onToggle}
           type="button"
         >
-          {selectedCollapsedProject ? <AnimatedSelectionBackground layoutId="left-sidebar-active" /> : null}
           <span className="relative z-10">
             {expanded ? <FolderOpen className="h-[15px] w-[15px] shrink-0" /> : <Folder className="h-[15px] w-[15px] shrink-0" />}
           </span>
@@ -454,7 +457,7 @@ export function ProjectGroup({
         </button>
         <button
           aria-label={newSessionLabel}
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground/75 outline-none transition hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/20"
+          className="project-group-new-session absolute right-0.5 z-20 grid h-7 w-7 place-items-center rounded-md text-muted-foreground/75 opacity-0 outline-none transition-[opacity,background-color,color,box-shadow] hover:bg-background/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
           onClick={handleStartProjectSession}
           title={newSessionLabel}
           type="button"
@@ -922,7 +925,7 @@ export function ThreadHeader({
   const showHeaderTitle = Boolean(title || editingThread);
 
   return (
-    <header className={cn("drag-region flex h-[46px] shrink-0 items-center justify-between bg-background px-4 pr-[58px]", !leftOpen && "pl-[118px]")}>
+    <header className={cn("thread-header drag-region flex h-[52px] shrink-0 items-center justify-between bg-background px-4 pr-[58px]", !leftOpen && "pl-[118px]")}>
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {showHeaderTitle ? (
           <>
@@ -1165,14 +1168,14 @@ export function FloatingSidebarToggles({
   const { t } = useI18n();
   return (
     <>
-      <div className="absolute left-[78px] top-[9px] z-50">
+      <div className="sidebar-toggle sidebar-toggle-left absolute left-[78px] top-[12px] z-50">
         <IconButton
           ariaLabel={leftOpen ? t("sidebar.collapseLeft") : t("sidebar.expandLeft")}
           icon={PanelLeft}
           onClick={toggleLeft}
         />
       </div>
-      <div className="absolute right-4 top-[9px] z-50">
+      <div className="sidebar-toggle sidebar-toggle-right absolute right-4 top-[12px] z-50">
         <IconButton
           ariaLabel={rightOpen ? t("sidebar.collapseRight") : t("sidebar.expandRight")}
           icon={PanelRight}
@@ -1273,7 +1276,7 @@ export function RightSidebar({
   return (
     <aside
       className={cn(
-        "relative flex shrink-0 flex-col bg-background",
+        "right-sidebar relative flex shrink-0 flex-col bg-background",
         !resizing && "transition-[width] duration-200 ease-out",
         !open && "overflow-hidden"
       )}
@@ -1282,10 +1285,10 @@ export function RightSidebar({
     >
       {open ? (
         <>
-          <div className="drag-region flex h-[46px] shrink-0 items-center gap-1.5 bg-background px-3 pr-[58px]">
+          <div className="right-sidebar-toolbar drag-region flex h-[52px] shrink-0 items-center gap-2 bg-background px-3 pr-[58px]">
             <div
               aria-label={t("rightSidebar.selectAria")}
-              className="no-drag flex h-7 min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              className="right-sidebar-tabs no-drag flex h-8 min-w-0 max-w-full flex-[0_1_auto] items-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               role="tablist"
             >
               {visibleTabs.map((tab) => {
@@ -1296,25 +1299,26 @@ export function RightSidebar({
                 return (
                   <div
                     className={cn(
-                      "group relative flex h-7 min-w-max shrink-0 items-center rounded-md bg-background text-[12px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-                      selected && "text-foreground after:absolute after:inset-x-1.5 after:bottom-[2px] after:h-0.5 after:rounded-full after:bg-primary"
+                      "right-sidebar-tab group relative flex h-7 min-w-max shrink-0 items-center text-[12px] font-medium",
+                      selected && "is-selected"
                     )}
+                    data-selected={selected}
                     key={tab.id}
                   >
                     <button
                       aria-selected={selected}
-                      className="flex h-full min-w-0 items-center gap-1 rounded-l-md py-0 pl-1.5 pr-1 outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
+                      className="right-sidebar-tab-trigger flex h-full min-w-0 items-center gap-1.5 py-0 pl-2 pr-1 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30"
                       onClick={() => setActiveTab(tab.id)}
                       role="tab"
                       title={tab.title}
                       type="button"
                     >
-                      <Icon className={cn("h-[15px] w-[15px] shrink-0 text-muted-foreground", selected && "text-primary")} />
-                      <span className="max-w-[92px] truncate">{tab.label}</span>
+                      <Icon className="right-sidebar-tab-icon h-[15px] w-[15px] shrink-0" />
+                      <span className="max-w-[80px] truncate">{tab.label}</span>
                     </button>
                     <button
                       aria-label={t("rightSidebar.closeTabAria", { label: tab.label })}
-                      className="mr-0.5 grid h-5 w-5 place-items-center rounded-sm text-muted-foreground opacity-0 outline-none transition-opacity hover:bg-background hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/20 group-hover:opacity-100"
+                      className="right-sidebar-tab-close mr-0.5 grid h-5 w-5 place-items-center rounded-[5px] opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/25 group-hover:opacity-100"
                       onClick={(event) => {
                         event.stopPropagation();
                         onCloseTab(tab.id);
@@ -1333,7 +1337,7 @@ export function RightSidebar({
                 aria-expanded={addMenuOpen}
                 aria-haspopup="menu"
                 aria-label={t("rightSidebar.addTabAria")}
-                className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/20"
+                className="right-sidebar-add-tab grid h-7 w-7 place-items-center rounded-[7px] text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
                 onClick={() => setAddMenuOpen((currentOpen) => !currentOpen)}
                 title={t("rightSidebar.addTabAria")}
                 type="button"
@@ -1344,7 +1348,7 @@ export function RightSidebar({
               {addMenuOpen ? (
                 <div
                   aria-label={t("rightSidebar.addTabMenuAria")}
-                  className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-md border border-border bg-popover p-1 shadow-[0_8px_22px_rgba(0,0,0,.12)]"
+                  className="macos-dropdown absolute right-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-md border border-border bg-popover p-1"
                   role="menu"
                 >
                   {availablePlugins.length ? (
@@ -1375,7 +1379,7 @@ export function RightSidebar({
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-1 overflow-hidden border-t border-border">
+          <div className="right-sidebar-content flex min-h-0 flex-1 overflow-hidden">
             <ActivePluginPanel key={activeTab?.id ?? activePlugin.id} {...activePluginPanelProps} />
           </div>
           <SidebarResizeHandle onPointerDown={onResizeStart} side="right" />

@@ -20,6 +20,7 @@ import {
   Loader2,
   Mic,
   Plus,
+  Shield,
   SquarePen,
   Square,
   Terminal,
@@ -652,7 +653,7 @@ export function SlashCommandMenu({
         <motion.div
           animate={{ opacity: 1, scale: 1, y: 0 }}
           aria-label={t("slash.menuAria")}
-          className="absolute bottom-full left-0 right-0 z-40 mb-2 overflow-hidden rounded-md border border-border bg-popover p-0.5 shadow-[0_14px_30px_rgba(0,0,0,.16)]"
+          className="macos-dropdown absolute bottom-full left-0 right-0 z-40 mb-2 overflow-hidden rounded-md border border-border bg-popover p-1"
           exit={{ opacity: 0, scale: 0.98, y: 8 }}
           initial={{ opacity: 0, scale: 0.98, y: 12 }}
           key="slash-command-menu"
@@ -753,6 +754,7 @@ function AgentRunSettingsSelect({
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<AgentRunSettingsView>("root");
+  const rootRef = useRef<HTMLDivElement>(null);
   const modelValue = getAgentModelLabel(agentModel, modelOptions, modelFallbackLabel);
   const supportsEffort = agentEffortOptions.length > 0;
   const effortLabel = supportsEffort ? getAgentEffortLabel(agentEffort, t) : "";
@@ -770,8 +772,26 @@ function AgentRunSettingsSelect({
     setView("root");
   };
 
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) close();
+    };
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsidePointer, true);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
   return (
-    <div className="relative inline-flex shrink-0">
+    <div className="relative inline-flex shrink-0" ref={rootRef}>
       <button
         aria-expanded={open}
         aria-haspopup="menu"
@@ -793,11 +813,9 @@ function AgentRunSettingsSelect({
       </button>
 
       {open ? (
-        <>
-          <button aria-label={t("agent.runSettings")} className="fixed inset-0 z-40 cursor-default" onClick={close} type="button" />
           <div
             className={cn(
-              "codex-dialog absolute right-0 z-50 w-[min(280px,calc(100vw-32px))] rounded-md border border-border bg-popover p-1 codex-elevated",
+              "macos-dropdown codex-dialog absolute right-0 z-50 w-[min(280px,calc(100vw-32px))] rounded-md border border-border bg-popover p-1",
               placement === "top" ? "bottom-full mb-1" : "mt-1"
             )}
             role="menu"
@@ -939,7 +957,6 @@ function AgentRunSettingsSelect({
               </>
             ) : null}
           </div>
-        </>
       ) : null}
     </div>
   );
@@ -970,6 +987,7 @@ function ComposerAttachmentMenu({
   const [open, setOpen] = useState(false);
   const [subagentMenuOpen, setSubagentMenuOpen] = useState(false);
   const [subagentMenuSide, setSubagentMenuSide] = useState<ComposerAttachmentSubmenuSide>("right");
+  const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const selectedIdSet = useMemo(() => new Set(selectedSubagentIds), [selectedSubagentIds]);
   const selectedCount = subagents.filter((subagent) => selectedIdSet.has(subagent.id)).length;
@@ -986,6 +1004,24 @@ function ComposerAttachmentMenu({
     setOpen(false);
     setSubagentMenuOpen(false);
   };
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) close();
+    };
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsidePointer, true);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
 
   const attachFiles = () => {
     close();
@@ -1010,7 +1046,7 @@ function ComposerAttachmentMenu({
   };
 
   return (
-    <div className="relative inline-flex shrink-0">
+    <div className="relative inline-flex shrink-0" ref={rootRef}>
       <button
         aria-expanded={open}
         aria-haspopup="menu"
@@ -1032,11 +1068,9 @@ function ComposerAttachmentMenu({
       </button>
 
       {open ? (
-        <>
-          <button aria-label={t("newSession.addMenu")} className="fixed inset-0 z-40 cursor-default" onClick={close} type="button" />
           <div
             className={cn(
-              "codex-dialog absolute left-0 z-50 w-[min(320px,calc(100vw-32px))] rounded-md border border-border bg-popover p-1 codex-elevated",
+              "macos-dropdown codex-dialog absolute left-0 z-50 w-[min(320px,calc(100vw-32px))] rounded-md border border-border bg-popover p-1",
               placement === "top" ? "bottom-full mb-1" : "mt-1"
             )}
             ref={menuRef}
@@ -1075,7 +1109,7 @@ function ComposerAttachmentMenu({
             {subagentMenuOpen ? (
               <div
                 className={cn(
-                  "codex-dialog absolute top-0 z-50 w-[min(320px,calc(100vw-32px))] rounded-md border border-border bg-popover p-1 codex-elevated",
+                  "macos-dropdown codex-dialog absolute top-0 z-50 w-[min(320px,calc(100vw-32px))] rounded-md border border-border bg-popover p-1",
                   subagentMenuSide === "right" ? "left-full ml-1" : "right-full mr-1"
                 )}
                 role="menu"
@@ -1127,7 +1161,6 @@ function ComposerAttachmentMenu({
               </div>
             ) : null}
           </div>
-        </>
       ) : null}
     </div>
   );
@@ -1310,8 +1343,15 @@ export function NewSessionComposer({
               </AnimatePresence>
             </div>
           ) : null}
-          <div className={cn("flex items-center justify-between gap-2", mobile ? "flex-col items-stretch" : "flex-wrap")}>
-            <div className={cn("flex min-w-0 items-center gap-1.5", mobile && "overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden")}>
+          <div className="relative flex items-center gap-2 overflow-visible">
+            <div
+              className={cn(
+                "flex shrink-0 items-center gap-1.5",
+                mobile
+                  ? "pb-1"
+                  : ""
+              )}
+            >
               <ComposerAttachmentMenu
                 agentProviders={agentProviders}
                 buttonClassName={cn(mobile ? "h-10 w-10 shrink-0" : "h-7 w-7")}
@@ -1323,19 +1363,26 @@ export function NewSessionComposer({
                 subagents={subagents}
               />
               <HeaderSelect
-                ariaLabel={t("agent.permissions")}
-                buttonClassName={cn("text-primary", mobile ? "h-10 max-w-[180px] px-2 text-[13px]" : "h-7 max-w-[136px] px-1.5")}
+                ariaLabel={`${t("agent.permissions")}: ${approvalModeLabel}`}
+                buttonClassName={cn("max-w-none justify-center p-0 text-primary", mobile ? "h-10 w-10" : "h-7 w-7")}
+                hideChevron
                 onChange={(nextLabel) => onAgentApprovalModeChange(getAgentApprovalModeFromLabel(nextLabel, t))}
                 options={approvalModeOptions}
+                renderValue={() => <Shield className={cn("shrink-0", mobile ? "h-[17px] w-[17px]" : "h-[15px] w-[15px]")} />}
                 value={approvalModeLabel}
                 variant="plain"
               />
             </div>
 
-            <div className={cn("flex min-w-0 shrink-0 items-center gap-1.5 text-[12px]", mobile ? "overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "flex-wrap justify-end")}>
+            <div
+              className={cn(
+                "ml-auto flex min-w-0 shrink-0 items-center justify-end gap-1.5 text-[12px]",
+                mobile && "pb-1"
+              )}
+            >
               <HeaderSelect
                 ariaLabel={t("agent.provider")}
-                buttonClassName={cn(mobile ? "h-10 max-w-[190px] px-2 text-[13px]" : "h-7 max-w-[156px] px-1.5")}
+                buttonClassName={cn(mobile ? "h-10 max-w-[132px] px-2 text-[13px]" : "h-7 max-w-[120px] px-1.5")}
                 onChange={onAgentProviderChange}
                 options={providerOptions}
                 renderOption={renderAgentProviderSelectOption}
@@ -1349,7 +1396,7 @@ export function NewSessionComposer({
                 agentModel={agentModel}
                 agentSpeed={agentSpeed}
                 agentSpeedOptions={agentSpeedOptions}
-                buttonClassName={cn(mobile ? "h-10 max-w-[260px] px-2 text-[13px]" : "h-7 max-w-[240px] px-1.5")}
+                buttonClassName={cn(mobile ? "h-10 max-w-[160px] px-2 text-[13px]" : "h-7 max-w-[148px] px-1.5")}
                 modelFallbackLabel={modelFallbackLabel}
                 modelOptions={modelOptions}
                 onAgentEffortChange={onAgentEffortChange}
@@ -1372,7 +1419,7 @@ export function NewSessionComposer({
                   "grid place-items-center rounded-full transition-[background-color,box-shadow,opacity,transform] active:scale-95 disabled:opacity-50",
                   mobile ? "h-10 w-10 shrink-0" : "h-7 w-7",
                   canSend
-                    ? "bg-primary text-primary-foreground shadow-[0_6px_16px_rgba(15,118,110,.22)] hover:scale-105"
+                    ? "bg-primary text-primary-foreground shadow-[0_6px_16px_rgba(0,122,255,.22)] hover:scale-105"
                     : "bg-muted-foreground text-background"
                 )}
                 disabled={!canSend}
@@ -1488,7 +1535,7 @@ export function NewSessionProjectPicker({
           <motion.div
             animate={{ opacity: 1, scale: 1, y: 0 }}
             className={cn(
-              "absolute left-0 z-50 w-[min(420px,calc(100vw-48px))] rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-[0_16px_48px_rgba(15,23,42,.18)]",
+              "macos-dropdown absolute left-0 z-50 w-[min(420px,calc(100vw-48px))] rounded-lg border border-border bg-popover p-1.5 text-popover-foreground",
               placement === "top" ? "bottom-8 origin-bottom-left" : "top-full mt-2 origin-top-left"
             )}
             exit={{ opacity: 0, scale: 0.98, y: 4 }}
@@ -1604,7 +1651,7 @@ export function NewSessionBranchPicker({
         {open ? (
           <motion.div
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="absolute bottom-8 left-0 z-50 w-[min(340px,calc(100vw-48px))] origin-bottom-left rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-[0_16px_48px_rgba(15,23,42,.18)]"
+            className="macos-dropdown absolute bottom-8 left-0 z-50 w-[min(340px,calc(100vw-48px))] origin-bottom-left rounded-lg border border-border bg-popover p-1.5 text-popover-foreground"
             exit={{ opacity: 0, scale: 0.98, y: 4 }}
             initial={{ opacity: 0, scale: 0.98, y: 4 }}
             role="menu"
@@ -1762,7 +1809,7 @@ export function NewSessionConnectionModePicker({
         {open ? (
           <motion.div
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="absolute bottom-8 left-0 z-50 w-[min(232px,calc(100vw-32px))] origin-bottom-left rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-[0_16px_42px_rgba(15,23,42,.2)]"
+            className="macos-dropdown absolute bottom-8 left-0 z-50 w-[min(232px,calc(100vw-32px))] origin-bottom-left rounded-md border border-border bg-popover p-1 text-popover-foreground"
             exit={{ opacity: 0, scale: 0.98, y: 4 }}
             initial={{ opacity: 0, scale: 0.98, y: 4 }}
             role="menu"
@@ -2618,7 +2665,7 @@ function AgentSheetActions({
         {skipLabel}
       </button>
       <button
-        className="flex h-8 items-center rounded-full bg-primary pl-3 pr-1.5 text-[13px] font-semibold text-primary-foreground shadow-[0_8px_18px_rgba(15,118,110,.18)] transition enabled:hover:bg-primary/90 enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45"
+        className="flex h-8 items-center rounded-full bg-primary pl-3 pr-1.5 text-[13px] font-semibold text-primary-foreground shadow-[0_8px_18px_rgba(0,122,255,.18)] transition enabled:hover:bg-primary/90 enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45"
         disabled={disabled}
         onClick={onSubmit}
         type="button"
@@ -2959,7 +3006,7 @@ export function MessageActionToolbar({
     <div
       aria-label={t("chat.messageActions")}
       className={cn(
-        "pointer-events-none flex h-5 w-full items-center gap-2 overflow-hidden opacity-0 transition-opacity duration-150",
+        "message-action-toolbar pointer-events-none flex h-5 w-full items-center gap-2 overflow-hidden opacity-0 transition-opacity duration-150",
         "group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100",
         align === "right" ? "justify-between" : "justify-start"
       )}
@@ -3067,7 +3114,7 @@ export function AssistantMessageParts({
   const partKeys = new Map<string, number>();
 
   return (
-    <div className={cn("space-y-4", compact && "space-y-3")}>
+    <div className={cn("assistant-message-parts flex flex-col", compact && "is-compact")}>
       {parts.map((part, index) => {
         const partKey = getMessagePartRenderKey(part, partKeys);
         const activePart = Boolean(isStreamingMessage && activeStream?.running && index === parts.length - 1 && part.type !== "text");
@@ -3244,7 +3291,7 @@ export function ReasoningPartCard({
   const content = part.content || "";
 
   return (
-    <div className={cn("min-w-0 text-muted-foreground", compact ? "text-[12px] leading-5" : "text-[13px] leading-6")}>
+    <div className={cn("reasoning-part-card min-w-0 text-muted-foreground", compact ? "text-[12px] leading-5" : "text-[13px] leading-6")}>
       <button
         aria-expanded={expanded}
         className={cn(
@@ -3346,7 +3393,7 @@ export function ToolEventsList({
   toolEvents: ChatToolEvent[];
 }) {
   return (
-    <div className={cn("space-y-1.5", compact ? "mt-2.5" : "mt-3")}>
+    <div className={cn("tool-events-list space-y-1.5", compact ? "mt-2.5" : "mt-3")}>
       {toolEvents.map((toolEvent, index) => (
         <ToolEventCard active={active && index === toolEvents.length - 1} compact={compact} key={`${toolEvent.id}-${index}`} onLayoutChange={onLayoutChange} toolEvent={toolEvent} />
       ))}
@@ -3377,36 +3424,40 @@ export function ToolEventCard({
   return (
     <div
       className={cn(
-        "min-w-0 text-muted-foreground",
+        "tool-event-card min-w-0 text-muted-foreground",
         compact ? "text-[12px] leading-5" : "text-[13px] leading-6",
-        depth > 0 && "border-l border-border/60 pl-3"
+        depth > 0 && "is-nested"
       )}
+      data-error={Boolean(errorText)}
+      data-expanded={expanded}
     >
       <button
         aria-expanded={expanded}
         className={cn(
-          "inline-flex max-w-full items-center gap-2 rounded-sm text-left text-muted-foreground outline-none transition hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30",
-          compact ? "min-h-5" : "min-h-6"
+          "tool-event-trigger flex w-full min-w-0 items-center gap-2 text-left text-muted-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30",
+          compact ? "min-h-7" : "min-h-8"
         )}
         onClick={() => setExpanded((current) => !current)}
         type="button"
       >
-        <Terminal className="h-[14px] w-[14px] shrink-0" />
-        <span className={cn("truncate font-normal", active && "agent-thinking-text")} data-text={active ? toolEvent.name : undefined} title={toolEvent.name}>
+        <span className="tool-event-icon grid h-5 w-5 shrink-0 place-items-center rounded-[5px]">
+          <Terminal className="h-[13px] w-[13px]" />
+        </span>
+        <span className={cn("truncate font-medium text-foreground", active && "agent-thinking-text")} data-text={active ? toolEvent.name : undefined} title={toolEvent.name}>
           {toolEvent.name}
         </span>
-        <ChevronDown className={cn("h-[14px] w-[14px] shrink-0 transition-transform", expanded && "rotate-180")} />
+        <ChevronDown className={cn("ml-auto h-[14px] w-[14px] shrink-0 transition-transform", expanded && "rotate-180")} />
       </button>
 
       <AnimatePresence initial={false}>
         {expanded ? (
-          <AutoHeightMotion contentClassName="mt-1 space-y-1 pl-6" onHeightChange={onLayoutChange}>
+          <AutoHeightMotion contentClassName="tool-event-content space-y-2.5 px-2.5 pb-2.5 pt-2" onHeightChange={onLayoutChange}>
             {inputText ? <ToolEventPayload label={t("agent.toolInput")} value={inputText} /> : null}
             {children.length ? null : outputText ? <ToolEventPayload label={t("agent.toolOutput")} value={outputText} /> : null}
             {errorText ? <ToolEventPayload danger label={t("agent.toolError")} value={errorText} /> : null}
 
             {children.length ? (
-              <div className="mt-1.5 space-y-1.5">
+              <div className="tool-event-children space-y-1.5">
                 {children.map((childEvent, index) => (
                   <ToolEventCard compact={compact} depth={depth + 1} key={`${childEvent.id}-${index}`} onLayoutChange={onLayoutChange} toolEvent={childEvent} />
                 ))}
@@ -3421,18 +3472,52 @@ export function ToolEventCard({
 }
 
 export function ToolEventPayload({ danger = false, label, value }: { danger?: boolean; label: string; value: string }) {
+  const { t } = useI18n();
+  const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+    };
+  }, []);
+
+  const copyPayload = () => {
+    void writeClipboardText(value)
+      .then(() => {
+        setCopied(true);
+        if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+        copyTimerRef.current = window.setTimeout(() => {
+          setCopied(false);
+          copyTimerRef.current = null;
+        }, 1200);
+      })
+      .catch(() => setCopied(false));
+  };
+
   return (
-    <div className="min-w-0">
-      <div className={cn("text-[12px]", danger ? "text-destructive" : "text-muted-foreground")}>
-        {label}
+    <section className="tool-event-payload min-w-0 overflow-hidden" data-danger={danger}>
+      <div className="tool-event-payload-header flex h-7 items-center justify-between gap-2 px-2.5">
+        <span className={cn("truncate text-[11px] font-semibold", danger ? "text-destructive" : "text-muted-foreground")}>
+          {label}
+        </span>
+        <button
+          aria-label={`${t("thread.copy")} ${label}`}
+          className="grid h-5 w-5 shrink-0 place-items-center rounded-[5px] text-muted-foreground outline-none transition hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
+          onClick={copyPayload}
+          title={`${t("thread.copy")} ${label}`}
+          type="button"
+        >
+          {copied ? <CheckCircle2 className="h-[12px] w-[12px] text-emerald-600" /> : <Copy className="h-[12px] w-[12px]" />}
+        </button>
       </div>
       <pre className={cn(
-        "mt-0.5 max-h-[240px] overflow-auto whitespace-pre-wrap font-sans text-[12px] leading-5 [overflow-wrap:anywhere]",
-        danger ? "text-destructive" : "text-muted-foreground/90"
+        "tool-event-payload-content max-h-[300px] overflow-auto whitespace-pre font-mono text-[12px] leading-[1.65]",
+        danger ? "text-destructive" : "text-foreground/88"
       )}>
         {value}
       </pre>
-    </div>
+    </section>
   );
 }
 
@@ -3853,8 +3938,8 @@ export function FollowUpComposer({
                 </AnimatePresence>
               </div>
             ) : null}
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex min-w-0 items-center gap-1.5">
+            <div className="relative flex items-center gap-2 overflow-visible">
+              <div className="flex shrink-0 items-center gap-1.5">
                 <ComposerAttachmentMenu
                   agentProviders={agentProviders}
                   buttonClassName={cn(mobile ? "h-10 w-10 shrink-0" : "h-7 w-7")}
@@ -3866,16 +3951,18 @@ export function FollowUpComposer({
                   subagents={subagents}
                 />
                 <HeaderSelect
-                  ariaLabel={t("agent.permissions")}
-                  buttonClassName={cn("px-1.5 text-primary", mobile ? "h-10 max-w-[132px] text-[13px]" : compact ? "h-7 max-w-[112px]" : "h-7 max-w-[136px]")}
+                  ariaLabel={`${t("agent.permissions")}: ${approvalModeLabel}`}
+                  buttonClassName={cn("max-w-none justify-center p-0 text-primary", mobile ? "h-10 w-10" : "h-7 w-7")}
+                  hideChevron
                   onChange={(nextLabel) => onAgentApprovalModeChange(getAgentApprovalModeFromLabel(nextLabel, t))}
                   options={approvalModeOptions}
                   placement="top"
+                  renderValue={() => <Shield className={cn("shrink-0", mobile ? "h-[17px] w-[17px]" : "h-[15px] w-[15px]")} />}
                   value={approvalModeLabel}
                   variant="plain"
                 />
               </div>
-              <div className="flex shrink-0 items-center gap-1.5 text-[12px]">
+              <div className="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-1.5 text-[12px]">
                 <ContextWindowIndicator metrics={contextWindowMetrics} />
                 <AgentRunSettingsSelect
                   agentEffort={agentEffort}
@@ -3883,7 +3970,7 @@ export function FollowUpComposer({
                   agentModel={agentModel}
                   agentSpeed={agentSpeed}
                   agentSpeedOptions={agentSpeedOptions}
-                  buttonClassName={cn("h-7 px-1.5", compact ? "hidden" : "max-w-[240px]")}
+                  buttonClassName={cn("h-7 px-1.5", compact ? "hidden" : "max-w-[148px]")}
                   modelFallbackLabel={modelFallbackLabel}
                   modelOptions={modelOptions}
                   onAgentEffortChange={onAgentEffortChange}
@@ -3928,7 +4015,7 @@ export function FollowUpComposer({
                       "grid place-items-center rounded-full transition-[background-color,box-shadow,opacity,transform] active:scale-95 disabled:opacity-50",
                       mobile ? "h-10 w-10" : "h-7 w-7",
                       canSend
-                        ? "bg-primary text-primary-foreground shadow-[0_6px_16px_rgba(15,118,110,.22)] hover:scale-105"
+                        ? "bg-primary text-primary-foreground shadow-[0_6px_16px_rgba(0,122,255,.22)] hover:scale-105"
                         : "bg-muted-foreground text-background"
                     )}
                     disabled={!canSend}
@@ -4059,7 +4146,7 @@ export function VoiceWaveform({
       const offsetX = scrollProgress * cellWidth;
       const rootStyles = getComputedStyle(document.documentElement);
       const dashColor = rootStyles.getPropertyValue("--muted-foreground").trim() || "rgba(143, 148, 155, .75)";
-      const barColor = mutedRef.current ? dashColor : rootStyles.getPropertyValue("--primary").trim() || "#0f766e";
+      const barColor = mutedRef.current ? dashColor : rootStyles.getPropertyValue("--primary").trim() || "#007aff";
       const dashWidth = Math.max(2, Math.round(3 * pixelRatio));
       const barWidth = Math.max(2, Math.round(3 * pixelRatio));
 

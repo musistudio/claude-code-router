@@ -197,7 +197,7 @@ export function SettingsPage({
   const activeSectionConfig = settingsSections.find((section) => section.id === activeSection) ?? settingsSections[0];
 
   return (
-    <div className="flex h-full overflow-hidden bg-background text-foreground">
+    <div className="settings-shell flex h-full overflow-hidden bg-background text-foreground">
       <aside className="settings-sidebar min-h-0 w-[260px] shrink-0 overflow-auto border-r border-border bg-sidebar px-2 py-3">
         <div className="settings-sidebar-header drag-region -mx-2 -mt-3 mb-1.5 flex h-[76px] flex-col justify-end px-2 pb-1">
           <button
@@ -233,7 +233,7 @@ export function SettingsPage({
         </nav>
       </aside>
 
-      <main className="min-w-0 flex-1 overflow-auto">
+      <main className="settings-main min-w-0 flex-1 overflow-auto">
         <div className="settings-content mx-auto w-full max-w-[900px] px-8 py-7">
           {activeSection !== "agents" ? (
             <div className="settings-section-heading mb-5">
@@ -4823,7 +4823,7 @@ export function SearchableAgentEnvironmentTemplateSelect({
       />
       {open ? (
         <div
-          className="absolute left-0 right-0 top-[54px] z-[90] max-h-48 overflow-auto rounded-md border border-border bg-popover p-1 shadow-[0_10px_28px_rgba(15,23,42,.18)]"
+          className="macos-dropdown absolute left-0 right-0 top-[54px] z-[90] max-h-48 overflow-auto rounded-md border border-border bg-popover p-1"
           role="listbox"
         >
           {visibleTemplates.length ? visibleTemplates.map((template) => {

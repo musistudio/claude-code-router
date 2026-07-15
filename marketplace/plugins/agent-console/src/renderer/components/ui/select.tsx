@@ -106,7 +106,7 @@ const Select = React.forwardRef<HTMLButtonElement, SelectProps>(
     const menu = open ? (
       <div
         className={cn(
-          "w-max overflow-y-auto overflow-x-hidden rounded-md bg-popover p-1 shadow-[0_8px_22px_rgba(0,0,0,.12)]",
+          "macos-dropdown w-max overflow-y-auto overflow-x-hidden rounded-[10px] border border-border bg-popover p-1",
           menuClassName
         )}
         id={listboxId}
@@ -122,7 +122,7 @@ const Select = React.forwardRef<HTMLButtonElement, SelectProps>(
             <button
               aria-selected={selected}
               className={cn(
-                "flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-[12px] text-foreground outline-none hover:bg-muted disabled:pointer-events-none disabled:opacity-45",
+                "flex h-8 w-full min-w-0 items-center gap-2 rounded-[6px] px-2 text-left text-[12px] text-foreground outline-none hover:bg-muted focus-visible:bg-muted disabled:pointer-events-none disabled:opacity-45",
                 selected && "bg-accent text-accent-foreground"
               )}
               disabled={option.disabled}
@@ -150,7 +150,7 @@ const Select = React.forwardRef<HTMLButtonElement, SelectProps>(
           aria-expanded={open}
           aria-haspopup="listbox"
           className={cn(
-            "inline-flex h-8 max-w-[220px] min-w-0 items-center gap-2 rounded-md bg-card py-0 pl-2 pr-2 text-left text-[12px] font-medium text-foreground outline-none transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50",
+            "inline-flex h-8 max-w-[220px] min-w-0 items-center gap-2 rounded-[7px] bg-card py-0 pl-2 pr-2 text-left text-[12px] font-medium text-foreground outline-none transition-[background-color,box-shadow] hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50",
             selectClassName
           )}
           disabled={disabled}

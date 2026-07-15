@@ -202,33 +202,34 @@ export function AutomationsPage({
   };
 
   return (
-    <div className="flex h-full min-w-0 flex-col bg-background">
-      <header className={cn("drag-region flex h-[46px] shrink-0 items-center justify-between bg-background px-4 pr-[58px]", !leftOpen && "pl-[118px]")}>
+    <div className="automations-page flex h-full min-w-0 flex-col bg-background">
+      <header className={cn("automations-header drag-region flex h-[52px] shrink-0 items-center justify-between bg-background px-4 pr-[58px]", !leftOpen && "pl-[118px]")}>
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <ListChecks className="h-5 w-5 shrink-0 text-primary" />
           <h1 className="min-w-0 truncate text-[15px] font-semibold text-foreground">{t("automations.title")}</h1>
         </div>
       </header>
 
-      <section className="min-h-0 flex-1 overflow-auto border-t border-border">
-        <main className="mx-auto flex w-full max-w-[920px] flex-col px-7 py-6">
+      <section className="automations-content min-h-0 flex-1 overflow-auto border-t border-border">
+        <main className="mx-auto flex w-full max-w-[920px] flex-col px-7 py-7">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div className="text-[12px] font-semibold uppercase text-muted-foreground">{t("automations.tasks")}</div>
             <button
               aria-label={t("automations.new")}
-              className="grid h-8 w-8 place-items-center rounded-md border border-border bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground"
+              className="no-drag inline-flex h-8 items-center gap-1.5 rounded-[7px] bg-primary px-3 text-[12px] font-semibold text-primary-foreground shadow-[0_1px_2px_rgba(0,0,0,.12)] transition hover:brightness-[1.04] active:scale-[.98]"
               onClick={startNewAutomation}
               title={t("automations.new")}
               type="button"
             >
               <Plus className="h-4 w-4" />
+              <span>{t("automations.new")}</span>
             </button>
           </div>
 
           <div className="space-y-2">
             {automations.length ? automations.map((automation) => (
               <div
-                className="flex min-w-0 items-start justify-between gap-4 rounded-md border border-border bg-card px-3 py-3"
+                className="automation-card flex min-w-0 items-start justify-between gap-4 rounded-xl border border-border bg-card px-4 py-3.5"
                 key={automation.id}
               >
                 <div className="min-w-0 flex-1">
@@ -280,7 +281,20 @@ export function AutomationsPage({
                 </div>
               </div>
             )) : (
-              <div className="py-6 text-center text-[12px] text-muted-foreground">{t("automations.noTasks")}</div>
+              <div className="automation-empty-state flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/55 px-6 py-16 text-center">
+                <div className="mb-3 grid h-11 w-11 place-items-center rounded-xl bg-accent text-primary">
+                  <ListChecks className="h-5 w-5" />
+                </div>
+                <div className="text-[13px] font-medium text-foreground">{t("automations.noTasks")}</div>
+                <button
+                  className="mt-4 inline-flex h-8 items-center gap-1.5 rounded-[7px] border border-border bg-card px-3 text-[12px] font-medium text-foreground shadow-[0_1px_2px_rgba(0,0,0,.05)] transition hover:bg-muted active:scale-[.98]"
+                  onClick={startNewAutomation}
+                  type="button"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  {t("automations.new")}
+                </button>
+              </div>
             )}
           </div>
         </main>

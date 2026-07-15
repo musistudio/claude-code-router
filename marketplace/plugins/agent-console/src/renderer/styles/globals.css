@@ -31,29 +31,32 @@
 
 :root {
   color-scheme: light;
-  --background: #f7f7f7;
-  --foreground: #2f2f2f;
-  --card: #ffffff;
-  --card-foreground: #2f2f2f;
-  --popover: #ffffff;
-  --popover-foreground: #2f2f2f;
-  --primary: #0f766e;
+  --background: #f5f5f7;
+  --foreground: #1d1d1f;
+  --card: rgba(255, 255, 255, .92);
+  --card-foreground: #1d1d1f;
+  --popover: rgba(255, 255, 255, .96);
+  --popover-foreground: #1d1d1f;
+  --menu-surface: #f9f9fb;
+  --menu-border: rgba(60, 60, 67, .22);
+  --menu-shadow: 0 22px 64px rgba(0, 0, 0, .2), 0 4px 16px rgba(0, 0, 0, .09), 0 0 0 .5px rgba(255, 255, 255, .7) inset;
+  --primary: #007aff;
   --primary-foreground: #ffffff;
-  --secondary: #f1f1f1;
-  --secondary-foreground: #303030;
-  --muted: #f4f4f4;
-  --muted-foreground: #6f6f6f;
-  --accent: #e8f3f1;
-  --accent-foreground: #16423d;
-  --destructive: #c6362f;
+  --secondary: rgba(60, 60, 67, .075);
+  --secondary-foreground: #2c2c2e;
+  --muted: rgba(60, 60, 67, .085);
+  --muted-foreground: #6e6e73;
+  --accent: rgba(0, 122, 255, .12);
+  --accent-foreground: #075fae;
+  --destructive: #ff3b30;
   --destructive-foreground: #ffffff;
-  --border: #d9d9d9;
-  --input: #d4d4d4;
-  --ring: #0f766e;
-  --sidebar: #eeeeee;
-  --sidebar-foreground: #303030;
-  --radius: 0.5rem;
-  --height-toolbar: 46px;
+  --border: rgba(60, 60, 67, .18);
+  --input: rgba(60, 60, 67, .28);
+  --ring: #007aff;
+  --sidebar: rgba(238, 238, 242, .9);
+  --sidebar-foreground: #2c2c2e;
+  --radius: 0.625rem;
+  --height-toolbar: 52px;
   --height-toolbar-sm: 36px;
   --height-token-nav-row: 32px;
   --spacing-token-sidebar: clamp(240px, 300px, min(520px, calc(100vw - 320px)));
@@ -62,28 +65,28 @@
   --cubic-exit-snappy: cubic-bezier(.65, 0, .4, 1);
   --transition-duration-basic: .15s;
   --transition-duration-relaxed: .3s;
-  --app-font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --app-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", Inter, "Helvetica Neue", "Segoe UI", sans-serif;
   --app-font-mono: "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   --home-background: var(--background);
   --home-title-color: var(--foreground);
   --home-composer-background: var(--card);
   --home-composer-border: var(--border);
-  --home-composer-radius: 16px;
-  --home-composer-shadow: 0 14px 44px rgba(15, 23, 42, .08), 0 2px 5px rgba(15, 23, 42, .06);
+  --home-composer-radius: 18px;
+  --home-composer-shadow: 0 18px 50px rgba(0, 0, 0, .1), 0 2px 8px rgba(0, 0, 0, .06), inset 0 1px 0 rgba(255, 255, 255, .8);
   --home-composer-toolbar-background: color-mix(in srgb, var(--muted) 55%, transparent);
   --home-composer-toolbar-color: var(--muted-foreground);
   --home-section-card-background: var(--card);
   --home-section-card-border: var(--border);
-  --home-section-card-radius: 8px;
-  --home-section-card-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+  --home-section-card-radius: 12px;
+  --home-section-card-shadow: 0 1px 2px rgba(0, 0, 0, .04);
   --home-section-card-hover-border: color-mix(in srgb, var(--muted-foreground) 35%, var(--border));
   --home-section-card-hover-shadow: 0 5px 20px rgba(15, 23, 42, .07);
-  --home-section-connected-fill: #10b981;
+  --home-section-connected-fill: #34c759;
   --home-section-connected-color: #ffffff;
   --home-section-description-color: var(--muted-foreground);
   --home-section-icon-background: var(--accent);
   --home-section-icon-color: var(--primary);
-  --home-section-icon-radius: 6px;
+  --home-section-icon-radius: 9px;
   --home-section-muted-opacity: .45;
   --home-section-title-color: var(--foreground);
   --chatbot-background: var(--background);
@@ -113,31 +116,34 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --background: #17191d;
-  --foreground: #e6e8eb;
-  --card: #202328;
-  --card-foreground: #eceff2;
-  --popover: #24272d;
-  --popover-foreground: #eceff2;
-  --primary: #2dd4bf;
-  --primary-foreground: #052e2b;
-  --secondary: #292d33;
-  --secondary-foreground: #e2e5e9;
-  --muted: #24272d;
-  --muted-foreground: #9da5af;
-  --accent: #183b39;
-  --accent-foreground: #c8f7ef;
-  --destructive: #f87171;
-  --destructive-foreground: #2f0b0b;
-  --border: #343942;
-  --input: #3c424d;
-  --ring: #2dd4bf;
-  --sidebar: #1d2026;
-  --sidebar-foreground: #d7dbe0;
-  --home-composer-shadow: 0 14px 44px rgba(0, 0, 0, .26), 0 2px 5px rgba(0, 0, 0, .18);
+  --background: #1c1c1e;
+  --foreground: #f5f5f7;
+  --card: rgba(44, 44, 46, .94);
+  --card-foreground: #f5f5f7;
+  --popover: rgba(50, 50, 52, .96);
+  --popover-foreground: #f5f5f7;
+  --menu-surface: #303033;
+  --menu-border: rgba(255, 255, 255, .16);
+  --menu-shadow: 0 24px 72px rgba(0, 0, 0, .52), 0 4px 18px rgba(0, 0, 0, .28), 0 0 0 .5px rgba(255, 255, 255, .08) inset;
+  --primary: #0a84ff;
+  --primary-foreground: #ffffff;
+  --secondary: rgba(255, 255, 255, .085);
+  --secondary-foreground: #f2f2f7;
+  --muted: rgba(255, 255, 255, .075);
+  --muted-foreground: #a1a1a6;
+  --accent: rgba(10, 132, 255, .24);
+  --accent-foreground: #d8ebff;
+  --destructive: #ff453a;
+  --destructive-foreground: #ffffff;
+  --border: rgba(255, 255, 255, .12);
+  --input: rgba(255, 255, 255, .2);
+  --ring: #0a84ff;
+  --sidebar: rgba(36, 36, 38, .94);
+  --sidebar-foreground: #f2f2f7;
+  --home-composer-shadow: 0 22px 54px rgba(0, 0, 0, .34), 0 2px 8px rgba(0, 0, 0, .2), inset 0 1px 0 rgba(255, 255, 255, .06);
   --home-section-card-shadow: 0 1px 2px rgba(0, 0, 0, .18);
   --home-section-card-hover-shadow: 0 5px 20px rgba(0, 0, 0, .24);
-  --home-section-connected-color: #052e2b;
+  --home-section-connected-color: #05250f;
   --settings-switch-off: var(--input);
   --settings-switch-off-hover: color-mix(in srgb, var(--input) 90%, var(--foreground));
   --settings-switch-ring: rgba(255, 255, 255, .3);
@@ -164,6 +170,7 @@
 }
 
 :root[data-density="compact"] .settings-nav-item,
+:root[data-density="compact"] .project-group-header,
 :root[data-density="compact"] .project-group-trigger,
 :root[data-density="compact"] .project-thread-row {
   min-height: 1.75rem;
@@ -248,7 +255,7 @@ body,
 }
 
 body {
-  min-width: 900px;
+  min-width: 720px;
   margin: 0;
   overflow: hidden;
   background: var(--background);
@@ -945,6 +952,709 @@ body {
   color: var(--destructive) !important;
 }
 
+/* macOS application shell ------------------------------------------------- */
+
+.agent-console-root,
+.agent-console-shell,
+.settings-shell {
+  isolation: isolate;
+  background: var(--background);
+}
+
+.agent-console-main,
+.settings-main,
+.automations-content {
+  background:
+    radial-gradient(circle at 50% -18%, color-mix(in srgb, var(--card) 72%, transparent), transparent 42%),
+    var(--background);
+}
+
+.project-sidebar {
+  z-index: 3;
+  border-right: 1px solid var(--border);
+  background: var(--sidebar);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+  backdrop-filter: blur(28px) saturate(1.35);
+  box-shadow: inset -1px 0 0 color-mix(in srgb, #fff 34%, transparent);
+}
+
+:root[data-theme="dark"] .project-sidebar {
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, .025);
+}
+
+.project-sidebar-titlebar,
+.thread-header,
+.right-sidebar-toolbar,
+.automations-header {
+  position: relative;
+  border-bottom: 0;
+  background: color-mix(in srgb, var(--background) 88%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(1.25);
+  backdrop-filter: blur(24px) saturate(1.25);
+}
+
+.project-sidebar-titlebar {
+  background: transparent;
+}
+
+.thread-header::after,
+.right-sidebar-toolbar::after,
+.automations-header::after {
+  display: none;
+}
+
+:root[data-theme="dark"] .thread-header::after,
+:root[data-theme="dark"] .right-sidebar-toolbar::after,
+:root[data-theme="dark"] .automations-header::after {
+  display: none;
+}
+
+.thread-header h1,
+.automations-header h1 {
+  letter-spacing: -.012em;
+}
+
+.right-sidebar {
+  z-index: 2;
+  border-left: 1px solid var(--border);
+  background: color-mix(in srgb, var(--background) 92%, var(--card));
+  box-shadow: inset 1px 0 0 color-mix(in srgb, #fff 28%, transparent);
+}
+
+:root[data-theme="dark"] .right-sidebar {
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, .02);
+}
+
+.right-sidebar-tabs {
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--muted) 70%, transparent);
+  box-shadow:
+    inset 0 1px 1px rgba(0, 0, 0, .035),
+    0 1px 0 color-mix(in srgb, #fff 35%, transparent);
+}
+
+.right-sidebar-tab {
+  max-width: 136px;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted-foreground);
+  transition:
+    background-color var(--transition-duration-basic) ease,
+    color var(--transition-duration-basic) ease,
+    box-shadow var(--transition-duration-basic) ease;
+}
+
+.right-sidebar-tab:hover:not(.is-selected) {
+  background: color-mix(in srgb, var(--card) 52%, transparent);
+  color: var(--foreground);
+}
+
+.right-sidebar-tab.is-selected {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, .13),
+    inset 0 0 0 1px color-mix(in srgb, var(--border) 38%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 66%, transparent);
+}
+
+.right-sidebar-tab-trigger {
+  border-radius: 7px 3px 3px 7px;
+}
+
+.right-sidebar-tab-icon {
+  color: color-mix(in srgb, var(--muted-foreground) 92%, transparent);
+  transition: color var(--transition-duration-basic) ease;
+}
+
+.right-sidebar-tab.is-selected .right-sidebar-tab-icon {
+  color: var(--primary);
+}
+
+.right-sidebar-tab-close {
+  color: color-mix(in srgb, var(--muted-foreground) 86%, transparent);
+  transition:
+    opacity var(--transition-duration-basic) ease,
+    background-color var(--transition-duration-basic) ease,
+    color var(--transition-duration-basic) ease;
+}
+
+.right-sidebar-tab-close:hover {
+  background: color-mix(in srgb, var(--muted) 88%, transparent);
+  color: var(--foreground);
+}
+
+.right-sidebar-add-tab {
+  transition:
+    background-color var(--transition-duration-basic) ease,
+    color var(--transition-duration-basic) ease,
+    box-shadow var(--transition-duration-basic) ease;
+}
+
+.right-sidebar-add-tab:hover,
+.right-sidebar-add-tab[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--muted) 82%, transparent);
+  color: var(--foreground);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 50%, transparent);
+}
+
+:root[data-theme="dark"] .right-sidebar-tabs {
+  background: color-mix(in srgb, var(--muted) 78%, transparent);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, .18);
+}
+
+:root[data-theme="dark"] .right-sidebar-tab.is-selected {
+  box-shadow:
+    0 1px 4px rgba(0, 0, 0, .34),
+    inset 0 0 0 1px rgba(255, 255, 255, .065),
+    inset 0 1px 0 rgba(255, 255, 255, .07);
+}
+
+.right-sidebar-content,
+.automations-content {
+  border-top-width: 0;
+}
+
+.right-sidebar-toolbar {
+  z-index: 60;
+  overflow: visible;
+}
+
+.right-sidebar-content {
+  position: relative;
+  z-index: 0;
+}
+
+.project-sidebar-actions {
+  padding-top: 7px;
+}
+
+.sidebar-action,
+.project-group-trigger,
+.project-thread-row,
+.settings-nav-item {
+  border-radius: 7px;
+  font-weight: 500;
+  letter-spacing: -.005em;
+}
+
+.sidebar-action {
+  height: 30px;
+  padding-right: 8px;
+  padding-left: 8px;
+}
+
+.project-group-trigger,
+.project-thread-row {
+  min-height: 30px;
+}
+
+.project-group-header {
+  min-height: 30px;
+  transition:
+    background-color var(--transition-duration-basic) ease,
+    color var(--transition-duration-basic) ease;
+}
+
+.project-group-header:not([data-selected="true"]):hover {
+  background: var(--muted);
+}
+
+.project-group-header:not([data-selected="true"]):hover .project-group-trigger {
+  color: var(--foreground);
+}
+
+.project-group-new-session {
+  top: 50%;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.project-sidebar .project-group-new-session:active {
+  transform: translateY(-50%) scale(.96);
+}
+
+.project-group-header:hover .project-group-new-session,
+.project-group-header:focus-within .project-group-new-session,
+.project-group-new-session:focus-visible {
+  pointer-events: auto;
+  opacity: 1;
+}
+
+.project-session-heading {
+  margin-bottom: 8px;
+  color: color-mix(in srgb, var(--muted-foreground) 88%, transparent);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: .055em;
+}
+
+.project-session-list {
+  padding-top: 10px;
+}
+
+.project-sidebar-footer {
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  background: color-mix(in srgb, var(--sidebar) 82%, transparent);
+}
+
+.project-sidebar button,
+.thread-header button,
+.right-sidebar-toolbar button,
+.sidebar-toggle button {
+  transition:
+    background-color var(--transition-duration-basic) ease,
+    color var(--transition-duration-basic) ease,
+    box-shadow var(--transition-duration-basic) ease,
+    transform var(--transition-duration-basic) ease;
+}
+
+.project-sidebar button:active,
+.thread-header button:active,
+.right-sidebar-toolbar button:active,
+.sidebar-toggle button:active {
+  transform: scale(.96);
+}
+
+.sidebar-toggle button {
+  border: 1px solid transparent;
+  border-radius: 7px;
+}
+
+.sidebar-toggle button:hover {
+  border-color: color-mix(in srgb, var(--border) 72%, transparent);
+  background: var(--card);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .07);
+}
+
+/* Conversation ----------------------------------------------------------- */
+
+.home-session-page > div {
+  max-width: 880px;
+}
+
+.home-session-title {
+  max-width: 720px;
+  color: var(--foreground);
+  font-size: clamp(28px, 3vw, 34px);
+  font-weight: 610;
+  letter-spacing: -.032em;
+}
+
+.home-composer,
+.chat-floating-composer {
+  border-color: color-mix(in srgb, var(--border) 92%, transparent);
+  background: color-mix(in srgb, var(--card) 96%, transparent);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+  backdrop-filter: blur(28px) saturate(1.35);
+}
+
+.home-composer {
+  overflow: visible;
+}
+
+.home-composer-toolbar {
+  border-top: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
+}
+
+.chat-floating-composer {
+  border-radius: 16px;
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, .11),
+    0 2px 7px rgba(0, 0, 0, .06),
+    inset 0 1px 0 color-mix(in srgb, #fff 68%, transparent);
+}
+
+:root[data-theme="dark"] .chat-floating-composer {
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, .38),
+    0 2px 8px rgba(0, 0, 0, .24),
+    inset 0 1px 0 rgba(255, 255, 255, .055);
+}
+
+.chatbot-scroll > div {
+  max-width: 840px;
+}
+
+.chatbot-bottom-overlay {
+  background: linear-gradient(180deg, transparent 0%, var(--background) 56%, var(--background) 100%);
+}
+
+.chatbot-user-message {
+  border: 1px solid color-mix(in srgb, var(--primary) 10%, var(--border));
+  border-radius: 18px 18px 6px 18px;
+  background: color-mix(in srgb, var(--primary) 11%, var(--card));
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .035);
+}
+
+.markdown-stream-panel p,
+.markdown-stream-panel li,
+.markdown-stream-panel blockquote {
+  font-size: 14px;
+  line-height: 1.68;
+}
+
+.markdown-stream-panel pre,
+.markdown-stream-panel table {
+  border-radius: 10px;
+}
+
+.message-action-toolbar button:hover {
+  background: var(--muted);
+}
+
+/* Assistant message rhythm and tool inspector --------------------------- */
+
+.assistant-message-parts > * + * {
+  margin-top: 14px;
+}
+
+.assistant-message-parts > .tool-event-card + .tool-event-card {
+  margin-top: 4px;
+}
+
+.assistant-message-parts > .markdown-stream-panel + .tool-event-card,
+.assistant-message-parts > .tool-event-card + .markdown-stream-panel {
+  margin-top: 10px;
+}
+
+.assistant-message-parts > .reasoning-part-card + .markdown-stream-panel {
+  margin-top: 16px;
+}
+
+.assistant-message-parts.is-compact > * + * {
+  margin-top: 10px;
+}
+
+.assistant-message-parts.is-compact > .tool-event-card + .tool-event-card {
+  margin-top: 2px;
+}
+
+.reasoning-part-card > button {
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+.reasoning-part-card > button:hover {
+  background: color-mix(in srgb, var(--muted) 56%, transparent);
+}
+
+.tool-event-card {
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  transition:
+    border-color var(--transition-duration-basic) ease,
+    background-color var(--transition-duration-basic) ease,
+    box-shadow var(--transition-duration-basic) ease;
+}
+
+.tool-event-card[data-expanded="true"] {
+  border-color: color-mix(in srgb, var(--border) 82%, transparent);
+  background: color-mix(in srgb, var(--card) 78%, transparent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .045);
+}
+
+.tool-event-card.is-nested {
+  margin-left: 8px;
+  border-left-color: color-mix(in srgb, var(--primary) 26%, var(--border));
+}
+
+.tool-event-trigger {
+  padding: 3px 7px;
+  border-radius: 9px;
+}
+
+.tool-event-card:not([data-expanded="true"]) > .tool-event-trigger:hover {
+  background: color-mix(in srgb, var(--muted) 58%, transparent);
+}
+
+.tool-event-card[data-expanded="true"] > .tool-event-trigger {
+  border-radius: 9px 9px 0 0;
+}
+
+.tool-event-icon {
+  background: color-mix(in srgb, var(--muted) 72%, transparent);
+  color: color-mix(in srgb, var(--muted-foreground) 92%, transparent);
+}
+
+.tool-event-card[data-expanded="true"] > .tool-event-trigger .tool-event-icon {
+  background: color-mix(in srgb, var(--primary) 11%, transparent);
+  color: var(--primary);
+}
+
+.tool-event-card[data-error="true"] > .tool-event-trigger .tool-event-icon {
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+  color: var(--destructive);
+}
+
+.tool-event-content {
+  border-top: 1px solid color-mix(in srgb, var(--border) 66%, transparent);
+}
+
+.tool-event-payload {
+  border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--background) 82%, var(--card));
+}
+
+.tool-event-payload[data-danger="true"] {
+  border-color: color-mix(in srgb, var(--destructive) 28%, var(--border));
+}
+
+.tool-event-payload-header {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
+  background: color-mix(in srgb, var(--muted) 38%, transparent);
+}
+
+.tool-event-payload-content {
+  min-width: 100%;
+  padding: 9px 10px 10px;
+  background: color-mix(in srgb, var(--background) 92%, transparent);
+  tab-size: 2;
+}
+
+:root[data-theme="dark"] .tool-event-card[data-expanded="true"] {
+  box-shadow: 0 2px 7px rgba(0, 0, 0, .2);
+}
+
+:root[data-theme="dark"] .tool-event-payload {
+  background: color-mix(in srgb, var(--card) 84%, #000);
+}
+
+/* Settings --------------------------------------------------------------- */
+
+.settings-sidebar {
+  width: 248px;
+  border-right-color: var(--border);
+  background: var(--sidebar);
+  -webkit-backdrop-filter: blur(28px) saturate(1.3);
+  backdrop-filter: blur(28px) saturate(1.3);
+}
+
+.settings-sidebar-header {
+  height: 78px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.settings-sidebar nav {
+  padding: 8px 4px;
+}
+
+.settings-nav-item {
+  min-height: 31px;
+  padding-right: 8px;
+  padding-left: 8px;
+}
+
+.settings-nav-item[aria-current="page"] {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+.settings-content {
+  max-width: 880px;
+  padding: 34px clamp(28px, 4vw, 56px) 64px;
+}
+
+.settings-section-heading h2 {
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -.025em;
+}
+
+.settings-group {
+  margin-bottom: 28px;
+}
+
+.settings-group-title {
+  margin-bottom: 7px;
+  padding-left: 4px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 590;
+  letter-spacing: .01em;
+}
+
+.settings-group-body {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .025);
+}
+
+.settings-group-body > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+}
+
+.settings-row,
+.settings-stacked-row {
+  border-radius: 0;
+  padding-right: 14px;
+  padding-left: 14px;
+}
+
+.settings-row {
+  min-height: 62px;
+}
+
+.settings-row-description {
+  color: var(--muted-foreground);
+  line-height: 1.45;
+}
+
+.settings-main :where(input, textarea, [role="combobox"]) {
+  background-color: color-mix(in srgb, var(--background) 74%, var(--card));
+}
+
+/* Automations ------------------------------------------------------------ */
+
+.automations-content main {
+  max-width: 880px;
+}
+
+.automation-card {
+  transition:
+    border-color var(--transition-duration-basic) ease,
+    box-shadow var(--transition-duration-basic) ease,
+    transform var(--transition-duration-basic) ease;
+}
+
+.automation-card:hover {
+  border-color: color-mix(in srgb, var(--primary) 26%, var(--border));
+  box-shadow: 0 7px 22px rgba(0, 0, 0, .07);
+  transform: translateY(-1px);
+}
+
+.automation-empty-state {
+  min-height: 260px;
+}
+
+/* Menus, dialogs and platform feedback ---------------------------------- */
+
+.macos-dropdown {
+  z-index: 200 !important;
+  isolation: isolate;
+  border: 1px solid var(--menu-border) !important;
+  border-radius: 12px !important;
+  background: var(--menu-surface) !important;
+  color: var(--popover-foreground);
+  box-shadow: var(--menu-shadow) !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.macos-dropdown :where(button, [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"]) {
+  min-height: 32px;
+  border-radius: 7px;
+  outline: none;
+  transition:
+    background-color 100ms ease,
+    color 100ms ease;
+}
+
+.macos-dropdown :where(button, [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"]):hover {
+  background-color: color-mix(in srgb, var(--primary) 10%, var(--muted));
+  color: var(--foreground);
+}
+
+.macos-dropdown :where([aria-selected="true"], [aria-checked="true"]) {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.macos-dropdown :where(button, [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"]):focus-visible {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+.macos-dropdown :where(button, [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"]):disabled,
+.macos-dropdown :where([aria-disabled="true"]) {
+  opacity: .42;
+}
+
+.macos-dropdown :where(hr, [role="separator"]),
+.macos-dropdown .menu-separator {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--border) 82%, transparent);
+}
+
+.agent-console-root :where(button[aria-haspopup="menu"], button[aria-haspopup="listbox"], button[role="combobox"])[aria-expanded="true"] {
+  background-color: var(--muted);
+  color: var(--foreground);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 78%, transparent);
+}
+
+.codex-dialog,
+.codex-peek-dialog,
+[role="dialog"] {
+  --dialog-shadow: 0 24px 80px rgba(0, 0, 0, .24), 0 3px 12px rgba(0, 0, 0, .1);
+}
+
+.codex-peek-dialog,
+[role="dialog"] {
+  border-color: color-mix(in srgb, var(--border) 94%, transparent);
+  box-shadow: var(--dialog-shadow);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 24%, transparent);
+}
+
+kbd {
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--foreground) 10%, transparent);
+}
+
+@media (hover: none) {
+  .chat-message-row [role="toolbar"] {
+    pointer-events: auto;
+    opacity: .82;
+  }
+}
+
+@media (max-width: 1100px) {
+  .right-sidebar {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    box-shadow: -18px 0 44px rgba(0, 0, 0, .14);
+  }
+}
+
+@media (max-width: 760px) {
+  .project-sidebar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 45;
+    box-shadow: 18px 0 44px rgba(0, 0, 0, .14);
+  }
+
+  .settings-sidebar {
+    width: 220px;
+  }
+
+  .settings-content {
+    padding-right: 24px;
+    padding-left: 24px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -1046,12 +1756,12 @@ button:disabled {
 }
 
 ::-webkit-scrollbar {
-  height: 10px;
-  width: 10px;
+  height: 8px;
+  width: 8px;
 }
 
 ::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
+  border: 2px solid transparent;
   border-radius: 999px;
   background: color-mix(in srgb, var(--foreground) 20%, transparent);
   background-clip: padding-box;

@@ -1,35 +1,35 @@
 :root {
   color-scheme: light;
-  --spotlight-text: #20242a;
-  --spotlight-muted: #5f6875;
-  --spotlight-border: rgba(15, 23, 42, 0.28);
-  --spotlight-glass-highlight: rgba(255, 255, 255, 0.72);
-  --spotlight-glass-surface: rgba(248, 250, 253, 0.76);
+  --spotlight-text: #1d1d1f;
+  --spotlight-muted: #6e6e73;
+  --spotlight-border: rgba(60, 60, 67, 0.25);
+  --spotlight-glass-highlight: rgba(255, 255, 255, 0.78);
+  --spotlight-glass-surface: rgba(246, 246, 248, 0.82);
   --spotlight-glass-blur: 44px;
   --spotlight-glass-saturate: 1.85;
   --spotlight-row: rgba(255, 255, 255, 0.5);
   --spotlight-row-hover: rgba(255, 255, 255, 0.66);
-  --spotlight-accent: #2f343b;
-  --spotlight-accent-soft: rgba(255, 255, 255, 0.58);
-  --spotlight-shadow: rgba(15, 23, 42, 0.34);
-  --spotlight-shadow-tight: rgba(15, 23, 42, 0.22);
-  --spotlight-radius: 999px;
-  --spotlight-font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --spotlight-accent: #007aff;
+  --spotlight-accent-soft: rgba(0, 122, 255, 0.11);
+  --spotlight-shadow: rgba(0, 0, 0, 0.28);
+  --spotlight-shadow-tight: rgba(0, 0, 0, 0.16);
+  --spotlight-radius: 18px;
+  --spotlight-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Inter, "Helvetica Neue", sans-serif;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --spotlight-text: #f4f7fb;
-  --spotlight-muted: #a8b0bb;
+  --spotlight-text: #f5f5f7;
+  --spotlight-muted: #a1a1a6;
   --spotlight-border: rgba(255, 255, 255, 0.14);
   --spotlight-glass-highlight: rgba(255, 255, 255, 0.08);
-  --spotlight-glass-surface: rgba(17, 19, 24, 0.88);
+  --spotlight-glass-surface: rgba(38, 38, 40, 0.9);
   --spotlight-glass-blur: 30px;
   --spotlight-glass-saturate: 1.55;
   --spotlight-row: rgba(255, 255, 255, 0.08);
   --spotlight-row-hover: rgba(255, 255, 255, 0.13);
-  --spotlight-accent: #e5e7eb;
-  --spotlight-accent-soft: rgba(255, 255, 255, 0.09);
+  --spotlight-accent: #0a84ff;
+  --spotlight-accent-soft: rgba(10, 132, 255, 0.18);
   --spotlight-shadow: rgba(0, 0, 0, 0.56);
   --spotlight-shadow-tight: rgba(0, 0, 0, 0.28);
 }
@@ -37,17 +37,17 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
     color-scheme: dark;
-    --spotlight-text: #f4f7fb;
-    --spotlight-muted: #a8b0bb;
+    --spotlight-text: #f5f5f7;
+    --spotlight-muted: #a1a1a6;
     --spotlight-border: rgba(255, 255, 255, 0.14);
     --spotlight-glass-highlight: rgba(255, 255, 255, 0.08);
-    --spotlight-glass-surface: rgba(17, 19, 24, 0.88);
+    --spotlight-glass-surface: rgba(38, 38, 40, 0.9);
     --spotlight-glass-blur: 30px;
     --spotlight-glass-saturate: 1.55;
     --spotlight-row: rgba(255, 255, 255, 0.08);
     --spotlight-row-hover: rgba(255, 255, 255, 0.13);
-    --spotlight-accent: #e5e7eb;
-    --spotlight-accent-soft: rgba(255, 255, 255, 0.09);
+    --spotlight-accent: #0a84ff;
+    --spotlight-accent-soft: rgba(10, 132, 255, 0.18);
     --spotlight-shadow: rgba(0, 0, 0, 0.56);
     --spotlight-shadow-tight: rgba(0, 0, 0, 0.28);
   }
@@ -117,6 +117,15 @@ input {
   will-change: opacity, transform;
 }
 
+.spotlight-shell:focus-within {
+  border-color: color-mix(in srgb, var(--spotlight-accent) 46%, var(--spotlight-border));
+  box-shadow:
+    0 20px 48px var(--spotlight-shadow),
+    0 2px 8px var(--spotlight-shadow-tight),
+    0 0 0 3px color-mix(in srgb, var(--spotlight-accent) 16%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
 .spotlight-page--shown .spotlight-shell {
   opacity: 1;
   transform: translateY(0) scale(1);
@@ -144,8 +153,8 @@ input {
   width: 28px;
   height: 28px;
   place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--spotlight-accent) 18%, transparent);
+  border-radius: 9px;
   color: var(--spotlight-accent);
   background: var(--spotlight-accent-soft);
   overflow: hidden;
@@ -170,9 +179,9 @@ input {
   outline: 0;
   background: transparent;
   color: var(--spotlight-text);
-  font-size: 20px;
-  font-weight: 560;
-  letter-spacing: 0;
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.012em;
   line-height: 36px;
 }
 

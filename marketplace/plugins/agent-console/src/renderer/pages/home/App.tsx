@@ -3226,7 +3226,7 @@ function App() {
 
   return (
     <MotionConfig reducedMotion={settingsPreferences.reduceMotion ? "always" : "user"}>
-      <div className="h-full overflow-hidden bg-background text-foreground" style={toHomeThemeRootStyle(homeTheme)}>
+      <div className="agent-console-root h-full overflow-hidden bg-background text-foreground" style={toHomeThemeRootStyle(homeTheme)}>
         {activePage === "settings" ? (
           <SettingsPage
             activeSection={activeSettingsSection}
@@ -3257,7 +3257,7 @@ function App() {
             transcriptionConfig={transcriptionConfig}
           />
         ) : (
-          <div className="relative flex h-full overflow-hidden bg-background">
+          <div className="agent-console-shell relative flex h-full overflow-hidden bg-background">
             <ProjectSidebar
               activeSettingsSection={activeSettingsSection}
               agentProviders={enabledAgentProviders}
@@ -3285,7 +3285,7 @@ function App() {
               width={leftWidth}
             />
 
-            <main className="relative flex min-w-0 flex-1 flex-col bg-background">
+            <main className="agent-console-main relative flex min-w-0 flex-1 flex-col bg-background">
               {activePage === "bot" ? (
                 <BotGatewayPage
                   leftOpen={leftOpen}
@@ -3316,7 +3316,7 @@ function App() {
                     onSubmitRename={saveThreadTitle}
                     title={!messages.length && selectedThread === newSessionThreadId ? "" : activeTitle}
                   />
-                  <section className="relative min-h-0 flex-1 overflow-hidden">
+                  <section className="agent-console-content relative min-h-0 flex-1 overflow-hidden">
                     <ChatbotPage
                       activeStream={activeStream}
                       agentApprovalMode={agentApprovalMode}

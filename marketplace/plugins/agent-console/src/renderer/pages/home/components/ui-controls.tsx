@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Bot,
   ChevronDown,
@@ -92,6 +92,7 @@ export function PanelTab({ active, icon: Icon, label, onClick }: { active: boole
 export function HeaderSelect({
   ariaLabel,
   buttonClassName,
+  hideChevron = false,
   onChange,
   options,
   placement = "bottom",
@@ -102,6 +103,7 @@ export function HeaderSelect({
 }: {
   ariaLabel: string;
   buttonClassName?: string;
+  hideChevron?: boolean;
   onChange: (value: string) => void;
   options: string[];
   placement?: "bottom" | "top";
@@ -111,11 +113,31 @@ export function HeaderSelect({
   value: string;
 }) {
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsidePointer, true);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
 
   return (
-    <div className="relative inline-flex shrink-0">
+    <div className="relative inline-flex shrink-0" ref={rootRef}>
       <button
         aria-expanded={open}
+        aria-haspopup="menu"
         aria-label={ariaLabel}
         className={cn(
           "inline-flex h-8 max-w-[220px] items-center justify-between gap-1.5 rounded-md px-2 text-left text-[12px] outline-none transition-colors",
@@ -125,42 +147,43 @@ export function HeaderSelect({
           buttonClassName
         )}
         onClick={() => setOpen((next) => !next)}
+        title={ariaLabel}
         type="button"
       >
-        <span className="flex min-w-0 flex-1 items-center">
+        <span className={cn("flex min-w-0 flex-1 items-center", hideChevron && "justify-center")}>
           {renderValue ? renderValue(value) : <span className="min-w-0 truncate">{value}</span>}
         </span>
-        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        {!hideChevron ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
       </button>
       {open ? (
-        <>
-          <button className="fixed inset-0 z-40 cursor-default" onClick={() => setOpen(false)} type="button" />
-          <div
-            className={cn(
-              "codex-dialog absolute right-0 z-50 w-max min-w-full max-w-[min(280px,calc(100vw-32px))] rounded-md border border-border bg-popover p-1 codex-elevated",
-              placement === "top" ? "bottom-full mb-1" : "mt-1"
-            )}
-          >
-            {options.map((option) => (
-              <button
-                className={cn(
-                  "flex h-8 w-full items-center justify-between gap-3 rounded-md px-2 text-left text-[12px] text-popover-foreground hover:bg-muted hover:text-foreground",
-                  option === value && "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground"
-                )}
-                key={option}
-                onClick={() => {
-                  onChange(option);
-                  setOpen(false);
-                }}
-                type="button"
-              >
-                <span className="flex min-w-0 flex-1 items-center">
-                  {renderOption ? renderOption(option, option === value) : <span className="min-w-0 truncate">{option}</span>}
-                </span>
-              </button>
-            ))}
-          </div>
-        </>
+        <div
+          className={cn(
+            "macos-dropdown codex-dialog absolute right-0 z-50 w-max min-w-full max-w-[min(280px,calc(100vw-32px))] rounded-md border border-border bg-popover p-1",
+            placement === "top" ? "bottom-full mb-1" : "mt-1"
+          )}
+          role="menu"
+        >
+          {options.map((option) => (
+            <button
+              aria-checked={option === value}
+              className={cn(
+                "flex h-8 w-full items-center justify-between gap-3 rounded-md px-2 text-left text-[12px] text-popover-foreground hover:bg-muted hover:text-foreground",
+                option === value && "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground"
+              )}
+              key={option}
+              onClick={() => {
+                onChange(option);
+                setOpen(false);
+              }}
+              role="menuitemradio"
+              type="button"
+            >
+              <span className="flex min-w-0 flex-1 items-center">
+                {renderOption ? renderOption(option, option === value) : <span className="min-w-0 truncate">{option}</span>}
+              </span>
+            </button>
+          ))}
+        </div>
       ) : null}
     </div>
   );

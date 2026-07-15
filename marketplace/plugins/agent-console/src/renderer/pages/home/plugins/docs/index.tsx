@@ -889,7 +889,7 @@ function DocsRichMarkdownEditor({
       {mentionMenu ? (
         <div
           aria-label={t("docs.agentMentionAria")}
-          className="fixed z-[100] max-h-[240px] w-[260px] overflow-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg"
+          className="macos-dropdown fixed z-[100] max-h-[240px] w-[260px] overflow-auto rounded-md border border-border bg-popover p-1 text-popover-foreground"
           role="listbox"
           style={{ left: mentionMenu.left, top: mentionMenu.top }}
         >
@@ -926,7 +926,7 @@ function DocsRichMarkdownEditor({
       {slashMenu ? (
         <div
           aria-label={t("docs.slashCommandAria")}
-          className="fixed z-[100] max-h-[240px] w-[240px] overflow-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg"
+          className="macos-dropdown fixed z-[100] max-h-[240px] w-[240px] overflow-auto rounded-md border border-border bg-popover p-1 text-popover-foreground"
           role="listbox"
           style={{ left: slashMenu.left, top: slashMenu.top }}
         >
